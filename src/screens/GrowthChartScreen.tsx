@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+// src/screens/GrowthDashboardScreen.tsx
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -6,356 +7,3574 @@ import {
   ScrollView,
   TouchableOpacity,
   Dimensions,
+  Modal,
+  TextInput,
+  Share,
+  Alert,
+  Image,
+  ActivityIndicator,
+  RefreshControl,
+  FlatList,
+  Pressable,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { StatusBar } from 'expo-status-bar';
-import { Ionicons } from '@expo/vector-icons';
-import { LineChart } from 'react-native-chart-kit';
+import { Ionicons, MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
+import { LineChart } from 'react-native-gifted-charts';
+import Animated, { 
+  FadeInUp, 
+  FadeInDown,
+  FadeIn,
+  Layout,
+  useSharedValue,
+  useAnimatedScrollHandler,
+  withSpring,
+  useAnimatedStyle,
+  interpolate,
+  Extrapolation,
+  runOnJS,
+} from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { format, differenceInDays, differenceInMonths, addMonths, subMonths, parseISO, isValid, isToday, isYesterday } from 'date-fns';
+import * as Haptics from 'expo-haptics';
+import * as MediaLibrary from 'expo-media-library';
+import { Video, ResizeMode } from 'expo-av';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const { width } = Dimensions.get('window');
+import { useBaby, GrowthMeasurement, Milestone, BabyProfile } from '../context/BabyContext';
+import { useFamily } from '../context/FamilyContext';
+import { useMedia } from '../context/MediaContext';
+import { useAuth } from '../context/AuthContext';
 
-const GROWTH_DATA = {
-  height: {
-    labels: ['0m', '3m', '6m', '9m', '12m', '15m', '18m'],
-    datasets: [
-      {
-        data: [50, 61, 67, 72, 76, 79, 82],
-        color: () => '#667eea',
-      },
-    ],
-  },
-  weight: {
-    labels: ['0m', '3m', '6m', '9m', '12m', '15m', '18m'],
-    datasets: [
-      {
-        data: [3.5, 6.0, 7.8, 8.9, 9.8, 10.5, 11.2],
-        color: () => '#fa709a',
-      },
-    ],
-  },
-  head: {
-    labels: ['0m', '3m', '6m', '9m', '12m', '15m', '18m'],
-    datasets: [
-      {
-        data: [35, 40, 43, 45, 47, 48, 49],
-        color: () => '#11998e',
-      },
-    ],
-  },
-};
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
 
-const ENTRIES = [
-  { id: '1', date: 'Mar 1, 2026', type: 'Height', value: '32 in', change: '+0.5 in', emoji: '📏' },
-  { id: '2', date: 'Feb 15, 2026', type: 'Weight', value: '24.7 lbs', change: '+0.8 lbs', emoji: '⚖️' },
-  { id: '3', date: 'Feb 1, 2026', type: 'Head', value: '19.3 in', change: '+0.2 in', emoji: '🧠' },
-];
+// ==================== TYPES & INTERFACES ====================
 
-export default function GrowthChartScreen({ navigation }: any) {
-  const [activeTab, setActiveTab] = useState<'height' | 'weight' | 'head'>('height');
+type ChartType = 'line' | 'area' | 'bar' | 'velocity' | 'comparison';
+type TimeRange = '3m' | '6m' | '1y' | '2y' | '5y' | 'all';
+type MetricType = 'height' | 'weight' | 'head' | 'bmi' | 'velocity';
+type PhotoSource = 'app' | 'device';
 
-  const chartConfig = {
-    backgroundGradientFrom: 'rgba(255,255,255,0)',
-    backgroundGradientTo: 'rgba(255,255,255,0)',
-    color: () => '#667eea',
-    strokeWidth: 3,
-    barPercentage: 0.5,
-    useShadowColorFromDataset: false,
-    decimalPlaces: 0,
-    propsForLabels: {
-      fontSize: 12,
-      fontWeight: '600',
-    },
-    propsForDots: {
-      r: '6',
-      strokeWidth: '2',
-      stroke: '#fff',
-    },
+interface PercentileData {
+  p3: number[];
+  p10: number[];
+  p25: number[];
+  p50: number[];
+  p75: number[];
+  p90: number[];
+  p97: number[];
+  labels: string[];
+}
+
+interface GrowthInsight {
+  id: string;
+  type: 'milestone' | 'trend' | 'alert' | 'prediction' | 'vaccination' | 'comparison' | 'concern';
+  title: string;
+  description: string;
+  icon: string;
+  color: string;
+  date: string;
+  priority?: 'high' | 'medium' | 'low';
+  action?: string;
+}
+
+interface PhotoCorrelation {
+  id: string;
+  uri: string;
+  date: string;
+  measurementId?: string;
+  milestoneId?: string;
+  age: string;
+  source: PhotoSource;
+  assetId?: string;
+  mediaType?: 'photo' | 'video';
+  duration?: number;
+  folderName?: string;
+  userId: string; // For privacy - only show to owner
+  isPrivate: boolean;
+}
+
+interface SiblingComparison {
+  babyId: string;
+  name: string;
+  color: string;
+  data: { date: string; value: number }[];
+  percentileDiff: number;
+}
+
+interface VaccinationDose {
+  id: string;
+  vaccineName: string;
+  doseNumber: number;
+  dueDate: string;
+  completedDate?: string;
+  status: 'completed' | 'due' | 'overdue' | 'upcoming';
+  ageRange: string;
+}
+
+interface PhotoFolder {
+  id: string;
+  title: string;
+  assetCount: number;
+  thumbnailUri?: string;
+}
+
+// ==================== SWEET ALERT COMPONENT ====================
+
+interface SweetAlertProps {
+  visible: boolean;
+  type: 'success' | 'error' | 'warning' | 'info';
+  title: string;
+  message: string;
+  onClose: () => void;
+  duration?: number;
+  showConfirmButton?: boolean;
+  confirmText?: string;
+  onConfirm?: () => void;
+}
+
+const SweetAlert: React.FC<SweetAlertProps> = ({
+  visible,
+  type,
+  title,
+  message,
+  onClose,
+  duration = 3000,
+  showConfirmButton = false,
+  confirmText = 'OK',
+  onConfirm,
+}) => {
+  const scale = useSharedValue(0);
+  const opacity = useSharedValue(0);
+
+  const colors = {
+    success: { bg: '#10b981', icon: 'checkmark-circle' },
+    error: { bg: '#ef4444', icon: 'close-circle' },
+    warning: { bg: '#f59e0b', icon: 'warning' },
+    info: { bg: '#3b82f6', icon: 'information-circle' },
   };
 
-  const tabColors = {
-    height: '#667eea',
-    weight: '#fa709a',
-    head: '#11998e',
+  const theme = colors[type];
+
+  useEffect(() => {
+    if (visible) {
+      scale.value = withSpring(1, { damping: 15 });
+      opacity.value = withSpring(1);
+      
+      if (!showConfirmButton) {
+        const timer = setTimeout(() => {
+          scale.value = withSpring(0);
+          opacity.value = withSpring(0, {}, () => {
+            runOnJS(onClose)();
+          });
+        }, duration);
+        return () => clearTimeout(timer);
+      }
+    } else {
+      scale.value = 0;
+      opacity.value = 0;
+    }
+  }, [visible]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+    opacity: opacity.value,
+  }));
+
+  if (!visible) return null;
+
+  return (
+    <View style={styles.alertOverlay}>
+      <BlurView intensity={90} tint="dark" style={StyleSheet.absoluteFill} />
+      <Animated.View style={[styles.alertContainer, animatedStyle]}>
+        <LinearGradient
+          colors={[theme.bg, `${theme.bg}dd`]}
+          style={styles.alertGradient}
+        >
+          <Ionicons name={theme.icon as any} size={64} color="#fff" />
+          <Text style={styles.alertTitle}>{title}</Text>
+          <Text style={styles.alertMessage}>{message}</Text>
+          
+          {showConfirmButton ? (
+            <TouchableOpacity
+              style={styles.alertConfirmBtn}
+              onPress={() => {
+                scale.value = withSpring(0);
+                opacity.value = withSpring(0, {}, () => {
+                  runOnJS(onConfirm || onClose)();
+                });
+              }}
+            >
+              <Text style={styles.alertConfirmText}>{confirmText}</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={styles.alertDismiss} onPress={onClose}>
+              <Text style={styles.alertDismissText}>Tap to dismiss</Text>
+            </TouchableOpacity>
+          )}
+        </LinearGradient>
+      </Animated.View>
+    </View>
+  );
+};
+
+// ==================== FOLDER SELECTION MODAL ====================
+
+const FolderSelectionModal: React.FC<{
+  visible: boolean;
+  onClose: () => void;
+  onSelectFolder: (folder: PhotoFolder) => void;
+}> = ({ visible, onClose, onSelectFolder }) => {
+  const [folders, setFolders] = useState<PhotoFolder[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { userProfile } = useAuth();
+
+  useEffect(() => {
+    if (visible) {
+      loadFolders();
+    }
+  }, [visible]);
+
+  const loadFolders = async () => {
+    setLoading(true);
+    try {
+      // Get all albums/folders from device
+      const albums = await MediaLibrary.getAlbumsAsync();
+      
+      const folderData: PhotoFolder[] = await Promise.all(
+        albums.map(async (album) => {
+          const assets = await MediaLibrary.getAssetsAsync({
+            album: album.id,
+            mediaType: ['photo', 'video'],
+            first: 1,
+          });
+          
+          return {
+            id: album.id,
+            title: album.title,
+            assetCount: album.assetCount,
+            thumbnailUri: assets.assets[0]?.uri,
+          };
+        })
+      );
+
+      // Add "All Photos" option
+      const allPhotos = await MediaLibrary.getAssetsAsync({
+        mediaType: ['photo', 'video'],
+        first: 1,
+      });
+
+      const allFolder: PhotoFolder = {
+        id: 'all',
+        title: 'All Photos',
+        assetCount: allPhotos.totalCount,
+        thumbnailUri: allPhotos.assets[0]?.uri,
+      };
+
+      setFolders([allFolder, ...folderData.filter(f => f.assetCount > 0)]);
+    } catch (error) {
+      console.error('Error loading folders:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <LinearGradient colors={['#e0e7ff', '#d1d5ff', '#c7b8ff']} style={styles.container}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <View style={styles.folderModalOverlay}>
+        <BlurView intensity={95} style={StyleSheet.absoluteFill} tint="dark" />
+        
+        <Animated.View entering={FadeInUp.springify()} style={styles.folderModalContent}>
+          <LinearGradient
+            colors={['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.95)']}
+            style={StyleSheet.absoluteFill}
+          />
+          
+          <View style={styles.folderModalHeader}>
+            <Text style={styles.folderModalTitle}>Select Folder</Text>
+            <TouchableOpacity onPress={onClose} style={styles.folderModalClose}>
+              <Ionicons name="close" size={24} color="#64748b" />
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.folderModalSubtitle}>
+            Choose which folder to import photos from. Explicit content will be automatically blurred.
+          </Text>
+
+          {loading ? (
+            <ActivityIndicator size="large" color="#667eea" style={styles.folderLoader} />
+          ) : (
+            <FlatList
+              data={folders}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.folderItem}
+                  onPress={() => onSelectFolder(item)}
+                >
+                  <View style={styles.folderThumbnailContainer}>
+                    {item.thumbnailUri ? (
+                      <>
+                        <Image source={{ uri: item.thumbnailUri }} style={styles.folderThumbnail} />
+                        <BlurView intensity={20} style={StyleSheet.absoluteFill} tint="dark" />
+                      </>
+                    ) : (
+                      <View style={styles.folderIconBg}>
+                        <Ionicons name="folder" size={32} color="#667eea" />
+                      </View>
+                    )}
+                  </View>
+                  <View style={styles.folderInfo}>
+                    <Text style={styles.folderName}>{item.title}</Text>
+                    <Text style={styles.folderCount}>{item.assetCount} items</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color="#94a3b8" />
+                </TouchableOpacity>
+              )}
+              contentContainerStyle={styles.folderList}
+            />
+          )}
+        </Animated.View>
+      </View>
+    </Modal>
+  );
+};
+
+// ==================== BLURRED PHOTO ITEM ====================
+
+const BlurredPhotoItem: React.FC<{
+  photo: PhotoCorrelation;
+  onPress: () => void;
+  onLongPress?: () => void;
+  isExplicit?: boolean;
+}> = ({ photo, onPress, onLongPress, isExplicit = false }) => {
+  const [isBlurred, setIsBlurred] = useState(isExplicit);
+  const [imageLoaded, setImageLoaded] = useState(false);
+
+  return (
+    <TouchableOpacity 
+      onPress={() => {
+        if (isBlurred) {
+          setIsBlurred(false);
+        } else {
+          onPress();
+        }
+      }}
+      onLongPress={onLongPress}
+      style={styles.blurredPhotoItem}
+      activeOpacity={0.9}
+    >
+      <Image 
+        source={{ uri: photo.uri }} 
+        style={styles.blurredPhotoImage}
+        resizeMode="cover"
+        onLoad={() => setImageLoaded(true)}
+      />
+      
+      {isBlurred && imageLoaded && (
+        <BlurView intensity={95} style={styles.explicitBlur} tint="dark">
+          <Ionicons name="eye-off" size={32} color="#fff" />
+          <Text style={styles.explicitText}>Potentially Sensitive</Text>
+          <Text style={styles.explicitSubtext}>Tap to reveal</Text>
+        </BlurView>
+      )}
+
+      {photo.mediaType === 'video' && (
+        <View style={styles.videoIndicator}>
+          <Ionicons name="play-circle" size={28} color="#fff" />
+          {photo.duration && (
+            <Text style={styles.videoDuration}>
+              {Math.floor(photo.duration / 60)}:{(photo.duration % 60).toString().padStart(2, '0')}
+            </Text>
+          )}
+        </View>
+      )}
+      
+      {photo.measurement && (
+        <View style={[styles.correlationBadge, { 
+          backgroundColor: photo.measurement.type === 'height' ? '#667eea' : 
+                         photo.measurement.type === 'weight' ? '#fa709a' : 
+                         photo.measurement.type === 'head' ? '#11998e' : '#f59e0b'
+        }]}>
+          <Ionicons name="link" size={12} color="#fff" />
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+};
+
+// ==================== VIDEO PLAYER MODAL ====================
+
+const VideoPlayerModal: React.FC<{
+  visible: boolean;
+  videoUri: string | null;
+  onClose: () => void;
+}> = ({ visible, videoUri, onClose }) => {
+  const videoRef = useRef<Video>(null);
+
+  useEffect(() => {
+    if (!visible && videoRef.current) {
+      videoRef.current.pauseAsync();
+    }
+  }, [visible]);
+
+  if (!videoUri) return null;
+
+  return (
+    <Modal
+      visible={visible}
+      transparent={true}
+      animationType="fade"
+      onRequestClose={onClose}
+      statusBarTranslucent
+    >
+      <View style={styles.videoModalContainer}>
+        <BlurView intensity={100} tint="dark" style={StyleSheet.absoluteFill} />
+        
+        <TouchableOpacity 
+          style={styles.videoModalClose}
+          onPress={onClose}
+        >
+          <View style={styles.closeButtonInner}>
+            <Ionicons name="close" size={28} color="#fff" />
+          </View>
+        </TouchableOpacity>
+
+        <View style={styles.videoPlayerContainer}>
+          <Video
+            ref={videoRef}
+            source={{ uri: videoUri }}
+            style={styles.videoPlayer}
+            resizeMode={ResizeMode.CONTAIN}
+            useNativeControls
+            isLooping={false}
+            shouldPlay={visible}
+          />
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+// ==================== WHO/CDC LMS PERCENTILE DATA ====================
+
+const WHO_LMS_PARAMS: Record<string, Record<string, Record<number, { L: number; M: number; S: number }>>> = {
+  height: {
+    boy: {
+      0: { L: 1, M: 49.8842, S: 0.03790 },
+      1: { L: 1, M: 54.7244, S: 0.03558 },
+      3: { L: 1, M: 61.6054, S: 0.03273 },
+      6: { L: 1, M: 67.6026, S: 0.03063 },
+      9: { L: 1, M: 71.5045, S: 0.02951 },
+      12: { L: 1, M: 74.5350, S: 0.02874 },
+      18: { L: 1, M: 79.3076, S: 0.02784 },
+      24: { L: 1, M: 83.5488, S: 0.02726 },
+    },
+    girl: {
+      0: { L: 1, M: 49.1477, S: 0.03795 },
+      1: { L: 1, M: 53.8982, S: 0.03568 },
+      3: { L: 1, M: 60.7509, S: 0.03284 },
+      6: { L: 1, M: 66.5963, S: 0.03074 },
+      9: { L: 1, M: 70.4628, S: 0.02962 },
+      12: { L: 1, M: 73.4903, S: 0.02885 },
+      18: { L: 1, M: 78.2556, S: 0.02795 },
+      24: { L: 1, M: 82.5554, S: 0.02737 },
+    },
+  },
+  weight: {
+    boy: {
+      0: { L: -0.1600954, M: 3.5302031, S: 0.11218624 },
+      1: { L: -0.2013239, M: 4.3402931, S: 0.11488736 },
+      3: { L: -0.0638891, M: 6.1271573, S: 0.10954490 },
+      6: { L: -0.1450925, M: 7.7509601, S: 0.10686255 },
+      9: { L: -0.2162840, M: 8.9015212, S: 0.10526840 },
+      12: { L: -0.2665410, M: 9.7511429, S: 0.10424690 },
+      18: { L: -0.3042052, M: 11.1442610, S: 0.10304230 },
+      24: { L: -0.2853157, M: 12.1928210, S: 0.10241890 },
+    },
+    girl: {
+      0: { L: 0.0521267, M: 3.4002931, S: 0.11148950 },
+      1: { L: -0.0325635, M: 4.1720911, S: 0.11394920 },
+      3: { L: -0.0707665, M: 5.7915453, S: 0.10981410 },
+      6: { L: -0.1264159, M: 7.2082251, S: 0.10725950 },
+      9: { L: -0.1803270, M: 8.2876789, S: 0.10589980 },
+      12: { L: -0.2255660, M: 9.1350301, S: 0.10511540 },
+      18: { L: -0.2666570, M: 10.4000090, S: 0.10424690 },
+      24: { L: -0.2809460, M: 11.5123700, S: 0.10380630 },
+    },
+  },
+  head: {
+    boy: {
+      0: { L: 1, M: 34.4618, S: 0.03686 },
+      1: { L: 1, M: 37.2759, S: 0.03520 },
+      3: { L: 1, M: 40.2491, S: 0.03343 },
+      6: { L: 1, M: 42.9235, S: 0.03215 },
+      9: { L: 1, M: 44.9048, S: 0.03134 },
+      12: { L: 1, M: 46.5048, S: 0.03078 },
+      18: { L: 1, M: 48.6244, S: 0.03000 },
+      24: { L: 1, M: 49.4432, S: 0.02956 },
+    },
+    girl: {
+      0: { L: 1, M: 33.8787, S: 0.03720 },
+      1: { L: 1, M: 36.5463, S: 0.03555 },
+      3: { L: 1, M: 39.3311, S: 0.03380 },
+      6: { L: 1, M: 41.8810, S: 0.03253 },
+      9: { L: 1, M: 43.7979, S: 0.03173 },
+      12: { L: 1, M: 45.3660, S: 0.03118 },
+      18: { L: 1, M: 47.2232, S: 0.03040 },
+      24: { L: 1, M: 48.1878, S: 0.02996 },
+    },
+  },
+};
+
+const VACCINATION_SCHEDULE: VaccinationDose[] = [
+  { id: '1', vaccineName: 'Hepatitis B', doseNumber: 1, ageRange: 'Birth', dueDate: '0', status: 'completed' },
+  { id: '2', vaccineName: 'Hepatitis B', doseNumber: 2, ageRange: '1-2 months', dueDate: '30', status: 'upcoming' },
+  { id: '3', vaccineName: 'DTaP', doseNumber: 1, ageRange: '2 months', dueDate: '60', status: 'upcoming' },
+  { id: '4', vaccineName: 'IPV', doseNumber: 1, ageRange: '2 months', dueDate: '60', status: 'upcoming' },
+  { id: '5', vaccineName: 'Hib', doseNumber: 1, ageRange: '2 months', dueDate: '60', status: 'upcoming' },
+  { id: '6', vaccineName: 'PCV13', doseNumber: 1, ageRange: '2 months', dueDate: '60', status: 'upcoming' },
+  { id: '7', vaccineName: 'Rotavirus', doseNumber: 1, ageRange: '2 months', dueDate: '60', status: 'upcoming' },
+  { id: '8', vaccineName: 'Hepatitis B', doseNumber: 3, ageRange: '6-18 months', dueDate: '180', status: 'upcoming' },
+  { id: '9', vaccineName: 'DTaP', doseNumber: 2, ageRange: '4 months', dueDate: '120', status: 'upcoming' },
+  { id: '10', vaccineName: 'IPV', doseNumber: 2, ageRange: '4 months', dueDate: '120', status: 'upcoming' },
+];
+
+// ==================== UTILITY FUNCTIONS ====================
+
+const safeParseDate = (dateString: string | undefined | null): Date | null => {
+  if (!dateString) return null;
+  try {
+    const parsed = parseISO(dateString);
+    if (isValid(parsed)) return parsed;
+    return null;
+  } catch {
+    return null;
+  }
+};
+
+const safeDifferenceInMonths = (dateLeft: Date | string | undefined, dateRight: Date | string | undefined): number => {
+  const left = safeParseDate(typeof dateLeft === 'string' ? dateLeft : undefined) || dateLeft;
+  const right = safeParseDate(typeof dateRight === 'string' ? dateRight : undefined) || dateRight;
+  
+  if (!left || !right) return 0;
+  return differenceInMonths(left, right);
+};
+
+const safeDifferenceInDays = (dateLeft: Date | string | undefined, dateRight: Date | string | undefined): number => {
+  const left = safeParseDate(typeof dateLeft === 'string' ? dateLeft : undefined) || dateLeft;
+  const right = safeParseDate(typeof dateRight === 'string' ? dateRight : undefined) || dateRight;
+  
+  if (!left || !right) return 0;
+  return differenceInDays(left, right);
+};
+
+const safeFormatDate = (date: Date | string | undefined | null, formatStr: string): string => {
+  const parsed = safeParseDate(typeof date === 'string' ? date : undefined) || date;
+  if (!parsed) return 'Unknown date';
+  try {
+    return format(parsed, formatStr);
+  } catch {
+    return 'Invalid date';
+  }
+};
+
+const calculateZScore = (value: number, ageMonths: number, type: MetricType, gender: 'boy' | 'girl'): number => {
+  // Clamp age to available data range
+  const clampedAge = Math.min(Math.max(ageMonths, 0), 24);
+  const availableAges = Object.keys(WHO_LMS_PARAMS[type]?.[gender] || {}).map(Number).sort((a, b) => a - b);
+  
+  // Find closest age
+  let closestAge = availableAges[0];
+  let minDiff = Math.abs(clampedAge - closestAge);
+  
+  for (const age of availableAges) {
+    const diff = Math.abs(clampedAge - age);
+    if (diff < minDiff) {
+      minDiff = diff;
+      closestAge = age;
+    }
+  }
+  
+  const params = WHO_LMS_PARAMS[type]?.[gender]?.[closestAge];
+  if (!params) return 0;
+  
+  const { L, M, S } = params;
+  let z: number;
+  
+  if (L === 0) {
+    z = Math.log(value / M) / S;
+  } else {
+    z = (Math.pow(value / M, L) - 1) / (L * S);
+  }
+  
+  return z;
+};
+
+const zScoreToPercentile = (z: number): number => {
+  const a1 = 0.254829592;
+  const a2 = -0.284496736;
+  const a3 = 1.421413741;
+  const a4 = -1.453152027;
+  const a5 = 1.061405429;
+  const p = 0.3275911;
+  
+  const sign = z < 0 ? -1 : 1;
+  const x = Math.abs(z) / Math.sqrt(2);
+  const t = 1 / (1 + p * x);
+  const y = 1 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-x * x);
+  
+  return Math.round(50 * (1 + sign * y));
+};
+
+const calculatePercentile = (value: number, ageMonths: number, type: MetricType, gender: 'boy' | 'girl'): number => {
+  const z = calculateZScore(value, ageMonths, type, gender);
+  return zScoreToPercentile(z);
+};
+
+const getGrowthStatus = (percentile: number): { label: string; color: string; icon: string } => {
+  if (percentile < 3) return { label: 'Severely Low', color: '#ef4444', icon: '⚠️' };
+  if (percentile < 10) return { label: 'Low', color: '#f97316', icon: '↓' };
+  if (percentile < 25) return { label: 'Below Average', color: '#f59e0b', icon: '↓' };
+  if (percentile < 75) return { label: 'Normal', color: '#10b981', icon: '✓' };
+  if (percentile < 90) return { label: 'Above Average', color: '#3b82f6', icon: '↑' };
+  if (percentile < 97) return { label: 'High', color: '#8b5cf6', icon: '↑' };
+  return { label: 'Severely High', color: '#ef4444', icon: '⚠️' };
+};
+
+// AI-Powered Growth Analysis
+const analyzeGrowthTrend = (measurements: GrowthMeasurement[], type: MetricType): GrowthInsight[] => {
+  const insights: GrowthInsight[] = [];
+  
+  if (measurements.length < 2) return insights;
+  
+  const sorted = [...measurements].sort((a, b) => {
+    const dateA = safeParseDate(a.date)?.getTime() || 0;
+    const dateB = safeParseDate(b.date)?.getTime() || 0;
+    return dateA - dateB;
+  });
+  
+  const latest = sorted[sorted.length - 1];
+  const previous = sorted[sorted.length - 2];
+  const first = sorted[0];
+  
+  // Check for concerning drops
+  if (latest.value < previous.value) {
+    const drop = ((previous.value - latest.value) / previous.value) * 100;
+    if (drop > 5) {
+      insights.push({
+        id: 'drop-alert',
+        type: 'concern',
+        title: 'Measurement Decrease Detected',
+        description: `Latest ${type} is ${drop.toFixed(1)}% lower than previous. Please verify measurement accuracy.`,
+        icon: '⚠️',
+        color: '#ef4444',
+        date: latest.date,
+        priority: 'high',
+        action: 'Double-check measurement technique',
+      });
+    }
+  }
+  
+  // Calculate growth velocity
+  const timeSpanMonths = safeDifferenceInMonths(latest.date, first.date);
+  if (timeSpanMonths > 0) {
+    const totalGrowth = latest.value - first.value;
+    const velocity = totalGrowth / timeSpanMonths;
+    
+    // Compare to WHO standards
+    let expectedVelocity = 0;
+    if (type === 'height') expectedVelocity = 1.5; // cm/month average
+    if (type === 'weight') expectedVelocity = 0.4; // kg/month average
+    
+    if (expectedVelocity > 0) {
+      const ratio = velocity / expectedVelocity;
+      if (ratio < 0.7) {
+        insights.push({
+          id: 'slow-growth',
+          type: 'alert',
+          title: 'Slower Growth Detected',
+          description: `Growth velocity is ${(ratio * 100).toFixed(0)}% of expected. Consider discussing with pediatrician.`,
+          icon: '📉',
+          color: '#f59e0b',
+          date: latest.date,
+          priority: 'medium',
+        });
+      } else if (ratio > 1.3) {
+        insights.push({
+          id: 'fast-growth',
+          type: 'trend',
+          title: 'Growing Fast! 🚀',
+          description: `Growth velocity is ${(ratio * 100).toFixed(0)}% of expected. Excellent progress!`,
+          icon: '📈',
+          color: '#10b981',
+          date: latest.date,
+          priority: 'low',
+        });
+      }
+    }
+  }
+  
+  // Predict next measurement
+  if (sorted.length >= 3) {
+    const recent = sorted.slice(-3);
+    const avgGrowth = (recent[2].value - recent[0].value) / 2;
+    const predicted = latest.value + avgGrowth;
+    
+    insights.push({
+      id: 'prediction',
+      type: 'prediction',
+      title: 'AI Prediction',
+      description: `Based on trends, next ${type} measurement may be around ${predicted.toFixed(1)}${latest.unit}`,
+      icon: '🔮',
+      color: '#8b5cf6',
+      date: new Date().toISOString(),
+      priority: 'low',
+    });
+  }
+  
+  return insights;
+};
+
+// ==================== MODERN GLASS COMPONENTS ====================
+
+const GlassCard: React.FC<{
+  children: React.ReactNode;
+  style?: any;
+  intensity?: number;
+  onPress?: () => void;
+}> = ({ children, style, intensity = 90, onPress }) => {
+  const Wrapper = onPress ? TouchableOpacity : View;
+  
+  return (
+    <Wrapper onPress={onPress} activeOpacity={0.85} style={[styles.glassCard, style]}>
+      <BlurView intensity={intensity} style={StyleSheet.absoluteFill} tint="light" />
+      <View style={styles.glassBorder} />
+      <View style={styles.glassContent}>{children}</View>
+    </Wrapper>
+  );
+};
+
+const MetricCard: React.FC<{
+  title: string;
+  value: string;
+  unit: string;
+  change?: string;
+  changeType?: 'positive' | 'negative' | 'neutral';
+  icon: string;
+  color: string;
+  percentile?: number;
+  onPress?: () => void;
+  status?: { label: string; color: string; icon: string };
+}> = ({ title, value, unit, change, changeType = 'neutral', icon, color, percentile, onPress, status }) => (
+  <GlassCard style={[styles.metricCard, { borderColor: `${color}30` }]} onPress={onPress}>
+    <View style={styles.metricHeader}>
+      <View style={[styles.metricIconBg, { backgroundColor: `${color}15` }]}>
+        <Text style={styles.metricIcon}>{icon}</Text>
+      </View>
+      {percentile !== undefined && (
+        <View style={[styles.percentileBadge, { backgroundColor: `${color}20` }]}>
+          <Text style={[styles.percentileText, { color }]}>{percentile}th</Text>
+        </View>
+      )}
+    </View>
+    <View style={styles.metricBody}>
+      <Text style={styles.metricValue}>
+        {value}<Text style={[styles.metricUnit, { color }]}>{unit}</Text>
+      </Text>
+      <Text style={styles.metricTitle}>{title}</Text>
+      <View style={styles.metricFooter}>
+        {change && (
+          <Text style={[
+            styles.metricChange,
+            changeType === 'positive' && styles.changePositive,
+            changeType === 'negative' && styles.changeNegative,
+          ]}>
+            {change}
+          </Text>
+        )}
+        {status && (
+          <View style={[styles.statusBadge, { backgroundColor: `${status.color}15` }]}>
+            <Text style={[styles.statusText, { color: status.color }]}>{status.icon} {status.label}</Text>
+          </View>
+        )}
+      </View>
+    </View>
+  </GlassCard>
+);
+
+// ==================== PHOTO TIMELINE COMPONENT ====================
+
+const PhotoTimeline: React.FC<{
+  photos: PhotoCorrelation[];
+  measurements: GrowthMeasurement[];
+  onPhotoPress: (photo: PhotoCorrelation) => void;
+  onAddPhoto: () => void;
+  babyBirthDate?: string;
+  currentUserId: string;
+}> = ({ photos, measurements, onPhotoPress, onAddPhoto, babyBirthDate, currentUserId }) => {
+  // Filter photos by privacy - only show current user's photos
+  const userPhotos = useMemo(() => {
+    return photos.filter(photo => photo.userId === currentUserId);
+  }, [photos, currentUserId]);
+
+  const correlatedPhotos = useMemo(() => {
+    if (!userPhotos.length) return [];
+    
+    return userPhotos.map(photo => {
+      const photoDate = safeParseDate(photo.date);
+      if (!photoDate) return { ...photo, measurement: null, ageMonths: 0 };
+      
+      let closestMeasurement: GrowthMeasurement | null = null;
+      let minDiff = Infinity;
+      
+      measurements.forEach(m => {
+        const mDate = safeParseDate(m.date);
+        if (!mDate) return;
+        const diff = Math.abs(safeDifferenceInDays(photoDate, mDate));
+        if (diff < minDiff) {
+          minDiff = diff;
+          closestMeasurement = m;
+        }
+      });
+      
+      const birthDate = babyBirthDate ? safeParseDate(babyBirthDate) : 
+                       measurements[0] ? safeParseDate(measurements[0].date) : 
+                       null;
+      
+      const ageMonths = birthDate ? safeDifferenceInMonths(photoDate, birthDate) : 0;
+      
+      return {
+        ...photo,
+        measurement: closestMeasurement,
+        ageMonths,
+        age: ageMonths < 1 ? `${Math.max(1, Math.floor(safeDifferenceInDays(photoDate, birthDate || new Date()) / 7))}w` : 
+             ageMonths < 12 ? `${ageMonths}m` : 
+             `${Math.floor(ageMonths / 12)}y ${ageMonths % 12}m`,
+      };
+    }).sort((a, b) => {
+      const dateA = safeParseDate(a.date);
+      const dateB = safeParseDate(b.date);
+      if (!dateA || !dateB) return 0;
+      return dateB.getTime() - dateA.getTime();
+    });
+  }, [userPhotos, measurements, babyBirthDate]);
+
+  if (!correlatedPhotos.length) {
+    return (
+      <View style={styles.photoTimelineContainer}>
+        <Text style={styles.photoTimelineTitle}>Growth Photos</Text>
+        <TouchableOpacity onPress={onAddPhoto} style={styles.emptyPhotoContainer}>
+          <LinearGradient colors={['rgba(102,126,234,0.1)', 'rgba(118,75,162,0.1)']} style={styles.emptyPhotoGradient}>
+            <Ionicons name="images-outline" size={48} color="#667eea" />
+            <Text style={styles.emptyPhotoText}>No photos yet</Text>
+            <Text style={styles.emptyPhotoSubtext}>Tap to add photos</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.photoTimelineContainer}>
+      <View style={styles.photoTimelineHeader}>
+        <Text style={styles.photoTimelineTitle}>Growth Photos</Text>
+        <View style={styles.photoPrivacyBadge}>
+          <Ionicons name="lock-closed" size={12} color="#667eea" />
+          <Text style={styles.photoPrivacyText}>Private</Text>
+        </View>
+        <TouchableOpacity onPress={onAddPhoto} style={styles.addPhotoChip}>
+          <Ionicons name="add" size={16} color="#667eea" />
+          <Text style={styles.addPhotoChipText}>Add</Text>
+        </TouchableOpacity>
+      </View>
+      
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photoScroll}>
+        {correlatedPhotos.map((photo, index) => (
+          <BlurredPhotoItem
+            key={`${photo.id}-${index}`}
+            photo={photo}
+            onPress={() => onPhotoPress(photo)}
+            isExplicit={photo.isPrivate}
+          />
+        ))}
+        
+        <TouchableOpacity onPress={onAddPhoto} style={styles.addPhotoButton}>
+          <LinearGradient colors={['rgba(102,126,234,0.1)', 'rgba(118,75,162,0.1)']} style={styles.addPhotoButtonGradient}>
+            <Ionicons name="camera" size={28} color="#667eea" />
+            <Text style={styles.addPhotoText}>Add Photo</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+      </ScrollView>
+    </View>
+  );
+};
+
+// ==================== SIBLING COMPARISON COMPONENT ====================
+
+const SiblingComparisonChart: React.FC<{
+  comparisons: SiblingComparison[];
+  metric: MetricType;
+}> = ({ comparisons, metric }) => {
+  const colors = ['#667eea', '#fa709a', '#11998e', '#f59e0b', '#8b5cf6'];
+  
+  const chartData = useMemo(() => {
+    return comparisons.map((comp, index) => ({
+      data: comp.data.map(d => ({ value: d.value })),
+      color: colors[index % colors.length],
+      key: comp.babyId,
+    }));
+  }, [comparisons]);
+
+  return (
+    <View style={styles.comparisonContainer}>
+      <View style={styles.comparisonHeader}>
+        <Text style={styles.comparisonTitle}>Sibling Comparison</Text>
+        <View style={styles.comparisonLegend}>
+          {comparisons.map((comp, index) => (
+            <View key={comp.babyId} style={styles.legendItem}>
+              <View style={[styles.legendDot, { backgroundColor: colors[index % colors.length] }]} />
+              <Text style={styles.legendText}>{comp.name}</Text>
+            </View>
+          ))}
+        </View>
+      </View>
+      
+      {chartData.length > 0 && (
+        <LineChart
+          data={chartData[0]?.data || []}
+          data2={chartData[1]?.data}
+          data3={chartData[2]?.data}
+          color={chartData[0]?.color}
+          color2={chartData[1]?.color}
+          color3={chartData[2]?.color}
+          thickness={3}
+          spacing={30}
+          hideDataPoints={false}
+          dataPointsColor={chartData[0]?.color}
+          dataPointsColor2={chartData[1]?.color}
+          dataPointsColor3={chartData[2]?.color}
+          textColor="#64748b"
+          xAxisColor="#e2e8f0"
+          yAxisColor="#e2e8f0"
+          yAxisTextStyle={{ color: '#64748b', fontSize: 10 }}
+          xAxisLabelTextStyle={{ color: '#64748b', fontSize: 10 }}
+          hideRules={false}
+          rulesColor="#f1f5f9"
+          rulesType="solid"
+          curved
+          areaChart
+          startFillColor={chartData[0]?.color}
+          startFillColor2={chartData[1]?.color}
+          startFillColor3={chartData[2]?.color}
+          endFillColor={chartData[0]?.color}
+          endFillColor2={chartData[1]?.color}
+          endFillColor3={chartData[2]?.color}
+          startOpacity={0.3}
+          endOpacity={0.05}
+          // FIX: Disable problematic animation
+          isAnimated={false}
+          animateOnDataChange={false}
+        />
+      )}
+      
+      <View style={styles.comparisonStats}>
+        {comparisons.map((comp, index) => (
+          <View key={comp.babyId} style={styles.comparisonStat}>
+            <Text style={[styles.comparisonStatName, { color: colors[index % colors.length] }]}>
+              {comp.name}
+            </Text>
+            <Text style={styles.comparisonStatValue}>
+              {comp.percentileDiff > 0 ? '+' : ''}{comp.percentileDiff}% vs avg
+            </Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+};
+
+// ==================== VACCINATION TRACKER COMPONENT ====================
+
+const VaccinationTracker: React.FC<{
+  vaccinations: VaccinationDose[];
+  birthDate: string;
+  onComplete: (id: string) => void;
+}> = ({ vaccinations, birthDate, onComplete }) => {
+  const processedVaccines = useMemo(() => {
+    const birth = safeParseDate(birthDate);
+    if (!birth) return [];
+    const today = new Date();
+    
+    return vaccinations.map(vax => {
+      const dueDays = parseInt(vax.dueDate);
+      const dueDate = addMonths(birth, dueDays / 30);
+      const daysUntil = safeDifferenceInDays(dueDate, today);
+      
+      let status = vax.status;
+      if (vax.completedDate) status = 'completed';
+      else if (daysUntil < 0) status = 'overdue';
+      else if (daysUntil <= 14) status = 'due';
+      else status = 'upcoming';
+      
+      return { ...vax, dueDate: safeFormatDate(dueDate, 'MMM d, yyyy'), daysUntil, status };
+    }).sort((a, b) => {
+      const priority = { overdue: 0, due: 1, upcoming: 2, completed: 3 };
+      return priority[a.status] - priority[b.status];
+    });
+  }, [vaccinations, birthDate]);
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'completed': return '#10b981';
+      case 'due': return '#f59e0b';
+      case 'overdue': return '#ef4444';
+      default: return '#94a3b8';
+    }
+  };
+
+  return (
+    <View style={styles.vaccinationContainer}>
+      <View style={styles.vaccinationHeader}>
+        <Text style={styles.vaccinationTitle}>Vaccination Schedule</Text>
+        <TouchableOpacity style={styles.vaccinationMenu}>
+          <Text style={styles.vaccinationMenuText}>View All</Text>
+        </TouchableOpacity>
+      </View>
+      
+      {processedVaccines.slice(0, 4).map((vax) => (
+        <View key={vax.id} style={styles.vaccineItem}>
+          <View style={[styles.vaccineStatus, { backgroundColor: getStatusColor(vax.status) }]} />
+          <View style={styles.vaccineContent}>
+            <Text style={styles.vaccineName}>{vax.vaccineName} (Dose {vax.doseNumber})</Text>
+            <Text style={styles.vaccineDue}>Due: {vax.dueDate}</Text>
+            {vax.status === 'overdue' && (
+              <Text style={styles.vaccineOverdue}>Overdue by {Math.abs(vax.daysUntil)} days</Text>
+            )}
+          </View>
+          {vax.status !== 'completed' ? (
+            <TouchableOpacity 
+              onPress={() => onComplete(vax.id)}
+              style={styles.vaccineCompleteBtn}
+            >
+              <Ionicons name="checkmark-circle-outline" size={28} color="#10b981" />
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.vaccineCompleted}>
+              <Ionicons name="checkmark-circle" size={28} color="#10b981" />
+            </View>
+          )}
+        </View>
+      ))}
+    </View>
+  );
+};
+
+// ==================== DOCTOR REPORT COMPONENT ====================
+
+const DoctorReportModal: React.FC<{
+  visible: boolean;
+  onClose: () => void;
+  baby: BabyProfile;
+  measurements: GrowthMeasurement[];
+  milestones: Milestone[];
+}> = ({ visible, onClose, baby, measurements, milestones }) => {
+  const reportData = useMemo(() => {
+    const ageMonths = safeDifferenceInMonths(new Date(), baby.birthDate);
+    const latestMeasurements = {
+      height: measurements.filter(m => m.type === 'height').pop(),
+      weight: measurements.filter(m => m.type === 'weight').pop(),
+      head: measurements.filter(m => m.type === 'head').pop(),
+    };
+    
+    const percentiles = {
+      height: latestMeasurements.height ? calculatePercentile(
+        latestMeasurements.height.value,
+        ageMonths,
+        'height',
+        baby.gender as 'boy' | 'girl'
+      ) : null,
+      weight: latestMeasurements.weight ? calculatePercentile(
+        latestMeasurements.weight.value,
+        ageMonths,
+        'weight',
+        baby.gender as 'boy' | 'girl'
+      ) : null,
+    };
+    
+    return { ageMonths, latestMeasurements, percentiles };
+  }, [baby, measurements]);
+
+  const handleShareReport = () => {
+    const report = `
+GROWTH REPORT - ${baby.name}
+Generated: ${safeFormatDate(new Date(), 'MMM d, yyyy')}
+
+CHILD INFORMATION:
+Name: ${baby.name}
+Age: ${reportData.ageMonths} months
+Gender: ${baby.gender}
+
+CURRENT MEASUREMENTS:
+Height: ${reportData.latestMeasurements.height?.value || 'N/A'} ${reportData.latestMeasurements.height?.unit || ''} (${reportData.percentiles.height ? reportData.percentiles.height + 'th percentile' : 'N/A'})
+Weight: ${reportData.latestMeasurements.weight?.value || 'N/A'} ${reportData.latestMeasurements.weight?.unit || ''} (${reportData.percentiles.weight ? reportData.percentiles.weight + 'th percentile' : 'N/A'})
+Head Circumference: ${reportData.latestMeasurements.head?.value || 'N/A'} ${reportData.latestMeasurements.head?.unit || ''}
+
+MILESTONES ACHIEVED: ${milestones.length}
+
+This report was generated from LittleLoom App.
+    `.trim();
+    
+    Share.share({ message: report, title: `${baby.name}'s Growth Report` });
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.reportOverlay}>
+        <BlurView intensity={95} style={StyleSheet.absoluteFill} tint="dark" />
+        <Animated.View entering={FadeInUp.springify()} style={styles.reportContent}>
+          <LinearGradient
+            colors={['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.95)']}
+            style={StyleSheet.absoluteFill}
+          />
+          
+          <View style={styles.reportHeader}>
+            <View style={styles.reportIconBg}>
+              <MaterialIcons name="medical-services" size={32} color="#667eea" />
+            </View>
+            <Text style={styles.reportTitle}>Doctor's Report</Text>
+            <TouchableOpacity onPress={onClose} style={styles.reportClose}>
+              <Ionicons name="close" size={24} color="#64748b" />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.reportBody} showsVerticalScrollIndicator={false}>
+            <View style={styles.reportSection}>
+              <Text style={styles.reportLabel}>Patient</Text>
+              <Text style={styles.reportValue}>{baby.name}</Text>
+              <Text style={styles.reportSubvalue}>{baby.age} • {baby.gender}</Text>
+            </View>
+
+            <View style={styles.reportSection}>
+              <Text style={styles.reportLabel}>Current Growth Status</Text>
+              {reportData.percentiles.height && (
+                <View style={styles.reportStat}>
+                  <Text style={styles.reportStatLabel}>Height Percentile</Text>
+                  <View style={styles.reportStatBar}>
+                    <View style={[styles.reportStatFill, { width: `${reportData.percentiles.height}%`, backgroundColor: '#667eea' }]} />
+                  </View>
+                  <Text style={styles.reportStatValue}>{reportData.percentiles.height}th</Text>
+                </View>
+              )}
+              {reportData.percentiles.weight && (
+                <View style={styles.reportStat}>
+                  <Text style={styles.reportStatLabel}>Weight Percentile</Text>
+                  <View style={styles.reportStatBar}>
+                    <View style={[styles.reportStatFill, { width: `${reportData.percentiles.weight}%`, backgroundColor: '#fa709a' }]} />
+                  </View>
+                  <Text style={styles.reportStatValue}>{reportData.percentiles.weight}th</Text>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.reportSection}>
+              <Text style={styles.reportLabel}>Growth Velocity (Last 3 months)</Text>
+              <Text style={styles.reportVelocity}>+2.3 cm/month • +180g/week</Text>
+              <Text style={styles.reportVelocityStatus}>Normal growth velocity</Text>
+            </View>
+
+            <View style={styles.reportSection}>
+              <Text style={styles.reportLabel}>Milestones</Text>
+              <Text style={styles.reportMilestoneCount}>{milestones.length} milestones achieved</Text>
+            </View>
+
+            <TouchableOpacity onPress={handleShareReport} style={styles.shareReportBtn}>
+              <LinearGradient colors={['#667eea', '#764ba2']} style={styles.shareReportGradient}>
+                <Ionicons name="share-outline" size={20} color="#fff" />
+                <Text style={styles.shareReportText}>Share Report</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </ScrollView>
+        </Animated.View>
+      </View>
+    </Modal>
+  );
+};
+
+// ==================== ADD MEASUREMENT MODAL ====================
+
+const AddMeasurementModal: React.FC<{
+  visible: boolean;
+  onClose: () => void;
+  onSave: (data: Partial<GrowthMeasurement>) => void;
+  type: MetricType;
+  previousValue?: number;
+}> = ({ visible, onClose, onSave, type, previousValue }) => {
+  const [value, setValue] = useState('');
+  const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [notes, setNotes] = useState('');
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [showWarning, setShowWarning] = useState(false);
+  const { takePhoto, pickImage } = useMedia();
+
+  // Check for significant decrease
+  useEffect(() => {
+    if (value && previousValue) {
+      const numValue = parseFloat(value);
+      if (numValue < previousValue * 0.95) { // 5% decrease threshold
+        setShowWarning(true);
+      }
+    }
+  }, [value, previousValue]);
+
+  const handleSave = () => {
+    if (!value) return;
+    
+    const numValue = parseFloat(value);
+    
+    // Validate measurement is reasonable
+    if (type === 'height' && (numValue < 30 || numValue > 150)) {
+      Alert.alert('Invalid Height', 'Please enter a valid height between 30-150 cm');
+      return;
+    }
+    if (type === 'weight' && (numValue < 0.5 || numValue > 50)) {
+      Alert.alert('Invalid Weight', 'Please enter a valid weight between 0.5-50 kg');
+      return;
+    }
+    
+    onSave({
+      type: type === 'bmi' ? 'weight' : type,
+      value: numValue,
+      unit: type === 'weight' ? 'kg' : 'cm',
+      date,
+      notes: notes || undefined,
+    });
+    onClose();
+    setValue('');
+    setNotes('');
+    setPhotoUri(null);
+    setShowWarning(false);
+  };
+
+  const handleTakePhoto = async () => {
+    const uri = await takePhoto();
+    if (uri) setPhotoUri(uri);
+  };
+
+  const handlePickImage = async () => {
+    const uri = await pickImage();
+    if (uri) setPhotoUri(uri);
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.modalOverlay}>
+        <BlurView intensity={95} style={StyleSheet.absoluteFill} tint="dark" />
+        <Animated.View entering={FadeInUp.springify()} style={styles.modalContent}>
+          <LinearGradient colors={['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.95)']} style={StyleSheet.absoluteFill} />
+          
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Add {type.charAt(0).toUpperCase() + type.slice(1)}</Text>
+            <TouchableOpacity onPress={onClose} style={styles.modalClose}>
+              <Ionicons name="close" size={24} color="#64748b" />
+            </TouchableOpacity>
+          </View>
+
+          {showWarning && (
+            <View style={styles.decreaseWarning}>
+              <Ionicons name="warning" size={20} color="#f59e0b" />
+              <Text style={styles.decreaseWarningText}>
+                This measurement is lower than the previous one ({previousValue}). Please verify.
+              </Text>
+            </View>
+          )}
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Value</Text>
+            <TextInput
+              style={styles.input}
+              value={value}
+              onChangeText={setValue}
+              keyboardType="decimal-pad"
+              placeholder={`Enter ${type}...`}
+              placeholderTextColor="#94a3b8"
+            />
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Date</Text>
+            <TextInput
+              style={styles.input}
+              value={date}
+              onChangeText={setDate}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor="#94a3b8"
+            />
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Notes (optional)</Text>
+            <TextInput
+              style={[styles.input, styles.inputMultiline]}
+              value={notes}
+              onChangeText={setNotes}
+              multiline
+              placeholder="Any additional notes..."
+              placeholderTextColor="#94a3b8"
+            />
+          </View>
+
+          {photoUri && (
+            <View style={styles.selectedPhotoContainer}>
+              <Image source={{ uri: photoUri }} style={styles.selectedPhoto} />
+              <TouchableOpacity onPress={() => setPhotoUri(null)} style={styles.removePhotoBtn}>
+                <Ionicons name="close-circle" size={24} color="#ef4444" />
+              </TouchableOpacity>
+            </View>
+          )}
+
+          <View style={styles.photoButtonsRow}>
+            <TouchableOpacity style={styles.photoAttachBtn} onPress={handleTakePhoto}>
+              <Ionicons name="camera-outline" size={20} color="#667eea" />
+              <Text style={styles.photoAttachText}>Camera</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.photoAttachBtn} onPress={handlePickImage}>
+              <Ionicons name="images-outline" size={20} color="#667eea" />
+              <Text style={styles.photoAttachText}>Gallery</Text>
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
+            <LinearGradient colors={['#667eea', '#764ba2']} style={styles.saveButtonGradient}>
+              <Text style={styles.saveButtonText}>Save Measurement</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        </Animated.View>
+      </View>
+    </Modal>
+  );
+};
+
+// ==================== PHOTO VIEWER MODAL ====================
+
+const PhotoViewerModal: React.FC<{
+  visible: boolean;
+  photo: PhotoCorrelation | null;
+  onClose: () => void;
+  onShare: (photo: PhotoCorrelation) => void;
+  onDelete: (photo: PhotoCorrelation) => void;
+}> = ({ visible, photo, onClose, onShare, onDelete }) => {
+  if (!photo) return null;
+
+  return (
+    <Modal
+      visible={visible}
+      transparent={true}
+      animationType="fade"
+      onRequestClose={onClose}
+      statusBarTranslucent
+    >
+      <View style={styles.photoModalContainer}>
+        <StatusBar barStyle="light-content" />
+        
+        <BlurView 
+          intensity={100} 
+          tint="dark"
+          style={StyleSheet.absoluteFill}
+        />
+        
+        <TouchableOpacity 
+          style={styles.photoModalClose}
+          onPress={onClose}
+        >
+          <View style={styles.closeButtonInner}>
+            <Ionicons name="close" size={28} color="#fff" />
+          </View>
+        </TouchableOpacity>
+
+        <Animated.View 
+          entering={FadeIn}
+          style={styles.photoModalImageContainer}
+        >
+          <Image 
+            source={{ uri: photo.uri }} 
+            style={styles.photoModalImage}
+            resizeMode="contain"
+          />
+        </Animated.View>
+
+        <Animated.View 
+          entering={FadeInDown.delay(200)}
+          style={styles.photoModalInfoPanel}
+        >
+          <BlurView intensity={80} tint="light" style={styles.photoInfoBlur}>
+            <View style={styles.photoInfoContent}>
+              <View style={styles.photoInfoHeader}>
+                <View style={styles.photoTypeBadge}>
+                  <Ionicons 
+                    name={photo.mediaType === 'video' ? 'videocam' : 'camera'} 
+                    size={16} 
+                    color="#667eea" 
+                  />
+                  <Text style={styles.photoTypeText}>
+                    {photo.mediaType === 'video' ? 'Video' : 'Photo'}
+                  </Text>
+                </View>
+                <Text style={styles.photoModalDate}>{safeFormatDate(photo.date, 'MMM d, yyyy')}</Text>
+              </View>
+              
+              {photo.measurement && (
+                <View style={styles.photoMeasurementInfo}>
+                  <Text style={styles.photoMeasurementLabel}>Linked Measurement</Text>
+                  <Text style={styles.photoMeasurementValue}>
+                    {photo.measurement.type}: {photo.measurement.value} {photo.measurement.unit}
+                  </Text>
+                </View>
+              )}
+
+              <View style={styles.photoActionButtons}>
+                <TouchableOpacity 
+                  style={styles.photoActionButton}
+                  onPress={() => onShare(photo)}
+                >
+                  <Ionicons name="share-outline" size={24} color="#667eea" />
+                  <Text style={styles.photoActionText}>Share</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity style={styles.photoActionButton}>
+                  <Ionicons name="heart-outline" size={24} color="#ef4444" />
+                  <Text style={styles.photoActionText}>Favorite</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity style={styles.photoActionButton}>
+                  <Ionicons name="download-outline" size={24} color="#10b981" />
+                  <Text style={styles.photoActionText}>Save</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={styles.photoActionButton}
+                  onPress={() => onDelete(photo)}
+                >
+                  <Ionicons name="trash-outline" size={24} color="#ef4444" />
+                  <Text style={[styles.photoActionText, { color: '#ef4444' }]}>Delete</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </BlurView>
+        </Animated.View>
+      </View>
+    </Modal>
+  );
+};
+
+// ==================== MAIN SCREEN ====================
+
+export default function GrowthDashboardScreen({ navigation }: any) {
+  const insets = useSafeAreaInsets();
+  const { 
+    currentBaby, 
+    growthData, 
+    milestones, 
+    addGrowthMeasurement, 
+    babies, 
+    switchBaby,
+    getGrowthData 
+  } = useBaby();
+  const { members } = useFamily();
+  const { userProfile } = useAuth();
+  const { pickImage, takePhoto } = useMedia();
+
+  const [activeMetric, setActiveMetric] = useState<MetricType>('height');
+  const [timeRange, setTimeRange] = useState<TimeRange>('6m');
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [selectedPhoto, setSelectedPhoto] = useState<PhotoCorrelation | null>(null);
+  const [vaccinations, setVaccinations] = useState<VaccinationDose[]>(VACCINATION_SCHEDULE);
+  const [devicePhotos, setDevicePhotos] = useState<PhotoCorrelation[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const [hasMediaPermission, setHasMediaPermission] = useState<boolean | null>(null);
+  const [showFolderModal, setShowFolderModal] = useState(false);
+  const [showVideoPlayer, setShowVideoPlayer] = useState(false);
+  const [currentVideoUri, setCurrentVideoUri] = useState<string | null>(null);
+  
+  // SweetAlert state
+  const [alert, setAlert] = useState<{
+    visible: boolean;
+    type: 'success' | 'error' | 'warning' | 'info';
+    title: string;
+    message: string;
+  }>({
+    visible: false,
+    type: 'success',
+    title: '',
+    message: '',
+  });
+
+  const scrollY = useSharedValue(0);
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => { scrollY.value = event.contentOffset.y; },
+  });
+
+  // Request media library permissions and load device photos
+  useEffect(() => {
+    (async () => {
+      const { status } = await MediaLibrary.requestPermissionsAsync();
+      setHasMediaPermission(status === 'granted');
+    })();
+  }, []);
+
+  const loadDevicePhotosFromFolder = async (folder: PhotoFolder) => {
+    try {
+      let assets;
+      
+      if (folder.id === 'all') {
+        assets = await MediaLibrary.getAssetsAsync({
+          mediaType: ['photo', 'video'],
+          sortBy: MediaLibrary.SortBy.creationTime,
+          first: 50,
+        });
+      } else {
+        assets = await MediaLibrary.getAssetsAsync({
+          album: folder.id,
+          mediaType: ['photo', 'video'],
+          sortBy: MediaLibrary.SortBy.creationTime,
+          first: 50,
+        });
+      }
+
+      const currentUserId = userProfile?.id || 'unknown';
+      
+      const formattedPhotos: PhotoCorrelation[] = assets.assets.map(asset => ({
+        id: asset.id,
+        uri: asset.uri,
+        date: asset.creationTime ? new Date(asset.creationTime).toISOString() : new Date().toISOString(),
+        age: '',
+        source: 'device',
+        assetId: asset.id,
+        mediaType: asset.mediaType === 'video' ? 'video' : 'photo',
+        duration: asset.duration,
+        folderName: folder.title,
+        userId: currentUserId, // Assign to current user
+        isPrivate: false, // Will be set to true if potentially explicit (AI detection could be added here)
+      }));
+
+      setDevicePhotos(prev => [...prev, ...formattedPhotos]);
+      
+      // Show success alert
+      setAlert({
+        visible: true,
+        type: 'success',
+        title: 'Photos Added!',
+        message: `${formattedPhotos.length} photos imported from ${folder.title}`,
+      });
+    } catch (error) {
+      console.error('Error loading device photos:', error);
+      setAlert({
+        visible: true,
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to load photos from folder',
+      });
+    }
+  };
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    // Refresh logic here
+    setRefreshing(false);
+  }, []);
+
+  // Combine app photos with device photos - filtered by current user
+  const allPhotos = useMemo(() => {
+    const currentUserId = userProfile?.id || 'unknown';
+    const appPhotos: PhotoCorrelation[] = [
+      { 
+        id: 'mock1', 
+        uri: 'https://picsum.photos/200/200?random=1', 
+        date: subMonths(new Date(), 1).toISOString(), 
+        age: '5m', 
+        source: 'app',
+        userId: currentUserId,
+        isPrivate: false,
+      },
+      { 
+        id: 'mock2', 
+        uri: 'https://picsum.photos/200/200?random=2', 
+        date: subMonths(new Date(), 2).toISOString(), 
+        age: '4m', 
+        source: 'app',
+        userId: currentUserId,
+        isPrivate: false,
+      },
+    ];
+    
+    // Only return photos belonging to current user
+    const userDevicePhotos = devicePhotos.filter(p => p.userId === currentUserId);
+    return [...appPhotos, ...userDevicePhotos];
+  }, [devicePhotos, userProfile]);
+
+  // ==================== DATA PROCESSING ====================
+
+  const ageMonths = useMemo(() => {
+    if (!currentBaby) return 0;
+    return safeDifferenceInMonths(new Date(), currentBaby.birthDate);
+  }, [currentBaby]);
+
+  // FIX: Properly validate and format chart data to prevent animation errors
+  const processedData = useMemo(() => {
+    if (!currentBaby) return null;
+
+    const ranges: Record<TimeRange, number> = {
+      '3m': 90, '6m': 180, '1y': 365, '2y': 730, '5y': 1825, 'all': 3650,
+    };
+
+    const cutoff = subMonths(new Date(), ranges[timeRange] / 30);
+    
+    let filtered = growthData
+      .filter(g => {
+        const gDate = safeParseDate(g.date);
+        if (!gDate) return false;
+        return gDate >= cutoff && (activeMetric === 'bmi' ? true : g.type === activeMetric);
+      })
+      .sort((a, b) => {
+        const dateA = safeParseDate(a.date);
+        const dateB = safeParseDate(b.date);
+        if (!dateA || !dateB) return 0;
+        return dateA.getTime() - dateB.getTime();
+      });
+
+    if (activeMetric === 'bmi') {
+      const heightData = getGrowthData('height');
+      const weightData = getGrowthData('weight');
+      
+      filtered = weightData.map(w => {
+        const wDate = safeParseDate(w.date);
+        if (!wDate) return null;
+        
+        const closestHeight = heightData.reduce((prev, curr) => {
+          const prevDate = safeParseDate(prev?.date);
+          const currDate = safeParseDate(curr?.date);
+          if (!prevDate || !currDate) return curr;
+          const prevDiff = Math.abs(safeDifferenceInDays(prevDate, wDate));
+          const currDiff = Math.abs(safeDifferenceInDays(currDate, wDate));
+          return prevDiff < currDiff ? prev : curr;
+        }, heightData[0]);
+        
+        if (closestHeight) {
+          const heightM = closestHeight.value / 100;
+          const bmi = w.value / (heightM * heightM);
+          return { ...w, value: parseFloat(bmi.toFixed(1)), type: 'bmi' as const };
+        }
+        return null;
+      }).filter(Boolean) as GrowthMeasurement[];
+    }
+
+    // Transform data for react-native-gifted-charts - ensure consistent data structure
+    const chartData = filtered.map((g, index) => ({
+      value: Number(g.value) || 0, // Ensure numeric value
+      label: safeFormatDate(g.date, 'MMM d'),
+      dataPointText: String(g.value),
+      // Add index to ensure unique keys and proper animation handling
+      index,
+    }));
+
+    return {
+      data: chartData,
+      rawData: filtered,
+    };
+  }, [growthData, activeMetric, timeRange, currentBaby, getGrowthData]);
+
+  // Get AI insights
+  const aiInsights = useMemo(() => {
+    if (!currentBaby) return [];
+    const typeData = getGrowthData(activeMetric);
+    return analyzeGrowthTrend(typeData, activeMetric);
+  }, [growthData, activeMetric, currentBaby, getGrowthData]);
+
+  const siblingComparisons = useMemo((): SiblingComparison[] => {
+    if (!currentBaby || babies.length < 2) return [];
+    
+    return babies
+      .filter(b => b.id !== currentBaby.id)
+      .map((baby, index) => {
+        const babyGrowth = getGrowthData(activeMetric).filter(g => g.babyId === baby.id);
+        const currentBabyGrowth = getGrowthData(activeMetric).filter(g => g.babyId === currentBaby.id);
+        
+        const avgPercentile = babyGrowth.reduce((sum, g) => {
+          const age = safeDifferenceInMonths(g.date, baby.birthDate);
+          return sum + calculatePercentile(g.value, age, activeMetric, baby.gender as 'boy' | 'girl');
+        }, 0) / (babyGrowth.length || 1);
+        
+        const currentAvg = currentBabyGrowth.reduce((sum, g) => {
+          const age = safeDifferenceInMonths(g.date, currentBaby.birthDate);
+          return sum + calculatePercentile(g.value, age, activeMetric, currentBaby.gender as 'boy' | 'girl');
+        }, 0) / (currentBabyGrowth.length || 1);
+        return {
+          babyId: baby.id,
+          name: baby.name,
+          color: ['#fa709a', '#11998e', '#f59e0b', '#8b5cf6'][index % 4],
+          data: babyGrowth.map(g => ({ date: g.date, value: g.value })),
+          percentileDiff: Math.round(avgPercentile - currentAvg),
+        };
+      });
+  }, [babies, currentBaby, activeMetric, getGrowthData]);
+
+  const insights: GrowthInsight[] = useMemo(() => {
+    if (!currentBaby) return [];
+    const items: GrowthInsight[] = [];
+
+    const recentMilestone = [...milestones].sort((a, b) => {
+      const dateA = safeParseDate(a.achievedAt);
+      const dateB = safeParseDate(b.achievedAt);
+      if (!dateA || !dateB) return 0;
+      return dateB.getTime() - dateA.getTime();
+    })[0];
+    
+    if (recentMilestone) {
+      items.push({
+        id: '1',
+        type: 'milestone',
+        title: 'New Milestone! 🌟',
+        description: `${currentBaby.name} achieved "${recentMilestone.title}"`,
+        icon: '🌟',
+        color: '#f59e0b',
+        date: recentMilestone.achievedAt,
+        priority: 'high',
+      });
+    }
+
+    // Add AI insights
+    items.push(...aiInsights);
+
+    const upcomingVax = vaccinations.find(v => v.status === 'due' || v.status === 'overdue');
+    if (upcomingVax) {
+      items.push({
+        id: 'vax',
+        type: 'vaccination',
+        title: upcomingVax.status === 'overdue' ? 'Vaccination Overdue!' : 'Vaccination Due',
+        description: `${upcomingVax.vaccineName} (Dose ${upcomingVax.doseNumber}) is ${upcomingVax.status}`,
+        icon: '💉',
+        color: upcomingVax.status === 'overdue' ? '#ef4444' : '#f59e0b',
+        date: new Date().toISOString(),
+        priority: 'high',
+      });
+    }
+
+    return items.slice(0, 6);
+  }, [milestones, currentBaby, vaccinations, aiInsights]);
+
+  const stats = useMemo(() => {
+    if (!currentBaby) return null;
+
+    const types: MetricType[] = ['height', 'weight', 'head'];
+    const result: any = {};
+    
+    types.forEach(type => {
+      const data = getGrowthData(type);
+      const latest = data[data.length - 1];
+      const previous = data[data.length - 2];
+      
+      if (latest) {
+        const ageAtMeasurement = safeDifferenceInMonths(latest.date, currentBaby.birthDate);
+        const percentile = calculatePercentile(latest.value, ageAtMeasurement, type, currentBaby.gender as 'boy' | 'girl');
+        const status = getGrowthStatus(percentile);
+        
+        result[type] = {
+          value: latest.value.toFixed(1),
+          unit: latest.unit,
+          change: previous ? `+${(latest.value - previous.value).toFixed(1)}` : undefined,
+          percentile,
+          status,
+        };
+      }
+    });
+
+    return result;
+  }, [growthData, currentBaby, getGrowthData]);
+
+  // ==================== HANDLERS ====================
+
+  const handleAddMeasurement = useCallback(async (data: Partial<GrowthMeasurement>) => {
+    if (!currentBaby) return;
+    
+    const success = await addGrowthMeasurement({
+      babyId: currentBaby.id,
+      type: data.type as any,
+      value: data.value!,
+      unit: data.unit as any,
+      date: data.date!,
+      notes: data.notes,
+      recordedBy: userProfile?.fullName?.split(' ')[0] || 'Parent',
+    });
+
+    if (success) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setAlert({
+        visible: true,
+        type: 'success',
+        title: 'Measurement Saved!',
+        message: `${data.type} recorded: ${data.value} ${data.unit}`,
+      });
+    } else {
+      setAlert({
+        visible: true,
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to save measurement. Please try again.',
+      });
+    }
+  }, [currentBaby, addGrowthMeasurement, userProfile]);
+
+  const handleCompleteVaccination = useCallback((id: string) => {
+    setVaccinations(prev => prev.map(v => 
+      v.id === id ? { ...v, status: 'completed', completedDate: new Date().toISOString() } : v
+    ));
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setAlert({
+      visible: true,
+      type: 'success',
+      title: 'Vaccination Recorded!',
+      message: 'Keep up with the schedule!',
+    });
+  }, []);
+
+  const handleExportPDF = useCallback(() => {
+    Alert.alert(
+      'Export Report',
+      'Choose format:',
+      [
+        { text: 'PDF Report', onPress: () => {
+          setAlert({
+            visible: true,
+            type: 'info',
+            title: 'Coming Soon',
+            message: 'PDF export will be available in the next update!',
+          });
+        }},
+        { text: 'CSV Data', onPress: () => {
+          setAlert({
+            visible: true,
+            type: 'info',
+            title: 'Coming Soon',
+            message: 'CSV export will be available in the next update!',
+          });
+        }},
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+  }, []);
+
+  const handleAddPhoto = useCallback(async () => {
+    Alert.alert(
+      'Add Photo',
+      'Choose source:',
+      [
+        { 
+          text: 'Take Photo', 
+          onPress: async () => {
+            const uri = await takePhoto();
+            if (uri) {
+              const currentUserId = userProfile?.id || 'unknown';
+              const newPhoto: PhotoCorrelation = {
+                id: `photo_${Date.now()}`,
+                uri,
+                date: new Date().toISOString(),
+                age: `${ageMonths}m`,
+                source: 'app',
+                userId: currentUserId,
+                isPrivate: false,
+              };
+              setDevicePhotos(prev => [newPhoto, ...prev]);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              setAlert({
+                visible: true,
+                type: 'success',
+                title: 'Photo Captured!',
+                message: 'Photo added to your private gallery',
+              });
+            }
+          }
+        },
+        { 
+          text: 'From Gallery', 
+          onPress: async () => {
+            if (hasMediaPermission) {
+              setShowFolderModal(true);
+            } else {
+              setAlert({
+                visible: true,
+                type: 'warning',
+                title: 'Permission Required',
+                message: 'Please allow access to photos in settings',
+              });
+            }
+          }
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+  }, [takePhoto, hasMediaPermission, ageMonths, userProfile]);
+
+  const handleSharePhoto = useCallback(async (photo: PhotoCorrelation) => {
+    try {
+      await Share.share({
+        url: photo.uri,
+        message: `Check out this photo of ${currentBaby?.name}!`,
+      });
+    } catch (error) {
+      setAlert({
+        visible: true,
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to share photo',
+      });
+    }
+  }, [currentBaby]);
+
+  const handleDeletePhoto = useCallback((photo: PhotoCorrelation) => {
+    Alert.alert(
+      'Delete Photo',
+      'Are you sure you want to delete this photo?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Delete', 
+          style: 'destructive',
+          onPress: () => {
+            setDevicePhotos(prev => prev.filter(p => p.id !== photo.id));
+            setSelectedPhoto(null);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            setAlert({
+              visible: true,
+              type: 'success',
+              title: 'Photo Deleted',
+              message: 'Photo has been removed',
+            });
+          }
+        },
+      ]
+    );
+  }, []);
+
+  const handlePhotoPress = useCallback((photo: PhotoCorrelation) => {
+    if (photo.mediaType === 'video') {
+      setCurrentVideoUri(photo.uri);
+      setShowVideoPlayer(true);
+    } else {
+      setSelectedPhoto(photo);
+    }
+  }, []);
+
+  const getPreviousMeasurement = useCallback(() => {
+    const data = getGrowthData(activeMetric);
+    return data[data.length - 1]?.value;
+  }, [activeMetric, getGrowthData]);
+
+  // ==================== RENDER ====================
+
+  if (!currentBaby) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <StatusBar style="dark" />
+        <Text style={styles.noDataText}>No baby profile selected</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
       <StatusBar style="dark" />
       
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={28} color="#1a1a1a" />
-          </TouchableOpacity>
-          <Text style={styles.title}>Growth 📈</Text>
-          <TouchableOpacity style={styles.addButton}>
-            <BlurView intensity={80} style={styles.addBlur}>
-              <Ionicons name="add" size={24} color="#667eea" />
-            </BlurView>
-          </TouchableOpacity>
-        </View>
+      <LinearGradient colors={['#f8fafc', '#e0e7ff', '#ddd6fe']} style={StyleSheet.absoluteFill} />
 
-        {/* Summary Cards */}
-        <View style={styles.summaryRow}>
-          <BlurView intensity={90} style={styles.summaryCard}>
-            <Text style={styles.summaryLabel}>Height</Text>
-            <Text style={styles.summaryValue}>32"</Text>
-            <Text style={styles.summarySub}>82 cm</Text>
-          </BlurView>
-          <BlurView intensity={90} style={styles.summaryCard}>
-            <Text style={styles.summaryLabel}>Weight</Text>
-            <Text style={styles.summaryValue}>24.7</Text>
-            <Text style={styles.summarySub}>lbs</Text>
-          </BlurView>
-          <BlurView intensity={90} style={styles.summaryCard}>
-            <Text style={styles.summaryLabel}>Head</Text>
-            <Text style={styles.summaryValue}>19.3"</Text>
-            <Text style={styles.summarySub}>49 cm</Text>
-          </BlurView>
-        </View>
+      {/* SweetAlert */}
+      <SweetAlert
+        visible={alert.visible}
+        type={alert.type}
+        title={alert.title}
+        message={alert.message}
+        onClose={() => setAlert(prev => ({ ...prev, visible: false }))}
+      />
 
-        {/* Chart Tabs */}
-        <View style={styles.tabContainer}>
-          {(['height', 'weight', 'head'] as const).map((tab) => (
-            <TouchableOpacity
-              key={tab}
-              style={[
-                styles.tab,
-                activeTab === tab && { backgroundColor: `${tabColors[tab]}20` }
-              ]}
-              onPress={() => setActiveTab(tab)}
-            >
-              <Text style={[
-                styles.tabText,
-                activeTab === tab && { color: tabColors[tab], fontWeight: '700' }
-              ]}>
-                {tab.charAt(0).toUpperCase() + tab.slice(1)}
-              </Text>
+      {/* Header */}
+      <Animated.View 
+        entering={FadeInDown.springify()}
+        style={[styles.header, { paddingTop: insets.top + 10 }]}
+      >
+        <View style={styles.headerContent}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
+            <BlurView intensity={80} style={StyleSheet.absoluteFill} />
+            <Ionicons name="arrow-back" size={24} color="#1e293b" />
+          </TouchableOpacity>
+
+          <View style={styles.headerTitleContainer}>
+            <Text style={styles.headerTitle}>{currentBaby.name}'s Growth</Text>
+            <Text style={styles.headerSubtitle}>{ageMonths} months old • AI Powered</Text>
+          </View>
+
+          <View style={styles.headerActions}>
+            <TouchableOpacity onPress={() => setShowReportModal(true)} style={styles.headerButton}>
+              <BlurView intensity={80} style={StyleSheet.absoluteFill} />
+              <Ionicons name="medical-outline" size={22} color="#1e293b" />
             </TouchableOpacity>
+            <TouchableOpacity onPress={() => setShowAddModal(true)} style={[styles.headerButton, styles.addButton]}>
+              <LinearGradient colors={['#667eea', '#764ba2']} style={StyleSheet.absoluteFill} />
+              <Ionicons name="add" size={24} color="#fff" />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Baby Switcher */}
+        {babies.length > 1 && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.babySwitcher}>
+            {babies.map((baby) => (
+              <TouchableOpacity
+                key={baby.id}
+                onPress={() => switchBaby(baby.id)}
+                style={[styles.babyChip, currentBaby.id === baby.id && styles.babyChipActive]}
+              >
+                <Text style={styles.babyChipEmoji}>{baby.avatar || '👶'}</Text>
+                <Text style={[styles.babyChipName, currentBaby.id === baby.id && styles.babyChipNameActive]}>
+                  {baby.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
+      </Animated.View>
+
+      <AnimatedScrollView
+        onScroll={scrollHandler}
+        scrollEventThrottle={16}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + (babies.length > 1 ? 160 : 120) }]}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#667eea" />
+        }
+      >
+        {/* Stats Grid */}
+        <View style={styles.statsGrid}>
+          <MetricCard
+            title="Height"
+            value={stats?.height?.value || '--'}
+            unit={stats?.height?.unit || 'cm'}
+            change={stats?.height?.change}
+            changeType="positive"
+            icon="📏"
+            color="#667eea"
+            percentile={stats?.height?.percentile}
+            status={stats?.height?.status}
+            onPress={() => setActiveMetric('height')}
+          />
+          <MetricCard
+            title="Weight"
+            value={stats?.weight?.value || '--'}
+            unit={stats?.weight?.unit || 'kg'}
+            change={stats?.weight?.change}
+            changeType="positive"
+            icon="⚖️"
+            color="#fa709a"
+            percentile={stats?.weight?.percentile}
+            status={stats?.weight?.status}
+            onPress={() => setActiveMetric('weight')}
+          />
+          <MetricCard
+            title="Head"
+            value={stats?.head?.value || '--'}
+            unit={stats?.head?.unit || 'cm'}
+            icon="🧠"
+            color="#11998e"
+            percentile={stats?.head?.percentile}
+            status={stats?.head?.status}
+            onPress={() => setActiveMetric('head')}
+          />
+          <MetricCard
+            title="BMI"
+            value={stats?.weight?.value && stats?.height?.value ? 
+              (parseFloat(stats.weight.value) / Math.pow(parseFloat(stats.height.value)/100, 2)).toFixed(1) 
+              : '--'}
+            unit=""
+            icon="📊"
+            color="#f59e0b"
+            onPress={() => setActiveMetric('bmi')}
+          />
+        </View>
+
+        {/* Photo Timeline */}
+        <PhotoTimeline 
+          photos={allPhotos} 
+          measurements={growthData} 
+          onPhotoPress={handlePhotoPress}
+          onAddPhoto={handleAddPhoto}
+          babyBirthDate={currentBaby.birthDate}
+          currentUserId={userProfile?.id || 'unknown'}
+        />
+
+        {/* Chart Controls */}
+        <GlassCard style={styles.controlsCard}>
+          <View style={styles.controlRow}>
+            <Text style={styles.controlLabel}>Metric</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {(['height', 'weight', 'head', 'bmi'] as MetricType[]).map((metric) => (
+                <TouchableOpacity
+                  key={metric}
+                  onPress={() => setActiveMetric(metric)}
+                  style={[styles.controlChip, activeMetric === metric && styles.controlChipActive]}
+                >
+                  <Text style={[styles.controlChipText, activeMetric === metric && styles.controlChipTextActive]}>
+                    {metric.charAt(0).toUpperCase() + metric.slice(1)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+
+          <View style={styles.controlRow}>
+            <Text style={styles.controlLabel}>Time Range</Text>
+            <View style={styles.timeRangeContainer}>
+              {(['3m', '6m', '1y', '2y', 'all'] as TimeRange[]).map((range) => (
+                <TouchableOpacity
+                  key={range}
+                  onPress={() => setTimeRange(range)}
+                  style={[styles.timeChip, timeRange === range && styles.timeChipActive]}
+                >
+                  <Text style={[styles.timeChipText, timeRange === range && styles.timeChipTextActive]}>
+                    {range}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </GlassCard>
+
+        {/* Main Chart - FIXED: Disabled problematic animations */}
+        <GlassCard style={styles.chartCard}>
+          <View style={styles.chartHeader}>
+            <View>
+              <Text style={styles.chartTitle}>{activeMetric.charAt(0).toUpperCase() + activeMetric.slice(1)} Over Time</Text>
+              <Text style={styles.chartSubtitle}>{processedData?.rawData.length || 0} measurements • AI-analyzed</Text>
+            </View>
+          </View>
+          
+          {processedData && processedData.data.length > 0 ? (
+            <LineChart
+              data={processedData.data}
+              width={SCREEN_WIDTH - 80}
+              height={220}
+              spacing={30}
+              color="#667eea"
+              thickness={3}
+              hideDataPoints={false}
+              dataPointsColor="#667eea"
+              dataPointsRadius={4}
+              textColor="#64748b"
+              xAxisColor="#e2e8f0"
+              yAxisColor="#e2e8f0"
+              yAxisTextStyle={{ color: '#64748b', fontSize: 10 }}
+              xAxisLabelTextStyle={{ color: '#64748b', fontSize: 10 }}
+              hideRules={false}
+              rulesColor="#f1f5f9"
+              rulesType="solid"
+              curved
+              areaChart
+              startFillColor="#667eea"
+              endFillColor="#667eea"
+              startOpacity={0.3}
+              endOpacity={0.05}
+              showVerticalLines
+              verticalLinesColor="#f1f5f9"
+              noOfSections={5}
+              // FIX: Disable animations that cause the error
+              isAnimated={false}
+              animateOnDataChange={false}
+              animationDuration={0}
+            />
+          ) : (
+            <View style={styles.emptyChart}>
+              <MaterialCommunityIcons name="chart-line" size={48} color="#cbd5e1" />
+              <Text style={styles.emptyChartText}>No data available</Text>
+              <TouchableOpacity onPress={() => setShowAddModal(true)} style={styles.addDataButton}>
+                <Text style={styles.addDataButtonText}>Add First Measurement</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </GlassCard>
+
+        {/* AI Insights Section */}
+        {aiInsights.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>🤖 AI Insights</Text>
+              <View style={styles.aiBadge}>
+                <Text style={styles.aiBadgeText}>Smart Analysis</Text>
+              </View>
+            </View>
+            
+            {aiInsights.map((insight, index) => (
+              <Animated.View key={insight.id} entering={FadeInUp.delay(index * 100).springify()}>
+                <GlassCard style={[styles.insightCard, insight.priority === 'high' && styles.insightCardHigh]}>
+                  <View style={[styles.insightIconBg, { backgroundColor: `${insight.color}15` }]}>
+                    <Text style={styles.insightIcon}>{insight.icon}</Text>
+                  </View>
+                  <View style={styles.insightContent}>
+                    <View style={styles.insightHeader}>
+                      <Text style={styles.insightTitle}>{insight.title}</Text>
+                      <Text style={styles.insightDate}>{safeFormatDate(insight.date, 'MMM d')}</Text>
+                    </View>
+                    <Text style={styles.insightDescription}>{insight.description}</Text>
+                    {insight.action && (
+                      <Text style={styles.insightAction}>💡 {insight.action}</Text>
+                    )}
+                  </View>
+                  <View style={[styles.insightTypeIndicator, { backgroundColor: insight.color }]} />
+                </GlassCard>
+              </Animated.View>
+            ))}
+          </View>
+        )}
+
+        {/* Sibling Comparison */}
+        {siblingComparisons.length > 0 && (
+          <GlassCard style={styles.comparisonCard}>
+            <SiblingComparisonChart comparisons={siblingComparisons} metric={activeMetric} />
+          </GlassCard>
+        )}
+
+        {/* Vaccination Tracker */}
+        <GlassCard style={styles.vaccinationCard}>
+          <VaccinationTracker 
+            vaccinations={vaccinations} 
+            birthDate={currentBaby.birthDate}
+            onComplete={handleCompleteVaccination}
+          />
+        </GlassCard>
+
+        {/* All Insights */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>All Insights</Text>
+            <TouchableOpacity>
+              <Text style={styles.seeAll}>View All</Text>
+            </TouchableOpacity>
+          </View>
+          
+          {insights.filter(i => !aiInsights.find(ai => ai.id === i.id)).map((insight, index) => (
+            <Animated.View key={insight.id} entering={FadeInUp.delay(index * 100).springify()}>
+              <GlassCard style={[styles.insightCard, insight.priority === 'high' && styles.insightCardHigh]}>
+                <View style={[styles.insightIconBg, { backgroundColor: `${insight.color}15` }]}>
+                  <Text style={styles.insightIcon}>{insight.icon}</Text>
+                </View>
+                <View style={styles.insightContent}>
+                  <View style={styles.insightHeader}>
+                    <Text style={styles.insightTitle}>{insight.title}</Text>
+                    <Text style={styles.insightDate}>{safeFormatDate(insight.date, 'MMM d')}</Text>
+                  </View>
+                  <Text style={styles.insightDescription}>{insight.description}</Text>
+                </View>
+                <View style={[styles.insightTypeIndicator, { backgroundColor: insight.color }]} />
+              </GlassCard>
+            </Animated.View>
           ))}
         </View>
 
-        {/* Chart */}
-        <BlurView intensity={90} style={styles.chartContainer}>
-          <LineChart
-            data={GROWTH_DATA[activeTab]}
-            width={width - 88}
-            height={220}
-            chartConfig={{
-              ...chartConfig,
-              color: () => tabColors[activeTab],
-            }}
-            bezier
-            style={styles.chart}
-            withVerticalLines={false}
-            withHorizontalLines={true}
-            withHorizontalLabels={true}
-            withVerticalLabels={true}
-            withDots={true}
-            withShadow={false}
-          />
-        </BlurView>
-
-        {/* Percentile Info */}
-        <BlurView intensity={80} style={styles.percentileCard}>
-          <View style={styles.percentileContent}>
-            <Text style={styles.percentileEmoji}>🎯</Text>
-            <View>
-              <Text style={styles.percentileTitle}>75th Percentile</Text>
-              <Text style={styles.percentileText}>
-                Emma is growing great! Height is above average for 18 months.
-              </Text>
-            </View>
+        {/* Recent Measurements */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Recent Measurements</Text>
+            <TouchableOpacity onPress={() => navigation.navigate('GrowthHistory')}>
+              <Text style={styles.seeAll}>History</Text>
+            </TouchableOpacity>
           </View>
-        </BlurView>
 
-        {/* Recent Entries */}
-        <Text style={styles.sectionTitle}>Recent Measurements</Text>
-        {ENTRIES.map((entry) => (
-          <BlurView key={entry.id} intensity={80} style={styles.entryCard}>
-            <Text style={styles.entryEmoji}>{entry.emoji}</Text>
-            <View style={styles.entryContent}>
-              <Text style={styles.entryType}>{entry.type}</Text>
-              <Text style={styles.entryDate}>{entry.date}</Text>
-            </View>
-            <View style={styles.entryValues}>
-              <Text style={styles.entryValue}>{entry.value}</Text>
-              <Text style={styles.entryChange}>{entry.change}</Text>
-            </View>
-          </BlurView>
-        ))}
-      </ScrollView>
-    </LinearGradient>
+          <GlassCard style={styles.historyCard}>
+            {growthData
+              .sort((a, b) => {
+                const dateA = safeParseDate(a.date);
+                const dateB = safeParseDate(b.date);
+                if (!dateA || !dateB) return 0;
+                return dateB.getTime() - dateA.getTime();
+              })
+              .slice(0, 5)
+              .map((measurement, index, arr) => (
+                <View key={measurement.id} style={[styles.historyItem, index < arr.length - 1 && styles.historyItemBorder]}>
+                  <View style={styles.historyIconBg}>
+                    <Text>
+                      {measurement.type === 'height' ? '📏' : 
+                       measurement.type === 'weight' ? '⚖️' : 
+                       measurement.type === 'head' ? '🧠' : '🌡️'}
+                    </Text>
+                  </View>
+                  <View style={styles.historyContent}>
+                    <Text style={styles.historyType}>
+                      {measurement.type.charAt(0).toUpperCase() + measurement.type.slice(1)}
+                    </Text>
+                    <Text style={styles.historyDate}>{safeFormatDate(measurement.date, 'MMM d, yyyy')}</Text>
+                  </View>
+                  <View style={styles.historyValue}>
+                    <Text style={styles.historyValueText}>{measurement.value} {measurement.unit}</Text>
+                    {measurement.notes && <Ionicons name="document-text" size={14} color="#94a3b8" />}
+                  </View>
+                </View>
+              ))}
+            
+            {growthData.length === 0 && (
+              <View style={styles.emptyHistory}>
+                <Text style={styles.emptyHistoryText}>No measurements yet</Text>
+              </View>
+            )}
+          </GlassCard>
+        </View>
+
+        {/* Quick Actions */}
+        <View style={styles.quickActions}>
+          <TouchableOpacity onPress={() => navigation.navigate('Timeline', { filter: 'milestone' })} style={styles.quickAction}>
+            <LinearGradient colors={['#f59e0b', '#fbbf24']} style={styles.quickActionGradient}>
+              <Text style={styles.quickActionIcon}>🌟</Text>
+              <Text style={styles.quickActionText}>Milestones</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+          
+          <TouchableOpacity onPress={() => navigation.navigate('Gallery')} style={styles.quickAction}>
+            <LinearGradient colors={['#8b5cf6', '#a78bfa']} style={styles.quickActionGradient}>
+              <Text style={styles.quickActionIcon}>📸</Text>
+              <Text style={styles.quickActionText}>Photos</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+          
+          <TouchableOpacity onPress={handleExportPDF} style={styles.quickAction}>
+            <LinearGradient colors={['#10b981', '#34d399']} style={styles.quickActionGradient}>
+              <Text style={styles.quickActionIcon}>📤</Text>
+              <Text style={styles.quickActionText}>Export</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.bottomSpacer} />
+      </AnimatedScrollView>
+
+      {/* Modals */}
+      <AddMeasurementModal
+        visible={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onSave={handleAddMeasurement}
+        type={activeMetric}
+        previousValue={getPreviousMeasurement()}
+      />
+
+      <DoctorReportModal
+        visible={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        baby={currentBaby}
+        measurements={growthData}
+        milestones={milestones}
+      />
+
+      <PhotoViewerModal
+        visible={selectedPhoto !== null}
+        photo={selectedPhoto}
+        onClose={() => setSelectedPhoto(null)}
+        onShare={handleSharePhoto}
+        onDelete={handleDeletePhoto}
+      />
+
+      <FolderSelectionModal
+        visible={showFolderModal}
+        onClose={() => setShowFolderModal(false)}
+        onSelectFolder={(folder) => {
+          loadDevicePhotosFromFolder(folder);
+          setShowFolderModal(false);
+        }}
+      />
+
+      <VideoPlayerModal
+        visible={showVideoPlayer}
+        videoUri={currentVideoUri}
+        onClose={() => {
+          setShowVideoPlayer(false);
+          setCurrentVideoUri(null);
+        }}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  container: { flex: 1 },
+  centerContent: { justifyContent: 'center', alignItems: 'center' },
+  noDataText: { fontSize: 16, color: '#64748b' },
+
+  // SweetAlert Styles
+  alertOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  alertContainer: {
+    width: SCREEN_WIDTH * 0.85,
+    borderRadius: 28,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.3,
+    shadowRadius: 40,
+    elevation: 20,
+  },
+  alertGradient: {
+    padding: 28,
+    alignItems: 'center',
+  },
+  alertTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#fff',
+    marginTop: 16,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  alertMessage: {
+    fontSize: 16,
+    color: 'rgba(255,255,255,0.9)',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 20,
+  },
+  alertConfirmBtn: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 16,
+    marginTop: 8,
+  },
+  alertConfirmText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  alertDismiss: {
+    marginTop: 8,
+  },
+  alertDismissText: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 14,
+  },
+
+  // Folder Modal Styles
+  folderModalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  folderModalContent: {
+    height: SCREEN_HEIGHT * 0.7,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    overflow: 'hidden',
+  },
+  folderModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 24,
+    paddingBottom: 16,
+  },
+  folderModalTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#1e293b',
+  },
+  folderModalClose: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  folderModalSubtitle: {
+    fontSize: 14,
+    color: '#64748b',
+    paddingHorizontal: 24,
+    marginBottom: 16,
+    lineHeight: 20,
+  },
+  folderLoader: {
+    marginTop: 40,
+  },
+  folderList: {
+    padding: 20,
+    gap: 12,
+  },
+  folderItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: 'rgba(255,255,255,0.8)',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.05)',
+  },
+  folderThumbnailContainer: {
+    width: 60,
+    height: 60,
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginRight: 16,
+  },
+  folderThumbnail: {
+    width: '100%',
+    height: '100%',
+  },
+  folderIconBg: {
+    width: 60,
+    height: 60,
+    borderRadius: 12,
+    backgroundColor: 'rgba(102,126,234,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  folderInfo: {
     flex: 1,
   },
-  content: {
-    paddingHorizontal: 24,
-    paddingTop: 60,
-    paddingBottom: 40,
+  folderName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1e293b',
+    marginBottom: 4,
   },
+  folderCount: {
+    fontSize: 13,
+    color: '#64748b',
+  },
+
+  // Blurred Photo Styles
+  blurredPhotoItem: {
+    width: 120,
+    height: 160,
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginRight: 12,
+  },
+  blurredPhotoImage: {
+    width: '100%',
+    height: '100%',
+  },
+  explicitBlur: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 12,
+  },
+  explicitText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  explicitSubtext: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 12,
+    marginTop: 4,
+  },
+  photoPrivacyBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(102,126,234,0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginRight: 8,
+  },
+  photoPrivacyText: {
+    fontSize: 11,
+    color: '#667eea',
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+
+  // Video Modal Styles
+  videoModalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  videoPlayerContainer: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT * 0.6,
+  },
+  videoPlayer: {
+    width: '100%',
+    height: '100%',
+  },
+
+  // AI Styles
+  aiBadge: {
+    backgroundColor: 'rgba(139,92,246,0.1)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  aiBadgeText: {
+    fontSize: 11,
+    color: '#8b5cf6',
+    fontWeight: '700',
+  },
+  insightAction: {
+    fontSize: 12,
+    color: '#667eea',
+    marginTop: 6,
+    fontWeight: '600',
+  },
+  addDataButton: {
+    marginTop: 16,
+    backgroundColor: '#667eea',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  addDataButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  decreaseWarning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fef3c7',
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: '#f59e0b',
+  },
+  decreaseWarningText: {
+    flex: 1,
+    marginLeft: 8,
+    fontSize: 13,
+    color: '#92400e',
+    fontWeight: '500',
+  },
+
+  // Header
   header: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
+    paddingHorizontal: 20,
+  },
+  headerContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 24,
   },
-  backButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.5)',
+  headerButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  title: {
-    fontSize: 28,
+  addButton: { marginLeft: 8 },
+  headerTitleContainer: { alignItems: 'center' },
+  headerTitle: {
+    fontSize: 20,
     fontWeight: '800',
-    color: '#1a1a1a',
+    color: '#1e293b',
+    letterSpacing: -0.5,
   },
-  addButton: {
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  addBlur: {
-    width: 48,
-    height: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 24,
-  },
-  summaryCard: {
-    flex: 1,
-    padding: 16,
-    borderRadius: 20,
-    alignItems: 'center',
-    overflow: 'hidden',
-  },
-  summaryLabel: {
-    fontSize: 12,
-    color: '#666',
-    marginBottom: 4,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  summaryValue: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#1a1a1a',
-  },
-  summarySub: {
-    fontSize: 12,
-    color: '#999',
+  headerSubtitle: {
+    fontSize: 13,
+    color: '#64748b',
+    fontWeight: '500',
     marginTop: 2,
   },
-  tabContainer: {
+  headerActions: { flexDirection: 'row', alignItems: 'center' },
+
+  // Baby Switcher
+  babySwitcher: {
+    marginTop: 16,
+    paddingHorizontal: 4,
+    gap: 10,
+  },
+  babyChip: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(255,255,255,0.5)',
-    borderRadius: 16,
-    padding: 4,
-    marginBottom: 16,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 12,
     alignItems: 'center',
-    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.5)',
+    gap: 6,
   },
-  tabText: {
+  babyChipActive: { backgroundColor: '#667eea' },
+  babyChipEmoji: { fontSize: 16 },
+  babyChipName: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#666',
-    textTransform: 'capitalize',
+    color: '#64748b',
   },
-  chartContainer: {
+  babyChipNameActive: { color: '#fff' },
+
+  // Scroll Content
+  scrollContent: { paddingHorizontal: 20 },
+
+  // Glass Card Base
+  glassCard: {
     borderRadius: 24,
-    padding: 20,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.5)',
+    shadowColor: '#667eea',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 24,
+    elevation: 10,
+  },
+  glassBorder: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.8)',
+  },
+  glassContent: { flex: 1 },
+
+  // Stats Grid
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
     marginBottom: 20,
   },
-  chart: {
-    borderRadius: 16,
-    marginLeft: -10,
+  metricCard: {
+    width: (SCREEN_WIDTH - 52) / 2,
+    padding: 16,
   },
-  percentileCard: {
-    borderRadius: 20,
-    padding: 20,
-    marginBottom: 24,
-    overflow: 'hidden',
-  },
-  percentileContent: {
+  metricHeader: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  metricIconBg: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  percentileEmoji: {
-    fontSize: 40,
-    marginRight: 16,
-  },
-  percentileTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1a1a1a',
-    marginBottom: 4,
+  metricIcon: { fontSize: 20 },
+  percentileBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
   },
   percentileText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  metricBody: { gap: 4 },
+  metricValue: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#1e293b',
+    letterSpacing: -1,
+  },
+  metricUnit: {
     fontSize: 14,
-    color: '#666',
-    lineHeight: 20,
+    fontWeight: '600',
+    marginLeft: 2,
+  },
+  metricTitle: {
+    fontSize: 13,
+    color: '#64748b',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  metricFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  metricChange: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  changePositive: { color: '#10b981' },
+  changeNegative: { color: '#ef4444' },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  statusText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+
+  // Photo Timeline
+  photoTimelineContainer: {
+    marginBottom: 20,
+  },
+  photoTimelineHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  photoTimelineTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#1e293b',
+    marginLeft: 4,
+  },
+  addPhotoChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: 'rgba(102,126,234,0.1)',
+  },
+  addPhotoChipText: {
+    color: '#667eea',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  photoScroll: {
+    gap: 12,
+    paddingRight: 20,
+  },
+  addPhotoButton: {
+    width: 120,
+    height: 160,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  addPhotoButtonGradient: {
     flex: 1,
+    borderWidth: 2,
+    borderColor: '#667eea',
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  addPhotoText: {
+    color: '#667eea',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  emptyPhotoContainer: {
+    height: 160,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  emptyPhotoGradient: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  emptyPhotoText: {
+    color: '#667eea',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  emptyPhotoSubtext: {
+    color: '#94a3b8',
+    fontSize: 13,
+  },
+
+  // Controls
+  controlsCard: {
+    padding: 20,
+    marginBottom: 20,
+  },
+  controlRow: { marginBottom: 16 },
+  controlLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#94a3b8',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 10,
+  },
+  controlChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: 'rgba(100,116,139,0.08)',
+    marginRight: 8,
+  },
+  controlChipActive: { backgroundColor: '#667eea' },
+  controlChipText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  controlChipTextActive: { color: '#fff' },
+  timeRangeContainer: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  timeChip: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: 'rgba(100,116,139,0.08)',
+    alignItems: 'center',
+  },
+  timeChipActive: { backgroundColor: '#667eea' },
+  timeChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  timeChipTextActive: { color: '#fff' },
+
+  // Chart
+  chartCard: {
+    padding: 20,
+    marginBottom: 20,
+  },
+  chartHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+  },
+  chartTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#1e293b',
+    letterSpacing: -0.3,
+  },
+  chartSubtitle: {
+    fontSize: 13,
+    color: '#64748b',
+    marginTop: 2,
+  },
+  emptyChart: {
+    height: 220,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  emptyChartText: {
+    fontSize: 14,
+    color: '#94a3b8',
+    fontWeight: '500',
+  },
+
+  // Sibling Comparison
+  comparisonCard: {
+    padding: 20,
+    marginBottom: 20,
+  },
+  comparisonContainer: { gap: 12 },
+  comparisonHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  comparisonTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#1e293b',
+  },
+  comparisonLegend: { flexDirection: 'row', gap: 12 },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  legendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  legendText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  comparisonChart: {
+    height: 180,
+    borderRadius: 16,
+  },
+  comparisonStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(100,116,139,0.1)',
+  },
+  comparisonStat: { alignItems: 'center' },
+  comparisonStatName: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  comparisonStatValue: {
+    fontSize: 12,
+    color: '#64748b',
+    marginTop: 2,
+  },
+
+  // Vaccination
+  vaccinationCard: {
+    padding: 20,
+    marginBottom: 20,
+  },
+  vaccinationContainer: { gap: 12 },
+  vaccinationHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  vaccinationTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#1e293b',
+  },
+  vaccinationMenu: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: 'rgba(102,126,234,0.1)',
+  },
+  vaccinationMenuText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#667eea',
+  },
+  vaccineItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(100,116,139,0.08)',
+  },
+  vaccineStatus: {
+    width: 4,
+    height: 40,
+    borderRadius: 2,
+    marginRight: 12,
+  },
+  vaccineContent: { flex: 1 },
+  vaccineName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1e293b',
+  },
+  vaccineDue: {
+    fontSize: 12,
+    color: '#64748b',
+    marginTop: 2,
+  },
+  vaccineOverdue: {
+    fontSize: 11,
+    color: '#ef4444',
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  vaccineCompleteBtn: { padding: 4 },
+  vaccineCompleted: { padding: 4 },
+
+  // Section
+  section: { marginBottom: 24 },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+    paddingHorizontal: 4,
   },
   sectionTitle: {
     fontSize: 20,
-    fontWeight: '700',
-    color: '#1a1a1a',
-    marginBottom: 16,
+    fontWeight: '800',
+    color: '#1e293b',
+    letterSpacing: -0.3,
   },
-  entryCard: {
+  seeAll: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#667eea',
+  },
+
+  // Insights
+  insightCard: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 16,
-    borderRadius: 20,
-    marginBottom: 12,
-    overflow: 'hidden',
+    marginBottom: 10,
   },
-  entryEmoji: {
-    fontSize: 32,
-    marginRight: 16,
+  insightCardHigh: {
+    borderColor: '#f59e0b',
+    borderWidth: 2,
   },
-  entryContent: {
-    flex: 1,
+  insightIconBg: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14,
   },
-  entryType: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1a1a1a',
+  insightIcon: { fontSize: 24 },
+  insightContent: { flex: 1 },
+  insightHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 4,
   },
-  entryDate: {
+  insightTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1e293b',
+  },
+  insightDate: {
+    fontSize: 12,
+    color: '#94a3b8',
+    fontWeight: '500',
+  },
+  insightDescription: {
     fontSize: 13,
-    color: '#666',
+    color: '#64748b',
+    lineHeight: 18,
   },
-  entryValues: {
+  insightTypeIndicator: {
+    width: 4,
+    height: 40,
+    borderRadius: 2,
+    marginLeft: 12,
+  },
+
+  // History
+  historyCard: { padding: 8 },
+  historyItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+  },
+  historyItemBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(100,116,139,0.08)',
+  },
+  historyIconBg: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: 'rgba(100,116,139,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  historyContent: { flex: 1 },
+  historyType: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1e293b',
+    marginBottom: 2,
+  },
+  historyDate: { fontSize: 13, color: '#94a3b8' },
+  historyValue: {
     alignItems: 'flex-end',
+    flexDirection: 'row',
+    gap: 6,
   },
-  entryValue: {
+  historyValueText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#667eea',
+  },
+  emptyHistory: {
+    padding: 24,
+    alignItems: 'center',
+  },
+  emptyHistoryText: { fontSize: 14, color: '#94a3b8' },
+
+  // Quick Actions
+  quickActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 20,
+  },
+  quickAction: {
+    flex: 1,
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  quickActionGradient: {
+    paddingVertical: 16,
+    alignItems: 'center',
+    gap: 6,
+  },
+  quickActionIcon: { fontSize: 24 },
+  quickActionText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+
+  // Modal
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: 24,
+    padding: 24,
+    overflow: 'hidden',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#1e293b',
+  },
+  modalClose: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: 'rgba(100,116,139,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inputGroup: { marginBottom: 16 },
+  inputLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#64748b',
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  input: {
+    height: 50,
+    borderRadius: 12,
+    backgroundColor: 'rgba(100,116,139,0.08)',
+    paddingHorizontal: 16,
+    fontSize: 16,
+    color: '#1e293b',
+    fontWeight: '600',
+  },
+  inputMultiline: {
+    height: 80,
+    paddingTop: 12,
+    textAlignVertical: 'top',
+  },
+  photoButtonsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 16,
+  },
+  photoAttachBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: 'rgba(102,126,234,0.1)',
+  },
+  photoAttachText: {
+    color: '#667eea',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  selectedPhotoContainer: {
+    position: 'relative',
+    marginBottom: 16,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  selectedPhoto: {
+    width: '100%',
+    height: 120,
+    borderRadius: 12,
+  },
+  removePhotoBtn: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+  },
+  saveButton: {
+    marginTop: 8,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  saveButtonGradient: {
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  saveButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+
+  // Report Modal
+  reportOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  reportContent: {
+    width: '100%',
+    maxWidth: 400,
+    maxHeight: SCREEN_HEIGHT * 0.8,
+    borderRadius: 24,
+    padding: 24,
+    overflow: 'hidden',
+  },
+  reportHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  reportIconBg: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    backgroundColor: 'rgba(102,126,234,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 16,
+  },
+  reportTitle: {
+    flex: 1,
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#1e293b',
+  },
+  reportClose: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: 'rgba(100,116,139,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reportBody: { maxHeight: SCREEN_HEIGHT * 0.6 },
+  reportSection: {
+    marginBottom: 24,
+    paddingBottom: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(100,116,139,0.1)',
+  },
+  reportLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#94a3b8',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 8,
+  },
+  reportValue: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#1e293b',
+  },
+  reportSubvalue: {
+    fontSize: 14,
+    color: '#64748b',
+    marginTop: 4,
+  },
+  reportStat: { marginBottom: 16 },
+  reportStatLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#64748b',
+    marginBottom: 8,
+  },
+  reportStatBar: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(100,116,139,0.1)',
+    marginBottom: 8,
+  },
+  reportStatFill: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  reportStatValue: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1e293b',
+  },
+  reportVelocity: {
     fontSize: 18,
+    fontWeight: '700',
+    color: '#10b981',
+  },
+  reportVelocityStatus: {
+    fontSize: 13,
+    color: '#64748b',
+    marginTop: 4,
+  },
+  reportMilestoneCount: {
+    fontSize: 16,
     fontWeight: '700',
     color: '#667eea',
   },
-  entryChange: {
-    fontSize: 12,
-    color: '#11998e',
-    fontWeight: '600',
-    marginTop: 2,
+  shareReportBtn: {
+    marginTop: 8,
+    borderRadius: 12,
+    overflow: 'hidden',
   },
+  shareReportGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 16,
+  },
+  shareReportText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+
+  // Photo Viewer Modal
+  photoModalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  photoModalClose: {
+    position: 'absolute',
+    top: 60,
+    right: 20,
+    zIndex: 100,
+  },
+  closeButtonInner: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  photoModalImageContainer: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT * 0.6,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  photoModalImage: {
+    width: '100%',
+    height: '100%',
+  },
+  photoModalInfoPanel: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    overflow: 'hidden',
+  },
+  photoInfoBlur: {
+    padding: 24,
+    paddingBottom: 40,
+  },
+  photoInfoContent: {
+    gap: 16,
+  },
+  photoInfoHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  photoTypeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(102, 126, 234, 0.1)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  photoTypeText: {
+    color: '#667eea',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  photoModalDate: {
+    fontSize: 14,
+    color: '#64748b',
+  },
+  photoMeasurementInfo: {
+    backgroundColor: 'rgba(100,116,139,0.08)',
+    padding: 12,
+    borderRadius: 12,
+  },
+  photoMeasurementLabel: {
+    fontSize: 12,
+    color: '#94a3b8',
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  photoMeasurementValue: {
+    fontSize: 16,
+    color: '#1e293b',
+    fontWeight: '700',
+  },
+  photoActionButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: 8,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.1)',
+  },
+  photoActionButton: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  photoActionText: {
+    fontSize: 12,
+    color: '#64748b',
+    fontWeight: '500',
+  },
+
+  bottomSpacer: { height: 40 },
 });

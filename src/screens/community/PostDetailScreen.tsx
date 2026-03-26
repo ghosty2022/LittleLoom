@@ -1,4 +1,5 @@
-import React, { useState, useRef } from 'react';
+// src/screens/community/PostDetailScreen.tsx
+import React, { useState, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,51 +10,67 @@ import {
   KeyboardAvoidingView,
   Platform,
   FlatList,
+  Alert,
+  Dimensions,
+  Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { 
+  useSharedValue,        // ✅ ADDED
   useAnimatedStyle, 
-  withSpring,
+  useAnimatedScrollHandler, // ✅ ADDED - replaces Animated.event
   interpolate,
+  FadeInUp,
+  Layout,
 } from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { CommunityStackParamList } from '../../types/navigation';
+import { useCommunity, Post, Comment } from '../../context/CommunityContext';
+import { useUser } from '../../context/UserContext';
 
-const REPLIES = [
-  {
-    id: '1',
-    author: { name: 'Jessica T.', avatar: '👩', verified: true },
-    content: 'This is exactly what we needed! Trying this tonight. 🙏',
-    likes: 45,
-    time: '1h ago',
-    replies: [
-      {
-        id: 'r1',
-        author: { name: 'Sarah M.', avatar: '👩', verified: true },
-        content: 'Let me know how it goes! Rooting for you 💪',
-        likes: 12,
-        time: '45m ago',
-      },
-    ],
-  },
-  {
-    id: '2',
-    author: { name: 'Mike D.', avatar: '👨', verified: false },
-    content: 'We had the same experience! Consistency is key 🔑',
-    likes: 23,
-    time: '3h ago',
-    replies: [],
-  },
-];
+type PostDetailScreenProps = NativeStackScreenProps<CommunityStackParamList, 'PostDetail'>;
 
-export default function PostDetailScreen({ navigation, route }: any) {
+const { width } = Dimensions.get('window');
+
+export default function PostDetailScreen({ navigation, route }: PostDetailScreenProps) {
+  const { postId } = route.params;
+  const { 
+    getPostById, 
+    likePost, 
+    unlikePost, 
+    repostPost, 
+    unrepostPost,
+    bookmarkPost,
+    addComment,
+    likeComment,
+    replyToComment,
+    deletePost,
+    followUser,
+    unfollowUser,
+    isFollowing,
+  } = useCommunity();
+  const { currentUser } = useUser();
+  
   const [comment, setComment] = useState('');
-  const [isLiked, setIsLiked] = useState(false);
-  const [isReposted, setIsReposted] = useState(false);
-  const [likes, setLikes] = useState(342);
-  const [reposts, setReposts] = useState(89);
-  const scrollY = useRef(new Animated.Value(0)).current;
+  const [replyTo, setReplyTo] = useState<string | null>(null);
+  const [replyToName, setReplyToName] = useState('');
+  const inputRef = useRef<TextInput>(null);
+  
+  // ✅ FIXED: Use useSharedValue instead of useRef + Animated.Value
+  const scrollY = useSharedValue(0);
+
+  const post = getPostById(postId);
+
+  // ✅ FIXED: Use useAnimatedScrollHandler instead of Animated.event
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      scrollY.value = event.contentOffset.y;
+    },
+  });
 
   const headerStyle = useAnimatedStyle(() => {
     return {
@@ -61,68 +78,170 @@ export default function PostDetailScreen({ navigation, route }: any) {
     };
   });
 
-  const handleLike = () => {
-    setIsLiked(!isLiked);
-    setLikes(isLiked ? likes - 1 : likes + 1);
+  const handleLike = async () => {
+    if (!post) return;
+    if (post.isLiked) {
+      await unlikePost(post.id);
+    } else {
+      await likePost(post.id);
+    }
   };
 
-  const handleRepost = () => {
-    setIsReposted(!isReposted);
-    setReposts(isReposted ? reposts - 1 : reposts + 1);
+  const handleRepost = async () => {
+    if (!post) return;
+    if (post.isReposted) {
+      await unrepostPost(post.id);
+    } else {
+      await repostPost(post.id);
+    }
   };
 
-  const renderReply = ({ item }: { item: typeof REPLIES[0] }) => (
-    <View style={styles.replyContainer}>
-      <View style={styles.replyLine} />
-      <BlurView intensity={60} style={styles.replyCard}>
-        <View style={styles.replyHeader}>
-          <Text style={styles.replyAvatar}>{item.author.avatar}</Text>
-          <View>
-            <View style={styles.replyNameRow}>
-              <Text style={styles.replyName}>{item.author.name}</Text>
-              {item.author.verified && (
+  const handleBookmark = async () => {
+    if (!post) return;
+    await bookmarkPost(post.id);
+  };
+
+  const handleFollow = async () => {
+    if (!post) return;
+    if (isFollowing(post.author.id)) {
+      await unfollowUser(post.author.id);
+    } else {
+      await followUser(post.author.id);
+    }
+  };
+
+  const handleDeletePost = () => {
+    Alert.alert(
+      'Delete Post',
+      'Are you sure you want to delete this post?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Delete', 
+          style: 'destructive', 
+          onPress: async () => {
+            await deletePost(postId);
+            navigation.goBack();
+          }
+        },
+      ]
+    );
+  };
+
+  const handleSendComment = async () => {
+    if (!comment.trim() || !post) return;
+    
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    
+    if (replyTo) {
+      await replyToComment(post.id, replyTo, comment.trim());
+    } else {
+      await addComment(post.id, comment.trim());
+    }
+    
+    setComment('');
+    setReplyTo(null);
+    setReplyToName('');
+  };
+
+  const handleReply = (commentId: string, authorName: string) => {
+    setReplyTo(commentId);
+    setReplyToName(authorName);
+    inputRef.current?.focus();
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const cancelReply = () => {
+    setReplyTo(null);
+    setReplyToName('');
+  };
+
+  const navigateToUserProfile = (userId: string) => {
+    navigation.navigate('UserProfile', { userId });
+  };
+
+  const renderComment = ({ item, isReply = false }: { item: Comment; isReply?: boolean }) => (
+    <Animated.View 
+      entering={FadeInUp} 
+      layout={Layout.springify()}
+      style={[styles.commentContainer, isReply && styles.replyContainer]}
+    >
+      {!isReply && <View style={styles.commentLine} />}
+      <BlurView intensity={60} style={styles.commentCard} tint="light">
+        <TouchableOpacity 
+          style={styles.commentHeader}
+          onPress={() => navigateToUserProfile(item.author.id)}
+        >
+          <Text style={[styles.commentAvatar, isReply && styles.replyAvatar]}>
+            {item.author.avatar}
+          </Text>
+          <View style={styles.commentAuthorInfo}>
+            <View style={styles.commentNameRow}>
+              <Text style={styles.commentName}>{item.author.displayName}</Text>
+              {item.author.isVerified && (
                 <Ionicons name="checkmark-circle" size={14} color="#667eea" />
               )}
             </View>
-            <Text style={styles.replyTime}>{item.time}</Text>
+            <Text style={styles.commentTime}>{item.time}</Text>
           </View>
-        </View>
-        <Text style={styles.replyContent}>{item.content}</Text>
-        <View style={styles.replyActions}>
-          <TouchableOpacity style={styles.replyAction}>
-            <Ionicons name="heart-outline" size={18} color="#666" />
-            <Text style={styles.replyActionText}>{item.likes}</Text>
+        </TouchableOpacity>
+        
+        <Text style={styles.commentContent}>{item.content}</Text>
+        
+        <View style={styles.commentActions}>
+          <TouchableOpacity 
+            style={styles.commentAction}
+            onPress={() => likeComment(postId, item.id)}
+          >
+            <Ionicons 
+              name={item.isLiked ? "heart" : "heart-outline"} 
+              size={18} 
+              color={item.isLiked ? "#fc5c7d" : "#666"} 
+            />
+            <Text style={[styles.commentActionText, item.isLiked && styles.commentActionActive]}>
+              {item.likes}
+            </Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.replyAction}>
-            <Ionicons name="chatbubble-outline" size={18} color="#666" />
-            <Text style={styles.replyActionText}>Reply</Text>
-          </TouchableOpacity>
+          
+          {!isReply && (
+            <TouchableOpacity 
+              style={styles.commentAction}
+              onPress={() => handleReply(item.id, item.author.displayName)}
+            >
+              <Ionicons name="chatbubble-outline" size={18} color="#666" />
+              <Text style={styles.commentActionText}>Reply</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Nested Replies */}
-        {item.replies.map((nested) => (
-          <View key={nested.id} style={styles.nestedReply}>
-            <View style={styles.nestedLine} />
-            <View style={styles.nestedContent}>
-              <View style={styles.replyHeader}>
-                <Text style={styles.nestedAvatar}>{nested.author.avatar}</Text>
-                <View>
-                  <View style={styles.replyNameRow}>
-                    <Text style={styles.replyName}>{nested.author.name}</Text>
-                    {nested.author.verified && (
-                      <Ionicons name="checkmark-circle" size={14} color="#667eea" />
-                    )}
-                  </View>
-                  <Text style={styles.replyTime}>{nested.time}</Text>
-                </View>
+        {!isReply && item.replies && item.replies.length > 0 && (
+          <View style={styles.repliesContainer}>
+            {item.replies.map((reply) => (
+              <View key={reply.id} style={styles.nestedReplyWrapper}>
+                <View style={styles.nestedLine} />
+                {renderComment({ item: reply, isReply: true })}
               </View>
-              <Text style={styles.replyContent}>{nested.content}</Text>
-            </View>
+            ))}
           </View>
-        ))}
+        )}
       </BlurView>
-    </View>
+    </Animated.View>
   );
+
+  if (!post) {
+    return (
+      <View style={[styles.container, styles.centered]}>
+        <Text style={styles.errorText}>Post not found</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.goBackButton}>
+          <Text style={styles.goBackText}>Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  const isOwnPost = post.author.id === currentUser?.id;
+  const following = isFollowing(post.author.id);
 
   return (
     <LinearGradient colors={['#e0e7ff', '#d1d5ff', '#c7b8ff']} style={styles.container}>
@@ -130,14 +249,31 @@ export default function PostDetailScreen({ navigation, route }: any) {
       
       {/* Animated Header */}
       <Animated.View style={[styles.animatedHeader, headerStyle]}>
-        <BlurView intensity={90} style={styles.headerBlur}>
+        <BlurView intensity={90} style={styles.headerBlur} tint="light">
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={24} color="#1a1a1a" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Thread</Text>
-          <TouchableOpacity>
-            <Ionicons name="share-outline" size={24} color="#667eea" />
-          </TouchableOpacity>
+          <Text style={styles.headerTitle} numberOfLines={1}>Thread</Text>
+          <View style={styles.headerActions}>
+            <TouchableOpacity onPress={handleBookmark} style={styles.headerAction}>
+              <Ionicons 
+                name={post.isBookmarked ? "bookmark" : "bookmark-outline"} 
+                size={24} 
+                color={post.isBookmarked ? "#667eea" : "#1a1a1a"} 
+              />
+            </TouchableOpacity>
+            <TouchableOpacity 
+              onPress={() => {
+                Alert.alert('Share', 'Share this post', [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Copy Link', onPress: () => console.log('Copy') },
+                  { text: 'Share', onPress: () => console.log('Share') },
+                ]);
+              }}
+            >
+              <Ionicons name="share-outline" size={24} color="#667eea" />
+            </TouchableOpacity>
+          </View>
         </BlurView>
       </Animated.View>
 
@@ -145,55 +281,88 @@ export default function PostDetailScreen({ navigation, route }: any) {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
       >
-        <ScrollView
+        {/* ✅ FIXED: Use scrollHandler instead of Animated.event */}
+        <Animated.ScrollView
           showsVerticalScrollIndicator={false}
-          onScroll={Animated.event(
-            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-            { useNativeDriver: false }
-          )}
+          onScroll={scrollHandler}
+          scrollEventThrottle={16}
+          contentContainerStyle={{ paddingBottom: 100 }}
         >
           {/* Original Post */}
-          <BlurView intensity={90} style={styles.originalPost}>
+          <BlurView intensity={90} style={styles.originalPost} tint="light">
             <View style={styles.postHeader}>
-              <View style={styles.authorInfo}>
-                <Text style={styles.authorAvatar}>👩</Text>
+              <TouchableOpacity 
+                style={styles.authorInfo}
+                onPress={() => navigateToUserProfile(post.author.id)}
+              >
+                <Text style={styles.authorAvatar}>{post.author.avatar}</Text>
                 <View>
                   <View style={styles.nameRow}>
-                    <Text style={styles.authorName}>Sarah M.</Text>
-                    <Ionicons name="checkmark-circle" size={16} color="#667eea" />
+                    <Text style={styles.authorName}>{post.author.displayName}</Text>
+                    {post.author.isVerified && (
+                      <Ionicons name="checkmark-circle" size={16} color="#667eea" />
+                    )}
                   </View>
-                  <Text style={styles.postMeta}>in Potty Training • 2h ago</Text>
+                  <Text style={styles.postMeta}>in {post.topic} • {post.time}</Text>
                 </View>
-              </View>
-              <TouchableOpacity>
-                <Ionicons name="ellipsis-horizontal" size={20} color="#999" />
               </TouchableOpacity>
+              
+              <View style={styles.postHeaderActions}>
+                {!isOwnPost && (
+                  <TouchableOpacity 
+                    style={[styles.followBtn, following && styles.followingBtn]}
+                    onPress={handleFollow}
+                  >
+                    <Text style={[styles.followBtnText, following && styles.followingBtnText]}>
+                      {following ? 'Following' : 'Follow'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity 
+                  onPress={() => {
+                    Alert.alert('Options', '', [
+                      { text: 'Cancel', style: 'cancel' },
+                      isOwnPost && { text: 'Delete', style: 'destructive', onPress: handleDeletePost },
+                      { text: 'Report', style: 'destructive' },
+                      { text: 'Copy Text', onPress: () => console.log('Copy') },
+                    ].filter(Boolean) as any);
+                  }}
+                >
+                  <Ionicons name="ellipsis-horizontal" size={20} color="#999" />
+                </TouchableOpacity>
+              </View>
             </View>
 
-            <Text style={styles.postContent}>
-              Just had our first accident-free day! 🎉 The 3-day method really works. Here's what worked for us...
-              {'\n\n'}
-              1. Consistency is key 🔑{'\n'}
-              2. Positive reinforcement works wonders ✨{'\n'}
-              3. Don't stress about accidents - they happen! 💪
-            </Text>
+            <Text style={styles.postContent}>{post.content}</Text>
+            
+            {post.images && post.images.length > 0 && (
+              <View style={styles.imagesContainer}>
+                {post.images.map((img, idx) => (
+                  <TouchableOpacity key={idx} activeOpacity={0.9}>
+                    <Image source={{ uri: img }} style={styles.postImage} resizeMode="cover" />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
 
             <View style={styles.postStats}>
-              <Text style={styles.statText}>{likes} likes • {reposts} reposts • 56 replies</Text>
+              <Text style={styles.statText}>
+                {post.likes} likes • {post.reposts} reposts • {post.commentsCount} replies
+              </Text>
             </View>
 
             <View style={styles.postActions}>
               <TouchableOpacity 
-                style={[styles.actionButton, isLiked && styles.actionActive]}
+                style={[styles.actionButton, post.isLiked && styles.actionActive]}
                 onPress={handleLike}
               >
                 <Ionicons 
-                  name={isLiked ? "heart" : "heart-outline"} 
+                  name={post.isLiked ? "heart" : "heart-outline"} 
                   size={24} 
-                  color={isLiked ? "#fc5c7d" : "#666"} 
+                  color={post.isLiked ? "#fc5c7d" : "#666"} 
                 />
-                <Text style={[styles.actionText, isLiked && styles.actionTextActive]}>
-                  Like
+                <Text style={[styles.actionText, post.isLiked && styles.actionTextActive]}>
+                  {post.isLiked ? 'Liked' : 'Like'}
                 </Text>
               </TouchableOpacity>
 
@@ -203,51 +372,74 @@ export default function PostDetailScreen({ navigation, route }: any) {
               </TouchableOpacity>
 
               <TouchableOpacity 
-                style={[styles.actionButton, isReposted && styles.actionActive]}
+                style={[styles.actionButton, post.isReposted && styles.actionActive]}
                 onPress={handleRepost}
               >
                 <Ionicons 
-                  name={isReposted ? "repeat" : "repeat-outline"} 
+                  name={post.isReposted ? "repeat" : "repeat-outline"} 
                   size={22} 
-                  color={isReposted ? "#11998e" : "#666"} 
+                  color={post.isReposted ? "#11998e" : "#666"} 
                 />
-                <Text style={[styles.actionText, isReposted && styles.actionTextActive]}>
-                  Repost
+                <Text style={[styles.actionText, post.isReposted && styles.actionTextActive]}>
+                  {post.isReposted ? 'Reposted' : 'Repost'}
                 </Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.actionButton}>
-                <Ionicons name="bookmark-outline" size={22} color="#666" />
+              <TouchableOpacity 
+                style={styles.actionButton}
+                onPress={() => {
+                  Alert.alert('Share', 'Share this post');
+                }}
+              >
+                <Ionicons name="share-outline" size={22} color="#666" />
               </TouchableOpacity>
             </View>
           </BlurView>
 
           {/* Replies Section */}
-          <Text style={styles.repliesTitle}>Replies ({REPLIES.length})</Text>
-          <FlatList
-            data={REPLIES}
-            renderItem={renderReply}
-            keyExtractor={(item) => item.id}
-            scrollEnabled={false}
-            contentContainerStyle={styles.repliesList}
-          />
-        </ScrollView>
+          <Text style={styles.repliesTitle}>Replies ({post.commentsCount})</Text>
+          
+          {post.comments.length === 0 ? (
+            <View style={styles.emptyComments}>
+              <Ionicons name="chatbubbles-outline" size={48} color="#ccc" />
+              <Text style={styles.emptyText}>No replies yet</Text>
+              <Text style={styles.emptySubtext}>Be the first to reply!</Text>
+            </View>
+          ) : (
+            post.comments.map((comment) => (
+              <View key={comment.id}>
+                {renderComment({ item: comment })}
+              </View>
+            ))
+          )}
+        </Animated.ScrollView>
 
         {/* Comment Input */}
-        <BlurView intensity={100} style={styles.inputContainer}>
+        <BlurView intensity={100} style={styles.inputContainer} tint="light">
+          {replyTo && (
+            <View style={styles.replyingToContainer}>
+              <Text style={styles.replyingToText}>Replying to {replyToName}</Text>
+              <TouchableOpacity onPress={cancelReply}>
+                <Ionicons name="close" size={18} color="#666" />
+              </TouchableOpacity>
+            </View>
+          )}
           <View style={styles.inputWrapper}>
-            <Text style={styles.inputAvatar}>👩</Text>
+            <Text style={styles.inputAvatar}>{currentUser?.avatar || '👤'}</Text>
             <TextInput
+              ref={inputRef}
               style={styles.input}
-              placeholder="Write a reply..."
+              placeholder={replyTo ? `Reply to ${replyToName}...` : "Write a reply..."}
               placeholderTextColor="#999"
               value={comment}
               onChangeText={setComment}
               multiline
+              maxLength={1000}
             />
             <TouchableOpacity 
               style={[styles.sendButton, comment.length > 0 && styles.sendButtonActive]}
               disabled={comment.length === 0}
+              onPress={handleSendComment}
             >
               <Ionicons 
                 name="send" 
@@ -266,47 +458,62 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  centered: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   animatedHeader: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     zIndex: 100,
-    paddingTop: 60,
-    paddingHorizontal: 24,
+    paddingTop: 50,
+    paddingHorizontal: 20,
   },
   headerBlur: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
-    borderRadius: 20,
+    padding: 12,
+    borderRadius: 16,
     overflow: 'hidden',
   },
   headerTitle: {
     fontSize: 18,
     fontWeight: '700',
     color: '#1a1a1a',
+    flex: 1,
+    textAlign: 'center',
+    marginHorizontal: 16,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  headerAction: {
+    padding: 4,
   },
   keyboardView: {
     flex: 1,
   },
   originalPost: {
-    margin: 24,
-    marginTop: 60,
+    margin: 20,
+    marginTop: 100,
     borderRadius: 24,
-    padding: 24,
+    padding: 20,
     overflow: 'hidden',
   },
   postHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 16,
   },
   authorInfo: {
     flexDirection: 'row',
     alignItems: 'center',
+    flex: 1,
   },
   authorAvatar: {
     fontSize: 48,
@@ -327,11 +534,46 @@ const styles = StyleSheet.create({
     color: '#666',
     marginTop: 2,
   },
+  postHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  followBtn: {
+    backgroundColor: '#667eea',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  followingBtn: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#667eea',
+  },
+  followBtnText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  followingBtnText: {
+    color: '#667eea',
+  },
   postContent: {
     fontSize: 16,
     color: '#333',
     lineHeight: 24,
     marginBottom: 16,
+  },
+  imagesContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 16,
+  },
+  postImage: {
+    width: (width - 80) / 2,
+    height: 150,
+    borderRadius: 12,
   },
   postStats: {
     marginBottom: 16,
@@ -369,88 +611,106 @@ const styles = StyleSheet.create({
     marginLeft: 24,
     marginBottom: 16,
   },
-  repliesList: {
-    paddingHorizontal: 24,
-    paddingBottom: 100,
+  emptyComments: {
+    alignItems: 'center',
+    paddingVertical: 40,
   },
-  replyContainer: {
+  emptyText: {
+    fontSize: 16,
+    color: '#999',
+    marginTop: 12,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#bbb',
+    marginTop: 4,
+  },
+  commentContainer: {
     flexDirection: 'row',
     marginBottom: 16,
+    paddingHorizontal: 20,
   },
-  replyLine: {
+  replyContainer: {
+    marginBottom: 8,
+  },
+  commentLine: {
     width: 2,
     backgroundColor: 'rgba(102,126,234,0.2)',
     marginRight: 16,
     marginLeft: 24,
     borderRadius: 1,
   },
-  replyCard: {
+  commentCard: {
     flex: 1,
     borderRadius: 20,
     padding: 16,
     overflow: 'hidden',
   },
-  replyHeader: {
+  commentHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 8,
   },
-  replyAvatar: {
+  commentAvatar: {
     fontSize: 32,
     marginRight: 10,
   },
-  replyNameRow: {
+  replyAvatar: {
+    fontSize: 24,
+  },
+  commentAuthorInfo: {
+    flex: 1,
+  },
+  commentNameRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
   },
-  replyName: {
+  commentName: {
     fontSize: 15,
     fontWeight: '700',
     color: '#1a1a1a',
   },
-  replyTime: {
+  commentTime: {
     fontSize: 12,
     color: '#999',
     marginTop: 2,
   },
-  replyContent: {
+  commentContent: {
     fontSize: 15,
     color: '#333',
     lineHeight: 20,
     marginBottom: 12,
     marginLeft: 42,
   },
-  replyActions: {
+  commentActions: {
     flexDirection: 'row',
     gap: 16,
     marginLeft: 42,
   },
-  replyAction: {
+  commentAction: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
   },
-  replyActionText: {
+  commentActionText: {
     fontSize: 13,
     color: '#666',
   },
-  nestedReply: {
-    flexDirection: 'row',
+  commentActionActive: {
+    color: '#fc5c7d',
+  },
+  repliesContainer: {
     marginTop: 12,
-    marginLeft: 42,
+  },
+  nestedReplyWrapper: {
+    flexDirection: 'row',
+    marginTop: 8,
   },
   nestedLine: {
     width: 2,
     backgroundColor: 'rgba(102,126,234,0.1)',
     marginRight: 12,
-  },
-  nestedContent: {
-    flex: 1,
-  },
-  nestedAvatar: {
-    fontSize: 24,
-    marginRight: 8,
   },
   inputContainer: {
     position: 'absolute',
@@ -459,6 +719,22 @@ const styles = StyleSheet.create({
     right: 0,
     padding: 16,
     paddingBottom: 30,
+  },
+  replyingToContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(102,126,234,0.1)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    marginBottom: 8,
+  },
+  replyingToText: {
+    fontSize: 13,
+    color: '#667eea',
+    fontWeight: '500',
   },
   inputWrapper: {
     flexDirection: 'row',
@@ -489,5 +765,21 @@ const styles = StyleSheet.create({
   },
   sendButtonActive: {
     backgroundColor: '#667eea',
+  },
+  errorText: {
+    fontSize: 18,
+    color: '#666',
+    marginBottom: 16,
+  },
+  goBackButton: {
+    backgroundColor: '#667eea',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  goBackText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

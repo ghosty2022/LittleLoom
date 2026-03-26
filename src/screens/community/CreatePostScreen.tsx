@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+// src/screens/community/CreatePostScreen.tsx
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,42 +10,135 @@ import {
   Image,
   KeyboardAvoidingView,
   Platform,
+  Alert,
+  ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as Haptics from 'expo-haptics';
+import Animated, { FadeInUp } from 'react-native-reanimated';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { CommunityStackParamList } from '../../types/navigation';
+import { useCommunity } from '../../context/CommunityContext';
+import { useUser } from '../../context/UserContext';
+import { showSuccessModal, showErrorModal, showConfirmModal } from '../../utils/modal';
 
-const TOPICS = [
-  { id: '1', name: 'Potty Training', emoji: '🚽', color: '#667eea' },
-  { id: '2', name: 'Sleep Tips', emoji: '😴', color: '#11998e' },
-  { id: '3', name: 'Feeding', emoji: '🍼', color: '#fa709a' },
-  { id: '4', name: 'Milestones', emoji: '🏆', color: '#fee140' },
-  { id: '5', name: 'Health', emoji: '💊', color: '#fc5c7d' },
+type CreatePostScreenProps = NativeStackScreenProps<CommunityStackParamList, 'CreatePost'>;
+
+const COUNTRIES = [
+  { code: 'US', name: 'United States', flag: '🇺🇸' },
+  { code: 'GB', name: 'United Kingdom', flag: '🇬🇧' },
+  { code: 'CA', name: 'Canada', flag: '🇨🇦' },
+  { code: 'AU', name: 'Australia', flag: '🇦🇺' },
+  { code: 'DE', name: 'Germany', flag: '🇩🇪' },
+  { code: 'FR', name: 'France', flag: '🇫🇷' },
+  { code: 'JP', name: 'Japan', flag: '🇯🇵' },
+  { code: 'IN', name: 'India', flag: '🇮🇳' },
+  { code: 'BR', name: 'Brazil', flag: '🇧🇷' },
+  { code: 'MX', name: 'Mexico', flag: '🇲🇽' },
+  { code: 'NG', name: 'Nigeria', flag: '🇳🇬' },
+  { code: 'ZA', name: 'South Africa', flag: '🇿🇦' },
+  { code: 'KE', name: 'Kenya', flag: '🇰🇪' },
+  { code: 'GH', name: 'Ghana', flag: '🇬🇭' },
+  { code: 'UG', name: 'Uganda', flag: '🇺🇬' },
+  { code: 'TZ', name: 'Tanzania', flag: '🇹🇿' },
+  { code: 'RW', name: 'Rwanda', flag: '🇷🇼' },
+  { code: 'ET', name: 'Ethiopia', flag: '🇪🇹' },
+  { code: 'EG', name: 'Egypt', flag: '🇪🇬' },
+  { code: 'MA', name: 'Morocco', flag: '🇲🇦' },
 ];
 
-export default function CreatePostScreen({ navigation }: any) {
+export default function CreatePostScreen({ navigation, route }: CreatePostScreenProps) {
+  const { topicId } = route.params || {};
+  const { topics, createPost, currentUser, updateUserLocation } = useCommunity();
+  const { communityProfile } = useUser();
+  
   const [content, setContent] = useState('');
-  const [selectedTopic, setSelectedTopic] = useState(TOPICS[0]);
+  const [selectedTopic, setSelectedTopic] = useState(
+    topics.find(t => t.id === topicId) || topics[0]
+  );
   const [images, setImages] = useState<string[]>([]);
   const [isAnonymous, setIsAnonymous] = useState(false);
+  const [isPosting, setIsPosting] = useState(false);
+  const [showCountryPicker, setShowCountryPicker] = useState(false);
+  const [selectedCountry, setSelectedCountry] = useState(currentUser?.country || '');
 
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsMultipleSelection: true,
-      quality: 1,
+      quality: 0.8,
+      selectionLimit: 4,
     });
 
     if (!result.canceled) {
-      setImages([...images, ...result.assets.map(a => a.uri)]);
+      const newImages = result.assets.map(a => a.uri);
+      setImages(prev => [...prev, ...newImages].slice(0, 4));
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+  };
+
+  const takePhoto = async () => {
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+    });
+
+    if (!result.canceled) {
+      setImages(prev => [...prev, result.assets[0].uri].slice(0, 4));
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
   };
 
   const removeImage = (index: number) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setImages(images.filter((_, i) => i !== index));
   };
+
+  const handlePost = async () => {
+    if (!content.trim() && images.length === 0) {
+      showErrorModal({ message: 'Please add some content or images to your post' });
+      return;
+    }
+
+    setIsPosting(true);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    
+    try {
+      await createPost(content.trim(), selectedTopic.id, images, isAnonymous);
+      setIsPosting(false);
+      showSuccessModal({ message: 'Post created successfully!' });
+      navigation.goBack();
+    } catch (error) {
+      setIsPosting(false);
+      showErrorModal({ message: 'Failed to create post. Please try again.' });
+    }
+  };
+
+  const handleCancel = () => {
+    if (content.trim() || images.length > 0) {
+      showConfirmModal({
+        title: 'Discard Post?',
+        message: 'You have unsaved changes. Are you sure you want to discard them?',
+        onConfirm: () => navigation.goBack(),
+      });
+    } else {
+      navigation.goBack();
+    }
+  };
+
+  const handleCountrySelect = async (country: typeof COUNTRIES[0]) => {
+    setSelectedCountry(country.name);
+    await updateUserLocation(country.name);
+    setShowCountryPicker(false);
+  };
+
+  const characterCount = content.length;
+  const maxCharacters = 1000;
 
   return (
     <LinearGradient colors={['#e0e7ff', '#d1d5ff', '#c7b8ff']} style={styles.container}>
@@ -56,74 +150,105 @@ export default function CreatePostScreen({ navigation }: any) {
       >
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
+          <TouchableOpacity onPress={handleCancel}>
             <Text style={styles.cancelText}>Cancel</Text>
           </TouchableOpacity>
           <Text style={styles.title}>New Post</Text>
           <TouchableOpacity 
-            style={[styles.postButton, content.length > 0 && styles.postButtonActive]}
-            disabled={content.length === 0}
+            style={[styles.postButton, (content.trim() || images.length > 0) && styles.postButtonActive]}
+            disabled={(!content.trim() && images.length === 0) || isPosting}
+            onPress={handlePost}
           >
-            <Text style={[styles.postButtonText, content.length > 0 && styles.postButtonTextActive]}>
-              Post
-            </Text>
+            {isPosting ? (
+              <ActivityIndicator size="small" color="white" />
+            ) : (
+              <Text style={[styles.postButtonText, (content.trim() || images.length > 0) && styles.postButtonTextActive]}>
+                Post
+              </Text>
+            )}
           </TouchableOpacity>
         </View>
 
-        <ScrollView showsVerticalScrollIndicator={false}>
+        <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           {/* Topic Selector */}
-          <Text style={styles.sectionLabel}>Select Topic</Text>
-          <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.topicsContainer}
-          >
-            {TOPICS.map((topic) => (
-              <TouchableOpacity
-                key={topic.id}
-                style={[
-                  styles.topicChip,
-                  selectedTopic.id === topic.id && { 
-                    backgroundColor: topic.color + '30',
-                    borderColor: topic.color,
-                  }
-                ]}
-                onPress={() => setSelectedTopic(topic)}
-              >
-                <Text style={styles.topicEmoji}>{topic.emoji}</Text>
-                <Text style={[
-                  styles.topicName,
-                  selectedTopic.id === topic.id && { color: topic.color, fontWeight: '700' }
-                ]}>
-                  {topic.name}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+          <Animated.View entering={FadeInUp}>
+            <Text style={styles.sectionLabel}>Select Topic</Text>
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.topicsContainer}
+            >
+              {topics.map((topic) => (
+                <TouchableOpacity
+                  key={topic.id}
+                  style={[
+                    styles.topicChip,
+                    selectedTopic.id === topic.id && { 
+                      backgroundColor: topic.color + '30',
+                      borderColor: topic.color,
+                    }
+                  ]}
+                  onPress={() => {
+                    setSelectedTopic(topic);
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }}
+                >
+                  <Text style={styles.topicEmoji}>{topic.emoji}</Text>
+                  <Text style={[
+                    styles.topicName,
+                    selectedTopic.id === topic.id && { color: topic.color, fontWeight: '700' }
+                  ]}>
+                    {topic.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </Animated.View>
 
           {/* Content Input */}
-          <BlurView intensity={80} style={styles.inputContainer}>
-            <View style={styles.inputHeader}>
-              <Text style={styles.inputAvatar}>👩</Text>
-              <View>
-                <Text style={styles.inputName}>Sarah M.</Text>
-                <Text style={styles.inputTopic}>Posting in {selectedTopic.name}</Text>
+          <Animated.View entering={FadeInUp.delay(100)}>
+            <BlurView intensity={80} style={styles.inputContainer} tint="light">
+              <View style={styles.inputHeader}>
+                <Text style={styles.inputAvatar}>
+                  {isAnonymous ? '🎭' : (currentUser?.avatar || '👤')}
+                </Text>
+                <View style={styles.inputMeta}>
+                  <Text style={styles.inputName}>
+                    {isAnonymous ? 'Anonymous' : (currentUser?.displayName || 'You')}
+                  </Text>
+                  <View style={styles.locationRow}>
+                    <Text style={styles.inputTopic}>Posting in {selectedTopic.name}</Text>
+                    <TouchableOpacity 
+                      style={styles.countrySelector}
+                      onPress={() => setShowCountryPicker(true)}
+                    >
+                      <Ionicons name="location-outline" size={14} color="#667eea" />
+                      <Text style={styles.countryText}>
+                        {selectedCountry || 'Add location'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
               </View>
-            </View>
-            <TextInput
-              style={styles.textInput}
-              placeholder="What's on your mind? Share your experience, ask a question, or offer support..."
-              placeholderTextColor="#999"
-              value={content}
-              onChangeText={setContent}
-              multiline
-              textAlignVertical="top"
-            />
-          </BlurView>
+              <TextInput
+                style={styles.textInput}
+                placeholder="What's on your mind? Share your experience, ask a question, or offer support..."
+                placeholderTextColor="#999"
+                value={content}
+                onChangeText={setContent}
+                multiline
+                textAlignVertical="top"
+                maxLength={maxCharacters}
+              />
+              <Text style={styles.characterCount}>
+                {characterCount}/{maxCharacters}
+              </Text>
+            </BlurView>
+          </Animated.View>
 
           {/* Image Preview */}
           {images.length > 0 && (
-            <View style={styles.imagesContainer}>
+            <Animated.View entering={FadeInUp} style={styles.imagesContainer}>
               {images.map((uri, index) => (
                 <View key={index} style={styles.imageWrapper}>
                   <Image source={{ uri }} style={styles.previewImage} />
@@ -135,57 +260,119 @@ export default function CreatePostScreen({ navigation }: any) {
                   </TouchableOpacity>
                 </View>
               ))}
-            </View>
+            </Animated.View>
           )}
 
           {/* Tools */}
-          <View style={styles.toolsContainer}>
+          <Animated.View entering={FadeInUp.delay(200)} style={styles.toolsContainer}>
             <TouchableOpacity style={styles.toolButton} onPress={pickImage}>
-              <Ionicons name="image-outline" size={24} color="#667eea" />
+              <View style={[styles.toolIcon, { backgroundColor: '#667eea20' }]}>
+                <Ionicons name="image-outline" size={24} color="#667eea" />
+              </View>
               <Text style={styles.toolText}>Photo</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.toolButton}>
-              <Ionicons name="camera-outline" size={24} color="#667eea" />
+            <TouchableOpacity style={styles.toolButton} onPress={takePhoto}>
+              <View style={[styles.toolIcon, { backgroundColor: '#11998e20' }]}>
+                <Ionicons name="camera-outline" size={24} color="#11998e" />
+              </View>
               <Text style={styles.toolText}>Camera</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.toolButton}>
-              <Ionicons name="mic-outline" size={24} color="#667eea" />
+            <TouchableOpacity style={styles.toolButton} onPress={() => {}}>
+              <View style={[styles.toolIcon, { backgroundColor: '#fa709a20' }]}>
+                <Ionicons name="mic-outline" size={24} color="#fa709a" />
+              </View>
               <Text style={styles.toolText}>Voice</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.toolButton}>
-              <Ionicons name="poll-outline" size={24} color="#667eea" />
+            <TouchableOpacity style={styles.toolButton} onPress={() => {}}>
+              <View style={[styles.toolIcon, { backgroundColor: '#fee14020' }]}>
+                <Ionicons name="bar-chart-outline" size={24} color="#fee140" />
+              </View>
               <Text style={styles.toolText}>Poll</Text>
             </TouchableOpacity>
-          </View>
+          </Animated.View>
 
           {/* Options */}
-          <BlurView intensity={80} style={styles.optionsContainer}>
-            <TouchableOpacity 
-              style={styles.optionRow}
-              onPress={() => setIsAnonymous(!isAnonymous)}
-            >
-              <View style={styles.optionLeft}>
-                <Ionicons name="eye-off-outline" size={22} color="#666" />
-                <Text style={styles.optionText}>Post anonymously</Text>
-              </View>
-              <View style={[styles.checkbox, isAnonymous && styles.checkboxChecked]}>
-                {isAnonymous && <Ionicons name="checkmark" size={16} color="white" />}
-              </View>
-            </TouchableOpacity>
-          </BlurView>
+          <Animated.View entering={FadeInUp.delay(300)}>
+            <BlurView intensity={80} style={styles.optionsContainer} tint="light">
+              <TouchableOpacity 
+                style={styles.optionRow}
+                onPress={() => setIsAnonymous(!isAnonymous)}
+              >
+                <View style={styles.optionLeft}>
+                  <View style={[styles.optionIcon, { backgroundColor: '#667eea20' }]}>
+                    <Ionicons name="eye-off-outline" size={20} color="#667eea" />
+                  </View>
+                  <View>
+                    <Text style={styles.optionText}>Post anonymously</Text>
+                    <Text style={styles.optionSubtext}>Your identity will be hidden</Text>
+                  </View>
+                </View>
+                <View style={[styles.checkbox, isAnonymous && styles.checkboxChecked]}>
+                  {isAnonymous && <Ionicons name="checkmark" size={16} color="white" />}
+                </View>
+              </TouchableOpacity>
+            </BlurView>
+          </Animated.View>
+
+          {/* Tips */}
+          <Animated.View entering={FadeInUp.delay(400)} style={styles.tipsContainer}>
+            <Text style={styles.tipsTitle}>💡 Tips for great posts</Text>
+            <Text style={styles.tipText}>• Be kind and supportive</Text>
+            <Text style={styles.tipText}>• Share specific details</Text>
+            <Text style={styles.tipText}>• Use photos to tell your story</Text>
+            <Text style={styles.tipText}>• Ask questions to engage others</Text>
+          </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Country Picker Modal */}
+      <Modal
+        visible={showCountryPicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowCountryPicker(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <BlurView intensity={90} style={styles.modalContent} tint="light">
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select Location</Text>
+              <TouchableOpacity onPress={() => setShowCountryPicker(false)}>
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.countryList}>
+              {COUNTRIES.map((country) => (
+                <TouchableOpacity
+                  key={country.code}
+                  style={[
+                    styles.countryItem,
+                    selectedCountry === country.name && styles.countryItemSelected
+                  ]}
+                  onPress={() => handleCountrySelect(country)}
+                >
+                  <Text style={styles.countryFlag}>{country.flag}</Text>
+                  <Text style={[
+                    styles.countryName,
+                    selectedCountry === country.name && styles.countryNameSelected
+                  ]}>
+                    {country.name}
+                  </Text>
+                  {selectedCountry === country.name && (
+                    <Ionicons name="checkmark" size={20} color="#667eea" />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </BlurView>
+        </View>
+      </Modal>
     </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  keyboardView: {
-    flex: 1,
-  },
+  container: { flex: 1 },
+  keyboardView: { flex: 1 },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -194,33 +381,17 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     paddingBottom: 20,
   },
-  cancelText: {
-    fontSize: 16,
-    color: '#666',
-    fontWeight: '600',
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1a1a1a',
-  },
+  cancelText: { fontSize: 16, color: '#666', fontWeight: '600' },
+  title: { fontSize: 18, fontWeight: '700', color: '#1a1a1a' },
   postButton: {
     paddingHorizontal: 20,
     paddingVertical: 8,
     borderRadius: 20,
     backgroundColor: 'rgba(102,126,234,0.2)',
   },
-  postButtonActive: {
-    backgroundColor: '#667eea',
-  },
-  postButtonText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#999',
-  },
-  postButtonTextActive: {
-    color: 'white',
-  },
+  postButtonActive: { backgroundColor: '#667eea' },
+  postButtonText: { fontSize: 16, fontWeight: '700', color: '#999' },
+  postButtonTextActive: { color: 'white' },
   sectionLabel: {
     fontSize: 14,
     fontWeight: '600',
@@ -246,14 +417,8 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
     gap: 8,
   },
-  topicEmoji: {
-    fontSize: 20,
-  },
-  topicName: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#666',
-  },
+  topicEmoji: { fontSize: 20 },
+  topicName: { fontSize: 14, fontWeight: '600', color: '#666' },
   inputContainer: {
     margin: 24,
     borderRadius: 24,
@@ -265,25 +430,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
-  inputAvatar: {
-    fontSize: 40,
-    marginRight: 12,
+  inputAvatar: { fontSize: 40, marginRight: 12 },
+  inputMeta: { flex: 1 },
+  inputName: { fontSize: 16, fontWeight: '700', color: '#1a1a1a' },
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 4,
   },
-  inputName: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1a1a1a',
-  },
-  inputTopic: {
-    fontSize: 13,
-    color: '#667eea',
-    marginTop: 2,
-  },
+  inputTopic: { fontSize: 13, color: '#667eea' },
+  countrySelector: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  countryText: { fontSize: 13, color: '#667eea' },
   textInput: {
     fontSize: 16,
     color: '#333',
     lineHeight: 24,
     minHeight: 150,
+  },
+  characterCount: {
+    fontSize: 12,
+    color: '#999',
+    textAlign: 'right',
+    marginTop: 8,
   },
   imagesContainer: {
     flexDirection: 'row',
@@ -298,10 +467,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     overflow: 'hidden',
   },
-  previewImage: {
-    width: '100%',
-    height: '100%',
-  },
+  previewImage: { width: '100%', height: '100%' },
   removeImage: {
     position: 'absolute',
     top: 4,
@@ -315,19 +481,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     marginBottom: 24,
   },
-  toolButton: {
+  toolButton: { alignItems: 'center', gap: 8 },
+  toolIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
     alignItems: 'center',
-    gap: 4,
+    justifyContent: 'center',
   },
-  toolText: {
-    fontSize: 12,
-    color: '#667eea',
-    fontWeight: '600',
-  },
+  toolText: { fontSize: 12, color: '#666', fontWeight: '600' },
   optionsContainer: {
     marginHorizontal: 24,
     borderRadius: 20,
     overflow: 'hidden',
+    marginBottom: 24,
   },
   optionRow: {
     flexDirection: 'row',
@@ -335,16 +502,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     padding: 20,
   },
-  optionLeft: {
-    flexDirection: 'row',
+  optionLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  optionIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     alignItems: 'center',
-    gap: 12,
+    justifyContent: 'center',
   },
-  optionText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1a1a1a',
-  },
+  optionText: { fontSize: 16, fontWeight: '600', color: '#1a1a1a' },
+  optionSubtext: { fontSize: 13, color: '#999', marginTop: 2 },
   checkbox: {
     width: 24,
     height: 24,
@@ -354,8 +521,45 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  checkboxChecked: {
-    backgroundColor: '#667eea',
-    borderColor: '#667eea',
+  checkboxChecked: { backgroundColor: '#667eea', borderColor: '#667eea' },
+  tipsContainer: {
+    marginHorizontal: 24,
+    marginBottom: 24,
+    padding: 20,
+    backgroundColor: 'rgba(102,126,234,0.1)',
+    borderRadius: 20,
   },
+  tipsTitle: { fontSize: 14, fontWeight: '700', color: '#667eea', marginBottom: 12 },
+  tipText: { fontSize: 13, color: '#666', marginBottom: 6 },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    maxHeight: '70%',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: { fontSize: 18, fontWeight: '700', color: '#1a1a1a' },
+  countryList: { maxHeight: 400 },
+  countryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    gap: 12,
+  },
+  countryItemSelected: { backgroundColor: 'rgba(102,126,234,0.1)' },
+  countryFlag: { fontSize: 24 },
+  countryName: { flex: 1, fontSize: 16, color: '#1a1a1a' },
+  countryNameSelected: { color: '#667eea', fontWeight: '600' },
 });

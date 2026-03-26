@@ -1,112 +1,130 @@
-import React from 'react';
+// src/screens/community/NotificationsScreen.tsx
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
   TouchableOpacity,
+  Alert,
+  RefreshControl,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
+import Animated, { FadeInUp } from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { CommunityStackParamList } from '../../types/navigation';
+import { useCommunity, Notification } from '../../context/CommunityContext';
 
-const NOTIFICATIONS = [
-  {
-    id: '1',
-    type: 'like',
-    user: { name: 'Jessica T.', avatar: '👩' },
-    content: 'liked your post',
-    target: '"Potty training success!"',
-    time: '2m ago',
-    read: false,
-  },
-  {
-    id: '2',
-    type: 'comment',
-    user: { name: 'Mike D.', avatar: '👨' },
-    content: 'commented on your post',
-    target: '"Sleep tips for 18mo"',
-    time: '15m ago',
-    read: false,
-  },
-  {
-    id: '3',
-    type: 'repost',
-    user: { name: 'Sarah M.', avatar: '👩‍⚕️' },
-    content: 'reposted your thread',
-    target: '"First steps milestone"',
-    time: '1h ago',
-    read: true,
-  },
-  {
-    id: '4',
-    type: 'mention',
-    user: { name: 'Tom B.', avatar: '👨‍💼' },
-    content: 'mentioned you in',
-    target: '"Potty Training Support Group"',
-    time: '3h ago',
-    read: true,
-  },
-  {
-    id: '5',
-    type: 'follow',
-    user: { name: 'Emma W.', avatar: '👩‍🍳' },
-    content: 'started following you',
-    target: '',
-    time: '5h ago',
-    read: true,
-  },
-  {
-    id: '6',
-    type: 'system',
-    user: { name: 'LittleLoom', avatar: '🍼' },
-    content: 'Your weekly summary is ready',
-    target: 'View insights',
-    time: '1d ago',
-    read: true,
-  },
-];
+type NotificationsScreenProps = NativeStackScreenProps<CommunityStackParamList, 'Notifications'>;
 
 const getIcon = (type: string) => {
   switch (type) {
-    case 'like': return { name: 'heart', color: '#fc5c7d' };
-    case 'comment': return { name: 'chatbubble', color: '#667eea' };
-    case 'repost': return { name: 'repeat', color: '#11998e' };
-    case 'mention': return { name: 'at', color: '#fa709a' };
-    case 'follow': return { name: 'person-add', color: '#fee140' };
-    case 'system': return { name: 'information-circle', color: '#6a82fb' };
-    default: return { name: 'notifications', color: '#667eea' };
-  };
+    case 'like': return { name: 'heart', color: '#fc5c7d', bg: '#fc5c7d20' };
+    case 'comment': return { name: 'chatbubble', color: '#667eea', bg: '#667eea20' };
+    case 'repost': return { name: 'repeat', color: '#11998e', bg: '#11998e20' };
+    case 'mention': return { name: 'at', color: '#fa709a', bg: '#fa709a20' };
+    case 'follow': return { name: 'person-add', color: '#fee140', bg: '#fee14020' };
+    case 'message': return { name: 'mail', color: '#6a82fb', bg: '#6a82fb20' };
+    case 'system': return { name: 'information-circle', color: '#43e97b', bg: '#43e97b20' };
+    case 'helpful': return { name: 'thumbs-up', color: '#667eea', bg: '#667eea20' };
+    default: return { name: 'notifications', color: '#667eea', bg: '#667eea20' };
+  }
 };
 
-export default function NotificationsScreen({ navigation }: any) {
-  const renderNotification = ({ item }: { item: typeof NOTIFICATIONS[0] }) => {
+export default function NotificationsScreen({ navigation }: NotificationsScreenProps) {
+  const { notifications, markNotificationRead, markAllNotificationsRead, getUnreadCount } = useCommunity();
+  const [refreshing, setRefreshing] = useState(false);
+  const [filter, setFilter] = useState<'all' | 'mentions' | 'likes'>('all');
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    setRefreshing(false);
+  }, []);
+
+  const handleMarkAllRead = async () => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    await markAllNotificationsRead();
+  };
+
+  const handleNotificationPress = async (notification: Notification) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    await markNotificationRead(notification.id);
+
+    switch (notification.type) {
+      case 'like':
+      case 'comment':
+      case 'repost':
+      case 'helpful':
+        if (notification.postId) {
+          navigation.navigate('PostDetail', { postId: notification.postId });
+        }
+        break;
+      case 'follow':
+      case 'mention':
+        navigation.navigate('UserProfile', { userId: notification.user.id });
+        break;
+      case 'message':
+        navigation.navigate('Chat', { userId: notification.user.id });
+        break;
+      default:
+        break;
+    }
+  };
+
+  const filteredNotifications = notifications.filter(n => {
+    if (filter === 'mentions') return n.type === 'mention' || n.type === 'comment';
+    if (filter === 'likes') return n.type === 'like' || n.type === 'helpful';
+    return true;
+  });
+
+  const unreadCount = getUnreadCount();
+
+  const renderNotification = ({ item, index }: { item: Notification; index: number }) => {
     const icon = getIcon(item.type);
     
     return (
-      <TouchableOpacity style={[
-        styles.notificationItem,
-        !item.read && styles.unreadItem
-      ]}>
-        <View style={styles.notificationLeft}>
-          <View style={[styles.iconContainer, { backgroundColor: icon.color + '20' }]}>
-            <Ionicons name={icon.name as any} size={20} color={icon.color} />
+      <Animated.View entering={FadeInUp.delay(index * 30)}>
+        <TouchableOpacity 
+          style={[styles.notificationItem, !item.read && styles.unreadItem]}
+          onPress={() => handleNotificationPress(item)}
+          activeOpacity={0.8}
+        >
+          <View style={styles.notificationLeft}>
+            <View style={[styles.iconContainer, { backgroundColor: icon.bg }]}>
+              <Ionicons name={icon.name as any} size={20} color={icon.color} />
+            </View>
+            <View style={styles.avatarContainer}>
+              <Text style={styles.userAvatar}>{item.user.avatar}</Text>
+              {!item.read && <View style={styles.unreadDot} />}
+            </View>
           </View>
-          <View style={styles.avatarContainer}>
-            <Text style={styles.userAvatar}>{item.user.avatar}</Text>
-            {!item.read && <View style={styles.unreadDot} />}
+          <View style={styles.notificationContent}>
+            <Text style={styles.notificationText}>
+              <Text style={styles.userName}>{item.user.displayName}</Text>
+              {' '}{item.content}{' '}
+              {item.target && <Text style={styles.targetText}>{item.target}</Text>}
+            </Text>
+            <Text style={styles.notificationTime}>{item.time}</Text>
           </View>
-        </View>
-        <View style={styles.notificationContent}>
-          <Text style={styles.notificationText}>
-            <Text style={styles.userName}>{item.user.name}</Text>
-            {' '}{item.content}{' '}
-            {item.target && <Text style={styles.targetText}>{item.target}</Text>}
-          </Text>
-          <Text style={styles.notificationTime}>{item.time}</Text>
-        </View>
-      </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.moreButton}
+            onPress={() => {
+              Alert.alert('Options', '', [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Delete', style: 'destructive', onPress: () => console.log('Delete') },
+                { text: item.read ? 'Mark Unread' : 'Mark Read', onPress: () => markNotificationRead(item.id) },
+              ]);
+            }}
+          >
+            <Ionicons name="ellipsis-horizontal" size={20} color="#999" />
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Animated.View>
     );
   };
 
@@ -119,46 +137,64 @@ export default function NotificationsScreen({ navigation }: any) {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={28} color="#1a1a1a" />
         </TouchableOpacity>
-        <Text style={styles.title}>Notifications 🔔</Text>
-        <TouchableOpacity>
-          <Text style={styles.markRead}>Mark all read</Text>
+        <View style={styles.headerCenter}>
+          <Text style={styles.title}>Notifications 🔔</Text>
+          {unreadCount > 0 && (
+            <View style={styles.unreadBadge}>
+              <Text style={styles.unreadText}>{unreadCount} new</Text>
+            </View>
+          )}
+        </View>
+        <TouchableOpacity onPress={handleMarkAllRead}>
+          <Text style={[styles.markRead, unreadCount === 0 && styles.markReadDisabled]}>
+            Mark all read
+          </Text>
         </TouchableOpacity>
       </View>
 
       {/* Filter Tabs */}
       <View style={styles.filterContainer}>
-        {['All', 'Mentions', 'Likes'].map((filter, index) => (
+        {(['all', 'mentions', 'likes'] as const).map((f) => (
           <TouchableOpacity 
-            key={filter}
-            style={[styles.filterTab, index === 0 && styles.filterTabActive]}
+            key={f}
+            style={[styles.filterTab, filter === f && styles.filterTabActive]}
+            onPress={() => setFilter(f)}
           >
             <Text style={[
               styles.filterText,
-              index === 0 && styles.filterTextActive
+              filter === f && styles.filterTextActive
             ]}>
-              {filter}
+              {f.charAt(0).toUpperCase() + f.slice(1)}
             </Text>
-            {index === 0 && <View style={styles.filterIndicator} />}
+            {filter === f && <View style={styles.filterIndicator} />}
           </TouchableOpacity>
         ))}
       </View>
 
       {/* Notifications List */}
       <FlatList
-        data={NOTIFICATIONS}
+        data={filteredNotifications}
         renderItem={renderNotification}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContainer}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#667eea" />
+        }
+        ListEmptyComponent={
+          <View style={styles.emptyState}>
+            <Ionicons name="notifications-off-outline" size={48} color="#ccc" />
+            <Text style={styles.emptyText}>No notifications</Text>
+            <Text style={styles.emptySubtext}>You're all caught up!</Text>
+          </View>
+        }
       />
     </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+  container: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -175,35 +211,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  title: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#1a1a1a',
+  headerCenter: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  title: { fontSize: 28, fontWeight: '800', color: '#1a1a1a' },
+  unreadBadge: {
+    backgroundColor: '#ff4757',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
   },
-  markRead: {
-    fontSize: 14,
-    color: '#667eea',
-    fontWeight: '600',
-  },
+  unreadText: { color: 'white', fontSize: 12, fontWeight: '600' },
+  markRead: { fontSize: 14, color: '#667eea', fontWeight: '600' },
+  markReadDisabled: { color: '#999' },
   filterContainer: {
     flexDirection: 'row',
     paddingHorizontal: 24,
     marginBottom: 16,
     gap: 24,
   },
-  filterTab: {
-    paddingVertical: 8,
-    position: 'relative',
-  },
+  filterTab: { paddingVertical: 8, position: 'relative' },
   filterTabActive: {},
-  filterText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#999',
-  },
-  filterTextActive: {
-    color: '#1a1a1a',
-  },
+  filterText: { fontSize: 16, fontWeight: '600', color: '#999' },
+  filterTextActive: { color: '#1a1a1a' },
   filterIndicator: {
     position: 'absolute',
     bottom: 0,
@@ -213,13 +241,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#667eea',
     borderRadius: 2,
   },
-  listContainer: {
-    paddingHorizontal: 24,
-    paddingBottom: 100,
-  },
+  listContainer: { paddingHorizontal: 24, paddingBottom: 100 },
   notificationItem: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(0,0,0,0.05)',
@@ -228,12 +253,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(102,126,234,0.05)',
     marginHorizontal: -24,
     paddingHorizontal: 24,
+    borderRadius: 12,
   },
-  notificationLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginRight: 12,
-  },
+  notificationLeft: { flexDirection: 'row', alignItems: 'center', marginRight: 12 },
   iconContainer: {
     width: 36,
     height: 36,
@@ -242,12 +264,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 8,
   },
-  avatarContainer: {
-    position: 'relative',
-  },
-  userAvatar: {
-    fontSize: 40,
-  },
+  avatarContainer: { position: 'relative' },
+  userAvatar: { fontSize: 40 },
   unreadDot: {
     position: 'absolute',
     top: 0,
@@ -259,26 +277,13 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: 'white',
   },
-  notificationContent: {
-    flex: 1,
-    paddingTop: 4,
-  },
-  notificationText: {
-    fontSize: 15,
-    color: '#333',
-    lineHeight: 20,
-    marginBottom: 4,
-  },
-  userName: {
-    fontWeight: '700',
-    color: '#1a1a1a',
-  },
-  targetText: {
-    fontWeight: '600',
-    color: '#667eea',
-  },
-  notificationTime: {
-    fontSize: 13,
-    color: '#999',
-  },
+  notificationContent: { flex: 1 },
+  notificationText: { fontSize: 15, color: '#333', lineHeight: 20, marginBottom: 4 },
+  userName: { fontWeight: '700', color: '#1a1a1a' },
+  targetText: { fontWeight: '600', color: '#667eea' },
+  notificationTime: { fontSize: 13, color: '#999' },
+  moreButton: { padding: 8 },
+  emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
+  emptyText: { fontSize: 16, color: '#999', marginTop: 12 },
+  emptySubtext: { fontSize: 14, color: '#bbb', marginTop: 4 },
 });
