@@ -1,4 +1,5 @@
-import React, { useState, useRef } from 'react';
+// src/screens/community/ChatScreen.tsx
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,460 +7,450 @@ import {
   FlatList,
   TouchableOpacity,
   TextInput,
-  Image,
   KeyboardAvoidingView,
   Platform,
+  Image,
+  Dimensions,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
+import Animated, { FadeInUp, FadeIn } from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { CommunityStackParamList } from '../../types/navigation';
+import { useCommunity, Message, CommunityUser } from '../../context/CommunityContext';
+import { useUser } from '../../context/UserContext';
+import { showErrorModal } from '../../utils/modal';
 
-const CONVERSATIONS = [
-  {
-    id: '1',
-    user: { name: 'Jessica T.', avatar: '👩', status: 'online', lastSeen: 'now' },
-    lastMessage: 'That sleep tip worked wonders! Thank you! 🙏',
-    time: '2m ago',
-    unread: 3,
-    pinned: true,
-  },
-  {
-    id: '2',
-    user: { name: 'Parent Support Group', avatar: '👥', status: 'online', lastSeen: 'now', isGroup: true },
-    lastMessage: 'Mike: We started solids yesterday!',
-    time: '1h ago',
-    unread: 12,
-    pinned: true,
-  },
-  {
-    id: '3',
-    user: { name: 'Dr. Sarah', avatar: '👩‍⚕️', status: 'offline', lastSeen: '2h ago', verified: true },
-    lastMessage: 'Make sure to keep hydrated during teething',
-    time: '3h ago',
-    unread: 0,
-    pinned: false,
-  },
-  {
-    id: '4',
-    user: { name: 'Tom B.', avatar: '👨', status: 'online', lastSeen: 'now' },
-    lastMessage: 'Same here! 18 month regression is real 😴',
-    time: '5h ago',
-    unread: 0,
-    pinned: false,
-  },
-];
+type ChatScreenProps = NativeStackScreenProps<CommunityStackParamList, 'Chat'>;
 
-const MESSAGES = [
-  { id: '1', text: 'Hey! How did the potty training go?', sender: 'them', time: '10:30 AM' },
-  { id: '2', text: 'Amazing! We had our first accident-free day!', sender: 'me', time: '10:32 AM' },
-  { id: '3', text: 'That sleep tip worked wonders! Thank you! 🙏', sender: 'them', time: '10:33 AM' },
-];
+const { width } = Dimensions.get('window');
 
-export default function ChatScreen({ navigation }: any) {
-  const [activeChat, setActiveChat] = useState<string | null>(null);
-  const [message, setMessage] = useState('');
+export default function ChatScreen({ navigation, route }: ChatScreenProps) {
+  const { userId } = route.params;
+  const { 
+    getUserById, 
+    getChatMessages, 
+    sendMessage, 
+    markChatRead,
+    getOrCreateChat,
+    setTypingStatus,
+    getTypingStatus,
+    currentUser,
+    updateOnlineStatus,
+  } = useCommunity();
+  const { profile } = useUser();
+  const insets = useSafeAreaInsets();
+  
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [inputText, setInputText] = useState('');
+  const [user, setUser] = useState<CommunityUser | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const flatListRef = useRef<FlatList>(null);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const renderConversation = ({ item }: { item: typeof CONVERSATIONS[0] }) => (
-    <TouchableOpacity 
-      style={styles.conversationItem}
-      onPress={() => setActiveChat(item.id)}
-    >
-      <View style={styles.avatarContainer}>
-        <Text style={styles.conversationAvatar}>{item.user.avatar}</Text>
-        {item.user.status === 'online' && (
-          <View style={styles.onlineIndicator} />
-        )}
-      </View>
-      <View style={styles.conversationInfo}>
-        <View style={styles.conversationHeader}>
-          <View style={styles.nameContainer}>
-            <Text style={styles.conversationName}>{item.user.name}</Text>
-            {item.user.verified && (
-              <Ionicons name="checkmark-circle" size={14} color="#667eea" />
-            )}
-            {item.user.isGroup && (
-              <View style={styles.groupBadge}>
-                <Text style={styles.groupText}>Group</Text>
-              </View>
-            )}
-          </View>
-          <Text style={styles.conversationTime}>{item.time}</Text>
-        </View>
-        <View style={styles.messageRow}>
-          <Text style={styles.lastMessage} numberOfLines={1}>
-            {item.lastMessage}
-          </Text>
-          {item.unread > 0 && (
-            <View style={styles.unreadBadge}>
-              <Text style={styles.unreadText}>{item.unread}</Text>
-            </View>
-          )}
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
+  useEffect(() => {
+    loadChatData();
+    markChatRead(userId);
+    updateOnlineStatus('online');
+    
+    return () => {
+      setTypingStatus(userId, false);
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+    };
+  }, [userId]);
 
-  if (activeChat) {
+  const loadChatData = async () => {
+    setIsLoading(true);
+    const chatUser = getUserById(userId);
+    const chatMessages = getChatMessages(userId);
+    
+    setUser(chatUser);
+    setMessages(chatMessages);
+    setIsLoading(false);
+  };
+
+  const handleSend = useCallback(async () => {
+    if (!inputText.trim()) return;
+    if (!currentUser) {
+      showErrorModal({ message: 'Please sign in to send messages' });
+      return;
+    }
+    
+    const content = inputText.trim();
+    setInputText('');
+    setTypingStatus(userId, false);
+    
+    // Optimistically add message
+    const tempMessage: Message = {
+      id: `temp_${Date.now()}`,
+      chatId: `chat_${[currentUser.id, userId].sort().join('_')}`,
+      senderId: currentUser.id,
+      receiverId: userId,
+      content,
+      timestamp: new Date().toISOString(),
+      read: true,
+      type: 'text',
+    };
+    
+    setMessages(prev => [...prev, tempMessage]);
+    
+    setTimeout(() => {
+      flatListRef.current?.scrollToEnd({ animated: true });
+    }, 100);
+    
+    await sendMessage(userId, content);
+    const updatedMessages = getChatMessages(userId);
+    setMessages(updatedMessages);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }, [inputText, userId, currentUser, sendMessage, setTypingStatus, getChatMessages]);
+
+  const handleInputChange = (text: string) => {
+    setInputText(text);
+    if (text.length > 0) {
+      setTypingStatus(userId, true);
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+      typingTimeoutRef.current = setTimeout(() => {
+        setTypingStatus(userId, false);
+      }, 3000);
+    } else {
+      setTypingStatus(userId, false);
+    }
+  };
+
+  const handleImagePick = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+    });
+
+    if (!result.canceled) {
+      await sendMessage(userId, '📷 Photo', 'image', result.assets[0].uri);
+      const updatedMessages = getChatMessages(userId);
+      setMessages(updatedMessages);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+  };
+
+  const handleCall = () => {
+    Alert.alert('Voice Call', 'Voice calling is coming soon!');
+  };
+
+  const handleVideoCall = () => {
+    Alert.alert('Video Call', 'Video calling is coming soon!');
+  };
+
+  const formatTime = (timestamp: string) => {
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const getStatusText = () => {
+    if (!user) return '';
+    if (getTypingStatus(userId)) return 'typing...';
+    if (user.onlineStatus === 'online') return 'Online';
+    if (user.onlineStatus === 'away') return 'Away';
+    const lastActive = new Date(user.lastActive);
+    const diff = Date.now() - lastActive.getTime();
+    const minutes = Math.floor(diff / 60000);
+    if (minutes < 60) return `Active ${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `Active ${hours}h ago`;
+    return `Active ${Math.floor(hours / 24)}d ago`;
+  };
+
+  const renderMessage = ({ item }: { item: Message }) => {
+    const isMe = item.senderId === currentUser?.id;
+    
     return (
-      <LinearGradient colors={['#e0e7ff', '#d1d5ff', '#c7b8ff']} style={styles.container}>
-        <StatusBar style="dark" />
-        
-        {/* Chat Header */}
-        <BlurView intensity={90} style={styles.chatHeader}>
-          <TouchableOpacity onPress={() => setActiveChat(null)}>
-            <Ionicons name="arrow-back" size={24} color="#1a1a1a" />
-          </TouchableOpacity>
-          <View style={styles.chatHeaderInfo}>
-            <Text style={styles.chatHeaderName}>Jessica T.</Text>
-            <Text style={styles.chatHeaderStatus}>Active now</Text>
-          </View>
-          <TouchableOpacity>
-            <Ionicons name="ellipsis-vertical" size={24} color="#667eea" />
-          </TouchableOpacity>
-        </BlurView>
-
-        {/* Messages */}
-        <FlatList
-          data={MESSAGES}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.messagesList}
-          renderItem={({ item }) => (
-            <View style={[
-              styles.messageBubble,
-              item.sender === 'me' ? styles.myMessage : styles.theirMessage
-            ]}>
-              <BlurView 
-                intensity={item.sender === 'me' ? 100 : 80}
-                style={[
-                  styles.messageBlur,
-                  item.sender === 'me' && { backgroundColor: '#667eea' }
-                ]}
-              >
-                <Text style={[
-                  styles.messageText,
-                  item.sender === 'me' && styles.myMessageText
-                ]}>
-                  {item.text}
-                </Text>
-                <Text style={[
-                  styles.messageTime,
-                  item.sender === 'me' && styles.myMessageTime
-                ]}>
-                  {item.time}
-                </Text>
-              </BlurView>
-            </View>
+      <Animated.View 
+        entering={FadeInUp}
+        style={[styles.messageContainer, isMe ? styles.myMessage : styles.theirMessage]}
+      >
+        {!isMe && user && (
+          <Text style={styles.messageAvatar}>{user.avatar}</Text>
+        )}
+        <View style={[styles.messageBubble, isMe ? styles.myBubble : styles.theirBubble]}>
+          {item.type === 'image' && item.imageUrl ? (
+            <Image source={{ uri: item.imageUrl }} style={styles.messageImage} />
+          ) : (
+            <Text style={[styles.messageText, isMe ? styles.myText : styles.theirText]}>
+              {item.content}
+            </Text>
           )}
-        />
-
-        {/* Input */}
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
-          <BlurView intensity={100} style={styles.chatInputContainer}>
-            <TouchableOpacity style={styles.attachButton}>
-              <Ionicons name="add-circle" size={28} color="#667eea" />
-            </TouchableOpacity>
-            <View style={styles.inputWrapper}>
-              <TextInput
-                style={styles.chatInput}
-                placeholder="Type a message..."
-                placeholderTextColor="#999"
-                value={message}
-                onChangeText={setMessage}
-                multiline
+          <View style={styles.messageFooter}>
+            <Text style={[styles.messageTime, isMe ? styles.myTime : styles.theirTime]}>
+              {formatTime(item.timestamp)}
+            </Text>
+            {isMe && (
+              <Ionicons 
+                name={item.read ? "checkmark-done" : "checkmark"} 
+                size={14} 
+                color={item.read ? "#34b7f1" : "rgba(255,255,255,0.7)"} 
               />
-            </View>
-            <TouchableOpacity style={styles.sendButton}>
-              <LinearGradient colors={['#667eea', '#764ba2']} style={styles.sendGradient}>
-                <Ionicons name="send" size={20} color="white" />
-              </LinearGradient>
-            </TouchableOpacity>
-          </BlurView>
-        </KeyboardAvoidingView>
-      </LinearGradient>
+            )}
+          </View>
+        </View>
+      </Animated.View>
+    );
+  };
+
+  if (isLoading) {
+    return (
+      <View style={[styles.container, styles.centered]}>
+        <ActivityIndicator size="large" color="#667eea" />
+      </View>
     );
   }
+
+  if (!user) {
+    return (
+      <View style={[styles.container, styles.centered]}>
+        <Text style={styles.errorText}>User not found</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.goBackButton}>
+          <Text style={styles.goBackText}>Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  const isTyping = getTypingStatus(userId);
 
   return (
     <LinearGradient colors={['#e0e7ff', '#d1d5ff', '#c7b8ff']} style={styles.container}>
       <StatusBar style="dark" />
       
       {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={28} color="#1a1a1a" />
+      <BlurView intensity={90} style={[styles.header, { paddingTop: insets.top + 10 }]} tint="light">
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
+          <Ionicons name="arrow-back" size={24} color="#1a1a1a" />
         </TouchableOpacity>
-        <View>
-          <Text style={styles.title}>Messages 💬</Text>
-          <Text style={styles.subtitle}>3 new messages</Text>
+        
+        <TouchableOpacity 
+          style={styles.userInfo}
+          onPress={() => navigation.navigate('UserProfile', { userId: user.id })}
+        >
+          <View style={styles.avatarContainer}>
+            <Text style={styles.userAvatar}>{user.avatar}</Text>
+            <View style={[styles.userStatusDot, { 
+              backgroundColor: user.onlineStatus === 'online' ? '#11998e' : 
+                            user.onlineStatus === 'away' ? '#fee140' : '#999' 
+            }]} />
+          </View>
+          <View>
+            <View style={styles.nameRow}>
+              <Text style={styles.userName}>{user.displayName}</Text>
+              {user.isVerified && (
+                <Ionicons name="checkmark-circle" size={14} color="#667eea" />
+              )}
+            </View>
+            <Text style={[styles.userStatus, isTyping && styles.typingStatus]}>
+              {getStatusText()}
+            </Text>
+          </View>
+        </TouchableOpacity>
+        
+        <View style={styles.headerActions}>
+          <TouchableOpacity onPress={handleCall} style={styles.headerAction}>
+            <Ionicons name="call-outline" size={22} color="#667eea" />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleVideoCall} style={styles.headerAction}>
+            <Ionicons name="videocam-outline" size={22} color="#667eea" />
+          </TouchableOpacity>
         </View>
-        <TouchableOpacity style={styles.newChatButton}>
-          <BlurView intensity={80} style={styles.newChatBlur}>
-            <Ionicons name="create-outline" size={24} color="#667eea" />
-          </BlurView>
-        </TouchableOpacity>
-      </View>
-
-      {/* Search */}
-      <BlurView intensity={80} style={styles.searchContainer}>
-        <Ionicons name="search" size={20} color="#999" />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search conversations..."
-          placeholderTextColor="#999"
-        />
       </BlurView>
 
-      {/* Conversations */}
+      {/* Messages */}
       <FlatList
-        data={CONVERSATIONS}
-        renderItem={renderConversation}
+        ref={flatListRef}
+        data={messages}
+        renderItem={renderMessage}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.conversationsList}
+        contentContainerStyle={styles.messagesList}
         showsVerticalScrollIndicator={false}
+        onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
       />
+
+      {/* Typing Indicator */}
+      {isTyping && (
+        <View style={styles.typingContainer}>
+          <BlurView intensity={80} style={styles.typingBubble} tint="light">
+            <Text style={styles.typingText}>{user.displayName} is typing</Text>
+            <ActivityIndicator size="small" color="#667eea" style={styles.typingDots} />
+          </BlurView>
+        </View>
+      )}
+
+      {/* Input */}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      >
+        <BlurView intensity={100} style={styles.inputContainer} tint="light">
+          <TouchableOpacity style={styles.attachButton} onPress={handleImagePick}>
+            <Ionicons name="image-outline" size={24} color="#667eea" />
+          </TouchableOpacity>
+          
+          <View style={styles.inputWrapper}>
+            <TextInput
+              style={styles.input}
+              placeholder="Type a message..."
+              placeholderTextColor="#999"
+              value={inputText}
+              onChangeText={handleInputChange}
+              multiline
+              maxLength={500}
+            />
+          </View>
+          
+          <TouchableOpacity 
+            style={[styles.sendButton, inputText.length > 0 && styles.sendButtonActive]}
+            onPress={handleSend}
+            disabled={inputText.length === 0}
+          >
+            <Ionicons 
+              name="send" 
+              size={20} 
+              color={inputText.length > 0 ? "white" : "#999"} 
+            />
+          </TouchableOpacity>
+        </BlurView>
+      </KeyboardAvoidingView>
     </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+  container: { flex: 1 },
+  centered: { justifyContent: 'center', alignItems: 'center' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingTop: 60,
-    paddingBottom: 20,
-  },
-  backButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.5)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 16,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#1a1a1a',
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#667eea',
-    fontWeight: '600',
-  },
-  newChatButton: {
-    marginLeft: 'auto',
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  newChatBlur: {
-    width: 48,
-    height: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: 24,
-    marginBottom: 20,
     paddingHorizontal: 16,
-    height: 48,
-    borderRadius: 24,
-    overflow: 'hidden',
-  },
-  searchInput: {
-    flex: 1,
-    marginLeft: 12,
-    fontSize: 16,
-    color: '#333',
-  },
-  conversationsList: {
-    paddingHorizontal: 24,
-    paddingBottom: 100,
-  },
-  conversationItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 16,
+    paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(0,0,0,0.05)',
   },
-  avatarContainer: {
-    position: 'relative',
-    marginRight: 16,
+  headerButton: { padding: 8 },
+  userInfo: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 12,
   },
-  conversationAvatar: {
-    fontSize: 48,
-  },
-  onlineIndicator: {
+  avatarContainer: { position: 'relative', marginRight: 12 },
+  userAvatar: { fontSize: 40 },
+  userStatusDot: {
     position: 'absolute',
-    bottom: 4,
-    right: 4,
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: '#11998e',
+    bottom: 2,
+    right: 2,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
     borderWidth: 2,
     borderColor: 'white',
   },
-  conversationInfo: {
-    flex: 1,
-  },
-  conversationHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  nameContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  conversationName: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1a1a1a',
-  },
-  groupBadge: {
-    backgroundColor: '#667eea20',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
-  },
-  groupText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#667eea',
-  },
-  conversationTime: {
-    fontSize: 12,
-    color: '#999',
-  },
-  messageRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  lastMessage: {
-    flex: 1,
-    fontSize: 14,
-    color: '#666',
-    marginRight: 8,
-  },
-  unreadBadge: {
-    minWidth: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: '#667eea',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  unreadText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: '700',
-    paddingHorizontal: 6,
-  },
-  // Chat View Styles
-  chatHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 24,
-    paddingTop: 60,
-    paddingBottom: 16,
-    overflow: 'hidden',
-  },
-  chatHeaderInfo: {
-    alignItems: 'center',
-  },
-  chatHeaderName: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1a1a1a',
-  },
-  chatHeaderStatus: {
-    fontSize: 13,
-    color: '#11998e',
-  },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  userName: { fontSize: 16, fontWeight: '700', color: '#1a1a1a' },
+  userStatus: { fontSize: 13, color: '#666', marginTop: 2 },
+  typingStatus: { color: '#11998e', fontStyle: 'italic' },
+  headerActions: { flexDirection: 'row', gap: 16 },
+  headerAction: { padding: 4 },
   messagesList: {
-    padding: 24,
+    paddingHorizontal: 16,
+    paddingVertical: 20,
     paddingBottom: 100,
   },
-  messageBubble: {
-    maxWidth: '75%',
+  messageContainer: {
+    flexDirection: 'row',
     marginBottom: 16,
+    alignItems: 'flex-end',
   },
-  theirMessage: {
-    alignSelf: 'flex-start',
-  },
-  myMessage: {
-    alignSelf: 'flex-end',
-  },
-  messageBlur: {
+  myMessage: { justifyContent: 'flex-end' },
+  theirMessage: { justifyContent: 'flex-start' },
+  messageAvatar: { fontSize: 28, marginRight: 8 },
+  messageBubble: {
+    maxWidth: width * 0.7,
+    padding: 12,
     borderRadius: 20,
-    padding: 16,
-    overflow: 'hidden',
   },
-  messageText: {
-    fontSize: 15,
-    color: '#333',
-    lineHeight: 20,
-    marginBottom: 4,
+  myBubble: {
+    backgroundColor: '#667eea',
+    borderBottomRightRadius: 4,
   },
-  myMessageText: {
-    color: 'white',
+  theirBubble: {
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderBottomLeftRadius: 4,
   },
-  messageTime: {
-    fontSize: 11,
-    color: '#999',
-    alignSelf: 'flex-end',
+  messageText: { fontSize: 15, lineHeight: 20 },
+  myText: { color: 'white' },
+  theirText: { color: '#1a1a1a' },
+  messageImage: { width: width * 0.6, height: 200, borderRadius: 12 },
+  messageFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    marginTop: 4,
+    gap: 4,
   },
-  myMessageTime: {
-    color: 'rgba(255,255,255,0.8)',
+  messageTime: { fontSize: 11 },
+  myTime: { color: 'rgba(255,255,255,0.7)' },
+  theirTime: { color: '#999' },
+  typingContainer: { paddingHorizontal: 16, marginBottom: 8 },
+  typingBubble: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+    gap: 8,
   },
-  chatInputContainer: {
+  typingText: { fontSize: 13, color: '#666' },
+  typingDots: { transform: [{ scale: 0.8 }] },
+  inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
     paddingBottom: 30,
   },
-  attachButton: {
-    marginRight: 12,
-  },
+  attachButton: { padding: 8, marginRight: 8 },
   inputWrapper: {
     flex: 1,
     backgroundColor: 'rgba(255,255,255,0.9)',
     borderRadius: 24,
     paddingHorizontal: 16,
+    paddingVertical: 10,
     maxHeight: 100,
   },
-  chatInput: {
-    fontSize: 16,
-    color: '#333',
-    paddingVertical: 12,
-    maxHeight: 100,
-  },
+  input: { fontSize: 16, color: '#333', maxHeight: 80 },
   sendButton: {
-    marginLeft: 12,
     width: 44,
     height: 44,
     borderRadius: 22,
-    overflow: 'hidden',
-  },
-  sendGradient: {
-    flex: 1,
+    backgroundColor: 'rgba(102,126,234,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
+    marginLeft: 8,
   },
+  sendButtonActive: { backgroundColor: '#667eea' },
+  errorText: { fontSize: 18, color: '#666', marginBottom: 16 },
+  goBackButton: {
+    backgroundColor: '#667eea',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  goBackText: { color: 'white', fontSize: 16, fontWeight: '600' },
 });

@@ -1,50 +1,227 @@
-import React, { useState } from 'react';
+// src/screens/community/TopicScreen.tsx
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
-  TouchableOpacity,
   FlatList,
+  TouchableOpacity,
+  Alert,
+  RefreshControl,
+  Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
+import Animated, { FadeInUp } from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { CommunityStackParamList } from '../../types/navigation';
+import { useCommunity, Post, Topic } from '../../context/CommunityContext';
 
-const POSTS = [
-  {
-    id: '1',
-    author: { name: 'NewParent42', avatar: '👨', verified: false },
-    content: 'Day 3 of potty training and we\'re struggling with nighttime. Any tips?',
-    likes: 23,
-    comments: 15,
-    time: '30m ago',
-  },
-  {
-    id: '2',
-    author: { name: 'Dr. Sarah', avatar: '👩‍⚕️', verified: true },
-    content: 'Remember: every child is different. Don\'t compare your journey to others! 💙',
-    likes: 892,
-    comments: 45,
-    time: '2h ago',
-  },
-  {
-    id: '3',
-    author: { name: 'MomOfThree', avatar: '👩', verified: false },
-    content: 'We used the sticker chart method and it worked wonders! Here\'s our template...',
-    likes: 156,
-    comments: 32,
-    time: '4h ago',
-  },
-];
+type TopicScreenProps = NativeStackScreenProps<CommunityStackParamList, 'Topic'>;
 
-export default function TopicScreen({ navigation, route }: any) {
-  const { topic } = route.params;
-  const [joined, setJoined] = useState(false);
+const { width } = Dimensions.get('window');
+
+export default function TopicScreen({ navigation, route }: TopicScreenProps) {
+  const { topicId } = route.params;
+  const { 
+    getTopicById, 
+    getPostsByTopic, 
+    joinTopic, 
+    leaveTopic,
+    likePost,
+    unlikePost,
+    repostPost,
+    unrepostPost,
+    refreshFeed,
+    currentUser,
+  } = useCommunity();
+  
+  const [refreshing, setRefreshing] = useState(false);
+  const [sortBy, setSortBy] = useState<'trending' | 'newest' | 'popular'>('trending');
+  const [topic, setTopic] = useState<Topic | undefined>(undefined);
+  const [posts, setPosts] = useState<Post[]>([]);
+
+  // Load topic data
+  useEffect(() => {
+    const loadTopicData = () => {
+      const currentTopic = getTopicById(topicId);
+      const topicPosts = getPostsByTopic(topicId);
+      setTopic(currentTopic);
+      setPosts(topicPosts);
+    };
+    
+    loadTopicData();
+  }, [topicId, getTopicById, getPostsByTopic]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await refreshFeed();
+    const topicPosts = getPostsByTopic(topicId);
+    setPosts(topicPosts);
+    setRefreshing(false);
+  }, [topicId, refreshFeed, getPostsByTopic]);
+
+  const handleJoinToggle = async () => {
+    if (!topic) return;
+    
+    if (topic.isJoined) {
+      Alert.alert(
+        'Leave Topic',
+        `Are you sure you want to leave ${topic.name}?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { 
+            text: 'Leave', 
+            style: 'destructive', 
+            onPress: async () => {
+              await leaveTopic(topic.id);
+              // Update local state
+              setTopic(prev => prev ? { ...prev, isJoined: false, members: prev.members - 1 } : undefined);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            }
+          },
+        ]
+      );
+    } else {
+      await joinTopic(topic.id);
+      // Update local state
+      setTopic(prev => prev ? { ...prev, isJoined: true, members: prev.members + 1 } : undefined);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+  };
+
+  const handlePostLike = async (post: Post) => {
+    if (post.isLiked) {
+      await unlikePost(post.id);
+    } else {
+      await likePost(post.id);
+    }
+    // Refresh posts
+    const updatedPosts = getPostsByTopic(topicId);
+    setPosts(updatedPosts);
+  };
+
+  const handlePostRepost = async (post: Post) => {
+    if (post.isReposted) {
+      await unrepostPost(post.id);
+    } else {
+      await repostPost(post.id);
+    }
+    // Refresh posts
+    const updatedPosts = getPostsByTopic(topicId);
+    setPosts(updatedPosts);
+  };
+
+  const navigateToPostDetail = (postId: string) => {
+    navigation.navigate('PostDetail', { postId });
+  };
+
+  const navigateToUserProfile = (userId: string) => {
+    navigation.navigate('UserProfile', { userId });
+  };
+
+  const navigateToCreatePost = () => {
+    navigation.navigate('CreatePost', { topicId });
+  };
+
+  if (!topic) {
+    return (
+      <View style={[styles.container, styles.centered]}>
+        <Text style={styles.errorText}>Topic not found</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.goBackButton}>
+          <Text style={styles.goBackText}>Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  const sortedPosts = [...posts].sort((a, b) => {
+    switch (sortBy) {
+      case 'newest':
+        return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+      case 'popular':
+        return b.likes - a.likes;
+      default:
+        return b.commentsCount - a.commentsCount;
+    }
+  });
+
+  const renderPost = ({ item, index }: { item: Post; index: number }) => (
+    <Animated.View entering={FadeInUp.delay(index * 50)}>
+      <TouchableOpacity 
+        onPress={() => navigateToPostDetail(item.id)}
+        activeOpacity={0.9}
+      >
+        <BlurView intensity={80} style={styles.postCard} tint="light">
+          <TouchableOpacity 
+            style={styles.postHeader}
+            onPress={() => navigateToUserProfile(item.author.id)}
+          >
+            <Text style={styles.postAvatar}>{item.author.avatar}</Text>
+            <View>
+              <View style={styles.postNameRow}>
+                <Text style={styles.postAuthor}>{item.author.displayName}</Text>
+                {item.author.isVerified && (
+                  <Ionicons name="checkmark-circle" size={14} color="#667eea" />
+                )}
+              </View>
+              <Text style={styles.postTime}>{item.time}</Text>
+            </View>
+          </TouchableOpacity>
+          
+          <Text style={styles.postContent} numberOfLines={3}>{item.content}</Text>
+          
+          <View style={styles.postActions}>
+            <TouchableOpacity 
+              style={styles.action}
+              onPress={() => handlePostLike(item)}
+            >
+              <Ionicons 
+                name={item.isLiked ? "heart" : "heart-outline"} 
+                size={20} 
+                color={item.isLiked ? "#fc5c7d" : "#666"} 
+              />
+              <Text style={[styles.actionText, item.isLiked && styles.actionTextActive]}>
+                {item.likes}
+              </Text>
+            </TouchableOpacity>
+            
+            <View style={styles.action}>
+              <Ionicons name="chatbubble-outline" size={20} color="#666" />
+              <Text style={styles.actionText}>{item.commentsCount}</Text>
+            </View>
+            
+            <TouchableOpacity 
+              style={styles.action}
+              onPress={() => handlePostRepost(item)}
+            >
+              <Ionicons 
+                name={item.isReposted ? "repeat" : "repeat-outline"} 
+                size={20} 
+                color={item.isReposted ? "#11998e" : "#666"} 
+              />
+              <Text style={[styles.actionText, item.isReposted && styles.actionTextActive]}>
+                {item.reposts}
+              </Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity style={styles.action}>
+              <Ionicons name="share-outline" size={20} color="#666" />
+            </TouchableOpacity>
+          </View>
+        </BlurView>
+      </TouchableOpacity>
+    </Animated.View>
+  );
 
   return (
-    <LinearGradient colors={['#e0e7ff', '#d1d5ff', '#c7b8ff']} style={styles.container}>
+    <LinearGradient 
+      colors={[topic.color + '20', '#e0e7ff', '#d1d5ff']} 
+      style={styles.container}
+    >
       <StatusBar style="dark" />
       
       {/* Header Background */}
@@ -56,7 +233,15 @@ export default function TopicScreen({ navigation, route }: any) {
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <Ionicons name="arrow-back" size={28} color="#1a1a1a" />
           </TouchableOpacity>
-          <TouchableOpacity>
+          <TouchableOpacity 
+            onPress={() => {
+              Alert.alert('Topic Options', '', [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Share Topic', onPress: () => console.log('Share') },
+                { text: 'Report', style: 'destructive', onPress: () => navigation.navigate('Report', { type: 'topic', targetId: topic.id, targetUserId: '' }) },
+              ]);
+            }}
+          >
             <Ionicons name="ellipsis-horizontal" size={24} color="#1a1a1a" />
           </TouchableOpacity>
         </View>
@@ -65,17 +250,18 @@ export default function TopicScreen({ navigation, route }: any) {
         <View style={styles.topicInfo}>
           <Text style={styles.topicEmoji}>{topic.emoji}</Text>
           <Text style={styles.topicName}>{topic.name}</Text>
+          <Text style={styles.topicDescription}>{topic.description}</Text>
           <View style={styles.topicStats}>
-            <Text style={styles.stat}>{topic.members} members</Text>
+            <Text style={styles.stat}>{topic.members.toLocaleString()} members</Text>
             <Text style={styles.statDot}>•</Text>
-            <Text style={styles.stat}>{topic.posts} posts today</Text>
+            <Text style={styles.stat}>{topic.posts.toLocaleString()} posts</Text>
           </View>
           <TouchableOpacity 
-            style={[styles.joinButton, joined && styles.joinedButton]}
-            onPress={() => setJoined(!joined)}
+            style={[styles.joinButton, topic.isJoined && styles.joinedButton]}
+            onPress={handleJoinToggle}
           >
-            <Text style={[styles.joinText, joined && styles.joinedText]}>
-              {joined ? 'Joined ✓' : 'Join Topic'}
+            <Text style={[styles.joinText, topic.isJoined && styles.joinedText]}>
+              {topic.isJoined ? 'Joined ✓' : 'Join Topic'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -85,8 +271,17 @@ export default function TopicScreen({ navigation, route }: any) {
       <View style={styles.content}>
         {/* Sort Options */}
         <View style={styles.sortContainer}>
-          <TouchableOpacity style={styles.sortButton}>
-            <Text style={styles.sortText}>Trending</Text>
+          <TouchableOpacity style={styles.sortButton} onPress={() => {
+            Alert.alert('Sort by', '', [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Trending', onPress: () => setSortBy('trending') },
+              { text: 'Newest', onPress: () => setSortBy('newest') },
+              { text: 'Most Popular', onPress: () => setSortBy('popular') },
+            ]);
+          }}>
+            <Text style={styles.sortText}>
+              {sortBy.charAt(0).toUpperCase() + sortBy.slice(1)}
+            </Text>
             <Ionicons name="chevron-down" size={16} color="#666" />
           </TouchableOpacity>
           <TouchableOpacity style={styles.filterButton}>
@@ -96,45 +291,26 @@ export default function TopicScreen({ navigation, route }: any) {
 
         {/* Posts */}
         <FlatList
-          data={POSTS}
-          renderItem={({ item }) => (
-            <BlurView intensity={80} style={styles.postCard}>
-              <View style={styles.postHeader}>
-                <Text style={styles.postAvatar}>{item.author.avatar}</Text>
-                <View>
-                  <View style={styles.postNameRow}>
-                    <Text style={styles.postAuthor}>{item.author.name}</Text>
-                    {item.author.verified && (
-                      <Ionicons name="checkmark-circle" size={14} color="#667eea" />
-                    )}
-                  </View>
-                  <Text style={styles.postTime}>{item.time}</Text>
-                </View>
-              </View>
-              <Text style={styles.postContent}>{item.content}</Text>
-              <View style={styles.postActions}>
-                <TouchableOpacity style={styles.action}>
-                  <Ionicons name="heart-outline" size={20} color="#666" />
-                  <Text style={styles.actionText}>{item.likes}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.action}>
-                  <Ionicons name="chatbubble-outline" size={20} color="#666" />
-                  <Text style={styles.actionText}>{item.comments}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.action}>
-                  <Ionicons name="share-outline" size={20} color="#666" />
-                </TouchableOpacity>
-              </View>
-            </BlurView>
-          )}
+          data={sortedPosts}
+          renderItem={renderPost}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.postsList}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#667eea" />
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <Ionicons name="document-text-outline" size={48} color="#ccc" />
+              <Text style={styles.emptyText}>No posts yet</Text>
+              <Text style={styles.emptySubtext}>Be the first to post!</Text>
+            </View>
+          }
         />
       </View>
 
       {/* Floating Post Button */}
-      <TouchableOpacity style={styles.fab}>
+      <TouchableOpacity style={styles.fab} onPress={navigateToCreatePost}>
         <LinearGradient colors={[topic.color, topic.color + 'aa']} style={styles.fabGradient}>
           <Ionicons name="create-outline" size={28} color="white" />
         </LinearGradient>
@@ -144,9 +320,8 @@ export default function TopicScreen({ navigation, route }: any) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+  container: { flex: 1 },
+  centered: { justifyContent: 'center', alignItems: 'center' },
   headerGradient: {
     paddingTop: 60,
     paddingHorizontal: 24,
@@ -166,49 +341,32 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  topicInfo: {
-    alignItems: 'center',
-  },
-  topicEmoji: {
-    fontSize: 80,
-    marginBottom: 12,
-  },
-  topicName: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#1a1a1a',
-    marginBottom: 8,
+  topicInfo: { alignItems: 'center' },
+  topicEmoji: { fontSize: 80, marginBottom: 12 },
+  topicName: { fontSize: 28, fontWeight: '800', color: '#1a1a1a', marginBottom: 8 },
+  topicDescription: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 16,
+    paddingHorizontal: 40,
   },
   topicStats: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 20,
   },
-  stat: {
-    fontSize: 14,
-    color: '#666',
-  },
-  statDot: {
-    marginHorizontal: 8,
-    color: '#999',
-  },
+  stat: { fontSize: 14, color: '#666' },
+  statDot: { marginHorizontal: 8, color: '#999' },
   joinButton: {
     backgroundColor: '#667eea',
     paddingHorizontal: 32,
     paddingVertical: 12,
     borderRadius: 24,
   },
-  joinedButton: {
-    backgroundColor: 'rgba(102,126,234,0.2)',
-  },
-  joinText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  joinedText: {
-    color: '#667eea',
-  },
+  joinedButton: { backgroundColor: 'rgba(102,126,234,0.2)' },
+  joinText: { color: 'white', fontSize: 16, fontWeight: '700' },
+  joinedText: { color: '#667eea' },
   content: {
     flex: 1,
     backgroundColor: 'rgba(255,255,255,0.3)',
@@ -232,11 +390,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 20,
   },
-  sortText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#666',
-  },
+  sortText: { fontSize: 14, fontWeight: '600', color: '#666' },
   filterButton: {
     width: 40,
     height: 40,
@@ -245,10 +399,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  postsList: {
-    paddingHorizontal: 24,
-    paddingBottom: 100,
-  },
+  postsList: { paddingHorizontal: 24, paddingBottom: 100 },
   postCard: {
     borderRadius: 20,
     padding: 20,
@@ -260,45 +411,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
   },
-  postAvatar: {
-    fontSize: 40,
-    marginRight: 12,
-  },
-  postNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  postAuthor: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#1a1a1a',
-  },
-  postTime: {
-    fontSize: 13,
-    color: '#999',
-    marginTop: 2,
-  },
-  postContent: {
-    fontSize: 15,
-    color: '#333',
-    lineHeight: 22,
-    marginBottom: 16,
-  },
-  postActions: {
-    flexDirection: 'row',
-    gap: 24,
-  },
-  action: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  actionText: {
-    fontSize: 14,
-    color: '#666',
-    fontWeight: '600',
-  },
+  postAvatar: { fontSize: 40, marginRight: 12 },
+  postNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  postAuthor: { fontSize: 15, fontWeight: '700', color: '#1a1a1a' },
+  postTime: { fontSize: 13, color: '#999', marginTop: 2 },
+  postContent: { fontSize: 15, color: '#333', lineHeight: 22, marginBottom: 16 },
+  postActions: { flexDirection: 'row', gap: 24 },
+  action: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  actionText: { fontSize: 14, color: '#666', fontWeight: '600' },
+  actionTextActive: { color: '#667eea' },
   fab: {
     position: 'absolute',
     right: 24,
@@ -318,4 +439,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+  },
+  emptyText: { fontSize: 16, color: '#999', marginTop: 12 },
+  emptySubtext: { fontSize: 14, color: '#bbb', marginTop: 4 },
+  errorText: { fontSize: 18, color: '#666', marginBottom: 16 },
+  goBackButton: {
+    backgroundColor: '#667eea',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  goBackText: { color: 'white', fontSize: 16, fontWeight: '600' },
 });

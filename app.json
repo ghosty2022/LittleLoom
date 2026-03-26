@@ -8,51 +8,74 @@
     "userInterfaceStyle": "light",
     "backgroundColor": "#E6F4FE",
     "primaryColor": "#667eea",
-
+    "owner": "ondieki",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
-
-    "assetBundlePatterns": ["**/*"],
-
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.tpm.littleloom",
       "buildNumber": "1.0.0",
       "infoPlist": {
-        "UIBackgroundModes": ["fetch", "remote-notification"]
+        "NSFaceIDUsageDescription": "This app uses Face ID to securely log you into your account.",
+        "UIBackgroundModes": [
+          "fetch",
+          "remote-notification"
+        ]
       }
     },
-
     "android": {
       "package": "com.tpm.littleloom",
       "versionCode": 1,
       "softwareKeyboardLayoutMode": "pan",
       "permissions": [
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT",
         "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.SCHEDULE_EXACT_ALARM",
-        "android.permission.POST_NOTIFICATIONS"
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
       ],
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#E6F4FE"
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
       }
     },
-
     "web": {
       "bundler": "metro",
       "favicon": "./assets/favicon.png"
     },
-
     "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "newArchEnabled": false
+          },
+          "ios": {
+            "newArchEnabled": false
+          }
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow LittleLoom by TPM Solutions to use Face ID."
+        }
+      ],
+      "expo-dev-client",
       [
         "expo-notifications",
         {
-          "icon": "./assets/notification-icon.png",
-          "color": "#667eea",
-          "sounds": ["./assets/sounds/notification.wav"]
+          "icon": "./assets/icon.png",
+          "color": "#667eea"
         }
       ],
       [
@@ -73,25 +96,32 @@
             "backgroundColor": "#1a1a1a"
           }
         }
-      ]
+      ],
+      "expo-font",
+      "expo-secure-store",
+      "expo-localization"
     ],
-
     "extra": {
       "eas": {
         "projectId": "e9e00b01-6623-4a60-b3e9-dbf5e2ca7aac"
+      },
+      "developer": {
+        "name": "TPM Solutions",
+        "website": "https://tpmsolutions.co.ke"
       }
     },
-
     "runtimeVersion": {
       "policy": "appVersion"
     },
-
     "updates": {
       "enabled": true,
       "checkAutomatically": "ON_LOAD",
       "fallbackToCacheTimeout": 0
     },
-
-    "platforms": ["ios", "android", "web"]
+    "platforms": [
+      "ios",
+      "android",
+      "web"
+    ]
   }
 }

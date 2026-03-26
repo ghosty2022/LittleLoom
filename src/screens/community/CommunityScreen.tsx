@@ -1,161 +1,124 @@
-import React, { useState, useCallback } from 'react';
+// src/screens/community/CommunityScreen.tsx
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
-  TouchableOpacity,
   FlatList,
-  RefreshControl,
+  TouchableOpacity,
   Image,
   Dimensions,
+  RefreshControl,
+  ScrollView,
+  Animated as RNAnimated,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import Animated, { 
   useSharedValue, 
   useAnimatedStyle, 
   withSpring,
   interpolate,
+  FadeInUp,
+  FadeIn,
+  Extrapolate,
 } from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useCommunity, Post, Topic, CommunityUser } from '../../context/CommunityContext';
+import { useUser } from '../../context/UserContext';
+import type { CommunityStackParamList } from '../../types/navigation';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
-const { width } = Dimensions.get('window');
+type CommunityNavigationProp = NativeStackNavigationProp<CommunityStackParamList>;
 
-const TOPICS = [
-  { 
-    id: '1', 
-    name: 'Potty Training', 
-    emoji: '🚽', 
-    color: '#667eea',
-    members: '12.5k',
-    posts: '3.2k',
-    trending: true,
-  },
-  { 
-    id: '2', 
-    name: 'Sleep Tips', 
-    emoji: '😴', 
-    color: '#11998e',
-    members: '18.2k',
-    posts: '5.1k',
-    trending: true,
-  },
-  { 
-    id: '3', 
-    name: 'Feeding & Nutrition', 
-    emoji: '🍼', 
-    color: '#fa709a',
-    members: '15.8k',
-    posts: '4.7k',
-    trending: false,
-  },
-  { 
-    id: '4', 
-    name: 'Milestones', 
-    emoji: '🏆', 
-    color: '#fee140',
-    members: '9.3k',
-    posts: '2.1k',
-    trending: false,
-  },
-  { 
-    id: '5', 
-    name: 'Health & Wellness', 
-    emoji: '💊', 
-    color: '#fc5c7d',
-    members: '11.7k',
-    posts: '3.8k',
-    trending: true,
-  },
-  { 
-    id: '6', 
-    name: 'Parenting Hacks', 
-    emoji: '💡', 
-    color: '#6a82fb',
-    members: '22.4k',
-    posts: '8.9k',
-    trending: true,
-  },
-];
+const { width, height } = Dimensions.get('window');
+const HEADER_HEIGHT = 320;
+const PROFILE_SECTION_HEIGHT = 180;
 
-const FEATURED_POSTS = [
-  {
-    id: '1',
-    author: {
-      name: 'Sarah M.',
-      avatar: '👩',
-      verified: true,
-    },
-    topic: 'Potty Training',
-    content: 'Just had our first accident-free day! 🎉 The 3-day method really works. Here\'s what worked for us...',
-    image: null,
-    likes: 342,
-    comments: 56,
-    reposts: 89,
-    time: '2h ago',
-    isLiked: false,
-    isReposted: false,
-  },
-  {
-    id: '2',
-    author: {
-      name: 'Mike D.',
-      avatar: '👨',
-      verified: false,
-    },
-    topic: 'Sleep Tips',
-    content: 'Anyone else dealing with the 18-month sleep regression? 😴 We were sleeping through the night and now...',
-    image: null,
-    likes: 567,
-    comments: 124,
-    reposts: 45,
-    time: '4h ago',
-    isLiked: true,
-    isReposted: false,
-  },
-  {
-    id: '3',
-    author: {
-      name: 'Emma W.',
-      avatar: '👩‍⚕️',
-      verified: true,
-    },
-    topic: 'Feeding & Nutrition',
-    content: 'Homemade baby food batch prep for the win! 🥕 Here\'s my weekly meal prep routine that saves me 5 hours...',
-    image: '🥦',
-    likes: 892,
-    comments: 203,
-    reposts: 445,
-    time: '6h ago',
-    isLiked: false,
-    isReposted: true,
-  },
-];
-
-const ONLINE_USERS = [
-  { id: '1', name: 'Jessica', avatar: '👩', status: 'online' },
-  { id: '2', name: 'David', avatar: '👨', status: 'online' },
-  { id: '3', name: 'Maria', avatar: '👩‍⚕️', status: 'in-chat' },
-  { id: '4', name: 'Tom', avatar: '👨‍💼', status: 'online' },
-  { id: '5', name: 'Lisa', avatar: '👩‍🍳', status: 'online' },
-];
-
-export default function CommunityScreen({ navigation }: any) {
+export default function CommunityScreen() {
+  const navigation = useNavigation<CommunityNavigationProp>();
+  const insets = useSafeAreaInsets();
+  const { 
+    posts, 
+    topics, 
+    notifications, 
+    currentUser,
+    likePost, 
+    unlikePost, 
+    repostPost, 
+    unrepostPost,
+    bookmarkPost,
+    refreshFeed,
+    isLoading,
+    getUnreadCount,
+    getUserStats,
+    onlineUsers,
+  } = useCommunity();
+  const { getDisplayName } = useUser();
+  
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState('trending');
+  const [activeTab, setActiveTab] = useState<'trending' | 'following' | 'nearby'>('trending');
   const scrollY = useSharedValue(0);
+  const flatListRef = useRef<FlatList>(null);
 
-  const headerStyle = useAnimatedStyle(() => {
+  // Animated header styles
+  const headerAnimatedStyle = useAnimatedStyle(() => {
+    const translateY = interpolate(
+      scrollY.value,
+      [0, HEADER_HEIGHT - 100],
+      [0, -HEADER_HEIGHT + 100],
+      Extrapolate.CLAMP
+    );
+    
+    const opacity = interpolate(
+      scrollY.value,
+      [0, HEADER_HEIGHT - 150],
+      [1, 0],
+      Extrapolate.CLAMP
+    );
+
     return {
-      opacity: interpolate(scrollY.value, [0, 100], [1, 0.9]),
-      transform: [
-        {
-          scale: interpolate(scrollY.value, [0, 100], [1, 0.95]),
-        },
-      ],
+      transform: [{ translateY }],
+      opacity,
+    };
+  });
+
+  const stickyHeaderStyle = useAnimatedStyle(() => {
+    const opacity = interpolate(
+      scrollY.value,
+      [HEADER_HEIGHT - 150, HEADER_HEIGHT - 100],
+      [0, 1],
+      Extrapolate.CLAMP
+    );
+    
+    return {
+      opacity,
+      pointerEvents: opacity > 0.5 ? 'auto' : 'none',
+    };
+  });
+
+  const profileCardStyle = useAnimatedStyle(() => {
+    const scale = interpolate(
+      scrollY.value,
+      [0, 100],
+      [1, 0.95],
+      Extrapolate.CLAMP
+    );
+    
+    const opacity = interpolate(
+      scrollY.value,
+      [0, 150],
+      [1, 0.8],
+      Extrapolate.CLAMP
+    );
+
+    return {
+      transform: [{ scale }],
+      opacity,
     };
   });
 
@@ -165,15 +128,66 @@ export default function CommunityScreen({ navigation }: any) {
     }, [])
   );
 
-  const onRefresh = () => {
+  const onRefresh = async () => {
     setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 1500);
+    await refreshFeed();
+    setRefreshing(false);
   };
 
-  const renderTopicCard = ({ item }: { item: typeof TOPICS[0] }) => (
+  const handleLike = async (post: Post) => {
+    if (post.isLiked) {
+      await unlikePost(post.id);
+    } else {
+      await likePost(post.id);
+    }
+  };
+
+  const handleRepost = async (post: Post) => {
+    if (post.isReposted) {
+      await unrepostPost(post.id);
+    } else {
+      await repostPost(post.id);
+    }
+  };
+
+  const handleBookmark = async (post: Post) => {
+    await bookmarkPost(post.id);
+  };
+
+  const navigateToUserProfile = (userId: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (userId === currentUser?.id) {
+      navigation.navigate('UserProfile', { userId });
+    } else {
+      navigation.navigate('UserProfile', { userId });
+    }
+  };
+
+  const navigateToPostDetail = (postId: string) => {
+    navigation.navigate('PostDetail', { postId });
+  };
+
+  const navigateToTopic = (topic: Topic) => {
+    navigation.navigate('Topic', { topicId: topic.id });
+  };
+
+  const navigateToChat = (userId?: string) => {
+    if (userId) {
+      navigation.navigate('Chat', { userId });
+    } else {
+      navigation.navigate('Notifications');
+    }
+  };
+
+  const navigateToEditProfile = () => {
+    navigation.navigate('UserProfile', { userId: currentUser?.id || '' });
+  };
+
+  const renderTopicCard = ({ item }: { item: Topic }) => (
     <TouchableOpacity 
       style={styles.topicCard}
-      onPress={() => navigation.navigate('Topic', { topic: item })}
+      onPress={() => navigateToTopic(item)}
+      activeOpacity={0.8}
     >
       <LinearGradient
         colors={[item.color + '40', item.color + '20']}
@@ -189,143 +203,329 @@ export default function CommunityScreen({ navigation }: any) {
         </View>
         <Text style={styles.topicName}>{item.name}</Text>
         <View style={styles.topicStats}>
-          <Text style={styles.topicStat}>{item.members} members</Text>
+          <Text style={styles.topicStat}>{item.members.toLocaleString()} members</Text>
           <Text style={styles.topicDot}>•</Text>
-          <Text style={styles.topicStat}>{item.posts} posts</Text>
+          <Text style={styles.topicStat}>{item.posts.toLocaleString()} posts</Text>
         </View>
+        {item.isJoined && (
+          <View style={styles.joinedIndicator}>
+            <Ionicons name="checkmark-circle" size={16} color={item.color} />
+            <Text style={[styles.joinedText, { color: item.color }]}>Joined</Text>
+          </View>
+        )}
       </LinearGradient>
     </TouchableOpacity>
   );
 
-  const renderPost = ({ item }: { item: typeof FEATURED_POSTS[0] }) => (
-    <BlurView intensity={80} style={styles.postCard}>
-      {/* Post Header */}
-      <View style={styles.postHeader}>
-        <View style={styles.authorInfo}>
-          <Text style={styles.authorAvatar}>{item.author.avatar}</Text>
-          <View>
-            <View style={styles.nameRow}>
-              <Text style={styles.authorName}>{item.author.name}</Text>
-              {item.author.verified && (
-                <Ionicons name="checkmark-circle" size={16} color="#667eea" />
-              )}
+  const renderPost = ({ item }: { item: Post }) => (
+    <Animated.View entering={FadeInUp}>
+      <BlurView intensity={80} style={styles.postCard} tint="light">
+        {/* Post Header */}
+        <TouchableOpacity 
+          style={styles.postHeader}
+          onPress={() => navigateToUserProfile(item.authorId)}
+          activeOpacity={0.8}
+        >
+          <View style={styles.authorInfo}>
+            <Text style={styles.authorAvatar}>{item.author.avatar}</Text>
+            <View>
+              <View style={styles.nameRow}>
+                <Text style={styles.authorName}>{item.author.displayName}</Text>
+                {item.author.isVerified && (
+                  <Ionicons name="checkmark-circle" size={16} color="#667eea" />
+                )}
+                {item.author.onlineStatus === 'online' && (
+                  <View style={styles.onlineIndicator} />
+                )}
+              </View>
+              <Text style={styles.postMeta}>
+                in {item.topic} • {item.time}
+                {item.author.country && ` • ${item.author.country}`}
+              </Text>
             </View>
-            <Text style={styles.postMeta}>
-              in {item.topic} • {item.time}
-            </Text>
           </View>
+          <TouchableOpacity 
+            onPress={() => {
+              // Show post options
+            }}
+          >
+            <Ionicons name="ellipsis-horizontal" size={20} color="#999" />
+          </TouchableOpacity>
+        </TouchableOpacity>
+
+        {/* Post Content */}
+        <TouchableOpacity 
+          onPress={() => navigateToPostDetail(item.id)}
+          activeOpacity={0.9}
+        >
+          <Text style={styles.postContent}>{item.content}</Text>
+          {item.images && item.images.length > 0 && (
+            <View style={styles.imagesContainer}>
+              {item.images.map((img, idx) => (
+                <Image key={idx} source={{ uri: img }} style={styles.postImage} />
+              ))}
+            </View>
+          )}
+        </TouchableOpacity>
+
+        {/* Helpful Votes */}
+        {item.helpfulVotes > 0 && (
+          <View style={styles.helpfulContainer}>
+            <Ionicons name="thumbs-up" size={14} color="#11998e" />
+            <Text style={styles.helpfulText}>{item.helpfulVotes} found this helpful</Text>
+          </View>
+        )}
+
+        {/* Post Actions */}
+        <View style={styles.postActions}>
+          <TouchableOpacity 
+            style={[styles.actionButton, item.isLiked && styles.actionActive]}
+            onPress={() => handleLike(item)}
+          >
+            <Ionicons 
+              name={item.isLiked ? "heart" : "heart-outline"} 
+              size={22} 
+              color={item.isLiked ? "#fc5c7d" : "#666"} 
+            />
+            <Text style={[styles.actionText, item.isLiked && styles.actionTextActive]}>
+              {item.likes}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.actionButton}
+            onPress={() => navigateToPostDetail(item.id)}
+          >
+            <Ionicons name="chatbubble-outline" size={20} color="#666" />
+            <Text style={styles.actionText}>{item.commentsCount}</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.actionButton, item.isReposted && styles.actionActive]}
+            onPress={() => handleRepost(item)}
+          >
+            <Ionicons 
+              name={item.isReposted ? "repeat" : "repeat-outline"} 
+              size={20} 
+              color={item.isReposted ? "#11998e" : "#666"} 
+            />
+            <Text style={[styles.actionText, item.isReposted && styles.actionTextActive]}>
+              {item.reposts}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.actionButton}
+            onPress={() => handleBookmark(item)}
+          >
+            <Ionicons 
+              name={item.isBookmarked ? "bookmark" : "bookmark-outline"} 
+              size={20} 
+              color={item.isBookmarked ? "#667eea" : "#666"} 
+            />
+          </TouchableOpacity>
         </View>
-        <TouchableOpacity>
-          <Ionicons name="ellipsis-horizontal" size={20} color="#999" />
-        </TouchableOpacity>
-      </View>
-
-      {/* Post Content */}
-      <Text style={styles.postContent}>{item.content}</Text>
-      {item.image && (
-        <View style={styles.postImageContainer}>
-          <Text style={styles.postImage}>{item.image}</Text>
-        </View>
-      )}
-
-      {/* Post Actions */}
-      <View style={styles.postActions}>
-        <TouchableOpacity style={[styles.actionButton, item.isLiked && styles.actionActive]}>
-          <Ionicons 
-            name={item.isLiked ? "heart" : "heart-outline"} 
-            size={22} 
-            color={item.isLiked ? "#fc5c7d" : "#666"} 
-          />
-          <Text style={[styles.actionText, item.isLiked && styles.actionTextActive]}>
-            {item.likes}
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.actionButton}>
-          <Ionicons name="chatbubble-outline" size={20} color="#666" />
-          <Text style={styles.actionText}>{item.comments}</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={[styles.actionButton, item.isReposted && styles.actionActive]}>
-          <Ionicons 
-            name={item.isReposted ? "repeat" : "repeat-outline"} 
-            size={20} 
-            color={item.isReposted ? "#11998e" : "#666"} 
-          />
-          <Text style={[styles.actionText, item.isReposted && styles.actionTextActive]}>
-            {item.reposts}
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.actionButton}>
-          <Ionicons name="share-outline" size={20} color="#666" />
-        </TouchableOpacity>
-      </View>
-    </BlurView>
+      </BlurView>
+    </Animated.View>
   );
 
+  const renderProfileSection = () => {
+    if (!currentUser) return null;
+
+    return (
+      <Animated.View style={[styles.profileSection, profileCardStyle]}>
+        <BlurView intensity={90} style={styles.profileCard} tint="light">
+          <View style={styles.profileHeader}>
+            <View style={styles.profileLeft}>
+              <TouchableOpacity onPress={navigateToEditProfile}>
+                <Text style={styles.profileAvatar}>{currentUser.avatar}</Text>
+                <View style={styles.editAvatarBadge}>
+                  <Ionicons name="camera" size={12} color="white" />
+                </View>
+              </TouchableOpacity>
+              <View style={styles.profileInfo}>
+                <Text style={styles.profileName}>{currentUser.displayName}</Text>
+                <Text style={styles.profileHandle}>{currentUser.handle}</Text>
+                <View style={styles.onlineStatusRow}>
+                  <View style={[styles.statusDot, { backgroundColor: '#11998e' }]} />
+                  <Text style={styles.statusText}>Online</Text>
+                  {currentUser.country && (
+                    <Text style={styles.countryText}>• {currentUser.country}</Text>
+                  )}
+                </View>
+              </View>
+            </View>
+            <TouchableOpacity 
+              style={styles.editButton}
+              onPress={navigateToEditProfile}
+            >
+              <Ionicons name="create-outline" size={20} color="#667eea" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Quick Stats */}
+          <View style={styles.quickStats}>
+            <TouchableOpacity 
+              style={styles.statItem}
+              onPress={() => navigation.navigate('UserProfile', { userId: currentUser.id })}
+            >
+              <Text style={styles.statValue}>{currentUser.stats.posts}</Text>
+              <Text style={styles.statLabel}>Posts</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.statItem}>
+              <Text style={styles.statValue}>{currentUser.stats.followers}</Text>
+              <Text style={styles.statLabel}>Followers</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.statItem}>
+              <Text style={styles.statValue}>{currentUser.stats.following}</Text>
+              <Text style={styles.statLabel}>Following</Text>
+            </TouchableOpacity>
+            <View style={styles.statItem}>
+              <Text style={styles.statValue}>{currentUser.stats.streakDays}</Text>
+              <Text style={styles.statLabel}>🔥 Streak</Text>
+            </View>
+          </View>
+
+          {/* Bio Preview */}
+          {currentUser.bio ? (
+            <Text style={styles.bioPreview} numberOfLines={2}>
+              {currentUser.bio}
+            </Text>
+          ) : (
+            <TouchableOpacity onPress={navigateToEditProfile}>
+              <Text style={styles.addBioText}>+ Add a bio to your profile</Text>
+            </TouchableOpacity>
+          )}
+        </BlurView>
+      </Animated.View>
+    );
+  };
+
+  const renderStickyHeader = () => {
+    const unreadCount = getUnreadCount();
+    
+    return (
+      <Animated.View style={[styles.stickyHeader, stickyHeaderStyle, { paddingTop: insets.top }]}>
+        <BlurView intensity={95} style={styles.stickyHeaderBlur} tint="light">
+          <View style={styles.stickyHeaderContent}>
+            <TouchableOpacity onPress={() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true })}>
+              <Text style={styles.stickyTitle}>Community</Text>
+            </TouchableOpacity>
+            <View style={styles.stickyActions}>
+              <TouchableOpacity 
+                style={styles.stickyIconButton}
+                onPress={() => navigation.navigate('Notifications')}
+              >
+                <Ionicons name="notifications-outline" size={24} color="#667eea" />
+                {unreadCount > 0 && (
+                  <View style={styles.stickyBadge}>
+                    <Text style={styles.stickyBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.stickyIconButton}
+                onPress={() => navigateToChat()}
+              >
+                <Ionicons name="chatbubbles-outline" size={24} color="#667eea" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </BlurView>
+      </Animated.View>
+    );
+  };
+
+  const unreadCount = getUnreadCount();
+
   return (
-    <LinearGradient colors={['#e0e7ff', '#d1d5ff', '#c7b8ff']} style={styles.container}>
+    <View style={styles.container}>
       <StatusBar style="dark" />
       
-      <Animated.View style={[styles.animatedHeader, headerStyle]}>
-        {/* Header */}
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.title}>Community 👥</Text>
-            <Text style={styles.subtitle}>Connect with 50k+ parents</Text>
-          </View>
-          <View style={styles.headerActions}>
-            <TouchableOpacity 
-              style={styles.iconButton}
-              onPress={() => navigation.navigate('Notifications')}
-            >
-              <BlurView intensity={80} style={styles.iconBlur}>
-                <Ionicons name="notifications-outline" size={24} color="#667eea" />
-                <View style={styles.notificationBadge}>
-                  <Text style={styles.badgeText}>3</Text>
-                </View>
-              </BlurView>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.iconButton}
-              onPress={() => navigation.navigate('Chat')}
-            >
-              <BlurView intensity={80} style={styles.iconBlur}>
-                <Ionicons name="chatbubbles-outline" size={24} color="#667eea" />
-              </BlurView>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Online Users Strip */}
-        <ScrollView 
-          horizontal 
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.onlineContainer}
+      {/* Animated Header Background */}
+      <Animated.View style={[styles.headerContainer, headerAnimatedStyle]}>
+        <LinearGradient 
+          colors={['#667eea', '#764ba2', '#f093fb']} 
+          style={[styles.headerGradient, { height: HEADER_HEIGHT }]}
         >
-          <TouchableOpacity style={styles.createRoomButton}>
-            <LinearGradient colors={['#667eea', '#764ba2']} style={styles.createRoomGradient}>
-              <Ionicons name="add" size={24} color="white" />
-              <Text style={styles.createRoomText}>Room</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-          {ONLINE_USERS.map((user) => (
-            <TouchableOpacity key={user.id} style={styles.onlineUser}>
-              <View style={styles.onlineAvatarContainer}>
-                <Text style={styles.onlineAvatar}>{user.avatar}</Text>
-                <View style={[
-                  styles.statusDot, 
-                  { backgroundColor: user.status === 'online' ? '#11998e' : '#667eea' }
-                ]} />
+          {/* Header Content */}
+          <View style={[styles.headerContent, { paddingTop: insets.top + 20 }]}>
+            <View style={styles.headerTop}>
+              <View>
+                <Text style={styles.title}>Community 👥</Text>
+                <Text style={styles.subtitle}>Connect with parents worldwide</Text>
               </View>
-              <Text style={styles.onlineName}>{user.name}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+              <View style={styles.headerActions}>
+                <TouchableOpacity 
+                  style={styles.iconButton}
+                  onPress={() => navigation.navigate('Notifications')}
+                >
+                  <BlurView intensity={80} style={styles.iconBlur} tint="light">
+                    <Ionicons name="notifications-outline" size={24} color="#667eea" />
+                    {unreadCount > 0 && (
+                      <View style={styles.notificationBadge}>
+                        <Text style={styles.badgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+                      </View>
+                    )}
+                  </BlurView>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={styles.iconButton}
+                  onPress={() => navigateToChat()}
+                >
+                  <BlurView intensity={80} style={styles.iconBlur} tint="light">
+                    <Ionicons name="chatbubbles-outline" size={24} color="#667eea" />
+                  </BlurView>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Profile Section */}
+            {renderProfileSection()}
+
+            {/* Online Users Strip */}
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.onlineContainer}
+            >
+              <TouchableOpacity style={styles.createRoomButton}>
+                <LinearGradient colors={['#667eea', '#764ba2']} style={styles.createRoomGradient}>
+                  <Ionicons name="add" size={24} color="white" />
+                  <Text style={styles.createRoomText}>Room</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+              {onlineUsers.map((userId) => {
+                const user = getUserById(userId);
+                if (!user) return null;
+                return (
+                  <TouchableOpacity 
+                    key={userId} 
+                    style={styles.onlineUser}
+                    onPress={() => navigateToUserProfile(userId)}
+                  >
+                    <View style={styles.onlineAvatarContainer}>
+                      <Text style={styles.onlineAvatar}>{user.avatar}</Text>
+                      <View style={[styles.statusDot, { backgroundColor: '#11998e' }]} />
+                    </View>
+                    <Text style={styles.onlineName}>{user.displayName}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </LinearGradient>
       </Animated.View>
 
-      <ScrollView
+      {/* Sticky Header */}
+      {renderStickyHeader()}
+
+      {/* Main Content */}
+      <FlatList
+        ref={flatListRef}
+        data={posts}
+        renderItem={renderPost}
+        keyExtractor={(item) => item.id}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#667eea" />
@@ -334,82 +534,92 @@ export default function CommunityScreen({ navigation }: any) {
           scrollY.value = event.nativeEvent.contentOffset.y;
         }}
         scrollEventThrottle={16}
-      >
-        {/* Topics Grid */}
-        <Text style={styles.sectionTitle}>Popular Topics</Text>
-        <FlatList
-          data={TOPICS}
-          renderItem={renderTopicCard}
-          keyExtractor={(item) => item.id}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.topicsContainer}
-        />
+        contentContainerStyle={{ 
+          paddingTop: HEADER_HEIGHT + 20, 
+          paddingBottom: 120 
+        }}
+        ListHeaderComponent={
+          <>
+            {/* Topics Grid */}
+            <Text style={styles.sectionTitle}>Popular Topics</Text>
+            <FlatList
+              data={topics}
+              renderItem={renderTopicCard}
+              keyExtractor={(item) => item.id}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.topicsContainer}
+            />
 
-        {/* Feed Tabs */}
-        <View style={styles.tabContainer}>
-          {['trending', 'following', 'nearby'].map((tab) => (
-            <TouchableOpacity
-              key={tab}
-              style={[styles.tab, activeTab === tab && styles.tabActive]}
-              onPress={() => setActiveTab(tab)}
-            >
-              <Text style={[
-                styles.tabText,
-                activeTab === tab && styles.tabTextActive
-              ]}>
-                {tab.charAt(0).toUpperCase() + tab.slice(1)}
-              </Text>
-              {activeTab === tab && (
-                <View style={styles.tabIndicator}>
-                  <LinearGradient
-                    colors={['#667eea', '#764ba2']}
-                    style={styles.tabGradient}
-                  />
-                </View>
-              )}
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {/* Featured Posts */}
-        <View style={styles.feedContainer}>
-          {FEATURED_POSTS.map((post) => (
-            <View key={post.id}>
-              {renderPost({ item: post })}
+            {/* Feed Tabs */}
+            <View style={styles.tabContainer}>
+              {(['trending', 'following', 'nearby'] as const).map((tab) => (
+                <TouchableOpacity
+                  key={tab}
+                  style={[styles.tab, activeTab === tab && styles.tabActive]}
+                  onPress={() => setActiveTab(tab)}
+                >
+                  <Text style={[
+                    styles.tabText,
+                    activeTab === tab && styles.tabTextActive
+                  ]}>
+                    {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                  </Text>
+                  {activeTab === tab && (
+                    <View style={styles.tabIndicator}>
+                      <LinearGradient
+                        colors={['#667eea', '#764ba2']}
+                        style={styles.tabGradient}
+                      />
+                    </View>
+                  )}
+                </TouchableOpacity>
+              ))}
             </View>
-          ))}
-        </View>
-
-        {/* Load More */}
-        <TouchableOpacity style={styles.loadMore}>
-          <Text style={styles.loadMoreText}>Load more posts</Text>
-          <Ionicons name="chevron-down" size={20} color="#667eea" />
-        </TouchableOpacity>
-      </ScrollView>
+          </>
+        }
+        ListFooterComponent={
+          <TouchableOpacity style={styles.loadMore} onPress={() => {}}>
+            <Text style={styles.loadMoreText}>Load more posts</Text>
+            <Ionicons name="chevron-down" size={20} color="#667eea" />
+          </TouchableOpacity>
+        }
+      />
 
       {/* Floating Create Post Button */}
       <TouchableOpacity 
         style={styles.fab}
-        onPress={() => navigation.navigate('CreatePost')}
+        onPress={() => navigation.navigate('CreatePost', {})}
       >
         <LinearGradient colors={['#fa709a', '#fee140']} style={styles.fabGradient}>
           <Ionicons name="create-outline" size={28} color="white" />
         </LinearGradient>
       </TouchableOpacity>
-    </LinearGradient>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#e0e7ff',
   },
-  animatedHeader: {
-    paddingTop: 60,
+  headerContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 1,
+  },
+  headerGradient: {
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
+  },
+  headerContent: {
+    flex: 1,
     paddingHorizontal: 24,
   },
-  header: {
+  headerTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
@@ -418,12 +628,15 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 32,
     fontWeight: '800',
-    color: '#1a1a1a',
+    color: 'white',
     marginBottom: 4,
+    textShadowColor: 'rgba(0,0,0,0.1)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
   },
   subtitle: {
     fontSize: 16,
-    color: '#666',
+    color: 'rgba(255,255,255,0.9)',
   },
   headerActions: {
     flexDirection: 'row',
@@ -457,6 +670,121 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: 'bold',
   },
+  
+  // Profile Section Styles
+  profileSection: {
+    marginBottom: 20,
+  },
+  profileCard: {
+    borderRadius: 24,
+    padding: 20,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.9)',
+  },
+  profileHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+  },
+  profileLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  profileAvatar: {
+    fontSize: 56,
+    marginRight: 16,
+  },
+  editAvatarBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 12,
+    backgroundColor: '#667eea',
+    borderRadius: 12,
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'white',
+  },
+  profileInfo: {
+    flex: 1,
+  },
+  profileName: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1a1a1a',
+    marginBottom: 2,
+  },
+  profileHandle: {
+    fontSize: 14,
+    color: '#667eea',
+    marginBottom: 6,
+  },
+  onlineStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  statusText: {
+    fontSize: 13,
+    color: '#11998e',
+    fontWeight: '500',
+  },
+  countryText: {
+    fontSize: 13,
+    color: '#666',
+  },
+  editButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(102,126,234,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.05)',
+    marginBottom: 12,
+  },
+  statItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  statValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1a1a1a',
+    marginBottom: 2,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#666',
+  },
+  bioPreview: {
+    fontSize: 14,
+    color: '#444',
+    lineHeight: 20,
+    fontStyle: 'italic',
+  },
+  addBioText: {
+    fontSize: 14,
+    color: '#667eea',
+    fontWeight: '500',
+  },
+
+  // Online Users Styles
   onlineContainer: {
     paddingVertical: 16,
     gap: 16,
@@ -489,21 +817,67 @@ const styles = StyleSheet.create({
   onlineAvatar: {
     fontSize: 48,
   },
-  statusDot: {
-    position: 'absolute',
-    bottom: 4,
-    right: 4,
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    borderWidth: 2,
-    borderColor: 'white',
-  },
   onlineName: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#666',
+    color: 'rgba(255,255,255,0.9)',
   },
+
+  // Sticky Header Styles
+  stickyHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
+  },
+  stickyHeaderBlur: {
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+  },
+  stickyHeaderContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  stickyTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1a1a1a',
+  },
+  stickyActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  stickyIconButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(102,126,234,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  stickyBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    backgroundColor: '#ff4757',
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'white',
+  },
+  stickyBadgeText: {
+    color: 'white',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+
+  // Content Styles
   sectionTitle: {
     fontSize: 20,
     fontWeight: '700',
@@ -519,7 +893,7 @@ const styles = StyleSheet.create({
   },
   topicCard: {
     width: 160,
-    height: 140,
+    height: 160,
     borderRadius: 24,
     overflow: 'hidden',
     marginRight: 12,
@@ -563,6 +937,18 @@ const styles = StyleSheet.create({
     marginHorizontal: 6,
     color: '#999',
   },
+  joinedIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 8,
+  },
+  joinedText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+
+  // Tab Styles
   tabContainer: {
     flexDirection: 'row',
     paddingHorizontal: 24,
@@ -572,6 +958,7 @@ const styles = StyleSheet.create({
   },
   tab: {
     paddingVertical: 8,
+    position: 'relative',
   },
   tabActive: {},
   tabText: {
@@ -595,13 +982,12 @@ const styles = StyleSheet.create({
   tabGradient: {
     flex: 1,
   },
-  feedContainer: {
-    paddingHorizontal: 24,
-    gap: 16,
-  },
+
+  // Post Styles
   postCard: {
     borderRadius: 24,
     padding: 20,
+    marginHorizontal: 24,
     marginBottom: 16,
     overflow: 'hidden',
     borderWidth: 1,
@@ -631,6 +1017,13 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#1a1a1a',
   },
+  onlineIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#11998e',
+    marginLeft: 4,
+  },
   postMeta: {
     fontSize: 13,
     color: '#666',
@@ -642,15 +1035,32 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     marginBottom: 12,
   },
-  postImageContainer: {
-    backgroundColor: 'rgba(102,126,234,0.1)',
-    borderRadius: 16,
-    padding: 20,
-    alignItems: 'center',
-    marginBottom: 16,
+  imagesContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
   },
   postImage: {
-    fontSize: 60,
+    width: (width - 88) / 2,
+    height: 150,
+    borderRadius: 12,
+  },
+  helpfulContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(17,153,142,0.1)',
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+  },
+  helpfulText: {
+    fontSize: 13,
+    color: '#11998e',
+    fontWeight: '500',
   },
   postActions: {
     flexDirection: 'row',

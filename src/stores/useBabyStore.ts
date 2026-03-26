@@ -77,7 +77,7 @@ export const useBabyStore = create<BabyState>()(
         timeline: [
           { ...event, id: Math.random().toString(36).substr(2, 9), timestamp: Date.now() },
           ...state.timeline
-        ].slice(0, 100) // Keep only last 100 events
+        ].slice(0, 100)
       })),
       
       removeEvent: (id) => set((state) => ({
@@ -116,7 +116,7 @@ export const useBabyStore = create<BabyState>()(
       partialize: (state) => ({ 
         baby: state.baby, 
         timeline: state.timeline,
-        sounds: state.sounds.map(({ isPlaying, ...rest }) => rest), // Don't persist playing state
+        sounds: state.sounds.map(({ isPlaying, ...rest }) => rest),
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {

@@ -1,276 +1,666 @@
-import React, { useEffect, useCallback } from 'react';
+import React, { useRef, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
   Dimensions,
+  TouchableOpacity,
+  Animated,
   Platform,
+  ViewStyle,
+  TextStyle,
+  PanResponder,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
-import Animated, { 
-  useSharedValue, 
-  useAnimatedStyle, 
-  withSpring,
-  withTiming,
-  interpolate,
-  Extrapolation,
-  runOnJS
-} from 'react-native-reanimated';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { MainTabParamList } from '../types';
+import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import { useNavigationContext } from '../context/NavigationContext';
+import { format } from 'date-fns';
 
-const { width } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 interface TabItem {
-  name: keyof MainTabParamList;
-  emoji: string;
-  route: keyof MainTabParamList;
-}
-
-interface LiquidGlassNavigationProps {
-  state: any;
-  descriptors: any;
-  navigation: any;
+  name: string;
+  shortName: string;
+  icon: string;
+  activeIcon: string;
+  route: string;
+  color: string;
+  showInCompact?: boolean;
 }
 
 const TABS: TabItem[] = [
-  { name: 'Home', emoji: '🏠', route: 'Home' },
-  { name: 'Community', emoji: '👥', route: 'Community' },
-  { name: 'Timeline', emoji: '📜', route: 'Timeline' },
-  { name: 'Customize', emoji: '🎨', route: 'Customize' },
-  { name: 'Settings', emoji: '⚙️', route: 'Settings' },
+  { name: 'Home', shortName: 'H', icon: '🏠', activeIcon: '🏡', route: 'Home', color: '#667eea', showInCompact: true },
+  { name: 'Community', shortName: 'C', icon: '👥', activeIcon: '👨‍👩‍👧‍👦', route: 'Community', color: '#fa709a', showInCompact: true },
+  { name: 'Timeline', shortName: 'T', icon: '📜', activeIcon: '📅', route: 'Timeline', color: '#11998e', showInCompact: true },
+  { name: 'Safety', shortName: 'S', icon: '🛡️', activeIcon: '🛡️', route: 'SafetyCorner', color: '#fc5c7d', showInCompact: false },
+  { name: 'Settings', shortName: '⚙', icon: '⚙️', activeIcon: '🔧', route: 'Settings', color: '#43e97b', showInCompact: false },
 ];
 
-const GLOW_SIZE = 60;
+const COMPACT_WIDTH = 140;
+const EXPANDED_WIDTH = SCREEN_WIDTH - 32;
+const TAB_BAR_HEIGHT = 75;
+const COMPACT_TAB_BAR_HEIGHT = 60;
+const COMPACT_OFFSET_X = -SCREEN_WIDTH + COMPACT_WIDTH + 48;
 
-const TabButton = ({ 
-  tab, 
-  index, 
-  isActive, 
-  onPress 
-}: { 
-  tab: TabItem; 
-  index: number; 
+interface TabButtonProps {
+  tab: TabItem;
   isActive: boolean;
   onPress: () => void;
+  isDark: boolean;
+  isCompact: boolean;
+  index: number;
+}
+
+const TabButton: React.FC<TabButtonProps> = ({ 
+  tab, 
+  isActive, 
+  onPress, 
+  isDark, 
+  isCompact,
+  index 
 }) => {
-  const scale = useSharedValue(1);
-  const translateY = useSharedValue(0);
-  const glowOpacity = useSharedValue(0);
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const translateYAnim = useRef(new Animated.Value(0)).current;
+  const glowAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    translateY.value = withSpring(isActive ? -8 : 0, { damping: 12, stiffness: 200 });
-    glowOpacity.value = withTiming(isActive ? 1 : 0, { duration: 300 });
-  }, [isActive, translateY, glowOpacity]);
+    Animated.parallel([
+      Animated.spring(scaleAnim, {
+        toValue: isActive ? 1.2 : isCompact ? 0.9 : 1,
+        useNativeDriver: true,
+        friction: 8,
+        tension: 100,
+      }),
+      Animated.spring(translateYAnim, {
+        toValue: isActive ? -12 : isCompact && index >= 2 ? -20 : 0,
+        useNativeDriver: true,
+        friction: 8,
+        tension: 100,
+      }),
+      Animated.timing(glowAnim, {
+        toValue: isActive ? 1 : 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [isActive, isCompact, index, scaleAnim, translateYAnim, glowAnim]);
 
-  const tapGesture = Gesture.Tap()
-    .onBegin(() => {
-      scale.value = withSpring(0.9, { damping: 15 });
-    })
-    .onEnd(() => {
-      runOnJS(onPress)();
-    })
-    .onFinalize(() => {
-      scale.value = withSpring(1);
-    });
+  const handlePress = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    onPress();
+  }, [onPress]);
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateY: translateY.value },
-      { scale: scale.value }
-    ],
-  }));
-
-  const glowStyle = useAnimatedStyle(() => ({
-    opacity: glowOpacity.value,
-    transform: [{ scale: interpolate(
-      glowOpacity.value,
-      [0, 1],
-      [0.5, 1.2],
-      Extrapolation.CLAMP
-    ) }],
-  }));
+  if (isCompact && !tab.showInCompact && !isActive) {
+    return (
+      <View style={[styles.hiddenTab, { transform: [{ translateY: -30 }] }]}>
+        <TouchableOpacity onPress={handlePress} style={styles.hiddenTabButton}>
+          <Text style={styles.hiddenTabIcon}>{tab.icon}</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
-    <GestureDetector gesture={tapGesture}>
-      <Animated.View style={[styles.tabButton, animatedStyle]}>
-        <Animated.View style={[styles.glow, glowStyle]}>
-          <LinearGradient
-            colors={['#667eea40', '#764ba220', 'transparent']}
-            style={styles.glowGradient}
-          />
-        </Animated.View>
-        
-        <Animated.View style={[styles.activeBackground, { opacity: glowOpacity.value }]}>
-          <BlurView intensity={80} style={StyleSheet.absoluteFill}>
-            <LinearGradient
-              colors={['#667eea30', '#764ba220']}
-              style={StyleSheet.absoluteFill}
-            />
-          </BlurView>
-        </Animated.View>
+    <TouchableOpacity 
+      style={[
+        styles.tabButton, 
+        isCompact && styles.tabButtonCompact,
+        isCompact && index >= 2 && styles.tabButtonUpward
+      ]} 
+      onPress={handlePress}
+      activeOpacity={0.7}
+    >
+      <View
+        style={[
+          styles.glow,
+          {
+            opacity: glowAnim.__getValue(),
+            transform: [{ scale: glowAnim.__getValue() === 0 ? 0.5 : 1.2 }],
+          },
+        ]}
+        pointerEvents="none"
+      >
+        <LinearGradient 
+          colors={[tab.color + '40', tab.color + '10', 'transparent']} 
+          style={styles.glowGradient} 
+        />
+      </View>
 
-        <Text style={[styles.tabEmoji, isActive && styles.activeEmoji]}>
-          {tab.emoji}
+      <View 
+        style={[
+          styles.activeDot,
+          { opacity: glowAnim.__getValue(), backgroundColor: tab.color }
+        ]} 
+        pointerEvents="none"
+      />
+
+      <View style={{ 
+        transform: [{ scale: scaleAnim.__getValue() }, { translateY: translateYAnim.__getValue() }],
+        zIndex: 10,
+      }}>
+        <Text style={[
+          styles.tabEmoji, 
+          isCompact && styles.tabEmojiCompact,
+          isCompact && index >= 2 && styles.tabEmojiUpward
+        ]}>
+          {isActive ? tab.activeIcon : tab.icon}
         </Text>
-        <Text style={[styles.tabLabel, isActive && styles.activeLabel]}>
-          {tab.name}
-        </Text>
-      </Animated.View>
-    </GestureDetector>
+      </View>
+
+      <Text style={[
+        styles.tabLabel, 
+        isActive && [styles.activeLabel, { color: tab.color }],
+        isDark && styles.tabLabelDark,
+        isCompact && styles.tabLabelCompact
+      ]}>
+        {isCompact ? tab.shortName : tab.name}
+      </Text>
+    </TouchableOpacity>
   );
 };
 
-export default function LiquidGlassNavigation({ state, navigation }: LiquidGlassNavigationProps) {
+const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({ 
+  state, 
+  descriptors, 
+  navigation 
+}) => {
   const insets = useSafeAreaInsets();
+  const { 
+    isNavVisible, 
+    isNavCompact, 
+    isTimelineFabVisible,
+    currentDate,
+    isTimelineScreen,
+    showNav 
+  } = useNavigationContext();
+  
   const activeIndex = state.index;
+  const isDark = descriptors[state.routes[activeIndex].key].options.tabBarStyle?.backgroundColor === '#0a0a0a' || false;
 
-  const handlePress = useCallback((index: number, route: keyof MainTabParamList) => {
+  // Use regular state for values that need to trigger re-renders
+  const [translateY, setTranslateY] = React.useState(0);
+  const [translateX, setTranslateX] = React.useState(0);
+  const [width, setWidth] = React.useState(EXPANDED_WIDTH);
+  const [height, setHeight] = React.useState(TAB_BAR_HEIGHT);
+  const [opacity, setOpacity] = React.useState(1);
+  const [fabScale, setFabScale] = React.useState(1);
+
+  // Animate using requestAnimationFrame approach instead of Animated API
+  useEffect(() => {
+    const targetY = isNavVisible ? 0 : 100;
+    const targetX = isNavCompact ? COMPACT_OFFSET_X : 0;
+    const targetWidth = isNavCompact ? COMPACT_WIDTH : EXPANDED_WIDTH;
+    const targetHeight = isNavCompact ? COMPACT_TAB_BAR_HEIGHT : TAB_BAR_HEIGHT;
+    const targetOpacity = isNavVisible ? 1 : 0;
+    
+    // Simple interpolation for smooth transition
+    const duration = 300;
+    const startTime = Date.now();
+    const startY = translateY;
+    const startX = translateX;
+    const startWidth = width;
+    const startHeight = height;
+    const startOpacity = opacity;
+
+    const animate = () => {
+      const elapsed = Date.now() - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      // Ease out cubic
+      const eased = 1 - Math.pow(1 - progress, 3);
+      
+      setTranslateY(startY + (targetY - startY) * eased);
+      setTranslateX(startX + (targetX - startX) * eased);
+      setWidth(startWidth + (targetWidth - startWidth) * eased);
+      setHeight(startHeight + (targetHeight - startHeight) * eased);
+      setOpacity(startOpacity + (targetOpacity - startOpacity) * eased);
+      
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      }
+    };
+    
+    requestAnimationFrame(animate);
+  }, [isNavVisible, isNavCompact]);
+
+  // FAB animation
+  useEffect(() => {
+    const targetScale = isTimelineFabVisible ? 1 : 0;
+    const duration = 300;
+    const startTime = Date.now();
+    const startScale = fabScale;
+    
+    const animate = () => {
+      const elapsed = Date.now() - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      
+      setFabScale(startScale + (targetScale - startScale) * eased);
+      
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      }
+    };
+    
+    requestAnimationFrame(animate);
+  }, [isTimelineFabVisible]);
+
+  const handlePress = useCallback((index: number, route: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     
-    const event = navigation.emit({
-      type: 'tabPress',
-      target: route,
-      canPreventDefault: true,
-    });
-
-    if (!event.defaultPrevented) {
-      navigation.navigate(route);
+    if (isNavCompact) {
+      showNav();
     }
-  }, [navigation]);
+    
+    const event = navigation.emit({ type: 'tabPress', target: route, canPreventDefault: true });
+    if (!event.defaultPrevented) navigation.navigate(route);
+  }, [navigation, isNavCompact, showNav]);
+
+  // Pan responder attached to outer View only
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        return Math.abs(gestureState.dy) > 5;
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        if (gestureState.dy < -20) {
+          showNav();
+        }
+      },
+    })
+  ).current;
+
+  const formattedDate = format(currentDate, 'EEE, MMM d');
 
   return (
-    <View style={[styles.container, { paddingBottom: insets.bottom > 0 ? insets.bottom : 20 }]}>
-      <BlurView intensity={Platform.OS === 'ios' ? 60 : 100} style={styles.glassBackground}>
-        <LinearGradient
-          colors={['rgba(255,255,255,0.4)', 'rgba(255,255,255,0.2)', 'rgba(255,255,255,0.1)']}
-          style={StyleSheet.absoluteFill}
-        />
-        
-        <View style={styles.tabsContainer}>
-          {TABS.map((tab, index) => (
-            <TabButton
-              key={tab.name}
-              tab={tab}
-              index={index}
-              isActive={index === activeIndex}
-              onPress={() => handlePress(index, tab.route)}
-            />
-          ))}
+    <>
+      {/* Timeline Date Header */}
+      {isTimelineScreen && (
+        <View 
+          style={[
+            styles.dateHeader,
+            { 
+              opacity: opacity,
+              transform: [{ translateY: translateY * 0.2 }], // Subtle parallax
+            }
+          ]}
+          pointerEvents="none"
+        >
+          <BlurView intensity={60} style={styles.dateBlur} tint={isDark ? 'dark' : 'light'}>
+            <Text style={[styles.dateText, isDark && styles.dateTextDark]}>
+              {formattedDate}
+            </Text>
+          </BlurView>
         </View>
+      )}
 
-        <View style={styles.liquidBorder}>
-          <LinearGradient
-            colors={['transparent', 'rgba(255,255,255,0.8)', 'transparent']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.borderGradient}
-          />
+      {/* OUTER WRAPPER - Regular View with PanResponder */}
+      <View 
+        style={[
+          styles.outerWrapper,
+          { paddingBottom: Math.max(insets.bottom, 12) }
+        ]}
+        {...panResponder.panHandlers}
+      >
+        {/* ANIMATED CONTAINER - Regular View with transform styles */}
+        <View 
+          style={[
+            styles.container,
+            {
+              transform: [
+                { translateY: translateY },
+                { translateX: translateX }
+              ],
+              opacity: opacity,
+            }
+          ]}
+        >
+          {/* Drag Handle */}
+          <TouchableOpacity 
+            style={styles.handle}
+            onPress={showNav}
+            activeOpacity={0.6}
+          >
+            <View style={[styles.handleBar, isDark && styles.handleBarDark]} />
+          </TouchableOpacity>
+
+          {/* Navigation Container with animated width/height */}
+          <View style={[
+            styles.navContainer,
+            { width: width }
+          ]}>
+            <BlurView 
+              intensity={Platform.OS === 'ios' ? 60 : 80} 
+              style={[
+                styles.glassBackground,
+                { height: height },
+                isDark && styles.glassBackgroundDark
+              ]}
+              tint={isDark ? 'dark' : 'light'}
+            >
+              <LinearGradient
+                colors={isDark 
+                  ? ['rgba(25,25,25,0.95)', 'rgba(15,15,15,0.8)', 'rgba(10,10,10,0.6)']
+                  : ['rgba(255,255,255,0.98)', 'rgba(255,255,255,0.9)', 'rgba(255,255,255,0.7)']
+                }
+                style={StyleSheet.absoluteFill}
+              />
+              
+              <LinearGradient
+                colors={['transparent', 'rgba(255,255,255,0.3)', 'transparent']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.topHighlight}
+              />
+
+              <View style={styles.tabsContainer}>
+                {TABS.map((tab, index) => (
+                  <TabButton
+                    key={tab.name}
+                    tab={tab}
+                    isActive={index === activeIndex}
+                    onPress={() => handlePress(index, tab.route)}
+                    isDark={isDark}
+                    isCompact={isNavCompact}
+                    index={index}
+                  />
+                ))}
+              </View>
+            </BlurView>
+
+            {/* FAB with scale transform */}
+            <View style={[
+              styles.fabContainer,
+              { transform: [{ scale: fabScale }] }
+            ]}>
+              <TouchableOpacity 
+                style={styles.fab}
+                activeOpacity={0.8}
+                onPress={() => navigation.navigate('AddLog')}
+              >
+                <LinearGradient 
+                  colors={['#11998e', '#38ef7d']} 
+                  style={styles.fabGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                >
+                  <Text style={styles.fabIcon}>+</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+
+            {/* Peek Indicator */}
+            {!isNavVisible && (
+              <TouchableOpacity 
+                style={styles.peekIndicator}
+                onPress={showNav}
+              >
+                <BlurView intensity={80} style={styles.peekBlur} tint={isDark ? 'dark' : 'light'}>
+                  <View style={styles.peekDot} />
+                </BlurView>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
-      </BlurView>
-
-      <TouchableOpacity style={styles.fab} activeOpacity={0.8}>
-        <BlurView intensity={100} style={styles.fabBlur}>
-          <LinearGradient colors={['#667eea', '#764ba2']} style={styles.fabGradient}>
-            <Text style={styles.fabText}>+</Text>
-          </LinearGradient>
-        </BlurView>
-      </TouchableOpacity>
-    </View>
+      </View>
+    </>
   );
-}
+};
 
 const styles = StyleSheet.create({
-  container: {
+  dateHeader: {
+    position: 'absolute',
+    top: 60,
+    left: 16,
+    zIndex: 100,
+  },
+  dateBlur: {
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    overflow: 'hidden',
+  },
+  dateText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1a1a1a',
+    letterSpacing: 0.5,
+  },
+  dateTextDark: {
+    color: '#ffffff',
+  },
+
+  outerWrapper: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
     alignItems: 'center',
+    pointerEvents: 'box-none',
   },
+
+  container: { 
+    width: '100%',
+    alignItems: 'center',
+  },
+  
+  handle: {
+    width: 40,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  
+  handleBar: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(0,0,0,0.2)',
+  },
+  
+  handleBarDark: {
+    backgroundColor: 'rgba(255,255,255,0.3)',
+  },
+
+  navContainer: {
+    alignItems: 'center',
+    position: 'relative',
+  },
+  
   glassBackground: {
-    marginHorizontal: 16,
-    marginBottom: 16,
     borderRadius: 32,
     overflow: 'hidden',
-    height: 90,
-    width: width - 32,
+    width: '100%',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.5)',
     shadowColor: '#667eea',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.2,
-    shadowRadius: 30,
-    elevation: 20,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 15,
+    elevation: 8,
+  } as ViewStyle,
+  
+  glassBackgroundDark: {
+    borderColor: 'rgba(255,255,255,0.1)',
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
   },
-  tabsContainer: {
-    flexDirection: 'row',
-    height: '100%',
-    paddingTop: 12,
-  },
-  tabButton: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  glow: {
-    position: 'absolute',
-    top: 0,
-    width: GLOW_SIZE,
-    height: GLOW_SIZE,
-    borderRadius: GLOW_SIZE / 2,
-    alignSelf: 'center',
-  },
-  glowGradient: {
-    width: '100%',
-    height: '100%',
-    borderRadius: GLOW_SIZE / 2,
-  },
-  activeBackground: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: 20,
-    overflow: 'hidden',
-    margin: 4,
-  },
-  tabEmoji: { fontSize: 24, marginBottom: 4 },
-  activeEmoji: { fontSize: 28 },
-  tabLabel: { fontSize: 11, fontWeight: '600', color: '#666' },
-  activeLabel: { color: '#667eea', fontWeight: '700' },
-  liquidBorder: {
+  
+  topHighlight: {
     position: 'absolute',
     top: 0,
     left: 20,
     right: 20,
     height: 1,
-    overflow: 'hidden',
   },
-  borderGradient: { width: '100%', height: '100%' },
-  fab: {
+  
+  tabsContainer: { 
+    flexDirection: 'row', 
+    height: '100%', 
+    paddingTop: 8,
+    paddingBottom: 6,
+    paddingHorizontal: 6,
+    alignItems: 'center',
+  } as ViewStyle,
+  
+  tabButton: { 
+    flex: 1, 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    paddingVertical: 4,
+    paddingHorizontal: 4,
+    position: 'relative',
+    minWidth: 56,
+  } as ViewStyle,
+  
+  tabButtonCompact: {
+    minWidth: 40,
+    paddingHorizontal: 2,
+  },
+  
+  tabButtonUpward: {
+    marginTop: -15,
+  },
+  
+  hiddenTab: {
     position: 'absolute',
-    right: 32,
+    right: -20,
+    top: 0,
+  },
+  
+  hiddenTabButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  
+  hiddenTabIcon: {
+    fontSize: 16,
+  },
+  
+  glow: { 
+    position: 'absolute', 
+    top: -5,
+    width: 60, 
+    height: 60, 
+    borderRadius: 30, 
+    alignSelf: 'center',
+    zIndex: 0,
+  } as ViewStyle,
+  
+  glowGradient: { 
+    width: '100%', 
+    height: '100%', 
+    borderRadius: 30,
+  } as ViewStyle,
+  
+  activeDot: {
+    position: 'absolute',
+    bottom: 6,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    zIndex: 0,
+  },
+  
+  tabEmoji: { 
+    fontSize: 24, 
+    marginBottom: 2,
+    textAlign: 'center',
+    zIndex: 10,
+  } as TextStyle,
+  
+  tabEmojiCompact: {
+    fontSize: 20,
+  },
+  
+  tabEmojiUpward: {
+    fontSize: 22,
+    marginBottom: 0,
+  },
+  
+  tabLabel: { 
+    fontSize: 11, 
+    fontWeight: '600', 
+    color: '#888', 
+    textAlign: 'center',
+    zIndex: 10,
+    marginTop: 2,
+  } as TextStyle,
+  
+  tabLabelDark: {
+    color: '#aaa',
+  },
+  
+  tabLabelCompact: {
+    fontSize: 9,
+    marginTop: 1,
+  },
+  
+  activeLabel: { 
+    fontWeight: '700',
+  } as TextStyle,
+  
+  fabContainer: {
+    position: 'absolute',
+    right: -20,
     top: -25,
+    zIndex: 100,
+  },
+  
+  fab: {
     width: 56,
     height: 56,
     borderRadius: 28,
     overflow: 'hidden',
-    shadowColor: '#667eea',
-    shadowOffset: { width: 0, height: 8 },
+    shadowColor: '#11998e',
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.4,
-    shadowRadius: 16,
-    elevation: 10,
+    shadowRadius: 8,
+    elevation: 8,
   },
-  fabBlur: { width: '100%', height: '100%' },
-  fabGradient: {
-    width: '100%',
-    height: '100%',
+  
+  fabGradient: { 
+    width: '100%', 
+    height: '100%', 
+    alignItems: 'center', 
+    justifyContent: 'center',
+  } as ViewStyle,
+  
+  fabIcon: { 
+    fontSize: 32, 
+    color: 'white', 
+    fontWeight: '300',
+    marginTop: -2,
+  } as TextStyle,
+  
+  peekIndicator: {
+    position: 'absolute',
+    bottom: 20,
+    right: 20,
+  },
+  
+  peekBlur: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  fabText: { fontSize: 32, color: 'white', fontWeight: '300', marginTop: -4 },
+  
+  peekDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#667eea',
+  },
 });
+
+export default LiquidGlassNavigation;
