@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState, useEffect } from 'react';
+import React, { useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import {
   StatusBar,
   ScrollView,
@@ -35,7 +35,6 @@ import Animated, {
   SlideInRight,
   SlideInUp,
   SlideOutDown,
-  SlideInLeft,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { formatDistanceToNow, format } from 'date-fns';
@@ -64,30 +63,34 @@ const getGridColumns = () => {
 
 const GRID_COLUMNS = getGridColumns();
 
-// ENHANCED: More comprehensive quick actions
+// UPDATED: Extended quick actions with more navigation options
 const DEFAULT_QUICK_ACTIONS = [
-  { id: 'potty', label: 'Potty', icon: '🚽', color: '#667eea', gradient: ['#667eea', '#764ba2'] },
-  { id: 'feed', label: 'Feed', icon: '🍼', color: '#fa709a', gradient: ['#fa709a', '#fee140'] },
-  { id: 'sleep', label: 'Sleep', icon: '😴', color: '#11998e', gradient: ['#11998e', '#38ef7d'] },
-  { id: 'diaper', label: 'Diaper', icon: '🧷', color: '#fc5c7d', gradient: ['#fc5c7d', '#6a82fb'] },
-  { id: 'growth', label: 'Growth', icon: '📏', color: '#43e97b', gradient: ['#43e97b', '#38f9d7'] },
-  { id: 'milestone', label: 'Milestone', icon: '🌟', color: '#f59e0b', gradient: ['#f59e0b', '#fbbf24'] },
-  { id: 'medication', label: 'Meds', icon: '💊', color: '#ef4444', gradient: ['#ef4444', '#f87171'] },
-  { id: 'note', label: 'Note', icon: '📝', color: '#64748b', gradient: ['#64748b', '#94a3b8'] },
+  { id: 'potty', label: 'Potty', icon: '🚽', color: '#667eea', gradient: ['#667eea', '#764ba2'], screen: 'UniversalTracker', params: { type: 'potty' } },
+  { id: 'feed', label: 'Feed', icon: '🍼', color: '#fa709a', gradient: ['#fa709a', '#fee140'], screen: 'UniversalTracker', params: { type: 'feed' } },
+  { id: 'sleep', label: 'Sleep', icon: '😴', color: '#11998e', gradient: ['#11998e', '#38ef7d'], screen: 'UniversalTracker', params: { type: 'sleep' } },
+  { id: 'diaper', label: 'Diaper', icon: '🧷', color: '#fc5c7d', gradient: ['#fc5c7d', '#6a82fb'], screen: 'UniversalTracker', params: { type: 'diaper' } },
+  { id: 'growth', label: 'Growth', icon: '📏', color: '#43e97b', gradient: ['#43e97b', '#38f9d7'], screen: 'GrowthChart', params: {} },
+  { id: 'milestone', label: 'Milestone', icon: '🌟', color: '#f59e0b', gradient: ['#f59e0b', '#fbbf24'], screen: 'Achievements', params: {} },
+  { id: 'medication', label: 'Meds', icon: '💊', color: '#ef4444', gradient: ['#ef4444', '#f87171'], screen: 'UniversalTracker', params: { type: 'medication' } },
+  { id: 'note', label: 'Note', icon: '📝', color: '#64748b', gradient: ['#64748b', '#94a3b8'], screen: 'UniversalTracker', params: { type: 'note' } },
 ];
 
+// UPDATED: More available actions with navigation screens
 const AVAILABLE_ACTIONS = [
-  { id: 'pump', label: 'Pump', icon: '🤱', color: '#8b5cf6', gradient: ['#8b5cf6', '#a78bfa'] },
-  { id: 'bath', label: 'Bath', icon: '🛁', color: '#3b82f6', gradient: ['#3b82f6', '#60a5fa'] },
-  { id: 'sun', label: 'Sun', icon: '☀️', color: '#f59e0b', gradient: ['#f59e0b', '#fbbf24'] },
-  { id: 'play', label: 'Play', icon: '🎮', color: '#ec4899', gradient: ['#ec4899', '#f472b6'] },
-  { id: 'walk', label: 'Walk', icon: '🚶', color: '#10b981', gradient: ['#10b981', '#34d399'] },
-  { id: 'temperature', label: 'Temp', icon: '🌡️', color: '#ef4444', gradient: ['#ef4444', '#f87171'] },
-  { id: 'vaccine', label: 'Vaccine', icon: '💉', color: '#06b6d4', gradient: ['#06b6d4', '#22d3ee'] },
-  { id: 'doctor', label: 'Doctor', icon: '👨‍⚕️', color: '#6366f1', gradient: ['#6366f1', '#818cf8'] },
+  { id: 'pump', label: 'Pump', icon: '🤱', color: '#8b5cf6', gradient: ['#8b5cf6', '#a78bfa'], screen: 'UniversalTracker', params: { type: 'pump' } },
+  { id: 'bath', label: 'Bath', icon: '🛁', color: '#3b82f6', gradient: ['#3b82f6', '#60a5fa'], screen: 'UniversalTracker', params: { type: 'bath' } },
+  { id: 'sun', label: 'Sun', icon: '☀️', color: '#f59e0b', gradient: ['#f59e0b', '#fbbf24'], screen: 'UniversalTracker', params: { type: 'sun' } },
+  { id: 'play', label: 'Play', icon: '🎮', color: '#ec4899', gradient: ['#ec4899', '#f472b6'], screen: 'UniversalTracker', params: { type: 'play' } },
+  { id: 'walk', label: 'Walk', icon: '🚶', color: '#10b981', gradient: ['#10b981', '#34d399'], screen: 'UniversalTracker', params: { type: 'walk' } },
+  { id: 'family_chat', label: 'Family Chat', icon: '💬', color: '#06b6d4', gradient: ['#06b6d4', '#22d3ee'], screen: 'FamilyChatList', params: {} },
+  { id: 'family_center', label: 'Family', icon: '👨‍👩‍👧', color: '#f97316', gradient: ['#f97316', '#fb923c'], screen: 'FamilySharing', params: {} },
+  { id: 'reminders', label: 'Reminders', icon: '⏰', color: '#ef4444', gradient: ['#ef4444', '#f87171'], screen: 'Reminders', params: {} },
+  { id: 'safety', label: 'Safety', icon: '🛡️', color: '#dc2626', gradient: ['#dc2626', '#ef4444'], screen: 'SafetyCorner', params: {} },
+  { id: 'gallery', label: 'Gallery', icon: '🖼️', color: '#8b5cf6', gradient: ['#8b5cf6', '#a78bfa'], screen: 'Gallery', params: {} },
+  { id: 'sound', label: 'Sounds', icon: '🎵', color: '#1DB954', gradient: ['#1DB954', '#1ed760'], screen: 'SoundMixer', params: {} },
 ];
 
-// ENHANCED: Expanded feature cards with more navigation options
+// UPDATED: Feature cards with full navigation coverage
 const FEATURE_CARDS = [
   { id: 'reminders', label: 'Reminders', icon: 'alarm', color: '#f59e0b', screen: 'Reminders', badge: '3' },
   { id: 'achievements', label: 'Milestones', icon: 'trophy', color: '#ec4899', screen: 'Achievements' },
@@ -95,19 +98,8 @@ const FEATURE_CARDS = [
   { id: 'family', label: 'Family', icon: 'people', color: '#3b82f6', screen: 'FamilySharing' },
   { id: 'safety', label: 'Safety', icon: 'shield-checkmark', color: '#ef4444', screen: 'SafetyCorner' },
   { id: 'gallery', label: 'Gallery', icon: 'images', color: '#8b5cf6', screen: 'Gallery', badge: 'New' },
-  // NEW: Additional quick navigation features
-  { id: 'familyChat', label: 'Family Chat', icon: 'chatbubbles', color: '#06b6d4', screen: 'FamilyChatList', badge: '2' },
-  { id: 'familyCenter', label: 'Family Center', icon: 'home', color: '#f97316', screen: 'FamilySharing' },
-  { id: 'timeline', label: 'Timeline', icon: 'time', color: '#14b8a6', screen: 'Timeline' },
-  { id: 'settings', label: 'Settings', icon: 'settings', color: '#64748b', screen: 'Settings' },
-];
-
-// NEW: Quick navigation shortcuts for the header
-const QUICK_NAVIGATION_SHORTCUTS = [
-  { id: 'profile', icon: 'person', label: 'Profile', screen: 'Profile' },
-  { id: 'familyChat', icon: 'chatbubbles', label: 'Chat', screen: 'FamilyChatList', badge: true },
-  { id: 'familyCenter', icon: 'people', label: 'Family', screen: 'FamilySharing' },
-  { id: 'timeline', icon: 'time', label: 'Timeline', screen: 'Timeline' },
+  { id: 'chat', label: 'Family Chat', icon: 'chatbubbles', color: '#06b6d4', screen: 'FamilyChatList', badge: 'Live' },
+  { id: 'sound', label: 'Sound Mixer', icon: 'musical-notes', color: '#1DB954', screen: 'SoundMixer' },
 ];
 
 type HomeScreenProps = NativeStackScreenProps<RootStackParamList, 'Main'>;
@@ -252,9 +244,9 @@ const ConfirmModal = ({
   );
 };
 
-// ==================== ENHANCED NOTIFICATION MODAL (COMPACT & TOP-RIGHT) ====================
+// ==================== NOTIFICATION CHOOSER MODAL (UPDATED) ====================
 
-const CompactNotificationModal = ({ 
+const NotificationChooserModal = ({ 
   visible, 
   onClose, 
   onSelect,
@@ -266,32 +258,24 @@ const CompactNotificationModal = ({
   isDark: boolean;
 }) => {
   const opacity = useSharedValue(0);
-  const scale = useSharedValue(0.8);
-  const translateX = useSharedValue(20);
+  const scale = useSharedValue(0.9);
   const translateY = useSharedValue(-20);
 
   useEffect(() => {
     if (visible) {
-      opacity.value = withTiming(1, { duration: 250 });
-      scale.value = withSpring(1, { damping: 20, stiffness: 300 });
-      translateX.value = withSpring(0, { damping: 20 });
+      opacity.value = withTiming(1, { duration: 200 });
+      scale.value = withSpring(1, { damping: 20 });
       translateY.value = withSpring(0, { damping: 20 });
     } else {
-      opacity.value = withTiming(0, { duration: 200 });
-      scale.value = withTiming(0.8, { duration: 200 });
-      translateX.value = withTiming(20, { duration: 200 });
-      translateY.value = withTiming(-20, { duration: 200 });
+      opacity.value = withTiming(0, { duration: 150 });
+      scale.value = withTiming(0.9, { duration: 150 });
+      translateY.value = withTiming(-20, { duration: 150 });
     }
   }, [visible]);
 
-  const backdropStyle = useAnimatedStyle(() => ({ opacity: opacity.value * 0.4 }));
+  const backdropStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
   const modalStyle = useAnimatedStyle(() => ({ 
-    opacity: opacity.value,
-    transform: [
-      { scale: scale.value }, 
-      { translateX: translateX.value },
-      { translateY: translateY.value }
-    ] 
+    transform: [{ scale: scale.value }, { translateY: translateY.value }] 
   }));
 
   if (!visible) return null;
@@ -300,59 +284,54 @@ const CompactNotificationModal = ({
     <View style={[StyleSheet.absoluteFill, { zIndex: 10001 }]} pointerEvents="box-none">
       {/* Backdrop - clickable to dismiss */}
       <TouchableOpacity 
-        style={StyleSheet.absoluteFill} 
         activeOpacity={1} 
         onPress={onClose}
+        style={StyleSheet.absoluteFill}
       >
-        <Animated.View style={[StyleSheet.absoluteFill, backdropStyle]}>
-          <BlurView intensity={30} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
+        <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.4)' }, backdropStyle]}>
+          <BlurView intensity={60} style={StyleSheet.absoluteFill} tint="dark" />
         </Animated.View>
       </TouchableOpacity>
-
-      {/* Compact Modal - Positioned Top Right */}
-      <Animated.View 
-        style={[
-          styles.compactNotificationModal, 
-          modalStyle, 
-          { 
-            backgroundColor: isDark ? 'rgba(26,26,46,0.95)' : 'rgba(255,255,255,0.95)',
-            top: Platform.OS === 'ios' ? 110 : 90,
-            right: 16,
-          }
-        ]}
-      >
-        <View style={styles.compactModalArrow} />
+      
+      {/* Modal positioned top right */}
+      <Animated.View style={[
+        styles.notificationModal, 
+        modalStyle, 
+        { backgroundColor: isDark ? '#1a1a2e' : '#fff' }
+      ]}>
+        <View style={styles.notificationHandle} />
+        <Text style={[styles.notificationTitle, { color: isDark ? '#fff' : '#1e293b' }]}>Notifications</Text>
         
         <TouchableOpacity 
-          style={styles.compactOption} 
+          style={styles.notificationOption} 
           onPress={() => { onSelect('app'); onClose(); }}
         >
-          <LinearGradient colors={['#667eea', '#764ba2']} style={styles.compactIconBg}>
+          <LinearGradient colors={['#667eea', '#764ba2']} style={styles.notificationIcon}>
             <Ionicons name="notifications" size={18} color="#fff" />
           </LinearGradient>
-          <View style={styles.compactTextContainer}>
-            <Text style={[styles.compactOptionTitle, { color: isDark ? '#fff' : '#1e293b' }]}>App</Text>
-            <Text style={styles.compactOptionSubtitle}>3 new</Text>
+          <View style={styles.notificationTextContainer}>
+            <Text style={[styles.notificationOptionTitle, { color: isDark ? '#fff' : '#1e293b' }]}>App</Text>
+            <Text style={styles.notificationOptionSubtitle}>Reminders & alerts</Text>
           </View>
+          <Ionicons name="chevron-forward" size={16} color="#64748b" />
         </TouchableOpacity>
         
-        <View style={[styles.compactDivider, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]} />
-        
         <TouchableOpacity 
-          style={styles.compactOption} 
+          style={styles.notificationOption} 
           onPress={() => { onSelect('community'); onClose(); }}
         >
-          <LinearGradient colors={['#ec4899', '#f472b6']} style={styles.compactIconBg}>
+          <LinearGradient colors={['#ec4899', '#f472b6']} style={styles.notificationIcon}>
             <Ionicons name="people" size={18} color="#fff" />
           </LinearGradient>
-          <View style={styles.compactTextContainer}>
-            <Text style={[styles.compactOptionTitle, { color: isDark ? '#fff' : '#1e293b' }]}>Community</Text>
-            <View style={styles.compactBadgeRow}>
-              <View style={styles.miniBadge}>
-                <Text style={styles.miniBadgeText}>5</Text>
-              </View>
-              <Text style={styles.compactOptionSubtitle}>new</Text>
+          <View style={styles.notificationTextContainer}>
+            <Text style={[styles.notificationOptionTitle, { color: isDark ? '#fff' : '#1e293b' }]}>Community</Text>
+            <Text style={styles.notificationOptionSubtitle}>Likes & mentions</Text>
+          </View>
+          <View style={styles.badgeContainer}>
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>5</Text>
             </View>
+            <Ionicons name="chevron-forward" size={16} color="#64748b" />
           </View>
         </TouchableOpacity>
       </Animated.View>
@@ -407,14 +386,12 @@ const CircularProgress: React.FC<{ progress: number; value: string; label: strin
   );
 };
 
-// ENHANCED: Full-width draggable grid with edge-to-edge coverage
 const DraggableGrid = ({ items, onPress, onRemove, onAdd, columns, isDark }: { items: any[], onPress: (item: any) => void, onRemove: (id: string) => void, onAdd: () => void, columns: number, isDark: boolean }) => {
   const [isEditMode, setIsEditMode] = useState(false);
   
-  // Calculate for full-width coverage
-  const gap = 8;
-  const horizontalPadding = 16;
-  const availableWidth = width - (horizontalPadding * 2);
+  const totalMargin = 20; // Reduced for full width
+  const gap = 10;
+  const availableWidth = width - totalMargin;
   const itemWidth = (availableWidth - (columns - 1) * gap) / columns;
 
   const toggleEditMode = () => {
@@ -423,10 +400,10 @@ const DraggableGrid = ({ items, onPress, onRemove, onAdd, columns, isDark }: { i
   };
 
   return (
-    <View style={styles.fullWidthGridWrapper}>
+    <View>
       <View style={styles.gridHeader}>
         <Text style={[styles.gridHint, isDark && { color: '#94a3b8' }]}>
-          {isEditMode ? 'Tap X to remove' : `Hold to customize • ${columns} cols`}
+          {isEditMode ? 'Tap X to remove' : `Hold to customize (${columns} cols)`}
         </Text>
         {isEditMode && (
           <TouchableOpacity onPress={toggleEditMode} style={styles.doneButton}>
@@ -434,37 +411,14 @@ const DraggableGrid = ({ items, onPress, onRemove, onAdd, columns, isDark }: { i
           </TouchableOpacity>
         )}
       </View>
-      <View style={[styles.fullWidthGridContainer, { gap, paddingHorizontal: horizontalPadding }]}>
+      <View style={[styles.gridContainer, { gap }]}>
         {items.map((item, index) => (
-          <Animated.View 
-            key={item.id} 
-            entering={FadeInUp.delay(index * 50)} 
-            layout={Layout.springify()} 
-            style={[styles.fullWidthGridItem, { width: itemWidth }]}
-          >
-            <TouchableOpacity 
-              onPress={() => isEditMode ? null : onPress(item)} 
-              onLongPress={toggleEditMode} 
-              delayLongPress={300} 
-              style={styles.gridItemTouchable}
-              activeOpacity={0.7}
-            >
-              <LinearGradient 
-                colors={item.gradient} 
-                style={[
-                  styles.fullWidthGridItemGradient, 
-                  isEditMode && styles.gridItemGradientEdit
-                ]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-              >
+          <Animated.View key={item.id} entering={FadeInUp.delay(index * 50)} layout={Layout.springify()} style={[styles.gridItem, { width: itemWidth }]}>
+            <TouchableOpacity onPress={() => isEditMode ? null : onPress(item)} onLongPress={toggleEditMode} delayLongPress={300} style={styles.gridItemTouchable}>
+              <LinearGradient colors={item.gradient} style={[styles.gridItemGradient, isEditMode && styles.gridItemGradientEdit]}>
                 <Text style={styles.gridItemIcon}>{item.icon}</Text>
                 {isEditMode && (
-                  <TouchableOpacity 
-                    style={styles.removeBadge} 
-                    onPress={() => onRemove(item.id)}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  >
+                  <TouchableOpacity style={styles.removeBadge} onPress={() => onRemove(item.id)}>
                     <Ionicons name="close" size={12} color="#fff" />
                   </TouchableOpacity>
                 )}
@@ -473,15 +427,8 @@ const DraggableGrid = ({ items, onPress, onRemove, onAdd, columns, isDark }: { i
             </TouchableOpacity>
           </Animated.View>
         ))}
-        <TouchableOpacity 
-          style={[styles.fullWidthGridItem, { width: itemWidth }]} 
-          onPress={onAdd}
-          activeOpacity={0.7}
-        >
-          <View style={[
-            styles.addItemGradient, 
-            isDark && { borderColor: '#475569', backgroundColor: 'rgba(71,85,105,0.2)' }
-          ]}>
+        <TouchableOpacity style={[styles.gridItem, { width: itemWidth }]} onPress={onAdd}>
+          <View style={[styles.addItemGradient, isDark && { borderColor: '#475569', backgroundColor: 'rgba(71,85,105,0.2)' }]}>
             <Ionicons name="add" size={28} color="#667eea" />
           </View>
           <Text style={[styles.gridItemLabel, { color: isDark ? '#94a3b8' : '#64748b' }]}>Add</Text>
@@ -532,18 +479,10 @@ const PaginatedActivityList = ({
   }
 
   return (
-    <View style={styles.fullWidthContainer}>
+    <View>
       {displayedActivities.map((item, index) => (
-        <Animated.View 
-          key={item.id} 
-          entering={FadeInUp.delay(index * 80)} 
-          layout={Layout.springify()}
-          style={styles.fullWidthActivityWrapper}
-        >
-          <TouchableOpacity 
-            onPress={() => navigation.navigate('UniversalTracker', { type: item.type })} 
-            activeOpacity={0.8}
-          >
+        <Animated.View key={item.id} entering={FadeInUp.delay(index * 80)} layout={Layout.springify()}>
+          <TouchableOpacity onPress={() => navigation.navigate('UniversalTracker', { type: item.type })} activeOpacity={0.8}>
             <GlassmorphismCard style={styles.activityItem} intensity={60}>
               <View style={[styles.activityIcon, { backgroundColor: `${item.color || '#667eea'}20` }]}>
                 <Text style={styles.activityEmoji}>{item.icon || '📝'}</Text>
@@ -614,13 +553,8 @@ const SoundMixerSection = ({ onPress, isDark }: { onPress: () => void, isDark: b
   };
 
   return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.9} style={styles.fullWidthContainer}>
-      <LinearGradient 
-        colors={['#1a1a2e', '#16213e', '#0f3460']} 
-        start={{ x: 0, y: 0 }} 
-        end={{ x: 1, y: 1 }} 
-        style={styles.soundMixerContainer}
-      >
+    <TouchableOpacity onPress={onPress} activeOpacity={0.9}>
+      <LinearGradient colors={['#1a1a2e', '#16213e', '#0f3460']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.soundMixerContainer}>
         <View style={styles.soundMixerHeader}>
           <View style={styles.soundMixerTitle}>
             <Ionicons name="musical-notes" size={24} color="#1DB954" />
@@ -679,7 +613,7 @@ const SoundMixerSection = ({ onPress, isDark }: { onPress: () => void, isDark: b
   );
 };
 
-// ==================== ENHANCED STICKY HEADER WITH BLUR ====================
+// ==================== STICKY HEADER COMPONENT ====================
 
 const StickyAppHeader = ({ 
   scrollY, 
@@ -687,15 +621,13 @@ const StickyAppHeader = ({
   userProfile, 
   currentBaby, 
   currentTime, 
-  greeting, 
-  onProfilePress, 
-  onBabyPress, 
-  onLockPress, 
-  onNotificationPress, 
-  onSignOut,
-  unreadCount,
-  navigation,
-  quickShortcuts
+  greeting,
+  onNotificationPress,
+  onLockPress,
+  onProfilePress,
+  onBabyPress,
+  onAddBabyPress,
+  unreadCount
 }: {
   scrollY: any;
   isDark: boolean;
@@ -703,157 +635,85 @@ const StickyAppHeader = ({
   currentBaby: any;
   currentTime: Date;
   greeting: string;
+  onNotificationPress: () => void;
+  onLockPress: () => void;
   onProfilePress: () => void;
   onBabyPress: () => void;
-  onLockPress: () => void;
-  onNotificationPress: () => void;
-  onSignOut: () => void;
+  onAddBabyPress: () => void;
   unreadCount: number;
-  navigation: any;
-  quickShortcuts: any[];
 }) => {
-  
-  // Header animation based on scroll
   const headerOpacity = useAnimatedStyle(() => ({
-    opacity: interpolate(scrollY.value, [0, 80], [0, 1], Extrapolate.CLAMP),
+    opacity: interpolate(scrollY.value, [0, 100], [0, 1], Extrapolate.CLAMP),
+    transform: [{ translateY: interpolate(scrollY.value, [0, 100], [-20, 0], Extrapolate.CLAMP) }],
   }));
 
-  const headerTranslate = useAnimatedStyle(() => ({
-    transform: [{ translateY: interpolate(scrollY.value, [0, 80], [-20, 0], Extrapolate.CLAMP) }],
-  }));
-
-  const blurIntensity = useAnimatedStyle(() => ({
-    opacity: interpolate(scrollY.value, [40, 100], [0, 1], Extrapolate.CLAMP),
-  }));
+  const blurIntensity = useMemo(() => {
+    // Calculate blur based on scroll
+    const intensity = interpolate(scrollY.value, [0, 150], [0, 95], Extrapolate.CLAMP);
+    return intensity;
+  }, [scrollY.value]);
 
   return (
-    <Animated.View style={[styles.enhancedStickyHeader, headerTranslate]}>
-      {/* Blur Background */}
-      <Animated.View style={[StyleSheet.absoluteFill, blurIntensity]}>
-        <BlurView intensity={95} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
-        <LinearGradient 
-          colors={isDark ? ['rgba(10,10,20,0.98)', 'rgba(5,5,10,0.95)'] : ['rgba(255,255,255,0.98)', 'rgba(248,250,252,0.95)']} 
-          style={StyleSheet.absoluteFill} 
-        />
-      </Animated.View>
-
-      <View style={styles.enhancedStickyContent}>
-        {/* Left: Profile & Quick Nav */}
-        <View style={styles.stickyLeftSection}>
-          <TouchableOpacity onPress={onProfilePress} style={styles.stickyProfileButton}>
-            <LinearGradient colors={['#667eea', '#764ba2']} style={styles.stickyMiniAvatar}>
-              <Text style={styles.stickyMiniAvatarText}>
-                {userProfile?.fullName?.charAt(0) || 'P'}
-              </Text>
+    <Animated.View style={[styles.stickyHeaderContainer, headerOpacity]}>
+      <BlurView intensity={95} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
+      <LinearGradient 
+        colors={isDark ? ['rgba(20,20,30,0.98)', 'rgba(10,10,20,0.95)'] : ['rgba(255,255,255,0.98)', 'rgba(248,250,252,0.95)']} 
+        style={StyleSheet.absoluteFill} 
+      />
+      
+      <View style={styles.stickyHeaderContent}>
+        {/* Left: Profile */}
+        <View style={styles.stickyHeaderLeft}>
+          <TouchableOpacity onPress={onProfilePress} style={styles.stickyHeaderProfile}>
+            <LinearGradient colors={['#667eea', '#764ba2']} style={styles.stickyHeaderAvatar}>
+              <Text style={styles.stickyHeaderAvatarText}>{userProfile?.fullName?.charAt(0) || 'P'}</Text>
             </LinearGradient>
+            <View style={styles.stickyHeaderText}>
+              <Text style={[styles.stickyHeaderGreeting, isDark && styles.textDark]} numberOfLines={1}>
+                {greeting.split(' ')[0]}
+              </Text>
+              <Text style={styles.stickyHeaderTime}>{format(currentTime, 'h:mm a')}</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+
+        {/* Center: Title */}
+        <View style={styles.stickyHeaderCenter}>
+          <Text style={[styles.stickyHeaderTitle, isDark && styles.textDark]}>LittleLoom</Text>
+          <View style={styles.stickyHeaderUnderline} />
+        </View>
+
+        {/* Right: Actions */}
+        <View style={styles.stickyHeaderRight}>
+          <TouchableOpacity style={styles.stickyHeaderIconBtn} onPress={onNotificationPress}>
+            <Ionicons name="notifications-outline" size={22} color={isDark ? '#fff' : '#667eea'} />
+            {unreadCount > 0 && (
+              <View style={styles.stickyHeaderBadge}>
+                <Text style={styles.stickyHeaderBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+              </View>
+            )}
           </TouchableOpacity>
           
-          {/* Quick Navigation Shortcuts */}
-          <View style={styles.quickShortcutsContainer}>
-            {quickShortcuts.map((shortcut, index) => (
-              <TouchableOpacity
-                key={shortcut.id}
-                style={styles.quickShortcutButton}
-                onPress={() => navigation.navigate(shortcut.screen)}
-              >
-                <View style={styles.quickShortcutIconBg}>
-                  <Ionicons name={shortcut.icon as any} size={16} color="#667eea" />
-                  {shortcut.badge && unreadCount > 0 && (
-                    <View style={styles.quickShortcutBadge}>
-                      <Text style={styles.quickShortcutBadgeText}>
-                        {unreadCount > 9 ? '9+' : unreadCount}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        {/* Center: App Title */}
-        <View style={styles.stickyCenterSection}>
-          <Text style={[styles.stickyAppTitle, isDark && styles.textDark]}>LittleLoom</Text>
-          <View style={styles.stickyTitleUnderline} />
-        </View>
-
-        {/* Right: Baby & Actions */}
-        <View style={styles.stickyRightSection}>
           {currentBaby ? (
-            <TouchableOpacity style={styles.stickyBabyChip} onPress={onBabyPress}>
-              <Text style={styles.stickyBabyChipEmoji}>{currentBaby.avatar || '👶'}</Text>
-              <View style={styles.stickyBabyChipDot} />
+            <TouchableOpacity style={styles.stickyHeaderBaby} onPress={onBabyPress}>
+              <LinearGradient colors={['#fa709a', '#fee140']} style={styles.stickyHeaderBabyAvatar}>
+                <Text style={styles.stickyHeaderBabyEmoji}>{currentBaby.avatar || '👶'}</Text>
+              </LinearGradient>
             </TouchableOpacity>
           ) : (
-            <TouchableOpacity style={styles.stickyAddBabyChip} onPress={() => navigation.navigate('CreateBabyProfile')}>
-              <Ionicons name="add" size={20} color="#667eea" />
+            <TouchableOpacity style={styles.stickyHeaderIconBtn} onPress={onAddBabyPress}>
+              <Ionicons name="add-circle" size={24} color="#667eea" />
             </TouchableOpacity>
           )}
           
-          <TouchableOpacity onPress={onLockPress} style={styles.stickyLockButton}>
-            <LinearGradient colors={['#ff6b6b', '#ee5a5a']} style={styles.stickyLockGradient}>
+          <TouchableOpacity style={styles.stickyHeaderLockBtn} onPress={onLockPress}>
+            <LinearGradient colors={['#ff6b6b', '#ee5a5a']} style={styles.stickyHeaderLockGradient}>
               <Ionicons name="lock-closed" size={14} color="#fff" />
             </LinearGradient>
           </TouchableOpacity>
         </View>
       </View>
     </Animated.View>
-  );
-};
-
-// ==================== ENHANCED FEATURE CARDS (FULL WIDTH) ====================
-
-const EnhancedFeatureCards = ({ isDark, navigation }: { isDark: boolean, navigation: any }) => {
-  // Split into rows of 2 for better layout
-  const rows = [];
-  for (let i = 0; i < FEATURE_CARDS.length; i += 2) {
-    rows.push(FEATURE_CARDS.slice(i, i + 2));
-  }
-
-  return (
-    <View style={styles.fullWidthFeatureContainer}>
-      {rows.map((row, rowIndex) => (
-        <View key={rowIndex} style={styles.featureRow}>
-          {row.map((feature, index) => (
-            <Animated.View 
-              key={feature.id} 
-              entering={FadeInUp.delay(rowIndex * 100 + index * 50)} 
-              style={styles.enhancedFeatureCardContainer}
-            >
-              <TouchableOpacity 
-                onPress={() => navigation.navigate(feature.screen as any)} 
-                style={styles.enhancedFeatureCard}
-                activeOpacity={0.8}
-              >
-                <LinearGradient 
-                  colors={[`${feature.color}15`, `${feature.color}05`]} 
-                  style={[styles.enhancedFeatureGradient, { borderColor: `${feature.color}30` }]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                >
-                  <View style={styles.enhancedFeatureContent}>
-                    <View style={[styles.enhancedFeatureIcon, { backgroundColor: feature.color }]}>
-                      <Ionicons name={feature.icon as any} size={22} color="#fff" />
-                    </View>
-                    <View style={styles.enhancedFeatureTextContainer}>
-                      <Text style={[styles.enhancedFeatureLabel, isDark && { color: '#fff' }]}>
-                        {feature.label}
-                      </Text>
-                      {feature.badge && (
-                        <View style={[styles.enhancedFeatureBadge, { backgroundColor: feature.color }]}>
-                          <Text style={styles.enhancedFeatureBadgeText}>{feature.badge}</Text>
-                        </View>
-                      )}
-                    </View>
-                  </View>
-                  <Ionicons name="chevron-forward" size={18} color={feature.color} style={styles.enhancedFeatureArrow} />
-                </LinearGradient>
-              </TouchableOpacity>
-            </Animated.View>
-          ))}
-        </View>
-      ))}
-    </View>
   );
 };
 
@@ -877,7 +737,6 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   
   const { lockApp } = useSecurity();
   const { notifications, getUnreadCount } = useCommunity();
-  const { playTrack, currentTrack, isPlaying, togglePlayback } = useAudio();
 
   const [refreshing, setRefreshing] = useState(false);
   const [greeting, setGreeting] = useState('Good morning');
@@ -953,13 +812,21 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     }
   }, [loadBabies, loadActivities, showToast]);
 
+  // UPDATED: Handle navigation with screen and params
   const handleQuickAction = useCallback((action: any) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (!currentBaby && action.id !== 'note') {
       showToast('error', 'No Baby Profile', 'Please create a baby profile first.');
       return;
     }
-    navigation.navigate('UniversalTracker', { type: action.id });
+    
+    // Navigate to specific screen with params
+    if (action.screen) {
+      navigation.navigate(action.screen as any, action.params);
+    } else {
+      navigation.navigate('UniversalTracker', { type: action.id });
+    }
+    
     showToast('success', `${action.label} Logged`, 'Activity recorded successfully!');
   }, [currentBaby, navigation, showToast]);
 
@@ -975,6 +842,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     );
   }, [showConfirm, showToast]);
 
+  // UPDATED: Handle adding actions with navigation support
   const handleAddAction = useCallback((action: any) => {
     if (quickActions.find(a => a.id === action.id)) {
       showToast('error', 'Already Exists', 'This action is already in your quick actions.');
@@ -982,8 +850,8 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     }
     const newAction = {
       ...action,
-      screen: 'UniversalTracker',
-      params: { type: action.id }
+      screen: action.screen || 'UniversalTracker',
+      params: action.params || { type: action.id }
     };
     setQuickActions(prev => [...prev, newAction]);
     setShowAddModal(false);
@@ -1083,43 +951,33 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
       
       <LinearGradient colors={isDark ? ['#0a0a0a', '#1a1a2e', '#16213e'] : ['#f8fafc', '#e2e8f0', '#dbeafe']} style={styles.backgroundGradient} />
 
-      {/* Enhanced Sticky Header */}
-      <StickyAppHeader
+      {/* Sticky Header - Always visible on scroll */}
+      <StickyAppHeader 
         scrollY={scrollY}
         isDark={isDark}
         userProfile={userProfile}
         currentBaby={currentBaby}
         currentTime={currentTime}
         greeting={greeting}
+        onNotificationPress={handleNotificationPress}
+        onLockPress={handleLockPress}
         onProfilePress={() => navigation.navigate('Profile')}
         onBabyPress={() => navigation.navigate('SwitchBaby')}
-        onLockPress={handleLockPress}
-        onNotificationPress={handleNotificationPress}
-        onSignOut={handleSignOut}
+        onAddBabyPress={() => navigation.navigate('CreateBabyProfile')}
         unreadCount={unreadCommunityCount}
-        navigation={navigation}
-        quickShortcuts={QUICK_NAVIGATION_SHORTCUTS}
       />
 
       {/* Main Content */}
       <AnimatedScrollView 
-        contentContainerStyle={styles.enhancedScrollContent}
-        refreshControl={
-          <RefreshControl 
-            refreshing={refreshing} 
-            onRefresh={onRefresh} 
-            tintColor="#667eea" 
-            colors={['#667eea', '#764ba2']} 
-          />
-        }
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#667eea" colors={['#667eea', '#764ba2']} />}
         showsVerticalScrollIndicator={false}
         onScroll={scrollHandler}
         scrollEventThrottle={16}
       >
-        {/* Original Header Section */}
-        <View style={styles.originalHeaderSection}>
-          {/* Top Bar */}
-          <View style={styles.enhancedTopBar}>
+        {/* Header Section */}
+        <Animated.View entering={FadeInDown.springify()}>
+          <View style={styles.topBar}>
             <TouchableOpacity onPress={handleSignOut} style={styles.iconButton}>
               <BlurView intensity={60} style={styles.iconBlur} tint={isDark ? 'dark' : 'light'}>
                 <Ionicons name="log-out-outline" size={22} color="#ef4444" />
@@ -1204,14 +1062,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 
                 <View style={styles.statsRow}>
                   {stats.map((stat) => (
-                    <CircularProgress 
-                      key={stat.label} 
-                      progress={stat.progress} 
-                      value={stat.value} 
-                      label={stat.label} 
-                      color={stat.color} 
-                      size={65} 
-                    />
+                    <CircularProgress key={stat.label} progress={stat.progress} value={stat.value} label={stat.label} color={stat.color} size={65} />
                   ))}
                 </View>
               </GlassmorphismCard>
@@ -1233,10 +1084,10 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
               </TouchableOpacity>
             </Animated.View>
           )}
-        </View>
+        </Animated.View>
 
         {/* Sound Mixer Section */}
-        <View style={styles.enhancedSection}>
+        <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <View style={styles.sectionTitleRow}>
               <Ionicons name="musical-notes" size={20} color="#1DB954" />
@@ -1251,37 +1102,58 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         </View>
 
         {/* Quick Actions Section - FULL WIDTH */}
-        <View style={styles.enhancedSection}>
-          <View style={styles.sectionHeader}>
+        <View style={styles.sectionFullWidth}>
+          <View style={[styles.sectionHeader, styles.sectionHeaderPadded]}>
             <View style={styles.sectionTitleRow}>
               <Ionicons name="grid" size={20} color="#667eea" />
               <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Quick Actions</Text>
             </View>
           </View>
-          <DraggableGrid 
-            items={quickActions} 
-            onPress={handleQuickAction} 
-            onRemove={handleRemoveAction} 
-            onAdd={() => setShowAddModal(true)} 
-            columns={columns}
-            isDark={isDark}
-          />
+          <View style={styles.gridWrapper}>
+            <DraggableGrid 
+              items={quickActions} 
+              onPress={handleQuickAction} 
+              onRemove={handleRemoveAction} 
+              onAdd={() => setShowAddModal(true)} 
+              columns={columns}
+              isDark={isDark}
+            />
+          </View>
         </View>
 
-        {/* Features Section - ENHANCED FULL WIDTH CARDS */}
-        <View style={styles.enhancedSection}>
-          <View style={styles.sectionHeader}>
+        {/* Features Section - FULL WIDTH CARDS */}
+        <View style={styles.sectionFullWidth}>
+          <View style={[styles.sectionHeader, styles.sectionHeaderPadded]}>
             <View style={styles.sectionTitleRow}>
               <Ionicons name="apps" size={20} color="#f59e0b" />
               <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Tools & Features</Text>
             </View>
           </View>
-          <EnhancedFeatureCards isDark={isDark} navigation={navigation} />
+          <View style={styles.featuresGridFullWidth}>
+            {FEATURE_CARDS.map((feature, index) => (
+              <Animated.View key={feature.id} entering={FadeInUp.delay(index * 60)} style={styles.featureCardWrapper}>
+                <TouchableOpacity onPress={() => navigation.navigate(feature.screen as any)} style={styles.featureCardFullWidth}>
+                  <LinearGradient colors={[`${feature.color}15`, `${feature.color}05`]} style={[styles.featureGradientFullWidth, { borderColor: `${feature.color}30` }]}>
+                    <View style={[styles.featureIcon, { backgroundColor: feature.color }]}>
+                      <Ionicons name={feature.icon as any} size={22} color="#fff" />
+                    </View>
+                    <Text style={[styles.featureLabelFullWidth, isDark && { color: '#fff' }]}>{feature.label}</Text>
+                    {feature.badge && (
+                      <View style={[styles.featureBadge, { backgroundColor: feature.color }]}>
+                        <Text style={styles.featureBadgeText}>{feature.badge}</Text>
+                      </View>
+                    )}
+                    <Ionicons name="chevron-forward" size={18} color={feature.color} style={styles.featureArrowFullWidth} />
+                  </LinearGradient>
+                </TouchableOpacity>
+              </Animated.View>
+            ))}
+          </View>
         </View>
 
         {/* Activity Section */}
-        <View style={styles.enhancedSection}>
-          <View style={styles.sectionHeader}>
+        <View style={styles.sectionFullWidth}>
+          <View style={[styles.sectionHeader, styles.sectionHeaderPadded]}>
             <View style={styles.sectionTitleRow}>
               <Ionicons name="time" size={20} color="#ec4899" />
               <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Recent Activity</Text>
@@ -1292,14 +1164,16 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
             </TouchableOpacity>
           </View>
           
-          <PaginatedActivityList 
-            activities={allTimelineEvents}
-            isDark={isDark}
-            navigation={navigation}
-            onLoadMore={handleLoadMore}
-            hasMore={allTimelineEvents.length > 5}
-            isLoading={isLoadingMore}
-          />
+          <View style={styles.activityWrapper}>
+            <PaginatedActivityList 
+              activities={allTimelineEvents}
+              isDark={isDark}
+              navigation={navigation}
+              onLoadMore={handleLoadMore}
+              hasMore={allTimelineEvents.length > 5}
+              isLoading={isLoadingMore}
+            />
+          </View>
         </View>
 
         <View style={{ height: 140 }} />
@@ -1364,8 +1238,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         isDark={isDark}
       />
       
-      {/* ENHANCED: Compact Notification Modal */}
-      <CompactNotificationModal 
+      <NotificationChooserModal 
         visible={showNotificationChooser} 
         onClose={() => setShowNotificationChooser(false)}
         onSelect={handleNotificationSelect}
@@ -1375,7 +1248,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   );
 }
 
-// ==================== ENHANCED STYLES ====================
+// ==================== STYLES ====================
 
 const styles = StyleSheet.create({
   // Alert
@@ -1422,71 +1295,87 @@ const styles = StyleSheet.create({
   confirmButtonGradient: { flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
   confirmButtonText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 
-  // ENHANCED: Compact Notification Modal (Top Right)
-  compactNotificationModal: { 
+  // UPDATED: Notification Modal - Top Right Positioned
+  notificationModal: { 
     position: 'absolute',
-    width: 200,
+    top: Platform.OS === 'ios' ? 110 : 80,
+    right: 16,
+    width: 280,
     borderRadius: 20, 
-    padding: 12, 
+    padding: 16, 
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
     elevation: 20,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.2)',
   },
-  compactModalArrow: {
-    position: 'absolute',
-    top: -8,
-    right: 20,
-    width: 0,
-    height: 0,
-    backgroundColor: 'transparent',
-    borderStyle: 'solid',
-    borderLeftWidth: 8,
-    borderRightWidth: 8,
-    borderBottomWidth: 8,
-    borderLeftColor: 'transparent',
-    borderRightColor: 'transparent',
-    borderBottomColor: 'rgba(255,255,255,0.95)',
+  notificationHandle: { 
+    width: 32, 
+    height: 4, 
+    backgroundColor: 'rgba(100,116,139,0.3)', 
+    borderRadius: 2, 
+    alignSelf: 'center', 
+    marginBottom: 12 
   },
-  compactOption: { 
+  notificationTitle: { 
+    fontSize: 16, 
+    fontWeight: '800', 
+    marginBottom: 12, 
+    textAlign: 'center' 
+  },
+  notificationOption: { 
     flexDirection: 'row', 
     alignItems: 'center', 
-    paddingVertical: 10, 
-    paddingHorizontal: 8,
-    borderRadius: 12, 
+    padding: 12, 
+    borderRadius: 14, 
+    marginBottom: 8, 
+    backgroundColor: 'rgba(100,116,139,0.05)' 
   },
-  compactIconBg: { 
-    width: 36, 
-    height: 36, 
-    borderRadius: 10, 
+  notificationIcon: { 
+    width: 40, 
+    height: 40, 
+    borderRadius: 12, 
     alignItems: 'center', 
     justifyContent: 'center', 
     marginRight: 12 
   },
-  compactTextContainer: { flex: 1 },
-  compactOptionTitle: { fontSize: 15, fontWeight: '700' },
-  compactOptionSubtitle: { fontSize: 12, color: '#64748b', marginTop: 1 },
-  compactBadgeRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
-  miniBadge: { 
-    backgroundColor: '#ef4444', 
-    borderRadius: 8, 
-    minWidth: 16, 
-    height: 16, 
-    alignItems: 'center', 
-    justifyContent: 'center',
-    paddingHorizontal: 4,
+  notificationTextContainer: { flex: 1 },
+  notificationOptionTitle: { 
+    fontSize: 15, 
+    fontWeight: '700', 
+    marginBottom: 1 
   },
-  miniBadgeText: { color: '#fff', fontSize: 10, fontWeight: 'bold' },
-  compactDivider: { height: 1, marginVertical: 4 },
+  notificationOptionSubtitle: { 
+    fontSize: 12, 
+    color: '#64748b' 
+  },
+  badgeContainer: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 6 
+  },
+  badge: { 
+    backgroundColor: '#ef4444', 
+    borderRadius: 10, 
+    minWidth: 20, 
+    height: 20, 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    paddingHorizontal: 6 
+  },
+  badgeText: { 
+    color: '#fff', 
+    fontSize: 11, 
+    fontWeight: 'bold' 
+  },
 
   // Base
   container: { flex: 1 },
   backgroundGradient: { ...StyleSheet.absoluteFillObject },
-  enhancedScrollContent: { 
-    paddingTop: Platform.OS === 'ios' ? 140 : 120, // Extra space for sticky header
+  scrollContent: { 
+    paddingTop: Platform.OS === 'ios' ? 120 : 100, 
     paddingBottom: 30 
   },
   textDark: { color: '#ffffff' },
@@ -1501,8 +1390,8 @@ const styles = StyleSheet.create({
   dot2: { opacity: 0.7 },
   dot3: { opacity: 1 },
 
-  // ENHANCED: Sticky Header with Blur
-  enhancedStickyHeader: { 
+  // UPDATED: Sticky Header Styles
+  stickyHeaderContainer: { 
     position: 'absolute', 
     top: 0, 
     left: 0, 
@@ -1513,87 +1402,66 @@ const styles = StyleSheet.create({
     paddingBottom: 12, 
     borderBottomLeftRadius: 24, 
     borderBottomRightRadius: 24, 
-    overflow: 'hidden',
+    overflow: 'hidden', 
     shadowColor: '#000', 
     shadowOffset: { width: 0, height: 4 }, 
     shadowOpacity: 0.15, 
     shadowRadius: 12, 
     elevation: 10,
   },
-  enhancedStickyContent: { 
+  stickyHeaderContent: { 
     flexDirection: 'row', 
     alignItems: 'center', 
     justifyContent: 'space-between',
     height: 50,
   },
-  stickyLeftSection: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
+  stickyHeaderLeft: { 
     flex: 1,
-    gap: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  stickyProfileButton: { marginRight: 4 },
-  stickyMiniAvatar: { 
+  stickyHeaderProfile: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  stickyHeaderAvatar: { 
     width: 36, 
     height: 36, 
     borderRadius: 18, 
     alignItems: 'center', 
     justifyContent: 'center',
-    shadowColor: '#667eea',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
+    marginRight: 8,
   },
-  stickyMiniAvatarText: { color: '#fff', fontSize: 14, fontWeight: '700' },
-  
-  // Quick Shortcuts in Header
-  quickShortcutsContainer: { 
-    flexDirection: 'row', 
-    alignItems: 'center',
-    gap: 4,
+  stickyHeaderAvatarText: { 
+    color: '#fff', 
+    fontSize: 14, 
+    fontWeight: '700' 
   },
-  quickShortcutButton: {
-    padding: 4,
-  },
-  quickShortcutIconBg: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    backgroundColor: 'rgba(102,126,234,0.1)',
-    alignItems: 'center',
+  stickyHeaderText: {
     justifyContent: 'center',
-    position: 'relative',
   },
-  quickShortcutBadge: {
-    position: 'absolute',
-    top: -2,
-    right: -2,
-    backgroundColor: '#ef4444',
-    borderRadius: 8,
-    minWidth: 16,
-    height: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: 'white',
+  stickyHeaderGreeting: { 
+    fontSize: 12, 
+    fontWeight: '700', 
+    color: '#1e293b',
   },
-  quickShortcutBadgeText: {
-    color: 'white',
-    fontSize: 9,
-    fontWeight: 'bold',
+  stickyHeaderTime: { 
+    fontSize: 10, 
+    color: '#64748b',
+    marginTop: 1,
   },
-
-  stickyCenterSection: { 
+  stickyHeaderCenter: { 
     flex: 1, 
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  stickyAppTitle: { 
+  stickyHeaderTitle: { 
     fontSize: 18, 
     fontWeight: '800', 
     color: '#1e293b', 
     letterSpacing: -0.3,
   },
-  stickyTitleUnderline: {
+  stickyHeaderUnderline: {
     width: 24,
     height: 2,
     borderRadius: 1,
@@ -1601,7 +1469,890 @@ const styles = StyleSheet.create({
     marginTop: 2,
     alignSelf: 'center',
   },
-
-  stickyRightSection: { 
+  stickyHeaderRight: { 
+    flex: 1, 
     flexDirection: 'row', 
-    alignItems: 'center
+    alignItems: 'center', 
+    justifyContent: 'flex-end', 
+    gap: 8,
+  },
+  stickyHeaderIconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(100,116,139,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  stickyHeaderBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    backgroundColor: '#ef4444',
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'white',
+  },
+  stickyHeaderBadgeText: {
+    color: 'white',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  stickyHeaderBaby: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+  },
+  stickyHeaderBabyAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stickyHeaderBabyEmoji: {
+    fontSize: 18,
+  },
+  stickyHeaderLockBtn: { 
+    marginLeft: 2,
+  },
+  stickyHeaderLockGradient: { 
+    width: 32, 
+    height: 32, 
+    borderRadius: 16, 
+    alignItems: 'center', 
+    justifyContent: 'center',
+  },
+
+  // Original Header
+  topBar: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    marginBottom: 20, 
+    marginTop: Platform.OS === 'ios' ? 10 : 20,
+    paddingHorizontal: 20,
+  },
+  iconButton: { 
+    width: 44, 
+    height: 44, 
+    borderRadius: 16, 
+    overflow: 'hidden' 
+  },
+  iconBlur: { 
+    flex: 1, 
+    alignItems: 'center', 
+    justifyContent: 'center' 
+  },
+  titleContainer: { 
+    alignItems: 'center' 
+  },
+  appTitle: { 
+    fontSize: 26, 
+    fontWeight: '800', 
+    color: '#1e293b', 
+    letterSpacing: -0.5 
+  },
+  titleUnderline: { 
+    width: 40, 
+    height: 3, 
+    borderRadius: 2, 
+    backgroundColor: '#667eea', 
+    marginTop: 4, 
+        alignSelf: 'center',
+  },
+  appSubtitle: { 
+    fontSize: 12, 
+    color: '#64748b', 
+    marginTop: 4, 
+    fontWeight: '500' 
+  },
+  notificationBadge: { 
+    position: 'absolute', 
+    top: 8, 
+    right: 8, 
+    backgroundColor: '#ef4444', 
+    borderRadius: 10, 
+    minWidth: 18, 
+    height: 18, 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    borderWidth: 2, 
+    borderColor: 'white' 
+  },
+  notificationBadgeText: { 
+    color: 'white', 
+    fontSize: 10, 
+    fontWeight: 'bold' 
+  },
+
+  // Glass Card
+  glassCard: { 
+    borderRadius: 24, 
+    overflow: 'hidden', 
+    borderWidth: 1, 
+    borderColor: 'rgba(255,255,255,0.5)', 
+    shadowColor: '#667eea', 
+    shadowOffset: { width: 0, height: 8 }, 
+    shadowOpacity: 0.15, 
+    shadowRadius: 20, 
+    elevation: 10 
+  },
+  glassBorder: { 
+    position: 'absolute', 
+    top: 0, 
+    left: 0, 
+    right: 0, 
+    height: 1, 
+    backgroundColor: 'rgba(255,255,255,0.8)' 
+  },
+  glassContent: { 
+    flex: 1 
+  },
+
+  // Parent Card
+  parentCard: { 
+    marginBottom: 16, 
+    borderRadius: 28,
+    marginHorizontal: 20,
+  },
+  parentHeader: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    padding: 20 
+  },
+  parentAvatar: { 
+    width: 70, 
+    height: 70, 
+    borderRadius: 35, 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    position: 'relative' 
+  },
+  parentAvatarText: { 
+    color: '#fff', 
+    fontSize: 28, 
+    fontWeight: '700' 
+  },
+  editBadge: { 
+    position: 'absolute', 
+    bottom: -2, 
+    right: -2, 
+    width: 24, 
+    height: 24, 
+    borderRadius: 12, 
+    backgroundColor: '#667eea', 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    borderWidth: 2, 
+    borderColor: '#fff' 
+  },
+  parentInfo: { 
+    flex: 1, 
+    marginLeft: 16 
+  },
+  greetingText: { 
+    fontSize: 13, 
+    color: '#64748b', 
+    fontWeight: '500', 
+    marginBottom: 2 
+  },
+  parentName: { 
+    fontSize: 22, 
+    fontWeight: '800', 
+    color: '#1e293b', 
+    letterSpacing: -0.5 
+  },
+  parentMeta: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    marginTop: 6, 
+    gap: 12 
+  },
+  verifiedBadge: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: 'rgba(67,233,123,0.1)', 
+    paddingHorizontal: 8, 
+    paddingVertical: 4, 
+    borderRadius: 12, 
+    gap: 4 
+  },
+  verifiedText: { 
+    fontSize: 11, 
+    color: '#43e97b', 
+    fontWeight: '600' 
+  },
+  timeText: { 
+    fontSize: 11, 
+    color: '#94a3b8' 
+  },
+
+  // Baby Card
+  babyCard: { 
+    borderRadius: 28, 
+    marginBottom: 20,
+    marginHorizontal: 20,
+  },
+  babyHeader: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    paddingHorizontal: 20, 
+    paddingTop: 16 
+  },
+  babySelector: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 4 
+  },
+  babySelectorLabel: { 
+    fontSize: 12, 
+    color: '#64748b', 
+    fontWeight: '600', 
+    textTransform: 'uppercase', 
+    letterSpacing: 0.5 
+  },
+  editButton: { 
+    width: 36, 
+    height: 36, 
+    borderRadius: 18, 
+    backgroundColor: 'rgba(102,126,234,0.1)', 
+    alignItems: 'center', 
+    justifyContent: 'center' 
+  },
+  babyMainInfo: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    padding: 20, 
+    position: 'relative' 
+  },
+  babyAvatar: { 
+    width: 80, 
+    height: 80, 
+    borderRadius: 40, 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    position: 'relative' 
+  },
+  babyEmoji: { 
+    fontSize: 40 
+  },
+  statusDot: { 
+    position: 'absolute', 
+    bottom: 4, 
+    right: 4, 
+    width: 16, 
+    height: 16, 
+    borderRadius: 8, 
+    backgroundColor: '#43e97b', 
+    borderWidth: 3, 
+    borderColor: '#fff' 
+  },
+  babyDetails: { 
+    flex: 1, 
+    marginLeft: 16 
+  },
+  babyName: { 
+    fontSize: 24, 
+    fontWeight: '800', 
+    color: '#1e293b', 
+    letterSpacing: -0.5 
+  },
+  babyAge: { 
+    fontSize: 14, 
+    color: '#64748b', 
+    marginTop: 2, 
+    fontWeight: '500' 
+  },
+  babyStatus: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    marginTop: 8, 
+    gap: 6 
+  },
+  babyStatusText: { 
+    fontSize: 13, 
+    color: '#43e97b', 
+    fontWeight: '600' 
+  },
+  streakBadge: { 
+    position: 'absolute', 
+    top: 20, 
+    right: 20, 
+    paddingHorizontal: 12, 
+    paddingVertical: 6, 
+    borderRadius: 16, 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 4 
+  },
+  streakText: { 
+    color: '#fff', 
+    fontSize: 12, 
+    fontWeight: '700' 
+  },
+  statsRow: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-around', 
+    paddingVertical: 16, 
+    paddingHorizontal: 20, 
+    borderTopWidth: 1, 
+    borderTopColor: 'rgba(100,116,139,0.1)' 
+  },
+  progressItem: { 
+    alignItems: 'center' 
+  },
+  progressSvgContainer: { 
+    position: 'relative', 
+    alignItems: 'center', 
+    justifyContent: 'center' 
+  },
+  progressValue: { 
+    position: 'absolute', 
+    fontWeight: '800' 
+  },
+  progressLabel: { 
+    color: '#64748b', 
+    marginTop: 6, 
+    fontWeight: '600' 
+  },
+
+  // No Baby
+  noBabyCard: { 
+    borderRadius: 28, 
+    marginBottom: 20, 
+    overflow: 'hidden',
+    marginHorizontal: 20,
+  },
+  noBabyGradient: { 
+    padding: 32, 
+    alignItems: 'center' 
+  },
+  noBabyEmoji: { 
+    fontSize: 56, 
+    marginBottom: 16 
+  },
+  noBabyTitle: { 
+    fontSize: 22, 
+    fontWeight: '800', 
+    color: '#fff', 
+    marginBottom: 8 
+  },
+  noBabyText: { 
+    fontSize: 14, 
+    color: 'rgba(255,255,255,0.9)', 
+    textAlign: 'center', 
+    marginBottom: 20 
+  },
+  noBabyButton: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: '#fff', 
+    paddingVertical: 14, 
+    paddingHorizontal: 24, 
+    borderRadius: 16, 
+    gap: 8 
+  },
+  noBabyButtonText: { 
+    color: '#667eea', 
+    fontSize: 15, 
+    fontWeight: '700' 
+  },
+
+  // Sections - UPDATED for full width
+  section: { 
+    marginTop: 8, 
+    paddingHorizontal: 20 
+  },
+  sectionFullWidth: { 
+    marginTop: 8, 
+    width: '100%',
+  },
+  sectionHeader: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    marginBottom: 16, 
+    marginTop: 24 
+  },
+  sectionHeaderPadded: {
+    paddingHorizontal: 20,
+  },
+  sectionTitleRow: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 8 
+  },
+  sectionTitle: { 
+    fontSize: 18, 
+    fontWeight: '800', 
+    color: '#1e293b', 
+    letterSpacing: -0.3 
+  },
+  seeAllButton: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 4 
+  },
+  seeAllText: { 
+    fontSize: 14, 
+    fontWeight: '600', 
+    color: '#667eea' 
+  },
+
+  // Sound Mixer
+  soundMixerContainer: { 
+    borderRadius: 24, 
+    padding: 16, 
+    marginBottom: 8,
+    marginHorizontal: 20,
+  },
+  soundMixerHeader: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    marginBottom: 16 
+  },
+  soundMixerTitle: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 8 
+  },
+  soundMixerTitleText: { 
+    color: '#fff', 
+    fontSize: 18, 
+    fontWeight: '700' 
+  },
+  soundMixerControls: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 12 
+  },
+  nowPlaying: { 
+    color: 'rgba(255,255,255,0.7)', 
+    fontSize: 12, 
+    fontWeight: '500' 
+  },
+  playAllButton: { 
+    width: 40, 
+    height: 40, 
+    borderRadius: 20, 
+    backgroundColor: '#1DB954', 
+    alignItems: 'center', 
+    justifyContent: 'center' 
+  },
+  playAllButtonActive: { 
+    backgroundColor: '#f59e0b' 
+  },
+  trackCard: { 
+    width: 130, 
+    marginRight: 12 
+  },
+  trackImage: { 
+    width: 130, 
+    height: 130, 
+    borderRadius: 8, 
+    marginBottom: 8 
+  },
+  trackOverlay: { 
+    flex: 1, 
+    justifyContent: 'flex-end', 
+    padding: 8, 
+    borderRadius: 8 
+  },
+  trackPlayButton: { 
+    width: 36, 
+    height: 36, 
+    borderRadius: 18, 
+    backgroundColor: '#1DB954', 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    alignSelf: 'flex-end' 
+  },
+  trackPlayButtonActive: { 
+    backgroundColor: '#f59e0b' 
+  },
+  trackTitle: { 
+    color: '#fff', 
+    fontSize: 14, 
+    fontWeight: '600', 
+    marginBottom: 2 
+  },
+  trackArtist: { 
+    color: 'rgba(255,255,255,0.6)', 
+    fontSize: 12, 
+    marginBottom: 2 
+  },
+  trackDuration: { 
+    color: 'rgba(255,255,255,0.4)', 
+    fontSize: 11 
+  },
+  playingIndicator: { 
+    position: 'absolute', 
+    top: 8, 
+    left: 8, 
+    flexDirection: 'row', 
+    alignItems: 'flex-end', 
+    gap: 2, 
+    backgroundColor: 'rgba(0,0,0,0.5)', 
+    padding: 6, 
+    borderRadius: 8 
+  },
+  bar: { 
+    width: 3, 
+    height: 12, 
+    backgroundColor: '#1DB954', 
+    borderRadius: 1 
+  },
+  barMiddle: { 
+    height: 18 
+  },
+
+  // Draggable Grid - UPDATED for full width
+  gridWrapper: {
+    paddingHorizontal: 10,
+  },
+  gridHeader: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    marginBottom: 12, 
+    paddingHorizontal: 10,
+  },
+  gridHint: { 
+    fontSize: 12, 
+    color: '#94a3b8', 
+    fontStyle: 'italic' 
+  },
+  doneButton: { 
+    backgroundColor: '#667eea', 
+    paddingHorizontal: 12, 
+    paddingVertical: 6, 
+    borderRadius: 12 
+  },
+  doneButtonText: { 
+    color: '#fff', 
+    fontSize: 12, 
+    fontWeight: '600' 
+  },
+  gridContainer: { 
+    flexDirection: 'row', 
+    flexWrap: 'wrap', 
+    justifyContent: 'flex-start',
+    width: '100%',
+  },
+  gridItem: { 
+    alignItems: 'center', 
+    marginBottom: 12,
+  },
+  gridItemTouchable: { 
+    alignItems: 'center',
+    width: '100%',
+  },
+  gridItemGradient: { 
+    width: '100%', 
+    aspectRatio: 1, 
+    borderRadius: 16, 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    shadowColor: '#000', 
+    shadowOffset: { width: 0, height: 2 }, 
+    shadowOpacity: 0.1, 
+    shadowRadius: 4, 
+    elevation: 2, 
+    position: 'relative' 
+  },
+  gridItemGradientEdit: { 
+    borderWidth: 2, 
+    borderColor: '#fff', 
+    transform: [{ scale: 0.95 }] 
+  },
+  gridItemIcon: { 
+    fontSize: 28 
+  },
+  gridItemLabel: { 
+    fontSize: 11, 
+    color: '#1e293b', 
+    fontWeight: '600', 
+    marginTop: 6, 
+    textAlign: 'center' 
+  },
+  removeBadge: { 
+    position: 'absolute', 
+    top: -6, 
+    right: -6, 
+    backgroundColor: '#ef4444', 
+    borderRadius: 10, 
+    width: 20, 
+    height: 20, 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    borderWidth: 2, 
+    borderColor: '#fff', 
+    zIndex: 10 
+  },
+  addItemGradient: { 
+    width: '100%', 
+    aspectRatio: 1, 
+    borderRadius: 16, 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    backgroundColor: 'rgba(100,116,139,0.1)', 
+    borderWidth: 2, 
+    borderColor: '#cbd5e1', 
+    borderStyle: 'dashed' 
+  },
+
+  // Feature Cards - UPDATED for full width
+  featuresGridFullWidth: { 
+    width: '100%',
+    paddingHorizontal: 10,
+    gap: 10,
+  },
+  featureCardWrapper: { 
+    width: '100%',
+    marginBottom: 4,
+  },
+  featureCardFullWidth: { 
+    borderRadius: 20, 
+    overflow: 'hidden',
+    width: '100%',
+  },
+  featureGradientFullWidth: { 
+    padding: 16, 
+    alignItems: 'center', 
+    borderRadius: 20, 
+    borderWidth: 1, 
+    borderColor: 'rgba(255,255,255,0.5)',
+    flexDirection: 'row',
+    gap: 16,
+    width: '100%',
+  },
+  featureIcon: { 
+    width: 52, 
+    height: 52, 
+    borderRadius: 16, 
+    alignItems: 'center', 
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  featureLabelFullWidth: { 
+    fontSize: 16, 
+    fontWeight: '700', 
+    color: '#1e293b', 
+    flex: 1,
+  },
+  featureBadge: { 
+    paddingHorizontal: 10, 
+    paddingVertical: 4, 
+    borderRadius: 12,
+    minWidth: 32,
+    alignItems: 'center',
+  },
+  featureBadgeText: { 
+    color: '#fff', 
+    fontSize: 11, 
+    fontWeight: 'bold' 
+  },
+  featureArrowFullWidth: { 
+    marginLeft: 'auto',
+    opacity: 0.6,
+  },
+
+  // Activity
+  activityWrapper: {
+    paddingHorizontal: 20,
+  },
+  emptyState: { 
+    padding: 32, 
+    alignItems: 'center', 
+    borderRadius: 24 
+  },
+  emptyStateIcon: { 
+    width: 64, 
+    height: 64, 
+    borderRadius: 32, 
+    backgroundColor: 'rgba(102,126,234,0.1)', 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    marginBottom: 16 
+  },
+  emptyStateTitle: { 
+    fontSize: 18, 
+    fontWeight: '700', 
+    color: '#64748b', 
+    marginBottom: 8 
+  },
+  emptyStateText: { 
+    color: '#94a3b8', 
+    fontSize: 14, 
+    textAlign: 'center' 
+  },
+  activityItem: { 
+    marginVertical: 6, 
+    padding: 14, 
+    borderRadius: 20, 
+    flexDirection: 'row', 
+    alignItems: 'center' 
+  },
+  activityIcon: { 
+    width: 48, 
+    height: 48, 
+    borderRadius: 16, 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    marginRight: 14 
+  },
+  activityEmoji: { 
+    fontSize: 24 
+  },
+  activityContent: { 
+    flex: 1 
+  },
+  activityTitle: { 
+    fontSize: 15, 
+    fontWeight: '700', 
+    color: '#1e293b', 
+    marginBottom: 2 
+  },
+  activityTime: { 
+    fontSize: 12, 
+    color: '#94a3b8', 
+    fontWeight: '500' 
+  },
+  activityDetails: { 
+    fontSize: 12, 
+    color: '#64748b', 
+    marginTop: 2 
+  },
+  activityArrow: { 
+    width: 28, 
+    height: 28, 
+    borderRadius: 14, 
+    backgroundColor: 'rgba(102,126,234,0.1)', 
+    alignItems: 'center', 
+    justifyContent: 'center' 
+  },
+
+  // Load More
+  loadMoreButton: {
+    marginTop: 16,
+    borderRadius: 16,
+    overflow: 'hidden',
+    height: 50,
+  },
+  loadMoreContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  loadMoreText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1e293b',
+  },
+  viewAllButton: {
+    marginTop: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+  },
+  viewAllText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#667eea',
+  },
+
+  // Modal
+  modalOverlay: { 
+    flex: 1, 
+    justifyContent: 'flex-end' 
+  },
+  modalContent: { 
+    borderTopLeftRadius: 32, 
+    borderTopRightRadius: 32, 
+    overflow: 'hidden', 
+    maxHeight: '80%',
+    minHeight: '50%',
+  },
+  modalGradient: { 
+    flex: 1, 
+    padding: 24 
+  },
+  modalHeader: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'flex-start', 
+    marginBottom: 24,
+    paddingRight: 8,
+  },
+  modalTitle: { 
+    fontSize: 24, 
+    fontWeight: '800', 
+    color: '#1e293b', 
+    marginBottom: 4 
+  },
+  modalSubtitle: { 
+    fontSize: 14, 
+    color: '#64748b' 
+  },
+  modalClose: { 
+    width: 44, 
+    height: 44, 
+    borderRadius: 22, 
+    backgroundColor: 'rgba(100,116,139,0.1)', 
+    alignItems: 'center', 
+    justifyContent: 'center',
+    marginTop: -4,
+  },
+  modalGrid: { 
+    flexDirection: 'row', 
+    flexWrap: 'wrap', 
+    gap: 16,
+    justifyContent: 'space-between',
+    paddingBottom: 30,
+  },
+  modalItem: { 
+    width: (width - 80) / 3,
+    marginBottom: 8,
+  },
+  modalItemButton: { 
+    alignItems: 'center' 
+  },
+  modalItemGradient: { 
+    width: '100%', 
+    aspectRatio: 1,
+    borderRadius: 20, 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    marginBottom: 8, 
+    shadowColor: '#000', 
+    shadowOffset: { width: 0, height: 4 }, 
+    shadowOpacity: 0.1, 
+    shadowRadius: 8, 
+    elevation: 4 
+  },
+  modalItemIcon: { 
+    fontSize: 32 
+  },
+  modalItemLabel: { 
+    fontSize: 13, 
+    fontWeight: '600', 
+    color: '#1e293b', 
+    textAlign: 'center' 
+  },
+});
