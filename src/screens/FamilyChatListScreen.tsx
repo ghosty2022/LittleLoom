@@ -25,6 +25,9 @@ import Animated, {
   Layout,
   FadeIn,
   SlideInRight,
+  useSharedValue,
+  withSpring,
+  runOnJS,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -38,15 +41,136 @@ type FamilyChatListScreenProps = NativeStackScreenProps<RootStackParamList, 'Fam
 
 const { width } = Dimensions.get('window');
 
-// ==================== QUICK REACTIONS ====================
-const QUICK_REACTIONS = ['❤️', '👍', '😂', '😮', '😢', '🎉'];
+// ==================== SWEET ALERT COMPONENT ====================
+const SweetAlertChatList: React.FC<{
+  visible: boolean;
+  type: 'success' | 'error' | 'warning' | 'info';
+  title: string;
+  message: string;
+  onClose: () => void;
+}> = ({ visible, type, title, message, onClose }) => {
+  const scale = useSharedValue(0);
+  const opacity = useSharedValue(0);
+
+  const colors = {
+    success: '#10b981',
+    error: '#ef4444',
+    warning: '#f59e0b',
+    info: '#3b82f6',
+  };
+
+  useEffect(() => {
+    if (visible) {
+      scale.value = withSpring(1, { damping: 15 });
+      opacity.value = withSpring(1);
+      const timer = setTimeout(() => {
+        scale.value = withSpring(0);
+        opacity.value = withSpring(0, {}, () => runOnJS(onClose)());
+      }, 2500);
+      return () => clearTimeout(timer);
+    }
+  }, [visible]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+    opacity: opacity.value,
+  }));
+
+  if (!visible) return null;
+
+  return (
+    <View style={styles.alertOverlay}>
+      <BlurView intensity={90} tint="dark" style={StyleSheet.absoluteFill} />
+      <Animated.View style={[styles.alertContainer, animatedStyle]}>
+        <LinearGradient
+          colors={[colors[type], `${colors[type]}dd`]}
+          style={styles.alertGradient}
+        >
+          <Ionicons 
+            name={type === 'success' ? 'checkmark-circle' : type === 'error' ? 'close-circle' : type === 'warning' ? 'warning' : 'information-circle'} 
+            size={56} 
+            color="#fff" 
+          />
+          <Text style={styles.alertTitle}>{title}</Text>
+          <Text style={styles.alertMessage}>{message}</Text>
+          <TouchableOpacity style={styles.alertDismiss} onPress={onClose}>
+            <Text style={styles.alertDismissText}>Tap to dismiss</Text>
+          </TouchableOpacity>
+        </LinearGradient>
+      </Animated.View>
+    </View>
+  );
+};
+
+// ==================== USER BUBBLE COMPONENT ====================
+const UserBubble: React.FC<{
+  member: FamilyMember;
+  isSelected: boolean;
+  onPress: () => void;
+  isDark: boolean;
+  disabled?: boolean;
+}> = ({ member, isSelected, onPress, isDark, disabled }) => {
+  const getRoleColor = () => {
+    switch (member.role) {
+      case 'parent1': return '#667eea';
+      case 'parent2': return '#fa709a';
+      case 'guardian': return '#11998e';
+      default: return '#64748b';
+    }
+  };
+
+  const getOnlineStatus = (): 'online' | 'away' | 'offline' => {
+    if (!member.lastActive) return 'offline';
+    const minutesSince = (Date.now() - new Date(member.lastActive).getTime()) / 1000 / 60;
+    if (minutesSince < 5) return 'online';
+    if (minutesSince < 30) return 'away';
+    return 'offline';
+  };
+
+  const onlineStatus = getOnlineStatus();
+  const statusColors = {
+    online: '#10b981',
+    away: '#f59e0b',
+    offline: '#6b7280',
+  };
+
+  return (
+    <TouchableOpacity 
+      style={[styles.userBubble, isSelected && styles.userBubbleSelected, disabled && styles.userBubbleDisabled]} 
+      onPress={onPress}
+      activeOpacity={disabled ? 1 : 0.8}
+      disabled={disabled}
+    >
+      <View style={[styles.userBubbleAvatar, { backgroundColor: `${getRoleColor()}20` }]}>
+        <Text style={styles.userBubbleEmoji}>{member.avatar || '👤'}</Text>
+        <View style={[styles.userBubbleStatus, { backgroundColor: statusColors[onlineStatus] }]} />
+      </View>
+      <Text style={[styles.userBubbleName, isDark && styles.textDark]} numberOfLines={1}>
+        {member.fullName.split(' ')[0]}
+      </Text>
+      <Text style={[styles.userBubbleRole, { color: getRoleColor() }]}>
+        {member.role === 'parent1' ? 'Primary' : member.role === 'parent2' ? 'Co-Parent' : 'Guardian'}
+      </Text>
+      {isSelected && (
+        <View style={styles.userBubbleCheck}>
+          <Ionicons name="checkmark-circle" size={20} color="#667eea" />
+        </View>
+      )}
+      {disabled && (
+        <View style={styles.userBubbleDisabledOverlay}>
+          <Ionicons name="ban" size={16} color="#999" />
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+};
 
 // ==================== TYPING INDICATOR COMPONENT ====================
 const TypingIndicator: React.FC<{ isDark: boolean }> = ({ isDark }) => (
   <View style={styles.typingContainer}>
     <View style={[styles.typingDot, { backgroundColor: isDark ? '#667eea' : '#667eea' }]} />
-    <View style={[styles.typingDot, { backgroundColor: isDark ? '#667eea' : '#667eea', animationDelay: '0.2s' }]} />
-    <View style={[styles.typingDot, { backgroundColor: isDark ? '#667eea' : '#667eea', animationDelay: '0.4s' }]} />
+    <View style={[styles.typingDot, { backgroundColor: isDark ? '#667eea' : '#667eea' }]} />
+    <View style={[styles.typingDot, { backgroundColor: isDark ? '#667eea' : '#667eea' }]} />
   </View>
 );
 
@@ -308,16 +432,37 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
   const [showNewChatModal, setShowNewChatModal] = useState(false);
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [groupName, setGroupName] = useState('');
+  
+  // Sweet Alert state
+  const [alert, setAlert] = useState<{
+    visible: boolean;
+    type: 'success' | 'error' | 'warning' | 'info';
+    title: string;
+    message: string;
+  }>({
+    visible: false,
+    type: 'success',
+    title: '',
+    message: '',
+  });
+
+  // Filter out current user from members - CANNOT CHAT WITH SELF
+  const otherMembers = useMemo(() => {
+    return members.filter(m => m.id !== userProfile?.id && m.userId !== userProfile?.id);
+  }, [members, userProfile]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    // Simulate refresh with haptic feedback
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setTimeout(() => {
       setRefreshing(false);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }, 1000);
   }, []);
+
+  const showSweetAlert = (type: 'success' | 'error' | 'warning' | 'info', title: string, message: string) => {
+    setAlert({ visible: true, type, title, message });
+  };
 
   const handleChatPress = async (chat: FamilyChat) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -342,6 +487,13 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
   };
 
   const handleMemberPress = async (member: FamilyMember) => {
+    // Prevent chatting with self
+    if (member.id === userProfile?.id || member.userId === userProfile?.id) {
+      showSweetAlert('warning', 'Cannot Chat', 'You cannot start a chat with yourself!');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      return;
+    }
+    
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const chatId = await getOrCreateDirectChat(member.id, member);
     
@@ -363,6 +515,7 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
   const handleShareCode = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     await shareFamilyCode();
+    showSweetAlert('success', 'Shared!', 'Family code has been shared');
   };
 
   const handleDeleteChat = () => {
@@ -381,6 +534,7 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
             await deleteChat(selectedChat.id);
             setShowOptionsModal(false);
             setSelectedChat(null);
+            showSweetAlert('success', 'Deleted', 'Chat has been removed');
           }
         },
       ]
@@ -392,6 +546,11 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     await pinChat(selectedChat.id, !selectedChat.isPinned);
     setShowOptionsModal(false);
+    showSweetAlert(
+      'success', 
+      selectedChat.isPinned ? 'Unpinned' : 'Pinned',
+      selectedChat.isPinned ? 'Chat unpinned from top' : 'Chat pinned to top'
+    );
   };
 
   const handleMuteChat = async () => {
@@ -399,22 +558,33 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     await muteChat(selectedChat.id, !selectedChat.isMuted);
     setShowOptionsModal(false);
+    showSweetAlert(
+      'info',
+      selectedChat.isMuted ? 'Unmuted' : 'Muted',
+      selectedChat.isMuted ? 'Notifications enabled' : 'Notifications silenced'
+    );
   };
 
   const handleCreateGroup = async () => {
     if (selectedMembers.length < 2) {
-      Alert.alert('Select Members', 'Please select at least 2 members to create a group');
+      showSweetAlert('warning', 'Select Members', 'Please select at least 2 members to create a group');
       return;
     }
     
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    // Navigate to group creation or create directly
+    showSweetAlert('success', 'Group Created! 🎉', `Created group with ${selectedMembers.length} members`);
     setShowNewChatModal(false);
     setSelectedMembers([]);
     setGroupName('');
   };
 
   const toggleMemberSelection = (memberId: string) => {
+    // Prevent selecting self
+    if (memberId === userProfile?.id) {
+      showSweetAlert('warning', 'Cannot Select', 'You cannot add yourself to a group');
+      return;
+    }
+    
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSelectedMembers(prev => 
       prev.includes(memberId) 
@@ -424,7 +594,6 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
   };
 
   const getOnlineStatus = (memberId: string): 'online' | 'away' | 'offline' => {
-    // Simulate online status - in real app, this would come from a presence service
     const lastActive = members.find(m => m.id === memberId)?.lastActive;
     if (!lastActive) return 'offline';
     const minutesSince = (Date.now() - new Date(lastActive).getTime()) / 1000 / 60;
@@ -480,40 +649,14 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.membersScroll}
       >
-        {members.filter(m => m.id !== userProfile?.id).map((member, index) => (
+        {otherMembers.map((member, index) => (
           <Animated.View key={member.id} entering={FadeInRight.delay(index * 50)}>
-            <TouchableOpacity 
-              style={styles.memberItem}
+            <UserBubble
+              member={member}
+              isSelected={false}
               onPress={() => handleMemberPress(member)}
-              onLongPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-                // Show quick actions
-              }}
-            >
-              <View style={[
-                styles.memberAvatar,
-                { backgroundColor: member.role === 'parent1' ? '#667eea20' : 
-                                  member.role === 'parent2' ? '#fa709a20' : '#11998e20' }
-              ]}>
-                <Text style={styles.memberAvatarText}>{member.avatar || '👤'}</Text>
-                <View style={[
-                  styles.memberStatus,
-                  { backgroundColor: member.role === 'parent1' ? '#667eea' : 
-                                    member.role === 'parent2' ? '#fa709a' : '#11998e' }
-                ]} />
-                <PresenceBadge 
-                  status={getOnlineStatus(member.id)} 
-                  size={10} 
-                />
-              </View>
-              <Text style={[styles.memberName, isDark && styles.textDark]} numberOfLines={1}>
-                {member.fullName.split(' ')[0]}
-              </Text>
-              <Text style={styles.memberRole}>
-                {member.role === 'parent1' ? 'Primary' : 
-                 member.role === 'parent2' ? 'Co-Parent' : 'Guardian'}
-              </Text>
-            </TouchableOpacity>
+              isDark={isDark}
+            />
           </Animated.View>
         ))}
         
@@ -551,6 +694,16 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
+      
+      {/* SweetAlert */}
+      <SweetAlertChatList
+        visible={alert.visible}
+        type={alert.type}
+        title={alert.title}
+        message={alert.message}
+        onClose={() => setAlert(prev => ({ ...prev, visible: false }))}
+      />
+      
       <LinearGradient 
         colors={isDark ? ['#0a0a0a', '#1a1a2e'] : ['#f8faff', '#e0e7ff']} 
         style={StyleSheet.absoluteFill}
@@ -695,7 +848,6 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
 
             <TouchableOpacity style={styles.modalOption} onPress={() => {
               setShowOptionsModal(false);
-              // Navigate to chat details
             }}>
               <View style={[styles.modalIcon, { backgroundColor: '#f59e0b20' }]}>
                 <Ionicons name="information-circle" size={22} color="#f59e0b" />
@@ -746,7 +898,7 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
             <Text style={[styles.selectLabel, isDark && styles.textDark]}>Select Members</Text>
             
             <ScrollView style={styles.memberSelectList}>
-              {members.filter(m => m.id !== userProfile?.id).map(member => (
+              {otherMembers.map(member => (
                 <TouchableOpacity
                   key={member.id}
                   style={[
@@ -809,6 +961,112 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   containerDark: { backgroundColor: '#0a0a0a' },
   
+  // SweetAlert
+  alertOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  alertContainer: {
+    width: width * 0.85,
+    borderRadius: 28,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.3,
+    shadowRadius: 40,
+    elevation: 20,
+  },
+  alertGradient: {
+    padding: 28,
+    alignItems: 'center',
+  },
+  alertTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#fff',
+    marginTop: 16,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  alertMessage: {
+    fontSize: 16,
+    color: 'rgba(255,255,255,0.9)',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 20,
+  },
+  alertDismiss: {
+    marginTop: 8,
+  },
+  alertDismissText: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 14,
+  },
+
+  // User Bubbles
+  userBubble: {
+    alignItems: 'center',
+    width: 70,
+    marginRight: 12,
+  },
+  userBubbleSelected: {
+    opacity: 0.7,
+  },
+  userBubbleDisabled: {
+    opacity: 0.4,
+  },
+  userBubbleDisabledOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  userBubbleAvatar: {
+    width: 60,
+    height: 60,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+    position: 'relative',
+  },
+  userBubbleEmoji: {
+    fontSize: 28,
+  },
+  userBubbleStatus: {
+    position: 'absolute',
+    bottom: 2,
+    right: 2,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  userBubbleName: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#1a1a1a',
+    textAlign: 'center',
+  },
+  userBubbleRole: {
+    fontSize: 10,
+    fontWeight: '500',
+    marginTop: 2,
+  },
+  userBubbleCheck: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+  },
+
   // Header
   header: {
     position: 'absolute',

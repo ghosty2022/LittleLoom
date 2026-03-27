@@ -1,3 +1,4 @@
+// src/screens/EditGuardianScreen.tsx
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
@@ -16,7 +17,6 @@ import {
   Switch,
   Modal,
   Linking,
-  FlatList,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -27,21 +27,19 @@ import Animated, {
   FadeInUp, 
   FadeInDown, 
   FadeIn,
-  SlideInRight,
-  Layout,
-  useAnimatedStyle,
-  withSpring,
-  interpolate,
-  useSharedValue,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../types/navigation';
+
+// FIXED: Import UserRole from types/roles, not from UserContext
+import { UserRole, ROLE_LABELS } from '../types/roles';
 import { useFamily, FamilyMember } from '../context/FamilyContext';
-import { useUser, UserRole } from '../context/UserContext';
+import { useUser } from '../context/UserContext';
 import { useBaby, ActivityEntry } from '../context/BabyContext';
 import { useActivity } from '../context/ActivityContext';
+import { useAuth } from '../context/AuthContext'; // ADDED: Import useAuth
 
 type EditGuardianScreenProps = NativeStackScreenProps<RootStackParamList, 'EditGuardian'>;
 
@@ -49,12 +47,23 @@ const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
 const { width, height } = Dimensions.get('window');
 
 // ==================== ENHANCED ROLE CONFIGURATION ====================
-const ROLE_CONFIG = {
+const ROLE_CONFIG: Record<UserRole, {
+  label: string;
+  color: string;
+  gradient: [string, string];
+  icon: string;
+  description: string;
+  permissions: string[];
+  canEdit: boolean;
+  canRemove: boolean;
+  badge: string;
+  priority: number;
+}> = {
   [UserRole.PARENT_1]: {
     label: 'Primary Parent',
     color: '#667eea',
     gradient: ['#667eea', '#764ba2'],
-    icon: 'shield-crown', // FIXED: Valid Ionicons name
+    icon: 'shield',
     description: 'Full owner access to everything',
     permissions: ['All Permissions', 'Manage Family', 'Manage Security', 'Export Data', 'Billing'],
     canEdit: false,
@@ -225,9 +234,10 @@ const PermissionGrid: React.FC<{
 export default function EditGuardianScreen({ navigation, route }: EditGuardianScreenProps) {
   const { guardianId, mode = 'guardian', fromChat = false } = route.params;
   const { members, guardians, updateGuardianProfile, removeMember, loadFamily } = useFamily();
-  const { hasPermission, profile, user } = useUser();
+  const { hasPermission, profile } = useUser();
   const { currentBaby, babies, getRecentActivities } = useBaby();
   const { getEntriesByBaby, getRelativeTime } = useActivity();
+  const { userProfile } = useAuth(); // ADDED: Get current user from AuthContext
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -250,14 +260,45 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     darkMode: false,
   });
 
-  // Load member data
+  // FIXED: Enhanced member loading logic that handles current user not in members array
   useEffect(() => {
     loadFamily();
   }, [loadFamily]);
 
   useEffect(() => {
-    const found = members.find(m => m.id === guardianId);
+    console.log('Looking for member with ID:', guardianId);
+    console.log('Available members:', members.map(m => ({ id: m.id, name: m.fullName, role: m.role })));
+    
+    let found = members.find(m => m.id === guardianId);
+    
+    // FIXED: If member not found in members array, check if it's the current user
+    if (!found) {
+      const currentUserId = userProfile?.id || userProfile?.uid || profile?.id;
+      console.log('Member not found in array. Current user ID:', currentUserId);
+      
+      if (guardianId === currentUserId || guardianId === 'parent1') {
+        // This is the current user (Parent 1) - construct a FamilyMember from userProfile
+        console.log('Constructing FamilyMember from current user profile');
+        found = {
+          id: currentUserId || 'parent1',
+          userId: currentUserId || 'parent1',
+          fullName: userProfile?.fullName || profile?.fullName || 'Primary Parent',
+          email: userProfile?.email || profile?.email || '',
+          phoneNumber: userProfile?.phoneNumber || profile?.phoneNumber || '',
+          avatar: userProfile?.avatar || profile?.avatar || '',
+          role: UserRole.PARENT_1,
+          relationship: 'Parent',
+          addedAt: new Date().toISOString(),
+          lastActive: new Date().toISOString(),
+          notificationsEnabled: true,
+          canBeRemove: false,
+          canEdit: false,
+        } as FamilyMember;
+      }
+    }
+    
     if (found) {
+      console.log('Found/constructed member:', found.fullName, 'Role:', found.role);
       setMember(found);
       setFormData({
         fullName: found.fullName || '',
@@ -271,8 +312,10 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
       
       // Load member's activities
       loadMemberActivities(found.id);
+    } else {
+      console.log('Member not found and not current user');
     }
-  }, [members, guardianId, currentBaby]);
+  }, [members, guardianId, currentBaby, userProfile, profile]);
 
   const loadMemberActivities = useCallback(async (memberId: string) => {
     if (!currentBaby) return;
@@ -297,7 +340,8 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     }
 
     // Check if trying to edit own name
-    if (member.id === profile?.id) {
+    const currentUserId = userProfile?.id || userProfile?.uid || profile?.id;
+    if (member.id === currentUserId) {
       Alert.alert('Cannot Edit', 'You cannot edit your own name. Contact support if you need to change your account details.');
       return;
     }
@@ -330,7 +374,8 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     if (!member) return;
     
     // Cannot remove self
-    if (member.id === profile?.id) {
+    const currentUserId = userProfile?.id || userProfile?.uid || profile?.id;
+    if (member.id === currentUserId) {
       Alert.alert('Cannot Remove', 'You cannot remove yourself from the family.');
       return;
     }
@@ -445,13 +490,14 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
 
   const getRoleConfig = () => {
     if (!member) return null;
-    return ROLE_CONFIG[member.role as keyof typeof ROLE_CONFIG] || ROLE_CONFIG[UserRole.VIEWER];
+    return ROLE_CONFIG[member.role] || ROLE_CONFIG[UserRole.VIEWER];
   };
 
   const roleConfig = getRoleConfig();
 
-  // Permission checks
-  const isCurrentUser = member?.id === profile?.id;
+  // Permission checks - FIXED to use current user from AuthContext
+  const currentUserId = userProfile?.id || userProfile?.uid || profile?.id;
+  const isCurrentUser = member?.id === currentUserId;
   const canEdit = useMemo(() => 
     hasPermission('manageFamily') && roleConfig?.canEdit && !isCurrentUser, 
     [hasPermission, roleConfig, isCurrentUser]
@@ -467,10 +513,14 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     [hasPermission, isCurrentUser]
   );
 
+  // FIXED: Show loading only briefly, not indefinitely
   if (!member || !roleConfig) {
     return (
       <View style={[styles.container, styles.centered]}>
         <ActivityIndicator size="large" color="#667eea" />
+        <Text style={{ marginTop: 12, color: isDark ? '#94a3b8' : '#64748b' }}>
+          Loading profile...
+        </Text>
       </View>
     );
   }
@@ -1088,7 +1138,6 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
               ]}
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                // Handle role change logic here
                 Alert.alert('Change Role', `Change ${member.fullName} to ${config.label}?`);
                 setShowRoleModal(false);
               }}

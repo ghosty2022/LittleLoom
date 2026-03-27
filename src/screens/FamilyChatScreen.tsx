@@ -30,6 +30,8 @@ import Animated, {
   useAnimatedStyle,
   withSpring,
   useSharedValue,
+  runOnJS,
+  FadeInDown,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
@@ -49,6 +51,237 @@ const { width, height } = Dimensions.get('window');
 // ==================== CONSTANTS ====================
 const REACTIONS = ['❤️', '👍', '😂', '😮', '😢', '🎉', '👏', '🔥'];
 const QUICK_REPLIES = ['On my way!', 'Sounds good!', 'I love this!', 'Thanks for sharing'];
+
+// ==================== SWEET ALERT COMPONENT ====================
+const SweetAlertChat: React.FC<{
+  visible: boolean;
+  type: 'success' | 'error' | 'warning' | 'info';
+  title: string;
+  message: string;
+  onClose: () => void;
+}> = ({ visible, type, title, message, onClose }) => {
+  const scale = useSharedValue(0);
+  const opacity = useSharedValue(0);
+
+  const colors = {
+    success: '#10b981',
+    error: '#ef4444',
+    warning: '#f59e0b',
+    info: '#3b82f6',
+  };
+
+  useEffect(() => {
+    if (visible) {
+      scale.value = withSpring(1, { damping: 15 });
+      opacity.value = withSpring(1);
+      const timer = setTimeout(() => {
+        scale.value = withSpring(0);
+        opacity.value = withSpring(0, {}, () => runOnJS(onClose)());
+      }, 2500);
+      return () => clearTimeout(timer);
+    }
+  }, [visible]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+    opacity: opacity.value,
+  }));
+
+  if (!visible) return null;
+
+  return (
+    <View style={styles.alertOverlay}>
+      <BlurView intensity={90} tint="dark" style={StyleSheet.absoluteFill} />
+      <Animated.View style={[styles.alertContainer, animatedStyle]}>
+        <LinearGradient
+          colors={[colors[type], `${colors[type]}dd`]}
+          style={styles.alertGradient}
+        >
+          <Ionicons 
+            name={type === 'success' ? 'checkmark-circle' : type === 'error' ? 'close-circle' : type === 'warning' ? 'warning' : 'information-circle'} 
+            size={56} 
+            color="#fff" 
+          />
+          <Text style={styles.alertTitle}>{title}</Text>
+          <Text style={styles.alertMessage}>{message}</Text>
+          <TouchableOpacity style={styles.alertDismiss} onPress={onClose}>
+            <Text style={styles.alertDismissText}>Tap to dismiss</Text>
+          </TouchableOpacity>
+        </LinearGradient>
+      </Animated.View>
+    </View>
+  );
+};
+
+// ==================== USER BUBBLE COMPONENT ====================
+const UserBubble: React.FC<{
+  member: FamilyMember;
+  isSelected: boolean;
+  onPress: () => void;
+  isDark: boolean;
+  showOnline?: boolean;
+}> = ({ member, isSelected, onPress, isDark, showOnline = true }) => {
+  const getRoleColor = () => {
+    switch (member.role) {
+      case 'parent1': return '#667eea';
+      case 'parent2': return '#fa709a';
+      case 'guardian': return '#11998e';
+      default: return '#64748b';
+    }
+  };
+
+  const getOnlineStatus = (): 'online' | 'away' | 'offline' => {
+    if (!member.lastActive) return 'offline';
+    const minutesSince = (Date.now() - new Date(member.lastActive).getTime()) / 1000 / 60;
+    if (minutesSince < 5) return 'online';
+    if (minutesSince < 30) return 'away';
+    return 'offline';
+  };
+
+  const onlineStatus = getOnlineStatus();
+  const statusColors = {
+    online: '#10b981',
+    away: '#f59e0b',
+    offline: '#6b7280',
+  };
+
+  return (
+    <TouchableOpacity 
+      style={[styles.userBubble, isSelected && styles.userBubbleSelected]} 
+      onPress={onPress}
+      activeOpacity={0.8}
+    >
+      <View style={[styles.userBubbleAvatar, { backgroundColor: `${getRoleColor()}20` }]}>
+        <Text style={styles.userBubbleEmoji}>{member.avatar || '👤'}</Text>
+        {showOnline && (
+          <View style={[styles.userBubbleStatus, { backgroundColor: statusColors[onlineStatus] }]} />
+        )}
+      </View>
+      <Text style={[styles.userBubbleName, isDark && styles.textDark]} numberOfLines={1}>
+        {member.fullName.split(' ')[0]}
+      </Text>
+      <Text style={[styles.userBubbleRole, { color: getRoleColor() }]}>
+        {member.role === 'parent1' ? 'Primary' : member.role === 'parent2' ? 'Co-Parent' : 'Guardian'}
+      </Text>
+      {isSelected && (
+        <View style={styles.userBubbleCheck}>
+          <Ionicons name="checkmark-circle" size={20} color="#667eea" />
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+};
+
+// ==================== MESSAGE INFO MODAL ====================
+const MessageInfoModal: React.FC<{
+  visible: boolean;
+  onClose: () => void;
+  message: FamilyMessage | null;
+  isDark: boolean;
+  members: FamilyMember[];
+}> = ({ visible, onClose, message, isDark, members }) => {
+  if (!message) return null;
+
+  const sender = members.find(m => m.id === message.senderId);
+  const readByMembers = message.readBy?.map(userId => 
+    members.find(m => m.id === userId || m.userId === userId)
+  ).filter(Boolean) as FamilyMember[] || [];
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <TouchableOpacity style={styles.modalOverlay} onPress={onClose}>
+        <BlurView intensity={95} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
+        <Animated.View entering={FadeInUp.springify()} style={[styles.messageInfoModal, isDark && styles.messageInfoModalDark]}>
+          <LinearGradient 
+            colors={isDark ? ['rgba(40,40,45,0.98)', 'rgba(30,30,35,0.95)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.95)']} 
+            style={StyleSheet.absoluteFill} 
+          />
+          
+          <View style={styles.messageInfoHeader}>
+            <View style={[styles.messageInfoIcon, { backgroundColor: '#667eea20' }]}>
+              <Ionicons name="information-circle" size={32} color="#667eea" />
+            </View>
+            <Text style={[styles.messageInfoTitle, isDark && styles.textDark]}>Message Info</Text>
+            <TouchableOpacity onPress={onClose} style={styles.messageInfoClose}>
+              <Ionicons name="close" size={24} color={isDark ? '#fff' : '#64748b'} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView showsVerticalScrollIndicator={false} style={styles.messageInfoContent}>
+            <View style={styles.messageInfoSection}>
+              <Text style={[styles.messageInfoLabel, isDark && styles.textMuted]}>Sent by</Text>
+              <View style={styles.messageInfoUser}>
+                <View style={[styles.messageInfoAvatar, { backgroundColor: '#667eea20' }]}>
+                  <Text style={styles.messageInfoAvatarText}>{sender?.avatar || '👤'}</Text>
+                </View>
+                <View>
+                  <Text style={[styles.messageInfoUserName, isDark && styles.textDark]}>
+                    {sender?.fullName || message.senderName}
+                  </Text>
+                  <Text style={[styles.messageInfoUserRole, { color: '#667eea' }]}>
+                    {sender?.role === 'parent1' ? 'Primary Parent' : 
+                     sender?.role === 'parent2' ? 'Co-Parent' : 'Guardian'}
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.messageInfoSection}>
+              <Text style={[styles.messageInfoLabel, isDark && styles.textMuted]}>Sent at</Text>
+              <Text style={[styles.messageInfoValue, isDark && styles.textDark]}>
+                {format(new Date(message.timestamp), 'MMMM d, yyyy • h:mm a')}
+              </Text>
+            </View>
+
+            {message.isEdited && (
+              <View style={styles.messageInfoSection}>
+                <Text style={[styles.messageInfoLabel, isDark && styles.textMuted]}>Edited</Text>
+                <Text style={[styles.messageInfoValue, isDark && styles.textDark]}>
+                  {format(new Date(message.editedAt || message.timestamp), 'MMMM d, yyyy • h:mm a')}
+                </Text>
+              </View>
+            )}
+
+            <View style={styles.messageInfoSection}>
+              <Text style={[styles.messageInfoLabel, isDark && styles.textMuted]}>
+                Read by ({readByMembers.length})
+              </Text>
+              {readByMembers.length > 0 ? (
+                readByMembers.map((member, index) => (
+                  <View key={member.id} style={styles.readByItem}>
+                    <View style={[styles.readByAvatar, { backgroundColor: '#10b98120' }]}>
+                      <Text style={styles.readByAvatarText}>{member.avatar || '👤'}</Text>
+                    </View>
+                    <Text style={[styles.readByName, isDark && styles.textDark]}>{member.fullName}</Text>
+                    <Ionicons name="checkmark-done" size={16} color="#10b981" />
+                  </View>
+                ))
+              ) : (
+                <Text style={[styles.messageInfoEmpty, isDark && styles.textMuted]}>Not read yet</Text>
+              )}
+            </View>
+
+            {message.reactions && message.reactions.length > 0 && (
+              <View style={styles.messageInfoSection}>
+                <Text style={[styles.messageInfoLabel, isDark && styles.textMuted]}>Reactions</Text>
+                <View style={styles.messageInfoReactions}>
+                  {message.reactions.map((reaction, index) => (
+                    <View key={index} style={styles.messageInfoReaction}>
+                      <Text style={styles.messageInfoReactionEmoji}>{reaction.emoji}</Text>
+                      <Text style={[styles.messageInfoReactionName, isDark && styles.textDark]}>
+                        {reaction.userName}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+          </ScrollView>
+        </Animated.View>
+      </TouchableOpacity>
+    </Modal>
+  );
+};
 
 // ==================== DATE SEPARATOR COMPONENT ====================
 const DateSeparator: React.FC<{ date: string; isDark: boolean }> = ({ date, isDark }) => {
@@ -155,6 +388,7 @@ const MessageBubble: React.FC<{
   onReply: () => void;
   onDelete: () => void;
   onEdit: () => void;
+  onInfo: () => void;
   isFirstInGroup: boolean;
   isLastInGroup: boolean;
 }> = ({
@@ -167,6 +401,7 @@ const MessageBubble: React.FC<{
   onReply,
   onDelete,
   onEdit,
+  onInfo,
   isFirstInGroup,
   isLastInGroup,
 }) => {
@@ -248,6 +483,7 @@ const MessageBubble: React.FC<{
             onLongPress={handleLongPress}
             activeOpacity={0.9}
             delayLongPress={200}
+            onPress={onInfo}
           >
             <View style={[
               styles.bubble,
@@ -391,6 +627,13 @@ const MessageBubble: React.FC<{
                 </>
               )}
 
+              <TouchableOpacity style={styles.actionItem} onPress={() => { onInfo(); setShowActions(false); }}>
+                <View style={[styles.actionIcon, { backgroundColor: '#3b82f620' }]}>
+                  <Ionicons name="information-circle" size={20} color="#3b82f6" />
+                </View>
+                <Text style={[styles.actionText, isDark && styles.textDark]}>Info</Text>
+              </TouchableOpacity>
+
               <TouchableOpacity style={styles.actionItem} onPress={() => setShowActions(false)}>
                 <View style={[styles.actionIcon, { backgroundColor: '#10b98120' }]}>
                   <Ionicons name="copy" size={20} color="#10b981" />
@@ -464,6 +707,22 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
   const [showEmojiKeyboard, setShowEmojiKeyboard] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
+  const [showUserBubbles, setShowUserBubbles] = useState(false);
+  const [selectedMessage, setSelectedMessage] = useState<FamilyMessage | null>(null);
+  const [showMessageInfo, setShowMessageInfo] = useState(false);
+  
+  // Sweet Alert state
+  const [alert, setAlert] = useState<{
+    visible: boolean;
+    type: 'success' | 'error' | 'warning' | 'info';
+    title: string;
+    message: string;
+  }>({
+    visible: false,
+    type: 'success',
+    title: '',
+    message: '',
+  });
 
   const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
@@ -511,10 +770,14 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
     setMessages(msgs);
   };
 
+  const showSweetAlert = (type: 'success' | 'error' | 'warning' | 'info', title: string, message: string) => {
+    setAlert({ visible: true, type, title, message });
+  };
+
   const handleSend = useCallback(async () => {
     if (!inputText.trim() || !chatId) return;
     if (!userProfile) {
-      Alert.alert('Error', 'Please sign in to send messages');
+      showSweetAlert('error', 'Error', 'Please sign in to send messages');
       return;
     }
 
@@ -524,6 +787,7 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
     if (editingMessage) {
       await editMessage(chatId, editingMessage, content);
       setEditingMessage(null);
+      showSweetAlert('success', 'Updated!', 'Message has been edited successfully');
     } else {
       await sendMessage(chatId, content, 'text', undefined, replyingTo?.id);
     }
@@ -554,6 +818,7 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     await pickAndSendImage(chatId);
     refreshMessages();
+    showSweetAlert('success', 'Photo Sent! 📷', 'Your image has been shared');
   };
 
   const handleReaction = async (messageId: string, emoji: string) => {
@@ -571,6 +836,7 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
         onPress: async () => {
           await deleteMessage(chatId, messageId);
           refreshMessages();
+          showSweetAlert('success', 'Deleted', 'Message has been removed');
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         },
       },
@@ -592,11 +858,16 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
     inputRef.current?.focus();
   };
 
+  const handleMessageInfo = (message: FamilyMessage) => {
+    setSelectedMessage(message);
+    setShowMessageInfo(true);
+  };
+
   const startRecording = async () => {
     try {
       const { status } = await Audio.requestPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission needed', 'Microphone access is required for voice messages');
+        showSweetAlert('error', 'Permission Needed', 'Microphone access is required for voice messages');
         return;
       }
 
@@ -617,6 +888,7 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
     setIsRecording(false);
     setRecordingDuration(0);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    showSweetAlert('success', 'Voice Message', 'Voice message feature coming soon!');
     // TODO: Implement actual voice message sending
   };
 
@@ -660,6 +932,11 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
   const headerInfo = getHeaderInfo();
   const typingText = getTypingText();
 
+  // Filter out current user from members for bubbles
+  const otherMembers = useMemo(() => {
+    return members.filter(m => m.id !== userProfile?.id && m.userId !== userProfile?.id);
+  }, [members, userProfile]);
+
   const renderMessage = ({ item, index }: { item: FamilyMessage; index: number }) => {
     const isMe = item.senderId === userProfile?.id;
     const member = item.senderId !== 'system' ? getMemberById(item.senderId) : undefined;
@@ -688,6 +965,7 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
           onReply={() => handleReply(item)}
           onDelete={() => handleDelete(item.id)}
           onEdit={() => handleEdit(item)}
+          onInfo={() => handleMessageInfo(item)}
           isFirstInGroup={isFirstInGroup}
           isLastInGroup={isLastInGroup}
         />
@@ -712,6 +990,25 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
+      
+      {/* SweetAlert */}
+      <SweetAlertChat
+        visible={alert.visible}
+        type={alert.type}
+        title={alert.title}
+        message={alert.message}
+        onClose={() => setAlert(prev => ({ ...prev, visible: false }))}
+      />
+
+      {/* Message Info Modal */}
+      <MessageInfoModal
+        visible={showMessageInfo}
+        onClose={() => setShowMessageInfo(false)}
+        message={selectedMessage}
+        isDark={isDark}
+        members={members}
+      />
+
       <LinearGradient
         colors={isDark ? ['#0a0a0a', '#1a1a2e'] : ['#f8faff', '#e0e7ff']}
         style={StyleSheet.absoluteFill}
@@ -747,6 +1044,12 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
         </TouchableOpacity>
 
         <View style={styles.headerActions}>
+          <TouchableOpacity 
+            style={styles.headerButton} 
+            onPress={() => setShowUserBubbles(!showUserBubbles)}
+          >
+            <Ionicons name="people" size={22} color={showUserBubbles ? '#667eea' : (isDark ? '#fff' : '#1a1a1a')} />
+          </TouchableOpacity>
           <TouchableOpacity style={styles.headerButton} onPress={() => {}}>
             <Ionicons name="videocam" size={22} color={isDark ? '#fff' : '#1a1a1a'} />
           </TouchableOpacity>
@@ -768,13 +1071,42 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
         </View>
       </BlurView>
 
+      {/* User Bubbles Row */}
+      {showUserBubbles && (
+        <Animated.View entering={FadeInDown} style={[styles.userBubblesContainer, { paddingTop: insets.top + 70 }]}>
+          <BlurView intensity={90} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.userBubblesScroll}
+          >
+            {otherMembers.map((member, index) => (
+              <Animated.View key={member.id} entering={FadeInRight.delay(index * 50)}>
+                <UserBubble
+                  member={member}
+                  isSelected={false}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    // Navigate to member profile or start direct chat
+                  }}
+                  isDark={isDark}
+                />
+              </Animated.View>
+            ))}
+          </ScrollView>
+        </Animated.View>
+      )}
+
       {/* Messages */}
       <FlatList
         ref={flatListRef}
         data={messages}
         renderItem={renderMessage}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={[styles.messagesList, { paddingTop: insets.top + 80 }]}
+        contentContainerStyle={[
+          styles.messagesList, 
+          { paddingTop: showUserBubbles ? insets.top + 140 : insets.top + 80 }
+        ]}
         showsVerticalScrollIndicator={false}
         onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
         keyboardShouldPersistTaps="handled"
@@ -877,6 +1209,252 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   containerDark: { backgroundColor: '#0a0a0a' },
   centered: { justifyContent: 'center', alignItems: 'center' },
+
+  // SweetAlert
+  alertOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  alertContainer: {
+    width: width * 0.85,
+    borderRadius: 28,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.3,
+    shadowRadius: 40,
+    elevation: 20,
+  },
+  alertGradient: {
+    padding: 28,
+    alignItems: 'center',
+  },
+  alertTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#fff',
+    marginTop: 16,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  alertMessage: {
+    fontSize: 16,
+    color: 'rgba(255,255,255,0.9)',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 20,
+  },
+  alertDismiss: {
+    marginTop: 8,
+  },
+  alertDismissText: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 14,
+  },
+
+  // User Bubbles
+  userBubblesContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 90,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
+  },
+  userBubblesScroll: {
+    paddingHorizontal: 16,
+    gap: 12,
+  },
+  userBubble: {
+    alignItems: 'center',
+    width: 70,
+  },
+  userBubbleSelected: {
+    opacity: 0.7,
+  },
+  userBubbleAvatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+    position: 'relative',
+  },
+  userBubbleEmoji: {
+    fontSize: 28,
+  },
+  userBubbleStatus: {
+    position: 'absolute',
+    bottom: 2,
+    right: 2,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  userBubbleName: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#1a1a1a',
+    textAlign: 'center',
+  },
+  userBubbleRole: {
+    fontSize: 10,
+    fontWeight: '500',
+    marginTop: 2,
+  },
+  userBubbleCheck: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+  },
+
+  // Message Info Modal
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  messageInfoModal: {
+    width: '100%',
+    maxWidth: 380,
+    maxHeight: height * 0.7,
+    borderRadius: 28,
+    padding: 24,
+    overflow: 'hidden',
+  },
+  messageInfoModalDark: {
+    backgroundColor: 'rgba(30,30,35,0.95)',
+  },
+  messageInfoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  messageInfoIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 16,
+  },
+  messageInfoTitle: {
+    flex: 1,
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#1e293b',
+  },
+  messageInfoClose: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  messageInfoContent: {
+    maxHeight: height * 0.5,
+  },
+  messageInfoSection: {
+    marginBottom: 20,
+  },
+  messageInfoLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748b',
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  messageInfoUser: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  messageInfoAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  messageInfoAvatarText: {
+    fontSize: 24,
+  },
+  messageInfoUserName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1e293b',
+  },
+  messageInfoUserRole: {
+    fontSize: 13,
+    fontWeight: '500',
+    marginTop: 2,
+  },
+  messageInfoValue: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1e293b',
+  },
+  messageInfoEmpty: {
+    fontSize: 14,
+    color: '#94a3b8',
+    fontStyle: 'italic',
+  },
+  readByItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
+  },
+  readByAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  readByAvatarText: {
+    fontSize: 18,
+  },
+  readByName: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1e293b',
+  },
+  messageInfoReactions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  messageInfoReaction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    gap: 8,
+  },
+  messageInfoReactionEmoji: {
+    fontSize: 20,
+  },
+  messageInfoReactionName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1e293b',
+  },
 
   // Header
   header: {
@@ -1201,7 +1779,7 @@ const styles = StyleSheet.create({
   inputButton: { padding: 8 },
   inputWrapper: {
     flex: 1,
-    backgroundColor: isDark => isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
+    backgroundColor: 'rgba(0,0,0,0.05)',
     borderRadius: 24,
     paddingHorizontal: 16,
     paddingVertical: 10,
