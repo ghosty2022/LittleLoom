@@ -13,6 +13,7 @@ import {
   NativeScrollEvent, 
   NativeSyntheticEvent,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { useNavigationState } from '@react-navigation/native';
 import { registerScrollHandler } from '../utils/GlobalScrollPatch';
 
@@ -140,6 +141,7 @@ export const NavigationProvider: React.FC<{ children: ReactNode }> = ({ children
 
   const toggleCompact = useCallback(() => {
     setIsNavCompact(prev => !prev);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   }, []);
 
   const value = useMemo(() => ({

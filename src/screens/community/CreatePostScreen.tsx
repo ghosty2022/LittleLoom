@@ -26,6 +26,13 @@ import type { CommunityStackParamList } from '../../types/navigation';
 import { useCommunity } from '../../context/CommunityContext';
 import { useUser } from '../../context/UserContext';
 import { showSuccessModal, showErrorModal, showConfirmModal } from '../../utils/modal';
+import { 
+  CommunityColors, 
+  CommunityGradients, 
+  CommunitySpacing, 
+  CommunityBorderRadius,
+  CommunityShadows 
+} from '../../theme/CommunityTheme';
 
 type CreatePostScreenProps = NativeStackScreenProps<CommunityStackParamList, 'CreatePost'>;
 
@@ -141,14 +148,15 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
   const maxCharacters = 1000;
 
   return (
-    <LinearGradient colors={['#e0e7ff', '#d1d5ff', '#c7b8ff']} style={styles.container}>
+    <View style={styles.container}>
       <StatusBar style="dark" />
+      <LinearGradient colors={CommunityColors.background.gradient} style={StyleSheet.absoluteFill} />
       
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
       >
-        {/* Header */}
+        {/* Header - Themed */}
         <View style={styles.header}>
           <TouchableOpacity onPress={handleCancel}>
             <Text style={styles.cancelText}>Cancel</Text>
@@ -170,7 +178,7 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
         </View>
 
         <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-          {/* Topic Selector */}
+          {/* Topic Selector - Themed */}
           <Animated.View entering={FadeInUp}>
             <Text style={styles.sectionLabel}>Select Topic</Text>
             <ScrollView 
@@ -196,7 +204,7 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
                   <Text style={styles.topicEmoji}>{topic.emoji}</Text>
                   <Text style={[
                     styles.topicName,
-                    selectedTopic.id === topic.id && { color: topic.color, fontWeight: '700' }
+                    selectedTopic.id === topic.id && { color: topic.color, fontWeight: '800' }
                   ]}>
                     {topic.name}
                   </Text>
@@ -205,9 +213,13 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
             </ScrollView>
           </Animated.View>
 
-          {/* Content Input */}
+          {/* Content Input - Themed */}
           <Animated.View entering={FadeInUp.delay(100)}>
             <BlurView intensity={80} style={styles.inputContainer} tint="light">
+              <LinearGradient 
+                colors={CommunityGradients.glass}
+                style={StyleSheet.absoluteFill}
+              />
               <View style={styles.inputHeader}>
                 <Text style={styles.inputAvatar}>
                   {isAnonymous ? '🎭' : (currentUser?.avatar || '👤')}
@@ -222,7 +234,7 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
                       style={styles.countrySelector}
                       onPress={() => setShowCountryPicker(true)}
                     >
-                      <Ionicons name="location-outline" size={14} color="#667eea" />
+                      <Ionicons name="location-outline" size={14} color={CommunityColors.primary} />
                       <Text style={styles.countryText}>
                         {selectedCountry || 'Add location'}
                       </Text>
@@ -233,7 +245,7 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
               <TextInput
                 style={styles.textInput}
                 placeholder="What's on your mind? Share your experience, ask a question, or offer support..."
-                placeholderTextColor="#999"
+                placeholderTextColor={CommunityColors.text.tertiary}
                 value={content}
                 onChangeText={setContent}
                 multiline
@@ -246,7 +258,7 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
             </BlurView>
           </Animated.View>
 
-          {/* Image Preview */}
+          {/* Image Preview - Themed */}
           {images.length > 0 && (
             <Animated.View entering={FadeInUp} style={styles.imagesContainer}>
               {images.map((uri, index) => (
@@ -263,44 +275,48 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
             </Animated.View>
           )}
 
-          {/* Tools */}
+          {/* Tools - Themed with Community Colors */}
           <Animated.View entering={FadeInUp.delay(200)} style={styles.toolsContainer}>
             <TouchableOpacity style={styles.toolButton} onPress={pickImage}>
-              <View style={[styles.toolIcon, { backgroundColor: '#667eea20' }]}>
-                <Ionicons name="image-outline" size={24} color="#667eea" />
+              <View style={[styles.toolIcon, { backgroundColor: CommunityColors.primary + '20' }]}>
+                <Ionicons name="image-outline" size={24} color={CommunityColors.primary} />
               </View>
               <Text style={styles.toolText}>Photo</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.toolButton} onPress={takePhoto}>
-              <View style={[styles.toolIcon, { backgroundColor: '#11998e20' }]}>
-                <Ionicons name="camera-outline" size={24} color="#11998e" />
+              <View style={[styles.toolIcon, { backgroundColor: CommunityColors.secondary + '20' }]}>
+                <Ionicons name="camera-outline" size={24} color={CommunityColors.secondary} />
               </View>
               <Text style={styles.toolText}>Camera</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.toolButton} onPress={() => {}}>
-              <View style={[styles.toolIcon, { backgroundColor: '#fa709a20' }]}>
-                <Ionicons name="mic-outline" size={24} color="#fa709a" />
+              <View style={[styles.toolIcon, { backgroundColor: CommunityColors.accent + '20' }]}>
+                <Ionicons name="mic-outline" size={24} color={CommunityColors.accentDark} />
               </View>
               <Text style={styles.toolText}>Voice</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.toolButton} onPress={() => {}}>
-              <View style={[styles.toolIcon, { backgroundColor: '#fee14020' }]}>
-                <Ionicons name="bar-chart-outline" size={24} color="#fee140" />
+              <View style={[styles.toolIcon, { backgroundColor: CommunityColors.info + '20' }]}>
+                <Ionicons name="bar-chart-outline" size={24} color={CommunityColors.info} />
               </View>
               <Text style={styles.toolText}>Poll</Text>
             </TouchableOpacity>
           </Animated.View>
 
-          {/* Options */}
+          {/* Options - Themed */}
           <Animated.View entering={FadeInUp.delay(300)}>
             <BlurView intensity={80} style={styles.optionsContainer} tint="light">
+              <LinearGradient 
+                colors={CommunityGradients.glass}
+                style={StyleSheet.absoluteFill}
+              />
               <TouchableOpacity 
                 style={styles.optionRow}
                 onPress={() => setIsAnonymous(!isAnonymous)}
               >
                 <View style={styles.optionLeft}>
-                  <View style={[styles.optionIcon, { backgroundColor: '#667eea20' }]}>
-                    <Ionicons name="eye-off-outline" size={20} color="#667eea" />
+                  <View style={[styles.optionIcon, { backgroundColor: CommunityColors.primary + '20' }]}>
+                    <Ionicons name="eye-off-outline" size={20} color={CommunityColors.primary} />
                   </View>
                   <View>
                     <Text style={styles.optionText}>Post anonymously</Text>
@@ -314,18 +330,23 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
             </BlurView>
           </Animated.View>
 
-          {/* Tips */}
+          {/* Tips - Themed */}
           <Animated.View entering={FadeInUp.delay(400)} style={styles.tipsContainer}>
-            <Text style={styles.tipsTitle}>💡 Tips for great posts</Text>
-            <Text style={styles.tipText}>• Be kind and supportive</Text>
-            <Text style={styles.tipText}>• Share specific details</Text>
-            <Text style={styles.tipText}>• Use photos to tell your story</Text>
-            <Text style={styles.tipText}>• Ask questions to engage others</Text>
+            <LinearGradient 
+              colors={[CommunityColors.primary + '15', CommunityColors.primary + '05']}
+              style={styles.tipsGradient}
+            >
+              <Text style={styles.tipsTitle}>💡 Tips for great posts</Text>
+              <Text style={styles.tipText}>• Be kind and supportive</Text>
+              <Text style={styles.tipText}>• Share specific details</Text>
+              <Text style={styles.tipText}>• Use photos to tell your story</Text>
+              <Text style={styles.tipText}>• Ask questions to engage others</Text>
+            </LinearGradient>
           </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Country Picker Modal */}
+      {/* Country Picker Modal - Themed */}
       <Modal
         visible={showCountryPicker}
         transparent
@@ -333,11 +354,15 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
         onRequestClose={() => setShowCountryPicker(false)}
       >
         <View style={styles.modalOverlay}>
-          <BlurView intensity={90} style={styles.modalContent} tint="light">
+          <BlurView intensity={95} style={styles.modalContent} tint="light">
+            <LinearGradient 
+              colors={CommunityGradients.glass}
+              style={StyleSheet.absoluteFill}
+            />
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Select Location</Text>
               <TouchableOpacity onPress={() => setShowCountryPicker(false)}>
-                <Ionicons name="close" size={24} color="#666" />
+                <Ionicons name="close" size={24} color={CommunityColors.text.secondary} />
               </TouchableOpacity>
             </View>
             <ScrollView style={styles.countryList}>
@@ -358,7 +383,7 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
                     {country.name}
                   </Text>
                   {selectedCountry === country.name && (
-                    <Ionicons name="checkmark" size={20} color="#667eea" />
+                    <Ionicons name="checkmark" size={20} color={CommunityColors.primary} />
                   )}
                 </TouchableOpacity>
               ))}
@@ -366,7 +391,7 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
           </BlurView>
         </View>
       </Modal>
-    </LinearGradient>
+    </View>
   );
 }
 
@@ -377,32 +402,35 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 24,
+    paddingHorizontal: CommunitySpacing.lg,
     paddingTop: 60,
     paddingBottom: 20,
   },
-  cancelText: { fontSize: 16, color: '#666', fontWeight: '600' },
-  title: { fontSize: 18, fontWeight: '700', color: '#1a1a1a' },
+  cancelText: { fontSize: 16, color: CommunityColors.text.secondary, fontWeight: '600' },
+  title: { fontSize: 18, fontWeight: '800', color: CommunityColors.text.primary },
   postButton: {
     paddingHorizontal: 20,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: 'rgba(102,126,234,0.2)',
+    backgroundColor: CommunityColors.primary + '20',
   },
-  postButtonActive: { backgroundColor: '#667eea' },
-  postButtonText: { fontSize: 16, fontWeight: '700', color: '#999' },
+  postButtonActive: { 
+    backgroundColor: CommunityColors.primary,
+    ...CommunityShadows.md,
+  },
+  postButtonText: { fontSize: 16, fontWeight: '700', color: CommunityColors.text.tertiary },
   postButtonTextActive: { color: 'white' },
   sectionLabel: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#666',
-    marginLeft: 24,
+    fontWeight: '700',
+    color: CommunityColors.text.secondary,
+    marginLeft: CommunitySpacing.lg,
     marginBottom: 12,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   topicsContainer: {
-    paddingHorizontal: 20,
+    paddingHorizontal: CommunitySpacing.md,
     gap: 12,
     paddingBottom: 8,
   },
@@ -411,19 +439,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 10,
-    backgroundColor: 'rgba(255,255,255,0.6)',
+    backgroundColor: CommunityColors.background.card,
     borderRadius: 20,
     borderWidth: 2,
     borderColor: 'transparent',
     gap: 8,
+    ...CommunityShadows.sm,
   },
   topicEmoji: { fontSize: 20 },
-  topicName: { fontSize: 14, fontWeight: '600', color: '#666' },
+  topicName: { fontSize: 14, fontWeight: '600', color: CommunityColors.text.secondary },
   inputContainer: {
-    margin: 24,
-    borderRadius: 24,
+    margin: CommunitySpacing.lg,
+    borderRadius: CommunityBorderRadius.xl,
     padding: 20,
     overflow: 'hidden',
+    ...CommunityShadows.md,
   },
   inputHeader: {
     flexDirection: 'row',
@@ -432,40 +462,41 @@ const styles = StyleSheet.create({
   },
   inputAvatar: { fontSize: 40, marginRight: 12 },
   inputMeta: { flex: 1 },
-  inputName: { fontSize: 16, fontWeight: '700', color: '#1a1a1a' },
+  inputName: { fontSize: 16, fontWeight: '800', color: CommunityColors.text.primary },
   locationRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     marginTop: 4,
   },
-  inputTopic: { fontSize: 13, color: '#667eea' },
+  inputTopic: { fontSize: 13, color: CommunityColors.primary, fontWeight: '600' },
   countrySelector: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  countryText: { fontSize: 13, color: '#667eea' },
+  countryText: { fontSize: 13, color: CommunityColors.primary, fontWeight: '600' },
   textInput: {
     fontSize: 16,
-    color: '#333',
+    color: CommunityColors.text.primary,
     lineHeight: 24,
     minHeight: 150,
   },
   characterCount: {
     fontSize: 12,
-    color: '#999',
+    color: CommunityColors.text.tertiary,
     textAlign: 'right',
     marginTop: 8,
   },
   imagesContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    paddingHorizontal: 24,
+    paddingHorizontal: CommunitySpacing.lg,
     gap: 12,
     marginBottom: 16,
   },
   imageWrapper: {
     width: 100,
     height: 100,
-    borderRadius: 16,
+    borderRadius: CommunityBorderRadius.lg,
     overflow: 'hidden',
+    ...CommunityShadows.sm,
   },
   previewImage: { width: '100%', height: '100%' },
   removeImage: {
@@ -478,23 +509,24 @@ const styles = StyleSheet.create({
   toolsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    paddingHorizontal: 24,
+    paddingHorizontal: CommunitySpacing.lg,
     marginBottom: 24,
   },
   toolButton: { alignItems: 'center', gap: 8 },
   toolIcon: {
     width: 56,
     height: 56,
-    borderRadius: 16,
+    borderRadius: CommunityBorderRadius.lg,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  toolText: { fontSize: 12, color: '#666', fontWeight: '600' },
+  toolText: { fontSize: 12, color: CommunityColors.text.secondary, fontWeight: '600' },
   optionsContainer: {
-    marginHorizontal: 24,
-    borderRadius: 20,
+    marginHorizontal: CommunitySpacing.lg,
+    borderRadius: CommunityBorderRadius.xl,
     overflow: 'hidden',
     marginBottom: 24,
+    ...CommunityShadows.sm,
   },
   optionRow: {
     flexDirection: 'row',
@@ -510,27 +542,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  optionText: { fontSize: 16, fontWeight: '600', color: '#1a1a1a' },
-  optionSubtext: { fontSize: 13, color: '#999', marginTop: 2 },
+  optionText: { fontSize: 16, fontWeight: '700', color: CommunityColors.text.primary },
+  optionSubtext: { fontSize: 13, color: CommunityColors.text.tertiary, marginTop: 2 },
   checkbox: {
     width: 24,
     height: 24,
     borderRadius: 6,
     borderWidth: 2,
-    borderColor: '#ddd',
+    borderColor: CommunityColors.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  checkboxChecked: { backgroundColor: '#667eea', borderColor: '#667eea' },
+  checkboxChecked: { backgroundColor: CommunityColors.primary, borderColor: CommunityColors.primary },
   tipsContainer: {
-    marginHorizontal: 24,
+    marginHorizontal: CommunitySpacing.lg,
     marginBottom: 24,
-    padding: 20,
-    backgroundColor: 'rgba(102,126,234,0.1)',
-    borderRadius: 20,
+    borderRadius: CommunityBorderRadius.xl,
+    overflow: 'hidden',
+    ...CommunityShadows.sm,
   },
-  tipsTitle: { fontSize: 14, fontWeight: '700', color: '#667eea', marginBottom: 12 },
-  tipText: { fontSize: 13, color: '#666', marginBottom: 6 },
+  tipsGradient: {
+    padding: 20,
+  },
+  tipsTitle: { fontSize: 14, fontWeight: '800', color: CommunityColors.primary, marginBottom: 12 },
+  tipText: { fontSize: 13, color: CommunityColors.text.secondary, marginBottom: 6 },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -541,6 +576,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 20,
+    overflow: 'hidden',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -548,7 +584,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
-  modalTitle: { fontSize: 18, fontWeight: '700', color: '#1a1a1a' },
+  modalTitle: { fontSize: 18, fontWeight: '800', color: CommunityColors.text.primary },
   countryList: { maxHeight: 400 },
   countryItem: {
     flexDirection: 'row',
@@ -558,8 +594,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     gap: 12,
   },
-  countryItemSelected: { backgroundColor: 'rgba(102,126,234,0.1)' },
+  countryItemSelected: { backgroundColor: CommunityColors.primary + '10' },
   countryFlag: { fontSize: 24 },
-  countryName: { flex: 1, fontSize: 16, color: '#1a1a1a' },
-  countryNameSelected: { color: '#667eea', fontWeight: '600' },
+  countryName: { flex: 1, fontSize: 16, color: CommunityColors.text.primary },
+  countryNameSelected: { color: CommunityColors.primary, fontWeight: '700' },
 });
+

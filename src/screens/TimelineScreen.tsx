@@ -317,6 +317,12 @@ const EventCard: React.FC<{
       milestone: '🌟',
       medication: '💊',
       note: '📝',
+      pumping: '🤱',
+      bath: '🛁',
+      symptom: '🤒',
+      play: '🧸',
+      temperature: '🌡️',
+      other: '📋',
     };
     return icons[type] || '📝';
   };
@@ -423,19 +429,18 @@ const FilterChip: React.FC<{
   );
 };
 
-// ==================== STICKY HEADER COMPONENT ====================
+// ==================== STICKY HEADER COMPONENT - UPDATED ====================
 
 const StickyHeader: React.FC<{
   scrollY: any;
   babyName: string;
   stats: { today: number; total: number; milestones: number };
   onBack: () => void;
-  onAdd: () => void;
   onSearch: () => void;
   onAddMilestone: () => void;
   showSearch: boolean;
   insets: any;
-}> = ({ scrollY, babyName, stats, onBack, onAdd, onSearch, onAddMilestone, showSearch, insets }) => {
+}> = ({ scrollY, babyName, stats, onBack, onSearch, onAddMilestone, showSearch, insets }) => {
   const headerAnimatedStyle = useAnimatedStyle(() => {
     const opacity = interpolate(
       scrollY.value,
@@ -462,6 +467,9 @@ const StickyHeader: React.FC<{
     return { opacity };
   });
 
+  // Format today's date for display
+  const todayDate = format(new Date(), 'MMM d');
+
   return (
     <View style={[styles.stickyHeaderContainer, { paddingTop: insets.top }]}>
       <LinearGradient
@@ -470,45 +478,61 @@ const StickyHeader: React.FC<{
       />
       
       <View style={styles.headerContent}>
-        <TouchableOpacity onPress={onBack} style={styles.backButton}>
+        {/* Back button */}
+        <TouchableOpacity 
+          onPress={onBack} 
+          style={styles.backButton}
+          activeOpacity={0.7}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
           <BlurView intensity={80} style={styles.backBlur} tint="light">
             <Ionicons name="arrow-back" size={24} color="#1e293b" />
           </BlurView>
         </TouchableOpacity>
 
         <Animated.View style={[styles.headerCenter, titleAnimatedStyle]}>
-          <Text style={styles.headerTitleLarge}>📅 Timeline</Text>
+          {/* UPDATED: Generic spiral calendar emoji with today's date */}
+          <Text style={styles.headerTitleLarge}>🗓️ {todayDate}</Text>
           <Text style={styles.headerSubtitle}>{babyName} • {stats.today} today • {stats.milestones} 🏆</Text>
         </Animated.View>
 
+        {/* UPDATED: Header right actions - removed Add button (now FAB) */}
         <View style={styles.headerRightActions}>
-          <TouchableOpacity onPress={onSearch} style={styles.headerActionBtn}>
+          <TouchableOpacity 
+            onPress={onSearch} 
+            style={styles.headerActionBtn}
+            activeOpacity={0.7}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
             <BlurView intensity={80} style={styles.actionBlur} tint="light">
               <Ionicons name={showSearch ? "close" : "search"} size={22} color="#1e293b" />
             </BlurView>
           </TouchableOpacity>
-          <TouchableOpacity onPress={onAddMilestone} style={styles.headerActionBtn}>
+          
+          <TouchableOpacity 
+            onPress={onAddMilestone} 
+            style={styles.headerActionBtn}
+            activeOpacity={0.7}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
             <BlurView intensity={80} style={styles.actionBlur} tint="light">
               <Ionicons name="trophy" size={22} color="#f59e0b" />
             </BlurView>
           </TouchableOpacity>
-          <TouchableOpacity onPress={onAdd} style={styles.headerActionBtn}>
-            <LinearGradient colors={['#667eea', '#764ba2']} style={styles.addButtonSmall}>
-              <Ionicons name="add" size={24} color="#fff" />
-            </LinearGradient>
-          </TouchableOpacity>
         </View>
       </View>
 
-      <Animated.View style={[styles.stickyTitleContainer, headerAnimatedStyle, { top: insets.top }]}>
+      {/* UPDATED: Sticky title - removed date badge, shows just title and stats */}
+      <Animated.View style={[styles.stickyTitleContainer, headerAnimatedStyle, { top: insets.top + 8 }]}>
         <BlurView intensity={90} style={styles.stickyBlur} tint="light">
-          <Text style={styles.stickyTitle}>📅 Timeline</Text>
+          <Text style={styles.stickyTitle}>🗓️ Timeline</Text>
           <Text style={styles.stickySubtitle}>{stats.today} entries • {stats.milestones} milestones</Text>
         </BlurView>
       </Animated.View>
     </View>
   );
 };
+
 
 // ==================== MILESTONE CARD COMPONENT ====================
 
@@ -698,12 +722,6 @@ export default function TimelineScreen() {
     await loadEntries();
     setRefreshing(false);
   }, [loadEntries]);
-
-  const handleAddLog = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    navigation.navigate('AddLog', { type: selectedFilter !== 'all' && selectedFilter !== 'milestone' ? selectedFilter : undefined });
-  }, [navigation, selectedFilter]);
-
   const handleAddMilestone = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setShowMilestoneModal(true);
@@ -739,7 +757,6 @@ export default function TimelineScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     
     if (event.type === 'milestone') {
-      // Find the milestone and edit it
       const milestone = milestones.find(m => m.id === event.id);
       if (milestone) {
         Alert.alert(
@@ -789,7 +806,6 @@ export default function TimelineScreen() {
 
   const handleEventPress = useCallback((event: ActivityEntry) => {
     if (event.type === 'milestone') {
-      // Show milestone details
       Alert.alert(
         event.title,
         event.details || 'No additional details',
@@ -804,14 +820,20 @@ export default function TimelineScreen() {
     }
   }, [navigation]);
 
-  const handleQuickAdd = useCallback((type: ActivityType) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    navigation.navigate('AddLog', { type });
-  }, [navigation]);
+const handleQuickAdd = useCallback((type: ActivityType) => {
+  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  navigation.navigate('AddLog', { type });
+}, [navigation]);
 
-  const handleScroll = (event: any) => {
-    scrollY.value = event.nativeEvent.contentOffset.y;
-  };
+// ADD THIS FUNCTION ↓↓↓
+const handleAddLog = useCallback(() => {
+  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  navigation.navigate('AddLog', {});
+}, [navigation]);
+
+const handleScroll = (event: any) => {
+  scrollY.value = event.nativeEvent.contentOffset.y;
+};
 
   if (isLoading && !refreshing) {
     return (
@@ -845,13 +867,12 @@ export default function TimelineScreen() {
       {/* Background gradient */}
       <LinearGradient colors={isDark ? ['#0a0a0a', '#1a1a2e'] : ['#f8fafc', '#e2e8f0', '#dbeafe']} style={styles.backgroundGradient} />
 
-      {/* Sticky Header */}
+      {/* Sticky Header - UPDATED */}
       <StickyHeader
         scrollY={scrollY}
         babyName={currentBaby?.name || 'Baby'}
         stats={stats}
         onBack={() => navigation.goBack()}
-        onAdd={handleAddLog}
         onSearch={() => setShowSearch(!showSearch)}
         onAddMilestone={handleAddMilestone}
         showSearch={showSearch}
@@ -963,7 +984,7 @@ export default function TimelineScreen() {
           </ScrollView>
         </Animated.View>
 
-        {/* Quick Add Buttons */}
+        {/* Quick Add Buttons - 360° Coverage */}
         <Animated.View entering={FadeInUp.delay(300)} style={styles.quickAddContainer}>
           <Text style={[styles.quickAddTitle, isDark && styles.textDark]}>Quick Add:</Text>
           <View style={styles.quickAddButtons}>
@@ -1078,7 +1099,7 @@ export default function TimelineScreen() {
             ))
           )}
           
-          <View style={{ height: insets.bottom + 40 }} />
+          <View style={{ height: insets.bottom + 100 }} />
         </View>
       </Animated.ScrollView>
 
@@ -1355,7 +1376,7 @@ const styles = StyleSheet.create({
   dot2: { opacity: 0.7 },
   dot3: { opacity: 1 },
 
-  // Sticky Header
+  // Sticky Header - UPDATED
   stickyHeaderContainer: {
     position: 'absolute',
     top: 0,
@@ -1374,16 +1395,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingBottom: 16,
   },
   backButton: { 
+    width: 48,
+    height: 48,
     borderRadius: 16, 
-    overflow: 'hidden' 
+    overflow: 'hidden',
+    zIndex: 10,
   },
   backBlur: { 
-    width: 44, 
-    height: 44, 
+    width: 48, 
+    height: 48, 
     borderRadius: 16, 
     alignItems: 'center', 
     justifyContent: 'center',
@@ -1394,8 +1418,9 @@ const styles = StyleSheet.create({
     flex: 1,
     marginHorizontal: 10,
   },
+  // UPDATED: Larger title to accommodate date
   headerTitleLarge: { 
-    fontSize: 24, 
+    fontSize: 20, 
     fontWeight: '800', 
     color: '#1e293b', 
     letterSpacing: -0.5 
@@ -1406,30 +1431,29 @@ const styles = StyleSheet.create({
     marginTop: 2, 
     fontWeight: '500' 
   },
+  // UPDATED: Only 2 buttons now (Search + Trophy)
   headerRightActions: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
   headerActionBtn: {
+    width: 48,
+    height: 48,
     borderRadius: 16,
     overflow: 'hidden',
+    zIndex: 10,
   },
   actionBlur: {
-    width: 44,
-    height: 44,
+    width: 48,
+    height: 48,
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.8)',
   },
-  addButtonSmall: {
-    width: 44,
-    height: 44,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  
+  // UPDATED: Sticky title - simplified, no date badge
   stickyTitleContainer: {
     position: 'absolute',
     left: 0,
@@ -1439,10 +1463,11 @@ const styles = StyleSheet.create({
   },
   stickyBlur: {
     paddingHorizontal: 20,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingVertical: 10,
+    borderRadius: 24,
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.9)',
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    minWidth: 200,
   },
   stickyTitle: {
     fontSize: 18,
@@ -1454,7 +1479,6 @@ const styles = StyleSheet.create({
     color: '#64748b',
     fontWeight: '600',
   },
-
   // Glass Card
   glassCard: { 
     borderRadius: 24, 

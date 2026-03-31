@@ -20,6 +20,13 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CommunityStackParamList } from '../../types/navigation';
 import { useCommunity } from '../../context/CommunityContext';
 import { showSuccessModal, showErrorModal } from '../../utils/modal';
+import { 
+  CommunityColors, 
+  CommunityGradients, 
+  CommunitySpacing, 
+  CommunityBorderRadius,
+  CommunityShadows 
+} from '../../theme/CommunityTheme';
 
 type EditCommunityProfileScreenProps = NativeStackScreenProps<CommunityStackParamList, 'EditCommunityProfile'>;
 
@@ -27,7 +34,7 @@ const AVATARS = ['👤', '👩', '👨', '👧', '👦', '👶', '🤱', '👨�
 
 export default function EditCommunityProfileScreen({ navigation, route }: EditCommunityProfileScreenProps) {
   const { userId } = route.params || {};
-  const { currentUser, updateCommunityProfile, updateUserBio, updateUserLocation } = useCommunity();
+  const { currentUser, updateCommunityProfile, updateUserBio } = useCommunity();
   
   const [displayName, setDisplayName] = useState(currentUser?.displayName || '');
   const [bio, setBio] = useState(currentUser?.bio || '');
@@ -64,8 +71,9 @@ export default function EditCommunityProfileScreen({ navigation, route }: EditCo
   };
 
   return (
-    <LinearGradient colors={['#e0e7ff', '#d1d5ff', '#c7b8ff']} style={styles.container}>
+    <View style={styles.container}>
       <StatusBar style="dark" />
+      <LinearGradient colors={CommunityColors.background.gradient} style={StyleSheet.absoluteFill} />
       
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -119,7 +127,7 @@ export default function EditCommunityProfileScreen({ navigation, route }: EditCo
                 <TextInput
                   style={styles.textInput}
                   placeholder="Your display name"
-                  placeholderTextColor="#999"
+                  placeholderTextColor={CommunityColors.text.tertiary}
                   value={displayName}
                   onChangeText={setDisplayName}
                   maxLength={30}
@@ -132,7 +140,7 @@ export default function EditCommunityProfileScreen({ navigation, route }: EditCo
                 <TextInput
                   style={[styles.textInput, styles.bioInput]}
                   placeholder="Tell us about yourself..."
-                  placeholderTextColor="#999"
+                  placeholderTextColor={CommunityColors.text.tertiary}
                   value={bio}
                   onChangeText={setBio}
                   multiline
@@ -145,15 +153,20 @@ export default function EditCommunityProfileScreen({ navigation, route }: EditCo
 
           {/* Tips */}
           <Animated.View entering={FadeInUp.delay(200)} style={styles.tipsContainer}>
-            <Text style={styles.tipsTitle}>💡 Profile Tips</Text>
-            <Text style={styles.tipText}>• Use a friendly display name</Text>
-            <Text style={styles.tipText}>• Share your parenting journey in your bio</Text>
-            <Text style={styles.tipText}>• Choose an avatar that represents you</Text>
-            <Text style={styles.tipText}>• Be authentic and kind</Text>
+            <LinearGradient 
+              colors={[CommunityColors.secondary + '15', CommunityColors.secondary + '05']}
+              style={styles.tipsGradient}
+            >
+              <Text style={styles.tipsTitle}>💡 Profile Tips</Text>
+              <Text style={styles.tipText}>• Use a friendly display name</Text>
+              <Text style={styles.tipText}>• Share your parenting journey in your bio</Text>
+              <Text style={styles.tipText}>• Choose an avatar that represents you</Text>
+              <Text style={styles.tipText}>• Be authentic and kind</Text>
+            </LinearGradient>
           </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
-    </LinearGradient>
+    </View>
   );
 }
 
@@ -164,26 +177,29 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 24,
+    paddingHorizontal: CommunitySpacing.lg,
     paddingTop: 60,
     paddingBottom: 20,
   },
-  cancelText: { fontSize: 16, color: '#666', fontWeight: '600' },
-  title: { fontSize: 18, fontWeight: '700', color: '#1a1a1a' },
+  cancelText: { fontSize: 16, color: CommunityColors.text.secondary, fontWeight: '600' },
+  title: { fontSize: 18, fontWeight: '800', color: CommunityColors.text.primary },
   saveButton: {
     paddingHorizontal: 20,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: 'rgba(102,126,234,0.2)',
+    backgroundColor: CommunityColors.primary + '20',
   },
-  saveButtonActive: { backgroundColor: '#667eea' },
-  saveButtonText: { fontSize: 16, fontWeight: '700', color: '#999' },
+  saveButtonActive: { 
+    backgroundColor: CommunityColors.primary,
+    ...CommunityShadows.md,
+  },
+  saveButtonText: { fontSize: 16, fontWeight: '700', color: CommunityColors.text.tertiary },
   saveButtonTextActive: { color: 'white' },
   sectionLabel: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#666',
-    marginLeft: 24,
+    fontWeight: '700',
+    color: CommunityColors.text.secondary,
+    marginLeft: CommunitySpacing.lg,
     marginBottom: 12,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -199,39 +215,43 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: 'rgba(255,255,255,0.6)',
+    backgroundColor: CommunityColors.background.card,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
     borderColor: 'transparent',
+    ...CommunityShadows.sm,
   },
   avatarOptionSelected: {
-    borderColor: '#667eea',
-    backgroundColor: 'rgba(102,126,234,0.2)',
+    borderColor: CommunityColors.primary,
+    backgroundColor: CommunityColors.primary + '20',
   },
   avatarEmoji: { fontSize: 32 },
   formContainer: {
-    margin: 24,
-    borderRadius: 24,
+    margin: CommunitySpacing.lg,
+    borderRadius: CommunityBorderRadius.xl,
     padding: 20,
     overflow: 'hidden',
+    ...CommunityShadows.md,
   },
   inputGroup: { marginBottom: 20 },
   inputLabel: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#666',
+    fontWeight: '700',
+    color: CommunityColors.text.secondary,
     marginBottom: 8,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   textInput: {
     fontSize: 16,
-    color: '#333',
-    backgroundColor: 'rgba(255,255,255,0.9)',
+    color: CommunityColors.text.primary,
+    backgroundColor: CommunityColors.background.elevated,
     borderRadius: 12,
     padding: 16,
     minHeight: 50,
+    borderWidth: 1,
+    borderColor: CommunityColors.border,
   },
   bioInput: {
     minHeight: 100,
@@ -239,17 +259,20 @@ const styles = StyleSheet.create({
   },
   characterCount: {
     fontSize: 12,
-    color: '#999',
+    color: CommunityColors.text.tertiary,
     textAlign: 'right',
     marginTop: 4,
   },
   tipsContainer: {
-    marginHorizontal: 24,
+    marginHorizontal: CommunitySpacing.lg,
     marginBottom: 24,
-    padding: 20,
-    backgroundColor: 'rgba(102,126,234,0.1)',
-    borderRadius: 20,
+    borderRadius: CommunityBorderRadius.xl,
+    overflow: 'hidden',
+    ...CommunityShadows.sm,
   },
-  tipsTitle: { fontSize: 14, fontWeight: '700', color: '#667eea', marginBottom: 12 },
-  tipText: { fontSize: 13, color: '#666', marginBottom: 6 },
+  tipsGradient: {
+    padding: 20,
+  },
+  tipsTitle: { fontSize: 14, fontWeight: '800', color: CommunityColors.secondary, marginBottom: 12 },
+  tipText: { fontSize: 13, color: CommunityColors.text.secondary, marginBottom: 6 },
 });

@@ -15,38 +15,57 @@ import {
   Image,
   ActivityIndicator,
   RefreshControl,
+  Pressable,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
-import { LineChart } from 'react-native-chart-kit';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
-import Animated, { FadeInUp, FadeInDown, useSharedValue, useAnimatedStyle, interpolate, Extrapolate, useAnimatedScrollHandler } from 'react-native-reanimated';
+import Animated, { 
+  FadeInUp, 
+  FadeInDown, 
+  useSharedValue, 
+  useAnimatedStyle, 
+  interpolate, 
+  Extrapolate, 
+  useAnimatedScrollHandler,
+  withSpring,
+  withTiming,
+  runOnJS,
+  SlideInUp,
+  SlideOutDown,
+} from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
-import { format, formatDistanceToNow, parseISO } from 'date-fns';
+import { format, formatDistanceToNow, parseISO, differenceInMonths, differenceInYears, differenceInDays } from 'date-fns';
 
-// Contexts - FIXED: Added useActivity import
 import { useAuth } from '../context/AuthContext';
 import { useUser } from '../context/UserContext';
-import { useBaby, GrowthMeasurement, Milestone } from '../context/BabyContext';
+import { useBaby, GrowthMeasurement, Milestone, ActivityEntry } from '../context/BabyContext';
 import { useFamily, FamilyMember } from '../context/FamilyContext';
-import { useActivity, ActivityEntry } from '../context/ActivityContext';
+import { useActivity } from '../context/ActivityContext';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../types/navigation';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
 
-// Constants
+// ==================== DIVERSE SKIN TONES - INCLUSIVE PALETTE ====================
 const SKIN_TONES = [
-  { color: '#f5d0c5', label: 'Light' },
-  { color: '#e8c4b8', label: 'Fair' },
-  { color: '#d4a574', label: 'Medium' },
-  { color: '#a67c52', label: 'Tan' },
-  { color: '#6b4423', label: 'Dark' },
+  { color: '#F5D5C5', label: 'Fair', undertone: 'warm' },
+  { color: '#E8C4A0', label: 'Light', undertone: 'neutral' },
+  { color: '#D4A574', label: 'Medium', undertone: 'warm' },
+  { color: '#C68642', label: 'Tan', undertone: 'golden' },
+  { color: '#8D5524', label: 'Brown', undertone: 'rich' },
+  { color: '#5C3A21', label: 'Dark', undertone: 'deep' },
+  { color: '#3D2314', label: 'Deep', undertone: 'ebony' },
+  { color: '#E0AC69', label: 'Olive', undertone: 'mediterranean' },
+  { color: '#CD853F', label: 'Bronze', undertone: 'copper' },
+  { color: '#A0522D', label: 'Chestnut', undertone: 'warm' },
+  { color: '#F4C2C2', label: 'Rose Fair', undertone: 'cool' },
+  { color: '#D2691E', label: 'Amber', undertone: 'golden' },
 ];
 
 const GENDER_OPTIONS = [
@@ -54,20 +73,6 @@ const GENDER_OPTIONS = [
   { value: 'girl', label: 'Girl', icon: 'female', color: '#fa709a', gradient: ['#fa709a', '#fee140'] },
   { value: 'other', label: 'Other', icon: 'ellipse', color: '#11998e', gradient: ['#11998e', '#38ef7d'] },
 ];
-
-const GROWTH_COLORS = {
-  height: '#667eea',
-  weight: '#fa709a',
-  head: '#11998e',
-  temperature: '#f093fb',
-};
-
-const UNITS = {
-  height: ['cm', 'in'],
-  weight: ['kg', 'lbs', 'oz'],
-  head: ['cm', 'in'],
-  temperature: ['°C', '°F'],
-};
 
 const MILESTONE_CATEGORIES = [
   { id: 'physical', label: 'Physical', icon: 'walk-outline', color: '#667eea' },
@@ -77,7 +82,6 @@ const MILESTONE_CATEGORIES = [
   { id: 'emotional', label: 'Emotional', icon: 'heart-outline', color: '#f97316' },
 ];
 
-// Activity type configuration for icons and colors
 const ACTIVITY_CONFIG: Record<string, { icon: keyof typeof Ionicons.glyphMap; color: string; emoji: string }> = {
   potty: { icon: 'water-outline', color: '#8b5cf6', emoji: '🚽' },
   feed: { icon: 'restaurant-outline', color: '#f59e0b', emoji: '🍼' },
@@ -89,10 +93,479 @@ const ACTIVITY_CONFIG: Record<string, { icon: keyof typeof Ionicons.glyphMap; co
   note: { icon: 'document-text-outline', color: '#6b7280', emoji: '📝' },
 };
 
+// Baby health status calculation
+const getHealthStatus = (baby: any) => {
+  if (!baby) return { status: 'Unknown', color: '#94a3b8', icon: 'help-circle' };
+  
+  const hasAllergies = baby.allergies && baby.allergies.length > 0;
+  const hasMedicalNotes = baby.medicalNotes && baby.medicalNotes.length > 10;
+  const hasBloodType = baby.bloodType && baby.bloodType.length > 0;
+  
+  if (hasAllergies || hasMedicalNotes) {
+    return { status: 'Monitor', color: '#f59e0b', icon: 'medical-outline' };
+  }
+  if (hasBloodType) {
+    return { status: 'Healthy', color: '#10b981', icon: 'checkmark-circle' };
+  }
+  return { status: 'No Data', color: '#64748b', icon: 'information-circle' };
+};
+
 type EditProfileScreenProps = NativeStackScreenProps<RootStackParamList, 'EditProfile'>;
 
-// ==================== SAFE BABY AVATAR COMPONENT ====================
+// ==================== SWEET ALERT COMPONENT ====================
+interface SweetAlertProps {
+  visible: boolean;
+  type: 'success' | 'error' | 'warning' | 'info';
+  title: string;
+  message: string;
+  onClose: () => void;
+}
 
+const SweetAlert: React.FC<SweetAlertProps> = ({ visible, type, title, message, onClose }) => {
+  const scale = useSharedValue(0);
+  const opacity = useSharedValue(0);
+
+  const colors = {
+    success: { bg: ['#10b981', '#059669'], icon: 'checkmark-circle' },
+    error: { bg: ['#ef4444', '#dc2626'], icon: 'close-circle' },
+    warning: { bg: ['#f59e0b', '#d97706'], icon: 'warning' },
+    info: { bg: ['#3b82f6', '#2563eb'], icon: 'information-circle' },
+  };
+
+  const theme = colors[type];
+
+  useEffect(() => {
+    if (visible) {
+      scale.value = withSpring(1, { damping: 15 });
+      opacity.value = withTiming(1, { duration: 200 });
+      
+      const timer = setTimeout(() => {
+        scale.value = withSpring(0);
+        opacity.value = withTiming(0, { duration: 200 }, () => {
+          runOnJS(onClose)();
+        });
+      }, 2500);
+      return () => clearTimeout(timer);
+    }
+  }, [visible]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+    opacity: opacity.value,
+  }));
+
+  if (!visible) return null;
+
+  return (
+    <View style={styles.alertOverlay}>
+      <BlurView intensity={90} tint="dark" style={StyleSheet.absoluteFill} />
+      <Animated.View style={[styles.alertContainer, animatedStyle]}>
+        <LinearGradient colors={theme.bg} style={styles.alertGradient}>
+          <Ionicons name={theme.icon as any} size={56} color="#fff" />
+          <Text style={styles.alertTitle}>{title}</Text>
+          <Text style={styles.alertMessage}>{message}</Text>
+        </LinearGradient>
+      </Animated.View>
+    </View>
+  );
+};
+
+// ==================== CENTERED MODAL COMPONENT (NEW) ====================
+interface CenteredModalProps {
+  visible: boolean;
+  onClose: () => void;
+  title: string;
+  children: React.ReactNode;
+  maxHeight?: number;
+}
+
+const CenteredModal: React.FC<CenteredModalProps> = ({ visible, onClose, title, children, maxHeight = height * 0.7 }) => {
+  const scale = useSharedValue(0.9);
+  const opacity = useSharedValue(0);
+  const translateY = useSharedValue(50);
+
+  useEffect(() => {
+    if (visible) {
+      scale.value = withSpring(1, { damping: 20, stiffness: 300 });
+      opacity.value = withTiming(1, { duration: 250 });
+      translateY.value = withSpring(0, { damping: 20, stiffness: 300 });
+    } else {
+      scale.value = withTiming(0.9, { duration: 200 });
+      opacity.value = withTiming(0, { duration: 200 });
+      translateY.value = withTiming(50, { duration: 200 });
+    }
+  }, [visible]);
+
+  const backdropStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+  }));
+
+  const modalStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }, { translateY: translateY.value }],
+    opacity: opacity.value,
+  }));
+
+  if (!visible) return null;
+
+  return (
+    <Modal
+      transparent
+      visible={visible}
+      animationType="none"
+      onRequestClose={onClose}
+    >
+      <View style={styles.centeredModalOverlay}>
+        <Animated.View style={[styles.backdrop, backdropStyle]}>
+          <BlurView intensity={95} tint="dark" style={StyleSheet.absoluteFill} />
+          <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        </Animated.View>
+        
+        <Animated.View style={[styles.centeredModalContainer, modalStyle, { maxHeight }]}>
+          <BlurView intensity={98} tint="light" style={StyleSheet.absoluteFill} />
+          <LinearGradient
+            colors={['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.95)']}
+            style={StyleSheet.absoluteFill}
+          />
+          
+          <View style={styles.centeredModalHandle} />
+          
+          <View style={styles.centeredModalHeader}>
+            <Text style={styles.centeredModalTitle}>{title}</Text>
+            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+              <Ionicons name="close" size={24} color="#64748b" />
+            </TouchableOpacity>
+          </View>
+          
+          <ScrollView 
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.centeredModalContent}
+          >
+            {children}
+          </ScrollView>
+        </Animated.View>
+      </View>
+    </Modal>
+  );
+};
+
+// ==================== PHOTO OPTIONS MODAL (UPDATED TO CENTERED) ====================
+const PhotoOptionsModal: React.FC<{
+  visible: boolean;
+  onClose: () => void;
+  onCamera: () => void;
+  onGallery: () => void;
+  onEmoji: () => void;
+}> = ({ visible, onClose, onCamera, onGallery, onEmoji }) => {
+  return (
+    <CenteredModal visible={visible} onClose={onClose} title="Change Photo">
+      <Text style={styles.modalSubtitle}>Choose how you want to update the profile picture</Text>
+      
+      <View style={styles.photoOptionsGrid}>
+        <TouchableOpacity style={styles.photoOption} onPress={onCamera}>
+          <LinearGradient colors={['#667eea', '#764ba2']} style={styles.photoOptionIcon}>
+            <Ionicons name="camera" size={28} color="#fff" />
+          </LinearGradient>
+          <Text style={styles.photoOptionLabel}>Camera</Text>
+          <Text style={styles.photoOptionSubtext}>Take a photo</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity style={styles.photoOption} onPress={onGallery}>
+          <LinearGradient colors={['#f59e0b', '#f97316']} style={styles.photoOptionIcon}>
+            <Ionicons name="images" size={28} color="#fff" />
+          </LinearGradient>
+          <Text style={styles.photoOptionLabel}>Gallery</Text>
+          <Text style={styles.photoOptionSubtext}>Choose existing</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity style={styles.photoOption} onPress={onEmoji}>
+          <LinearGradient colors={['#10b981', '#059669']} style={styles.photoOptionIcon}>
+            <Text style={styles.emojiIcon}>😊</Text>
+          </LinearGradient>
+          <Text style={styles.photoOptionLabel}>Emoji</Text>
+          <Text style={styles.photoOptionSubtext}>Use an avatar</Text>
+        </TouchableOpacity>
+      </View>
+    </CenteredModal>
+  );
+};
+
+// ==================== EMOJI PICKER MODAL (UPDATED TO CENTERED) ====================
+const EMOJI_OPTIONS = ['👶', '👧', '👦', '🧒', '👼', '🤱', '🍼', '🧸', '🎈', '🌟', '🦁', '🐯', '🐻', '🐨', '🐼', '🐸', '🦄', '🌈', '⭐', '🔆'];
+
+const EmojiPickerModal: React.FC<{
+  visible: boolean;
+  onClose: () => void;
+  onSelect: (emoji: string) => void;
+}> = ({ visible, onClose, onSelect }) => {
+  return (
+    <CenteredModal visible={visible} onClose={onClose} title="Choose Avatar" maxHeight={height * 0.6}>
+      <View style={styles.emojiGrid}>
+        {EMOJI_OPTIONS.map((emoji, index) => (
+          <TouchableOpacity
+            key={index}
+            style={styles.emojiButton}
+            onPress={() => {
+              onSelect(emoji);
+              onClose();
+            }}
+          >
+            <Text style={styles.emojiButtonText}>{emoji}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </CenteredModal>
+  );
+};
+
+// ==================== CONFIRM DELETE MODAL (UPDATED TO CENTERED) ====================
+const ConfirmDeleteModal: React.FC<{
+  visible: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  babyName: string;
+}> = ({ visible, onClose, onConfirm, babyName }) => {
+  const [confirmText, setConfirmText] = useState('');
+  const [step, setStep] = useState(1);
+  
+  const resetAndClose = () => {
+    setConfirmText('');
+    setStep(1);
+    onClose();
+  };
+
+  const handleConfirm = () => {
+    if (step === 1) {
+      setStep(2);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    } else {
+      if (confirmText.toLowerCase() === babyName.toLowerCase()) {
+        onConfirm();
+        resetAndClose();
+      } else {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
+    }
+  };
+
+  return (
+    <CenteredModal visible={visible} onClose={resetAndClose} title="Delete Profile?" maxHeight={height * 0.5}>
+      <View style={styles.deleteModalContent}>
+        <View style={styles.confirmIconContainer}>
+          <LinearGradient colors={['#ef4444', '#dc2626']} style={styles.confirmIconGradient}>
+            <Ionicons name="trash" size={32} color="#fff" />
+          </LinearGradient>
+        </View>
+        
+        {step === 1 ? (
+          <>
+            <Text style={styles.confirmTitle}>Are you sure?</Text>
+            <Text style={styles.confirmMessage}>
+              This will permanently delete {babyName}'s profile and all associated data. This action cannot be undone.
+            </Text>
+            <View style={styles.confirmButtons}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={resetAndClose}>
+                <Text style={styles.cancelBtnText}>Keep Profile</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.deleteConfirmBtn} onPress={handleConfirm}>
+                <LinearGradient colors={['#ef4444', '#dc2626']} style={styles.deleteConfirmGradient}>
+                  <Text style={styles.deleteConfirmText}>I Understand</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </>
+        ) : (
+          <>
+            <Text style={styles.confirmTitle}>Type to Confirm</Text>
+            <Text style={styles.confirmMessage}>
+              Please type <Text style={styles.boldText}>{babyName}</Text> to confirm deletion:
+            </Text>
+            <TextInput
+              style={styles.confirmInput}
+              value={confirmText}
+              onChangeText={setConfirmText}
+              placeholder="Enter baby name"
+              autoFocus
+            />
+            <View style={styles.confirmButtons}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={resetAndClose}>
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.deleteConfirmBtn, confirmText.toLowerCase() !== babyName.toLowerCase() && styles.disabledBtn]} 
+                onPress={handleConfirm}
+              >
+                <LinearGradient colors={['#ef4444', '#dc2626']} style={styles.deleteConfirmGradient}>
+                  <Text style={styles.deleteConfirmText}>Delete Forever</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
+      </View>
+    </CenteredModal>
+  );
+};
+
+// ==================== SAVE CONFIRMATION MODAL (NEW) ====================
+const SaveConfirmationModal: React.FC<{
+  visible: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  changes: string[];
+}> = ({ visible, onClose, onConfirm, changes }) => {
+  return (
+    <CenteredModal visible={visible} onClose={onClose} title="Save Changes?" maxHeight={height * 0.5}>
+      <Text style={styles.modalSubtitle}>You are about to update the following:</Text>
+      <View style={styles.changesList}>
+        {changes.map((change, index) => (
+          <View key={index} style={styles.changeItem}>
+            <Ionicons name="checkmark-circle" size={20} color="#10b981" />
+            <Text style={styles.changeText}>{change}</Text>
+          </View>
+        ))}
+      </View>
+      <View style={styles.confirmButtons}>
+        <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
+          <Text style={styles.cancelBtnText}>Review</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={onConfirm}>
+          <LinearGradient colors={['#667eea', '#764ba2']} style={styles.saveConfirmGradient}>
+            <Text style={styles.saveConfirmText}>Save Changes</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+      </View>
+    </CenteredModal>
+  );
+};
+
+// ==================== BABY SWITCHER MODAL (NEW) ====================
+const BabySwitcherModal: React.FC<{
+  visible: boolean;
+  onClose: () => void;
+  babies: any[];
+  currentBabyId: string | null;
+  onSwitch: (babyId: string) => void;
+  onAddNew: () => void;
+}> = ({ visible, onClose, babies, currentBabyId, onSwitch, onAddNew }) => {
+  return (
+    <CenteredModal visible={visible} onClose={onClose} title="Switch Baby" maxHeight={height * 0.7}>
+      <ScrollView showsVerticalScrollIndicator={false}>
+        {babies.map((baby, index) => (
+          <TouchableOpacity
+            key={baby.id}
+            style={[
+              styles.babySwitchItem,
+              baby.id === currentBabyId && styles.babySwitchItemActive
+            ]}
+            onPress={() => {
+              onSwitch(baby.id);
+              onClose();
+            }}
+          >
+            <LinearGradient
+              colors={baby.gender === 'boy' ? ['#667eea', '#764ba2'] : baby.gender === 'girl' ? ['#fa709a', '#fee140'] : ['#11998e', '#38ef7d']}
+              style={styles.babySwitchAvatar}
+            >
+              <Text style={styles.babySwitchEmoji}>{baby.avatar || '👶'}</Text>
+            </LinearGradient>
+            <View style={styles.babySwitchInfo}>
+              <Text style={styles.babySwitchName}>{baby.name}</Text>
+              <Text style={styles.babySwitchAge}>{baby.age}</Text>
+            </View>
+            {baby.id === currentBabyId && (
+              <View style={styles.currentBadge}>
+                <Text style={styles.currentBadgeText}>Current</Text>
+              </View>
+            )}
+            <Ionicons 
+              name={baby.id === currentBabyId ? "checkmark-circle" : "chevron-forward"} 
+              size={24} 
+              color={baby.id === currentBabyId ? '#10b981' : '#cbd5e1'} 
+            />
+          </TouchableOpacity>
+        ))}
+        
+        <TouchableOpacity style={styles.addBabyButton} onPress={onAddNew}>
+          <LinearGradient colors={['#667eea20', '#764ba220']} style={styles.addBabyGradient}>
+            <Ionicons name="add-circle" size={32} color="#667eea" />
+            <Text style={styles.addBabyText}>Add New Baby</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+      </ScrollView>
+    </CenteredModal>
+  );
+};
+
+// ==================== GLASS CARD COMPONENT ====================
+const GlassCard: React.FC<{ 
+  children: React.ReactNode; 
+  style?: any; 
+  onPress?: () => void; 
+  intensity?: number;
+  delay?: number;
+}> = ({ children, style, onPress, intensity = 85, delay = 0 }) => {
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
+  const Wrapper = onPress ? TouchableOpacity : View;
+  
+  return (
+    <Animated.View entering={FadeInUp.delay(delay)} style={[styles.glassCard, style]}>
+      <Wrapper onPress={onPress} activeOpacity={0.85} style={{ flex: 1 }}>
+        <BlurView intensity={intensity} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
+        <LinearGradient
+          colors={isDark ? ['rgba(45,45,55,0.9)', 'rgba(25,25,35,0.7)'] : ['rgba(255,255,255,0.95)', 'rgba(250,250,255,0.8)']}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={[styles.glassBorder, isDark && styles.glassBorderDark]} />
+        <View style={styles.glassContent}>{children}</View>
+      </Wrapper>
+    </Animated.View>
+  );
+};
+
+// ==================== STAT BADGE COMPONENT ====================
+const StatBadge: React.FC<{ icon: string; value: number | string; label: string; color: string }> = ({ 
+  icon, value, label, color 
+}) => (
+  <View style={styles.statBadge}>
+    <View style={[styles.statIconBg, { backgroundColor: `${color}20` }]}>
+      <Text style={styles.statIcon}>{icon}</Text>
+    </View>
+    <Text style={[styles.statValue, { color }]}>{value}</Text>
+    <Text style={styles.statLabel}>{label}</Text>
+  </View>
+);
+
+// ==================== ACTIVITY ITEM COMPONENT (HOMESCREEN STYLE) ====================
+const ActivityItem: React.FC<{ activity: ActivityEntry; isDark: boolean; index: number }> = ({ activity, isDark, index }) => {
+  const config = ACTIVITY_CONFIG[activity.type] || ACTIVITY_CONFIG.note;
+  
+  return (
+    <Animated.View entering={FadeInUp.delay(index * 80)} layout={Layout.springify()}>
+      <GlassCard style={styles.activityItemCard} intensity={60}>
+        <View style={[styles.activityIcon, { backgroundColor: `${config.color}20` }]}>
+          <Text style={styles.activityEmoji}>{config.emoji}</Text>
+        </View>
+        <View style={styles.activityContent}>
+          <Text style={[styles.activityTitle, isDark && styles.textDark]} numberOfLines={1}>
+            {activity.title}
+          </Text>
+          <Text style={styles.activityTime}>
+            {formatDistanceToNow(activity.timestamp, { addSuffix: true })}
+          </Text>
+          {activity.details && (
+            <Text style={styles.activityDetails} numberOfLines={1}>{activity.details}</Text>
+          )}
+        </View>
+        <View style={styles.activityArrow}>
+          <Ionicons name="chevron-forward" size={18} color="#667eea" />
+        </View>
+      </GlassCard>
+    </Animated.View>
+  );
+};
+
+// ==================== SAFE BABY AVATAR COMPONENT ====================
 const SafeBabyAvatar: React.FC<{
   avatar?: string | null;
   gender?: string;
@@ -158,112 +631,7 @@ const SafeBabyAvatar: React.FC<{
   );
 };
 
-// ==================== GLASS CARD COMPONENT - EXACTLY LIKE PROFILESCREEN ====================
-
-const GlassCard: React.FC<{ 
-  children: React.ReactNode; 
-  style?: any; 
-  onPress?: () => void; 
-  intensity?: number;
-  delay?: number;
-}> = ({ children, style, onPress, intensity = 85, delay = 0 }) => {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  const Wrapper = onPress ? TouchableOpacity : View;
-  
-  return (
-    <Animated.View entering={FadeInUp.delay(delay)} style={[styles.glassCard, style]}>
-      <Wrapper onPress={onPress} activeOpacity={0.85} style={{ flex: 1 }}>
-        <BlurView intensity={intensity} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
-        <LinearGradient
-          colors={isDark ? ['rgba(45,45,55,0.9)', 'rgba(25,25,35,0.7)'] : ['rgba(255,255,255,0.95)', 'rgba(250,250,255,0.8)']}
-          style={StyleSheet.absoluteFill}
-        />
-        <View style={[styles.glassBorder, isDark && styles.glassBorderDark]} />
-        <View style={styles.glassContent}>{children}</View>
-      </Wrapper>
-    </Animated.View>
-  );
-};
-
-// ==================== STAT BADGE COMPONENT ====================
-
-const StatBadge: React.FC<{ icon: string; value: number | string; label: string; color: string }> = ({ 
-  icon, value, label, color 
-}) => (
-  <View style={styles.statBadge}>
-    <View style={[styles.statIconBg, { backgroundColor: `${color}20` }]}>
-      <Text style={styles.statIcon}>{icon}</Text>
-    </View>
-    <Text style={[styles.statValue, { color }]}>{value}</Text>
-    <Text style={styles.statLabel}>{label}</Text>
-  </View>
-);
-
-// ==================== ACTIVITY ITEM COMPONENT ====================
-
-const ActivityItem: React.FC<{ activity: ActivityEntry; isDark: boolean }> = ({ activity, isDark }) => {
-  const config = ACTIVITY_CONFIG[activity.type] || ACTIVITY_CONFIG.note;
-  
-  return (
-    <View style={styles.activityItem}>
-      <View style={[styles.activityIcon, { backgroundColor: `${config.color}15` }]}>
-        <Text style={styles.activityEmoji}>{config.emoji}</Text>
-      </View>
-      <View style={styles.activityContent}>
-        <Text style={[styles.activityTitle, isDark && styles.textDark]} numberOfLines={1}>
-          {activity.title}
-        </Text>
-        <Text style={styles.activityTime}>
-          {formatDistanceToNow(activity.timestamp, { addSuffix: true })}
-        </Text>
-      </View>
-    </View>
-  );
-};
-
-// ==================== FAMILY AVATAR STACK COMPONENT ====================
-
-const FamilyAvatarStack: React.FC<{ 
-  members: FamilyMember[]; 
-  maxDisplay?: number;
-  onPress: () => void;
-}> = ({ members, maxDisplay = 4, onPress }) => {
-  const displayMembers = members.slice(0, maxDisplay);
-  const remaining = members.length - maxDisplay;
-  
-  const roleColors: Record<string, string[]> = {
-    'parent1': ['#667eea', '#764ba2'],
-    'parent2': ['#fa709a', '#fee140'],
-    'guardian': ['#11998e', '#38ef7d'],
-    'viewer': ['#64748b', '#94a3b8'],
-  };
-
-  return (
-    <TouchableOpacity onPress={onPress} style={styles.avatarStackContainer}>
-      <View style={styles.avatarStack}>
-        {displayMembers.map((member, index) => (
-          <LinearGradient
-            key={member.id}
-            colors={roleColors[member.role] || roleColors['viewer']}
-            style={[styles.stackAvatar, { marginLeft: index > 0 ? -12 : 0, zIndex: maxDisplay - index }]}
-          >
-            <Text style={styles.stackAvatarText}>{member.fullName.charAt(0)}</Text>
-          </LinearGradient>
-        ))}
-        {remaining > 0 && (
-          <View style={[styles.stackAvatar, styles.stackAvatarMore, { marginLeft: -12, zIndex: 0 }]}>
-            <Text style={styles.stackAvatarMoreText}>+{remaining}</Text>
-          </View>
-        )}
-      </View>
-      <Ionicons name="chevron-forward" size={18} color="#667eea" />
-    </TouchableOpacity>
-  );
-};
-
 // ==================== MAIN COMPONENT ====================
-
 export default function EditProfileScreen({ navigation, route }: EditProfileScreenProps) {
   const { mode = 'baby', babyId } = route.params || { mode: 'baby' };
   
@@ -274,43 +642,30 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
     updateBaby, 
     currentBaby,
     currentBabyId,
-    addGrowthMeasurement,
-    getGrowthData,
-    getLatestMeasurements,
-    deleteGrowthMeasurement,
     addMilestone,
     getMilestones,
     deleteMilestone,
-    getBabyStats,
-    getPottyStreak,
     loadBabies,
     switchBaby,
     deleteBaby,
-    growthData,
     milestones,
-    activities: babyActivities,
+    calculateAge,
   } = useBaby();
   
-  // FIXED: Added useActivity hook for proper activity data
   const { 
     entries: allActivities, 
-    getRecentTimelineEvents,
     getEntriesByBaby,
-    getDateTitle,
   } = useActivity();
   
   const { 
     members, 
     loadFamily, 
-    parent1, 
     parent2, 
     guardians,
-    removeMember,
   } = useFamily();
   
   const isBabyMode = mode === 'baby';
   
-  // FIXED: Properly get current baby data
   const currentBabyData = useMemo(() => {
     if (!isBabyMode) return null;
     if (babyId) {
@@ -328,21 +683,31 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
   const [babyPhoto, setBabyPhoto] = useState<string | null>(currentBabyData?.avatar || null);
   const [isUploading, setIsUploading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'growth' | 'milestones' | 'health'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'milestones' | 'health' | 'danger'>('overview');
   
   // Health info
   const [bloodType, setBloodType] = useState(currentBabyData?.bloodType || '');
   const [allergies, setAllergies] = useState(currentBabyData?.allergies?.join(', ') || '');
   const [medicalNotes, setMedicalNotes] = useState(currentBabyData?.medicalNotes || '');
 
-  // Growth chart state
-  const [activeGrowthTab, setActiveGrowthTab] = useState<'height' | 'weight' | 'head'>('height');
-  const [showAddMeasurement, setShowAddMeasurement] = useState(false);
-  const [newMeasurement, setNewMeasurement] = useState({
-    value: '',
-    unit: 'cm',
-    date: new Date().toISOString().split('T')[0],
-    notes: '',
+  // Modal states
+  const [showPhotoModal, setShowPhotoModal] = useState(false);
+  const [showEmojiModal, setShowEmojiModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showSaveConfirm, setShowSaveConfirm] = useState(false);
+  const [showBabySwitcher, setShowBabySwitcher] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  
+  const [alert, setAlert] = useState<{
+    visible: boolean;
+    type: 'success' | 'error' | 'warning' | 'info';
+    title: string;
+    message: string;
+  }>({
+    visible: false,
+    type: 'success',
+    title: '',
+    message: '',
   });
 
   // Milestone state
@@ -363,11 +728,10 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
     onScroll: (event) => { scrollY.value = event.contentOffset.y; },
   });
 
-  const headerOpacity = useAnimatedStyle(() => ({
-    opacity: interpolate(scrollY.value, [0, 60], [1, 0], Extrapolate.CLAMP),
-  }));
+  // Track changes for confirmation
+  const [pendingChanges, setPendingChanges] = useState<string[]>([]);
 
-  // FIXED: Update form states when baby data changes
+  // Update form states when baby data changes
   useEffect(() => {
     if (currentBabyData) {
       setBabyName(currentBabyData.name || '');
@@ -378,21 +742,10 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
       setBloodType(currentBabyData.bloodType || '');
       setAllergies(currentBabyData.allergies?.join(', ') || '');
       setMedicalNotes(currentBabyData.medicalNotes || '');
+      setIsEditing(false);
     }
   }, [currentBabyData?.id]);
 
-  // Update unit when tab changes
-  useEffect(() => {
-    const defaultUnits = {
-      height: 'cm',
-      weight: 'kg',
-      head: 'cm',
-      temperature: '°C',
-    };
-    setNewMeasurement(prev => ({ ...prev, unit: defaultUnits[activeGrowthTab] }));
-  }, [activeGrowthTab]);
-
-  // FIXED: Refresh data with proper loading
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await Promise.all([
@@ -402,12 +755,62 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
     setRefreshing(false);
   }, [loadBabies, loadFamily]);
 
-  // ==================== PHOTO UPLOAD ====================
+  // ==================== PHOTO HANDLERS ====================
+  const handleTakePhoto = async () => {
+    setShowPhotoModal(false);
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      setAlert({
+        visible: true,
+        type: 'error',
+        title: 'Permission Required',
+        message: 'Please allow access to your camera.',
+      });
+      return;
+    }
+
+    try {
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0].uri) {
+        setIsUploading(true);
+        await new Promise(resolve => setTimeout(resolve, 500));
+        setBabyPhoto(result.assets[0].uri);
+        setIsEditing(true);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setIsUploading(false);
+        setAlert({
+          visible: true,
+          type: 'success',
+          title: 'Photo Updated!',
+          message: 'Profile picture has been changed.',
+        });
+      }
+    } catch (error) {
+      setAlert({
+        visible: true,
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to take photo',
+      });
+      setIsUploading(false);
+    }
+  };
 
   const handlePickImage = async () => {
+    setShowPhotoModal(false);
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission Required', 'Please allow access to your photo library.');
+      setAlert({
+        visible: true,
+        type: 'error',
+        title: 'Permission Required',
+        message: 'Please allow access to your photo library.',
+      });
       return;
     }
 
@@ -423,82 +826,47 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
         setIsUploading(true);
         await new Promise(resolve => setTimeout(resolve, 500));
         setBabyPhoto(result.assets[0].uri);
+        setIsEditing(true);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setIsUploading(false);
+        setAlert({
+          visible: true,
+          type: 'success',
+          title: 'Photo Updated!',
+          message: 'Profile picture has been changed.',
+        });
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to pick image');
-      setIsUploading(false);
-    }
-  };
-
-  const handleTakePhoto = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission Required', 'Please allow access to your camera.');
-      return;
-    }
-
-    try {
-      const result = await ImagePicker.launchCameraAsync({
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
+      setAlert({
+        visible: true,
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to pick image',
       });
-
-      if (!result.canceled && result.assets[0].uri) {
-        setIsUploading(true);
-        await new Promise(resolve => setTimeout(resolve, 500));
-        setBabyPhoto(result.assets[0].uri);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        setIsUploading(false);
-      }
-    } catch (error) {
-      Alert.alert('Error', 'Failed to take photo');
       setIsUploading(false);
     }
   };
 
-  const showImagePickerOptions = () => {
-    Alert.alert(
-      'Change Photo',
-      'Choose a photo source',
-      [
-        { text: 'Camera', onPress: handleTakePhoto },
-        { text: 'Photo Library', onPress: handlePickImage },
-        { text: 'Cancel', style: 'cancel' },
-      ]
-    );
+  const handleEmojiSelect = (emoji: string) => {
+    setBabyPhoto(emoji);
+    setIsEditing(true);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setAlert({
+      visible: true,
+      type: 'success',
+      title: 'Avatar Updated!',
+      message: 'Profile picture has been changed.',
+    });
   };
 
-  // ==================== DATA MEMOS - FIXED ====================
-
-  // FIXED: Get activities from useActivity context instead of baby context
+  // ==================== DATA MEMOS ====================
   const recentActivities = useMemo(() => {
     if (!currentBabyData?.id) return [];
-    // Get activities for current baby from ActivityContext
     const babyActivities = getEntriesByBaby(currentBabyData.id);
     return babyActivities
       .sort((a, b) => b.timestamp - a.timestamp)
       .slice(0, 5);
   }, [allActivities, currentBabyData?.id, getEntriesByBaby]);
-
-  const latestMeasurements = useMemo(() => {
-    if (!currentBabyData?.id) return { height: null, weight: null, head: null, temperature: null };
-    // Get measurements from growthData filtered by current baby
-    const babyGrowth = growthData.filter(g => g.babyId === currentBabyData.id);
-    const types = ['height', 'weight', 'head', 'temperature'] as const;
-    const latest: Record<string, GrowthMeasurement | null> = {};
-    
-    types.forEach(type => {
-      const typeData = babyGrowth
-        .filter(m => m.type === type)
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      latest[type] = typeData[0] || null;
-    });
-    
-    return latest;
-  }, [growthData, currentBabyData?.id]);
 
   const babyMilestones = useMemo(() => {
     if (!currentBabyData?.id) return [];
@@ -517,11 +885,11 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
     };
   }, [currentBabyData, babyMilestones.length, recentActivities.length]);
 
-  // FIXED: Get family members for current baby's family
+  const healthStatus = useMemo(() => getHealthStatus(currentBabyData), [currentBabyData]);
+
   const familyMembers = useMemo(() => {
     const membersList: FamilyMember[] = [];
     
-    // Add Parent 1 (current user)
     if (userProfile) {
       membersList.push({
         id: userProfile.id,
@@ -540,80 +908,40 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
       });
     }
     
-    // Add Parent 2 if exists
-    if (parent2) {
-      membersList.push(parent2);
-    }
-    
-    // Add guardians
-    if (guardians && guardians.length > 0) {
-      membersList.push(...guardians);
-    }
+    if (parent2) membersList.push(parent2);
+    if (guardians && guardians.length > 0) membersList.push(...guardians);
     
     return membersList;
   }, [userProfile, parent2, guardians, currentBabyData?.createdAt]);
 
-  // ==================== CHART DATA ====================
-
-  const getChartData = useCallback(() => {
-    if (!currentBabyData?.id) return getDefaultGrowthData(activeGrowthTab);
-    
-    const babyGrowth = growthData.filter(g => g.babyId === currentBabyData.id && g.type === activeGrowthTab);
-    if (babyGrowth.length === 0) {
-      return getDefaultGrowthData(activeGrowthTab);
-    }
-    
-    const sorted = [...babyGrowth].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()).slice(-7);
-    
-    return {
-      labels: sorted.map(d => {
-        const date = new Date(d.date);
-        return `${date.getMonth() + 1}/${date.getDate()}`;
-      }),
-      datasets: [{
-        data: sorted.map(d => d.value),
-        color: () => GROWTH_COLORS[activeGrowthTab],
-      }],
-    };
-  }, [growthData, activeGrowthTab, currentBabyData?.id]);
-
-  const getDefaultGrowthData = (type: 'height' | 'weight' | 'head') => {
-    const defaults = {
-      height: {
-        labels: ['0m', '3m', '6m', '9m', '12m', '15m', '18m'],
-        datasets: [{ data: [50, 61, 67, 72, 76, 79, 82], color: () => GROWTH_COLORS.height }],
-      },
-      weight: {
-        labels: ['0m', '3m', '6m', '9m', '12m', '15m', '18m'],
-        datasets: [{ data: [3.5, 6.0, 7.8, 8.9, 9.8, 10.5, 11.2], color: () => GROWTH_COLORS.weight }],
-      },
-      head: {
-        labels: ['0m', '3m', '6m', '9m', '12m', '15m', '18m'],
-        datasets: [{ data: [35, 40, 43, 45, 47, 48, 49], color: () => GROWTH_COLORS.head }],
-      },
-    };
-    return defaults[type];
-  };
-
-  const formatMeasurementValue = (measurement: GrowthMeasurement | null) => {
-    if (!measurement) return '--';
-    return `${measurement.value} ${measurement.unit}`;
-  };
-
-  const calculateChange = (type: 'height' | 'weight' | 'head') => {
-    if (!currentBabyData?.id) return null;
-    const babyGrowth = growthData.filter(g => g.babyId === currentBabyData.id && g.type === type);
-    if (babyGrowth.length < 2) return null;
-    
-    const sorted = [...babyGrowth].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    const latest = sorted[0];
-    const previous = sorted[1];
-    const change = latest.value - previous.value;
-    const sign = change > 0 ? '+' : '';
-    return `${sign}${change.toFixed(1)} ${latest.unit}`;
-  };
-
   // ==================== SAVE HANDLERS ====================
+  const checkForChanges = useCallback(() => {
+    if (!currentBabyData) return [];
+    const changes: string[] = [];
+    
+    if (babyName !== currentBabyData.name) changes.push(`Name: ${babyName}`);
+    if (selectedGender !== currentBabyData.gender) changes.push(`Gender: ${GENDER_OPTIONS.find(g => g.value === selectedGender)?.label}`);
+    if (babyPhoto !== currentBabyData.avatar) changes.push('Profile Photo');
+    if (bloodType !== (currentBabyData.bloodType || '')) changes.push(`Blood Type: ${bloodType}`);
+    if (allergies !== (currentBabyData.allergies?.join(', ') || '')) changes.push('Allergies updated');
+    
+    return changes;
+  }, [currentBabyData, babyName, selectedGender, babyPhoto, bloodType, allergies]);
+
+  const handleSavePress = () => {
+    const changes = checkForChanges();
+    if (changes.length === 0) {
+      setAlert({
+        visible: true,
+        type: 'info',
+        title: 'No Changes',
+        message: 'No modifications detected.',
+      });
+      return;
+    }
+    setPendingChanges(changes);
+    setShowSaveConfirm(true);
+  };
 
   const handleSave = async () => {
     try {
@@ -632,36 +960,22 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
       };
 
       await updateBaby(currentBabyData.id, babyUpdates);
+      setIsEditing(false);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert('Success', 'Baby profile updated successfully!');
-      navigation.goBack();
-    } catch (error) {
-      Alert.alert('Error', 'Failed to update profile');
-    }
-  };
-
-  const handleAddMeasurement = async () => {
-    if (!currentBabyData || !newMeasurement.value) return;
-
-    const success = await addGrowthMeasurement({
-      babyId: currentBabyData.id,
-      type: activeGrowthTab,
-      value: parseFloat(newMeasurement.value),
-      unit: newMeasurement.unit as any,
-      date: newMeasurement.date,
-      notes: newMeasurement.notes,
-      recordedBy: userProfile?.id || '',
-    });
-
-    if (success) {
-      setShowAddMeasurement(false);
-      setNewMeasurement({
-        value: '',
-        unit: activeGrowthTab === 'weight' ? 'kg' : 'cm',
-        date: new Date().toISOString().split('T')[0],
-        notes: '',
+      setAlert({
+        visible: true,
+        type: 'success',
+        title: 'Profile Saved!',
+        message: `${babyName}'s profile has been updated successfully.`,
       });
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setTimeout(() => navigation.goBack(), 1500);
+    } catch (error) {
+      setAlert({
+        visible: true,
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to update profile',
+      });
     }
   };
 
@@ -685,25 +999,13 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
         achievedAt: new Date().toISOString().split('T')[0],
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setAlert({
+        visible: true,
+        type: 'success',
+        title: 'Milestone Recorded!',
+        message: 'Another amazing achievement! 🌟',
+      });
     }
-  };
-
-  const handleDeleteMeasurement = (measurementId: string) => {
-    Alert.alert(
-      'Delete Measurement',
-      'Are you sure you want to delete this measurement?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Delete', 
-          style: 'destructive',
-          onPress: async () => {
-            await deleteGrowthMeasurement(measurementId);
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-          }
-        }
-      ]
-    );
   };
 
   const handleDeleteMilestone = (milestoneId: string) => {
@@ -718,53 +1020,107 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
           onPress: async () => {
             await deleteMilestone(milestoneId);
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            setAlert({
+              visible: true,
+              type: 'success',
+              title: 'Deleted',
+              message: 'Milestone has been removed.',
+            });
           }
         }
       ]
     );
   };
 
+  const handleDeleteBaby = async () => {
+    if (currentBabyData) {
+      await deleteBaby(currentBabyData.id);
+      setAlert({
+        visible: true,
+        type: 'success',
+        title: 'Profile Deleted',
+        message: 'Baby profile has been removed.',
+      });
+      setTimeout(() => navigation.goBack(), 1500);
+    }
+  };
+
+  const handleSwitchBaby = async (newBabyId: string) => {
+    if (newBabyId === currentBabyId) return;
+    
+    if (isEditing) {
+      Alert.alert(
+        'Unsaved Changes',
+        'You have unsaved changes. Switching babies will discard them. Continue?',
+        [
+          { text: 'Stay', style: 'cancel' },
+          {
+            text: 'Switch',
+            style: 'destructive',
+            onPress: async () => {
+              await switchBaby(newBabyId);
+              setIsEditing(false);
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            }
+          }
+        ]
+      );
+    } else {
+      await switchBaby(newBabyId);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+  };
+
   const onDateChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
     setShowDatePicker(Platform.OS === 'ios');
     if (selectedDate) {
       setBirthDate(selectedDate);
+      setIsEditing(true);
     }
   };
 
-  const chartConfig = {
-    backgroundGradientFrom: 'rgba(255,255,255,0)',
-    backgroundGradientTo: 'rgba(255,255,255,0)',
-    color: () => GROWTH_COLORS[activeGrowthTab],
-    strokeWidth: 3,
-    barPercentage: 0.5,
-    useShadowColorFromDataset: false,
-    decimalPlaces: 1,
-    propsForLabels: { fontSize: 12, fontWeight: '600', color: isDark ? '#fff' : '#333' },
-    propsForDots: { r: '6', strokeWidth: '2', stroke: '#fff' },
+  // ==================== RENDER SECTIONS ====================
+  const renderStickyHeader = () => {
+    const headerOpacity = useAnimatedStyle(() => ({
+      opacity: interpolate(scrollY.value, [0, 60], [0, 1], Extrapolate.CLAMP),
+      transform: [{
+        translateY: interpolate(scrollY.value, [0, 100], [-20, 0], Extrapolate.CLAMP)
+      }]
+    }));
+
+    return (
+      <Animated.View style={[styles.stickyHeader, headerOpacity, { paddingTop: insets.top + 10 }]}>
+        <BlurView intensity={95} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
+        <LinearGradient
+          colors={isDark ? ['rgba(20,20,30,0.98)', 'rgba(10,10,20,0.95)'] : ['rgba(255,255,255,0.98)', 'rgba(248,250,252,0.95)']}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={styles.stickyHeaderContent}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.stickyHeaderBtn}>
+            <Ionicons name="arrow-back" size={24} color={isDark ? '#fff' : '#1a1a1a'} />
+          </TouchableOpacity>
+          
+          <View style={styles.stickyHeaderCenter}>
+            <Text style={[styles.stickyHeaderTitle, isDark && styles.textDark]}>
+              {currentBabyData?.name || 'Baby Profile'}
+            </Text>
+            {isEditing && <View style={styles.editingIndicator} />}
+          </View>
+          
+          <TouchableOpacity 
+            onPress={handleSavePress} 
+            style={[styles.stickySaveBtn, !isEditing && styles.stickySaveBtnDisabled]}
+            disabled={!isEditing}
+          >
+            <Text style={[styles.stickySaveText, !isEditing && styles.stickySaveTextDisabled]}>Save</Text>
+          </TouchableOpacity>
+        </View>
+      </Animated.View>
+    );
   };
 
-  // ==================== RENDER SECTIONS - FIXED STYLING ====================
-
-  const renderHeader = () => (
-    <Animated.View style={[styles.header, headerOpacity, { paddingTop: insets.top + 10 }]}>
-      <View style={styles.headerContent}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerBtn}>
-          <Ionicons name="arrow-back" size={24} color={isDark ? '#fff' : '#1a1a1a'} />
-        </TouchableOpacity>
-        
-        <Text style={[styles.headerTitle, isDark && styles.textDark]}>
-          {currentBabyData?.name || 'Baby Profile'}
-        </Text>
-        
-        <TouchableOpacity onPress={handleSave} style={styles.saveBtn}>
-          <Text style={styles.saveText}>Save</Text>
-        </TouchableOpacity>
-      </View>
-    </Animated.View>
-  );
-
   const renderTabs = () => (
-    <View style={[styles.tabBar, { top: insets.top + 70 }]}>
+    <View style={[styles.tabBar, { top: insets.top + 60 }]}>
       <BlurView intensity={95} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
       <LinearGradient
         colors={isDark ? ['rgba(30,30,40,0.98)', 'rgba(20,20,30,0.95)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.95)']}
@@ -773,11 +1129,12 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
       <View style={styles.tabContainer}>
         {[
           { id: 'overview', icon: 'grid-outline', label: 'Overview' },
-          { id: 'growth', icon: 'trending-up-outline', label: 'Growth' },
           { id: 'milestones', icon: 'trophy-outline', label: 'Milestones' },
           { id: 'health', icon: 'medical-outline', label: 'Health' },
+          { id: 'danger', icon: 'warning-outline', label: 'Danger', color: '#ef4444' },
         ].map((tab) => {
           const isActive = activeTab === tab.id;
+          const isDanger = tab.id === 'danger';
           return (
             <TouchableOpacity
               key={tab.id}
@@ -787,15 +1144,23 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
                 setActiveTab(tab.id as typeof activeTab);
               }}
             >
-              <View style={[styles.tabBg, isActive && { backgroundColor: isDark ? 'rgba(102,126,234,0.3)' : 'rgba(102,126,234,0.15)' }]}>
+              <View style={[
+                styles.tabBg, 
+                isActive && { 
+                  backgroundColor: isDanger 
+                    ? 'rgba(239,68,68,0.15)' 
+                    : (isDark ? 'rgba(102,126,234,0.3)' : 'rgba(102,126,234,0.15)') 
+                },
+                isDanger && isActive && { borderColor: '#ef4444', borderWidth: 1 }
+              ]}>
                 <Ionicons 
                   name={tab.icon as any} 
                   size={18} 
-                  color={isActive ? '#667eea' : isDark ? '#94a3b8' : '#64748b'} 
+                  color={isActive ? (isDanger ? '#ef4444' : '#667eea') : (isDark ? '#94a3b8' : '#64748b')} 
                 />
                 <Text style={[
                   styles.tabLabel, 
-                  isActive && styles.tabLabelActive,
+                  isActive && (isDanger ? styles.tabLabelDanger : styles.tabLabelActive),
                   isDark && !isActive && styles.textMuted
                 ]}>
                   {tab.label}
@@ -808,64 +1173,95 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
     </View>
   );
 
-  const renderPhotoSection = () => {
+  const renderPhotoSection = () => (
+    <View style={styles.photoSection}>
+      <SafeBabyAvatar 
+        avatar={babyPhoto}
+        gender={selectedGender}
+        size={140}
+        showEditButton
+        onEdit={() => setShowPhotoModal(true)}
+      />
+      
+      {isUploading && (
+        <View style={styles.uploadingOverlay}>
+          <ActivityIndicator color="#fff" size="large" />
+        </View>
+      )}
+      
+      <TouchableOpacity onPress={() => setShowPhotoModal(true)} style={styles.changePhotoBtn}>
+        <Text style={styles.changePhotoText}>Change Photo</Text>
+      </TouchableOpacity>
+      
+      <TouchableOpacity 
+        style={styles.galleryLink}
+        onPress={() => navigation.navigate('Gallery')}
+      >
+        <Ionicons name="images-outline" size={16} color="#667eea" />
+        <Text style={styles.galleryLinkText}>View Full Gallery</Text>
+        <Ionicons name="chevron-forward" size={14} color="#667eea" />
+      </TouchableOpacity>
+    </View>
+  );
+
+  const renderBabyInfoHeader = () => {
+    if (!currentBabyData) return null;
+    
     return (
-      <View style={styles.photoSection}>
-        <SafeBabyAvatar 
-          avatar={babyPhoto}
-          gender={selectedGender}
-          size={130}
-          showEditButton
-          onEdit={showImagePickerOptions}
-        />
-        
-        {isUploading && (
-          <View style={styles.uploadingOverlay}>
-            <ActivityIndicator color="#fff" size="large" />
+      <GlassCard style={styles.babyInfoCard} delay={50}>
+        <View style={styles.babyInfoRow}>
+          <View style={styles.babyInfoItem}>
+            <Text style={styles.babyInfoLabel}>Age</Text>
+            <Text style={[styles.babyInfoValue, isDark && styles.textDark]}>
+              {currentBabyData.age || calculateAge(currentBabyData.birthDate)}
+            </Text>
           </View>
-        )}
-        
-        <Text style={[styles.photoHint, isDark && styles.textMuted]}>Tap to change photo</Text>
-      </View>
+          <View style={styles.babyInfoDivider} />
+          <View style={styles.babyInfoItem}>
+            <Text style={styles.babyInfoLabel}>Gender</Text>
+            <Text style={[styles.babyInfoValue, isDark && styles.textDark]}>
+              {GENDER_OPTIONS.find(g => g.value === selectedGender)?.label}
+            </Text>
+          </View>
+          <View style={styles.babyInfoDivider} />
+          <View style={styles.babyInfoItem}>
+            <Text style={styles.babyInfoLabel}>Health</Text>
+            <View style={[styles.healthBadge, { backgroundColor: `${healthStatus.color}20` }]}>
+              <Ionicons name={healthStatus.icon as any} size={14} color={healthStatus.color} />
+              <Text style={[styles.healthText, { color: healthStatus.color }]}>
+                {healthStatus.status}
+              </Text>
+            </View>
+          </View>
+        </View>
+      </GlassCard>
     );
   };
 
   const renderQuickStats = () => (
     <GlassCard style={styles.statsCard} delay={100}>
       <View style={styles.statsRow}>
-        <StatBadge icon="🔥" value={getPottyStreak()} label="Day Streak" color="#fa709a" />
+        <StatBadge icon="🔥" value={babyStats?.streak || 0} label="Day Streak" color="#fa709a" />
         <StatBadge icon="🌟" value={babyStats?.milestones || 0} label="Milestones" color="#f59e0b" />
         <StatBadge icon="📸" value={babyStats?.photos || 0} label="Photos" color="#8b5cf6" />
       </View>
-      
-      {(latestMeasurements.height || latestMeasurements.weight) && (
-        <View style={styles.quickMeasurements}>
-          {latestMeasurements.height && (
-            <View style={styles.quickStat}>
-              <Ionicons name="resize-outline" size={18} color="#667eea" />
-              <Text style={[styles.quickStatValue, isDark && styles.textDark]}>
-                {formatMeasurementValue(latestMeasurements.height)}
-              </Text>
-              <Text style={styles.quickStatLabel}>Height</Text>
-            </View>
-          )}
-          {latestMeasurements.weight && (
-            <View style={styles.quickStat}>
-              <Ionicons name="scale-outline" size={18} color="#fa709a" />
-              <Text style={[styles.quickStatValue, isDark && styles.textDark]}>
-                {formatMeasurementValue(latestMeasurements.weight)}
-              </Text>
-              <Text style={styles.quickStatLabel}>Weight</Text>
-            </View>
-          )}
-        </View>
-      )}
     </GlassCard>
   );
 
   const renderBasicInfoForm = () => (
     <GlassCard style={styles.formCard} delay={200}>
-      <Text style={[styles.sectionLabel, isDark && styles.textDark]}>Basic Information</Text>
+      <View style={styles.sectionHeaderWithEdit}>
+        <Text style={[styles.sectionLabel, isDark && styles.textDark]}>Basic Information</Text>
+        {!isEditing ? (
+          <TouchableOpacity style={styles.editIconBtn} onPress={() => setIsEditing(true)}>
+            <Ionicons name="create-outline" size={20} color="#667eea" />
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.editingBadge}>
+            <Text style={styles.editingBadgeText}>Editing</Text>
+          </View>
+        )}
+      </View>
       
       <View style={styles.inputGroup}>
         <Text style={[styles.inputLabel, isDark && styles.textMuted]}>Baby's Name</Text>
@@ -874,9 +1270,13 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
           <TextInput
             style={[styles.input, isDark && styles.inputDark]}
             value={babyName}
-            onChangeText={setBabyName}
+            onChangeText={(text) => {
+              setBabyName(text);
+              setIsEditing(true);
+            }}
             placeholder="Enter name"
             placeholderTextColor={isDark ? '#666' : '#999'}
+            editable={isEditing}
           />
         </View>
       </View>
@@ -884,14 +1284,15 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
       <View style={styles.inputGroup}>
         <Text style={[styles.inputLabel, isDark && styles.textMuted]}>Birth Date</Text>
         <TouchableOpacity 
-          style={[styles.inputContainer, isDark && styles.inputContainerDark]}
-          onPress={() => setShowDatePicker(true)}
+          style={[styles.inputContainer, isDark && styles.inputContainerDark, !isEditing && styles.inputDisabled]}
+          onPress={() => isEditing && setShowDatePicker(true)}
+          disabled={!isEditing}
         >
           <Ionicons name="calendar-outline" size={20} color="#667eea" style={styles.inputIcon} />
           <Text style={[styles.input, isDark && styles.inputDark]}>
             {birthDate.toLocaleDateString()}
           </Text>
-          <Ionicons name="chevron-forward" size={20} color={isDark ? '#666' : '#999'} />
+          {isEditing && <Ionicons name="chevron-forward" size={20} color={isDark ? '#666' : '#999'} />}
         </TouchableOpacity>
         {showDatePicker && (
           <DateTimePicker
@@ -917,8 +1318,10 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
                   backgroundColor: isDark ? `${gender.color}25` : `${gender.color}12` 
                 },
                 isDark && styles.genderButtonDark,
+                !isEditing && styles.genderButtonDisabled,
               ]}
-              onPress={() => setSelectedGender(gender.value as any)}
+              onPress={() => isEditing && setSelectedGender(gender.value as any)}
+              disabled={!isEditing}
             >
               <Ionicons 
                 name={gender.icon as any} 
@@ -946,185 +1349,27 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
               style={[
                 styles.skinButton, 
                 selectedSkin === index && styles.skinButtonActive,
-                { backgroundColor: skin.color }
+                { backgroundColor: skin.color },
+                !isEditing && styles.skinButtonDisabled,
               ]}
-              onPress={() => setSelectedSkin(index)}
+              onPress={() => isEditing && setSelectedSkin(index)}
+              disabled={!isEditing}
+              accessibilityLabel={skin.label}
             >
               {selectedSkin === index && (
-                <Ionicons name="checkmark" size={22} color="#fff" />
+                <Ionicons name="checkmark" size={22} color={index > 5 ? '#fff' : '#000'} />
               )}
             </TouchableOpacity>
           ))}
         </View>
+        <Text style={[styles.skinToneLabel, isDark && styles.textMuted]}>
+          {SKIN_TONES[selectedSkin]?.label || 'Select tone'}
+        </Text>
       </View>
     </GlassCard>
   );
 
-  // ==================== GROWTH TAB - FIXED ====================
-
-  const renderGrowthPreview = () => {
-    const chartData = getChartData();
-    const hasRealData = growthData.filter(g => g.babyId === currentBabyData?.id && g.type === activeGrowthTab).length > 0;
-    
-    return (
-      <Animated.View entering={FadeInUp} style={styles.tabPanel}>
-        {/* Summary Cards - Fixed spacing and styling */}
-        <View style={styles.growthSummaryRow}>
-          <GlassCard style={styles.growthSummaryCard} intensity={95} delay={100}>
-            <View style={[styles.growthIconBg, { backgroundColor: `${GROWTH_COLORS.height}18` }]}>
-              <Ionicons name="resize-outline" size={26} color={GROWTH_COLORS.height} />
-            </View>
-            <Text style={[styles.growthValue, isDark && styles.textDark]}>
-              {formatMeasurementValue(latestMeasurements.height)}
-            </Text>
-            <Text style={styles.growthLabel}>Height</Text>
-            {calculateChange('height') && (
-              <Text style={[styles.growthChange, { color: '#11998e' }]}>
-                {calculateChange('height')}
-              </Text>
-            )}
-          </GlassCard>
-          
-          <GlassCard style={styles.growthSummaryCard} intensity={95} delay={200}>
-            <View style={[styles.growthIconBg, { backgroundColor: `${GROWTH_COLORS.weight}18` }]}>
-              <Ionicons name="scale-outline" size={26} color={GROWTH_COLORS.weight} />
-            </View>
-            <Text style={[styles.growthValue, isDark && styles.textDark]}>
-              {formatMeasurementValue(latestMeasurements.weight)}
-            </Text>
-            <Text style={styles.growthLabel}>Weight</Text>
-            {calculateChange('weight') && (
-              <Text style={[styles.growthChange, { color: '#11998e' }]}>
-                {calculateChange('weight')}
-              </Text>
-            )}
-          </GlassCard>
-          
-          <GlassCard style={styles.growthSummaryCard} intensity={95} delay={300}>
-            <View style={[styles.growthIconBg, { backgroundColor: `${GROWTH_COLORS.head}18` }]}>
-              <Ionicons name="analytics-outline" size={26} color={GROWTH_COLORS.head} />
-            </View>
-            <Text style={[styles.growthValue, isDark && styles.textDark]}>
-              {formatMeasurementValue(latestMeasurements.head)}
-            </Text>
-            <Text style={styles.growthLabel}>Head</Text>
-            {calculateChange('head') && (
-              <Text style={[styles.growthChange, { color: '#11998e' }]}>
-                {calculateChange('head')}
-              </Text>
-            )}
-          </GlassCard>
-        </View>
-
-        {/* Growth Chart Preview */}
-        <GlassCard style={styles.chartCard} intensity={95} delay={400}>
-          <View style={styles.chartHeader}>
-            <Text style={[styles.chartTitle, isDark && styles.textDark]}>Growth Overview</Text>
-            <TouchableOpacity 
-              style={styles.viewFullChartBtn}
-              onPress={() => navigation.navigate('GrowthChart', { babyId: currentBabyData?.id })}
-            >
-              <Text style={styles.viewFullChartText}>View Full Chart</Text>
-              <Ionicons name="arrow-forward" size={16} color="#667eea" />
-            </TouchableOpacity>
-          </View>
-          
-          <LineChart
-            data={chartData}
-            width={width - 88}
-            height={220}
-            chartConfig={chartConfig}
-            bezier
-            style={styles.chart}
-            withVerticalLines={false}
-            withHorizontalLines={true}
-            withHorizontalLabels={true}
-            withVerticalLabels={true}
-            withDots={true}
-            withShadow={false}
-          />
-          
-          {!hasRealData && (
-            <View style={styles.sampleDataOverlay}>
-              <Text style={[styles.sampleDataText, isDark && styles.textMuted]}>
-                Sample data - add measurements to see real growth
-              </Text>
-            </View>
-          )}
-        </GlassCard>
-
-        {/* Add Measurement Button */}
-        <TouchableOpacity 
-          style={styles.addMeasurementBtn}
-          onPress={() => setShowAddMeasurement(true)}
-        >
-          <LinearGradient colors={['#667eea', '#764ba2']} style={styles.addMeasurementGradient}>
-            <Ionicons name="add" size={22} color="#fff" />
-            <Text style={styles.addMeasurementText}>Add Measurement</Text>
-          </LinearGradient>
-        </TouchableOpacity>
-
-        {/* Recent Entries */}
-        <Text style={[styles.measurementsTitle, isDark && styles.textDark]}>
-          Recent Measurements
-        </Text>
-        
-        {(() => {
-          const babyGrowth = growthData.filter(g => g.babyId === currentBabyData?.id && g.type === activeGrowthTab);
-          if (babyGrowth.length === 0) {
-            return (
-              <GlassCard style={styles.emptyCard} intensity={90} delay={500}>
-                <Ionicons name="analytics-outline" size={56} color={isDark ? '#475569' : '#cbd5e1'} />
-                <Text style={[styles.emptyText, isDark && styles.textMuted]}>
-                  No measurements yet. Add your first!
-                </Text>
-              </GlassCard>
-            );
-          }
-          return babyGrowth
-            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-            .slice(0, 5)
-            .map((entry, index) => (
-            <GlassCard key={entry.id} style={styles.entryCard} intensity={90} delay={500 + index * 100}>
-              <View style={styles.entryRow}>
-                <View style={[styles.entryIconBg, { backgroundColor: `${GROWTH_COLORS[entry.type]}18` }]}>
-                  <Ionicons 
-                    name={entry.type === 'height' ? 'resize-outline' : entry.type === 'weight' ? 'scale-outline' : 'analytics-outline'} 
-                    size={24} 
-                    color={GROWTH_COLORS[entry.type]} 
-                  />
-                </View>
-                <View style={styles.entryContent}>
-                  <Text style={[styles.entryType, isDark && styles.textDark]}>
-                    {entry.type.charAt(0).toUpperCase() + entry.type.slice(1)}
-                  </Text>
-                  <Text style={[styles.entryDate, isDark && styles.textMuted]}>
-                    {format(new Date(entry.date), 'MMM d, yyyy')}
-                  </Text>
-                </View>
-                <View style={styles.entryValues}>
-                  <Text style={styles.entryValue}>
-                    {entry.value} {entry.unit}
-                  </Text>
-                  {entry.notes && (
-                    <Text style={styles.entryNotes} numberOfLines={1}>
-                      {entry.notes}
-                    </Text>
-                  )}
-                </View>
-                <TouchableOpacity onPress={() => handleDeleteMeasurement(entry.id)} style={styles.deleteEntryBtn}>
-                  <Ionicons name="trash-outline" size={20} color="#ef4444" />
-                </TouchableOpacity>
-              </View>
-            </GlassCard>
-          ));
-        })()}
-      </Animated.View>
-    );
-  };
-
-  // ==================== MILESTONES TAB - FIXED ====================
-
+  // ==================== MILESTONES TAB ====================
   const renderMilestones = () => (
     <Animated.View entering={FadeInUp} style={styles.tabPanel}>
       <TouchableOpacity 
@@ -1183,37 +1428,55 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
     </Animated.View>
   );
 
-  // ==================== HEALTH TAB - FIXED NAVIGATION ====================
-
+  // ==================== HEALTH TAB ====================
   const renderHealthForm = () => (
     <Animated.View entering={FadeInUp} style={styles.tabPanel}>
       <GlassCard style={styles.formCard} delay={100}>
-        <Text style={[styles.sectionLabel, isDark && styles.textDark]}>Health Information</Text>
+        <View style={styles.sectionHeaderWithEdit}>
+          <Text style={[styles.sectionLabel, isDark && styles.textDark]}>Health Information</Text>
+          {!isEditing ? (
+            <TouchableOpacity style={styles.editIconBtn} onPress={() => setIsEditing(true)}>
+              <Ionicons name="create-outline" size={20} color="#667eea" />
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.editingBadge}>
+              <Text style={styles.editingBadgeText}>Editing</Text>
+            </View>
+          )}
+        </View>
         
         <View style={styles.inputGroup}>
           <Text style={[styles.inputLabel, isDark && styles.textMuted]}>Blood Type</Text>
-          <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
+          <View style={[styles.inputContainer, isDark && styles.inputContainerDark, !isEditing && styles.inputDisabled]}>
             <Ionicons name="water-outline" size={20} color="#667eea" style={styles.inputIcon} />
             <TextInput
               style={[styles.input, isDark && styles.inputDark]}
               value={bloodType}
-              onChangeText={setBloodType}
+              onChangeText={(text) => {
+                setBloodType(text);
+                setIsEditing(true);
+              }}
               placeholder="e.g., O+"
               placeholderTextColor={isDark ? '#666' : '#999'}
+              editable={isEditing}
             />
           </View>
         </View>
 
         <View style={styles.inputGroup}>
           <Text style={[styles.inputLabel, isDark && styles.textMuted]}>Allergies (comma separated)</Text>
-          <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
+          <View style={[styles.inputContainer, isDark && styles.inputContainerDark, !isEditing && styles.inputDisabled]}>
             <Ionicons name="warning-outline" size={20} color="#667eea" style={styles.inputIcon} />
             <TextInput
               style={[styles.input, isDark && styles.inputDark]}
               value={allergies}
-              onChangeText={setAllergies}
+              onChangeText={(text) => {
+                setAllergies(text);
+                setIsEditing(true);
+              }}
               placeholder="e.g., Peanuts, Dairy"
               placeholderTextColor={isDark ? '#666' : '#999'}
+              editable={isEditing}
             />
           </View>
         </View>
@@ -1224,18 +1487,22 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
             style={[
               styles.textArea,
               isDark && styles.textAreaDark,
+              !isEditing && styles.inputDisabled,
             ]}
             value={medicalNotes}
-            onChangeText={setMedicalNotes}
+            onChangeText={(text) => {
+              setMedicalNotes(text);
+              setIsEditing(true);
+            }}
             placeholder="Any important medical information..."
             multiline
             numberOfLines={4}
             placeholderTextColor={isDark ? '#666' : '#999'}
+            editable={isEditing}
           />
         </View>
       </GlassCard>
 
-      {/* Quick Links - FIXED: Updated navigation targets */}
       <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Quick Actions</Text>
       
       <GlassCard style={styles.actionCard} delay={200} onPress={() => navigation.navigate('UniversalTracker', { type: 'medication' })}>
@@ -1277,14 +1544,14 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
         </View>
       </GlassCard>
 
-      <GlassCard style={styles.actionCard} delay={500} onPress={() => navigation.navigate('UniversalTracker', { type: 'potty' })}>
+      <GlassCard style={styles.actionCard} delay={500} onPress={() => navigation.navigate('GrowthChart', { babyId: currentBabyData?.id })}>
         <View style={styles.actionRow}>
-          <View style={[styles.actionIconBg, { backgroundColor: '#8b5cf618' }]}>
-            <Ionicons name="water-outline" size={26} color="#8b5cf6" />
+          <View style={[styles.actionIconBg, { backgroundColor: '#10b98118' }]}>
+            <Ionicons name="trending-up-outline" size={26} color="#10b981" />
           </View>
           <View style={styles.actionContent}>
-            <Text style={[styles.actionTitle, isDark && styles.textDark]}>Potty Training</Text>
-            <Text style={[styles.actionSubtitle, isDark && styles.textMuted]}>Track potty habits & streaks</Text>
+            <Text style={[styles.actionTitle, isDark && styles.textDark]}>Growth Charts</Text>
+            <Text style={[styles.actionSubtitle, isDark && styles.textMuted]}>View detailed growth analytics</Text>
           </View>
           <Ionicons name="chevron-forward" size={22} color={isDark ? '#667eea' : '#764ba2'} />
         </View>
@@ -1292,31 +1559,63 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
     </Animated.View>
   );
 
-  // ==================== OVERVIEW TAB - FIXED ====================
+  // ==================== DANGER TAB (DELETE ONLY) ====================
+  const renderDangerZone = () => (
+    <Animated.View entering={FadeInUp} style={styles.tabPanel}>
+      <GlassCard style={styles.dangerCard} delay={100}>
+        <View style={styles.dangerIconContainer}>
+          <LinearGradient colors={['#ef4444', '#dc2626']} style={styles.dangerIcon}>
+            <Ionicons name="warning" size={32} color="#fff" />
+          </LinearGradient>
+        </View>
+        
+        <Text style={styles.dangerTitle}>Danger Zone</Text>
+        <Text style={styles.dangerDescription}>
+          Permanently delete {currentBabyData?.name}'s profile and all associated data. 
+          This action cannot be undone.
+        </Text>
+        
+        <View style={styles.dangerStats}>
+          <View style={styles.dangerStat}>
+            <Ionicons name="images-outline" size={20} color="#94a3b8" />
+            <Text style={styles.dangerStatText}>{babyStats?.photos || 0} Photos</Text>
+          </View>
+          <View style={styles.dangerStat}>
+            <Ionicons name="trophy-outline" size={20} color="#94a3b8" />
+            <Text style={styles.dangerStatText}>{babyStats?.milestones || 0} Milestones</Text>
+          </View>
+          <View style={styles.dangerStat}>
+            <Ionicons name="document-text-outline" size={20} color="#94a3b8" />
+            <Text style={styles.dangerStatText}>{babyStats?.entries || 0} Entries</Text>
+          </View>
+        </View>
+        
+        <TouchableOpacity 
+          style={styles.deleteButton}
+          onPress={() => setShowDeleteModal(true)}
+        >
+          <LinearGradient colors={['#ef4444', '#dc2626']} style={styles.deleteGradient}>
+            <Ionicons name="trash-outline" size={20} color="#fff" />
+            <Text style={styles.deleteButtonText}>Delete Baby Profile</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+      </GlassCard>
+      
+      <Text style={styles.dangerNote}>
+        <Ionicons name="information-circle" size={14} color="#94a3b8" />
+        {' '}Consider exporting data before deletion
+      </Text>
+    </Animated.View>
+  );
 
+  // ==================== OVERVIEW TAB ====================
   const renderOverview = () => (
     <Animated.View entering={FadeInUp} style={styles.tabPanel}>
       {renderPhotoSection()}
+      {renderBabyInfoHeader()}
       {renderQuickStats()}
       {renderBasicInfoForm()}
       
-      {/* Growth Preview Link */}
-      <GlassCard style={styles.growthPreviewCard} delay={250} onPress={() => setActiveTab('growth')}>
-        <View style={styles.growthPreviewRow}>
-          <View style={[styles.growthPreviewIconBg, { backgroundColor: '#667eea18' }]}>
-            <Ionicons name="trending-up-outline" size={28} color="#667eea" />
-          </View>
-          <View style={styles.growthPreviewContent}>
-            <Text style={[styles.growthPreviewTitle, isDark && styles.textDark]}>Growth Tracking</Text>
-            <Text style={[styles.growthPreviewSubtitle, isDark && styles.textMuted]}>
-              {growthData.filter(g => g.babyId === currentBabyData?.id).length} measurements recorded
-            </Text>
-          </View>
-          <Ionicons name="chevron-forward" size={24} color={isDark ? '#667eea' : '#764ba2'} />
-        </View>
-      </GlassCard>
-
-      {/* Family Members - FIXED: Using computed familyMembers */}
       <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Family</Text>
       <GlassCard style={styles.familyCard} delay={300} onPress={() => navigation.navigate('FamilySharing')}>
         <View style={styles.familyRow}>
@@ -1344,7 +1643,18 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
         </View>
       </GlassCard>
 
-      {/* Recent Activity - FIXED: Using activities from useActivity */}
+      {/* Baby Switcher Quick Access */}
+      {babies.length > 1 && (
+        <TouchableOpacity 
+          style={styles.switchBabyRow}
+          onPress={() => setShowBabySwitcher(true)}
+        >
+          <Ionicons name="swap-horizontal" size={20} color="#667eea" />
+          <Text style={styles.switchBabyText}>Switch to another baby</Text>
+          <Ionicons name="chevron-forward" size={18} color="#94a3b8" />
+        </TouchableOpacity>
+      )}
+
       {recentActivities.length > 0 && (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -1353,208 +1663,109 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
               <Text style={styles.seeAll}>See All</Text>
             </TouchableOpacity>
           </View>
-          <GlassCard style={styles.activityCard} intensity={90} delay={400}>
-            {recentActivities.slice(0, 3).map((activity) => (
-              <ActivityItem key={activity.id} activity={activity} isDark={isDark} />
-            ))}
-          </GlassCard>
+          {recentActivities.map((activity, index) => (
+            <ActivityItem 
+              key={activity.id} 
+              activity={activity} 
+              isDark={isDark} 
+              index={index}
+            />
+          ))}
+          <TouchableOpacity 
+            style={styles.viewAllButton}
+            onPress={() => navigation.navigate('Timeline')}
+          >
+            <Text style={styles.viewAllText}>View All in Timeline</Text>
+            <Ionicons name="arrow-forward" size={16} color="#667eea" />
+          </TouchableOpacity>
         </View>
       )}
     </Animated.View>
   );
 
-  // ==================== MODALS - FIXED CENTERED MODAL ====================
-
-  const renderAddMeasurementModal = () => (
-    <Modal
-      animationType="fade"
-      transparent={true}
-      visible={showAddMeasurement}
-      onRequestClose={() => setShowAddMeasurement(false)}
-    >
-      <View style={styles.centeredModalOverlay}>
-        <BlurView intensity={100} style={styles.centeredModalContent} tint={isDark ? 'dark' : 'light'}>
-          <LinearGradient
-            colors={isDark ? ['rgba(45,45,55,0.95)', 'rgba(25,25,35,0.85)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.95)']}
-            style={StyleSheet.absoluteFill}
-          />
-          <View style={styles.centeredModalHeader}>
-            <Text style={[styles.centeredModalTitle, isDark && styles.textDark]}>
-              Add {activeGrowthTab.charAt(0).toUpperCase() + activeGrowthTab.slice(1)}
-            </Text>
-            <TouchableOpacity onPress={() => setShowAddMeasurement(false)} style={styles.closeBtn}>
-              <Ionicons name="close" size={28} color={isDark ? '#fff' : '#333'} />
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView style={styles.centeredModalBody} showsVerticalScrollIndicator={false}>
-            <View style={styles.inputGroup}>
-              <Text style={[styles.inputLabel, isDark && styles.textMuted]}>Value</Text>
-              <View style={styles.row}>
-                <TextInput
-                  style={[styles.modalInput, isDark && styles.modalInputDark, { flex: 2, marginRight: 12 }]}
-                  value={newMeasurement.value}
-                  onChangeText={(text) => setNewMeasurement(prev => ({ ...prev, value: text }))}
-                  placeholder="0.0"
-                  keyboardType="decimal-pad"
-                  placeholderTextColor={isDark ? '#666' : '#999'}
-                />
-                <View style={[styles.unitSelector, isDark && styles.unitSelectorDark]}>
-                  {UNITS[activeGrowthTab].map(unit => (
-                    <TouchableOpacity
-                      key={unit}
-                      style={[
-                        styles.unitOption,
-                        newMeasurement.unit === unit && styles.unitOptionActive
-                      ]}
-                      onPress={() => setNewMeasurement(prev => ({ ...prev, unit }))}
-                    >
-                      <Text style={[
-                        styles.unitText,
-                        newMeasurement.unit === unit && styles.unitTextActive
-                      ]}>
-                        {unit}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={[styles.inputLabel, isDark && styles.textMuted]}>Date</Text>
-              <TouchableOpacity 
-                style={[styles.inputContainer, isDark && styles.inputContainerDark]}
-                onPress={() => setShowDatePicker(true)}
-              >
-                <Ionicons name="calendar-outline" size={20} color="#667eea" />
-                <Text style={[styles.input, isDark && styles.inputDark, { marginLeft: 12 }]}>
-                  {newMeasurement.date}
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={[styles.inputLabel, isDark && styles.textMuted]}>Notes (Optional)</Text>
-              <TextInput
-                style={[styles.modalInput, isDark && styles.modalInputDark, { height: 90, textAlignVertical: 'top' }]}
-                value={newMeasurement.notes}
-                onChangeText={(text) => setNewMeasurement(prev => ({ ...prev, notes: text }))}
-                placeholder="Add any notes..."
-                multiline
-                placeholderTextColor={isDark ? '#666' : '#999'}
-              />
-            </View>
-
-            <TouchableOpacity style={styles.modalAddButton} onPress={handleAddMeasurement}>
-              <LinearGradient colors={['#667eea', '#764ba2']} style={styles.modalAddButtonGradient}>
-                <Text style={styles.modalAddButtonText}>Add Measurement</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-          </ScrollView>
-        </BlurView>
-      </View>
-    </Modal>
-  );
-
+  // ==================== ADD MILESTONE MODAL (CENTERED) ====================
   const renderAddMilestoneModal = () => (
-    <Modal
-      animationType="fade"
-      transparent={true}
-      visible={showAddMilestone}
-      onRequestClose={() => setShowAddMilestone(false)}
+    <CenteredModal 
+      visible={showAddMilestone} 
+      onClose={() => setShowAddMilestone(false)} 
+      title="Record Milestone"
+      maxHeight={height * 0.8}
     >
-      <View style={styles.centeredModalOverlay}>
-        <BlurView intensity={100} style={styles.centeredModalContent} tint={isDark ? 'dark' : 'light'}>
-          <LinearGradient
-            colors={isDark ? ['rgba(45,45,55,0.95)', 'rgba(25,25,35,0.85)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.95)']}
-            style={StyleSheet.absoluteFill}
+      <View style={styles.modalForm}>
+        <View style={styles.inputGroup}>
+          <Text style={[styles.inputLabel, isDark && styles.textMuted]}>Title</Text>
+          <TextInput
+            style={[styles.modalInput, isDark && styles.modalInputDark]}
+            value={newMilestone.title}
+            onChangeText={(text) => setNewMilestone(prev => ({ ...prev, title: text }))}
+            placeholder="e.g., First Steps"
+            placeholderTextColor={isDark ? '#666' : '#999'}
           />
-          <View style={styles.centeredModalHeader}>
-            <Text style={[styles.centeredModalTitle, isDark && styles.textDark]}>Record Milestone</Text>
-            <TouchableOpacity onPress={() => setShowAddMilestone(false)} style={styles.closeBtn}>
-              <Ionicons name="close" size={28} color={isDark ? '#fff' : '#333'} />
-            </TouchableOpacity>
-          </View>
+        </View>
 
-          <ScrollView style={styles.centeredModalBody} showsVerticalScrollIndicator={false}>
-            <View style={styles.inputGroup}>
-              <Text style={[styles.inputLabel, isDark && styles.textMuted]}>Title</Text>
-              <TextInput
-                style={[styles.modalInput, isDark && styles.modalInputDark]}
-                value={newMilestone.title}
-                onChangeText={(text) => setNewMilestone(prev => ({ ...prev, title: text }))}
-                placeholder="e.g., First Steps"
-                placeholderTextColor={isDark ? '#666' : '#999'}
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={[styles.inputLabel, isDark && styles.textMuted]}>Category</Text>
-              <View style={styles.categoryContainer}>
-                {MILESTONE_CATEGORIES.map((cat) => (
-                  <TouchableOpacity
-                    key={cat.id}
-                    style={[
-                      styles.categoryButton,
-                      newMilestone.category === cat.id && { 
-                        backgroundColor: isDark ? `${cat.color}30` : `${cat.color}18`, 
-                        borderColor: cat.color 
-                      },
-                      isDark && styles.categoryButtonDark,
-                    ]}
-                    onPress={() => setNewMilestone(prev => ({ ...prev, category: cat.id as any }))}
-                  >
-                    <Ionicons name={cat.icon as any} size={20} color={newMilestone.category === cat.id ? cat.color : isDark ? '#94a3b8' : '#64748b'} />
-                    <Text style={[
-                      styles.categoryText,
-                      newMilestone.category === cat.id && { color: cat.color, fontWeight: '700' },
-                    ]}>
-                      {cat.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={[styles.inputLabel, isDark && styles.textMuted]}>Date Achieved</Text>
-              <TouchableOpacity 
-                style={[styles.inputContainer, isDark && styles.inputContainerDark]}
-                onPress={() => setShowDatePicker(true)}
+        <View style={styles.inputGroup}>
+          <Text style={[styles.inputLabel, isDark && styles.textMuted]}>Category</Text>
+          <View style={styles.categoryContainer}>
+            {MILESTONE_CATEGORIES.map((cat) => (
+              <TouchableOpacity
+                key={cat.id}
+                style={[
+                  styles.categoryButton,
+                  newMilestone.category === cat.id && { 
+                    backgroundColor: isDark ? `${cat.color}30` : `${cat.color}18`, 
+                    borderColor: cat.color 
+                  },
+                  isDark && styles.categoryButtonDark,
+                ]}
+                onPress={() => setNewMilestone(prev => ({ ...prev, category: cat.id as any }))}
               >
-                <Ionicons name="calendar-outline" size={20} color="#667eea" />
-                <Text style={[styles.input, isDark && styles.inputDark, { marginLeft: 12 }]}>
-                  {newMilestone.achievedAt}
+                <Ionicons name={cat.icon as any} size={20} color={newMilestone.category === cat.id ? cat.color : isDark ? '#94a3b8' : '#64748b'} />
+                <Text style={[
+                  styles.categoryText,
+                  newMilestone.category === cat.id && { color: cat.color, fontWeight: '700' },
+                ]}>
+                  {cat.label}
                 </Text>
               </TouchableOpacity>
-            </View>
+            ))}
+          </View>
+        </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={[styles.inputLabel, isDark && styles.textMuted]}>Description (Optional)</Text>
-              <TextInput
-                style={[styles.modalInput, isDark && styles.modalInputDark, { height: 90, textAlignVertical: 'top' }]}
-                value={newMilestone.description}
-                onChangeText={(text) => setNewMilestone(prev => ({ ...prev, description: text }))}
-                placeholder="Add details about this milestone..."
-                multiline
-                placeholderTextColor={isDark ? '#666' : '#999'}
-              />
-            </View>
+        <View style={styles.inputGroup}>
+          <Text style={[styles.inputLabel, isDark && styles.textMuted]}>Date Achieved</Text>
+          <TouchableOpacity 
+            style={[styles.inputContainer, isDark && styles.inputContainerDark]}
+            onPress={() => setShowDatePicker(true)}
+          >
+            <Ionicons name="calendar-outline" size={20} color="#667eea" />
+            <Text style={[styles.input, isDark && styles.inputDark, { marginLeft: 12 }]}>
+              {newMilestone.achievedAt}
+            </Text>
+          </TouchableOpacity>
+        </View>
 
-            <TouchableOpacity style={styles.modalAddButton} onPress={handleAddMilestone}>
-              <LinearGradient colors={['#f59e0b', '#f97316']} style={styles.modalAddButtonGradient}>
-                <Text style={styles.modalAddButtonText}>Record Milestone</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-          </ScrollView>
-        </BlurView>
+        <View style={styles.inputGroup}>
+          <Text style={[styles.inputLabel, isDark && styles.textMuted]}>Description (Optional)</Text>
+          <TextInput
+            style={[styles.modalInput, isDark && styles.modalInputDark, { height: 90, textAlignVertical: 'top' }]}
+            value={newMilestone.description}
+            onChangeText={(text) => setNewMilestone(prev => ({ ...prev, description: text }))}
+            placeholder="Add details about this milestone..."
+            multiline
+            placeholderTextColor={isDark ? '#666' : '#999'}
+          />
+        </View>
+
+        <TouchableOpacity style={styles.modalAddButton} onPress={handleAddMilestone}>
+          <LinearGradient colors={['#f59e0b', '#f97316']} style={styles.modalAddButtonGradient}>
+            <Text style={styles.modalAddButtonText}>Record Milestone</Text>
+          </LinearGradient>
+        </TouchableOpacity>
       </View>
-    </Modal>
+    </CenteredModal>
   );
 
   // ==================== MAIN RENDER ====================
-
   return (
     <View style={styles.container}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
@@ -1563,7 +1774,61 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
         style={styles.bg} 
       />
 
-      {renderHeader()}
+      <SweetAlert
+        visible={alert.visible}
+        type={alert.type}
+        title={alert.title}
+        message={alert.message}
+        onClose={() => setAlert(prev => ({ ...prev, visible: false }))}
+      />
+
+      <PhotoOptionsModal
+        visible={showPhotoModal}
+        onClose={() => setShowPhotoModal(false)}
+        onCamera={handleTakePhoto}
+        onGallery={handlePickImage}
+        onEmoji={() => {
+          setShowPhotoModal(false);
+          setShowEmojiModal(true);
+        }}
+      />
+
+      <EmojiPickerModal
+        visible={showEmojiModal}
+        onClose={() => setShowEmojiModal(false)}
+        onSelect={handleEmojiSelect}
+      />
+
+      <ConfirmDeleteModal
+        visible={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        onConfirm={handleDeleteBaby}
+        babyName={currentBabyData?.name || 'this baby'}
+      />
+
+      <SaveConfirmationModal
+        visible={showSaveConfirm}
+        onClose={() => setShowSaveConfirm(false)}
+        onConfirm={() => {
+          setShowSaveConfirm(false);
+          handleSave();
+        }}
+        changes={pendingChanges}
+      />
+
+      <BabySwitcherModal
+        visible={showBabySwitcher}
+        onClose={() => setShowBabySwitcher(false)}
+        babies={babies}
+        currentBabyId={currentBabyId}
+        onSwitch={handleSwitchBaby}
+        onAddNew={() => {
+          setShowBabySwitcher(false);
+          navigation.navigate('CreateBabyProfile');
+        }}
+      />
+
+      {renderStickyHeader()}
       {renderTabs()}
 
       <AnimatedScrollView
@@ -1574,43 +1839,16 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
         scrollEventThrottle={16}
       >
         {activeTab === 'overview' && renderOverview()}
-        {activeTab === 'growth' && renderGrowthPreview()}
         {activeTab === 'milestones' && renderMilestones()}
         {activeTab === 'health' && renderHealthForm()}
-        
-        {/* Delete Button */}
-        <TouchableOpacity 
-          style={styles.deleteButton}
-          onPress={() => Alert.alert(
-            'Delete Profile',
-            `Are you sure you want to delete ${currentBabyData?.name}'s profile? This cannot be undone.`,
-            [
-              { text: 'Cancel', style: 'cancel' },
-              { 
-                text: 'Delete', 
-                style: 'destructive',
-                onPress: async () => {
-                  if (currentBabyData) {
-                    await deleteBaby(currentBabyData.id);
-                    navigation.goBack();
-                  }
-                }
-              }
-            ]
-          )}
-        >
-          <Text style={styles.deleteText}>Delete Baby Profile</Text>
-        </TouchableOpacity>
+        {activeTab === 'danger' && renderDangerZone()}
       </AnimatedScrollView>
 
-      {renderAddMeasurementModal()}
       {renderAddMilestoneModal()}
     </View>
   );
 }
-
-// ==================== STYLES - EXACTLY MATCHING PROFILESCREEN ====================
-
+// ==================== STYLES ====================
 const styles = StyleSheet.create({
   container: { flex: 1 },
   bg: { ...StyleSheet.absoluteFillObject },
@@ -1618,21 +1856,23 @@ const styles = StyleSheet.create({
   textMuted: { color: '#94a3b8' },
   scrollContent: { paddingHorizontal: 16 },
   
-  // Header - EXACTLY like ProfileScreen
-  header: {
+  // Sticky Header (FIXED - Now shows content underneath properly)
+  stickyHeader: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     zIndex: 100,
     paddingHorizontal: 16,
+    backgroundColor: 'transparent', // Allow content to show through initially
   },
-  headerContent: {
+  stickyHeaderContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    height: 50,
   },
-  headerBtn: {
+  stickyHeaderBtn: {
     width: 40,
     height: 40,
     borderRadius: 12,
@@ -1640,25 +1880,382 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerTitle: {
-    fontSize: 22,
+  stickyHeaderCenter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  stickyHeaderTitle: {
+    fontSize: 20,
     fontWeight: '800',
     color: '#1e293b',
     letterSpacing: -0.5,
   },
-  saveBtn: {
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 14,
-    backgroundColor: 'rgba(102,126,234,0.12)',
+  editingIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#f59e0b',
   },
-  saveText: {
+  stickySaveBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: 'rgba(102,126,234,0.15)',
+  },
+  stickySaveBtnDisabled: {
+    backgroundColor: 'rgba(100,116,139,0.08)',
+  },
+  stickySaveText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#667eea',
+  },
+  stickySaveTextDisabled: {
+    color: '#94a3b8',
+  },
+
+  // Centered Modal (NEW)
+  centeredModalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+  },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  centeredModalContainer: {
+    width: width - 40,
+    maxHeight: height * 0.8,
+    borderRadius: 28,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.3,
+    shadowRadius: 40,
+    elevation: 20,
+  },
+  centeredModalHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(0,0,0,0.2)',
+    alignSelf: 'center',
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  centeredModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
+  },
+  centeredModalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#1e293b',
+    letterSpacing: -0.3,
+  },
+  closeButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(100,116,139,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  centeredModalContent: {
+    padding: 20,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: '#64748b',
+    textAlign: 'center',
+    marginBottom: 20,
+    lineHeight: 20,
+  },
+
+  // SweetAlert
+  alertOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  alertContainer: {
+    width: width * 0.8,
+    borderRadius: 28,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.3,
+    shadowRadius: 40,
+    elevation: 20,
+  },
+  alertGradient: {
+    padding: 32,
+    alignItems: 'center',
+  },
+  alertTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#fff',
+    marginTop: 16,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  alertMessage: {
     fontSize: 15,
+    color: 'rgba(255,255,255,0.9)',
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+
+  // Photo Options Modal
+  photoOptionsGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 8,
+  },
+  photoOption: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  photoOptionIcon: {
+    width: 72,
+    height: 72,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  photoOptionLabel: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1e293b',
+    marginBottom: 4,
+  },
+  photoOptionSubtext: {
+    fontSize: 12,
+    color: '#94a3b8',
+  },
+  emojiIcon: {
+    fontSize: 32,
+  },
+
+  // Emoji Modal
+  emojiGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  emojiButton: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: 'rgba(100,116,139,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emojiButtonText: {
+    fontSize: 32,
+  },
+
+  // Confirm Delete Modal
+  deleteModalContent: {
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  confirmIconContainer: {
+    marginBottom: 16,
+  },
+  confirmIconGradient: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#1e293b',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  confirmMessage: {
+    fontSize: 15,
+    color: '#64748b',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 20,
+    paddingHorizontal: 10,
+  },
+  boldText: {
+    fontWeight: '700',
+    color: '#1e293b',
+  },
+  confirmInput: {
+    width: '100%',
+    height: 50,
+    borderRadius: 16,
+    backgroundColor: 'rgba(100,116,139,0.08)',
+    paddingHorizontal: 16,
+    fontSize: 16,
+    color: '#1e293b',
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(239,68,68,0.3)',
+  },
+  confirmButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  cancelBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 14,
+    backgroundColor: 'rgba(100,116,139,0.1)',
+    alignItems: 'center',
+  },
+  cancelBtnText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#64748b',
+  },
+  deleteConfirmBtn: {
+    flex: 1,
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  deleteConfirmGradient: {
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  deleteConfirmText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  disabledBtn: {
+    opacity: 0.5,
+  },
+
+  // Save Confirmation Modal
+  changesList: {
+    marginBottom: 20,
+    gap: 8,
+  },
+  changeItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: 'rgba(16,185,129,0.08)',
+    borderRadius: 10,
+  },
+  changeText: {
+    fontSize: 14,
+    color: '#1e293b',
+    fontWeight: '500',
+  },
+  saveConfirmGradient: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 14,
+    alignItems: 'center',
+  },
+  saveConfirmText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#fff',
+  },
+
+  // Baby Switcher Modal
+  babySwitchItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: 'rgba(100,116,139,0.05)',
+    borderRadius: 16,
+    marginBottom: 10,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  babySwitchItemActive: {
+    borderColor: '#667eea',
+    backgroundColor: 'rgba(102,126,234,0.08)',
+  },
+  babySwitchAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14,
+  },
+  babySwitchEmoji: {
+    fontSize: 26,
+  },
+  babySwitchInfo: {
+    flex: 1,
+  },
+  babySwitchName: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#1e293b',
+    marginBottom: 2,
+  },
+  babySwitchAge: {
+    fontSize: 13,
+    color: '#64748b',
+  },
+  currentBadge: {
+    backgroundColor: '#10b981',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginRight: 8,
+  },
+  currentBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  addBabyButton: {
+    marginTop: 10,
+  },
+  addBabyGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: '#667eea',
+    borderStyle: 'dashed',
+    gap: 10,
+  },
+  addBabyText: {
+    fontSize: 16,
     fontWeight: '700',
     color: '#667eea',
   },
 
-  // Tab Bar - EXACTLY like ProfileScreen
+  // Tab Bar
   tabBar: {
     position: 'absolute',
     left: 16,
@@ -1687,7 +2284,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   tabLabel: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     color: '#64748b',
   },
@@ -1695,8 +2292,12 @@ const styles = StyleSheet.create({
     color: '#667eea',
     fontWeight: '700',
   },
+  tabLabelDanger: {
+    color: '#ef4444',
+    fontWeight: '700',
+  },
 
-  // Glass Card - EXACTLY like ProfileScreen
+  // Glass Card
   glassCard: {
     borderRadius: 20,
     overflow: 'hidden',
@@ -1721,7 +2322,7 @@ const styles = StyleSheet.create({
   },
   glassContent: { flex: 1 },
 
-  // Safe Baby Avatar
+  // Avatar
   avatarWrapper: {
     position: 'relative',
     shadowColor: '#000',
@@ -1737,9 +2338,9 @@ const styles = StyleSheet.create({
   avatarEmoji: {},
   editAvatarBtn: {
     position: 'absolute',
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     overflow: 'hidden',
     borderWidth: 3,
     borderColor: '#fff',
@@ -1758,7 +2359,7 @@ const styles = StyleSheet.create({
   // Photo Section
   photoSection: {
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 20,
     marginTop: 8,
   },
   uploadingOverlay: {
@@ -1768,25 +2369,94 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     backgroundColor: 'rgba(0,0,0,0.5)',
-    borderRadius: 65,
+    borderRadius: 70,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  photoHint: {
-    marginTop: 16,
+  changePhotoBtn: {
+    marginTop: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: 'rgba(102,126,234,0.1)',
+  },
+  changePhotoText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#667eea',
+  },
+  galleryLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 12,
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: 'rgba(102,126,234,0.06)',
+    borderRadius: 20,
+  },
+  galleryLinkText: {
     fontSize: 14,
-    color: '#64748b',
-    fontWeight: '500',
+    fontWeight: '600',
+    color: '#667eea',
   },
 
-  // Stats - EXACTLY like ProfileScreen
+  // Baby Info Header (NEW)
+  babyInfoCard: { 
+    padding: 0,
+    marginBottom: 16,
+  },
+  babyInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+  },
+  babyInfoItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  babyInfoDivider: {
+    width: 1,
+    height: 40,
+    backgroundColor: 'rgba(100,116,139,0.2)',
+  },
+  babyInfoLabel: {
+    fontSize: 12,
+    color: '#94a3b8',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  babyInfoValue: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1e293b',
+  },
+  healthBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  healthText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+
+  // Stats
   statsCard: { padding: 0 },
   statsRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
     paddingVertical: 20,
   },
-  statBadge: { alignItems: 'center', gap: 6 },
+  statBadge: {
+    alignItems: 'center',
+    gap: 6,
+  },
   statIconBg: {
     width: 44,
     height: 44,
@@ -1808,39 +2478,41 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  quickMeasurements: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 40,
-    paddingTop: 16,
-    paddingBottom: 20,
-    marginHorizontal: 20,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(100,116,139,0.08)',
-  },
-  quickStat: { alignItems: 'center', gap: 6 },
-  quickStatValue: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#1e293b',
-  },
-  quickStatLabel: {
-    fontSize: 12,
-    color: '#64748b',
-    fontWeight: '600',
-  },
 
   // Form
   formCard: { padding: 0 },
+  sectionHeaderWithEdit: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    marginBottom: 16,
+  },
   sectionLabel: {
     fontSize: 20,
     fontWeight: '800',
     color: '#1e293b',
-    marginBottom: 24,
-    marginTop: 4,
     letterSpacing: -0.3,
-    paddingHorizontal: 20,
-    paddingTop: 20,
+  },
+  editIconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: 'rgba(102,126,234,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editingBadge: {
+    backgroundColor: '#f59e0b',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  editingBadgeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
   },
   inputGroup: { marginBottom: 20, paddingHorizontal: 20 },
   inputLabel: {
@@ -1864,6 +2536,9 @@ const styles = StyleSheet.create({
   inputContainerDark: { 
     backgroundColor: 'rgba(30,30,40,0.5)',
     borderColor: 'rgba(255,255,255,0.06)',
+  },
+  inputDisabled: {
+    opacity: 0.6,
   },
   inputIcon: { marginRight: 14 },
   input: {
@@ -1904,6 +2579,9 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   genderButtonDark: { backgroundColor: 'rgba(30,30,40,0.4)' },
+  genderButtonDisabled: {
+    opacity: 0.5,
+  },
   genderText: {
     fontSize: 15,
     fontWeight: '600',
@@ -1913,11 +2591,17 @@ const styles = StyleSheet.create({
   genderTextDark: { color: '#94a3b8' },
 
   // Skin
-  skinContainer: { flexDirection: 'row', gap: 14, justifyContent: 'center', paddingHorizontal: 20 },
+  skinContainer: { 
+    flexDirection: 'row', 
+    flexWrap: 'wrap', 
+    gap: 12, 
+    justifyContent: 'center', 
+    paddingHorizontal: 20 
+  },
   skinButton: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 3,
@@ -1926,35 +2610,28 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
+    elevation: 3,
   },
-  skinButtonActive: { borderColor: '#fff', transform: [{ scale: 1.1 }] },
+  skinButtonActive: { 
+    borderColor: '#fff', 
+    transform: [{ scale: 1.1 }],
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  skinButtonDisabled: {
+    opacity: 0.5,
+  },
+  skinToneLabel: {
+    textAlign: 'center',
+    marginTop: 12,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#64748b',
+  },
 
   // Tab Panel
   tabPanel: { marginTop: 12, gap: 16 },
-
-  // Growth Preview Card
-  growthPreviewCard: { padding: 0 },
-  growthPreviewRow: { flexDirection: 'row', alignItems: 'center', padding: 18 },
-  growthPreviewIconBg: {
-    width: 54,
-    height: 54,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 16,
-  },
-  growthPreviewContent: { flex: 1 },
-  growthPreviewTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#1e293b',
-    marginBottom: 4,
-  },
-  growthPreviewSubtitle: {
-    fontSize: 14,
-    color: '#64748b',
-    fontWeight: '500',
-  },
 
   // Section Title
   sectionTitle: {
@@ -2023,231 +2700,85 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
-  // Activity - EXACTLY like ProfileScreen
-  activityCard: { padding: 16 },
-  activityItem: {
+  // Switch Baby
+  switchBabyRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(100,116,139,0.08)',
-  },
-  activityIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
-  },
-  activityEmoji: {
-    fontSize: 20,
-  },
-  activityContent: {
-    flex: 1,
-  },
-  activityTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#1e293b',
-    marginBottom: 2,
-  },
-  activityTime: {
-    fontSize: 12,
-    color: '#94a3b8',
-  },
-
-  // Family Avatar Stack
-  avatarStackContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    paddingVertical: 14,
+    backgroundColor: 'rgba(102,126,234,0.08)',
+    borderRadius: 16,
+    marginTop: 8,
     gap: 8,
   },
-  avatarStack: {
-    flexDirection: 'row',
+  switchBabyText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#667eea',
   },
-  stackAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+
+  // Activity (HomeScreen Style)
+  section: {
+    marginBottom: 8,
+  },
+  activityItemCard: { 
+    marginVertical: 6, 
+    padding: 14, 
+    borderRadius: 20, 
+    flexDirection: 'row', 
+    alignItems: 'center' 
+  },
+  activityIcon: { 
+    width: 48, 
+    height: 48, 
+    borderRadius: 16, 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    marginRight: 14 
+  },
+  activityEmoji: { 
+    fontSize: 24 
+  },
+  activityContent: { 
+    flex: 1 
+  },
+  activityTitle: { 
+    fontSize: 15, 
+    fontWeight: '700', 
+    color: '#1e293b', 
+    marginBottom: 2 
+  },
+  activityTime: { 
+    fontSize: 12, 
+    color: '#94a3b8',
+    fontWeight: '500',
+  },
+  activityDetails: {
+    fontSize: 12,
+    color: '#64748b',
+    marginTop: 2,
+  },
+  activityArrow: { 
+    width: 28, 
+    height: 28, 
+    borderRadius: 14, 
+    backgroundColor: 'rgba(102,126,234,0.1)', 
+    alignItems: 'center', 
+    justifyContent: 'center' 
+  },
+  viewAllButton: {
+    marginTop: 20,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#fff',
+    gap: 8,
+    paddingVertical: 12,
   },
-  stackAvatarText: {
-    color: '#fff',
+  viewAllText: {
     fontSize: 14,
     fontWeight: '700',
-  },
-  stackAvatarMore: {
-    backgroundColor: '#64748b',
-  },
-  stackAvatarMoreText: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-
-  // Growth Tab - FIXED STYLING
-  growthSummaryRow: { 
-    flexDirection: 'row', 
-    gap: 12,
-  },
-  growthSummaryCard: {
-    flex: 1,
-    padding: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 140,
-  },
-  growthIconBg: {
-    width: 52,
-    height: 52,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  growthValue: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#1e293b',
-    textAlign: 'center',
-    marginBottom: 4,
-  },
-  growthLabel: {
-    fontSize: 12,
-    color: '#64748b',
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  growthChange: {
-    fontSize: 12,
-    fontWeight: '700',
-    marginTop: 6,
-  },
-
-  chartCard: { padding: 20 },
-  chart: { borderRadius: 20, marginLeft: -10 },
-  chartHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  chartTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#1e293b',
-    letterSpacing: -0.3,
-  },
-  viewFullChartBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-    backgroundColor: 'rgba(102,126,234,0.1)',
-  },
-  viewFullChartText: {
-    fontSize: 13,
-    fontWeight: '700',
     color: '#667eea',
   },
-  sampleDataOverlay: {
-    position: 'absolute',
-    bottom: 20,
-    left: 20,
-    right: 20,
-    alignItems: 'center',
-  },
-  sampleDataText: {
-    fontSize: 12,
-    color: '#94a3b8',
-    fontStyle: 'italic',
-  },
-
-  addMeasurementBtn: {
-    borderRadius: 18,
-    overflow: 'hidden',
-    marginTop: 8,
-    shadowColor: '#667eea',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  addMeasurementGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-    gap: 10,
-  },
-  addMeasurementText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '800',
-  },
-
-  measurementsTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#1e293b',
-    marginBottom: 8,
-    marginTop: 12,
-    letterSpacing: -0.3,
-  },
-
-  emptyCard: {
-    padding: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emptyText: {
-    fontSize: 15,
-    color: '#64748b',
-    marginTop: 16,
-    textAlign: 'center',
-    fontWeight: '500',
-    lineHeight: 22,
-  },
-
-  entryCard: { padding: 0 },
-  entryRow: { flexDirection: 'row', alignItems: 'center', padding: 16 },
-  entryIconBg: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 16,
-  },
-  entryContent: { flex: 1 },
-  entryType: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#1e293b',
-    marginBottom: 4,
-  },
-  entryDate: { fontSize: 13, color: '#94a3b8', fontWeight: '500' },
-  entryValues: { alignItems: 'flex-end', marginRight: 14 },
-  entryValue: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#667eea',
-  },
-  entryNotes: {
-    fontSize: 12,
-    color: '#94a3b8',
-    marginTop: 3,
-    maxWidth: 110,
-    fontWeight: '500',
-  },
-  deleteEntryBtn: { padding: 6 },
 
   // Milestones
   addMilestoneBtn: {
@@ -2310,6 +2841,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 16,
   },
+  deleteEntryBtn: { padding: 6 },
+
+  // Empty State
+  emptyCard: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyText: {
+    fontSize: 15,
+    color: '#64748b',
+    marginTop: 16,
+    textAlign: 'center',
+    fontWeight: '500',
+    lineHeight: 22,
+  },
 
   // Health Tab
   actionCard: { padding: 0, marginBottom: 12 },
@@ -2335,50 +2882,80 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
-  // Modal - FIXED CENTERED MODAL
-  centeredModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  centeredModalContent: {
-    width: '100%',
-    maxWidth: 400,
-    maxHeight: '80%',
-    borderRadius: 28,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.25,
-    shadowRadius: 40,
-    elevation: 20,
-  },
-  centeredModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  // Danger Zone
+  dangerCard: {
     padding: 24,
-    paddingBottom: 16,
+    alignItems: 'center',
+    borderColor: '#ef4444',
+    borderWidth: 2,
   },
-  centeredModalTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#1e293b',
-    letterSpacing: -0.5,
+  dangerIconContainer: {
+    marginBottom: 16,
   },
-  closeBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: 'rgba(100,116,139,0.1)',
+  dangerIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  centeredModalBody: { 
-    paddingHorizontal: 24,
-    paddingBottom: 24,
+  dangerTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#ef4444',
+    marginBottom: 8,
+  },
+  dangerDescription: {
+    fontSize: 15,
+    color: '#64748b',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 20,
+  },
+  dangerStats: {
+    flexDirection: 'row',
+    gap: 20,
+    marginBottom: 24,
+  },
+  dangerStat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  dangerStatText: {
+    fontSize: 14,
+    color: '#64748b',
+    fontWeight: '500',
+  },
+  deleteButton: {
+    width: '100%',
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  deleteGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    gap: 8,
+  },
+  deleteButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  dangerNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 16,
+    fontSize: 13,
+    color: '#94a3b8',
+  },
+
+  // Modal Form
+  modalForm: {
+    gap: 16,
   },
   modalInput: {
     backgroundColor: 'rgba(100,116,139,0.08)',
@@ -2395,32 +2972,6 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     borderColor: 'rgba(255,255,255,0.06)',
   },
-  row: { flexDirection: 'row', alignItems: 'center' },
-  unitSelector: {
-    flexDirection: 'row',
-    backgroundColor: 'rgba(100,116,139,0.08)',
-    borderRadius: 18,
-    padding: 6,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.04)',
-  },
-  unitSelectorDark: { 
-    backgroundColor: 'rgba(30,30,40,0.6)',
-    borderColor: 'rgba(255,255,255,0.06)',
-  },
-  unitOption: {
-    paddingHorizontal: 18,
-    paddingVertical: 14,
-    borderRadius: 14,
-  },
-  unitOptionActive: { backgroundColor: '#667eea' },
-  unitText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#64748b',
-  },
-  unitTextActive: { color: '#ffffff' },
-
   categoryContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -2459,20 +3010,8 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
-  // Delete
-  deleteButton: {
-    marginTop: 32,
-    marginBottom: 50,
-    alignItems: 'center',
-    paddingVertical: 20,
-    borderRadius: 18,
-    backgroundColor: 'rgba(239,68,68,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(239,68,68,0.15)',
-  },
-  deleteText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#ef4444',
+  // Section spacing
+  section: {
+    marginBottom: 8,
   },
 });

@@ -18,20 +18,27 @@ import * as Haptics from 'expo-haptics';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CommunityStackParamList } from '../../types/navigation';
 import { useCommunity, Notification } from '../../context/CommunityContext';
+import { 
+  CommunityColors, 
+  CommunityGradients, 
+  CommunitySpacing, 
+  CommunityBorderRadius,
+  CommunityShadows 
+} from '../../theme/CommunityTheme';
 
 type NotificationsScreenProps = NativeStackScreenProps<CommunityStackParamList, 'Notifications'>;
 
 const getIcon = (type: string) => {
   switch (type) {
-    case 'like': return { name: 'heart', color: '#fc5c7d', bg: '#fc5c7d20' };
-    case 'comment': return { name: 'chatbubble', color: '#667eea', bg: '#667eea20' };
-    case 'repost': return { name: 'repeat', color: '#11998e', bg: '#11998e20' };
-    case 'mention': return { name: 'at', color: '#fa709a', bg: '#fa709a20' };
-    case 'follow': return { name: 'person-add', color: '#fee140', bg: '#fee14020' };
-    case 'message': return { name: 'mail', color: '#6a82fb', bg: '#6a82fb20' };
-    case 'system': return { name: 'information-circle', color: '#43e97b', bg: '#43e97b20' };
-    case 'helpful': return { name: 'thumbs-up', color: '#667eea', bg: '#667eea20' };
-    default: return { name: 'notifications', color: '#667eea', bg: '#667eea20' };
+    case 'like': return { name: 'heart', color: CommunityColors.error, bg: CommunityColors.error + '20' };
+    case 'comment': return { name: 'chatbubble', color: CommunityColors.primary, bg: CommunityColors.primary + '20' };
+    case 'repost': return { name: 'repeat', color: CommunityColors.secondary, bg: CommunityColors.secondary + '20' };
+    case 'mention': return { name: 'at', color: CommunityColors.accentDark, bg: CommunityColors.accent + '20' };
+    case 'follow': return { name: 'person-add', color: CommunityColors.accent, bg: CommunityColors.accent + '20' };
+    case 'message': return { name: 'mail', color: CommunityColors.info, bg: CommunityColors.info + '20' };
+    case 'system': return { name: 'information-circle', color: CommunityColors.success, bg: CommunityColors.success + '20' };
+    case 'helpful': return { name: 'thumbs-up', color: CommunityColors.primary, bg: CommunityColors.primary + '20' };
+    default: return { name: 'notifications', color: CommunityColors.primary, bg: CommunityColors.primary + '20' };
   }
 };
 
@@ -121,7 +128,7 @@ export default function NotificationsScreen({ navigation }: NotificationsScreenP
               ]);
             }}
           >
-            <Ionicons name="ellipsis-horizontal" size={20} color="#999" />
+            <Ionicons name="ellipsis-horizontal" size={20} color={CommunityColors.text.tertiary} />
           </TouchableOpacity>
         </TouchableOpacity>
       </Animated.View>
@@ -129,13 +136,13 @@ export default function NotificationsScreen({ navigation }: NotificationsScreenP
   };
 
   return (
-    <LinearGradient colors={['#e0e7ff', '#d1d5ff', '#c7b8ff']} style={styles.container}>
+    <LinearGradient colors={CommunityColors.background.gradient} style={styles.container}>
       <StatusBar style="dark" />
       
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={28} color="#1a1a1a" />
+          <Ionicons name="arrow-back" size={28} color={CommunityColors.text.primary} />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <Text style={styles.title}>Notifications 🔔</Text>
@@ -179,11 +186,11 @@ export default function NotificationsScreen({ navigation }: NotificationsScreenP
         contentContainerStyle={styles.listContainer}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#667eea" />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={CommunityColors.primary} />
         }
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <Ionicons name="notifications-off-outline" size={48} color="#ccc" />
+            <Ionicons name="notifications-off-outline" size={48} color={CommunityColors.text.tertiary} />
             <Text style={styles.emptyText}>No notifications</Text>
             <Text style={styles.emptySubtext}>You're all caught up!</Text>
           </View>
@@ -199,7 +206,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 24,
+    paddingHorizontal: CommunitySpacing.lg,
     paddingTop: 60,
     paddingBottom: 20,
   },
@@ -212,45 +219,45 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerCenter: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  title: { fontSize: 28, fontWeight: '800', color: '#1a1a1a' },
+  title: { fontSize: 28, fontWeight: '800', color: CommunityColors.text.primary },
   unreadBadge: {
-    backgroundColor: '#ff4757',
+    backgroundColor: CommunityColors.error,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
   },
   unreadText: { color: 'white', fontSize: 12, fontWeight: '600' },
-  markRead: { fontSize: 14, color: '#667eea', fontWeight: '600' },
-  markReadDisabled: { color: '#999' },
+  markRead: { fontSize: 14, color: CommunityColors.primary, fontWeight: '600' },
+  markReadDisabled: { color: CommunityColors.text.tertiary },
   filterContainer: {
     flexDirection: 'row',
-    paddingHorizontal: 24,
+    paddingHorizontal: CommunitySpacing.lg,
     marginBottom: 16,
     gap: 24,
   },
   filterTab: { paddingVertical: 8, position: 'relative' },
   filterTabActive: {},
-  filterText: { fontSize: 16, fontWeight: '600', color: '#999' },
-  filterTextActive: { color: '#1a1a1a' },
+  filterText: { fontSize: 16, fontWeight: '600', color: CommunityColors.text.tertiary },
+  filterTextActive: { color: CommunityColors.text.primary },
   filterIndicator: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
     height: 3,
-    backgroundColor: '#667eea',
+    backgroundColor: CommunityColors.primary,
     borderRadius: 2,
   },
-  listContainer: { paddingHorizontal: 24, paddingBottom: 100 },
+  listContainer: { paddingHorizontal: CommunitySpacing.lg, paddingBottom: 100 },
   notificationItem: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.05)',
+    borderBottomColor: CommunityColors.divider,
   },
   unreadItem: {
-    backgroundColor: 'rgba(102,126,234,0.05)',
+    backgroundColor: CommunityColors.background.overlay,
     marginHorizontal: -24,
     paddingHorizontal: 24,
     borderRadius: 12,
@@ -273,17 +280,17 @@ const styles = StyleSheet.create({
     width: 12,
     height: 12,
     borderRadius: 6,
-    backgroundColor: '#667eea',
+    backgroundColor: CommunityColors.primary,
     borderWidth: 2,
     borderColor: 'white',
   },
   notificationContent: { flex: 1 },
-  notificationText: { fontSize: 15, color: '#333', lineHeight: 20, marginBottom: 4 },
-  userName: { fontWeight: '700', color: '#1a1a1a' },
-  targetText: { fontWeight: '600', color: '#667eea' },
-  notificationTime: { fontSize: 13, color: '#999' },
+  notificationText: { fontSize: 15, color: CommunityColors.text.primary, lineHeight: 20, marginBottom: 4 },
+  userName: { fontWeight: '700', color: CommunityColors.text.primary },
+  targetText: { fontWeight: '600', color: CommunityColors.primary },
+  notificationTime: { fontSize: 13, color: CommunityColors.text.secondary },
   moreButton: { padding: 8 },
   emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
-  emptyText: { fontSize: 16, color: '#999', marginTop: 12 },
-  emptySubtext: { fontSize: 14, color: '#bbb', marginTop: 4 },
+  emptyText: { fontSize: 16, color: CommunityColors.text.secondary, marginTop: 12 },
+  emptySubtext: { fontSize: 14, color: CommunityColors.text.tertiary, marginTop: 4 },
 });

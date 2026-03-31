@@ -20,6 +20,7 @@ const STORAGE_KEYS = {
   NOTIFICATIONS: '@community_notifications',
   USER_STATS: '@community_user_stats',
   LAST_SYNC: '@community_last_sync',
+  BLOCKED_USERS: '@community_blocked_users',
 };
 
 // Types
@@ -151,6 +152,7 @@ interface CommunityState {
   isLoading: boolean;
   onlineUsers: string[];
   userActivities: Map<string, UserActivity>;
+  blockedUsers: string[];
 }
 
 interface CommunityContextType extends CommunityState {
@@ -164,19 +166,19 @@ interface CommunityContextType extends CommunityState {
   deletePost: (postId: string) => Promise<void>;
   getPostById: (postId: string) => Post | undefined;
   voteHelpful: (postId: string) => Promise<void>;
-  
+
   // Comment operations
   addComment: (postId: string, content: string) => Promise<void>;
   likeComment: (postId: string, commentId: string) => Promise<void>;
   voteCommentHelpful: (postId: string, commentId: string) => Promise<void>;
   replyToComment: (postId: string, commentId: string, content: string) => Promise<void>;
-  
+
   // Topic operations
   joinTopic: (topicId: string) => Promise<void>;
   leaveTopic: (topicId: string) => Promise<void>;
   getTopicById: (topicId: string) => Topic | undefined;
   getPostsByTopic: (topicId: string) => Post[];
-  
+
   // User operations
   followUser: (userId: string) => Promise<void>;
   unfollowUser: (userId: string) => Promise<void>;
@@ -187,12 +189,12 @@ interface CommunityContextType extends CommunityState {
   updateUserLocation: (country: string) => Promise<void>;
   updateOnlineStatus: (status: OnlineStatus) => Promise<void>;
   getUserStats: (userId: string) => CommunityUser['stats'] | undefined;
-  
+
   // Notification operations
   markNotificationRead: (notificationId: string) => Promise<void>;
   markAllNotificationsRead: () => Promise<void>;
   getUnreadCount: () => number;
-  
+
   // Chat operations
   sendMessage: (userId: string, content: string, type?: 'text' | 'image', imageUrl?: string) => Promise<void>;
   getChatMessages: (userId: string) => Message[];
@@ -200,15 +202,18 @@ interface CommunityContextType extends CommunityState {
   getOrCreateChat: (userId: string) => Chat | undefined;
   setTypingStatus: (userId: string, isTyping: boolean) => void;
   getTypingStatus: (userId: string) => boolean;
-  
+  deleteChat: (userId: string) => Promise<void>;
+  blockUser: (userId: string) => Promise<void>;
+  isUserBlocked: (userId: string) => boolean;
+
   // Feed operations
   refreshFeed: () => Promise<void>;
   loadMorePosts: () => Promise<void>;
-  
+
   // Profile operations
   updateCommunityProfile: (updates: Partial<CommunityUser>) => Promise<void>;
   getCurrentUserProfile: () => CommunityUser | null;
-  
+
   // Achievements
   checkAndAwardAchievements: () => Promise<string[]>;
   getUserAchievements: (userId: string) => string[];
@@ -306,7 +311,7 @@ const ACHIEVEMENTS = {
 
 export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { profile, communityProfile, updateCommunityProfile: updateUserCommunityProfile } = useUser();
-  
+
   const [state, setState] = useState<CommunityState>({
     posts: [],
     topics: [],
@@ -316,6 +321,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     isLoading: true,
     onlineUsers: [],
     userActivities: new Map(),
+    blockedUsers: [],
   });
 
   const [isInitialized, setIsInitialized] = useState(false);
@@ -324,13 +330,13 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // Load persisted data
   useEffect(() => {
     loadPersistedData();
-    
+
     // Set up app state listener for online status
     const subscription = AppState.addEventListener('change', handleAppStateChange);
-    
+
     // Set up periodic sync
     const syncInterval = setInterval(syncData, 30000); // Sync every 30 seconds
-    
+
     return () => {
       subscription.remove();
       clearInterval(syncInterval);
@@ -361,25 +367,28 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         notificationsData,
         chatsData,
         userStatsData,
+        blockedUsersData,
       ] = await Promise.all([
         AsyncStorage.getItem(STORAGE_KEYS.POSTS),
         AsyncStorage.getItem(STORAGE_KEYS.TOPICS),
         AsyncStorage.getItem(STORAGE_KEYS.NOTIFICATIONS),
         AsyncStorage.getItem(STORAGE_KEYS.MESSAGES),
         AsyncStorage.getItem(STORAGE_KEYS.USER_STATS),
+        AsyncStorage.getItem(STORAGE_KEYS.BLOCKED_USERS),
       ]);
 
       const loadedTopics = topicsData ? JSON.parse(topicsData) : INITIAL_TOPICS;
-      
+
       setState(prev => ({
         ...prev,
         posts: postsData ? JSON.parse(postsData) : [],
         topics: loadedTopics,
         notifications: notificationsData ? JSON.parse(notificationsData) : [],
         chats: chatsData ? JSON.parse(chatsData) : [],
+        blockedUsers: blockedUsersData ? JSON.parse(blockedUsersData) : [],
         isLoading: false,
       }));
-      
+
       setIsInitialized(true);
     } catch (error) {
       console.error('Error loading persisted data:', error);
@@ -403,6 +412,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       persistData(STORAGE_KEYS.TOPICS, state.topics),
       persistData(STORAGE_KEYS.NOTIFICATIONS, state.notifications),
       persistData(STORAGE_KEYS.MESSAGES, state.chats),
+      persistData(STORAGE_KEYS.BLOCKED_USERS, state.blockedUsers),
     ]);
   };
 
@@ -441,13 +451,13 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const checkStreak = async () => {
     if (!state.currentUser) return;
-    
+
     const today = new Date().toDateString();
     const lastDate = new Date(state.currentUser.stats.lastStreakDate).toDateString();
     const yesterday = new Date(Date.now() - 86400000).toDateString();
-    
+
     if (lastDate === today) return; // Already checked today
-    
+
     let newStreak = state.currentUser.stats.streakDays;
     if (lastDate === yesterday) {
       newStreak += 1; // Continue streak
@@ -462,7 +472,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
 
     await persistData(`${STORAGE_KEYS.USER_STATS}_${state.currentUser.id}`, updatedStats);
-    
+
     setState(prev => ({
       ...prev,
       currentUser: prev.currentUser ? { ...prev.currentUser, stats: updatedStats } : null,
@@ -475,11 +485,11 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const awardAchievement = async (achievementId: string) => {
     if (!state.currentUser) return;
-    
+
     if (state.currentUser.achievements.includes(achievementId)) return;
-    
+
     const newAchievements = [...state.currentUser.achievements, achievementId];
-    
+
     setState(prev => ({
       ...prev,
       currentUser: prev.currentUser ? { ...prev.currentUser, achievements: newAchievements } : null,
@@ -577,7 +587,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    
+
     setState(prev => {
       const updatedPosts = prev.posts.map(post => {
         if (post.id === postId && !post.likedBy.includes(state.currentUser!.id)) {
@@ -587,7 +597,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             likes: post.likes + 1,
             likedBy: [...post.likedBy, state.currentUser!.id],
           };
-          
+
           // Create notification for post author
           if (post.authorId !== state.currentUser!.id) {
             const notification: Notification = {
@@ -602,13 +612,13 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               timestamp: new Date().toISOString(),
               read: false,
             };
-            
+
             const updatedNotifications = [notification, ...prev.notifications];
             persistData(STORAGE_KEYS.NOTIFICATIONS, updatedNotifications);
-            
+
             return { ...prev, posts: updatedPosts, notifications: updatedNotifications };
           }
-          
+
           return updatedPost;
         }
         return post;
@@ -647,7 +657,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    
+
     setState(prev => {
       const updatedPosts = prev.posts.map(post => {
         if (post.id === postId && !post.repostedBy.includes(state.currentUser!.id)) {
@@ -694,7 +704,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    
+
     setState(prev => {
       const updatedPosts = prev.posts.map(post => {
         if (post.id === postId) {
@@ -898,7 +908,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    
+
     setState(prev => {
       const updatedTopics = prev.topics.map(topic => {
         if (topic.id === topicId && !topic.joinedBy.includes(state.currentUser!.id)) {
@@ -953,7 +963,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    
+
     setState(prev => {
       // Update target user's followers
       const updatedPosts = prev.posts.map(post => {
@@ -1140,6 +1150,12 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       return;
     }
 
+    // Check if user is blocked
+    if (state.blockedUsers.includes(userId)) {
+      showErrorModal({ message: 'You have blocked this user. Unblock to send messages.' });
+      return;
+    }
+
     const newMessage: Message = {
       id: `msg_${Date.now()}`,
       chatId: `chat_${[state.currentUser.id, userId].sort().join('_')}`,
@@ -1207,7 +1223,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       persistData(STORAGE_KEYS.NOTIFICATIONS, updatedNotifications);
       return { ...prev, notifications: updatedNotifications };
     });
-  }, [state.currentUser, getUserById]);
+  }, [state.currentUser, state.blockedUsers, getUserById]);
 
   const getChatMessages = useCallback((userId: string): Message[] => {
     const chat = state.chats.find(c => c.participantId === userId);
@@ -1259,6 +1275,43 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return chat?.isTyping || false;
   }, [state.chats]);
 
+  // NEW: Delete chat function
+  const deleteChat = useCallback(async (userId: string) => {
+    setState(prev => {
+      const updatedChats = prev.chats.filter(chat => chat.participantId !== userId);
+      persistData(STORAGE_KEYS.MESSAGES, updatedChats);
+      return { ...prev, chats: updatedChats };
+    });
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }, []);
+
+  // NEW: Block user function
+  const blockUser = useCallback(async (userId: string) => {
+    setState(prev => {
+      const isBlocked = prev.blockedUsers.includes(userId);
+      let updatedBlockedUsers: string[];
+
+      if (isBlocked) {
+        // Unblock
+        updatedBlockedUsers = prev.blockedUsers.filter(id => id !== userId);
+        showSuccessModal({ message: 'User unblocked' });
+      } else {
+        // Block
+        updatedBlockedUsers = [...prev.blockedUsers, userId];
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        showSuccessModal({ message: 'User blocked' });
+      }
+
+      persistData(STORAGE_KEYS.BLOCKED_USERS, updatedBlockedUsers);
+      return { ...prev, blockedUsers: updatedBlockedUsers };
+    });
+  }, []);
+
+  // NEW: Check if user is blocked
+  const isUserBlocked = useCallback((userId: string) => {
+    return state.blockedUsers.includes(userId);
+  }, [state.blockedUsers]);
+
   const refreshFeed = useCallback(async () => {
     setState(prev => ({ ...prev, isLoading: true }));
     await new Promise(resolve => setTimeout(resolve, 1500));
@@ -1290,7 +1343,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const checkAndAwardAchievements = useCallback(async (): Promise<string[]> => {
     if (!state.currentUser) return [];
     const newAchievements: string[] = [];
-    
+
     // Check all achievements
     const checks = [
       { id: 'helpful_parent', condition: state.currentUser.stats.helpful >= 50 },
@@ -1351,6 +1404,9 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     getOrCreateChat,
     setTypingStatus,
     getTypingStatus,
+    deleteChat,
+    blockUser,
+    isUserBlocked,
     refreshFeed,
     loadMorePosts,
     updateCommunityProfile,
@@ -1394,6 +1450,9 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     getOrCreateChat,
     setTypingStatus,
     getTypingStatus,
+    deleteChat,
+    blockUser,
+    isUserBlocked,
     refreshFeed,
     loadMorePosts,
     updateCommunityProfile,

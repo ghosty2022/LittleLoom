@@ -505,13 +505,19 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [state.babies, state.currentBabyId, loadAllBabyData]);
 
-  const switchBaby = useCallback(async (id: string) => {
-    const baby = state.babies.find(b => b.id === id);
-    if (!baby) return;
-    
+// src/context/BabyContext.tsx - switchBaby method only
+const switchBaby = useCallback(async (id: string) => {
+  const baby = state.babies.find(b => b.id === id);
+  if (!baby) return;
+  
+  try {
+    // Save to storage first
     await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY, id);
+    
+    // Load all baby data for the new baby
     await loadAllBabyData(id);
     
+    // Update state
     setState(prev => ({ 
       ...prev, 
       currentBabyId: id, 
@@ -519,11 +525,14 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }));
     
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  }, [state.babies, loadAllBabyData]);
-
-  const refreshCurrentBaby = useCallback(async () => {
-    await loadBabies();
-  }, [loadBabies]);
+    
+    // Return success so caller knows to refresh UI
+    return true;
+  } catch (error) {
+    console.error('Error switching baby:', error);
+    return false;
+  }
+}, [state.babies, loadAllBabyData]);
 
   // ==================== GROWTH TRACKING ====================
   const addGrowthMeasurement = useCallback(async (

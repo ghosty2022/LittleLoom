@@ -35,6 +35,7 @@ import Animated, {
   SlideInRight,
   SlideInUp,
   SlideOutDown,
+  runOnJS,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { formatDistanceToNow, format } from 'date-fns';
@@ -90,16 +91,16 @@ const AVAILABLE_ACTIONS = [
   { id: 'sound', label: 'Sounds', icon: '🎵', color: '#1DB954', gradient: ['#1DB954', '#1ed760'], screen: 'SoundMixer', params: {} },
 ];
 
-// UPDATED: Feature cards with full navigation coverage
-const FEATURE_CARDS = [
-  { id: 'reminders', label: 'Reminders', icon: 'alarm', color: '#f59e0b', screen: 'Reminders', badge: '3' },
-  { id: 'achievements', label: 'Milestones', icon: 'trophy', color: '#ec4899', screen: 'Achievements' },
-  { id: 'growth', label: 'Growth', icon: 'trending-up', color: '#10b981', screen: 'GrowthChart' },
-  { id: 'family', label: 'Family', icon: 'people', color: '#3b82f6', screen: 'FamilySharing' },
-  { id: 'safety', label: 'Safety', icon: 'shield-checkmark', color: '#ef4444', screen: 'SafetyCorner' },
-  { id: 'gallery', label: 'Gallery', icon: 'images', color: '#8b5cf6', screen: 'Gallery', badge: 'New' },
-  { id: 'chat', label: 'Family Chat', icon: 'chatbubbles', color: '#06b6d4', screen: 'FamilyChatList', badge: 'Live' },
-  { id: 'sound', label: 'Sound Mixer', icon: 'musical-notes', color: '#1DB954', screen: 'SoundMixer' },
+// UPDATED: Feature cards with usage tracking for auto-sort
+const DEFAULT_FEATURE_CARDS = [
+  { id: 'reminders', label: 'Reminders', icon: 'alarm', color: '#f59e0b', screen: 'Reminders', badge: '3', usageCount: 0 },
+  { id: 'achievements', label: 'Milestones', icon: 'trophy', color: '#ec4899', screen: 'Achievements', usageCount: 0 },
+  { id: 'growth', label: 'Growth', icon: 'trending-up', color: '#10b981', screen: 'GrowthChart', usageCount: 0 },
+  { id: 'family', label: 'Family', icon: 'people', color: '#3b82f6', screen: 'FamilySharing', usageCount: 0 },
+  { id: 'safety', label: 'Safety', icon: 'shield-checkmark', color: '#ef4444', screen: 'SafetyCorner', usageCount: 0 },
+  { id: 'gallery', label: 'Gallery', icon: 'images', color: '#8b5cf6', screen: 'Gallery', badge: 'New', usageCount: 0 },
+  { id: 'chat', label: 'Family Chat', icon: 'chatbubbles', color: '#06b6d4', screen: 'FamilyChatList', badge: 'Live', usageCount: 0 },
+  { id: 'sound', label: 'Sound Mixer', icon: 'musical-notes', color: '#1DB954', screen: 'SoundMixer', usageCount: 0 },
 ];
 
 type HomeScreenProps = NativeStackScreenProps<RootStackParamList, 'Main'>;
@@ -151,7 +152,7 @@ const SweetAlert = ({ visible, type, title, message, onClose, isDark }: AlertSta
   }[type];
 
   return (
-    <View style={[StyleSheet.absoluteFill, { zIndex: 9999, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 100, pointerEvents: 'none' }]}>
+    <View style={[StyleSheet.absoluteFill, { zIndex: 9999, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 100, pointerEvents: 'none' }]} pointerEvents="box-none">
       <Animated.View style={[style, styles.alertContainer, { backgroundColor: isDark ? '#1a1a2e' : '#fff' }]}>
         <LinearGradient colors={config.colors} style={styles.alertIconBg}>
           <Ionicons name={config.icon as any} size={28} color="#fff" />
@@ -213,7 +214,7 @@ const ConfirmModal = ({
   }[type];
 
   return (
-    <View style={[StyleSheet.absoluteFill, { zIndex: 10000, justifyContent: 'center', alignItems: 'center' }]}>
+    <View style={[StyleSheet.absoluteFill, { zIndex: 10000, justifyContent: 'center', alignItems: 'center' }]} pointerEvents="auto">
       <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.6)' }, backdropStyle]}>
         <BlurView intensity={80} style={StyleSheet.absoluteFill} tint="dark" />
       </Animated.View>
@@ -339,6 +340,127 @@ const NotificationChooserModal = ({
   );
 };
 
+// ==================== ADD ACTION MODAL (CENTERED) ====================
+
+const AddActionModal = ({
+  visible,
+  onClose,
+  onAdd,
+  isDark,
+  existingActions
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onAdd: (action: any) => void;
+  isDark: boolean;
+  existingActions: any[];
+}) => {
+  const opacity = useSharedValue(0);
+  const scale = useSharedValue(0.9);
+
+  useEffect(() => {
+    if (visible) {
+      opacity.value = withTiming(1, { duration: 200 });
+      scale.value = withSpring(1, { damping: 20 });
+    } else {
+      opacity.value = withTiming(0, { duration: 200 });
+      scale.value = withTiming(0.9, { duration: 200 });
+    }
+  }, [visible]);
+
+  const backdropStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
+  const modalStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+
+  const handleAdd = (action: any) => {
+    if (existingActions.find(a => a.id === action.id)) {
+      return;
+    }
+    onAdd(action);
+  };
+
+  if (!visible) return null;
+
+  return (
+    <View style={[StyleSheet.absoluteFill, { zIndex: 10002 }]} pointerEvents="auto">
+      <TouchableOpacity 
+        activeOpacity={1} 
+        onPress={onClose}
+        style={StyleSheet.absoluteFill}
+      >
+        <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.7)' }, backdropStyle]}>
+          <BlurView intensity={80} style={StyleSheet.absoluteFill} tint="dark" />
+        </Animated.View>
+      </TouchableOpacity>
+      
+      <Animated.View style={[
+        styles.centeredModal, 
+        modalStyle, 
+        { backgroundColor: isDark ? '#1a1a2e' : '#fff' }
+      ]}>
+        <View style={styles.centeredModalHeader}>
+          <View>
+            <Text style={[styles.centeredModalTitle, { color: isDark ? '#fff' : '#1e293b' }]}>Add Quick Action</Text>
+            <Text style={styles.centeredModalSubtitle}>Choose an action to add to your grid</Text>
+          </View>
+          <TouchableOpacity 
+            onPress={onClose} 
+            style={styles.centeredModalClose}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Ionicons name="close" size={24} color={isDark ? '#94a3b8' : '#64748b'} />
+          </TouchableOpacity>
+        </View>
+        
+        <ScrollView 
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.centeredModalGrid}
+        >
+          {AVAILABLE_ACTIONS.map((action, index) => {
+            const isExisting = existingActions.find(a => a.id === action.id);
+            return (
+              <Animated.View 
+                key={action.id} 
+                entering={FadeInUp.delay(index * 50)} 
+                style={styles.centeredModalItem}
+              >
+                <TouchableOpacity 
+                  style={[
+                    styles.centeredModalItemButton, 
+                    isExisting && styles.centeredModalItemDisabled
+                  ]} 
+                  onPress={() => handleAdd(action)}
+                  disabled={isExisting}
+                  activeOpacity={0.7}
+                >
+                  <LinearGradient 
+                    colors={action.gradient} 
+                    style={[
+                      styles.centeredModalItemGradient,
+                      isExisting && { opacity: 0.4 }
+                    ]}
+                  >
+                    <Text style={styles.centeredModalItemIcon}>{action.icon}</Text>
+                    {isExisting && (
+                      <View style={styles.centeredModalItemCheck}>
+                        <Ionicons name="checkmark" size={16} color="#fff" />
+                      </View>
+                    )}
+                  </LinearGradient>
+                  <Text style={[
+                    styles.centeredModalItemLabel, 
+                    isDark && { color: '#fff' },
+                    isExisting && { color: '#94a3b8' }
+                  ]}>{action.label}</Text>
+                </TouchableOpacity>
+              </Animated.View>
+            );
+          })}
+        </ScrollView>
+      </Animated.View>
+    </View>
+  );
+};
+
 // ==================== SUB-COMPONENTS ====================
 
 const GlassmorphismCard: React.FC<{ children: React.ReactNode; style?: any; onPress?: () => void; intensity?: number }> = ({ children, style, onPress, intensity = 80 }) => {
@@ -389,7 +511,7 @@ const CircularProgress: React.FC<{ progress: number; value: string; label: strin
 const DraggableGrid = ({ items, onPress, onRemove, onAdd, columns, isDark }: { items: any[], onPress: (item: any) => void, onRemove: (id: string) => void, onAdd: () => void, columns: number, isDark: boolean }) => {
   const [isEditMode, setIsEditMode] = useState(false);
   
-  const totalMargin = 20; // Reduced for full width
+  const totalMargin = 20;
   const gap = 10;
   const availableWidth = width - totalMargin;
   const itemWidth = (availableWidth - (columns - 1) * gap) / columns;
@@ -433,6 +555,149 @@ const DraggableGrid = ({ items, onPress, onRemove, onAdd, columns, isDark }: { i
           </View>
           <Text style={[styles.gridItemLabel, { color: isDark ? '#94a3b8' : '#64748b' }]}>Add</Text>
         </TouchableOpacity>
+      </View>
+    </View>
+  );
+};
+
+// ==================== SORTABLE 2-COLUMN FEATURE GRID ====================
+
+const SortableFeatureGrid = ({ 
+  items, 
+  onPress, 
+  onReorder, 
+  isDark,
+  onUsageIncrement
+}: { 
+  items: any[], 
+  onPress: (item: any) => void, 
+  onReorder: (newItems: any[]) => void,
+  isDark: boolean,
+  onUsageIncrement: (id: string) => void
+}) => {
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [localItems, setLocalItems] = useState(items);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const dragStartPos = useRef({ x: 0, y: 0 });
+  const itemRefs = useRef<Map<string, View>>(new Map());
+
+  useEffect(() => {
+    setLocalItems(items);
+  }, [items]);
+
+  const gap = 12;
+  const margin = 20;
+  const availableWidth = width - (margin * 2);
+  const itemWidth = (availableWidth - gap) / 2;
+
+  const toggleEditMode = () => {
+    setIsEditMode(!isEditMode);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  };
+
+  const handlePress = (item: any) => {
+    if (isEditMode) return;
+    onUsageIncrement(item.id);
+    onPress(item);
+  };
+
+  const handleDragStart = (id: string, event: any) => {
+    if (!isEditMode) return;
+    dragStartPos.current = { x: event.nativeEvent.pageX, y: event.nativeEvent.pageY };
+    setDraggingId(id);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+  };
+
+  const handleDragEnd = (fromId: string, toId: string) => {
+    if (fromId === toId) {
+      setDraggingId(null);
+      return;
+    }
+
+    const fromIndex = localItems.findIndex(item => item.id === fromId);
+    const toIndex = localItems.findIndex(item => item.id === toId);
+
+    if (fromIndex === -1 || toIndex === -1) {
+      setDraggingId(null);
+      return;
+    }
+
+    const newItems = [...localItems];
+    const [removed] = newItems.splice(fromIndex, 1);
+    newItems.splice(toIndex, 0, removed);
+
+    setLocalItems(newItems);
+    onReorder(newItems);
+    setDraggingId(null);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
+
+  const renderItem = (item: any, index: number) => {
+    const isDragging = draggingId === item.id;
+    
+    return (
+      <Animated.View 
+        key={item.id} 
+        entering={FadeInUp.delay(index * 60)} 
+        layout={Layout.springify()}
+        style={[
+          styles.featureCardWrapper2Col, 
+          { width: itemWidth },
+          isDragging && { zIndex: 1000, transform: [{ scale: 1.05 }] }
+        ]}
+      >
+        <TouchableOpacity 
+          onPress={() => handlePress(item)} 
+          onLongPress={toggleEditMode}
+          delayLongPress={400}
+          activeOpacity={0.8}
+          style={styles.featureCard2Col}
+          onTouchStart={(e) => isEditMode && handleDragStart(item.id, e)}
+          onTouchEnd={() => setDraggingId(null)}
+        >
+          <LinearGradient 
+            colors={[`${item.color}15`, `${item.color}05`]} 
+            style={[
+              styles.featureGradient2Col, 
+              { borderColor: `${item.color}30` },
+              isEditMode && styles.featureGradientEdit
+            ]}
+          >
+            <View style={[styles.featureIcon2Col, { backgroundColor: item.color }]}>
+              <Ionicons name={item.icon as any} size={22} color="#fff" />
+            </View>
+            <Text style={[styles.featureLabel2Col, isDark && { color: '#fff' }]}>{item.label}</Text>
+            {item.badge && (
+              <View style={[styles.featureBadge2Col, { backgroundColor: item.color }]}>
+                <Text style={styles.featureBadgeText2Col}>{item.badge}</Text>
+              </View>
+            )}
+            {isEditMode && (
+              <View style={styles.dragHandle}>
+                <Ionicons name="reorder-three" size={20} color="#64748b" />
+              </View>
+            )}
+            <Ionicons name="chevron-forward" size={18} color={item.color} style={styles.featureArrow2Col} />
+          </LinearGradient>
+        </TouchableOpacity>
+      </Animated.View>
+    );
+  };
+
+  return (
+    <View>
+      <View style={styles.gridHeader}>
+        <Text style={[styles.gridHint, isDark && { color: '#94a3b8' }]}>
+          {isEditMode ? 'Drag to reorder' : 'Hold to customize layout'}
+        </Text>
+        {isEditMode && (
+          <TouchableOpacity onPress={toggleEditMode} style={styles.doneButton}>
+            <Text style={styles.doneButtonText}>Done</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+      <View style={[styles.featuresGrid2Col, { gap, paddingHorizontal: margin }]}>
+        {localItems.map((item, index) => renderItem(item, index))}
       </View>
     </View>
   );
@@ -627,7 +892,8 @@ const StickyAppHeader = ({
   onProfilePress,
   onBabyPress,
   onAddBabyPress,
-  unreadCount
+  unreadCount,
+  onSignOut
 }: {
   scrollY: any;
   isDark: boolean;
@@ -641,39 +907,46 @@ const StickyAppHeader = ({
   onBabyPress: () => void;
   onAddBabyPress: () => void;
   unreadCount: number;
+  onSignOut: () => void;
 }) => {
-  const headerOpacity = useAnimatedStyle(() => ({
-    opacity: interpolate(scrollY.value, [0, 100], [0, 1], Extrapolate.CLAMP),
-    transform: [{ translateY: interpolate(scrollY.value, [0, 100], [-20, 0], Extrapolate.CLAMP) }],
-  }));
-
-  const blurIntensity = useMemo(() => {
-    // Calculate blur based on scroll
-    const intensity = interpolate(scrollY.value, [0, 150], [0, 95], Extrapolate.CLAMP);
-    return intensity;
-  }, [scrollY.value]);
+  // Animate header background opacity based on scroll
+  const headerAnimatedStyle = useAnimatedStyle(() => {
+    // Start with 0.9 opacity so it's always visible, increase to 1 as user scrolls
+    const opacity = interpolate(
+      scrollY.value,
+      [0, 100],
+      [0.9, 1], // Always at least 90% visible
+      Extrapolate.CLAMP
+    );
+    
+    return {
+      opacity,
+    };
+  });
 
   return (
-    <Animated.View style={[styles.stickyHeaderContainer, headerOpacity]}>
-      <BlurView intensity={95} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
+    <Animated.View style={[styles.stickyHeaderContainer, headerAnimatedStyle]}>
+      {/* BlurView shows the scrolled content underneath */}
+      <BlurView 
+        intensity={95} 
+        style={StyleSheet.absoluteFill} 
+        tint={isDark ? 'dark' : 'light'} 
+      />
+      
+      {/* Semi-transparent overlay for text readability only */}
       <LinearGradient 
-        colors={isDark ? ['rgba(20,20,30,0.98)', 'rgba(10,10,20,0.95)'] : ['rgba(255,255,255,0.98)', 'rgba(248,250,252,0.95)']} 
+        colors={isDark 
+          ? ['rgba(20,20,30,0.6)', 'rgba(10,10,20,0.4)'] 
+          : ['rgba(255,255,255,0.6)', 'rgba(248,250,252,0.4)']
+        } 
         style={StyleSheet.absoluteFill} 
       />
       
       <View style={styles.stickyHeaderContent}>
-        {/* Left: Profile */}
+        {/* Left: Sign Out Button */}
         <View style={styles.stickyHeaderLeft}>
-          <TouchableOpacity onPress={onProfilePress} style={styles.stickyHeaderProfile}>
-            <LinearGradient colors={['#667eea', '#764ba2']} style={styles.stickyHeaderAvatar}>
-              <Text style={styles.stickyHeaderAvatarText}>{userProfile?.fullName?.charAt(0) || 'P'}</Text>
-            </LinearGradient>
-            <View style={styles.stickyHeaderText}>
-              <Text style={[styles.stickyHeaderGreeting, isDark && styles.textDark]} numberOfLines={1}>
-                {greeting.split(' ')[0]}
-              </Text>
-              <Text style={styles.stickyHeaderTime}>{format(currentTime, 'h:mm a')}</Text>
-            </View>
+          <TouchableOpacity style={styles.stickyHeaderIconBtn} onPress={onSignOut}>
+            <Ionicons name="log-out-outline" size={22} color="#ef4444" />
           </TouchableOpacity>
         </View>
 
@@ -683,7 +956,7 @@ const StickyAppHeader = ({
           <View style={styles.stickyHeaderUnderline} />
         </View>
 
-        {/* Right: Actions */}
+        {/* Right: Notification + Baby/Lock */}
         <View style={styles.stickyHeaderRight}>
           <TouchableOpacity style={styles.stickyHeaderIconBtn} onPress={onNotificationPress}>
             <Ionicons name="notifications-outline" size={22} color={isDark ? '#fff' : '#667eea'} />
@@ -742,6 +1015,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   const [greeting, setGreeting] = useState('Good morning');
   const [currentTime, setCurrentTime] = useState(new Date());
   const [quickActions, setQuickActions] = useState(DEFAULT_QUICK_ACTIONS);
+  const [featureCards, setFeatureCards] = useState(DEFAULT_FEATURE_CARDS);
   const [showAddModal, setShowAddModal] = useState(false);
   const [alert, setAlert] = useState<AlertState>({ visible: false, type: 'success', title: '', message: '' });
   const [confirmModal, setConfirmModal] = useState({ visible: false, title: '', message: '', onConfirm: () => {}, type: 'default' as const });
@@ -772,8 +1046,16 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     loadActivities();
   }, [loadBabies, loadActivities]);
 
+  // Sort features by usage count on mount
+  useEffect(() => {
+    const sorted = [...featureCards].sort((a, b) => b.usageCount - a.usageCount);
+    setFeatureCards(sorted);
+  }, []);
+
   const scrollHandler = useAnimatedScrollHandler({
-    onScroll: (event) => { scrollY.value = event.contentOffset.y; },
+    onScroll: (event) => { 
+      scrollY.value = event.contentOffset.y;
+    },
   });
 
   const showToast = useCallback((type: AlertState['type'], title: string, message: string) => {
@@ -857,6 +1139,26 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     setShowAddModal(false);
     showToast('success', 'Action Added!', `${action.label} has been added to your quick actions.`);
   }, [quickActions, showToast]);
+
+  // Handle feature usage and auto-sort
+  const handleFeatureUsage = useCallback((id: string) => {
+    setFeatureCards(prev => {
+      const newItems = prev.map(item => 
+        item.id === id ? { ...item, usageCount: item.usageCount + 1 } : item
+      );
+      // Sort by usage count (descending)
+      return [...newItems].sort((a, b) => b.usageCount - a.usageCount);
+    });
+  }, []);
+
+  const handleFeatureReorder = useCallback((newItems: any[]) => {
+    setFeatureCards(newItems);
+  }, []);
+
+  const handleFeaturePress = useCallback((item: any) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    navigation.navigate(item.screen as any);
+  }, [navigation]);
 
   const handleLockPress = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -951,7 +1253,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
       
       <LinearGradient colors={isDark ? ['#0a0a0a', '#1a1a2e', '#16213e'] : ['#f8fafc', '#e2e8f0', '#dbeafe']} style={styles.backgroundGradient} />
 
-      {/* Sticky Header - Always visible on scroll */}
+            {/* Sticky Header - Always visible with blur on scroll */}
       <StickyAppHeader 
         scrollY={scrollY}
         isDark={isDark}
@@ -965,6 +1267,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         onBabyPress={() => navigation.navigate('SwitchBaby')}
         onAddBabyPress={() => navigation.navigate('CreateBabyProfile')}
         unreadCount={unreadCommunityCount}
+        onSignOut={handleSignOut}  // <-- THIS WAS MISSING
       />
 
       {/* Main Content */}
@@ -975,33 +1278,8 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         onScroll={scrollHandler}
         scrollEventThrottle={16}
       >
-        {/* Header Section */}
+        {/* Header Section - Original header now acts as content */}
         <Animated.View entering={FadeInDown.springify()}>
-          <View style={styles.topBar}>
-            <TouchableOpacity onPress={handleSignOut} style={styles.iconButton}>
-              <BlurView intensity={60} style={styles.iconBlur} tint={isDark ? 'dark' : 'light'}>
-                <Ionicons name="log-out-outline" size={22} color="#ef4444" />
-              </BlurView>
-            </TouchableOpacity>
-
-            <View style={styles.titleContainer}>
-              <Text style={[styles.appTitle, isDark && styles.textDark]}>LittleLoom</Text>
-              <View style={styles.titleUnderline} />
-              <Text style={styles.appSubtitle}>Baby Tracker</Text>
-            </View>
-
-            <TouchableOpacity style={styles.iconButton} onPress={handleNotificationPress}>
-              <BlurView intensity={60} style={styles.iconBlur} tint={isDark ? 'dark' : 'light'}>
-                <Ionicons name="notifications-outline" size={22} color={isDark ? '#fff' : '#667eea'} />
-                {(unreadCommunityCount > 0) && (
-                  <View style={styles.notificationBadge}>
-                    <Text style={styles.notificationBadgeText}>{unreadCommunityCount}</Text>
-                  </View>
-                )}
-              </BlurView>
-            </TouchableOpacity>
-          </View>
-
           {/* Parent Card */}
           <Animated.View entering={FadeInDown.springify()}>
             <GlassmorphismCard style={styles.parentCard} intensity={90}>
@@ -1121,7 +1399,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
           </View>
         </View>
 
-        {/* Features Section - FULL WIDTH CARDS */}
+        {/* Features Section - 2 COLUMN SORTABLE GRID */}
         <View style={styles.sectionFullWidth}>
           <View style={[styles.sectionHeader, styles.sectionHeaderPadded]}>
             <View style={styles.sectionTitleRow}>
@@ -1129,26 +1407,13 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
               <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Tools & Features</Text>
             </View>
           </View>
-          <View style={styles.featuresGridFullWidth}>
-            {FEATURE_CARDS.map((feature, index) => (
-              <Animated.View key={feature.id} entering={FadeInUp.delay(index * 60)} style={styles.featureCardWrapper}>
-                <TouchableOpacity onPress={() => navigation.navigate(feature.screen as any)} style={styles.featureCardFullWidth}>
-                  <LinearGradient colors={[`${feature.color}15`, `${feature.color}05`]} style={[styles.featureGradientFullWidth, { borderColor: `${feature.color}30` }]}>
-                    <View style={[styles.featureIcon, { backgroundColor: feature.color }]}>
-                      <Ionicons name={feature.icon as any} size={22} color="#fff" />
-                    </View>
-                    <Text style={[styles.featureLabelFullWidth, isDark && { color: '#fff' }]}>{feature.label}</Text>
-                    {feature.badge && (
-                      <View style={[styles.featureBadge, { backgroundColor: feature.color }]}>
-                        <Text style={styles.featureBadgeText}>{feature.badge}</Text>
-                      </View>
-                    )}
-                    <Ionicons name="chevron-forward" size={18} color={feature.color} style={styles.featureArrowFullWidth} />
-                  </LinearGradient>
-                </TouchableOpacity>
-              </Animated.View>
-            ))}
-          </View>
+          <SortableFeatureGrid 
+            items={featureCards}
+            onPress={handleFeaturePress}
+            onReorder={handleFeatureReorder}
+            onUsageIncrement={handleFeatureUsage}
+            isDark={isDark}
+          />
         </View>
 
         {/* Activity Section */}
@@ -1179,51 +1444,14 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         <View style={{ height: 140 }} />
       </AnimatedScrollView>
 
-      {/* Add Action Modal */}
-      <Modal 
-        visible={showAddModal} 
-        transparent 
-        animationType="slide" 
-        onRequestClose={() => setShowAddModal(false)}
-        statusBarTranslucent
-      >
-        <View style={styles.modalOverlay}>
-          <BlurView intensity={90} style={StyleSheet.absoluteFill} tint="dark" />
-          <Animated.View entering={SlideInRight} style={styles.modalContent}>
-            <LinearGradient colors={isDark ? ['#1a1a2e', '#16213e'] : ['#fff', '#f8fafc']} style={styles.modalGradient}>
-              <View style={styles.modalHeader}>
-                <View>
-                  <Text style={[styles.modalTitle, isDark && { color: '#fff' }]}>Add Quick Action</Text>
-                  <Text style={styles.modalSubtitle}>Choose an action to add to your grid</Text>
-                </View>
-                <TouchableOpacity 
-                  onPress={() => setShowAddModal(false)} 
-                  style={styles.modalClose}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                >
-                  <Ionicons name="close" size={24} color={isDark ? '#94a3b8' : '#64748b'} />
-                </TouchableOpacity>
-              </View>
-              <View style={styles.modalGrid}>
-                {AVAILABLE_ACTIONS.map((action, index) => (
-                  <Animated.View key={action.id} entering={FadeInUp.delay(index * 100)} style={styles.modalItem}>
-                    <TouchableOpacity 
-                      style={styles.modalItemButton} 
-                      onPress={() => handleAddAction(action)}
-                      activeOpacity={0.7}
-                    >
-                      <LinearGradient colors={action.gradient} style={styles.modalItemGradient}>
-                        <Text style={styles.modalItemIcon}>{action.icon}</Text>
-                      </LinearGradient>
-                      <Text style={[styles.modalItemLabel, isDark && { color: '#fff' }]}>{action.label}</Text>
-                    </TouchableOpacity>
-                  </Animated.View>
-                ))}
-              </View>
-            </LinearGradient>
-          </Animated.View>
-        </View>
-      </Modal>
+      {/* Centered Add Action Modal */}
+      <AddActionModal 
+        visible={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onAdd={handleAddAction}
+        isDark={isDark}
+        existingActions={quickActions}
+      />
 
       {/* Modals */}
       <SweetAlert {...alert} onClose={() => setAlert({ ...alert, visible: false })} isDark={isDark} />
@@ -1295,7 +1523,104 @@ const styles = StyleSheet.create({
   confirmButtonGradient: { flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
   confirmButtonText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 
-  // UPDATED: Notification Modal - Top Right Positioned
+  // Centered Modal
+  centeredModal: { 
+    position: 'absolute',
+    top: height * 0.15,
+    left: 20,
+    right: 20,
+    maxHeight: height * 0.7,
+    borderRadius: 28, 
+    padding: 24, 
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.4,
+    shadowRadius: 40,
+    elevation: 25,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  centeredModalHeader: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'flex-start', 
+    marginBottom: 20,
+  },
+  centeredModalTitle: { 
+    fontSize: 24, 
+    fontWeight: '800', 
+    color: '#1e293b', 
+    marginBottom: 4 
+  },
+  centeredModalSubtitle: { 
+    fontSize: 14, 
+    color: '#64748b' 
+  },
+  centeredModalClose: { 
+    width: 44, 
+    height: 44, 
+    borderRadius: 22, 
+    backgroundColor: 'rgba(100,116,139,0.1)', 
+    alignItems: 'center', 
+    justifyContent: 'center',
+  },
+  centeredModalGrid: { 
+    flexDirection: 'row', 
+    flexWrap: 'wrap', 
+    gap: 16,
+    justifyContent: 'space-between',
+    paddingBottom: 20,
+  },
+  centeredModalItem: { 
+    width: (width - 88) / 3,
+  },
+  centeredModalItemButton: { 
+    alignItems: 'center' 
+  },
+    centeredModalItemGradient: { 
+    width: '100%', 
+    aspectRatio: 1,
+    borderRadius: 20, 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    marginBottom: 8, 
+    shadowColor: '#000', 
+    shadowOffset: { width: 0, height: 4 }, 
+    shadowOpacity: 0.1, 
+    shadowRadius: 8, 
+    elevation: 4,
+    position: 'relative',
+  },
+  centeredModalItemIcon: { 
+    fontSize: 32 
+  },
+  centeredModalItemLabel: { 
+    fontSize: 13, 
+    fontWeight: '600', 
+    color: '#1e293b', 
+    textAlign: 'center' 
+  },
+  centeredModalItemDisabled: {
+    opacity: 0.6,
+  },
+  centeredModalItemCheck: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#43e97b',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+
+  // Notification Modal
   notificationModal: { 
     position: 'absolute',
     top: Platform.OS === 'ios' ? 110 : 80,
@@ -1375,7 +1700,7 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   backgroundGradient: { ...StyleSheet.absoluteFillObject },
   scrollContent: { 
-    paddingTop: Platform.OS === 'ios' ? 120 : 100, 
+    paddingTop: Platform.OS === 'ios' ? 140 : 120, 
     paddingBottom: 30 
   },
   textDark: { color: '#ffffff' },
@@ -1390,207 +1715,147 @@ const styles = StyleSheet.create({
   dot2: { opacity: 0.7 },
   dot3: { opacity: 1 },
 
-  // UPDATED: Sticky Header Styles
-  stickyHeaderContainer: { 
-    position: 'absolute', 
-    top: 0, 
-    left: 0, 
-    right: 0, 
-    zIndex: 1000, 
-    paddingTop: Platform.OS === 'ios' ? 50 : 40, 
-    paddingHorizontal: 16, 
-    paddingBottom: 12, 
-    borderBottomLeftRadius: 24, 
-    borderBottomRightRadius: 24, 
-    overflow: 'hidden', 
-    shadowColor: '#000', 
-    shadowOffset: { width: 0, height: 4 }, 
-    shadowOpacity: 0.15, 
-    shadowRadius: 12, 
-    elevation: 10,
-  },
-  stickyHeaderContent: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'space-between',
-    height: 50,
-  },
-  stickyHeaderLeft: { 
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  stickyHeaderProfile: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  stickyHeaderAvatar: { 
-    width: 36, 
-    height: 36, 
-    borderRadius: 18, 
-    alignItems: 'center', 
-    justifyContent: 'center',
-    marginRight: 8,
-  },
-  stickyHeaderAvatarText: { 
-    color: '#fff', 
-    fontSize: 14, 
-    fontWeight: '700' 
-  },
-  stickyHeaderText: {
-    justifyContent: 'center',
-  },
-  stickyHeaderGreeting: { 
-    fontSize: 12, 
-    fontWeight: '700', 
-    color: '#1e293b',
-  },
-  stickyHeaderTime: { 
-    fontSize: 10, 
-    color: '#64748b',
-    marginTop: 1,
-  },
-  stickyHeaderCenter: { 
-    flex: 1, 
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stickyHeaderTitle: { 
-    fontSize: 18, 
-    fontWeight: '800', 
-    color: '#1e293b', 
-    letterSpacing: -0.3,
-  },
-  stickyHeaderUnderline: {
-    width: 24,
-    height: 2,
-    borderRadius: 1,
-    backgroundColor: '#667eea',
-    marginTop: 2,
-    alignSelf: 'center',
-  },
-  stickyHeaderRight: { 
-    flex: 1, 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'flex-end', 
-    gap: 8,
-  },
-  stickyHeaderIconBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(100,116,139,0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  stickyHeaderBadge: {
-    position: 'absolute',
-    top: -2,
-    right: -2,
-    backgroundColor: '#ef4444',
-    borderRadius: 10,
-    minWidth: 18,
-    height: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: 'white',
-  },
-  stickyHeaderBadgeText: {
-    color: 'white',
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
-  stickyHeaderBaby: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-  },
-  stickyHeaderBabyAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stickyHeaderBabyEmoji: {
-    fontSize: 18,
-  },
-  stickyHeaderLockBtn: { 
-    marginLeft: 2,
-  },
-  stickyHeaderLockGradient: { 
-    width: 32, 
-    height: 32, 
-    borderRadius: 16, 
-    alignItems: 'center', 
-    justifyContent: 'center',
-  },
+// ==================== STICKY HEADER STYLES ====================
 
-  // Original Header
-  topBar: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'center', 
-    marginBottom: 20, 
-    marginTop: Platform.OS === 'ios' ? 10 : 20,
-    paddingHorizontal: 20,
-  },
-  iconButton: { 
-    width: 44, 
-    height: 44, 
-    borderRadius: 16, 
-    overflow: 'hidden' 
-  },
-  iconBlur: { 
-    flex: 1, 
-    alignItems: 'center', 
-    justifyContent: 'center' 
-  },
-  titleContainer: { 
-    alignItems: 'center' 
-  },
-  appTitle: { 
-    fontSize: 26, 
-    fontWeight: '800', 
-    color: '#1e293b', 
-    letterSpacing: -0.5 
-  },
-  titleUnderline: { 
-    width: 40, 
-    height: 3, 
-    borderRadius: 2, 
-    backgroundColor: '#667eea', 
-    marginTop: 4, 
-        alignSelf: 'center',
-  },
-  appSubtitle: { 
-    fontSize: 12, 
-    color: '#64748b', 
-    marginTop: 4, 
-    fontWeight: '500' 
-  },
-  notificationBadge: { 
-    position: 'absolute', 
-    top: 8, 
-    right: 8, 
-    backgroundColor: '#ef4444', 
-    borderRadius: 10, 
-    minWidth: 18, 
-    height: 18, 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    borderWidth: 2, 
-    borderColor: 'white' 
-  },
-  notificationBadgeText: { 
-    color: 'white', 
-    fontSize: 10, 
-    fontWeight: 'bold' 
-  },
+stickyHeaderContainer: { 
+  position: 'absolute', 
+  top: 0, // Hits the topmost part
+  left: 0,
+  right: 0,
+  zIndex: 1000, 
+  paddingTop: Platform.OS === 'ios' ? 50 : 30, // Account for status bar
+  paddingBottom: 12,
+  paddingHorizontal: 16,
+  // Blur background - fully opaque so nothing shows behind
+  backgroundColor: 'rgba(255,255,255,0.95)',
+  borderBottomWidth: 1,
+  borderBottomColor: 'rgba(0,0,0,0.05)',
+  // Shadow for depth
+  shadowColor: '#000', 
+  shadowOffset: { width: 0, height: 2 }, 
+  shadowOpacity: 0.1, 
+  shadowRadius: 8, 
+  elevation: 5,
+},
 
+stickyHeaderContainerDark: {
+  backgroundColor: 'rgba(15,15,25,0.98)',
+  borderBottomColor: 'rgba(255,255,255,0.05)',
+},
+
+stickyHeaderContent: { 
+  flexDirection: 'row', 
+  alignItems: 'center', 
+  justifyContent: 'space-between',
+  height: 50,
+},
+
+stickyHeaderLeft: { 
+  flex: 1,
+  flexDirection: 'row',
+  alignItems: 'center',
+},
+
+stickyHeaderCenter: { 
+  flex: 2, 
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+
+stickyHeaderTitle: { 
+  fontSize: 22, 
+  fontWeight: '900', // Bolder
+  color: '#1e293b', 
+  letterSpacing: -0.5,
+},
+
+stickyHeaderTitleDark: {
+  color: '#fff',
+},
+
+stickyHeaderUnderline: {
+  width: 32,
+  height: 4,
+  borderRadius: 2,
+  backgroundColor: '#667eea',
+  marginTop: 4,
+},
+
+stickyHeaderRight: { 
+  flex: 1, 
+  flexDirection: 'row', 
+  alignItems: 'center', 
+  justifyContent: 'flex-end', 
+  gap: 10,
+},
+
+stickyHeaderIconBtn: {
+  width: 42,
+  height: 42,
+  borderRadius: 21,
+  backgroundColor: 'rgba(100,116,139,0.1)',
+  alignItems: 'center',
+  justifyContent: 'center',
+  position: 'relative',
+},
+
+stickyHeaderIconBtnDark: {
+  backgroundColor: 'rgba(255,255,255,0.1)',
+},
+
+stickyHeaderBadge: {
+  position: 'absolute',
+  top: 0,
+  right: 0,
+  backgroundColor: '#ef4444',
+  borderRadius: 10,
+  minWidth: 18,
+  height: 18,
+  alignItems: 'center',
+  justifyContent: 'center',
+  borderWidth: 2,
+  borderColor: 'white',
+},
+
+stickyHeaderBadgeDark: {
+  borderColor: '#1e293b',
+},
+
+stickyHeaderBadgeText: {
+  color: 'white',
+  fontSize: 10,
+  fontWeight: 'bold',
+},
+
+stickyHeaderBaby: {
+  width: 42,
+  height: 42,
+  borderRadius: 21,
+},
+
+stickyHeaderBabyAvatar: {
+  width: 42,
+  height: 42,
+  borderRadius: 21,
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+
+stickyHeaderBabyEmoji: {
+  fontSize: 22,
+},
+
+stickyHeaderLockBtn: { 
+  marginLeft: 4,
+},
+
+stickyHeaderLockGradient: { 
+  width: 38, 
+  height: 38, 
+  borderRadius: 19, 
+  alignItems: 'center', 
+  justifyContent: 'center',
+},
   // Glass Card
   glassCard: { 
     borderRadius: 24, 
@@ -1620,6 +1885,7 @@ const styles = StyleSheet.create({
     marginBottom: 16, 
     borderRadius: 28,
     marginHorizontal: 20,
+    marginTop: 20,
   },
   parentHeader: { 
     flexDirection: 'row', 
@@ -1829,6 +2095,7 @@ const styles = StyleSheet.create({
     marginBottom: 20, 
     overflow: 'hidden',
     marginHorizontal: 20,
+    marginTop: 20,
   },
   noBabyGradient: { 
     padding: 32, 
@@ -1865,7 +2132,7 @@ const styles = StyleSheet.create({
     fontWeight: '700' 
   },
 
-  // Sections - UPDATED for full width
+  // Sections
   section: { 
     marginTop: 8, 
     paddingHorizontal: 20 
@@ -2014,7 +2281,7 @@ const styles = StyleSheet.create({
     height: 18 
   },
 
-  // Draggable Grid - UPDATED for full width
+  // Draggable Grid
   gridWrapper: {
     paddingHorizontal: 10,
   },
@@ -2109,35 +2376,40 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed' 
   },
 
-  // Feature Cards - UPDATED for full width
-  featuresGridFullWidth: { 
+  // 2-Column Feature Grid
+  featuresGrid2Col: { 
+    flexDirection: 'row', 
+    flexWrap: 'wrap', 
+    justifyContent: 'space-between',
     width: '100%',
-    paddingHorizontal: 10,
-    gap: 10,
   },
-  featureCardWrapper: { 
-    width: '100%',
-    marginBottom: 4,
+  featureCardWrapper2Col: { 
+    marginBottom: 12,
   },
-  featureCardFullWidth: { 
+  featureCard2Col: { 
     borderRadius: 20, 
     overflow: 'hidden',
     width: '100%',
   },
-  featureGradientFullWidth: { 
+  featureGradient2Col: { 
     padding: 16, 
     alignItems: 'center', 
     borderRadius: 20, 
     borderWidth: 1, 
     borderColor: 'rgba(255,255,255,0.5)',
     flexDirection: 'row',
-    gap: 16,
-    width: '100%',
+    gap: 12,
+    position: 'relative',
   },
-  featureIcon: { 
-    width: 52, 
-    height: 52, 
-    borderRadius: 16, 
+  featureGradientEdit: {
+    borderWidth: 2,
+    borderColor: '#667eea',
+    borderStyle: 'dashed',
+  },
+  featureIcon2Col: { 
+    width: 48, 
+    height: 48, 
+    borderRadius: 14, 
     alignItems: 'center', 
     justifyContent: 'center',
     shadowColor: '#000',
@@ -2146,27 +2418,37 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
   },
-  featureLabelFullWidth: { 
-    fontSize: 16, 
+  featureLabel2Col: { 
+    fontSize: 15, 
     fontWeight: '700', 
     color: '#1e293b', 
     flex: 1,
   },
-  featureBadge: { 
+  featureBadge2Col: { 
     paddingHorizontal: 10, 
     paddingVertical: 4, 
     borderRadius: 12,
     minWidth: 32,
     alignItems: 'center',
   },
-  featureBadgeText: { 
+  featureBadgeText2Col: { 
     color: '#fff', 
     fontSize: 11, 
     fontWeight: 'bold' 
   },
-  featureArrowFullWidth: { 
+  featureArrow2Col: { 
     marginLeft: 'auto',
     opacity: 0.6,
+  },
+  dragHandle: {
+    position: 'absolute',
+    right: 8,
+    top: '50%',
+    marginTop: -10,
+    width: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   // Activity
@@ -2275,84 +2557,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#667eea',
-  },
-
-  // Modal
-  modalOverlay: { 
-    flex: 1, 
-    justifyContent: 'flex-end' 
-  },
-  modalContent: { 
-    borderTopLeftRadius: 32, 
-    borderTopRightRadius: 32, 
-    overflow: 'hidden', 
-    maxHeight: '80%',
-    minHeight: '50%',
-  },
-  modalGradient: { 
-    flex: 1, 
-    padding: 24 
-  },
-  modalHeader: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'flex-start', 
-    marginBottom: 24,
-    paddingRight: 8,
-  },
-  modalTitle: { 
-    fontSize: 24, 
-    fontWeight: '800', 
-    color: '#1e293b', 
-    marginBottom: 4 
-  },
-  modalSubtitle: { 
-    fontSize: 14, 
-    color: '#64748b' 
-  },
-  modalClose: { 
-    width: 44, 
-    height: 44, 
-    borderRadius: 22, 
-    backgroundColor: 'rgba(100,116,139,0.1)', 
-    alignItems: 'center', 
-    justifyContent: 'center',
-    marginTop: -4,
-  },
-  modalGrid: { 
-    flexDirection: 'row', 
-    flexWrap: 'wrap', 
-    gap: 16,
-    justifyContent: 'space-between',
-    paddingBottom: 30,
-  },
-  modalItem: { 
-    width: (width - 80) / 3,
-    marginBottom: 8,
-  },
-  modalItemButton: { 
-    alignItems: 'center' 
-  },
-  modalItemGradient: { 
-    width: '100%', 
-    aspectRatio: 1,
-    borderRadius: 20, 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    marginBottom: 8, 
-    shadowColor: '#000', 
-    shadowOffset: { width: 0, height: 4 }, 
-    shadowOpacity: 0.1, 
-    shadowRadius: 8, 
-    elevation: 4 
-  },
-  modalItemIcon: { 
-    fontSize: 32 
-  },
-  modalItemLabel: { 
-    fontSize: 13, 
-    fontWeight: '600', 
-    color: '#1e293b', 
-    textAlign: 'center' 
   },
 });

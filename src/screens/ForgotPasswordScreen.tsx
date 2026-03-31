@@ -7,177 +7,350 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
-  Alert,
+  ScrollView,
   ActivityIndicator,
+  Dimensions,
+  useColorScheme,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, { FadeIn, FadeInUp, FadeInDown, SlideInRight } from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../types/navigation';
 
-export default function ForgotPasswordScreen({ navigation }: any) {
+type ForgotPasswordScreenProps = NativeStackScreenProps<RootStackParamList, 'ForgotPassword'>;
+const { width } = Dimensions.get('window');
+
+interface AlertState {
+  visible: boolean;
+  type: 'success' | 'error' | 'info' | 'warning';
+  title: string;
+  message: string;
+}
+
+const SweetAlert = ({ visible, type, title, message, isDark }: AlertState & { isDark: boolean }) => {
+  if (!visible) return null;
+  
+  const config = {
+    success: { colors: ['#11998e', '#38ef7d'], icon: 'checkmark-circle' },
+    error: { colors: ['#ef4444', '#f87171'], icon: 'alert-circle' },
+    info: { colors: ['#3b82f6', '#60a5fa'], icon: 'information-circle' },
+    warning: { colors: ['#f59e0b', '#fbbf24'], icon: 'warning' },
+  }[type];
+
+  return (
+    <View style={[StyleSheet.absoluteFill, { zIndex: 9999, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 100, pointerEvents: 'none' }]}>
+      <Animated.View entering={FadeInDown} style={[styles.alertContainer, { backgroundColor: isDark ? '#1a1a2e' : '#fff' }]}>
+        <LinearGradient colors={config.colors} style={styles.alertIconBg}>
+          <Ionicons name={config.icon as any} size={28} color="#fff" />
+        </LinearGradient>
+        <View style={styles.alertTextContainer}>
+          <Text style={[styles.alertTitle, { color: isDark ? '#fff' : '#1e293b' }]}>{title}</Text>
+          <Text style={styles.alertMessage}>{message}</Text>
+        </View>
+      </Animated.View>
+    </View>
+  );
+};
+
+export default function ForgotPasswordScreen({ navigation }: ForgotPasswordScreenProps) {
   const [email, setEmail] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [sent, setSent] = useState(false);
+  const [alert, setAlert] = useState<AlertState>({ visible: false, type: 'success', title: '', message: '' });
+  
+  const insets = useSafeAreaInsets();
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
+
+  const showToast = (type: AlertState['type'], title: string, message: string) => {
+    setAlert({ visible: true, type, title, message });
+    setTimeout(() => setAlert(prev => ({ ...prev, visible: false })), 3000);
+  };
 
   const handleReset = async () => {
     if (!email) {
-      Alert.alert('Error', 'Please enter your email address');
+      showToast('error', 'Missing Email', 'Please enter your email address');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       return;
     }
     
-    setLoading(true);
+    setIsLoading(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    
+    // Simulate API call
     setTimeout(() => {
-      setLoading(false);
+      setIsLoading(false);
       setSent(true);
+      showToast('success', 'Email Sent!', 'Check your inbox for reset instructions');
     }, 1500);
   };
 
   return (
-    <LinearGradient colors={['#e0e7ff', '#d1d5ff', '#c7b8ff']} style={styles.container}>
-      <StatusBar style="dark" />
+    <View style={[styles.container, { backgroundColor: isDark ? '#0a0a0a' : '#f8faff' }]}>
+      <StatusBar style={isDark ? 'light' : 'dark'} />
+      
+      <LinearGradient 
+        colors={isDark ? ['#0f172a', '#1e293b', '#334155'] : ['#667eea', '#764ba2', '#f093fb']} 
+        style={styles.gradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      />
+
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
       >
-        <View style={styles.content}>
-          {/* Back Button */}
-          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={28} color="#1a1a1a" />
-          </TouchableOpacity>
+        <ScrollView 
+          contentContainerStyle={[
+            styles.scrollContent, 
+            { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 40 }
+          ]} 
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Header */}
+          <Animated.View entering={FadeInDown} style={styles.header}>
+            <TouchableOpacity 
+              style={[styles.backButton, isDark && styles.backButtonDark]} 
+              onPress={() => navigation.goBack()}
+            >
+              <Ionicons name="chevron-back" size={24} color={isDark ? '#fff' : '#667eea'} />
+            </TouchableOpacity>
+          </Animated.View>
 
           {!sent ? (
-            <>
-              <View style={styles.header}>
-                <Text style={styles.title}>Reset Password 🔐</Text>
+            <Animated.View entering={FadeInUp.delay(200)}>
+              <View style={styles.titleContainer}>
+                <View style={[styles.iconCircle, isDark && styles.iconCircleDark]}>
+                  <Ionicons name="lock-open-outline" size={32} color="#667eea" />
+                </View>
+                <Text style={styles.title}>Reset Password</Text>
                 <Text style={styles.subtitle}>
                   Enter your email address and we'll send you instructions to reset your password
                 </Text>
               </View>
 
-              <BlurView intensity={90} style={styles.formContainer}>
-                <View style={styles.iconContainer}>
-                  <Text style={styles.lockEmoji}>🔒</Text>
-                </View>
-
-                <View style={styles.inputContainer}>
-                  <Ionicons name="mail-outline" size={24} color="#667eea" style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Email address"
-                    placeholderTextColor="#999"
-                    value={email}
-                    onChangeText={setEmail}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
+              <View style={styles.formContainer}>
+                <BlurView intensity={isDark ? 40 : 80} style={styles.glassCard} tint={isDark ? 'dark' : 'light'}>
+                  <LinearGradient
+                    colors={isDark ? ['rgba(30,41,59,0.9)', 'rgba(51,65,85,0.8)'] : ['rgba(255,255,255,0.95)', 'rgba(255,255,255,0.85)']}
+                    style={StyleSheet.absoluteFill}
                   />
-                </View>
+                  
+                  <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
+                    <Ionicons name="mail-outline" size={20} color="#667eea" style={styles.inputIcon} />
+                    <TextInput
+                      style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
+                      placeholder="Email address"
+                      placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+                      value={email}
+                      onChangeText={setEmail}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      editable={!isLoading}
+                    />
+                  </View>
 
-                <TouchableOpacity style={styles.resetButton} onPress={handleReset} disabled={loading}>
-                  <LinearGradient colors={['#667eea', '#764ba2']} style={styles.resetGradient}>
-                    {loading ? (
-                      <ActivityIndicator color="white" />
-                    ) : (
-                      <Text style={styles.resetText}>Send Reset Link</Text>
-                    )}
+                  <TouchableOpacity 
+                    style={[styles.resetButton, isLoading && styles.resetButtonDisabled]} 
+                    onPress={handleReset}
+                    disabled={isLoading}
+                    activeOpacity={0.8}
+                  >
+                    <LinearGradient 
+                      colors={['#667eea', '#764ba2']} 
+                      style={styles.resetGradient}
+                      start={{ x: 0, y: 0 }} 
+                      end={{ x: 1, y: 1 }}
+                    >
+                      {isLoading ? (
+                        <ActivityIndicator color="white" size="small" />
+                      ) : (
+                        <Text style={styles.resetText}>Send Reset Link</Text>
+                      )}
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </BlurView>
+              </View>
+            </Animated.View>
+          ) : (
+            <Animated.View entering={SlideInRight} style={styles.successContainer}>
+              <BlurView intensity={isDark ? 40 : 80} style={styles.successCard} tint={isDark ? 'dark' : 'light'}>
+                <LinearGradient
+                  colors={isDark ? ['rgba(30,41,59,0.9)', 'rgba(51,65,85,0.8)'] : ['rgba(255,255,255,0.95)', 'rgba(255,255,255,0.85)']}
+                  style={StyleSheet.absoluteFill}
+                />
+                
+                <View style={styles.successIconContainer}>
+                  <LinearGradient colors={['#11998e', '#38ef7d']} style={styles.successIconBg}>
+                    <Ionicons name="mail-open-outline" size={40} color="#fff" />
                   </LinearGradient>
+                </View>
+                
+                <Text style={[styles.successTitle, { color: isDark ? '#fff' : '#1e293b' }]}>Check Your Email!</Text>
+                <Text style={styles.successText}>
+                  We've sent password reset instructions to{'\n'}
+                  <Text style={styles.successEmail}>{email}</Text>
+                </Text>
+                
+                <TouchableOpacity 
+                  style={styles.backToLogin}
+                  onPress={() => navigation.navigate('Login')}
+                >
+                  <Text style={styles.backToLoginText}>Back to Login</Text>
                 </TouchableOpacity>
               </BlurView>
-            </>
-          ) : (
-            <BlurView intensity={90} style={styles.successContainer}>
-              <View style={styles.successIcon}>
-                <Text style={styles.successEmoji}>📧</Text>
-              </View>
-              <Text style={styles.successTitle}>Check Your Email!</Text>
-              <Text style={styles.successText}>
-                We've sent password reset instructions to {email}
-              </Text>
-              <TouchableOpacity 
-                style={styles.backToLogin}
-                onPress={() => navigation.navigate('Login')}
-              >
-                <Text style={styles.backToLoginText}>Back to Login</Text>
-              </TouchableOpacity>
-            </BlurView>
+            </Animated.View>
           )}
-        </View>
+        </ScrollView>
       </KeyboardAvoidingView>
-    </LinearGradient>
+
+      <SweetAlert {...alert} isDark={isDark} />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  keyboardView: {
-    flex: 1,
-  },
-  content: {
-    flex: 1,
+  container: { flex: 1 },
+  gradient: { ...StyleSheet.absoluteFillObject },
+  keyboardView: { flex: 1 },
+  scrollContent: {
+    flexGrow: 1,
     paddingHorizontal: 24,
-    paddingTop: 60,
   },
-  backButton: {
+  
+  // Alert
+  alertContainer: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    borderRadius: 16, 
+    padding: 16, 
+    shadowColor: '#000', 
+    shadowOffset: { width: 0, height: 10 }, 
+    shadowOpacity: 0.3, 
+    shadowRadius: 20, 
+    elevation: 10, 
+    minWidth: 300,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  alertIconBg: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  alertTextContainer: { flex: 1 },
+  alertTitle: { fontSize: 16, fontWeight: '700', marginBottom: 2 },
+  alertMessage: { fontSize: 13, color: '#64748b' },
+
+  // Header
+  header: {
+    marginTop: 20,
     marginBottom: 20,
   },
-  header: {
-    marginBottom: 40,
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  backButtonDark: {
+    backgroundColor: 'rgba(30,41,59,0.8)',
+  },
+
+  // Title
+  titleContainer: {
+    alignItems: 'center',
+    marginBottom: 30,
+  },
+  iconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  iconCircleDark: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderColor: 'rgba(255,255,255,0.2)',
   },
   title: {
     fontSize: 32,
     fontWeight: '800',
-    color: '#1a1a1a',
+    color: '#fff',
     marginBottom: 12,
+    textAlign: 'center',
   },
   subtitle: {
     fontSize: 16,
-    color: '#666',
-    lineHeight: 24,
+    color: 'rgba(255,255,255,0.8)',
+    textAlign: 'center',
+    paddingHorizontal: 20,
+    lineHeight: 22,
   },
+
+  // Form
   formContainer: {
-    borderRadius: 30,
-    padding: 32,
+    width: '100%',
+    maxWidth: 400,
+    alignSelf: 'center',
+  },
+  glassCard: {
+    borderRadius: 28,
+    padding: 28,
     overflow: 'hidden',
-    alignItems: 'center',
-  },
-  iconContainer: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: 'rgba(102,126,234,0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 24,
-  },
-  lockEmoji: {
-    fontSize: 50,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.2,
+    shadowRadius: 40,
+    elevation: 20,
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.8)',
+    backgroundColor: 'rgba(102,126,234,0.08)',
     borderRadius: 16,
     paddingHorizontal: 16,
     height: 56,
-    width: '100%',
-    marginBottom: 24,
     borderWidth: 1,
-    borderColor: 'rgba(102,126,234,0.2)',
+    borderColor: 'rgba(102,126,234,0.15)',
+    marginBottom: 24,
   },
-  inputIcon: {
-    marginRight: 12,
+  inputContainerDark: {
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderColor: 'rgba(255,255,255,0.1)',
   },
+  inputIcon: { marginRight: 12 },
   input: {
     flex: 1,
     fontSize: 16,
-    color: '#333',
+    fontWeight: '500',
   },
+
   resetButton: {
-    width: '100%',
     borderRadius: 16,
     overflow: 'hidden',
+    shadowColor: '#667eea',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  resetButtonDisabled: {
+    opacity: 0.6,
   },
   resetGradient: {
     paddingVertical: 16,
@@ -185,46 +358,72 @@ const styles = StyleSheet.create({
   },
   resetText: {
     color: 'white',
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
+    letterSpacing: 0.5,
   },
+
+  // Success State
   successContainer: {
-    borderRadius: 30,
-    padding: 40,
-    overflow: 'hidden',
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
     marginTop: 40,
   },
-  successIcon: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: 'rgba(102,126,234,0.1)',
+  successCard: {
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: 28,
+    padding: 40,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.2,
+    shadowRadius: 40,
+    elevation: 20,
     alignItems: 'center',
-    justifyContent: 'center',
+  },
+  successIconContainer: {
     marginBottom: 24,
   },
-  successEmoji: {
-    fontSize: 60,
+  successIconBg: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#11998e',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 10,
   },
   successTitle: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: '800',
-    color: '#1a1a1a',
     marginBottom: 12,
+    textAlign: 'center',
   },
   successText: {
-    fontSize: 16,
-    color: '#666',
+    fontSize: 15,
+    color: '#64748b',
     textAlign: 'center',
-    lineHeight: 24,
+    lineHeight: 22,
     marginBottom: 32,
   },
+  successEmail: {
+    color: '#667eea',
+    fontWeight: '700',
+  },
   backToLogin: {
+    backgroundColor: 'rgba(102,126,234,0.1)',
     paddingVertical: 16,
     paddingHorizontal: 32,
-    backgroundColor: 'rgba(102,126,234,0.1)',
     borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(102,126,234,0.3)',
   },
   backToLoginText: {
     color: '#667eea',

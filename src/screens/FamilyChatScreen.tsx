@@ -32,6 +32,7 @@ import Animated, {
   useSharedValue,
   runOnJS,
   FadeInDown,
+  FadeInRight, // ← ADDED THIS IMPORT
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';

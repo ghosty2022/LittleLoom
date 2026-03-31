@@ -6,10 +6,10 @@ import {
   StyleSheet,
   TouchableOpacity,
   Animated,
-  Alert,
   useColorScheme,
   BackHandler,
   ActivityIndicator,
+  Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -22,18 +22,62 @@ import { useSecurity } from '../context/SecurityContext';
 import type { RootStackParamList } from '../types/navigation';
 
 type ChangePinScreenProps = NativeStackScreenProps<RootStackParamList, 'ChangePin'>;
+const { width } = Dimensions.get('window');
 
 const PIN_LENGTH = 4;
-
 type PinStep = 'current' | 'new' | 'confirm';
 
-// Modern color palette
-const COLORS = {
-  primary: { light: '#667eea', dark: '#a3bffa' },
-  success: { light: '#43e97b', dark: '#51cf66' },
-  danger: { light: '#ff4757', dark: '#ff6b6b' },
-  text: { light: '#1a1a1a', dark: '#ffffff' },
-  subtext: { light: '#666', dark: '#a0a0a0' },
+interface AlertState {
+  visible: boolean;
+  type: 'success' | 'error' | 'info' | 'warning';
+  title: string;
+  message: string;
+}
+
+const SweetAlert = ({ visible, type, title, message, onClose, isDark }: AlertState & { onClose: () => void; isDark: boolean }) => {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const scale = useRef(new Animated.Value(0.8)).current;
+
+  useEffect(() => {
+    if (visible) {
+      Animated.parallel([
+        Animated.timing(opacity, { toValue: 1, duration: 300, useNativeDriver: true }),
+        Animated.spring(scale, { toValue: 1, damping: 12, useNativeDriver: true }),
+      ]).start();
+      
+      const timer = setTimeout(() => {
+        Animated.parallel([
+          Animated.timing(opacity, { toValue: 0, duration: 300, useNativeDriver: true }),
+          Animated.timing(scale, { toValue: 0.8, duration: 300, useNativeDriver: true }),
+        ]).start(() => onClose());
+      }, 2500);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [visible]);
+
+  if (!visible) return null;
+
+  const config = {
+    success: { colors: ['#11998e', '#38ef7d'], icon: 'checkmark-circle', bg: isDark ? '#1a1a2e' : '#fff' },
+    error: { colors: ['#ef4444', '#f87171'], icon: 'alert-circle', bg: isDark ? '#1a1a2e' : '#fff' },
+    info: { colors: ['#3b82f6', '#60a5fa'], icon: 'information-circle', bg: isDark ? '#1a1a2e' : '#fff' },
+    warning: { colors: ['#f59e0b', '#fbbf24'], icon: 'warning', bg: isDark ? '#1a1a2e' : '#fff' },
+  }[type];
+
+  return (
+    <View style={[StyleSheet.absoluteFill, { zIndex: 9999, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 100, pointerEvents: 'none' }]}>
+      <Animated.View style={[{ opacity, transform: [{ scale }] }, styles.alertContainer, { backgroundColor: config.bg }]}>
+        <LinearGradient colors={config.colors} style={styles.alertIconBg}>
+          <Ionicons name={config.icon as any} size={28} color="#fff" />
+        </LinearGradient>
+        <View style={styles.alertTextContainer}>
+          <Text style={[styles.alertTitle, { color: isDark ? '#fff' : '#1e293b' }]}>{title}</Text>
+          <Text style={styles.alertMessage}>{message}</Text>
+        </View>
+      </Animated.View>
+    </View>
+  );
 };
 
 export default function ChangePinScreen({ navigation }: ChangePinScreenProps) {
@@ -44,13 +88,9 @@ export default function ChangePinScreen({ navigation }: ChangePinScreenProps) {
   const [displayPin, setDisplayPin] = useState('');
   const [shakeAnim] = useState(new Animated.Value(0));
   const [isLoading, setIsLoading] = useState(false);
+  const [alert, setAlert] = useState<AlertState>({ visible: false, type: 'success', title: '', message: '' });
   
-  const { 
-    settings: securitySettings, 
-    setupPin, 
-    verifyPin, 
-    changePin 
-  } = useSecurity();
+  const { settings: securitySettings, setupPin, verifyPin, changePin } = useSecurity();
   
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -70,7 +110,12 @@ export default function ChangePinScreen({ navigation }: ChangePinScreenProps) {
     return () => backHandler.remove();
   }, [securitySettings.isPinEnabled]);
 
+  const showToast = (type: AlertState['type'], title: string, message: string) => {
+    setAlert({ visible: true, type, title, message });
+  };
+
   const shake = () => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     Animated.sequence([
       Animated.timing(shakeAnim, { toValue: 10, duration: 50, useNativeDriver: true }),
       Animated.timing(shakeAnim, { toValue: -10, duration: 50, useNativeDriver: true }),
@@ -94,7 +139,7 @@ export default function ChangePinScreen({ navigation }: ChangePinScreenProps) {
       setDisplayPin(newDisplayPin);
       
       if (newDisplayPin.length === PIN_LENGTH) {
-        setTimeout(() => handlePinComplete(newDisplayPin), 100);
+        setTimeout(() => handlePinComplete(newDisplayPin), 150);
       }
     }
   };
@@ -111,12 +156,11 @@ export default function ChangePinScreen({ navigation }: ChangePinScreenProps) {
             setCurrentPin(completedPin);
             setStep('new');
             setDisplayPin('');
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            showToast('success', 'Verified', 'Enter your new PIN');
           } else {
             shake();
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
             setDisplayPin('');
-            Alert.alert('Incorrect PIN', 'Please try again');
+            showToast('error', 'Incorrect PIN', 'Please try again');
           }
           break;
 
@@ -139,22 +183,18 @@ export default function ChangePinScreen({ navigation }: ChangePinScreenProps) {
             
             if (success) {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              Alert.alert(
-                'Success',
-                'PIN has been set successfully',
-                [{ text: 'OK', onPress: handleDismiss }]
-              );
+              showToast('success', 'Success!', 'PIN has been set successfully');
+              setTimeout(handleDismiss, 1500);
             } else {
               shake();
-              Alert.alert('Error', 'Failed to set PIN');
+              showToast('error', 'Error', 'Failed to set PIN');
               setStep(securitySettings.isPinEnabled ? 'current' : 'new');
               setDisplayPin('');
             }
           } else {
             shake();
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
             setDisplayPin('');
-            Alert.alert('PIN Mismatch', 'PINs do not match. Please try again.');
+            showToast('error', 'PIN Mismatch', 'PINs do not match. Try again.');
             setStep('new');
           }
           break;
@@ -174,16 +214,24 @@ export default function ChangePinScreen({ navigation }: ChangePinScreenProps) {
   const getStepTitle = () => {
     switch (step) {
       case 'current': return 'Enter Current PIN';
-      case 'new': return securitySettings.isPinEnabled ? 'Enter New PIN' : 'Create PIN';
+      case 'new': return securitySettings.isPinEnabled ? 'Create New PIN' : 'Create PIN';
       case 'confirm': return 'Confirm New PIN';
     }
   };
 
   const getStepSubtitle = () => {
     switch (step) {
-      case 'current': return 'Verify your identity';
-      case 'new': return 'Choose a 4-digit PIN';
-      case 'confirm': return 'Enter the same PIN again';
+      case 'current': return 'Verify your identity to continue';
+      case 'new': return 'Choose a secure 4-digit PIN';
+      case 'confirm': return 'Re-enter your PIN to confirm';
+    }
+  };
+
+  const getStepColor = () => {
+    switch (step) {
+      case 'current': return '#667eea';
+      case 'new': return '#11998e';
+      case 'confirm': return '#f59e0b';
     }
   };
 
@@ -196,9 +244,11 @@ export default function ChangePinScreen({ navigation }: ChangePinScreenProps) {
               key={i}
               style={[
                 styles.pinDot,
-                i < displayPin.length && styles.pinDotFilled,
-                isDark && styles.pinDotDark,
-                i < displayPin.length && isDark && styles.pinDotFilledDark,
+                { 
+                  borderColor: getStepColor(),
+                  backgroundColor: i < displayPin.length ? getStepColor() : 'transparent'
+                },
+                isDark && !i < displayPin.length && { borderColor: 'rgba(255,255,255,0.3)' }
               ]}
             />
           ))}
@@ -215,152 +265,194 @@ export default function ChangePinScreen({ navigation }: ChangePinScreenProps) {
   ];
 
   return (
-    <LinearGradient 
-      colors={isDark ? ['#0f0f1e', '#1a1a2e', '#16213e'] : ['#f8faff', '#f0f4ff', '#e8eeff']} 
-      style={styles.container}
-    >
+    <View style={[styles.container, { backgroundColor: isDark ? '#0a0a0a' : '#f8faff' }]}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       
-      <View style={[styles.content, { paddingTop: insets.top + 40 }]}>
+      <LinearGradient 
+        colors={isDark ? ['#0f172a', '#1e293b', '#334155'] : ['#667eea', '#764ba2', '#f093fb']} 
+        style={styles.gradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      />
+      
+      <View style={[styles.content, { paddingTop: insets.top + 20 }]}>
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={handleDismiss}>
-            <BlurView intensity={80} style={[styles.backBlur, isDark && styles.backBlurDark]}>
-              <Ionicons name="close" size={24} color={isDark ? '#fff' : COLORS.primary.light} />
-            </BlurView>
+          <TouchableOpacity 
+            style={[styles.backButton, isDark && styles.backButtonDark]} 
+            onPress={handleDismiss}
+          >
+            <Ionicons name="close" size={24} color={isDark ? '#fff' : '#667eea'} />
           </TouchableOpacity>
         </View>
 
-        {/* Glass Card */}
-        <BlurView 
-          intensity={isDark ? 60 : 90} 
-          style={styles.glassCard} 
-          tint={isDark ? 'dark' : 'light'}
-        >
-          {/* Step Indicator */}
-          <View style={styles.stepIndicator}>
-            {[1, 2, 3].map((s, i) => {
-              const stepIndex = step === 'current' ? 0 : step === 'new' ? 1 : 2;
-              return (
-                <View 
-                  key={s} 
-                  style={[
-                    styles.stepDot,
-                    i <= stepIndex && styles.stepDotActive,
-                    isDark && styles.stepDotDark,
-                    i <= stepIndex && isDark && styles.stepDotActiveDark,
-                  ]} 
-                />
-              );
-            })}
-          </View>
-
-          <Text style={[styles.title, isDark && styles.titleDark]}>
-            {getStepTitle()}
-          </Text>
-          
-          <Text style={[styles.subtitle, isDark && styles.subtitleDark]}>
-            {getStepSubtitle()}
-          </Text>
-
-          {/* PIN Display */}
-          {renderPinDots()}
-
-          {/* Loading */}
-          {isLoading && (
-            <ActivityIndicator 
-              size="small" 
-              color={isDark ? COLORS.primary.dark : COLORS.primary.light} 
-              style={styles.loadingIndicator}
+        {/* Main Glass Card */}
+        <View style={styles.mainContainer}>
+          <BlurView intensity={isDark ? 40 : 80} style={styles.glassCard} tint={isDark ? 'dark' : 'light'}>
+            <LinearGradient
+              colors={isDark ? ['rgba(30,41,59,0.9)', 'rgba(51,65,85,0.8)'] : ['rgba(255,255,255,0.95)', 'rgba(255,255,255,0.85)']}
+              style={StyleSheet.absoluteFill}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
             />
-          )}
-        </BlurView>
-
-        {/* Keypad */}
-        <View style={styles.keypadContainer}>
-          {keypadRows.map((row, rowIndex) => (
-            <View key={rowIndex} style={styles.keypadRow}>
-              {row.map((key) => {
-                if (key === '') {
-                  return <View key="empty" style={styles.keypadButton} />;
-                }
-                
-                if (key === 'delete') {
-                  return (
-                    <TouchableOpacity
-                      key={key}
-                      style={[styles.keypadButton, styles.deleteButton]}
-                      onPress={handleDelete}
-                      disabled={displayPin.length === 0 || isLoading}
-                    >
-                      <Ionicons 
-                        name="backspace-outline" 
-                        size={24} 
-                        color={displayPin.length > 0 ? (isDark ? '#fff' : COLORS.text.light) : '#999'} 
-                      />
-                    </TouchableOpacity>
-                  );
-                }
-
+            
+            {/* Step Indicator */}
+            <View style={styles.stepIndicator}>
+              {['current', 'new', 'confirm'].map((s, i) => {
+                const stepIndex = step === 'current' ? 0 : step === 'new' ? 1 : 2;
+                const isActive = i <= stepIndex;
                 return (
-                  <TouchableOpacity
-                    key={key}
-                    style={[
-                      styles.keypadButton,
-                      isDark && styles.keypadButtonDark,
-                      isLoading && styles.keypadButtonDisabled
-                    ]}
-                    onPress={() => handlePinPress(key)}
-                    activeOpacity={0.7}
-                    disabled={isLoading}
-                  >
-                    <Text style={[
-                      styles.keypadText,
-                      isDark && styles.keypadTextDark,
-                      isLoading && styles.keypadTextDisabled
-                    ]}>
-                      {key}
-                    </Text>
-                  </TouchableOpacity>
+                  <View key={s} style={styles.stepRow}>
+                    <View 
+                      style={[
+                        styles.stepDot,
+                        isActive && { backgroundColor: getStepColor() },
+                        !isActive && { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }
+                      ]} 
+                    />
+                    {i < 2 && (
+                      <View 
+                        style={[
+                          styles.stepLine,
+                          i < stepIndex && { backgroundColor: getStepColor() },
+                          i >= stepIndex && { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }
+                        ]} 
+                      />
+                    )}
+                  </View>
                 );
               })}
             </View>
-          ))}
+
+            <Text style={[styles.title, { color: isDark ? '#fff' : '#1e293b' }]}>
+              {getStepTitle()}
+            </Text>
+            
+            <Text style={[styles.subtitle, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+              {getStepSubtitle()}
+            </Text>
+
+            {renderPinDots()}
+
+            {isLoading && (
+              <ActivityIndicator 
+                size="small" 
+                color={getStepColor()} 
+                style={styles.loadingIndicator}
+              />
+            )}
+          </BlurView>
+
+          {/* Keypad */}
+          <View style={styles.keypadContainer}>
+            {keypadRows.map((row, rowIndex) => (
+              <View key={rowIndex} style={styles.keypadRow}>
+                {row.map((key) => {
+                  if (key === '') {
+                    return <View key="empty" style={styles.keypadButtonPlaceholder} />;
+                  }
+                  
+                  if (key === 'delete') {
+                    return (
+                      <TouchableOpacity
+                        key={key}
+                        style={styles.keypadButton}
+                        onPress={handleDelete}
+                        disabled={displayPin.length === 0 || isLoading}
+                      >
+                        <Ionicons 
+                          name="backspace-outline" 
+                          size={24} 
+                          color={displayPin.length > 0 ? (isDark ? '#fff' : '#1e293b') : '#cbd5e1'} 
+                        />
+                      </TouchableOpacity>
+                    );
+                  }
+
+                  return (
+                    <TouchableOpacity
+                      key={key}
+                      style={[
+                        styles.keypadButton,
+                        isDark && styles.keypadButtonDark,
+                        isLoading && styles.keypadButtonDisabled
+                      ]}
+                      onPress={() => handlePinPress(key)}
+                      activeOpacity={0.7}
+                      disabled={isLoading}
+                    >
+                      <Text style={[
+                        styles.keypadText,
+                        isDark && styles.keypadTextDark,
+                      ]}>
+                        {key}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            ))}
+          </View>
         </View>
       </View>
-    </LinearGradient>
+
+      <SweetAlert {...alert} onClose={() => setAlert({ ...alert, visible: false })} isDark={isDark} />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1 
-  },
+  container: { flex: 1 },
+  gradient: { ...StyleSheet.absoluteFillObject },
   content: { 
     flex: 1, 
     paddingHorizontal: 24,
-    alignItems: 'center',
   },
   header: { 
     flexDirection: 'row', 
     justifyContent: 'flex-end', 
-    width: '100%',
     marginBottom: 20 
   },
-  backButton: { 
-    borderRadius: 16, 
-    overflow: 'hidden' 
-  },
-  backBlur: { 
-    padding: 12, 
-    borderRadius: 16, 
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: 'rgba(255,255,255,0.9)',
-    borderWidth: 1,
-    borderColor: 'rgba(102,126,234,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
   },
-  backBlurDark: { 
-    backgroundColor: 'rgba(30,30,40,0.8)', 
-    borderColor: 'rgba(255,255,255,0.1)' 
+  backButtonDark: {
+    backgroundColor: 'rgba(30,41,59,0.8)',
+  },
+  
+  // Alert
+  alertContainer: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    borderRadius: 16, 
+    padding: 16, 
+    shadowColor: '#000', 
+    shadowOffset: { width: 0, height: 10 }, 
+    shadowOpacity: 0.3, 
+    shadowRadius: 20, 
+    elevation: 10, 
+    minWidth: 300,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  alertIconBg: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  alertTextContainer: { flex: 1 },
+  alertTitle: { fontSize: 16, fontWeight: '700', marginBottom: 2 },
+  alertMessage: { fontSize: 13, color: '#64748b' },
+
+  mainContainer: {
+    flex: 1,
+    alignItems: 'center',
   },
   glassCard: {
     borderRadius: 28,
@@ -369,76 +461,62 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 400,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
+    borderColor: 'rgba(255,255,255,0.3)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.2,
+    shadowRadius: 40,
+    elevation: 20,
     marginBottom: 30,
   },
   stepIndicator: {
     flexDirection: 'row',
-    gap: 8,
+    alignItems: 'center',
     marginBottom: 24,
   },
+  stepRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   stepDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: 'rgba(102,126,234,0.3)',
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: 'rgba(0,0,0,0.1)',
   },
-  stepDotActive: {
-    backgroundColor: COLORS.primary.light,
-  },
-  stepDotDark: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
-  },
-  stepDotActiveDark: {
-    backgroundColor: COLORS.primary.dark,
+  stepLine: {
+    width: 40,
+    height: 2,
+    backgroundColor: 'rgba(0,0,0,0.1)',
+    marginHorizontal: 8,
   },
   title: { 
-    fontSize: 26, 
+    fontSize: 28, 
     fontWeight: '800', 
-    color: COLORS.text.light, 
     marginBottom: 8,
     textAlign: 'center',
     letterSpacing: -0.3,
   },
-  titleDark: { 
-    color: COLORS.text.dark 
-  },
   subtitle: { 
-    fontSize: 15, 
-    color: COLORS.subtext.light, 
+    fontSize: 16, 
     textAlign: 'center',
-    marginBottom: 24,
-  },
-  subtitleDark: { 
-    color: COLORS.subtext.dark 
+    marginBottom: 32,
+    lineHeight: 22,
   },
   pinContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 16,
+    gap: 20,
+    height: 24,
   },
   pinDot: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: 'rgba(102,126,234,0.2)',
-    borderWidth: 1,
-    borderColor: 'rgba(102,126,234,0.3)',
-  },
-  pinDotDark: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderColor: 'rgba(255,255,255,0.2)',
-  },
-  pinDotFilled: {
-    backgroundColor: COLORS.primary.light,
-    borderColor: COLORS.primary.light,
-  },
-  pinDotFilledDark: {
-    backgroundColor: COLORS.primary.dark,
-    borderColor: COLORS.primary.dark,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
   },
   loadingIndicator: {
-    marginTop: 16,
+    marginTop: 20,
   },
   keypadContainer: {
     width: '100%',
@@ -468,20 +546,16 @@ const styles = StyleSheet.create({
   keypadButtonDisabled: {
     opacity: 0.5,
   },
-  deleteButton: {
-    backgroundColor: 'transparent',
-    shadowOpacity: 0,
-    elevation: 0,
+  keypadButtonPlaceholder: {
+    width: 76,
+    height: 76,
   },
   keypadText: {
-    fontSize: 26,
+    fontSize: 28,
     fontWeight: '600',
-    color: COLORS.text.light,
+    color: '#1e293b',
   },
   keypadTextDark: {
-    color: COLORS.text.dark,
-  },
-  keypadTextDisabled: {
-    color: '#999',
+    color: '#fff',
   },
 });

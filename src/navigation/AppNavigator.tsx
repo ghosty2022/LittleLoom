@@ -1,4 +1,3 @@
-// src/navigation/AppNavigator.tsx
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { 
   View, 
@@ -45,7 +44,7 @@ import RemindersScreen from '../screens/RemindersScreen';
 import FamilySharingScreen from '../screens/FamilySharingScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import EditProfileScreen from '../screens/EditProfileScreen';
-import EditGuardianScreen from '../screens/EditGuardianScreen'; // ADD THIS
+import EditGuardianScreen from '../screens/EditGuardianScreen';
 import SoundMixerScreen from '../screens/SoundMixerScreen';
 import SecurityLockScreen from '../screens/SecurityLockScreen';
 import BiometricSetupScreen from '../screens/BiometricSetupScreen';
@@ -66,6 +65,9 @@ import { useAuth } from '../context/AuthContext';
 import { useBaby } from '../context/BabyContext';
 import { useSecurity } from '../context/SecurityContext';
 import { NavigationProvider } from '../context/NavigationContext';
+
+// State persistence
+import { statePersistence } from '../utils/statePersistence';
 
 import { RootStackParamList, MainTabParamList, NavigationState } from '../types/navigation';
 
@@ -189,9 +191,19 @@ function getNavigationState(
 
 interface AppNavigatorProps {
   isDark?: boolean;
+  initialState?: any; // ADDED: For state persistence
+  onStateChange?: (state: any) => void; // ADDED: For state persistence
 }
 
-function NavigationContent({ isDark }: { isDark: boolean }) {
+function NavigationContent({ 
+  isDark, 
+  initialState, 
+  onStateChange 
+}: { 
+  isDark: boolean; 
+  initialState?: any;
+  onStateChange?: (state: any) => void;
+}) {
   const { 
     isLoading: authLoading, 
     isAuthenticated,
@@ -227,6 +239,7 @@ function NavigationContent({ isDark }: { isDark: boolean }) {
   const hasInitiallyLoaded = useRef(false);
   const lastNavigationTime = useRef(0);
   const isFirstMount = useRef(true);
+  const stateChangeTimeout = useRef<NodeJS.Timeout | null>(null);
 
   const securityEnabled = useMemo(() => 
     securitySettings.isPinEnabled || securitySettings.isBiometricEnabled,
@@ -335,6 +348,26 @@ function NavigationContent({ isDark }: { isDark: boolean }) {
     return () => subscription.remove();
   }, [isAuthenticated, checkSecurityOnResume, loadBabies, babies.length, babyLoading, setupComplete]);
 
+  // MODIFIED: Handle navigation state changes with persistence
+  const handleStateChange = useCallback((state: any) => {
+    // Debounce state changes to avoid excessive writes
+    if (stateChangeTimeout.current) {
+      clearTimeout(stateChangeTimeout.current);
+    }
+    
+    stateChangeTimeout.current = setTimeout(() => {
+      onStateChange?.(state);
+      
+      // Also save current route to state persistence
+      if (navigationRef.current && state) {
+        const currentRoute = navigationRef.current.getCurrentRoute();
+        if (currentRoute) {
+          statePersistence.saveNavigationState(currentRoute.name, currentRoute.params);
+        }
+      }
+    }, 500);
+  }, [onStateChange]);
+
   useEffect(() => {
     if (!navigationRef.current?.isReady() || showSplash || isNavigating.current || !initialCheckDone) return;
     
@@ -386,6 +419,15 @@ function NavigationContent({ isDark }: { isDark: boolean }) {
     }
   }, [navState, showSplash, initialCheckDone]);
 
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (stateChangeTimeout.current) {
+        clearTimeout(stateChangeTimeout.current);
+      }
+    };
+  }, []);
+
   if (authLoading || (showSplash && !isAuthenticated)) {
     return <SplashScreen />;
   }
@@ -408,6 +450,8 @@ function NavigationContent({ isDark }: { isDark: boolean }) {
     <NavigationContainer 
       ref={navigationRef}
       theme={isDark ? CustomDarkTheme : CustomLightTheme}
+      initialState={initialState} // ADDED: Restore persisted state
+      onStateChange={handleStateChange} // MODIFIED: Use debounced handler
     >
       <Stack.Navigator 
         screenOptions={{ 
@@ -443,7 +487,6 @@ function NavigationContent({ isDark }: { isDark: boolean }) {
         <Stack.Screen name="SleepTracker" component={UniversalTrackerScreen} />
         <Stack.Screen name="Profile" component={ProfileScreen} />
         
-        {/* FIXED: Added EditProfile and EditGuardian screens */}
         <Stack.Screen 
           name="EditProfile" 
           component={EditProfileScreen}
@@ -480,9 +523,19 @@ function NavigationContent({ isDark }: { isDark: boolean }) {
   );
 }
 
-export default function AppNavigator({ isDark: propIsDark }: AppNavigatorProps = {}) {
+export default function AppNavigator({ 
+  isDark: propIsDark, 
+  initialState, 
+  onStateChange 
+}: AppNavigatorProps = {}) {
   const colorScheme = useColorScheme();
   const isDark = propIsDark !== undefined ? propIsDark : colorScheme === 'dark';
 
-  return <NavigationContent isDark={isDark} />;
+  return (
+    <NavigationContent 
+      isDark={isDark} 
+      initialState={initialState} 
+      onStateChange={onStateChange} 
+    />
+  );
 }
