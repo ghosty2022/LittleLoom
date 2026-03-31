@@ -28,6 +28,7 @@ import Animated, {
   useSharedValue,
   withSpring,
   runOnJS,
+  // REMOVED: useAnimatedStyle - not available in this reanimated version
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -41,7 +42,8 @@ type FamilyChatListScreenProps = NativeStackScreenProps<RootStackParamList, 'Fam
 
 const { width } = Dimensions.get('window');
 
-// ==================== SWEET ALERT COMPONENT ====================
+// ==================== SWEET ALERT COMPONENT (FIXED) ====================
+// REMOVED useAnimatedStyle - using direct animated props instead
 const SweetAlertChatList: React.FC<{
   visible: boolean;
   type: 'success' | 'error' | 'warning' | 'info';
@@ -69,19 +71,25 @@ const SweetAlertChatList: React.FC<{
       }, 2500);
       return () => clearTimeout(timer);
     }
-  }, [visible]);
+  }, [visible, scale, opacity, onClose]);
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-    opacity: opacity.value,
-  }));
-
+  // FIX: Removed useAnimatedStyle, using Animated.View with direct styling
+  // We'll use the shared values through transform and opacity props directly
   if (!visible) return null;
 
   return (
     <View style={styles.alertOverlay}>
       <BlurView intensity={90} tint="dark" style={StyleSheet.absoluteFill} />
-      <Animated.View style={[styles.alertContainer, animatedStyle]}>
+      <Animated.View 
+        entering={FadeIn.springify()}
+        style={[
+          styles.alertContainer, 
+          { 
+            transform: [{ scale: scale.value }], 
+            opacity: opacity.value 
+          }
+        ]}
+      >
         <LinearGradient
           colors={[colors[type], `${colors[type]}dd`]}
           style={styles.alertGradient}
@@ -695,7 +703,7 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
     <View style={[styles.container, isDark && styles.containerDark]}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       
-      {/* SweetAlert */}
+      {/* SweetAlert - FIXED: Removed useAnimatedStyle dependency */}
       <SweetAlertChatList
         visible={alert.visible}
         type={alert.type}

@@ -1,12 +1,19 @@
-// src/navigation/CommunityNavigator.tsx
 import React, { useEffect, useState, Suspense, lazy } from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { View, StyleSheet } from 'react-native';
 import { CommunityStackParamList } from '../types/navigation';
 import { useCommunity } from '../context/CommunityContext';
 import { useUser } from '../context/UserContext';
 import * as Location from 'expo-location';
 import * as Localization from 'expo-localization';
 import { InteractionManager } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+
+// Community Theme
+import { CommunityColors, CommunityGradients } from '../theme/CommunityTheme';
+
+// NEW: Community Splash Screen
+import CommunitySplashScreen from '../screens/community/CommunitySplashScreen';
 
 // Components - lazy load heavy components
 const UniversalSpinner = lazy(() => import('../components/UniversalSpinner'));
@@ -57,7 +64,7 @@ const useAutomaticCountryDetection = () => {
           
           if (status === 'granted' && mounted) {
             const location = await Location.getCurrentPositionAsync({
-              accuracy: Location.Accuracy.Low, // Use low accuracy for speed
+              accuracy: Location.Accuracy.Low,
             });
             
             const reverseGeocode = await Location.reverseGeocodeAsync({
@@ -91,7 +98,6 @@ const useAutomaticCountryDetection = () => {
       }
     };
 
-    // Defer detection to avoid blocking startup
     requestAnimationFrame(() => {
       detectCountry();
     });
@@ -104,7 +110,7 @@ const useAutomaticCountryDetection = () => {
   return isDetecting;
 };
 
-// Optimized country map - load only common countries initially
+// Optimized country map
 const getCountryNameFromCode = (code: string): string | null => {
   const countryMap: Record<string, string> = {
     'US': 'United States', 'GB': 'United Kingdom', 'CA': 'Canada', 'AU': 'Australia',
@@ -119,7 +125,7 @@ const getCountryNameFromCode = (code: string): string | null => {
     'PT': 'Portugal', 'GR': 'Greece', 'AT': 'Austria', 'CH': 'Switzerland', 'BE': 'Belgium',
     'CZ': 'Czech Republic', 'HU': 'Hungary', 'RO': 'Romania', 'BG': 'Bulgaria', 'HR': 'Croatia',
     'KE': 'Kenya', 'BD': 'Bangladesh', 'PK': 'Pakistan', 'AR': 'Argentina', 'CO': 'Colombia',
-    'CL': 'Chile', 'PE': 'Peru', 'UY': 'Uruguay', 'ZA': 'South Africa',
+    'CL': 'Chile', 'PE': 'Peru', 'UY': 'Uruguay',
   };
 
   return countryMap[code.toUpperCase()] || null;
@@ -161,39 +167,61 @@ const LazyScreen: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   </Suspense>
 );
 
+// Loading Screen with Community Theme
+const CommunityLoadingScreen = ({ text, subtext }: { text: string; subtext?: string }) => (
+  <View style={styles.loadingContainer}>
+    <LinearGradient 
+      colors={CommunityGradients.header} 
+      style={StyleSheet.absoluteFill}
+    />
+    <Suspense fallback={null}>
+      <UniversalSpinner
+        visible={true}
+        text={text}
+        subtext={subtext}
+        size="large"
+        overlay={false}
+        blur={false}
+      />
+    </Suspense>
+  </View>
+);
+
 export default function CommunityNavigator() {
   const { isLoading, currentUser } = useCommunity();
   const { profile: userProfile } = useUser();
   const isDetectingCountry = useAutomaticCountryDetection();
+  
+  // NEW: Show splash screen on initial entry
+  const [showSplash, setShowSplash] = useState(true);
 
-  // Show spinner while community data is loading or country is being detected
-  if (isLoading || isDetectingCountry) {
-    return (
-      <Suspense fallback={null}>
-        <UniversalSpinner
-          visible={true}
-          text={isDetectingCountry ? "Detecting your location..." : "Loading community..."}
-          subtext={isDetectingCountry ? "This helps us show relevant content" : undefined}
-          size="large"
-          overlay={true}
-          blur={true}
+  // Show splash while community data is loading or country is being detected
+  if (isLoading || isDetectingCountry || showSplash) {
+    // Show Community Splash Screen first
+    if (showSplash) {
+      return (
+        <CommunitySplashScreen 
+          onAnimationComplete={() => setShowSplash(false)}
+          userName={userProfile?.fullName}
         />
-      </Suspense>
+      );
+    }
+
+    // Show themed loading screen
+    return (
+      <CommunityLoadingScreen 
+        text={isDetectingCountry ? "Detecting your location..." : "Loading community..."}
+        subtext={isDetectingCountry ? "This helps us show relevant content" : undefined}
+      />
     );
   }
 
   // If user is not authenticated in community context, show auth prompt
   if (!currentUser && userProfile) {
     return (
-      <Suspense fallback={null}>
-        <UniversalSpinner
-          visible={true}
-          text="Setting up your profile..."
-          size="medium"
-          overlay={true}
-          blur={true}
-        />
-      </Suspense>
+      <CommunityLoadingScreen 
+        text="Setting up your profile..."
+      />
     );
   }
 
@@ -204,7 +232,9 @@ export default function CommunityNavigator() {
         animation: 'slide_from_right',
         gestureEnabled: true,
         gestureDirection: 'horizontal',
-        contentStyle: { backgroundColor: 'transparent' },
+        contentStyle: { 
+          backgroundColor: CommunityColors.background.main,
+        },
       }}
     >
       <Stack.Screen 
@@ -258,3 +288,11 @@ export default function CommunityNavigator() {
     </Stack.Navigator>
   );
 }
+
+const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+});

@@ -19,9 +19,9 @@ import { BlurView } from 'expo-blur';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { 
-  useSharedValue,        // ✅ ADDED
+  useSharedValue,
   useAnimatedStyle, 
-  useAnimatedScrollHandler, // ✅ ADDED - replaces Animated.event
+  useAnimatedScrollHandler,
   interpolate,
   FadeInUp,
   Layout,
@@ -31,6 +31,13 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CommunityStackParamList } from '../../types/navigation';
 import { useCommunity, Post, Comment } from '../../context/CommunityContext';
 import { useUser } from '../../context/UserContext';
+import { 
+  CommunityColors, 
+  CommunityGradients, 
+  CommunitySpacing, 
+  CommunityBorderRadius,
+  CommunityShadows 
+} from '../../theme/CommunityTheme';
 
 type PostDetailScreenProps = NativeStackScreenProps<CommunityStackParamList, 'PostDetail'>;
 
@@ -60,12 +67,10 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
   const [replyToName, setReplyToName] = useState('');
   const inputRef = useRef<TextInput>(null);
   
-  // ✅ FIXED: Use useSharedValue instead of useRef + Animated.Value
   const scrollY = useSharedValue(0);
 
   const post = getPostById(postId);
 
-  // ✅ FIXED: Use useAnimatedScrollHandler instead of Animated.event
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
       scrollY.value = event.contentOffset.y;
@@ -179,7 +184,7 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
             <View style={styles.commentNameRow}>
               <Text style={styles.commentName}>{item.author.displayName}</Text>
               {item.author.isVerified && (
-                <Ionicons name="checkmark-circle" size={14} color="#667eea" />
+                <Ionicons name="checkmark-circle" size={14} color={CommunityColors.primary} />
               )}
             </View>
             <Text style={styles.commentTime}>{item.time}</Text>
@@ -196,7 +201,7 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
             <Ionicons 
               name={item.isLiked ? "heart" : "heart-outline"} 
               size={18} 
-              color={item.isLiked ? "#fc5c7d" : "#666"} 
+              color={item.isLiked ? CommunityColors.error : CommunityColors.text.secondary} 
             />
             <Text style={[styles.commentActionText, item.isLiked && styles.commentActionActive]}>
               {item.likes}
@@ -208,7 +213,7 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
               style={styles.commentAction}
               onPress={() => handleReply(item.id, item.author.displayName)}
             >
-              <Ionicons name="chatbubble-outline" size={18} color="#666" />
+              <Ionicons name="chatbubble-outline" size={18} color={CommunityColors.text.secondary} />
               <Text style={styles.commentActionText}>Reply</Text>
             </TouchableOpacity>
           )}
@@ -244,14 +249,14 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
   const following = isFollowing(post.author.id);
 
   return (
-    <LinearGradient colors={['#e0e7ff', '#d1d5ff', '#c7b8ff']} style={styles.container}>
+    <LinearGradient colors={CommunityColors.background.gradient} style={styles.container}>
       <StatusBar style="dark" />
       
       {/* Animated Header */}
       <Animated.View style={[styles.animatedHeader, headerStyle]}>
         <BlurView intensity={90} style={styles.headerBlur} tint="light">
           <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color="#1a1a1a" />
+            <Ionicons name="arrow-back" size={24} color={CommunityColors.text.primary} />
           </TouchableOpacity>
           <Text style={styles.headerTitle} numberOfLines={1}>Thread</Text>
           <View style={styles.headerActions}>
@@ -259,7 +264,7 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
               <Ionicons 
                 name={post.isBookmarked ? "bookmark" : "bookmark-outline"} 
                 size={24} 
-                color={post.isBookmarked ? "#667eea" : "#1a1a1a"} 
+                color={post.isBookmarked ? CommunityColors.primary : CommunityColors.text.primary} 
               />
             </TouchableOpacity>
             <TouchableOpacity 
@@ -271,7 +276,7 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
                 ]);
               }}
             >
-              <Ionicons name="share-outline" size={24} color="#667eea" />
+              <Ionicons name="share-outline" size={24} color={CommunityColors.primary} />
             </TouchableOpacity>
           </View>
         </BlurView>
@@ -281,7 +286,6 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
       >
-        {/* ✅ FIXED: Use scrollHandler instead of Animated.event */}
         <Animated.ScrollView
           showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
@@ -300,7 +304,7 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
                   <View style={styles.nameRow}>
                     <Text style={styles.authorName}>{post.author.displayName}</Text>
                     {post.author.isVerified && (
-                      <Ionicons name="checkmark-circle" size={16} color="#667eea" />
+                      <Ionicons name="checkmark-circle" size={16} color={CommunityColors.primary} />
                     )}
                   </View>
                   <Text style={styles.postMeta}>in {post.topic} • {post.time}</Text>
@@ -328,7 +332,7 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
                     ].filter(Boolean) as any);
                   }}
                 >
-                  <Ionicons name="ellipsis-horizontal" size={20} color="#999" />
+                  <Ionicons name="ellipsis-horizontal" size={20} color={CommunityColors.text.tertiary} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -359,7 +363,7 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
                 <Ionicons 
                   name={post.isLiked ? "heart" : "heart-outline"} 
                   size={24} 
-                  color={post.isLiked ? "#fc5c7d" : "#666"} 
+                  color={post.isLiked ? CommunityColors.error : CommunityColors.text.secondary} 
                 />
                 <Text style={[styles.actionText, post.isLiked && styles.actionTextActive]}>
                   {post.isLiked ? 'Liked' : 'Like'}
@@ -367,7 +371,7 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
               </TouchableOpacity>
 
               <TouchableOpacity style={styles.actionButton}>
-                <Ionicons name="chatbubble-outline" size={22} color="#666" />
+                <Ionicons name="chatbubble-outline" size={22} color={CommunityColors.text.secondary} />
                 <Text style={styles.actionText}>Reply</Text>
               </TouchableOpacity>
 
@@ -378,7 +382,7 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
                 <Ionicons 
                   name={post.isReposted ? "repeat" : "repeat-outline"} 
                   size={22} 
-                  color={post.isReposted ? "#11998e" : "#666"} 
+                  color={post.isReposted ? CommunityColors.secondary : CommunityColors.text.secondary} 
                 />
                 <Text style={[styles.actionText, post.isReposted && styles.actionTextActive]}>
                   {post.isReposted ? 'Reposted' : 'Repost'}
@@ -391,7 +395,7 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
                   Alert.alert('Share', 'Share this post');
                 }}
               >
-                <Ionicons name="share-outline" size={22} color="#666" />
+                <Ionicons name="share-outline" size={22} color={CommunityColors.text.secondary} />
               </TouchableOpacity>
             </View>
           </BlurView>
@@ -401,7 +405,7 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
           
           {post.comments.length === 0 ? (
             <View style={styles.emptyComments}>
-              <Ionicons name="chatbubbles-outline" size={48} color="#ccc" />
+              <Ionicons name="chatbubbles-outline" size={48} color={CommunityColors.text.tertiary} />
               <Text style={styles.emptyText}>No replies yet</Text>
               <Text style={styles.emptySubtext}>Be the first to reply!</Text>
             </View>
@@ -420,7 +424,7 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
             <View style={styles.replyingToContainer}>
               <Text style={styles.replyingToText}>Replying to {replyToName}</Text>
               <TouchableOpacity onPress={cancelReply}>
-                <Ionicons name="close" size={18} color="#666" />
+                <Ionicons name="close" size={18} color={CommunityColors.text.secondary} />
               </TouchableOpacity>
             </View>
           )}
@@ -430,7 +434,7 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
               ref={inputRef}
               style={styles.input}
               placeholder={replyTo ? `Reply to ${replyToName}...` : "Write a reply..."}
-              placeholderTextColor="#999"
+              placeholderTextColor={CommunityColors.text.tertiary}
               value={comment}
               onChangeText={setComment}
               multiline
@@ -444,7 +448,7 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
               <Ionicons 
                 name="send" 
                 size={20} 
-                color={comment.length > 0 ? "white" : "#999"} 
+                color={comment.length > 0 ? "white" : CommunityColors.text.tertiary} 
               />
             </TouchableOpacity>
           </View>
@@ -482,7 +486,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#1a1a1a',
+    color: CommunityColors.text.primary,
     flex: 1,
     textAlign: 'center',
     marginHorizontal: 16,
@@ -527,11 +531,11 @@ const styles = StyleSheet.create({
   authorName: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#1a1a1a',
+    color: CommunityColors.text.primary,
   },
   postMeta: {
     fontSize: 14,
-    color: '#666',
+    color: CommunityColors.text.secondary,
     marginTop: 2,
   },
   postHeaderActions: {
@@ -540,7 +544,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   followBtn: {
-    backgroundColor: '#667eea',
+    backgroundColor: CommunityColors.primary,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
@@ -548,7 +552,7 @@ const styles = StyleSheet.create({
   followingBtn: {
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: '#667eea',
+    borderColor: CommunityColors.primary,
   },
   followBtnText: {
     color: 'white',
@@ -556,11 +560,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   followingBtnText: {
-    color: '#667eea',
+    color: CommunityColors.primary,
   },
   postContent: {
     fontSize: 16,
-    color: '#333',
+    color: CommunityColors.text.primary,
     lineHeight: 24,
     marginBottom: 16,
   },
@@ -580,14 +584,14 @@ const styles = StyleSheet.create({
   },
   statText: {
     fontSize: 14,
-    color: '#999',
+    color: CommunityColors.text.tertiary,
   },
   postActions: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingTop: 16,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(0,0,0,0.05)',
+    borderTopColor: CommunityColors.divider,
   },
   actionButton: {
     flexDirection: 'row',
@@ -599,15 +603,15 @@ const styles = StyleSheet.create({
   actionText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#666',
+    color: CommunityColors.text.secondary,
   },
   actionTextActive: {
-    color: '#667eea',
+    color: CommunityColors.primary,
   },
   repliesTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#1a1a1a',
+    color: CommunityColors.text.primary,
     marginLeft: 24,
     marginBottom: 16,
   },
@@ -617,12 +621,11 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 16,
-    color: '#999',
-    marginTop: 12,
+    color: CommunityColors.text.secondary,
   },
   emptySubtext: {
     fontSize: 14,
-    color: '#bbb',
+    color: CommunityColors.text.tertiary,
     marginTop: 4,
   },
   commentContainer: {
@@ -635,7 +638,7 @@ const styles = StyleSheet.create({
   },
   commentLine: {
     width: 2,
-    backgroundColor: 'rgba(102,126,234,0.2)',
+    backgroundColor: CommunityColors.primary + '20',
     marginRight: 16,
     marginLeft: 24,
     borderRadius: 1,
@@ -669,16 +672,16 @@ const styles = StyleSheet.create({
   commentName: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#1a1a1a',
+    color: CommunityColors.text.primary,
   },
   commentTime: {
     fontSize: 12,
-    color: '#999',
+    color: CommunityColors.text.tertiary,
     marginTop: 2,
   },
   commentContent: {
     fontSize: 15,
-    color: '#333',
+    color: CommunityColors.text.primary,
     lineHeight: 20,
     marginBottom: 12,
     marginLeft: 42,
@@ -695,10 +698,10 @@ const styles = StyleSheet.create({
   },
   commentActionText: {
     fontSize: 13,
-    color: '#666',
+    color: CommunityColors.text.secondary,
   },
   commentActionActive: {
-    color: '#fc5c7d',
+    color: CommunityColors.error,
   },
   repliesContainer: {
     marginTop: 12,
@@ -709,7 +712,7 @@ const styles = StyleSheet.create({
   },
   nestedLine: {
     width: 2,
-    backgroundColor: 'rgba(102,126,234,0.1)',
+    backgroundColor: CommunityColors.primary + '10',
     marginRight: 12,
   },
   inputContainer: {
@@ -724,7 +727,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: 'rgba(102,126,234,0.1)',
+    backgroundColor: CommunityColors.background.overlay,
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderTopLeftRadius: 16,
@@ -733,16 +736,18 @@ const styles = StyleSheet.create({
   },
   replyingToText: {
     fontSize: 13,
-    color: '#667eea',
+    color: CommunityColors.primary,
     fontWeight: '500',
   },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.9)',
+    backgroundColor: CommunityColors.background.elevated,
     borderRadius: 24,
     paddingHorizontal: 16,
     paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: CommunityColors.border,
   },
   inputAvatar: {
     fontSize: 32,
@@ -751,7 +756,7 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     fontSize: 16,
-    color: '#333',
+    color: CommunityColors.text.primary,
     maxHeight: 100,
     paddingTop: 8,
   },
@@ -759,20 +764,20 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(102,126,234,0.2)',
+    backgroundColor: CommunityColors.primary + '20',
     alignItems: 'center',
     justifyContent: 'center',
   },
   sendButtonActive: {
-    backgroundColor: '#667eea',
+    backgroundColor: CommunityColors.primary,
   },
   errorText: {
     fontSize: 18,
-    color: '#666',
+    color: CommunityColors.text.secondary,
     marginBottom: 16,
   },
   goBackButton: {
-    backgroundColor: '#667eea',
+    backgroundColor: CommunityColors.primary,
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 12,

@@ -1,3 +1,5 @@
+// src/types/navigation.ts
+
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { CompositeScreenProps } from '@react-navigation/native';
@@ -14,6 +16,8 @@ export interface BabyProfile {
   height?: number;
   allergies?: string[];
   notes?: string;
+  avatar?: string;
+  age?: string;
 }
 
 // Parent Profile Type
@@ -183,9 +187,22 @@ export type RootStackParamList = {
     editMode?: boolean; 
     eventId?: string;
   } | undefined;
-  Achievements: undefined;
+  
+  // ENHANCED: Achievements with baby context
+  Achievements: { 
+    babyId?: string;
+    highlightAchievement?: string;
+    openReminderSetup?: boolean;
+  } | undefined;
+  
   GrowthChart: { babyId?: string } | undefined;
-  Reminders: undefined;
+  
+  // ENHANCED: Reminders with achievement integration
+  Reminders: { 
+    fromAchievement?: string;
+    suggestedType?: 'potty' | 'feed' | 'sleep' | 'milestone' | 'streak';
+    babyId?: string;
+  } | undefined;
 
   // FAMILY SHARING - ENHANCED
   FamilySharing: undefined;
@@ -231,6 +248,7 @@ export type CommunityStackParamList = {
   CreatePost: { topicId?: string };
   PostDetail: { postId: string };
   UserProfile: { userId: string };
+  ChatList: undefined;           // <-- ADD THIS LINE
   Chat: { userId: string };
   Notifications: undefined;
   EditCommunityProfile: { userId?: string };
@@ -293,6 +311,14 @@ export type FamilyChatRouteProp = RouteProp<RootStackParamList, 'FamilyChat'>;
 // Edit Guardian specific navigation helpers
 export type EditGuardianNavigationProp = NativeStackScreenProps<RootStackParamList, 'EditGuardian'>['navigation'];
 export type EditGuardianRouteProp = RouteProp<RootStackParamList, 'EditGuardian'>;
+
+// NEW: Achievements specific navigation helpers
+export type AchievementsNavigationProp = NativeStackScreenProps<RootStackParamList, 'Achievements'>['navigation'];
+export type AchievementsRouteProp = RouteProp<RootStackParamList, 'Achievements'>;
+
+// NEW: Reminders specific navigation helpers
+export type RemindersNavigationProp = NativeStackScreenProps<RootStackParamList, 'Reminders'>['navigation'];
+export type RemindersRouteProp = RouteProp<RootStackParamList, 'Reminders'>;
 
 // ============================================
 // NAVIGATION STATE MACHINE TYPE

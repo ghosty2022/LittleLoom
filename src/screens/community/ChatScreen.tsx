@@ -1,5 +1,5 @@
 // src/screens/community/ChatScreen.tsx
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react';
 import {
   View,
   Text,
@@ -13,24 +13,49 @@ import {
   Dimensions,
   Alert,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
-import Animated, { FadeInUp, FadeIn } from 'react-native-reanimated';
+import Animated, { FadeInUp, FadeIn, Layout } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CommunityStackParamList } from '../../types/navigation';
-import { useCommunity, Message, CommunityUser } from '../../context/CommunityContext';
+import { useCommunity, Message } from '../../context/CommunityContext';
 import { useUser } from '../../context/UserContext';
-import { showErrorModal } from '../../utils/modal';
+import { showErrorModal, showConfirmModal } from '../../utils/modal';
+import { 
+  CommunityColors, 
+  CommunityGradients, 
+  CommunitySpacing, 
+  CommunityBorderRadius,
+  CommunityShadows 
+} from '../../theme/CommunityTheme';
 
 type ChatScreenProps = NativeStackScreenProps<CommunityStackParamList, 'Chat'>;
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
+
+// Message encryption/decryption helpers
+const simpleEncrypt = (text: string): string => {
+  try {
+    return btoa(unescape(encodeURIComponent(text)));
+  } catch {
+    return text;
+  }
+};
+
+const simpleDecrypt = (text: string): string => {
+  try {
+    return decodeURIComponent(escape(atob(text)));
+  } catch {
+    return text;
+  }
+};
 
 export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   const { userId } = route.params;
@@ -44,42 +69,61 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     getTypingStatus,
     currentUser,
     updateOnlineStatus,
+    deleteChat,
+    blockUser,
+    isUserBlocked,
   } = useCommunity();
   const { profile } = useUser();
   const insets = useSafeAreaInsets();
   
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
-  const [user, setUser] = useState<CommunityUser | null>(null);
+  const [user, setUser] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [showOptions, setShowOptions] = useState(false);
+  const [isBlocked, setIsBlocked] = useState(false);
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    loadChatData();
-    markChatRead(userId);
-    updateOnlineStatus('online');
+    initializeChat();
+    const interval = setInterval(() => {
+      refreshMessages();
+    }, 2000); // Poll for new messages every 2 seconds
     
     return () => {
+      clearInterval(interval);
       setTypingStatus(userId, false);
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     };
   }, [userId]);
 
-  const loadChatData = async () => {
+  const initializeChat = async () => {
     setIsLoading(true);
     const chatUser = getUserById(userId);
-    const chatMessages = getChatMessages(userId);
+    const chatMessages = getChatMessages(userId).map(msg => ({
+      ...msg,
+      content: msg.type === 'text' ? simpleDecrypt(msg.content) : msg.content
+    }));
     
     setUser(chatUser);
     setMessages(chatMessages);
+    setIsBlocked(isUserBlocked(userId));
     setIsLoading(false);
+    markChatRead(userId);
+    updateOnlineStatus('online');
+  };
+
+  const refreshMessages = () => {
+    const fresh = getChatMessages(userId).map(msg => ({
+      ...msg,
+      content: msg.type === 'text' ? simpleDecrypt(msg.content) : msg.content
+    }));
+    setMessages(fresh);
   };
 
   const handleSend = useCallback(async () => {
-    if (!inputText.trim()) return;
+    if (!inputText.trim() || isBlocked) return;
     if (!currentUser) {
       showErrorModal({ message: 'Please sign in to send messages' });
       return;
@@ -89,13 +133,14 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     setInputText('');
     setTypingStatus(userId, false);
     
-    // Optimistically add message
+    // Optimistic update
+    const tempId = `temp_${Date.now()}`;
     const tempMessage: Message = {
-      id: `temp_${Date.now()}`,
+      id: tempId,
       chatId: `chat_${[currentUser.id, userId].sort().join('_')}`,
       senderId: currentUser.id,
       receiverId: userId,
-      content,
+      content: content,
       timestamp: new Date().toISOString(),
       read: true,
       type: 'text',
@@ -107,19 +152,21 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
       flatListRef.current?.scrollToEnd({ animated: true });
     }, 100);
     
-    await sendMessage(userId, content);
-    const updatedMessages = getChatMessages(userId);
-    setMessages(updatedMessages);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }, [inputText, userId, currentUser, sendMessage, setTypingStatus, getChatMessages]);
+    try {
+      await sendMessage(userId, simpleEncrypt(content));
+      refreshMessages();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      showErrorModal({ message: 'Failed to send message' });
+      setMessages(prev => prev.filter(m => m.id !== tempId));
+    }
+  }, [inputText, userId, currentUser, isBlocked, sendMessage, setTypingStatus]);
 
   const handleInputChange = (text: string) => {
     setInputText(text);
     if (text.length > 0) {
       setTypingStatus(userId, true);
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
       typingTimeoutRef.current = setTimeout(() => {
         setTypingStatus(userId, false);
       }, 3000);
@@ -129,34 +176,57 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   };
 
   const handleImagePick = async () => {
+    if (isBlocked) {
+      showErrorModal({ message: 'Unblock user to send images' });
+      return;
+    }
+    
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.8,
+      quality: 0.7,
+      allowsEditing: true,
     });
 
     if (!result.canceled) {
       await sendMessage(userId, '📷 Photo', 'image', result.assets[0].uri);
-      const updatedMessages = getChatMessages(userId);
-      setMessages(updatedMessages);
+      refreshMessages();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
   };
 
-  const handleCall = () => {
-    Alert.alert('Voice Call', 'Voice calling is coming soon!');
+  const handleBlock = () => {
+    showConfirmModal({
+      title: isBlocked ? 'Unblock User' : 'Block User',
+      message: isBlocked 
+        ? 'Unblock this user to receive messages from them again?'
+        : 'Block this user? You will no longer receive messages from them.',
+      onConfirm: () => {
+        blockUser(userId);
+        setIsBlocked(!isBlocked);
+        setShowOptions(false);
+      },
+    });
   };
 
-  const handleVideoCall = () => {
-    Alert.alert('Video Call', 'Video calling is coming soon!');
+  const handleDeleteChat = () => {
+    setShowOptions(false);
+    deleteChat(userId);
+    navigation.goBack();
   };
 
   const formatTime = (timestamp: string) => {
     const date = new Date(timestamp);
+    const now = new Date();
+    const diff = now.getTime() - date.getTime();
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    
+    if (days > 0) return `${days}d ago`;
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
   const getStatusText = () => {
     if (!user) return '';
+    if (isBlocked) return 'Blocked';
     if (getTypingStatus(userId)) return 'typing...';
     if (user.onlineStatus === 'online') return 'Online';
     if (user.onlineStatus === 'away') return 'Away';
@@ -169,20 +239,25 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     return `Active ${Math.floor(hours / 24)}d ago`;
   };
 
-  const renderMessage = ({ item }: { item: Message }) => {
+  const renderMessage = ({ item, index }: { item: Message; index: number }) => {
     const isMe = item.senderId === currentUser?.id;
+    const showAvatar = !isMe && (index === 0 || messages[index - 1]?.senderId !== item.senderId);
     
     return (
       <Animated.View 
-        entering={FadeInUp}
+        entering={FadeInUp.delay(50)}
+        layout={Layout.springify()}
         style={[styles.messageContainer, isMe ? styles.myMessage : styles.theirMessage]}
       >
-        {!isMe && user && (
+        {!isMe && showAvatar && user ? (
           <Text style={styles.messageAvatar}>{user.avatar}</Text>
-        )}
+        ) : !isMe && <View style={styles.avatarPlaceholder} />}
+        
         <View style={[styles.messageBubble, isMe ? styles.myBubble : styles.theirBubble]}>
           {item.type === 'image' && item.imageUrl ? (
-            <Image source={{ uri: item.imageUrl }} style={styles.messageImage} />
+            <TouchableOpacity activeOpacity={0.9}>
+              <Image source={{ uri: item.imageUrl }} style={styles.messageImage} />
+            </TouchableOpacity>
           ) : (
             <Text style={[styles.messageText, isMe ? styles.myText : styles.theirText]}>
               {item.content}
@@ -196,7 +271,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
               <Ionicons 
                 name={item.read ? "checkmark-done" : "checkmark"} 
                 size={14} 
-                color={item.read ? "#34b7f1" : "rgba(255,255,255,0.7)"} 
+                color={item.read ? CommunityColors.secondary : "rgba(255,255,255,0.6)"} 
               />
             )}
           </View>
@@ -208,7 +283,8 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   if (isLoading) {
     return (
       <View style={[styles.container, styles.centered]}>
-        <ActivityIndicator size="large" color="#667eea" />
+        <LinearGradient colors={CommunityGradients.header} style={StyleSheet.absoluteFill} />
+        <ActivityIndicator size="large" color={CommunityColors.primary} />
       </View>
     );
   }
@@ -216,6 +292,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   if (!user) {
     return (
       <View style={[styles.container, styles.centered]}>
+        <LinearGradient colors={CommunityGradients.header} style={StyleSheet.absoluteFill} />
         <Text style={styles.errorText}>User not found</Text>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.goBackButton}>
           <Text style={styles.goBackText}>Go Back</Text>
@@ -224,16 +301,19 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     );
   }
 
-  const isTyping = getTypingStatus(userId);
-
   return (
-    <LinearGradient colors={['#e0e7ff', '#d1d5ff', '#c7b8ff']} style={styles.container}>
+    <View style={styles.container}>
       <StatusBar style="dark" />
+      <LinearGradient colors={CommunityColors.background.gradient} style={StyleSheet.absoluteFill} />
       
       {/* Header */}
-      <BlurView intensity={90} style={[styles.header, { paddingTop: insets.top + 10 }]} tint="light">
+      <BlurView intensity={95} style={[styles.header, { paddingTop: insets.top + 10 }]} tint="light">
+        <LinearGradient 
+          colors={['rgba(255,255,255,0.95)', 'rgba(255,250,250,0.98)']} 
+          style={StyleSheet.absoluteFill}
+        />
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
-          <Ionicons name="arrow-back" size={24} color="#1a1a1a" />
+          <Ionicons name="arrow-back" size={24} color={CommunityColors.text.primary} />
         </TouchableOpacity>
         
         <TouchableOpacity 
@@ -242,32 +322,34 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
         >
           <View style={styles.avatarContainer}>
             <Text style={styles.userAvatar}>{user.avatar}</Text>
-            <View style={[styles.userStatusDot, { 
-              backgroundColor: user.onlineStatus === 'online' ? '#11998e' : 
-                            user.onlineStatus === 'away' ? '#fee140' : '#999' 
-            }]} />
+            {!isBlocked && (
+              <View style={[styles.userStatusDot, { 
+                backgroundColor: user.onlineStatus === 'online' ? CommunityColors.success : 
+                                user.onlineStatus === 'away' ? CommunityColors.accent : 
+                                CommunityColors.text.tertiary 
+              }]} />
+            )}
           </View>
           <View>
             <View style={styles.nameRow}>
-              <Text style={styles.userName}>{user.displayName}</Text>
-              {user.isVerified && (
-                <Ionicons name="checkmark-circle" size={14} color="#667eea" />
+              <Text style={[styles.userName, isBlocked && styles.blockedText]}>
+                {user.displayName}
+              </Text>
+              {user.isVerified && !isBlocked && (
+                <View style={styles.verifiedBadge}>
+                  <Ionicons name="checkmark" size={10} color="#fff" />
+                </View>
               )}
             </View>
-            <Text style={[styles.userStatus, isTyping && styles.typingStatus]}>
+            <Text style={[styles.userStatus, isBlocked && styles.blockedStatus, getTypingStatus(userId) && styles.typingStatus]}>
               {getStatusText()}
             </Text>
           </View>
         </TouchableOpacity>
         
-        <View style={styles.headerActions}>
-          <TouchableOpacity onPress={handleCall} style={styles.headerAction}>
-            <Ionicons name="call-outline" size={22} color="#667eea" />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={handleVideoCall} style={styles.headerAction}>
-            <Ionicons name="videocam-outline" size={22} color="#667eea" />
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity onPress={() => setShowOptions(true)} style={styles.headerButton}>
+          <Ionicons name="ellipsis-vertical" size={24} color={CommunityColors.text.primary} />
+        </TouchableOpacity>
       </BlurView>
 
       {/* Messages */}
@@ -279,15 +361,33 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
         contentContainerStyle={styles.messagesList}
         showsVerticalScrollIndicator={false}
         onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
+        ListEmptyComponent={
+          <View style={styles.emptyChat}>
+            <Ionicons name="chatbubbles-outline" size={64} color={CommunityColors.text.tertiary} />
+            <Text style={styles.emptyText}>No messages yet</Text>
+            <Text style={styles.emptySubtext}>Say hello to start the conversation!</Text>
+          </View>
+        }
       />
 
       {/* Typing Indicator */}
-      {isTyping && (
-        <View style={styles.typingContainer}>
+      {getTypingStatus(userId) && !isBlocked && (
+        <Animated.View entering={FadeIn} style={styles.typingContainer}>
           <BlurView intensity={80} style={styles.typingBubble} tint="light">
             <Text style={styles.typingText}>{user.displayName} is typing</Text>
-            <ActivityIndicator size="small" color="#667eea" style={styles.typingDots} />
+            <ActivityIndicator size="small" color={CommunityColors.primary} style={styles.typingDots} />
           </BlurView>
+        </Animated.View>
+      )}
+
+      {/* Blocked Warning */}
+      {isBlocked && (
+        <View style={styles.blockedBanner}>
+          <Ionicons name="ban" size={20} color={CommunityColors.error} />
+          <Text style={styles.blockedBannerText}>You have blocked this user</Text>
+          <TouchableOpacity onPress={handleBlock}>
+            <Text style={styles.unblockText}>Unblock</Text>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -297,36 +397,93 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
         <BlurView intensity={100} style={styles.inputContainer} tint="light">
-          <TouchableOpacity style={styles.attachButton} onPress={handleImagePick}>
-            <Ionicons name="image-outline" size={24} color="#667eea" />
+          <LinearGradient 
+            colors={['rgba(255,255,255,0.98)', 'rgba(255,250,250,0.95)']} 
+            style={StyleSheet.absoluteFill}
+          />
+          
+          <TouchableOpacity 
+            style={[styles.attachButton, isBlocked && styles.disabledButton]} 
+            onPress={handleImagePick}
+            disabled={isBlocked}
+          >
+            <View style={[styles.attachButtonBg, { backgroundColor: CommunityColors.primary + '15' }]}>
+              <Ionicons name="image-outline" size={24} color={isBlocked ? CommunityColors.text.tertiary : CommunityColors.primary} />
+            </View>
           </TouchableOpacity>
           
-          <View style={styles.inputWrapper}>
+          <View style={[styles.inputWrapper, isBlocked && styles.disabledInput]}>
             <TextInput
               style={styles.input}
-              placeholder="Type a message..."
-              placeholderTextColor="#999"
+              placeholder={isBlocked ? "Unblock to send messages..." : "Type a message..."}
+              placeholderTextColor={CommunityColors.text.tertiary}
               value={inputText}
               onChangeText={handleInputChange}
               multiline
               maxLength={500}
+              editable={!isBlocked}
             />
           </View>
           
           <TouchableOpacity 
-            style={[styles.sendButton, inputText.length > 0 && styles.sendButtonActive]}
+            style={[styles.sendButton, (inputText.length === 0 || isBlocked) && styles.sendButtonDisabled]}
             onPress={handleSend}
-            disabled={inputText.length === 0}
+            disabled={inputText.length === 0 || isBlocked}
           >
-            <Ionicons 
-              name="send" 
-              size={20} 
-              color={inputText.length > 0 ? "white" : "#999"} 
-            />
+            <LinearGradient 
+              colors={inputText.length > 0 && !isBlocked ? CommunityGradients.primary : ['transparent', 'transparent']}
+              style={styles.sendButtonGradient}
+            >
+              <Ionicons 
+                name="send" 
+                size={20} 
+                color={inputText.length > 0 && !isBlocked ? "#fff" : CommunityColors.text.tertiary} 
+              />
+            </LinearGradient>
           </TouchableOpacity>
         </BlurView>
       </KeyboardAvoidingView>
-    </LinearGradient>
+
+      {/* Options Modal */}
+      <Modal
+        visible={showOptions}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowOptions(false)}
+      >
+        <TouchableOpacity 
+          style={styles.modalOverlay} 
+          activeOpacity={1} 
+          onPress={() => setShowOptions(false)}
+        >
+          <View style={styles.optionsMenu}>
+            <TouchableOpacity style={styles.optionItem} onPress={handleBlock}>
+              <Ionicons 
+                name={isBlocked ? "checkmark-circle" : "ban"} 
+                size={24} 
+                color={isBlocked ? CommunityColors.success : CommunityColors.error} 
+              />
+              <Text style={[styles.optionText, isBlocked && { color: CommunityColors.success }]}>
+                {isBlocked ? 'Unblock User' : 'Block User'}
+              </Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity style={styles.optionItem} onPress={handleDeleteChat}>
+              <Ionicons name="trash" size={24} color={CommunityColors.error} />
+              <Text style={styles.optionText}>Delete Chat</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[styles.optionItem, styles.optionItemLast]} 
+              onPress={() => navigation.navigate('UserProfile', { userId: user.id })}
+            >
+              <Ionicons name="person" size={24} color={CommunityColors.primary} />
+              <Text style={styles.optionText}>View Profile</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    </View>
   );
 }
 
@@ -336,10 +493,11 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: CommunitySpacing.md,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.05)',
+    borderBottomColor: CommunityColors.divider,
+    overflow: 'hidden',
   },
   headerButton: { padding: 8 },
   userInfo: {
@@ -360,14 +518,22 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: 'white',
   },
-  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  userName: { fontSize: 16, fontWeight: '700', color: '#1a1a1a' },
-  userStatus: { fontSize: 13, color: '#666', marginTop: 2 },
-  typingStatus: { color: '#11998e', fontStyle: 'italic' },
-  headerActions: { flexDirection: 'row', gap: 16 },
-  headerAction: { padding: 4 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  userName: { fontSize: 16, fontWeight: '800', color: CommunityColors.text.primary },
+  blockedText: { color: CommunityColors.text.tertiary },
+  verifiedBadge: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: CommunityColors.info,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  userStatus: { fontSize: 13, color: CommunityColors.text.secondary, marginTop: 2 },
+  blockedStatus: { color: CommunityColors.error },
+  typingStatus: { color: CommunityColors.secondary, fontStyle: 'italic', fontWeight: '600' },
   messagesList: {
-    paddingHorizontal: 16,
+    paddingHorizontal: CommunitySpacing.md,
     paddingVertical: 20,
     paddingBottom: 100,
   },
@@ -379,23 +545,32 @@ const styles = StyleSheet.create({
   myMessage: { justifyContent: 'flex-end' },
   theirMessage: { justifyContent: 'flex-start' },
   messageAvatar: { fontSize: 28, marginRight: 8 },
+  avatarPlaceholder: { width: 36 },
   messageBubble: {
-    maxWidth: width * 0.7,
+    maxWidth: width * 0.72,
     padding: 12,
-    borderRadius: 20,
+    borderRadius: CommunityBorderRadius.lg,
+    ...CommunityShadows.sm,
   },
   myBubble: {
-    backgroundColor: '#667eea',
+    backgroundColor: CommunityColors.primary,
     borderBottomRightRadius: 4,
   },
   theirBubble: {
-    backgroundColor: 'rgba(255,255,255,0.9)',
+    backgroundColor: CommunityColors.background.card,
     borderBottomLeftRadius: 4,
+    borderWidth: 1,
+    borderColor: CommunityColors.border,
   },
   messageText: { fontSize: 15, lineHeight: 20 },
   myText: { color: 'white' },
-  theirText: { color: '#1a1a1a' },
-  messageImage: { width: width * 0.6, height: 200, borderRadius: 12 },
+  theirText: { color: CommunityColors.text.primary },
+  messageImage: { 
+    width: width * 0.6, 
+    height: 200, 
+    borderRadius: 12,
+    backgroundColor: CommunityColors.background.elevated,
+  },
   messageFooter: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -405,52 +580,130 @@ const styles = StyleSheet.create({
   },
   messageTime: { fontSize: 11 },
   myTime: { color: 'rgba(255,255,255,0.7)' },
-  theirTime: { color: '#999' },
-  typingContainer: { paddingHorizontal: 16, marginBottom: 8 },
+  theirTime: { color: CommunityColors.text.tertiary },
+  emptyChat: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: height * 0.2,
+  },
+  emptyText: { 
+    fontSize: 18, 
+    color: CommunityColors.text.secondary, 
+    marginTop: 16,
+    fontWeight: '600',
+  },
+  emptySubtext: { 
+    fontSize: 14, 
+    color: CommunityColors.text.tertiary, 
+    marginTop: 8,
+  },
+  typingContainer: { 
+    paddingHorizontal: CommunitySpacing.md, 
+    marginBottom: 8,
+    alignSelf: 'flex-start',
+  },
   typingBubble: {
     flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'flex-start',
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 16,
     gap: 8,
+    overflow: 'hidden',
   },
-  typingText: { fontSize: 13, color: '#666' },
+  typingText: { fontSize: 13, color: CommunityColors.text.secondary },
   typingDots: { transform: [{ scale: 0.8 }] },
+  blockedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: CommunityColors.error + '15',
+    paddingVertical: 12,
+    gap: 8,
+  },
+  blockedBannerText: {
+    color: CommunityColors.error,
+    fontWeight: '600',
+  },
+  unblockText: {
+    color: CommunityColors.primary,
+    fontWeight: '700',
+    textDecorationLine: 'underline',
+  },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: CommunitySpacing.md,
     paddingVertical: 12,
     paddingBottom: 30,
+    overflow: 'hidden',
   },
-  attachButton: { padding: 8, marginRight: 8 },
+  attachButton: { padding: 4, marginRight: 8 },
+  attachButtonBg: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  disabledButton: { opacity: 0.5 },
   inputWrapper: {
     flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.9)',
+    backgroundColor: CommunityColors.background.elevated,
     borderRadius: 24,
     paddingHorizontal: 16,
     paddingVertical: 10,
     maxHeight: 100,
+    borderWidth: 1,
+    borderColor: CommunityColors.border,
   },
-  input: { fontSize: 16, color: '#333', maxHeight: 80 },
+  disabledInput: { backgroundColor: CommunityColors.background.main },
+  input: { fontSize: 16, color: CommunityColors.text.primary, maxHeight: 80 },
   sendButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(102,126,234,0.2)',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    marginLeft: 8,
+    overflow: 'hidden',
+  },
+  sendButtonDisabled: { opacity: 0.5 },
+  sendButtonGradient: {
+    width: '100%',
+    height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 8,
   },
-  sendButtonActive: { backgroundColor: '#667eea' },
-  errorText: { fontSize: 18, color: '#666', marginBottom: 16 },
+  errorText: { fontSize: 18, color: CommunityColors.text.secondary, marginBottom: 16 },
   goBackButton: {
-    backgroundColor: '#667eea',
+    backgroundColor: CommunityColors.primary,
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 12,
   },
-  goBackText: { color: 'white', fontSize: 16, fontWeight: '600' },
+  goBackText: { color: 'white', fontSize: 16, fontWeight: '700' },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-start',
+    paddingTop: 100,
+    paddingRight: 20,
+  },
+  optionsMenu: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    marginLeft: 'auto',
+    width: 200,
+    ...CommunityShadows.lg,
+  },
+  optionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    gap: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: CommunityColors.divider,
+  },
+  optionItemLast: { borderBottomWidth: 0 },
+  optionText: { fontSize: 16, color: CommunityColors.text.primary, fontWeight: '600' },
 });

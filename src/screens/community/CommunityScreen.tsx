@@ -1,4 +1,3 @@
-// src/screens/community/CommunityScreen.tsx
 import React, { useState, useCallback, useRef } from 'react';
 import {
   View,
@@ -28,6 +27,16 @@ import Animated, {
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+// NEW: Import Community Theme
+import { 
+  CommunityColors, 
+  CommunityGradients, 
+  CommunitySpacing, 
+  CommunityBorderRadius,
+  CommunityShadows 
+} from '../../theme/CommunityTheme';
+
 import { useCommunity, Post, Topic, CommunityUser } from '../../context/CommunityContext';
 import { useUser } from '../../context/UserContext';
 import type { CommunityStackParamList } from '../../types/navigation';
@@ -36,8 +45,8 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 type CommunityNavigationProp = NativeStackNavigationProp<CommunityStackParamList>;
 
 const { width, height } = Dimensions.get('window');
-const HEADER_HEIGHT = 320;
-const PROFILE_SECTION_HEIGHT = 180;
+const HEADER_HEIGHT = 340; // Slightly taller for new theme
+const PROFILE_SECTION_HEIGHT = 200;
 
 export default function CommunityScreen() {
   const navigation = useNavigation<CommunityNavigationProp>();
@@ -57,6 +66,7 @@ export default function CommunityScreen() {
     getUnreadCount,
     getUserStats,
     onlineUsers,
+    getUserById,
   } = useCommunity();
   const { getDisplayName } = useUser();
   
@@ -65,18 +75,18 @@ export default function CommunityScreen() {
   const scrollY = useSharedValue(0);
   const flatListRef = useRef<FlatList>(null);
 
-  // Animated header styles
+  // Animated header styles - using new theme colors
   const headerAnimatedStyle = useAnimatedStyle(() => {
     const translateY = interpolate(
       scrollY.value,
-      [0, HEADER_HEIGHT - 100],
-      [0, -HEADER_HEIGHT + 100],
+      [0, HEADER_HEIGHT - 120],
+      [0, -HEADER_HEIGHT + 120],
       Extrapolate.CLAMP
     );
     
     const opacity = interpolate(
       scrollY.value,
-      [0, HEADER_HEIGHT - 150],
+      [0, HEADER_HEIGHT - 170],
       [1, 0],
       Extrapolate.CLAMP
     );
@@ -90,7 +100,7 @@ export default function CommunityScreen() {
   const stickyHeaderStyle = useAnimatedStyle(() => {
     const opacity = interpolate(
       scrollY.value,
-      [HEADER_HEIGHT - 150, HEADER_HEIGHT - 100],
+      [HEADER_HEIGHT - 170, HEADER_HEIGHT - 120],
       [0, 1],
       Extrapolate.CLAMP
     );
@@ -135,6 +145,7 @@ export default function CommunityScreen() {
   };
 
   const handleLike = async (post: Post) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (post.isLiked) {
       await unlikePost(post.id);
     } else {
@@ -143,6 +154,7 @@ export default function CommunityScreen() {
   };
 
   const handleRepost = async (post: Post) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (post.isReposted) {
       await unrepostPost(post.id);
     } else {
@@ -151,16 +163,13 @@ export default function CommunityScreen() {
   };
 
   const handleBookmark = async (post: Post) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     await bookmarkPost(post.id);
   };
 
   const navigateToUserProfile = (userId: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (userId === currentUser?.id) {
-      navigation.navigate('UserProfile', { userId });
-    } else {
-      navigation.navigate('UserProfile', { userId });
-    }
+    navigation.navigate('UserProfile', { userId });
   };
 
   const navigateToPostDetail = (postId: string) => {
@@ -168,6 +177,7 @@ export default function CommunityScreen() {
   };
 
   const navigateToTopic = (topic: Topic) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     navigation.navigate('Topic', { topicId: topic.id });
   };
 
@@ -183,6 +193,7 @@ export default function CommunityScreen() {
     navigation.navigate('UserProfile', { userId: currentUser?.id || '' });
   };
 
+  // Render Topic Card with new theme
   const renderTopicCard = ({ item }: { item: Topic }) => (
     <TouchableOpacity 
       style={styles.topicCard}
@@ -190,36 +201,47 @@ export default function CommunityScreen() {
       activeOpacity={0.8}
     >
       <LinearGradient
-        colors={[item.color + '40', item.color + '20']}
+        colors={[item.color + '30', item.color + '10']}
         style={styles.topicGradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
       >
         <View style={styles.topicHeader}>
           <Text style={styles.topicEmoji}>{item.emoji}</Text>
           {item.trending && (
             <View style={styles.trendingBadge}>
-              <Text style={styles.trendingText}>🔥</Text>
+              <LinearGradient 
+                colors={CommunityGradients.trending}
+                style={styles.trendingGradient}
+              >
+                <Ionicons name="flame" size={12} color="#fff" />
+                <Text style={styles.trendingText}>HOT</Text>
+              </LinearGradient>
             </View>
           )}
         </View>
         <Text style={styles.topicName}>{item.name}</Text>
         <View style={styles.topicStats}>
-          <Text style={styles.topicStat}>{item.members.toLocaleString()} members</Text>
+          <Ionicons name="people" size={12} color={CommunityColors.text.tertiary} />
+          <Text style={styles.topicStat}>{(item.members / 1000).toFixed(1)}k</Text>
           <Text style={styles.topicDot}>•</Text>
-          <Text style={styles.topicStat}>{item.posts.toLocaleString()} posts</Text>
+          <Ionicons name="document-text" size={12} color={CommunityColors.text.tertiary} />
+          <Text style={styles.topicStat}>{item.posts}</Text>
         </View>
         {item.isJoined && (
           <View style={styles.joinedIndicator}>
-            <Ionicons name="checkmark-circle" size={16} color={item.color} />
-            <Text style={[styles.joinedText, { color: item.color }]}>Joined</Text>
+            <Ionicons name="checkmark-circle" size={16} color={CommunityColors.success} />
+            <Text style={[styles.joinedText, { color: CommunityColors.success }]}>Joined</Text>
           </View>
         )}
       </LinearGradient>
     </TouchableOpacity>
   );
 
-  const renderPost = ({ item }: { item: Post }) => (
-    <Animated.View entering={FadeInUp}>
-      <BlurView intensity={80} style={styles.postCard} tint="light">
+  // Render Post with new theme styling
+  const renderPost = ({ item, index }: { item: Post; index: number }) => (
+    <Animated.View entering={FadeInUp.delay(index * 100)}>
+      <View style={styles.postCard}>
         {/* Post Header */}
         <TouchableOpacity 
           style={styles.postHeader}
@@ -227,29 +249,32 @@ export default function CommunityScreen() {
           activeOpacity={0.8}
         >
           <View style={styles.authorInfo}>
-            <Text style={styles.authorAvatar}>{item.author.avatar}</Text>
-            <View>
+            <View style={styles.avatarContainer}>
+              <Text style={styles.authorAvatar}>{item.author.avatar}</Text>
+              {item.author.onlineStatus === 'online' && (
+                <View style={styles.onlineIndicator} />
+              )}
+            </View>
+            <View style={styles.authorMeta}>
               <View style={styles.nameRow}>
                 <Text style={styles.authorName}>{item.author.displayName}</Text>
                 {item.author.isVerified && (
-                  <Ionicons name="checkmark-circle" size={16} color="#667eea" />
-                )}
-                {item.author.onlineStatus === 'online' && (
-                  <View style={styles.onlineIndicator} />
+                  <View style={styles.verifiedBadge}>
+                    <Ionicons name="checkmark" size={10} color="#fff" />
+                  </View>
                 )}
               </View>
               <Text style={styles.postMeta}>
-                in {item.topic} • {item.time}
-                {item.author.country && ` • ${item.author.country}`}
+                <Text style={styles.topicText}>{item.topic}</Text>
+                <Text style={styles.timeText}> • {item.time}</Text>
+                {item.author.country && (
+                  <Text style={styles.countryText}> • {item.author.country}</Text>
+                )}
               </Text>
             </View>
           </View>
-          <TouchableOpacity 
-            onPress={() => {
-              // Show post options
-            }}
-          >
-            <Ionicons name="ellipsis-horizontal" size={20} color="#999" />
+          <TouchableOpacity style={styles.moreButton}>
+            <Ionicons name="ellipsis-horizontal" size={20} color={CommunityColors.text.tertiary} />
           </TouchableOpacity>
         </TouchableOpacity>
 
@@ -257,6 +282,7 @@ export default function CommunityScreen() {
         <TouchableOpacity 
           onPress={() => navigateToPostDetail(item.id)}
           activeOpacity={0.9}
+          style={styles.contentContainer}
         >
           <Text style={styles.postContent}>{item.content}</Text>
           {item.images && item.images.length > 0 && (
@@ -271,12 +297,17 @@ export default function CommunityScreen() {
         {/* Helpful Votes */}
         {item.helpfulVotes > 0 && (
           <View style={styles.helpfulContainer}>
-            <Ionicons name="thumbs-up" size={14} color="#11998e" />
-            <Text style={styles.helpfulText}>{item.helpfulVotes} found this helpful</Text>
+            <LinearGradient 
+              colors={[CommunityColors.success + '20', CommunityColors.success + '10']}
+              style={styles.helpfulGradient}
+            >
+              <Ionicons name="thumbs-up" size={14} color={CommunityColors.success} />
+              <Text style={styles.helpfulText}>{item.helpfulVotes} found this helpful</Text>
+            </LinearGradient>
           </View>
         )}
 
-        {/* Post Actions */}
+        {/* Post Actions - New Theme Style */}
         <View style={styles.postActions}>
           <TouchableOpacity 
             style={[styles.actionButton, item.isLiked && styles.actionActive]}
@@ -284,10 +315,13 @@ export default function CommunityScreen() {
           >
             <Ionicons 
               name={item.isLiked ? "heart" : "heart-outline"} 
-              size={22} 
-              color={item.isLiked ? "#fc5c7d" : "#666"} 
+              size={24} 
+              color={item.isLiked ? CommunityColors.primary : CommunityColors.text.tertiary} 
             />
-            <Text style={[styles.actionText, item.isLiked && styles.actionTextActive]}>
+            <Text style={[
+              styles.actionText, 
+              item.isLiked && { color: CommunityColors.primary, fontWeight: '700' }
+            ]}>
               {item.likes}
             </Text>
           </TouchableOpacity>
@@ -296,7 +330,7 @@ export default function CommunityScreen() {
             style={styles.actionButton}
             onPress={() => navigateToPostDetail(item.id)}
           >
-            <Ionicons name="chatbubble-outline" size={20} color="#666" />
+            <Ionicons name="chatbubble-outline" size={22} color={CommunityColors.text.tertiary} />
             <Text style={styles.actionText}>{item.commentsCount}</Text>
           </TouchableOpacity>
 
@@ -306,10 +340,13 @@ export default function CommunityScreen() {
           >
             <Ionicons 
               name={item.isReposted ? "repeat" : "repeat-outline"} 
-              size={20} 
-              color={item.isReposted ? "#11998e" : "#666"} 
+              size={22} 
+              color={item.isReposted ? CommunityColors.secondary : CommunityColors.text.tertiary} 
             />
-            <Text style={[styles.actionText, item.isReposted && styles.actionTextActive]}>
+            <Text style={[
+              styles.actionText, 
+              item.isReposted && { color: CommunityColors.secondary, fontWeight: '700' }
+            ]}>
               {item.reposts}
             </Text>
           </TouchableOpacity>
@@ -320,34 +357,43 @@ export default function CommunityScreen() {
           >
             <Ionicons 
               name={item.isBookmarked ? "bookmark" : "bookmark-outline"} 
-              size={20} 
-              color={item.isBookmarked ? "#667eea" : "#666"} 
+              size={22} 
+              color={item.isBookmarked ? CommunityColors.accent : CommunityColors.text.tertiary} 
             />
           </TouchableOpacity>
+
+          <TouchableOpacity style={styles.actionButton}>
+            <Ionicons name="share-outline" size={22} color={CommunityColors.text.tertiary} />
+          </TouchableOpacity>
         </View>
-      </BlurView>
+      </View>
     </Animated.View>
   );
 
+  // Render Profile Section with new theme
   const renderProfileSection = () => {
     if (!currentUser) return null;
 
     return (
       <Animated.View style={[styles.profileSection, profileCardStyle]}>
-        <BlurView intensity={90} style={styles.profileCard} tint="light">
+        <LinearGradient 
+          colors={CommunityGradients.card}
+          style={styles.profileCard}
+        >
           <View style={styles.profileHeader}>
             <View style={styles.profileLeft}>
-              <TouchableOpacity onPress={navigateToEditProfile}>
+              <TouchableOpacity onPress={navigateToEditProfile} style={styles.avatarWrapper}>
                 <Text style={styles.profileAvatar}>{currentUser.avatar}</Text>
                 <View style={styles.editAvatarBadge}>
-                  <Ionicons name="camera" size={12} color="white" />
+                  <Ionicons name="camera" size={12} color="#fff" />
                 </View>
+                <View style={styles.onlineStatusDot} />
               </TouchableOpacity>
               <View style={styles.profileInfo}>
                 <Text style={styles.profileName}>{currentUser.displayName}</Text>
                 <Text style={styles.profileHandle}>{currentUser.handle}</Text>
                 <View style={styles.onlineStatusRow}>
-                  <View style={[styles.statusDot, { backgroundColor: '#11998e' }]} />
+                  <View style={[styles.statusDot, { backgroundColor: CommunityColors.success }]} />
                   <Text style={styles.statusText}>Online</Text>
                   {currentUser.country && (
                     <Text style={styles.countryText}>• {currentUser.country}</Text>
@@ -359,7 +405,12 @@ export default function CommunityScreen() {
               style={styles.editButton}
               onPress={navigateToEditProfile}
             >
-              <Ionicons name="create-outline" size={20} color="#667eea" />
+              <LinearGradient 
+                colors={[CommunityColors.primary + '20', CommunityColors.primary + '10']}
+                style={styles.editButtonGradient}
+              >
+                <Ionicons name="create-outline" size={20} color={CommunityColors.primary} />
+              </LinearGradient>
             </TouchableOpacity>
           </View>
 
@@ -396,41 +447,54 @@ export default function CommunityScreen() {
               <Text style={styles.addBioText}>+ Add a bio to your profile</Text>
             </TouchableOpacity>
           )}
-        </BlurView>
+        </LinearGradient>
       </Animated.View>
     );
   };
 
+  // Render Sticky Header with new theme
   const renderStickyHeader = () => {
     const unreadCount = getUnreadCount();
     
     return (
       <Animated.View style={[styles.stickyHeader, stickyHeaderStyle, { paddingTop: insets.top }]}>
         <BlurView intensity={95} style={styles.stickyHeaderBlur} tint="light">
-          <View style={styles.stickyHeaderContent}>
-            <TouchableOpacity onPress={() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true })}>
-              <Text style={styles.stickyTitle}>Community</Text>
-            </TouchableOpacity>
-            <View style={styles.stickyActions}>
-              <TouchableOpacity 
-                style={styles.stickyIconButton}
-                onPress={() => navigation.navigate('Notifications')}
-              >
-                <Ionicons name="notifications-outline" size={24} color="#667eea" />
-                {unreadCount > 0 && (
-                  <View style={styles.stickyBadge}>
-                    <Text style={styles.stickyBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+          <LinearGradient 
+            colors={['rgba(255,255,255,0.95)', 'rgba(255,250,250,0.98)']}
+            style={styles.stickyHeaderGradient}
+          >
+            <View style={styles.stickyHeaderContent}>
+              <TouchableOpacity onPress={() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true })}>
+                <View style={styles.stickyTitleContainer}>
+                  <Text style={styles.stickyTitle}>Community</Text>
+                  <View style={styles.stickyUnderline} />
+                </View>
+              </TouchableOpacity>
+              <View style={styles.stickyActions}>
+                <TouchableOpacity 
+                  style={styles.stickyIconButton}
+                  onPress={() => navigation.navigate('Notifications')}
+                >
+                  <View style={styles.iconButtonGradient}>
+                    <Ionicons name="notifications-outline" size={24} color={CommunityColors.primary} />
+                    {unreadCount > 0 && (
+                      <View style={styles.stickyBadge}>
+                        <Text style={styles.stickyBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+                      </View>
+                    )}
                   </View>
-                )}
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={styles.stickyIconButton}
-                onPress={() => navigateToChat()}
-              >
-                <Ionicons name="chatbubbles-outline" size={24} color="#667eea" />
-              </TouchableOpacity>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={styles.stickyIconButton}
+                  onPress={() => navigateToChat()}
+                >
+                  <View style={styles.iconButtonGradient}>
+                    <Ionicons name="chatbubbles-outline" size={24} color={CommunityColors.secondary} />
+                  </View>
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
+          </LinearGradient>
         </BlurView>
       </Animated.View>
     );
@@ -442,11 +506,13 @@ export default function CommunityScreen() {
     <View style={styles.container}>
       <StatusBar style="dark" />
       
-      {/* Animated Header Background */}
+      {/* Animated Header Background - New Theme Colors */}
       <Animated.View style={[styles.headerContainer, headerAnimatedStyle]}>
         <LinearGradient 
-          colors={['#667eea', '#764ba2', '#f093fb']} 
+          colors={CommunityGradients.header}
           style={[styles.headerGradient, { height: HEADER_HEIGHT }]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
         >
           {/* Header Content */}
           <View style={[styles.headerContent, { paddingTop: insets.top + 20 }]}>
@@ -460,22 +526,22 @@ export default function CommunityScreen() {
                   style={styles.iconButton}
                   onPress={() => navigation.navigate('Notifications')}
                 >
-                  <BlurView intensity={80} style={styles.iconBlur} tint="light">
-                    <Ionicons name="notifications-outline" size={24} color="#667eea" />
+                  <View style={styles.headerIconGradient}>
+                    <Ionicons name="notifications-outline" size={24} color={CommunityColors.primary} />
                     {unreadCount > 0 && (
                       <View style={styles.notificationBadge}>
                         <Text style={styles.badgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
                       </View>
                     )}
-                  </BlurView>
+                  </View>
                 </TouchableOpacity>
                 <TouchableOpacity 
                   style={styles.iconButton}
                   onPress={() => navigateToChat()}
                 >
-                  <BlurView intensity={80} style={styles.iconBlur} tint="light">
-                    <Ionicons name="chatbubbles-outline" size={24} color="#667eea" />
-                  </BlurView>
+                  <View style={styles.headerIconGradient}>
+                    <Ionicons name="chatbubbles-outline" size={24} color={CommunityColors.secondary} />
+                  </View>
                 </TouchableOpacity>
               </View>
             </View>
@@ -490,8 +556,11 @@ export default function CommunityScreen() {
               contentContainerStyle={styles.onlineContainer}
             >
               <TouchableOpacity style={styles.createRoomButton}>
-                <LinearGradient colors={['#667eea', '#764ba2']} style={styles.createRoomGradient}>
-                  <Ionicons name="add" size={24} color="white" />
+                <LinearGradient 
+                  colors={CommunityGradients.primary} 
+                  style={styles.createRoomGradient}
+                >
+                  <Ionicons name="add" size={24} color="#fff" />
                   <Text style={styles.createRoomText}>Room</Text>
                 </LinearGradient>
               </TouchableOpacity>
@@ -506,9 +575,9 @@ export default function CommunityScreen() {
                   >
                     <View style={styles.onlineAvatarContainer}>
                       <Text style={styles.onlineAvatar}>{user.avatar}</Text>
-                      <View style={[styles.statusDot, { backgroundColor: '#11998e' }]} />
+                      <View style={[styles.statusDotSmall, { backgroundColor: CommunityColors.success }]} />
                     </View>
-                    <Text style={styles.onlineName}>{user.displayName}</Text>
+                    <Text style={styles.onlineName}>{user.displayName.split(' ')[0]}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -528,7 +597,12 @@ export default function CommunityScreen() {
         keyExtractor={(item) => item.id}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#667eea" />
+          <RefreshControl 
+            refreshing={refreshing} 
+            onRefresh={onRefresh} 
+            tintColor={CommunityColors.primary}
+            colors={[CommunityColors.primary, CommunityColors.secondary]}
+          />
         }
         onScroll={(event) => {
           scrollY.value = event.nativeEvent.contentOffset.y;
@@ -541,7 +615,12 @@ export default function CommunityScreen() {
         ListHeaderComponent={
           <>
             {/* Topics Grid */}
-            <Text style={styles.sectionTitle}>Popular Topics</Text>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Popular Topics</Text>
+              <TouchableOpacity>
+                <Text style={styles.seeAllText}>See All</Text>
+              </TouchableOpacity>
+            </View>
             <FlatList
               data={topics}
               renderItem={renderTopicCard}
@@ -568,7 +647,7 @@ export default function CommunityScreen() {
                   {activeTab === tab && (
                     <View style={styles.tabIndicator}>
                       <LinearGradient
-                        colors={['#667eea', '#764ba2']}
+                        colors={CommunityGradients.primary}
                         style={styles.tabGradient}
                       />
                     </View>
@@ -581,18 +660,21 @@ export default function CommunityScreen() {
         ListFooterComponent={
           <TouchableOpacity style={styles.loadMore} onPress={() => {}}>
             <Text style={styles.loadMoreText}>Load more posts</Text>
-            <Ionicons name="chevron-down" size={20} color="#667eea" />
+            <Ionicons name="chevron-down" size={20} color={CommunityColors.primary} />
           </TouchableOpacity>
         }
       />
 
-      {/* Floating Create Post Button */}
+      {/* Floating Create Post Button - New Theme */}
       <TouchableOpacity 
         style={styles.fab}
         onPress={() => navigation.navigate('CreatePost', {})}
       >
-        <LinearGradient colors={['#fa709a', '#fee140']} style={styles.fabGradient}>
-          <Ionicons name="create-outline" size={28} color="white" />
+        <LinearGradient 
+          colors={CommunityGradients.accent} 
+          style={styles.fabGradient}
+        >
+          <Ionicons name="create-outline" size={28} color="#fff" />
         </LinearGradient>
       </TouchableOpacity>
     </View>
@@ -602,7 +684,7 @@ export default function CommunityScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#e0e7ff',
+    backgroundColor: CommunityColors.background.main,
   },
   headerContainer: {
     position: 'absolute',
@@ -612,23 +694,24 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   headerGradient: {
-    borderBottomLeftRadius: 30,
-    borderBottomRightRadius: 30,
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
+    ...CommunityShadows.lg,
   },
   headerContent: {
     flex: 1,
-    paddingHorizontal: 24,
+    paddingHorizontal: CommunitySpacing.lg,
   },
   headerTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 20,
+    marginBottom: CommunitySpacing.md,
   },
   title: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: 'white',
+    fontSize: 34,
+    fontWeight: '900',
+    color: '#fff',
     marginBottom: 4,
     textShadowColor: 'rgba(0,0,0,0.1)',
     textShadowOffset: { width: 0, height: 2 },
@@ -637,91 +720,113 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 16,
     color: 'rgba(255,255,255,0.9)',
+    fontWeight: '500',
   },
   headerActions: {
     flexDirection: 'row',
-    gap: 12,
+    gap: CommunitySpacing.sm,
   },
   iconButton: {
-    borderRadius: 16,
+    borderRadius: CommunityBorderRadius.lg,
     overflow: 'hidden',
   },
-  iconBlur: {
+  headerIconGradient: {
     width: 48,
     height: 48,
+    borderRadius: CommunityBorderRadius.lg,
+    backgroundColor: 'rgba(255,255,255,0.95)',
     alignItems: 'center',
     justifyContent: 'center',
+    ...CommunityShadows.md,
   },
   notificationBadge: {
     position: 'absolute',
     top: 8,
     right: 8,
-    backgroundColor: '#ff4757',
+    backgroundColor: CommunityColors.primary,
     borderRadius: 10,
     minWidth: 20,
     height: 20,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
-    borderColor: 'white',
+    borderColor: '#fff',
   },
   badgeText: {
-    color: 'white',
+    color: '#fff',
     fontSize: 12,
     fontWeight: 'bold',
   },
   
-  // Profile Section Styles
+  // Profile Section Styles - New Theme
   profileSection: {
-    marginBottom: 20,
+    marginBottom: CommunitySpacing.md,
   },
   profileCard: {
-    borderRadius: 24,
-    padding: 20,
+    borderRadius: CommunityBorderRadius.xl,
+    padding: CommunitySpacing.lg,
     overflow: 'hidden',
-    backgroundColor: 'rgba(255,255,255,0.9)',
+    backgroundColor: CommunityColors.background.card,
+    ...CommunityShadows.md,
+    borderWidth: 1,
+    borderColor: CommunityColors.border,
   },
   profileHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 16,
+    marginBottom: CommunitySpacing.md,
   },
   profileLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
   },
+  avatarWrapper: {
+    position: 'relative',
+    marginRight: CommunitySpacing.md,
+  },
   profileAvatar: {
     fontSize: 56,
-    marginRight: 16,
   },
   editAvatarBadge: {
     position: 'absolute',
     bottom: 0,
-    right: 12,
-    backgroundColor: '#667eea',
+    right: 0,
+    backgroundColor: CommunityColors.primary,
     borderRadius: 12,
     width: 24,
     height: 24,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
-    borderColor: 'white',
+    borderColor: '#fff',
+  },
+  onlineStatusDot: {
+    position: 'absolute',
+    bottom: 4,
+    right: 4,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: CommunityColors.success,
+    borderWidth: 2,
+    borderColor: '#fff',
   },
   profileInfo: {
     flex: 1,
   },
   profileName: {
     fontSize: 20,
-    fontWeight: '700',
-    color: '#1a1a1a',
+    fontWeight: '800',
+    color: CommunityColors.text.primary,
     marginBottom: 2,
   },
   profileHandle: {
     fontSize: 14,
-    color: '#667eea',
-    marginBottom: 6,
+    color: CommunityColors.primary,
+    fontWeight: '600',
+    marginBottom: CommunitySpacing.xs,
   },
   onlineStatusRow: {
     flexDirection: 'row',
@@ -735,28 +840,32 @@ const styles = StyleSheet.create({
   },
   statusText: {
     fontSize: 13,
-    color: '#11998e',
-    fontWeight: '500',
+    color: CommunityColors.success,
+    fontWeight: '600',
   },
   countryText: {
     fontSize: 13,
-    color: '#666',
+    color: CommunityColors.text.secondary,
   },
   editButton: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(102,126,234,0.1)',
+  },
+  editButtonGradient: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
   },
   quickStats: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingTop: 16,
+    paddingTop: CommunitySpacing.md,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(0,0,0,0.05)',
-    marginBottom: 12,
+    borderTopColor: CommunityColors.divider,
+    marginBottom: CommunitySpacing.sm,
   },
   statItem: {
     alignItems: 'center',
@@ -764,35 +873,36 @@ const styles = StyleSheet.create({
   },
   statValue: {
     fontSize: 18,
-    fontWeight: '700',
-    color: '#1a1a1a',
+    fontWeight: '800',
+    color: CommunityColors.text.primary,
     marginBottom: 2,
   },
   statLabel: {
     fontSize: 12,
-    color: '#666',
+    color: CommunityColors.text.secondary,
+    fontWeight: '600',
   },
   bioPreview: {
     fontSize: 14,
-    color: '#444',
+    color: CommunityColors.text.secondary,
     lineHeight: 20,
     fontStyle: 'italic',
   },
   addBioText: {
     fontSize: 14,
-    color: '#667eea',
-    fontWeight: '500',
+    color: CommunityColors.primary,
+    fontWeight: '600',
   },
 
-  // Online Users Styles
+  // Online Users Styles - New Theme
   onlineContainer: {
-    paddingVertical: 16,
-    gap: 16,
+    paddingVertical: CommunitySpacing.md,
+    gap: CommunitySpacing.md,
   },
   createRoomButton: {
-    borderRadius: 28,
+    borderRadius: CommunityBorderRadius.lg,
     overflow: 'hidden',
-    marginRight: 8,
+    marginRight: CommunitySpacing.sm,
   },
   createRoomGradient: {
     width: 56,
@@ -801,29 +911,39 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   createRoomText: {
-    color: 'white',
+    color: '#fff',
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '700',
     marginTop: 4,
   },
   onlineUser: {
     alignItems: 'center',
-    marginRight: 16,
+    marginRight: CommunitySpacing.md,
   },
   onlineAvatarContainer: {
     position: 'relative',
     marginBottom: 6,
   },
   onlineAvatar: {
-    fontSize: 48,
+    fontSize: 44,
+  },
+  statusDotSmall: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#fff',
   },
   onlineName: {
     fontSize: 12,
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.9)',
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.95)',
   },
 
-  // Sticky Header Styles
+  // Sticky Header Styles - New Theme
   stickyHeader: {
     position: 'absolute',
     top: 0,
@@ -832,75 +952,112 @@ const styles = StyleSheet.create({
     zIndex: 100,
   },
   stickyHeaderBlur: {
-    paddingHorizontal: 20,
-    paddingBottom: 12,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    overflow: 'hidden',
+  },
+  stickyHeaderGradient: {
+    paddingHorizontal: CommunitySpacing.lg,
+    paddingBottom: CommunitySpacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: CommunityColors.border,
   },
   stickyHeaderContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    height: 56,
+  },
+  stickyTitleContainer: {
+    alignItems: 'flex-start',
   },
   stickyTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#1a1a1a',
+    fontSize: 24,
+    fontWeight: '900',
+    color: CommunityColors.text.primary,
+    letterSpacing: -0.5,
+  },
+  stickyUnderline: {
+    width: 24,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: CommunityColors.primary,
+    marginTop: 4,
   },
   stickyActions: {
     flexDirection: 'row',
-    gap: 12,
+    gap: CommunitySpacing.sm,
   },
   stickyIconButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(102,126,234,0.1)',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+  },
+  iconButtonGradient: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 22,
+    backgroundColor: CommunityColors.background.elevated,
     alignItems: 'center',
     justifyContent: 'center',
-    position: 'relative',
+    borderWidth: 1,
+    borderColor: CommunityColors.border,
   },
   stickyBadge: {
     position: 'absolute',
     top: -2,
     right: -2,
-    backgroundColor: '#ff4757',
+    backgroundColor: CommunityColors.primary,
     borderRadius: 10,
     minWidth: 18,
     height: 18,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
-    borderColor: 'white',
+    borderColor: '#fff',
   },
   stickyBadgeText: {
-    color: 'white',
+    color: '#fff',
     fontSize: 10,
     fontWeight: 'bold',
   },
 
-  // Content Styles
+  // Content Styles - New Theme
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: CommunitySpacing.lg,
+    marginBottom: CommunitySpacing.md,
+    marginTop: CommunitySpacing.md,
+  },
   sectionTitle: {
     fontSize: 20,
+    fontWeight: '800',
+    color: CommunityColors.text.primary,
+    letterSpacing: -0.3,
+  },
+  seeAllText: {
+    fontSize: 14,
     fontWeight: '700',
-    color: '#1a1a1a',
-    marginLeft: 24,
-    marginBottom: 16,
-    marginTop: 8,
+    color: CommunityColors.primary,
   },
   topicsContainer: {
-    paddingHorizontal: 20,
-    gap: 12,
-    paddingBottom: 8,
+    paddingHorizontal: CommunitySpacing.md,
+    gap: CommunitySpacing.sm,
+    paddingBottom: CommunitySpacing.xs,
   },
   topicCard: {
-    width: 160,
-    height: 160,
-    borderRadius: 24,
+    width: 170,
+    height: 170,
+    borderRadius: CommunityBorderRadius.xl,
     overflow: 'hidden',
-    marginRight: 12,
+    marginRight: CommunitySpacing.sm,
+    ...CommunityShadows.sm,
   },
   topicGradient: {
     flex: 1,
-    padding: 20,
+    padding: CommunitySpacing.lg,
     justifyContent: 'space-between',
   },
   topicHeader: {
@@ -912,67 +1069,78 @@ const styles = StyleSheet.create({
     fontSize: 40,
   },
   trendingBadge: {
-    backgroundColor: 'rgba(255,255,255,0.9)',
     borderRadius: 12,
-    padding: 6,
+    overflow: 'hidden',
+  },
+  trendingGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    gap: 4,
   },
   trendingText: {
-    fontSize: 12,
+    fontSize: 10,
+    color: '#fff',
+    fontWeight: '800',
   },
   topicName: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1a1a1a',
-    marginBottom: 8,
+    fontSize: 17,
+    fontWeight: '800',
+    color: CommunityColors.text.primary,
+    marginBottom: CommunitySpacing.xs,
   },
   topicStats: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 4,
   },
   topicStat: {
     fontSize: 12,
-    color: '#666',
+    color: CommunityColors.text.secondary,
+    fontWeight: '600',
   },
   topicDot: {
-    marginHorizontal: 6,
-    color: '#999',
+    marginHorizontal: 4,
+    color: CommunityColors.text.tertiary,
   },
   joinedIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    marginTop: 8,
+    marginTop: CommunitySpacing.xs,
   },
   joinedText: {
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '700',
   },
 
-  // Tab Styles
+  // Tab Styles - New Theme
   tabContainer: {
     flexDirection: 'row',
-    paddingHorizontal: 24,
-    marginTop: 24,
-    marginBottom: 16,
-    gap: 24,
+    paddingHorizontal: CommunitySpacing.lg,
+    marginTop: CommunitySpacing.lg,
+    marginBottom: CommunitySpacing.md,
+    gap: CommunitySpacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: CommunityColors.divider,
+    paddingBottom: CommunitySpacing.sm,
   },
   tab: {
-    paddingVertical: 8,
+    paddingVertical: CommunitySpacing.sm,
     position: 'relative',
   },
-  tabActive: {},
   tabText: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#999',
+    fontWeight: '700',
+    color: CommunityColors.text.tertiary,
   },
   tabTextActive: {
-    color: '#1a1a1a',
-    fontWeight: '700',
+    color: CommunityColors.text.primary,
   },
   tabIndicator: {
     position: 'absolute',
-    bottom: 0,
+    bottom: -9,
     left: 0,
     right: 0,
     height: 3,
@@ -983,29 +1151,48 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
-  // Post Styles
+  // Post Styles - New Theme
   postCard: {
-    borderRadius: 24,
-    padding: 20,
-    marginHorizontal: 24,
-    marginBottom: 16,
-    overflow: 'hidden',
+    backgroundColor: CommunityColors.background.card,
+    borderRadius: CommunityBorderRadius.xl,
+    padding: CommunitySpacing.lg,
+    marginHorizontal: CommunitySpacing.lg,
+    marginBottom: CommunitySpacing.md,
+    ...CommunityShadows.sm,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.5)',
+    borderColor: CommunityColors.border,
   },
   postHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: CommunitySpacing.md,
   },
   authorInfo: {
     flexDirection: 'row',
     alignItems: 'center',
+    flex: 1,
+  },
+  avatarContainer: {
+    position: 'relative',
+    marginRight: CommunitySpacing.sm,
   },
   authorAvatar: {
-    fontSize: 40,
-    marginRight: 12,
+    fontSize: 44,
+  },
+  onlineIndicator: {
+    position: 'absolute',
+    bottom: 2,
+    right: 2,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: CommunityColors.success,
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  authorMeta: {
+    flex: 1,
   },
   nameRow: {
     flexDirection: 'row',
@@ -1014,99 +1201,120 @@ const styles = StyleSheet.create({
   },
   authorName: {
     fontSize: 16,
-    fontWeight: '700',
-    color: '#1a1a1a',
+    fontWeight: '800',
+    color: CommunityColors.text.primary,
   },
-  onlineIndicator: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#11998e',
-    marginLeft: 4,
+  verifiedBadge: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: CommunityColors.info,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   postMeta: {
     fontSize: 13,
-    color: '#666',
     marginTop: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  topicText: {
+    color: CommunityColors.primary,
+    fontWeight: '700',
+  },
+  timeText: {
+    color: CommunityColors.text.tertiary,
+  },
+  countryText: {
+    color: CommunityColors.text.secondary,
+  },
+  moreButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  contentContainer: {
+    marginBottom: CommunitySpacing.sm,
   },
   postContent: {
     fontSize: 15,
-    color: '#333',
+    color: CommunityColors.text.primary,
     lineHeight: 22,
-    marginBottom: 12,
+    marginBottom: CommunitySpacing.sm,
+    fontWeight: '400',
   },
   imagesContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-    marginBottom: 12,
   },
   postImage: {
     width: (width - 88) / 2,
     height: 150,
-    borderRadius: 12,
+    borderRadius: CommunityBorderRadius.lg,
   },
   helpfulContainer: {
+    marginBottom: CommunitySpacing.sm,
+  },
+  helpfulGradient: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginBottom: 12,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    backgroundColor: 'rgba(17,153,142,0.1)',
     borderRadius: 12,
     alignSelf: 'flex-start',
   },
   helpfulText: {
     fontSize: 13,
-    color: '#11998e',
-    fontWeight: '500',
+    color: CommunityColors.success,
+    fontWeight: '700',
   },
   postActions: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingTop: 12,
+    paddingTop: CommunitySpacing.sm,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(0,0,0,0.05)',
+    borderTopColor: CommunityColors.divider,
   },
   actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     padding: 8,
+    borderRadius: 12,
   },
-  actionActive: {},
+  actionActive: {
+    backgroundColor: CommunityColors.primary + '10',
+  },
   actionText: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#666',
-  },
-  actionTextActive: {
-    color: '#667eea',
+    fontWeight: '700',
+    color: CommunityColors.text.tertiary,
   },
   loadMore: {
     alignItems: 'center',
-    paddingVertical: 24,
+    paddingVertical: CommunitySpacing.xl,
   },
   loadMoreText: {
     fontSize: 14,
-    color: '#667eea',
-    fontWeight: '600',
+    color: CommunityColors.primary,
+    fontWeight: '700',
     marginBottom: 8,
   },
+  
+  // FAB - New Theme
   fab: {
     position: 'absolute',
-    right: 24,
+    right: CommunitySpacing.lg,
     bottom: 120,
     width: 64,
     height: 64,
     borderRadius: 32,
     overflow: 'hidden',
-    shadowColor: '#fa709a',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 20,
-    elevation: 10,
+    ...CommunityShadows.glow,
   },
   fabGradient: {
     flex: 1,

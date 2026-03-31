@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,10 +7,9 @@ import {
   TouchableOpacity,
   TextInput,
   Platform,
-  Alert,
   KeyboardAvoidingView,
   Dimensions,
-  Image,
+  useColorScheme,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -22,15 +21,51 @@ import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/dat
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 
-// Import from correct contexts
 import { useAuth } from '../context/AuthContext';
 import { useBaby } from '../context/BabyContext';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../types/navigation';
 
-type CreateBabyProfileScreenProps = NativeStackScreenProps<RootStackParamList, 'CreateBabyProfile'>;
-
 const { width } = Dimensions.get('window');
+
+// SweetAlert & ConfirmModal Components (Same as above)
+const SweetAlert = ({ visible, type, title, message, onClose, isDark }: any) => {
+  const [opacity, setOpacity] = useState(0);
+  
+  useEffect(() => {
+    if (visible) {
+      setOpacity(1);
+      const timer = setTimeout(() => {
+        setOpacity(0);
+        setTimeout(onClose, 300);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [visible]);
+
+  if (!visible) return null;
+
+  const config = {
+    success: { colors: ['#11998e', '#38ef7d'], icon: 'checkmark-circle' },
+    error: { colors: ['#ef4444', '#f87171'], icon: 'alert-circle' },
+    info: { colors: ['#3b82f6', '#60a5fa'], icon: 'information-circle' },
+    warning: { colors: ['#f59e0b', '#fbbf24'], icon: 'warning' },
+  }[type as keyof typeof config] || config.success;
+
+  return (
+    <View style={[styles.alertWrapper, { opacity }]}>
+      <View style={[styles.alertContainer, { backgroundColor: isDark ? '#1a1a2e' : '#fff' }]}>
+        <LinearGradient colors={config.colors} style={styles.alertIconBg}>
+          <Ionicons name={config.icon as any} size={28} color="#fff" />
+        </LinearGradient>
+        <View style={styles.alertTextContainer}>
+          <Text style={[styles.alertTitle, { color: isDark ? '#fff' : '#1e293b' }]}>{title}</Text>
+          <Text style={styles.alertMessage}>{message}</Text>
+        </View>
+      </View>
+    </View>
+  );
+};
 
 const SKIN_TONES = [
   { id: 0, emoji: '👶', color: '#F5D0C5', label: 'Light' },
@@ -41,15 +76,17 @@ const SKIN_TONES = [
   { id: 5, emoji: '👶🏿', color: '#6B4423', label: 'Dark' },
 ];
 
-const AVATAR_OPTIONS = ['👶', '🍼', '🧸', '🎀', '👼', '🤱', '👨‍🍼', '👩‍🍼', '🐣', '🌟'];
+const AVATAR_OPTIONS = ['👶', '🍼', '🧸', '🎀', '👼', '🤱', '👨‍🍼', '👩‍🍼', '👶', '🌟'];
+
+type CreateBabyProfileScreenProps = NativeStackScreenProps<RootStackParamList, 'CreateBabyProfile'>;
 
 export default function CreateBabyProfileScreen({ navigation }: CreateBabyProfileScreenProps) {
   const insets = useSafeAreaInsets();
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
   
-  // Get user from AuthContext, baby methods from BabyContext
-  // FIXED: Added completeSetup from AuthContext
   const { userProfile, completeSetup } = useAuth();
-  const { createBaby } = useBaby();
+  const { createBaby, calculateAge } = useBaby();
   
   const [name, setName] = useState('');
   const [birthDate, setBirthDate] = useState(new Date());
@@ -65,22 +102,10 @@ export default function CreateBabyProfileScreen({ navigation }: CreateBabyProfil
   const [isLoading, setIsLoading] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
+  const [alert, setAlert] = useState({ visible: false, type: 'success', title: '', message: '' });
 
-  const calculateAge = useCallback((date: Date): string => {
-    const now = new Date();
-    const diffTime = Math.abs(now.getTime() - date.getTime());
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
-    if (diffDays < 30) {
-      return `${diffDays} days old`;
-    } else if (diffDays < 365) {
-      const months = Math.floor(diffDays / 30);
-      return `${months} month${months > 1 ? 's' : ''} old`;
-    } else {
-      const years = Math.floor(diffDays / 365);
-      const months = Math.floor((diffDays % 365) / 30);
-      return months > 0 ? `${years}y ${months}m old` : `${years} years old`;
-    }
+  const showToast = useCallback((type: 'success' | 'error' | 'info', title: string, message: string) => {
+    setAlert({ visible: true, type, title, message });
   }, []);
 
   const onDateChange = useCallback((event: DateTimePickerEvent, selectedDate?: Date) => {
@@ -107,15 +132,15 @@ export default function CreateBabyProfileScreen({ navigation }: CreateBabyProfil
 
   const validateStep1 = useCallback(() => {
     if (!name.trim()) {
-      Alert.alert('Missing Information', 'Please enter your baby\'s name');
+      showToast('error', 'Missing Information', 'Please enter your baby\'s name');
       return false;
     }
     if (name.trim().length < 2) {
-      Alert.alert('Invalid Name', 'Name must be at least 2 characters');
+      showToast('error', 'Invalid Name', 'Name must be at least 2 characters');
       return false;
     }
     return true;
-  }, [name]);
+  }, [name, showToast]);
 
   const handleNext = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -133,7 +158,6 @@ export default function CreateBabyProfileScreen({ navigation }: CreateBabyProfil
     }
   }, [currentStep, navigation]);
 
-  // FIXED: Added completeSetup call after successful baby creation
   const handleCreateProfile = useCallback(async () => {
     if (!validateStep1()) return;
     
@@ -155,64 +179,51 @@ export default function CreateBabyProfileScreen({ navigation }: CreateBabyProfil
       });
 
       if (success) {
-        // ADDED: Mark baby setup as complete in AuthContext
-        // This tells AppNavigator that setup flow is done
+        // Mark baby setup as complete in AuthContext
         await completeSetup('baby');
         
-        Alert.alert(
-          'Welcome! 🎉',
-          `${name}'s profile has been created successfully.`,
-          [
-            { 
-              text: 'Go to Home', 
-              onPress: () => navigation.replace('Main')
-            }
-          ]
-        );
+        showToast('success', 'Welcome! 🎉', `${name}'s profile created successfully`);
+        
+        setTimeout(() => {
+          navigation.replace('Main');
+        }, 1500);
+      } else {
+        showToast('error', 'Error', 'Failed to create profile. Please try again.');
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to create profile. Please try again.');
+      console.error('Create baby error:', error);
+      showToast('error', 'Error', 'An unexpected error occurred.');
     } finally {
       setIsLoading(false);
     }
-  }, [name, birthDate, gender, skinTone, avatar, weight, height, bloodType, allergies, medicalNotes, createBaby, completeSetup, navigation, validateStep1]);
+  }, [name, birthDate, gender, skinTone, avatar, weight, height, bloodType, allergies, medicalNotes, createBaby, completeSetup, navigation, validateStep1, showToast]);
 
   const renderStep1 = () => (
     <Animated.View entering={FadeInUp.delay(100)} style={styles.stepContainer}>
-      {/* Name Input */}
       <View style={styles.inputGroup}>
-        <Text style={styles.label}>Baby's Name *</Text>
-        <View style={styles.inputWrapper}>
+        <Text style={[styles.label, isDark && styles.textDark]}>Baby's Name *</Text>
+        <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
           <Ionicons name="person-outline" size={20} color="#667eea" style={styles.inputIcon} />
           <TextInput
-            style={styles.input}
+            style={[styles.input, isDark && styles.textDark]}
             value={name}
             onChangeText={setName}
             placeholder="Enter baby's name"
-            placeholderTextColor="#999"
+            placeholderTextColor={isDark ? '#64748b' : '#999'}
             autoFocus
             maxLength={50}
           />
         </View>
       </View>
 
-      {/* Birth Date */}
       <View style={styles.inputGroup}>
-        <Text style={styles.label}>Birth Date *</Text>
-        <TouchableOpacity 
-          style={styles.dateButton} 
-          onPress={() => setShowDatePicker(true)}
-        >
+        <Text style={[styles.label, isDark && styles.textDark]}>Birth Date *</Text>
+        <TouchableOpacity style={[styles.dateButton, isDark && styles.dateButtonDark]} onPress={() => setShowDatePicker(true)}>
           <Ionicons name="calendar-outline" size={20} color="#667eea" />
-          <Text style={styles.dateText}>
-            {birthDate.toLocaleDateString('en-US', { 
-              weekday: 'long', 
-              year: 'numeric', 
-              month: 'long', 
-              day: 'numeric' 
-            })}
+          <Text style={[styles.dateText, isDark && styles.textDark]}>
+            {birthDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
           </Text>
-          <Text style={styles.agePreview}>{calculateAge(birthDate)}</Text>
+          <Text style={styles.agePreview}>{calculateAge(birthDate.toISOString())}</Text>
         </TouchableOpacity>
         
         {showDatePicker && (
@@ -227,29 +238,24 @@ export default function CreateBabyProfileScreen({ navigation }: CreateBabyProfil
         )}
       </View>
 
-      {/* Gender Selection */}
       <View style={styles.inputGroup}>
-        <Text style={styles.label}>Gender</Text>
+        <Text style={[styles.label, isDark && styles.textDark]}>Gender</Text>
         <View style={styles.genderContainer}>
           {(['boy', 'girl', 'other'] as const).map((g) => (
             <TouchableOpacity
               key={g}
               style={[
                 styles.genderButton,
-                gender === g && styles.genderButtonActive
+                gender === g && styles.genderButtonActive,
+                isDark && styles.genderButtonDark
               ]}
               onPress={() => {
                 setGender(g);
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               }}
             >
-              <Text style={styles.genderEmoji}>
-                {g === 'boy' ? '👦' : g === 'girl' ? '👧' : '👶'}
-              </Text>
-              <Text style={[
-                styles.genderText,
-                gender === g && styles.genderTextActive
-              ]}>
+              <Text style={styles.genderEmoji}>{g === 'boy' ? '👦' : g === 'girl' ? '👧' : '👶'}</Text>
+              <Text style={[styles.genderText, gender === g && styles.genderTextActive, isDark && styles.textDark]}>
                 {g.charAt(0).toUpperCase() + g.slice(1)}
               </Text>
             </TouchableOpacity>
@@ -257,16 +263,16 @@ export default function CreateBabyProfileScreen({ navigation }: CreateBabyProfil
         </View>
       </View>
 
-      {/* Skin Tone */}
       <View style={styles.inputGroup}>
-        <Text style={styles.label}>Skin Tone</Text>
+        <Text style={[styles.label, isDark && styles.textDark]}>Skin Tone</Text>
         <View style={styles.skinToneContainer}>
           {SKIN_TONES.map((tone) => (
             <TouchableOpacity
               key={tone.id}
               style={[
                 styles.skinToneButton,
-                skinTone === tone.id && styles.skinToneButtonActive
+                skinTone === tone.id && styles.skinToneButtonActive,
+                isDark && styles.skinToneButtonDark
               ]}
               onPress={() => {
                 setSkinTone(tone.id);
@@ -285,10 +291,9 @@ export default function CreateBabyProfileScreen({ navigation }: CreateBabyProfil
         </View>
       </View>
 
-      {/* Avatar Selection */}
       <View style={styles.inputGroup}>
-        <Text style={styles.label}>Avatar</Text>
-        <TouchableOpacity style={styles.avatarSelector} onPress={() => setShowAvatarPicker(true)}>
+        <Text style={[styles.label, isDark && styles.textDark]}>Avatar</Text>
+        <TouchableOpacity style={[styles.avatarSelector, isDark && styles.avatarSelectorDark]} onPress={() => setShowAvatarPicker(true)}>
           <Text style={styles.selectedAvatar}>{avatar}</Text>
           <Text style={styles.changeAvatarText}>Tap to change</Text>
         </TouchableOpacity>
@@ -298,10 +303,7 @@ export default function CreateBabyProfileScreen({ navigation }: CreateBabyProfil
             {AVATAR_OPTIONS.map((emoji) => (
               <TouchableOpacity
                 key={emoji}
-                style={[
-                  styles.avatarOption,
-                  avatar === emoji && styles.avatarOptionActive
-                ]}
+                style={[styles.avatarOption, avatar === emoji && styles.avatarOptionActive]}
                 onPress={() => {
                   setAvatar(emoji);
                   setShowAvatarPicker(false);
@@ -322,82 +324,77 @@ export default function CreateBabyProfileScreen({ navigation }: CreateBabyProfil
 
   const renderStep2 = () => (
     <Animated.View entering={FadeInUp.delay(100)} style={styles.stepContainer}>
-      <Text style={styles.sectionSubtitle}>Optional Health Information</Text>
+      <Text style={[styles.sectionSubtitle, isDark && styles.textDark]}>Optional Health Information</Text>
       
-      {/* Weight */}
       <View style={styles.inputGroup}>
-        <Text style={styles.label}>Birth Weight (kg)</Text>
-        <View style={styles.inputWrapper}>
+        <Text style={[styles.label, isDark && styles.textDark]}>Birth Weight (kg)</Text>
+        <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
           <Ionicons name="scale-outline" size={20} color="#667eea" style={styles.inputIcon} />
           <TextInput
-            style={styles.input}
+            style={[styles.input, isDark && styles.textDark]}
             value={weight}
             onChangeText={setWeight}
             placeholder="e.g., 3.5"
-            placeholderTextColor="#999"
+            placeholderTextColor={isDark ? '#64748b' : '#999'}
             keyboardType="decimal-pad"
           />
         </View>
       </View>
 
-      {/* Height */}
       <View style={styles.inputGroup}>
-        <Text style={styles.label}>Birth Height (cm)</Text>
-        <View style={styles.inputWrapper}>
+        <Text style={[styles.label, isDark && styles.textDark]}>Birth Height (cm)</Text>
+        <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
           <Ionicons name="resize-outline" size={20} color="#667eea" style={styles.inputIcon} />
           <TextInput
-            style={styles.input}
+            style={[styles.input, isDark && styles.textDark]}
             value={height}
             onChangeText={setHeight}
             placeholder="e.g., 50"
-            placeholderTextColor="#999"
+            placeholderTextColor={isDark ? '#64748b' : '#999'}
             keyboardType="number-pad"
           />
         </View>
       </View>
 
-      {/* Blood Type */}
       <View style={styles.inputGroup}>
-        <Text style={styles.label}>Blood Type</Text>
-        <View style={styles.inputWrapper}>
+        <Text style={[styles.label, isDark && styles.textDark]}>Blood Type</Text>
+        <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
           <Ionicons name="water-outline" size={20} color="#667eea" style={styles.inputIcon} />
           <TextInput
-            style={styles.input}
+            style={[styles.input, isDark && styles.textDark]}
             value={bloodType}
             onChangeText={setBloodType}
             placeholder="e.g., A+"
-            placeholderTextColor="#999"
+            placeholderTextColor={isDark ? '#64748b' : '#999'}
             autoCapitalize="characters"
             maxLength={3}
           />
         </View>
       </View>
 
-      {/* Allergies */}
       <View style={styles.inputGroup}>
-        <Text style={styles.label}>Allergies (comma separated)</Text>
-        <View style={styles.inputWrapper}>
+        <Text style={[styles.label, isDark && styles.textDark]}>Allergies (comma separated)</Text>
+        <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
           <Ionicons name="warning-outline" size={20} color="#667eea" style={styles.inputIcon} />
           <TextInput
-            style={styles.input}
+            style={[styles.input, isDark && styles.textDark]}
             value={allergies}
             onChangeText={setAllergies}
             placeholder="e.g., peanuts, dairy"
-            placeholderTextColor="#999"
+            placeholderTextColor={isDark ? '#64748b' : '#999'}
           />
         </View>
       </View>
 
-      {/* Medical Notes */}
       <View style={styles.inputGroup}>
-        <Text style={styles.label}>Medical Notes</Text>
-        <View style={[styles.inputWrapper, styles.textAreaWrapper]}>
+        <Text style={[styles.label, isDark && styles.textDark]}>Medical Notes</Text>
+        <View style={[styles.inputWrapper, styles.textAreaWrapper, isDark && styles.inputWrapperDark]}>
           <TextInput
-            style={[styles.input, styles.textArea]}
+            style={[styles.input, styles.textArea, isDark && styles.textDark]}
             value={medicalNotes}
             onChangeText={setMedicalNotes}
             placeholder="Any important medical information..."
-            placeholderTextColor="#999"
+            placeholderTextColor={isDark ? '#64748b' : '#999'}
             multiline
             numberOfLines={4}
             textAlignVertical="top"
@@ -408,124 +405,103 @@ export default function CreateBabyProfileScreen({ navigation }: CreateBabyProfil
   );
 
   return (
-    <KeyboardAvoidingView 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.container}
-    >
-      <LinearGradient colors={['#f0f4ff', '#e0e7ff', '#d1d5ff']} style={styles.gradient}>
-        <StatusBar style="dark" />
+    <View style={styles.container}>
+      <LinearGradient colors={isDark ? ['#0a0a0a', '#1a1a2e'] : ['#f0f4ff', '#e0e7ff', '#d1d5ff']} style={styles.gradient}>
+        <StatusBar style={isDark ? 'light' : 'dark'} />
         
-        <ScrollView 
-          contentContainerStyle={[
-            styles.scrollContent, 
-            { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 100 }
-          ]}
-          showsVerticalScrollIndicator={false}
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.container}
         >
-          {/* Header */}
-          <Animated.View entering={FadeInUp} style={styles.header}>
-            <TouchableOpacity onPress={handleBack} style={styles.backButton}>
-              <BlurView intensity={80} style={styles.backBlur}>
-                <Ionicons name="arrow-back" size={24} color="#1a1a1a" />
-              </BlurView>
-            </TouchableOpacity>
-            
-            <View style={styles.headerText}>
-              <Text style={styles.title}>Create Profile</Text>
-              <Text style={styles.subtitle}>Step {currentStep} of 2</Text>
-            </View>
-            
-            <View style={styles.placeholder} />
-          </Animated.View>
-
-          {/* Progress Bar */}
-          <View style={styles.progressContainer}>
-            <View style={[styles.progressBar, { width: currentStep === 1 ? '50%' : '100%' }]} />
-          </View>
-
-          {/* Profile Preview Card */}
-          <Animated.View entering={FadeInUp.delay(50)}>
-            <BlurView intensity={90} style={styles.previewCard}>
-              <LinearGradient
-                colors={['#667eea', '#764ba2']}
-                style={styles.previewAvatar}
-              >
-                <Text style={styles.previewAvatarText}>{avatar}</Text>
-              </LinearGradient>
-              <View style={styles.previewInfo}>
-                <Text style={styles.previewName}>{name || 'Baby Name'}</Text>
-                <Text style={styles.previewDetails}>
-                  {calculateAge(birthDate)} • {gender.charAt(0).toUpperCase() + gender.slice(1)}
-                </Text>
-                {userProfile && (
-                  <Text style={styles.previewParent}>
-                    Parent: {userProfile.fullName}
-                  </Text>
-                )}
-              </View>
-            </BlurView>
-          </Animated.View>
-
-          {/* Form Steps */}
-          {currentStep === 1 ? renderStep1() : renderStep2()}
-
-          {/* Spacer */}
-          <View style={{ height: 40 }} />
-        </ScrollView>
-
-        {/* Bottom Buttons */}
-        <View style={[styles.bottomContainer, { paddingBottom: insets.bottom + 20 }]}>
-          <BlurView intensity={90} style={styles.bottomBlur}>
-            {currentStep === 1 ? (
-              <TouchableOpacity 
-                style={styles.nextButton} 
-                onPress={handleNext}
-                activeOpacity={0.8}
-              >
-                <LinearGradient
-                  colors={['#667eea', '#764ba2']}
-                  style={styles.buttonGradient}
-                >
-                  <Text style={styles.buttonText}>Next Step</Text>
-                  <Ionicons name="arrow-forward" size={20} color="#fff" />
-                </LinearGradient>
+          <ScrollView 
+            contentContainerStyle={[
+              styles.scrollContent, 
+              { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 100 }
+            ]}
+            showsVerticalScrollIndicator={false}
+          >
+            <Animated.View entering={FadeInUp} style={styles.header}>
+              <TouchableOpacity onPress={handleBack} style={styles.backButton}>
+                <BlurView intensity={80} style={styles.backBlur}>
+                  <Ionicons name="arrow-back" size={24} color={isDark ? '#fff' : '#1a1a1a'} />
+                </BlurView>
               </TouchableOpacity>
-            ) : (
-              <View style={styles.buttonRow}>
-                <TouchableOpacity 
-                  style={styles.backStepButton} 
-                  onPress={() => setCurrentStep(1)}
-                  disabled={isLoading}
-                >
-                  <Text style={styles.backStepText}>Back</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity 
-                  style={[styles.createButton, isLoading && styles.buttonDisabled]} 
-                  onPress={handleCreateProfile}
-                  disabled={isLoading}
-                  activeOpacity={0.8}
-                >
-                  <LinearGradient
-                    colors={['#667eea', '#764ba2']}
-                    style={styles.buttonGradient}
-                  >
-                    {isLoading ? (
-                      <Text style={styles.buttonText}>Creating...</Text>
-                    ) : (
-                      <>
-                        <Text style={styles.buttonText}>Create Profile</Text>
-                        <Ionicons name="checkmark" size={20} color="#fff" />
-                      </>
-                    )}
+              
+              <View style={styles.headerText}>
+                <Text style={[styles.headerTitle, isDark && styles.textDark]}>Create Profile</Text>
+                <Text style={[styles.headerSubtitle, isDark && { color: '#94a3b8' }]}>Step {currentStep} of 2</Text>
+              </View>
+              
+              <View style={styles.placeholder} />
+            </Animated.View>
+
+            <View style={styles.progressContainer}>
+              <View style={[styles.progressBar, { width: currentStep === 1 ? '50%' : '100%' }]} />
+            </View>
+
+            <Animated.View entering={FadeInUp.delay(50)}>
+              <BlurView intensity={90} style={styles.previewCard}>
+                <LinearGradient colors={['#667eea', '#764ba2']} style={styles.previewAvatar}>
+                  <Text style={styles.previewAvatarText}>{avatar}</Text>
+                </LinearGradient>
+                <View style={styles.previewInfo}>
+                  <Text style={[styles.previewName, isDark && styles.textDark]}>{name || 'Baby Name'}</Text>
+                  <Text style={styles.previewDetails}>
+                    {calculateAge(birthDate.toISOString())} • {gender.charAt(0).toUpperCase() + gender.slice(1)}
+                  </Text>
+                  {userProfile && (
+                    <Text style={styles.previewParent}>Parent: {userProfile.fullName}</Text>
+                  )}
+                </View>
+              </BlurView>
+            </Animated.View>
+
+            {currentStep === 1 ? renderStep1() : renderStep2()}
+
+            <View style={{ height: 40 }} />
+          </ScrollView>
+
+          <View style={[styles.bottomContainer, { paddingBottom: insets.bottom + 20 }]}>
+            <BlurView intensity={90} style={styles.bottomBlur}>
+              {currentStep === 1 ? (
+                <TouchableOpacity style={styles.nextButton} onPress={handleNext} activeOpacity={0.8}>
+                  <LinearGradient colors={['#667eea', '#764ba2']} style={styles.buttonGradient}>
+                    <Text style={styles.buttonText}>Next Step</Text>
+                    <Ionicons name="arrow-forward" size={20} color="#fff" />
                   </LinearGradient>
                 </TouchableOpacity>
-              </View>
-            )}
-          </BlurView>
-        </View>
+              ) : (
+                <View style={styles.buttonRow}>
+                  <TouchableOpacity style={styles.backStepButton} onPress={() => setCurrentStep(1)} disabled={isLoading}>
+                    <Text style={styles.backStepText}>Back</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={[styles.createButton, isLoading && styles.buttonDisabled]} 
+                    onPress={handleCreateProfile}
+                    disabled={isLoading}
+                    activeOpacity={0.8}
+                  >
+                    <LinearGradient colors={['#667eea', '#764ba2']} style={styles.buttonGradient}>
+                      {isLoading ? (
+                        <Text style={styles.buttonText}>Creating...</Text>
+                      ) : (
+                        <>
+                          <Text style={styles.buttonText}>Create Profile</Text>
+                          <Ionicons name="checkmark" size={20} color="#fff" />
+                        </>
+                      )}
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </BlurView>
+          </View>
+        </KeyboardAvoidingView>
       </LinearGradient>
-    </KeyboardAvoidingView>
+      
+      <SweetAlert {...alert} onClose={() => setAlert({ ...alert, visible: false })} isDark={isDark} />
+    </View>
   );
 }
 
@@ -534,6 +510,36 @@ const styles = StyleSheet.create({
   gradient: { flex: 1 },
   scrollContent: { paddingHorizontal: 24 },
   
+  // Alert Styles (reused)
+  alertWrapper: {
+    position: 'absolute',
+    top: 100,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    position: 'absolute',
+  },
+  alertContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
+    minWidth: 300,
+    maxWidth: 360,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  alertIconBg: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  alertTextContainer: { flex: 1 },
+  alertTitle: { fontSize: 16, fontWeight: '700', marginBottom: 2 },
+  alertMessage: { fontSize: 13, color: '#64748b' },
+
+  // Original styles adapted
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -541,16 +547,12 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   backButton: { borderRadius: 16, overflow: 'hidden' },
-  backBlur: {
-    width: 48,
-    height: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  backBlur: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
   headerText: { alignItems: 'center' },
-  title: { fontSize: 28, fontWeight: '800', color: '#1a1a1a' },
-  subtitle: { fontSize: 14, color: '#666', marginTop: 4 },
+  headerTitle: { fontSize: 28, fontWeight: '800', color: '#1a1a1a', letterSpacing: -0.5 },
+  headerSubtitle: { fontSize: 14, color: '#666', marginTop: 4 },
   placeholder: { width: 48 },
+  textDark: { color: '#fff' },
   
   progressContainer: {
     height: 4,
@@ -572,6 +574,8 @@ const styles = StyleSheet.create({
     padding: 20,
     marginBottom: 24,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.5)',
   },
   previewAvatar: {
     width: 80,
@@ -613,6 +617,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     height: 56,
   },
+  inputWrapperDark: {
+    backgroundColor: 'rgba(30,30,40,0.6)',
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
   inputIcon: { marginRight: 12 },
   input: {
     flex: 1,
@@ -634,13 +642,14 @@ const styles = StyleSheet.create({
     height: 56,
     gap: 12,
   },
+  dateButtonDark: {
+    backgroundColor: 'rgba(30,30,40,0.6)',
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
   dateText: { flex: 1, fontSize: 16, color: '#1a1a1a', fontWeight: '600' },
   agePreview: { fontSize: 14, color: '#667eea', fontWeight: '700' },
   
-  genderContainer: {
-    flexDirection: 'row',
-    gap: 12,
-  },
+  genderContainer: { flexDirection: 'row', gap: 12 },
   genderButton: {
     flex: 1,
     alignItems: 'center',
@@ -650,6 +659,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: 'transparent',
   },
+  genderButtonDark: { backgroundColor: 'rgba(30,30,40,0.4)' },
   genderButtonActive: {
     backgroundColor: 'rgba(102,126,234,0.1)',
     borderColor: '#667eea',
@@ -658,11 +668,7 @@ const styles = StyleSheet.create({
   genderText: { fontSize: 14, color: '#666', fontWeight: '600' },
   genderTextActive: { color: '#667eea', fontWeight: '700' },
   
-  skinToneContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
+  skinToneContainer: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
   skinToneButton: {
     alignItems: 'center',
     padding: 8,
@@ -671,18 +677,13 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
     position: 'relative',
   },
+  skinToneButtonDark: { backgroundColor: 'rgba(30,30,40,0.4)' },
   skinToneButtonActive: {
     borderColor: '#667eea',
     backgroundColor: 'rgba(102,126,234,0.1)',
   },
   skinToneEmoji: { fontSize: 32 },
-  checkmark: {
-    position: 'absolute',
-    bottom: -4,
-    right: -4,
-    backgroundColor: 'white',
-    borderRadius: 10,
-  },
+  checkmark: { position: 'absolute', bottom: -4, right: -4, backgroundColor: 'white', borderRadius: 10 },
   
   avatarSelector: {
     alignItems: 'center',
@@ -691,6 +692,10 @@ const styles = StyleSheet.create({
     padding: 20,
     borderWidth: 1,
     borderColor: 'rgba(102,126,234,0.2)',
+  },
+  avatarSelectorDark: {
+    backgroundColor: 'rgba(30,30,40,0.6)',
+    borderColor: 'rgba(255,255,255,0.1)',
   },
   selectedAvatar: { fontSize: 64, marginBottom: 8 },
   changeAvatarText: { fontSize: 14, color: '#667eea', fontWeight: '600' },

@@ -18,7 +18,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import Animated, { 
   FadeIn, 
   FadeInUp, 
@@ -95,11 +95,13 @@ export interface LogTypeConfig {
   description: string;
   isCustom?: boolean;
   createdAt?: number;
+  category: 'essential' | 'health' | 'development' | 'daily' | 'other';
 }
 
-// ==================== DEFAULT LOG TYPES ====================
+// ==================== DEFAULT LOG TYPES - 360° BABY CARE ====================
 
 const DEFAULT_LOG_TYPES: Record<string, LogTypeConfig> = {
+  // === ESSENTIAL CARE ===
   potty: {
     id: 'potty',
     name: 'Potty',
@@ -108,6 +110,7 @@ const DEFAULT_LOG_TYPES: Record<string, LogTypeConfig> = {
     color: '#667eea',
     gradient: ['#667eea', '#764ba2'],
     description: 'Track bathroom visits and potty training progress',
+    category: 'essential',
     fields: [
       { 
         id: 'pottyType', 
@@ -140,6 +143,47 @@ const DEFAULT_LOG_TYPES: Record<string, LogTypeConfig> = {
     quickTags: ['Self-initiated', 'With help', 'Dry night', 'Accident', 'Success', 'No success', 'Before bed', 'After meal'],
   },
 
+  diaper: {
+    id: 'diaper',
+    name: 'Diaper',
+    emoji: '🧷',
+    icon: 'shirt-outline',
+    color: '#fc5c7d',
+    gradient: ['#fc5c7d', '#fd79a8'],
+    description: 'Track diaper changes and contents',
+    category: 'essential',
+    fields: [
+      { 
+        id: 'diaperType', 
+        label: 'Type', 
+        type: 'select', 
+        required: true,
+        options: [
+          { id: 'wet', label: 'Wet', emoji: '💧', color: '#3b82f6' },
+          { id: 'dirty', label: 'Dirty', emoji: '💩', color: '#8b5cf6' },
+          { id: 'both', label: 'Both', emoji: '💧💩', color: '#06b6d4' },
+          { id: 'dry', label: 'Dry', emoji: '✓', color: '#10b981' },
+          { id: 'blowout', label: 'Blowout', emoji: '💥', color: '#ef4444' },
+        ]
+      },
+      { id: 'rash', label: 'Rash Present', type: 'toggle' },
+      { 
+        id: 'cream', 
+        label: 'Cream Applied', 
+        type: 'select',
+        options: [
+          { id: 'none', label: 'None' },
+          { id: 'zinc', label: 'Zinc Oxide', emoji: '🧴' },
+          { id: 'petroleum', label: 'Petroleum Jelly', emoji: '🛢️' },
+          { id: 'antifungal', label: 'Antifungal', emoji: '🔬' },
+          { id: 'other', label: 'Other', emoji: '📋' },
+        ]
+      },
+      { id: 'notes', label: 'Notes', type: 'textarea', placeholder: 'Color, consistency, any concerns...' },
+    ],
+    quickTags: ['Normal', 'Loose stool', 'Constipated', 'Teething', 'New food', 'Redness', 'Irritated skin', 'Cleared up'],
+  },
+
   feed: {
     id: 'feed',
     name: 'Feed',
@@ -148,6 +192,7 @@ const DEFAULT_LOG_TYPES: Record<string, LogTypeConfig> = {
     color: '#fa709a',
     gradient: ['#fa709a', '#f5576c'],
     description: 'Track breastfeeding, bottles, and solid foods',
+    category: 'essential',
     fields: [
       { 
         id: 'feedType', 
@@ -199,6 +244,40 @@ const DEFAULT_LOG_TYPES: Record<string, LogTypeConfig> = {
     quickTags: ['Liked it', 'Disliked', 'Allergic reaction', 'Spit up', 'Finished all', 'Left some', 'Hungry', 'Not interested'],
   },
 
+  pumping: {
+    id: 'pumping',
+    name: 'Pumping',
+    emoji: '🤱',
+    icon: 'flask-outline',
+    color: '#ec4899',
+    gradient: ['#ec4899', '#be185d'],
+    description: 'Track breast pumping sessions',
+    category: 'essential',
+    fields: [
+      { 
+        id: 'side', 
+        label: 'Side', 
+        type: 'select',
+        required: true,
+        options: [
+          { id: 'left', label: 'Left', emoji: '⬅️' },
+          { id: 'right', label: 'Right', emoji: '➡️' },
+          { id: 'both', label: 'Both', emoji: '↔️' },
+        ]
+      },
+      { id: 'duration', label: 'Duration', type: 'duration', required: true },
+      { 
+        id: 'amount', 
+        label: 'Amount Collected', 
+        type: 'number', 
+        placeholder: 'Amount',
+        unit: 'oz/ml'
+      },
+      { id: 'notes', label: 'Notes', type: 'textarea', placeholder: 'How did it go? Any issues?' },
+    ],
+    quickTags: ['Good flow', 'Low supply', 'Clogged duct', 'Letdown fast', 'Letdown slow', 'Comfortable', 'Painful'],
+  },
+
   sleep: {
     id: 'sleep',
     name: 'Sleep',
@@ -207,6 +286,7 @@ const DEFAULT_LOG_TYPES: Record<string, LogTypeConfig> = {
     color: '#11998e',
     gradient: ['#11998e', '#38ef7d'],
     description: 'Track naps and nighttime sleep',
+    category: 'essential',
     fields: [
       { 
         id: 'sleepType', 
@@ -245,6 +325,39 @@ const DEFAULT_LOG_TYPES: Record<string, LogTypeConfig> = {
     quickTags: ['Self-soothed', 'Needed rocking', 'Woke up crying', 'Peaceful', 'Short nap', 'Long nap', 'Easy bedtime', 'Fought sleep'],
   },
 
+  bath: {
+    id: 'bath',
+    name: 'Bath',
+    emoji: '🛁',
+    icon: 'water-outline',
+    color: '#06b6d4',
+    gradient: ['#06b6d4', '#0891b2'],
+    description: 'Track bath time and hygiene',
+    category: 'essential',
+    fields: [
+      { 
+        id: 'bathType', 
+        label: 'Type', 
+        type: 'select',
+        options: [
+          { id: 'full', label: 'Full Bath', emoji: '🛁' },
+          { id: 'sponge', label: 'Sponge Bath', emoji: '🧽' },
+          { id: 'hair', label: 'Hair Wash', emoji: '🧴' },
+          { id: 'quick', label: 'Quick Rinse', emoji: '💧' },
+        ]
+      },
+      { id: 'duration', label: 'Duration', type: 'duration' },
+      { id: 'temperature', label: 'Water Temperature', type: 'temperature' },
+      { id: 'soap', label: 'Soap Used', type: 'toggle', defaultValue: true },
+      { id: 'shampoo', label: 'Shampoo Used', type: 'toggle', defaultValue: true },
+      { id: 'lotion', label: 'Lotion After', type: 'toggle', defaultValue: true },
+      { id: 'enjoyed', label: 'Enjoyed It', type: 'toggle', defaultValue: true },
+      { id: 'notes', label: 'Notes', type: 'textarea', placeholder: 'How was bath time?' },
+    ],
+    quickTags: ['Loved it', 'Hated it', 'Cried', 'Played', 'Splashed', 'Calm', 'Quick', 'Long'],
+  },
+
+  // === HEALTH ===
   growth: {
     id: 'growth',
     name: 'Growth',
@@ -253,6 +366,7 @@ const DEFAULT_LOG_TYPES: Record<string, LogTypeConfig> = {
     color: '#43e97b',
     gradient: ['#43e97b', '#38f9d7'],
     description: 'Track height, weight, and head circumference',
+    category: 'health',
     fields: [
       { 
         id: 'measurementType', 
@@ -300,137 +414,6 @@ const DEFAULT_LOG_TYPES: Record<string, LogTypeConfig> = {
     quickTags: ['Doctor visit', 'Home measurement', 'New milestone', 'Concern', 'Normal range', 'Above average', 'Below average'],
   },
 
-  medication: {
-    id: 'medication',
-    name: 'Medication',
-    emoji: '💊',
-    icon: 'medical-outline',
-    color: '#ff6b6b',
-    gradient: ['#ff6b6b', '#ee5a5a'],
-    description: 'Track medicines, vitamins, and vaccines',
-    fields: [
-      { 
-        id: 'medName', 
-        label: 'Medicine Name', 
-        type: 'text', 
-        required: true, 
-        placeholder: 'e.g., Tylenol, Vitamin D' 
-      },
-      { 
-        id: 'dosage', 
-        label: 'Dosage', 
-        type: 'text', 
-        required: true, 
-        placeholder: 'e.g., 5ml, 1 tablet' 
-      },
-      { 
-        id: 'medType', 
-        label: 'Type', 
-        type: 'select',
-        options: [
-          { id: 'fever', label: 'Fever/Pain', emoji: '🤒', color: '#ef4444' },
-          { id: 'vitamin', label: 'Vitamin', emoji: '💊', color: '#f59e0b' },
-          { id: 'antibiotic', label: 'Antibiotic', emoji: '🔬', color: '#3b82f6' },
-          { id: 'allergy', label: 'Allergy', emoji: '🤧', color: '#10b981' },
-          { id: 'vaccine', label: 'Vaccine', emoji: '💉', color: '#8b5cf6' },
-          { id: 'other', label: 'Other', emoji: '📋', color: '#6b7280' },
-        ]
-      },
-      { id: 'reason', label: 'Reason', type: 'text', placeholder: 'Why was this given?' },
-      { 
-        id: 'givenBy', 
-        label: 'Given By', 
-        type: 'select',
-        options: [
-          { id: 'parent1', label: 'Parent 1' },
-          { id: 'parent2', label: 'Parent 2' },
-          { id: 'doctor', label: 'Doctor' },
-          { id: 'grandparent', label: 'Grandparent' },
-          { id: 'other', label: 'Other' },
-        ]
-      },
-      { id: 'notes', label: 'Notes', type: 'textarea', placeholder: 'Any reactions or notes...' },
-    ],
-    quickTags: ['No reaction', 'Mild reaction', 'Slept after', 'Fussy after', 'Took easily', 'Refused at first', 'With food', 'Empty stomach'],
-  },
-
-  milestone: {
-    id: 'milestone',
-    name: 'Milestone',
-    emoji: '🏆',
-    icon: 'trophy-outline',
-    color: '#ffd700',
-    gradient: ['#ffd700', '#ffaa00'],
-    description: 'Celebrate achievements and firsts',
-    fields: [
-      { 
-        id: 'milestoneType', 
-        label: 'Category', 
-        type: 'select', 
-        required: true,
-        options: [
-          { id: 'motor', label: 'Motor Skills', emoji: '🏃', color: '#3b82f6' },
-          { id: 'cognitive', label: 'Cognitive', emoji: '🧠', color: '#8b5cf6' },
-          { id: 'social', label: 'Social', emoji: '👋', color: '#f59e0b' },
-          { id: 'language', label: 'Language', emoji: '🗣️', color: '#ec4899' },
-          { id: 'emotional', label: 'Emotional', emoji: '❤️', color: '#ef4444' },
-          { id: 'other', label: 'Other', emoji: '✨', color: '#10b981' },
-        ]
-      },
-      { 
-        id: 'title', 
-        label: 'Milestone', 
-        type: 'text', 
-        required: true, 
-        placeholder: 'What did they do?' 
-      },
-      { id: 'description', label: 'Description', type: 'textarea', placeholder: 'Describe what happened...' },
-      { id: 'firstTime', label: 'First Time', type: 'toggle', defaultValue: true },
-      { id: 'photo', label: 'Add Photo', type: 'photo' },
-    ],
-    quickTags: ['First time', 'Practicing', 'Mastered', 'Surprised us', 'Early', 'Right on time', 'With help', 'Independent'],
-  },
-
-  diaper: {
-    id: 'diaper',
-    name: 'Diaper',
-    emoji: '🧷',
-    icon: 'shirt-outline',
-    color: '#fc5c7d',
-    gradient: ['#fc5c7d', '#fd79a8'],
-    description: 'Track diaper changes and contents',
-    fields: [
-      { 
-        id: 'diaperType', 
-        label: 'Type', 
-        type: 'select', 
-        required: true,
-        options: [
-          { id: 'wet', label: 'Wet', emoji: '💧', color: '#3b82f6' },
-          { id: 'dirty', label: 'Dirty', emoji: '💩', color: '#8b5cf6' },
-          { id: 'both', label: 'Both', emoji: '💧💩', color: '#06b6d4' },
-          { id: 'dry', label: 'Dry', emoji: '✓', color: '#10b981' },
-          { id: 'blowout', label: 'Blowout', emoji: '💥', color: '#ef4444' },
-        ]
-      },
-      { id: 'rash', label: 'Rash Present', type: 'toggle' },
-      { 
-        id: 'cream', 
-        label: 'Cream Applied', 
-        type: 'select',
-        options: [
-          { id: 'none', label: 'None' },
-          { id: 'zinc', label: 'Zinc Oxide', emoji: '🧴' },
-          { id: 'petroleum', label: 'Petroleum Jelly', emoji: '🛢️' },
-          { id: 'antifungal', label: 'Antifungal', emoji: '🔬' },
-          { id: 'other', label: 'Other', emoji: '📋' },
-        ]
-      },
-      { id: 'notes', label: 'Notes', type: 'textarea', placeholder: 'Color, consistency, any concerns...' },
-    ],
-    quickTags: ['Normal', 'Loose stool', 'Constipated', 'Teething', 'New food', 'Redness', 'Irritated skin', 'Cleared up'],
-  },
-
   temperature: {
     id: 'temperature',
     name: 'Temperature',
@@ -439,6 +422,7 @@ const DEFAULT_LOG_TYPES: Record<string, LogTypeConfig> = {
     color: '#ef4444',
     gradient: ['#ef4444', '#dc2626'],
     description: 'Track fever and body temperature',
+    category: 'health',
     fields: [
       { 
         id: 'tempValue', 
@@ -489,6 +473,178 @@ const DEFAULT_LOG_TYPES: Record<string, LogTypeConfig> = {
     quickTags: ['Fever', 'Normal temp', 'Teething', 'After vaccine', 'Before bed', 'Woke up hot', 'Medicine given', 'Doctor called'],
   },
 
+  medication: {
+    id: 'medication',
+    name: 'Medication',
+    emoji: '💊',
+    icon: 'medical-outline',
+    color: '#ff6b6b',
+    gradient: ['#ff6b6b', '#ee5a5a'],
+    description: 'Track medicines, vitamins, and vaccines',
+    category: 'health',
+    fields: [
+      { 
+        id: 'medName', 
+        label: 'Medicine Name', 
+        type: 'text', 
+        required: true, 
+        placeholder: 'e.g., Tylenol, Vitamin D' 
+      },
+      { 
+        id: 'dosage', 
+        label: 'Dosage', 
+        type: 'text', 
+        required: true, 
+        placeholder: 'e.g., 5ml, 1 tablet' 
+      },
+      { 
+        id: 'medType', 
+        label: 'Type', 
+        type: 'select',
+        options: [
+          { id: 'fever', label: 'Fever/Pain', emoji: '🤒', color: '#ef4444' },
+          { id: 'vitamin', label: 'Vitamin', emoji: '💊', color: '#f59e0b' },
+          { id: 'antibiotic', label: 'Antibiotic', emoji: '🔬', color: '#3b82f6' },
+          { id: 'allergy', label: 'Allergy', emoji: '🤧', color: '#10b981' },
+          { id: 'vaccine', label: 'Vaccine', emoji: '💉', color: '#8b5cf6' },
+          { id: 'other', label: 'Other', emoji: '📋', color: '#6b7280' },
+        ]
+      },
+      { id: 'reason', label: 'Reason', type: 'text', placeholder: 'Why was this given?' },
+      { 
+        id: 'givenBy', 
+        label: 'Given By', 
+        type: 'select',
+        options: [
+          { id: 'parent1', label: 'Parent 1' },
+          { id: 'parent2', label: 'Parent 2' },
+          { id: 'doctor', label: 'Doctor' },
+          { id: 'grandparent', label: 'Grandparent' },
+          { id: 'other', label: 'Other' },
+        ]
+      },
+      { id: 'notes', label: 'Notes', type: 'textarea', placeholder: 'Any reactions or notes...' },
+    ],
+    quickTags: ['No reaction', 'Mild reaction', 'Slept after', 'Fussy after', 'Took easily', 'Refused at first', 'With food', 'Empty stomach'],
+  },
+
+  symptom: {
+    id: 'symptom',
+    name: 'Symptom',
+    emoji: '🤒',
+    icon: 'pulse-outline',
+    color: '#f97316',
+    gradient: ['#f97316', '#ea580c'],
+    description: 'Track symptoms and illness',
+    category: 'health',
+    fields: [
+      { 
+        id: 'symptomType', 
+        label: 'Symptom', 
+        type: 'select', 
+        required: true,
+        options: [
+          { id: 'fever', label: 'Fever', emoji: '🌡️', color: '#ef4444' },
+          { id: 'cough', label: 'Cough', emoji: '😷', color: '#f97316' },
+          { id: 'runny_nose', label: 'Runny Nose', emoji: '🤧', color: '#3b82f6' },
+          { id: 'vomiting', label: 'Vomiting', emoji: '🤢', color: '#8b5cf6' },
+          { id: 'diarrhea', label: 'Diarrhea', emoji: '💩', color: '#a855f7' },
+          { id: 'rash', label: 'Rash', emoji: '🔴', color: '#ec4899' },
+          { id: 'irritability', label: 'Irritability', emoji: '😢', color: '#f59e0b' },
+          { id: 'lethargy', label: 'Lethargy', emoji: '😴', color: '#64748b' },
+          { id: 'other', label: 'Other', emoji: '📋', color: '#6b7280' },
+        ]
+      },
+      { 
+        id: 'severity', 
+        label: 'Severity', 
+        type: 'rating', 
+        max: 5,
+        defaultValue: 3
+      },
+      { id: 'duration', label: 'Duration', type: 'duration' },
+      { id: 'notes', label: 'Notes', type: 'textarea', placeholder: 'Describe symptoms, when they started, etc.' },
+    ],
+    quickTags: ['Getting better', 'Getting worse', 'Same', 'Doctor consulted', 'Medicine given', 'Sleeping', 'Eating normal', 'Not eating'],
+  },
+
+  // === DEVELOPMENT ===
+  milestone: {
+    id: 'milestone',
+    name: 'Milestone',
+    emoji: '🏆',
+    icon: 'trophy-outline',
+    color: '#ffd700',
+    gradient: ['#ffd700', '#ffaa00'],
+    description: 'Celebrate achievements and firsts',
+    category: 'development',
+    fields: [
+      { 
+        id: 'milestoneType', 
+        label: 'Category', 
+        type: 'select', 
+        required: true,
+        options: [
+          { id: 'motor', label: 'Motor Skills', emoji: '🏃', color: '#3b82f6' },
+          { id: 'cognitive', label: 'Cognitive', emoji: '🧠', color: '#8b5cf6' },
+          { id: 'social', label: 'Social', emoji: '👋', color: '#f59e0b' },
+          { id: 'language', label: 'Language', emoji: '🗣️', color: '#ec4899' },
+          { id: 'emotional', label: 'Emotional', emoji: '❤️', color: '#ef4444' },
+          { id: 'other', label: 'Other', emoji: '✨', color: '#10b981' },
+        ]
+      },
+      { 
+        id: 'title', 
+        label: 'Milestone', 
+        type: 'text', 
+        required: true, 
+        placeholder: 'What did they do?' 
+      },
+      { id: 'description', label: 'Description', type: 'textarea', placeholder: 'Describe what happened...' },
+      { id: 'firstTime', label: 'First Time', type: 'toggle', defaultValue: true },
+      { id: 'photo', label: 'Add Photo', type: 'photo' },
+    ],
+    quickTags: ['First time', 'Practicing', 'Mastered', 'Surprised us', 'Early', 'Right on time', 'With help', 'Independent'],
+  },
+
+  play: {
+    id: 'play',
+    name: 'Play',
+    emoji: '🧸',
+    icon: 'game-controller-outline',
+    color: '#a855f7',
+    gradient: ['#a855f7', '#9333ea'],
+    description: 'Track play time and activities',
+    category: 'development',
+    fields: [
+      { 
+        id: 'playType', 
+        label: 'Activity Type', 
+        type: 'select',
+        options: [
+          { id: 'tummy', label: 'Tummy Time', emoji: '😊', color: '#f59e0b' },
+          { id: 'sensory', label: 'Sensory Play', emoji: '👋', color: '#ec4899' },
+          { id: 'reading', label: 'Reading', emoji: '📚', color: '#3b82f6' },
+          { id: 'music', label: 'Music', emoji: '🎵', color: '#8b5cf6' },
+          { id: 'outdoor', label: 'Outdoor', emoji: '🌳', color: '#10b981' },
+          { id: 'blocks', label: 'Blocks/Toys', emoji: '🧱', color: '#f97316' },
+          { id: 'art', label: 'Art/Crafts', emoji: '🎨', color: '#06b6d4' },
+        ]
+      },
+      { id: 'duration', label: 'Duration', type: 'duration' },
+      { 
+        id: 'engagement', 
+        label: 'Engagement Level', 
+        type: 'rating', 
+        max: 5,
+        defaultValue: 4
+      },
+      { id: 'notes', label: 'Notes', type: 'textarea', placeholder: 'What did they enjoy? New skills shown?' },
+    ],
+    quickTags: ['Loved it', 'Interested', 'Distracted', 'Learned new', 'Practiced skill', 'Social', 'Solo play', 'Interactive'],
+  },
+
+  // === DAILY ===
   note: {
     id: 'note',
     name: 'Note',
@@ -497,6 +653,7 @@ const DEFAULT_LOG_TYPES: Record<string, LogTypeConfig> = {
     color: '#94a3b8',
     gradient: ['#94a3b8', '#64748b'],
     description: 'General notes and observations',
+    category: 'daily',
     fields: [
       { 
         id: 'title', 
@@ -522,6 +679,30 @@ const DEFAULT_LOG_TYPES: Record<string, LogTypeConfig> = {
       { id: 'photo', label: 'Attach Photo', type: 'photo' },
     ],
     quickTags: ['Cute moment', 'Funny', 'Concern', 'Question for doctor', 'New skill', 'Bad day', 'Great day', 'Routine'],
+  },
+
+  // === OTHER ===
+  other: {
+    id: 'other',
+    name: 'Other',
+    emoji: '📋',
+    icon: 'ellipsis-horizontal-outline',
+    color: '#6b7280',
+    gradient: ['#6b7280', '#4b5563'],
+    description: 'Any other tracking needs',
+    category: 'other',
+    fields: [
+      { 
+        id: 'title', 
+        label: 'Title', 
+        type: 'text', 
+        required: true, 
+        placeholder: 'What are you tracking?' 
+      },
+      { id: 'value', label: 'Value/Amount', type: 'text', placeholder: 'Any measurement or value' },
+      { id: 'notes', label: 'Notes', type: 'textarea', placeholder: 'Additional details...' },
+    ],
+    quickTags: ['Important', 'Follow up', 'Routine', 'Special', 'Emergency'],
   },
 };
 
@@ -698,6 +879,7 @@ const CustomTrackerModal: React.FC<CustomTrackerModalProps> = ({
       color: selectedColor,
       gradient: [selectedColor, selectedColor],
       description: `Custom tracker for ${name.trim()}`,
+      category: 'other',
       fields: [
         { id: 'value', label: 'Value', type: 'text', required: true },
         { id: 'notes', label: 'Notes', type: 'textarea', placeholder: 'Additional details...' },
@@ -809,6 +991,8 @@ export default function UniversalAddLogScreen() {
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [date, setDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [pickerMode, setPickerMode] = useState<'date' | 'time'>('date');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [showCustomModal, setShowCustomModal] = useState(false);
@@ -868,7 +1052,6 @@ export default function UniversalAddLogScreen() {
 
   const handleFieldChange = (fieldId: string, value: any) => {
     setFormData(prev => ({ ...prev, [fieldId]: value }));
-    // Clear errors when user makes changes
     if (errors.length > 0) setErrors([]);
   };
 
@@ -879,6 +1062,68 @@ export default function UniversalAddLogScreen() {
         ? prev.filter(t => t !== tag)
         : [...prev, tag]
     );
+  };
+
+  // FIXED: Use imperative API for Android to avoid dismiss error
+  const showAndroidPicker = useCallback((mode: 'date' | 'time') => {
+    try {
+      DateTimePickerAndroid.open({
+        value: date,
+        mode,
+        is24Hour: false,
+        onChange: (event, selectedDate) => {
+          if (event.type === 'set' && selectedDate) {
+            const currentDate = new Date(date);
+            if (mode === 'date') {
+              currentDate.setFullYear(selectedDate.getFullYear());
+              currentDate.setMonth(selectedDate.getMonth());
+              currentDate.setDate(selectedDate.getDate());
+              setDate(currentDate);
+              // Show time picker after date on Android for datetime feel
+              setTimeout(() => showAndroidPicker('time'), 300);
+            } else {
+              currentDate.setHours(selectedDate.getHours());
+              currentDate.setMinutes(selectedDate.getMinutes());
+              setDate(currentDate);
+            }
+          }
+        },
+      });
+    } catch (error) {
+      console.error('DateTimePicker error:', error);
+      Alert.alert('Error', 'Could not open date picker. Please try again.');
+    }
+  }, [date]);
+
+  const handleDatePress = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (Platform.OS === 'android') {
+      showAndroidPicker('date');
+    } else {
+      setPickerMode('date');
+      setShowDatePicker(true);
+    }
+  };
+
+  const handleTimePress = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (Platform.OS === 'android') {
+      showAndroidPicker('time');
+    } else {
+      setPickerMode('time');
+      setShowTimePicker(true);
+    }
+  };
+
+  const onDateChange = (event: any, selectedDate?: Date) => {
+    if (Platform.OS === 'android') {
+      setShowDatePicker(false);
+      setShowTimePicker(false);
+    }
+    
+    if (selectedDate) {
+      setDate(selectedDate);
+    }
   };
 
   const validateForm = (): boolean => {
@@ -1025,7 +1270,6 @@ export default function UniversalAddLogScreen() {
   };
 
   const renderField = (field: FieldConfig) => {
-    // Check conditional visibility
     if (field.showIf && !field.showIf(formData)) {
       return null;
     }
@@ -1278,6 +1522,26 @@ export default function UniversalAddLogScreen() {
     }
   };
 
+  // Group log types by category for better organization
+  const groupedLogTypes = useMemo(() => {
+    const groups: Record<string, LogTypeConfig[]> = {
+      essential: [],
+      health: [],
+      development: [],
+      daily: [],
+      other: [],
+    };
+    
+    Object.values(logTypes).forEach(type => {
+      const category = type.category || 'other';
+      if (groups[category]) {
+        groups[category].push(type);
+      }
+    });
+    
+    return groups;
+  }, [logTypes]);
+
   return (
     <LinearGradient 
       colors={[currentConfig.gradient[0] + '15', currentConfig.gradient[1] + '10', '#ffffff']} 
@@ -1325,7 +1589,7 @@ export default function UniversalAddLogScreen() {
             </TouchableOpacity>
           </Animated.View>
 
-          {/* Type Selector */}
+          {/* Type Selector - FIXED: Better spacing and rounded corners */}
           <Animated.View entering={FadeInUp.delay(100)} style={styles.typeSection}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionLabel}>Log Type</Text>
@@ -1342,72 +1606,247 @@ export default function UniversalAddLogScreen() {
               horizontal 
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.typesContainer}
+              decelerationRate="fast"
+              snapToInterval={95}
+              snapToAlignment="start"
             >
-              {Object.values(logTypes).map((type, index) => (
-                <AnimatedTouchableOpacity
-                  entering={FadeIn.delay(index * 50)}
-                  key={type.id}
-                  style={[
-                    styles.typeCard,
-                    selectedType === type.id && { 
-                      borderColor: type.color,
-                      backgroundColor: `${type.color}20`,
-                      transform: [{ scale: 1.05 }]
-                    }
-                  ]}
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                    setSelectedType(type.id);
-                    setFormData({});
-                    setSelectedTags([]);
-                  }}
-                >
-                  <Text style={styles.typeEmoji}>{type.emoji}</Text>
-                  <Text style={[
-                    styles.typeLabel,
-                    selectedType === type.id && { color: type.color, fontWeight: '700' }
-                  ]}>
-                    {type.name}
-                  </Text>
-                  {type.isCustom && (
-                    <View style={[styles.customBadge, { backgroundColor: type.color }]}>
-                      <Text style={styles.customBadgeText}>★</Text>
-                    </View>
-                  )}
-                </AnimatedTouchableOpacity>
-              ))}
+              {/* Essential Care */}
+              <View style={styles.categorySection}>
+                <Text style={styles.categoryLabel}>Essential</Text>
+                <View style={styles.typeRow}>
+                  {groupedLogTypes.essential.map((type, index) => (
+                    <AnimatedTouchableOpacity
+                      entering={FadeIn.delay(index * 50)}
+                      key={type.id}
+                      style={[
+                        styles.typeCard,
+                        selectedType === type.id && { 
+                          borderColor: type.color,
+                          backgroundColor: `${type.color}20`,
+                          transform: [{ scale: 1.05 }]
+                        }
+                      ]}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                        setSelectedType(type.id);
+                        setFormData({});
+                        setSelectedTags([]);
+                      }}
+                    >
+                      <View style={[styles.emojiContainer, { backgroundColor: `${type.color}15` }]}>
+                        <Text style={styles.typeEmoji}>{type.emoji}</Text>
+                      </View>
+                      <Text style={[
+                        styles.typeLabel,
+                        selectedType === type.id && { color: type.color, fontWeight: '700' }
+                      ]}>
+                        {type.name}
+                      </Text>
+                      {type.isCustom && (
+                        <View style={[styles.customBadge, { backgroundColor: type.color }]}>
+                          <Text style={styles.customBadgeText}>★</Text>
+                        </View>
+                      )}
+                    </AnimatedTouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {/* Health */}
+              <View style={styles.categorySection}>
+                <Text style={styles.categoryLabel}>Health</Text>
+                <View style={styles.typeRow}>
+                  {groupedLogTypes.health.map((type, index) => (
+                    <AnimatedTouchableOpacity
+                      entering={FadeIn.delay(index * 50)}
+                      key={type.id}
+                      style={[
+                        styles.typeCard,
+                        selectedType === type.id && { 
+                          borderColor: type.color,
+                          backgroundColor: `${type.color}20`,
+                          transform: [{ scale: 1.05 }]
+                        }
+                      ]}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                        setSelectedType(type.id);
+                        setFormData({});
+                        setSelectedTags([]);
+                      }}
+                    >
+                      <View style={[styles.emojiContainer, { backgroundColor: `${type.color}15` }]}>
+                        <Text style={styles.typeEmoji}>{type.emoji}</Text>
+                      </View>
+                      <Text style={[
+                        styles.typeLabel,
+                        selectedType === type.id && { color: type.color, fontWeight: '700' }
+                      ]}>
+                        {type.name}
+                      </Text>
+                    </AnimatedTouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {/* Development */}
+              <View style={styles.categorySection}>
+                <Text style={styles.categoryLabel}>Development</Text>
+                <View style={styles.typeRow}>
+                  {groupedLogTypes.development.map((type, index) => (
+                    <AnimatedTouchableOpacity
+                      entering={FadeIn.delay(index * 50)}
+                      key={type.id}
+                      style={[
+                        styles.typeCard,
+                        selectedType === type.id && { 
+                          borderColor: type.color,
+                          backgroundColor: `${type.color}20`,
+                          transform: [{ scale: 1.05 }]
+                        }
+                      ]}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                        setSelectedType(type.id);
+                        setFormData({});
+                        setSelectedTags([]);
+                      }}
+                    >
+                      <View style={[styles.emojiContainer, { backgroundColor: `${type.color}15` }]}>
+                        <Text style={styles.typeEmoji}>{type.emoji}</Text>
+                      </View>
+                      <Text style={[
+                        styles.typeLabel,
+                        selectedType === type.id && { color: type.color, fontWeight: '700' }
+                      ]}>
+                        {type.name}
+                      </Text>
+                    </AnimatedTouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {/* Daily & Other */}
+              <View style={styles.categorySection}>
+                <Text style={styles.categoryLabel}>Daily & Other</Text>
+                <View style={styles.typeRow}>
+                  {[...groupedLogTypes.daily, ...groupedLogTypes.other].map((type, index) => (
+                    <AnimatedTouchableOpacity
+                      entering={FadeIn.delay(index * 50)}
+                      key={type.id}
+                      style={[
+                        styles.typeCard,
+                        selectedType === type.id && { 
+                          borderColor: type.color,
+                          backgroundColor: `${type.color}20`,
+                          transform: [{ scale: 1.05 }]
+                        }
+                      ]}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                        setSelectedType(type.id);
+                        setFormData({});
+                        setSelectedTags([]);
+                      }}
+                    >
+                      <View style={[styles.emojiContainer, { backgroundColor: `${type.color}15` }]}>
+                        <Text style={styles.typeEmoji}>{type.emoji}</Text>
+                      </View>
+                      <Text style={[
+                        styles.typeLabel,
+                        selectedType === type.id && { color: type.color, fontWeight: '700' }
+                      ]}>
+                        {type.name}
+                      </Text>
+                    </AnimatedTouchableOpacity>
+                  ))}
+                </View>
+              </View>
             </ScrollView>
           </Animated.View>
 
-          {/* Date/Time */}
+          {/* Date/Time - FIXED: Separate pickers for Android compatibility */}
           <Animated.View entering={FadeInUp.delay(150)} style={styles.timeSection}>
             <Text style={styles.sectionLabel}>When</Text>
-            <TouchableOpacity 
-              style={styles.timeButton}
-              onPress={() => setShowDatePicker(true)}
-            >
-              <View style={[styles.timeIconContainer, { backgroundColor: `${currentConfig.color}15` }]}>
-                <Ionicons name="time-outline" size={22} color={currentConfig.color} />
-              </View>
-              <View style={styles.timeTextContainer}>
-                <Text style={styles.timeMainText}>
-                  {isToday(date) ? 'Today' : isYesterday(date) ? 'Yesterday' : format(date, 'EEE, MMM d')}
-                </Text>
-                <Text style={styles.timeSubText}>{format(date, 'h:mm a')}</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color="#94a3b8" />
-            </TouchableOpacity>
+            <View style={styles.timeButtonsContainer}>
+              <TouchableOpacity 
+                style={styles.timeButton}
+                onPress={handleDatePress}
+              >
+                <View style={[styles.timeIconContainer, { backgroundColor: `${currentConfig.color}15` }]}>
+                  <Ionicons name="calendar-outline" size={22} color={currentConfig.color} />
+                </View>
+                <View style={styles.timeTextContainer}>
+                  <Text style={styles.timeMainText}>
+                    {isToday(date) ? 'Today' : isYesterday(date) ? 'Yesterday' : format(date, 'EEE, MMM d')}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color="#94a3b8" />
+              </TouchableOpacity>
+
+                           <TouchableOpacity 
+                style={styles.timeButton}
+                onPress={handleTimePress}
+              >
+                <View style={[styles.timeIconContainer, { backgroundColor: `${currentConfig.color}15` }]}>
+                  <Ionicons name="time-outline" size={22} color={currentConfig.color} />
+                </View>
+                <View style={styles.timeTextContainer}>
+                  <Text style={styles.timeMainText}>{format(date, 'h:mm a')}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color="#94a3b8" />
+              </TouchableOpacity>
+            </View>
             
-            {showDatePicker && (
-              <DateTimePicker
-                value={date}
-                mode="datetime"
-                display="spinner"
-                onChange={(event, selectedDate) => {
-                  setShowDatePicker(Platform.OS === 'ios');
-                  if (selectedDate) setDate(selectedDate);
-                }}
-              />
+            {/* iOS Date/Time Pickers */}
+            {Platform.OS === 'ios' && showDatePicker && (
+              <Modal
+                transparent={true}
+                animationType="slide"
+                visible={showDatePicker}
+                onRequestClose={() => setShowDatePicker(false)}
+              >
+                <View style={styles.pickerModalOverlay}>
+                  <View style={styles.pickerModalContent}>
+                    <View style={styles.pickerHeader}>
+                      <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                        <Text style={styles.pickerDoneButton}>Done</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <DateTimePicker
+                      value={date}
+                      mode="date"
+                      display="spinner"
+                      onChange={onDateChange}
+                    />
+                  </View>
+                </View>
+              </Modal>
+            )}
+
+            {Platform.OS === 'ios' && showTimePicker && (
+              <Modal
+                transparent={true}
+                animationType="slide"
+                visible={showTimePicker}
+                onRequestClose={() => setShowTimePicker(false)}
+              >
+                <View style={styles.pickerModalOverlay}>
+                  <View style={styles.pickerModalContent}>
+                    <View style={styles.pickerHeader}>
+                      <TouchableOpacity onPress={() => setShowTimePicker(false)}>
+                        <Text style={styles.pickerDoneButton}>Done</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <DateTimePicker
+                      value={date}
+                      mode="time"
+                      display="spinner"
+                      onChange={onDateChange}
+                    />
+                  </View>
+                </View>
+              </Modal>
             )}
           </Animated.View>
 
@@ -1551,7 +1990,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
 
-  // Type Selector
+  // Type Selector - FIXED: Better spacing and organization
   typeSection: {
     marginBottom: 24,
   },
@@ -1577,28 +2016,52 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   typesContainer: {
-    gap: 10,
-    paddingBottom: 8,
+    paddingHorizontal: 4,
+    paddingVertical: 8,
+    paddingBottom: 16,
   },
+  categorySection: {
+    marginRight: 20,
+  },
+  categoryLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#94a3b8',
+    marginBottom: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginLeft: 4,
+  },
+  typeRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  // FIXED: Improved type card with better rounded corners and inner container
   typeCard: {
     width: 85,
-    height: 100,
-    backgroundColor: 'rgba(255,255,255,0.8)',
+    backgroundColor: 'rgba(255,255,255,0.9)',
     borderRadius: 20,
+    padding: 12,
     alignItems: 'center',
-    justifyContent: 'center',
     borderWidth: 2,
     borderColor: 'transparent',
-    marginRight: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  // NEW: Inner emoji container for better visual separation
+  emojiContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
   },
   typeEmoji: {
-    fontSize: 32,
-    marginBottom: 6,
+    fontSize: 28,
   },
   typeLabel: {
     fontSize: 12,
@@ -1608,8 +2071,8 @@ const styles = StyleSheet.create({
   },
   customBadge: {
     position: 'absolute',
-    top: 6,
-    right: 6,
+    top: 8,
+    right: 8,
     width: 16,
     height: 16,
     borderRadius: 8,
@@ -1622,32 +2085,42 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
-  // Time Section
+  // Time Section - FIXED: Side by side layout
   timeSection: {
     marginBottom: 24,
   },
+  timeButtonsContainer: {
+    flexDirection: 'row',
+    gap: 12,
+  },
   timeButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.8)',
+    backgroundColor: 'rgba(255,255,255,0.9)',
     borderRadius: 16,
-    padding: 16,
+    padding: 14,
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.05)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   timeIconContainer: {
-    width: 44,
-    height: 44,
+    width: 40,
+    height: 40,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 14,
+    marginRight: 12,
   },
   timeTextContainer: {
     flex: 1,
   },
   timeMainText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
     color: '#1e293b',
   },
@@ -1655,6 +2128,30 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#64748b',
     marginTop: 2,
+  },
+
+  // iOS Picker Modal
+  pickerModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  pickerModalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 20,
+  },
+  pickerHeader: {
+    alignItems: 'flex-end',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+  },
+  pickerDoneButton: {
+    color: '#3b82f6',
+    fontSize: 16,
+    fontWeight: '600',
   },
 
   // Errors
@@ -1703,7 +2200,7 @@ const styles = StyleSheet.create({
     padding: 16,
     fontSize: 16,
     color: '#1e293b',
-    backgroundColor: 'rgba(255,255,255,0.8)',
+    backgroundColor: 'rgba(255,255,255,0.9)',
   },
   inputError: {
     borderColor: '#ef4444',
@@ -1715,7 +2212,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.08)',
     borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.8)',
+    backgroundColor: 'rgba(255,255,255,0.9)',
     paddingRight: 16,
   },
   numberInput: {
@@ -1736,7 +2233,7 @@ const styles = StyleSheet.create({
     padding: 16,
     fontSize: 16,
     color: '#1e293b',
-    backgroundColor: 'rgba(255,255,255,0.8)',
+    backgroundColor: 'rgba(255,255,255,0.9)',
     minHeight: 100,
     textAlignVertical: 'top',
   },
@@ -1753,10 +2250,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.8)',
+    backgroundColor: 'rgba(255,255,255,0.9)',
     borderWidth: 2,
     borderColor: 'transparent',
     gap: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 2,
   },
   optionEmoji: {
     fontSize: 20,
@@ -1774,7 +2276,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     padding: 16,
     borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.8)',
+    backgroundColor: 'rgba(255,255,255,0.9)',
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.08)',
   },
@@ -1789,7 +2291,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.8)',
+    backgroundColor: 'rgba(255,255,255,0.9)',
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.08)',
   },
@@ -1816,7 +2318,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.08)',
     borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.8)',
+    backgroundColor: 'rgba(255,255,255,0.9)',
     paddingHorizontal: 16,
   },
   tempInput: {
@@ -1861,7 +2363,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 24,
     borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.8)',
+    backgroundColor: 'rgba(255,255,255,0.9)',
     borderWidth: 2,
     borderColor: 'rgba(0,0,0,0.08)',
     borderStyle: 'dashed',
@@ -1887,7 +2389,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   tag: {
-    backgroundColor: 'rgba(255,255,255,0.8)',
+    backgroundColor: 'rgba(255,255,255,0.9)',
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,

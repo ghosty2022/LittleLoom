@@ -19,6 +19,13 @@ import * as Haptics from 'expo-haptics';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CommunityStackParamList } from '../../types/navigation';
 import { useCommunity, Post, Topic } from '../../context/CommunityContext';
+import { 
+  CommunityColors, 
+  CommunityGradients, 
+  CommunitySpacing, 
+  CommunityBorderRadius,
+  CommunityShadows 
+} from '../../theme/CommunityTheme';
 
 type TopicScreenProps = NativeStackScreenProps<CommunityStackParamList, 'Topic'>;
 
@@ -44,7 +51,6 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
   const [topic, setTopic] = useState<Topic | undefined>(undefined);
   const [posts, setPosts] = useState<Post[]>([]);
 
-  // Load topic data
   useEffect(() => {
     const loadTopicData = () => {
       const currentTopic = getTopicById(topicId);
@@ -78,7 +84,6 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
             style: 'destructive', 
             onPress: async () => {
               await leaveTopic(topic.id);
-              // Update local state
               setTopic(prev => prev ? { ...prev, isJoined: false, members: prev.members - 1 } : undefined);
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             }
@@ -87,7 +92,6 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
       );
     } else {
       await joinTopic(topic.id);
-      // Update local state
       setTopic(prev => prev ? { ...prev, isJoined: true, members: prev.members + 1 } : undefined);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
@@ -99,7 +103,6 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
     } else {
       await likePost(post.id);
     }
-    // Refresh posts
     const updatedPosts = getPostsByTopic(topicId);
     setPosts(updatedPosts);
   };
@@ -110,7 +113,6 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
     } else {
       await repostPost(post.id);
     }
-    // Refresh posts
     const updatedPosts = getPostsByTopic(topicId);
     setPosts(updatedPosts);
   };
@@ -165,7 +167,7 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
               <View style={styles.postNameRow}>
                 <Text style={styles.postAuthor}>{item.author.displayName}</Text>
                 {item.author.isVerified && (
-                  <Ionicons name="checkmark-circle" size={14} color="#667eea" />
+                  <Ionicons name="checkmark-circle" size={14} color={CommunityColors.primary} />
                 )}
               </View>
               <Text style={styles.postTime}>{item.time}</Text>
@@ -182,7 +184,7 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
               <Ionicons 
                 name={item.isLiked ? "heart" : "heart-outline"} 
                 size={20} 
-                color={item.isLiked ? "#fc5c7d" : "#666"} 
+                color={item.isLiked ? CommunityColors.error : CommunityColors.text.secondary} 
               />
               <Text style={[styles.actionText, item.isLiked && styles.actionTextActive]}>
                 {item.likes}
@@ -190,7 +192,7 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
             </TouchableOpacity>
             
             <View style={styles.action}>
-              <Ionicons name="chatbubble-outline" size={20} color="#666" />
+              <Ionicons name="chatbubble-outline" size={20} color={CommunityColors.text.secondary} />
               <Text style={styles.actionText}>{item.commentsCount}</Text>
             </View>
             
@@ -201,7 +203,7 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
               <Ionicons 
                 name={item.isReposted ? "repeat" : "repeat-outline"} 
                 size={20} 
-                color={item.isReposted ? "#11998e" : "#666"} 
+                color={item.isReposted ? CommunityColors.secondary : CommunityColors.text.secondary} 
               />
               <Text style={[styles.actionText, item.isReposted && styles.actionTextActive]}>
                 {item.reposts}
@@ -209,7 +211,7 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
             </TouchableOpacity>
             
             <TouchableOpacity style={styles.action}>
-              <Ionicons name="share-outline" size={20} color="#666" />
+              <Ionicons name="share-outline" size={20} color={CommunityColors.text.secondary} />
             </TouchableOpacity>
           </View>
         </BlurView>
@@ -219,7 +221,7 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
 
   return (
     <LinearGradient 
-      colors={[topic.color + '20', '#e0e7ff', '#d1d5ff']} 
+      colors={[topic.color + '20', ...CommunityColors.background.gradient]} 
       style={styles.container}
     >
       <StatusBar style="dark" />
@@ -231,7 +233,7 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
       >
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={28} color="#1a1a1a" />
+            <Ionicons name="arrow-back" size={28} color={CommunityColors.text.primary} />
           </TouchableOpacity>
           <TouchableOpacity 
             onPress={() => {
@@ -242,7 +244,7 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
               ]);
             }}
           >
-            <Ionicons name="ellipsis-horizontal" size={24} color="#1a1a1a" />
+            <Ionicons name="ellipsis-horizontal" size={24} color={CommunityColors.text.primary} />
           </TouchableOpacity>
         </View>
 
@@ -282,10 +284,10 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
             <Text style={styles.sortText}>
               {sortBy.charAt(0).toUpperCase() + sortBy.slice(1)}
             </Text>
-            <Ionicons name="chevron-down" size={16} color="#666" />
+            <Ionicons name="chevron-down" size={16} color={CommunityColors.text.secondary} />
           </TouchableOpacity>
           <TouchableOpacity style={styles.filterButton}>
-            <Ionicons name="funnel-outline" size={20} color="#667eea" />
+            <Ionicons name="funnel-outline" size={20} color={CommunityColors.primary} />
           </TouchableOpacity>
         </View>
 
@@ -297,11 +299,11 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
           contentContainerStyle={styles.postsList}
           showsVerticalScrollIndicator={false}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#667eea" />
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={CommunityColors.primary} />
           }
           ListEmptyComponent={
             <View style={styles.emptyState}>
-              <Ionicons name="document-text-outline" size={48} color="#ccc" />
+              <Ionicons name="document-text-outline" size={48} color={CommunityColors.text.tertiary} />
               <Text style={styles.emptyText}>No posts yet</Text>
               <Text style={styles.emptySubtext}>Be the first to post!</Text>
             </View>
@@ -343,10 +345,10 @@ const styles = StyleSheet.create({
   },
   topicInfo: { alignItems: 'center' },
   topicEmoji: { fontSize: 80, marginBottom: 12 },
-  topicName: { fontSize: 28, fontWeight: '800', color: '#1a1a1a', marginBottom: 8 },
+  topicName: { fontSize: 28, fontWeight: '800', color: CommunityColors.text.primary, marginBottom: 8 },
   topicDescription: {
     fontSize: 14,
-    color: '#666',
+    color: CommunityColors.text.secondary,
     textAlign: 'center',
     marginBottom: 16,
     paddingHorizontal: 40,
@@ -356,17 +358,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 20,
   },
-  stat: { fontSize: 14, color: '#666' },
-  statDot: { marginHorizontal: 8, color: '#999' },
+  stat: { fontSize: 14, color: CommunityColors.text.secondary },
+  statDot: { marginHorizontal: 8, color: CommunityColors.text.tertiary },
   joinButton: {
-    backgroundColor: '#667eea',
+    backgroundColor: CommunityColors.primary,
     paddingHorizontal: 32,
     paddingVertical: 12,
     borderRadius: 24,
   },
-  joinedButton: { backgroundColor: 'rgba(102,126,234,0.2)' },
+  joinedButton: { backgroundColor: CommunityColors.primary + '20' },
   joinText: { color: 'white', fontSize: 16, fontWeight: '700' },
-  joinedText: { color: '#667eea' },
+  joinedText: { color: CommunityColors.primary },
   content: {
     flex: 1,
     backgroundColor: 'rgba(255,255,255,0.3)',
@@ -378,28 +380,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 24,
+    paddingHorizontal: CommunitySpacing.lg,
     marginBottom: 16,
   },
   sortButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: 'rgba(255,255,255,0.6)',
+    backgroundColor: CommunityColors.background.card,
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
   },
-  sortText: { fontSize: 14, fontWeight: '600', color: '#666' },
+  sortText: { fontSize: 14, fontWeight: '600', color: CommunityColors.text.secondary },
   filterButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.6)',
+    backgroundColor: CommunityColors.background.card,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  postsList: { paddingHorizontal: 24, paddingBottom: 100 },
+  postsList: { paddingHorizontal: CommunitySpacing.lg, paddingBottom: 100 },
   postCard: {
     borderRadius: 20,
     padding: 20,
@@ -413,13 +415,13 @@ const styles = StyleSheet.create({
   },
   postAvatar: { fontSize: 40, marginRight: 12 },
   postNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  postAuthor: { fontSize: 15, fontWeight: '700', color: '#1a1a1a' },
-  postTime: { fontSize: 13, color: '#999', marginTop: 2 },
-  postContent: { fontSize: 15, color: '#333', lineHeight: 22, marginBottom: 16 },
+  postAuthor: { fontSize: 15, fontWeight: '700', color: CommunityColors.text.primary },
+  postTime: { fontSize: 13, color: CommunityColors.text.tertiary, marginTop: 2 },
+  postContent: { fontSize: 15, color: CommunityColors.text.primary, lineHeight: 22, marginBottom: 16 },
   postActions: { flexDirection: 'row', gap: 24 },
   action: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  actionText: { fontSize: 14, color: '#666', fontWeight: '600' },
-  actionTextActive: { color: '#667eea' },
+  actionText: { fontSize: 14, color: CommunityColors.text.secondary, fontWeight: '600' },
+  actionTextActive: { color: CommunityColors.primary },
   fab: {
     position: 'absolute',
     right: 24,
@@ -428,11 +430,7 @@ const styles = StyleSheet.create({
     height: 64,
     borderRadius: 32,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    elevation: 10,
+    ...CommunityShadows.lg,
   },
   fabGradient: {
     flex: 1,
@@ -444,11 +442,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 60,
   },
-  emptyText: { fontSize: 16, color: '#999', marginTop: 12 },
-  emptySubtext: { fontSize: 14, color: '#bbb', marginTop: 4 },
-  errorText: { fontSize: 18, color: '#666', marginBottom: 16 },
+  emptyText: { fontSize: 16, color: CommunityColors.text.secondary, marginTop: 12 },
+  emptySubtext: { fontSize: 14, color: CommunityColors.text.tertiary, marginTop: 4 },
+  errorText: { fontSize: 18, color: CommunityColors.text.secondary, marginBottom: 16 },
   goBackButton: {
-    backgroundColor: '#667eea',
+    backgroundColor: CommunityColors.primary,
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 12,
