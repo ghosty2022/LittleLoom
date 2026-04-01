@@ -30,6 +30,7 @@ import Animated, {
   SlideInRight,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
+import * as LocalAuthentication from 'expo-local-authentication';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAuth } from '../context/AuthContext';
 import type { RootStackParamList } from '../types/navigation';
@@ -38,7 +39,7 @@ type LoginScreenProps = NativeStackScreenProps<RootStackParamList, 'Login'>;
 const { width, height } = Dimensions.get('window');
 const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpacity);
 
-// ==================== SWEET ALERT COMPONENT (Matches HomeScreen) ====================
+// ==================== SWEET ALERT COMPONENT ====================
 
 interface AlertState {
   visible: boolean;
@@ -100,7 +101,9 @@ const SweetAlert = ({ visible, type, title, message, onClose, isDark }: AlertSta
 
 // ==================== BIOMETRIC ICON COMPONENT ====================
 
-const BiometricIcon = ({ type, size = 80 }: { type: 'face' | 'fingerprint'; size?: number }) => {
+type BiometricType = 'face' | 'fingerprint' | 'iris' | 'generic';
+
+const BiometricIcon = ({ type, size = 80 }: { type: BiometricType; size?: number }) => {
   const scale = useSharedValue(1);
   
   useEffect(() => {
@@ -117,14 +120,32 @@ const BiometricIcon = ({ type, size = 80 }: { type: 'face' | 'fingerprint'; size
     transform: [{ scale: scale.value }],
   }));
 
+  const getIconName = () => {
+    switch (type) {
+      case 'face': return 'scan-outline';
+      case 'fingerprint': return 'finger-print';
+      case 'iris': return 'eye';
+      default: return 'finger-print';
+    }
+  };
+
+  const getGradientColors = () => {
+    switch (type) {
+      case 'face': return ['rgba(102,126,234,0.2)', 'rgba(118,75,162,0.1)'];
+      case 'fingerprint': return ['rgba(67,233,123,0.2)', 'rgba(56,249,215,0.1)'];
+      case 'iris': return ['rgba(255,165,2,0.2)', 'rgba(255,99,72,0.1)'];
+      default: return ['rgba(102,126,234,0.2)', 'rgba(118,75,162,0.1)'];
+    }
+  };
+
   return (
     <Animated.View style={[styles.biometricIconContainer, animatedStyle, { width: size, height: size }]}>
       <LinearGradient
-        colors={['rgba(102,126,234,0.2)', 'rgba(118,75,162,0.1)']}
+        colors={getGradientColors()}
         style={[styles.biometricIconBg, { width: size, height: size }]}
       >
         <Ionicons 
-          name={type === 'face' ? 'scan-outline' : 'finger-print'} 
+          name={getIconName() as any} 
           size={size * 0.4} 
           color="#667eea" 
         />
@@ -144,7 +165,8 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showBiometricButton, setShowBiometricButton] = useState(false);
-  const [biometricType, setBiometricType] = useState<'face' | 'fingerprint'>('fingerprint');
+  const [biometricType, setBiometricType] = useState<BiometricType>('generic');
+  const [biometricTypeName, setBiometricTypeName] = useState('Biometric');
   const [alert, setAlert] = useState<AlertState>({ visible: false, type: 'success', title: '', message: '' });
   
   const { 
@@ -159,6 +181,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     setupComplete,
     hasParent2,
     hasBaby,
+    hasSeenOnboarding, // NEW: Check if first-time user
   } = useAuth();
   
   const insets = useSafeAreaInsets();
@@ -173,7 +196,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
   const loginAttempted = useRef(false);
   const biometricCheckComplete = useRef(false);
   const autoLoginAttempted = useRef(false);
-  const hasNavigated = useRef(false); // CRITICAL: Prevent duplicate navigation
+  const hasNavigated = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -181,30 +204,30 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     };
   }, []);
 
-  // CRITICAL FIX: Handle navigation when auth state changes
+  // ============================================
+  // CRITICAL: Navigation Logic After Login
+  // ============================================
   useEffect(() => {
     if (isAuthenticated && !hasNavigated.current) {
       hasNavigated.current = true;
       
-      // Small delay to let the success toast show
       const timer = setTimeout(() => {
         if (!isMounted.current) return;
         
-        // Determine where to navigate based on setup state
+        // For first-time users (just completed onboarding), go through setup flow
         if (!setupComplete) {
-          // Navigate to setup flow
           if (!hasParent2) {
-            navigation.replace('AddParent2');
+            navigation.replace('Parent2Optional');
           } else if (!hasBaby) {
-            navigation.replace('AddBaby');
+            navigation.replace('BabyOptional');
           } else {
             navigation.replace('Main');
           }
         } else {
-          // Setup complete, go to main app
+          // Existing user - Main will handle SwitchBaby if needed
           navigation.replace('Main');
         }
-      }, 1500); // 1.5s delay to show success message
+      }, 1500);
       
       return () => clearTimeout(timer);
     }
@@ -229,17 +252,38 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
   // Detect biometric type
   useEffect(() => {
     const detectType = async () => {
-      const { LocalAuthentication } = await import('expo-local-authentication');
-      const types = await LocalAuthentication.supportedAuthenticationTypesAsync();
-      if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
-        setBiometricType('face');
-      } else {
-        setBiometricType('fingerprint');
+      try {
+        if (!LocalAuthentication || !LocalAuthentication.supportedAuthenticationTypesAsync) {
+          return;
+        }
+
+        const types = await LocalAuthentication.supportedAuthenticationTypesAsync();
+        
+        if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
+          setBiometricType('face');
+          setBiometricTypeName('Face ID');
+        } else if (types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
+          setBiometricType('fingerprint');
+          setBiometricTypeName('Fingerprint');
+        } else if (types.includes(LocalAuthentication.AuthenticationType.IRIS)) {
+          setBiometricType('iris');
+          setBiometricTypeName('Iris Scan');
+        } else {
+          setBiometricType('generic');
+          setBiometricTypeName('Biometric');
+        }
+      } catch (error) {
+        setBiometricType('generic');
+        setBiometricTypeName('Biometric');
       }
     };
-    if (isBiometricAvailable) detectType();
+
+    if (isBiometricAvailable) {
+      detectType();
+    }
   }, [isBiometricAvailable]);
 
+  // Auto-login with biometric if credentials exist
   useEffect(() => {
     if (isAuthenticated) return;
     if (autoLoginAttempted.current) return;
@@ -287,7 +331,6 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
   }, []);
 
   const handleLogin = useCallback(async () => {
-    // CRITICAL FIX: Prevent duplicate submissions
     if (loginAttempted.current || isProcessing || authLoading || hasNavigated.current) {
       return;
     }
@@ -308,35 +351,37 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
       
       if (success && isMounted.current) {
         showToast('success', 'Welcome Back!', 'Successfully signed in');
-        const shouldPrompt = await shouldShowBiometricPrompt();
-        if (shouldPrompt) {
-          setTimeout(() => {
-            promptEnableBiometricLogin(email, password);
-          }, 1000);
+        
+        // Only prompt for biometric login setup for returning users
+        // First-time users (hasSeenOnboarding=false) won't see this as they're in setup flow
+        if (hasSeenOnboarding) {
+          const shouldPrompt = await shouldShowBiometricPrompt();
+          if (shouldPrompt) {
+            setTimeout(() => {
+              promptEnableBiometricLogin(email, password);
+            }, 1000);
+          }
         }
-        // Navigation is now handled by the useEffect watching isAuthenticated
       } else {
         showToast('error', 'Login Failed', 'Invalid email or password');
-        loginAttempted.current = false; // Reset on failure
+        loginAttempted.current = false;
       }
     } catch (error) {
       showToast('error', 'Error', 'Login failed. Please try again.');
-      loginAttempted.current = false; // Reset on error
+      loginAttempted.current = false;
     } finally {
       if (isMounted.current) {
         setIsProcessing(false);
       }
-      // Don't reset loginAttempted here - keep it true until navigation completes or fails
       setTimeout(() => {
         if (!hasNavigated.current) {
           loginAttempted.current = false;
         }
       }, 2000);
     }
-  }, [email, password, signIn, isProcessing, authLoading, shouldShowBiometricPrompt]);
+  }, [email, password, signIn, isProcessing, authLoading, shouldShowBiometricPrompt, hasSeenOnboarding]);
 
   const handleBiometricLogin = useCallback(async () => {
-    // CRITICAL FIX: Prevent duplicate submissions
     if (loginAttempted.current || isProcessing || authLoading || hasNavigated.current) {
       return;
     }
@@ -350,15 +395,14 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
       const success = await loginWithBiometric();
       
       if (success && isMounted.current) {
-        showToast('success', 'Welcome!', 'Biometric login successful');
-        // Navigation is now handled by the useEffect watching isAuthenticated
+        showToast('success', 'Welcome!', `${biometricTypeName} login successful`);
       } else if (!success) {
         showToast('error', 'Biometric Failed', 'Please use your password');
-        loginAttempted.current = false; // Reset on failure
+        loginAttempted.current = false;
       }
     } catch (error) {
       showToast('error', 'Error', 'Biometric login failed');
-      loginAttempted.current = false; // Reset on error
+      loginAttempted.current = false;
     } finally {
       if (isMounted.current) {
         setIsProcessing(false);
@@ -369,11 +413,11 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
         }
       }, 3000);
     }
-  }, [loginWithBiometric, isProcessing, authLoading]);
+  }, [loginWithBiometric, isProcessing, authLoading, biometricTypeName]);
 
   const promptEnableBiometricLogin = async (userEmail: string, userPassword: string) => {
     Alert.alert(
-      `Enable ${biometricType === 'face' ? 'Face ID' : 'Fingerprint'} Login?`,
+      `Enable ${biometricTypeName} Login?`,
       'Would you like to use biometric authentication for faster login next time?',
       [
         { 
@@ -387,7 +431,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
             try {
               const result = await enableBiometricLogin(userEmail, userPassword);
               if (result) {
-                showToast('success', 'Enabled!', 'Biometric login is now active');
+                showToast('success', 'Enabled!', `${biometricTypeName} login is now active`);
                 setShowBiometricButton(true);
                 biometricScale.value = withSpring(1, { damping: 12 });
               }
@@ -448,7 +492,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
                 Welcome Back
               </Text>
               
-              {/* Biometric Login Section */}
+              {/* Biometric Login Section - Only show if credentials exist */}
               {showBiometricButton && (
                 <Animated.View style={[styles.biometricSection, biometricStyle]}>
                   <TouchableOpacity 
@@ -459,7 +503,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
                   >
                     <BiometricIcon type={biometricType} size={90} />
                     <Text style={styles.biometricTitle}>
-                      {biometricType === 'face' ? 'Face ID' : 'Fingerprint'} Login
+                      {biometricTypeName} Login
                     </Text>
                     <Text style={styles.biometricSubtitle}>Tap to unlock instantly</Text>
                   </TouchableOpacity>
@@ -478,7 +522,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
                 <TextInput
                   style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
                   placeholder="Email address"
-                  placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+                  placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)' }
                   value={email}
                   onChangeText={setEmail}
                   keyboardType="email-address"
@@ -495,7 +539,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
                 <TextInput
                   style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
                   placeholder="Password"
-                  placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+                  placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)' }
                   value={password}
                   onChangeText={setPassword}
                   secureTextEntry={!showPassword}
@@ -553,9 +597,13 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
                     onPress={handleBiometricLogin}
                     disabled={isLoading}
                   >
-                    <Ionicons name={biometricType === 'face' ? 'scan-outline' : 'finger-print'} size={24} color="#667eea" />
+                    <Ionicons 
+                      name={biometricType === 'face' ? 'scan-outline' : biometricType === 'iris' ? 'eye' : 'finger-print'} 
+                      size={24} 
+                      color="#667eea" 
+                    />
                     <Text style={styles.biometricFallbackText}>
-                      Use {biometricType === 'face' ? 'Face ID' : 'Fingerprint'}
+                      Use {biometricTypeName}
                     </Text>
                   </TouchableOpacity>
                 </Animated.View>
@@ -599,7 +647,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   
-  // Alert Styles (Match HomeScreen)
+  // Alert Styles
   alertContainer: { 
     flexDirection: 'row', 
     alignItems: 'center', 

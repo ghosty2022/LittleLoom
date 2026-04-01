@@ -161,7 +161,7 @@ interface BabyContextType extends BabyState {
   createBaby: (data: Omit<BabyProfile, 'id' | 'streak' | 'milestones' | 'photos' | 'createdAt' | 'age' | 'lastUpdated'>) => Promise<boolean>;
   updateBaby: (id: string, updates: Partial<BabyProfile>) => Promise<void>;
   deleteBaby: (id: string) => Promise<boolean>;
-  switchBaby: (id: string) => Promise<void>;
+  switchBaby: (id: string) => Promise<boolean>;
   refreshCurrentBaby: () => Promise<void>;
   skipBaby: () => Promise<void>;
   clearSkipBaby: () => Promise<void>;
@@ -351,7 +351,11 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       updateAges();
       ageIntervalRef.current = setInterval(updateAges, 60000);
     }
-    return () => clearInterval(ageIntervalRef.current);
+    return () => {
+      if (ageIntervalRef.current) {
+        clearInterval(ageIntervalRef.current);
+      }
+    };
   }, [state.babies.length, calculateAge]);
 
   // ==================== SKIP BABY ====================
@@ -505,34 +509,67 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [state.babies, state.currentBabyId, loadAllBabyData]);
 
-// src/context/BabyContext.tsx - switchBaby method only
-const switchBaby = useCallback(async (id: string) => {
-  const baby = state.babies.find(b => b.id === id);
-  if (!baby) return;
-  
-  try {
-    // Save to storage first
-    await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY, id);
+  // ==================== SWITCH BABY ====================
+  const switchBaby = useCallback(async (id: string) => {
+    const baby = state.babies.find(b => b.id === id);
+    if (!baby) return false;
     
-    // Load all baby data for the new baby
-    await loadAllBabyData(id);
+    try {
+      // Save to storage first
+      await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY, id);
+      
+      // Load all baby data for the new baby
+      await loadAllBabyData(id);
+      
+      // Update state
+      setState(prev => ({ 
+        ...prev, 
+        currentBabyId: id, 
+        currentBaby: baby,
+      }));
+      
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      
+      // Return success so caller knows to refresh UI
+      return true;
+    } catch (error) {
+      console.error('Error switching baby:', error);
+      return false;
+    }
+  }, [state.babies, loadAllBabyData]);
+
+  // ==================== REFRESH CURRENT BABY ====================
+  const refreshCurrentBaby = useCallback(async () => {
+    if (!state.currentBabyId) return;
     
-    // Update state
-    setState(prev => ({ 
-      ...prev, 
-      currentBabyId: id, 
-      currentBaby: baby,
-    }));
-    
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    
-    // Return success so caller knows to refresh UI
-    return true;
-  } catch (error) {
-    console.error('Error switching baby:', error);
-    return false;
-  }
-}, [state.babies, loadAllBabyData]);
+    try {
+      // Reload baby data from storage
+      const babiesStr = await AsyncStorage.getItem(STORAGE_KEYS.BABIES);
+      if (babiesStr) {
+        const babies: BabyProfile[] = JSON.parse(babiesStr);
+        const currentBaby = babies.find(b => b.id === state.currentBabyId);
+        
+        if (currentBaby) {
+          setState(prev => ({
+            ...prev,
+            babies: babies.map(b => ({
+              ...b,
+              age: calculateAge(b.birthDate),
+            })),
+            currentBaby: {
+              ...currentBaby,
+              age: calculateAge(currentBaby.birthDate),
+            },
+          }));
+          
+          // Reload all baby-specific data
+          await loadAllBabyData(state.currentBabyId);
+        }
+      }
+    } catch (error) {
+      console.error('Error refreshing current baby:', error);
+    }
+  }, [state.currentBabyId, calculateAge, loadAllBabyData]);
 
   // ==================== GROWTH TRACKING ====================
   const addGrowthMeasurement = useCallback(async (

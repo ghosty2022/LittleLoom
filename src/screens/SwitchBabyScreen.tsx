@@ -2,9 +2,10 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
+  TouchableOpacity,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
+  ActivityIndicator,
   useColorScheme,
   Alert,
   Dimensions,
@@ -18,6 +19,7 @@ import Animated, { FadeInUp, FadeIn, Layout, useSharedValue, useAnimatedStyle, w
 import * as Haptics from 'expo-haptics';
 import { useBaby } from '../context/BabyContext';
 import { useAuth } from '../context/AuthContext';
+import { useFamily } from '../context/FamilyContext'; // NEW: For partner check
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../types/navigation';
 
@@ -84,76 +86,6 @@ const SweetAlert = ({ visible, type, title, message, onClose, isDark }: AlertSta
   );
 };
 
-// ==================== CONFIRM MODAL COMPONENT ====================
-interface ConfirmModalProps {
-  visible: boolean;
-  title: string;
-  message: string;
-  onConfirm: () => void;
-  onCancel: () => void;
-  confirmText?: string;
-  cancelText?: string;
-  type?: 'default' | 'danger' | 'warning';
-  isDark: boolean;
-}
-
-const ConfirmModal = ({ visible, title, message, onConfirm, onCancel, confirmText = 'Delete', cancelText = 'Cancel', type = 'danger', isDark }: ConfirmModalProps) => {
-  const opacity = useSharedValue(0);
-  const scale = useSharedValue(0.9);
-
-  useEffect(() => {
-    if (visible) {
-      opacity.value = withTiming(1, { duration: 200 });
-      scale.value = withSpring(1, { damping: 15 });
-    } else {
-      opacity.value = withTiming(0, { duration: 200 });
-      scale.value = withTiming(0.9, { duration: 200 });
-    }
-  }, [visible]);
-
-  const backdropStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
-  const modalStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
-
-  if (!visible) return null;
-
-  const colors = {
-    default: ['#667eea', '#764ba2'],
-    danger: ['#ef4444', '#dc2626'],
-    warning: ['#f59e0b', '#d97706'],
-  }[type];
-
-  return (
-    <View style={[StyleSheet.absoluteFill, { zIndex: 10000, justifyContent: 'center', alignItems: 'center' }]} pointerEvents="auto">
-      <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.6)' }, backdropStyle]}>
-        <BlurView intensity={80} style={StyleSheet.absoluteFill} tint="dark" />
-      </Animated.View>
-      
-      <Animated.View style={[styles.confirmModal, modalStyle, { backgroundColor: isDark ? '#1a1a2e' : '#fff' }]}>
-        <View style={styles.confirmIconContainer}>
-          <LinearGradient colors={colors} style={styles.confirmIconBg}>
-            <Ionicons name={type === 'danger' ? 'trash' : type === 'warning' ? 'warning' : 'help-circle'} size={32} color="#fff" />
-          </LinearGradient>
-        </View>
-        
-        <Text style={[styles.confirmTitle, { color: isDark ? '#fff' : '#1e293b' }]}>{title}</Text>
-        <Text style={styles.confirmMessage}>{message}</Text>
-        
-        <View style={styles.confirmButtons}>
-          <TouchableOpacity style={[styles.confirmButton, styles.cancelButton]} onPress={onCancel}>
-            <Text style={styles.cancelButtonText}>{cancelText}</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity onPress={onConfirm}>
-            <LinearGradient colors={colors} style={styles.confirmButtonGradient}>
-              <Text style={styles.confirmButtonText}>{confirmText}</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
-      </Animated.View>
-    </View>
-  );
-};
-
 // ==================== GLASSMORPHISM CARD ====================
 const GlassmorphismCard: React.FC<{ children: React.ReactNode; style?: any; onPress?: () => void; intensity?: number }> = ({ children, style, onPress, intensity = 80 }) => {
   const colorScheme = useColorScheme();
@@ -177,50 +109,76 @@ const GlassmorphismCard: React.FC<{ children: React.ReactNode; style?: any; onPr
 
 // ==================== MAIN SCREEN ====================
 export default function SwitchBabyScreen({ navigation }: SwitchBabyScreenProps) {
-  const { babies, currentBabyId, switchBaby, deleteBaby, loadBabies } = useBaby();
-  const { userProfile } = useAuth();
+  const { babies, currentBabyId, switchBaby, deleteBaby, loadBabies, isLoading: babyLoading } = useBaby();
+  const { userProfile, setupComplete, hasParent2 } = useAuth();
+  const { parent2, inviteMember } = useFamily(); // NEW: Check for partner
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   
   const [alert, setAlert] = useState<AlertState>({ visible: false, type: 'success', title: '', message: '' });
-  const [confirmModal, setConfirmModal] = useState<{ visible: boolean; title: string; message: string; onConfirm: () => void; type?: 'default' | 'danger' | 'warning' }>({ 
-    visible: false, 
-    title: '', 
-    message: '', 
-    onConfirm: () => {} 
-  });
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [showAddParentModal, setShowAddParentModal] = useState(false); // NEW
+
+  const hasNavigated = useRef(false);
 
   const showToast = useCallback((type: AlertState['type'], title: string, message: string) => {
     setAlert({ visible: true, type, title, message });
   }, []);
 
+  // ============================================
+  // CRITICAL: Handle baby switching
+  // ============================================
   const handleSwitchBaby = useCallback(async (babyId: string) => {
     if (babyId === currentBabyId) {
-      navigation.goBack();
+      // Already selected, just go to Main
+      navigation.replace('Main');
       return;
     }
     
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setIsProcessing(true);
     
     try {
       const success = await switchBaby(babyId);
       
       if (success) {
-        // Reload data to ensure fresh state (like HomeScreen does)
         await loadBabies();
+        showToast('success', 'Switched', 'Baby profile updated');
         
-        showToast('success', 'Switched', 'Baby profile updated successfully');
-        
-        // Navigate back after short delay to show success state
-        setTimeout(() => navigation.goBack(), 400);
+        // Navigate to Main after short delay
+        setTimeout(() => {
+          if (!hasNavigated.current) {
+            hasNavigated.current = true;
+            navigation.replace('Main');
+          }
+        }, 500);
       } else {
         showToast('error', 'Error', 'Failed to switch baby profile');
+        setIsProcessing(false);
       }
     } catch (error) {
       showToast('error', 'Error', 'An unexpected error occurred');
+      setIsProcessing(false);
     }
   }, [currentBabyId, switchBaby, loadBabies, navigation, showToast]);
+
+  // ============================================
+  // NEW: Handle adding a partner
+  // ============================================
+  const handleAddPartner = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    navigation.navigate('Parent2Setup');
+  }, [navigation]);
+
+  // ============================================
+  // NEW: Handle skipping partner addition
+  // ============================================
+  const handleSkipPartner = useCallback(async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    // Just proceed to Main, don't force partner addition
+    navigation.replace('Main');
+  }, [navigation]);
 
   const handleDeleteBaby = useCallback((babyId: string, babyName: string) => {
     if (babies.length <= 1) {
@@ -230,40 +188,60 @@ export default function SwitchBabyScreen({ navigation }: SwitchBabyScreenProps) 
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     
-    setConfirmModal({
-      visible: true,
-      title: 'Delete Profile?',
-      message: `Are you sure you want to delete ${babyName}'s profile? This cannot be undone.`,
-      type: 'danger',
-      onConfirm: async () => {
-        try {
-          const success = await deleteBaby(babyId);
-          
-          if (success) {
-            await loadBabies(); // Refresh the list
-            showToast('success', 'Deleted', 'Baby profile removed');
-            
-            // If no babies left, navigate to create profile
-            if (babies.length <= 1) {
-              setTimeout(() => {
-                navigation.replace('CreateBabyProfile');
-              }, 500);
+    Alert.alert(
+      'Delete Profile?',
+      `Are you sure you want to delete ${babyName}'s profile? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Delete', 
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const success = await deleteBaby(babyId);
+              
+              if (success) {
+                await loadBabies();
+                showToast('success', 'Deleted', 'Baby profile removed');
+                
+                if (babies.length <= 1) {
+                  setTimeout(() => {
+                    navigation.replace('CreateBabyProfile');
+                  }, 500);
+                }
+              } else {
+                showToast('error', 'Error', 'Failed to delete profile');
+              }
+            } catch (error) {
+              showToast('error', 'Error', 'Failed to delete profile');
             }
-          } else {
-            showToast('error', 'Error', 'Failed to delete profile');
           }
-        } catch (error) {
-          showToast('error', 'Error', 'Failed to delete profile');
-        } finally {
-          setConfirmModal(prev => ({ ...prev, visible: false }));
-        }
-      }
-    });
+        },
+      ]
+    );
   }, [babies.length, deleteBaby, loadBabies, navigation, showToast]);
 
   const handleAddBaby = useCallback(() => {
     navigation.navigate('CreateBabyProfile');
   }, [navigation]);
+
+  // Show loading state
+  if (babyLoading && babies.length === 0) {
+    return (
+      <View style={styles.container}>
+        <LinearGradient colors={isDark ? ['#0a0a0a', '#1a1a2e'] : ['#f0f4ff', '#e0e7ff']} style={styles.gradient}>
+          <StatusBar style={isDark ? 'light' : 'dark'} />
+          <View style={[styles.content, { paddingTop: insets.top, justifyContent: 'center', alignItems: 'center' }]}>
+            <ActivityIndicator size="large" color="#667eea" />
+            <Text style={[styles.loadingText, isDark && styles.textDark]}>Loading babies...</Text>
+          </View>
+        </LinearGradient>
+      </View>
+    );
+  }
+
+  // Check if user has a partner
+  const hasPartner = parent2 !== null && parent2 !== undefined;
 
   return (
     <View style={styles.container}>
@@ -279,7 +257,7 @@ export default function SwitchBabyScreen({ navigation }: SwitchBabyScreenProps) 
         </TouchableOpacity>
         
         <View style={styles.headerCenter}>
-          <Text style={[styles.headerTitle, isDark && styles.textDark]}>Switch Baby</Text>
+          <Text style={[styles.headerTitle, isDark && styles.textDark]}>Select Baby</Text>
           <Text style={styles.headerSubtitle}>{babies.length} {babies.length === 1 ? 'profile' : 'profiles'}</Text>
         </View>
         
@@ -291,11 +269,13 @@ export default function SwitchBabyScreen({ navigation }: SwitchBabyScreenProps) 
       </Animated.View>
 
       <ScrollView 
-        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 80 }]}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 80, paddingBottom: insets.bottom + 40 }]}
         showsVerticalScrollIndicator={false}
       >
         <Animated.View entering={FadeIn.delay(100)}>
-          <Text style={[styles.sectionLabel, isDark && { color: '#94a3b8' }]}>Select a baby profile</Text>
+          <Text style={[styles.sectionLabel, isDark && { color: '#94a3b8' }]}>
+            {babies.length > 1 ? 'Choose a baby profile' : 'Your Baby'}
+          </Text>
         </Animated.View>
 
         {/* Baby List */}
@@ -313,6 +293,7 @@ export default function SwitchBabyScreen({ navigation }: SwitchBabyScreenProps) 
                     style={styles.babyCardContent} 
                     onPress={() => handleSwitchBaby(baby.id)}
                     activeOpacity={0.9}
+                    disabled={isProcessing}
                   >
                     <LinearGradient 
                       colors={isSelected ? ['#667eea', '#764ba2'] : ['#fa709a', '#fee140']} 
@@ -343,8 +324,9 @@ export default function SwitchBabyScreen({ navigation }: SwitchBabyScreenProps) 
                         <TouchableOpacity 
                           style={styles.switchButton}
                           onPress={() => handleSwitchBaby(baby.id)}
+                          disabled={isProcessing}
                         >
-                          <Text style={styles.switchButtonText}>Switch</Text>
+                          <Text style={styles.switchButtonText}>Select</Text>
                         </TouchableOpacity>
                       )}
                       
@@ -352,6 +334,7 @@ export default function SwitchBabyScreen({ navigation }: SwitchBabyScreenProps) 
                         <TouchableOpacity 
                           style={styles.deleteButton}
                           onPress={() => handleDeleteBaby(baby.id, baby.name)}
+                          disabled={isProcessing}
                         >
                           <Ionicons name="trash-outline" size={20} color="#ef4444" />
                         </TouchableOpacity>
@@ -380,29 +363,86 @@ export default function SwitchBabyScreen({ navigation }: SwitchBabyScreenProps) 
           </TouchableOpacity>
         </Animated.View>
 
+        {/* ============================================
+            NEW: Partner Section
+            Show if user doesn't have a partner
+        ============================================ */}
+        {!hasPartner && (
+          <Animated.View entering={FadeInUp.delay(400 + babies.length * 60)}>
+            <View style={styles.partnerSection}>
+              <Text style={[styles.partnerLabel, isDark && { color: '#94a3b8' }]}>
+                Co-Parent
+              </Text>
+              
+              <GlassmorphismCard style={styles.partnerCard}>
+                <View style={styles.partnerContent}>
+                  <View style={styles.partnerIconContainer}>
+                    <Ionicons name="people-outline" size={28} color="#667eea" />
+                  </View>
+                  <View style={styles.partnerInfo}>
+                    <Text style={[styles.partnerTitle, isDark && styles.textDark]}>
+                      Add a Co-Parent?
+                    </Text>
+                    <Text style={styles.partnerSubtitle}>
+                      Invite your partner to share baby tracking
+                    </Text>
+                  </View>
+                </View>
+                
+                <View style={styles.partnerActions}>
+                  <TouchableOpacity 
+                    style={styles.skipPartnerButton}
+                    onPress={handleSkipPartner}
+                  >
+                    <Text style={styles.skipPartnerText}>Skip</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={styles.addPartnerButton}
+                    onPress={handleAddPartner}
+                  >
+                    <LinearGradient colors={['#667eea', '#764ba2']} style={styles.addPartnerGradient}>
+                      <Ionicons name="person-add" size={18} color="#fff" />
+                      <Text style={styles.addPartnerButtonText}>Add</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </View>
+              </GlassmorphismCard>
+            </View>
+          </Animated.View>
+        )}
+
         {/* Family Info Footer */}
-        <Animated.View entering={FadeIn.delay(400 + babies.length * 60)}>
+        <Animated.View entering={FadeIn.delay(500 + babies.length * 60)}>
           <BlurView intensity={60} style={styles.familyInfo}>
             <Ionicons name="people" size={20} color="#667eea" />
             <Text style={[styles.familyText, isDark && { color: '#94a3b8' }]}>
-              Managed by {userProfile?.fullName || 'Parent'}
+              {hasPartner 
+                ? `Family: ${userProfile?.fullName} & ${parent2?.fullName}`
+                : `Managed by ${userProfile?.fullName || 'Parent'}`
+              }
             </Text>
           </BlurView>
         </Animated.View>
+
+        {/* Continue Button (if they just want to proceed) */}
+        <Animated.View entering={FadeInUp.delay(600 + babies.length * 60)}>
+          <TouchableOpacity 
+            style={styles.continueButton}
+            onPress={() => navigation.replace('Main')}
+          >
+            <LinearGradient colors={['#667eea', '#764ba2']} style={styles.continueGradient}>
+              <Text style={styles.continueText}>Continue to App</Text>
+              <Ionicons name="arrow-forward" size={20} color="#fff" />
+            </LinearGradient>
+          </TouchableOpacity>
+        </Animated.View>
       </ScrollView>
 
-      {/* Modals */}
       <SweetAlert 
         {...alert} 
         onClose={() => setAlert({ ...alert, visible: false })} 
         isDark={isDark} 
-      />
-      
-      <ConfirmModal 
-        {...confirmModal} 
-        onCancel={() => setConfirmModal({ ...confirmModal, visible: false })}
-        onConfirm={confirmModal.onConfirm}
-        isDark={isDark}
       />
     </View>
   );
@@ -410,6 +450,9 @@ export default function SwitchBabyScreen({ navigation }: SwitchBabyScreenProps) 
 
 const styles = StyleSheet.create({
   container: { 
+    flex: 1 
+  },
+  gradient: { 
     flex: 1 
   },
   textDark: { 
@@ -467,13 +510,17 @@ const styles = StyleSheet.create({
   // Scroll Content
   scrollContent: {
     paddingHorizontal: 20,
-    paddingBottom: 40,
   },
   sectionLabel: {
     fontSize: 14,
     color: '#64748b',
     marginBottom: 16,
     fontWeight: '500',
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#1a1a1a',
   },
 
   // Baby List
@@ -602,6 +649,103 @@ const styles = StyleSheet.create({
     color: '#1e293b',
   },
 
+  // Partner Section - NEW
+  partnerSection: {
+    marginTop: 8,
+    marginBottom: 16,
+  },
+  partnerLabel: {
+    fontSize: 14,
+    color: '#64748b',
+    marginBottom: 12,
+    fontWeight: '500',
+  },
+  partnerCard: {
+    borderRadius: 24,
+    overflow: 'hidden',
+    padding: 20,
+  },
+  partnerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  partnerIconContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(102,126,234,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 16,
+  },
+  partnerInfo: {
+    flex: 1,
+  },
+  partnerTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#1e293b',
+    marginBottom: 4,
+  },
+  partnerSubtitle: {
+    fontSize: 13,
+    color: '#64748b',
+  },
+  partnerActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  skipPartnerButton: {
+    flex: 1,
+    backgroundColor: 'rgba(100,116,139,0.1)',
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  skipPartnerText: {
+    color: '#64748b',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  addPartnerButton: {
+    flex: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  addPartnerGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    gap: 8,
+  },
+  addPartnerButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+
+  // Continue Button
+  continueButton: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginTop: 8,
+    marginBottom: 20,
+  },
+  continueGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    gap: 8,
+  },
+  continueText: {
+    color: '#fff',
+    fontSize: 17,
+    fontWeight: '700',
+  },
+
   // Family Info
   familyInfo: {
     flexDirection: 'row',
@@ -611,6 +755,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     gap: 8,
     overflow: 'hidden',
+    marginBottom: 16,
   },
   familyText: {
     fontSize: 14,
@@ -676,71 +821,5 @@ const styles = StyleSheet.create({
   alertMessage: { 
     fontSize: 13, 
     color: '#64748b' 
-  },
-
-  // Confirm Modal
-  confirmModal: { 
-    width: width - 60, 
-    borderRadius: 24, 
-    padding: 24, 
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.3,
-    shadowRadius: 40,
-    elevation: 20,
-  },
-  confirmIconContainer: { 
-    marginBottom: 16 
-  },
-  confirmIconBg: { 
-    width: 64, 
-    height: 64, 
-    borderRadius: 32, 
-    alignItems: 'center', 
-    justifyContent: 'center' 
-  },
-  confirmTitle: { 
-    fontSize: 20, 
-    fontWeight: '800', 
-    marginBottom: 8, 
-    textAlign: 'center' 
-  },
-  confirmMessage: { 
-    fontSize: 14, 
-    color: '#64748b', 
-    textAlign: 'center', 
-    marginBottom: 24, 
-    lineHeight: 20 
-  },
-  confirmButtons: { 
-    flexDirection: 'row', 
-    gap: 12, 
-    width: '100%' 
-  },
-  confirmButton: { 
-    flex: 1, 
-    paddingVertical: 14, 
-    borderRadius: 12, 
-    alignItems: 'center' 
-  },
-  cancelButton: { 
-    backgroundColor: 'rgba(100,116,139,0.1)' 
-  },
-  cancelButtonText: { 
-    color: '#64748b', 
-    fontSize: 15, 
-    fontWeight: '600' 
-  },
-  confirmButtonGradient: { 
-    flex: 1, 
-    paddingVertical: 14, 
-    borderRadius: 12, 
-    alignItems: 'center' 
-  },
-  confirmButtonText: { 
-    color: '#fff', 
-    fontSize: 15, 
-    fontWeight: '700' 
   },
 });
