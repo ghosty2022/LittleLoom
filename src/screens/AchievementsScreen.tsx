@@ -1,3 +1,4 @@
+// src/screens/AchievementsScreen.tsx
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
@@ -269,6 +270,7 @@ export default function AchievementsScreen({ navigation, route }: Props) {
     }
   }, [baby, getPottyStreak, getRecentTimelineEvents, showStreakProtector]);
 
+  // FIXED: Updated notification scheduling to use new trigger format
   const toggleReminder = async (achievement: Achievement) => {
     const newEnabled = new Set(reminderEnabled);
     if (newEnabled.has(achievement.id)) {
@@ -276,14 +278,21 @@ export default function AchievementsScreen({ navigation, route }: Props) {
       setAlert({ visible: true, type: 'info', title: 'Reminder Disabled', message: `No more reminders for ${achievement.title}`, emoji: '' });
     } else {
       newEnabled.add(achievement.id);
+      
+      // FIXED: Using new notification trigger format with SchedulableTriggerInputTypes
       await Notifications.scheduleNotificationAsync({
         content: {
           title: `${achievement.emoji} Achievement Goal`,
           body: `Work on: ${achievement.title}`,
           data: { type: 'achievement_reminder', screen: 'Achievements' },
         },
-        trigger: { hour: 9, minute: 0, repeats: true },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DAILY,
+          hour: 9,
+          minute: 0,
+        },
       });
+      
       setAlert({ visible: true, type: 'success', title: 'Reminder Set!', message: `We'll remind you about "${achievement.title}"`, emoji: achievement.emoji });
     }
     setReminderEnabled(newEnabled);
@@ -560,7 +569,14 @@ export default function AchievementsScreen({ navigation, route }: Props) {
                       {!achievement.unlocked && (
                         <View style={styles.reminderRow}>
                           <Text style={styles.reminderLabel}>Remind me</Text>
-                          <Switch value={hasReminder} onValueChange={() => toggleReminder(achievement)} trackColor={{ false: '#ddd', true: rarity.text }} />
+                          {/* FIXED: Using proper Switch props with trackColor and thumbColor */}
+                          <Switch 
+                            value={hasReminder} 
+                            onValueChange={() => toggleReminder(achievement)} 
+                            trackColor={{ false: '#ddd', true: rarity.text }}
+                            thumbColor="#fff"
+                            ios_backgroundColor="#ddd"
+                          />
                         </View>
                       )}
                     </BlurView>

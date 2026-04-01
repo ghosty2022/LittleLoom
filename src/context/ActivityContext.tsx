@@ -1,3 +1,5 @@
+// src/context/ActivityContext.tsx
+
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';

@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
@@ -68,13 +69,13 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [alert, setAlert] = useState<AlertState>({ visible: false, type: 'success', title: '', message: '' });
   
-  // CRITICAL FIX: Get all auth state needed for navigation
-  const { signUp, isAuthenticated, setupComplete, hasParent2, hasBaby } = useAuth();
+  // Get auth state needed for navigation
+  const { signUp, isAuthenticated, setupComplete, hasParent2, hasBaby, hasSeenOnboarding } = useAuth();
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   
-  // CRITICAL FIX: Prevent duplicate navigation attempts
+  // Prevent duplicate navigation attempts
   const hasNavigated = useRef(false);
   const isMounted = useRef(true);
 
@@ -84,7 +85,9 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
     };
   }, []);
 
-  // CRITICAL FIX: Handle navigation when auth state changes
+  // ============================================
+  // CRITICAL: Handle navigation when auth state changes
+  // ============================================
   useEffect(() => {
     if (isAuthenticated && !hasNavigated.current) {
       hasNavigated.current = true;
@@ -93,18 +96,30 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
       const timer = setTimeout(() => {
         if (!isMounted.current) return;
         
-        // Determine where to navigate based on setup state
+        // ============================================
+        // CORRECTED NAVIGATION FLOW
+        // ============================================
+        // New users (just signed up) go through setup flow
+        // setupComplete is false for new users after signUp
         if (!setupComplete) {
-          // Navigate to setup flow
+          // First step: Parent2Optional (co-parent setup)
           if (!hasParent2) {
-            navigation.replace('AddParent2');
-          } else if (!hasBaby) {
-            navigation.replace('AddBaby');
-          } else {
+            console.log('🧭 SignUp → Parent2Optional (setup flow)');
+            navigation.replace('Parent2Optional');
+          } 
+          // Second step: BabyOptional (baby setup)
+          else if (!hasBaby) {
+            console.log('🧭 SignUp → BabyOptional (setup flow)');
+            navigation.replace('BabyOptional');
+          } 
+          // Fallback: if both skipped somehow
+          else {
+            console.log('🧭 SignUp → Main (setup skipped)');
             navigation.replace('Main');
           }
         } else {
-          // Setup complete, go to main app
+          // This shouldn't happen for new signups, but handle gracefully
+          console.log('🧭 SignUp → Main (setup already complete)');
           navigation.replace('Main');
         }
       }, 1500); // 1.5s delay to show success message
@@ -123,7 +138,7 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
   };
 
   const handleSignUp = useCallback(async () => {
-    // CRITICAL FIX: Prevent duplicate submissions
+    // Prevent duplicate submissions
     if (isLoading || hasNavigated.current) return;
     
     if (!fullName.trim() || !email || !password) {
@@ -148,8 +163,8 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
     try {
       const success = await signUp(fullName.trim(), email, password);
       if (success) {
-        showToast('success', 'Welcome!', 'Account created successfully');
-        // Navigation is now handled by the useEffect watching isAuthenticated
+        showToast('success', 'Welcome! 🎉', 'Account created successfully');
+        // Navigation is handled by the useEffect watching isAuthenticated
       } else {
         showToast('error', 'Sign Up Failed', 'Could not create account');
         hasNavigated.current = false; // Reset navigation lock on failure
