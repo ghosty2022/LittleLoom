@@ -26,6 +26,7 @@ import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/dat
 import Animated, { 
   FadeInUp, 
   FadeInDown, 
+  Layout,  // ADDED: For smooth list animations
   useSharedValue, 
   useAnimatedStyle, 
   interpolate, 
@@ -39,6 +40,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
 import { format, formatDistanceToNow, parseISO, differenceInMonths, differenceInYears, differenceInDays } from 'date-fns';
 
 import { useAuth } from '../context/AuthContext';
@@ -51,6 +53,51 @@ import type { RootStackParamList } from '../types/navigation';
 
 const { width, height } = Dimensions.get('window');
 const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
+
+// ==================== HELPER: CHECK IF VALUE IS IMAGE URI ====================
+const isImageUri = (value: string | undefined | null): boolean => {
+  if (!value || typeof value !== 'string') return false;
+  return value.startsWith('http') || value.startsWith('file://') || value.startsWith('data:');
+};
+
+const isEmoji = (value: string | undefined | null): boolean => {
+  if (!value || typeof value !== 'string') return false;
+  if (value.length > 4) return false;
+  for (const char of value) {
+    const code = char.codePointAt(0) || 0;
+    const isEmojiChar = (
+      (code >= 0x1F600 && code <= 0x1F64F) || (code >= 0x1F300 && code <= 0x1F5FF) ||
+      (code >= 0x1F680 && code <= 0x1F6FF) || (code >= 0x1F1E0 && code <= 0x1F1FF) ||
+      (code >= 0x2600 && code <= 0x26FF) || (code >= 0x2700 && code <= 0x27BF) ||
+      (code >= 0x1F900 && code <= 0x1F9FF) || (code >= 0x1F018 && code <= 0x1F270) ||
+      code === 0x238C || code === 0x2B06 || code === 0x2B07 || code === 0x2B05 ||
+      code === 0x27A1 || (code >= 0x2194 && code <= 0x2199) ||
+      (code >= 0x21A9 && code <= 0x21AA) || (code >= 0x2934 && code <= 0x2935) ||
+      (code >= 0x25AA && code <= 0x25AB) || (code >= 0x25FB && code <= 0x25FE) ||
+      code === 0x25B6 || code === 0x25C0 || (code >= 0x1F200 && code <= 0x1F251) ||
+      code === 0x1F004 || code === 0x1F0CF || (code >= 0x1F170 && code <= 0x1F171) ||
+      (code >= 0x1F17E && code <= 0x1F17F) || code === 0x1F18E || code === 0x3030 ||
+      code === 0x2B50 || code === 0x2B55 || (code >= 0x23E9 && code <= 0x23EC) ||
+      code === 0x23F0 || code === 0x23F3 || (code >= 0x231A && code <= 0x231B) ||
+      (code >= 0x23F8 && code <= 0x23FA) || code === 0x24C2 ||
+      (code >= 0x1F3FB && code <= 0x1F3FF) || (code >= 0x1F3E0 && code <= 0x1F3F4) ||
+      (code >= 0x1F3F8 && code <= 0x1F43F) || code === 0x1F440 ||
+      (code >= 0x1F442 && code <= 0x1F4FF) || (code >= 0x1F500 && code <= 0x1F53D) ||
+      (code >= 0x1F54B && code <= 0x1F54E) || (code >= 0x1F550 && code <= 0x1F567) ||
+      (code >= 0x1F595 && code <= 0x1F596) || (code >= 0x1F5FB && code <= 0x1F64F) ||
+      (code >= 0x1F680 && code <= 0x1F6C5) || (code >= 0x1F6CB && code <= 0x1F6D2) ||
+      (code >= 0x1F6E0 && code <= 0x1F6E5) || code === 0x1F6E9 ||
+      (code >= 0x1F6EB && code <= 0x1F6EC) || code === 0x1F6F0 ||
+      (code >= 0x1F6F3 && code <= 0x1F6F8) || (code >= 0x1F910 && code <= 0x1F93A) ||
+      (code >= 0x1F93C && code <= 0x1F93E) || (code >= 0x1F940 && code <= 0x1F945) ||
+      (code >= 0x1F947 && code <= 0x1F94C) || (code >= 0x1F950 && code <= 0x1F96B) ||
+      (code >= 0x1F980 && code <= 0x1F997) || code === 0x1F9C0 ||
+      (code >= 0x1F9D0 && code <= 0x1F9E6)
+    );
+    if (!isEmojiChar) return false;
+  }
+  return true;
+};
 
 // ==================== DIVERSE SKIN TONES - INCLUSIVE PALETTE ====================
 const SKIN_TONES = [
@@ -170,7 +217,7 @@ const SweetAlert: React.FC<SweetAlertProps> = ({ visible, type, title, message, 
   );
 };
 
-// ==================== CENTERED MODAL COMPONENT (NEW) ====================
+// ==================== CENTERED MODAL COMPONENT ====================
 interface CenteredModalProps {
   visible: boolean;
   onClose: () => void;
@@ -248,7 +295,7 @@ const CenteredModal: React.FC<CenteredModalProps> = ({ visible, onClose, title, 
   );
 };
 
-// ==================== PHOTO OPTIONS MODAL (UPDATED TO CENTERED) ====================
+// ==================== PHOTO OPTIONS MODAL ====================
 const PhotoOptionsModal: React.FC<{
   visible: boolean;
   onClose: () => void;
@@ -289,7 +336,7 @@ const PhotoOptionsModal: React.FC<{
   );
 };
 
-// ==================== EMOJI PICKER MODAL (UPDATED TO CENTERED) ====================
+// ==================== EMOJI PICKER MODAL ====================
 const EMOJI_OPTIONS = ['👶', '👧', '👦', '🧒', '👼', '🤱', '🍼', '🧸', '🎈', '🌟', '🦁', '🐯', '🐻', '🐨', '🐼', '🐸', '🦄', '🌈', '⭐', '🔆'];
 
 const EmojiPickerModal: React.FC<{
@@ -317,7 +364,7 @@ const EmojiPickerModal: React.FC<{
   );
 };
 
-// ==================== CONFIRM DELETE MODAL (UPDATED TO CENTERED) ====================
+// ==================== CONFIRM DELETE MODAL ====================
 const ConfirmDeleteModal: React.FC<{
   visible: boolean;
   onClose: () => void;
@@ -406,7 +453,7 @@ const ConfirmDeleteModal: React.FC<{
   );
 };
 
-// ==================== SAVE CONFIRMATION MODAL (NEW) ====================
+// ==================== SAVE CONFIRMATION MODAL ====================
 const SaveConfirmationModal: React.FC<{
   visible: boolean;
   onClose: () => void;
@@ -438,7 +485,7 @@ const SaveConfirmationModal: React.FC<{
   );
 };
 
-// ==================== BABY SWITCHER MODAL (NEW) ====================
+// ==================== BABY SWITCHER MODAL ====================
 const BabySwitcherModal: React.FC<{
   visible: boolean;
   onClose: () => void;
@@ -496,27 +543,29 @@ const BabySwitcherModal: React.FC<{
   );
 };
 
-// ==================== GLASS CARD COMPONENT ====================
-const GlassCard: React.FC<{ 
+// ==================== GLASSMORPHISM CARD (MATCHING HOMESCREEN) ====================
+const GlassmorphismCard: React.FC<{ 
   children: React.ReactNode; 
   style?: any; 
   onPress?: () => void; 
   intensity?: number;
   delay?: number;
-}> = ({ children, style, onPress, intensity = 85, delay = 0 }) => {
+}> = ({ children, style, onPress, intensity = 80, delay = 0 }) => {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const Wrapper = onPress ? TouchableOpacity : View;
   
   return (
-    <Animated.View entering={FadeInUp.delay(delay)} style={[styles.glassCard, style]}>
-      <Wrapper onPress={onPress} activeOpacity={0.85} style={{ flex: 1 }}>
+    <Animated.View entering={FadeInUp.delay(delay)} layout={Layout.springify()} style={[styles.glassCard, style]}>
+      <Wrapper onPress={onPress} activeOpacity={0.8} style={{ flex: 1 }}>
         <BlurView intensity={intensity} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
         <LinearGradient
-          colors={isDark ? ['rgba(45,45,55,0.9)', 'rgba(25,25,35,0.7)'] : ['rgba(255,255,255,0.95)', 'rgba(250,250,255,0.8)']}
+          colors={isDark ? ['rgba(40,40,40,0.8)', 'rgba(20,20,20,0.6)'] : ['rgba(255,255,255,0.95)', 'rgba(255,255,255,0.75)']}
           style={StyleSheet.absoluteFill}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
         />
-        <View style={[styles.glassBorder, isDark && styles.glassBorderDark]} />
+        <View style={styles.glassBorder} />
         <View style={styles.glassContent}>{children}</View>
       </Wrapper>
     </Animated.View>
@@ -536,36 +585,7 @@ const StatBadge: React.FC<{ icon: string; value: number | string; label: string;
   </View>
 );
 
-// ==================== ACTIVITY ITEM COMPONENT (HOMESCREEN STYLE) ====================
-const ActivityItem: React.FC<{ activity: ActivityEntry; isDark: boolean; index: number }> = ({ activity, isDark, index }) => {
-  const config = ACTIVITY_CONFIG[activity.type] || ACTIVITY_CONFIG.note;
-  
-  return (
-    <Animated.View entering={FadeInUp.delay(index * 80)} layout={Layout.springify()}>
-      <GlassCard style={styles.activityItemCard} intensity={60}>
-        <View style={[styles.activityIcon, { backgroundColor: `${config.color}20` }]}>
-          <Text style={styles.activityEmoji}>{config.emoji}</Text>
-        </View>
-        <View style={styles.activityContent}>
-          <Text style={[styles.activityTitle, isDark && styles.textDark]} numberOfLines={1}>
-            {activity.title}
-          </Text>
-          <Text style={styles.activityTime}>
-            {formatDistanceToNow(activity.timestamp, { addSuffix: true })}
-          </Text>
-          {activity.details && (
-            <Text style={styles.activityDetails} numberOfLines={1}>{activity.details}</Text>
-          )}
-        </View>
-        <View style={styles.activityArrow}>
-          <Ionicons name="chevron-forward" size={18} color="#667eea" />
-        </View>
-      </GlassCard>
-    </Animated.View>
-  );
-};
-
-// ==================== SAFE BABY AVATAR COMPONENT ====================
+// ==================== SAFE BABY AVATAR COMPONENT - FIXED ====================
 const SafeBabyAvatar: React.FC<{
   avatar?: string | null;
   gender?: string;
@@ -573,15 +593,9 @@ const SafeBabyAvatar: React.FC<{
   showEditButton?: boolean;
   onEdit?: () => void;
 }> = ({ avatar, gender = 'other', size = 130, showEditButton = false, onEdit }) => {
-  const isEmoji = avatar && 
-    typeof avatar === 'string' && 
-    avatar.length <= 4 && 
-    /\p{Emoji}/u.test(avatar);
+  const hasImage = isImageUri(avatar);
+  const hasEmoji = isEmoji(avatar);
   
-  const isImageUri = avatar && 
-    typeof avatar === 'string' && 
-    (avatar.startsWith('http') || avatar.startsWith('file://') || avatar.startsWith('data:'));
-
   const genderOption = GENDER_OPTIONS.find(g => g.value === gender);
   const gradientColors = genderOption?.gradient || ['#667eea', '#764ba2'];
 
@@ -594,16 +608,17 @@ const SafeBabyAvatar: React.FC<{
           { width: size, height: size, borderRadius: size / 2 }
         ]}
       >
-        {isEmoji ? (
+        {hasImage ? (
+          <Image 
+            source={{ uri: avatar! }} 
+            style={{ width: size, height: size, borderRadius: size / 2 }}
+            resizeMode="cover"
+            onError={(e) => console.log('Baby avatar image error:', e.nativeEvent.error)}
+          />
+        ) : hasEmoji ? (
           <Text style={[styles.avatarEmoji, { fontSize: size * 0.5 }]}>
             {avatar}
           </Text>
-        ) : isImageUri ? (
-          <Image 
-            source={{ uri: avatar }} 
-            style={{ width: size, height: size, borderRadius: size / 2 }}
-            resizeMode="cover"
-          />
         ) : (
           <Ionicons 
             name={genderOption?.icon as any || 'ellipse'} 
@@ -755,7 +770,22 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
     setRefreshing(false);
   }, [loadBabies, loadFamily]);
 
-  // ==================== PHOTO HANDLERS ====================
+  // ==================== PHOTO HANDLERS - FIXED ====================
+  // ==================== PERMANENT IMAGE STORAGE ====================
+  const getPermanentImagePath = (babyId: string, isAvatar: boolean = true) => {
+    const dir = FileSystem.documentDirectory + 'baby_images/';
+    return `${dir}${babyId}_${isAvatar ? 'avatar' : 'photo'}_${Date.now()}.jpg`;
+  };
+
+  const ensureDirExists = async () => {
+    const dir = FileSystem.documentDirectory + 'baby_images/';
+    const dirInfo = await FileSystem.getInfoAsync(dir);
+    if (!dirInfo.exists) {
+      await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+    }
+  };
+
+  // FIXED: handleTakePhoto with proper image display
   const handleTakePhoto = async () => {
     setShowPhotoModal(false);
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -778,29 +808,45 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
 
       if (!result.canceled && result.assets[0].uri) {
         setIsUploading(true);
-        await new Promise(resolve => setTimeout(resolve, 500));
-        setBabyPhoto(result.assets[0].uri);
+        
+        // COPY to permanent storage first
+        await ensureDirExists();
+        const tempUri = result.assets[0].uri;
+        const permanentUri = getPermanentImagePath(currentBabyData?.id || 'temp');
+        await FileSystem.copyAsync({ from: tempUri, to: permanentUri });
+        
+        // Now save the permanent URI
+        if (currentBabyData) {
+          await updateBaby(currentBabyData.id, { 
+            avatar: permanentUri,
+            lastUpdated: new Date().toISOString()
+          });
+        }
+        
+        setBabyPhoto(permanentUri);
         setIsEditing(true);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setIsUploading(false);
         setAlert({
           visible: true,
           type: 'success',
-          title: 'Photo Updated!',
-          message: 'Profile picture has been changed.',
+          title: 'Photo Saved!',
+          message: 'Profile picture saved permanently.',
         });
       }
     } catch (error) {
+      console.error('Camera error:', error);
       setAlert({
         visible: true,
         type: 'error',
         title: 'Error',
-        message: 'Failed to take photo',
+        message: 'Failed to save photo',
       });
       setIsUploading(false);
     }
   };
 
+  // FIXED: handlePickImage with proper image display
   const handlePickImage = async () => {
     setShowPhotoModal(false);
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -824,38 +870,62 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
 
       if (!result.canceled && result.assets[0].uri) {
         setIsUploading(true);
-        await new Promise(resolve => setTimeout(resolve, 500));
-        setBabyPhoto(result.assets[0].uri);
+        
+        // COPY to permanent storage first
+        await ensureDirExists();
+        const tempUri = result.assets[0].uri;
+        const permanentUri = getPermanentImagePath(currentBabyData?.id || 'temp');
+        await FileSystem.copyAsync({ from: tempUri, to: permanentUri });
+        
+        // Now save the permanent URI
+        if (currentBabyData) {
+          await updateBaby(currentBabyData.id, { 
+            avatar: permanentUri,
+            lastUpdated: new Date().toISOString()
+          });
+        }
+        
+        setBabyPhoto(permanentUri);
         setIsEditing(true);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setIsUploading(false);
         setAlert({
           visible: true,
           type: 'success',
-          title: 'Photo Updated!',
-          message: 'Profile picture has been changed.',
+          title: 'Photo Saved!',
+          message: 'Profile picture saved permanently.',
         });
       }
     } catch (error) {
+      console.error('Gallery error:', error);
       setAlert({
         visible: true,
         type: 'error',
         title: 'Error',
-        message: 'Failed to pick image',
+        message: 'Failed to save photo',
       });
       setIsUploading(false);
     }
   };
 
-  const handleEmojiSelect = (emoji: string) => {
+  // FIXED: handleEmojiSelect (emojis don't need file copy, just save)
+  const handleEmojiSelect = async (emoji: string) => {
     setBabyPhoto(emoji);
     setIsEditing(true);
+    
+    if (currentBabyData) {
+      await updateBaby(currentBabyData.id, { 
+        avatar: emoji,
+        lastUpdated: new Date().toISOString()
+      });
+    }
+    
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setAlert({
       visible: true,
       type: 'success',
       title: 'Avatar Updated!',
-      message: 'Profile picture has been changed.',
+      message: 'Emoji avatar saved.',
     });
   };
 
@@ -1079,23 +1149,23 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
     }
   };
 
-  // ==================== RENDER SECTIONS ====================
+  // ==================== STICKY HEADER (MATCHING HOMESCREEN PATTERN) ====================
   const renderStickyHeader = () => {
     const headerOpacity = useAnimatedStyle(() => ({
       opacity: interpolate(scrollY.value, [0, 60], [0, 1], Extrapolate.CLAMP),
-      transform: [{
-        translateY: interpolate(scrollY.value, [0, 100], [-20, 0], Extrapolate.CLAMP)
-      }]
     }));
 
     return (
-      <Animated.View style={[styles.stickyHeader, headerOpacity, { paddingTop: insets.top + 10 }]}>
+      <Animated.View style={[styles.stickyHeader, headerOpacity]}>
+        {/* BlurView fills the ENTIRE header area from top: 0 */}
         <BlurView intensity={95} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
         <LinearGradient
-          colors={isDark ? ['rgba(20,20,30,0.98)', 'rgba(10,10,20,0.95)'] : ['rgba(255,255,255,0.98)', 'rgba(248,250,252,0.95)']}
+          colors={isDark ? ['rgba(20,20,30,0.6)', 'rgba(10,10,20,0.4)'] : ['rgba(255,255,255,0.6)', 'rgba(248,250,252,0.4)']}
           style={StyleSheet.absoluteFill}
         />
-        <View style={styles.stickyHeaderContent}>
+        
+        {/* Content row with its own top padding for status bar */}
+        <View style={[styles.stickyHeaderContent, { paddingTop: insets.top }]}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.stickyHeaderBtn}>
             <Ionicons name="arrow-back" size={24} color={isDark ? '#fff' : '#1a1a1a'} />
           </TouchableOpacity>
@@ -1119,13 +1189,22 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
     );
   };
 
+  // ==================== TABS (REDESIGNED - FLOATING PILL STYLE) ====================
   const renderTabs = () => (
-    <View style={[styles.tabBar, { top: insets.top + 60 }]}>
+    <View style={[styles.tabBar, { top: insets.top + 50 }]}>
+      {/* Translucent background matching HomeScreen */}
       <BlurView intensity={95} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
       <LinearGradient
         colors={isDark ? ['rgba(30,30,40,0.98)', 'rgba(20,20,30,0.95)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.95)']}
         style={StyleSheet.absoluteFill}
       />
+      
+      {/* Section header style matching HomeScreen */}
+      <View style={styles.tabSectionHeader}>
+        <Ionicons name="layers-outline" size={18} color="#667eea" />
+        <Text style={[styles.tabSectionTitle, isDark && styles.textDark]}>Sections</Text>
+      </View>
+      
       <View style={styles.tabContainer}>
         {[
           { id: 'overview', icon: 'grid-outline', label: 'Overview' },
@@ -1208,7 +1287,7 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
     if (!currentBabyData) return null;
     
     return (
-      <GlassCard style={styles.babyInfoCard} delay={50}>
+      <GlassmorphismCard style={styles.babyInfoCard} intensity={90} delay={50}>
         <View style={styles.babyInfoRow}>
           <View style={styles.babyInfoItem}>
             <Text style={styles.babyInfoLabel}>Age</Text>
@@ -1234,22 +1313,22 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
             </View>
           </View>
         </View>
-      </GlassCard>
+      </GlassmorphismCard>
     );
   };
 
   const renderQuickStats = () => (
-    <GlassCard style={styles.statsCard} delay={100}>
+    <GlassmorphismCard style={styles.statsCard} intensity={80} delay={100}>
       <View style={styles.statsRow}>
         <StatBadge icon="🔥" value={babyStats?.streak || 0} label="Day Streak" color="#fa709a" />
         <StatBadge icon="🌟" value={babyStats?.milestones || 0} label="Milestones" color="#f59e0b" />
         <StatBadge icon="📸" value={babyStats?.photos || 0} label="Photos" color="#8b5cf6" />
       </View>
-    </GlassCard>
+    </GlassmorphismCard>
   );
 
   const renderBasicInfoForm = () => (
-    <GlassCard style={styles.formCard} delay={200}>
+    <GlassmorphismCard style={styles.formCard} intensity={90} delay={200}>
       <View style={styles.sectionHeaderWithEdit}>
         <Text style={[styles.sectionLabel, isDark && styles.textDark]}>Basic Information</Text>
         {!isEditing ? (
@@ -1366,12 +1445,25 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
           {SKIN_TONES[selectedSkin]?.label || 'Select tone'}
         </Text>
       </View>
-    </GlassCard>
+    </GlassmorphismCard>
   );
 
-  // ==================== MILESTONES TAB ====================
+  // ==================== MILESTONES TAB (REDESIGNED - HOMESCREEN STYLE) ====================
   const renderMilestones = () => (
     <Animated.View entering={FadeInUp} style={styles.tabPanel}>
+      {/* Section Header matching HomeScreen */}
+      <View style={styles.sectionHeader}>
+        <View style={styles.sectionTitleRow}>
+          <Ionicons name="trophy" size={20} color="#f59e0b" />
+          <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Milestones</Text>
+        </View>
+        <TouchableOpacity style={styles.seeAllButton} onPress={() => setShowAddMilestone(true)}>
+          <Text style={styles.seeAllText}>Record New</Text>
+          <Ionicons name="add-circle" size={16} color="#667eea" />
+        </TouchableOpacity>
+      </View>
+
+      {/* Add Milestone Button - matching HomeScreen quick action style */}
       <TouchableOpacity 
         style={styles.addMilestoneBtn}
         onPress={() => setShowAddMilestone(true)}
@@ -1379,49 +1471,68 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
         <LinearGradient colors={['#f59e0b', '#f97316']} style={styles.addMilestoneGradient}>
           <Ionicons name="trophy" size={22} color="#fff" />
           <Text style={styles.addMilestoneText}>Record Milestone</Text>
+          <Ionicons name="add" size={20} color="#fff" />
         </LinearGradient>
       </TouchableOpacity>
 
       {babyMilestones.length === 0 ? (
-        <GlassCard style={styles.emptyCard} intensity={90} delay={100}>
-          <Ionicons name="trophy-outline" size={56} color={isDark ? '#475569' : '#cbd5e1'} />
+        <GlassmorphismCard style={styles.emptyCard} intensity={60} delay={100}>
+          <View style={styles.emptyStateIcon}>
+            <Ionicons name="trophy-outline" size={32} color="#667eea" />
+          </View>
+          <Text style={styles.emptyStateTitle}>No milestones yet</Text>
           <Text style={[styles.emptyText, isDark && styles.textMuted]}>
-            No milestones recorded yet. Celebrate your baby's achievements!
+            Celebrate your baby's achievements by recording their first milestone!
           </Text>
-        </GlassCard>
+        </GlassmorphismCard>
       ) : (
         babyMilestones.map((milestone, index) => {
           const category = MILESTONE_CATEGORIES.find(c => c.id === milestone.category);
           return (
-            <GlassCard key={milestone.id} style={styles.milestoneCard} intensity={90} delay={100 + index * 100}>
-              <View style={styles.milestoneRow}>
-                <LinearGradient 
-                  colors={[category?.color || '#667eea', `${category?.color}90` || '#764ba2']} 
-                  style={styles.milestoneIcon}
-                >
-                  <Ionicons name={category?.icon as any || 'star'} size={22} color="#fff" />
-                </LinearGradient>
-                <View style={styles.milestoneContent}>
-                  <Text style={[styles.milestoneTitle, isDark && styles.textDark]} numberOfLines={1}>
-                    {milestone.title}
-                  </Text>
-                  <Text style={[styles.milestoneCategory, { color: category?.color }]}>
-                    {category?.label}
-                  </Text>
-                  <Text style={[styles.milestoneDate, isDark && styles.textMuted]}>
-                    {format(new Date(milestone.achievedAt), 'MMM d, yyyy')}
-                  </Text>
-                </View>
-                <TouchableOpacity onPress={() => handleDeleteMilestone(milestone.id)} style={styles.deleteEntryBtn}>
-                  <Ionicons name="trash-outline" size={20} color="#ef4444" />
-                </TouchableOpacity>
-              </View>
-              {milestone.description && (
-                <Text style={[styles.milestoneDescription, isDark && styles.textMuted]}>
-                  {milestone.description}
-                </Text>
-              )}
-            </GlassCard>
+            <Animated.View 
+              key={milestone.id} 
+              entering={FadeInUp.delay(index * 80)} 
+              layout={Layout.springify()}
+            >
+              <TouchableOpacity 
+                onPress={() => {}} 
+                activeOpacity={0.8}
+              >
+                <GlassmorphismCard style={styles.milestoneCard} intensity={60} delay={100 + index * 100}>
+                  <View style={styles.milestoneRow}>
+                    <LinearGradient 
+                      colors={[category?.color || '#667eea', `${category?.color}90` || '#764ba2']} 
+                      style={styles.milestoneIcon}
+                    >
+                      <Ionicons name={category?.icon as any || 'star'} size={22} color="#fff" />
+                    </LinearGradient>
+                    <View style={styles.milestoneContent}>
+                      <Text style={[styles.milestoneTitle, isDark && styles.textDark]} numberOfLines={1}>
+                        {milestone.title}
+                      </Text>
+                      <Text style={[styles.milestoneCategory, { color: category?.color }]}>
+                        {category?.label}
+                      </Text>
+                      <Text style={[styles.milestoneDate, isDark && styles.textMuted]}>
+                        {format(new Date(milestone.achievedAt), 'MMM d, yyyy')}
+                      </Text>
+                    </View>
+                    <TouchableOpacity 
+                      onPress={() => handleDeleteMilestone(milestone.id)} 
+                      style={styles.deleteEntryBtn}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                      <Ionicons name="trash-outline" size={20} color="#ef4444" />
+                    </TouchableOpacity>
+                  </View>
+                  {milestone.description && (
+                    <Text style={[styles.milestoneDescription, isDark && styles.textMuted]}>
+                      {milestone.description}
+                    </Text>
+                  )}
+                </GlassmorphismCard>
+              </TouchableOpacity>
+            </Animated.View>
           );
         })
       )}
@@ -1431,7 +1542,7 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
   // ==================== HEALTH TAB ====================
   const renderHealthForm = () => (
     <Animated.View entering={FadeInUp} style={styles.tabPanel}>
-      <GlassCard style={styles.formCard} delay={100}>
+      <GlassmorphismCard style={styles.formCard} intensity={90} delay={100}>
         <View style={styles.sectionHeaderWithEdit}>
           <Text style={[styles.sectionLabel, isDark && styles.textDark]}>Health Information</Text>
           {!isEditing ? (
@@ -1501,11 +1612,17 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
             editable={isEditing}
           />
         </View>
-      </GlassCard>
+      </GlassmorphismCard>
 
-      <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Quick Actions</Text>
+      {/* Section Header matching HomeScreen */}
+      <View style={styles.sectionHeader}>
+        <View style={styles.sectionTitleRow}>
+          <Ionicons name="apps" size={20} color="#667eea" />
+          <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Quick Actions</Text>
+        </View>
+      </View>
       
-      <GlassCard style={styles.actionCard} delay={200} onPress={() => navigation.navigate('UniversalTracker', { type: 'medication' })}>
+      <GlassmorphismCard style={styles.actionCard} intensity={80} delay={200} onPress={() => navigation.navigate('UniversalTracker', { type: 'medication' })}>
         <View style={styles.actionRow}>
           <View style={[styles.actionIconBg, { backgroundColor: '#ef444418' }]}>
             <Ionicons name="medical-outline" size={26} color="#ef4444" />
@@ -1516,9 +1633,9 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
           </View>
           <Ionicons name="chevron-forward" size={22} color={isDark ? '#667eea' : '#764ba2'} />
         </View>
-      </GlassCard>
+      </GlassmorphismCard>
 
-      <GlassCard style={styles.actionCard} delay={300} onPress={() => navigation.navigate('UniversalTracker', { type: 'sleep' })}>
+      <GlassmorphismCard style={styles.actionCard} intensity={80} delay={300} onPress={() => navigation.navigate('UniversalTracker', { type: 'sleep' })}>
         <View style={styles.actionRow}>
           <View style={[styles.actionIconBg, { backgroundColor: '#3b82f618' }]}>
             <Ionicons name="moon-outline" size={26} color="#3b82f6" />
@@ -1529,9 +1646,9 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
           </View>
           <Ionicons name="chevron-forward" size={22} color={isDark ? '#667eea' : '#764ba2'} />
         </View>
-      </GlassCard>
+      </GlassmorphismCard>
 
-      <GlassCard style={styles.actionCard} delay={400} onPress={() => navigation.navigate('UniversalTracker', { type: 'feed' })}>
+      <GlassmorphismCard style={styles.actionCard} intensity={80} delay={400} onPress={() => navigation.navigate('UniversalTracker', { type: 'feed' })}>
         <View style={styles.actionRow}>
           <View style={[styles.actionIconBg, { backgroundColor: '#f59e0b18' }]}>
             <Ionicons name="restaurant-outline" size={26} color="#f59e0b" />
@@ -1542,9 +1659,9 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
           </View>
           <Ionicons name="chevron-forward" size={22} color={isDark ? '#667eea' : '#764ba2'} />
         </View>
-      </GlassCard>
+      </GlassmorphismCard>
 
-      <GlassCard style={styles.actionCard} delay={500} onPress={() => navigation.navigate('GrowthChart', { babyId: currentBabyData?.id })}>
+      <GlassmorphismCard style={styles.actionCard} intensity={80} delay={500} onPress={() => navigation.navigate('GrowthChart', { babyId: currentBabyData?.id })}>
         <View style={styles.actionRow}>
           <View style={[styles.actionIconBg, { backgroundColor: '#10b98118' }]}>
             <Ionicons name="trending-up-outline" size={26} color="#10b981" />
@@ -1555,14 +1672,14 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
           </View>
           <Ionicons name="chevron-forward" size={22} color={isDark ? '#667eea' : '#764ba2'} />
         </View>
-      </GlassCard>
+      </GlassmorphismCard>
     </Animated.View>
   );
 
-  // ==================== DANGER TAB (DELETE ONLY) ====================
+  // ==================== DANGER TAB ====================
   const renderDangerZone = () => (
     <Animated.View entering={FadeInUp} style={styles.tabPanel}>
-      <GlassCard style={styles.dangerCard} delay={100}>
+      <GlassmorphismCard style={styles.dangerCard} intensity={90} delay={100}>
         <View style={styles.dangerIconContainer}>
           <LinearGradient colors={['#ef4444', '#dc2626']} style={styles.dangerIcon}>
             <Ionicons name="warning" size={32} color="#fff" />
@@ -1599,12 +1716,12 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
             <Text style={styles.deleteButtonText}>Delete Baby Profile</Text>
           </LinearGradient>
         </TouchableOpacity>
-      </GlassCard>
+      </GlassmorphismCard>
       
-      <Text style={styles.dangerNote}>
+      <View style={styles.dangerNote}>
         <Ionicons name="information-circle" size={14} color="#94a3b8" />
-        {' '}Consider exporting data before deletion
-      </Text>
+        <Text style={styles.dangerNoteText}>Consider exporting data before deletion</Text>
+      </View>
     </Animated.View>
   );
 
@@ -1616,8 +1733,19 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
       {renderQuickStats()}
       {renderBasicInfoForm()}
       
-      <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Family</Text>
-      <GlassCard style={styles.familyCard} delay={300} onPress={() => navigation.navigate('FamilySharing')}>
+      {/* Section Header matching HomeScreen */}
+      <View style={styles.sectionHeader}>
+        <View style={styles.sectionTitleRow}>
+          <Ionicons name="people" size={20} color="#3b82f6" />
+          <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Family</Text>
+        </View>
+        <TouchableOpacity style={styles.seeAllButton} onPress={() => navigation.navigate('FamilySharing')}>
+          <Text style={styles.seeAllText}>Manage</Text>
+          <Ionicons name="chevron-forward" size={14} color="#667eea" />
+        </TouchableOpacity>
+      </View>
+      
+      <GlassmorphismCard style={styles.familyCard} intensity={80} delay={300} onPress={() => navigation.navigate('FamilySharing')}>
         <View style={styles.familyRow}>
           <View style={styles.familyAvatars}>
             {familyMembers.slice(0, 3).map((member, index) => (
@@ -1641,7 +1769,7 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
           </View>
           <Ionicons name="chevron-forward" size={22} color={isDark ? '#667eea' : '#764ba2'} />
         </View>
-      </GlassCard>
+      </GlassmorphismCard>
 
       {/* Baby Switcher Quick Access */}
       {babies.length > 1 && (
@@ -1658,19 +1786,46 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
       {recentActivities.length > 0 && (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Recent Activity</Text>
+            <View style={styles.sectionTitleRow}>
+              <Ionicons name="time" size={20} color="#ec4899" />
+              <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Recent Activity</Text>
+            </View>
             <TouchableOpacity onPress={() => navigation.navigate('Timeline')}>
               <Text style={styles.seeAll}>See All</Text>
             </TouchableOpacity>
           </View>
-          {recentActivities.map((activity, index) => (
-            <ActivityItem 
-              key={activity.id} 
-              activity={activity} 
-              isDark={isDark} 
-              index={index}
-            />
-          ))}
+{recentActivities.map((activity, index) => (
+  <Animated.View 
+    key={activity.id} 
+    entering={FadeInUp.delay(index * 80)} 
+    layout={Layout.springify()}
+  >
+    <TouchableOpacity 
+      onPress={() => navigation.navigate('UniversalTracker', { type: activity.type })} 
+      activeOpacity={0.8}
+    >
+      <GlassmorphismCard style={styles.activityItemCard} intensity={60}>
+        <View style={[styles.activityIcon, { backgroundColor: `${ACTIVITY_CONFIG[activity.type]?.color || '#667eea'}20` }]}>
+          <Text style={styles.activityEmoji}>{ACTIVITY_CONFIG[activity.type]?.emoji || '📝'}</Text>
+        </View>
+        <View style={styles.activityContent}>
+          <Text style={[styles.activityTitle, isDark && styles.textDark]} numberOfLines={1}>
+            {activity.title}
+          </Text>
+          <Text style={styles.activityTime}>
+            {formatDistanceToNow(activity.timestamp, { addSuffix: true })}
+          </Text>
+          {activity.details && (
+            <Text style={styles.activityDetails} numberOfLines={1}>{activity.details}</Text>
+          )}
+        </View>
+        <View style={styles.activityArrow}>
+          <Ionicons name="chevron-forward" size={18} color="#667eea" />
+        </View>
+      </GlassmorphismCard>
+    </TouchableOpacity>
+  </Animated.View>
+))}
           <TouchableOpacity 
             style={styles.viewAllButton}
             onPress={() => navigation.navigate('Timeline')}
@@ -1683,7 +1838,7 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
     </Animated.View>
   );
 
-  // ==================== ADD MILESTONE MODAL (CENTERED) ====================
+  // ==================== ADD MILESTONE MODAL ====================
   const renderAddMilestoneModal = () => (
     <CenteredModal 
       visible={showAddMilestone} 
@@ -1695,7 +1850,7 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
         <View style={styles.inputGroup}>
           <Text style={[styles.inputLabel, isDark && styles.textMuted]}>Title</Text>
           <TextInput
-            style={[styles.modalInput, isDark && styles.modalInputDark]}
+                    style={[styles.modalInput, isDark && styles.modalInputDark]}
             value={newMilestone.title}
             onChangeText={(text) => setNewMilestone(prev => ({ ...prev, title: text }))}
             placeholder="e.g., First Steps"
@@ -1832,7 +1987,7 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
       {renderTabs()}
 
       <AnimatedScrollView
-        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 140, paddingBottom: insets.bottom + 40 }]}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 160, paddingBottom: insets.bottom + 40 }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#667eea" />}
         showsVerticalScrollIndicator={false}
         onScroll={scrollHandler}
@@ -1848,6 +2003,7 @@ export default function EditProfileScreen({ navigation, route }: EditProfileScre
     </View>
   );
 }
+
 // ==================== STYLES ====================
 const styles = StyleSheet.create({
   container: { flex: 1 },
@@ -1855,67 +2011,66 @@ const styles = StyleSheet.create({
   textDark: { color: '#ffffff' },
   textMuted: { color: '#94a3b8' },
   scrollContent: { paddingHorizontal: 16 },
-  
-  // Sticky Header (FIXED - Now shows content underneath properly)
-  stickyHeader: {
-    position: 'absolute',
+
+  stickyHeader: { 
+    position: 'absolute', 
     top: 0,
     left: 0,
     right: 0,
-    zIndex: 100,
+    zIndex: 1000, 
+    paddingBottom: 12,
     paddingHorizontal: 16,
-    backgroundColor: 'transparent', // Allow content to show through initially
   },
-  stickyHeaderContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  stickyHeaderContent: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
     justifyContent: 'space-between',
     height: 50,
   },
   stickyHeaderBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.9)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  stickyHeaderCenter: {
-    flexDirection: 'row',
+  stickyHeaderCenter: { 
+    flex: 2, 
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'center',
   },
-  stickyHeaderTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#1e293b',
-    letterSpacing: -0.5,
+  stickyHeaderTitle: { 
+    fontSize: 20, 
+    fontWeight: '700', 
+    color: '#1a1a1a',
   },
   editingIndicator: {
     width: 8,
     height: 8,
     borderRadius: 4,
     backgroundColor: '#f59e0b',
+    marginTop: 4,
   },
   stickySaveBtn: {
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 12,
-    backgroundColor: 'rgba(102,126,234,0.15)',
+    backgroundColor: '#667eea',
   },
   stickySaveBtnDisabled: {
-    backgroundColor: 'rgba(100,116,139,0.08)',
+    backgroundColor: 'rgba(102,126,234,0.3)',
   },
   stickySaveText: {
-    fontSize: 14,
+    color: '#fff',
     fontWeight: '700',
-    color: '#667eea',
+    fontSize: 14,
   },
   stickySaveTextDisabled: {
-    color: '#94a3b8',
+    color: 'rgba(255,255,255,0.5)',
   },
 
-  // Centered Modal (NEW)
+  // Centered Modal
   centeredModalOverlay: {
     flex: 1,
     justifyContent: 'center',
@@ -2255,19 +2410,35 @@ const styles = StyleSheet.create({
     color: '#667eea',
   },
 
-  // Tab Bar
+  // Tab Bar (REDESIGNED - Floating pill style matching HomeScreen)
   tabBar: {
     position: 'absolute',
     left: 16,
     right: 16,
     zIndex: 99,
-    borderRadius: 16,
+    borderRadius: 20,
     overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 12,
     elevation: 8,
+    paddingTop: 12,
+    paddingBottom: 4,
+  },
+  tabSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    marginBottom: 8,
+  },
+  tabSectionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#64748b',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   tabContainer: {
     flexDirection: 'row',
@@ -2297,17 +2468,17 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  // Glass Card
+  // Glassmorphism Card (MATCHING HOMESCREEN)
   glassCard: {
-    borderRadius: 20,
+    borderRadius: 24,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
+    borderColor: 'rgba(255,255,255,0.5)',
     shadowColor: '#667eea',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    elevation: 10,
   },
   glassBorder: {
     position: 'absolute',
@@ -2315,14 +2486,11 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 1,
-    backgroundColor: 'rgba(255,255,255,0.6)',
-  },
-  glassBorderDark: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(255,255,255,0.8)',
   },
   glassContent: { flex: 1 },
 
-  // Avatar
+  // Avatar - FIXED
   avatarWrapper: {
     position: 'relative',
     shadowColor: '#000',
@@ -2401,7 +2569,7 @@ const styles = StyleSheet.create({
     color: '#667eea',
   },
 
-  // Baby Info Header (NEW)
+  // Baby Info Header
   babyInfoCard: { 
     padding: 0,
     marginBottom: 16,
@@ -2633,7 +2801,7 @@ const styles = StyleSheet.create({
   // Tab Panel
   tabPanel: { marginTop: 12, gap: 16 },
 
-  // Section Title
+  // Section Headers (MATCHING HOMESCREEN)
   sectionTitle: {
     fontSize: 18,
     fontWeight: '800',
@@ -2649,7 +2817,22 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     paddingHorizontal: 4,
   },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   seeAll: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#667eea',
+  },
+  seeAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  seeAllText: {
     fontSize: 14,
     fontWeight: '600',
     color: '#667eea',
@@ -2780,7 +2963,7 @@ const styles = StyleSheet.create({
     color: '#667eea',
   },
 
-  // Milestones
+  // Milestones (REDESIGNED - HomeScreen Style)
   addMilestoneBtn: {
     borderRadius: 18,
     overflow: 'hidden',
@@ -2804,8 +2987,46 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
-  milestoneCard: { padding: 0, marginBottom: 12 },
-  milestoneRow: { flexDirection: 'row', alignItems: 'center', padding: 16 },
+  // Empty State (MATCHING HOMESCREEN)
+  emptyCard: {
+    padding: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 24,
+  },
+  emptyStateIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(102,126,234,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  emptyStateTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#64748b',
+    marginBottom: 8,
+  },
+  emptyText: {
+    fontSize: 15,
+    color: '#64748b',
+    textAlign: 'center',
+    fontWeight: '500',
+    lineHeight: 22,
+  },
+
+  milestoneCard: { 
+    padding: 0, 
+    marginBottom: 12,
+    borderRadius: 20,
+  },
+  milestoneRow: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    padding: 16 
+  },
   milestoneIcon: {
     width: 50,
     height: 50,
@@ -2831,7 +3052,11 @@ const styles = StyleSheet.create({
     textTransform: 'capitalize',
     marginBottom: 3,
   },
-  milestoneDate: { fontSize: 13, color: '#94a3b8', fontWeight: '500' },
+  milestoneDate: { 
+    fontSize: 13, 
+    color: '#94a3b8', 
+    fontWeight: '500' 
+  },
   milestoneDescription: {
     fontSize: 14,
     color: '#64748b',
@@ -2841,26 +3066,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 16,
   },
-  deleteEntryBtn: { padding: 6 },
-
-  // Empty State
-  emptyCard: {
-    padding: 40,
+  deleteEntryBtn: { 
+    padding: 6,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(239,68,68,0.1)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  emptyText: {
-    fontSize: 15,
-    color: '#64748b',
-    marginTop: 16,
-    textAlign: 'center',
-    fontWeight: '500',
-    lineHeight: 22,
-  },
 
   // Health Tab
-  actionCard: { padding: 0, marginBottom: 12 },
-  actionRow: { flexDirection: 'row', alignItems: 'center', padding: 18 },
+  actionCard: { 
+    padding: 0, 
+    marginBottom: 12,
+    borderRadius: 20,
+  },
+  actionRow: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    padding: 18 
+  },
   actionIconBg: {
     width: 54,
     height: 54,
@@ -2888,6 +3114,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderColor: '#ef4444',
     borderWidth: 2,
+    borderRadius: 24,
   },
   dangerIconContainer: {
     marginBottom: 16,
@@ -2949,6 +3176,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 16,
+    gap: 6,
+  },
+  dangerNoteText: {
     fontSize: 13,
     color: '#94a3b8',
   },
@@ -3008,10 +3238,5 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 17,
     fontWeight: '800',
-  },
-
-  // Section spacing
-  section: {
-    marginBottom: 8,
   },
 });

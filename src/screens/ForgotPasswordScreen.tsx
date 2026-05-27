@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+// src/screens/ForgotPasswordScreen.tsx
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -20,6 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeIn, FadeInUp, FadeInDown, SlideInRight } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useSecurity } from '../context/SecurityContext';
 import type { RootStackParamList } from '../types/navigation';
 
 type ForgotPasswordScreenProps = NativeStackScreenProps<RootStackParamList, 'ForgotPassword'>;
@@ -63,9 +65,20 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordScree
   const [sent, setSent] = useState(false);
   const [alert, setAlert] = useState<AlertState>({ visible: false, type: 'success', title: '', message: '' });
   
+  const { resetUnlockLock } = useSecurity();
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
+
+  // CRITICAL FIX: Clear any stuck security locks so returning to Login doesn't hit a stale lock state
+  useEffect(() => {
+    resetUnlockLock();
+    
+    const unsubscribe = navigation.addListener('focus', () => {
+      resetUnlockLock();
+    });
+    return unsubscribe;
+  }, [navigation, resetUnlockLock]);
 
   const showToast = (type: AlertState['type'], title: string, message: string) => {
     setAlert({ visible: true, type, title, message });

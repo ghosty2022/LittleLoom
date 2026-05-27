@@ -1,5 +1,12 @@
+
 // src/screens/community/EditCommunityProfileScreen.tsx
-import React, { useState } from 'react';
+// FIXED VERSION - Addresses:
+// 1. Proper username validation with uniqueness check
+// 2. Atomic username updates
+// 3. Profile sync across contexts
+// 4. Better error handling
+
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,16 +16,21 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  Alert,
+  Image,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CommunityStackParamList } from '../../types/navigation';
 import { useCommunity } from '../../context/CommunityContext';
+import { useUser } from '../../context/UserContext';
 import { showSuccessModal, showErrorModal } from '../../utils/modal';
 import { 
   CommunityColors, 
@@ -34,38 +46,169 @@ const AVATARS = ['👤', '👩', '👨', '👧', '👦', '👶', '🤱', '👨�
 
 export default function EditCommunityProfileScreen({ navigation, route }: EditCommunityProfileScreenProps) {
   const { userId } = route.params || {};
-  const { currentUser, updateCommunityProfile, updateUserBio } = useCommunity();
-  
+  const { currentUser, updateCommunityProfile, syncUserProfileAcrossPosts, validateUsername } = useCommunity();
+  const { 
+    communityProfile, 
+    updateCommunityProfile: updateUserContextProfile,
+    checkUsernameAvailable,
+    registerUsername,
+    unregisterUsername,
+    updateUsername,
+  } = useUser();
+
   const [displayName, setDisplayName] = useState(currentUser?.displayName || '');
+  const [username, setUsername] = useState(currentUser?.handle?.replace('@', '') || '');
   const [bio, setBio] = useState(currentUser?.bio || '');
   const [selectedAvatar, setSelectedAvatar] = useState(currentUser?.avatar || '👤');
+  const [profileImage, setProfileImage] = useState<string | null>(
+    currentUser?.avatar?.startsWith('file://') || currentUser?.avatar?.startsWith('http') 
+      ? currentUser.avatar 
+      : null
+  );
   const [isSaving, setIsSaving] = useState(false);
+  const [usernameError, setUsernameError] = useState('');
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [isCheckingUsername, setIsCheckingUsername] = useState(false);
 
+  // FIXED: Image picker using correct mediaTypes format
+  const handleImagePick = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Please allow access to your photo library.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        setIsUploadingImage(true);
+        // Simulate upload
+        await new Promise(resolve => setTimeout(resolve, 800));
+        setProfileImage(result.assets[0].uri);
+        setSelectedAvatar(result.assets[0].uri); // Use image URI as avatar
+        setIsUploadingImage(false);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    } catch (error) {
+      setIsUploadingImage(false);
+      console.error('Image upload error:', error);
+      showErrorModal({ message: 'Failed to upload image. Please try again.' });
+    }
+  };
+
+  // FIXED: Real-time username validation with uniqueness check using CommunityContext
+  const validateUsernameAsync = useCallback(async (value: string): Promise<boolean> => {
+    if (!value.trim()) {
+      setUsernameError('Username is required');
+      return false;
+    }
+
+    setIsCheckingUsername(true);
+    
+    try {
+      // Use CommunityContext validateUsername if available, fallback to UserContext
+      let result;
+      if (validateUsername) {
+        result = await validateUsername(value, currentUser?.id);
+      } else if (checkUsernameAvailable) {
+        result = await checkUsernameAvailable(value, currentUser?.id);
+      } else {
+        // Fallback basic validation
+        const trimmed = value.trim().toLowerCase().replace(/^@/, '');
+        if (trimmed.length < 3) {
+          setUsernameError('Username must be at least 3 characters');
+          return false;
+        }
+        result = { available: true, message: '' };
+      }
+      
+      setIsCheckingUsername(false);
+
+      if (!result.available) {
+        setUsernameError(result.message);
+        return false;
+      }
+
+      setUsernameError('');
+      return true;
+    } catch (error) {
+      setIsCheckingUsername(false);
+      console.error('Username validation error:', error);
+      setUsernameError('Failed to validate username');
+      return false;
+    }
+  }, [validateUsername, checkUsernameAvailable, currentUser?.id]);
+
+  // FIXED: Save with atomic username update
   const handleSave = async () => {
+    // Validate display name
     if (!displayName.trim()) {
       showErrorModal({ message: 'Display name is required' });
       return;
     }
 
+    // Validate username with uniqueness check
+    const isUsernameValid = await validateUsernameAsync(username);
+    if (!isUsernameValid) {
+      showErrorModal({ message: usernameError || 'Invalid username' });
+      return;
+    }
+
     setIsSaving(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    
+
     try {
+      const handle = username.startsWith('@') ? username : `@${username}`;
+      const oldHandle = currentUser?.handle;
+
+      // FIXED: Use atomic updateUsername if available
+      if (oldHandle && oldHandle !== handle && updateUsername) {
+        const result = await updateUsername(oldHandle, handle, currentUser?.id || '');
+        if (!result.success) {
+          throw new Error(result.message);
+        }
+      } else if (oldHandle && oldHandle !== handle) {
+        // Fallback: manual unregister + register
+        await unregisterUsername(oldHandle);
+        await registerUsername(handle, currentUser?.id || '');
+      }
+
+      // Update UserContext (source of truth for profile data)
+      await updateUserContextProfile({
+        displayName: displayName.trim(),
+        handle: handle.toLowerCase(),
+        bio: bio.trim(),
+        avatar: profileImage || selectedAvatar,
+      });
+
+      // Update CommunityContext currentUser
       await updateCommunityProfile({
         displayName: displayName.trim(),
+        handle: handle.toLowerCase(),
         bio: bio.trim(),
-        avatar: selectedAvatar,
+        avatar: profileImage || selectedAvatar,
       });
-      
-      if (bio.trim()) {
-        await updateUserBio(bio.trim());
-      }
-      
+
+      // Sync profile changes to all posts
+      await syncUserProfileAcrossPosts(currentUser?.id || '', {
+        displayName: displayName.trim(),
+        handle: handle.toLowerCase(),
+        bio: bio.trim(),
+        avatar: profileImage || selectedAvatar,
+      });
+
       setIsSaving(false);
       showSuccessModal({ message: 'Profile updated successfully!' });
       navigation.goBack();
     } catch (error) {
       setIsSaving(false);
+      console.error('Profile update error:', error);
       showErrorModal({ message: 'Failed to update profile. Please try again.' });
     }
   };
@@ -74,7 +217,7 @@ export default function EditCommunityProfileScreen({ navigation, route }: EditCo
     <View style={styles.container}>
       <StatusBar style="dark" />
       <LinearGradient colors={CommunityColors.background.gradient} style={StyleSheet.absoluteFill} />
-      
+
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
@@ -86,30 +229,53 @@ export default function EditCommunityProfileScreen({ navigation, route }: EditCo
           </TouchableOpacity>
           <Text style={styles.title}>Edit Profile</Text>
           <TouchableOpacity 
-            style={[styles.saveButton, displayName.length > 0 && styles.saveButtonActive]}
+            style={[styles.saveButton, displayName.length > 0 && !isSaving && styles.saveButtonActive]}
             disabled={displayName.length === 0 || isSaving}
             onPress={handleSave}
           >
-            <Text style={[styles.saveButtonText, displayName.length > 0 && styles.saveButtonTextActive]}>
+            <Text style={[styles.saveButtonText, displayName.length > 0 && !isSaving && styles.saveButtonTextActive]}>
               {isSaving ? 'Saving...' : 'Save'}
             </Text>
           </TouchableOpacity>
         </View>
 
         <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-          {/* Avatar Selection */}
+          {/* Profile Image Upload */}
           <Animated.View entering={FadeInUp}>
-            <Text style={styles.sectionLabel}>Choose Avatar</Text>
+            <View style={styles.imageUploadContainer}>
+              <TouchableOpacity style={styles.imageUploadButton} onPress={handleImagePick}>
+                {profileImage ? (
+                  <Image source={{ uri: profileImage }} style={styles.profileImage} />
+                ) : (
+                  <Text style={styles.profileImagePlaceholder}>{selectedAvatar}</Text>
+                )}
+                {isUploadingImage && (
+                  <View style={styles.uploadingOverlay}>
+                    <ActivityIndicator size="small" color="white" />
+                  </View>
+                )}
+                <View style={styles.cameraIconContainer}>
+                  <Ionicons name="camera" size={16} color="white" />
+                </View>
+              </TouchableOpacity>
+              <Text style={styles.imageUploadText}>Tap to change photo</Text>
+            </View>
+          </Animated.View>
+
+          {/* Avatar Selection */}
+          <Animated.View entering={FadeInUp.delay(50)}>
+            <Text style={styles.sectionLabel}>Or Choose Avatar</Text>
             <View style={styles.avatarsContainer}>
               {AVATARS.map((avatar) => (
                 <TouchableOpacity
                   key={avatar}
                   style={[
                     styles.avatarOption,
-                    selectedAvatar === avatar && styles.avatarOptionSelected
+                    selectedAvatar === avatar && !profileImage && styles.avatarOptionSelected
                   ]}
                   onPress={() => {
                     setSelectedAvatar(avatar);
+                    setProfileImage(null);
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   }}
                 >
@@ -133,6 +299,34 @@ export default function EditCommunityProfileScreen({ navigation, route }: EditCo
                   maxLength={30}
                 />
                 <Text style={styles.characterCount}>{displayName.length}/30</Text>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Username</Text>
+                <View style={styles.usernameInputContainer}>
+                  <Text style={styles.atSymbol}>@</Text>
+                  <TextInput
+                    style={[styles.textInput, styles.usernameInput]}
+                    placeholder="username"
+                    placeholderTextColor={CommunityColors.text.tertiary}
+                    value={username}
+                    onChangeText={(text) => {
+                      setUsername(text.toLowerCase().replace(/\\s+/g, '_'));
+                      setUsernameError('');
+                    }}
+                    onBlur={() => validateUsernameAsync(username)}
+                    autoCapitalize="none"
+                    maxLength={30}
+                  />
+                  {isCheckingUsername && (
+                    <ActivityIndicator size="small" color={CommunityColors.primary} style={{ marginRight: 12 }} />
+                  )}
+                </View>
+                {usernameError ? (
+                  <Text style={styles.errorText}>{usernameError}</Text>
+                ) : (
+                  <Text style={styles.characterCount}>{username.length}/30</Text>
+                )}
               </View>
 
               <View style={styles.inputGroup}>
@@ -195,6 +389,62 @@ const styles = StyleSheet.create({
   },
   saveButtonText: { fontSize: 16, fontWeight: '700', color: CommunityColors.text.tertiary },
   saveButtonTextActive: { color: 'white' },
+
+  // Image Upload
+  imageUploadContainer: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  imageUploadButton: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: CommunityColors.background.card,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: CommunityColors.primary + '30',
+    position: 'relative',
+  },
+  profileImage: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+  },
+  profileImagePlaceholder: {
+    fontSize: 50,
+  },
+  uploadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 50,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cameraIconContainer: {
+    position: 'absolute',
+    bottom: -4,
+    right: -4,
+    backgroundColor: CommunityColors.primary,
+    borderRadius: 14,
+    width: 28,
+    height: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'white',
+  },
+  imageUploadText: {
+    fontSize: 14,
+    color: CommunityColors.primary,
+    fontWeight: '600',
+    marginTop: 12,
+  },
+
   sectionLabel: {
     fontSize: 14,
     fontWeight: '700',
@@ -252,6 +502,30 @@ const styles = StyleSheet.create({
     minHeight: 50,
     borderWidth: 1,
     borderColor: CommunityColors.border,
+  },
+  usernameInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: CommunityColors.background.elevated,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: CommunityColors.border,
+  },
+  atSymbol: {
+    fontSize: 18,
+    color: CommunityColors.text.tertiary,
+    paddingLeft: 16,
+    fontWeight: '600',
+  },
+  usernameInput: {
+    flex: 1,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+  },
+  errorText: {
+    fontSize: 13,
+    color: CommunityColors.error,
+    marginTop: 4,
   },
   bioInput: {
     minHeight: 100,

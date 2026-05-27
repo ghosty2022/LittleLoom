@@ -1,4 +1,4 @@
-// src/App.tsx or App.tsx
+// src/App.tsx
 import './src/utils/GlobalScrollPatch';
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
@@ -9,9 +9,9 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import * as SplashScreen from 'expo-splash-screen';
 import * as SystemUI from 'expo-system-ui';
-import { InteractionManager } from 'react-native';
+import { InteractionManager, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Linking, Platform } from 'react-native';
+import { Linking } from 'react-native';
 import * as Notifications from 'expo-notifications';
 
 // Keep splash visible until we're ready
@@ -38,6 +38,8 @@ import { statePersistence } from './src/utils/statePersistence';
 
 // Navigation persistence key
 const NAVIGATION_STATE_KEY = '@littleloom_nav_state_v1';
+const LAST_ROUTE_KEY = '@littleloom_last_route_v1';
+const SECURITY_LOCK_KEY = 'littleloom_security_lock';
 
 export default function App(): JSX.Element | null {
   const [appIsReady, setAppIsReady] = useState(false);
@@ -46,6 +48,10 @@ export default function App(): JSX.Element | null {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  
+  // Keep the latest navigation state in a ref for instant background access
+  const lastNavigationStateRef = useRef<any>(null);
+  const initComplete = useRef(false);
 
   // Set system UI color immediately
   useEffect(() => {
@@ -64,21 +70,14 @@ export default function App(): JSX.Element | null {
   useEffect(() => {
     const initNotifications = async () => {
       try {
-        // Initialize notification service
         await notificationService.initialize();
-        
-        // Request permissions
         const hasPermission = await notificationService.requestPermissions();
         console.log('Notification permissions:', hasPermission ? 'granted' : 'denied');
         
-        // Listen for notification responses (when user taps notification)
         const subscription = Notifications.addNotificationResponseReceivedListener(response => {
           const data = response.notification.request.content.data;
           console.log('Notification tapped:', data);
-          
-          // Handle deep linking based on notification type
           if (data?.screen) {
-            // Navigation will be handled by the navigator
             console.log('Should navigate to:', data.screen);
           }
         });
@@ -92,8 +91,10 @@ export default function App(): JSX.Element | null {
     initNotifications();
   }, []);
 
-  // Restore navigation state on mount
+  // CRITICAL FIX: Restore navigation state on mount - Exclude SecurityLock
   useEffect(() => {
+    if (initComplete.current) return;
+    
     const restoreNavigationState = async () => {
       try {
         // Check for deep link first - don't restore if there's a deep link
@@ -104,10 +105,24 @@ export default function App(): JSX.Element | null {
           
           if (savedState) {
             const parsedState = JSON.parse(savedState);
-            // Validate the state has required properties
+            
+            // CRITICAL FIX: Validate and sanitize the restored state
             if (parsedState && typeof parsedState === 'object' && Array.isArray(parsedState.routes)) {
-              setInitialNavigationState(parsedState);
-              console.log('🔄 Restored navigation state:', parsedState.routes[parsedState.index]?.name);
+              const currentRoute = parsedState.routes[parsedState.index];
+              
+              // NEVER restore to SecurityLock as initial state - it causes instant re-lock
+              if (currentRoute?.name === 'SecurityLock') {
+                console.log('🚫 Prevented restoring SecurityLock as initial state');
+                await AsyncStorage.removeItem(NAVIGATION_STATE_KEY);
+                await AsyncStorage.removeItem(LAST_ROUTE_KEY);
+              } else {
+                setInitialNavigationState(parsedState);
+                console.log('🔄 Restored navigation state:', currentRoute?.name);
+              }
+            } else {
+              console.warn('Invalid navigation state found, clearing...');
+              await AsyncStorage.removeItem(NAVIGATION_STATE_KEY);
+              await AsyncStorage.removeItem(LAST_ROUTE_KEY);
             }
           }
         }
@@ -115,6 +130,7 @@ export default function App(): JSX.Element | null {
         console.warn('Failed to restore navigation state:', error);
       } finally {
         setIsNavigationReady(true);
+        initComplete.current = true;
       }
     };
 
@@ -129,7 +145,6 @@ export default function App(): JSX.Element | null {
 
     const prepareApp = async () => {
       try {
-        // Defer heavy operations to avoid blocking startup
         InteractionManager.runAfterInteractions(() => {
           requestAnimationFrame(() => {
             // Additional deferred initialization can go here
@@ -151,7 +166,7 @@ export default function App(): JSX.Element | null {
     };
   }, []);
 
-  // Handle app state changes for emergency state saving
+  // CRITICAL FIX: Handle app state changes - Don't save state when locked
   useEffect(() => {
     const subscription = AppState.addEventListener('change', async (nextAppState) => {
       // App going to background - save everything immediately
@@ -160,6 +175,18 @@ export default function App(): JSX.Element | null {
         (nextAppState === 'inactive' || nextAppState === 'background')
       ) {
         console.log('💾 App going to background - saving state...');
+        
+        // Check if we're currently on SecurityLock - don't save that state
+        const currentRoute = lastNavigationStateRef.current?.routes?.[lastNavigationStateRef.current?.index];
+        
+        if (currentRoute?.name !== 'SecurityLock' && lastNavigationStateRef.current) {
+          try {
+            await AsyncStorage.setItem(NAVIGATION_STATE_KEY, JSON.stringify(lastNavigationStateRef.current));
+          } catch (e) {
+            console.warn('Failed to save nav state on background:', e);
+          }
+        }
+        
         await statePersistence.flushPendingSaves?.();
       }
       
@@ -173,16 +200,30 @@ export default function App(): JSX.Element | null {
   const onNavigationStateChange = useCallback(async (state: any) => {
     if (!state) return;
     
+    // Keep in ref for instant background access
+    lastNavigationStateRef.current = state;
+    
     try {
+      const currentRoute = state.routes[state.index];
+      
+      // Don't persist SecurityLock state
+      if (currentRoute?.name === 'SecurityLock') {
+        return;
+      }
+      
       await AsyncStorage.setItem(NAVIGATION_STATE_KEY, JSON.stringify(state));
       
-      // Also save to state persistence manager for quick access
-      const currentRoute = state.routes[state.index];
       if (currentRoute) {
         await statePersistence.saveNavigationState(
           currentRoute.name,
           currentRoute.params
         );
+        
+        await AsyncStorage.setItem(LAST_ROUTE_KEY, JSON.stringify({
+          name: currentRoute.name,
+          params: currentRoute.params,
+          timestamp: Date.now(),
+        }));
       }
     } catch (error) {
       console.warn('Failed to persist navigation state:', error);
@@ -214,7 +255,6 @@ export default function App(): JSX.Element | null {
                 initialState={initialNavigationState}
                 onStateChange={onNavigationStateChange}
               />
-              {/* Global Audio Player - Stays on all screens */}
               <GlobalAudioPlayer />
             </Animated.View>
             <StatusBar 

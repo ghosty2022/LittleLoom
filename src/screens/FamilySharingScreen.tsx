@@ -34,7 +34,7 @@ import Animated, {
   useAnimatedScrollHandler,
   interpolate,
   Extrapolation,
-  Layout, // FIX: Added Layout import
+  Layout,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
@@ -51,6 +51,18 @@ type FamilySharingScreenProps = NativeStackScreenProps<RootStackParamList, 'Fami
 
 const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
 const { width, height } = Dimensions.get('window');
+
+// ==================== UNIFIED IMAGE UTILITIES ====================
+const isImageUri = (value: string | undefined | null): boolean => {
+  if (!value || typeof value !== 'string') return false;
+  return value.startsWith('http') || value.startsWith('file://') || value.startsWith('data:');
+};
+
+const isEmoji = (value: string | undefined | null): boolean => {
+  if (!value || typeof value !== 'string') return false;
+  if (value.length > 4) return false;
+  return /\p{Emoji}/u.test(value);
+};
 
 // ==================== ENHANCED ROLE CONFIGURATION ====================
 const ROLE_CONFIG: Record<UserRole, {
@@ -242,8 +254,43 @@ const ActivityLogItem: React.FC<ActivityLogItemProps> = ({ activity, isDark, ind
   );
 };
 
-// ==================== MEMBER CARD COMPONENT ====================
+// ==================== UNIFIED SAFE AVATAR COMPONENT ====================
+const SafeAvatar: React.FC<{
+  avatar?: string | null;
+  size?: number;
+  fallbackEmoji?: string;
+  fallbackIcon?: keyof typeof Ionicons.glyphMap;
+  fallbackColor?: string;
+}> = ({ avatar, size = 56, fallbackEmoji = '👤', fallbackIcon = 'person', fallbackColor = '#667eea' }) => {
+  const hasImage = isImageUri(avatar);
+  const hasEmoji = isEmoji(avatar);
 
+  return (
+    <View style={[styles.avatarWrapper, { width: size, height: size }]}>
+      <LinearGradient
+        colors={[fallbackColor + '20', fallbackColor + '40']}
+        style={[styles.avatarGradient, { width: size, height: size, borderRadius: size / 2.8 }]}
+      >
+        {hasImage ? (
+          <View style={{ width: size, height: size, borderRadius: size / 2.8, overflow: 'hidden' }}>
+            <Image 
+              source={{ uri: avatar! }} 
+              style={{ width: size, height: size }}
+              resizeMode="cover"
+              onError={(e) => console.log('Avatar image error:', e.nativeEvent.error)}
+            />
+          </View>
+        ) : hasEmoji ? (
+          <Text style={[styles.avatarEmoji, { fontSize: size * 0.5 }]}>{avatar}</Text>
+        ) : (
+          <Ionicons name={fallbackIcon} size={size * 0.4} color={fallbackColor} />
+        )}
+      </LinearGradient>
+    </View>
+  );
+};
+
+// ==================== MEMBER CARD COMPONENT — FIXED: Wrapper pattern for layout animation ====================
 interface MemberCardProps {
   member: FamilyMember;
   isCurrentUser: boolean;
@@ -252,7 +299,7 @@ interface MemberCardProps {
   onLongPress?: () => void;
   index: number;
   isDark: boolean;
-  showFamilyChat?: boolean;
+  showFamilyChat: boolean;
   onFamilyChatPress?: () => void;
 }
 
@@ -270,7 +317,7 @@ const MemberCard: React.FC<MemberCardProps> = ({
   const roleConfig = ROLE_CONFIG[member.role] || ROLE_CONFIG[UserRole.VIEWER];
   const scale = useSharedValue(1);
 
-  // FIX: Remove layout prop from animatedStyle, use it on wrapper instead
+  // FIX: Separate animated style (transform) from layout animation
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
   }));
@@ -284,133 +331,135 @@ const MemberCard: React.FC<MemberCardProps> = ({
   };
 
   return (
-    // FIX: Separate Animated.View for layout animation from TouchableOpacity with transform
+    // FIX: Wrapper View handles layout animation, inner Animated.View handles transform
     <Animated.View
       entering={FadeInUp.delay(index * 100)}
       layout={Layout.springify()}
-      style={[styles.memberCardWrapper, animatedStyle]}
+      style={styles.memberCardWrapper}
     >
-      <TouchableOpacity
-        onPress={onPress}
-        onLongPress={onLongPress}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        delayLongPress={500}
-        activeOpacity={0.9}
-        style={styles.memberCardTouchable}
-      >
-        <BlurView intensity={60} style={[styles.memberCard, isDark && styles.memberCardDark]} tint={isDark ? 'dark' : 'light'}>
-          <LinearGradient
-            colors={isDark ? ['rgba(40,40,45,0.6)', 'rgba(25,25,30,0.4)'] : ['rgba(255,255,255,0.8)', 'rgba(250,250,255,0.6)']}
-            style={StyleSheet.absoluteFill}
-          />
-          
-          <LinearGradient
-            colors={roleConfig.gradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.roleStrip}
-          />
+      <Animated.View style={animatedStyle}>
+        <TouchableOpacity
+          onPress={onPress}
+          onLongPress={onLongPress}
+          onPressIn={handlePressIn}
+          onPressOut={handlePressOut}
+          delayLongPress={500}
+          activeOpacity={0.9}
+          style={styles.memberCardTouchable}
+        >
+          <BlurView intensity={60} style={[styles.memberCard, isDark && styles.memberCardDark]} tint={isDark ? 'dark' : 'light'}>
+            <LinearGradient
+              colors={isDark ? ['rgba(40,40,45,0.6)', 'rgba(25,25,30,0.4)'] : ['rgba(255,255,255,0.8)', 'rgba(250,250,255,0.6)']}
+              style={StyleSheet.absoluteFill}
+            />
+            
+            <LinearGradient
+              colors={roleConfig.gradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.roleStrip}
+            />
 
-          <View style={styles.memberCardContent}>
-            <View style={[styles.memberAvatarContainer, { backgroundColor: roleConfig.color + '20' }]}>
-              {member.avatar ? (
-                <Image source={{ uri: member.avatar }} style={styles.memberAvatarImage} />
-              ) : (
-                <Text style={[styles.memberAvatarEmoji, { color: roleConfig.color }]}>
-                  {isCurrentUser ? '👑' : (member.role === UserRole.PARENT_2 ? '👨‍👩‍👧‍👦' : '👤')}
-                </Text>
-              )}
-              {isCurrentUser && (
-                <View style={styles.youBadge}>
-                  <Text style={styles.youBadgeText}>YOU</Text>
-                </View>
-              )}
-              {member.notificationsEnabled === false && (
-                <View style={styles.mutedBadge}>
-                  <Ionicons name="notifications-off" size={10} color="#fff" />
-                </View>
-              )}
-            </View>
-
-            <View style={styles.memberInfo}>
-              <View style={styles.memberNameRow}>
-                <Text style={[styles.memberName, isDark && styles.textDark]} numberOfLines={1}>
-                  {member.fullName}
-                </Text>
-                {member.lastActive && new Date(member.lastActive).getTime() > Date.now() - 5 * 60 * 1000 && (
-                  <View style={styles.onlineIndicator} />
+            <View style={styles.memberCardContent}>
+              <View style={styles.memberAvatarContainer}>
+                <SafeAvatar 
+                  avatar={member.avatar} 
+                  size={56}
+                  fallbackEmoji={isCurrentUser ? '👑' : (member.role === UserRole.PARENT_2 ? '👨‍👩‍👧‍👦' : '👤')}
+                  fallbackIcon={member.role === UserRole.PARENT_1 ? 'shield' : member.role === UserRole.PARENT_2 ? 'heart' : 'person'}
+                  fallbackColor={roleConfig.color}
+                />
+                {isCurrentUser && (
+                  <View style={styles.youBadge}>
+                    <Text style={styles.youBadgeText}>YOU</Text>
+                  </View>
+                )}
+                {member.notificationsEnabled === false && (
+                  <View style={styles.mutedBadge}>
+                    <Ionicons name="notifications-off" size={10} color="#fff" />
+                  </View>
                 )}
               </View>
-              
-              <View style={styles.memberMetaRow}>
-                <LinearGradient
-                  colors={roleConfig.gradient}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.roleBadgeSmall}
-                >
-                  <Ionicons name={roleConfig.icon} size={10} color="#fff" />
-                  <Text style={styles.roleBadgeSmallText}>{roleConfig.badge}</Text>
-                </LinearGradient>
+
+              <View style={styles.memberInfo}>
+                <View style={styles.memberNameRow}>
+                  <Text style={[styles.memberName, isDark && styles.textDark]} numberOfLines={1}>
+                    {member.fullName}
+                  </Text>
+                  {member.lastActive && new Date(member.lastActive).getTime() > Date.now() - 5 * 60 * 1000 && (
+                    <View style={styles.onlineIndicator} />
+                  )}
+                </View>
                 
-                <Text style={[styles.memberRelationship, isDark && styles.textMuted]}>
-                  {member.relationship || 'Family Member'}
-                </Text>
+                <View style={styles.memberMetaRow}>
+                  <LinearGradient
+                    colors={roleConfig.gradient}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.roleBadgeSmall}
+                  >
+                    <Ionicons name={roleConfig.icon} size={10} color="#fff" />
+                    <Text style={styles.roleBadgeSmallText}>{roleConfig.badge}</Text>
+                  </LinearGradient>
+                  
+                  <Text style={[styles.memberRelationship, isDark && styles.textMuted]}>
+                    {member.relationship || 'Family Member'}
+                  </Text>
+                </View>
+
+                {member.lastActive ? (
+                  <Text style={[styles.memberLastActive, isDark && styles.textMuted]}>
+                    Active {new Date(member.lastActive).toLocaleDateString()}
+                  </Text>
+                ) : (
+                  <View style={styles.pendingBadge}>
+                    <Ionicons name="time-outline" size={12} color="#f59e0b" />
+                    <Text style={styles.pendingText}>Pending Invitation</Text>
+                  </View>
+                )}
               </View>
 
-              {member.lastActive ? (
-                <Text style={[styles.memberLastActive, isDark && styles.textMuted]}>
-                  Active {new Date(member.lastActive).toLocaleDateString()}
-                </Text>
-              ) : (
-                <View style={styles.pendingBadge}>
-                  <Ionicons name="time-outline" size={12} color="#f59e0b" />
-                  <Text style={styles.pendingText}>Pending Invitation</Text>
+              <View style={styles.memberActions}>
+                {showFamilyChat && onFamilyChatPress && (
+                  <TouchableOpacity 
+                    style={[styles.memberActionBtn, styles.familyChatBtn, { backgroundColor: '#ec489920' }]}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      onFamilyChatPress();
+                    }}
+                  >
+                    <Ionicons name="chatbubbles" size={18} color="#ec4899" />
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity 
+                  style={[styles.memberActionBtn, { backgroundColor: roleConfig.color + '15' }]}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    onPress();
+                  }}
+                >
+                  <Ionicons name="chevron-forward" size={20} color={roleConfig.color} />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={styles.permissionPills}>
+              {roleConfig.permissions.slice(0, 3).map((perm, i) => (
+                <View key={i} style={[styles.permissionPill, { backgroundColor: roleConfig.color + '10' }]}>
+                  <Text style={[styles.permissionPillText, { color: roleConfig.color }]}>{perm}</Text>
+                </View>
+              ))}
+              {roleConfig.permissions.length > 3 && (
+                <View style={[styles.permissionPill, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}>
+                  <Text style={[styles.permissionPillText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+                    +{roleConfig.permissions.length - 3}
+                  </Text>
                 </View>
               )}
             </View>
-
-            <View style={styles.memberActions}>
-              {showFamilyChat && onFamilyChatPress && (
-                <TouchableOpacity 
-                  style={[styles.memberActionBtn, styles.familyChatBtn, { backgroundColor: '#ec489920' }]}
-                  onPress={(e) => {
-                    e.stopPropagation();
-                    onFamilyChatPress();
-                  }}
-                >
-                  <Ionicons name="chatbubbles" size={18} color="#ec4899" />
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity 
-                style={[styles.memberActionBtn, { backgroundColor: roleConfig.color + '15' }]}
-                onPress={(e) => {
-                  e.stopPropagation();
-                  onPress();
-                }}
-              >
-                <Ionicons name="chevron-forward" size={20} color={roleConfig.color} />
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          <View style={styles.permissionPills}>
-            {roleConfig.permissions.slice(0, 3).map((perm, i) => (
-              <View key={i} style={[styles.permissionPill, { backgroundColor: roleConfig.color + '10' }]}>
-                <Text style={[styles.permissionPillText, { color: roleConfig.color }]}>{perm}</Text>
-              </View>
-            ))}
-            {roleConfig.permissions.length > 3 && (
-              <View style={[styles.permissionPill, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}>
-                <Text style={[styles.permissionPillText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
-                  +{roleConfig.permissions.length - 3}
-                </Text>
-              </View>
-            )}
-          </View>
-        </BlurView>
-      </TouchableOpacity>
+          </BlurView>
+        </TouchableOpacity>
+      </Animated.View>
     </Animated.View>
   );
 };
@@ -460,7 +509,7 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
     removeMember, 
     updateGuardianProfile,
     updateParent2Profile,
-    resendInvite,
+        resendInvite,
     cancelInvite,
     getEffectivePermissions 
   } = useFamily();
@@ -512,56 +561,39 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
   const [memberStats, setMemberStats] = useState<Record<string, any>>({});
   const [recentFamilyActivity, setRecentFamilyActivity] = useState<any[]>([]);
 
+  // FIX: Safe current user ID with fallback
+  const currentUserId = useMemo(() => {
+    return userProfile?.id || userProfile?.uid || profile?.id || '';
+  }, [userProfile, profile]);
+
   const isPrimaryParent = useMemo(() => {
-    const currentUserId = userProfile?.id || userProfile?.uid || profile?.id;
+    if (!currentUserId) return false;
     return parent1?.id === currentUserId || members.some(m => 
       m.role === UserRole.PARENT_1 && (m.id === currentUserId || m.userId === currentUserId)
     );
-  }, [parent1, members, userProfile, profile]);
-
-  const currentUserId = userProfile?.id || userProfile?.uid || profile?.id;
+  }, [parent1, members, currentUserId]);
 
   useEffect(() => {
     loadFamily();
   }, [loadFamily]);
 
-  // Calculate member statistics and recent activity
+  // Calculate member statistics
   useEffect(() => {
     if (!currentBaby) return;
     
     const stats: Record<string, any> = {};
-    const allActivities: any[] = []; // This would come from your activity context
     
     members.forEach(member => {
-      const memberActivities = allActivities.filter((a: any) => a.loggedBy === member.id);
-      const last7Days = memberActivities.filter((a: any) => 
-        a.timestamp > Date.now() - 7 * 24 * 60 * 60 * 1000
-      );
-      
-      const recentActivities = memberActivities
-        .sort((a: any, b: any) => b.timestamp - a.timestamp)
-        .slice(0, 5)
-        .map((a: any) => ({
-          id: a.id,
-          type: a.type,
-          title: a.title || ACTIVITY_CONFIG[a.type]?.label || 'Activity',
-          details: a.details,
-          timestamp: a.timestamp,
-          loggedByName: member.fullName,
-          babyName: currentBaby.name,
-        }));
-      
       stats[member.id] = {
-        totalActivities: memberActivities.length,
-        last7Days: last7Days.length,
+        totalActivities: 0,
+        last7Days: 0,
         lastActive: member.lastActive,
-        loginStreak: 0, // calculateLoginStreak would go here
+        loginStreak: 0,
         mostActiveType: null,
-        recentActivities,
+        recentActivities: [],
       };
     });
     
-    setRecentFamilyActivity(allActivities.slice(0, 20));
     setMemberStats(stats);
   }, [members, currentBaby]);
 
@@ -569,14 +601,12 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
       scrollY.value = event.contentOffset.y;
-      // Increase blur intensity as user scrolls (max 100)
       headerBlurIntensity.value = interpolate(
         scrollY.value,
         [0, 100, 200],
         [0, 60, 100],
         Extrapolation.CLAMP
       );
-      // Increase opacity of background to hide underlying content
       headerOpacity.value = interpolate(
         scrollY.value,
         [0, 50, 150],
@@ -673,7 +703,6 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
       return;
     }
 
-    const currentUserId = userProfile?.id || userProfile?.uid || profile?.id;
     if (selectedMember.id === currentUserId) {
       Alert.alert('Cannot Remove', 'You cannot remove yourself');
       return;
@@ -834,7 +863,6 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
     return Object.entries(distribution).map(([role, count]) => ({ role, count }));
   };
 
-  // RENAMED: Baby Chat -> Family Chat
   const handleFamilyChatPress = (member: FamilyMember) => {
     if (!currentBaby) return;
     navigation.navigate('FamilyChat', {
@@ -861,7 +889,6 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
   // ==================== RENDER HEADER WITH TABS ====================
   const renderHeader = () => (
     <Animated.View style={[styles.headerContainer, { paddingTop: insets.top }, headerAnimatedStyle]}>
-      {/* Blur overlay that intensifies on scroll */}
       <Animated.View style={[StyleSheet.absoluteFill, blurAnimatedStyle, { zIndex: -1 }]}>
         <BlurView 
           intensity={60} 
@@ -901,7 +928,7 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
         </View>
       </View>
 
-      {/* Quick Actions - Clean Icons Only, No Backgrounds */}
+      {/* Quick Actions - Clean Icons Only */}
       <View style={styles.quickActionsRow}>
         <TouchableOpacity 
           style={styles.iconAction}
@@ -964,7 +991,7 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
     </Animated.View>
   );
 
-  // ==================== RENDER TAB CONTENT ====================
+  // ==================== RENDER TAB CONTENT — FIXED: No more overlapping activity content ====================
   const renderTabContent = () => {
     switch (activeTab) {
       case 'members':
@@ -1010,7 +1037,7 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
             {renderMemberSection('Guardians', members.filter(m => m.role === UserRole.GUARDIAN), 'No guardians added')}
             {renderMemberSection('Viewers', members.filter(m => m.role === UserRole.VIEWER), 'No viewers added')}
 
-            {/* Pending Invites - Clean Style */}
+            {/* Pending Invites */}
             {pendingInvites.length > 0 && (
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
@@ -1288,14 +1315,14 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
         {selectedMember && (
           <View style={styles.memberDetailContent}>
             <View style={styles.memberDetailHeader}>
-              <View style={[styles.memberDetailAvatar, { backgroundColor: ROLE_CONFIG[selectedMember.role].color + '20' }]}>
-                {selectedMember.avatar ? (
-                  <Image source={{ uri: selectedMember.avatar }} style={styles.memberDetailAvatarImage} />
-                ) : (
-                  <Text style={[styles.memberDetailAvatarEmoji, { color: ROLE_CONFIG[selectedMember.role].color }]}>
-                    {selectedMember.role === UserRole.PARENT_1 ? '👑' : '👤'}
-                  </Text>
-                )}
+              <View style={styles.memberDetailAvatar}>
+                <SafeAvatar 
+                  avatar={selectedMember.avatar} 
+                  size={100}
+                  fallbackEmoji={selectedMember.role === UserRole.PARENT_1 ? '👑' : '👤'}
+                  fallbackIcon={selectedMember.role === UserRole.PARENT_1 ? 'shield' : 'person'}
+                  fallbackColor={ROLE_CONFIG[selectedMember.role].color}
+                />
               </View>
               <LinearGradient
                 colors={ROLE_CONFIG[selectedMember.role].gradient}
@@ -1430,7 +1457,13 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
         <View style={styles.editForm}>
           <TouchableOpacity style={styles.editAvatarContainer} onPress={handleImagePick}>
             {editForm.avatar ? (
-              <Image source={{ uri: editForm.avatar }} style={styles.editAvatarImage} />
+              <SafeAvatar 
+                avatar={editForm.avatar} 
+                size={100}
+                fallbackEmoji="👤"
+                fallbackIcon="camera"
+                fallbackColor="#667eea"
+              />
             ) : (
               <View style={[styles.editAvatarPlaceholder, { backgroundColor: ROLE_CONFIG[selectedMember?.role || UserRole.GUARDIAN].color + '20' }]}>
                 <Ionicons name="camera" size={32} color={ROLE_CONFIG[selectedMember?.role || UserRole.GUARDIAN].color} />
@@ -1842,7 +1875,7 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
                     text: 'Export', 
                     onPress: () => {
                       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                    Alert.alert('Export Started', 'You will receive an email when ready.');
+                      Alert.alert('Export Started', 'You will receive an email when ready.');
                     }
                   }
                 ]
@@ -2075,7 +2108,7 @@ const styles = StyleSheet.create({
     paddingTop: 16,
   },
 
-  // FIX: Wrapper styles for Animated components - removed layout from animatedStyle
+  // FIX: Wrapper styles for Animated components - layout animation on wrapper, transform on inner
   memberCardWrapper: {
     marginBottom: 14,
     borderRadius: 20,
@@ -2216,14 +2249,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     position: 'relative',
   },
-  memberAvatarImage: {
-    width: 56,
-    height: 56,
-    borderRadius: 20,
-  },
-  memberAvatarEmoji: {
-    fontSize: 28,
-  },
   youBadge: {
     position: 'absolute',
     bottom: -4,
@@ -2327,9 +2352,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  familyChatBtn: {
-    // Specific styling for family chat button
-  },
+  familyChatBtn: {},
   permissionPills: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -2380,7 +2403,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // Pending Invites - Clean Style with Proper Rounded Corners
+  // Pending Invites
   pendingCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2547,7 +2570,7 @@ const styles = StyleSheet.create({
   // Member Detail
   memberDetailContent: {
     paddingBottom: 20,
-  },
+   },
   memberDetailHeader: {
     alignItems: 'center',
     marginBottom: 24,
@@ -2559,14 +2582,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
-  },
-  memberDetailAvatarImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 30,
-  },
-  memberDetailAvatarEmoji: {
-    fontSize: 50,
   },
   memberDetailRoleBadge: {
     flexDirection: 'row',
@@ -2723,11 +2738,6 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     position: 'relative',
     marginBottom: 8,
-  },
-  editAvatarImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 30,
   },
   editAvatarPlaceholder: {
     width: 100,
@@ -3167,7 +3177,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  // Quick Action (Legacy - keeping for compatibility)
+  // Quick Action (Legacy)
   quickAction: {
     alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.8)',
@@ -3208,4 +3218,20 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#64748b',
   },
+
+  // Unified Avatar Styles
+  avatarWrapper: {
+    position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  avatarGradient: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  avatarEmoji: {},
 });

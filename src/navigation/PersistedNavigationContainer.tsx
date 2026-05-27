@@ -10,6 +10,7 @@ import { Linking, Platform, AppState, AppStateStatus } from 'react-native';
 import { statePersistence } from '../utils/statePersistence';
 
 const NAVIGATION_STATE_KEY = '@littleloom_nav_state_v1';
+const LAST_ROUTE_KEY = '@littleloom_last_route_v1';
 
 interface PersistedNavigationContainerProps {
   children: React.ReactNode;
@@ -18,7 +19,6 @@ interface PersistedNavigationContainerProps {
   fallback?: React.ReactNode;
 }
 
-// Custom themes (matching your existing ones)
 const CustomLightTheme = {
   ...DefaultTheme,
   colors: {
@@ -51,33 +51,32 @@ export const PersistedNavigationContainer: React.FC<PersistedNavigationContainer
   onReady,
   fallback,
 }) => {
-  const [isReady, setIsReady] = useState(Platform.OS === 'web'); // Don't persist on web
+  const [isReady, setIsReady] = useState(Platform.OS === 'web');
   const [initialState, setInitialState] = useState<any>(undefined);
   const navigationRef = useRef<NavigationContainerRef<any>>(null);
   const currentStateRef = useRef<any>(null);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   const isNavigatingRef = useRef(false);
+  const stateChangeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Restore navigation state on mount
   useEffect(() => {
     const restoreState = async () => {
       try {
-        // Check for deep link first
         const initialUrl = await Linking.getInitialURL();
-        
-        // Only restore if no deep link and not on web
+
         if (Platform.OS !== 'web' && initialUrl == null) {
           const savedState = await AsyncStorage.getItem(NAVIGATION_STATE_KEY);
-          
+
           if (savedState) {
             const parsedState = JSON.parse(savedState);
-            // Validate the state structure
             if (isValidNavigationState(parsedState)) {
               setInitialState(parsedState);
-              console.log('🔄 Restored navigation state:', parsedState);
+              console.log('Restored navigation state:', parsedState);
             } else {
               console.warn('Invalid navigation state found, clearing...');
               await AsyncStorage.removeItem(NAVIGATION_STATE_KEY);
+              await AsyncStorage.removeItem(LAST_ROUTE_KEY);
             }
           }
         }
@@ -100,15 +99,19 @@ export const PersistedNavigationContainer: React.FC<PersistedNavigationContainer
         appStateRef.current === 'active' && 
         (nextAppState === 'inactive' || nextAppState === 'background')
       ) {
-        // App going to background - save immediately
+        // Immediate background save
         if (currentStateRef.current) {
           await persistNavigationState(currentStateRef.current);
         }
-        
-        // Also save current route for quick restoration
+
         if (navigationRef.current) {
           const currentRoute = navigationRef.current.getCurrentRoute();
           if (currentRoute) {
+            await AsyncStorage.setItem(LAST_ROUTE_KEY, JSON.stringify({
+              name: currentRoute.name,
+              params: currentRoute.params,
+              timestamp: Date.now(),
+            }));
             await statePersistence.saveNavigationState(
               currentRoute.name,
               currentRoute.params
@@ -116,14 +119,13 @@ export const PersistedNavigationContainer: React.FC<PersistedNavigationContainer
           }
         }
       }
-      
+
       appStateRef.current = nextAppState;
     });
 
     return () => subscription.remove();
   }, []);
 
-  // Persist navigation state
   const persistNavigationState = async (state: any) => {
     try {
       await AsyncStorage.setItem(NAVIGATION_STATE_KEY, JSON.stringify(state));
@@ -132,18 +134,17 @@ export const PersistedNavigationContainer: React.FC<PersistedNavigationContainer
     }
   };
 
-  // Handle state changes
   const handleStateChange = useCallback(async (state: any) => {
     currentStateRef.current = state;
-    
-    // Debounce persistence to avoid excessive writes
+
     if (!isNavigatingRef.current) {
       isNavigatingRef.current = true;
-      
-      setTimeout(async () => {
+
+      if (stateChangeTimeoutRef.current) clearTimeout(stateChangeTimeoutRef.current);
+
+      stateChangeTimeoutRef.current = setTimeout(async () => {
         await persistNavigationState(state);
-        
-        // Also save to state persistence manager
+
         if (navigationRef.current) {
           const currentRoute = navigationRef.current.getCurrentRoute();
           if (currentRoute) {
@@ -153,13 +154,12 @@ export const PersistedNavigationContainer: React.FC<PersistedNavigationContainer
             );
           }
         }
-        
+
         isNavigatingRef.current = false;
       }, 500);
     }
   }, []);
 
-  // Validate navigation state structure
   const isValidNavigationState = (state: any): boolean => {
     if (!state || typeof state !== 'object') return false;
     if (!Array.isArray(state.routes)) return false;
@@ -167,24 +167,21 @@ export const PersistedNavigationContainer: React.FC<PersistedNavigationContainer
     return true;
   };
 
-  // Clear persisted state (useful for logout or error recovery)
   const clearPersistedState = useCallback(async () => {
     try {
       await AsyncStorage.removeItem(NAVIGATION_STATE_KEY);
+      await AsyncStorage.removeItem(LAST_ROUTE_KEY);
       await statePersistence.clearAllState();
     } catch (error) {
       console.warn('Failed to clear persisted state:', error);
     }
   }, []);
 
-  // Handle navigation ready
   const handleReady = useCallback(() => {
     onReady?.();
-    
-    // Restore scroll positions and other screen-specific state
     const currentRoute = navigationRef.current?.getCurrentRoute();
     if (currentRoute) {
-      console.log('✅ Navigation ready, current route:', currentRoute.name);
+      console.log('Navigation ready, current route:', currentRoute.name);
     }
   }, [onReady]);
 
@@ -206,11 +203,11 @@ export const PersistedNavigationContainer: React.FC<PersistedNavigationContainer
   );
 };
 
-// Hook to get the clear function
 export const useClearPersistedNavigation = () => {
   const clearState = useCallback(async () => {
     try {
       await AsyncStorage.removeItem(NAVIGATION_STATE_KEY);
+      await AsyncStorage.removeItem(LAST_ROUTE_KEY);
       await statePersistence.clearAllState();
     } catch (error) {
       console.warn('Failed to clear persisted state:', error);

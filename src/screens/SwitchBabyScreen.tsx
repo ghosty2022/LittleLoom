@@ -9,6 +9,7 @@ import {
   useColorScheme,
   Alert,
   Dimensions,
+  Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -19,13 +20,115 @@ import Animated, { FadeInUp, FadeIn, Layout, useSharedValue, useAnimatedStyle, w
 import * as Haptics from 'expo-haptics';
 import { useBaby } from '../context/BabyContext';
 import { useAuth } from '../context/AuthContext';
-import { useFamily } from '../context/FamilyContext'; // NEW: For partner check
+import { useFamily } from '../context/FamilyContext';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../types/navigation';
 
 const { width } = Dimensions.get('window');
 
 type SwitchBabyScreenProps = NativeStackScreenProps<RootStackParamList, 'SwitchBaby'>;
+
+// ==================== IMAGE UTILITY FUNCTIONS ====================
+const isImageUri = (value: string | undefined | null): boolean => {
+  if (!value || typeof value !== 'string') return false;
+  return value.startsWith('http') || value.startsWith('file://') || value.startsWith('data:');
+};
+
+const isEmoji = (value: string | undefined | null): boolean => {
+  if (!value || typeof value !== 'string') return false;
+  if (value.length > 4) return false;
+  for (const char of value) {
+    const code = char.codePointAt(0) || 0;
+    const isEmojiChar = (
+      (code >= 0x1F600 && code <= 0x1F64F) || (code >= 0x1F300 && code <= 0x1F5FF) ||
+      (code >= 0x1F680 && code <= 0x1F6FF) || (code >= 0x1F1E0 && code <= 0x1F1FF) ||
+      (code >= 0x2600 && code <= 0x26FF) || (code >= 0x2700 && code <= 0x27BF) ||
+      (code >= 0x1F900 && code <= 0x1F9FF) || (code >= 0x1F018 && code <= 0x1F270) ||
+      code === 0x238C || code === 0x2B06 || code === 0x2B07 || code === 0x2B05 ||
+      code === 0x27A1 || (code >= 0x2194 && code <= 0x2199) ||
+      (code >= 0x21A9 && code <= 0x21AA) || (code >= 0x2934 && code <= 0x2935) ||
+      (code >= 0x25AA && code <= 0x25AB) || (code >= 0x25FB && code <= 0x25FE) ||
+      code === 0x25B6 || code === 0x25C0 || (code >= 0x1F200 && code <= 0x1F251) ||
+      code === 0x1F004 || code === 0x1F0CF || (code >= 0x1F170 && code <= 0x1F171) ||
+      (code >= 0x1F17E && code <= 0x1F17F) || code === 0x1F18E || code === 0x3030 ||
+      code === 0x2B50 || code === 0x2B55 || (code >= 0x23E9 && code <= 0x23EC) ||
+      code === 0x23F0 || code === 0x23F3 || (code >= 0x231A && code <= 0x231B) ||
+      (code >= 0x23F8 && code <= 0x23FA) || code === 0x24C2 ||
+      (code >= 0x1F3FB && code <= 0x1F3FF) || (code >= 0x1F3E0 && code <= 0x1F3F4) ||
+      (code >= 0x1F3F8 && code <= 0x1F43F) || code === 0x1F440 ||
+      (code >= 0x1F442 && code <= 0x1F4FF) || (code >= 0x1F500 && code <= 0x1F53D) ||
+      (code >= 0x1F54B && code <= 0x1F54E) || (code >= 0x1F550 && code <= 0x1F567) ||
+      (code >= 0x1F595 && code <= 0x1F596) || (code >= 0x1F5FB && code <= 0x1F64F) ||
+      (code >= 0x1F680 && code <= 0x1F6C5) || (code >= 0x1F6CB && code <= 0x1F6D2) ||
+      (code >= 0x1F6E0 && code <= 0x1F6E5) || code === 0x1F6E9 ||
+      (code >= 0x1F6EB && code <= 0x1F6EC) || code === 0x1F6F0 ||
+      (code >= 0x1F6F3 && code <= 0x1F6F8) || (code >= 0x1F910 && code <= 0x1F93A) ||
+      (code >= 0x1F93C && code <= 0x1F93E) || (code >= 0x1F940 && code <= 0x1F945) ||
+      (code >= 0x1F947 && code <= 0x1F94C) || (code >= 0x1F950 && code <= 0x1F96B) ||
+      (code >= 0x1F980 && code <= 0x1F997) || code === 0x1F9C0 ||
+      (code >= 0x1F9D0 && code <= 0x1F9E6)
+    );
+    if (!isEmojiChar) return false;
+  }
+  return true;
+};
+
+const GENDER_OPTIONS = [
+  { value: 'boy', label: 'Boy', icon: 'male', color: '#667eea', gradient: ['#667eea', '#764ba2'] },
+  { value: 'girl', label: 'Girl', icon: 'female', color: '#fa709a', gradient: ['#fa709a', '#fee140'] },
+  { value: 'other', label: 'Other', icon: 'ellipse', color: '#11998e', gradient: ['#11998e', '#38ef7d'] },
+];
+
+// ==================== SAFE BABY AVATAR COMPONENT ====================
+const SafeBabyAvatar: React.FC<{
+  avatar?: string | null;
+  gender?: string;
+  size?: number;
+  showBadge?: boolean;
+}> = ({ avatar, gender = 'other', size = 64, showBadge = false }) => {
+  const hasImage = isImageUri(avatar);
+  const hasEmoji = isEmoji(avatar);
+
+  const genderOption = GENDER_OPTIONS.find(g => g.value === gender);
+  const gradientColors = genderOption?.gradient || ['#667eea', '#764ba2'];
+
+  return (
+    <View style={[styles.avatarWrapper, { width: size, height: size }]}>
+      <LinearGradient
+        colors={gradientColors}
+        style={[
+          styles.avatarGradient, 
+          { width: size, height: size, borderRadius: size / 2 }
+        ]}
+      >
+        {hasImage ? (
+          <Image 
+            source={{ uri: avatar! }} 
+            style={{ width: size, height: size, borderRadius: size / 2 }}
+            resizeMode="cover"
+            onError={(e) => console.log('Baby avatar image error:', e.nativeEvent.error)}
+          />
+        ) : hasEmoji ? (
+          <Text style={[styles.avatarEmoji, { fontSize: size * 0.5 }]}>
+            {avatar}
+          </Text>
+        ) : (
+          <Ionicons 
+            name={genderOption?.icon as any || 'ellipse'} 
+            size={size * 0.4} 
+            color="#fff" 
+          />
+        )}
+      </LinearGradient>
+
+      {showBadge && (
+        <View style={[styles.checkmarkBadge, { bottom: -2, right: -2 }]}>
+          <Ionicons name="checkmark" size={14} color="#fff" />
+        </View>
+      )}
+    </View>
+  );
+};
 
 // ==================== SWEET ALERT COMPONENT ====================
 interface AlertState {
@@ -45,14 +148,14 @@ const SweetAlert = ({ visible, type, title, message, onClose, isDark }: AlertSta
       opacity.value = withTiming(1, { duration: 300 });
       scale.value = withSpring(1, { damping: 12 });
       translateY.value = withSpring(0, { damping: 15 });
-      
+
       const timer = setTimeout(() => {
         opacity.value = withTiming(0, { duration: 300 });
         scale.value = withTiming(0.8, { duration: 300 });
         translateY.value = withTiming(-30, { duration: 300 });
         setTimeout(onClose, 300);
       }, 3000);
-      
+
       return () => clearTimeout(timer);
     }
   }, [visible]);
@@ -110,15 +213,14 @@ const GlassmorphismCard: React.FC<{ children: React.ReactNode; style?: any; onPr
 // ==================== MAIN SCREEN ====================
 export default function SwitchBabyScreen({ navigation }: SwitchBabyScreenProps) {
   const { babies, currentBabyId, switchBaby, deleteBaby, loadBabies, isLoading: babyLoading } = useBaby();
-  const { userProfile, setupComplete, hasParent2 } = useAuth();
-  const { parent2, inviteMember } = useFamily(); // NEW: Check for partner
+  const { userProfile } = useAuth();
+  const { parent2 } = useFamily();
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
-  
+
   const [alert, setAlert] = useState<AlertState>({ visible: false, type: 'success', title: '', message: '' });
   const [isProcessing, setIsProcessing] = useState(false);
-  const [showAddParentModal, setShowAddParentModal] = useState(false); // NEW
 
   const hasNavigated = useRef(false);
 
@@ -126,27 +228,22 @@ export default function SwitchBabyScreen({ navigation }: SwitchBabyScreenProps) 
     setAlert({ visible: true, type, title, message });
   }, []);
 
-  // ============================================
-  // CRITICAL: Handle baby switching
-  // ============================================
   const handleSwitchBaby = useCallback(async (babyId: string) => {
     if (babyId === currentBabyId) {
-      // Already selected, just go to Main
       navigation.replace('Main');
       return;
     }
-    
+
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setIsProcessing(true);
-    
+
     try {
       const success = await switchBaby(babyId);
-      
+
       if (success) {
         await loadBabies();
         showToast('success', 'Switched', 'Baby profile updated');
-        
-        // Navigate to Main after short delay
+
         setTimeout(() => {
           if (!hasNavigated.current) {
             hasNavigated.current = true;
@@ -163,20 +260,13 @@ export default function SwitchBabyScreen({ navigation }: SwitchBabyScreenProps) 
     }
   }, [currentBabyId, switchBaby, loadBabies, navigation, showToast]);
 
-  // ============================================
-  // NEW: Handle adding a partner
-  // ============================================
   const handleAddPartner = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     navigation.navigate('Parent2Setup');
   }, [navigation]);
 
-  // ============================================
-  // NEW: Handle skipping partner addition
-  // ============================================
   const handleSkipPartner = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    // Just proceed to Main, don't force partner addition
     navigation.replace('Main');
   }, [navigation]);
 
@@ -187,7 +277,7 @@ export default function SwitchBabyScreen({ navigation }: SwitchBabyScreenProps) 
     }
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    
+
     Alert.alert(
       'Delete Profile?',
       `Are you sure you want to delete ${babyName}'s profile? This cannot be undone.`,
@@ -199,11 +289,11 @@ export default function SwitchBabyScreen({ navigation }: SwitchBabyScreenProps) 
           onPress: async () => {
             try {
               const success = await deleteBaby(babyId);
-              
+
               if (success) {
                 await loadBabies();
                 showToast('success', 'Deleted', 'Baby profile removed');
-                
+
                 if (babies.length <= 1) {
                   setTimeout(() => {
                     navigation.replace('CreateBabyProfile');
@@ -225,7 +315,6 @@ export default function SwitchBabyScreen({ navigation }: SwitchBabyScreenProps) 
     navigation.navigate('CreateBabyProfile');
   }, [navigation]);
 
-  // Show loading state
   if (babyLoading && babies.length === 0) {
     return (
       <View style={styles.container}>
@@ -240,7 +329,6 @@ export default function SwitchBabyScreen({ navigation }: SwitchBabyScreenProps) 
     );
   }
 
-  // Check if user has a partner
   const hasPartner = parent2 !== null && parent2 !== undefined;
 
   return (
@@ -255,12 +343,12 @@ export default function SwitchBabyScreen({ navigation }: SwitchBabyScreenProps) 
             <Ionicons name="arrow-back" size={24} color={isDark ? '#fff' : '#1a1a1a'} />
           </BlurView>
         </TouchableOpacity>
-        
+
         <View style={styles.headerCenter}>
           <Text style={[styles.headerTitle, isDark && styles.textDark]}>Select Baby</Text>
           <Text style={styles.headerSubtitle}>{babies.length} {babies.length === 1 ? 'profile' : 'profiles'}</Text>
         </View>
-        
+
         <TouchableOpacity style={styles.addButton} onPress={handleAddBaby}>
           <BlurView intensity={80} style={styles.addBlur}>
             <Ionicons name="add" size={24} color="#667eea" />
@@ -282,7 +370,7 @@ export default function SwitchBabyScreen({ navigation }: SwitchBabyScreenProps) 
         <View style={styles.babyList}>
           {babies.map((baby, index) => {
             const isSelected = baby.id === currentBabyId;
-            
+
             return (
               <Animated.View key={baby.id} entering={FadeInUp.delay(100 + index * 60)} layout={Layout.springify()}>
                 <GlassmorphismCard 
@@ -295,18 +383,13 @@ export default function SwitchBabyScreen({ navigation }: SwitchBabyScreenProps) 
                     activeOpacity={0.9}
                     disabled={isProcessing}
                   >
-                    <LinearGradient 
-                      colors={isSelected ? ['#667eea', '#764ba2'] : ['#fa709a', '#fee140']} 
-                      style={styles.avatar}
-                    >
-                      <Text style={styles.avatarEmoji}>{baby.avatar || '👶'}</Text>
-                      {isSelected && (
-                        <View style={styles.checkmarkBadge}>
-                          <Ionicons name="checkmark" size={16} color="#fff" />
-                        </View>
-                      )}
-                    </LinearGradient>
-                    
+                    <SafeBabyAvatar 
+                      avatar={baby.avatar} 
+                      gender={baby.gender} 
+                      size={64}
+                      showBadge={isSelected}
+                    />
+
                     <View style={styles.babyInfo}>
                       <Text style={[styles.babyName, isDark && styles.textDark]}>{baby.name}</Text>
                       <Text style={styles.babyAge}>{baby.age}</Text>
@@ -329,7 +412,7 @@ export default function SwitchBabyScreen({ navigation }: SwitchBabyScreenProps) 
                           <Text style={styles.switchButtonText}>Select</Text>
                         </TouchableOpacity>
                       )}
-                      
+
                       {babies.length > 1 && !isSelected && (
                         <TouchableOpacity 
                           style={styles.deleteButton}
@@ -363,17 +446,14 @@ export default function SwitchBabyScreen({ navigation }: SwitchBabyScreenProps) 
           </TouchableOpacity>
         </Animated.View>
 
-        {/* ============================================
-            NEW: Partner Section
-            Show if user doesn't have a partner
-        ============================================ */}
+        {/* Partner Section */}
         {!hasPartner && (
           <Animated.View entering={FadeInUp.delay(400 + babies.length * 60)}>
             <View style={styles.partnerSection}>
               <Text style={[styles.partnerLabel, isDark && { color: '#94a3b8' }]}>
                 Co-Parent
               </Text>
-              
+
               <GlassmorphismCard style={styles.partnerCard}>
                 <View style={styles.partnerContent}>
                   <View style={styles.partnerIconContainer}>
@@ -388,7 +468,7 @@ export default function SwitchBabyScreen({ navigation }: SwitchBabyScreenProps) 
                     </Text>
                   </View>
                 </View>
-                
+
                 <View style={styles.partnerActions}>
                   <TouchableOpacity 
                     style={styles.skipPartnerButton}
@@ -396,7 +476,7 @@ export default function SwitchBabyScreen({ navigation }: SwitchBabyScreenProps) 
                   >
                     <Text style={styles.skipPartnerText}>Skip</Text>
                   </TouchableOpacity>
-                  
+
                   <TouchableOpacity 
                     style={styles.addPartnerButton}
                     onPress={handleAddPartner}
@@ -425,7 +505,7 @@ export default function SwitchBabyScreen({ navigation }: SwitchBabyScreenProps) 
           </BlurView>
         </Animated.View>
 
-        {/* Continue Button (if they just want to proceed) */}
+        {/* Continue Button */}
         <Animated.View entering={FadeInUp.delay(600 + babies.length * 60)}>
           <TouchableOpacity 
             style={styles.continueButton}
@@ -541,30 +621,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 16,
   },
-  avatar: { 
-    width: 64, 
-    height: 64, 
-    borderRadius: 32, 
-    alignItems: 'center', 
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  avatarEmoji: { 
-    fontSize: 32 
-  },
-  checkmarkBadge: {
-    position: 'absolute',
-    bottom: -4,
-    right: -4,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#667eea',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#fff',
-  },
   babyInfo: { 
     flex: 1, 
     marginLeft: 16 
@@ -649,7 +705,7 @@ const styles = StyleSheet.create({
     color: '#1e293b',
   },
 
-  // Partner Section - NEW
+  // Partner Section
   partnerSection: {
     marginTop: 8,
     marginBottom: 16,
@@ -821,5 +877,31 @@ const styles = StyleSheet.create({
   alertMessage: { 
     fontSize: 13, 
     color: '#64748b' 
+  },
+
+  // SafeAvatar styles
+  avatarWrapper: {
+    position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  avatarGradient: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarEmoji: {},
+  checkmarkBadge: {
+    position: 'absolute',
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#667eea',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
   },
 });

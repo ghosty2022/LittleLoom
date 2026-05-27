@@ -1,5 +1,5 @@
 // src/screens/community/CreatePostScreen.tsx
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import {
   Alert,
   ActivityIndicator,
   Modal,
+  Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -23,7 +24,7 @@ import * as Haptics from 'expo-haptics';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CommunityStackParamList } from '../../types/navigation';
-import { useCommunity } from '../../context/CommunityContext';
+import { useCommunity, Topic } from '../../context/CommunityContext';
 import { useUser } from '../../context/UserContext';
 import { showSuccessModal, showErrorModal, showConfirmModal } from '../../utils/modal';
 import { 
@@ -35,6 +36,8 @@ import {
 } from '../../theme/CommunityTheme';
 
 type CreatePostScreenProps = NativeStackScreenProps<CommunityStackParamList, 'CreatePost'>;
+
+const { width } = Dimensions.get('window');
 
 const COUNTRIES = [
   { code: 'US', name: 'United States', flag: '🇺🇸' },
@@ -60,44 +63,119 @@ const COUNTRIES = [
 ];
 
 export default function CreatePostScreen({ navigation, route }: CreatePostScreenProps) {
-  const { topicId } = route.params || {};
-  const { topics, createPost, currentUser, updateUserLocation } = useCommunity();
+  // FIX: Safer route params extraction with full fallback chain
+  const routeParams = route?.params ?? {};
+  const topicId = routeParams?.topicId;
+
+  const { 
+    topics, 
+    createPost, 
+    currentUser, 
+    updateUserLocation, 
+    getSelectedTopics,
+    updateSelectedTopics 
+  } = useCommunity();
   const { communityProfile } = useUser();
-  
+
   const [content, setContent] = useState('');
-  const [selectedTopic, setSelectedTopic] = useState(
-    topics.find(t => t.id === topicId) || topics[0]
-  );
+  const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
   const [images, setImages] = useState<string[]>([]);
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [isPosting, setIsPosting] = useState(false);
   const [showCountryPicker, setShowCountryPicker] = useState(false);
   const [selectedCountry, setSelectedCountry] = useState(currentUser?.country || '');
+  const [topicsLoaded, setTopicsLoaded] = useState(false);
+  const [showTopicSelector, setShowTopicSelector] = useState(false);
+  const [userSelectedTopics, setUserSelectedTopics] = useState<string[]>([]);
+
+  // Load user\'s selected topics from onboarding/profile
+  useEffect(() => {
+    const loadSelectedTopics = async () => {
+      try {
+        const savedTopics = getSelectedTopics();
+        // FIX: If empty (skipped onboarding), use first 3 topics as fallback
+        if (!savedTopics || savedTopics.length === 0) {
+          const fallbackTopics = topics.slice(0, 3).map(t => t.id);
+          setUserSelectedTopics(fallbackTopics);
+          // Also save these as selected topics
+          await updateSelectedTopics(fallbackTopics);
+        } else {
+          setUserSelectedTopics(savedTopics);
+        }
+      } catch (error) {
+        console.error('Error loading selected topics:', error);
+        // Fallback to all topics if error
+        setUserSelectedTopics(topics.map(t => t.id));
+      }
+    };
+    if (topics.length > 0) {
+      loadSelectedTopics();
+    }
+  }, [topics, getSelectedTopics, updateSelectedTopics]);
+
+  // CRITICAL FIX: Update selected topic when topics load after mount
+  useEffect(() => {
+    if (topics.length > 0) {
+      let targetTopic: Topic | undefined;
+
+      // First try the route param topicId
+      if (topicId) {
+        targetTopic = topics.find(t => t.id === topicId);
+      }
+
+      // Then try user\'s selected topics
+      if (!targetTopic && userSelectedTopics.length > 0) {
+        targetTopic = topics.find(t => userSelectedTopics.includes(t.id));
+      }
+
+      // Finally fallback to first topic
+      if (!targetTopic) {
+        targetTopic = topics[0];
+      }
+
+      setSelectedTopic(targetTopic || null);
+      setTopicsLoaded(true);
+    }
+  }, [topics, topicId, userSelectedTopics]);
 
   const pickImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsMultipleSelection: true,
-      quality: 0.8,
-      selectionLimit: 4,
-    });
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsMultipleSelection: true,
+        quality: 0.8,
+        selectionLimit: 4,
+      });
 
-    if (!result.canceled) {
-      const newImages = result.assets.map(a => a.uri);
-      setImages(prev => [...prev, ...newImages].slice(0, 4));
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      if (!result.canceled) {
+        const newImages = result.assets.map(a => a.uri);
+        setImages(prev => [...prev, ...newImages].slice(0, 4));
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }
+    } catch (error) {
+      showErrorModal({ message: 'Failed to pick images. Please try again.' });
     }
   };
 
   const takePhoto = async () => {
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.8,
-    });
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Please allow camera access to take photos.');
+        return;
+      }
 
-    if (!result.canceled) {
-      setImages(prev => [...prev, result.assets[0].uri].slice(0, 4));
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.8,
+      });
+
+      if (!result.canceled) {
+        setImages(prev => [...prev, result.assets[0].uri].slice(0, 4));
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }
+    } catch (error) {
+      showErrorModal({ message: 'Failed to take photo. Please try again.' });
     }
   };
 
@@ -112,9 +190,14 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
       return;
     }
 
+    if (!selectedTopic) {
+      showErrorModal({ message: 'Please select a topic' });
+      return;
+    }
+
     setIsPosting(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    
+
     try {
       await createPost(content.trim(), selectedTopic.id, images, isAnonymous);
       setIsPosting(false);
@@ -144,19 +227,53 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
     setShowCountryPicker(false);
   };
 
+  const handleTopicSelect = (topic: Topic) => {
+    setSelectedTopic(topic);
+    setShowTopicSelector(false);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const handleSaveSelectedTopics = async (newSelectedTopics: string[]) => {
+    await updateSelectedTopics(newSelectedTopics);
+    setUserSelectedTopics(newSelectedTopics);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
+
   const characterCount = content.length;
   const maxCharacters = 1000;
+
+  // FIX: If no user selected topics, show all topics
+  const getFilteredTopics = () => {
+    if (!userSelectedTopics || userSelectedTopics.length === 0) return topics;
+    return topics.filter(t => userSelectedTopics.includes(t.id));
+  };
+
+  const filteredTopics = getFilteredTopics();
+
+  // FIX: Better loading state - show loading until topics are ready AND we have a selected topic
+  if (!topicsLoaded || topics.length === 0 || !selectedTopic) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <StatusBar style="dark" />
+        <LinearGradient colors={CommunityColors.background.gradient} style={StyleSheet.absoluteFill} />
+        <ActivityIndicator size="large" color={CommunityColors.primary} />
+        <Text style={{ marginTop: 16, color: CommunityColors.text.secondary, fontWeight: '600' }}>
+          {topics.length === 0 ? 'Loading topics...' : 'Setting up...'}
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
       <StatusBar style="dark" />
       <LinearGradient colors={CommunityColors.background.gradient} style={StyleSheet.absoluteFill} />
-      
+
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
       >
-        {/* Header - Themed */}
+        {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={handleCancel}>
             <Text style={styles.cancelText}>Cancel</Text>
@@ -178,42 +295,90 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
         </View>
 
         <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-          {/* Topic Selector - Themed */}
+          {/* Selected Topics Section */}
           <Animated.View entering={FadeInUp}>
-            <Text style={styles.sectionLabel}>Select Topic</Text>
-            <ScrollView 
-              horizontal 
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.topicsContainer}
-            >
-              {topics.map((topic) => (
-                <TouchableOpacity
-                  key={topic.id}
-                  style={[
-                    styles.topicChip,
-                    selectedTopic.id === topic.id && { 
-                      backgroundColor: topic.color + '30',
-                      borderColor: topic.color,
-                    }
-                  ]}
-                  onPress={() => {
-                    setSelectedTopic(topic);
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  }}
+            <View style={styles.selectedTopicsHeader}>
+              <Text style={styles.sectionLabel}>Your Topics</Text>
+              <TouchableOpacity 
+                style={styles.manageTopicsButton}
+                onPress={() => setShowTopicSelector(true)}
+              >
+                <Ionicons name="options-outline" size={16} color={CommunityColors.primary} />
+                <Text style={styles.manageTopicsText}>
+                  {userSelectedTopics.length > 0 ? 'Manage' : 'Select Topics'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {filteredTopics.length > 0 ? (
+              <ScrollView 
+                horizontal 
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.topicsContainer}
+              >
+                {filteredTopics.map((topic) => (
+                  <TouchableOpacity
+                    key={topic.id}
+                    style={[
+                      styles.topicChip,
+                      selectedTopic?.id === topic.id && { 
+                        backgroundColor: topic.color + '30',
+                        borderColor: topic.color,
+                      }
+                    ]}
+                    onPress={() => {
+                      setSelectedTopic(topic);
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }}
+                  >
+                    <Text style={styles.topicEmoji}>{topic.emoji}</Text>
+                    <Text style={[
+                      styles.topicName,
+                      selectedTopic?.id === topic.id && { color: topic.color, fontWeight: '800' }
+                    ]}>
+                      {topic.name}
+                    </Text>
+                    {selectedTopic?.id === topic.id && (
+                      <Ionicons name="checkmark-circle" size={16} color={topic.color} />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            ) : (
+              <TouchableOpacity 
+                style={styles.noTopicsBanner}
+                onPress={() => setShowTopicSelector(true)}
+              >
+                <LinearGradient
+                  colors={[CommunityColors.primary + '15', CommunityColors.primary + '05']}
+                  style={styles.noTopicsGradient}
                 >
-                  <Text style={styles.topicEmoji}>{topic.emoji}</Text>
-                  <Text style={[
-                    styles.topicName,
-                    selectedTopic.id === topic.id && { color: topic.color, fontWeight: '800' }
-                  ]}>
-                    {topic.name}
+                  <Ionicons name="bookmark-outline" size={24} color={CommunityColors.primary} />
+                  <Text style={styles.noTopicsTitle}>No topics selected yet</Text>
+                  <Text style={styles.noTopicsSubtext}>
+                    Tap here to choose topics you\'re interested in
                   </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+                </LinearGradient>
+              </TouchableOpacity>
+            )}
           </Animated.View>
 
-          {/* Content Input - Themed */}
+          {/* All Topics Quick Access */}
+          {userSelectedTopics.length > 0 && (
+            <Animated.View entering={FadeInUp.delay(50)}>
+              <TouchableOpacity 
+                style={styles.allTopicsButton}
+                onPress={() => setShowTopicSelector(true)}
+              >
+                <Text style={styles.allTopicsText}>
+                  Browse all {topics.length} topics
+                </Text>
+                <Ionicons name="chevron-forward" size={16} color={CommunityColors.text.tertiary} />
+              </TouchableOpacity>
+            </Animated.View>
+          )}
+
+          {/* Content Input */}
           <Animated.View entering={FadeInUp.delay(100)}>
             <BlurView intensity={80} style={styles.inputContainer} tint="light">
               <LinearGradient 
@@ -229,7 +394,10 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
                     {isAnonymous ? 'Anonymous' : (currentUser?.displayName || 'You')}
                   </Text>
                   <View style={styles.locationRow}>
-                    <Text style={styles.inputTopic}>Posting in {selectedTopic.name}</Text>
+                    <View style={styles.topicBadge}>
+                      <Text style={styles.topicBadgeEmoji}>{selectedTopic?.emoji}</Text>
+                      <Text style={styles.inputTopic}>{selectedTopic?.name}</Text>
+                    </View>
                     <TouchableOpacity 
                       style={styles.countrySelector}
                       onPress={() => setShowCountryPicker(true)}
@@ -244,7 +412,7 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
               </View>
               <TextInput
                 style={styles.textInput}
-                placeholder="What's on your mind? Share your experience, ask a question, or offer support..."
+                placeholder="What\'s on your mind? Share your experience, ask a question, or offer support..."
                 placeholderTextColor={CommunityColors.text.tertiary}
                 value={content}
                 onChangeText={setContent}
@@ -258,24 +426,32 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
             </BlurView>
           </Animated.View>
 
-          {/* Image Preview - Themed */}
+          {/* IMAGE PREVIEW - FULL DISPLAY */}
           {images.length > 0 && (
             <Animated.View entering={FadeInUp} style={styles.imagesContainer}>
               {images.map((uri, index) => (
-                <View key={index} style={styles.imageWrapper}>
-                  <Image source={{ uri }} style={styles.previewImage} />
+                <View key={index} style={[
+                  styles.imageWrapper,
+                  images.length === 1 ? styles.imageWrapperSingle :
+                  images.length === 2 ? styles.imageWrapperDouble :
+                  images.length === 3 ? styles.imageWrapperTriple :
+                  styles.imageWrapperQuad
+                ]}>
+                  <Image source={{ uri }} style={styles.previewImage} resizeMode="cover" />
                   <TouchableOpacity 
                     style={styles.removeImage}
                     onPress={() => removeImage(index)}
                   >
-                    <Ionicons name="close-circle" size={24} color="white" />
+                    <BlurView intensity={90} style={styles.removeImageBlur}>
+                      <Ionicons name="close" size={16} color="white" />
+                    </BlurView>
                   </TouchableOpacity>
                 </View>
               ))}
             </Animated.View>
           )}
 
-          {/* Tools - Themed with Community Colors */}
+          {/* Tools */}
           <Animated.View entering={FadeInUp.delay(200)} style={styles.toolsContainer}>
             <TouchableOpacity style={styles.toolButton} onPress={pickImage}>
               <View style={[styles.toolIcon, { backgroundColor: CommunityColors.primary + '20' }]}>
@@ -303,7 +479,7 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
             </TouchableOpacity>
           </Animated.View>
 
-          {/* Options - Themed */}
+          {/* Options */}
           <Animated.View entering={FadeInUp.delay(300)}>
             <BlurView intensity={80} style={styles.optionsContainer} tint="light">
               <LinearGradient 
@@ -330,7 +506,7 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
             </BlurView>
           </Animated.View>
 
-          {/* Tips - Themed */}
+          {/* Tips */}
           <Animated.View entering={FadeInUp.delay(400)} style={styles.tipsContainer}>
             <LinearGradient 
               colors={[CommunityColors.primary + '15', CommunityColors.primary + '05']}
@@ -346,7 +522,7 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Country Picker Modal - Themed */}
+      {/* Country Picker Modal */}
       <Modal
         visible={showCountryPicker}
         transparent
@@ -391,6 +567,108 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
           </BlurView>
         </View>
       </Modal>
+
+      {/* Topic Selector Modal */}
+      <Modal
+        visible={showTopicSelector}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowTopicSelector(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <BlurView intensity={95} style={[styles.modalContent, { maxHeight: '85%' }]} tint="light">
+            <LinearGradient 
+              colors={CommunityGradients.glass}
+              style={StyleSheet.absoluteFill}
+            />
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>Select Your Topics</Text>
+                <Text style={styles.modalSubtitle}>
+                  Choose up to 5 topics to personalize your feed
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowTopicSelector(false)}>
+                <Ionicons name="close" size={24} color={CommunityColors.text.secondary} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.topicCounter}>
+              {userSelectedTopics.length}/5 selected
+            </Text>
+
+            <ScrollView style={styles.topicList} showsVerticalScrollIndicator={false}>
+              <View style={styles.topicGrid}>
+                {topics.map((topic) => {
+                  const isSelected = userSelectedTopics.includes(topic.id);
+                  const isMaxReached = userSelectedTopics.length >= 5 && !isSelected;
+
+                  return (
+                    <TouchableOpacity
+                      key={topic.id}
+                      style={[
+                        styles.topicGridItem,
+                        isSelected && { 
+                          borderColor: topic.color,
+                          backgroundColor: topic.color + '15'
+                        },
+                        isMaxReached && styles.topicGridItemDisabled
+                      ]}
+                      onPress={() => {
+                        if (isMaxReached) {
+                          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                          Alert.alert(
+                            'Maximum Topics Reached',
+                            'You can select up to 5 topics. Remove one to add another.',
+                            [{ text: 'OK' }]
+                          );
+                          return;
+                        }
+
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        const newTopics = isSelected
+                          ? userSelectedTopics.filter(id => id !== topic.id)
+                          : [...userSelectedTopics, topic.id];
+
+                        handleSaveSelectedTopics(newTopics);
+                      }}
+                      disabled={isMaxReached}
+                    >
+                      <Text style={styles.topicGridEmoji}>{topic.emoji}</Text>
+                      <Text style={[
+                        styles.topicGridName,
+                        isSelected && { color: topic.color, fontWeight: '800' }
+                      ]}>
+                        {topic.name}
+                      </Text>
+
+                      {isSelected && (
+                        <View style={[styles.topicGridCheck, { backgroundColor: topic.color }]}>
+                          <Ionicons name="checkmark" size={14} color="white" />
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </ScrollView>
+
+            <View style={styles.topicSelectorFooter}>
+              <TouchableOpacity 
+                style={styles.topicSelectorDoneButton}
+                onPress={() => setShowTopicSelector(false)}
+              >
+                <LinearGradient
+                  colors={CommunityGradients.primary}
+                  style={styles.topicSelectorDoneGradient}
+                >
+                  <Text style={styles.topicSelectorDoneText}>Done</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </BlurView>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -420,14 +698,35 @@ const styles = StyleSheet.create({
   },
   postButtonText: { fontSize: 16, fontWeight: '700', color: CommunityColors.text.tertiary },
   postButtonTextActive: { color: 'white' },
+
+  // Selected Topics Section
+  selectedTopicsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: CommunitySpacing.lg,
+    marginBottom: 12,
+  },
   sectionLabel: {
     fontSize: 14,
     fontWeight: '700',
     color: CommunityColors.text.secondary,
-    marginLeft: CommunitySpacing.lg,
-    marginBottom: 12,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+  },
+  manageTopicsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: CommunityColors.primary + '10',
+    borderRadius: 16,
+  },
+  manageTopicsText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: CommunityColors.primary,
   },
   topicsContainer: {
     paddingHorizontal: CommunitySpacing.md,
@@ -448,6 +747,51 @@ const styles = StyleSheet.create({
   },
   topicEmoji: { fontSize: 20 },
   topicName: { fontSize: 14, fontWeight: '600', color: CommunityColors.text.secondary },
+
+  // No Topics Banner
+  noTopicsBanner: {
+    marginHorizontal: CommunitySpacing.lg,
+    marginBottom: 16,
+    borderRadius: CommunityBorderRadius.xl,
+    overflow: 'hidden',
+    ...CommunityShadows.md,
+  },
+  noTopicsGradient: {
+    padding: 24,
+    alignItems: 'center',
+    gap: 8,
+  },
+  noTopicsTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: CommunityColors.text.primary,
+  },
+  noTopicsSubtext: {
+    fontSize: 13,
+    color: CommunityColors.text.secondary,
+    textAlign: 'center',
+  },
+
+  // All Topics Button
+  allTopicsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    marginHorizontal: CommunitySpacing.lg,
+    marginBottom: 16,
+    backgroundColor: CommunityColors.background.card,
+    borderRadius: CommunityBorderRadius.lg,
+    gap: 4,
+    ...CommunityShadows.sm,
+  },
+  allTopicsText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: CommunityColors.text.secondary,
+  },
+
+  // Input Section
   inputContainer: {
     margin: CommunitySpacing.lg,
     borderRadius: CommunityBorderRadius.xl,
@@ -469,6 +813,16 @@ const styles = StyleSheet.create({
     gap: 12,
     marginTop: 4,
   },
+  topicBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: CommunityColors.primary + '10',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  topicBadgeEmoji: { fontSize: 12 },
   inputTopic: { fontSize: 13, color: CommunityColors.primary, fontWeight: '600' },
   countrySelector: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   countryText: { fontSize: 13, color: CommunityColors.primary, fontWeight: '600' },
@@ -484,28 +838,52 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     marginTop: 8,
   },
+
+  // IMAGE PREVIEW STYLES - FULL GRID DISPLAY
   imagesContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     paddingHorizontal: CommunitySpacing.lg,
-    gap: 12,
+    gap: 8,
     marginBottom: 16,
   },
   imageWrapper: {
-    width: 100,
-    height: 100,
     borderRadius: CommunityBorderRadius.lg,
     overflow: 'hidden',
+    position: 'relative',
     ...CommunityShadows.sm,
+  },
+  imageWrapperSingle: {
+    width: '100%',
+    height: 280,
+  },
+  imageWrapperDouble: {
+    width: (width - 48) / 2,
+    height: 200,
+  },
+  imageWrapperTriple: {
+    width: (width - 56) / 3,
+    height: 140,
+  },
+  imageWrapperQuad: {
+    width: (width - 56) / 2,
+    height: 160,
   },
   previewImage: { width: '100%', height: '100%' },
   removeImage: {
     position: 'absolute',
-    top: 4,
-    right: 4,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    borderRadius: 12,
+    top: 8,
+    right: 8,
   },
+  removeImageBlur: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+
   toolsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-around',
@@ -566,6 +944,8 @@ const styles = StyleSheet.create({
   },
   tipsTitle: { fontSize: 14, fontWeight: '800', color: CommunityColors.primary, marginBottom: 12 },
   tipText: { fontSize: 13, color: CommunityColors.text.secondary, marginBottom: 6 },
+
+  // Modals
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -585,6 +965,11 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   modalTitle: { fontSize: 18, fontWeight: '800', color: CommunityColors.text.primary },
+  modalSubtitle: {
+    fontSize: 13,
+    color: CommunityColors.text.tertiary,
+    marginTop: 2,
+  },
   countryList: { maxHeight: 400 },
   countryItem: {
     flexDirection: 'row',
@@ -598,5 +983,71 @@ const styles = StyleSheet.create({
   countryFlag: { fontSize: 24 },
   countryName: { flex: 1, fontSize: 16, color: CommunityColors.text.primary },
   countryNameSelected: { color: CommunityColors.primary, fontWeight: '700' },
-});
 
+  // Topic Selector Modal Styles
+  topicCounter: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: CommunityColors.primary,
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  topicList: { maxHeight: 500 },
+  topicGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    justifyContent: 'center',
+    paddingBottom: 20,
+  },
+  topicGridItem: {
+    width: (width - 72) / 2,
+    padding: 16,
+    borderRadius: CommunityBorderRadius.xl,
+    backgroundColor: CommunityColors.background.card,
+    borderWidth: 2,
+    borderColor: 'transparent',
+    alignItems: 'center',
+    gap: 8,
+    ...CommunityShadows.sm,
+  },
+  topicGridItemDisabled: {
+    opacity: 0.4,
+  },
+  topicGridEmoji: { fontSize: 32 },
+  topicGridName: { 
+    fontSize: 14, 
+    fontWeight: '700', 
+    color: CommunityColors.text.primary,
+    textAlign: 'center',
+  },
+  topicGridCheck: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  topicSelectorFooter: {
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: CommunityColors.border,
+  },
+  topicSelectorDoneButton: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    ...CommunityShadows.md,
+  },
+  topicSelectorDoneGradient: {
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  topicSelectorDoneText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+});

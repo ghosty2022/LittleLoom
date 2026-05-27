@@ -16,6 +16,7 @@ import {
   ImageBackground,
   ActivityIndicator,
   Pressable,
+  Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -41,7 +42,6 @@ import * as Haptics from 'expo-haptics';
 import { formatDistanceToNow, format } from 'date-fns';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 
-// Contexts
 import { useAuth } from '../context/AuthContext';
 import { useBaby } from '../context/BabyContext';
 import { useActivity } from '../context/ActivityContext';
@@ -54,6 +54,51 @@ import type { RootStackParamList } from '../types/navigation';
 const { width, height } = Dimensions.get('window');
 const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
 
+// ==================== IMAGE UTILITY FUNCTIONS ====================
+const isImageUri = (value: string | undefined | null): boolean => {
+  if (!value || typeof value !== 'string') return false;
+  return value.startsWith('http') || value.startsWith('file://') || value.startsWith('data:');
+};
+
+const isEmoji = (value: string | undefined | null): boolean => {
+  if (!value || typeof value !== 'string') return false;
+  if (value.length > 4) return false;
+  for (const char of value) {
+    const code = char.codePointAt(0) || 0;
+    const isEmojiChar = (
+      (code >= 0x1F600 && code <= 0x1F64F) || (code >= 0x1F300 && code <= 0x1F5FF) ||
+      (code >= 0x1F680 && code <= 0x1F6FF) || (code >= 0x1F1E0 && code <= 0x1F1FF) ||
+      (code >= 0x2600 && code <= 0x26FF) || (code >= 0x2700 && code <= 0x27BF) ||
+      (code >= 0x1F900 && code <= 0x1F9FF) || (code >= 0x1F018 && code <= 0x1F270) ||
+      code === 0x238C || code === 0x2B06 || code === 0x2B07 || code === 0x2B05 ||
+      code === 0x27A1 || (code >= 0x2194 && code <= 0x2199) ||
+      (code >= 0x21A9 && code <= 0x21AA) || (code >= 0x2934 && code <= 0x2935) ||
+      (code >= 0x25AA && code <= 0x25AB) || (code >= 0x25FB && code <= 0x25FE) ||
+      code === 0x25B6 || code === 0x25C0 || (code >= 0x1F200 && code <= 0x1F251) ||
+      code === 0x1F004 || code === 0x1F0CF || (code >= 0x1F170 && code <= 0x1F171) ||
+          (code >= 0x1F17E && code <= 0x1F17F) || code === 0x1F18E || code === 0x3030 ||
+      code === 0x2B50 || code === 0x2B55 || (code >= 0x23E9 && code <= 0x23EC) ||
+      code === 0x23F0 || code === 0x23F3 || (code >= 0x231A && code <= 0x231B) ||
+      (code >= 0x23F8 && code <= 0x23FA) || code === 0x24C2 ||
+      (code >= 0x1F3FB && code <= 0x1F3FF) || (code >= 0x1F3E0 && code <= 0x1F3F4) ||
+      (code >= 0x1F3F8 && code <= 0x1F43F) || code === 0x1F440 ||
+      (code >= 0x1F442 && code <= 0x1F4FF) || (code >= 0x1F500 && code <= 0x1F53D) ||
+      (code >= 0x1F54B && code <= 0x1F54E) || (code >= 0x1F550 && code <= 0x1F567) ||
+      (code >= 0x1F595 && code <= 0x1F596) || (code >= 0x1F5FB && code <= 0x1F64F) ||
+      (code >= 0x1F680 && code <= 0x1F6C5) || (code >= 0x1F6CB && code <= 0x1F6D2) ||
+      (code >= 0x1F6E0 && code <= 0x1F6E5) || code === 0x1F6E9 ||
+      (code >= 0x1F6EB && code <= 0x1F6EC) || code === 0x1F6F0 ||
+      (code >= 0x1F6F3 && code <= 0x1F6F8) || (code >= 0x1F910 && code <= 0x1F93A) ||
+      (code >= 0x1F93C && code <= 0x1F93E) || (code >= 0x1F940 && code <= 0x1F945) ||
+      (code >= 0x1F947 && code <= 0x1F94C) || (code >= 0x1F950 && code <= 0x1F96B) ||
+      (code >= 0x1F980 && code <= 0x1F997) || code === 0x1F9C0 ||
+      (code >= 0x1F9D0 && code <= 0x1F9E6)
+    );
+    if (!isEmojiChar) return false;
+  }
+  return true;
+};
+
 // ==================== CONFIGURATION ====================
 
 const getGridColumns = () => {
@@ -64,7 +109,6 @@ const getGridColumns = () => {
 
 const GRID_COLUMNS = getGridColumns();
 
-// UPDATED: Extended quick actions with more navigation options
 const DEFAULT_QUICK_ACTIONS = [
   { id: 'potty', label: 'Potty', icon: '🚽', color: '#667eea', gradient: ['#667eea', '#764ba2'], screen: 'UniversalTracker', params: { type: 'potty' } },
   { id: 'feed', label: 'Feed', icon: '🍼', color: '#fa709a', gradient: ['#fa709a', '#fee140'], screen: 'UniversalTracker', params: { type: 'feed' } },
@@ -76,7 +120,6 @@ const DEFAULT_QUICK_ACTIONS = [
   { id: 'note', label: 'Note', icon: '📝', color: '#64748b', gradient: ['#64748b', '#94a3b8'], screen: 'UniversalTracker', params: { type: 'note' } },
 ];
 
-// UPDATED: More available actions with navigation screens
 const AVAILABLE_ACTIONS = [
   { id: 'pump', label: 'Pump', icon: '🤱', color: '#8b5cf6', gradient: ['#8b5cf6', '#a78bfa'], screen: 'UniversalTracker', params: { type: 'pump' } },
   { id: 'bath', label: 'Bath', icon: '🛁', color: '#3b82f6', gradient: ['#3b82f6', '#60a5fa'], screen: 'UniversalTracker', params: { type: 'bath' } },
@@ -91,7 +134,6 @@ const AVAILABLE_ACTIONS = [
   { id: 'sound', label: 'Sounds', icon: '🎵', color: '#1DB954', gradient: ['#1DB954', '#1ed760'], screen: 'SoundMixer', params: {} },
 ];
 
-// UPDATED: Feature cards with usage tracking for auto-sort
 const DEFAULT_FEATURE_CARDS = [
   { id: 'reminders', label: 'Reminders', icon: 'alarm', color: '#f59e0b', screen: 'Reminders', badge: '3', usageCount: 0 },
   { id: 'achievements', label: 'Milestones', icon: 'trophy', color: '#ec4899', screen: 'Achievements', usageCount: 0 },
@@ -104,6 +146,102 @@ const DEFAULT_FEATURE_CARDS = [
 ];
 
 type HomeScreenProps = NativeStackScreenProps<RootStackParamList, 'Main'>;
+
+// ==================== SAFE PARENT AVATAR COMPONENT ====================
+const SafeParentAvatar: React.FC<{
+  avatar?: string | null;
+  name?: string;
+  size?: number;
+  onPress?: () => void;
+}> = ({ avatar, name = 'P', size = 70, onPress }) => {
+  const hasImage = isImageUri(avatar);
+  const hasEmoji = isEmoji(avatar);
+  const initial = name.charAt(0).toUpperCase();
+
+  const Wrapper = onPress ? TouchableOpacity : View;
+
+  return (
+    <Wrapper onPress={onPress} activeOpacity={0.8}>
+      <View style={[styles.parentAvatarContainer, { width: size, height: size }]}>
+        <LinearGradient
+          colors={['#667eea', '#764ba2']}
+          style={[styles.parentAvatarGradient, { width: size, height: size, borderRadius: size / 2 }]}
+        >
+          {hasImage ? (
+            <Image 
+              source={{ uri: avatar! }} 
+              style={{ width: size, height: size, borderRadius: size / 2 }}
+              resizeMode="cover"
+              onError={(e) => console.log('Parent avatar image error:', e.nativeEvent.error)}
+            />
+          ) : hasEmoji ? (
+            <Text style={{ fontSize: size * 0.5 }}>{avatar}</Text>
+          ) : (
+            <Text style={[styles.parentAvatarText, { fontSize: size * 0.4 }]}>{initial}</Text>
+          )}
+        </LinearGradient>
+        <View style={styles.parentEditBadge}>
+          <Ionicons name="camera" size={10} color="#fff" />
+        </View>
+      </View>
+    </Wrapper>
+  );
+};
+
+// ==================== SAFE BABY AVATAR COMPONENT ====================
+const SafeBabyAvatar: React.FC<{
+  avatar?: string | null;
+  gender?: string;
+  size?: number;
+  showBadge?: boolean;
+  onPress?: () => void;
+}> = ({ avatar, gender = 'other', size = 64, showBadge = false, onPress }) => {
+  const hasImage = isImageUri(avatar);
+  const hasEmoji = isEmoji(avatar);
+
+  const genderColors: Record<string, string[]> = {
+    boy: ['#667eea', '#764ba2'],
+    girl: ['#fa709a', '#fee140'],
+    other: ['#11998e', '#38ef7d'],
+  };
+  const gradientColors = genderColors[gender] || genderColors.other;
+  const genderIcon = gender === 'boy' ? 'male' : gender === 'girl' ? 'female' : 'ellipse';
+
+  const Wrapper = onPress ? TouchableOpacity : View;
+
+  return (
+    <Wrapper onPress={onPress} activeOpacity={0.8}>
+      <View style={[styles.babyAvatarWrapper, { width: size, height: size }]}>
+        <LinearGradient
+          colors={gradientColors}
+          style={[
+            styles.babyAvatarGradient, 
+            { width: size, height: size, borderRadius: size / 2 }
+          ]}
+        >
+          {hasImage ? (
+            <Image 
+              source={{ uri: avatar! }} 
+              style={{ width: size, height: size, borderRadius: size / 2 }}
+              resizeMode="cover"
+              onError={(e) => console.log('Baby avatar image error:', e.nativeEvent.error)}
+            />
+          ) : hasEmoji ? (
+            <Text style={{ fontSize: size * 0.5 }}>{avatar}</Text>
+          ) : (
+            <Ionicons name={genderIcon as any} size={size * 0.4} color="#fff" />
+          )}
+        </LinearGradient>
+
+        {showBadge && (
+          <View style={[styles.checkmarkBadge, { bottom: -2, right: -2 }]}>
+            <Ionicons name="checkmark" size={14} color="#fff" />
+          </View>
+        )}
+      </View>
+    </Wrapper>
+  );
+};
 
 // ==================== SWEET ALERT SYSTEM ====================
 
@@ -245,7 +383,7 @@ const ConfirmModal = ({
   );
 };
 
-// ==================== NOTIFICATION CHOOSER MODAL (UPDATED) ====================
+// ==================== NOTIFICATION CHOOSER MODAL ====================
 
 const NotificationChooserModal = ({ 
   visible, 
@@ -283,7 +421,6 @@ const NotificationChooserModal = ({
 
   return (
     <View style={[StyleSheet.absoluteFill, { zIndex: 10001 }]} pointerEvents="box-none">
-      {/* Backdrop - clickable to dismiss */}
       <TouchableOpacity 
         activeOpacity={1} 
         onPress={onClose}
@@ -294,7 +431,6 @@ const NotificationChooserModal = ({
         </Animated.View>
       </TouchableOpacity>
       
-      {/* Modal positioned top right */}
       <Animated.View style={[
         styles.notificationModal, 
         modalStyle, 
@@ -340,7 +476,7 @@ const NotificationChooserModal = ({
   );
 };
 
-// ==================== ADD ACTION MODAL (CENTERED) ====================
+// ==================== ADD ACTION MODAL ====================
 
 const AddActionModal = ({
   visible,
@@ -909,13 +1045,11 @@ const StickyAppHeader = ({
   unreadCount: number;
   onSignOut: () => void;
 }) => {
-  // Animate header background opacity based on scroll
   const headerAnimatedStyle = useAnimatedStyle(() => {
-    // Start with 0.9 opacity so it's always visible, increase to 1 as user scrolls
     const opacity = interpolate(
       scrollY.value,
       [0, 100],
-      [0.9, 1], // Always at least 90% visible
+      [0.9, 1],
       Extrapolate.CLAMP
     );
     
@@ -926,14 +1060,12 @@ const StickyAppHeader = ({
 
   return (
     <Animated.View style={[styles.stickyHeaderContainer, headerAnimatedStyle]}>
-      {/* BlurView shows the scrolled content underneath */}
       <BlurView 
         intensity={95} 
         style={StyleSheet.absoluteFill} 
         tint={isDark ? 'dark' : 'light'} 
       />
       
-      {/* Semi-transparent overlay for text readability only */}
       <LinearGradient 
         colors={isDark 
           ? ['rgba(20,20,30,0.6)', 'rgba(10,10,20,0.4)'] 
@@ -969,9 +1101,11 @@ const StickyAppHeader = ({
           
           {currentBaby ? (
             <TouchableOpacity style={styles.stickyHeaderBaby} onPress={onBabyPress}>
-              <LinearGradient colors={['#fa709a', '#fee140']} style={styles.stickyHeaderBabyAvatar}>
-                <Text style={styles.stickyHeaderBabyEmoji}>{currentBaby.avatar || '👶'}</Text>
-              </LinearGradient>
+              <SafeBabyAvatar 
+                avatar={currentBaby.avatar} 
+                gender={currentBaby.gender} 
+                size={42} 
+              />
             </TouchableOpacity>
           ) : (
             <TouchableOpacity style={styles.stickyHeaderIconBtn} onPress={onAddBabyPress}>
@@ -1010,6 +1144,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   
   const { lockApp } = useSecurity();
   const { notifications, getUnreadCount } = useCommunity();
+  const { playTrack, currentTrack, isPlaying, togglePlayback } = useAudio();
 
   const [refreshing, setRefreshing] = useState(false);
   const [greeting, setGreeting] = useState('Good morning');
@@ -1046,7 +1181,6 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     loadActivities();
   }, [loadBabies, loadActivities]);
 
-  // Sort features by usage count on mount
   useEffect(() => {
     const sorted = [...featureCards].sort((a, b) => b.usageCount - a.usageCount);
     setFeatureCards(sorted);
@@ -1094,7 +1228,6 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     }
   }, [loadBabies, loadActivities, showToast]);
 
-  // UPDATED: Handle navigation with screen and params
   const handleQuickAction = useCallback((action: any) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (!currentBaby && action.id !== 'note') {
@@ -1102,7 +1235,6 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
       return;
     }
     
-    // Navigate to specific screen with params
     if (action.screen) {
       navigation.navigate(action.screen as any, action.params);
     } else {
@@ -1124,7 +1256,6 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     );
   }, [showConfirm, showToast]);
 
-  // UPDATED: Handle adding actions with navigation support
   const handleAddAction = useCallback((action: any) => {
     if (quickActions.find(a => a.id === action.id)) {
       showToast('error', 'Already Exists', 'This action is already in your quick actions.');
@@ -1140,13 +1271,11 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     showToast('success', 'Action Added!', `${action.label} has been added to your quick actions.`);
   }, [quickActions, showToast]);
 
-  // Handle feature usage and auto-sort
   const handleFeatureUsage = useCallback((id: string) => {
     setFeatureCards(prev => {
       const newItems = prev.map(item => 
         item.id === id ? { ...item, usageCount: item.usageCount + 1 } : item
       );
-      // Sort by usage count (descending)
       return [...newItems].sort((a, b) => b.usageCount - a.usageCount);
     });
   }, []);
@@ -1253,7 +1382,6 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
       
       <LinearGradient colors={isDark ? ['#0a0a0a', '#1a1a2e', '#16213e'] : ['#f8fafc', '#e2e8f0', '#dbeafe']} style={styles.backgroundGradient} />
 
-            {/* Sticky Header - Always visible with blur on scroll */}
       <StickyAppHeader 
         scrollY={scrollY}
         isDark={isDark}
@@ -1267,10 +1395,9 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         onBabyPress={() => navigation.navigate('SwitchBaby')}
         onAddBabyPress={() => navigation.navigate('CreateBabyProfile')}
         unreadCount={unreadCommunityCount}
-        onSignOut={handleSignOut}  // <-- THIS WAS MISSING
+        onSignOut={handleSignOut}
       />
 
-      {/* Main Content */}
       <AnimatedScrollView 
         contentContainerStyle={styles.scrollContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#667eea" colors={['#667eea', '#764ba2']} />}
@@ -1278,18 +1405,18 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         onScroll={scrollHandler}
         scrollEventThrottle={16}
       >
-        {/* Header Section - Original header now acts as content */}
+        {/* Header Section */}
         <Animated.View entering={FadeInDown.springify()}>
-          {/* Parent Card */}
+          {/* Parent Card - UPDATED with SafeParentAvatar */}
           <Animated.View entering={FadeInDown.springify()}>
             <GlassmorphismCard style={styles.parentCard} intensity={90}>
               <View style={styles.parentHeader}>
-                <TouchableOpacity onPress={() => navigation.navigate('Profile')}>
-                  <LinearGradient colors={['#667eea', '#764ba2']} style={styles.parentAvatar}>
-                    <Text style={styles.parentAvatarText}>{userProfile?.fullName?.charAt(0) || 'P'}</Text>
-                    <View style={styles.editBadge}><Ionicons name="camera" size={10} color="#fff" /></View>
-                  </LinearGradient>
-                </TouchableOpacity>
+                <SafeParentAvatar 
+                  avatar={userProfile?.avatar}
+                  name={userProfile?.fullName || 'Parent'}
+                  size={70}
+                  onPress={() => navigation.navigate('Profile')}
+                />
                 <View style={styles.parentInfo}>
                   <Text style={[styles.greetingText, isDark && styles.textDark]}>{greeting}</Text>
                   <Text style={[styles.parentName, isDark && styles.textDark]}>{userProfile?.fullName || 'Parent'}</Text>
@@ -1305,7 +1432,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
             </GlassmorphismCard>
           </Animated.View>
 
-          {/* Baby Card */}
+          {/* Baby Card - UPDATED with SafeBabyAvatar */}
           {currentBaby ? (
             <Animated.View entering={FadeInUp.delay(100).springify()}>
               <GlassmorphismCard style={styles.babyCard} intensity={95}>
@@ -1320,10 +1447,12 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
                 </View>
 
                 <View style={styles.babyMainInfo}>
-                  <LinearGradient colors={['#fa709a', '#fee140']} style={styles.babyAvatar}>
-                    <Text style={styles.babyEmoji}>{currentBaby.avatar || '👶'}</Text>
-                    <View style={styles.statusDot} />
-                  </LinearGradient>
+                  <SafeBabyAvatar 
+                    avatar={currentBaby.avatar}
+                    gender={currentBaby.gender}
+                    size={80}
+                    onPress={() => navigation.navigate('EditProfile', { mode: 'baby', babyId: currentBaby.id })}
+                  />
                   <View style={styles.babyDetails}>
                     <Text style={[styles.babyName, isDark && styles.textDark]}>{currentBaby.name}</Text>
                     <Text style={styles.babyAge}>{currentBaby.age}</Text>
@@ -1379,7 +1508,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
           <SoundMixerSection onPress={() => navigation.navigate('SoundMixer')} isDark={isDark} />
         </View>
 
-        {/* Quick Actions Section - FULL WIDTH */}
+        {/* Quick Actions Section */}
         <View style={styles.sectionFullWidth}>
           <View style={[styles.sectionHeader, styles.sectionHeaderPadded]}>
             <View style={styles.sectionTitleRow}>
@@ -1399,7 +1528,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
           </View>
         </View>
 
-        {/* Features Section - 2 COLUMN SORTABLE GRID */}
+        {/* Features Section */}
         <View style={styles.sectionFullWidth}>
           <View style={[styles.sectionHeader, styles.sectionHeaderPadded]}>
             <View style={styles.sectionTitleRow}>
@@ -1444,7 +1573,6 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         <View style={{ height: 140 }} />
       </AnimatedScrollView>
 
-      {/* Centered Add Action Modal */}
       <AddActionModal 
         visible={showAddModal}
         onClose={() => setShowAddModal(false)}
@@ -1453,7 +1581,6 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         existingActions={quickActions}
       />
 
-      {/* Modals */}
       <SweetAlert {...alert} onClose={() => setAlert({ ...alert, visible: false })} isDark={isDark} />
       
       <ConfirmModal 
@@ -1528,7 +1655,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: height * 0.15,
     left: 20,
-    right: 20,
+       right: 20,
     maxHeight: height * 0.7,
     borderRadius: 28, 
     padding: 24, 
@@ -1577,7 +1704,7 @@ const styles = StyleSheet.create({
   centeredModalItemButton: { 
     alignItems: 'center' 
   },
-    centeredModalItemGradient: { 
+  centeredModalItemGradient: { 
     width: '100%', 
     aspectRatio: 1,
     borderRadius: 20, 
@@ -1715,147 +1842,169 @@ const styles = StyleSheet.create({
   dot2: { opacity: 0.7 },
   dot3: { opacity: 1 },
 
-// ==================== STICKY HEADER STYLES ====================
+  // Safe Avatar Components
+  parentAvatarContainer: {
+    position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  parentAvatarGradient: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    borderWidth: 3,
+    borderColor: '#fff',
+  },
+  parentAvatarText: {
+    color: '#fff',
+    fontWeight: '700',
+  },
+  parentEditBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#667eea',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+  },
 
-stickyHeaderContainer: { 
-  position: 'absolute', 
-  top: 0, // Hits the topmost part
-  left: 0,
-  right: 0,
-  zIndex: 1000, 
-  paddingTop: Platform.OS === 'ios' ? 50 : 30, // Account for status bar
-  paddingBottom: 12,
-  paddingHorizontal: 16,
-  // Blur background - fully opaque so nothing shows behind
-  backgroundColor: 'rgba(255,255,255,0.95)',
-  borderBottomWidth: 1,
-  borderBottomColor: 'rgba(0,0,0,0.05)',
-  // Shadow for depth
-  shadowColor: '#000', 
-  shadowOffset: { width: 0, height: 2 }, 
-  shadowOpacity: 0.1, 
-  shadowRadius: 8, 
-  elevation: 5,
-},
+  babyAvatarWrapper: {
+    position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  babyAvatarGradient: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    borderWidth: 3,
+    borderColor: '#fff',
+  },
+  checkmarkBadge: {
+    position: 'absolute',
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#667eea',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
 
-stickyHeaderContainerDark: {
-  backgroundColor: 'rgba(15,15,25,0.98)',
-  borderBottomColor: 'rgba(255,255,255,0.05)',
-},
+  // Sticky Header
+  stickyHeaderContainer: { 
+    position: 'absolute', 
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 1000, 
+    paddingTop: Platform.OS === 'ios' ? 50 : 30,
+    paddingBottom: 12,
+    paddingHorizontal: 16,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
+    shadowColor: '#000', 
+    shadowOffset: { width: 0, height: 2 }, 
+    shadowOpacity: 0.1, 
+    shadowRadius: 8, 
+    elevation: 5,
+  },
+  stickyHeaderContent: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'space-between',
+    height: 50,
+  },
+  stickyHeaderLeft: { 
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  stickyHeaderCenter: { 
+    flex: 2, 
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stickyHeaderTitle: { 
+    fontSize: 22, 
+    fontWeight: '900',
+    color: '#1e293b', 
+    letterSpacing: -0.5,
+  },
+  stickyHeaderUnderline: {
+    width: 32,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#667eea',
+    marginTop: 4,
+  },
+  stickyHeaderRight: { 
+    flex: 1, 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'flex-end', 
+    gap: 10,
+  },
+  stickyHeaderIconBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: 'rgba(100,116,139,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  stickyHeaderBadge: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    backgroundColor: '#ef4444',
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'white',
+  },
+  stickyHeaderBadgeText: {
+    color: 'white',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  stickyHeaderBaby: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+  },
+  stickyHeaderLockBtn: { 
+    marginLeft: 4,
+  },
+  stickyHeaderLockGradient: { 
+    width: 38, 
+    height: 38, 
+    borderRadius: 19, 
+    alignItems: 'center', 
+    justifyContent: 'center',
+  },
 
-stickyHeaderContent: { 
-  flexDirection: 'row', 
-  alignItems: 'center', 
-  justifyContent: 'space-between',
-  height: 50,
-},
-
-stickyHeaderLeft: { 
-  flex: 1,
-  flexDirection: 'row',
-  alignItems: 'center',
-},
-
-stickyHeaderCenter: { 
-  flex: 2, 
-  alignItems: 'center',
-  justifyContent: 'center',
-},
-
-stickyHeaderTitle: { 
-  fontSize: 22, 
-  fontWeight: '900', // Bolder
-  color: '#1e293b', 
-  letterSpacing: -0.5,
-},
-
-stickyHeaderTitleDark: {
-  color: '#fff',
-},
-
-stickyHeaderUnderline: {
-  width: 32,
-  height: 4,
-  borderRadius: 2,
-  backgroundColor: '#667eea',
-  marginTop: 4,
-},
-
-stickyHeaderRight: { 
-  flex: 1, 
-  flexDirection: 'row', 
-  alignItems: 'center', 
-  justifyContent: 'flex-end', 
-  gap: 10,
-},
-
-stickyHeaderIconBtn: {
-  width: 42,
-  height: 42,
-  borderRadius: 21,
-  backgroundColor: 'rgba(100,116,139,0.1)',
-  alignItems: 'center',
-  justifyContent: 'center',
-  position: 'relative',
-},
-
-stickyHeaderIconBtnDark: {
-  backgroundColor: 'rgba(255,255,255,0.1)',
-},
-
-stickyHeaderBadge: {
-  position: 'absolute',
-  top: 0,
-  right: 0,
-  backgroundColor: '#ef4444',
-  borderRadius: 10,
-  minWidth: 18,
-  height: 18,
-  alignItems: 'center',
-  justifyContent: 'center',
-  borderWidth: 2,
-  borderColor: 'white',
-},
-
-stickyHeaderBadgeDark: {
-  borderColor: '#1e293b',
-},
-
-stickyHeaderBadgeText: {
-  color: 'white',
-  fontSize: 10,
-  fontWeight: 'bold',
-},
-
-stickyHeaderBaby: {
-  width: 42,
-  height: 42,
-  borderRadius: 21,
-},
-
-stickyHeaderBabyAvatar: {
-  width: 42,
-  height: 42,
-  borderRadius: 21,
-  alignItems: 'center',
-  justifyContent: 'center',
-},
-
-stickyHeaderBabyEmoji: {
-  fontSize: 22,
-},
-
-stickyHeaderLockBtn: { 
-  marginLeft: 4,
-},
-
-stickyHeaderLockGradient: { 
-  width: 38, 
-  height: 38, 
-  borderRadius: 19, 
-  alignItems: 'center', 
-  justifyContent: 'center',
-},
   // Glass Card
   glassCard: { 
     borderRadius: 24, 
@@ -1891,32 +2040,6 @@ stickyHeaderLockGradient: {
     flexDirection: 'row', 
     alignItems: 'center', 
     padding: 20 
-  },
-  parentAvatar: { 
-    width: 70, 
-    height: 70, 
-    borderRadius: 35, 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    position: 'relative' 
-  },
-  parentAvatarText: { 
-    color: '#fff', 
-    fontSize: 28, 
-    fontWeight: '700' 
-  },
-  editBadge: { 
-    position: 'absolute', 
-    bottom: -2, 
-    right: -2, 
-    width: 24, 
-    height: 24, 
-    borderRadius: 12, 
-    backgroundColor: '#667eea', 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    borderWidth: 2, 
-    borderColor: '#fff' 
   },
   parentInfo: { 
     flex: 1, 
@@ -1997,28 +2120,6 @@ stickyHeaderLockGradient: {
     alignItems: 'center', 
     padding: 20, 
     position: 'relative' 
-  },
-  babyAvatar: { 
-    width: 80, 
-    height: 80, 
-    borderRadius: 40, 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    position: 'relative' 
-  },
-  babyEmoji: { 
-    fontSize: 40 
-  },
-  statusDot: { 
-    position: 'absolute', 
-    bottom: 4, 
-    right: 4, 
-    width: 16, 
-    height: 16, 
-    borderRadius: 8, 
-    backgroundColor: '#43e97b', 
-    borderWidth: 3, 
-    borderColor: '#fff' 
   },
   babyDetails: { 
     flex: 1, 

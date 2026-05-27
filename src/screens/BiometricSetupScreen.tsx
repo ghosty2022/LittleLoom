@@ -155,7 +155,7 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
   const [isEnrolled, setIsEnrolled] = useState(false);
   const [alert, setAlert] = useState<AlertState>({ visible: false, type: 'success', title: '', message: '' });
   
-  const { toggleBiometric } = useSecurity();
+  const { toggleBiometric, resetUnlockLock } = useSecurity();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const insets = useSafeAreaInsets();
@@ -194,6 +194,16 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
     
     return configs;
   };
+
+  // CRITICAL FIX: Clear stuck locks on mount and whenever screen comes into focus
+  useEffect(() => {
+    resetUnlockLock();
+    
+    const unsubscribe = navigation.addListener('focus', () => {
+      resetUnlockLock();
+    });
+    return unsubscribe;
+  }, [navigation, resetUnlockLock]);
 
   useEffect(() => {
     checkBiometricAvailability();
@@ -244,6 +254,8 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
     }
   };
 
+  // CRITICAL FIX: Use SecurityContext.toggleBiometric which handles authenticateWithBiometric internally.
+  // Removed the redundant direct LocalAuthentication.authenticateAsync call.
   const handleEnableBiometric = async () => {
     if (!selectedType) {
       showToast('error', 'Error', 'Please select a biometric method');
@@ -259,34 +271,15 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     try {
-      const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: `Enable ${selectedType.name} for LittleLoom`,
-        cancelLabel: 'Cancel',
-        fallbackLabel: 'Use Passcode',
-        disableDeviceFallback: false,
-      });
-
+      const enabled = await toggleBiometric(true);
       setIsScanning(false);
 
-      if (result.success) {
-        const enabled = await toggleBiometric(true);
-        if (enabled) {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          setSetupComplete(true);
-          showToast('success', 'Enabled!', `${selectedType.name} is now active`);
-        } else {
-          showToast('error', 'Error', 'Failed to enable biometric authentication');
-        }
-      } else {
-        if (result.error === 'user_cancel') return;
-        
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        if (result.error === 'not_enrolled' || result.error === 'not_available') {
-          showToast('error', 'Not Available', 'Please set up biometrics in device settings first');
-        } else {
-          showToast('error', 'Failed', 'Authentication failed. Please try again.');
-        }
+      if (enabled) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setSetupComplete(true);
+        showToast('success', 'Enabled!', `${selectedType.name} is now active`);
       }
+      // If not enabled, user cancelled or failed — stay silent to match OS behavior
     } catch (error) {
       console.error('Biometric error:', error);
       setIsScanning(false);

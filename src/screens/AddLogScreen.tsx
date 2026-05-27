@@ -13,6 +13,7 @@ import {
   Alert,
   Modal,
   Dimensions,
+  Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -33,6 +34,7 @@ import Animated, {
 import * as Haptics from 'expo-haptics';
 import { format, isToday, isYesterday } from 'date-fns';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as ImagePicker from 'expo-image-picker';
 
 import { useActivity, ActivityEntry, ActivityType } from '../context/ActivityContext';
 import { useBaby } from '../context/BabyContext';
@@ -95,7 +97,7 @@ export interface LogTypeConfig {
   description: string;
   isCustom?: boolean;
   createdAt?: number;
-  category: 'essential' | 'health' | 'development' | 'daily' | 'other';
+  category: 'essential' | 'health' | 'development' | 'daily' | 'custom';
 }
 
 // ==================== DEFAULT LOG TYPES - 360° BABY CARE ====================
@@ -317,7 +319,7 @@ const DEFAULT_LOG_TYPES: Record<string, LogTypeConfig> = {
           { id: 'stroller', label: 'Stroller', icon: 'walk-outline' },
           { id: 'car', label: 'Car', icon: 'car-outline' },
           { id: 'carrier', label: 'Carrier', icon: 'body-outline' },
-          { id: 'arms', label: 'In Arms', icon: 'hand-left-outline' },
+          { id: 'arms', label: 'In Arms', icon: 'people-outline' },
         ]
       },
       { id: 'notes', label: 'Notes', type: 'textarea', placeholder: 'How did they sleep?' },
@@ -447,11 +449,11 @@ const DEFAULT_LOG_TYPES: Record<string, LogTypeConfig> = {
         label: 'Measurement Method', 
         type: 'select',
         options: [
-          { id: 'oral', label: 'Oral', icon: 'mouth-outline' },
-          { id: 'ear', label: 'Ear', icon: 'ear-outline' },
-          { id: 'forehead', label: 'Forehead', icon: 'scan-outline' },
-          { id: 'armpit', label: 'Armpit', icon: 'body-outline' },
-          { id: 'rectal', label: 'Rectal', icon: 'thermometer-outline' },
+          { id: 'oral', label: 'Oral', icon: 'happy-outline' },
+          { id: 'ear', label: 'Ear', icon: 'headset-outline' },
+          { id: 'forehead', label: 'Forehead', icon: 'scan-circle-outline' },
+          { id: 'armpit', label: 'Armpit', icon: 'man-outline' },
+          { id: 'rectal', label: 'Rectal', icon: 'medical-outline' },
         ]
       },
       { 
@@ -681,29 +683,7 @@ const DEFAULT_LOG_TYPES: Record<string, LogTypeConfig> = {
     quickTags: ['Cute moment', 'Funny', 'Concern', 'Question for doctor', 'New skill', 'Bad day', 'Great day', 'Routine'],
   },
 
-  // === OTHER ===
-  other: {
-    id: 'other',
-    name: 'Other',
-    emoji: '📋',
-    icon: 'ellipsis-horizontal-outline',
-    color: '#6b7280',
-    gradient: ['#6b7280', '#4b5563'],
-    description: 'Any other tracking needs',
-    category: 'other',
-    fields: [
-      { 
-        id: 'title', 
-        label: 'Title', 
-        type: 'text', 
-        required: true, 
-        placeholder: 'What are you tracking?' 
-      },
-      { id: 'value', label: 'Value/Amount', type: 'text', placeholder: 'Any measurement or value' },
-      { id: 'notes', label: 'Notes', type: 'textarea', placeholder: 'Additional details...' },
-    ],
-    quickTags: ['Important', 'Follow up', 'Routine', 'Special', 'Emergency'],
-  },
+  // === CUSTOM (was 'other') - Custom trackers will be added here dynamically ===
 };
 
 // ==================== CUSTOM TRACKER STORAGE ====================
@@ -757,7 +737,7 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
   };
 
   const previewData = Object.entries(data).filter(([key, value]) => {
-    if (['id', 'timestamp', 'babyId', 'loggedBy', 'loggedByName', 'type', 'title', 'details'].includes(key)) return false;
+    if (['id', 'timestamp', 'babyId', 'loggedBy', 'loggedByName', 'type', 'title', 'details', 'photoUri'].includes(key)) return false;
     return formatValue(key, value) !== null;
   });
 
@@ -787,6 +767,12 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
                 <Text style={styles.previewTime}>
                   {format(data.timestamp || Date.now(), 'MMM d, yyyy • h:mm a')}
                 </Text>
+                
+                {data.photoUri && (
+                  <View style={styles.previewPhotoContainer}>
+                    <Image source={{ uri: data.photoUri }} style={styles.previewPhoto} resizeMode="cover" />
+                  </View>
+                )}
                 
                 {data.title && (
                   <Text style={styles.previewTitle}>{data.title}</Text>
@@ -842,6 +828,145 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
   );
 };
 
+// ==================== ENHANCED CUSTOM TRACKER MODAL ====================
+
+// Expanded baby-care focused icon library - ALL verified valid Ionicons
+const BABY_ICONS = [
+  // Essential care
+  { name: 'water-outline', category: 'Care', label: 'Potty' },
+  { name: 'nutrition-outline', category: 'Care', label: 'Feed' },
+  { name: 'moon-outline', category: 'Care', label: 'Sleep' },
+  { name: 'shirt-outline', category: 'Care', label: 'Diaper' },
+  { name: 'flask-outline', category: 'Care', label: 'Pump' },
+  { name: 'water-outline', category: 'Care', label: 'Bath' },
+  
+  // Health
+  { name: 'trending-up-outline', category: 'Health', label: 'Growth' },
+  { name: 'thermometer-outline', category: 'Health', label: 'Temp' },
+  { name: 'medical-outline', category: 'Health', label: 'Meds' },
+  { name: 'pulse-outline', category: 'Health', label: 'Vitals' },
+  { name: 'fitness-outline', category: 'Health', label: 'Exercise' },
+  { name: 'bandage-outline', category: 'Health', label: 'Injury' },
+  { name: 'eyedrop-outline', category: 'Health', label: 'Drops' },
+  { name: 'heart-outline', category: 'Health', label: 'Heart' },
+  
+  // Development
+  { name: 'trophy-outline', category: 'Develop', label: 'Milestone' },
+  { name: 'game-controller-outline', category: 'Develop', label: 'Play' },
+  { name: 'book-outline', category: 'Develop', label: 'Reading' },
+  { name: 'musical-notes-outline', category: 'Develop', label: 'Music' },
+  { name: 'color-palette-outline', category: 'Develop', label: 'Art' },
+  { name: 'football-outline', category: 'Develop', label: 'Sports' },
+  { name: 'bicycle-outline', category: 'Develop', label: 'Bike' },
+  { name: 'walk-outline', category: 'Develop', label: 'Walking' },
+  
+  // Daily life
+  { name: 'document-text-outline', category: 'Daily', label: 'Note' },
+  { name: 'camera-outline', category: 'Daily', label: 'Photo' },
+  { name: 'videocam-outline', category: 'Daily', label: 'Video' },
+  { name: 'mic-outline', category: 'Daily', label: 'Voice' },
+  { name: 'location-outline', category: 'Daily', label: 'Location' },
+  { name: 'sunny-outline', category: 'Daily', label: 'Weather' },
+  { name: 'umbrella-outline', category: 'Daily', label: 'Rain' },
+  { name: 'snow-outline', category: 'Daily', label: 'Cold' },
+  
+  // Social/Emotional
+  { name: 'happy-outline', category: 'Social', label: 'Happy' },
+  { name: 'sad-outline', category: 'Social', label: 'Sad' },
+  { name: 'chatbubble-outline', category: 'Social', label: 'Chat' },
+  { name: 'call-outline', category: 'Social', label: 'Call' },
+  { name: 'mail-outline', category: 'Social', label: 'Message' },
+  { name: 'people-outline', category: 'Social', label: 'People' },
+  { name: 'person-outline', category: 'Social', label: 'Person' },
+  { name: 'hand-left-outline', category: 'Social', label: 'Hand' },
+  
+  // Activities
+  { name: 'airplane-outline', category: 'Travel', label: 'Travel' },
+  { name: 'car-outline', category: 'Travel', label: 'Car' },
+  { name: 'bus-outline', category: 'Travel', label: 'Bus' },
+  { name: 'restaurant-outline', category: 'Food', label: 'Restaurant' },
+  { name: 'cafe-outline', category: 'Food', label: 'Cafe' },
+  { name: 'pizza-outline', category: 'Food', label: 'Food' },
+  { name: 'ice-cream-outline', category: 'Food', label: 'Treat' },
+  { name: 'beer-outline', category: 'Food', label: 'Drink' },
+  
+  // Household
+  { name: 'home-outline', category: 'Home', label: 'Home' },
+  { name: 'bed-outline', category: 'Home', label: 'Bed' },
+  { name: 'tv-outline', category: 'Home', label: 'Screen' },
+  { name: 'phone-portrait-outline', category: 'Home', label: 'Phone' },
+  { name: 'laptop-outline', category: 'Home', label: 'Computer' },
+  { name: 'wifi-outline', category: 'Home', label: 'WiFi' },
+  { name: 'battery-full-outline', category: 'Home', label: 'Battery' },
+  { name: 'flashlight-outline', category: 'Home', label: 'Light' },
+  
+  // Misc valid icons
+  { name: 'analytics-outline', category: 'Other', label: 'Stats' },
+  { name: 'timer-outline', category: 'Other', label: 'Timer' },
+  { name: 'alarm-outline', category: 'Other', label: 'Alarm' },
+  { name: 'calendar-outline', category: 'Other', label: 'Calendar' },
+  { name: 'clipboard-outline', category: 'Other', label: 'List' },
+  { name: 'bookmark-outline', category: 'Other', label: 'Save' },
+  { name: 'star-outline', category: 'Other', label: 'Star' },
+  { name: 'flag-outline', category: 'Other', label: 'Flag' },
+  { name: 'pin-outline', category: 'Other', label: 'Pin' },
+  { name: 'link-outline', category: 'Other', label: 'Link' },
+  { name: 'share-outline', category: 'Other', label: 'Share' },
+  { name: 'print-outline', category: 'Other', label: 'Print' },
+  { name: 'download-outline', category: 'Other', label: 'Download' },
+  { name: 'cloud-outline', category: 'Other', label: 'Cloud' },
+  { name: 'sunny-outline', category: 'Other', label: 'Sun' },
+  { name: 'moon-outline', category: 'Other', label: 'Moon' },
+];
+
+// Baby-themed color presets with names
+const COLOR_PRESETS = [
+  { color: '#667eea', name: 'Lavender' },
+  { color: '#fa709a', name: 'Pink' },
+  { color: '#11998e', name: 'Teal' },
+  { color: '#43e97b', name: 'Mint' },
+  { color: '#ff6b6b', name: 'Coral' },
+  { color: '#ffd700', name: 'Gold' },
+  { color: '#fc5c7d', name: 'Rose' },
+  { color: '#94a3b8', name: 'Slate' },
+  { color: '#a855f7', name: 'Purple' },
+  { color: '#ec4899', name: 'Magenta' },
+  { color: '#06b6d4', name: 'Cyan' },
+  { color: '#f59e0b', name: 'Amber' },
+  { color: '#10b981', name: 'Emerald' },
+  { color: '#ef4444', name: 'Red' },
+  { color: '#3b82f6', name: 'Blue' },
+  { color: '#6366f1', name: 'Indigo' },
+  { color: '#8b5cf6', name: 'Violet' },
+  { color: '#14b8a6', name: 'Turquoise' },
+  { color: '#f97316', name: 'Orange' },
+  { color: '#84cc16', name: 'Lime' },
+];
+
+// Field type options for custom trackers
+const FIELD_TYPE_OPTIONS: { id: FieldType; label: string; icon: string; description: string }[] = [
+  { id: 'text', label: 'Text', icon: 'text-outline', description: 'Single line text' },
+  { id: 'number', label: 'Number', icon: 'calculator-outline', description: 'Numeric value' },
+  { id: 'select', label: 'Select', icon: 'list-outline', description: 'Choose one option' },
+  { id: 'multiselect', label: 'Multi-Select', icon: 'checkbox-outline', description: 'Choose multiple' },
+  { id: 'toggle', label: 'Toggle', icon: 'toggle-outline', description: 'Yes/No switch' },
+  { id: 'duration', label: 'Duration', icon: 'time-outline', description: 'Time period' },
+  { id: 'rating', label: 'Rating', icon: 'star-outline', description: '1-5 stars' },
+  { id: 'textarea', label: 'Notes', icon: 'chatbox-outline', description: 'Multi-line text' },
+  { id: 'photo', label: 'Photo', icon: 'camera-outline', description: 'Attach image' },
+  { id: 'date', label: 'Date', icon: 'calendar-outline', description: 'Date picker' },
+  { id: 'time', label: 'Time', icon: 'timer-outline', description: 'Time picker' },
+  { id: 'temperature', label: 'Temperature', icon: 'thermometer-outline', description: 'Temperature reading' },
+  { id: 'measurement', label: 'Measurement', icon: 'analytics-outline', description: 'Height/Weight/etc' },
+];
+
+// Default quick tags for custom trackers to make them user-friendly
+const DEFAULT_CUSTOM_TAGS = [
+  'Morning', 'Afternoon', 'Evening', 'Night',
+  'Good', 'Okay', 'Difficult', 'Easy',
+  'First time', 'Routine', 'Important', 'Follow up'
+];
+
 interface CustomTrackerModalProps {
   visible: boolean;
   onClose: () => void;
@@ -853,20 +978,112 @@ const CustomTrackerModal: React.FC<CustomTrackerModalProps> = ({
   onClose,
   onSave,
 }) => {
+  const [step, setStep] = useState(1);
   const [name, setName] = useState('');
   const [emoji, setEmoji] = useState('📊');
   const [selectedColor, setSelectedColor] = useState('#667eea');
-  const [step, setStep] = useState(1);
+  const [selectedIcon, setSelectedIcon] = useState('analytics-outline');
+  const [selectedCategory, setSelectedCategory] = useState('custom');
+  const [fields, setFields] = useState<FieldConfig[]>([
+    { id: 'value', label: 'Value', type: 'text', required: true },
+  ]);
+  const [quickTags, setQuickTags] = useState(DEFAULT_CUSTOM_TAGS.join(', '));
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [iconFilter, setIconFilter] = useState('All');
+  const [errors, setErrors] = useState<string[]>([]);
 
-  const colors = [
-    '#667eea', '#fa709a', '#11998e', '#43e97b', '#ff6b6b',
-    '#ffd700', '#fc5c7d', '#94a3b8', '#a855f7', '#ec4899',
-    '#06b6d4', '#f59e0b', '#10b981', '#ef4444', '#3b82f6',
-    '#6366f1', '#8b5cf6', '#14b8a6', '#f97316', '#84cc16',
+  // Common baby care emojis for quick select
+  const QUICK_EMOJIS = [
+    '📊', '🍼', '🚽', '😴', '🧷', '🤱', '🛁', '📏', '🌡️', '💊',
+    '🤒', '🏆', '🧸', '📚', '🎵', '🎨', '🧱', '🌳', '📝', '📷',
+    '🍎', '🥄', '💧', '🧴', '☀️', '🌙', '👶', '👼', '🎀', '⭐',
+    '❤️', '💚', '💙', '💛', '💜', '🧡', '🤍', '🖤', '💯', '✅',
+    '⚠️', '🔴', '🟢', '🔵', '🟡', '🟣', '⬆️', '⬇️', '↗️', '↘️',
   ];
 
+  const iconCategories = ['All', ...Array.from(new Set(BABY_ICONS.map(i => i.category)))];
+  const filteredIcons = iconFilter === 'All' 
+    ? BABY_ICONS 
+    : BABY_ICONS.filter(i => i.category === iconFilter);
+
+  const addField = (type: FieldType) => {
+    const newField: FieldConfig = {
+      id: `field_${Date.now()}`,
+      label: '',
+      type,
+      required: false,
+    };
+    
+    // Add type-specific defaults
+    if (type === 'select' || type === 'multiselect') {
+      newField.options = [
+        { id: 'option1', label: 'Option 1' },
+        { id: 'option2', label: 'Option 2' },
+      ];
+    }
+    if (type === 'rating') {
+      newField.max = 5;
+    }
+    if (type === 'number') {
+      newField.step = 0.1;
+    }
+    
+    setFields(prev => [...prev, newField]);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const updateField = (index: number, updates: Partial<FieldConfig>) => {
+    setFields(prev => prev.map((f, i) => i === index ? { ...f, ...updates } : f));
+  };
+
+  const removeField = (index: number) => {
+    setFields(prev => prev.filter((_, i) => i !== index));
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const addOptionToField = (fieldIndex: number) => {
+    setFields(prev => prev.map((f, i) => {
+      if (i !== fieldIndex || !f.options) return f;
+      return {
+        ...f,
+        options: [...f.options, { id: `opt_${Date.now()}`, label: `Option ${f.options.length + 1}` }]
+      };
+    }));
+  };
+
+  const updateOption = (fieldIndex: number, optIndex: number, updates: Partial<FieldOption>) => {
+    setFields(prev => prev.map((f, i) => {
+      if (i !== fieldIndex || !f.options) return f;
+      return {
+        ...f,
+        options: f.options.map((o, j) => j === optIndex ? { ...o, ...updates } : o)
+      };
+    }));
+  };
+
+  const removeOption = (fieldIndex: number, optIndex: number) => {
+    setFields(prev => prev.map((f, i) => {
+      if (i !== fieldIndex || !f.options) return f;
+      return { ...f, options: f.options.filter((_, j) => j !== optIndex) };
+    }));
+  };
+
+  const validate = (): boolean => {
+    const errs: string[] = [];
+    if (!name.trim()) errs.push('Tracker name is required');
+    if (fields.length === 0) errs.push('At least one field is required');
+    fields.forEach((f, i) => {
+      if (!f.label.trim()) errs.push(`Field ${i + 1} needs a label`);
+      if ((f.type === 'select' || f.type === 'multiselect') && (!f.options || f.options.length < 2)) {
+        errs.push(`Field "${f.label || i + 1}" needs at least 2 options`);
+      }
+    });
+    setErrors(errs);
+    return errs.length === 0;
+  };
+
   const handleSave = () => {
-    if (!name.trim()) {
+    if (!validate()) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       return;
     }
@@ -875,30 +1092,377 @@ const CustomTrackerModal: React.FC<CustomTrackerModalProps> = ({
       id: `custom_${Date.now()}`,
       name: name.trim(),
       emoji: emoji || '📊',
-      icon: 'analytics-outline',
+      icon: selectedIcon,
       color: selectedColor,
       gradient: [selectedColor, selectedColor],
       description: `Custom tracker for ${name.trim()}`,
-      category: 'other',
-      fields: [
-        { id: 'value', label: 'Value', type: 'text', required: true },
-        { id: 'notes', label: 'Notes', type: 'textarea', placeholder: 'Additional details...' },
-      ],
-      quickTags: ['Regular', 'Important', 'Follow up'],
+      category: 'custom',
+      fields: fields.map((f, i) => ({
+        ...f,
+        id: f.id || `field_${i}`,
+        placeholder: f.placeholder || `Enter ${f.label.toLowerCase()}...`,
+      })),
+      quickTags: quickTags.split(',').map(t => t.trim()).filter(Boolean),
       isCustom: true,
       createdAt: Date.now(),
     };
 
     onSave(newTracker);
     reset();
+    onClose();
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
   const reset = () => {
+    setStep(1);
     setName('');
     setEmoji('📊');
     setSelectedColor('#667eea');
-    setStep(1);
+    setSelectedIcon('analytics-outline');
+    setSelectedCategory('custom');
+    setFields([{ id: 'value', label: 'Value', type: 'text', required: true }]);
+    setQuickTags(DEFAULT_CUSTOM_TAGS.join(', '));
+    setShowEmojiPicker(false);
+    setIconFilter('All');
+    setErrors([]);
   };
+
+  const renderStepIndicator = () => (
+    <View style={styles.stepIndicator}>
+      {[1, 2, 3].map(s => (
+        <View key={s} style={styles.stepRow}>
+          <View style={[styles.stepDot, step >= s && { backgroundColor: selectedColor }]} />
+          {s < 3 && <View style={[styles.stepLine, step > s && { backgroundColor: selectedColor }]} />}
+        </View>
+      ))}
+    </View>
+  );
+
+  const renderStep1 = () => (
+    <View>
+      <View style={styles.fieldGroup}>
+        <Text style={styles.fieldLabel}>Tracker Name *</Text>
+        <TextInput
+          style={styles.textInput}
+          placeholder="e.g., Brushing Teeth, Reading Time..."
+          value={name}
+          onChangeText={setName}
+          maxLength={30}
+          autoFocus
+        />
+      </View>
+
+      <View style={styles.fieldGroup}>
+        <Text style={styles.fieldLabel}>Category</Text>
+        <View style={styles.categoryGrid}>
+          {['essential', 'health', 'development', 'daily', 'custom'].map(cat => (
+            <TouchableOpacity
+              key={cat}
+              style={[
+                styles.categoryOption,
+                selectedCategory === cat && { 
+                  backgroundColor: `${selectedColor}20`,
+                  borderColor: selectedColor 
+                }
+              ]}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setSelectedCategory(cat);
+              }}
+            >
+              <Text style={[
+                styles.categoryOptionText,
+                selectedCategory === cat && { color: selectedColor, fontWeight: '700' }
+              ]}>
+                {cat.charAt(0).toUpperCase() + cat.slice(1)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
+      <View style={styles.fieldGroup}>
+        <View style={styles.emojiHeader}>
+          <Text style={styles.fieldLabel}>Emoji Icon</Text>
+          <TouchableOpacity onPress={() => setShowEmojiPicker(!showEmojiPicker)}>
+            <Text style={[styles.emojiToggle, { color: selectedColor }]}>
+              {showEmojiPicker ? 'Hide' : 'Show'} Picker
+            </Text>
+          </TouchableOpacity>
+        </View>
+        
+        {showEmojiPicker ? (
+          <View style={styles.emojiGrid}>
+            {QUICK_EMOJIS.map((em) => (
+              <TouchableOpacity
+                key={em}
+                style={[
+                  styles.emojiOption,
+                  emoji === em && { backgroundColor: `${selectedColor}30`, borderColor: selectedColor }
+                ]}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setEmoji(em);
+                }}
+              >
+                <Text style={styles.emojiOptionText}>{em}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        ) : (
+          <TextInput
+            style={[styles.textInput, styles.emojiInput]}
+            placeholder="📊"
+            maxLength={2}
+            value={emoji}
+            onChangeText={setEmoji}
+          />
+        )}
+      </View>
+
+      <View style={styles.fieldGroup}>
+        <Text style={styles.fieldLabel}>Choose Icon</Text>
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.iconCategoryScroll}
+        >
+          {iconCategories.map(cat => (
+            <TouchableOpacity
+              key={cat}
+              style={[
+                styles.iconCategoryPill,
+                iconFilter === cat && { backgroundColor: selectedColor }
+              ]}
+              onPress={() => setIconFilter(cat)}
+            >
+              <Text style={[
+                styles.iconCategoryText,
+                iconFilter === cat && { color: '#fff', fontWeight: '700' }
+              ]}>
+                {cat}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+        
+        <View style={styles.iconGridLarge}>
+          {filteredIcons.map((icon) => (
+            <TouchableOpacity
+              key={icon.name}
+              style={[
+                styles.iconOptionLarge,
+                selectedIcon === icon.name && { 
+                  backgroundColor: `${selectedColor}20`,
+                  borderColor: selectedColor 
+                }
+              ]}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setSelectedIcon(icon.name);
+              }}
+            >
+              <Ionicons 
+                name={icon.name as any} 
+                size={24} 
+                color={selectedIcon === icon.name ? selectedColor : '#64748b'} 
+              />
+              <Text style={[
+                styles.iconLabel,
+                selectedIcon === icon.name && { color: selectedColor, fontWeight: '700' }
+              ]}>
+                {icon.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
+      <View style={styles.fieldGroup}>
+        <Text style={styles.fieldLabel}>Color Theme</Text>
+        <View style={styles.colorGridEnhanced}>
+          {COLOR_PRESETS.map((preset) => (
+            <TouchableOpacity
+              key={preset.color}
+              style={[
+                styles.colorOptionEnhanced,
+                { backgroundColor: preset.color },
+                selectedColor === preset.color && styles.colorOptionSelectedEnhanced
+              ]}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setSelectedColor(preset.color);
+              }}
+            >
+              {selectedColor === preset.color && (
+                <Ionicons name="checkmark" size={16} color="#fff" />
+              )}
+            </TouchableOpacity>
+          ))}
+        </View>
+        <View style={styles.colorNameRow}>
+          <Text style={styles.colorName}>
+            {COLOR_PRESETS.find(c => c.color === selectedColor)?.name || 'Custom'}
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+
+  const renderStep2 = () => (
+    <View>
+      <View style={styles.fieldGroup}>
+        <Text style={styles.fieldLabel}>Configure Fields *</Text>
+        <Text style={styles.fieldSubLabel}>Add fields to collect data</Text>
+      </View>
+
+      {fields.map((field, index) => (
+        <View key={field.id} style={styles.fieldConfigCard}>
+          <View style={styles.fieldConfigHeader}>
+            <Text style={styles.fieldConfigTitle}>Field {index + 1}</Text>
+            <TouchableOpacity onPress={() => removeField(index)}>
+              <Ionicons name="trash-outline" size={20} color="#ef4444" />
+            </TouchableOpacity>
+          </View>
+
+          <TextInput
+            style={[styles.textInput, styles.fieldConfigInput]}
+            placeholder="Field label (e.g., Duration, Amount...)"
+            value={field.label}
+            onChangeText={(text) => updateField(index, { label: text })}
+          />
+
+          <View style={styles.fieldTypeBadge}>
+            <Ionicons 
+              name={FIELD_TYPE_OPTIONS.find(t => t.id === field.type)?.icon as any || 'help-circle-outline'} 
+              size={16} 
+              color={selectedColor} 
+            />
+            <Text style={[styles.fieldTypeText, { color: selectedColor }]}>
+              {FIELD_TYPE_OPTIONS.find(t => t.id === field.type)?.label || field.type}
+            </Text>
+          </View>
+
+          <View style={styles.fieldOptionsRow}>
+            <TouchableOpacity 
+              style={[styles.fieldToggle, field.required && { backgroundColor: `${selectedColor}20` }]}
+              onPress={() => updateField(index, { required: !field.required })}
+            >
+              <Text style={[
+                styles.fieldToggleText,
+                field.required && { color: selectedColor, fontWeight: '700' }
+              ]}>
+                {field.required ? '✓ Required' : 'Optional'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {(field.type === 'select' || field.type === 'multiselect') && (
+            <View style={styles.optionsEditor}>
+              <Text style={styles.optionsEditorLabel}>Options:</Text>
+              {field.options?.map((opt, optIndex) => (
+                <View key={opt.id} style={styles.optionEditorRow}>
+                  <TextInput
+                    style={[styles.textInput, styles.optionInput]}
+                    placeholder="Option label"
+                    value={opt.label}
+                    onChangeText={(text) => updateOption(index, optIndex, { label: text })}
+                  />
+                  <TouchableOpacity onPress={() => removeOption(index, optIndex)}>
+                    <Ionicons name="close-circle" size={20} color="#ef4444" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+              <TouchableOpacity 
+                style={styles.addOptionBtn}
+                onPress={() => addOptionToField(index)}
+              >
+                <Ionicons name="add-circle" size={18} color={selectedColor} />
+                <Text style={[styles.addOptionText, { color: selectedColor }]}>Add Option</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {field.type === 'number' && (
+            <View style={styles.numberConfig}>
+              <TextInput
+                style={[styles.textInput, styles.unitInput]}
+                placeholder="Unit (e.g., oz, ml, cm)"
+                value={field.unit || ''}
+                onChangeText={(text) => updateField(index, { unit: text })}
+              />
+              <TextInput
+                style={[styles.textInput, styles.unitInput]}
+                placeholder="Step (e.g., 0.1, 1)"
+                value={field.step?.toString() || ''}
+                keyboardType="decimal-pad"
+                onChangeText={(text) => updateField(index, { step: parseFloat(text) || 0.1 })}
+              />
+            </View>
+          )}
+        </View>
+      ))}
+
+      <View style={styles.fieldGroup}>
+        <Text style={styles.fieldLabel}>Add New Field</Text>
+        <View style={styles.fieldTypeGrid}>
+          {FIELD_TYPE_OPTIONS.map((ft) => (
+            <TouchableOpacity
+              key={ft.id}
+              style={styles.fieldTypeCard}
+              onPress={() => addField(ft.id)}
+            >
+              <Ionicons name={ft.icon as any} size={24} color={selectedColor} />
+              <Text style={styles.fieldTypeCardLabel}>{ft.label}</Text>
+              <Text style={styles.fieldTypeCardDesc}>{ft.description}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+    </View>
+  );
+
+  const renderStep3 = () => (
+    <View>
+      <View style={styles.fieldGroup}>
+        <Text style={styles.fieldLabel}>Quick Tags (Optional)</Text>
+        <Text style={styles.fieldSubLabel}>Comma-separated tags for quick entry</Text>
+        <TextInput
+          style={styles.textInput}
+          placeholder="e.g., Morning, Evening, Urgent, Routine..."
+          value={quickTags}
+          onChangeText={setQuickTags}
+        />
+      </View>
+
+      <View style={styles.previewCard}>
+        <Text style={styles.previewLabel}>Preview</Text>
+        <View style={[styles.previewTrackerCard, { borderColor: selectedColor }]}>
+          <View style={[styles.previewIconBg, { backgroundColor: `${selectedColor}15` }]}>
+            <Text style={styles.previewEmoji}>{emoji}</Text>
+          </View>
+          <View style={styles.previewContent}>
+            <Text style={styles.previewName}>{name || 'Tracker Name'}</Text>
+            <Text style={styles.previewMeta}>
+              {fields.length} field{fields.length !== 1 ? 's' : ''} • {selectedCategory}
+            </Text>
+          </View>
+          <Ionicons name={selectedIcon as any} size={24} color={selectedColor} />
+        </View>
+      </View>
+
+      {errors.length > 0 && (
+        <View style={styles.errorsContainer}>
+          {errors.map((error, idx) => (
+            <View key={idx} style={styles.errorRow}>
+              <Ionicons name="alert-circle" size={16} color="#ef4444" />
+              <Text style={styles.errorText}>{error}</Text>
+            </View>
+          ))}
+        </View>
+      )}
+    </View>
+  );
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -906,67 +1470,53 @@ const CustomTrackerModal: React.FC<CustomTrackerModalProps> = ({
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.modalOverlay}
       >
-        <BlurView intensity={95} style={styles.customModalContent}>
+        <BlurView intensity={95} style={styles.customModalContentEnhanced}>
           <View style={styles.customModalHeader}>
-            <Text style={styles.customModalTitle}>Create Custom Tracker</Text>
-            <TouchableOpacity onPress={onClose} style={styles.customModalClose}>
+            <View>
+              <Text style={styles.customModalTitle}>Create Custom Tracker</Text>
+              <Text style={styles.customModalSubtitle}>Step {step} of 3</Text>
+            </View>
+            <TouchableOpacity onPress={() => { reset(); onClose(); }} style={styles.customModalClose}>
               <Ionicons name="close" size={24} color="#64748b" />
             </TouchableOpacity>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false}>
-            <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>Tracker Name *</Text>
-              <TextInput
-                style={styles.textInput}
-                placeholder="e.g., Brushing Teeth, Reading Time..."
-                value={name}
-                onChangeText={setName}
-                maxLength={30}
-              />
-            </View>
+          {renderStepIndicator()}
 
-            <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>Emoji Icon</Text>
-              <TextInput
-                style={[styles.textInput, styles.emojiInput]}
-                placeholder="📊"
-                maxLength={2}
-                value={emoji}
-                onChangeText={setEmoji}
-              />
-            </View>
-
-            <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>Color Theme</Text>
-              <View style={styles.colorGrid}>
-                {colors.map((color) => (
-                  <TouchableOpacity
-                    key={color}
-                    style={[
-                      styles.colorOption,
-                      { backgroundColor: color },
-                      selectedColor === color && styles.colorOptionSelected
-                    ]}
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      setSelectedColor(color);
-                    }}
-                  />
-                ))}
-              </View>
-            </View>
-
-            <TouchableOpacity style={styles.createButton} onPress={handleSave}>
-              <LinearGradient
-                colors={[selectedColor, selectedColor]}
-                style={styles.createGradient}
-              >
-                <Ionicons name="add-circle" size={24} color="#fff" />
-                <Text style={styles.createButtonText}>Create Tracker</Text>
-              </LinearGradient>
-            </TouchableOpacity>
+          <ScrollView showsVerticalScrollIndicator={false} style={styles.modalScroll}>
+            {step === 1 && renderStep1()}
+            {step === 2 && renderStep2()}
+            {step === 3 && renderStep3()}
           </ScrollView>
+
+          <View style={styles.modalFooter}>
+            {step > 1 && (
+              <TouchableOpacity 
+                style={styles.backButton}
+                onPress={() => setStep(step - 1)}
+              >
+                <Text style={styles.backButtonText}>Back</Text>
+              </TouchableOpacity>
+            )}
+            
+            {step < 3 ? (
+              <TouchableOpacity 
+                style={[styles.nextButton, { backgroundColor: selectedColor }]}
+                onPress={() => setStep(step + 1)}
+              >
+                <Text style={styles.nextButtonText}>Next</Text>
+                <Ionicons name="chevron-forward" size={20} color="#fff" />
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity 
+                style={[styles.createButtonEnhanced, { backgroundColor: selectedColor }]}
+                onPress={handleSave}
+              >
+                <Ionicons name="checkmark" size={24} color="#fff" />
+                <Text style={styles.createButtonTextEnhanced}>Create Tracker</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </BlurView>
       </KeyboardAvoidingView>
     </Modal>
@@ -1025,7 +1575,16 @@ export default function UniversalAddLogScreen() {
       const stored = await AsyncStorage.getItem(CUSTOM_TRACKERS_KEY);
       if (stored) {
         const custom = JSON.parse(stored);
-        setLogTypes(prev => ({ ...prev, ...custom }));
+        // Ensure custom trackers have category 'custom' and quickTags
+        const normalizedCustom: Record<string, LogTypeConfig> = {};
+        Object.entries(custom).forEach(([key, tracker]: [string, any]) => {
+          normalizedCustom[key] = {
+            ...tracker,
+            category: 'custom',
+            quickTags: tracker.quickTags?.length ? tracker.quickTags : DEFAULT_CUSTOM_TAGS,
+          };
+        });
+        setLogTypes(prev => ({ ...prev, ...normalizedCustom }));
       }
     } catch (e) {
       console.error('Failed to load custom trackers', e);
@@ -1109,7 +1668,7 @@ export default function UniversalAddLogScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (Platform.OS === 'android') {
       showAndroidPicker('time');
-    } else {
+       } else {
       setPickerMode('time');
       setShowTimePicker(true);
     }
@@ -1124,6 +1683,78 @@ export default function UniversalAddLogScreen() {
     if (selectedDate) {
       setDate(selectedDate);
     }
+  };
+
+  // ==================== PHOTO HANDLER ====================
+  
+  const handlePhotoPick = async (fieldId: string) => {
+    try {
+      // Request permission
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Please allow access to photos to attach images.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const uri = result.assets[0].uri;
+        handleFieldChange(fieldId, uri);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    } catch (error) {
+      console.error('Photo pick error:', error);
+      Alert.alert('Error', 'Failed to pick photo. Please try again.');
+    }
+  };
+
+  const handleCameraCapture = async (fieldId: string) => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Please allow camera access to take photos.');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const uri = result.assets[0].uri;
+        handleFieldChange(fieldId, uri);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    } catch (error) {
+      console.error('Camera error:', error);
+      Alert.alert('Error', 'Failed to capture photo. Please try again.');
+    }
+  };
+
+  const handleRemovePhoto = (fieldId: string) => {
+    Alert.alert(
+      'Remove Photo',
+      'Are you sure you want to remove this photo?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Remove', 
+          style: 'destructive',
+          onPress: () => {
+            handleFieldChange(fieldId, null);
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          }
+        },
+      ]
+    );
   };
 
   const validateForm = (): boolean => {
@@ -1181,7 +1812,8 @@ export default function UniversalAddLogScreen() {
         return data.title || 'Note';
       
       default:
-        return `${currentConfig.emoji} ${currentConfig.name}`;
+        // For custom trackers, use name field or title
+        return data.title || data.name || `${currentConfig.emoji} ${currentConfig.name}`;
     }
   };
 
@@ -1191,6 +1823,7 @@ export default function UniversalAddLogScreen() {
 
     currentConfig.fields.forEach(field => {
       if (field.id === 'notes' || field.id === 'description' || field.id === 'content') return;
+      if (field.type === 'photo') return; // Don't include photo URI in details text
       
       const value = data[field.id];
       if (value === undefined || value === null || value === '') return;
@@ -1509,11 +2142,44 @@ export default function UniversalAddLogScreen() {
         return (
           <Animated.View entering={FadeInUp.delay(100)} key={field.id} style={styles.fieldContainer}>
             <Text style={styles.fieldLabel}>{field.label}</Text>
-            <TouchableOpacity style={styles.photoButton}>
-              <Ionicons name="camera-outline" size={28} color={currentConfig.color} />
-              <Text style={styles.photoButtonText}>Add Photo</Text>
-              <Text style={styles.photoHint}>Tap to capture or select</Text>
-            </TouchableOpacity>
+            {value ? (
+              <View style={styles.photoPreviewContainer}>
+                <Image source={{ uri: value }} style={styles.photoPreview} resizeMode="cover" />
+                <View style={styles.photoOverlay}>
+                  <TouchableOpacity 
+                    style={styles.photoActionBtn}
+                    onPress={() => handlePhotoPick(field.id)}
+                  >
+                    <Ionicons name="image-outline" size={20} color="#fff" />
+                    <Text style={styles.photoActionText}>Change</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[styles.photoActionBtn, styles.photoRemoveBtn]}
+                    onPress={() => handleRemovePhoto(field.id)}
+                  >
+                    <Ionicons name="trash-outline" size={20} color="#fff" />
+                    <Text style={styles.photoActionText}>Remove</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              <View style={styles.photoButtonsRow}>
+                <TouchableOpacity 
+                  style={styles.photoButtonHalf}
+                  onPress={() => handleCameraCapture(field.id)}
+                >
+                  <Ionicons name="camera-outline" size={24} color={currentConfig.color} />
+                  <Text style={styles.photoButtonText}>Camera</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={styles.photoButtonHalf}
+                  onPress={() => handlePhotoPick(field.id)}
+                >
+                  <Ionicons name="images-outline" size={24} color={currentConfig.color} />
+                  <Text style={styles.photoButtonText}>Gallery</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </Animated.View>
         );
 
@@ -1523,19 +2189,24 @@ export default function UniversalAddLogScreen() {
   };
 
   // Group log types by category for better organization
+  // FIXED: Properly separate custom trackers into their own category
   const groupedLogTypes = useMemo(() => {
     const groups: Record<string, LogTypeConfig[]> = {
       essential: [],
       health: [],
       development: [],
       daily: [],
-      other: [],
+      custom: [],
     };
     
     Object.values(logTypes).forEach(type => {
-      const category = type.category || 'other';
+      // Ensure custom trackers always go to custom category
+      const category = type.isCustom ? 'custom' : (type.category || 'daily');
       if (groups[category]) {
         groups[category].push(type);
+      } else {
+        // Fallback for any unexpected categories
+        groups.custom.push(type);
       }
     });
     
@@ -1589,7 +2260,7 @@ export default function UniversalAddLogScreen() {
             </TouchableOpacity>
           </Animated.View>
 
-          {/* Type Selector - FIXED: Better spacing and rounded corners */}
+          {/* Type Selector - FIXED: Separate Custom section, no more merged Daily & Other */}
           <Animated.View entering={FadeInUp.delay(100)} style={styles.typeSection}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionLabel}>Log Type</Text>
@@ -1611,161 +2282,208 @@ export default function UniversalAddLogScreen() {
               snapToAlignment="start"
             >
               {/* Essential Care */}
-              <View style={styles.categorySection}>
-                <Text style={styles.categoryLabel}>Essential</Text>
-                <View style={styles.typeRow}>
-                  {groupedLogTypes.essential.map((type, index) => (
-                    <AnimatedTouchableOpacity
-                      entering={FadeIn.delay(index * 50)}
-                      key={type.id}
-                      style={[
-                        styles.typeCard,
-                        selectedType === type.id && { 
-                          borderColor: type.color,
-                          backgroundColor: `${type.color}20`,
-                          transform: [{ scale: 1.05 }]
-                        }
-                      ]}
-                      onPress={() => {
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                        setSelectedType(type.id);
-                        setFormData({});
-                        setSelectedTags([]);
-                      }}
-                    >
-                      <View style={[styles.emojiContainer, { backgroundColor: `${type.color}15` }]}>
-                        <Text style={styles.typeEmoji}>{type.emoji}</Text>
-                      </View>
-                      <Text style={[
-                        styles.typeLabel,
-                        selectedType === type.id && { color: type.color, fontWeight: '700' }
-                      ]}>
-                        {type.name}
-                      </Text>
-                      {type.isCustom && (
-                        <View style={[styles.customBadge, { backgroundColor: type.color }]}>
-                          <Text style={styles.customBadgeText}>★</Text>
+              {groupedLogTypes.essential.length > 0 && (
+                <View style={styles.categorySection}>
+                  <Text style={styles.categoryLabel}>Essential</Text>
+                  <View style={styles.typeRow}>
+                    {groupedLogTypes.essential.map((type, index) => (
+                      <AnimatedTouchableOpacity
+                        entering={FadeIn.delay(index * 50)}
+                        key={type.id}
+                        style={[
+                          styles.typeCard,
+                          selectedType === type.id && { 
+                            borderColor: type.color,
+                            backgroundColor: `${type.color}20`,
+                            transform: [{ scale: 1.05 }]
+                          }
+                        ]}
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                          setSelectedType(type.id);
+                          setFormData({});
+                          setSelectedTags([]);
+                        }}
+                      >
+                        <View style={[styles.emojiContainer, { backgroundColor: `${type.color}15` }]}>
+                          <Text style={styles.typeEmoji}>{type.emoji}</Text>
                         </View>
-                      )}
-                    </AnimatedTouchableOpacity>
-                  ))}
+                        <Text style={[
+                          styles.typeLabel,
+                          selectedType === type.id && { color: type.color, fontWeight: '700' }
+                        ]}>
+                          {type.name}
+                        </Text>
+                      </AnimatedTouchableOpacity>
+                    ))}
+                  </View>
                 </View>
-              </View>
+              )}
 
               {/* Health */}
-              <View style={styles.categorySection}>
-                <Text style={styles.categoryLabel}>Health</Text>
-                <View style={styles.typeRow}>
-                  {groupedLogTypes.health.map((type, index) => (
-                    <AnimatedTouchableOpacity
-                      entering={FadeIn.delay(index * 50)}
-                      key={type.id}
-                      style={[
-                        styles.typeCard,
-                        selectedType === type.id && { 
-                          borderColor: type.color,
-                          backgroundColor: `${type.color}20`,
-                          transform: [{ scale: 1.05 }]
-                        }
-                      ]}
-                      onPress={() => {
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                        setSelectedType(type.id);
-                        setFormData({});
-                        setSelectedTags([]);
-                      }}
-                    >
-                      <View style={[styles.emojiContainer, { backgroundColor: `${type.color}15` }]}>
-                        <Text style={styles.typeEmoji}>{type.emoji}</Text>
-                      </View>
-                      <Text style={[
-                        styles.typeLabel,
-                        selectedType === type.id && { color: type.color, fontWeight: '700' }
-                      ]}>
-                        {type.name}
-                      </Text>
-                    </AnimatedTouchableOpacity>
-                  ))}
+              {groupedLogTypes.health.length > 0 && (
+                <View style={styles.categorySection}>
+                  <Text style={styles.categoryLabel}>Health</Text>
+                  <View style={styles.typeRow}>
+                    {groupedLogTypes.health.map((type, index) => (
+                      <AnimatedTouchableOpacity
+                        entering={FadeIn.delay(index * 50)}
+                        key={type.id}
+                        style={[
+                          styles.typeCard,
+                          selectedType === type.id && { 
+                            borderColor: type.color,
+                            backgroundColor: `${type.color}20`,
+                            transform: [{ scale: 1.05 }]
+                          }
+                        ]}
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                          setSelectedType(type.id);
+                          setFormData({});
+                          setSelectedTags([]);
+                        }}
+                      >
+                        <View style={[styles.emojiContainer, { backgroundColor: `${type.color}15` }]}>
+                          <Text style={styles.typeEmoji}>{type.emoji}</Text>
+                        </View>
+                        <Text style={[
+                          styles.typeLabel,
+                          selectedType === type.id && { color: type.color, fontWeight: '700' }
+                        ]}>
+                          {type.name}
+                        </Text>
+                      </AnimatedTouchableOpacity>
+                    ))}
+                  </View>
                 </View>
-              </View>
+              )}
 
               {/* Development */}
-              <View style={styles.categorySection}>
-                <Text style={styles.categoryLabel}>Development</Text>
-                <View style={styles.typeRow}>
-                  {groupedLogTypes.development.map((type, index) => (
-                    <AnimatedTouchableOpacity
-                      entering={FadeIn.delay(index * 50)}
-                      key={type.id}
-                      style={[
-                        styles.typeCard,
-                        selectedType === type.id && { 
-                          borderColor: type.color,
-                          backgroundColor: `${type.color}20`,
-                          transform: [{ scale: 1.05 }]
-                        }
-                      ]}
-                      onPress={() => {
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                        setSelectedType(type.id);
-                        setFormData({});
-                        setSelectedTags([]);
-                      }}
-                    >
-                      <View style={[styles.emojiContainer, { backgroundColor: `${type.color}15` }]}>
-                        <Text style={styles.typeEmoji}>{type.emoji}</Text>
-                      </View>
-                      <Text style={[
-                        styles.typeLabel,
-                        selectedType === type.id && { color: type.color, fontWeight: '700' }
-                      ]}>
-                        {type.name}
-                      </Text>
-                    </AnimatedTouchableOpacity>
-                  ))}
+              {groupedLogTypes.development.length > 0 && (
+                <View style={styles.categorySection}>
+                  <Text style={styles.categoryLabel}>Development</Text>
+                  <View style={styles.typeRow}>
+                    {groupedLogTypes.development.map((type, index) => (
+                      <AnimatedTouchableOpacity
+                        entering={FadeIn.delay(index * 50)}
+                        key={type.id}
+                        style={[
+                          styles.typeCard,
+                          selectedType === type.id && { 
+                            borderColor: type.color,
+                            backgroundColor: `${type.color}20`,
+                            transform: [{ scale: 1.05 }]
+                          }
+                        ]}
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                          setSelectedType(type.id);
+                          setFormData({});
+                          setSelectedTags([]);
+                        }}
+                      >
+                        <View style={[styles.emojiContainer, { backgroundColor: `${type.color}15` }]}>
+                          <Text style={styles.typeEmoji}>{type.emoji}</Text>
+                        </View>
+                        <Text style={[
+                          styles.typeLabel,
+                          selectedType === type.id && { color: type.color, fontWeight: '700' }
+                        ]}>
+                          {type.name}
+                        </Text>
+                      </AnimatedTouchableOpacity>
+                    ))}
+                  </View>
                 </View>
-              </View>
+              )}
 
-              {/* Daily & Other */}
-              <View style={styles.categorySection}>
-                <Text style={styles.categoryLabel}>Daily & Other</Text>
-                <View style={styles.typeRow}>
-                  {[...groupedLogTypes.daily, ...groupedLogTypes.other].map((type, index) => (
-                    <AnimatedTouchableOpacity
-                      entering={FadeIn.delay(index * 50)}
-                      key={type.id}
-                      style={[
-                        styles.typeCard,
-                        selectedType === type.id && { 
-                          borderColor: type.color,
-                          backgroundColor: `${type.color}20`,
-                          transform: [{ scale: 1.05 }]
-                        }
-                      ]}
-                      onPress={() => {
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                        setSelectedType(type.id);
-                        setFormData({});
-                        setSelectedTags([]);
-                      }}
-                    >
-                      <View style={[styles.emojiContainer, { backgroundColor: `${type.color}15` }]}>
-                        <Text style={styles.typeEmoji}>{type.emoji}</Text>
-                      </View>
-                      <Text style={[
-                        styles.typeLabel,
-                        selectedType === type.id && { color: type.color, fontWeight: '700' }
-                      ]}>
-                        {type.name}
-                      </Text>
-                    </AnimatedTouchableOpacity>
-                  ))}
+              {/* Daily */}
+              {groupedLogTypes.daily.length > 0 && (
+                <View style={styles.categorySection}>
+                  <Text style={styles.categoryLabel}>Daily</Text>
+                  <View style={styles.typeRow}>
+                    {groupedLogTypes.daily.map((type, index) => (
+                      <AnimatedTouchableOpacity
+                        entering={FadeIn.delay(index * 50)}
+                        key={type.id}
+                        style={[
+                          styles.typeCard,
+                          selectedType === type.id && { 
+                            borderColor: type.color,
+                            backgroundColor: `${type.color}20`,
+                            transform: [{ scale: 1.05 }]
+                          }
+                        ]}
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                          setSelectedType(type.id);
+                          setFormData({});
+                          setSelectedTags([]);
+                        }}
+                      >
+                        <View style={[styles.emojiContainer, { backgroundColor: `${type.color}15` }]}>
+                          <Text style={styles.typeEmoji}>{type.emoji}</Text>
+                        </View>
+                        <Text style={[
+                          styles.typeLabel,
+                          selectedType === type.id && { color: type.color, fontWeight: '700' }
+                        ]}>
+                          {type.name}
+                        </Text>
+                      </AnimatedTouchableOpacity>
+                    ))}
+                  </View>
                 </View>
-              </View>
+              )}
+
+              {/* Custom Trackers - FIXED: Dedicated section instead of merged with Daily */}
+              {groupedLogTypes.custom.length > 0 && (
+                <View style={styles.categorySection}>
+                  <Text style={[styles.categoryLabel, { color: '#a855f7' }]}>Custom</Text>
+                  <View style={styles.typeRow}>
+                    {groupedLogTypes.custom.map((type, index) => (
+                      <AnimatedTouchableOpacity
+                        entering={FadeIn.delay(index * 50)}
+                        key={type.id}
+                        style={[
+                          styles.typeCard,
+                          selectedType === type.id && { 
+                            borderColor: type.color,
+                            backgroundColor: `${type.color}20`,
+                            transform: [{ scale: 1.05 }]
+                          }
+                        ]}
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                          setSelectedType(type.id);
+                          setFormData({});
+                          setSelectedTags([]);
+                        }}
+                      >
+                        <View style={[styles.emojiContainer, { backgroundColor: `${type.color}15` }]}>
+                          <Text style={styles.typeEmoji}>{type.emoji}</Text>
+                        </View>
+                        <Text style={[
+                          styles.typeLabel,
+                          selectedType === type.id && { color: type.color, fontWeight: '700' }
+                        ]}>
+                          {type.name}
+                        </Text>
+                        {type.isCustom && (
+                          <View style={[styles.customBadge, { backgroundColor: type.color }]}>
+                            <Text style={styles.customBadgeText}>★</Text>
+                          </View>
+                        )}
+                      </AnimatedTouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              )}
             </ScrollView>
           </Animated.View>
 
-          {/* Date/Time - FIXED: Separate pickers for Android compatibility */}
+          {/* Date/Time */}
           <Animated.View entering={FadeInUp.delay(150)} style={styles.timeSection}>
             <Text style={styles.sectionLabel}>When</Text>
             <View style={styles.timeButtonsContainer}>
@@ -1784,7 +2502,7 @@ export default function UniversalAddLogScreen() {
                 <Ionicons name="chevron-forward" size={20} color="#94a3b8" />
               </TouchableOpacity>
 
-                           <TouchableOpacity 
+              <TouchableOpacity 
                 style={styles.timeButton}
                 onPress={handleTimePress}
               >
@@ -1990,7 +2708,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
 
-  // Type Selector - FIXED: Better spacing and organization
+  // Type Selector
   typeSection: {
     marginBottom: 24,
   },
@@ -2036,7 +2754,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
   },
-  // FIXED: Improved type card with better rounded corners and inner container
   typeCard: {
     width: 85,
     backgroundColor: 'rgba(255,255,255,0.9)',
@@ -2051,7 +2768,6 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
-  // NEW: Inner emoji container for better visual separation
   emojiContainer: {
     width: 56,
     height: 56,
@@ -2085,7 +2801,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
-  // Time Section - FIXED: Side by side layout
+  // Time Section
   timeSection: {
     marginBottom: 24,
   },
@@ -2123,11 +2839,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: '#1e293b',
-  },
-  timeSubText: {
-    fontSize: 13,
-    color: '#64748b',
-    marginTop: 2,
   },
 
   // iOS Picker Modal
@@ -2357,11 +3068,16 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
-  // Photo
-  photoButton: {
+  // Photo - NEW STYLES
+  photoButtonsRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  photoButtonHalf: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 24,
+    padding: 20,
     borderRadius: 16,
     backgroundColor: 'rgba(255,255,255,0.9)',
     borderWidth: 2,
@@ -2369,14 +3085,49 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
     gap: 8,
   },
+  photoPreviewContainer: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: '#f1f5f9',
+    position: 'relative',
+  },
+  photoPreview: {
+    width: '100%',
+    height: 200,
+    borderRadius: 16,
+  },
+  photoOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    padding: 12,
+    gap: 12,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  photoActionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+  },
+  photoRemoveBtn: {
+    backgroundColor: 'rgba(239,68,68,0.3)',
+  },
+  photoActionText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
   photoButtonText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
     color: '#64748b',
-  },
-  photoHint: {
-    fontSize: 12,
-    color: '#94a3b8',
   },
 
   // Tags
@@ -2473,6 +3224,16 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
+  previewPhotoContainer: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: 12,
+    height: 120,
+  },
+  previewPhoto: {
+    width: '100%',
+    height: '100%',
+  },
   previewTitle: {
     fontSize: 18,
     fontWeight: '800',
@@ -2557,13 +3318,13 @@ const styles = StyleSheet.create({
   },
 
   // Custom Modal
-  customModalContent: {
+  customModalContentEnhanced: {
     backgroundColor: 'rgba(255,255,255,0.98)',
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
     padding: 24,
-    paddingBottom: 40,
-    maxHeight: '90%',
+    paddingBottom: Platform.OS === 'ios' ? 40 : 20,
+    maxHeight: '92%',
     position: 'absolute',
     bottom: 0,
     left: 0,
@@ -2580,6 +3341,12 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#1e293b',
   },
+  customModalSubtitle: {
+    fontSize: 14,
+    color: '#94a3b8',
+    marginTop: 2,
+    fontWeight: '500',
+  },
   customModalClose: {
     width: 40,
     height: 40,
@@ -2588,44 +3355,382 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  fieldGroup: {
-    marginBottom: 20,
+  modalScroll: {
+    maxHeight: '70%',
   },
-  emojiInput: {
-    fontSize: 32,
-    textAlign: 'center',
-  },
-  colorGrid: {
+  modalFooter: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 12,
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.05)',
   },
-  colorOption: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    borderWidth: 3,
-    borderColor: 'transparent',
-  },
-  colorOptionSelected: {
-    borderColor: '#1e293b',
-    transform: [{ scale: 1.1 }],
-  },
-  createButton: {
-    marginTop: 24,
+  backButton: {
+    flex: 1,
+    paddingVertical: 14,
     borderRadius: 16,
-    overflow: 'hidden',
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    alignItems: 'center',
   },
-  createGradient: {
+  backButtonText: {
+    color: '#64748b',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  nextButton: {
+    flex: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 16,
+  },
+  nextButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  createButtonEnhanced: {
+    flex: 2,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
     paddingVertical: 16,
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 5,
   },
-  createButtonText: {
+  createButtonTextEnhanced: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '700',
+  },
+  
+  // Step Indicator
+  stepIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+    gap: 4,
+  },
+  stepRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  stepDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#e2e8f0',
+  },
+  stepLine: {
+    width: 40,
+    height: 2,
+    backgroundColor: '#e2e8f0',
+    marginHorizontal: 4,
+  },
+  
+  // Emoji Picker
+  emojiHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  emojiToggle: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  emojiGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    padding: 8,
+    backgroundColor: 'rgba(0,0,0,0.02)',
+    borderRadius: 16,
+  },
+  emojiOption: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'transparent',
+    backgroundColor: 'rgba(255,255,255,0.8)',
+  },
+  emojiOptionText: {
+    fontSize: 24,
+  },
+  
+  // Category Grid
+  categoryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  categoryOption: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.8)',
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  categoryOptionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  
+  // Enhanced Icon Grid
+  iconCategoryScroll: {
+    gap: 8,
+    paddingBottom: 12,
+  },
+  iconCategoryPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+  },
+  iconCategoryText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  iconGridLarge: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  iconOptionLarge: {
+    width: 72,
+    height: 72,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.8)',
+    borderWidth: 2,
+    borderColor: 'transparent',
+    gap: 4,
+  },
+  iconLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#94a3b8',
+  },
+  
+  // Enhanced Color Grid
+  colorGridEnhanced: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  colorOptionEnhanced: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: 'transparent',
+  },
+  colorOptionSelectedEnhanced: {
+    borderColor: '#1e293b',
+    transform: [{ scale: 1.1 }],
+  },
+  colorNameRow: {
+    marginTop: 8,
+    alignItems: 'center',
+  },
+  colorName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  
+  // Field Configuration
+  fieldConfigCard: {
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.05)',
+  },
+  fieldConfigHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  fieldConfigTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1e293b',
+  },
+  fieldConfigInput: {
+    marginBottom: 10,
+  },
+  fieldTypeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 10,
+  },
+  fieldTypeText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  fieldOptionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  fieldToggle: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+  },
+  fieldToggleText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#94a3b8',
+  },
+  
+  // Options Editor
+  optionsEditor: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.05)',
+  },
+  optionsEditorLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748b',
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  optionEditorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  optionInput: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  addOptionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
+  },
+  addOptionText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  
+  // Number Config
+  numberConfig: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 10,
+  },
+  unitInput: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  
+  // Field Type Grid
+  fieldTypeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  fieldTypeCard: {
+    width: '30%',
+    aspectRatio: 1,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.05)',
+    gap: 4,
+  },
+  fieldTypeCardLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#1e293b',
+  },
+  fieldTypeCardDesc: {
+    fontSize: 10,
+    color: '#94a3b8',
+    textAlign: 'center',
+  },
+  
+  // Preview
+  previewLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#64748b',
+    marginBottom: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  previewTrackerCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderWidth: 2,
+    borderColor: 'transparent',
+    gap: 12,
+  },
+  previewIconBg: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  previewEmoji: {
+    fontSize: 24,
+  },
+  previewContent: {
+    flex: 1,
+  },
+  previewName: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#1e293b',
+  },
+  previewMeta: {
+    fontSize: 13,
+    color: '#94a3b8',
+    marginTop: 2,
+  },
+  
+  // Sub labels
+  fieldSubLabel: {
+    fontSize: 13,
+    color: '#94a3b8',
+    marginBottom: 10,
+    marginTop: -4,
   },
 });

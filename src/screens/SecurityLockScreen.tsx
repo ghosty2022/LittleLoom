@@ -9,9 +9,8 @@ import {
   Alert,
   useColorScheme,
   Dimensions,
-  AppState,
   ActivityIndicator,
-  Platform,
+  AppState,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
@@ -26,11 +25,10 @@ import type { RootStackParamList } from '../types/navigation';
 
 type SecurityLockScreenProps = NativeStackScreenProps<RootStackParamList, 'SecurityLock'>;
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const PIN_LENGTH = 4;
 const MAX_ATTEMPTS = 5;
 
-// Modern, refined color palette
 const COLORS = {
   light: {
     background: ['#F8F9FE', '#EEF2FF'],
@@ -60,7 +58,6 @@ const COLORS = {
   },
 };
 
-// Modern Biometric Icon Component
 const BiometricIcon = ({ 
   type, 
   size = 80, 
@@ -73,7 +70,6 @@ const BiometricIcon = ({
   isDark: boolean;
 }) => {
   const isFace = type.includes('Face') || type === 'Face ID';
-  
   return (
     <View style={[styles.biometricIconContainer, { width: size, height: size }]}>
       <LinearGradient
@@ -86,11 +82,6 @@ const BiometricIcon = ({
           color={color} 
         />
       </LinearGradient>
-      {isFace && (
-        <View style={styles.faceScanLine}>
-          <Animated.View style={styles.scanLine} />
-        </View>
-      )}
     </View>
   );
 };
@@ -102,7 +93,6 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
   const [isLoading, setIsLoading] = useState(false);
   const [attempts, setAttempts] = useState(0);
   const [isLockedOut, setIsLockedOut] = useState(false);
-  const [showBiometricPrompt, setShowBiometricPrompt] = useState(false);
   const [pinProgress] = useState(new Animated.Value(0));
   
   const { signOut } = useAuth();
@@ -111,8 +101,8 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     settings: securitySettings, 
     isBiometricHardwareAvailable,
     isBiometricEnrolled,
-    authenticateWithBiometric,
     getAvailableAuthMethods,
+    resetUnlockLock,
   } = useSecurity();
   
   const colorScheme = useColorScheme();
@@ -123,6 +113,33 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
   const availableMethods = getAvailableAuthMethods();
   const hasBiometric = availableMethods.hasBiometric;
   const hasPin = availableMethods.hasPin;
+
+  const isMounted = useRef(true);
+  const autoPromptTimer = useRef<NodeJS.Timeout | null>(null);
+  const unlockInProgress = useRef(false);
+  // CRITICAL FIX: Reset hasAutoPrompted on every mount
+  const hasAutoPrompted = useRef(false);
+  const handleBiometricAuthRef = useRef<(() => Promise<void>) | null>(null);
+  // CRITICAL FIX: Track last unlock attempt to prevent rapid-fire
+  const lastUnlockAttemptRef = useRef<number>(0);
+
+  // CRITICAL FIX: Reset all locks on mount and cleanup on unmount
+  useEffect(() => {
+    isMounted.current = true;
+    // Reset any stuck locks from previous sessions
+    resetUnlockLock();
+    hasAutoPrompted.current = false;
+    unlockInProgress.current = false;
+    lastUnlockAttemptRef.current = 0;
+    
+    return () => {
+      isMounted.current = false;
+      hasAutoPrompted.current = false;
+      if (autoPromptTimer.current) {
+        clearTimeout(autoPromptTimer.current);
+      }
+    };
+  }, [resetUnlockLock]);
 
   // Animate PIN progress
   useEffect(() => {
@@ -153,39 +170,59 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     detectBiometricType();
   }, []);
 
-  // Auto-prompt biometric with proper dependencies
+  // CRITICAL FIX: Auto-prompt with proper guards and reset capability
   useEffect(() => {
     if (!securitySettings.isBiometricEnabled) return;
     if (!isBiometricHardwareAvailable || !isBiometricEnrolled) return;
-    if (pin.length > 0) return;
     if (isLockedOut) return;
+    if (hasAutoPrompted.current) return;
+    if (unlockInProgress.current) return;
 
-    const timer = setTimeout(() => {
-      setShowBiometricPrompt(true);
-      handleBiometricAuth();
+    autoPromptTimer.current = setTimeout(() => {
+      if (
+        isMounted.current && 
+        !unlockInProgress.current && 
+        !isLockedOut && 
+        !hasAutoPrompted.current &&
+        handleBiometricAuthRef.current
+      ) {
+        hasAutoPrompted.current = true;
+        handleBiometricAuthRef.current();
+      }
     }, 600);
 
-    return () => clearTimeout(timer);
+    return () => {
+      if (autoPromptTimer.current) {
+        clearTimeout(autoPromptTimer.current);
+      }
+    };
   }, [
     securitySettings.isBiometricEnabled,
     isBiometricHardwareAvailable,
     isBiometricEnrolled,
-    isLockedOut
-    // Intentionally not including pin.length to avoid re-triggering when typing
+    isLockedOut,
   ]);
 
-  // Re-check biometric on foreground
+  // CRITICAL FIX: Listen for focus events to reset auto-prompt when returning to this screen
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      hasAutoPrompted.current = false;
+      unlockInProgress.current = false;
+      resetUnlockLock();
+    });
+    return unsubscribe;
+  }, [navigation, resetUnlockLock]);
+
+  // CRITICAL FIX: Listen for app coming from background to re-prompt biometric
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextAppState) => {
-      if (nextAppState === 'active' && !isLockedOut && !isLoading && pin.length === 0) {
-        if (securitySettings.isBiometricEnabled && hasBiometric) {
-          setTimeout(() => handleBiometricAuth(), 300);
-        }
+      if (nextAppState === 'active' && !isLockedOut && !unlockInProgress.current) {
+        // Reset auto-prompt when coming from background so biometric fires again
+        hasAutoPrompted.current = false;
       }
     });
-    
     return () => subscription.remove();
-  }, [securitySettings.isBiometricEnabled, hasBiometric, isLockedOut, isLoading]);
+  }, [isLockedOut]);
 
   const shake = useCallback(() => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -213,8 +250,9 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
   }, [signOut]);
 
   const handlePinComplete = useCallback(async (completedPin: string) => {
-    if (isLockedOut) return;
+    if (isLockedOut || unlockInProgress.current) return;
     
+    unlockInProgress.current = true;
     setIsLoading(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     
@@ -246,12 +284,15 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
       shake();
       setPin('');
     } finally {
-      setIsLoading(false);
+      unlockInProgress.current = false;
+      if (isMounted.current) {
+        setIsLoading(false);
+      }
     }
   }, [unlockApp, shake, attempts, isLockedOut, handleLockout]);
 
   const handleNumberPress = useCallback((num: string) => {
-    if (pin.length < PIN_LENGTH && !isLoading && !isLockedOut) {
+    if (pin.length < PIN_LENGTH && !isLoading && !isLockedOut && !unlockInProgress.current) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       const newPin = pin + num;
       setPin(newPin);
@@ -269,52 +310,61 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     }
   }, [pin.length, isLoading, isLockedOut]);
 
+  // CRITICAL FIX: Throttle biometric attempts and clear locks before attempting
   const handleBiometricAuth = useCallback(async () => {
     if (!isBiometricHardwareAvailable || !isBiometricEnrolled) return;
     if (!securitySettings.isBiometricEnabled) return;
-    if (isLockedOut || isLoading) return;
-    if (!showBiometricPrompt) return;
+    if (isLockedOut || isLoading || unlockInProgress.current) return;
 
+    // Throttle: prevent attempts within 1.5 seconds of each other
+    const now = Date.now();
+    if (now - lastUnlockAttemptRef.current < 1500) {
+      console.log('⏸️ Biometric attempt throttled');
+      return;
+    }
+    lastUnlockAttemptRef.current = now;
+
+    // CRITICAL FIX: Clear any stuck locks before attempting
+    resetUnlockLock();
+    unlockInProgress.current = true;
+    setIsLoading(true);
+    
     try {
-      setIsLoading(true);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       
-      const result = await authenticateWithBiometric(`Unlock with ${biometricType}`);
+      const success = await unlockApp('biometric');
       
-      if (result.success) {
+      if (success) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        await unlockApp('biometric');
+        // AppNavigator automatically navigates away when isSecurityLocked becomes false
       } else {
-        if (result.error === 'user_cancel') {
-          // User cancelled - don't treat as error, just allow PIN entry
-          return;
-        }
-        
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        
-        if (result.error === 'not_enrolled' || result.error === 'not_available') {
-          Alert.alert('Biometric Unavailable', 'Please use your PIN to unlock.');
-        }
+        // Small shake to indicate failure but stay on screen
+        shake();
       }
     } catch (error) {
       console.error('Biometric error:', error);
     } finally {
-      setIsLoading(false);
-      setShowBiometricPrompt(false);
+      unlockInProgress.current = false;
+      if (isMounted.current) {
+        setIsLoading(false);
+      }
     }
   }, [
     isBiometricHardwareAvailable,
     isBiometricEnrolled,
     securitySettings.isBiometricEnabled,
     isLockedOut,
-    isLoading,
-    authenticateWithBiometric,
-    biometricType,
     unlockApp,
-    showBiometricPrompt
+    resetUnlockLock,
+    shake,
   ]);
 
-  // Modern PIN Dots with animation
+  // Keep ref synced so the mount auto-prompt always calls the latest handler
+  useEffect(() => {
+    handleBiometricAuthRef.current = handleBiometricAuth;
+  }, [handleBiometricAuth]);
+
   const renderPinDots = () => (
     <Animated.View 
       style={[
@@ -324,8 +374,6 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     >
       {Array.from({ length: PIN_LENGTH }).map((_, index) => {
         const isFilled = index < pin.length;
-        const isCurrent = index === pin.length;
-        
         return (
           <Animated.View
             key={index}
@@ -351,7 +399,6 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
 
   const renderKeypad = () => {
     const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
-    
     return (
       <View style={styles.keypadContainer}>
         <View style={styles.keypadGrid}>
@@ -361,27 +408,24 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
               style={[
                 styles.keypadButton,
                 { backgroundColor: colors.surfaceHighlight },
-                (isLoading || isLockedOut) && styles.keypadButtonDisabled
+                (isLoading || isLockedOut || unlockInProgress.current) && styles.keypadButtonDisabled
               ]}
               onPress={() => handleNumberPress(key)}
-              disabled={isLoading || isLockedOut}
+              disabled={isLoading || isLockedOut || unlockInProgress.current}
               activeOpacity={0.7}
             >
-              <Text style={[styles.keypadButtonText, { color: colors.text }]}>
-                {key}
-              </Text>
+              <Text style={[styles.keypadButtonText, { color: colors.text }]}>{key}</Text>
             </TouchableOpacity>
           ))}
           
-          {/* Biometric Button */}
           <TouchableOpacity
             style={[
               styles.keypadButton,
               styles.keypadButtonSpecial,
-              (isLoading || isLockedOut || !hasBiometric) && styles.keypadButtonDisabled
+              (isLoading || isLockedOut || !hasBiometric || unlockInProgress.current) && styles.keypadButtonDisabled
             ]}
             onPress={handleBiometricAuth}
-            disabled={isLoading || isLockedOut || !hasBiometric}
+            disabled={isLoading || isLockedOut || !hasBiometric || unlockInProgress.current}
           >
             {hasBiometric ? (
               <Ionicons 
@@ -394,21 +438,19 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
             )}
           </TouchableOpacity>
           
-          {/* Zero */}
           <TouchableOpacity
             style={[
               styles.keypadButton,
               { backgroundColor: colors.surfaceHighlight },
-              (isLoading || isLockedOut) && styles.keypadButtonDisabled
+              (isLoading || isLockedOut || unlockInProgress.current) && styles.keypadButtonDisabled
             ]}
             onPress={() => handleNumberPress('0')}
-            disabled={isLoading || isLockedOut}
+            disabled={isLoading || isLockedOut || unlockInProgress.current}
             activeOpacity={0.7}
           >
             <Text style={[styles.keypadButtonText, { color: colors.text }]}>0</Text>
           </TouchableOpacity>
           
-          {/* Delete */}
           <TouchableOpacity
             style={[
               styles.keypadButton,
@@ -439,15 +481,12 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
       >
         <View style={[styles.content, { paddingTop: insets.top + 40, paddingBottom: insets.bottom + 20 }]}>
           
-          {/* Header Section */}
           <View style={styles.header}>
             <View style={[styles.iconContainer, { backgroundColor: colors.surface }]}>
               <Ionicons name="lock-closed" size={32} color={colors.primary} />
             </View>
             
-            <Text style={[styles.title, { color: colors.text }]}>
-              Welcome Back
-            </Text>
+            <Text style={[styles.title, { color: colors.text }]}>Welcome Back</Text>
             
             <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
               {hasBiometric && hasPin 
@@ -458,7 +497,6 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
               }
             </Text>
 
-            {/* Attempts Warning */}
             {attempts > 0 && !isLockedOut && (
               <View style={[styles.attemptsBadge, { backgroundColor: colors.warning + '20' }]}>
                 <Text style={[styles.attemptsText, { color: colors.warning }]}>
@@ -474,13 +512,12 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
             )}
           </View>
 
-          {/* Biometric Section (if enabled) */}
           {hasBiometric && !isLockedOut && (
             <View style={styles.biometricSection}>
               <TouchableOpacity
                 style={styles.biometricButton}
                 onPress={handleBiometricAuth}
-                disabled={isLoading}
+                disabled={isLoading || unlockInProgress.current}
                 activeOpacity={0.8}
               >
                 <BiometricIcon 
@@ -490,18 +527,15 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
                   isDark={isDark}
                 />
                 <Text style={[styles.biometricLabel, { color: colors.primary }]}>
-                  Tap to unlock
+                  {isLoading ? 'Authenticating...' : 'Tap to unlock'}
                 </Text>
               </TouchableOpacity>
             </View>
           )}
 
-          {/* PIN Section */}
           {hasPin && (
             <View style={styles.pinSection}>
               {renderPinDots()}
-              
-              {/* Loading Indicator */}
               {isLoading && (
                 <ActivityIndicator 
                   size="small" 
@@ -509,13 +543,10 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
                   style={styles.loadingIndicator}
                 />
               )}
-              
-              {/* Keypad */}
               {renderKeypad()}
             </View>
           )}
 
-          {/* Footer */}
           <View style={styles.footer}>
             <TouchableOpacity 
               style={styles.emergencyButton}
@@ -556,8 +587,6 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 24,
   },
-  
-  // Header
   header: {
     alignItems: 'center',
     marginBottom: 40,
@@ -597,8 +626,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
-
-  // Biometric Section
   biometricSection: {
     alignItems: 'center',
     marginBottom: 40,
@@ -621,28 +648,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(99,102,241,0.2)',
   },
-  faceScanLine: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    overflow: 'hidden',
-    borderRadius: 50,
-  },
-  scanLine: {
-    width: '100%',
-    height: 2,
-    backgroundColor: '#6366F1',
-    opacity: 0.6,
-  },
   biometricLabel: {
     marginTop: 12,
     fontSize: 14,
     fontWeight: '600',
   },
-
-  // PIN Section
   pinSection: {
     flex: 1,
     alignItems: 'center',
@@ -663,8 +673,6 @@ const styles = StyleSheet.create({
   loadingIndicator: {
     marginBottom: 20,
   },
-
-  // Keypad
   keypadContainer: {
     width: '100%',
     maxWidth: 340,
@@ -703,8 +711,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontVariant: ['tabular-nums'],
   },
-
-  // Footer
   footer: {
     marginTop: 'auto',
     paddingVertical: 20,

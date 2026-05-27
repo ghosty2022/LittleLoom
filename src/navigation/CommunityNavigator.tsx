@@ -1,6 +1,8 @@
+// src/navigation/CommunityNavigator.tsx
 import React, { useEffect, useState, Suspense, lazy } from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, AppState } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CommunityStackParamList } from '../types/navigation';
 import { useCommunity } from '../context/CommunityContext';
 import { useUser } from '../context/UserContext';
@@ -9,47 +11,43 @@ import * as Localization from 'expo-localization';
 import { InteractionManager } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
-// Community Theme
 import { CommunityColors, CommunityGradients } from '../theme/CommunityTheme';
-
-// NEW: Community Splash Screen
 import CommunitySplashScreen from '../screens/community/CommunitySplashScreen';
+import CommunityOnboardingScreen from '../screens/community/CommunityOnboardingScreen';
 
-// Components - lazy load heavy components
 const UniversalSpinner = lazy(() => import('../components/UniversalSpinner'));
-
-// Screens - lazy load all screens for faster startup
 const CommunityScreen = lazy(() => import('../screens/community/CommunityScreen'));
 const TopicScreen = lazy(() => import('../screens/community/TopicScreen'));
 const CreatePostScreen = lazy(() => import('../screens/community/CreatePostScreen'));
 const PostDetailScreen = lazy(() => import('../screens/community/PostDetailScreen'));
 const UserProfileScreen = lazy(() => import('../screens/community/UserProfileScreen'));
 const ChatScreen = lazy(() => import('../screens/community/ChatScreen'));
+const ChatListScreen = lazy(() => import('../screens/community/ChatListScreen'));
 const NotificationsScreen = lazy(() => import('../screens/community/NotificationsScreen'));
 const EditCommunityProfileScreen = lazy(() => import('../screens/community/EditCommunityProfileScreen'));
+const FollowersScreen = lazy(() => import('../screens/community/FollowersScreen'));
+const FollowingScreen = lazy(() => import('../screens/community/FollowingScreen'));
+const ReportScreen = lazy(() => import('../screens/community/ReportScreen'));
 
 const Stack = createNativeStackNavigator<CommunityStackParamList>();
 
-// Country detection helper using device locale and location
 const useAutomaticCountryDetection = () => {
   const { currentUser, updateUserLocation } = useCommunity();
   const [isDetecting, setIsDetecting] = useState(true);
 
   useEffect(() => {
     let mounted = true;
-    
+
     const detectCountry = async () => {
-      if (!currentUser || currentUser.country !== 'Unknown') {
+      if (!currentUser || (currentUser.country && currentUser.country !== 'Unknown')) {
         if (mounted) setIsDetecting(false);
         return;
       }
 
       try {
-        // Defer heavy location operations to after interactions
         await InteractionManager.runAfterInteractions(async () => {
-          // First try: Use device locale region (fastest)
           const regionCode = Localization.region;
-          
+
           if (regionCode) {
             const countryName = getCountryNameFromCode(regionCode);
             if (countryName && mounted) {
@@ -59,14 +57,13 @@ const useAutomaticCountryDetection = () => {
             }
           }
 
-          // Second try: Request location permission (expensive)
           const { status } = await Location.requestForegroundPermissionsAsync();
-          
+
           if (status === 'granted' && mounted) {
             const location = await Location.getCurrentPositionAsync({
               accuracy: Location.Accuracy.Low,
             });
-            
+
             const reverseGeocode = await Location.reverseGeocodeAsync({
               latitude: location.coords.latitude,
               longitude: location.coords.longitude,
@@ -82,7 +79,6 @@ const useAutomaticCountryDetection = () => {
             }
           }
 
-          // Fallback: Use timezone
           if (mounted) {
             const timezone = Localization.timezone;
             const countryFromTimezone = getCountryFromTimezone(timezone);
@@ -110,7 +106,6 @@ const useAutomaticCountryDetection = () => {
   return isDetecting;
 };
 
-// Optimized country map
 const getCountryNameFromCode = (code: string): string | null => {
   const countryMap: Record<string, string> = {
     'US': 'United States', 'GB': 'United Kingdom', 'CA': 'Canada', 'AU': 'Australia',
@@ -160,14 +155,53 @@ const getCountryFromTimezone = (timezone: string): string | null => {
   return timezoneMap[timezone] || null;
 };
 
-// Lazy screen wrapper with fallback
-const LazyScreen: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+// FIX: LazyScreen wrapper that properly forwards navigation props
+const LazyScreen: React.FC<{ 
+  children: React.ReactNode;
+}> = ({ children }) => (
   <Suspense fallback={null}>
     {children}
   </Suspense>
 );
 
-// Loading Screen with Community Theme
+// FIX: Create wrapper components that properly receive and forward route/navigation props
+const CommunityScreenWrapper = (props: any) => (
+  <LazyScreen><CommunityScreen {...props} /></LazyScreen>
+);
+const TopicScreenWrapper = (props: any) => (
+  <LazyScreen><TopicScreen {...props} /></LazyScreen>
+);
+const CreatePostScreenWrapper = (props: any) => (
+  <LazyScreen><CreatePostScreen {...props} /></LazyScreen>
+);
+const PostDetailScreenWrapper = (props: any) => (
+  <LazyScreen><PostDetailScreen {...props} /></LazyScreen>
+);
+const UserProfileScreenWrapper = (props: any) => (
+  <LazyScreen><UserProfileScreen {...props} /></LazyScreen>
+);
+const ChatScreenWrapper = (props: any) => (
+  <LazyScreen><ChatScreen {...props} /></LazyScreen>
+);
+const ChatListScreenWrapper = (props: any) => (
+  <LazyScreen><ChatListScreen {...props} /></LazyScreen>
+);
+const NotificationsScreenWrapper = (props: any) => (
+  <LazyScreen><NotificationsScreen {...props} /></LazyScreen>
+);
+const EditCommunityProfileScreenWrapper = (props: any) => (
+  <LazyScreen><EditCommunityProfileScreen {...props} /></LazyScreen>
+);
+const FollowersScreenWrapper = (props: any) => (
+  <LazyScreen><FollowersScreen {...props} /></LazyScreen>
+);
+const FollowingScreenWrapper = (props: any) => (
+  <LazyScreen><FollowingScreen {...props} /></LazyScreen>
+);
+const ReportScreenWrapper = (props: any) => (
+  <LazyScreen><ReportScreen {...props} /></LazyScreen>
+);
+
 const CommunityLoadingScreen = ({ text, subtext }: { text: string; subtext?: string }) => (
   <View style={styles.loadingContainer}>
     <LinearGradient 
@@ -188,16 +222,29 @@ const CommunityLoadingScreen = ({ text, subtext }: { text: string; subtext?: str
 );
 
 export default function CommunityNavigator() {
-  const { isLoading, currentUser } = useCommunity();
+  const { isLoading, currentUser, checkOnboardingStatus, getSelectedTopics } = useCommunity();
   const { profile: userProfile } = useUser();
   const isDetectingCountry = useAutomaticCountryDetection();
-  
-  // NEW: Show splash screen on initial entry
-  const [showSplash, setShowSplash] = useState(true);
 
-  // Show splash while community data is loading or country is being detected
+  const [showSplash, setShowSplash] = useState(true);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [onboardingChecked, setOnboardingChecked] = useState(false);
+
+  // Check onboarding after splash completes
+  useEffect(() => {
+    const check = async () => {
+      if (!showSplash && !isLoading && !isDetectingCountry) {
+        const completed = await checkOnboardingStatus();
+        const hasTopics = getSelectedTopics().length > 0;
+        // Show onboarding if not completed OR if user has no topics selected
+        setShowOnboarding(!completed || !hasTopics);
+        setOnboardingChecked(true);
+      }
+    };
+    check();
+  }, [showSplash, isLoading, isDetectingCountry, checkOnboardingStatus, getSelectedTopics]);
+
   if (isLoading || isDetectingCountry || showSplash) {
-    // Show Community Splash Screen first
     if (showSplash) {
       return (
         <CommunitySplashScreen 
@@ -207,7 +254,6 @@ export default function CommunityNavigator() {
       );
     }
 
-    // Show themed loading screen
     return (
       <CommunityLoadingScreen 
         text={isDetectingCountry ? "Detecting your location..." : "Loading community..."}
@@ -216,13 +262,17 @@ export default function CommunityNavigator() {
     );
   }
 
-  // If user is not authenticated in community context, show auth prompt
   if (!currentUser && userProfile) {
     return (
       <CommunityLoadingScreen 
         text="Setting up your profile..."
       />
     );
+  }
+
+  // Show onboarding before the main navigator
+  if (showOnboarding && onboardingChecked) {
+    return <CommunityOnboardingScreen onComplete={() => setShowOnboarding(false)} />;
   }
 
   return (
@@ -239,52 +289,64 @@ export default function CommunityNavigator() {
     >
       <Stack.Screen 
         name="CommunityMain"
+        component={CommunityScreenWrapper}
         options={{ animation: 'fade' }}
-      >
-        {() => <LazyScreen><CommunityScreen /></LazyScreen>}
-      </Stack.Screen>
+      />
       <Stack.Screen 
         name="Topic"
+        component={TopicScreenWrapper}
         options={{ animation: 'slide_from_right' }}
-      >
-        {() => <LazyScreen><TopicScreen /></LazyScreen>}
-      </Stack.Screen>
+      />
       <Stack.Screen 
         name="CreatePost"
+        component={CreatePostScreenWrapper}
         options={{ animation: 'slide_from_bottom', gestureEnabled: false }}
-      >
-        {() => <LazyScreen><CreatePostScreen /></LazyScreen>}
-      </Stack.Screen>
+      />
       <Stack.Screen 
         name="PostDetail"
+        component={PostDetailScreenWrapper}
         options={{ animation: 'slide_from_right' }}
-      >
-        {() => <LazyScreen><PostDetailScreen /></LazyScreen>}
-      </Stack.Screen>
+      />
       <Stack.Screen 
         name="UserProfile"
+        component={UserProfileScreenWrapper}
         options={{ animation: 'slide_from_right' }}
-      >
-        {() => <LazyScreen><UserProfileScreen /></LazyScreen>}
-      </Stack.Screen>
+      />
       <Stack.Screen 
         name="Chat"
+        component={ChatScreenWrapper}
         options={{ animation: 'slide_from_right' }}
-      >
-        {() => <LazyScreen><ChatScreen /></LazyScreen>}
-      </Stack.Screen>
+      />
+      <Stack.Screen 
+        name="ChatList"
+        component={ChatListScreenWrapper}
+        options={{ animation: 'slide_from_right' }}
+      />
       <Stack.Screen 
         name="Notifications"
+        component={NotificationsScreenWrapper}
         options={{ animation: 'slide_from_right' }}
-      >
-        {() => <LazyScreen><NotificationsScreen /></LazyScreen>}
-      </Stack.Screen>
+      />
       <Stack.Screen 
         name="EditCommunityProfile"
+        component={EditCommunityProfileScreenWrapper}
         options={{ animation: 'slide_from_bottom', gestureEnabled: false }}
-      >
-        {() => <LazyScreen><EditCommunityProfileScreen /></LazyScreen>}
-      </Stack.Screen>
+      />
+      <Stack.Screen 
+        name="Followers"
+        component={FollowersScreenWrapper}
+        options={{ animation: 'slide_from_right' }}
+      />
+      <Stack.Screen 
+        name="Following"
+        component={FollowingScreenWrapper}
+        options={{ animation: 'slide_from_right' }}
+      />
+      <Stack.Screen 
+        name="Report"
+        component={ReportScreenWrapper}
+        options={{ animation: 'slide_from_bottom', gestureEnabled: false }}
+      />
     </Stack.Navigator>
   );
 }

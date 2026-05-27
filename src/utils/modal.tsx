@@ -1,8 +1,8 @@
 // src/utils/modal.tsx
 // Universal Modal System for LittleLoom - Glassmorphism Design
-// Usage: import { showModal, hideModal, ModalProvider } from '../utils/modal';
+// Usage: import { showModal, hideModal, ModalProvider, showSuccessModal, showErrorModal, showConfirmModal } from '../utils/modal';
 
-import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -49,6 +49,97 @@ interface ModalContextType {
   hide: () => void;
   isVisible: boolean;
 }
+
+// ==================== QUEUE-BASED EVENT EMITTER ====================
+// This ensures calls made before ModalProvider mounts are queued and replayed
+
+type ModalListener = (config: ModalConfig) => void;
+type HideListener = () => void;
+
+const modalListeners: Set<ModalListener> = new Set();
+const hideListeners: Set<HideListener> = new Set();
+const pendingQueue: ModalConfig[] = [];
+let isProviderMounted = false;
+
+const flushQueue = () => {
+  if (!isProviderMounted || pendingQueue.length === 0) return;
+  const queue = [...pendingQueue];
+  pendingQueue.length = 0;
+  queue.forEach(config => {
+    modalListeners.forEach(listener => listener(config));
+  });
+};
+
+const emitShow = (config: ModalConfig) => {
+  if (!isProviderMounted) {
+    pendingQueue.push(config);
+    return;
+  }
+  modalListeners.forEach(listener => listener(config));
+};
+
+const emitHide = () => {
+  hideListeners.forEach(listener => listener());
+};
+
+// ==================== STANDALONE FUNCTIONS (can be called from anywhere, anytime) ====================
+
+export const showSuccessModal = (config: { title?: string; message: string }) => {
+  emitShow({
+    type: 'success',
+    title: config.title || 'Success',
+    message: config.message,
+    buttons: [{ text: 'Awesome!', style: 'default' }],
+  });
+};
+
+export const showErrorModal = (config: { title?: string; message: string }) => {
+  emitShow({
+    type: 'error',
+    title: config.title || 'Error',
+    message: config.message,
+    buttons: [{ text: 'Got it', style: 'destructive' }],
+  });
+};
+
+export const showConfirmModal = (config: { title?: string; message: string; onConfirm: () => void; onCancel?: () => void }) => {
+  emitShow({
+    type: 'confirm',
+    title: config.title || 'Confirm',
+    message: config.message,
+    buttons: [
+      { text: 'Cancel', style: 'cancel', onPress: config.onCancel },
+      { text: 'Confirm', style: 'default', onPress: config.onConfirm },
+    ],
+  });
+};
+
+export const showWarningModal = (config: { title?: string; message: string }) => {
+  emitShow({
+    type: 'warning',
+    title: config.title || 'Warning',
+    message: config.message,
+    buttons: [{ text: 'Understood', style: 'default' }],
+  });
+};
+
+export const showInfoModal = (config: { title?: string; message: string }) => {
+  emitShow({
+    type: 'info',
+    title: config.title || 'Info',
+    message: config.message,
+    buttons: [{ text: 'OK', style: 'default' }],
+  });
+};
+
+// Legacy functions (updated to work via emitter)
+export const showModal = (config: ModalConfig) => {
+  emitShow(config);
+};
+
+export const hideModal = () => {
+  emitHide();
+};
 
 // ==================== CONTEXT ====================
 
@@ -109,6 +200,26 @@ export const ModalProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       config.onDismiss?.();
     });
   }, [fadeAnim, scaleAnim, config]);
+
+  // Subscribe to standalone function events and mark as mounted
+  useEffect(() => {
+    isProviderMounted = true;
+
+    const handleShow: ModalListener = (newConfig) => show(newConfig);
+    const handleHide: HideListener = () => hide();
+
+    modalListeners.add(handleShow);
+    hideListeners.add(handleHide);
+
+    // Flush any pending calls that were made before mount
+    flushQueue();
+
+    return () => {
+      isProviderMounted = false;
+      modalListeners.delete(handleShow);
+      hideListeners.delete(handleHide);
+    };
+  }, [show, hide]);
 
   const getIconForType = (type: ModalType) => {
     switch (type) {
@@ -230,17 +341,6 @@ export const ModalProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       </Modal>
     </ModalContext.Provider>
   );
-};
-
-// ==================== CONVENIENCE FUNCTIONS ====================
-
-export const showModal = (config: ModalConfig) => {
-  // This will be called after ModalProvider is set up
-  console.warn('showModal called before ModalProvider is ready. Use useModal hook instead.');
-};
-
-export const hideModal = () => {
-  console.warn('hideModal called before ModalProvider is ready. Use useModal hook instead.');
 };
 
 // ==================== SWEET ALERT STYLE FUNCTIONS ====================

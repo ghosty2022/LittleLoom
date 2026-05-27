@@ -23,6 +23,8 @@
       "buildNumber": "1.0.0",
       "infoPlist": {
         "NSFaceIDUsageDescription": "This app uses Face ID to securely log you into your account.",
+        "NSPhotoLibraryUsageDescription": "LittleLoom needs access to your photos to let you attach them to baby logs and milestones.",
+        "NSCameraUsageDescription": "LittleLoom needs camera access to let you capture photos for baby logs and milestones.",
         "UIBackgroundModes": [
           "fetch",
           "remote-notification"
@@ -40,7 +42,11 @@
         "android.permission.SCHEDULE_EXACT_ALARM",
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.RECORD_AUDIO",
-        "android.permission.MODIFY_AUDIO_SETTINGS"
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_IMAGES"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -81,8 +87,9 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "The app accesses your photos to let you share them with your baby's profile.",
-          "cameraPermission": "The app accesses your camera to let you take photos for your baby's profile."
+          "photosPermission": "Allow LittleLoom to access your photos to attach them to baby logs and milestones.",
+          "cameraPermission": "Allow LittleLoom to use your camera to capture photos for baby logs and milestones.",
+          "microphonePermission": false
         }
       ],
       "expo-av",

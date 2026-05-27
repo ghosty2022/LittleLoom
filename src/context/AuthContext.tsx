@@ -1,3 +1,4 @@
+// src/context/AuthContext.tsx
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { Alert, AppState, AppStateStatus } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -30,6 +31,7 @@ const ASYNC_KEYS = {
   PARENT2_COMPLETED: 'littleloom_parent2_completed',
   BABY_COMPLETED: 'littleloom_baby_completed',
   LAST_AUTH_STATE: 'littleloom_last_auth_state',
+  NAVIGATION_LOCK: 'littleloom_navigation_lock',
 } as const;
 
 // ============================================
@@ -63,7 +65,6 @@ export interface AuthState {
   setupComplete: boolean;
   hasParent2: boolean | 'skipped';
   hasBaby: boolean | 'skipped';
-  // NEW: Track available biometric types
   availableBiometricTypes: LocalAuthentication.AuthenticationType[];
   biometricTypeName: string;
 }
@@ -90,8 +91,8 @@ interface AuthContextType extends AuthState {
   shouldShowBiometricPrompt: () => Promise<boolean>;
   isAppActive: () => boolean;
   getLastActiveTime: () => number;
-  // NEW: Get biometric type info
   getBiometricTypeInfo: () => { type: string; icon: string };
+  clearAllLocks: () => void;
 }
 
 // ============================================
@@ -189,14 +190,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
 
   // ============================================
-  // REFS FOR RACE CONDITION PREVENTION
+  // REFS WITH TIMEOUT PROTECTION
   // ============================================
   const isMounted = useRef(true);
   const initComplete = useRef(false);
   const setupCompleteCallbackRef = useRef<(() => Promise<void>) | null>(null);
   
+  // Locks with automatic timeout to prevent permanent stuck state
   const signInLock = useRef(false);
+  const signInLockTimer = useRef<NodeJS.Timeout | null>(null);
+  
   const biometricLoginLock = useRef(false);
+  const biometricLoginTimer = useRef<NodeJS.Timeout | null>(null);
+  
   const lastSignInTime = useRef(0);
   
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
@@ -204,20 +210,75 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const isAuthenticatedRef = useRef<boolean>(false);
 
   // ============================================
+  // LOCK HELPERS - Auto-release after timeout
+  // ============================================
+  const acquireSignInLock = useCallback((): boolean => {
+    if (signInLock.current) {
+      console.log('⚠️ Sign in already in progress');
+      return false;
+    }
+    signInLock.current = true;
+    
+    // Auto-release after 10 seconds to prevent permanent lock
+    if (signInLockTimer.current) clearTimeout(signInLockTimer.current);
+    signInLockTimer.current = setTimeout(() => {
+      console.log('🔓 Auto-releasing sign-in lock (timeout)');
+      signInLock.current = false;
+    }, 10000);
+    
+    return true;
+  }, []);
+
+  const releaseSignInLock = useCallback(() => {
+    if (signInLockTimer.current) {
+      clearTimeout(signInLockTimer.current);
+      signInLockTimer.current = null;
+    }
+    signInLock.current = false;
+  }, []);
+
+  const acquireBiometricLock = useCallback((): boolean => {
+    if (biometricLoginLock.current) {
+      console.log('⚠️ Biometric login already in progress');
+      return false;
+    }
+    biometricLoginLock.current = true;
+    
+    // Auto-release after 15 seconds
+    if (biometricLoginTimer.current) clearTimeout(biometricLoginTimer.current);
+    biometricLoginTimer.current = setTimeout(() => {
+      console.log('🔓 Auto-releasing biometric lock (timeout)');
+      biometricLoginLock.current = false;
+    }, 15000);
+    
+    return true;
+  }, []);
+
+  const releaseBiometricLock = useCallback(() => {
+    if (biometricLoginTimer.current) {
+      clearTimeout(biometricLoginTimer.current);
+      biometricLoginTimer.current = null;
+    }
+    biometricLoginLock.current = false;
+  }, []);
+
+  // ============================================
   // LIFECYCLE
   // ============================================
   useEffect(() => {
     return () => {
       isMounted.current = false;
+      releaseSignInLock();
+      releaseBiometricLock();
     };
-  }, []);
+  }, [releaseSignInLock, releaseBiometricLock]);
 
   useEffect(() => {
     isAuthenticatedRef.current = state.isAuthenticated;
   }, [state.isAuthenticated]);
 
   // ============================================
-  // APP STATE HANDLER
+  // APP STATE HANDLER - Simplified
   // ============================================
   useEffect(() => {
     const subscription = AppState.addEventListener('change', async (nextAppState) => {
@@ -230,15 +291,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await AsyncStorage.setItem('littleloom_last_active_global', lastActiveTimeRef.current.toString());
       }
       
-      if (previousState.match(/inactive|background/) && nextAppState === 'active') {
-        lastActiveTimeRef.current = Date.now();
-        
-        const token = await secureStorage.getItem(SECURE_KEYS.AUTH_TOKEN);
-        if (!token && isAuthenticatedRef.current) {
-          console.log('🔴 Token missing on resume, but preserving state to prevent loop');
-        }
-      }
-      
       appStateRef.current = nextAppState;
     });
 
@@ -246,7 +298,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   // ============================================
-  // INITIALIZATION
+  // INITIALIZATION - Single source of truth
   // ============================================
   useEffect(() => {
     if (initComplete.current) return;
@@ -255,6 +307,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         console.log('🔵 Initializing AuthContext...');
         
+        // Small delay to let other contexts initialize
         await new Promise(resolve => setTimeout(resolve, 100));
         
         const [
@@ -285,13 +338,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         const userProfile = userProfileStr ? JSON.parse(userProfileStr) : null;
         
-        // Check biometric hardware availability with safety checks
+        // Check biometric hardware availability
         let biometricAvailable = false;
         let availableTypes: LocalAuthentication.AuthenticationType[] = [];
         let bioTypeName = 'Biometric';
         
         try {
-          // Ensure module is loaded
           if (LocalAuthentication && LocalAuthentication.hasHardwareAsync) {
             const [hasHardware, isEnrolled] = await Promise.all([
               LocalAuthentication.hasHardwareAsync(),
@@ -310,6 +362,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           biometricAvailable = false;
         }
 
+        // Parse setup state with priority: completed flags > has flags
         const hasParent2 = parent2Completed === 'true' ? true : 
                           parent2Completed === 'skipped' ? 'skipped' :
                           hasParent2Str === 'true' ? true :
@@ -320,8 +373,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                        hasBabyStr === 'true' ? true :
                        hasBabyStr === 'skipped' ? 'skipped' : false;
 
-        const isSetupComplete = setupComplete === 'true' || 
-                               (parent2Completed !== null && babyCompleted !== null);
+        // Setup is complete only if BOTH steps are done (either completed or skipped)
+        const isSetupComplete = (parent2Completed !== null && babyCompleted !== null) ||
+                               setupComplete === 'true';
 
         if (isMounted.current) {
           setState({
@@ -345,11 +399,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             isAuthenticated: !!token,
             hasSeenOnboarding: hasSeenOnboarding === 'true',
             biometricAvailable,
-            biometricLoginEnabled: biometricLoginEnabled === 'true',
             setupComplete: isSetupComplete,
             hasParent2,
             hasBaby,
-            biometricType: bioTypeName,
           });
         }
         
@@ -375,9 +427,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (isMounted.current) {
         setState(prev => ({ ...prev, hasSeenOnboarding: true }));
       }
-      console.log('🟢 Onboarding marked as seen');
     } catch (error) {
-      console.error('🔴 Error marking onboarding as seen:', error);
+      console.error('Error marking onboarding as seen:', error);
     }
   }, []);
 
@@ -386,9 +437,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // ============================================
   const checkBiometricAvailability = useCallback(async (): Promise<boolean> => {
     try {
-      // Safety check for module availability
       if (!LocalAuthentication || !LocalAuthentication.hasHardwareAsync) {
-        console.log('LocalAuthentication module not available');
         return false;
       }
 
@@ -423,7 +472,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const authenticateWithBiometric = useCallback(async (promptMessage?: string) => {
     try {
-      // Safety check
       if (!LocalAuthentication || !LocalAuthentication.authenticateAsync) {
         return { success: false, error: 'not_available' };
       }
@@ -492,10 +540,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (isMounted.current) {
         setState(prev => ({ ...prev, isBiometricLoginEnabled: false }));
       }
-
-      console.log('🟢 Biometric login disabled');
     } catch (error) {
-      console.error('🔴 Disable biometric login error:', error);
+      console.error('Disable biometric login error:', error);
     }
   }, []);
 
@@ -516,24 +562,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // PASSWORDLESS BIOMETRIC LOGIN
   // ============================================
   const loginWithBiometric = useCallback(async (): Promise<boolean> => {
-    if (biometricLoginLock.current) {
-      console.log('⚠️ Biometric login already in progress, rejecting duplicate');
+    if (!acquireBiometricLock()) {
       return false;
     }
-
-    const now = Date.now();
-    if (now - lastSignInTime.current < 2000) {
-      console.log('⚠️ Recent login detected, ignoring duplicate biometric request');
-      return false;
-    }
-
-    biometricLoginLock.current = true;
 
     try {
       const authResult = await authenticateWithBiometric(`Login with ${state.biometricTypeName}`);
       if (!authResult.success) {
         console.log('🔴 Biometric authentication failed or cancelled');
-        biometricLoginLock.current = false;
         return false;
       }
 
@@ -544,7 +580,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (!storedEmail || !storedPassword) {
         Alert.alert('Setup Required', `Please log in with your password first to enable ${state.biometricTypeName} login.`);
-        biometricLoginLock.current = false;
         return false;
       }
 
@@ -553,14 +588,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const success = await performSignInInternal(storedEmail, storedPassword, true);
       
       lastSignInTime.current = Date.now();
-      biometricLoginLock.current = false;
       return success;
     } catch (error) {
       console.error('🔴 Biometric login error:', error);
-      biometricLoginLock.current = false;
       return false;
+    } finally {
+      releaseBiometricLock();
     }
-  }, [authenticateWithBiometric, state.biometricTypeName]);
+  }, [authenticateWithBiometric, state.biometricTypeName, acquireBiometricLock, releaseBiometricLock]);
 
   const shouldShowBiometricPrompt = useCallback(async (): Promise<boolean> => {
     if (!state.isBiometricAvailable) return false;
@@ -571,7 +606,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [state.isBiometricAvailable, state.isBiometricLoginEnabled, hasBiometricLoginCredentials]);
 
   // ============================================
-  // CORE SIGN IN
+  // CORE SIGN IN - With proper locking
   // ============================================
   const performSignInInternal = async (email: string, password: string, isBiometric: boolean = false): Promise<boolean> => {
     try {
@@ -582,6 +617,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       console.log(`🔵 ${isBiometric ? 'Biometric' : 'Password'} sign in for:`, email);
 
+      // Simulate network delay
       await new Promise(resolve => setTimeout(resolve, 800));
       
       const token = `auth_token_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -630,8 +666,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signIn = useCallback(async (email: string, password: string): Promise<boolean> => {
-    if (signInLock.current) {
-      console.log('⚠️ Sign in already in progress, rejecting duplicate');
+    if (!acquireSignInLock()) {
       return false;
     }
 
@@ -641,25 +676,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await new Promise(resolve => setTimeout(resolve, 1500 - (now - lastSignInTime.current)));
     }
 
-    signInLock.current = true;
-    console.log('🔵 Attempting login for:', email);
-
     try {
       const success = await performSignInInternal(email, password, false);
       lastSignInTime.current = Date.now();
       return success;
     } finally {
-      signInLock.current = false;
+      releaseSignInLock();
     }
-  }, []);
+  }, [acquireSignInLock, releaseSignInLock]);
 
   const signUp = useCallback(async (fullName: string, email: string, password: string): Promise<boolean> => {
-    if (signInLock.current) {
-      console.log('⚠️ Sign up already in progress');
+    if (!acquireSignInLock()) {
       return false;
     }
-
-    signInLock.current = true;
 
     try {
       await new Promise(resolve => setTimeout(resolve, 800));
@@ -701,22 +730,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       Alert.alert('Error', 'Failed to create account');
       return false;
     } finally {
-      signInLock.current = false;
+      releaseSignInLock();
     }
-  }, []);
+  }, [acquireSignInLock, releaseSignInLock]);
 
   // ============================================
-  // SIGN OUT
+  // SIGN OUT - Clean reset
   // ============================================
   const signOut = useCallback(async (): Promise<void> => {
     console.log('🔵 Signing out...');
 
+    // Wait for any in-progress operations
     if (signInLock.current) {
-      console.log('⚠️ Sign in progress, delaying sign out');
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
 
     try {
+      // Preserve setup state for re-login
       const [hasParent2Str, hasBabyStr, setupComplete, hasSeenOnboarding, biometricLoginEnabled] = await Promise.all([
         AsyncStorage.getItem(ASYNC_KEYS.HAS_PARENT2),
         AsyncStorage.getItem(ASYNC_KEYS.HAS_BABY),
@@ -725,6 +755,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         secureStorage.getItem(SECURE_KEYS.BIOMETRIC_LOGIN_ENABLED),
       ]);
 
+      // Clear auth data but preserve setup/biometric preferences
       await Promise.all([
         secureStorage.deleteItem(SECURE_KEYS.AUTH_TOKEN),
         secureStorage.deleteItem(SECURE_KEYS.USER_PROFILE),
@@ -732,6 +763,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         AsyncStorage.multiRemove([
           ASYNC_KEYS.ONBOARDING_COMPLETE,
           ASYNC_KEYS.BIOMETRIC_ENABLED,
+          ASYNC_KEYS.NAVIGATION_LOCK,
         ]),
       ]);
 
@@ -757,7 +789,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }));
       }
 
-      console.log('🟢 Sign out successful - biometric login preserved:', biometricLoginEnabled === 'true');
+      console.log('🟢 Sign out successful');
     } catch (error) {
       console.error('🔴 Sign out error:', error);
     }
@@ -808,7 +840,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [state.userProfile]);
 
   // ============================================
-  // SETUP FLOW METHODS
+  // SETUP FLOW METHODS - Fixed logic
   // ============================================
   const setSetupCompleteCallback = useCallback((callback: (() => Promise<void>) | null) => {
     setupCompleteCallbackRef.current = callback;
@@ -836,13 +868,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
       
+      // Check if setup is fully complete
       const [hasP2, hasB] = await Promise.all([
-        AsyncStorage.getItem(ASYNC_KEYS.HAS_PARENT2),
-        AsyncStorage.getItem(ASYNC_KEYS.HAS_BABY),
+        AsyncStorage.getItem(ASYNC_KEYS.PARENT2_COMPLETED),
+        AsyncStorage.getItem(ASYNC_KEYS.BABY_COMPLETED),
       ]);
       
-      const setupDone = (hasP2 === 'true' || hasP2 === 'skipped') && 
-                       (hasB === 'true' || hasB === 'skipped');
+      const setupDone = hasP2 !== null && hasB !== null;
       
       if (setupDone) {
         await AsyncStorage.setItem(ASYNC_KEYS.SETUP_COMPLETE, 'true');
@@ -885,6 +917,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
       
+      // When skipping, we also mark setup as complete
       await AsyncStorage.setItem(ASYNC_KEYS.SETUP_COMPLETE, 'true');
       if (isMounted.current) {
         setState(prev => ({ ...prev, setupComplete: true }));
@@ -906,8 +939,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const wasSetupCompleted = useCallback(async () => {
     try {
       const [hasParent2Str, hasBabyStr, setupComplete] = await Promise.all([
-        AsyncStorage.getItem(ASYNC_KEYS.HAS_PARENT2),
-        AsyncStorage.getItem(ASYNC_KEYS.HAS_BABY),
+        AsyncStorage.getItem(ASYNC_KEYS.PARENT2_COMPLETED),
+        AsyncStorage.getItem(ASYNC_KEYS.BABY_COMPLETED),
         AsyncStorage.getItem(ASYNC_KEYS.SETUP_COMPLETE),
       ]);
 
@@ -919,10 +952,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return {
         hasParent2,
         hasBaby,
-        setupComplete: setupComplete === 'true',
+        setupComplete: setupComplete === 'true' || (hasParent2Str !== null && hasBabyStr !== null),
       };
     } catch (error) {
-      console.error('🔴 Check setup completion error:', error);
+      console.error('Check setup completion error:', error);
       return { hasParent2: false, hasBaby: false, setupComplete: false };
     }
   }, []);
@@ -969,6 +1002,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [state.biometricTypeName, state.availableBiometricTypes]);
 
   // ============================================
+  // EMERGENCY: Clear all locks (for debugging)
+  // ============================================
+  const clearAllLocks = useCallback(() => {
+    releaseSignInLock();
+    releaseBiometricLock();
+    console.log('🔓 All locks cleared');
+  }, [releaseSignInLock, releaseBiometricLock]);
+
+  // ============================================
   // CONTEXT VALUE
   // ============================================
   const value = React.useMemo(() => ({
@@ -995,6 +1037,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     isAppActive,
     getLastActiveTime,
     getBiometricTypeInfo,
+    clearAllLocks,
   }), [
     state,
     signIn,
@@ -1019,6 +1062,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     isAppActive,
     getLastActiveTime,
     getBiometricTypeInfo,
+    clearAllLocks,
   ]);
 
   return (

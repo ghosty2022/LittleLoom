@@ -1,4 +1,4 @@
-
+// src/screens/SignUpScreen.tsx
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
@@ -22,6 +22,7 @@ import Animated, { FadeIn, FadeInUp, FadeInDown } from 'react-native-reanimated'
 import * as Haptics from 'expo-haptics';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAuth } from '../context/AuthContext';
+import { useSecurity } from '../context/SecurityContext';
 import type { RootStackParamList } from '../types/navigation';
 
 type SignUpScreenProps = NativeStackScreenProps<RootStackParamList, 'SignUp'>;
@@ -69,16 +70,16 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [alert, setAlert] = useState<AlertState>({ visible: false, type: 'success', title: '', message: '' });
   
-  // Get auth state needed for navigation
-  const { signUp, isAuthenticated, setupComplete, hasParent2, hasBaby, hasSeenOnboarding } = useAuth();
+  const { signUp, isAuthenticated, setupComplete, hasParent2, hasBaby } = useAuth();
+  const { resetUnlockLock, forceUnlock } = useSecurity();
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   
-  // Prevent duplicate navigation attempts
   const hasNavigated = useRef(false);
   const isMounted = useRef(true);
 
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       isMounted.current = false;
@@ -86,47 +87,45 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
   }, []);
 
   // ============================================
-  // CRITICAL: Handle navigation when auth state changes
+  // NAVIGATION AFTER SIGN UP - FIXED
   // ============================================
   useEffect(() => {
     if (isAuthenticated && !hasNavigated.current) {
       hasNavigated.current = true;
       
-      // Small delay to let the success toast show
       const timer = setTimeout(() => {
         if (!isMounted.current) return;
         
-        // ============================================
-        // CORRECTED NAVIGATION FLOW
-        // ============================================
-        // New users (just signed up) go through setup flow
-        // setupComplete is false for new users after signUp
+        // New users go through setup flow
         if (!setupComplete) {
-          // First step: Parent2Optional (co-parent setup)
           if (!hasParent2) {
-            console.log('🧭 SignUp → Parent2Optional (setup flow)');
+            console.log('🧭 SignUp → Parent2Optional');
             navigation.replace('Parent2Optional');
-          } 
-          // Second step: BabyOptional (baby setup)
-          else if (!hasBaby) {
-            console.log('🧭 SignUp → BabyOptional (setup flow)');
+          } else if (!hasBaby) {
+            console.log('🧭 SignUp → BabyOptional');
             navigation.replace('BabyOptional');
-          } 
-          // Fallback: if both skipped somehow
-          else {
-            console.log('🧭 SignUp → Main (setup skipped)');
+          } else {
+            console.log('🧭 SignUp → Main');
             navigation.replace('Main');
           }
         } else {
-          // This shouldn't happen for new signups, but handle gracefully
-          console.log('🧭 SignUp → Main (setup already complete)');
           navigation.replace('Main');
         }
-      }, 1500); // 1.5s delay to show success message
+      }, 1200);
       
       return () => clearTimeout(timer);
     }
   }, [isAuthenticated, setupComplete, hasParent2, hasBaby, navigation]);
+
+  // CRITICAL FIX: Reset stuck security locks on mount and focus
+  useEffect(() => {
+    resetUnlockLock();
+    
+    const unsubscribe = navigation.addListener('focus', () => {
+      resetUnlockLock();
+    });
+    return unsubscribe;
+  }, [navigation, resetUnlockLock]);
 
   const showToast = (type: AlertState['type'], title: string, message: string) => {
     setAlert({ visible: true, type, title, message });
@@ -138,7 +137,6 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
   };
 
   const handleSignUp = useCallback(async () => {
-    // Prevent duplicate submissions
     if (isLoading || hasNavigated.current) return;
     
     if (!fullName.trim() || !email || !password) {
@@ -164,20 +162,22 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
       const success = await signUp(fullName.trim(), email, password);
       if (success) {
         showToast('success', 'Welcome! 🎉', 'Account created successfully');
-        // Navigation is handled by the useEffect watching isAuthenticated
+        
+        // CRITICAL FIX: Ensure SecurityContext starts unlocked for the new user session
+        forceUnlock().catch(() => {});
+        
+        // Navigation handled by useEffect watching isAuthenticated
       } else {
         showToast('error', 'Sign Up Failed', 'Could not create account');
-        hasNavigated.current = false; // Reset navigation lock on failure
       }
     } catch (error) {
       showToast('error', 'Error', 'Something went wrong. Please try again.');
-      hasNavigated.current = false; // Reset navigation lock on error
     } finally {
       if (isMounted.current) {
         setIsLoading(false);
       }
     }
-  }, [fullName, email, password, confirmPassword, signUp, isLoading]);
+  }, [fullName, email, password, confirmPassword, signUp, isLoading, forceUnlock]);
 
   return (
     <View style={[styles.container, { backgroundColor: isDark ? '#0a0a0a' : '#f8faff' }]}>

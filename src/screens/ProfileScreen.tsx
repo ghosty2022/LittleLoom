@@ -31,7 +31,6 @@ import { format, formatDistanceToNow } from 'date-fns';
 import { useAuth } from '../context/AuthContext';
 import { useUser } from '../context/UserContext';
 import { useBaby, ActivityEntry, Milestone } from '../context/BabyContext';
-// CHANGED: Import UserRole from types/roles instead of FamilyContext
 import { useFamily, FamilyMember } from '../context/FamilyContext';
 import { UserRole } from '../types/roles';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -42,53 +41,70 @@ const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
 
 type ProfileScreenProps = NativeStackScreenProps<RootStackParamList, 'Profile'>;
 
-// ==================== SAFE AVATAR RENDERER ====================
+// ==================== UNIFIED SAFE AVATAR (matches SettingsScreen) ====================
 
-const SafeAvatar: React.FC<{
+const isImageUri = (value: string | undefined | null): boolean => {
+  if (!value || typeof value !== 'string') return false;
+  return value.startsWith('http') || value.startsWith('file://') || value.startsWith('data:');
+};
+
+const isEmoji = (value: string | undefined | null): boolean => {
+  if (!value || typeof value !== 'string') return false;
+  if (value.length > 4) return false;
+  return /\p{Emoji}/u.test(value);
+};
+
+interface SafeAvatarProps {
   avatar?: string | null;
   gender?: string;
   size?: number;
   showEditButton?: boolean;
   onEdit?: () => void;
-}> = ({ avatar, gender = 'other', size = 72, showEditButton = false, onEdit }) => {
-  const isEmoji = avatar && 
-    typeof avatar === 'string' && 
-    avatar.length <= 4 && 
-    /\p{Emoji}/u.test(avatar);
-  
-  const isImageUri = avatar && 
-    typeof avatar === 'string' && 
-    (avatar.startsWith('http') || avatar.startsWith('file://') || avatar.startsWith('data:'));
+  fallbackIcon?: keyof typeof Ionicons.glyphMap;
+  fallbackColor?: string;
+}
 
+const SafeAvatar: React.FC<SafeAvatarProps> = ({ 
+  avatar, 
+  gender = 'other', 
+  size = 72, 
+  showEditButton = false, 
+  onEdit,
+  fallbackIcon,
+  fallbackColor,
+}) => {
+  const hasImage = isImageUri(avatar);
+  const hasEmoji = isEmoji(avatar);
+  
   const gradientColors = gender === 'boy' ? ['#667eea', '#764ba2'] 
     : gender === 'girl' ? ['#fa709a', '#fee140'] 
     : ['#11998e', '#38ef7d'];
+  
+  const iconName = fallbackIcon || (gender === 'boy' ? 'male' : gender === 'girl' ? 'female' : 'person');
+  const color = fallbackColor || (gender === 'boy' ? '#667eea' : gender === 'girl' ? '#fa709a' : '#11998e');
 
   return (
     <View style={[styles.avatarWrapper, { width: size, height: size }]}>
       <LinearGradient
-        colors={gradientColors}
+        colors={hasImage ? ['#f0f0f0', '#e0e0e0'] : gradientColors}
         style={[
           styles.avatarGradient, 
           { width: size, height: size, borderRadius: size * 0.33 }
         ]}
       >
-        {isEmoji ? (
-          <Text style={[styles.avatarEmoji, { fontSize: size * 0.5 }]}>
-            {avatar}
-          </Text>
-        ) : isImageUri ? (
-          <Image 
-            source={{ uri: avatar }} 
-            style={{ width: size, height: size, borderRadius: size * 0.33 }}
-            resizeMode="cover"
-          />
+        {hasImage ? (
+          <View style={{ width: size, height: size, borderRadius: size * 0.33, overflow: 'hidden' }}>
+            <Image 
+              source={{ uri: avatar! }} 
+              style={{ width: size, height: size }}
+              resizeMode="cover"
+              onError={(e) => console.log('Avatar image error:', e.nativeEvent.error)}
+            />
+          </View>
+        ) : hasEmoji ? (
+          <Text style={[styles.avatarEmoji, { fontSize: size * 0.5 }]}>{avatar}</Text>
         ) : (
-          <Ionicons 
-            name={gender === 'boy' ? 'male' : gender === 'girl' ? 'female' : 'person'} 
-            size={size * 0.4} 
-            color="#fff" 
-          />
+          <Ionicons name={iconName as any} size={size * 0.4} color="#fff" />
         )}
       </LinearGradient>
       
@@ -255,6 +271,10 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'family' | 'growth'>('overview');
 
+  // FIX: Safe user data with fallback
+  const effectiveUser = useMemo(() => userProfile || profile, [userProfile, profile]);
+  const hasUser = !!effectiveUser;
+
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => { scrollY.value = event.contentOffset.y; },
   });
@@ -289,7 +309,6 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
     ]);
   }, [deleteBaby]);
 
-  // UPDATED: Handle member removal with proper navigation
   const handleRemoveMember = useCallback((member: FamilyMember) => {
     Alert.alert('Remove Member', `Remove ${member.fullName} from family?`, [
       { text: 'Cancel', style: 'cancel' },
@@ -297,43 +316,43 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
     ]);
   }, [removeMember]);
 
-  // UPDATED: Navigate to EditGuardian for non-children (parents, guardians, viewers)
+  // Navigation handlers
   const handleMemberPress = useCallback((member: FamilyMember, isYou: boolean = false) => {
-    if (isYou) {
-      // Current user (parent1) -> EditGuardian
-      navigation.navigate('EditGuardian', { 
-        guardianId: member.id,
-        mode: 'parent2'
-      });
-    } else if (member.role === UserRole.PARENT_2) {
-      // Parent2 -> EditGuardian
-      navigation.navigate('EditGuardian', { 
-        guardianId: member.id,
-        mode: 'parent2'
-      });
-    } else {
-      // Guardians and Viewers -> EditGuardian
-      navigation.navigate('EditGuardian', { 
-        guardianId: member.id,
-        mode: 'guardian'
-      });
-    }
+    navigation.navigate('EditGuardian', { 
+      guardianId: member.id,
+      mode: isYou || member.role === UserRole.PARENT_2 ? 'parent2' : 'guardian'
+    });
   }, [navigation]);
 
-  // UPDATED: Navigate to EditProfile for children (babies)
   const handleBabyEdit = useCallback((babyId: string) => {
     navigation.navigate('EditProfile', { mode: 'baby', babyId });
   }, [navigation]);
 
-  // UPDATED: Navigate to EditGuardian for current user (parent)
   const handleCurrentUserEdit = useCallback(() => {
-    if (userProfile?.id) {
+    if (effectiveUser?.id) {
       navigation.navigate('EditGuardian', { 
-        guardianId: userProfile.id,
+        guardianId: effectiveUser.id,
         mode: 'parent2'
       });
     }
-  }, [navigation, userProfile]);
+  }, [navigation, effectiveUser]);
+
+  // FIX: Use actual members from context, with safe fallback
+  const displayMembers = useMemo(() => {
+    if (members.length > 0) return members;
+    if (!hasUser) return [];
+    return [{ 
+      id: effectiveUser.id || '1', 
+      fullName: effectiveUser.fullName || 'You', 
+      role: UserRole.PARENT_1,
+      relationship: 'Parent',
+      email: effectiveUser.email || '',
+      addedAt: new Date().toISOString(),
+      addedBy: '',
+      canBeRemoved: false,
+      permissions: { read: true, write: true, delete: true, manageFamily: true, manageSecurity: true, exportData: true }
+    }];
+  }, [members, hasUser, effectiveUser]);
 
   const recentActivities = useMemo(() => 
     activities.sort((a, b) => b.timestamp - a.timestamp).slice(0, 5),
@@ -357,17 +376,7 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
         <Text style={[styles.headerTitle, isDark && styles.textDark]}>Family Center</Text>
         
         <FamilyAvatarStack 
-          members={members.length > 0 ? members : [{ 
-            id: '1', 
-            fullName: userProfile?.fullName || 'You', 
-            role: UserRole.PARENT_1,
-            relationship: 'Parent',
-            email: userProfile?.email || '',
-            addedAt: new Date().toISOString(),
-            addedBy: '',
-            canBeRemoved: false,
-            permissions: { read: true, write: true, delete: true, manageFamily: true, manageSecurity: true, exportData: true }
-          }]}
+          members={displayMembers}
           onPress={() => navigation.navigate('FamilySharing')}
         />
       </View>
@@ -462,7 +471,6 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
       {currentBaby && (
         <GlassCard style={styles.heroCard}>
           <View style={styles.heroHeader}>
-            {/* Baby avatar - Child goes to EditProfile */}
             <SafeAvatar 
               avatar={currentBaby.avatar}
               gender={currentBaby.gender}
@@ -482,7 +490,6 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
               </View>
             </View>
             
-            {/* Baby edit button - Child goes to EditProfile */}
             <TouchableOpacity 
               style={styles.editBtn}
               onPress={() => handleBabyEdit(currentBaby.id)}
@@ -516,15 +523,15 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
         </GlassCard>
       )}
 
-      {/* Parent Card - Non-child goes to EditGuardian */}
+      {/* Parent Card */}
       <GlassCard style={styles.parentCard} onPress={handleCurrentUserEdit}>
         <LinearGradient colors={['#11998e20', '#38ef7d10']} style={StyleSheet.absoluteFill} />
         <View style={styles.parentRow}>
           <LinearGradient colors={['#11998e', '#38ef7d']} style={styles.parentAvatar}>
-            <Text style={styles.parentAvatarText}>{userProfile?.fullName?.charAt(0) || 'P'}</Text>
+            <Text style={styles.parentAvatarText}>{effectiveUser?.fullName?.charAt(0) || 'P'}</Text>
           </LinearGradient>
           <View style={styles.parentInfo}>
-            <Text style={[styles.parentName, isDark && styles.textDark]}>{userProfile?.fullName}</Text>
+            <Text style={[styles.parentName, isDark && styles.textDark]}>{effectiveUser?.fullName || 'Parent'}</Text>
             <Text style={styles.parentRole}>Primary Parent</Text>
           </View>
           <Ionicons name="chevron-forward" size={20} color={isDark ? '#667eea' : '#764ba2'} />
@@ -571,7 +578,7 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
         </View>
       </GlassCard>
 
-      {/* Parent 1 - Non-child goes to EditGuardian */}
+      {/* Parent 1 */}
       {parent1 && (
         <View style={styles.memberSection}>
           <Text style={[styles.memberSectionTitle, isDark && styles.textMuted]}>You</Text>
@@ -592,7 +599,7 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
         </View>
       )}
 
-      {/* Parent 2 - Non-child goes to EditGuardian */}
+      {/* Parent 2 */}
       {parent2 ? (
         <View style={styles.memberSection}>
           <Text style={[styles.memberSectionTitle, isDark && styles.textMuted]}>Co-Parent</Text>
@@ -627,7 +634,7 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
         </TouchableOpacity>
       )}
 
-      {/* Guardians - Non-children go to EditGuardian */}
+      {/* Guardians */}
       {guardians.length > 0 && (
         <View style={styles.memberSection}>
           <Text style={[styles.memberSectionTitle, isDark && styles.textMuted]}>Guardians</Text>
@@ -774,7 +781,7 @@ const styles = StyleSheet.create({
   scrollContent: { paddingHorizontal: 16 },
   bottomSpacer: { height: 40 },
 
-  // Safe Avatar Styles
+  // Safe Avatar Styles — FIXED: overflow hidden wrapper for images
   avatarWrapper: {
     position: 'relative',
   },
@@ -787,9 +794,7 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 5,
   },
-  avatarEmoji: {
-    // Font size is set dynamically based on avatar size
-  },
+  avatarEmoji: {},
   editAvatarBtn: {
     position: 'absolute',
     width: 28,
