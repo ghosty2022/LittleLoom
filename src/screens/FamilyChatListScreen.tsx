@@ -14,6 +14,7 @@ import {
   Dimensions,
   ScrollView,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -28,22 +29,133 @@ import Animated, {
   useSharedValue,
   withSpring,
   runOnJS,
-  // REMOVED: useAnimatedStyle - not available in this reanimated version
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../types/navigation';
 import { useFamilyChat, FamilyChat, FamilyMessage } from '../context/FamilyChatContext';
 import { useFamily, FamilyMember } from '../context/FamilyContext';
 import { useAuth } from '../context/AuthContext';
-import * as Haptics from 'expo-haptics';
 
 type FamilyChatListScreenProps = NativeStackScreenProps<RootStackParamList, 'FamilyChatList'>;
 
 const { width } = Dimensions.get('window');
 
-// ==================== SWEET ALERT COMPONENT (FIXED) ====================
-// REMOVED useAnimatedStyle - using direct animated props instead
+// ==================== IMAGE UTILITY FUNCTIONS (from SwitchBabyScreen) ====================
+const isImageUri = (value: string | undefined | null): boolean => {
+  if (!value || typeof value !== 'string') return false;
+  return value.startsWith('http') || value.startsWith('file://') || value.startsWith('data:');
+};
+
+const isEmoji = (value: string | undefined | null): boolean => {
+  if (!value || typeof value !== 'string') return false;
+  if (value.length > 4) return false;
+  for (const char of value) {
+    const code = char.codePointAt(0) || 0;
+    const isEmojiChar = (
+      (code >= 0x1F600 && code <= 0x1F64F) ||
+      (code >= 0x1F300 && code <= 0x1F5FF) ||
+      (code >= 0x1F680 && code <= 0x1F6FF) ||
+      (code >= 0x1F1E0 && code <= 0x1F1FF) ||
+      (code >= 0x2600 && code <= 0x26FF) ||
+      (code >= 0x2700 && code <= 0x27BF) ||
+      (code >= 0x1F900 && code <= 0x1F9FF) ||
+      (code >= 0x1F018 && code <= 0x1F270) ||
+      code === 0x238C || code === 0x2B06 || code === 0x2B07 || code === 0x2B05 ||
+      code === 0x27A1 || (code >= 0x2194 && code <= 0x2199) ||
+      (code >= 0x21A9 && code <= 0x21AA) || (code >= 0x2934 && code <= 0x2935) ||
+      (code >= 0x25AA && code <= 0x25AB) || (code >= 0x25FB && code <= 0x25FE) ||
+      code === 0x25B6 || code === 0x25C0 || (code >= 0x1F200 && code <= 0x1F251) ||
+      code === 0x1F004 || code === 0x1F0CF || (code >= 0x1F170 && code <= 0x1F171) ||
+      (code >= 0x1F17E && code <= 0x1F17F) || code === 0x1F18E || code === 0x3030 ||
+      code === 0x2B50 || code === 0x2B55 || (code >= 0x23E9 && code <= 0x23EC) ||
+      code === 0x23F0 || code === 0x23F3 || (code >= 0x231A && code <= 0x231B) ||
+      (code >= 0x23F8 && code <= 0x23FA) || code === 0x24C2 ||
+      (code >= 0x1F3FB && code <= 0x1F3FF) ||
+      (code >= 0x1F3E0 && code <= 0x1F3F4) ||
+      (code >= 0x1F3F8 && code <= 0x1F43F) ||
+      code === 0x1F440 || (code >= 0x1F442 && code <= 0x1F4FF) ||
+      (code >= 0x1F500 && code <= 0x1F53D) ||
+      (code >= 0x1F54B && code <= 0x1F54E) ||
+      (code >= 0x1F550 && code <= 0x1F567) ||
+      (code >= 0x1F595 && code <= 0x1F596) ||
+      (code >= 0x1F5FB && code <= 0x1F64F) ||
+      (code >= 0x1F680 && code <= 0x1F6C5) ||
+      (code >= 0x1F6CB && code <= 0x1F6D2) ||
+      (code >= 0x1F6E0 && code <= 0x1F6E5) ||
+      code === 0x1F6E9 || (code >= 0x1F6EB && code <= 0x1F6EC) ||
+      code === 0x1F6F0 || (code >= 0x1F6F3 && code <= 0x1F6F8) ||
+      (code >= 0x1F910 && code <= 0x1F93A) ||
+      (code >= 0x1F93C && code <= 0x1F93E) ||
+      (code >= 0x1F940 && code <= 0x1F945) ||
+      (code >= 0x1F947 && code <= 0x1F94C) ||
+      (code >= 0x1F950 && code <= 0x1F96B) ||
+      (code >= 0x1F980 && code <= 0x1F997) ||
+      code === 0x1F9C0 || (code >= 0x1F9D0 && code <= 0x1F9E6)
+    );
+    if (!isEmojiChar) return false;
+  }
+  return true;
+};
+
+// ==================== SAFE AVATAR COMPONENT (matches SwitchBabyScreen & FamilySharingScreen) ====================
+const SafeAvatar: React.FC<{
+  avatar?: string | null;
+  size?: number;
+  fallbackEmoji?: string;
+  fallbackIcon?: keyof typeof Ionicons.glyphMap;
+  fallbackColor?: string;
+  showStatus?: boolean;
+  statusColor?: string;
+}> = ({ 
+  avatar, 
+  size = 60, 
+  fallbackEmoji = '👤', 
+  fallbackIcon = 'person', 
+  fallbackColor = '#667eea',
+  showStatus = false,
+  statusColor = '#10b981'
+}) => {
+  const hasImage = isImageUri(avatar);
+  const hasEmoji = isEmoji(avatar);
+
+  return (
+    <View style={[styles.avatarWrapper, { width: size, height: size }]}>
+      <LinearGradient
+        colors={[`${fallbackColor}20`, `${fallbackColor}40`]}
+        style={[
+          styles.avatarGradient, 
+          { width: size, height: size, borderRadius: size / 2.8 }
+        ]}
+      >
+        {hasImage ? (
+          <Image 
+            source={{ uri: avatar! }} 
+            style={{ width: size, height: size, borderRadius: size / 2.8 }}
+            resizeMode="cover"
+            onError={(e) => console.log('Avatar image error:', e.nativeEvent.error)}
+          />
+        ) : hasEmoji ? (
+          <Text style={[styles.avatarEmoji, { fontSize: size * 0.5 }]}>{avatar}</Text>
+        ) : (
+          <Ionicons name={fallbackIcon} size={size * 0.4} color={fallbackColor} />
+        )}
+      </LinearGradient>
+      
+      {showStatus && (
+        <View style={[
+          styles.avatarStatus,
+          { backgroundColor: statusColor, borderColor: '#fff' }
+        ]} />
+      )}
+    </View>
+  );
+};
+
+// ==================== SWEET ALERT COMPONENT ====================
 const SweetAlertChatList: React.FC<{
   visible: boolean;
   type: 'success' | 'error' | 'warning' | 'info';
@@ -73,8 +185,6 @@ const SweetAlertChatList: React.FC<{
     }
   }, [visible, scale, opacity, onClose]);
 
-  // FIX: Removed useAnimatedStyle, using Animated.View with direct styling
-  // We'll use the shared values through transform and opacity props directly
   if (!visible) return null;
 
   return (
@@ -110,7 +220,7 @@ const SweetAlertChatList: React.FC<{
   );
 };
 
-// ==================== USER BUBBLE COMPONENT ====================
+// ==================== USER BUBBLE COMPONENT (UPDATED with SafeAvatar) ====================
 const UserBubble: React.FC<{
   member: FamilyMember;
   isSelected: boolean;
@@ -142,23 +252,37 @@ const UserBubble: React.FC<{
     offline: '#6b7280',
   };
 
+  const roleColor = getRoleColor();
+
   return (
     <TouchableOpacity 
-      style={[styles.userBubble, isSelected && styles.userBubbleSelected, disabled && styles.userBubbleDisabled]} 
+      style={[
+        styles.userBubble, 
+        isSelected && styles.userBubbleSelected, 
+        disabled && styles.userBubbleDisabled
+      ]} 
       onPress={onPress}
       activeOpacity={disabled ? 1 : 0.8}
       disabled={disabled}
     >
-      <View style={[styles.userBubbleAvatar, { backgroundColor: `${getRoleColor()}20` }]}>
-        <Text style={styles.userBubbleEmoji}>{member.avatar || '👤'}</Text>
-        <View style={[styles.userBubbleStatus, { backgroundColor: statusColors[onlineStatus] }]} />
-      </View>
+      {/* REPLACED: Raw emoji text with SafeAvatar */}
+      <SafeAvatar 
+        avatar={member.avatar}
+        size={60}
+        fallbackEmoji={member.role === 'parent1' ? '👑' : '👤'}
+        fallbackIcon={member.role === 'parent1' ? 'shield' : member.role === 'parent2' ? 'heart' : 'person'}
+        fallbackColor={roleColor}
+        showStatus={true}
+        statusColor={statusColors[onlineStatus]}
+      />
+      
       <Text style={[styles.userBubbleName, isDark && styles.textDark]} numberOfLines={1}>
         {member.fullName.split(' ')[0]}
       </Text>
-      <Text style={[styles.userBubbleRole, { color: getRoleColor() }]}>
+      <Text style={[styles.userBubbleRole, { color: roleColor }]}>
         {member.role === 'parent1' ? 'Primary' : member.role === 'parent2' ? 'Co-Parent' : 'Guardian'}
       </Text>
+      
       {isSelected && (
         <View style={styles.userBubbleCheck}>
           <Ionicons name="checkmark-circle" size={20} color="#667eea" />
@@ -208,7 +332,7 @@ const PresenceBadge: React.FC<{
   );
 };
 
-// ==================== CHAT LIST ITEM COMPONENT ====================
+// ==================== CHAT LIST ITEM COMPONENT (UPDATED with SafeAvatar for direct chats) ====================
 const ChatListItem: React.FC<{
   chat: FamilyChat;
   isDark: boolean;
@@ -275,6 +399,12 @@ const ChatListItem: React.FC<{
     return msg.content;
   };
 
+  // For direct chats, use SafeAvatar; for groups, use emoji/icon
+  const isDirect = chat.type === 'direct';
+  const otherParticipantId = isDirect ? chat.participants.find(p => p !== chat.participantRoles?.[p]) : null;
+  const otherAvatar = otherParticipantId ? chat.participantAvatars?.[otherParticipantId] : null;
+  const otherRole = otherParticipantId ? chat.participantRoles?.[otherParticipantId] : null;
+
   return (
     <Animated.View entering={FadeInUp} layout={Layout.springify()}>
       <TouchableOpacity 
@@ -292,15 +422,27 @@ const ChatListItem: React.FC<{
           styles.avatarContainer, 
           { backgroundColor: chat.type === 'group' ? '#667eea20' : '#fa709a20' }
         ]}>
-          <Text style={styles.avatarEmoji}>{getChatIcon()}</Text>
-          {chat.type === 'group' ? (
-            <View style={styles.groupIndicator}>
-              <Ionicons name="people" size={10} color="#fff" />
-            </View>
-          ) : onlineStatus && (
-            <View style={styles.onlineIndicator}>
-              <PresenceBadge status={onlineStatus} size={12} />
-            </View>
+          {isDirect && otherAvatar ? (
+            <SafeAvatar 
+              avatar={otherAvatar}
+              size={56}
+              fallbackEmoji="👤"
+              fallbackIcon={otherRole === 'parent1' ? 'shield' : otherRole === 'parent2' ? 'heart' : 'person'}
+              fallbackColor={otherRole === 'parent1' ? '#667eea' : otherRole === 'parent2' ? '#fa709a' : '#11998e'}
+            />
+          ) : (
+            <>
+              <Text style={styles.avatarEmoji}>{getChatIcon()}</Text>
+              {chat.type === 'group' ? (
+                <View style={styles.groupIndicator}>
+                  <Ionicons name="people" size={10} color="#fff" />
+                </View>
+              ) : onlineStatus && (
+                <View style={styles.onlineIndicator}>
+                  <PresenceBadge status={onlineStatus} size={12} />
+                </View>
+              )}
+            </>
           )}
         </View>
         
@@ -377,7 +519,7 @@ const ChatListItem: React.FC<{
   );
 };
 
-// ==================== MEMBER AVATAR STACK COMPONENT ====================
+// ==================== MEMBER AVATAR STACK COMPONENT (UPDATED with SafeAvatar) ====================
 const MemberAvatarStack: React.FC<{ 
   members: FamilyMember[]; 
   isDark: boolean;
@@ -396,12 +538,16 @@ const MemberAvatarStack: React.FC<{
             { 
               marginLeft: index > 0 ? -12 : 0,
               zIndex: displayMembers.length - index,
-              backgroundColor: member.role === 'parent1' ? '#667eea20' : 
-                              member.role === 'parent2' ? '#fa709a20' : '#11998e20'
             }
           ]}
         >
-          <Text style={styles.stackAvatarText}>{member.avatar || '👤'}</Text>
+          <SafeAvatar 
+            avatar={member.avatar}
+            size={32}
+            fallbackEmoji="👤"
+            fallbackIcon={member.role === 'parent1' ? 'shield' : member.role === 'parent2' ? 'heart' : 'person'}
+            fallbackColor={member.role === 'parent1' ? '#667eea' : member.role === 'parent2' ? '#fa709a' : '#11998e'}
+          />
         </View>
       ))}
       {remaining > 0 && (
@@ -440,6 +586,8 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
   const [showNewChatModal, setShowNewChatModal] = useState(false);
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [groupName, setGroupName] = useState('');
+  const [groupPhoto, setGroupPhoto] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
   
   // Sweet Alert state
   const [alert, setAlert] = useState<{
@@ -472,6 +620,83 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
     setAlert({ visible: true, type, title, message });
   };
 
+  // ==================== PHOTO HANDLERS (from EditProfileScreen) ====================
+  const getPermanentImagePath = (prefix: string) => {
+    const dir = FileSystem.documentDirectory + 'group_images/';
+    return `${dir}${prefix}_${Date.now()}.jpg`;
+  };
+
+  const ensureDirExists = async () => {
+    const dir = FileSystem.documentDirectory + 'group_images/';
+    const dirInfo = await FileSystem.getInfoAsync(dir);
+    if (!dirInfo.exists) {
+      await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+    }
+  };
+
+  const handleTakePhoto = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      showSweetAlert('error', 'Permission Required', 'Please allow access to your camera.');
+      return;
+    }
+
+    try {
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0].uri) {
+        setIsUploading(true);
+        await ensureDirExists();
+        const tempUri = result.assets[0].uri;
+        const permanentUri = getPermanentImagePath('group');
+        await FileSystem.copyAsync({ from: tempUri, to: permanentUri });
+        setGroupPhoto(permanentUri);
+        setIsUploading(false);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    } catch (error) {
+      console.error('Camera error:', error);
+      showSweetAlert('error', 'Error', 'Failed to capture photo');
+      setIsUploading(false);
+    }
+  };
+
+  const handlePickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      showSweetAlert('error', 'Permission Required', 'Please allow access to your photo library.');
+      return;
+    }
+
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0].uri) {
+        setIsUploading(true);
+        await ensureDirExists();
+        const tempUri = result.assets[0].uri;
+        const permanentUri = getPermanentImagePath('group');
+        await FileSystem.copyAsync({ from: tempUri, to: permanentUri });
+        setGroupPhoto(permanentUri);
+        setIsUploading(false);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    } catch (error) {
+      console.error('Gallery error:', error);
+      showSweetAlert('error', 'Error', 'Failed to pick photo');
+      setIsUploading(false);
+    }
+  };
+
   const handleChatPress = async (chat: FamilyChat) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (chat.type === 'direct') {
@@ -495,7 +720,6 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
   };
 
   const handleMemberPress = async (member: FamilyMember) => {
-    // Prevent chatting with self
     if (member.id === userProfile?.id || member.userId === userProfile?.id) {
       showSweetAlert('warning', 'Cannot Chat', 'You cannot start a chat with yourself!');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
@@ -584,10 +808,10 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
     setShowNewChatModal(false);
     setSelectedMembers([]);
     setGroupName('');
+    setGroupPhoto(null);
   };
 
   const toggleMemberSelection = (memberId: string) => {
-    // Prevent selecting self
     if (memberId === userProfile?.id) {
       showSweetAlert('warning', 'Cannot Select', 'You cannot add yourself to a group');
       return;
@@ -703,7 +927,6 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
     <View style={[styles.container, isDark && styles.containerDark]}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       
-      {/* SweetAlert - FIXED: Removed useAnimatedStyle dependency */}
       <SweetAlertChatList
         visible={alert.visible}
         type={alert.type}
@@ -879,7 +1102,7 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
         </TouchableOpacity>
       </Modal>
 
-      {/* New Group Chat Modal */}
+      {/* New Group Chat Modal (UPDATED with photo capture) */}
       <Modal
         visible={showNewChatModal}
         transparent
@@ -893,6 +1116,50 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
               <TouchableOpacity onPress={() => setShowNewChatModal(false)}>
                 <Ionicons name="close" size={24} color={isDark ? '#fff' : '#1a1a1a'} />
               </TouchableOpacity>
+            </View>
+
+            {/* Group Photo Section (NEW) */}
+            <View style={styles.groupPhotoSection}>
+              <TouchableOpacity 
+                style={styles.groupPhotoContainer}
+                onPress={() => {
+                  Alert.alert(
+                    'Group Photo',
+                    'Choose a photo for your group',
+                    [
+                      { text: 'Camera', onPress: handleTakePhoto },
+                      { text: 'Gallery', onPress: handlePickImage },
+                      { text: 'Cancel', style: 'cancel' }
+                    ]
+                  );
+                }}
+              >
+                {groupPhoto ? (
+                  <Image 
+                    source={{ uri: groupPhoto }} 
+                    style={styles.groupPhotoImage}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <LinearGradient 
+                    colors={['#667eea20', '#764ba220']} 
+                    style={styles.groupPhotoPlaceholder}
+                  >
+                    <Ionicons name="camera" size={32} color="#667eea" />
+                  </LinearGradient>
+                )}
+                {isUploading && (
+                  <View style={styles.uploadingOverlay}>
+                    <ActivityIndicator color="#fff" />
+                  </View>
+                )}
+                <View style={styles.groupPhotoEditBadge}>
+                  <Ionicons name="camera" size={14} color="#fff" />
+                </View>
+              </TouchableOpacity>
+              <Text style={[styles.groupPhotoLabel, isDark && styles.textMuted]}>
+                {groupPhoto ? 'Tap to change' : 'Add group photo'}
+              </Text>
             </View>
 
             <TextInput
@@ -916,13 +1183,14 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
                   ]}
                   onPress={() => toggleMemberSelection(member.id)}
                 >
-                  <View style={[
-                    styles.memberSelectAvatar,
-                    { backgroundColor: member.role === 'parent1' ? '#667eea20' : 
-                                      member.role === 'parent2' ? '#fa709a20' : '#11998e20' }
-                  ]}>
-                    <Text style={styles.memberSelectAvatarText}>{member.avatar || '👤'}</Text>
-                  </View>
+                  {/* UPDATED: Use SafeAvatar instead of raw emoji */}
+                  <SafeAvatar 
+                    avatar={member.avatar}
+                    size={48}
+                    fallbackEmoji="👤"
+                    fallbackIcon={member.role === 'parent1' ? 'shield' : member.role === 'parent2' ? 'heart' : 'person'}
+                    fallbackColor={member.role === 'parent1' ? '#667eea' : member.role === 'parent2' ? '#fa709a' : '#11998e'}
+                  />
                   <View style={styles.memberSelectInfo}>
                     <Text style={[styles.memberSelectName, isDark && styles.textDark]}>
                       {member.fullName}
@@ -969,6 +1237,32 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   containerDark: { backgroundColor: '#0a0a0a' },
   
+  // SafeAvatar styles (NEW - matching SwitchBabyScreen)
+  avatarWrapper: {
+    position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  avatarGradient: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  avatarEmoji: {},
+  avatarStatus: {
+    position: 'absolute',
+    bottom: 2,
+    right: 2,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+
   // SweetAlert
   alertOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -1013,7 +1307,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
 
-  // User Bubbles
+  // User Bubbles (UPDATED - removed old avatar styles, now handled by SafeAvatar)
   userBubble: {
     alignItems: 'center',
     width: 70,
@@ -1036,33 +1330,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  userBubbleAvatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 6,
-    position: 'relative',
-  },
-  userBubbleEmoji: {
-    fontSize: 28,
-  },
-  userBubbleStatus: {
-    position: 'absolute',
-    bottom: 2,
-    right: 2,
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    borderWidth: 2,
-    borderColor: '#fff',
-  },
   userBubbleName: {
     fontSize: 12,
     fontWeight: '600',
     color: '#1a1a1a',
     textAlign: 'center',
+    marginTop: 6,
   },
   userBubbleRole: {
     fontSize: 10,
@@ -1528,7 +1801,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
-  // New Chat Modal
+  // New Chat Modal (UPDATED with photo styles)
   newChatOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -1538,7 +1811,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 20,
-    maxHeight: '80%',
+    maxHeight: '85%',
   },
   newChatHeader: {
     flexDirection: 'row',
@@ -1551,6 +1824,57 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#1a1a1a',
   },
+  
+  // Group Photo Section (NEW)
+  groupPhotoSection: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  groupPhotoContainer: {
+    position: 'relative',
+    width: 100,
+    height: 100,
+    borderRadius: 30,
+    overflow: 'hidden',
+  },
+  groupPhotoImage: {
+    width: 100,
+    height: 100,
+    borderRadius: 30,
+  },
+  groupPhotoPlaceholder: {
+    width: 100,
+    height: 100,
+    borderRadius: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  uploadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  groupPhotoEditBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#667eea',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: '#fff',
+  },
+  groupPhotoLabel: {
+    marginTop: 8,
+    fontSize: 13,
+    color: '#64748b',
+    fontWeight: '500',
+  },
+
   groupNameInput: {
     backgroundColor: 'rgba(0,0,0,0.05)',
     borderRadius: 12,
@@ -1588,19 +1912,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(102,126,234,0.3)',
   },
-  memberSelectAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  memberSelectAvatarText: {
-    fontSize: 24,
-  },
   memberSelectInfo: {
     flex: 1,
+    marginLeft: 12,
   },
   memberSelectName: {
     fontSize: 16,

@@ -30,6 +30,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../types/navigation';
 
@@ -38,7 +39,6 @@ import { UserRole, ROLE_LABELS } from '../types/roles';
 import { useFamily, FamilyMember } from '../context/FamilyContext';
 import { useUser } from '../context/UserContext';
 import { useBaby, ActivityEntry } from '../context/BabyContext';
-import { useActivity } from '../context/ActivityContext';
 import { useAuth } from '../context/AuthContext'; // ADDED: Import useAuth
 
 type EditGuardianScreenProps = NativeStackScreenProps<RootStackParamList, 'EditGuardian'>;
@@ -122,6 +122,18 @@ const ACTIVITY_CONFIG: Record<string, { icon: string; color: string; label: stri
   default: { icon: 'ellipse-outline', color: '#9ca3af', label: 'Activity' },
 };
 
+// ==================== HELPER: CHECK IF VALUE IS IMAGE URI ====================
+const isImageUri = (value: string | undefined | null): boolean => {
+  if (!value || typeof value !== 'string') return false;
+  return value.startsWith('http') || value.startsWith('file://') || value.startsWith('data:');
+};
+
+const isEmoji = (value: string | undefined | null): boolean => {
+  if (!value || typeof value !== 'string') return false;
+  // Emoji strings are typically 1-4 characters and contain emoji unicode
+  return value.length <= 4 && /\p{Emoji}/u.test(value);
+};
+
 // ==================== MODAL COMPONENT ====================
 interface ActionModalProps {
   visible: boolean;
@@ -169,7 +181,7 @@ const ActivityCard: React.FC<{
   index: number;
 }> = ({ activity, isDark, index }) => {
   const config = ACTIVITY_CONFIG[activity.type] || ACTIVITY_CONFIG.default;
-  
+
   return (
     <Animated.View 
       entering={FadeInUp.delay(index * 50)}
@@ -230,13 +242,69 @@ const PermissionGrid: React.FC<{
   );
 };
 
+// ==================== AVATAR DISPLAY COMPONENT ====================
+const AvatarDisplay: React.FC<{
+  avatar: string | undefined;
+  role: UserRole;
+  size?: number;
+  showEdit?: boolean;
+  onPress?: () => void;
+}> = ({ avatar, role, size = 120, showEdit = false, onPress }) => {
+  const roleConfig = ROLE_CONFIG[role] || ROLE_CONFIG[UserRole.VIEWER];
+
+  // Determine what to render
+  const hasImage = isImageUri(avatar);
+  const hasEmoji = isEmoji(avatar);
+
+  return (
+    <TouchableOpacity 
+      style={[
+        styles.avatarContainer, 
+        { 
+          width: size, 
+          height: size, 
+          borderRadius: size / 3,
+          backgroundColor: roleConfig.color + '20' 
+        }
+      ]}
+      onPress={onPress}
+      disabled={!onPress}
+      activeOpacity={0.8}
+    >
+      {hasImage ? (
+        <Image 
+          source={{ uri: avatar }} 
+          style={{ width: size, height: size, borderRadius: size / 3 }}
+          resizeMode="cover"
+          onError={(e) => console.log('Avatar image error:', e.nativeEvent.error)}
+        />
+      ) : hasEmoji ? (
+        <Text style={[styles.avatarEmoji, { color: roleConfig.color, fontSize: size * 0.5 }]}>
+          {avatar}
+        </Text>
+      ) : (
+        <Ionicons 
+          name={roleConfig.icon as any} 
+          size={size * 0.4} 
+          color={roleConfig.color} 
+        />
+      )}
+
+      {showEdit && (
+        <View style={[styles.editAvatarOverlay, { bottom: 0, right: 0 }]}>
+          <Ionicons name="camera" size={24} color="#fff" />
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+};
+
 // ==================== MAIN SCREEN ====================
 export default function EditGuardianScreen({ navigation, route }: EditGuardianScreenProps) {
   const { guardianId, mode = 'guardian', fromChat = false } = route.params;
   const { members, guardians, updateGuardianProfile, removeMember, loadFamily } = useFamily();
-  const { hasPermission, profile } = useUser();
+  const { hasPermission, profile, updateProfile } = useUser();
   const { currentBaby, babies, getRecentActivities } = useBaby();
-  const { getEntriesByBaby, getRelativeTime } = useActivity();
   const { userProfile } = useAuth(); // ADDED: Get current user from AuthContext
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
@@ -249,7 +317,8 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
   const [showRoleModal, setShowRoleModal] = useState(false);
   const [showContactModal, setShowContactModal] = useState(false);
   const [memberActivities, setMemberActivities] = useState<ActivityEntry[]>([]);
-  
+  const [isLoadingActivities, setIsLoadingActivities] = useState(false);
+
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
@@ -268,14 +337,14 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
   useEffect(() => {
     console.log('Looking for member with ID:', guardianId);
     console.log('Available members:', members.map(m => ({ id: m.id, name: m.fullName, role: m.role })));
-    
+
     let found = members.find(m => m.id === guardianId);
-    
+
     // FIXED: If member not found in members array, check if it's the current user
     if (!found) {
       const currentUserId = userProfile?.id || userProfile?.uid || profile?.id;
       console.log('Member not found in array. Current user ID:', currentUserId);
-      
+
       if (guardianId === currentUserId || guardianId === 'parent1') {
         // This is the current user (Parent 1) - construct a FamilyMember from userProfile
         console.log('Constructing FamilyMember from current user profile');
@@ -296,9 +365,9 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
         } as FamilyMember;
       }
     }
-    
+
     if (found) {
-      console.log('Found/constructed member:', found.fullName, 'Role:', found.role);
+      console.log('Found/constructed member:', found.fullName, 'Role:', found.role, 'Avatar:', found.avatar);
       setMember(found);
       setFormData({
         fullName: found.fullName || '',
@@ -309,70 +378,124 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
         notificationsEnabled: found.notificationsEnabled ?? true,
         darkMode: false,
       });
-      
+
       // Load member's activities
-      loadMemberActivities(found.id);
+      loadMemberActivities(found.id, found.userId);
     } else {
       console.log('Member not found and not current user');
     }
   }, [members, guardianId, currentBaby, userProfile, profile]);
 
-  const loadMemberActivities = useCallback(async (memberId: string) => {
+  // FIXED: Enhanced activity loading with multiple fallback matching strategies
+  const loadMemberActivities = useCallback(async (memberId: string, memberUserId?: string) => {
     if (!currentBaby) return;
-    
-    // Get activities where this member logged the entry
-    const allActivities = getEntriesByBaby(currentBaby.id);
-    const memberActs = allActivities
-      .filter(a => a.loggedBy === memberId)
-      .sort((a, b) => b.timestamp - a.timestamp)
-      .slice(0, 20);
-    
-    setMemberActivities(memberActs);
-  }, [currentBaby, getEntriesByBaby]);
 
+    setIsLoadingActivities(true);
+
+    try {
+      // Get all activities for current baby
+      const allActivities = getRecentActivities(50); // Get more to filter properly
+
+      // Try multiple matching strategies
+      const memberActs = allActivities.filter(a => {
+        // Strategy 1: Direct ID match
+        if (a.loggedBy === memberId) return true;
+        // Strategy 2: User ID match (if different from member ID)
+        if (memberUserId && a.loggedBy === memberUserId) return true;
+        // Strategy 3: Name match (fallback for legacy data)
+        if (member && a.loggedByName === member.fullName) return true;
+        return false;
+      });
+
+      // Sort and limit
+      const sorted = memberActs
+        .sort((a, b) => b.timestamp - a.timestamp)
+        .slice(0, 20);
+
+      setMemberActivities(sorted);
+    } catch (error) {
+      console.error('Error loading member activities:', error);
+      setMemberActivities([]);
+    } finally {
+      setIsLoadingActivities(false);
+    }
+  }, [currentBaby, getRecentActivities, member]);
+
+  // FIXED: Handle save with self-editing support for non-name fields
   const handleSave = async () => {
     if (!member) return;
-    
+
     if (!formData.fullName.trim()) {
       Alert.alert('Error', 'Name is required');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       return;
     }
 
-    // Check if trying to edit own name
-    const currentUserId = userProfile?.id || userProfile?.uid || profile?.id;
-    if (member.id === currentUserId) {
-      Alert.alert('Cannot Edit', 'You cannot edit your own name. Contact support if you need to change your account details.');
-      return;
-    }
-
     setIsSaving(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    
-    const success = await updateGuardianProfile(member.id, {
-      fullName: formData.fullName,
-      email: formData.email,
-      phoneNumber: formData.phoneNumber,
-      relationship: formData.relationship,
-      avatar: formData.avatar,
-      notificationsEnabled: formData.notificationsEnabled,
-    });
 
-    if (success) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setIsEditing(false);
-      Alert.alert('Success', 'Profile updated successfully');
-    } else {
+    // Build updates object - only include changed fields
+    const updates: Partial<FamilyMember> = {};
+
+    // For current user, don't update name through FamilyContext
+    const currentUserId = userProfile?.id || userProfile?.uid || profile?.id;
+    const isCurrentUser = member.id === currentUserId;
+
+    if (!isCurrentUser && formData.fullName !== member.fullName) {
+      updates.fullName = formData.fullName;
+    }
+
+    if (formData.email !== member.email) updates.email = formData.email;
+    if (formData.phoneNumber !== member.phoneNumber) updates.phoneNumber = formData.phoneNumber;
+    if (formData.relationship !== member.relationship) updates.relationship = formData.relationship;
+    if (formData.avatar !== member.avatar) updates.avatar = formData.avatar;
+    if (formData.notificationsEnabled !== member.notificationsEnabled) {
+      updates.notificationsEnabled = formData.notificationsEnabled;
+    }
+
+    try {
+      let success = false;
+
+      if (isCurrentUser) {
+        // For current user, update through UserContext/AuthContext first
+        try {
+          await updateProfile({ 
+            phoneNumber: formData.phoneNumber,
+            email: formData.email,
+            avatar: formData.avatar,
+          });
+        } catch (err) {
+          console.log('UserContext update failed, using fallback');
+        }
+      }
+
+      // Always update via FamilyContext for consistency
+      success = await updateGuardianProfile(member.id, updates);
+
+      if (success) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setIsEditing(false);
+
+        // Update local member state
+        setMember(prev => prev ? { ...prev, ...updates } : null);
+
+        Alert.alert('Success', 'Profile updated successfully');
+      } else {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        Alert.alert('Error', 'Failed to update profile');
+      }
+    } catch (error) {
+      console.error('Save error:', error);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Error', 'Failed to update profile');
     }
-    
+
     setIsSaving(false);
   };
 
   const handleRemove = () => {
     if (!member) return;
-    
+
     // Cannot remove self
     const currentUserId = userProfile?.id || userProfile?.uid || profile?.id;
     if (member.id === currentUserId) {
@@ -407,6 +530,21 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     );
   };
 
+  // ==================== PERMANENT IMAGE STORAGE ====================
+  const getPermanentGuardianImagePath = (guardianId: string) => {
+    const dir = FileSystem.documentDirectory + 'guardian_images/';
+    return `${dir}${guardianId}_avatar_${Date.now()}.jpg`;
+  };
+
+  const ensureGuardianDirExists = async () => {
+    const dir = FileSystem.documentDirectory + 'guardian_images/';
+    const dirInfo = await FileSystem.getInfoAsync(dir);
+    if (!dirInfo.exists) {
+      await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+    }
+  };
+
+  // FIXED: handleImagePick with proper image display and SDK 54+ compatibility
   const handleImagePick = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -416,8 +554,54 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     });
 
     if (!result.canceled) {
-      setFormData(prev => ({ ...prev, avatar: result.assets[0].uri }));
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      const tempUri = result.assets[0].uri;
+
+      try {
+        // COPY to permanent storage
+        await ensureGuardianDirExists();
+        const permanentUri = getPermanentGuardianImagePath(member?.id || 'temp');
+
+        // Use copyAsync with fallback for SDK 54+
+        try {
+          await FileSystem.copyAsync({ from: tempUri, to: permanentUri });
+        } catch (copyError) {
+          console.log('copyAsync failed, trying downloadAsync fallback');
+          await FileSystem.downloadAsync(tempUri, permanentUri);
+        }
+
+        // Update local form state with permanent URI
+        setFormData(prev => ({ ...prev, avatar: permanentUri }));
+
+        // IMMEDIATELY persist to storage
+        if (member) {
+          const currentUserId = userProfile?.id || userProfile?.uid || profile?.id;
+
+          if (member.id === currentUserId) {
+            // For current user, update through UserContext
+            try {
+              await updateProfile({ avatar: permanentUri });
+              setMember(prev => prev ? { ...prev, avatar: permanentUri } : null);
+            } catch (err) {
+              console.log('UserContext update failed, using fallback');
+            }
+          }
+
+          // Always update via FamilyContext
+          const success = await updateGuardianProfile(member.id, { avatar: permanentUri });
+          if (success) {
+            setMember(prev => prev ? { ...prev, avatar: permanentUri } : null);
+          }
+        }
+
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+        Alert.alert('Photo Saved!', 'Profile picture saved permanently.');
+
+      } catch (error) {
+        console.error('Image save error:', error);
+        Alert.alert('Error', 'Failed to save photo permanently');
+      }
     }
   };
 
@@ -426,10 +610,10 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
       Alert.alert('No Phone Number', 'This family member has no phone number on file.');
       return;
     }
-    
+
     const phoneUrl = `tel:${member.phoneNumber.replace(/\s/g, '')}`;
     const canOpen = await Linking.canOpenURL(phoneUrl);
-    
+
     if (canOpen) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       await Linking.openURL(phoneUrl);
@@ -444,10 +628,10 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
       Alert.alert('No Email', 'This family member has no email on file.');
       return;
     }
-    
+
     const emailUrl = `mailto:${member.email}`;
     const canOpen = await Linking.canOpenURL(emailUrl);
-    
+
     if (canOpen) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       await Linking.openURL(emailUrl);
@@ -462,10 +646,10 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
       Alert.alert('No Phone Number', 'This family member has no phone number for messaging.');
       return;
     }
-    
+
     const smsUrl = `sms:${member.phoneNumber.replace(/\s/g, '')}`;
     const canOpen = await Linking.canOpenURL(smsUrl);
-    
+
     if (canOpen) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       await Linking.openURL(smsUrl);
@@ -495,13 +679,15 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
 
   const roleConfig = getRoleConfig();
 
-  // Permission checks - FIXED to use current user from AuthContext
+  // FIXED: Permission checks - current user CAN edit their own non-name fields
   const currentUserId = userProfile?.id || userProfile?.uid || profile?.id;
   const isCurrentUser = member?.id === currentUserId;
-  const canEdit = useMemo(() => 
-    hasPermission('manageFamily') && roleConfig?.canEdit && !isCurrentUser, 
-    [hasPermission, roleConfig, isCurrentUser]
-  );
+
+  // Can edit: either has manageFamily permission AND role allows editing, OR is current user editing self
+  const canEdit = useMemo(() => {
+    if (isCurrentUser) return true; // Self can always edit own profile (except name)
+    return hasPermission('manageFamily') && roleConfig?.canEdit;
+  }, [hasPermission, roleConfig, isCurrentUser]);
 
   const canRemove = useMemo(() => 
     hasPermission('manageFamily') && roleConfig?.canRemove && !isCurrentUser,
@@ -538,8 +724,15 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
                 </Text>
               </View>
             </View>
-            
-            {memberActivities.length === 0 ? (
+
+            {isLoadingActivities ? (
+              <View style={[styles.emptyCard, { paddingVertical: 40 }]}>
+                <ActivityIndicator size="small" color={roleConfig.color} />
+                <Text style={[styles.emptyText, isDark && styles.textMuted, { marginTop: 12 }]}>
+                  Loading activities...
+                </Text>
+              </View>
+            ) : memberActivities.length === 0 ? (
               <BlurView intensity={80} style={styles.emptyCard} tint={isDark ? 'dark' : 'light'}>
                 <LinearGradient
                   colors={isDark ? ['rgba(40,40,45,0.9)', 'rgba(25,25,30,0.8)'] : ['rgba(255,255,255,0.95)', 'rgba(250,250,255,0.9)']}
@@ -547,7 +740,10 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
                 />
                 <Ionicons name="time-outline" size={48} color={isDark ? '#555' : '#ccc'} />
                 <Text style={[styles.emptyText, isDark && styles.textMuted]}>
-                  No activities recorded yet
+                  {isCurrentUser ? "You haven't recorded any activities yet" : `${member.fullName} hasn't recorded any activities yet`}
+                </Text>
+                <Text style={[styles.emptySubtext, isDark && styles.textMuted]}>
+                  Activities will appear here when {isCurrentUser ? 'you' : 'they'} log entries for {currentBaby?.name || 'the baby'}
                 </Text>
               </BlurView>
             ) : (
@@ -564,7 +760,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
             )}
           </Animated.View>
         );
-      
+
       case 'permissions':
         return (
           <Animated.View entering={FadeInUp} style={styles.tabContent}>
@@ -589,6 +785,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
 
             <Text style={[styles.sectionTitle, isDark && styles.textDark, { marginTop: 24 }]}>Activity Stats</Text>
             <View style={styles.statsGrid}>
+              {/* FIXED: Real activity count */}
               <LinearGradient
                 colors={roleConfig.gradient}
                 start={{ x: 0, y: 0 }}
@@ -598,19 +795,58 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
                 <Text style={styles.statValue}>{memberActivities.length}</Text>
                 <Text style={styles.statLabel}>Activities</Text>
               </LinearGradient>
-              
+
+              {/* FIXED: Role priority */}
               <View style={[styles.statCard, isDark && styles.statCardDark, { borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' }]}>
                 <Text style={[styles.statValue, { color: roleConfig.color }]}>{roleConfig.priority}</Text>
                 <Text style={[styles.statLabel, isDark && styles.textMuted]}>Role Priority</Text>
               </View>
-              
+
+              {/* FIXED: Real status based on lastActive */}
               <View style={[styles.statCard, isDark && styles.statCardDark, { borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' }]}>
-                <Text style={[styles.statValue, { color: '#10b981' }]}>
+                <Text style={[styles.statValue, { color: member.lastActive ? '#10b981' : '#f59e0b' }]}>
                   {member.lastActive ? 'Active' : 'Pending'}
                 </Text>
                 <Text style={[styles.statLabel, isDark && styles.textMuted]}>Status</Text>
               </View>
             </View>
+
+            {/* FIXED: Activity breakdown by type */}
+            {memberActivities.length > 0 && (
+              <View style={styles.activityBreakdown}>
+                <Text style={[styles.breakdownTitle, isDark && styles.textDark]}>Activity Breakdown</Text>
+                {Object.entries(
+                  memberActivities.reduce((acc, act) => {
+                    acc[act.type] = (acc[act.type] || 0) + 1;
+                    return acc;
+                  }, {} as Record<string, number>)
+                )
+                  .sort(([,a], [,b]) => b - a)
+                  .map(([type, count]) => {
+                    const config = ACTIVITY_CONFIG[type] || ACTIVITY_CONFIG.default;
+                    const percentage = Math.round((count / memberActivities.length) * 100);
+                    return (
+                      <View key={type} style={styles.breakdownRow}>
+                        <View style={styles.breakdownLeft}>
+                          <View style={[styles.breakdownIcon, { backgroundColor: config.color + '20' }]}>
+                            <Ionicons name={config.icon as any} size={14} color={config.color} />
+                          </View>
+                          <Text style={[styles.breakdownLabel, isDark && styles.textDark]}>{config.label}</Text>
+                        </View>
+                        <View style={styles.breakdownRight}>
+                          <View style={[styles.breakdownBar, { backgroundColor: config.color + '15' }]}>
+                            <View style={[styles.breakdownFill, { 
+                              backgroundColor: config.color, 
+                              width: `${percentage}%` 
+                            }]} />
+                          </View>
+                          <Text style={[styles.breakdownCount, { color: config.color }]}>{count}</Text>
+                        </View>
+                      </View>
+                    );
+                  })}
+              </View>
+            )}
 
             {canManagePermissions && (
               <TouchableOpacity 
@@ -637,24 +873,27 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
             <Animated.View entering={FadeInUp.delay(200)} style={styles.formSection}>
               <View style={styles.sectionHeader}>
                 <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Contact Information</Text>
+                {/* FIXED: Show contact button for everyone, but label differently for self */}
                 {!isEditing && (member.phoneNumber || member.email) && (
                   <TouchableOpacity 
                     style={[styles.contactBtn, { backgroundColor: roleConfig.color + '15' }]}
                     onPress={() => setShowContactModal(true)}
                   >
-                    <Ionicons name="call-outline" size={16} color={roleConfig.color} />
-                    <Text style={[styles.contactBtnText, { color: roleConfig.color }]}>Contact</Text>
+                    <Ionicons name={isCurrentUser ? "person-outline" : "call-outline"} size={16} color={roleConfig.color} />
+                    <Text style={[styles.contactBtnText, { color: roleConfig.color }]}>
+                      {isCurrentUser ? 'Your Info' : 'Contact'}
+                    </Text>
                   </TouchableOpacity>
                 )}
               </View>
-              
+
               <BlurView intensity={80} style={styles.formCard} tint={isDark ? 'dark' : 'light'}>
                 <LinearGradient
                   colors={isDark ? ['rgba(40,40,45,0.9)', 'rgba(25,25,30,0.8)'] : ['rgba(255,255,255,0.95)', 'rgba(250,250,255,0.9)']}
                   style={StyleSheet.absoluteFill}
                 />
-                
-                {/* Full Name - Read only for self */}
+
+                {/* Full Name - Read only for self, editable for others */}
                 <View style={styles.inputGroup}>
                   <Text style={[styles.inputLabel, isDark && styles.textDark]}>Full Name</Text>
                   {isCurrentUser ? (
@@ -681,7 +920,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
 
                 <View style={styles.inputDivider} />
 
-                {/* Email */}
+                {/* Email - Editable for all when editing */}
                 <View style={styles.inputGroup}>
                   <Text style={[styles.inputLabel, isDark && styles.textDark]}>Email</Text>
                   <View style={styles.inputWithIcon}>
@@ -694,14 +933,14 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
                       placeholderTextColor={isDark ? '#666' : '#999'}
                       keyboardType="email-address"
                       autoCapitalize="none"
-                      editable={isEditing && canEdit}
+                      editable={isEditing}
                     />
                   </View>
                 </View>
 
                 <View style={styles.inputDivider} />
 
-                {/* Phone */}
+                {/* Phone - Editable for all when editing */}
                 <View style={styles.inputGroup}>
                   <Text style={[styles.inputLabel, isDark && styles.textDark]}>Phone Number</Text>
                   <View style={styles.inputWithIcon}>
@@ -713,14 +952,14 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
                       placeholder="Enter phone number"
                       placeholderTextColor={isDark ? '#666' : '#999'}
                       keyboardType="phone-pad"
-                      editable={isEditing && canEdit}
+                      editable={isEditing}
                     />
                   </View>
                 </View>
 
                 <View style={styles.inputDivider} />
 
-                {/* Relationship */}
+                {/* Relationship - Editable for all when editing */}
                 <View style={styles.inputGroup}>
                   <Text style={[styles.inputLabel, isDark && styles.textDark]}>Relationship</Text>
                   <View style={styles.inputWithIcon}>
@@ -731,12 +970,12 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
                       onChangeText={(text) => setFormData(prev => ({ ...prev, relationship: text }))}
                       placeholder="e.g., Grandma, Uncle, Nanny"
                       placeholderTextColor={isDark ? '#666' : '#999'}
-                      editable={isEditing && canEdit}
+                      editable={isEditing}
                     />
                   </View>
                 </View>
 
-                {isEditing && canEdit && (
+                {isEditing && (
                   <>
                     <View style={styles.inputDivider} />
                     <View style={styles.toggleRow}>
@@ -774,7 +1013,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
                   colors={isDark ? ['rgba(40,40,45,0.9)', 'rgba(25,25,30,0.8)'] : ['rgba(255,255,255,0.95)', 'rgba(250,250,255,0.9)']}
                   style={StyleSheet.absoluteFill}
                 />
-                
+
                 <View style={styles.infoItem}>
                   <View style={[styles.infoIcon, { backgroundColor: '#667eea20' }]}>
                     <Ionicons name="time-outline" size={20} color="#667eea" />
@@ -783,7 +1022,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
                     <Text style={[styles.infoLabel, isDark && styles.textMuted]}>Last Active</Text>
                     <Text style={[styles.infoValue, isDark && styles.textDark]}>
                       {member.lastActive 
-                        ? `${new Date(member.lastActive).toLocaleString()} (${getRelativeTime(new Date(member.lastActive).getTime())})`
+                        ? `${new Date(member.lastActive).toLocaleString()} (Active)`
                         : 'Never logged in'}
                     </Text>
                   </View>
@@ -850,18 +1089,19 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
         colors={isDark ? ['#0a0a0a', '#1a1a2e'] : ['#f8fafc', '#e2e8f0']} 
         style={StyleSheet.absoluteFill}
       />
-      
+
       {/* Header */}
       <Animated.View entering={FadeInDown} style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <View style={styles.headerContent}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerBtn}>
             <Ionicons name="arrow-back" size={24} color={isDark ? '#fff' : '#1a1a1a'} />
           </TouchableOpacity>
-          
+
           <Text style={[styles.headerTitle, isDark && styles.textDark]} numberOfLines={1}>
             {isEditing ? 'Edit Profile' : member.fullName}
           </Text>
-          
+
+          {/* FIXED: Show edit button for current user too */}
           {canEdit && (
             <TouchableOpacity 
               onPress={() => isEditing ? handleSave() : setIsEditing(true)} 
@@ -886,27 +1126,16 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
         contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 80, paddingBottom: insets.bottom + 20 }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Avatar Section */}
+        {/* Avatar Section - FIXED: Using AvatarDisplay component */}
         <Animated.View entering={FadeInUp.delay(100)} style={styles.avatarSection}>
-          <TouchableOpacity 
-            style={[styles.avatarContainer, { backgroundColor: roleConfig.color + '20' }]}
-            onPress={isEditing && canEdit ? handleImagePick : undefined}
-            disabled={!isEditing || !canEdit}
-          >
-            {formData.avatar ? (
-              <Image source={{ uri: formData.avatar }} style={styles.avatarImage} />
-            ) : (
-              <Text style={[styles.avatarEmoji, { color: roleConfig.color }]}>
-                {member.avatar || (member.role === UserRole.PARENT_2 ? '👨‍👩‍👧‍👦' : '👤')}
-              </Text>
-            )}
-            {isEditing && canEdit && (
-              <View style={styles.editAvatarOverlay}>
-                <Ionicons name="camera" size={24} color="#fff" />
-              </View>
-            )}
-          </TouchableOpacity>
-          
+          <AvatarDisplay
+            avatar={formData.avatar || member.avatar}
+            role={member.role}
+            size={120}
+            showEdit={isEditing}
+            onPress={isEditing ? handleImagePick : undefined}
+          />
+
           <LinearGradient
             colors={roleConfig.gradient}
             start={{ x: 0, y: 0 }}
@@ -916,39 +1145,44 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
             <Ionicons name={roleConfig.icon as any} size={14} color="#fff" />
             <Text style={styles.roleText}>{roleConfig.label}</Text>
           </LinearGradient>
-          
+
           <Text style={[styles.memberName, isDark && styles.textDark]}>
             {member.fullName}
           </Text>
-          
+
           <Text style={[styles.roleDescription, isDark && styles.textMuted]}>
             {roleConfig.description}
           </Text>
 
           {!isEditing && (
             <View style={styles.quickActions}>
-              <TouchableOpacity style={styles.quickActionBtn} onPress={() => navigation.navigate('FamilyChat', {
-                memberId: member.id,
-                memberName: member.fullName,
-                memberAvatar: member.avatar,
-                memberRole: member.role,
-              })}>
-                <LinearGradient colors={roleConfig.gradient} style={styles.quickActionGradient}>
-                  <Ionicons name="chatbubble" size={20} color="#fff" />
-                  <Text style={styles.quickActionText}>Message</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-              
+              {/* FIXED: Only show Message button for others, not self */}
+              {!isCurrentUser && (
+                <TouchableOpacity style={styles.quickActionBtn} onPress={() => navigation.navigate('FamilyChat', {
+                  memberId: member.id,
+                  memberName: member.fullName,
+                  memberAvatar: member.avatar,
+                  memberRole: member.role,
+                })}>
+                  <LinearGradient colors={roleConfig.gradient} style={styles.quickActionGradient}>
+                    <Ionicons name="chatbubble" size={20} color="#fff" />
+                    <Text style={styles.quickActionText}>Message</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              )}
+
               <TouchableOpacity style={styles.quickActionBtn} onPress={() => setShowContactModal(true)}>
                 <View style={[
                   styles.quickActionGradient, 
                   { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }
                 ]}>
-                  <Ionicons name="call" size={20} color={isDark ? '#fff' : '#1a1a1a'} />
-                  <Text style={[styles.quickActionText, { color: isDark ? '#fff' : '#1a1a1a' }]}>Call</Text>
+                  <Ionicons name={isCurrentUser ? "person" : "call"} size={20} color={isDark ? '#fff' : '#1a1a1a'} />
+                  <Text style={[styles.quickActionText, { color: isDark ? '#fff' : '#1a1a1a' }]}>
+                    {isCurrentUser ? 'Your Info' : 'Call'}
+                  </Text>
                 </View>
               </TouchableOpacity>
-              
+
               <TouchableOpacity style={styles.quickActionBtn} onPress={handleShareContact}>
                 <View style={[
                   styles.quickActionGradient, 
@@ -1061,14 +1295,27 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
         )}
       </AnimatedScrollView>
 
-      {/* Contact Modal */}
+      {/* Contact Modal - FIXED: Different title for self */}
       <ActionModal
         visible={showContactModal}
         onClose={() => setShowContactModal(false)}
-        title={`Contact ${member.fullName}`}
+        title={isCurrentUser ? 'Your Contact Info' : `Contact ${member.fullName}`}
         isDark={isDark}
       >
         <View style={styles.contactOptions}>
+          {/* FIXED: Show phone number prominently for self */}
+          {isCurrentUser && member.phoneNumber && (
+            <View style={styles.selfPhoneDisplay}>
+              <Ionicons name="call" size={20} color="#10b981" />
+              <Text style={[styles.selfPhoneText, isDark && styles.textDark]}>
+                {member.phoneNumber}
+              </Text>
+              <Text style={[styles.selfPhoneLabel, isDark && styles.textMuted]}>
+                Your registered number
+              </Text>
+            </View>
+          )}
+
           {member.phoneNumber && (
             <>
               <TouchableOpacity style={styles.contactOption} onPress={handleCall}>
@@ -1076,25 +1323,29 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
                   <Ionicons name="call" size={24} color="#10b981" />
                 </View>
                 <View style={styles.contactInfo}>
-                  <Text style={[styles.contactLabel, isDark && styles.textDark]}>Phone Call</Text>
+                  <Text style={[styles.contactLabel, isDark && styles.textDark]}>
+                    {isCurrentUser ? 'Call Your Number' : 'Phone Call'}
+                  </Text>
                   <Text style={[styles.contactValue, isDark && styles.textMuted]}>{member.phoneNumber}</Text>
                 </View>
                 <Ionicons name="chevron-forward" size={20} color={isDark ? '#666' : '#999'} />
               </TouchableOpacity>
-              
+
               <TouchableOpacity style={styles.contactOption} onPress={handleMessage}>
                 <View style={[styles.contactIcon, { backgroundColor: '#667eea20' }]}>
                   <Ionicons name="chatbubble" size={24} color="#667eea" />
                 </View>
                 <View style={styles.contactInfo}>
-                  <Text style={[styles.contactLabel, isDark && styles.textDark]}>Send Message</Text>
+                  <Text style={[styles.contactLabel, isDark && styles.textDark]}>
+                    {isCurrentUser ? 'Message Your Number' : 'Send Message'}
+                  </Text>
                   <Text style={[styles.contactValue, isDark && styles.textMuted]}>SMS/Text</Text>
                 </View>
                 <Ionicons name="chevron-forward" size={20} color={isDark ? '#666' : '#999'} />
               </TouchableOpacity>
             </>
           )}
-          
+
           {member.email && (
             <TouchableOpacity style={styles.contactOption} onPress={handleEmail}>
               <View style={[styles.contactIcon, { backgroundColor: '#f59e0b20' }]}>
@@ -1107,7 +1358,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
               <Ionicons name="chevron-forward" size={20} color={isDark ? '#666' : '#999'} />
             </TouchableOpacity>
           )}
-          
+
           <TouchableOpacity style={styles.contactOption} onPress={handleShareContact}>
             <View style={[styles.contactIcon, { backgroundColor: '#ec489920' }]}>
               <Ionicons name="share" size={24} color="#ec4899" />
@@ -1167,7 +1418,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f8f9fa' },
   containerDark: { backgroundColor: '#0a0a0a' },
   centered: { justifyContent: 'center', alignItems: 'center' },
-  
+
   scrollContent: {
     paddingHorizontal: 16,
   },
@@ -1211,9 +1462,6 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   avatarContainer: {
-    width: 120,
-    height: 120,
-    borderRadius: 40,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
@@ -1224,8 +1472,8 @@ const styles = StyleSheet.create({
     }),
   },
   avatarImage: {
-    width: 120,
-    height: 120,
+    width: '100%',
+    height: '100%',
     borderRadius: 40,
   },
   avatarEmoji: {
@@ -1233,8 +1481,6 @@ const styles = StyleSheet.create({
   },
   editAvatarOverlay: {
     position: 'absolute',
-    bottom: 0,
-    right: 0,
     width: 40,
     height: 40,
     borderRadius: 20,
@@ -1519,6 +1765,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#64748b',
   },
+  emptySubtext: {
+    marginTop: 8,
+    fontSize: 12,
+    color: '#94a3b8',
+    textAlign: 'center',
+    maxWidth: 250,
+  },
 
   // Permissions
   permissionsCard: {
@@ -1597,6 +1850,67 @@ const styles = StyleSheet.create({
   statLabel: {
     fontSize: 12,
     color: 'rgba(255,255,255,0.8)',
+  },
+
+  // NEW: Activity Breakdown
+  activityBreakdown: {
+    marginTop: 20,
+    padding: 16,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 16,
+  },
+  breakdownTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1a1a1a',
+    marginBottom: 12,
+  },
+  breakdownRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  breakdownLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  breakdownIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  breakdownLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1a1a1a',
+  },
+  breakdownRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  breakdownBar: {
+    height: 6,
+    borderRadius: 3,
+    flex: 1,
+    marginRight: 10,
+    overflow: 'hidden',
+  },
+  breakdownFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  breakdownCount: {
+    fontSize: 14,
+    fontWeight: '700',
+    minWidth: 24,
+    textAlign: 'right',
   },
 
   // Info Section
@@ -1772,6 +2086,25 @@ const styles = StyleSheet.create({
   contactValue: {
     fontSize: 13,
     color: '#64748b',
+  },
+  // NEW: Self phone display
+  selfPhoneDisplay: {
+    alignItems: 'center',
+    paddingVertical: 20,
+    marginBottom: 16,
+    backgroundColor: 'rgba(16,185,129,0.08)',
+    borderRadius: 16,
+  },
+  selfPhoneText: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#1a1a1a',
+    marginTop: 8,
+  },
+  selfPhoneLabel: {
+    fontSize: 13,
+    color: '#64748b',
+    marginTop: 4,
   },
 
   // Role Modal

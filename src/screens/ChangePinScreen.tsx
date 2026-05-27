@@ -90,11 +90,21 @@ export default function ChangePinScreen({ navigation }: ChangePinScreenProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [alert, setAlert] = useState<AlertState>({ visible: false, type: 'success', title: '', message: '' });
   
-  const { settings: securitySettings, setupPin, verifyPin, changePin } = useSecurity();
+  const { settings: securitySettings, setupPin, verifyPin, changePin, resetUnlockLock } = useSecurity();
   
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const insets = useSafeAreaInsets();
+
+  // CRITICAL FIX: Reset stuck locks on mount and focus so the PIN flow never inherits a stale locked state
+  useEffect(() => {
+    resetUnlockLock();
+    
+    const unsubscribe = navigation.addListener('focus', () => {
+      resetUnlockLock();
+    });
+    return unsubscribe;
+  }, [navigation, resetUnlockLock]);
 
   useEffect(() => {
     if (securitySettings.isPinEnabled) {

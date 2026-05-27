@@ -16,8 +16,8 @@ const ASYNC_KEYS = {
   AUTO_LOCK_TIMEOUT: 'littleloom_auto_lock_timeout',
   SECURITY_LOCK: 'littleloom_security_lock',
   LAST_ACTIVE: 'littleloom_last_active',
-  SHARING_ACTIVE: 'littleloom_sharing_active',
-  NAVIGATION_LOCKED: 'littleloom_navigation_locked',
+  MANUAL_LOCK_TIME: 'littleloom_manual_lock_time',
+  SETUP_IN_PROGRESS: 'littleloom_setup_in_progress',
 } as const;
 
 const secureStorage = {
@@ -40,7 +40,6 @@ const secureStorage = {
   },
 };
 
-// Biometric type configuration interface
 export interface BiometricTypeConfig {
   type: LocalAuthentication.AuthenticationType;
   name: string;
@@ -86,6 +85,8 @@ interface SecurityContextType extends SecurityState {
   setSharingActive: (active: boolean) => Promise<void>;
   isSharingActive: () => boolean;
   getAvailableBiometricTypes: () => Promise<BiometricTypeConfig[]>;
+  clearSecurityState: () => Promise<void>;
+  resetUnlockLock: () => void;
 }
 
 const SecurityContext = createContext<SecurityContextType | null>(null);
@@ -100,65 +101,34 @@ const defaultSettings: SecuritySettings = {
   securityLevel: LocalAuthentication.SecurityLevel.NONE,
 };
 
-// Helper function to get all biometric configurations
 const getBiometricConfigs = (types: LocalAuthentication.AuthenticationType[]): BiometricTypeConfig[] => {
   const configs: BiometricTypeConfig[] = [];
-  
   if (!types || !Array.isArray(types)) return configs;
-  
   types.forEach(type => {
     switch (type) {
       case LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION:
-        configs.push({
-          type,
-          name: 'Face ID',
-          icon: 'scan-outline',
-          description: 'Use your face to unlock',
-          color: '#667eea',
-        });
+        configs.push({ type, name: 'Face ID', icon: 'scan-outline', description: 'Use your face to unlock', color: '#667eea' });
         break;
       case LocalAuthentication.AuthenticationType.FINGERPRINT:
-        configs.push({
-          type,
-          name: 'Fingerprint',
-          icon: 'finger-print',
-          description: 'Use your fingerprint to unlock',
-          color: '#43e97b',
-        });
+        configs.push({ type, name: 'Fingerprint', icon: 'finger-print', description: 'Use your fingerprint to unlock', color: '#43e97b' });
         break;
       case LocalAuthentication.AuthenticationType.IRIS:
-        configs.push({
-          type,
-          name: 'Iris Scan',
-          icon: 'eye',
-          description: 'Use your eyes to unlock',
-          color: '#ffa502',
-        });
+        configs.push({ type, name: 'Iris Scan', icon: 'eye', description: 'Use your eyes to unlock', color: '#ffa502' });
         break;
     }
   });
-  
   return configs;
 };
 
-// Helper to get primary biometric type name
 const getPrimaryBiometricName = (types: LocalAuthentication.AuthenticationType[]): string => {
   if (!types || types.length === 0) return 'Biometric';
-  
-  if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
-    return 'Face ID';
-  }
-  if (types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
-    return 'Fingerprint';
-  }
-  if (types.includes(LocalAuthentication.AuthenticationType.IRIS)) {
-    return 'Iris Scan';
-  }
+  if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) return 'Face ID';
+  if (types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) return 'Fingerprint';
+  if (types.includes(LocalAuthentication.AuthenticationType.IRIS)) return 'Iris Scan';
   return 'Biometric';
 };
 
 export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Resolve AuthContext at runtime to avoid circular dependency
   let auth: any;
   try {
     const AuthModule = require('./AuthContext');
@@ -189,6 +159,12 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const sharingActiveRef = useRef<boolean>(false);
   const unlockInProgressRef = useRef<boolean>(false);
   const securityCheckLockRef = useRef<boolean>(false);
+  const manualLockTimeRef = useRef<number>(0);
+  const biometricPromptInProgressRef = useRef<boolean>(false);
+  // CRITICAL FIX: Track last unlock time to prevent immediate re-lock
+  const lastUnlockTimeRef = useRef<number>(0);
+  // CRITICAL FIX: Track background time to skip check for brief backgrounding
+  const backgroundTimeRef = useRef<number>(0);
 
   useEffect(() => {
     return () => {
@@ -196,12 +172,10 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
-  // Register forceUnlock as the setup complete callback
   useEffect(() => {
     if (setSetupCompleteCallback) {
       setSetupCompleteCallback(forceUnlock);
     }
-    
     return () => {
       if (setSetupCompleteCallback) {
         setSetupCompleteCallback(null);
@@ -209,7 +183,6 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, [setSetupCompleteCallback]);
 
-  // Initialize security state
   useEffect(() => {
     const initSecurity = async () => {
       try {
@@ -245,7 +218,6 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             },
           }));
         }
-
         await checkBiometricCapabilities();
       } catch (error) {
         if (isMounted.current) {
@@ -263,49 +235,20 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, [isAuthenticated]);
 
-  // AppState handling - prevents lock during sharing
+  // CRITICAL FIX: Track background time to skip security check for brief backgrounding
   useEffect(() => {
     const subscription = AppState.addEventListener('change', async (nextAppState) => {
-      console.log('🔒 Security AppState:', appState.current, '->', nextAppState);
-      
-      // App coming to foreground
-      if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
-        // Don't check security immediately if sharing was active
-        if (sharingActiveRef.current) {
-          console.log('📤 Sharing was active, deferring security check');
-          sharingActiveRef.current = false;
-          await AsyncStorage.setItem(ASYNC_KEYS.SHARING_ACTIVE, 'false');
-          
-          const now = Date.now();
-          lastActiveRef.current = now;
-          await AsyncStorage.setItem(ASYNC_KEYS.LAST_ACTIVE, now.toString());
-          
-          appState.current = nextAppState;
-          return;
-        }
-
-        setTimeout(async () => {
-          if (isMounted.current && isAppActive()) {
-            await checkSecurityOnResume();
-          }
-        }, 500);
-      }
-      
-      // App going to background - update last active time
       if (nextAppState.match(/inactive|background/) && appState.current === 'active') {
-        console.log('🔒 App going to background, saving last active time');
+        backgroundTimeRef.current = Date.now();
         const now = Date.now();
         lastActiveRef.current = now;
         await AsyncStorage.setItem(ASYNC_KEYS.LAST_ACTIVE, now.toString());
       }
-      
       appState.current = nextAppState;
     });
-
     return () => subscription.remove();
-  }, [isAppActive]);
+  }, []);
 
-  // Update last active periodically while app is active
   useEffect(() => {
     const interval = setInterval(async () => {
       if (isAuthenticated && !state.isSecurityLocked && appState.current === 'active' && !sharingActiveRef.current) {
@@ -313,33 +256,23 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         lastActiveRef.current = now;
         await AsyncStorage.setItem(ASYNC_KEYS.LAST_ACTIVE, now.toString());
       }
-    }, 5000);
-    
+    }, 3000);
     return () => clearInterval(interval);
   }, [isAuthenticated, state.isSecurityLocked]);
 
   const checkBiometricCapabilities = useCallback(async () => {
     try {
-      // Safety check for module availability
-      if (!LocalAuthentication || !LocalAuthentication.hasHardwareAsync) {
-        console.log('LocalAuthentication module not available');
-        return;
-      }
-
+      if (!LocalAuthentication || !LocalAuthentication.hasHardwareAsync) return;
       const [hasHardware, isEnrolled, types, securityLevel] = await Promise.all([
         LocalAuthentication.hasHardwareAsync(),
         LocalAuthentication.isEnrolledAsync(),
         LocalAuthentication.supportedAuthenticationTypesAsync ? 
-          LocalAuthentication.supportedAuthenticationTypesAsync() : 
-          Promise.resolve([]),
+          LocalAuthentication.supportedAuthenticationTypesAsync() : Promise.resolve([]),
         LocalAuthentication.getEnrolledLevelAsync ? 
-          LocalAuthentication.getEnrolledLevelAsync() : 
-          Promise.resolve(LocalAuthentication.SecurityLevel.NONE),
+          LocalAuthentication.getEnrolledLevelAsync() : Promise.resolve(LocalAuthentication.SecurityLevel.NONE),
       ]);
-
       const biometricConfigs = getBiometricConfigs(types);
       const primaryName = getPrimaryBiometricName(types);
-
       if (isMounted.current) {
         setState(prev => ({
           ...prev,
@@ -360,17 +293,13 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, []);
 
   const authenticateWithBiometric = useCallback(async (promptMessage?: string) => {
-    if (unlockInProgressRef.current) {
+    if (biometricPromptInProgressRef.current) {
       return { success: false, error: 'in_progress' };
     }
-
-    // Safety check
     if (!LocalAuthentication || !LocalAuthentication.authenticateAsync) {
       return { success: false, error: 'not_available' };
     }
-
-    unlockInProgressRef.current = true;
-
+    biometricPromptInProgressRef.current = true;
     try {
       const result = await LocalAuthentication.authenticateAsync({
         promptMessage: promptMessage || `Authenticate with ${state.settings.biometricTypeName}`,
@@ -383,8 +312,8 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return { success: false, error: 'unknown' };
     } finally {
       setTimeout(() => {
-        unlockInProgressRef.current = false;
-      }, 1000);
+        biometricPromptInProgressRef.current = false;
+      }, 2000);
     }
   }, [state.settings.biometricTypeName]);
 
@@ -476,28 +405,28 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const hasSecurity = state.settings.isBiometricEnabled || 
                        state.settings.isPinEnabled || 
                        state.settings.isAppLockEnabled;
-    
     if (!hasSecurity) {
       Alert.alert('No Security Enabled', 'Please enable PIN or Biometric lock first.');
       return;
     }
-
+    manualLockTimeRef.current = Date.now();
+    await AsyncStorage.setItem(ASYNC_KEYS.MANUAL_LOCK_TIME, manualLockTimeRef.current.toString());
     await AsyncStorage.setItem(ASYNC_KEYS.SECURITY_LOCK, 'true');
     await AsyncStorage.setItem(ASYNC_KEYS.LAST_ACTIVE, Date.now().toString());
     if (isMounted.current) {
       setState(prev => ({ ...prev, isSecurityLocked: true }));
     }
+    console.log('🔒 App manually locked');
   }, [state.settings]);
 
+  // CRITICAL FIX: Faster unlock timeout (200ms), track lastUnlockTime
   const unlockApp = useCallback(async (method: 'biometric' | 'pin', data?: string): Promise<boolean> => {
     if (unlockInProgressRef.current) {
       console.log('⚠️ Unlock already in progress');
       return false;
     }
-
     unlockInProgressRef.current = true;
     let isValid = false;
-
     try {
       if (method === 'biometric') {
         const result = await authenticateWithBiometric();
@@ -505,10 +434,12 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       } else if (method === 'pin' && data) {
         isValid = await verifyPin(data);
       }
-
       if (isValid) {
         await AsyncStorage.setItem(ASYNC_KEYS.SECURITY_LOCK, 'false');
         await AsyncStorage.setItem(ASYNC_KEYS.LAST_ACTIVE, Date.now().toString());
+        manualLockTimeRef.current = 0;
+        lastUnlockTimeRef.current = Date.now();
+        await AsyncStorage.removeItem(ASYNC_KEYS.MANUAL_LOCK_TIME);
         if (isMounted.current) {
           setState(prev => ({ ...prev, isSecurityLocked: false }));
         }
@@ -518,44 +449,62 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     } finally {
       setTimeout(() => {
         unlockInProgressRef.current = false;
-      }, 500);
+      }, 200);
     }
   }, [authenticateWithBiometric, verifyPin]);
 
   const forceUnlock = useCallback(async () => {
     await AsyncStorage.setItem(ASYNC_KEYS.SECURITY_LOCK, 'false');
     await AsyncStorage.setItem(ASYNC_KEYS.LAST_ACTIVE, Date.now().toString());
+    manualLockTimeRef.current = 0;
+    lastUnlockTimeRef.current = Date.now();
+    await AsyncStorage.removeItem(ASYNC_KEYS.MANUAL_LOCK_TIME);
     if (isMounted.current) {
       setState(prev => ({ ...prev, isSecurityLocked: false }));
     }
-    console.log('🔓 Force unlocked for setup flow');
+    console.log('🔓 Force unlocked');
   }, []);
 
-  // Check security on resume with debouncing
+  // CRITICAL FIX: Expose resetUnlockLock for SecurityLockScreen to clear stuck locks
+  const resetUnlockLock = useCallback(() => {
+    unlockInProgressRef.current = false;
+    biometricPromptInProgressRef.current = false;
+    securityCheckLockRef.current = false;
+    console.log('🔓 Reset all security locks');
+  }, []);
+
+  // CRITICAL FIX: checkSecurityOnResume - Skip if recently unlocked or briefly backgrounded
   const checkSecurityOnResume = useCallback(async () => {
     if (securityCheckLockRef.current) {
       console.log('⚠️ Security check already in progress');
       return;
     }
-
     if (!isAuthenticated) {
       console.log('🔒 Not authenticated, skipping security check');
       return;
     }
-    
     if (!setupComplete) {
       console.log('⏸️ Setup not complete, skipping security check');
       return;
     }
-
-    const sharingActive = await AsyncStorage.getItem(ASYNC_KEYS.SHARING_ACTIVE);
-    if (sharingActive === 'true') {
-      console.log('📤 Sharing active, skipping security check');
+    // CRITICAL FIX: Don't re-lock if we just unlocked (within 5 seconds)
+    const timeSinceUnlock = Date.now() - lastUnlockTimeRef.current;
+    if (timeSinceUnlock < 5000) {
+      console.log('🔓 Recently unlocked, skipping security check');
       return;
     }
-    
+    // CRITICAL FIX: Skip check if app was only briefly backgrounded (< 3 seconds)
+    const timeSinceBackground = Date.now() - backgroundTimeRef.current;
+    if (timeSinceBackground < 3000) {
+      console.log('⏸️ Brief background, skipping security check');
+      return;
+    }
+    const timeSinceManualLock = Date.now() - manualLockTimeRef.current;
+    if (timeSinceManualLock < 2000) {
+      console.log('🔒 Recently manual locked, skipping check');
+      return;
+    }
     securityCheckLockRef.current = true;
-
     try {
       const [appLockEnabled, lastActiveStr, biometricEnabled, pinEnabled] = await Promise.all([
         AsyncStorage.getItem(ASYNC_KEYS.APP_LOCK_ENABLED),
@@ -563,36 +512,27 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         AsyncStorage.getItem(ASYNC_KEYS.BIOMETRIC_ENABLED),
         secureStorage.getItem(SECURE_KEYS.PIN_HASH),
       ]);
-
       const isAppLockEnabled = appLockEnabled === 'true';
       const hasBiometric = biometricEnabled === 'true';
       const hasPin = !!pinEnabled;
       const hasSecurityEnabled = isAppLockEnabled || hasBiometric || hasPin;
-      
       console.log('🔒 Security check:', { isAppLockEnabled, hasBiometric, hasPin, hasSecurityEnabled });
-      
       if (!hasSecurityEnabled) {
         console.log('🔒 No security enabled, skipping lock');
-        securityCheckLockRef.current = false;
         return;
       }
-
       const isLocked = await AsyncStorage.getItem(ASYNC_KEYS.SECURITY_LOCK);
       if (isLocked === 'true') {
         console.log('🔒 Already locked');
         if (isMounted.current) {
           setState(prev => ({ ...prev, isSecurityLocked: true }));
         }
-        securityCheckLockRef.current = false;
         return;
       }
-
       const lastActive = lastActiveStr ? parseInt(lastActiveStr, 10) : lastActiveRef.current;
       const timeout = state.settings.autoLockTimeout * 60 * 1000;
       const timeSinceLastActive = Date.now() - lastActive;
-      
       console.log('🔒 Timeout check:', { timeSinceLastActive, timeout });
-      
       if (timeSinceLastActive > timeout) {
         console.log('🔒 Timeout exceeded, locking app');
         await lockApp();
@@ -604,7 +544,9 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     } catch (error) {
       console.error('🔒 Security check error:', error);
     } finally {
-      securityCheckLockRef.current = false;
+      setTimeout(() => {
+        securityCheckLockRef.current = false;
+      }, 1000);
     }
   }, [isAuthenticated, setupComplete, state.settings.autoLockTimeout, lockApp]);
 
@@ -621,14 +563,11 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const setSharingActive = useCallback(async (active: boolean) => {
     sharingActiveRef.current = active;
-    await AsyncStorage.setItem(ASYNC_KEYS.SHARING_ACTIVE, active ? 'true' : 'false');
-    
     if (active) {
       const now = Date.now();
       lastActiveRef.current = now;
       await AsyncStorage.setItem(ASYNC_KEYS.LAST_ACTIVE, now.toString());
     }
-    
     console.log('📤 Sharing active:', active);
   }, []);
 
@@ -638,26 +577,47 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const getAvailableBiometricTypes = useCallback(async (): Promise<BiometricTypeConfig[]> => {
     try {
-      // Safety check
-      if (!LocalAuthentication || !LocalAuthentication.hasHardwareAsync) {
-        return [];
-      }
-
+      if (!LocalAuthentication || !LocalAuthentication.hasHardwareAsync) return [];
       const [hasHardware, isEnrolled, types] = await Promise.all([
         LocalAuthentication.hasHardwareAsync(),
         LocalAuthentication.isEnrolledAsync(),
         LocalAuthentication.supportedAuthenticationTypesAsync ? 
-          LocalAuthentication.supportedAuthenticationTypesAsync() : 
-          Promise.resolve([]),
+          LocalAuthentication.supportedAuthenticationTypesAsync() : Promise.resolve([]),
       ]);
-
       if (!hasHardware || !isEnrolled) return [];
-      
       return getBiometricConfigs(types);
     } catch (error) {
       console.error('Error getting biometric types:', error);
       return [];
     }
+  }, []);
+
+  const clearSecurityState = useCallback(async () => {
+    await AsyncStorage.multiRemove([
+      ASYNC_KEYS.SECURITY_LOCK,
+      ASYNC_KEYS.LAST_ACTIVE,
+      ASYNC_KEYS.MANUAL_LOCK_TIME,
+    ]);
+    lastActiveRef.current = Date.now();
+    manualLockTimeRef.current = 0;
+    lastUnlockTimeRef.current = 0;
+    sharingActiveRef.current = false;
+    unlockInProgressRef.current = false;
+    securityCheckLockRef.current = false;
+    biometricPromptInProgressRef.current = false;
+    if (isMounted.current) {
+      setState(prev => ({
+        ...prev,
+        isSecurityLocked: false,
+        settings: {
+          ...prev.settings,
+          isBiometricEnabled: false,
+          isPinEnabled: false,
+          isAppLockEnabled: false,
+        },
+      }));
+    }
+    console.log('🔓 Security state cleared');
   }, []);
 
   const value = React.useMemo(() => ({
@@ -679,7 +639,9 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setSharingActive,
     isSharingActive,
     getAvailableBiometricTypes,
-  }), [state, checkBiometricCapabilities, authenticateWithBiometric, toggleBiometric, setupPin, verifyPin, changePin, toggleAppLock, updateAutoLockTimeout, lockApp, unlockApp, checkSecurityOnResume, getBiometricTypeName, getAvailableAuthMethods, forceUnlock, setSharingActive, isSharingActive, getAvailableBiometricTypes]);
+    clearSecurityState,
+    resetUnlockLock,
+  }), [state, checkBiometricCapabilities, authenticateWithBiometric, toggleBiometric, setupPin, verifyPin, changePin, toggleAppLock, updateAutoLockTimeout, lockApp, unlockApp, checkSecurityOnResume, getBiometricTypeName, getAvailableAuthMethods, forceUnlock, setSharingActive, isSharingActive, getAvailableBiometricTypes, clearSecurityState, resetUnlockLock]);
 
   return (
     <SecurityContext.Provider value={value}>

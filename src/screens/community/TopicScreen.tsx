@@ -9,6 +9,7 @@ import {
   Alert,
   RefreshControl,
   Dimensions,
+  Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -19,6 +20,7 @@ import * as Haptics from 'expo-haptics';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CommunityStackParamList } from '../../types/navigation';
 import { useCommunity, Post, Topic } from '../../context/CommunityContext';
+import { useUser } from '../../context/UserContext';
 import { 
   CommunityColors, 
   CommunityGradients, 
@@ -30,6 +32,26 @@ import {
 type TopicScreenProps = NativeStackScreenProps<CommunityStackParamList, 'Topic'>;
 
 const { width } = Dimensions.get('window');
+
+// ─── Avatar Component (Same as CommunityScreen) ───────────────
+const AvatarImage = ({ uri, size = 40 }: { uri: string; size?: number }) => {
+  const isEmoji = !uri || (!uri.includes('://') && !uri.startsWith('/') && uri.length <= 4);
+  
+  if (isEmoji) {
+    return <Text style={{ fontSize: size }}>{uri || '👤'}</Text>;
+  }
+
+  const normalizedUri = uri.startsWith('file://') ? uri : uri.startsWith('/') ? `file://${uri}` : uri;
+
+  return (
+    <Image
+      source={{ uri: normalizedUri }}
+      style={{ width: size, height: size, borderRadius: size / 2 }}
+      resizeMode="cover"
+
+    />
+  );
+};
 
 export default function TopicScreen({ navigation, route }: TopicScreenProps) {
   const { topicId } = route.params;
@@ -44,12 +66,33 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
     unrepostPost,
     refreshFeed,
     currentUser,
+    syncUserProfileAcrossPosts,
   } = useCommunity();
-  
+  const { communityProfile } = useUser();
+
   const [refreshing, setRefreshing] = useState(false);
   const [sortBy, setSortBy] = useState<'trending' | 'newest' | 'popular'>('trending');
   const [topic, setTopic] = useState<Topic | undefined>(undefined);
   const [posts, setPosts] = useState<Post[]>([]);
+
+  // Sync profile changes when communityProfile updates
+  useEffect(() => {
+    if (currentUser?.id && communityProfile) {
+      const hasChanges = 
+        communityProfile.displayName !== currentUser.displayName ||
+        communityProfile.handle !== currentUser.handle ||
+        communityProfile.avatar !== currentUser.avatar;
+
+      if (hasChanges) {
+        syncUserProfileAcrossPosts(currentUser.id, {
+          displayName: communityProfile.displayName,
+          handle: communityProfile.handle,
+          avatar: communityProfile.avatar,
+          bio: communityProfile.bio,
+        });
+      }
+    }
+  }, [communityProfile?.displayName, communityProfile?.handle, communityProfile?.avatar]);
 
   useEffect(() => {
     const loadTopicData = () => {
@@ -58,7 +101,7 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
       setTopic(currentTopic);
       setPosts(topicPosts);
     };
-    
+
     loadTopicData();
   }, [topicId, getTopicById, getPostsByTopic]);
 
@@ -72,7 +115,7 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
 
   const handleJoinToggle = async () => {
     if (!topic) return;
-    
+
     if (topic.isJoined) {
       Alert.alert(
         'Leave Topic',
@@ -84,7 +127,7 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
             style: 'destructive', 
             onPress: async () => {
               await leaveTopic(topic.id);
-              setTopic(prev => prev ? { ...prev, isJoined: false, members: prev.members - 1 } : undefined);
+              setTopic(prev => prev ? { ...prev, isJoined: false, members: Math.max(0, prev.members - 1) } : undefined);
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             }
           },
@@ -162,8 +205,8 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
             style={styles.postHeader}
             onPress={() => navigateToUserProfile(item.author.id)}
           >
-            <Text style={styles.postAvatar}>{item.author.avatar}</Text>
-            <View>
+            <AvatarImage uri={item.author.avatar} size={40} />
+            <View style={{ marginLeft: 12, flex: 1 }}>
               <View style={styles.postNameRow}>
                 <Text style={styles.postAuthor}>{item.author.displayName}</Text>
                 {item.author.isVerified && (
@@ -173,9 +216,25 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
               <Text style={styles.postTime}>{item.time}</Text>
             </View>
           </TouchableOpacity>
-          
+
           <Text style={styles.postContent} numberOfLines={3}>{item.content}</Text>
           
+          {/* Post Images */}
+          {item.images && item.images.length > 0 && (
+            <View style={styles.postImagesContainer}>
+              {item.images.map((img, idx) => (
+                <Image
+                  key={idx}
+                  source={{ 
+                    uri: img.startsWith('file://') ? img : img.startsWith('/') ? `file://${img}` : img 
+                  }}
+                  style={styles.postImage}
+                  resizeMode="cover"
+                />
+              ))}
+            </View>
+          )}
+
           <View style={styles.postActions}>
             <TouchableOpacity 
               style={styles.action}
@@ -190,12 +249,12 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
                 {item.likes}
               </Text>
             </TouchableOpacity>
-            
+
             <View style={styles.action}>
               <Ionicons name="chatbubble-outline" size={20} color={CommunityColors.text.secondary} />
               <Text style={styles.actionText}>{item.commentsCount}</Text>
             </View>
-            
+
             <TouchableOpacity 
               style={styles.action}
               onPress={() => handlePostRepost(item)}
@@ -209,7 +268,7 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
                 {item.reposts}
               </Text>
             </TouchableOpacity>
-            
+
             <TouchableOpacity style={styles.action}>
               <Ionicons name="share-outline" size={20} color={CommunityColors.text.secondary} />
             </TouchableOpacity>
@@ -225,7 +284,7 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
       style={styles.container}
     >
       <StatusBar style="dark" />
-      
+
       {/* Header Background */}
       <LinearGradient 
         colors={[topic.color + '60', topic.color + '20', 'transparent']}
@@ -240,7 +299,9 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
               Alert.alert('Topic Options', '', [
                 { text: 'Cancel', style: 'cancel' },
                 { text: 'Share Topic', onPress: () => console.log('Share') },
-                { text: 'Report', style: 'destructive', onPress: () => navigation.navigate('Report', { type: 'topic', targetId: topic.id, targetUserId: '' }) },
+                { text: 'Report', style: 'destructive', onPress: () => {
+                  Alert.alert('Reported', 'Thank you. We will review this topic.');
+                }},
               ]);
             }}
           >
@@ -264,7 +325,7 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
           >
             <Text style={[styles.joinText, topic.isJoined && styles.joinedText]}>
               {topic.isJoined ? 'Joined ✓' : 'Join Topic'}
-            </Text>
+                          </Text>
           </TouchableOpacity>
         </View>
       </LinearGradient>
@@ -413,11 +474,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
   },
-  postAvatar: { fontSize: 40, marginRight: 12 },
   postNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   postAuthor: { fontSize: 15, fontWeight: '700', color: CommunityColors.text.primary },
   postTime: { fontSize: 13, color: CommunityColors.text.tertiary, marginTop: 2 },
   postContent: { fontSize: 15, color: CommunityColors.text.primary, lineHeight: 22, marginBottom: 16 },
+  postImagesContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 16,
+  },
+  postImage: {
+    width: (width - 88) / 2,
+    height: 150,
+    borderRadius: CommunityBorderRadius.lg,
+  },
   postActions: { flexDirection: 'row', gap: 24 },
   action: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   actionText: { fontSize: 14, color: CommunityColors.text.secondary, fontWeight: '600' },

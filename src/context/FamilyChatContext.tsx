@@ -3,15 +3,28 @@ import { Alert, Share } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
 import { useFamily, FamilyMember } from './FamilyContext';
 import { useAuth } from './AuthContext';
 import { useBaby } from './BabyContext';
+import * as Crypto from 'expo-crypto';
 
 // ==================== TYPES ====================
 export type MessageType = 'text' | 'image' | 'voice' | 'system' | 'file';
 
+export interface FileMetadata {
+  name: string;
+  size: number;
+  type: string; // mime type
+  uri: string;
+}
+
 export interface FamilyMessage {
   id: string;
+  syncId: string;          // UUID for deduplication across devices
+  deviceId: string;        // Device that created the message
+  version: number;         // For conflict resolution
   chatId: string;
   senderId: string;
   senderName: string;
@@ -22,16 +35,17 @@ export interface FamilyMessage {
   type: MessageType;
   imageUrl?: string;
   fileUrl?: string;
-  fileName?: string;
-  fileSize?: string;
+  fileMetadata?: FileMetadata;
   timestamp: string;
   read: boolean;
   readBy: string[];
   familyCode: string;
   reactions?: { emoji: string; userId: string; userName: string }[];
   replyTo?: string; // ID of message being replied to
+  replyToPreview?: string; // Snippet of replied message content
   isEdited?: boolean;
   editedAt?: string;
+  deliveryStatus: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
 }
 
 export interface FamilyChat {
@@ -39,9 +53,9 @@ export interface FamilyChat {
   type: 'group' | 'direct';
   name: string;
   participants: string[];
-  participantRoles?: Record<string, string>; // userId -> role
-  participantNames?: Record<string, string>; // userId -> name
-  participantAvatars?: Record<string, string>; // userId -> avatar
+  participantRoles?: Record<string, string>;
+  participantNames?: Record<string, string>;
+  participantAvatars?: Record<string, string>;
   lastMessage?: FamilyMessage;
   unreadCount: number;
   createdAt: string;
@@ -69,21 +83,23 @@ interface FamilyChatState {
   currentChatId: string | null;
   familyCode: string | null;
   currentUserTyping: boolean;
+  pendingSync: string[]; // syncIds waiting for backend sync
 }
 
 interface FamilyChatContextType extends FamilyChatState {
   // Chat Management
-  createFamilyGroup: (name?: string) => Promise<string>;
+  createFamilyGroup: (name?: string, avatar?: string) => Promise<string>;
   getOrCreateDirectChat: (memberId: string, memberInfo?: Partial<FamilyMember>) => Promise<string>;
   getChatMessages: (chatId: string) => FamilyMessage[];
-  sendMessage: (chatId: string, content: string, type?: MessageType, mediaData?: string, replyToId?: string) => Promise<void>;
+  sendMessage: (chatId: string, content: string, type?: MessageType, mediaData?: string, fileMeta?: FileMetadata, replyToId?: string) => Promise<void>;
   editMessage: (chatId: string, messageId: string, newContent: string) => Promise<void>;
   markChatRead: (chatId: string) => Promise<void>;
   deleteMessage: (chatId: string, messageId: string) => Promise<void>;
   clearChat: (chatId: string) => Promise<void>;
+  resendMessage: (chatId: string, messageId: string) => Promise<void>;
   
   // Media
-  pickAndSendImage: (chatId: string) => Promise<void>;
+  pickAndSendImage: (chatId: string, fromCamera?: boolean) => Promise<void>;
   pickAndSendFile: (chatId: string) => Promise<void>;
   
   // Typing & Presence
@@ -114,6 +130,7 @@ interface FamilyChatContextType extends FamilyChatState {
   getMemberChatInfo: (memberId: string) => { name: string; avatar: string; role: string } | null;
   syncFamilyData: () => Promise<void>;
   searchMessages: (chatId: string, query: string) => FamilyMessage[];
+  getMessageById: (chatId: string, messageId: string) => FamilyMessage | undefined;
 }
 
 // ==================== STORAGE KEYS ====================
@@ -123,6 +140,7 @@ const STORAGE_KEYS = {
   FAMILY_CODE: '@littleloom_current_family_code',
   TYPING_STATUS: '@littleloom_typing_status',
   SYNC_TIMESTAMP: '@littleloom_family_sync',
+  DEVICE_ID: '@littleloom_device_id',
 };
 
 // ==================== CONTEXT ====================
@@ -141,9 +159,13 @@ const generateFamilyCode = (): string => {
 const createSystemMessage = (
   chatId: string, 
   content: string, 
-  familyCode: string
+  familyCode: string,
+  deviceId: string
 ): FamilyMessage => ({
-  id: `sys_${Date.now()}`,
+  id: `sys_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+  syncId: `sys_${Crypto.randomUUID()}`,
+  deviceId,
+  version: 1,
   chatId,
   senderId: 'system',
   senderName: 'LittleLoom',
@@ -155,7 +177,17 @@ const createSystemMessage = (
   read: true,
   readBy: [],
   familyCode,
+  deliveryStatus: 'sent',
 });
+
+const getOrCreateDeviceId = async (): Promise<string> => {
+  let id = await AsyncStorage.getItem(STORAGE_KEYS.DEVICE_ID);
+  if (!id) {
+    id = Crypto.randomUUID();
+    await AsyncStorage.setItem(STORAGE_KEYS.DEVICE_ID, id);
+  }
+  return id;
+};
 
 // ==================== PROVIDER ====================
 export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -171,13 +203,18 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     currentChatId: null,
     familyCode: null,
     currentUserTyping: false,
+    pendingSync: [],
   });
 
+  const deviceIdRef = useRef<string>('');
   const typingTimeoutRef = useRef<Record<string, NodeJS.Timeout>>({});
 
   // ==================== INITIALIZATION ====================
   useEffect(() => {
-    loadFamilyCode();
+    (async () => {
+      deviceIdRef.current = await getOrCreateDeviceId();
+      await loadFamilyCode();
+    })();
   }, []);
 
   useEffect(() => {
@@ -249,7 +286,8 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const welcomeMsg = createSystemMessage(
           familyGroupId,
           `Welcome to ${currentBaby?.name || 'your baby'}'s family chat! 💕\n\nShare updates, photos, and stay connected with your family.`,
-          state.familyCode
+          state.familyCode,
+          deviceIdRef.current
         );
         await saveMessages(familyGroupId, [welcomeMsg]);
       } else {
@@ -288,17 +326,16 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const existing = await AsyncStorage.getItem(key);
       const allMessages: FamilyMessage[] = existing ? JSON.parse(existing) : [];
       
-      // Merge and deduplicate
-      const merged = [...allMessages, ...newMessages].reduce((acc, msg) => {
-        const existingIndex = acc.findIndex(m => m.id === msg.id);
-        if (existingIndex >= 0) {
-          acc[existingIndex] = msg;
-        } else {
-          acc.push(msg);
+      // Merge and deduplicate by syncId (for cross-device sync readiness)
+      const mergedMap = new Map<string, FamilyMessage>();
+      [...allMessages, ...newMessages].forEach(msg => {
+        const existing = mergedMap.get(msg.syncId);
+        if (!existing || msg.version > existing.version) {
+          mergedMap.set(msg.syncId, msg);
         }
-        return acc;
-      }, [] as FamilyMessage[]);
+      });
       
+      const merged = Array.from(mergedMap.values());
       merged.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
       
       await AsyncStorage.setItem(key, JSON.stringify(merged));
@@ -319,7 +356,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   // ==================== CHAT ACTIONS ====================
-  const createFamilyGroup = async (name?: string): Promise<string> => {
+  const createFamilyGroup = async (name?: string, avatar?: string): Promise<string> => {
     if (!state.familyCode || !userProfile) return '';
     
     const chatId = `family_group_${state.familyCode}_${Date.now()}`;
@@ -345,7 +382,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       unreadCount: 0,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      avatar: '👨‍👩‍👧‍👦',
+      avatar: avatar || '👨‍👩‍👧‍👦',
       isMuted: false,
       familyCode: state.familyCode,
     };
@@ -358,7 +395,8 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const welcomeMsg = createSystemMessage(
       chatId,
       'Family group created! Start sharing updates with your family. 🎉',
-      state.familyCode
+      state.familyCode,
+      deviceIdRef.current
     );
     await saveMessages(chatId, [welcomeMsg]);
     
@@ -369,7 +407,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const getOrCreateDirectChat = async (memberId: string, memberInfo?: Partial<FamilyMember>): Promise<string> => {
     if (!state.familyCode || !userProfile) return '';
     
-    // Check if direct chat already exists
     const existingChat = state.chats.find(
       c => c.type === 'direct' && 
            c.participants.includes(userProfile.id) && 
@@ -378,7 +415,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     
     if (existingChat) return existingChat.id;
     
-    // Get member info
     const member = members.find(m => m.id === memberId) || memberInfo;
     if (!member) return '';
     
@@ -425,11 +461,16 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return state.messages[chatId] || [];
   }, [state.messages]);
 
+  const getMessageById = useCallback((chatId: string, messageId: string): FamilyMessage | undefined => {
+    return state.messages[chatId]?.find(m => m.id === messageId);
+  }, [state.messages]);
+
   const sendMessage = async (
     chatId: string, 
     content: string, 
     type: MessageType = 'text',
     mediaData?: string,
+    fileMeta?: FileMetadata,
     replyToId?: string
   ): Promise<void> => {
     if (!state.familyCode || !userProfile) {
@@ -440,8 +481,21 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const chat = state.chats.find(c => c.id === chatId);
     if (!chat) return;
     
+    const syncId = Crypto.randomUUID();
+    const now = new Date().toISOString();
+    
+    // Find reply preview if applicable
+    let replyToPreview: string | undefined;
+    if (replyToId) {
+      const repliedMsg = state.messages[chatId]?.find(m => m.id === replyToId);
+      replyToPreview = repliedMsg ? (repliedMsg.content.slice(0, 60) || 'Media') : undefined;
+    }
+    
     const newMessage: FamilyMessage = {
-      id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      syncId,
+      deviceId: deviceIdRef.current,
+      version: 1,
       chatId,
       senderId: userProfile.id,
       senderName: userProfile.fullName,
@@ -451,41 +505,115 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       type,
       imageUrl: type === 'image' ? mediaData : undefined,
       fileUrl: type === 'file' ? mediaData : undefined,
-      timestamp: new Date().toISOString(),
+      fileMetadata: type === 'file' ? fileMeta : undefined,
+      timestamp: now,
       read: false,
       readBy: [userProfile.id],
       familyCode: state.familyCode,
       reactions: [],
       replyTo: replyToId,
+      replyToPreview,
+      deliveryStatus: 'sending',
     };
     
-    await saveMessages(chatId, [newMessage]);
-    
-    // Update chat last message
-    const updatedChats = state.chats.map(c => {
-      if (c.id === chatId) {
-        return {
-          ...c,
-          lastMessage: newMessage,
-          updatedAt: new Date().toISOString(),
-          unreadCount: c.participants.filter(p => p !== userProfile.id).length,
-        };
-      }
-      return c;
-    });
-    
-    await AsyncStorage.setItem(STORAGE_KEYS.CHATS(state.familyCode), JSON.stringify(updatedChats));
-    
+    // Optimistic update
     setState(prev => ({
       ...prev,
-      chats: updatedChats,
       messages: {
         ...prev.messages,
         [chatId]: [...(prev.messages[chatId] || []), newMessage],
       },
+      pendingSync: [...prev.pendingSync, syncId],
     }));
     
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      // Simulate network then persist
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      // Save to storage (in real app, send to backend here)
+      await saveMessages(chatId, [{ ...newMessage, deliveryStatus: 'sent' }]);
+      
+      // Update chat last message
+      const updatedChats = state.chats.map(c => {
+        if (c.id === chatId) {
+          return {
+            ...c,
+            lastMessage: { ...newMessage, deliveryStatus: 'sent' },
+            updatedAt: now,
+            unreadCount: c.participants.filter(p => p !== userProfile.id).length,
+          };
+        }
+        return c;
+      });
+      
+      await AsyncStorage.setItem(STORAGE_KEYS.CHATS(state.familyCode), JSON.stringify(updatedChats));
+      
+      setState(prev => ({
+        ...prev,
+        chats: updatedChats,
+        messages: {
+          ...prev.messages,
+          [chatId]: prev.messages[chatId]?.map(m => 
+            m.syncId === syncId ? { ...m, deliveryStatus: 'sent' } : m
+          ) || [],
+        },
+        pendingSync: prev.pendingSync.filter(id => id !== syncId),
+      }));
+      
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    } catch (error) {
+      setState(prev => ({
+        ...prev,
+        messages: {
+          ...prev.messages,
+          [chatId]: prev.messages[chatId]?.map(m => 
+            m.syncId === syncId ? { ...m, deliveryStatus: 'failed' } : m
+          ) || [],
+        },
+        pendingSync: prev.pendingSync.filter(id => id !== syncId),
+      }));
+      throw error;
+    }
+  };
+
+  const resendMessage = async (chatId: string, messageId: string): Promise<void> => {
+    const message = state.messages[chatId]?.find(m => m.id === messageId);
+    if (!message || message.deliveryStatus !== 'failed') return;
+    
+    setState(prev => ({
+      ...prev,
+      messages: {
+        ...prev.messages,
+        [chatId]: prev.messages[chatId]?.map(m => 
+          m.id === messageId ? { ...m, deliveryStatus: 'sending' } : m
+        ) || [],
+      },
+    }));
+    
+    try {
+      await new Promise(resolve => setTimeout(resolve, 300));
+      await saveMessages(chatId, [{ ...message, deliveryStatus: 'sent' }]);
+      
+      setState(prev => ({
+        ...prev,
+        messages: {
+          ...prev.messages,
+          [chatId]: prev.messages[chatId]?.map(m => 
+            m.id === messageId ? { ...m, deliveryStatus: 'sent' } : m
+          ) || [],
+        },
+      }));
+    } catch {
+      setState(prev => ({
+        ...prev,
+        messages: {
+          ...prev.messages,
+          [chatId]: prev.messages[chatId]?.map(m => 
+            m.id === messageId ? { ...m, deliveryStatus: 'failed' } : m
+          ) || [],
+        },
+      }));
+    }
   };
 
   const editMessage = async (chatId: string, messageId: string, newContent: string): Promise<void> => {
@@ -499,6 +627,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           content: newContent,
           isEdited: true,
           editedAt: new Date().toISOString(),
+          version: msg.version + 1,
         };
       }
       return msg;
@@ -512,17 +641,44 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }));
   };
 
-  const pickAndSendImage = async (chatId: string): Promise<void> => {
+  const pickAndSendImage = async (chatId: string, fromCamera: boolean = false): Promise<void> => {
     try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.8,
-      });
+      let result;
+      
+      if (fromCamera) {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission Required', 'Please allow camera access');
+          return;
+        }
+        result = await ImagePicker.launchCameraAsync({
+          allowsEditing: true,
+          aspect: [4, 3],
+          quality: 0.8,
+        });
+      } else {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission Required', 'Please allow access to photos');
+          return;
+        }
+        result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: true,
+          aspect: [4, 3],
+          quality: 0.8,
+        });
+      }
 
       if (!result.canceled && result.assets[0]) {
-        await sendMessage(chatId, '📷 Photo', 'image', result.assets[0].uri);
+        const uri = result.assets[0].uri;
+        // Copy to permanent storage
+        const fileName = `chat_img_${Date.now()}.jpg`;
+        const permanentUri = FileSystem.documentDirectory + 'chat_media/' + fileName;
+        await FileSystem.makeDirectoryAsync(FileSystem.documentDirectory + 'chat_media/', { intermediates: true });
+        await FileSystem.copyAsync({ from: uri, to: permanentUri });
+        
+        await sendMessage(chatId, '📷 Photo', 'image', permanentUri);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
     } catch (error) {
@@ -531,9 +687,37 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const pickAndSendFile = async (chatId: string): Promise<void> => {
-    // For now, this uses image picker as Expo doesn't have a built-in file picker
-    // You could integrate with expo-document-picker for actual files
-    await pickAndSendImage(chatId);
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: '*/*',
+        copyToCacheDirectory: true,
+      });
+      
+      if (result.canceled) return;
+      
+      const asset = result.assets[0];
+      const fileInfo = await FileSystem.getInfoAsync(asset.uri);
+      const size = fileInfo.exists && 'size' in fileInfo ? fileInfo.size : 0;
+      
+      // Copy to app storage
+      const fileName = `chat_file_${Date.now()}_${asset.name}`;
+      const permanentUri = FileSystem.documentDirectory + 'chat_files/' + fileName;
+      await FileSystem.makeDirectoryAsync(FileSystem.documentDirectory + 'chat_files/', { intermediates: true });
+      await FileSystem.copyAsync({ from: asset.uri, to: permanentUri });
+      
+      const fileMeta: FileMetadata = {
+        name: asset.name || 'Unknown file',
+        size,
+        type: asset.mimeType || 'application/octet-stream',
+        uri: permanentUri,
+      };
+      
+      await sendMessage(chatId, `📎 ${asset.name}`, 'file', permanentUri, fileMeta);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      console.error('File pick error:', error);
+      Alert.alert('Error', 'Failed to send file');
+    }
   };
 
   const markChatRead = async (chatId: string): Promise<void> => {
@@ -542,18 +726,16 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const chat = state.chats.find(c => c.id === chatId);
     if (!chat) return;
     
-    // Update messages read status
     const messages = state.messages[chatId] || [];
     const updatedMessages = messages.map(msg => {
       if (!msg.readBy.includes(userProfile.id)) {
-        return { ...msg, readBy: [...msg.readBy, userProfile.id], read: true };
+        return { ...msg, readBy: [...msg.readBy, userProfile.id], read: true, deliveryStatus: 'read' as const };
       }
       return msg;
     });
     
     await saveMessages(chatId, updatedMessages);
     
-    // Update chat unread count
     const updatedChats = state.chats.map(c => {
       if (c.id === chatId) {
         return { ...c, unreadCount: 0 };
@@ -666,7 +848,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const existingIndex = reactions.findIndex(r => r.userId === userProfile.id && r.emoji === emoji);
         
         if (existingIndex >= 0) {
-          // Remove if already exists (toggle)
           return {
             ...msg,
             reactions: reactions.filter((_, i) => i !== existingIndex),
@@ -803,14 +984,12 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       await AsyncStorage.setItem(STORAGE_KEYS.FAMILY_CODE, code);
       setState(prev => ({ ...prev, familyCode: code }));
       
-      // Load that family's chats
       const chatsKey = STORAGE_KEYS.CHATS(code);
       const savedChats = await AsyncStorage.getItem(chatsKey);
       
       if (savedChats) {
         const chats: FamilyChat[] = JSON.parse(savedChats);
         
-        // Add current user to family group if not already
         const familyGroup = chats.find(c => c.type === 'group');
         if (familyGroup && userProfile && !familyGroup.participants.includes(userProfile.id)) {
           familyGroup.participants.push(userProfile.id);
@@ -820,11 +999,11 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           
           await AsyncStorage.setItem(chatsKey, JSON.stringify(chats));
           
-          // Add join message
           const joinMsg = createSystemMessage(
             familyGroup.id,
             `👋 ${userProfile.fullName} joined the family`,
-            code
+            code,
+            deviceIdRef.current
           );
           await saveMessages(familyGroup.id, [joinMsg]);
         }
@@ -890,6 +1069,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     markChatRead,
     deleteMessage,
     clearChat,
+    resendMessage,
     pickAndSendImage,
     pickAndSendFile,
     setTypingStatus,
@@ -911,6 +1091,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     getMemberChatInfo,
     syncFamilyData,
     searchMessages,
+    getMessageById,
   };
 
   return (

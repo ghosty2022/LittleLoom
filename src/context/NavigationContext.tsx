@@ -1,178 +1,361 @@
 // src/context/NavigationContext.tsx
-import React, { 
-  createContext, 
-  useContext, 
-  useRef, 
-  useCallback, 
+import React, {
+  createContext,
+  useContext,
   useState,
+  useCallback,
+  useRef,
   useEffect,
-  ReactNode,
   useMemo,
 } from 'react';
-import { 
-  NativeScrollEvent, 
-  NativeSyntheticEvent,
-} from 'react-native';
-import * as Haptics from 'expo-haptics';
 import { useNavigationState } from '@react-navigation/native';
-import { registerScrollHandler } from '../utils/GlobalScrollPatch';
+import { useColorScheme, AppState, AppStateStatus } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  useScrollHandlerRegistration,
+  ScrollState,
+} from '../utils/GlobalScrollPatch';
+
+// ============================================
+// THEME CONFIGURATION
+// ============================================
+
+export type ThemeMode = 'light' | 'dark' | 'system';
+
+export interface ThemeColors {
+  background: string;
+  card: string;
+  text: string;
+  textSecondary: string;
+  border: string;
+  primary: string;
+  primaryLight: string;
+  accent: string;
+  success: string;
+  warning: string;
+  error: string;
+  glassBackground: string;
+  glassBorder: string;
+  navBackground: string;
+  handleBar: string;
+  shadowColor: string;
+}
+
+const LIGHT_COLORS: ThemeColors = {
+  background: '#f8faff',
+  card: '#ffffff',
+  text: '#1a1a1a',
+  textSecondary: '#64748b',
+  border: '#e2e8f0',
+  primary: '#667eea',
+  primaryLight: '#a3bffa',
+  accent: '#fa709a',
+  success: '#11998e',
+  warning: '#f59e0b',
+  error: '#ef4444',
+  glassBackground: 'rgba(255,255,255,0.95)',
+  glassBorder: 'rgba(255,255,255,0.5)',
+  navBackground: '#ffffff',
+  handleBar: 'rgba(0,0,0,0.15)',
+  shadowColor: '#667eea',
+};
+
+const DARK_COLORS: ThemeColors = {
+  background: '#000000',
+  card: '#0a0a0a',
+  text: '#ffffff',
+  textSecondary: '#94a3b8',
+  border: '#1a1a1a',
+  primary: '#a3bffa',
+  primaryLight: '#667eea',
+  accent: '#fa709a',
+  success: '#38ef7d',
+  warning: '#fbbf24',
+  error: '#f87171',
+  glassBackground: 'rgba(25,25,25,0.9)',
+  glassBorder: 'rgba(255,255,255,0.1)',
+  navBackground: '#0a0a0a',
+  handleBar: 'rgba(255,255,255,0.25)',
+  shadowColor: '#000000',
+};
+
+const THEME_STORAGE_KEY = '@littleloom_theme_preference_v1';
+
+// ============================================
+// NAVIGATION CONTEXT TYPES
+// ============================================
 
 interface NavigationContextType {
-  // Scroll State
+  // Nav visibility
   isNavVisible: boolean;
   isNavCompact: boolean;
-  scrollDirection: 'up' | 'down' | null;
-  scrollY: number;
-  
-  // Timeline Specific
-  isTimelineFabVisible: boolean;
-  currentDate: Date;
-  
-  // Actions
-  handleScroll: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
-  resetScroll: () => void;
   showNav: () => void;
   hideNav: () => void;
   toggleCompact: () => void;
-  
-  // Route Info
-  currentRoute: string;
-  isTimelineScreen: boolean;
+  isCommunityScreen: boolean;
+  forceShowNav: () => void;
+  forceHideNav: () => void;
+
+  // Theme
+  themeMode: ThemeMode;
+  isDark: boolean;
+  colors: ThemeColors;
+  setThemeMode: (mode: ThemeMode) => void;
+  toggleTheme: () => void;
 }
 
-const NavigationContext = createContext<NavigationContextType | undefined>(undefined);
+// ============================================
+// CONTEXT
+// ============================================
 
-export const NavigationProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+const NavigationContext = createContext<NavigationContextType>({
+  isNavVisible: true,
+  isNavCompact: false,
+  showNav: () => {},
+  hideNav: () => {},
+  toggleCompact: () => {},
+  isCommunityScreen: false,
+  forceShowNav: () => {},
+  forceHideNav: () => {},
+
+  themeMode: 'system',
+  isDark: false,
+  colors: LIGHT_COLORS,
+  setThemeMode: () => {},
+  toggleTheme: () => {},
+});
+
+// ============================================
+// SCROLL CONFIGURATION
+// ============================================
+
+const SCROLL_CONFIG = {
+  HIDE_THRESHOLD: 60,
+  SHOW_THRESHOLD: 20,
+  VELOCITY_THRESHOLD: 0.3,
+  SCROLL_END_DELAY: 150,
+};
+
+// ============================================
+// THEME RESOLVER
+// ============================================
+
+const resolveTheme = (mode: ThemeMode, systemScheme: 'light' | 'dark' | null): boolean => {
+  if (mode === 'system') {
+    return systemScheme === 'dark';
+  }
+  return mode === 'dark';
+};
+
+// ============================================
+// PROVIDER
+// ============================================
+
+export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const systemColorScheme = useColorScheme();
+
+  // ==================== THEME STATE ====================
+  const [themeMode, setThemeModeState] = useState<ThemeMode>('system');
+  const [themeLoaded, setThemeLoaded] = useState(false);
+
+  // Load saved theme preference
+  useEffect(() => {
+    const loadTheme = async () => {
+      try {
+        const saved = await AsyncStorage.getItem(THEME_STORAGE_KEY);
+        if (saved && ['light', 'dark', 'system'].includes(saved)) {
+          setThemeModeState(saved as ThemeMode);
+        }
+      } catch (e) {
+        console.warn('Failed to load theme preference:', e);
+      } finally {
+        setThemeLoaded(true);
+      }
+    };
+    loadTheme();
+  }, []);
+
+  // Persist theme preference
+  const setThemeMode = useCallback(async (mode: ThemeMode) => {
+    setThemeModeState(mode);
+    try {
+      await AsyncStorage.setItem(THEME_STORAGE_KEY, mode);
+    } catch (e) {
+      console.warn('Failed to save theme preference:', e);
+    }
+  }, []);
+
+  // Toggle between light/dark/system (cycles through all three)
+  const toggleTheme = useCallback(() => {
+    const modes: ThemeMode[] = ['light', 'dark', 'system'];
+    const currentIndex = modes.indexOf(themeMode);
+    const nextMode = modes[(currentIndex + 1) % modes.length];
+    setThemeMode(nextMode);
+  }, [themeMode, setThemeMode]);
+
+  // Resolved dark mode state (respects system theme when in 'system' mode)
+  const isDark = useMemo(
+    () => resolveTheme(themeMode, systemColorScheme),
+    [themeMode, systemColorScheme]
+  );
+
+  // Current color palette
+  const colors = useMemo(
+    () => (isDark ? DARK_COLORS : LIGHT_COLORS),
+    [isDark]
+  );
+
+  // ==================== NAV VISIBILITY STATE ====================
   const [isNavVisible, setIsNavVisible] = useState(true);
   const [isNavCompact, setIsNavCompact] = useState(false);
-  const [scrollDirection, setScrollDirection] = useState<'up' | 'down' | null>(null);
-  const [scrollY, setScrollY] = useState(0);
-  const [isTimelineFabVisible, setIsTimelineFabVisible] = useState(false);
-  const [currentDate] = useState(new Date());
-  
-  const lastScrollY = useRef(0);
-  const scrollTimeout = useRef<NodeJS.Timeout | null>(null);
-  const velocityThreshold = 10;
+  const [isCommunityScreen, setIsCommunityScreen] = useState(false);
 
-  // Get current route name from navigation state
-  const routeName = useNavigationState(state => {
-    if (!state) return 'Home';
-    const route = state.routes[state.index];
-    if (route.state) {
-      const nestedState = route.state as any;
-      const nestedRoute = nestedState.routes[nestedState.index];
-      return nestedRoute.name;
-    }
-    return route.name;
-  });
-  
-  const isTimelineScreen = routeName === 'Timeline';
+  const accumulatedScrollDown = useRef(0);
+  const accumulatedScrollUp = useRef(0);
+  const isNavHiddenByScroll = useRef(false);
+  const scrollEndTimeout = useRef<NodeJS.Timeout | null>(null);
+  const lastOffsetY = useRef(0);
 
-  // Auto-show FAB only on Timeline
+  // Detect community screens
+  const routeNames = useNavigationState(state => state?.routes?.map(r => r.name) || []);
   useEffect(() => {
-    setIsTimelineFabVisible(isTimelineScreen);
-  }, [isTimelineScreen]);
-
-  const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const currentY = event.nativeEvent.contentOffset.y;
-    const delta = currentY - lastScrollY.current;
-    
-    setScrollY(currentY);
-    
-    if (Math.abs(delta) > velocityThreshold) {
-      const newDirection = delta > 0 ? 'down' : 'up';
-      
-      if (newDirection !== scrollDirection) {
-        setScrollDirection(newDirection);
-        
-        if (newDirection === 'down' && currentY > 50) {
-          setIsNavCompact(true);
-        } else if (newDirection === 'up') {
-          if (currentY < 100) {
-            setIsNavCompact(false);
-          }
-        }
-      }
-    }
-    
-    lastScrollY.current = currentY;
-    
-    if (scrollTimeout.current) {
-      clearTimeout(scrollTimeout.current);
-    }
-    
-    scrollTimeout.current = setTimeout(() => {
-      if (currentY < 50) {
-        setIsNavCompact(false);
-      }
-    }, 150);
-  }, [scrollDirection]);
-
-  // FIXED: Use ref to avoid stale closure in global handler
-  const handleScrollRef = useRef(handleScroll);
-  useEffect(() => {
-    handleScrollRef.current = handleScroll;
-  }, [handleScroll]);
-
-  // Register scroll handler globally
-  useEffect(() => {
-    const globalHandler = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      handleScrollRef.current(event);
-    };
-    
-    return registerScrollHandler(globalHandler);
-  }, []);
-
-  const resetScroll = useCallback(() => {
-    lastScrollY.current = 0;
-    setScrollDirection(null);
-    setIsNavVisible(true);
-    setIsNavCompact(false);
-    setScrollY(0);
-  }, []);
+    const communityRoutes = [
+      'CommunityMain', 'Topic', 'CreatePost', 'PostDetail',
+      'Chat', 'UserProfile', 'Notifications', 'EditCommunityProfile',
+      'ChatList', 'TopicMembers', 'Followers', 'Following',
+      'SearchUsers', 'BlockedUsers', 'Report'
+    ];
+    const isCommunity = routeNames.some(name => communityRoutes.includes(name));
+    setIsCommunityScreen(isCommunity);
+  }, [routeNames]);
 
   const showNav = useCallback(() => {
     setIsNavVisible(true);
+    isNavHiddenByScroll.current = false;
+    accumulatedScrollDown.current = 0;
+    accumulatedScrollUp.current = 0;
   }, []);
 
   const hideNav = useCallback(() => {
     setIsNavVisible(false);
+    isNavHiddenByScroll.current = true;
   }, []);
 
   const toggleCompact = useCallback(() => {
     setIsNavCompact(prev => !prev);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   }, []);
 
+  const forceShowNav = useCallback(() => {
+    showNav();
+    setIsNavCompact(false);
+  }, [showNav]);
+
+  const forceHideNav = useCallback(() => {
+    hideNav();
+  }, [hideNav]);
+
+  // ==================== GLOBAL SCROLL HANDLER ====================
+  const handleGlobalScroll = useCallback((event: any, state: ScrollState) => {
+    if (isCommunityScreen) return;
+
+    if (scrollEndTimeout.current) {
+      clearTimeout(scrollEndTimeout.current);
+    }
+
+    const { direction, offsetY, velocity, isAtTop } = state;
+    const deltaY = offsetY - lastOffsetY.current;
+    lastOffsetY.current = offsetY;
+
+    // At top — always show
+    if (isAtTop) {
+      if (isNavHiddenByScroll.current) {
+        showNav();
+      }
+      return;
+    }
+
+    // Scrolling down — hide when threshold reached
+    if (direction === 'down' && velocity > SCROLL_CONFIG.VELOCITY_THRESHOLD) {
+      accumulatedScrollDown.current += Math.abs(deltaY);
+      accumulatedScrollUp.current = 0;
+
+      if (!isNavHiddenByScroll.current && accumulatedScrollDown.current > SCROLL_CONFIG.HIDE_THRESHOLD) {
+        hideNav();
+      }
+    }
+
+    // Scrolling up — show immediately
+    if (direction === 'up' && velocity > SCROLL_CONFIG.VELOCITY_THRESHOLD) {
+      accumulatedScrollUp.current += Math.abs(deltaY);
+      accumulatedScrollDown.current = 0;
+
+      if (isNavHiddenByScroll.current && accumulatedScrollUp.current > SCROLL_CONFIG.SHOW_THRESHOLD) {
+        showNav();
+      }
+    }
+
+    // Reset after scroll ends
+    scrollEndTimeout.current = setTimeout(() => {
+      accumulatedScrollDown.current = 0;
+      accumulatedScrollUp.current = 0;
+      lastOffsetY.current = 0;
+    }, SCROLL_CONFIG.SCROLL_END_DELAY);
+  }, [isCommunityScreen, showNav, hideNav]);
+
+  useScrollHandlerRegistration(handleGlobalScroll);
+
+  useEffect(() => {
+    return () => {
+      if (scrollEndTimeout.current) {
+        clearTimeout(scrollEndTimeout.current);
+      }
+    };
+  }, []);
+
+  // ==================== APP STATE HANDLING ====================
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      // When returning from background, ensure nav is visible
+      if (
+        appStateRef.current.match(/inactive|background/) &&
+        nextAppState === 'active'
+      ) {
+        showNav();
+      }
+      appStateRef.current = nextAppState;
+    });
+
+    return () => subscription.remove();
+  }, [showNav]);
+
   const value = useMemo(() => ({
+    // Nav
     isNavVisible,
     isNavCompact,
-    scrollDirection,
-    scrollY,
-    isTimelineFabVisible,
-    currentDate,
-    handleScroll,
-    resetScroll,
     showNav,
     hideNav,
     toggleCompact,
-    currentRoute: routeName,
-    isTimelineScreen,
+    isCommunityScreen,
+    forceShowNav,
+    forceHideNav,
+
+    // Theme
+    themeMode,
+    isDark,
+    colors,
+    setThemeMode,
+    toggleTheme,
   }), [
-    isNavVisible,
-    isNavCompact,
-    scrollDirection,
-    scrollY,
-    isTimelineFabVisible,
-    currentDate,
-    handleScroll,
-    resetScroll,
-    showNav,
-    hideNav,
-    toggleCompact,
-    routeName,
-    isTimelineScreen,
+    isNavVisible, isNavCompact, isCommunityScreen,
+    showNav, hideNav, toggleCompact, forceShowNav, forceHideNav,
+    themeMode, isDark, colors, setThemeMode, toggleTheme,
   ]);
+
+  if (!themeLoaded) {
+    return null;
+  }
 
   return (
     <NavigationContext.Provider value={value}>
@@ -181,6 +364,10 @@ export const NavigationProvider: React.FC<{ children: ReactNode }> = ({ children
   );
 };
 
+// ============================================
+// HOOK
+// ============================================
+
 export const useNavigationContext = () => {
   const context = useContext(NavigationContext);
   if (!context) {
@@ -188,3 +375,5 @@ export const useNavigationContext = () => {
   }
   return context;
 };
+
+export default NavigationContext;

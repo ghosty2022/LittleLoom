@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Alert,
   RefreshControl,
+  Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -27,6 +28,28 @@ import {
 } from '../../theme/CommunityTheme';
 
 type NotificationsScreenProps = NativeStackScreenProps<CommunityStackParamList, 'Notifications'>;
+
+// Safe Avatar Component - handles emoji, file://, http://, and data: URIs
+const SafeAvatar: React.FC<{ avatar?: string | null; size?: number }> = ({ avatar, size = 40 }) => {
+  const isImageUri = avatar && (avatar.startsWith('http') || avatar.startsWith('file://') || avatar.startsWith('data:'));
+  const isEmoji = avatar && !isImageUri && avatar.length <= 4;
+
+  if (isImageUri) {
+    return (
+      <Image
+        source={{ uri: avatar }}
+        style={{ width: size, height: size, borderRadius: size / 2 }}
+        resizeMode="cover"
+      />
+    );
+  }
+
+  return (
+    <View style={[styles.avatarFallback, { width: size, height: size, borderRadius: size / 2 }]}>
+      <Text style={{ fontSize: size * 0.5 }}>{isEmoji ? avatar : '👤'}</Text>
+    </View>
+  );
+};
 
 const getIcon = (type: string) => {
   switch (type) {
@@ -106,7 +129,7 @@ export default function NotificationsScreen({ navigation }: NotificationsScreenP
               <Ionicons name={icon.name as any} size={20} color={icon.color} />
             </View>
             <View style={styles.avatarContainer}>
-              <Text style={styles.userAvatar}>{item.user.avatar}</Text>
+              <SafeAvatar avatar={item.user.avatar} size={40} />
               {!item.read && <View style={styles.unreadDot} />}
             </View>
           </View>
@@ -272,6 +295,13 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   avatarContainer: { position: 'relative' },
+  avatarFallback: {
+    backgroundColor: CommunityColors.background.elevated,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: CommunityColors.border,
+  },
   userAvatar: { fontSize: 40 },
   unreadDot: {
     position: 'absolute',

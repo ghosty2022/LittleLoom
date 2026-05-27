@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+// src/components/LiquidGlassNavigation.tsx
+import React, { useCallback, useRef, useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,6 +10,8 @@ import {
   ViewStyle,
   TextStyle,
   PanResponder,
+  GestureResponderEvent,
+  PanResponderGestureState,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -27,6 +30,10 @@ import Animated, {
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
+// ============================================
+// TABS
+// ============================================
+
 interface TabItem {
   name: string;
   shortName: string;
@@ -36,25 +43,38 @@ interface TabItem {
   color: string;
   showInCompact?: boolean;
   hapticStyle?: Haptics.ImpactFeedbackStyle;
+  description?: string;
 }
 
 const TABS: TabItem[] = [
-  { name: 'Home', shortName: 'H', icon: '🏠', activeIcon: '🏡', route: 'Home', color: '#667eea', showInCompact: true, hapticStyle: Haptics.ImpactFeedbackStyle.Light },
-  { name: 'Community', shortName: 'C', icon: '👥', activeIcon: '👨‍👩‍👧‍👦', route: 'Community', color: '#fa709a', showInCompact: true, hapticStyle: Haptics.ImpactFeedbackStyle.Medium },
-  { name: 'Timeline', shortName: 'T', icon: '📜', activeIcon: '📅', route: 'Timeline', color: '#11998e', showInCompact: true, hapticStyle: Haptics.ImpactFeedbackStyle.Light },
-  { name: 'Safety', shortName: 'S', icon: '🛡️', activeIcon: '🛡️', route: 'SafetyCorner', color: '#fc5c7d', showInCompact: false, hapticStyle: Haptics.ImpactFeedbackStyle.Heavy },
-  { name: 'Settings', shortName: '⚙', icon: '⚙️', activeIcon: '🔧', route: 'Settings', color: '#43e97b', showInCompact: false, hapticStyle: Haptics.ImpactFeedbackStyle.Medium },
+  { name: 'Home', shortName: 'H', icon: '🏠', activeIcon: '🏡', route: 'Home', color: '#667eea', showInCompact: true, hapticStyle: Haptics.ImpactFeedbackStyle.Light, description: 'Dashboard' },
+  { name: 'Track', shortName: 'T', icon: '⏱️', activeIcon: '✓', route: 'Track', color: '#11998e', showInCompact: true, hapticStyle: Haptics.ImpactFeedbackStyle.Medium, description: 'Daily Tracking' },
+  { name: 'Grow', shortName: 'G', icon: '🌱', activeIcon: '🌳', route: 'Grow', color: '#fa709a', showInCompact: true, hapticStyle: Haptics.ImpactFeedbackStyle.Medium, description: 'Growth & Milestones' },
+  { name: 'Connect', shortName: 'C', icon: '💬', activeIcon: '👨‍👩‍👧‍👦', route: 'Connect', color: '#f59e0b', showInCompact: false, hapticStyle: Haptics.ImpactFeedbackStyle.Light, description: 'Community' },
+  { name: 'More', shortName: '•••', icon: '⚙️', activeIcon: '🔧', route: 'More', color: '#64748b', showInCompact: false, hapticStyle: Haptics.ImpactFeedbackStyle.Light, description: 'Settings' },
 ];
 
-// PILL DIMENSIONS - Fully rounded, floating above bottom
+// Dimensions
 const EXPANDED_WIDTH = SCREEN_WIDTH - 170;
 const COMPACT_WIDTH = 150;
 const TAB_BAR_HEIGHT = 158;
 const COMPACT_TAB_BAR_HEIGHT = 148;
 const COMPACT_OFFSET_X = -SCREEN_WIDTH + COMPACT_WIDTH + 70;
-
-// Bottom positioning - floating above bottom
 const BOTTOM_MARGIN = 50;
+const HIDDEN_TRANSLATE_Y = 200;
+
+// Date helper
+const getCurrentDate = () => {
+  const now = new Date();
+  return {
+    day: now.getDate(),
+    month: now.toLocaleString('default', { month: 'short' }).toUpperCase(),
+  };
+};
+
+// ============================================
+// TAB BUTTON
+// ============================================
 
 interface TabButtonProps {
   tab: TabItem;
@@ -63,26 +83,10 @@ interface TabButtonProps {
   isDark: boolean;
   isCompact: boolean;
   index: number;
+  colors: any;
 }
 
-// Get current date formatted for display
-const getCurrentDate = () => {
-  const now = new Date();
-  return {
-    day: now.getDate(),
-    month: now.toLocaleString('default', { month: 'short' }).toUpperCase(),
-    weekday: now.toLocaleString('default', { weekday: 'short' }),
-  };
-};
-
-const TabButton: React.FC<TabButtonProps> = ({ 
-  tab, 
-  isActive, 
-  onPress, 
-  isDark, 
-  isCompact,
-  index 
-}) => {
+const TabButton: React.FC<TabButtonProps> = ({ tab, isActive, onPress, isDark, isCompact, index, colors }) => {
   const scale = useSharedValue(1);
   const translateY = useSharedValue(0);
   const glowOpacity = useSharedValue(0);
@@ -94,10 +98,7 @@ const TabButton: React.FC<TabButtonProps> = ({
   }, [isActive, isCompact, index]);
 
   const animatedStyle = useAnimatedStyle(() => ({
-    transform: [
-      { scale: scale.value },
-      { translateY: translateY.value }
-    ],
+    transform: [{ scale: scale.value }, { translateY: translateY.value }],
   }));
 
   const glowStyle = useAnimatedStyle(() => ({
@@ -114,55 +115,56 @@ const TabButton: React.FC<TabButtonProps> = ({
     return (
       <View style={[styles.hiddenTab, { transform: [{ translateY: -8 }] }]}>
         <TouchableOpacity onPress={onPress} style={styles.hiddenTabButton} activeOpacity={0.7}>
-          <Text style={styles.hiddenTabIcon}>{tab.icon}</Text>
+          <Text style={[styles.hiddenTabIcon, { color: colors.text }]}>{tab.icon}</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
   return (
-    <TouchableOpacity 
-      style={[styles.tabButton, isCompact && styles.tabButtonCompact, isCompact && index >= 2 && styles.tabButtonUpward]} 
-      onPress={() => {
-        Haptics.impactAsync(tab.hapticStyle || Haptics.ImpactFeedbackStyle.Light);
-        onPress();
-      }}
+    <TouchableOpacity
+      style={[styles.tabButton, isCompact && styles.tabButtonCompact, isCompact && index >= 2 && styles.tabButtonUpward]}
+      onPress={onPress}
       activeOpacity={0.7}
     >
       <Animated.View style={[styles.glow, glowStyle]}>
-        <LinearGradient 
-          colors={[tab.color + '60', tab.color + '20', 'transparent']} 
-          style={styles.glowGradient} 
-        />
+        <LinearGradient colors={[tab.color + '60', tab.color + '20', 'transparent']} style={styles.glowGradient} />
       </Animated.View>
-
       <Animated.View style={[styles.activeDot, dotStyle, { backgroundColor: tab.color }]} />
-
       <Animated.View style={[animatedStyle, { zIndex: 10 }]}>
         <Text style={[styles.tabEmoji, isCompact && styles.tabEmojiCompact, isCompact && index >= 2 && styles.tabEmojiUpward]}>
           {isActive ? tab.activeIcon : tab.icon}
         </Text>
       </Animated.View>
-
-      <Text style={[styles.tabLabel, isActive && [styles.activeLabel, { color: tab.color }], isDark && styles.tabLabelDark, isCompact && styles.tabLabelCompact]}>
+      <Text style={[
+        styles.tabLabel,
+        isActive && [styles.activeLabel, { color: tab.color }],
+        isDark && { color: colors.textSecondary },
+        isCompact && styles.tabLabelCompact,
+        isActive && isDark && { color: tab.color }
+      ]}>
         {isCompact ? tab.shortName : tab.name}
       </Text>
     </TouchableOpacity>
   );
 };
 
-const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({ 
-  state, 
-  descriptors, 
-  navigation 
-}) => {
+// ============================================
+// MAIN COMPONENT
+// ============================================
+
+const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({ state, descriptors, navigation }) => {
   const insets = useSafeAreaInsets();
-  const { 
-    isNavVisible, 
-    isNavCompact, 
+  const {
+    isNavVisible,
+    isNavCompact,
     showNav,
     hideNav,
-    toggleCompact
+    toggleCompact,
+    isCommunityScreen,
+    forceShowNav,
+    isDark,
+    colors,
   } = useNavigationContext();
 
   const [currentDate, setCurrentDate] = useState(getCurrentDate());
@@ -174,24 +176,16 @@ const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({
     const tomorrow = new Date(now);
     tomorrow.setDate(tomorrow.getDate() + 1);
     tomorrow.setHours(0, 0, 0, 0);
-    const msUntilMidnight = tomorrow.getTime() - now.getTime();
-
-    const timeout = setTimeout(updateDate, msUntilMidnight);
+    const timeout = setTimeout(updateDate, tomorrow.getTime() - now.getTime());
     const interval = setInterval(updateDate, 24 * 60 * 60 * 1000);
-
-    return () => {
-      clearTimeout(timeout);
-      clearInterval(interval);
-    };
+    return () => { clearTimeout(timeout); clearInterval(interval); };
   }, []);
 
   const activeIndex = state.index;
-  const isDark = descriptors[state.routes[activeIndex].key].options.tabBarStyle?.backgroundColor === '#0a0a0a' || false;
 
-  // Check if we're on Timeline screen
-  const isTimelineScreen = state.routes[activeIndex].name === 'Timeline';
+  const isTrackScreen = state.routes[activeIndex].name === 'Track';
 
-  // Reanimated shared values
+  // Animated values
   const translateY = useSharedValue(0);
   const translateX = useSharedValue(0);
   const width = useSharedValue(EXPANDED_WIDTH);
@@ -199,23 +193,47 @@ const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({
   const opacity = useSharedValue(1);
   const dateFabScale = useSharedValue(0);
 
-  // Update animations when state changes
-  useEffect(() => {
-    translateY.value = withSpring(isNavVisible ? 0 : 100, { damping: 15 });
-    translateX.value = withSpring(isNavCompact ? COMPACT_OFFSET_X : 0, { damping: 15 });
-    width.value = withSpring(isNavCompact ? COMPACT_WIDTH : EXPANDED_WIDTH, { damping: 15 });
-    height.value = withSpring(isNavCompact ? COMPACT_TAB_BAR_HEIGHT : TAB_BAR_HEIGHT, { damping: 15 });
-    opacity.value = withSpring(isNavVisible ? 1 : 0, { damping: 15 });
+  // Track previous states for animation decisions
+  const prevVisible = useRef(true);
+  const prevCompact = useRef(false);
 
-    // Date FAB only shows on Timeline screen
-    dateFabScale.value = withSpring(isTimelineScreen && isNavVisible ? 1 : 0, { damping: 12, stiffness: 100 });
-  }, [isNavVisible, isNavCompact, isTimelineScreen]);
+  // Update animations
+  useEffect(() => {
+    // Community screen: completely hide
+    if (isCommunityScreen) {
+      translateY.value = withSpring(HIDDEN_TRANSLATE_Y, { damping: 15, stiffness: 100 });
+      opacity.value = withSpring(0, { damping: 15 });
+      dateFabScale.value = withSpring(0, { damping: 15 });
+      prevVisible.current = false;
+      return;
+    }
+
+    // Normal screen: respond to visibility
+    if (isNavVisible !== prevVisible.current) {
+      prevVisible.current = isNavVisible;
+      if (isNavVisible) {
+        translateY.value = withSpring(0, { damping: 15, stiffness: 120 });
+        opacity.value = withSpring(1, { damping: 15 });
+      } else {
+        translateY.value = withSpring(120, { damping: 15, stiffness: 100 });
+        opacity.value = withSpring(0, { damping: 15 });
+      }
+    }
+
+    // Compact mode (only when visible)
+    if (isNavVisible && isNavCompact !== prevCompact.current) {
+      prevCompact.current = isNavCompact;
+      translateX.value = withSpring(isNavCompact ? COMPACT_OFFSET_X : 0, { damping: 15 });
+      width.value = withSpring(isNavCompact ? COMPACT_WIDTH : EXPANDED_WIDTH, { damping: 15 });
+      height.value = withSpring(isNavCompact ? COMPACT_TAB_BAR_HEIGHT : TAB_BAR_HEIGHT, { damping: 15 });
+    }
+
+    // Date FAB
+    dateFabScale.value = withSpring(isTrackScreen && isNavVisible ? 1 : 0, { damping: 12, stiffness: 100 });
+  }, [isNavVisible, isNavCompact, isTrackScreen, isCommunityScreen]);
 
   const containerStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateY: translateY.value },
-      { translateX: translateX.value }
-    ],
+    transform: [{ translateY: translateY.value }, { translateX: translateX.value }],
     opacity: opacity.value,
   }));
 
@@ -244,19 +262,24 @@ const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({
     navigation.navigate('AddLog');
   }, [navigation]);
 
+  // ============================================
+  // PAN RESPONDER
+  // ============================================
   const panResponder = useRef(
     PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gestureState) => Math.abs(gestureState.dy) > 5,
-      onPanResponderRelease: (_, gestureState) => {
-        const { dy, dx } = gestureState;
-        if (dy < -30) {
+      onMoveShouldSetPanResponder: (_: GestureResponderEvent, gestureState: PanResponderGestureState) => {
+        return Math.abs(gestureState.dy) > 8 && Math.abs(gestureState.dy) > Math.abs(gestureState.dx);
+      },
+      onPanResponderRelease: (_: GestureResponderEvent, gestureState: PanResponderGestureState) => {
+        const { dy } = gestureState;
+
+        if (dy < -40) {
           runOnJS(showNav)();
           if (isNavCompact) runOnJS(toggleCompact)();
         } else if (dy > 50) {
           runOnJS(hideNav)();
-        }
-        if (Math.abs(dx) > 50) {
-          if ((dx > 0 && isNavCompact) || (dx < 0 && !isNavCompact)) {
+        } else if (Math.abs(gestureState.dx) > 60) {
+          if ((gestureState.dx > 0 && isNavCompact) || (gestureState.dx < 0 && !isNavCompact)) {
             runOnJS(toggleCompact)();
           }
         }
@@ -264,30 +287,28 @@ const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({
     })
   ).current;
 
+  // Don't render on community screens
+  if (isCommunityScreen) return null;
+
   return (
-    <View 
+    <View
       style={[styles.outerWrapper, { paddingBottom: Math.max(insets.bottom, 12) + BOTTOM_MARGIN }]}
       {...panResponder.panHandlers}
     >
-      {/* DATE FAB - Only shows on Timeline screen, acts as Add Log button */}
-      {isTimelineScreen && (
+      {/* DATE FAB */}
+      {isTrackScreen && (
         <Animated.View style={[styles.dateFabContainer, dateFabStyle]}>
-          <TouchableOpacity 
-            style={styles.dateFab}
-            onPress={handleAddLog}
-            activeOpacity={0.8}
-          >
+          <TouchableOpacity style={styles.dateFab} onPress={handleAddLog} activeOpacity={0.8}>
             <BlurView intensity={70} style={styles.dateFabBlur} tint={isDark ? 'dark' : 'light'}>
               <LinearGradient
                 colors={isDark ? ['rgba(30,30,30,0.95)', 'rgba(20,20,20,0.85)'] : ['rgba(255,255,255,0.98)', 'rgba(255,255,255,0.95)']}
                 style={StyleSheet.absoluteFill}
               />
               <View style={styles.dateFabContent}>
-                <Text style={[styles.dateFabDay, isDark && styles.dateFabDayDark]}>{currentDate.day}</Text>
-                <Text style={[styles.dateFabMonth, isDark && styles.dateFabMonthDark]}>{currentDate.month}</Text>
+                <Text style={[styles.dateFabDay, isDark && { color: colors.text }]}>{currentDate.day}</Text>
+                <Text style={[styles.dateFabMonth, isDark && { color: colors.success }]}>{currentDate.month}</Text>
               </View>
             </BlurView>
-            {/* Add indicator - positioned outside blur */}
             <View style={styles.addIndicator}>
               <Text style={styles.addIndicatorText}>+</Text>
             </View>
@@ -296,7 +317,8 @@ const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({
       )}
 
       <Animated.View style={[styles.container, containerStyle]}>
-        <TouchableOpacity 
+        {/* Handle bar */}
+        <TouchableOpacity
           style={styles.handle}
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -304,19 +326,27 @@ const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({
           }}
           activeOpacity={0.6}
         >
-          <View style={[styles.handleBar, isDark && styles.handleBarDark]} />
-          {isNavCompact && <View style={[styles.handleBar, isDark && styles.handleBarDark, { marginTop: 2, width: 20 }]} />}
+          <View style={[styles.handleBar, { backgroundColor: colors.handleBar }]} />
+          {isNavCompact && <View style={[styles.handleBar, { backgroundColor: colors.handleBar, marginTop: 2, width: 20 }]} />}
         </TouchableOpacity>
 
         <Animated.View style={[styles.navContainer, navContainerStyle]}>
-          <BlurView 
+          <BlurView
             intensity={Platform.OS === 'ios' ? 50 : 70}
-            style={[styles.glassBackground, isDark && styles.glassBackgroundDark]}
+            style={[
+              styles.glassBackground,
+              {
+                borderColor: colors.glassBorder,
+                shadowColor: colors.shadowColor,
+              }
+            ]}
             tint={isDark ? 'dark' : 'light'}
           >
             <Animated.View style={[StyleSheet.absoluteFill, glassHeightStyle]}>
               <LinearGradient
-                colors={isDark ? ['rgba(25,25,25,0.9)', 'rgba(15,15,15,0.7)', 'rgba(10,10,10,0.5)'] : ['rgba(255,255,255,0.95)', 'rgba(255,255,255,0.85)', 'rgba(255,255,255,0.6)']}
+                colors={isDark
+                  ? ['rgba(25,25,25,0.9)', 'rgba(15,15,15,0.7)', 'rgba(10,10,10,0.5)']
+                  : ['rgba(255,255,255,0.95)', 'rgba(255,255,255,0.85)', 'rgba(255,255,255,0.6)']}
                 style={StyleSheet.absoluteFill}
               />
               <LinearGradient
@@ -337,11 +367,13 @@ const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({
                   isDark={isDark}
                   isCompact={isNavCompact}
                   index={index}
+                  colors={colors}
                 />
               ))}
             </View>
           </BlurView>
 
+          {/* Peek indicator when hidden */}
           {!isNavVisible && (
             <TouchableOpacity style={styles.peekIndicator} onPress={showNav} activeOpacity={0.8}>
               <BlurView intensity={80} style={styles.peekBlur} tint={isDark ? 'dark' : 'light'}>
@@ -355,19 +387,21 @@ const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({
   );
 };
 
+// ============================================
+// STYLES
+// ============================================
 const styles = StyleSheet.create({
-  // DATE FAB STYLES - Bottom right, only on Timeline, acts as Add Log
   dateFabContainer: {
     position: 'absolute',
     left: 20,
-    bottom: 150, // Above the nav bar
+    bottom: 150,
     zIndex: 100,
   },
   dateFab: {
     width: 70,
     height: 70,
     borderRadius: 35,
-    overflow: 'visible', // Allow badge to overflow
+    overflow: 'visible',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.25,
@@ -387,7 +421,7 @@ const styles = StyleSheet.create({
   dateFabContent: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: 2, // Slight adjustment for visual center
+    paddingTop: 2,
   },
   dateFabDay: {
     fontSize: 28,
@@ -396,23 +430,16 @@ const styles = StyleSheet.create({
     lineHeight: 30,
     textAlign: 'center',
   },
-  dateFabDayDark: {
-    color: '#ffffff',
-  },
   dateFabMonth: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#11998e', // Use Timeline color for month
+    color: '#11998e',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     lineHeight: 14,
     textAlign: 'center',
     marginTop: -2,
   },
-  dateFabMonthDark: {
-    color: '#38ef7d',
-  },
-  // Add indicator badge - positioned at bottom right
   addIndicator: {
     position: 'absolute',
     bottom: -2,
@@ -436,8 +463,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginTop: -1,
   },
-
-  // FLOATING ABOVE BOTTOM with margin
   outerWrapper: {
     position: 'absolute',
     bottom: 0,
@@ -446,7 +471,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     pointerEvents: 'box-none',
   },
-  container: { 
+  container: {
     width: '100%',
     alignItems: 'center',
   },
@@ -461,10 +486,6 @@ const styles = StyleSheet.create({
     width: 32,
     height: 4,
     borderRadius: 2,
-    backgroundColor: 'rgba(0,0,0,0.15)',
-  },
-  handleBarDark: {
-    backgroundColor: 'rgba(255,255,255,0.25)',
   },
   navContainer: {
     alignItems: 'center',
@@ -475,18 +496,11 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     width: '100%',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
-    shadowColor: '#667eea',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.2,
     shadowRadius: 16,
     elevation: 12,
   } as ViewStyle,
-  glassBackgroundDark: {
-    borderColor: 'rgba(255,255,255,0.1)',
-    shadowColor: '#000',
-    shadowOpacity: 0.35,
-  },
   topHighlight: {
     position: 'absolute',
     top: 0,
@@ -494,9 +508,9 @@ const styles = StyleSheet.create({
     right: 0,
     height: 1,
   },
-  tabsContainer: { 
-    flexDirection: 'row', 
-    height: '100%', 
+  tabsContainer: {
+    flexDirection: 'row',
+    height: '100%',
     paddingVertical: 3,
     paddingHorizontal: 12,
     alignItems: 'center',
@@ -506,10 +520,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 2,
   },
-  tabButton: { 
-    flex: 1, 
-    alignItems: 'center', 
-    justifyContent: 'center', 
+  tabButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
     paddingVertical: 1,
     position: 'relative',
     minWidth: 50,
@@ -539,18 +553,18 @@ const styles = StyleSheet.create({
   hiddenTabIcon: {
     fontSize: 14,
   },
-  glow: { 
-    position: 'absolute', 
+  glow: {
+    position: 'absolute',
     top: -3,
     width: 45,
-    height: 45, 
-    borderRadius: 22, 
+    height: 45,
+    borderRadius: 22,
     alignSelf: 'center',
     zIndex: 0,
   } as ViewStyle,
-  glowGradient: { 
-    width: '100%', 
-    height: '100%', 
+  glowGradient: {
+    width: '100%',
+    height: '100%',
     borderRadius: 22,
   } as ViewStyle,
   activeDot: {
@@ -561,7 +575,7 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     zIndex: 0,
   },
-  tabEmoji: { 
+  tabEmoji: {
     fontSize: 18,
     marginBottom: 0,
     textAlign: 'center',
@@ -574,25 +588,22 @@ const styles = StyleSheet.create({
     fontSize: 22,
     marginBottom: 0,
   },
-  tabLabel: { 
+  tabLabel: {
     fontSize: 9,
-    fontWeight: '600', 
-    color: '#888', 
+    fontWeight: '600',
+    color: '#888',
     textAlign: 'center',
     zIndex: 10,
     marginTop: 0,
   } as TextStyle,
-  tabLabelDark: {
-    color: '#aaa',
-  },
+  activeLabel: {
+    fontWeight: '800',
+  } as TextStyle,
   tabLabelCompact: {
     fontSize: 8,
     marginTop: 0,
     fontWeight: '700',
   },
-  activeLabel: { 
-    fontWeight: '800',
-  } as TextStyle,
   peekIndicator: {
     position: 'absolute',
     bottom: -55,

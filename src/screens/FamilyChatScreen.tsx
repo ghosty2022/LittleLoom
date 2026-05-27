@@ -21,6 +21,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { 
   FadeInUp, 
   FadeIn,
@@ -32,16 +33,17 @@ import Animated, {
   useSharedValue,
   runOnJS,
   FadeInDown,
-  FadeInRight, // ← ADDED THIS IMPORT
+  FadeInRight,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as FileSystem from 'expo-file-system';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../types/navigation';
-import { useFamilyChat, FamilyMessage, MessageType } from '../context/FamilyChatContext';
-import { useFamily, FamilyMember } from '../context/FamilyContext';
+import { useFamilyChat, FamilyMessage, MessageType, FileMetadata } from '../context/FamilyChatContext';
+import { useFamily } from '../context/FamilyContext';
 import { useAuth } from '../context/AuthContext';
+import { useMedia } from '../context/MediaContext';
 import { Audio } from 'expo-av';
 import { format, isToday, isYesterday, isSameWeek } from 'date-fns';
 
@@ -49,7 +51,84 @@ type FamilyChatScreenProps = NativeStackScreenProps<RootStackParamList, 'FamilyC
 
 const { width, height } = Dimensions.get('window');
 
-// ==================== CONSTANTS ====================
+// ==================== IMAGE UTILITY FUNCTIONS ====================
+const isImageUri = (value: string | undefined | null): boolean => {
+  if (!value || typeof value !== 'string') return false;
+  return value.startsWith('http') || value.startsWith('file://') || value.startsWith('data:');
+};
+
+const isEmoji = (value: string | undefined | null): boolean => {
+  if (!value || typeof value !== 'string') return false;
+  if (value.length > 4) return false;
+  for (const char of value) {
+    const code = char.codePointAt(0) || 0;
+    const isEmojiChar = (
+      (code >= 0x1F600 && code <= 0x1F64F) || (code >= 0x1F300 && code <= 0x1F5FF) ||
+      (code >= 0x1F680 && code <= 0x1F6FF) || (code >= 0x1F1E0 && code <= 0x1F1FF) ||
+      (code >= 0x2600 && code <= 0x26FF) || (code >= 0x2700 && code <= 0x27BF) ||
+      (code >= 0x1F900 && code <= 0x1F9FF) || (code >= 0x1F018 && code <= 0x1F270) ||
+      code === 0x238C || code === 0x2B06 || code === 0x2B07 || code === 0x2B05 ||
+      code === 0x27A1 || (code >= 0x2194 && code <= 0x2199) ||
+      (code >= 0x21A9 && code <= 0x21AA) || (code >= 0x2934 && code <= 0x2935) ||
+      (code >= 0x25AA && code <= 0x25AB) || (code >= 0x25FB && code <= 0x25FE) ||
+      code === 0x25B6 || code === 0x25C0 || (code >= 0x1F200 && code <= 0x1F251) ||
+      code === 0x1F004 || code === 0x1F0CF || (code >= 0x1F170 && code <= 0x1F171) ||
+      (code >= 0x1F17E && code <= 0x1F17F) || code === 0x1F18E || code === 0x3030 ||
+      code === 0x2B50 || code === 0x2B55 || (code >= 0x23E9 && code <= 0x23EC) ||
+      code === 0x23F0 || code === 0x23F3 || (code >= 0x231A && code <= 0x231B) ||
+      (code >= 0x23F8 && code <= 0x23FA) || code === 0x24C2 ||
+      (code >= 0x1F3FB && code <= 0x1F3FF) || (code >= 0x1F3E0 && code <= 0x1F3F4) ||
+      (code >= 0x1F3F8 && code <= 0x1F43F) || code === 0x1F440 ||
+      (code >= 0x1F442 && code <= 0x1F4FF) || (code >= 0x1F500 && code <= 0x1F53D) ||
+      (code >= 0x1F54B && code <= 0x1F54E) || (code >= 0x1F550 && code <= 0x1F567) ||
+      (code >= 0x1F595 && code <= 0x1F596) || (code >= 0x1F5FB && code <= 0x1F64F) ||
+      (code >= 0x1F680 && code <= 0x1F6C5) || (code >= 0x1F6CB && code <= 0x1F6D2) ||
+      (code >= 0x1F6E0 && code <= 0x1F6E5) || code === 0x1F6E9 ||
+      (code >= 0x1F6EB && code <= 0x1F6EC) || code === 0x1F6F0 ||
+      (code >= 0x1F6F3 && code <= 0x1F6F8) || (code >= 0x1F910 && code <= 0x1F93A) ||
+      (code >= 0x1F93C && code <= 0x1F93E) || (code >= 0x1F940 && code <= 0x1F945) ||
+      (code >= 0x1F947 && code <= 0x1F94C) || (code >= 0x1F950 && code <= 0x1F96B) ||
+      (code >= 0x1F980 && code <= 0x1F997) || code === 0x1F9C0 ||
+      (code >= 0x1F9D0 && code <= 0x1F9E6)
+    );
+    if (!isEmojiChar) return false;
+  }
+  return true;
+};
+
+// ==================== SAFE AVATAR RENDERER ====================
+const SafeAvatar: React.FC<{
+  avatar?: string | null;
+  size?: number;
+  fallbackEmoji?: string;
+  fallbackColor?: string;
+}> = ({ avatar, size = 44, fallbackEmoji = '👤', fallbackColor = '#667eea' }) => {
+  const hasImage = isImageUri(avatar);
+  const hasEmoji = isEmoji(avatar);
+
+  return (
+    <View style={[styles.avatarWrapper, { width: size, height: size }]}>
+      <LinearGradient
+        colors={hasImage ? ['#f0f0f0', '#e0e0e0'] : [fallbackColor + '40', fallbackColor + '20']}
+        style={[styles.avatarGradient, { width: size, height: size, borderRadius: size / 2 }]}
+      >
+        {hasImage ? (
+          <Image 
+            source={{ uri: avatar! }} 
+            style={{ width: size, height: size, borderRadius: size / 2 }}
+            resizeMode="cover"
+            onError={(e) => console.log('Avatar image error:', e.nativeEvent.error)}
+          />
+        ) : hasEmoji ? (
+          <Text style={[styles.avatarEmoji, { fontSize: size * 0.5 }]}>{avatar}</Text>
+        ) : (
+          <Text style={[styles.avatarEmoji, { fontSize: size * 0.5 }]}>{fallbackEmoji}</Text>
+        )}
+      </LinearGradient>
+    </View>
+  );
+};
+
 const REACTIONS = ['❤️', '👍', '😂', '😮', '😢', '🎉', '👏', '🔥'];
 const QUICK_REPLIES = ['On my way!', 'Sounds good!', 'I love this!', 'Thanks for sharing'];
 
@@ -114,9 +193,71 @@ const SweetAlertChat: React.FC<{
   );
 };
 
+// ==================== DELIVERY STATUS INDICATOR ====================
+const DeliveryStatus: React.FC<{ status: FamilyMessage['deliveryStatus']; isDark: boolean }> = ({ status }) => {
+  if (status === 'sending') {
+    return <ActivityIndicator size={12} color="rgba(255,255,255,0.7)" style={{ marginLeft: 4 }} />;
+  }
+  if (status === 'failed') {
+    return <Ionicons name="alert-circle" size={14} color="#ff4757" style={{ marginLeft: 4 }} />;
+  }
+  if (status === 'sent') {
+    return <Ionicons name="checkmark" size={14} color="rgba(255,255,255,0.7)" style={{ marginLeft: 4 }} />;
+  }
+  if (status === 'delivered') {
+    return <Ionicons name="checkmark-done" size={14} color="rgba(255,255,255,0.7)" style={{ marginLeft: 4 }} />;
+  }
+  if (status === 'read') {
+    return <Ionicons name="checkmark-done" size={14} color="#34b7f1" style={{ marginLeft: 4 }} />;
+  }
+  return null;
+};
+
+// ==================== FILE BUBBLE COMPONENT ====================
+const FileBubble: React.FC<{
+  fileMeta?: FileMetadata;
+  isMe: boolean;
+  onPress: () => void;
+}> = ({ fileMeta, isMe, onPress }) => {
+  if (!fileMeta) return null;
+  
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  };
+
+  const getFileIcon = () => {
+    if (fileMeta.type.startsWith('image/')) return 'image';
+    if (fileMeta.type.startsWith('video/')) return 'videocam';
+    if (fileMeta.type.startsWith('audio/')) return 'musical-note';
+    if (fileMeta.type.includes('pdf')) return 'document-text';
+    return 'document';
+  };
+
+  return (
+    <TouchableOpacity style={styles.fileBubble} onPress={onPress} activeOpacity={0.8}>
+      <View style={[styles.fileIconContainer, { backgroundColor: isMe ? 'rgba(255,255,255,0.2)' : '#667eea20' }]}>
+        <Ionicons name={getFileIcon() as any} size={24} color={isMe ? '#fff' : '#667eea'} />
+      </View>
+      <View style={styles.fileInfo}>
+        <Text style={[styles.fileName, isMe && styles.fileNameMe]} numberOfLines={1}>
+          {fileMeta.name}
+        </Text>
+        <Text style={[styles.fileSize, isMe && styles.fileSizeMe]}>
+          {formatFileSize(fileMeta.size)}
+        </Text>
+      </View>
+      <Ionicons name="download-outline" size={18} color={isMe ? 'rgba(255,255,255,0.8)' : '#667eea'} />
+    </TouchableOpacity>
+  );
+};
+
 // ==================== USER BUBBLE COMPONENT ====================
 const UserBubble: React.FC<{
-  member: FamilyMember;
+  member: any;
   isSelected: boolean;
   onPress: () => void;
   isDark: boolean;
@@ -153,7 +294,7 @@ const UserBubble: React.FC<{
       activeOpacity={0.8}
     >
       <View style={[styles.userBubbleAvatar, { backgroundColor: `${getRoleColor()}20` }]}>
-        <Text style={styles.userBubbleEmoji}>{member.avatar || '👤'}</Text>
+        <SafeAvatar avatar={member.avatar} size={56} fallbackEmoji="👤" fallbackColor={getRoleColor()} />
         {showOnline && (
           <View style={[styles.userBubbleStatus, { backgroundColor: statusColors[onlineStatus] }]} />
         )}
@@ -179,14 +320,14 @@ const MessageInfoModal: React.FC<{
   onClose: () => void;
   message: FamilyMessage | null;
   isDark: boolean;
-  members: FamilyMember[];
+  members: any[];
 }> = ({ visible, onClose, message, isDark, members }) => {
   if (!message) return null;
 
   const sender = members.find(m => m.id === message.senderId);
   const readByMembers = message.readBy?.map(userId => 
     members.find(m => m.id === userId || m.userId === userId)
-  ).filter(Boolean) as FamilyMember[] || [];
+  ).filter(Boolean) || [];
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -212,9 +353,7 @@ const MessageInfoModal: React.FC<{
             <View style={styles.messageInfoSection}>
               <Text style={[styles.messageInfoLabel, isDark && styles.textMuted]}>Sent by</Text>
               <View style={styles.messageInfoUser}>
-                <View style={[styles.messageInfoAvatar, { backgroundColor: '#667eea20' }]}>
-                  <Text style={styles.messageInfoAvatarText}>{sender?.avatar || '👤'}</Text>
-                </View>
+                <SafeAvatar avatar={sender?.avatar} size={48} fallbackEmoji="👤" fallbackColor="#667eea" />
                 <View>
                   <Text style={[styles.messageInfoUserName, isDark && styles.textDark]}>
                     {sender?.fullName || message.senderName}
@@ -248,11 +387,9 @@ const MessageInfoModal: React.FC<{
                 Read by ({readByMembers.length})
               </Text>
               {readByMembers.length > 0 ? (
-                readByMembers.map((member, index) => (
-                  <View key={member.id} style={styles.readByItem}>
-                    <View style={[styles.readByAvatar, { backgroundColor: '#10b98120' }]}>
-                      <Text style={styles.readByAvatarText}>{member.avatar || '👤'}</Text>
-                    </View>
+                readByMembers.map((member: any, index: number) => (
+                  <View key={member.id || index} style={styles.readByItem}>
+                    <SafeAvatar avatar={member.avatar} size={36} fallbackEmoji="👤" fallbackColor="#10b981" />
                     <Text style={[styles.readByName, isDark && styles.textDark]}>{member.fullName}</Text>
                     <Ionicons name="checkmark-done" size={16} color="#10b981" />
                   </View>
@@ -378,18 +515,60 @@ const MessageReactions: React.FC<{
   );
 };
 
+// ==================== IMAGE PREVIEW MODAL ====================
+const ImagePreviewModal: React.FC<{
+  visible: boolean;
+  imageUrl: string;
+  onClose: () => void;
+  isDark: boolean;
+}> = ({ visible, imageUrl, onClose, isDark }) => {
+  const [loading, setLoading] = useState(true);
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <TouchableOpacity style={styles.imagePreviewOverlay} onPress={onClose} activeOpacity={1}>
+        <BlurView intensity={95} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
+        <Animated.View entering={FadeIn} style={styles.imagePreviewContainer}>
+          {loading && (
+            <ActivityIndicator size="large" color="#667eea" style={styles.imagePreviewLoader} />
+          )}
+          <Image 
+            source={{ uri: imageUrl }} 
+            style={styles.imagePreviewImage}
+            resizeMode="contain"
+            onLoadStart={() => setLoading(true)}
+            onLoadEnd={() => setLoading(false)}
+            onError={(e) => {
+              setLoading(false);
+              console.log('Preview image error:', e.nativeEvent.error);
+            }}
+          />
+          <TouchableOpacity style={styles.imagePreviewClose} onPress={onClose}>
+            <BlurView intensity={80} style={styles.imagePreviewCloseBlur}>
+              <Ionicons name="close" size={24} color="#fff" />
+            </BlurView>
+          </TouchableOpacity>
+        </Animated.View>
+      </TouchableOpacity>
+    </Modal>
+  );
+};
+
 // ==================== MESSAGE BUBBLE COMPONENT ====================
 const MessageBubble: React.FC<{
   message: FamilyMessage;
   isMe: boolean;
   isDark: boolean;
-  member?: FamilyMember;
+  member?: any;
   showAvatar: boolean;
   onReaction: (emoji: string) => void;
   onReply: () => void;
   onDelete: () => void;
   onEdit: () => void;
   onInfo: () => void;
+  onImagePress: (url: string) => void;
+  onFilePress: (meta?: FileMetadata) => void;
+  onResend: () => void;
   isFirstInGroup: boolean;
   isLastInGroup: boolean;
 }> = ({
@@ -403,11 +582,14 @@ const MessageBubble: React.FC<{
   onDelete,
   onEdit,
   onInfo,
+  onImagePress,
+  onFilePress,
+  onResend,
   isFirstInGroup,
   isLastInGroup,
 }) => {
   const [showActions, setShowActions] = useState(false);
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [imageLoading, setImageLoading] = useState(true);
   const scale = useSharedValue(1);
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -461,18 +643,16 @@ const MessageBubble: React.FC<{
         isMe ? styles.myMessageContainer : styles.theirMessageContainer,
       ]}
     >
-      {/* Avatar for group chats */}
       {!isMe && showAvatar && message.type !== 'system' && (
         <TouchableOpacity
           onPress={() => member && Alert.alert(member.fullName, `Role: ${member.role}`)}
           style={[styles.avatarSmall, { backgroundColor: getRoleColor() + '20' }]}
         >
-          <Text style={styles.avatarEmoji}>{member?.avatar || '👤'}</Text>
+          <SafeAvatar avatar={member?.avatar} size={32} fallbackEmoji="👤" fallbackColor={getRoleColor()} />
         </TouchableOpacity>
       )}
 
       <View style={[!isMe && !showAvatar && { marginLeft: 44 }]}>
-        {/* Sender name for group chats */}
         {!isMe && showAvatar && message.type !== 'system' && (
           <Text style={[styles.senderName, { color: getRoleColor() }]}>
             {message.senderName}
@@ -497,20 +677,48 @@ const MessageBubble: React.FC<{
                   <View style={[styles.replyLine, { backgroundColor: isMe ? 'rgba(255,255,255,0.5)' : '#667eea' }]} />
                   <View style={styles.replyContent}>
                     <Text style={[styles.replyName, isMe && styles.replyNameMe]} numberOfLines={1}>
-                      {message.replyTo}
+                      {message.replyToPreview || 'Replying to message...'}
                     </Text>
                     <Text style={[styles.replyText, isMe && styles.replyTextMe]} numberOfLines={1}>
-                      Replying to message...
+                      {message.replyToPreview || '...'}
                     </Text>
                   </View>
                 </View>
               )}
 
+              {/* Failed retry button */}
+              {message.deliveryStatus === 'failed' && isMe && (
+                <TouchableOpacity onPress={onResend} style={styles.resendButton}>
+                  <Ionicons name="refresh" size={16} color="#ff4757" />
+                  <Text style={styles.resendText}>Tap to retry</Text>
+                </TouchableOpacity>
+              )}
+
               {/* Message content */}
               {message.type === 'image' && message.imageUrl ? (
-                <TouchableOpacity onPress={() => {}}>
-                  <Image source={{ uri: message.imageUrl }} style={styles.messageImage} />
+                <TouchableOpacity onPress={() => onImagePress(message.imageUrl)} activeOpacity={0.9}>
+                  <View style={styles.imageContainer}>
+                    {imageLoading && (
+                      <View style={styles.imagePlaceholder}>
+                        <ActivityIndicator size="small" color={isMe ? '#fff' : '#667eea'} />
+                      </View>
+                    )}
+                    <Image 
+                      source={{ uri: message.imageUrl }} 
+                      style={styles.messageImage}
+                      resizeMode="cover"
+                      onLoadStart={() => setImageLoading(true)}
+                      onLoadEnd={() => setImageLoading(false)}
+                      onError={() => setImageLoading(false)}
+                    />
+                  </View>
                 </TouchableOpacity>
+              ) : message.type === 'file' ? (
+                <FileBubble 
+                  fileMeta={message.fileMetadata} 
+                  isMe={isMe} 
+                  onPress={() => onFilePress(message.fileMetadata)} 
+                />
               ) : message.type === 'voice' ? (
                 <TouchableOpacity style={styles.voiceMessage}>
                   <Ionicons name="play" size={24} color={isMe ? '#fff' : '#667eea'} />
@@ -553,20 +761,13 @@ const MessageBubble: React.FC<{
                   <Text style={[styles.editedLabel, isMe && styles.editedLabelMe]}>edited</Text>
                 )}
                 {isMe && message.type !== 'system' && (
-                  <View style={styles.readStatus}>
-                    {message.read ? (
-                      <Ionicons name="checkmark-done" size={14} color="#34b7f1" />
-                    ) : (
-                      <Ionicons name="checkmark" size={14} color="rgba(255,255,255,0.7)" />
-                    )}
-                  </View>
+                  <DeliveryStatus status={message.deliveryStatus} isDark={isDark} />
                 )}
               </View>
             </View>
           </TouchableOpacity>
         </Animated.View>
 
-        {/* Reactions */}
         <MessageReactions
           reactions={message.reactions || []}
           isMe={isMe}
@@ -690,10 +891,14 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
     isUserTyping,
     getChatById,
     pickAndSendImage,
+    pickAndSendFile,
     getTypingUsers,
+    getMessageById,
+    resendMessage,
   } = useFamilyChat();
   const { members } = useFamily();
   const { userProfile } = useAuth();
+  const { takePhoto, pickImage } = useMedia();
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -711,8 +916,8 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
   const [showUserBubbles, setShowUserBubbles] = useState(false);
   const [selectedMessage, setSelectedMessage] = useState<FamilyMessage | null>(null);
   const [showMessageInfo, setShowMessageInfo] = useState(false);
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   
-  // Sweet Alert state
   const [alert, setAlert] = useState<{
     visible: boolean;
     type: 'success' | 'error' | 'warning' | 'info';
@@ -730,12 +935,10 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const recordingInterval = useRef<NodeJS.Timeout | null>(null);
 
-  // Initialize chat
   useEffect(() => {
     initializeChat();
   }, [initialChatId, memberId]);
 
-  // Mark as read and setup polling
   useEffect(() => {
     if (!chatId) return;
 
@@ -790,7 +993,7 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
       setEditingMessage(null);
       showSweetAlert('success', 'Updated!', 'Message has been edited successfully');
     } else {
-      await sendMessage(chatId, content, 'text', undefined, replyingTo?.id);
+      await sendMessage(chatId, content, 'text', undefined, undefined, replyingTo?.id);
     }
 
     setReplyingTo(null);
@@ -815,11 +1018,41 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
     }
   };
 
-  const handleImagePick = async () => {
+  const handleImagePick = async (fromCamera: boolean = false) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    await pickAndSendImage(chatId);
-    refreshMessages();
-    showSweetAlert('success', 'Photo Sent! 📷', 'Your image has been shared');
+    
+    try {
+      await pickAndSendImage(chatId, fromCamera);
+      refreshMessages();
+      showSweetAlert('success', 'Photo Sent! 📷', 'Your photo has been shared');
+    } catch (error) {
+      console.error('Image send error:', error);
+      showSweetAlert('error', 'Error', 'Failed to send photo');
+    }
+  };
+
+  const handleFilePick = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    try {
+      await pickAndSendFile(chatId);
+      refreshMessages();
+      showSweetAlert('success', 'File Sent! 📎', 'Your file has been shared');
+    } catch (error) {
+      console.error('File send error:', error);
+      showSweetAlert('error', 'Error', 'Failed to send file');
+    }
+  };
+
+  const showImageSourceAlert = () => {
+    Alert.alert(
+      'Send Photo',
+      'Choose a photo source',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: '📷 Camera', onPress: () => handleImagePick(true) },
+        { text: '🖼️ Gallery', onPress: () => handleImagePick(false) },
+      ]
+    );
   };
 
   const handleReaction = async (messageId: string, emoji: string) => {
@@ -853,7 +1086,7 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
   const handleReply = (message: FamilyMessage) => {
     setReplyingTo({
       id: message.id,
-      content: message.content,
+      content: message.content || (message.type === 'image' ? '📷 Photo' : message.type === 'file' ? '📎 File' : '...'),
       senderName: message.senderName,
     });
     inputRef.current?.focus();
@@ -862,6 +1095,37 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
   const handleMessageInfo = (message: FamilyMessage) => {
     setSelectedMessage(message);
     setShowMessageInfo(true);
+  };
+
+  const handleImagePress = (url: string) => {
+    setPreviewImageUrl(url);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const handleFilePress = async (meta?: FileMetadata) => {
+    if (!meta) return;
+    try {
+      const canOpen = await FileSystem.getContentUriAsync(meta.uri);
+      // On Android this opens the file; on iOS you may need expo-sharing
+      Alert.alert(
+        meta.name,
+        `Size: ${meta.size} bytes\nType: ${meta.type}`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Share', onPress: async () => {
+            const { Share } = await import('react-native');
+            Share.share({ url: meta.uri, title: meta.name });
+          }},
+        ]
+      );
+    } catch (error) {
+      console.error('File open error:', error);
+    }
+  };
+
+  const handleResend = async (messageId: string) => {
+    await resendMessage(chatId, messageId);
+    refreshMessages();
   };
 
   const startRecording = async () => {
@@ -890,10 +1154,9 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
     setRecordingDuration(0);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     showSweetAlert('success', 'Voice Message', 'Voice message feature coming soon!');
-    // TODO: Implement actual voice message sending
   };
 
-  const getMemberById = (id: string): FamilyMember | undefined => {
+  const getMemberById = (id: string): any | undefined => {
     return members.find(m => m.id === id);
   };
 
@@ -933,7 +1196,6 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
   const headerInfo = getHeaderInfo();
   const typingText = getTypingText();
 
-  // Filter out current user from members for bubbles
   const otherMembers = useMemo(() => {
     return members.filter(m => m.id !== userProfile?.id && m.userId !== userProfile?.id);
   }, [members, userProfile]);
@@ -967,6 +1229,9 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
           onDelete={() => handleDelete(item.id)}
           onEdit={() => handleEdit(item)}
           onInfo={() => handleMessageInfo(item)}
+          onImagePress={handleImagePress}
+          onFilePress={handleFilePress}
+          onResend={() => handleResend(item.id)}
           isFirstInGroup={isFirstInGroup}
           isLastInGroup={isLastInGroup}
         />
@@ -992,7 +1257,6 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
     <View style={[styles.container, isDark && styles.containerDark]}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       
-      {/* SweetAlert */}
       <SweetAlertChat
         visible={alert.visible}
         type={alert.type}
@@ -1001,13 +1265,19 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
         onClose={() => setAlert(prev => ({ ...prev, visible: false }))}
       />
 
-      {/* Message Info Modal */}
       <MessageInfoModal
         visible={showMessageInfo}
         onClose={() => setShowMessageInfo(false)}
         message={selectedMessage}
         isDark={isDark}
         members={members}
+      />
+
+      <ImagePreviewModal
+        visible={!!previewImageUrl}
+        imageUrl={previewImageUrl || ''}
+        onClose={() => setPreviewImageUrl(null)}
+        isDark={isDark}
       />
 
       <LinearGradient
@@ -1031,7 +1301,12 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
           }}
         >
           <View style={styles.headerAvatar}>
-            <Text style={styles.headerAvatarText}>{headerInfo.avatar}</Text>
+            <SafeAvatar 
+              avatar={headerInfo.avatar} 
+              size={44} 
+              fallbackEmoji={chatInfo?.type === 'group' ? '👨‍👩‍👧‍👦' : '👤'} 
+              fallbackColor="#667eea" 
+            />
             {chatInfo?.type === 'direct' && (
               <View style={styles.onlineDot} />
             )}
@@ -1088,7 +1363,6 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
                   isSelected={false}
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    // Navigate to member profile or start direct chat
                   }}
                   isDark={isDark}
                 />
@@ -1151,8 +1425,12 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
         )}
 
         <BlurView intensity={100} style={styles.inputBar} tint={isDark ? 'dark' : 'light'}>
-          <TouchableOpacity style={styles.inputButton} onPress={handleImagePick}>
+          <TouchableOpacity style={styles.inputButton} onPress={showImageSourceAlert}>
             <Ionicons name="image" size={24} color="#667eea" />
+          </TouchableOpacity>
+          
+          <TouchableOpacity style={styles.inputButton} onPress={handleFilePick}>
+            <Ionicons name="document-attach" size={24} color="#667eea" />
           </TouchableOpacity>
 
           <View style={styles.inputWrapper}>
@@ -1211,6 +1489,22 @@ const styles = StyleSheet.create({
   containerDark: { backgroundColor: '#0a0a0a' },
   centered: { justifyContent: 'center', alignItems: 'center' },
 
+  // SafeAvatar
+  avatarWrapper: {
+    position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  avatarGradient: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  avatarEmoji: {},
+
   // SweetAlert
   alertOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -1255,6 +1549,57 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
 
+  // File Bubble
+  fileBubble: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    minWidth: 200,
+  },
+  fileIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  fileInfo: {
+    flex: 1,
+    marginRight: 8,
+  },
+  fileName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1a1a1a',
+  },
+  fileNameMe: {
+    color: '#fff',
+  },
+  fileSize: {
+    fontSize: 12,
+    color: '#64748b',
+    marginTop: 2,
+  },
+  fileSizeMe: {
+    color: 'rgba(255,255,255,0.7)',
+  },
+
+  // Resend
+  resendButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 4,
+  },
+  resendText: {
+    fontSize: 12,
+    color: '#ff4757',
+    fontWeight: '600',
+  },
+
   // User Bubbles
   userBubblesContainer: {
     position: 'absolute',
@@ -1285,9 +1630,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 6,
     position: 'relative',
-  },
-  userBubbleEmoji: {
-    fontSize: 28,
   },
   userBubbleStatus: {
     position: 'absolute',
@@ -1379,17 +1721,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  messageInfoAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  messageInfoAvatarText: {
-    fontSize: 24,
-  },
   messageInfoUserName: {
     fontSize: 16,
     fontWeight: '700',
@@ -1416,17 +1747,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(0,0,0,0.05)',
-  },
-  readByAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  readByAvatarText: {
-    fontSize: 18,
   },
   readByName: {
     flex: 1,
@@ -1455,6 +1775,41 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#1e293b',
+  },
+
+  // Image Preview Modal
+  imagePreviewOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imagePreviewContainer: {
+    width: width,
+    height: height * 0.7,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imagePreviewLoader: {
+    position: 'absolute',
+  },
+  imagePreviewImage: {
+    width: width - 40,
+    height: height * 0.6,
+    borderRadius: 16,
+  },
+  imagePreviewClose: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+  },
+  imagePreviewCloseBlur: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
 
   // Header
@@ -1492,7 +1847,6 @@ const styles = StyleSheet.create({
     marginRight: 12,
     position: 'relative',
   },
-  headerAvatarText: { fontSize: 24 },
   onlineDot: {
     position: 'absolute',
     bottom: 0,
@@ -1550,7 +1904,6 @@ const styles = StyleSheet.create({
     marginRight: 8,
     marginBottom: 4,
   },
-  avatarEmoji: { fontSize: 16 },
   senderName: { fontSize: 12, fontWeight: '600', marginBottom: 2, marginLeft: 4 },
 
   bubble: {
@@ -1605,11 +1958,28 @@ const styles = StyleSheet.create({
   myText: { color: '#fff' },
   theirText: { color: '#1a1a1a' },
   systemText: { color: '#64748b', fontSize: 13, fontStyle: 'italic' },
+  
+  imageContainer: {
+    position: 'relative',
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: 4,
+  },
+  imagePlaceholder: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1,
+  },
   messageImage: {
     width: width * 0.6,
     height: 200,
     borderRadius: 12,
-    marginBottom: 4,
   },
   voiceMessage: {
     flexDirection: 'row',

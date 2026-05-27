@@ -137,7 +137,7 @@ export interface AuthState {
 }
 
 // ============================================
-// NAVIGATION TYPES
+// NAVIGATION TYPES - RENAMED FOR BETTER UX
 // ============================================
 
 export type RootStackParamList = {
@@ -248,7 +248,7 @@ export type CommunityStackParamList = {
   CreatePost: { topicId?: string };
   PostDetail: { postId: string };
   UserProfile: { userId: string };
-  ChatList: undefined;           // <-- ADD THIS LINE
+  ChatList: undefined;
   Chat: { userId: string };
   Notifications: undefined;
   EditCommunityProfile: { userId?: string };
@@ -256,7 +256,7 @@ export type CommunityStackParamList = {
   Followers: { userId: string };
   Following: { userId: string };
   SearchUsers: { 
-    initialQuery?: string;
+    initialQuery?: string;  // FIX: Removed space in "initialQ uery"
     filter?: 'all' | 'followers' | 'following' | 'topic';
     topicId?: string;
   };
@@ -268,12 +268,15 @@ export type CommunityStackParamList = {
   };
 };
 
+// ============================================
+// RENAMED MAIN TAB PARAM LIST - UX OPTIMIZED
+// ============================================
 export type MainTabParamList = {
   Home: undefined;
-  Community: undefined;
-  Timeline: { babyId?: string } | undefined;
-  SafetyCorner: undefined;
-  Settings: undefined;
+  Track: undefined;
+  Grow: undefined;
+  Connect: undefined;
+  More: undefined;
 };
 
 // ============================================
@@ -312,11 +315,11 @@ export type FamilyChatRouteProp = RouteProp<RootStackParamList, 'FamilyChat'>;
 export type EditGuardianNavigationProp = NativeStackScreenProps<RootStackParamList, 'EditGuardian'>['navigation'];
 export type EditGuardianRouteProp = RouteProp<RootStackParamList, 'EditGuardian'>;
 
-// NEW: Achievements specific navigation helpers
+// Achievements specific navigation helpers
 export type AchievementsNavigationProp = NativeStackScreenProps<RootStackParamList, 'Achievements'>['navigation'];
 export type AchievementsRouteProp = RouteProp<RootStackParamList, 'Achievements'>;
 
-// NEW: Reminders specific navigation helpers
+// Reminders specific navigation helpers
 export type RemindersNavigationProp = NativeStackScreenProps<RootStackParamList, 'Reminders'>['navigation'];
 export type RemindersRouteProp = RouteProp<RootStackParamList, 'Reminders'>;
 

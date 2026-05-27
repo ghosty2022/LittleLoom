@@ -1,28 +1,38 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
+  TouchableOpacity,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
-  Alert,
-  Switch,
-  Animated,
-  useColorScheme,
-  Dimensions,
-  Modal,
   ActivityIndicator,
+  useColorScheme,
+  Alert,
+  Dimensions,
+  Image,
+  Switch,
+  Modal,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, {
+  FadeInUp,
+  FadeIn,
+  Layout,
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withTiming,
+  withSequence,
+} from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
 import { useAuth } from '../context/AuthContext';
 import { useSecurity } from '../context/SecurityContext';
 import { useBaby } from '../context/BabyContext';
 import { useUser } from '../context/UserContext';
-// FIXED: Import FamilyMember and UserRole from types/roles instead of FamilyContext
 import { useFamily } from '../context/FamilyContext';
 import { FamilyMember, UserRole } from '../types/roles';
 import { useActivity } from '../context/ActivityContext';
@@ -34,6 +44,51 @@ type SettingsScreenProps = NativeStackScreenProps<RootStackParamList, 'Settings'
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
+
+// ==================== IMAGE UTILITY FUNCTIONS ====================
+const isImageUri = (value: string | undefined | null): boolean => {
+  if (!value || typeof value !== 'string') return false;
+  return value.startsWith('http') || value.startsWith('file://') || value.startsWith('data:');
+};
+
+const isEmoji = (value: string | undefined | null): boolean => {
+  if (!value || typeof value !== 'string') return false;
+  if (value.length > 4) return false;
+  for (const char of value) {
+    const code = char.codePointAt(0) || 0;
+    const isEmojiChar = (
+      (code >= 0x1F600 && code <= 0x1F64F) || (code >= 0x1F300 && code <= 0x1F5FF) ||
+      (code >= 0x1F680 && code <= 0x1F6FF) || (code >= 0x1F1E0 && code <= 0x1F1FF) ||
+      (code >= 0x2600 && code <= 0x26FF) || (code >= 0x2700 && code <= 0x27BF) ||
+      (code >= 0x1F900 && code <= 0x1F9FF) || (code >= 0x1F018 && code <= 0x1F270) ||
+      code === 0x238C || code === 0x2B06 || code === 0x2B07 || code === 0x2B05 ||
+      code === 0x27A1 || (code >= 0x2194 && code <= 0x2199) ||
+      (code >= 0x21A9 && code <= 0x21AA) || (code >= 0x2934 && code <= 0x2935) ||
+      (code >= 0x25AA && code <= 0x25AB) || (code >= 0x25FB && code <= 0x25FE) ||
+      code === 0x25B6 || code === 0x25C0 || (code >= 0x1F200 && code <= 0x1F251) ||
+      code === 0x1F004 || code === 0x1F0CF || (code >= 0x1F170 && code <= 0x1F171) ||
+      (code >= 0x1F17E && code <= 0x1F17F) || code === 0x1F18E || code === 0x3030 ||
+      code === 0x2B50 || code === 0x2B55 || (code >= 0x23E9 && code <= 0x23EC) ||
+      code === 0x23F0 || code === 0x23F3 || (code >= 0x231A && code <= 0x231B) ||
+      (code >= 0x23F8 && code <= 0x23FA) || code === 0x24C2 ||
+      (code >= 0x1F3FB && code <= 0x1F3FF) || (code >= 0x1F3E0 && code <= 0x1F3F4) ||
+      (code >= 0x1F3F8 && code <= 0x1F43F) || code === 0x1F440 ||
+      (code >= 0x1F442 && code <= 0x1F4FF) || (code >= 0x1F500 && code <= 0x1F53D) ||
+      (code >= 0x1F54B && code <= 0x1F54E) || (code >= 0x1F550 && code <= 0x1F567) ||
+      (code >= 0x1F595 && code <= 0x1F596) || (code >= 0x1F5FB && code <= 0x1F64F) ||
+      (code >= 0x1F680 && code <= 0x1F6C5) || (code >= 0x1F6CB && code <= 0x1F6D2) ||
+      (code >= 0x1F6E0 && code <= 0x1F6E5) || code === 0x1F6E9 ||
+      (code >= 0x1F6EB && code <= 0x1F6EC) || code === 0x1F6F0 ||
+      (code >= 0x1F6F3 && code <= 0x1F6F8) || (code >= 0x1F910 && code <= 0x1F93A) ||
+      (code >= 0x1F93C && code <= 0x1F93E) || (code >= 0x1F940 && code <= 0x1F945) ||
+      (code >= 0x1F947 && code <= 0x1F94C) || (code >= 0x1F950 && code <= 0x1F96B) ||
+      (code >= 0x1F980 && code <= 0x1F997) || code === 0x1F9C0 ||
+      (code >= 0x1F9D0 && code <= 0x1F9E6)
+    );
+    if (!isEmojiChar) return false;
+  }
+  return true;
+};
 
 // ==========================================
 // TYPES & INTERFACES
@@ -119,25 +174,31 @@ const MenuItem: React.FC<MenuItemProps> = ({
   color, isDark, showArrow = false, disabled = false, 
   isDestructive = false, badge 
 }) => {
-  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const scaleAnim = useSharedValue(1);
+  
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scaleAnim.value }]
+  }));
   
   const handlePress = () => {
     if (disabled) return;
     
-    Animated.sequence([
-      Animated.timing(scaleAnim, { toValue: 0.96, duration: 50, useNativeDriver: true }),
-      Animated.timing(scaleAnim, { toValue: 1, duration: 100, useNativeDriver: true }),
-    ]).start(() => {
+    scaleAnim.value = withSequence(
+      withTiming(0.96, { duration: 50 }),
+      withTiming(1, { duration: 100 })
+    );
+    
+    setTimeout(() => {
       if (onPress) onPress();
       else if (onToggle) onToggle(!isEnabled);
-    });
+    }, 150);
   };
 
   return (
     <AnimatedTouchable 
       style={[
         styles.menuItem, 
-        { transform: [{ scale: scaleAnim }] },
+        animatedStyle,
         disabled && styles.menuItemDisabled
       ]} 
       onPress={handlePress}
@@ -217,6 +278,133 @@ const StatCard: React.FC<{
 );
 
 // ==========================================
+// SAFE AVATAR DISPLAY COMPONENT - FIXED
+// ==========================================
+const SafeAvatar: React.FC<{
+  avatar: string | undefined | null;
+  size?: number;
+  fallbackIcon?: keyof typeof Ionicons.glyphMap;
+  fallbackColor?: string;
+  borderColor?: string;
+  showEditBadge?: boolean;
+  onPress?: () => void;
+}> = ({ 
+  avatar, 
+  size = 72, 
+  fallbackIcon = 'person', 
+  fallbackColor = '#667eea',
+  borderColor = '#fff',
+  showEditBadge = false,
+  onPress
+}) => {
+  const hasImage = isImageUri(avatar);
+  const hasEmoji = isEmoji(avatar);
+
+  const Wrapper = onPress ? TouchableOpacity : View;
+
+  return (
+    <Wrapper onPress={onPress} activeOpacity={0.8} style={styles.avatarWrapperOuter}>
+      <View style={[
+        styles.avatarWrapper, 
+        { 
+          width: size, 
+          height: size, 
+          borderRadius: size / 3,
+          borderWidth: 3,
+          borderColor: borderColor,
+        }
+      ]}>
+        {hasImage ? (
+          <Image 
+            source={{ uri: avatar! }} 
+            style={{ width: size, height: size, borderRadius: size / 3 }}
+            resizeMode="cover"
+            onError={(e) => console.log('SafeAvatar image error:', e.nativeEvent.error)}
+          />
+        ) : hasEmoji ? (
+          <Text style={{ fontSize: size * 0.5 }}>{avatar}</Text>
+        ) : (
+          <View style={[
+            styles.fallbackAvatar, 
+            { 
+              width: size, 
+              height: size, 
+              borderRadius: size / 3,
+              backgroundColor: `${fallbackColor}20` 
+            }
+          ]}>
+            <Ionicons name={fallbackIcon} size={size * 0.4} color={fallbackColor} />
+          </View>
+        )}
+      </View>
+      
+      {showEditBadge && (
+        <View style={styles.editBadge}>
+          <Ionicons name="pencil" size={12} color="#fff" />
+        </View>
+      )}
+    </Wrapper>
+  );
+};
+
+// ==========================================
+// SAFE BABY AVATAR COMPONENT - FOR CONSISTENCY
+// ==========================================
+const SafeBabyAvatar: React.FC<{
+  avatar?: string | null;
+  gender?: string;
+  size?: number;
+  showBadge?: boolean;
+  onPress?: () => void;
+}> = ({ avatar, gender = 'other', size = 56, showBadge = false, onPress }) => {
+  const hasImage = isImageUri(avatar);
+  const hasEmoji = isEmoji(avatar);
+
+  const genderColors: Record<string, string[]> = {
+    boy: ['#667eea', '#764ba2'],
+    girl: ['#fa709a', '#fee140'],
+    other: ['#11998e', '#38ef7d'],
+  };
+  const gradientColors = genderColors[gender] || genderColors.other;
+  const genderIcon = gender === 'boy' ? 'male' : gender === 'girl' ? 'female' : 'ellipse';
+
+  const Wrapper = onPress ? TouchableOpacity : View;
+
+  return (
+    <Wrapper onPress={onPress} activeOpacity={0.8}>
+      <View style={[styles.babyAvatarWrapper, { width: size, height: size }]}>
+        <LinearGradient
+          colors={gradientColors}
+          style={[
+            styles.babyAvatarGradient, 
+            { width: size, height: size, borderRadius: size / 2 }
+          ]}
+        >
+          {hasImage ? (
+            <Image 
+              source={{ uri: avatar! }} 
+              style={{ width: size, height: size, borderRadius: size / 2 }}
+              resizeMode="cover"
+              onError={(e) => console.log('Baby avatar image error:', e.nativeEvent.error)}
+            />
+          ) : hasEmoji ? (
+            <Text style={{ fontSize: size * 0.5 }}>{avatar}</Text>
+          ) : (
+            <Ionicons name={genderIcon as any} size={size * 0.4} color="#fff" />
+          )}
+        </LinearGradient>
+
+        {showBadge && (
+          <View style={[styles.checkmarkBadge, { bottom: -2, right: -2 }]}>
+            <Ionicons name="checkmark" size={14} color="#fff" />
+          </View>
+        )}
+      </View>
+    </Wrapper>
+  );
+};
+
+// ==========================================
 // BABY SELECTION MODAL
 // ==========================================
 const BabySelectionModal: React.FC<{
@@ -267,7 +455,11 @@ const BabySelectionModal: React.FC<{
                 onPress={() => onSelectBaby(baby)}
               >
                 <View style={styles.babyOptionEmojiContainer}>
-                  <Text style={styles.babyOptionEmoji}>{baby.avatar || '👶'}</Text>
+                  <SafeBabyAvatar 
+                    avatar={baby.avatar} 
+                    gender={baby.gender} 
+                    size={50} 
+                  />
                   {isActive && (
                     <View style={styles.activeIndicator}>
                       <Ionicons name="checkmark-circle" size={20} color={COLORS.success.light} />
@@ -301,7 +493,7 @@ const BabySelectionModal: React.FC<{
 );
 
 // ==========================================
-// PROFILE CARD COMPONENT - UPDATED NAVIGATION
+// PROFILE CARD COMPONENT - UPDATED WITH SAFE AVATAR
 // ==========================================
 const ProfileCard: React.FC<{
   navigation: any;
@@ -318,40 +510,28 @@ const ProfileCard: React.FC<{
   navigation, isDark, userProfile, babies, currentBaby, 
   currentBabyId, parent2Profile, guardians, onShowBabyModal, stats 
 }) => {
-  // Safe check for babies array
   const safeBabies = babies || [];
   const hasMultipleBabies = safeBabies.length > 1;
   
-  // Handle baby (child) press - goes to EditProfileScreen
   const handleBabyPress = () => {
     if (safeBabies.length === 1 && currentBaby) {
-      // Single baby - edit child profile
       navigation.navigate('EditProfile', { mode: 'baby', babyId: currentBaby.id });
     } else if (safeBabies.length > 1) {
-      // Multiple babies - show selection modal
       onShowBabyModal();
     } else {
-      // No baby - create one
       navigation.navigate('CreateBabyProfile');
     }
   };
 
-  // Handle current user (parent1) press - goes to EditGuardianScreen
-  // FIXED: Ensure we pass a valid guardianId that exists in the members array
   const handleCurrentUserPress = () => {
-    // Current user is always a parent/guardian, not a child
-    // Navigate to EditGuardianScreen with the user's actual ID
     const guardianId = userProfile?.id || userProfile?.uid || 'parent1';
-    console.log('Navigating to EditGuardian with ID:', guardianId);
-    
     navigation.navigate('EditGuardian', { 
       guardianId: guardianId,
-      mode: 'parent2', // Treat as parent mode in EditGuardianScreen
+      mode: 'parent2',
       fromChat: false
     });
   };
 
-  // Handle parent2 press - goes to EditGuardianScreen
   const handleParent2Press = () => {
     if (parent2Profile) {
       navigation.navigate('EditGuardian', { 
@@ -360,12 +540,10 @@ const ProfileCard: React.FC<{
         fromChat: false
       });
     } else {
-      // No parent2 set up, go to add parent
       navigation.navigate('AddParent');
     }
   };
 
-  // Handle guardian press - goes to EditGuardianScreen
   const handleGuardianPress = (guardian: FamilyMember) => {
     navigation.navigate('EditGuardian', { 
       guardianId: guardian.id,
@@ -378,17 +556,14 @@ const ProfileCard: React.FC<{
     <BlurView intensity={isDark ? 40 : 90} style={styles.profileCard} tint={isDark ? 'dark' : 'light'}>
       {/* Main Profile Header - Current User */}
       <View style={styles.profileHeader}>
-        <TouchableOpacity 
-          style={styles.avatarContainer}
+        <SafeAvatar 
+          avatar={userProfile?.avatar}
+          size={72}
+          fallbackIcon="person"
+          fallbackColor={COLORS.primary.light}
+          showEditBadge={true}
           onPress={handleCurrentUserPress}
-        >
-          <View style={[styles.avatarWrapper, isDark && styles.avatarWrapperDark]}>
-            <Text style={styles.avatarEmoji}>{userProfile?.avatar || '👤'}</Text>
-          </View>
-          <View style={styles.editBadge}>
-            <Ionicons name="pencil" size={12} color="#fff" />
-          </View>
-        </TouchableOpacity>
+        />
         
         <View style={styles.profileInfo}>
           <Text style={[styles.profileName, isDark && styles.profileNameDark]}>
@@ -468,7 +643,11 @@ const ProfileCard: React.FC<{
             onPress={handleBabyPress}
           >
             <View style={[styles.familyMemberIcon, { backgroundColor: `${COLORS.secondary.light}20` }]}>
-              <Text style={styles.familyMemberEmoji}>{currentBaby?.avatar || '👶'}</Text>
+              <SafeBabyAvatar 
+                avatar={currentBaby?.avatar} 
+                gender={currentBaby?.gender} 
+                size={40} 
+              />
               {hasMultipleBabies && (
                 <View style={styles.babyIndicator}>
                   <Text style={styles.babyIndicatorText}>{safeBabies.length}</Text>
@@ -480,7 +659,7 @@ const ProfileCard: React.FC<{
             </Text>
           </TouchableOpacity>
 
-          {/* Co-Parent (Parent 2) - Goes to EditGuardian */}
+          {/* Co-Parent (Parent 2) */}
           {parent2Profile && (
             <TouchableOpacity 
               style={styles.familyMemberItem}
@@ -495,7 +674,7 @@ const ProfileCard: React.FC<{
             </TouchableOpacity>
           )}
 
-          {/* Guardians - Go to EditGuardian */}
+          {/* Guardians */}
           {guardians?.map((guardian, index) => (
             <TouchableOpacity 
               key={guardian.id || index}
@@ -596,7 +775,6 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['security', 'preferences']));
   const [showBabyModal, setShowBabyModal] = useState(false);
   
-  // ==================== CONTEXT HOOKS ====================
   const { 
     signOut, 
     userProfile,
@@ -626,7 +804,6 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
 
   const { profile: userContextProfile } = useUser();
   
-  // Get family data from FamilyContext
   const { guardians, parent2: parent2Profile } = useFamily();
   
   const { entries } = useActivity();
@@ -635,7 +812,6 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
-  // ==================== COMPUTED VALUES ====================
   const availableMethods = getAvailableAuthMethods();
   const biometricTypeName = getBiometricTypeName();
   const hasBiometric = isBiometricHardwareAvailable && isBiometricEnrolled;
@@ -649,7 +825,6 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
     milestones: babyStats.milestones || 0,
   };
 
-  // ==================== HANDLERS ====================
   const toggleSection = (section: string) => {
     setExpandedSections(prev => {
       const newSet = new Set(prev);
@@ -742,7 +917,6 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
     );
   };
 
-  // Handle baby selection from modal - goes to EditProfile (child)
   const handleSelectBabyFromModal = (baby: any) => {
     setShowBabyModal(false);
     navigation.navigate('EditProfile', { mode: 'baby', babyId: baby.id });
@@ -753,8 +927,6 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
     return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
   };
 
-  // ==================== RENDER SECTIONS ====================
-  
   const renderSecuritySection = () => {
     const isExpanded = expandedSections.has('security');
     
@@ -1031,7 +1203,7 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
           icon="information-circle"
           title="About LittleLoom"
           subtitle="Version 1.0.0"
-          onPress={() => Alert.alert('About', 'LittleLoom v1.0.0\\n\\nMade with ❤️ for parents everywhere')}
+          onPress={() => Alert.alert('About', 'LittleLoom v1.0.0\n\nMade with ❤️ for parents everywhere')}
           color={COLORS.indigo.light}
           isDark={isDark}
           showArrow
@@ -1040,7 +1212,6 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
     </View>
   );
 
-  // ==================== MAIN RENDER ====================
   if (authLoading || babyLoading) {
     return (
       <View style={[styles.loadingContainer, isDark && styles.loadingContainerDark]}>
@@ -1080,7 +1251,7 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
           </Text>
         </View>
 
-        {/* Profile Card - UPDATED with proper navigation */}
+        {/* Profile Card - with SafeAvatar */}
         <ProfileCard 
           navigation={navigation}
           isDark={isDark}
@@ -1146,7 +1317,6 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
           </LinearGradient>
         </TouchableOpacity>
 
-        {/* Footer Spacing */}
         <View style={{ height: 20 }} />
       </ScrollView>
 
@@ -1232,31 +1402,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 20,
   },
-  avatarContainer: {
+  
+  // FIXED: SafeAvatar styles
+  avatarWrapperOuter: {
     position: 'relative',
     marginRight: 16,
   },
   avatarWrapper: {
-    width: 72,
-    height: 72,
-    borderRadius: 24,
-    backgroundColor: 'rgba(102,126,234,0.15)',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: '#fff',
+    overflow: 'hidden',
     shadowColor: '#667eea',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 5,
   },
-  avatarWrapperDark: {
-    borderColor: 'rgba(255,255,255,0.1)',
-    backgroundColor: 'rgba(102,126,234,0.2)',
-  },
-  avatarEmoji: { 
-    fontSize: 36,
+  fallbackAvatar: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   editBadge: {
     position: 'absolute',
@@ -1275,6 +1439,32 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 4,
   },
+  
+  // SafeBabyAvatar styles
+  babyAvatarWrapper: {
+    position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  babyAvatarGradient: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkmarkBadge: {
+    position: 'absolute',
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#667eea',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  
   profileInfo: { 
     flex: 1,
   },
@@ -1400,9 +1590,6 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     borderWidth: 2,
     borderColor: 'transparent',
-  },
-  familyMemberEmoji: {
-    fontSize: 28,
   },
   familyMemberLabel: {
     fontSize: 12,
