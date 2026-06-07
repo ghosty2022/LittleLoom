@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { Alert, Share } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
@@ -10,7 +10,6 @@ import { useAuth } from './AuthContext';
 import { useBaby } from './BabyContext';
 import * as Crypto from 'expo-crypto';
 
-// ==================== TYPES ====================
 export type MessageType = 'text' | 'image' | 'voice' | 'system' | 'file';
 
 export interface FileMetadata {
@@ -87,7 +86,6 @@ interface FamilyChatState {
 }
 
 interface FamilyChatContextType extends FamilyChatState {
-  // Chat Management
   createFamilyGroup: (name?: string, avatar?: string) => Promise<string>;
   getOrCreateDirectChat: (memberId: string, memberInfo?: Partial<FamilyMember>) => Promise<string>;
   getChatMessages: (chatId: string) => FamilyMessage[];
@@ -98,33 +96,27 @@ interface FamilyChatContextType extends FamilyChatState {
   clearChat: (chatId: string) => Promise<void>;
   resendMessage: (chatId: string, messageId: string) => Promise<void>;
   
-  // Media
   pickAndSendImage: (chatId: string, fromCamera?: boolean) => Promise<void>;
   pickAndSendFile: (chatId: string) => Promise<void>;
   
-  // Typing & Presence
   setTypingStatus: (chatId: string, isTyping: boolean) => void;
   isUserTyping: (chatId: string, userId: string) => boolean;
   getTypingUsers: (chatId: string) => TypingStatus[];
   
-  // Reactions
   addReaction: (chatId: string, messageId: string, emoji: string) => Promise<void>;
   removeReaction: (chatId: string, messageId: string, emoji: string) => Promise<void>;
   
-  // Chat Settings
   muteChat: (chatId: string, muted: boolean) => Promise<void>;
   pinChat: (chatId: string, pinned: boolean) => Promise<void>;
   leaveChat: (chatId: string) => Promise<void>;
   deleteChat: (chatId: string) => Promise<void>;
   setChatBackground: (chatId: string, imageUri: string | null) => Promise<void>;
   
-  // Family Code
   generateFamilyCode: () => string;
   getFamilyCode: () => string | null;
   shareFamilyCode: () => Promise<void>;
   joinFamilyByCode: (code: string) => Promise<boolean>;
   
-  // Utility
   getUnreadCount: (chatId?: string) => number;
   getChatById: (chatId: string) => FamilyChat | undefined;
   getMemberChatInfo: (memberId: string) => { name: string; avatar: string; role: string } | null;
@@ -133,7 +125,6 @@ interface FamilyChatContextType extends FamilyChatState {
   getMessageById: (chatId: string, messageId: string) => FamilyMessage | undefined;
 }
 
-// ==================== STORAGE KEYS ====================
 const STORAGE_KEYS = {
   CHATS: (familyCode: string) => `@littleloom_family_chats_${familyCode}`,
   MESSAGES: (familyCode: string, chatId: string) => `@littleloom_family_msgs_${familyCode}_${chatId}`,
@@ -143,10 +134,8 @@ const STORAGE_KEYS = {
   DEVICE_ID: '@littleloom_device_id',
 };
 
-// ==================== CONTEXT ====================
 const FamilyChatContext = createContext<FamilyChatContextType | null>(null);
 
-// ==================== HELPER FUNCTIONS ====================
 const generateFamilyCode = (): string => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = 'FAM-';
@@ -189,7 +178,6 @@ const getOrCreateDeviceId = async (): Promise<string> => {
   return id;
 };
 
-// ==================== PROVIDER ====================
 export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { members, parent1, parent2, guardians, currentBaby } = useFamily();
   const { userProfile } = useAuth();
@@ -209,7 +197,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const deviceIdRef = useRef<string>('');
   const typingTimeoutRef = useRef<Record<string, NodeJS.Timeout>>({});
 
-  // ==================== INITIALIZATION ====================
   useEffect(() => {
     (async () => {
       deviceIdRef.current = await getOrCreateDeviceId();
@@ -248,11 +235,9 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const savedChats = await AsyncStorage.getItem(chatsKey);
       let chats: FamilyChat[] = savedChats ? JSON.parse(savedChats) : [];
       
-      // Ensure family group chat exists
       const familyGroupId = `family_group_${state.familyCode}`;
       const existingGroup = chats.find(c => c.id === familyGroupId);
       
-      // Build participant info maps
       const participantRoles: Record<string, string> = {};
       const participantNames: Record<string, string> = {};
       const participantAvatars: Record<string, string> = {};
@@ -291,7 +276,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         );
         await saveMessages(familyGroupId, [welcomeMsg]);
       } else {
-        // Update participant info
         existingGroup.participants = members.map(m => m.id);
         existingGroup.participantRoles = participantRoles;
         existingGroup.participantNames = participantNames;
@@ -299,7 +283,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         await AsyncStorage.setItem(chatsKey, JSON.stringify(chats));
       }
       
-      // Load messages for all chats
       const messages: Record<string, FamilyMessage[]> = {};
       for (const chat of chats) {
         const msgs = await loadMessages(chat.id);
@@ -318,7 +301,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   };
 
-  // ==================== STORAGE HELPERS ====================
   const saveMessages = async (chatId: string, newMessages: FamilyMessage[]) => {
     if (!state.familyCode) return;
     try {
@@ -326,7 +308,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const existing = await AsyncStorage.getItem(key);
       const allMessages: FamilyMessage[] = existing ? JSON.parse(existing) : [];
       
-      // Merge and deduplicate by syncId (for cross-device sync readiness)
       const mergedMap = new Map<string, FamilyMessage>();
       [...allMessages, ...newMessages].forEach(msg => {
         const existing = mergedMap.get(msg.syncId);
@@ -355,7 +336,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   };
 
-  // ==================== CHAT ACTIONS ====================
   const createFamilyGroup = async (name?: string, avatar?: string): Promise<string> => {
     if (!state.familyCode || !userProfile) return '';
     
@@ -484,7 +464,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const syncId = Crypto.randomUUID();
     const now = new Date().toISOString();
     
-    // Find reply preview if applicable
     let replyToPreview: string | undefined;
     if (replyToId) {
       const repliedMsg = state.messages[chatId]?.find(m => m.id === replyToId);
@@ -516,7 +495,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       deliveryStatus: 'sending',
     };
     
-    // Optimistic update
     setState(prev => ({
       ...prev,
       messages: {
@@ -527,13 +505,10 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }));
     
     try {
-      // Simulate network then persist
       await new Promise(resolve => setTimeout(resolve, 300));
       
-      // Save to storage (in real app, send to backend here)
       await saveMessages(chatId, [{ ...newMessage, deliveryStatus: 'sent' }]);
       
-      // Update chat last message
       const updatedChats = state.chats.map(c => {
         if (c.id === chatId) {
           return {
@@ -672,7 +647,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       if (!result.canceled && result.assets[0]) {
         const uri = result.assets[0].uri;
-        // Copy to permanent storage
         const fileName = `chat_img_${Date.now()}.jpg`;
         const permanentUri = FileSystem.documentDirectory + 'chat_media/' + fileName;
         await FileSystem.makeDirectoryAsync(FileSystem.documentDirectory + 'chat_media/', { intermediates: true });
@@ -699,7 +673,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const fileInfo = await FileSystem.getInfoAsync(asset.uri);
       const size = fileInfo.exists && 'size' in fileInfo ? fileInfo.size : 0;
       
-      // Copy to app storage
       const fileName = `chat_file_${Date.now()}_${asset.name}`;
       const permanentUri = FileSystem.documentDirectory + 'chat_files/' + fileName;
       await FileSystem.makeDirectoryAsync(FileSystem.documentDirectory + 'chat_files/', { intermediates: true });
@@ -781,7 +754,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }));
   };
 
-  // ==================== TYPING STATUS ====================
   const setTypingStatus = useCallback((chatId: string, isTyping: boolean) => {
     if (!userProfile) return;
     
@@ -837,7 +809,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return state.typingUsers[chatId] || [];
   }, [state.typingUsers]);
 
-  // ==================== REACTIONS ====================
   const addReaction = async (chatId: string, messageId: string, emoji: string): Promise<void> => {
     if (!userProfile) return;
     
@@ -896,7 +867,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }));
   };
 
-  // ==================== CHAT SETTINGS ====================
   const muteChat = async (chatId: string, muted: boolean): Promise<void> => {
     if (!state.familyCode) return;
     
@@ -966,7 +936,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setState(prev => ({ ...prev, chats: updatedChats }));
   };
 
-  // ==================== FAMILY CODE ====================
   const shareFamilyCode = async (): Promise<void> => {
     const code = state.familyCode || generateFamilyCode();
     try {
@@ -1021,7 +990,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const getFamilyCode = (): string | null => state.familyCode;
 
-  // ==================== UTILITY ====================
   const getUnreadCount = (chatId?: string): number => {
     if (chatId) {
       const chat = state.chats.find(c => c.id === chatId);
@@ -1058,7 +1026,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     await initializeFamilyChat();
   };
 
-  // ==================== CONTEXT VALUE ====================
   const value: FamilyChatContextType = {
     ...state,
     createFamilyGroup,

@@ -1,5 +1,4 @@
-// src/services/NotificationService.ts
-import * as Notifications from 'expo-notifications';
+﻿import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -61,14 +60,12 @@ export class NotificationService {
       });
     }
 
-    // Listen for notification responses
     Notifications.addNotificationResponseReceivedListener(this.handleNotificationResponse);
   }
 
   private handleNotificationResponse = (response: Notifications.NotificationResponse) => {
     const data = response.notification.request.content.data;
     
-    // Handle navigation or actions based on notification type
     if (data?.type === 'streak_reminder') {
       console.log('Navigate to tracking for streak protection');
     } else if (data?.type === 'achievement_unlocked') {
@@ -126,7 +123,6 @@ export class NotificationService {
       },
     });
 
-    // Schedule follow-up if urgent
     if (hoursLeft <= 2) {
       await Notifications.scheduleNotificationAsync({
         content: {

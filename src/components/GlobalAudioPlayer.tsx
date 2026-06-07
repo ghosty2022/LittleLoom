@@ -26,7 +26,6 @@ import Animated, {
 import {
   PanGestureHandler,
   TapGestureHandler,
-  GestureHandlerRootView,
   PanGestureHandlerGestureEvent,
 } from 'react-native-gesture-handler';
 import { BlurView } from 'expo-blur';
@@ -34,11 +33,13 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
 import { useAudio } from '../context/AudioContext';
-import { useBaby } from '../context/BabyContext';
+import { useSafeApp, useSafeBaby, useSafeAuth, useUnifiedTheme } from '../hooks/useSafeContexts';
 
 const { width, height } = Dimensions.get('window');
 
-// Sleep Timer Modal
+// ============================================
+// SLEEP TIMER MODAL
+// ============================================
 const SleepTimerModal = ({ 
   visible, 
   onClose, 
@@ -101,7 +102,9 @@ const SleepTimerModal = ({
   );
 };
 
-// Floating Ball Player
+// ============================================
+// FLOATING BALL PLAYER
+// ============================================
 const FloatingBall = () => {
   const { currentTrack, isPlaying, expandPlayer } = useAudio();
   const colorScheme = useColorScheme();
@@ -165,7 +168,9 @@ const FloatingBall = () => {
   );
 };
 
-// Mini Player
+// ============================================
+// MINI PLAYER
+// ============================================
 const MiniPlayer = () => {
   const { currentTrack, isPlaying, togglePlayback, expandPlayer, collapseToBall, progress } = useAudio();
   const colorScheme = useColorScheme();
@@ -235,7 +240,9 @@ const MiniPlayer = () => {
   );
 };
 
-// Full Player
+// ============================================
+// FULL PLAYER
+// ============================================
 const FullPlayer = () => {
   const {
     currentTrack,
@@ -451,18 +458,24 @@ const FullPlayer = () => {
   );
 };
 
+// ============================================
+// MAIN EXPORT COMPONENT
+// ============================================
 export const GlobalAudioPlayer = () => {
   const { playerMode, currentTrack } = useAudio();
   if (!currentTrack) return null;
 
   return (
-    <GestureHandlerRootView style={StyleSheet.absoluteFill} pointerEvents="box-none">
+    <>
       {playerMode === 'ball' && <FloatingBall />}
       {playerMode === 'mini' && <MiniPlayer />}
       {playerMode === 'full' && <FullPlayer />}
-    </GestureHandlerRootView>
+    </>
   );
 };
+
+// ✅ FIX: Also export as default for backward compatibility
+export default GlobalAudioPlayer;
 
 const styles = StyleSheet.create({
   textDark: { color: '#ffffff' },

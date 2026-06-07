@@ -1,1766 +1,2144 @@
-import React, { useState, useEffect, useCallback, useRef, memo } from 'react';
+// src/screens/community/CommunityScreen.tsx
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  FlatList,
   TouchableOpacity,
-  Image,
-  Dimensions,
-  RefreshControl,
-  ScrollView,
   TextInput,
+  RefreshControl,
+  Dimensions,
+  Image,
+  StatusBar,
+  Share,
   Platform,
-  ListRenderItem,
+  Alert,
+  ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import Animated, { 
-  useSharedValue, 
-  useAnimatedStyle, 
-  withSpring,
-  interpolate,
+import Animated, {
   FadeInUp,
   FadeIn,
+  FadeInRight,
+  useSharedValue,
+  useAnimatedStyle,
+  interpolate,
   Extrapolate,
-  useAnimatedReaction,
-  runOnJS,
+  withTiming,
+  withSpring,
+  useAnimatedScrollHandler,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
-import { 
-  CommunityColors, 
-  CommunityGradients, 
-  CommunitySpacing, 
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { CommunityStackParamList } from '../../types/navigation';
+import { useCommunity, Post, Comment } from '../../context/CommunityContext';
+import { useUser } from '../../context/UserContext';
+import { useAuth } from '../../context/AuthContext';
+import { useCustomization } from '../../hooks/useCustomization';
+import { SafeAvatar } from '../../components/SafeAvatar';
+import {
+  CommunityColors,
+  CommunitySpacing,
   CommunityBorderRadius,
-  CommunityShadows 
+  CommunityShadows,
 } from '../../theme/CommunityTheme';
 
-import { useCommunity, Post, Topic, CommunityUser } from '../../context/CommunityContext';
-import { useUser } from '../../context/UserContext';
-import type { CommunityStackParamList } from '../../types/navigation';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-type CommunityNavigationProp = NativeStackNavigationProp<CommunityStackParamList>;
+type CommunityScreenProps = NativeStackScreenProps<CommunityStackParamList, 'CommunityMain'>;
 
-const { width, height } = Dimensions.get('window');
-const HEADER_HEIGHT = 360;
-const PROFILE_SECTION_HEIGHT = 200;
+const TOPIC_FILTERS = [
+  { id: 'all', label: 'All', icon: 'apps', color: '#667eea', gradient: ['#667eea', '#764ba2'] },
+  { id: 'topic_1', label: 'Potty', icon: 'water', color: '#4facfe', gradient: ['#4facfe', '#00f2fe'] },
+  { id: 'topic_2', label: 'Sleep', icon: 'moon', color: '#43e97b', gradient: ['#43e97b', '#38f9d7'] },
+  { id: 'topic_3', label: 'Feeding', icon: 'nutrition', color: '#fa709a', gradient: ['#fa709a', '#fee140'] },
+  { id: 'topic_5', label: 'Health', icon: 'medical', color: '#fc5c7d', gradient: ['#fc5c7d', '#6a82fb'] },
+  { id: 'topic_6', label: 'Hacks', icon: 'bulb', color: '#f093fb', gradient: ['#f093fb', '#f5576c'] },
+  { id: 'topic_9', label: 'Tantrums', icon: 'flash', color: '#ff9a56', gradient: ['#ffecd2', '#fcb69f'] },
+  { id: 'topic_10', label: 'Education', icon: 'school', color: '#11998e', gradient: ['#11998e', '#38ef7d'] },
+  { id: 'topic_4', label: 'Milestones', icon: 'trophy', color: '#feca57', gradient: ['#feca57', '#ff9ff3'] },
+  { id: 'topic_8', label: 'Balance', icon: 'briefcase', color: '#54a0ff', gradient: ['#54a0ff', '#5f27cd'] },
+];
 
-// ─── Avatar Image Component (FIXES file:// URI ISSUE) ─────────
-interface AvatarImageProps {
-  uri: string;
-  size?: number;
-  style?: any;
-}
-const AvatarImage = memo(({ uri, size = 40, style }: AvatarImageProps) => {
-  const [hasError, setHasError] = useState(false);
+const QUICK_ACTIONS = [
+  { id: 'messages', label: 'Messages', icon: 'chatbubble-ellipses', color: '#667eea', screen: 'ChatList' as const },
+  { id: 'notifications', label: 'Alerts', icon: 'notifications', color: '#fc5c7d', screen: 'Notifications' as const },
+  { id: 'profile', label: 'Profile', icon: 'person', color: '#43e97b', screen: 'EditCommunityProfile' as const },
+  { id: 'topics', label: 'Topics', icon: 'grid', color: '#fa709a', screen: 'Topic' as const },
+];
 
-  // Check if it's an emoji (no URI scheme, typically 1-2 chars)
-  const isEmoji = !uri || (!uri.includes('://') && !uri.startsWith('/') && uri.length <= 4);
-  
-  if (isEmoji || hasError) {
-    return (
-      <View style={[{ width: size, height: size, borderRadius: size / 2, backgroundColor: '#E8EAF6', alignItems: 'center', justifyContent: 'center' }, style]}>
-        <Text style={{ fontSize: size * 0.6 }}>
-          {isEmoji ? (uri || '👤') : '👤'}
-        </Text>
-      </View>
-    );
-  }
+// ─── TrendingPill Component ───────────────────────────────────────
 
-  // Normalize file:// URIs
-  const normalizedUri = uri.startsWith('file://') ? uri : uri.startsWith('/') ? `file://${uri}` : uri;
-
-  return (
-    <Image
-      source={{ uri: normalizedUri }}
-      style={[{ width: size, height: size, borderRadius: size / 2 }, style]}
-      resizeMode="cover"
-      onError={() => setHasError(true)}
-    />
-  );
-});
-
-// ─── Memoized Post Item ─────────────────────────────────────────
-interface PostItemProps {
-  item: Post;
-  index: number;
-  onLike: (post: Post) => void;
-  onRepost: (post: Post) => void;
-  onBookmark: (post: Post) => void;
-  onNavigateToUser: (userId: string) => void;
-  onNavigateToPost: (postId: string) => void;
-}
-
-const PostItem = memo(({ item, index, onLike, onRepost, onBookmark, onNavigateToUser, onNavigateToPost }: PostItemProps) => {
-  return (
-    <Animated.View entering={FadeInUp.delay(Math.min(index * 80, 400))}>
-      <View style={styles.postCard}>
-        {/* Post Header */}
-        <TouchableOpacity 
-          style={styles.postHeader}
-          onPress={() => onNavigateToUser(item.authorId)}
-          activeOpacity={0.8}
-          accessibilityLabel={`View ${item.author.displayName}'s profile`}
-          accessibilityRole="button"
-        >
-          <View style={styles.authorInfo}>
-            <View style={styles.avatarContainer}>
-              <AvatarImage uri={item.author.avatar} size={42} />
-              {item.author.onlineStatus === 'online' && (
-                <View style={styles.onlineIndicator} />
-              )}
-            </View>
-            <View style={styles.authorMeta}>
-              <View style={styles.nameRow}>
-                <Text style={styles.authorName}>{item.author.displayName}</Text>
-                {item.author.isVerified && (
-                  <View style={styles.verifiedBadge}>
-                    <Ionicons name="checkmark" size={10} color="#fff" />
-                  </View>
-                )}
-              </View>
-              <Text style={styles.postMeta}>
-                <Text style={styles.topicText}>{item.topic}</Text>
-                <Text style={styles.timeText}> • {item.time}</Text>
-                {item.author.country && (
-                  <Text style={styles.countryText}> • {item.author.country}</Text>
-                )}
-              </Text>
-            </View>
-          </View>
-          <TouchableOpacity 
-            style={styles.moreButton}
-            accessibilityLabel="More options"
-            accessibilityRole="button"
-          >
-            <Ionicons name="ellipsis-horizontal" size={20} color={CommunityColors.text.tertiary} />
-          </TouchableOpacity>
-        </TouchableOpacity>
-
-        {/* Post Content */}
-        <TouchableOpacity 
-          onPress={() => onNavigateToPost(item.id)}
-          activeOpacity={0.9}
-          style={styles.contentContainer}
-          accessibilityLabel="View post details"
-          accessibilityRole="button"
-        >
-          <Text style={styles.postContent}>{item.content}</Text>
-          {item.images && item.images.length > 0 && (
-            <View style={styles.imagesContainer}>
-              {item.images.map((img, idx) => (
-                <Image 
-                  key={idx} 
-                  source={{ uri: img.startsWith('file://') ? img : img.startsWith('/') ? `file://${img}` : img }} 
-                  style={styles.postImage}
-                  resizeMode="cover"
-                  onError={(e) => console.warn('Post image error:', e.nativeEvent.error)}
-                />
-              ))}
-            </View>
-          )}
-        </TouchableOpacity>
-
-        {/* Helpful Votes */}
-        {item.helpfulVotes > 0 && (
-          <View style={styles.helpfulContainer}>
-            <LinearGradient 
-              colors={[CommunityColors.success + '20', CommunityColors.success + '10']}
-              style={styles.helpfulGradient}
-            >
-              <Ionicons name="thumbs-up" size={14} color={CommunityColors.success} />
-              <Text style={styles.helpfulText}>{item.helpfulVotes} found this helpful</Text>
-            </LinearGradient>
-          </View>
-        )}
-
-        {/* Post Actions */}
-        <View style={styles.postActions}>
-          <TouchableOpacity 
-            style={[styles.actionButton, item.isLiked && styles.actionActive]}
-            onPress={() => onLike(item)}
-            accessibilityLabel={item.isLiked ? "Unlike post" : "Like post"}
-            accessibilityRole="button"
-            accessibilityState={{ selected: item.isLiked }}
-          >
-            <Ionicons 
-              name={item.isLiked ? "heart" : "heart-outline"} 
-              size={22} 
-              color={item.isLiked ? CommunityColors.primary : CommunityColors.text.tertiary} 
-            />
-            <Text style={[
-              styles.actionText, 
-              item.isLiked && { color: CommunityColors.primary, fontWeight: '700' }
-            ]}>
-              {item.likes > 0 ? item.likes : 'Like'}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.actionButton}
-            onPress={() => onNavigateToPost(item.id)}
-            accessibilityLabel={`${item.commentsCount} comments`}
-            accessibilityRole="button"
-          >
-            <Ionicons name="chatbubble-outline" size={20} color={CommunityColors.text.tertiary} />
-            <Text style={styles.actionText}>{item.commentsCount > 0 ? item.commentsCount : 'Comment'}</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={[styles.actionButton, item.isReposted && styles.actionActive]}
-            onPress={() => onRepost(item)}
-            accessibilityLabel={item.isReposted ? "Undo repost" : "Repost"}
-            accessibilityRole="button"
-            accessibilityState={{ selected: item.isReposted }}
-          >
-            <Ionicons 
-              name={item.isReposted ? "repeat" : "repeat-outline"} 
-              size={20} 
-              color={item.isReposted ? CommunityColors.secondary : CommunityColors.text.tertiary} 
-            />
-            <Text style={[
-              styles.actionText, 
-              item.isReposted && { color: CommunityColors.secondary, fontWeight: '700' }
-            ]}>
-              {item.reposts > 0 ? item.reposts : 'Repost'}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={[styles.actionButton, item.isBookmarked && styles.actionActive]}
-            onPress={() => onBookmark(item)}
-            accessibilityLabel={item.isBookmarked ? "Remove bookmark" : "Bookmark"}
-            accessibilityRole="button"
-            accessibilityState={{ selected: item.isBookmarked }}
-          >
-            <Ionicons 
-              name={item.isBookmarked ? "bookmark" : "bookmark-outline"} 
-              size={20} 
-              color={item.isBookmarked ? CommunityColors.accent : CommunityColors.text.tertiary} 
-            />
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.actionButton}
-            accessibilityLabel="Share post"
-            accessibilityRole="button"
-          >
-            <Ionicons name="share-outline" size={20} color={CommunityColors.text.tertiary} />
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Animated.View>
-  );
-});
-
-PostItem.displayName = 'PostItem';
-
-export default function CommunityScreen() {
-  const navigation = useNavigation<CommunityNavigationProp>();
-  const insets = useSafeAreaInsets();
-  const { 
-    posts, 
-    topics, 
-    notifications, 
-    currentUser,
-    likePost, 
-    unlikePost, 
-    repostPost, 
-    unrepostPost,
-    bookmarkPost,
-    refreshFeed,
-    isLoading,
-    getUnreadCount,
-    getUserStats,
-    onlineUsers,
-    getUserById,
-    getFeedPosts,  // NEW: Use personalized feed
-    getFollowers,
-    getFollowing,
-  } = useCommunity();
-  const { getDisplayName } = useUser();
-  
-  const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState<'trending' | 'following' | 'nearby'>('trending');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [isSearchFocused, setIsSearchFocused] = useState(false);
-  const [followerCount, setFollowerCount] = useState(0);
-  const [followingCount, setFollowingCount] = useState(0);
-  const scrollY = useSharedValue(0);
-  const flatListRef = useRef<FlatList<Post>>(null);
-  const unreadBadgeScale = useSharedValue(1);
-
-  // Load follower/following counts on mount
-  useEffect(() => {
-    const loadCounts = async () => {
-      if (currentUser?.id) {
-        const followers = await getFollowers(currentUser.id);
-        const following = await getFollowing(currentUser.id);
-        setFollowerCount(followers.length);
-        setFollowingCount(following.length);
-      }
-    };
-    loadCounts();
-  }, [currentUser?.id, currentUser?.stats.followers, currentUser?.stats.following]);
-
-  // Animate badge when unread count changes
-  const unreadCount = getUnreadCount();
-  useAnimatedReaction(
-    () => unreadCount,
-    (current, previous) => {
-      if (current !== previous && current > 0) {
-        unreadBadgeScale.value = withSpring(1.4, { damping: 8, stiffness: 200 }, () => {
-          unreadBadgeScale.value = withSpring(1);
-        });
-      }
-    },
-    [unreadCount]
-  );
-
-  const badgeAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: unreadBadgeScale.value }],
-  }));
-
-  // Animated header styles
-  const headerAnimatedStyle = useAnimatedStyle(() => {
-    const translateY = interpolate(
-      scrollY.value,
-      [0, HEADER_HEIGHT - 120],
-      [0, -HEADER_HEIGHT + 120],
-      Extrapolate.CLAMP
-    );
-    const opacity = interpolate(
-      scrollY.value,
-      [0, HEADER_HEIGHT - 170],
-      [1, 0],
-      Extrapolate.CLAMP
-    );
-    return { transform: [{ translateY }], opacity };
-  });
-
-  const stickyHeaderStyle = useAnimatedStyle(() => {
-    const opacity = interpolate(
-      scrollY.value,
-      [HEADER_HEIGHT - 170, HEADER_HEIGHT - 120],
-      [0, 1],
-      Extrapolate.CLAMP
-    );
-    return { opacity, pointerEvents: opacity > 0.5 ? 'auto' : 'none' };
-  });
-
-  const profileCardStyle = useAnimatedStyle(() => {
-    const scale = interpolate(scrollY.value, [0, 100], [1, 0.95], Extrapolate.CLAMP);
-    const opacity = interpolate(scrollY.value, [0, 150], [1, 0.8], Extrapolate.CLAMP);
-    return { transform: [{ scale }], opacity };
-  });
-
-  const searchBarAnimatedStyle = useAnimatedStyle(() => {
-    const translateY = interpolate(
-      scrollY.value,
-      [0, 80],
-      [0, -10],
-      Extrapolate.CLAMP
-    );
-    const opacity = interpolate(scrollY.value, [0, 120], [1, 0], Extrapolate.CLAMP);
-    return { transform: [{ translateY }], opacity };
-  });
-
-  useFocusEffect(
-    useCallback(() => {
-      // Refresh data when focused - counts will update
-      const refreshCounts = async () => {
-        if (currentUser?.id) {
-          const followers = await getFollowers(currentUser.id);
-          const following = await getFollowing(currentUser.id);
-          setFollowerCount(followers.length);
-          setFollowingCount(following.length);
-        }
-      };
-      refreshCounts();
-    }, [currentUser?.id])
-  );
-
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await refreshFeed();
-    setRefreshing(false);
-  };
-
-  const handleLike = useCallback(async (post: Post) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (post.isLiked) {
-      await unlikePost(post.id);
-    } else {
-      await likePost(post.id);
-    }
-  }, [likePost, unlikePost]);
-
-  const handleRepost = useCallback(async (post: Post) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    if (post.isReposted) {
-      await unrepostPost(post.id);
-    } else {
-      await repostPost(post.id);
-    }
-  }, [repostPost, unrepostPost]);
-
-  const handleBookmark = useCallback(async (post: Post) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    await bookmarkPost(post.id);
-  }, [bookmarkPost]);
-
-  const navigateToUserProfile = useCallback((userId: string) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    navigation.navigate('UserProfile', { userId });
-  }, [navigation]);
-
-  const navigateToPostDetail = useCallback((postId: string) => {
-    navigation.navigate('PostDetail', { postId });
-  }, [navigation]);
-
-  const navigateToTopic = useCallback((topic: Topic) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    navigation.navigate('Topic', { topicId: topic.id });
-  }, [navigation]);
-
-  const navigateToChatList = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    navigation.navigate('ChatList');
-  }, [navigation]);
-
-  const navigateToNotifications = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    navigation.navigate('Notifications');
-  }, [navigation]);
-
-  const navigateToEditProfile = useCallback(() => {
-    if (currentUser?.id) {
-      navigation.navigate('EditCommunityProfile');
-    }
-  }, [navigation, currentUser]);
-
-  const navigateToBookmarks = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    // navigation.navigate('Bookmarks'); // Add when screen exists
-  }, []);
-
-  const navigateToMyTopics = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    // Filter to show only joined topics
-  }, []);
-
-  // ─── FILTERED POSTS: Use getFeedPosts for topic-based filtering ──
-  const getFilteredPosts = useCallback(() => {
-    let basePosts: Post[];
-
-    switch (activeTab) {
-      case 'trending':
-        // Use personalized feed from selected topics
-        basePosts = getFeedPosts();
-        break;
-      case 'following':
-        // Show posts from users the current user follows
-        basePosts = posts.filter(post => 
-          currentUser?.following?.includes(post.authorId) || post.authorId === currentUser?.id
-        );
-        break;
-      case 'nearby':
-        // Show posts from same country
-        basePosts = posts.filter(post => 
-          post.author.country === currentUser?.country || post.authorId === currentUser?.id
-        );
-        break;
-      default:
-        basePosts = getFeedPosts();
-    }
-
-    // Apply search filter
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      return basePosts.filter(p => 
-        p.content.toLowerCase().includes(query) ||
-        p.author.displayName.toLowerCase().includes(query) ||
-        p.topic.toLowerCase().includes(query)
-      );
-    }
-
-    return basePosts;
-  }, [activeTab, posts, getFeedPosts, currentUser, searchQuery]);
-
-  const filteredPosts = getFilteredPosts();
-
-  // Render Topic Card
-  const renderTopicCard = useCallback(({ item }: { item: Topic }) => (
-    <TouchableOpacity 
-      style={styles.topicCard}
-      onPress={() => navigateToTopic(item)}
-      activeOpacity={0.8}
-      accessibilityLabel={`Topic ${item.name}`}
-      accessibilityRole="button"
+const TrendingPill = ({ topic, onPress, index, isActive }: { 
+  topic: typeof TOPIC_FILTERS[0]; 
+  onPress: () => void; 
+  index: number; 
+  isActive?: boolean 
+}) => (
+  <Animated.View entering={FadeInRight.delay(index * 40).duration(300)}>
+    <TouchableOpacity
+      style={[
+        styles.trendingPill, 
+        { backgroundColor: isActive ? topic.color + '25' : topic.color + '10' },
+        isActive && { borderColor: topic.color + '50', borderWidth: 1.5 }
+      ]}
+      onPress={onPress}
+      activeOpacity={0.7}
     >
       <LinearGradient
-        colors={[item.color + '30', item.color + '10']}
-        style={styles.topicGradient}
+        colors={topic.gradient}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
+        style={styles.trendingIconContainer}
       >
-        <View style={styles.topicHeader}>
-          <Text style={styles.topicEmoji}>{item.emoji}</Text>
-          {item.trending && (
-            <View style={styles.trendingBadge}>
-              <LinearGradient 
-                colors={CommunityGradients.trending}
-                style={styles.trendingGradient}
-              >
-                <Ionicons name="flame" size={12} color="#fff" />
-                <Text style={styles.trendingText}>HOT</Text>
-              </LinearGradient>
-            </View>
-          )}
-        </View>
-        <Text style={styles.topicName}>{item.name}</Text>
-        <View style={styles.topicStats}>
-          <Ionicons name="people" size={12} color={CommunityColors.text.tertiary} />
-          <Text style={styles.topicStat}>{(item.members / 1000).toFixed(1)}k</Text>
-          <Text style={styles.topicDot}>•</Text>
-          <Ionicons name="document-text" size={12} color={CommunityColors.text.tertiary} />
-          <Text style={styles.topicStat}>{item.posts}</Text>
-        </View>
-        {item.isJoined && (
-          <View style={styles.joinedIndicator}>
-            <Ionicons name="checkmark-circle" size={16} color={CommunityColors.success} />
-            <Text style={[styles.joinedText, { color: CommunityColors.success }]}>Joined</Text>
+        <Ionicons name={topic.icon as any} size={14} color="#fff" />
+      </LinearGradient>
+      <Text style={[styles.trendingPillText, { color: isActive ? topic.color : CommunityColors.text.secondary }]}>
+        {topic.label}
+      </Text>
+      {isActive && (
+        <View style={[styles.activeDot, { backgroundColor: topic.color }]} />
+      )}
+    </TouchableOpacity>
+  </Animated.View>
+);
+
+// ─── QuickActionButton Component ──────────────────────────────────
+
+const QuickActionButton = ({ 
+  action, 
+  onPress, 
+  index, 
+  unreadCount = 0 
+}: { 
+  action: typeof QUICK_ACTIONS[0]; 
+  onPress: () => void; 
+  index: number;
+  unreadCount?: number;
+}) => (
+  <Animated.View entering={FadeInUp.delay(index * 60).duration(400)} style={styles.quickActionWrapper}>
+    <TouchableOpacity style={styles.quickActionBtn} onPress={onPress} activeOpacity={0.8}>
+      <LinearGradient
+        colors={[action.color, action.color + 'cc']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.quickActionGradient}
+      >
+        <Ionicons name={action.icon as any} size={22} color="#fff" />
+        {unreadCount > 0 && (
+          <View style={styles.unreadBadge}>
+            <Text style={styles.unreadBadgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
           </View>
         )}
       </LinearGradient>
     </TouchableOpacity>
-  ), [navigateToTopic]);
+    <Text style={styles.quickActionLabel}>{action.label}</Text>
+  </Animated.View>
+);
 
-  // Render Post (memoized)
-  const renderPost: ListRenderItem<Post> = useCallback(({ item, index }) => (
-    <PostItem
-      item={item}
-      index={index}
-      onLike={handleLike}
-      onRepost={handleRepost}
-      onBookmark={handleBookmark}
-      onNavigateToUser={navigateToUserProfile}
-      onNavigateToPost={navigateToPostDetail}
-    />
-  ), [handleLike, handleRepost, handleBookmark, navigateToUserProfile, navigateToPostDetail]);
+// ─── CommentItem Component ────────────────────────────────────────
 
-  // Profile Section - Uses real follower/following counts
-  const renderProfileSection = useCallback(() => {
-    if (!currentUser) return null;
+const CommentItem = ({
+  comment,
+  postId,
+  onLike,
+  onReply,
+  depth = 0,
+}: {
+  comment: Comment;
+  postId: string;
+  onLike: (postId: string, commentId: string) => void;
+  onReply: (postId: string, commentId: string) => void;
+  depth?: number;
+}) => {
+  const [showReplies, setShowReplies] = useState(false);
 
-    // Use the dynamically loaded counts instead of stale stats
-    const displayFollowers = followerCount || currentUser.stats.followers || 1;
-    const displayFollowing = followingCount || currentUser.stats.following || 0;
-    const displayStreak = currentUser.stats.streakDays || 0;
-
-    return (
-      <Animated.View style={[styles.profileSection, profileCardStyle]}>
-        <LinearGradient 
-          colors={CommunityGradients.card}
-          style={styles.profileCard}
-        >
-          <View style={styles.profileHeader}>
-            <View style={styles.profileLeft}>
-              <TouchableOpacity 
-                onPress={navigateToEditProfile} 
-                style={styles.avatarWrapper}
-                accessibilityLabel="Edit profile picture"
-                accessibilityRole="button"
-              >
-                <AvatarImage uri={currentUser.avatar} size={52} />
-                <View style={styles.editAvatarBadge}>
-                  <Ionicons name="camera" size={12} color="#fff" />
-                </View>
-                <View style={styles.onlineStatusDot} />
-              </TouchableOpacity>
-              <View style={styles.profileInfo}>
-                <Text style={styles.profileName}>{currentUser.displayName}</Text>
-                <Text style={styles.profileHandle}>{currentUser.handle}</Text>
-                <View style={styles.onlineStatusRow}>
-                  <View style={[styles.statusDot, { backgroundColor: CommunityColors.success }]} />
-                  <Text style={styles.statusText}>Online</Text>
-                  {currentUser.country && (
-                    <Text style={styles.countryText}>• {currentUser.country}</Text>
-                  )}
-                </View>
-              </View>
-            </View>
-            <TouchableOpacity 
-              style={styles.editButton}
-              onPress={navigateToEditProfile}
-              accessibilityLabel="Edit profile"
-              accessibilityRole="button"
-            >
-              <LinearGradient 
-                colors={[CommunityColors.primary + '20', CommunityColors.primary + '10']}
-                style={styles.editButtonGradient}
-              >
-                <Ionicons name="create-outline" size={20} color={CommunityColors.primary} />
-              </LinearGradient>
-            </TouchableOpacity>
+  return (
+    <View style={[styles.commentItem, depth > 0 && styles.commentReply]}>
+      <SafeAvatar
+        avatar={comment.author.avatar}
+        size={30}
+        fallbackIcon="person"
+        fallbackColor={CommunityColors.primary}
+        fallbackBgColor={CommunityColors.background.elevated}
+      />
+      <View style={styles.commentContent}>
+        <View style={styles.commentBubble}>
+          <View style={styles.commentHeader}>
+            <Text style={styles.commentAuthor}>{comment.author.displayName}</Text>
+            <Text style={styles.commentTime}>{comment.time}</Text>
           </View>
-
-          {/* Quick Stats - Now with real counts */}
-          <View style={styles.quickStats}>
-            <TouchableOpacity 
-              style={styles.statItem}
-              onPress={() => navigation.navigate('UserProfile', { userId: currentUser.id })}
-              accessibilityLabel={`${currentUser.stats.posts} posts`}
-              accessibilityRole="button"
-            >
-              <Text style={styles.statValue}>{currentUser.stats.posts || 0}</Text>
-              <Text style={styles.statLabel}>Posts</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.statItem} 
-              onPress={() => navigation.navigate('Followers', { userId: currentUser.id })}
-              accessibilityLabel={`${displayFollowers} followers`} 
-              accessibilityRole="button"
-            >
-              <Text style={styles.statValue}>{displayFollowers}</Text>
-              <Text style={styles.statLabel}>Followers</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.statItem} 
-              onPress={() => navigation.navigate('Following', { userId: currentUser.id })}
-              accessibilityLabel={`${displayFollowing} following`} 
-              accessibilityRole="button"
-            >
-              <Text style={styles.statValue}>{displayFollowing}</Text>
-              <Text style={styles.statLabel}>Following</Text>
-            </TouchableOpacity>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{displayStreak}</Text>
-              <Text style={styles.statLabel}>🔥 Streak</Text>
-            </View>
-          </View>
-
-          {/* Bio Preview */}
-          {currentUser.bio ? (
-            <Text style={styles.bioPreview} numberOfLines={2}>
-              {currentUser.bio}
-            </Text>
-          ) : (
-            <TouchableOpacity onPress={navigateToEditProfile} accessibilityLabel="Add bio" accessibilityRole="button">
-              <Text style={styles.addBioText}>+ Add a bio to your profile</Text>
-            </TouchableOpacity>
-          )}
-        </LinearGradient>
-      </Animated.View>
-    );
-  }, [currentUser, navigateToEditProfile, navigation, profileCardStyle, followerCount, followingCount]);
-
-  // Search Bar Component
-  const renderSearchBar = () => (
-    <Animated.View style={[styles.searchContainer, searchBarAnimatedStyle]}>
-      <BlurView intensity={80} style={styles.searchBlur} tint="light">
-        <View style={styles.searchInner}>
-          <Ionicons name="search" size={18} color={CommunityColors.text.tertiary} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search posts, topics, parents..."
-            placeholderTextColor={CommunityColors.text.tertiary}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            onFocus={() => setIsSearchFocused(true)}
-            onBlur={() => setIsSearchFocused(false)}
-            returnKeyType="search"
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')} accessibilityLabel="Clear search">
-              <Ionicons name="close-circle" size={18} color={CommunityColors.text.tertiary} />
-            </TouchableOpacity>
-          )}
+          <Text style={styles.commentText}>{comment.content}</Text>
         </View>
-      </BlurView>
+        <View style={styles.commentActions}>
+          <TouchableOpacity 
+            onPress={() => onLike(postId, comment.id)}
+            style={styles.commentActionBtn}
+          >
+            <Ionicons 
+              name={comment.isLiked ? 'heart' : 'heart-outline'} 
+              size={13} 
+              color={comment.isLiked ? CommunityColors.error : CommunityColors.text.tertiary} 
+            />
+            <Text style={[styles.commentAction, comment.isLiked && styles.commentActionActive]}>
+              {comment.likes > 0 ? comment.likes : 'Like'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            onPress={() => onReply(postId, comment.id)}
+            style={styles.commentActionBtn}
+          >
+            <Ionicons name="chatbubble-outline" size={13} color={CommunityColors.text.tertiary} />
+            <Text style={styles.commentAction}>Reply</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.commentActionBtn}>
+            <Ionicons name="thumbs-up-outline" size={13} color={CommunityColors.text.tertiary} />
+            <Text style={styles.commentAction}>{comment.helpfulVotes > 0 ? `${comment.helpfulVotes} Helpful` : 'Helpful'}</Text>
+          </TouchableOpacity>
+        </View>
+
+        {comment.replies && comment.replies.length > 0 && (
+          <View>
+            <TouchableOpacity 
+              onPress={() => setShowReplies(!showReplies)}
+              style={styles.viewRepliesBtn}
+            >
+              <View style={styles.viewRepliesInner}>
+                <Text style={[styles.viewReplies, { color: showReplies ? CommunityColors.text.secondary : '#667eea' }]}>
+                  {showReplies ? 'Hide' : 'View'} {comment.replies.length} {comment.replies.length === 1 ? 'reply' : 'replies'}
+                </Text>
+                <Ionicons 
+                  name={showReplies ? 'chevron-up' : 'chevron-down'} 
+                  size={12} 
+                  color={showReplies ? CommunityColors.text.secondary : '#667eea'} 
+                />
+              </View>
+            </TouchableOpacity>
+            {showReplies &&
+              comment.replies.map((reply) => (
+                <CommentItem
+                  key={reply.id}
+                  comment={reply}
+                  postId={postId}
+                  onLike={onLike}
+                  onReply={onReply}
+                  depth={depth + 1}
+                />
+              ))}
+          </View>
+        )}
+      </View>
+    </View>
+  );
+};
+
+// ─── FloatingActionButton Component ───────────────────────────────
+
+const FloatingActionButton = ({ onPress, scrollY }: { onPress: () => void; scrollY: Animated.SharedValue<number> }) => {
+  const fabStyle = useAnimatedStyle(() => {
+    const translateY = interpolate(
+      scrollY.value,
+      [0, 100, 500],
+      [0, 10, 80],
+      Extrapolate.CLAMP
+    );
+    const scale = interpolate(
+      scrollY.value,
+      [0, 50, 100],
+      [1, 0.95, 0.9],
+      Extrapolate.CLAMP
+    );
+    const opacity = interpolate(
+      scrollY.value,
+      [0, 300, 400],
+      [1, 1, 0],
+      Extrapolate.CLAMP
+    );
+    return {
+      transform: [{ translateY }, { scale }],
+      opacity,
+    };
+  });
+
+  return (
+    <Animated.View style={[styles.fabContainer, fabStyle]}>
+      <TouchableOpacity 
+        style={styles.fabButton} 
+        onPress={onPress}
+        activeOpacity={0.85}
+      >
+        <LinearGradient
+          colors={['#667eea', '#764ba2', '#f093fb']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.fabGradient}
+        >
+          <Ionicons name="add" size={28} color="#fff" />
+        </LinearGradient>
+      </TouchableOpacity>
     </Animated.View>
   );
+};
 
-  // Quick Action Pills
-  const renderQuickActions = () => (
-    <ScrollView 
-      horizontal 
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.quickActionsContainer}
-    >
-      <TouchableOpacity 
-        style={styles.quickActionPill}
-        onPress={() => navigation.navigate('CreatePost', {})}
-        accessibilityLabel="Create new post"
-        accessibilityRole="button"
+// ─── PopularPostCard Component ───────────────────────────────────
+
+const PopularPostCard = ({ post, index, onPress }: { post: Post; index: number; onPress: () => void }) => (
+  <Animated.View entering={FadeInRight.delay(index * 100).duration(400)}>
+    <TouchableOpacity style={styles.popularCard} onPress={onPress} activeOpacity={0.8}>
+      <LinearGradient
+        colors={[post.topicId === 'topic_6' ? '#667eea15' : '#fc5c7d15', '#fff']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.popularGradient}
       >
-        <LinearGradient colors={CommunityGradients.primary} style={styles.quickActionGradient}>
-          <Ionicons name="add" size={16} color="#fff" />
-          <Text style={styles.quickActionText}>New Post</Text>
-        </LinearGradient>
-      </TouchableOpacity>
+        <View style={styles.popularHeader}>
+          <SafeAvatar
+            avatar={post.author.avatar}
+            size={28}
+            fallbackIcon="person"
+            fallbackColor="#667eea"
+            fallbackBgColor="#667eea15"
+          />
+          <View style={styles.popularMeta}>
+            <Text style={styles.popularAuthor} numberOfLines={1}>{post.author.displayName}</Text>
+            <Text style={styles.popularTopic}>{post.topic}</Text>
+          </View>
+        </View>
+        <Text style={styles.popularContent} numberOfLines={2}>{post.content}</Text>
+        <View style={styles.popularStats}>
+          <View style={styles.popularStat}>
+            <Ionicons name="heart" size={12} color="#fc5c7d" />
+            <Text style={styles.popularStatText}>{post.likes}</Text>
+          </View>
+          <View style={styles.popularStat}>
+            <Ionicons name="repeat" size={12} color="#43e97b" />
+            <Text style={styles.popularStatText}>{post.reposts}</Text>
+          </View>
+          <View style={styles.popularStat}>
+            <Ionicons name="eye" size={12} color="#667eea" />
+            <Text style={styles.popularStatText}>{post.viewCount}</Text>
+          </View>
+        </View>
+      </LinearGradient>
+    </TouchableOpacity>
+  </Animated.View>
+);
 
-      <TouchableOpacity 
-        style={[styles.quickActionPill, styles.quickActionPillSecondary]}
-        onPress={navigateToMyTopics}
-        accessibilityLabel="My topics"
-        accessibilityRole="button"
-      >
-        <Ionicons name="folder-open" size={16} color={CommunityColors.primary} />
-        <Text style={styles.quickActionTextSecondary}>My Topics</Text>
-      </TouchableOpacity>
+// ─── Main CommunityScreen Component ───────────────────────────────
 
-      <TouchableOpacity 
-        style={[styles.quickActionPill, styles.quickActionPillSecondary]}
-        onPress={navigateToBookmarks}
-        accessibilityLabel="Saved bookmarks"
-        accessibilityRole="button"
-      >
-        <Ionicons name="bookmark" size={16} color={CommunityColors.accent} />
-        <Text style={styles.quickActionTextSecondary}>Saved</Text>
-      </TouchableOpacity>
+export default function CommunityScreen({ navigation }: CommunityScreenProps) {
+  const {
+    posts,
+    topics,
+    currentUser,
+    likePost,
+    unlikePost,
+    repostPost,
+    unrepostPost,
+    bookmarkPost,
+    deletePost,
+    addComment,
+    likeComment,
+    replyToComment,
+    voteHelpful,
+    followUser,
+    unfollowUser,
+    isFollowing,
+    refreshFeed,
+    loadMorePosts,
+    getFeedPosts,
+    getUnreadCount,
+    checkOnboardingStatus,
+    getPopularPosts,
+    incrementViewCount,
+    isAuthenticated,
+  } = useCommunity();
 
-      <TouchableOpacity 
-        style={[styles.quickActionPill, styles.quickActionPillSecondary]}
-        onPress={navigateToChatList}
-        accessibilityLabel="Messages"
-        accessibilityRole="button"
-      >
-        <Ionicons name="chatbubbles" size={16} color={CommunityColors.secondary} />
-        <Text style={styles.quickActionTextSecondary}>Messages</Text>
-      </TouchableOpacity>
-    </ScrollView>
-  );
+  const { profile } = useUser();
+  const { isAuthenticated: authIsAuthenticated } = useAuth();
+  const { triggerHaptic } = useCustomization();
 
-  // Sticky Header with Search
-  const renderStickyHeader = () => {
+  const [refreshing, setRefreshing] = useState(false);
+  const [activeTopic, setActiveTopic] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showSearch, setShowSearch] = useState(false);
+  const [expandedPostId, setExpandedPostId] = useState<string | null>(null);
+  const [commentInputs, setCommentInputs] = useState<Record<string, string>>({});
+  const [replyingTo, setReplyingTo] = useState<{ postId: string; commentId: string } | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [headerCollapsed, setHeaderCollapsed] = useState(false);
+  const [needsOnboarding, setNeedsOnboarding] = useState(false);
+  const [showPopularSection, setShowPopularSection] = useState(true);
+
+  const scrollY = useSharedValue(0);
+  const listRef = useRef<any>(null);
+  const searchAnim = useSharedValue(0);
+
+  const unreadCount = getUnreadCount();
+  const popularPosts = useMemo(() => getPopularPosts(5), [posts]);
+
+  // Check if user is properly authenticated for community actions
+  const canInteract = useMemo(() => {
+    return isAuthenticated() || authIsAuthenticated;
+  }, [isAuthenticated, authIsAuthenticated]);
+
+  useEffect(() => {
+    const checkOnboarding = async () => {
+      const completed = await checkOnboardingStatus();
+      setNeedsOnboarding(!completed && !currentUser);
+    };
+    checkOnboarding();
+  }, [checkOnboardingStatus, currentUser]);
+
+  // ─── DEFINITIVE SCROLL GLITCH FIX ─────────────────────────────
+  // UI-thread scroll handler — eliminates JS/UI thread sync issues
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      scrollY.value = event.contentOffset.y;
+    },
+  }, []);
+
+  // Sync React state from shared value via rAF loop — decoupled from scroll events
+  useEffect(() => {
+    let animationFrame: number;
+    let lastCollapsed: boolean | null = null;
+
+    const checkCollapse = () => {
+      const isCollapsed = scrollY.value > 80;
+      if (isCollapsed !== lastCollapsed) {
+        lastCollapsed = isCollapsed;
+        setHeaderCollapsed(isCollapsed);
+      }
+      animationFrame = requestAnimationFrame(checkCollapse);
+    };
+
+    animationFrame = requestAnimationFrame(checkCollapse);
+    return () => cancelAnimationFrame(animationFrame);
+  }, []);
+  // ───────────────────────────────────────────────────────────────
+
+  const feedPosts = useMemo(() => {
+    let filtered = getFeedPosts();
+
+    if (activeTopic !== 'all') {
+      filtered = filtered.filter((p) => p.topicId === activeTopic);
+    }
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (p) =>
+          p.content.toLowerCase().includes(q) ||
+          p.author.displayName.toLowerCase().includes(q) ||
+          p.topic.toLowerCase().includes(q)
+      );
+    }
+
+    return filtered;
+  }, [posts, activeTopic, searchQuery, getFeedPosts]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    triggerHaptic('light');
+    await refreshFeed();
+    setRefreshing(false);
+  }, [refreshFeed, triggerHaptic]);
+
+  const onLoadMore = useCallback(async () => {
+    if (loadingMore) return;
+    setLoadingMore(true);
+    await loadMorePosts();
+    setLoadingMore(false);
+  }, [loadMorePosts, loadingMore]);
+
+  const handleLike = async (postId: string) => {
+    if (!canInteract) {
+      Alert.alert('Sign In Required', 'Please sign in to like posts', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Sign In', onPress: () => navigation.navigate('Auth', { screen: 'SignIn' }) },
+      ]);
+      return;
+    }
+    const post = posts.find((p) => p.id === postId);
+    if (!post) return;
+    triggerHaptic('light');
+    if (post.isLiked) {
+      await unlikePost(postId);
+    } else {
+      await likePost(postId);
+    }
+  };
+
+  const handleRepost = async (postId: string) => {
+    if (!canInteract) {
+      Alert.alert('Sign In Required', 'Please sign in to repost', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Sign In', onPress: () => navigation.navigate('Auth', { screen: 'SignIn' }) },
+      ]);
+      return;
+    }
+    const post = posts.find((p) => p.id === postId);
+    if (!post) return;
+    triggerHaptic('medium');
+    if (post.isReposted) {
+      await unrepostPost(postId);
+    } else {
+      await repostPost(postId);
+    }
+  };
+
+  const handleBookmark = async (postId: string) => {
+    if (!canInteract) {
+      Alert.alert('Sign In Required', 'Please sign in to bookmark', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Sign In', onPress: () => navigation.navigate('Auth', { screen: 'SignIn' }) },
+      ]);
+      return;
+    }
+    triggerHaptic('light');
+    await bookmarkPost(postId);
+  };
+
+  const handleShare = async (post: Post) => {
+    try {
+      await Share.share({
+        message: `${post.author.displayName} on LittleLoom: "${post.content.substring(0, 100)}..."`,
+      });
+    } catch (error) {
+      console.error('Share error:', error);
+    }
+  };
+
+  const handleDelete = (postId: string) => {
+    Alert.alert(
+      'Delete Post',
+      'Are you sure you want to delete this post? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: () => deletePost(postId) },
+      ]
+    );
+  };
+
+  const handleCommentSubmit = async (postId: string) => {
+    if (!canInteract) {
+      Alert.alert('Sign In Required', 'Please sign in to comment', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Sign In', onPress: () => navigation.navigate('Auth', { screen: 'SignIn' }) },
+      ]);
+      return;
+    }
+    const content = commentInputs[postId]?.trim();
+    if (!content) return;
+    triggerHaptic('light');
+    if (replyingTo && replyingTo.postId === postId) {
+      await replyToComment(postId, replyingTo.commentId, content);
+      setReplyingTo(null);
+    } else {
+      await addComment(postId, content);
+    }
+    setCommentInputs((prev) => ({ ...prev, [postId]: '' }));
+  };
+
+  const handleFollowToggle = async (userId: string) => {
+    if (!canInteract) {
+      Alert.alert('Sign In Required', 'Please sign in to follow users', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Sign In', onPress: () => navigation.navigate('Auth', { screen: 'SignIn' }) },
+      ]);
+      return;
+    }
+    if (isFollowing(userId)) {
+      await unfollowUser(userId);
+    } else {
+      await followUser(userId);
+    }
+  };
+
+  const toggleSearch = () => {
+    const newShow = !showSearch;
+    setShowSearch(newShow);
+    searchAnim.value = withTiming(newShow ? 1 : 0, { duration: 250 });
+    if (!newShow) setSearchQuery('');
+  };
+
+  // ─── FIXED: Collapsed header animation with pointerEvents control
+  const collapsedHeaderStyle = useAnimatedStyle(() => {
+    const opacity = interpolate(
+      scrollY.value,
+      [60, 140],
+      [0, 1],
+      Extrapolate.CLAMP
+    );
+    const translateY = interpolate(
+      scrollY.value,
+      [60, 140],
+      [-20, 0],
+      Extrapolate.CLAMP
+    );
+    return {
+      opacity,
+      transform: [{ translateY }],
+    };
+  });
+
+  const searchBarStyle = useAnimatedStyle(() => {
+    const height = interpolate(
+      searchAnim.value,
+      [0, 1],
+      [0, 52],
+      Extrapolate.CLAMP
+    );
+    const opacity = interpolate(
+      searchAnim.value,
+      [0, 0.5, 1],
+      [0, 0, 1],
+      Extrapolate.CLAMP
+    );
+    return { height, opacity, overflow: 'hidden' };
+  });
+
+  // ─── Render Methods ─────────────────────────────────────────────
+
+  const renderOnboardingBanner = () => {
+    if (!needsOnboarding) return null;
+    
     return (
-      <Animated.View style={[styles.stickyHeader, stickyHeaderStyle, { paddingTop: insets.top }]}>
-        <BlurView intensity={95} style={styles.stickyHeaderBlur} tint="light">
-          <LinearGradient 
-            colors={['rgba(255,255,255,0.95)', 'rgba(255,250,250,0.98)']}
-            style={styles.stickyHeaderGradient}
-          >
-            <View style={styles.stickyHeaderContent}>
-              <TouchableOpacity 
-                onPress={() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true })}
-                accessibilityLabel="Scroll to top"
-                accessibilityRole="button"
-              >
-                <View style={styles.stickyTitleContainer}>
-                  <Text style={styles.stickyTitle}>Community</Text>
-                  <View style={styles.stickyUnderline} />
-                </View>
-              </TouchableOpacity>
-              
-              <View style={styles.stickyActions}>
-                {/* Search Icon in Sticky Header */}
-                <TouchableOpacity 
-                  style={styles.stickyIconButton}
-                  onPress={() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true })}
-                  accessibilityLabel="Search"
-                  accessibilityRole="button"
-                >
-                  <View style={styles.iconButtonGradient}>
-                    <Ionicons name="search" size={22} color={CommunityColors.text.secondary} />
-                  </View>
-                </TouchableOpacity>
-
-                {/* Notifications */}
-                <TouchableOpacity 
-                  style={styles.stickyIconButton}
-                  onPress={navigateToNotifications}
-                  accessibilityLabel={`${unreadCount} unread notifications`}
-                  accessibilityRole="button"
-                >
-                  <View style={styles.iconButtonGradient}>
-                    <Ionicons name="notifications-outline" size={22} color={CommunityColors.primary} />
-                    {unreadCount > 0 && (
-                      <Animated.View style={[styles.stickyBadge, badgeAnimatedStyle]}>
-                        <Text style={styles.stickyBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
-                      </Animated.View>
-                    )}
-                  </View>
-                </TouchableOpacity>
-
-                {/* Chat/Messages */}
-                <TouchableOpacity 
-                  style={styles.stickyIconButton}
-                  onPress={navigateToChatList}
-                  accessibilityLabel="Messages"
-                  accessibilityRole="button"
-                >
-                  <View style={styles.iconButtonGradient}>
-                    <Ionicons name="chatbubbles-outline" size={22} color={CommunityColors.secondary} />
-                  </View>
-                </TouchableOpacity>
-              </View>
+      <Animated.View entering={FadeInUp.duration(400)} style={styles.onboardingBanner}>
+        <LinearGradient
+          colors={['#667eea15', '#764ba215']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.onboardingGradient}
+        >
+          <View style={styles.onboardingContent}>
+            <View style={styles.onboardingIcon}>
+              <Ionicons name="people-circle" size={40} color="#667eea" />
             </View>
-          </LinearGradient>
-        </BlurView>
+            <View style={styles.onboardingTextContainer}>
+              <Text style={styles.onboardingTitle}>Welcome to LittleLoom Community!</Text>
+              <Text style={styles.onboardingSubtext}>
+                Join topics, connect with parents, and share your journey.
+              </Text>
+            </View>
+          </View>
+          <View style={styles.onboardingActions}>
+            <TouchableOpacity 
+              style={styles.onboardingPrimaryBtn}
+              onPress={() => navigation.navigate('Topic', { topicId: 'topic_6' })}
+            >
+              <LinearGradient
+                colors={['#667eea', '#764ba2']}
+                style={styles.onboardingPrimaryGradient}
+              >
+                <Text style={styles.onboardingPrimaryText}>Get Started</Text>
+                <Ionicons name="arrow-forward" size={16} color="#fff" />
+              </LinearGradient>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.onboardingSecondaryBtn}
+              onPress={() => setNeedsOnboarding(false)}
+            >
+              <Text style={styles.onboardingSecondaryText}>Skip for now</Text>
+            </TouchableOpacity>
+          </View>
+        </LinearGradient>
       </Animated.View>
     );
   };
 
-  return (
-    <View style={styles.container}>
-      <StatusBar style="dark" />
-      
-      {/* Animated Header Background */}
-      <Animated.View style={[styles.headerContainer, headerAnimatedStyle]}>
-        <LinearGradient 
-          colors={CommunityGradients.header}
-          style={[styles.headerGradient, { height: HEADER_HEIGHT }]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        >
-          <View style={[styles.headerContent, { paddingTop: insets.top + 16 }]}>
-            {/* Header Top */}
-            <View style={styles.headerTop}>
-              <View style={styles.headerTitleSection}>
-                <Text style={styles.title}>Community 👥</Text>
-                <Text style={styles.subtitle}>Connect with parents worldwide</Text>
-              </View>
-              <View style={styles.headerActions}>
-                {/* Notifications */}
-                <TouchableOpacity 
-                  style={styles.iconButton}
-                  onPress={navigateToNotifications}
-                  accessibilityLabel={`${unreadCount} unread notifications`}
-                  accessibilityRole="button"
-                >
-                  <View style={styles.headerIconGradient}>
-                    <Ionicons name="notifications-outline" size={24} color={CommunityColors.primary} />
-                    {unreadCount > 0 && (
-                      <Animated.View style={[styles.notificationBadge, badgeAnimatedStyle]}>
-                        <Text style={styles.badgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
-                      </Animated.View>
-                    )}
-                  </View>
-                </TouchableOpacity>
+  const renderPopularSection = () => {
+    if (!showPopularSection || popularPosts.length === 0) return null;
 
-                {/* Chat List */}
-                <TouchableOpacity 
-                  style={styles.iconButton}
-                  onPress={navigateToChatList}
-                  accessibilityLabel="Messages"
-                  accessibilityRole="button"
-                >
-                  <View style={styles.headerIconGradient}>
-                    <Ionicons name="chatbubbles-outline" size={24} color={CommunityColors.secondary} />
+    return (
+      <Animated.View entering={FadeInUp.delay(200).duration(500)} style={styles.popularSection}>
+        <View style={styles.sectionHeader}>
+          <View style={styles.sectionTitleRow}>
+            <Ionicons name="trending-up" size={18} color="#fc5c7d" />
+            <Text style={styles.sectionTitle}>Popular Now</Text>
+          </View>
+          <TouchableOpacity onPress={() => setShowPopularSection(false)}>
+            <Ionicons name="close" size={18} color={CommunityColors.text.tertiary} />
+          </TouchableOpacity>
+        </View>
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.popularScroll}
+        >
+          {popularPosts.map((post, index) => (
+            <PopularPostCard
+              key={post.id}
+              post={post}
+              index={index}
+              onPress={() => {
+                incrementViewCount(post.id);
+                navigation.navigate('PostDetail', { postId: post.id });
+              }}
+            />
+          ))}
+        </ScrollView>
+      </Animated.View>
+    );
+  };
+
+  const renderPost = ({ item, index }: { item: Post; index: number }) => {
+    const isExpanded = expandedPostId === item.id;
+    const commentInput = commentInputs[item.id] || '';
+
+    return (
+      <Animated.View entering={FadeInUp.delay(index * 50).duration(350)}>
+        <View style={styles.postCard}>
+          <View style={styles.postHeader}>
+            <TouchableOpacity
+              style={styles.authorRow}
+              onPress={() =>
+                item.authorId === currentUser?.id
+                  ? navigation.navigate('EditCommunityProfile')
+                  : navigation.navigate('UserProfile', { userId: item.authorId })
+              }
+              activeOpacity={0.7}
+            >
+              <View style={styles.avatarWrapper}>
+                <SafeAvatar
+                  avatar={item.author.avatar}
+                  size={42}
+                  fallbackIcon="person"
+                  fallbackColor={CommunityColors.primary}
+                  fallbackBgColor={CommunityColors.background.elevated}
+                  borderWidth={2}
+                  borderColor={item.author.isVerified ? '#667eea' : CommunityColors.border}
+                />
+                {item.author.isVerified && (
+                  <View style={styles.verifiedBadge}>
+                    <Ionicons name="checkmark" size={9} color="#fff" />
                   </View>
-                </TouchableOpacity>
+                )}
+                {item.author.onlineStatus === 'online' && (
+                  <View style={styles.onlineIndicator} />
+                )}
+              </View>
+              <View style={styles.authorInfo}>
+                <View style={styles.nameRow}>
+                  <Text style={styles.authorName} numberOfLines={1}>
+                    {item.isAnonymous ? 'Anonymous Parent' : item.author.displayName}
+                  </Text>
+                  {item.author.isVerified && (
+                    <Ionicons name="checkmark-circle" size={13} color="#667eea" />
+                  )}
+                </View>
+                <View style={styles.metaRow}>
+                  <View style={[styles.topicTag, { backgroundColor: (topics.find(t => t.id === item.topicId)?.color || '#667eea') + '12' }]}>
+                    <Text style={[styles.topicTagText, { color: topics.find(t => t.id === item.topicId)?.color || '#667eea' }]}>
+                      {item.topic}
+                    </Text>
+                  </View>
+                  <Text style={styles.dotSeparator}>•</Text>
+                  <Text style={styles.postMeta}>{item.time}</Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.moreButton}
+              onPress={() => {
+                const isAuthor = item.authorId === currentUser?.id;
+                Alert.alert('Post Options', '', [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Share', onPress: () => handleShare(item) },
+                  { text: item.isBookmarked ? 'Remove Bookmark' : 'Bookmark', onPress: () => handleBookmark(item.id) },
+                  ...(isAuthor
+                    ? [{ text: 'Delete', style: 'destructive' as const, onPress: () => handleDelete(item.id) }]
+                    : [
+                        { text: isFollowing(item.authorId) ? 'Unfollow' : 'Follow', onPress: () => handleFollowToggle(item.authorId) },
+                        { text: 'Report', style: 'destructive' as const, onPress: () => navigation.navigate('Report', { type: 'post', targetId: item.id, targetUserId: item.authorId }) },
+                      ]),
+                ]);
+              }}
+            >
+              <View style={styles.moreButtonInner}>
+                <Ionicons name="ellipsis-horizontal" size={18} color={CommunityColors.text.tertiary} />
+              </View>
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={() => {
+              incrementViewCount(item.id);
+              navigation.navigate('PostDetail', { postId: item.id });
+            }}
+          >
+            <Text style={styles.postContent} numberOfLines={isExpanded ? undefined : 4}>
+              {item.content}
+            </Text>
+            {item.content.length > 160 && !isExpanded && (
+              <TouchableOpacity onPress={() => setExpandedPostId(item.id)}>
+                <Text style={styles.readMore}>Read more</Text>
+              </TouchableOpacity>
+            )}
+          </TouchableOpacity>
+
+          {item.images && item.images.length > 0 && (
+            <View style={styles.imageContainer}>
+              {item.images.length === 1 ? (
+                <Image
+                  source={{ uri: item.images[0] }}
+                  style={styles.postImageSingle}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={styles.imageGrid}>
+                  {item.images.slice(0, 4).map((img, i) => (
+                    <View key={i} style={styles.imageGridItem}>
+                      <Image
+                        source={{ uri: img }}
+                        style={styles.imageGridImage}
+                        resizeMode="cover"
+                      />
+                      {i === 3 && item.images.length > 4 && (
+                        <View style={styles.moreImagesOverlay}>
+                          <Text style={styles.moreImagesText}>+{item.images.length - 4}</Text>
+                        </View>
+                      )}
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* Popularity Badge */}
+          {item.popularityScore > 100 && (
+            <View style={styles.popularityBadge}>
+              <Ionicons name="flame" size={12} color="#ff6b6b" />
+              <Text style={styles.popularityText}>Trending</Text>
+            </View>
+          )}
+
+          {item.helpfulVotes > 0 && (
+            <View style={styles.helpfulBadge}>
+              <View style={styles.helpfulBadgeInner}>
+                <Ionicons name="thumbs-up" size={13} color="#667eea" />
+                <Text style={styles.helpfulText}>{item.helpfulVotes} found this helpful</Text>
               </View>
             </View>
+          )}
 
-            {/* Search Bar */}
-            {renderSearchBar()}
-
-            {/* Quick Actions */}
-            {renderQuickActions()}
-
-            {/* Profile Section */}
-            {renderProfileSection()}
-
-            {/* Online Users Strip */}
-            <ScrollView 
-              horizontal 
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.onlineContainer}
+          <View style={styles.postActions}>
+            <TouchableOpacity 
+              style={[styles.actionBtn, item.isLiked && styles.actionBtnActive]} 
+              onPress={() => handleLike(item.id)}
             >
-              <TouchableOpacity 
-                style={styles.createRoomButton}
-                accessibilityLabel="Create chat room"
-                accessibilityRole="button"
-              >
-                <LinearGradient 
-                  colors={CommunityGradients.primary} 
-                  style={styles.createRoomGradient}
+              <Ionicons
+                name={item.isLiked ? 'heart' : 'heart-outline'}
+                size={20}
+                color={item.isLiked ? '#fc5c7d' : CommunityColors.text.tertiary}
+              />
+              <Text style={[styles.actionText, item.isLiked && { color: '#fc5c7d', fontWeight: '700' }]}>
+                {item.likes > 0 ? item.likes : 'Like'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.actionBtn, isExpanded && styles.actionBtnActive]}
+              onPress={() => {
+                setExpandedPostId(isExpanded ? null : item.id);
+                if (!isExpanded) {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                }
+              }}
+            >
+              <Ionicons name="chatbubble-outline" size={18} color={isExpanded ? '#667eea' : CommunityColors.text.tertiary} />
+              <Text style={[styles.actionText, isExpanded && { color: '#667eea', fontWeight: '700' }]}>
+                {item.commentsCount > 0 ? item.commentsCount : 'Comment'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.actionBtn, item.isReposted && styles.actionBtnActive]} 
+              onPress={() => handleRepost(item.id)}
+            >
+              <Ionicons
+                name={item.isReposted ? 'repeat' : 'repeat-outline'}
+                size={18}
+                color={item.isReposted ? '#43e97b' : CommunityColors.text.tertiary}
+              />
+              <Text style={[styles.actionText, item.isReposted && { color: '#43e97b', fontWeight: '700' }]}>
+                {item.reposts > 0 ? item.reposts : 'Repost'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.actionBtn} onPress={() => voteHelpful(item.id)}>
+              <Ionicons name="thumbs-up-outline" size={18} color={CommunityColors.text.tertiary} />
+              <Text style={styles.actionText}>Helpful</Text>
+            </TouchableOpacity>
+          </View>
+
+          {isExpanded && (
+            <View style={styles.commentsSection}>
+              {item.comments.slice(0, 3).map((comment) => (
+                <CommentItem
+                  key={comment.id}
+                  comment={comment}
+                  postId={item.id}
+                  onLike={likeComment}
+                  onReply={(postId, commentId) => {
+                    if (!canInteract) {
+                      Alert.alert('Sign In Required', 'Please sign in to reply');
+                      return;
+                    }
+                    setReplyingTo({ postId, commentId });
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }}
+                />
+              ))}
+              {item.commentsCount > 3 && (
+                <TouchableOpacity
+                  onPress={() => navigation.navigate('PostDetail', { postId: item.id })}
+                  style={styles.viewAllCommentsBtn}
                 >
-                  <Ionicons name="add" size={24} color="#fff" />
-                  <Text style={styles.createRoomText}>Room</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-              {onlineUsers.map((userId) => {
-                const user = getUserById(userId);
-                if (!user) return null;
-                return (
-                  <TouchableOpacity 
-                    key={userId} 
-                    style={styles.onlineUser}
-                    onPress={() => navigateToUserProfile(userId)}
-                    accessibilityLabel={`${user.displayName} is online`}
-                    accessibilityRole="button"
+                  <View style={styles.viewAllCommentsInner}>
+                    <Text style={styles.viewAllComments}>
+                      View all {item.commentsCount} comments
+                    </Text>
+                    <Ionicons name="arrow-forward" size={13} color="#667eea" />
+                  </View>
+                </TouchableOpacity>
+              )}
+
+              <View style={styles.commentInputContainer}>
+                <SafeAvatar
+                  avatar={currentUser?.avatar || profile?.avatar}
+                  size={32}
+                  fallbackIcon="person"
+                  fallbackColor={CommunityColors.primary}
+                  fallbackBgColor={CommunityColors.background.elevated}
+                />
+                <View style={styles.commentInputWrapper}>
+                  <TextInput
+                    style={styles.commentInput}
+                    placeholder={replyingTo?.postId === item.id ? 'Write a reply...' : 'Add a comment...'}
+                    placeholderTextColor={CommunityColors.text.tertiary}
+                    value={commentInput}
+                    onChangeText={(text) =>
+                      setCommentInputs((prev) => ({ ...prev, [item.id]: text }))
+                    }
+                    multiline
+                    maxLength={500}
+                  />
+                  <TouchableOpacity
+                    style={[styles.sendBtn, !commentInput.trim() && styles.sendBtnDisabled]}
+                    onPress={() => handleCommentSubmit(item.id)}
+                    disabled={!commentInput.trim()}
                   >
-                    <View style={styles.onlineAvatarContainer}>
-                      <AvatarImage uri={user.avatar} size={40} />
-                      <View style={[styles.statusDotSmall, { backgroundColor: CommunityColors.success }]} />
-                    </View>
-                    <Text style={styles.onlineName}>{user.displayName.split(' ')[0]}</Text>
+                    <LinearGradient
+                      colors={commentInput.trim() ? ['#667eea', '#764ba2'] : ['#e0e0e0', '#e0e0e0']}
+                      style={styles.sendBtnGradient}
+                    >
+                      <Ionicons name="arrow-up" size={14} color="#fff" />
+                    </LinearGradient>
                   </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
+                </View>
+              </View>
+              {replyingTo?.postId === item.id && (
+                <TouchableOpacity 
+                  onPress={() => setReplyingTo(null)}
+                  style={styles.cancelReplyBtn}
+                >
+                  <Text style={styles.cancelReplyText}>Cancel reply</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+        </View>
+      </Animated.View>
+    );
+  };
+
+  const renderHeader = () => (
+    <View>
+      {renderOnboardingBanner()}
+
+      {/* Welcome Banner */}
+      <Animated.View entering={FadeInUp.duration(500)} style={styles.welcomeBanner}>
+        <LinearGradient
+          colors={['#667eea', '#764ba2', '#f093fb']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.welcomeGradient}
+        >
+          <View style={styles.welcomeContent}>
+            <View style={styles.welcomeTextContainer}>
+              <Text style={styles.welcomeGreeting}>
+                {currentUser ? `Welcome back, ${currentUser.displayName.split(' ')[0]}!` : 'Welcome to LittleLoom'}
+              </Text>
+              <Text style={styles.welcomeSubtext}>
+                Connect with parents, share experiences, and grow together.
+              </Text>
+            </View>
+            <TouchableOpacity 
+              style={styles.welcomeAvatar}
+              onPress={() => canInteract ? navigation.navigate('EditCommunityProfile') : navigation.navigate('Auth', { screen: 'SignIn' })}
+            >
+              <SafeAvatar
+                avatar={currentUser?.avatar || profile?.avatar}
+                size={46}
+                fallbackIcon="person"
+                fallbackColor="#fff"
+                fallbackBgColor="rgba(255,255,255,0.25)"
+                borderWidth={2.5}
+                borderColor="rgba(255,255,255,0.6)"
+              />
+            </TouchableOpacity>
+          </View>
+          
+          <View style={styles.statsRow}>
+            <View style={styles.statItem}>
+              <Text style={styles.statNumber}>{currentUser?.stats?.posts || 0}</Text>
+              <Text style={styles.statLabel}>Posts</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statItem}>
+              <Text style={styles.statNumber}>{currentUser?.stats?.followers || 0}</Text>
+              <Text style={styles.statLabel}>Followers</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statItem}>
+              <Text style={styles.statNumber}>{currentUser?.stats?.following || 0}</Text>
+              <Text style={styles.statLabel}>Following</Text>
+            </View>
           </View>
         </LinearGradient>
       </Animated.View>
 
-      {/* Sticky Header */}
-      {renderStickyHeader()}
+      {/* Quick Actions */}
+      <View style={styles.quickActionsContainer}>
+        {QUICK_ACTIONS.map((action, index) => (
+          <QuickActionButton
+            key={action.id}
+            action={action}
+            index={index}
+            unreadCount={action.id === 'notifications' ? unreadCount : 0}
+            onPress={() => {
+              triggerHaptic('light');
+              if (!canInteract && action.id !== 'topics') {
+                Alert.alert('Sign In Required', 'Please sign in to access this feature', [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Sign In', onPress: () => navigation.navigate('Auth', { screen: 'SignIn' }) },
+                ]);
+                return;
+              }
+              if (action.id === 'profile') {
+                navigation.navigate('EditCommunityProfile');
+              } else if (action.id === 'topics') {
+                navigation.navigate('Topic', { topicId: 'topic_6' });
+              } else {
+                navigation.navigate(action.screen as any);
+              }
+            }}
+          />
+        ))}
+      </View>
 
-      {/* Main Content */}
-      <FlatList
-        ref={flatListRef}
-        data={filteredPosts}
+      {/* Popular Posts Section */}
+      {renderPopularSection()}
+
+      {/* Trending Topics */}
+      <View style={styles.trendingSection}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Trending Topics</Text>
+          <TouchableOpacity onPress={() => navigation.navigate('Topic', { topicId: 'topic_6' })}>
+            <Text style={styles.seeAllText}>See All</Text>
+          </TouchableOpacity>
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.trendingScroll}>
+          {TOPIC_FILTERS.slice(1).map((topic, index) => (
+            <TrendingPill
+              key={topic.id}
+              topic={topic}
+              index={index}
+              isActive={activeTopic === topic.id}
+              onPress={() => setActiveTopic(activeTopic === topic.id ? 'all' : topic.id)}
+            />
+          ))}
+        </ScrollView>
+      </View>
+
+      {/* Active Filter Bar */}
+      {activeTopic !== 'all' && (
+        <Animated.View entering={FadeIn} style={styles.activeFilterBar}>
+          <View style={styles.activeFilterContent}>
+            <Ionicons name="filter" size={14} color="#667eea" />
+            <Text style={styles.activeFilterText}>
+              Filtering by {TOPIC_FILTERS.find(t => t.id === activeTopic)?.label}
+            </Text>
+            <TouchableOpacity 
+              onPress={() => setActiveTopic('all')}
+              style={styles.clearFilterBtn}
+            >
+              <Ionicons name="close-circle" size={16} color="#667eea" />
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
+      )}
+    </View>
+  );
+
+  return (
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+      
+      <LinearGradient 
+        colors={['#f8f9ff', '#fff5f8', '#f0fff4']} 
+        style={StyleSheet.absoluteFill}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      />
+
+      {/* Collapsed Header */}
+      <Animated.View 
+        style={[styles.collapsedHeader, collapsedHeaderStyle]} 
+        pointerEvents={headerCollapsed ? 'auto' : 'none'}
+      >
+        <BlurView intensity={95} style={StyleSheet.absoluteFill} tint="light" />
+        <View style={styles.collapsedHeaderContent}>
+          <View style={styles.collapsedHeaderLeft}>
+            <Text style={styles.collapsedTitle}>Community</Text>
+            {unreadCount > 0 && (
+              <View style={styles.collapsedBadge}>
+                <Text style={styles.collapsedBadgeText}>{unreadCount}</Text>
+              </View>
+            )}
+          </View>
+          <View style={styles.collapsedHeaderActions}>
+            <TouchableOpacity
+              style={styles.collapsedBtn}
+              onPress={toggleSearch}
+            >
+              <Ionicons name={showSearch ? 'close' : 'search'} size={20} color={CommunityColors.text.primary} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.collapsedBtn}
+              onPress={() => {
+                if (!canInteract) {
+                  Alert.alert('Sign In Required', 'Please sign in to view notifications');
+                  return;
+                }
+                navigation.navigate('Notifications');
+              }}
+            >
+              <Ionicons name="notifications-outline" size={20} color={CommunityColors.text.primary} />
+              {unreadCount > 0 && <View style={styles.collapsedDotBadge} />}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.collapsedCreateBtn}
+              onPress={() => {
+                if (!canInteract) {
+                  Alert.alert('Sign In Required', 'Please sign in to create posts');
+                  return;
+                }
+                navigation.navigate('CreatePost');
+              }}
+            >
+              <LinearGradient
+                colors={['#667eea', '#764ba2']}
+                style={styles.collapsedCreateGradient}
+              >
+                <Ionicons name="add" size={20} color="#fff" />
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <Animated.View style={searchBarStyle}>
+          <View style={styles.collapsedSearchContainer}>
+            <View style={styles.collapsedSearchWrapper}>
+              <Ionicons name="search" size={15} color={CommunityColors.text.tertiary} />
+              <TextInput
+                style={styles.collapsedSearchInput}
+                placeholder="Search posts, topics, parents..."
+                placeholderTextColor={CommunityColors.text.tertiary}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                autoFocus={showSearch}
+                autoCapitalize="none"
+              />
+              {searchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setSearchQuery('')}>
+                  <Ionicons name="close-circle" size={15} color={CommunityColors.text.tertiary} />
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        </Animated.View>
+      </Animated.View>
+
+      {/* Main Feed */}
+      <Animated.FlatList
+        ref={listRef}
+        data={feedPosts}
         renderItem={renderPost}
         keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.listContainer}
         showsVerticalScrollIndicator={false}
+        onScroll={scrollHandler}
+        scrollEventThrottle={1}
+        removeClippedSubviews={false}
         refreshControl={
-          <RefreshControl 
-            refreshing={refreshing} 
-            onRefresh={onRefresh} 
-            tintColor={CommunityColors.primary}
-            colors={[CommunityColors.primary, CommunityColors.secondary]}
-          />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#667eea" />
         }
-        onScroll={(event) => {
-          scrollY.value = event.nativeEvent.contentOffset.y;
-        }}
-        scrollEventThrottle={16}
-        contentContainerStyle={{ 
-          paddingTop: HEADER_HEIGHT + 20, 
-          paddingBottom: 120 
-        }}
-        ListHeaderComponent={
-          <>
-            {/* Topics Grid */}
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Popular Topics</Text>
-              <TouchableOpacity accessibilityLabel="See all topics" accessibilityRole="button">
-                <Text style={styles.seeAllText}>See All</Text>
-              </TouchableOpacity>
-            </View>
-            <FlatList
-              data={topics}
-              renderItem={renderTopicCard}
-              keyExtractor={(item) => item.id}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.topicsContainer}
-            />
-
-            {/* Feed Tabs */}
-            <View style={styles.tabContainer}>
-              {(['trending', 'following', 'nearby'] as const).map((tab) => (
-                <TouchableOpacity
-                  key={tab}
-                  style={[styles.tab, activeTab === tab && styles.tabActive]}
-                  onPress={() => setActiveTab(tab)}
-                  accessibilityLabel={`${tab} feed`}
-                  accessibilityRole="tab"
-                  accessibilityState={{ selected: activeTab === tab }}
-                >
-                  <Text style={[
-                    styles.tabText,
-                    activeTab === tab && styles.tabTextActive
-                  ]}>
-                    {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                  </Text>
-                  {activeTab === tab && (
-                    <View style={styles.tabIndicator}>
-                      <LinearGradient
-                        colors={CommunityGradients.primary}
-                        style={styles.tabGradient}
-                      />
-                    </View>
-                  )}
-                </TouchableOpacity>
-              ))}
-            </View>
-          </>
-        }
+        onEndReached={onLoadMore}
+        onEndReachedThreshold={0.5}
+        ListHeaderComponent={renderHeader}
         ListEmptyComponent={
-          searchQuery.trim() ? (
-            <View style={styles.emptyState}>
-              <Ionicons name="search-outline" size={48} color={CommunityColors.text.tertiary} />
-              <Text style={styles.emptyStateText}>No posts found for "{searchQuery}"</Text>
-              <TouchableOpacity onPress={() => setSearchQuery('')}>
-                <Text style={styles.emptyStateAction}>Clear search</Text>
-              </TouchableOpacity>
+          <View style={styles.emptyState}>
+            <View style={styles.emptyIconContainer}>
+              <LinearGradient
+                colors={['#667eea15', '#764ba215']}
+                style={styles.emptyIconGradient}
+              >
+                <Ionicons name="chatbubbles-outline" size={44} color="#667eea" />
+              </LinearGradient>
             </View>
-          ) : (
-            <View style={styles.emptyState}>
-              <Ionicons name="newspaper-outline" size={48} color={CommunityColors.text.tertiary} />
-              <Text style={styles.emptyStateText}>
-                {activeTab === 'trending' 
-                  ? "No posts in your selected topics yet. Join more topics or create a post!"
-                  : activeTab === 'following'
-                  ? "No posts from people you follow. Start following users!"
-                  : "No posts from your area yet."
+            <Text style={styles.emptyTitle}>No posts yet</Text>
+            <Text style={styles.emptyText}>
+              Be the first to share your parenting journey with the community!
+            </Text>
+            <TouchableOpacity
+              style={styles.emptyBtn}
+              onPress={() => {
+                if (!canInteract) {
+                  Alert.alert('Sign In Required', 'Please sign in to create posts');
+                  return;
                 }
-              </Text>
-              <TouchableOpacity onPress={() => setActiveTab('trending')}>
-                <Text style={styles.emptyStateAction}>Explore Trending</Text>
-              </TouchableOpacity>
-            </View>
-          )
+                navigation.navigate('CreatePost');
+              }}
+            >
+              <LinearGradient
+                colors={['#667eea', '#764ba2']}
+                style={styles.emptyBtnGradient}
+              >
+                <Text style={styles.emptyBtnText}>Create Your First Post</Text>
+                <Ionicons name="arrow-forward" size={14} color="#fff" style={{ marginLeft: 8 }} />
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
         }
         ListFooterComponent={
-          filteredPosts.length > 0 ? (
-            <TouchableOpacity style={styles.loadMore} onPress={() => {}} accessibilityLabel="Load more posts" accessibilityRole="button">
-              <Text style={styles.loadMoreText}>Load more posts</Text>
-              <Ionicons name="chevron-down" size={20} color={CommunityColors.primary} />
-            </TouchableOpacity>
+          loadingMore ? (
+            <View style={styles.loadMore}>
+              <Text style={styles.loadMoreText}>Loading more...</Text>
+            </View>
           ) : null
         }
       />
 
-      {/* Floating Create Post Button */}
-      <TouchableOpacity 
-        style={styles.fab}
-        onPress={() => navigation.navigate('CreatePost', {})}
-        accessibilityLabel="Create new post"
-        accessibilityRole="button"
-      >
-        <LinearGradient 
-          colors={CommunityGradients.accent} 
-          style={styles.fabGradient}
-        >
-          <Ionicons name="create-outline" size={28} color="#fff" />
-        </LinearGradient>
-      </TouchableOpacity>
+      <FloatingActionButton 
+        scrollY={scrollY} 
+        onPress={() => {
+          if (!canInteract) {
+            Alert.alert('Sign In Required', 'Please sign in to create posts', [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Sign In', onPress: () => navigation.navigate('Auth', { screen: 'SignIn' }) },
+            ]);
+            return;
+          }
+          navigation.navigate('CreatePost');
+        }} 
+      />
     </View>
   );
 }
 
+// ─── Styles ─────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CommunityColors.background.main,
+    backgroundColor: '#f8f9ff',
   },
-  headerContainer: {
+  
+  fabContainer: {
+    position: 'absolute',
+    right: 20,
+    bottom: 28,
+    zIndex: 999,
+    elevation: 8,
+  },
+  fabButton: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    overflow: 'hidden',
+    ...CommunityShadows.large,
+  },
+  fabGradient: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  collapsedHeader: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    zIndex: 1,
+    zIndex: 50,
+    elevation: 5,
+    paddingTop: Platform.OS === 'ios' ? 50 : 44,
+    paddingHorizontal: CommunitySpacing.md,
+    paddingBottom: CommunitySpacing.sm,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.04)',
   },
-  headerGradient: {
-    borderBottomLeftRadius: 32,
-    borderBottomRightRadius: 32,
-    ...CommunityShadows.lg,
+  collapsedHeaderContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
-  headerContent: {
+  collapsedHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  collapsedTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: CommunityColors.text.primary,
+    letterSpacing: -0.5,
+  },
+  collapsedBadge: {
+    backgroundColor: '#fc5c7d',
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    minWidth: 20,
+    alignItems: 'center',
+  },
+  collapsedBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  collapsedHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: CommunitySpacing.sm,
+  },
+  collapsedBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: CommunityColors.background.elevated,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  collapsedCreateBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    overflow: 'hidden',
+  },
+  collapsedCreateGradient: {
     flex: 1,
-    paddingHorizontal: CommunitySpacing.lg,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  headerTop: {
+  collapsedDotBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#fc5c7d',
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  collapsedSearchContainer: {
+    marginTop: CommunitySpacing.sm,
+  },
+  collapsedSearchWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: CommunityColors.background.elevated,
+    borderRadius: CommunityBorderRadius.full,
+    paddingHorizontal: CommunitySpacing.md,
+    paddingVertical: CommunitySpacing.sm,
+    gap: CommunitySpacing.sm,
+    borderWidth: 1,
+    borderColor: CommunityColors.border,
+  },
+  collapsedSearchInput: {
+    flex: 1,
+    fontSize: 14,
+    color: CommunityColors.text.primary,
+    paddingVertical: 2,
+  },
+  
+  listContainer: {
+    paddingHorizontal: CommunitySpacing.md,
+    paddingBottom: CommunitySpacing.xxl,
+    paddingTop: Platform.OS === 'ios' ? 8 : 4,
+  },
+  
+  onboardingBanner: {
+    marginTop: Platform.OS === 'ios' ? 52 : 46,
+    marginBottom: CommunitySpacing.md,
+    borderRadius: CommunityBorderRadius.xl,
+    overflow: 'hidden',
+    ...CommunityShadows.small,
+  },
+  onboardingGradient: {
+    padding: CommunitySpacing.lg,
+    borderWidth: 1,
+    borderColor: '#667eea20',
+  },
+  onboardingContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: CommunitySpacing.md,
+    marginBottom: CommunitySpacing.md,
+  },
+  onboardingIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#667eea15',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  onboardingTextContainer: {
+    flex: 1,
+  },
+  onboardingTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: CommunityColors.text.primary,
+    marginBottom: 4,
+  },
+  onboardingSubtext: {
+    fontSize: 13,
+    color: CommunityColors.text.secondary,
+    lineHeight: 18,
+  },
+  onboardingActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: CommunitySpacing.md,
+  },
+  onboardingPrimaryBtn: {
+    borderRadius: CommunityBorderRadius.full,
+    overflow: 'hidden',
+    flex: 1,
+  },
+  onboardingPrimaryGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: CommunitySpacing.lg,
+    paddingVertical: CommunitySpacing.sm,
+    gap: 6,
+  },
+  onboardingPrimaryText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  onboardingSecondaryBtn: {
+    paddingHorizontal: CommunitySpacing.md,
+    paddingVertical: CommunitySpacing.sm,
+  },
+  onboardingSecondaryText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: CommunityColors.text.tertiary,
+  },
+
+  welcomeBanner: {
+    marginTop: Platform.OS === 'ios' ? 52 : 46,
+    marginBottom: CommunitySpacing.lg,
+    borderRadius: CommunityBorderRadius.xl,
+    overflow: 'hidden',
+    ...CommunityShadows.medium,
+  },
+  welcomeGradient: {
+    padding: CommunitySpacing.lg,
+  },
+  welcomeContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: CommunitySpacing.md,
+  },
+  welcomeTextContainer: {
+    flex: 1,
+    marginRight: CommunitySpacing.md,
+  },
+  welcomeGreeting: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#fff',
+    marginBottom: 4,
+    letterSpacing: -0.3,
+  },
+  welcomeSubtext: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.85)',
+    lineHeight: 20,
+  },
+  welcomeAvatar: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: CommunityBorderRadius.lg,
+    paddingVertical: CommunitySpacing.sm,
+  },
+  statItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  statNumber: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#fff',
+  },
+  statLabel: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.8)',
+    marginTop: 2,
+    fontWeight: '600',
+  },
+  statDivider: {
+    width: 1,
+    height: 30,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+  },
+  
+  quickActionsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: CommunitySpacing.lg,
+    paddingHorizontal: CommunitySpacing.xs,
+  },
+  quickActionWrapper: {
+    alignItems: 'center',
+    gap: 8,
+  },
+  quickActionBtn: {
+    width: 58,
+    height: 58,
+    borderRadius: 18,
+    overflow: 'hidden',
+    ...CommunityShadows.small,
+  },
+   quickActionGradient: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  quickActionLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: CommunityColors.text.secondary,
+  },
+  unreadBadge: {
+    position: 'absolute',
+    top: 5,
+    right: 5,
+    backgroundColor: '#fc5c7d',
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  unreadBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '700',
+    paddingHorizontal: 3,
+  },
+  
+  // ─── Popular Section Styles ─────────────────────────────────────
+  popularSection: {
+    marginBottom: CommunitySpacing.lg,
+  },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  popularScroll: {
+    paddingLeft: CommunitySpacing.xs,
+    paddingRight: CommunitySpacing.md,
+    gap: 12,
+  },
+  popularCard: {
+    width: 280,
+    borderRadius: CommunityBorderRadius.xl,
+    overflow: 'hidden',
+    ...CommunityShadows.medium,
+    marginRight: 12,
+  },
+  popularGradient: {
+    padding: CommunitySpacing.md,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.03)',
+  },
+  popularHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: CommunitySpacing.sm,
+  },
+  popularMeta: {
+    flex: 1,
+  },
+  popularAuthor: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: CommunityColors.text.primary,
+  },
+  popularTopic: {
+    fontSize: 12,
+    color: CommunityColors.text.secondary,
+    marginTop: 2,
+  },
+  popularContent: {
+    fontSize: 14,
+    color: CommunityColors.text.primary,
+    lineHeight: 20,
+    marginBottom: CommunitySpacing.sm,
+  },
+  popularStats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  popularStat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  popularStatText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: CommunityColors.text.secondary,
+  },
+  
+  // ─── Trending Section Styles ────────────────────────────────────
+  trendingSection: {
+    marginBottom: CommunitySpacing.lg,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: CommunitySpacing.sm,
+    paddingHorizontal: CommunitySpacing.xs,
+  },
+  sectionTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: CommunityColors.text.primary,
+    letterSpacing: -0.3,
+  },
+  seeAllText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#667eea',
+  },
+  trendingScroll: {
+    marginLeft: -CommunitySpacing.xs,
+  },
+  trendingPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: CommunitySpacing.md,
+    paddingVertical: CommunitySpacing.sm,
+    borderRadius: CommunityBorderRadius.full,
+    marginRight: CommunitySpacing.sm,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  trendingIconContainer: {
+    width: 26,
+    height: 26,
+    borderRadius: 9,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  trendingPillText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  activeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginLeft: 2,
+  },
+  activeFilterBar: {
+    marginBottom: CommunitySpacing.md,
+  },
+  activeFilterContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#667eea10',
+    paddingHorizontal: CommunitySpacing.md,
+    paddingVertical: CommunitySpacing.sm,
+    borderRadius: CommunityBorderRadius.full,
+    alignSelf: 'flex-start',
+  },
+  activeFilterText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#667eea',
+  },
+  clearFilterBtn: {
+    marginLeft: 4,
+  },
+  
+  // ─── Post Card Styles ───────────────────────────────────────────
+  postCard: {
+    backgroundColor: '#fff',
+    borderRadius: CommunityBorderRadius.xl,
+    padding: CommunitySpacing.md,
+    marginBottom: CommunitySpacing.md,
+    ...CommunityShadows.medium,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.03)',
+  },
+  postHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: CommunitySpacing.sm,
   },
-  headerTitleSection: {
-    flex: 1,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: '900',
-    color: '#fff',
-    marginBottom: 4,
-    textShadowColor: 'rgba(0,0,0,0.1)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 4,
-  },
-  subtitle: {
-    fontSize: 15,
-    color: 'rgba(255,255,255,0.9)',
-    fontWeight: '500',
-  },
-  headerActions: {
-    flexDirection: 'row',
-    gap: CommunitySpacing.sm,
-  },
-  iconButton: {
-    borderRadius: CommunityBorderRadius.lg,
-    overflow: 'hidden',
-  },
-  headerIconGradient: {
-    width: 48,
-    height: 48,
-    borderRadius: CommunityBorderRadius.lg,
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...CommunityShadows.md,
-  },
-  notificationBadge: {
-    position: 'absolute',
-    top: 6,
-    right: 6,
-    backgroundColor: CommunityColors.primary,
-    borderRadius: 10,
-    minWidth: 20,
-    height: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#fff',
-  },
-  badgeText: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: 'bold',
-  },
-
-  // Search Bar Styles
-  searchContainer: {
-    marginBottom: CommunitySpacing.md,
-  },
-  searchBlur: {
-    borderRadius: CommunityBorderRadius.xl,
-    overflow: 'hidden',
-  },
-  searchInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: CommunitySpacing.md,
-    paddingVertical: CommunitySpacing.sm,
-    gap: CommunitySpacing.sm,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 15,
-    color: CommunityColors.text.primary,
-    fontWeight: '500',
-    paddingVertical: 4,
-  },
-
-  // Quick Actions
-  quickActionsContainer: {
-    paddingBottom: CommunitySpacing.md,
-    gap: CommunitySpacing.sm,
-  },
-  quickActionPill: {
-    borderRadius: CommunityBorderRadius.xl,
-    overflow: 'hidden',
-    marginRight: CommunitySpacing.sm,
-  },
-  quickActionGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    gap: 6,
-  },
-  quickActionText: {
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  quickActionPillSecondary: {
-    backgroundColor: CommunityColors.background.elevated,
-    borderWidth: 1,
-    borderColor: CommunityColors.border,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    gap: 6,
-  },
-  quickActionTextSecondary: {
-    color: CommunityColors.text.primary,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-
-  // Profile Section Styles
-  profileSection: {
-    marginBottom: CommunitySpacing.md,
-  },
-  profileCard: {
-    borderRadius: CommunityBorderRadius.xl,
-    padding: CommunitySpacing.lg,
-    overflow: 'hidden',
-    backgroundColor: CommunityColors.background.card,
-    ...CommunityShadows.md,
-    borderWidth: 1,
-    borderColor: CommunityColors.border,
-  },
-  profileHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: CommunitySpacing.md,
-  },
-  profileLeft: {
+  authorRow: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
   },
   avatarWrapper: {
     position: 'relative',
-    marginRight: CommunitySpacing.md,
   },
-  profileAvatar: {
-    fontSize: 52,
-  },
-  editAvatarBadge: {
+  verifiedBadge: {
     position: 'absolute',
-    bottom: 0,
-    right: 0,
-    backgroundColor: CommunityColors.primary,
-    borderRadius: 12,
-    width: 24,
-    height: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#fff',
-  },
-  onlineStatusDot: {
-    position: 'absolute',
-    bottom: 4,
-    right: 4,
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: CommunityColors.success,
-    borderWidth: 2,
-    borderColor: '#fff',
-  },
-  profileInfo: {
-    flex: 1,
-  },
-  profileName: {
-    fontSize: 19,
-    fontWeight: '800',
-    color: CommunityColors.text.primary,
-    marginBottom: 2,
-  },
-  profileHandle: {
-    fontSize: 14,
-    color: CommunityColors.primary,
-    fontWeight: '600',
-    marginBottom: CommunitySpacing.xs,
-  },
-  onlineStatusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  statusText: {
-    fontSize: 13,
-    color: CommunityColors.success,
-    fontWeight: '600',
-  },
-  countryText: {
-    fontSize: 13,
-    color: CommunityColors.text.secondary,
-  },
-  editButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-  },
-  editButtonGradient: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  quickStats: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingTop: CommunitySpacing.md,
-    borderTopWidth: 1,
-    borderTopColor: CommunityColors.divider,
-    marginBottom: CommunitySpacing.sm,
-  },
-  statItem: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  statValue: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: CommunityColors.text.primary,
-    marginBottom: 2,
-  },
-  statLabel: {
-    fontSize: 12,
-    color: CommunityColors.text.secondary,
-    fontWeight: '600',
-  },
-  bioPreview: {
-    fontSize: 14,
-    color: CommunityColors.text.secondary,
-    lineHeight: 20,
-    fontStyle: 'italic',
-  },
-  addBioText: {
-    fontSize: 14,
-    color: CommunityColors.primary,
-    fontWeight: '600',
-  },
-
-  // Online Users Styles
-  onlineContainer: {
-    paddingVertical: CommunitySpacing.sm,
-    gap: CommunitySpacing.md,
-  },
-  createRoomButton: {
-    borderRadius: CommunityBorderRadius.lg,
-    overflow: 'hidden',
-    marginRight: CommunitySpacing.sm,
-  },
-  createRoomGradient: {
-    width: 56,
-    height: 72,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  createRoomText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '700',
-    marginTop: 4,
-  },
-  onlineUser: {
-    alignItems: 'center',
-    marginRight: CommunitySpacing.md,
-  },
-  onlineAvatarContainer: {
-    position: 'relative',
-    marginBottom: 6,
-  },
-  onlineAvatar: {
-    fontSize: 40,
-  },
-  statusDotSmall: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: '#fff',
-  },
-  onlineName: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: 'rgba(255,255,255,0.95)',
-  },
-
-  // Sticky Header Styles
-  stickyHeader: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 100,
-  },
-  stickyHeaderBlur: {
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
-    overflow: 'hidden',
-  },
-  stickyHeaderGradient: {
-    paddingHorizontal: CommunitySpacing.lg,
-    paddingBottom: CommunitySpacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: CommunityColors.border,
-  },
-  stickyHeaderContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    height: 56,
-  },
-  stickyTitleContainer: {
-    alignItems: 'flex-start',
-  },
-  stickyTitle: {
-    fontSize: 22,
-    fontWeight: '900',
-    color: CommunityColors.text.primary,
-    letterSpacing: -0.5,
-  },
-  stickyUnderline: {
-    width: 24,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: CommunityColors.primary,
-    marginTop: 4,
-  },
-  stickyActions: {
-    flexDirection: 'row',
-    gap: CommunitySpacing.sm,
-  },
-  stickyIconButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-  },
-  iconButtonGradient: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 22,
-    backgroundColor: CommunityColors.background.elevated,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: CommunityColors.border,
-  },
-  stickyBadge: {
-    position: 'absolute',
-    top: -2,
+    bottom: -2,
     right: -2,
-    backgroundColor: CommunityColors.primary,
-    borderRadius: 10,
-    minWidth: 18,
-    height: 18,
-    alignItems: 'center',
+    backgroundColor: '#667eea',
+    borderRadius: 7,
+    width: 15,
+    height: 15,
     justifyContent: 'center',
+    alignItems: 'center',
     borderWidth: 2,
     borderColor: '#fff',
-  },
-  stickyBadgeText: {
-    color: '#fff',
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
-
-  // Content Styles
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: CommunitySpacing.lg,
-    marginBottom: CommunitySpacing.md,
-    marginTop: CommunitySpacing.md,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: CommunityColors.text.primary,
-    letterSpacing: -0.3,
-  },
-  seeAllText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: CommunityColors.primary,
-  },
-  topicsContainer: {
-    paddingHorizontal: CommunitySpacing.md,
-    gap: CommunitySpacing.sm,
-    paddingBottom: CommunitySpacing.xs,
-  },
-  topicCard: {
-    width: 170,
-    height: 170,
-    borderRadius: CommunityBorderRadius.xl,
-    overflow: 'hidden',
-    marginRight: CommunitySpacing.sm,
-    ...CommunityShadows.sm,
-  },
-  topicGradient: {
-    flex: 1,
-    padding: CommunitySpacing.lg,
-    justifyContent: 'space-between',
-  },
-  topicHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  topicEmoji: {
-    fontSize: 38,
-  },
-  trendingBadge: {
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  trendingGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    gap: 4,
-  },
-  trendingText: {
-    fontSize: 10,
-    color: '#fff',
-    fontWeight: '800',
-  },
-  topicName: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: CommunityColors.text.primary,
-    marginBottom: CommunitySpacing.xs,
-  },
-  topicStats: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  topicStat: {
-    fontSize: 12,
-    color: CommunityColors.text.secondary,
-    fontWeight: '600',
-  },
-  topicDot: {
-    marginHorizontal: 4,
-    color: CommunityColors.text.tertiary,
-  },
-  joinedIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: CommunitySpacing.xs,
-  },
-  joinedText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-
-  // Tab Styles
-  tabContainer: {
-    flexDirection: 'row',
-    paddingHorizontal: CommunitySpacing.lg,
-    marginTop: CommunitySpacing.lg,
-    marginBottom: CommunitySpacing.md,
-    gap: CommunitySpacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: CommunityColors.divider,
-    paddingBottom: CommunitySpacing.sm,
-  },
-  tab: {
-    paddingVertical: CommunitySpacing.sm,
-    position: 'relative',
-  },
-  tabText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: CommunityColors.text.tertiary,
-  },
-  tabTextActive: {
-    color: CommunityColors.text.primary,
-  },
-  tabIndicator: {
-    position: 'absolute',
-    bottom: -9,
-    left: 0,
-    right: 0,
-    height: 3,
-    borderRadius: 2,
-    overflow: 'hidden',
-  },
-  tabGradient: {
-    flex: 1,
-  },
-
-  // Post Styles
-  postCard: {
-    backgroundColor: CommunityColors.background.card,
-    borderRadius: CommunityBorderRadius.xl,
-    padding: CommunitySpacing.lg,
-    marginHorizontal: CommunitySpacing.lg,
-    marginBottom: CommunitySpacing.md,
-    ...CommunityShadows.sm,
-    borderWidth: 1,
-    borderColor: CommunityColors.border,
-  },
-  postHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: CommunitySpacing.md,
-  },
-  authorInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  avatarContainer: {
-    position: 'relative',
-    marginRight: CommunitySpacing.sm,
-  },
-  authorAvatar: {
-    fontSize: 42,
   },
   onlineIndicator: {
     position: 'absolute',
-    bottom: 2,
-    right: 2,
+    bottom: 0,
+    right: 0,
     width: 12,
     height: 12,
     borderRadius: 6,
-    backgroundColor: CommunityColors.success,
-    borderWidth: 2,
+    backgroundColor: '#43e97b',
+    borderWidth: 2.5,
     borderColor: '#fff',
   },
-  authorMeta: {
+  authorInfo: {
+    marginLeft: CommunitySpacing.sm,
     flex: 1,
   },
   nameRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
   },
   authorName: {
-    fontSize: 16,
-    fontWeight: '800',
+    fontSize: 15,
+    fontWeight: '700',
     color: CommunityColors.text.primary,
+    maxWidth: 200,
   },
-  verifiedBadge: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: CommunityColors.info,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  postMeta: {
-    fontSize: 13,
-    marginTop: 2,
+  metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
+    marginTop: 3,
   },
-  topicText: {
-    color: CommunityColors.primary,
+  topicTag: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  topicTagText: {
+    fontSize: 11,
     fontWeight: '700',
   },
-  timeText: {
+  dotSeparator: {
+    fontSize: 12,
     color: CommunityColors.text.tertiary,
   },
-  countryText: {
-    color: CommunityColors.text.secondary,
+  postMeta: {
+    fontSize: 12,
+    color: CommunityColors.text.tertiary,
   },
   moreButton: {
+    padding: CommunitySpacing.xs,
+  },
+  moreButtonInner: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    alignItems: 'center',
+    backgroundColor: CommunityColors.background.elevated,
     justifyContent: 'center',
-  },
-  contentContainer: {
-    marginBottom: CommunitySpacing.sm,
+    alignItems: 'center',
   },
   postContent: {
     fontSize: 15,
     color: CommunityColors.text.primary,
     lineHeight: 22,
     marginBottom: CommunitySpacing.sm,
-    fontWeight: '400',
+    letterSpacing: 0.1,
   },
-  imagesContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  postImage: {
-    width: (width - 88) / 2,
-    height: 150,
-    borderRadius: CommunityBorderRadius.lg,
-  },
-  helpfulContainer: {
+  readMore: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#667eea',
     marginBottom: CommunitySpacing.sm,
   },
-  helpfulGradient: {
+  
+  // ─── Image Styles ───────────────────────────────────────────────
+  imageContainer: {
+    marginBottom: CommunitySpacing.sm,
+    borderRadius: CommunityBorderRadius.lg,
+    overflow: 'hidden',
+  },
+  postImageSingle: {
+    width: '100%',
+    height: 220,
+    borderRadius: CommunityBorderRadius.lg,
+  },
+  imageGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+  },
+  imageGridItem: {
+    width: (SCREEN_WIDTH - CommunitySpacing.md * 2 - 40 - 4) / 2,
+    height: (SCREEN_WIDTH - CommunitySpacing.md * 2 - 40 - 4) / 2,
+    borderRadius: CommunityBorderRadius.md,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  imageGridImage: {
+    width: '100%',
+    height: '100%',
+  },
+  moreImagesOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  moreImagesText: {
+    color: '#fff',
+    fontSize: 22,
+    fontWeight: '800',
+  },
+  
+  // ─── Popularity Badge ───────────────────────────────────────────
+  popularityBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    alignSelf: 'flex-start',
+    backgroundColor: '#ff6b6b15',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: CommunityBorderRadius.full,
+    marginBottom: CommunitySpacing.sm,
+  },
+  popularityText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#ff6b6b',
+  },
+  
+  // ─── Helpful Badge ──────────────────────────────────────────────
+  helpfulBadge: {
+    marginBottom: CommunitySpacing.sm,
+    alignSelf: 'flex-start',
+  },
+  helpfulBadgeInner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 12,
-    alignSelf: 'flex-start',
+    borderRadius: CommunityBorderRadius.full,
+    backgroundColor: '#667eea12',
   },
   helpfulText: {
-    fontSize: 13,
-    color: CommunityColors.success,
+    fontSize: 12,
+    color: '#667eea',
     fontWeight: '700',
   },
+  
+  // ─── Post Actions ───────────────────────────────────────────────
   postActions: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'space-around',
     paddingTop: CommunitySpacing.sm,
     borderTopWidth: 1,
-    borderTopColor: CommunityColors.divider,
+    borderTopColor: 'rgba(0,0,0,0.04)',
   },
-  actionButton: {
+  actionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    padding: 6,
-    borderRadius: 10,
+    gap: 5,
+    paddingVertical: CommunitySpacing.sm,
+    paddingHorizontal: CommunitySpacing.sm,
+    borderRadius: CommunityBorderRadius.full,
   },
-  actionActive: {
-    backgroundColor: CommunityColors.primary + '08',
+  actionBtnActive: {
+    backgroundColor: 'rgba(0,0,0,0.03)',
   },
   actionText: {
-    fontSize: 13,
-    fontWeight: '700',
+    fontSize: 12,
+    fontWeight: '600',
     color: CommunityColors.text.tertiary,
   },
-  loadMore: {
+  
+  // ─── Comments Section ───────────────────────────────────────────
+  commentsSection: {
+    marginTop: CommunitySpacing.sm,
+    paddingTop: CommunitySpacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.04)',
+  },
+  commentItem: {
+    flexDirection: 'row',
+    marginBottom: CommunitySpacing.sm,
+  },
+  commentReply: {
+    marginLeft: CommunitySpacing.xl,
+  },
+  commentContent: {
+    flex: 1,
+    marginLeft: CommunitySpacing.sm,
+  },
+  commentHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: CommunitySpacing.xl,
+    marginBottom: 2,
+  },
+  commentBubble: {
+    backgroundColor: CommunityColors.background.elevated,
+    borderRadius: CommunityBorderRadius.lg,
+    padding: CommunitySpacing.sm,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.03)',
+  },
+  commentAuthor: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: CommunityColors.text.primary,
+  },
+  commentTime: {
+    fontSize: 11,
+    color: CommunityColors.text.tertiary,
+  },
+  commentText: {
+    fontSize: 14,
+    color: CommunityColors.text.primary,
+    lineHeight: 20,
+  },
+  commentActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: CommunitySpacing.md,
+    marginTop: 6,
+    marginLeft: CommunitySpacing.sm,
+  },
+  commentActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  commentAction: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: CommunityColors.text.tertiary,
+  },
+  commentActionActive: {
+    color: CommunityColors.error,
+    fontWeight: '700',
+  },
+  viewRepliesBtn: {
+    marginLeft: CommunitySpacing.sm,
+    marginBottom: CommunitySpacing.sm,
+    alignSelf: 'flex-start',
+  },
+  viewRepliesInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: CommunityBorderRadius.full,
+    backgroundColor: '#667eea10',
+  },
+  viewReplies: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  viewAllCommentsBtn: {
+    marginVertical: CommunitySpacing.sm,
+  },
+  viewAllCommentsInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: CommunitySpacing.sm,
+    borderRadius: CommunityBorderRadius.lg,
+    backgroundColor: '#667eea08',
+  },
+  viewAllComments: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#667eea',
+  },
+  
+  // ─── Comment Input ──────────────────────────────────────────────
+  commentInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: CommunitySpacing.sm,
+    marginTop: CommunitySpacing.sm,
+  },
+  commentInputWrapper: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: CommunityColors.background.elevated,
+    borderRadius: CommunityBorderRadius.full,
+    paddingHorizontal: CommunitySpacing.md,
+    paddingVertical: CommunitySpacing.xs,
+    borderWidth: 1,
+    borderColor: CommunityColors.border,
+  },
+  commentInput: {
+    flex: 1,
+    fontSize: 14,
+    color: CommunityColors.text.primary,
+    maxHeight: 80,
+    paddingVertical: 4,
+  },
+  sendBtn: {
+    marginLeft: CommunitySpacing.xs,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    overflow: 'hidden',
+  },
+  sendBtnDisabled: {
+    opacity: 0.4,
+  },
+  sendBtnGradient: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cancelReplyBtn: {
+    marginLeft: 40,
+    marginTop: 4,
+  },
+  cancelReplyText: {
+    fontSize: 12,
+    color: CommunityColors.text.tertiary,
+    fontWeight: '600',
+  },
+  
+  // ─── Empty State ────────────────────────────────────────────────
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: CommunitySpacing.xxl,
+    marginTop: CommunitySpacing.xl,
+  },
+  emptyIconContainer: {
+    marginBottom: CommunitySpacing.md,
+  },
+  emptyIconGradient: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: CommunityColors.text.secondary,
+    marginTop: CommunitySpacing.md,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: CommunityColors.text.tertiary,
+    marginTop: CommunitySpacing.sm,
+    textAlign: 'center',
+    paddingHorizontal: CommunitySpacing.xl,
+    lineHeight: 20,
+  },
+  emptyBtn: {
+     marginTop: CommunitySpacing.lg,
+    borderRadius: CommunityBorderRadius.full,
+    overflow: 'hidden',
+    ...CommunityShadows.medium,
+  },
+  emptyBtnGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: CommunitySpacing.xl,
+    paddingVertical: CommunitySpacing.md,
+  },
+  emptyBtnText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  
+  // ─── Load More ──────────────────────────────────────────────────
+  loadMore: {
+    paddingVertical: CommunitySpacing.lg,
+    alignItems: 'center',
   },
   loadMoreText: {
     fontSize: 14,
-    color: CommunityColors.primary,
-    fontWeight: '700',
-    marginBottom: 8,
-  },
-
-  // Empty State
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: CommunitySpacing.xl * 2,
-    paddingHorizontal: CommunitySpacing.lg,
-  },
-  emptyStateText: {
-    fontSize: 16,
-    color: CommunityColors.text.secondary,
-    fontWeight: '600',
-    marginTop: CommunitySpacing.md,
-    textAlign: 'center',
-  },
-  emptyStateAction: {
-    fontSize: 15,
-    color: CommunityColors.primary,
-    fontWeight: '700',
-    marginTop: CommunitySpacing.sm,
-  },
-  
-  // FAB
-  fab: {
-    position: 'absolute',
-    right: CommunitySpacing.lg,
-    bottom: 120,
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    overflow: 'hidden',
-    ...CommunityShadows.glow,
-  },
-  fabGradient: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    color: CommunityColors.text.tertiary,
   },
 });

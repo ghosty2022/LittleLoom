@@ -8,7 +8,7 @@ import {
   useColorScheme,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigationContext } from '../context/NavigationContext';
+import { useNavigationVisibility } from '../context/AppContext';
 
 interface ScreenWrapperProps {
   children: React.ReactNode;
@@ -19,7 +19,8 @@ interface ScreenWrapperProps {
   onScroll?: (event: any) => void;
 }
 
-const DOCK_HEIGHT = 100; // Height of LiquidGlassNavigation dock
+const DOCK_HEIGHT = 120; // Height of LiquidGlassNavigation dock
+const COMMUNITY_BOTTOM = 20; // Minimal padding when tab bar is hidden
 
 export const ScreenWrapper: React.FC<ScreenWrapperProps> = ({
   children,
@@ -32,16 +33,20 @@ export const ScreenWrapper: React.FC<ScreenWrapperProps> = ({
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
-  const { handleScroll } = useNavigationContext();
+  const { handleScroll, isCommunityScreen } = useNavigationVisibility();
 
   const handleScrollEvent = (event: any) => {
-    // Pass scroll event to navigation context for dock hide/show
-    handleScroll(event);
-    // Also call custom onScroll if provided
+    // Only handle scroll for nav visibility when NOT on community screens
+    if (!isCommunityScreen) {
+      handleScroll(event.nativeEvent.contentOffset.y, 0, event.nativeEvent.contentOffset.y <= 0);
+    }
     onScroll?.(event);
   };
 
-  const bottomPadding = Math.max(insets.bottom, 12) + DOCK_HEIGHT;
+  // Use minimal bottom padding on community screens (no dock), full padding elsewhere
+  const bottomPadding = isCommunityScreen
+    ? Math.max(insets.bottom, 12) + COMMUNITY_BOTTOM
+    : Math.max(insets.bottom, 12) + DOCK_HEIGHT;
 
   if (scrollable) {
     return (

@@ -1,6 +1,6 @@
 // src/utils/modal.tsx
 // Universal Modal System for LittleLoom - Glassmorphism Design
-// Usage: import { showModal, hideModal, ModalProvider, showSuccessModal, showErrorModal, showConfirmModal } from '../utils/modal';
+// Usage: import { showModal, hideModal, ModalProvider, showSuccessModal, showErrorModal, showConfirmModal } from '@/utils/modal';
 
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import {
@@ -20,7 +20,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // ==================== TYPES ====================
 
@@ -51,7 +51,6 @@ interface ModalContextType {
 }
 
 // ==================== QUEUE-BASED EVENT EMITTER ====================
-// This ensures calls made before ModalProvider mounts are queued and replayed
 
 type ModalListener = (config: ModalConfig) => void;
 type HideListener = () => void;
@@ -82,7 +81,7 @@ const emitHide = () => {
   hideListeners.forEach(listener => listener());
 };
 
-// ==================== STANDALONE FUNCTIONS (can be called from anywhere, anytime) ====================
+// ==================== STANDALONE FUNCTIONS ====================
 
 export const showSuccessModal = (config: { title?: string; message: string }) => {
   emitShow({
@@ -132,7 +131,6 @@ export const showInfoModal = (config: { title?: string; message: string }) => {
   });
 };
 
-// Legacy functions (updated to work via emitter)
 export const showModal = (config: ModalConfig) => {
   emitShow(config);
 };
@@ -164,7 +162,7 @@ export const ModalProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const isDark = colorScheme === 'dark';
 
   const show = useCallback((newConfig: ModalConfig) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     setConfig(newConfig);
     setIsVisible(true);
 
@@ -201,7 +199,6 @@ export const ModalProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
   }, [fadeAnim, scaleAnim, config]);
 
-  // Subscribe to standalone function events and mark as mounted
   useEffect(() => {
     isProviderMounted = true;
 
@@ -211,7 +208,6 @@ export const ModalProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     modalListeners.add(handleShow);
     hideListeners.add(handleHide);
 
-    // Flush any pending calls that were made before mount
     flushQueue();
 
     return () => {
@@ -223,20 +219,20 @@ export const ModalProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const getIconForType = (type: ModalType) => {
     switch (type) {
-      case 'success': return { icon: 'checkmark-circle', color: '#43e97b', bg: 'rgba(67,233,123,0.15)' };
-      case 'error': return { icon: 'close-circle', color: '#ff4757', bg: 'rgba(255,71,87,0.15)' };
-      case 'warning': return { icon: 'warning', color: '#ffa502', bg: 'rgba(255,165,2,0.15)' };
-      case 'info': return { icon: 'information-circle', color: '#667eea', bg: 'rgba(102,126,234,0.15)' };
-      case 'confirm': return { icon: 'help-circle', color: '#fa709a', bg: 'rgba(250,112,154,0.15)' };
-      default: return { icon: 'information-circle', color: '#667eea', bg: 'rgba(102,126,234,0.15)' };
+      case 'success': return { icon: 'checkmark-circle' as const, color: '#43e97b', bg: 'rgba(67,233,123,0.15)' };
+      case 'error': return { icon: 'close-circle' as const, color: '#ff4757', bg: 'rgba(255,71,87,0.15)' };
+      case 'warning': return { icon: 'warning' as const, color: '#ffa502', bg: 'rgba(255,165,2,0.15)' };
+      case 'info': return { icon: 'information-circle' as const, color: '#667eea', bg: 'rgba(102,126,234,0.15)' };
+      case 'confirm': return { icon: 'help-circle' as const, color: '#fa709a', bg: 'rgba(250,112,154,0.15)' };
+      default: return { icon: 'information-circle' as const, color: '#667eea', bg: 'rgba(102,126,234,0.15)' };
     }
   };
 
   const getButtonGradient = (style?: string) => {
     switch (style) {
-      case 'destructive': return ['#ff4757', '#ff6b6b'];
-      case 'cancel': return isDark ? ['#333', '#444'] : ['#e2e8f0', '#cbd5e1'];
-      default: return ['#667eea', '#764ba2'];
+      case 'destructive': return ['#ff4757', '#ff6b6b'] as [string, string];
+      case 'cancel': return isDark ? ['#333', '#444'] as [string, string] : ['#e2e8f0', '#cbd5e1'] as [string, string];
+      default: return ['#667eea', '#764ba2'] as [string, string];
     }
   };
 
@@ -246,7 +242,7 @@ export const ModalProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const handleButtonPress = (button: ModalButton) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     button.onPress?.();
     hide();
   };
@@ -275,21 +271,18 @@ export const ModalProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 isDark && styles.modalContainerDark
               ]}
             >
-              {/* Close Button */}
               {config.showCloseButton && (
                 <TouchableOpacity style={styles.closeButton} onPress={hide}>
                   <Ionicons name="close" size={24} color={isDark ? '#fff' : '#1a1a1a'} />
                 </TouchableOpacity>
               )}
 
-              {/* Icon */}
               {!config.customContent && (
                 <View style={[styles.iconContainer, { backgroundColor: iconConfig.bg }]}>
-                  <Ionicons name={iconConfig.icon as any} size={40} color={iconConfig.color} />
+                  <Ionicons name={iconConfig.icon} size={40} color={iconConfig.color} />
                 </View>
               )}
 
-              {/* Content */}
               {config.customContent ? (
                 config.customContent
               ) : (
@@ -303,7 +296,6 @@ export const ModalProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 </>
               )}
 
-              {/* Buttons */}
               {config.buttons && config.buttons.length > 0 && (
                 <View style={styles.buttonContainer}>
                   {config.buttons.map((button, index) => (
@@ -314,7 +306,7 @@ export const ModalProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                       activeOpacity={0.8}
                     >
                       <LinearGradient
-                        colors={getButtonGradient(button.style) as [string, string]}
+                        colors={getButtonGradient(button.style)}
                         style={styles.buttonGradient}
                         start={{ x: 0, y: 0 }}
                         end={{ x: 1, y: 1 }}
@@ -351,7 +343,7 @@ export const SweetAlert = {
       type: 'success' as ModalType,
       title,
       message,
-      buttons: [{ text: buttonText || 'Awesome!', style: 'default' }],
+      buttons: [{ text: buttonText || 'Awesome!', style: 'default' as const }],
     };
   },
   error: (title: string, message?: string, buttonText?: string) => {
@@ -359,7 +351,7 @@ export const SweetAlert = {
       type: 'error' as ModalType,
       title,
       message,
-      buttons: [{ text: buttonText || 'Got it', style: 'destructive' }],
+      buttons: [{ text: buttonText || 'Got it', style: 'destructive' as const }],
     };
   },
   warning: (title: string, message?: string, buttonText?: string) => {
@@ -367,7 +359,7 @@ export const SweetAlert = {
       type: 'warning' as ModalType,
       title,
       message,
-      buttons: [{ text: buttonText || 'Understood', style: 'default' }],
+      buttons: [{ text: buttonText || 'Understood', style: 'default' as const }],
     };
   },
   info: (title: string, message?: string, buttonText?: string) => {
@@ -375,7 +367,7 @@ export const SweetAlert = {
       type: 'info' as ModalType,
       title,
       message,
-      buttons: [{ text: buttonText || 'OK', style: 'default' }],
+      buttons: [{ text: buttonText || 'OK', style: 'default' as const }],
     };
   },
   confirm: (title: string, message: string, onConfirm: () => void, onCancel?: () => void) => {
@@ -384,8 +376,8 @@ export const SweetAlert = {
       title,
       message,
       buttons: [
-        { text: 'Cancel', style: 'cancel', onPress: onCancel },
-        { text: 'Confirm', style: 'default', onPress: onConfirm },
+        { text: 'Cancel', style: 'cancel' as const, onPress: onCancel },
+        { text: 'Confirm', style: 'default' as const, onPress: onConfirm },
       ],
     };
   },
@@ -395,8 +387,8 @@ export const SweetAlert = {
       title,
       message,
       buttons: [
-        { text: 'Keep', style: 'cancel', onPress: onCancel },
-        { text: 'Delete', style: 'destructive', onPress: onDelete },
+        { text: 'Keep', style: 'cancel' as const, onPress: onCancel },
+        { text: 'Delete', style: 'destructive' as const, onPress: onDelete },
       ],
     };
   },

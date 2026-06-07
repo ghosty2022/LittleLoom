@@ -1,5 +1,4 @@
-// src/hooks/usePersistedState.ts
-import { useState, useEffect, useCallback, useRef } from 'react';
+﻿import { useState, useEffect, useCallback, useRef } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import { statePersistence } from '../utils/statePersistence';
 

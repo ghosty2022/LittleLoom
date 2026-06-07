@@ -1,0 +1,1 @@
+Custom placeholder icon pack for LittleLoom. Replace SVG contents with final artwork as needed.

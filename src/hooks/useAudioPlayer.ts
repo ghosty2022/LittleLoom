@@ -1,100 +1,72 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
-import { Audio, AVPlaybackStatus } from 'expo-av';
+﻿import { useState, useCallback, useRef, useEffect } from 'react';
+import { useAudioPlayer as useExpoAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
 
 interface AudioState {
-  sound: Audio.Sound | null;
   isPlaying: boolean;
-  position: number;
-  duration: number;
+  position: number;        // in milliseconds
+  duration: number;        // in milliseconds
   isLoading: boolean;
 }
 
 export const useAudioPlayer = (uri: string) => {
   const [state, setState] = useState<AudioState>({
-    sound: null,
     isPlaying: false,
     position: 0,
     duration: 0,
     isLoading: false,
   });
-  
-  const soundRef = useRef<Audio.Sound | null>(null);
+
+  const player = useExpoAudioPlayer(uri);
+  const status = useAudioPlayerStatus(player);
   const isMounted = useRef(true);
+
+  useEffect(() => {
+    if (!isMounted.current) return;
+
+    const positionMs = (status?.currentTime ?? 0) * 1000;
+    const durationMs = (status?.duration ?? 0) * 1000;
+
+    setState({
+      isPlaying: status?.playing ?? false,
+      position: positionMs,
+      duration: durationMs,
+      isLoading: status?.isBuffering ?? false,
+    });
+  }, [status]);
 
   useEffect(() => {
     return () => {
       isMounted.current = false;
-      if (soundRef.current) {
-        soundRef.current.unloadAsync();
-      }
     };
-  }, []);
-
-  const onPlaybackStatusUpdate = useCallback((status: AVPlaybackStatus) => {
-    if (!isMounted.current) return;
-    
-    if (status.isLoaded) {
-      setState(prev => ({
-        ...prev,
-        isPlaying: status.isPlaying,
-        position: status.positionMillis || 0,
-        duration: status.durationMillis || 0,
-        isLoading: false,
-      }));
-      
-      // Auto-reset when finished
-      if (status.didJustFinish) {
-        setState(prev => ({ ...prev, isPlaying: false, position: 0 }));
-      }
-    }
   }, []);
 
   const togglePlayback = useCallback(async () => {
     try {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      
-      if (!soundRef.current) {
-        setState(prev => ({ ...prev, isLoading: true }));
-        
-        const { sound } = await Audio.Sound.createAsync(
-          { uri },
-          { shouldPlay: true },
-          onPlaybackStatusUpdate
-        );
-        
-        if (!isMounted.current) {
-          sound.unloadAsync();
-          return;
-        }
-        
-        soundRef.current = sound;
-        setState(prev => ({ ...prev, sound, isPlaying: true, isLoading: false }));
-      } else if (state.isPlaying) {
-        await soundRef.current.pauseAsync();
+
+      if (state.isPlaying) {
+        player.pause();
         setState(prev => ({ ...prev, isPlaying: false }));
       } else {
-        await soundRef.current.playAsync();
+        player.play();
         setState(prev => ({ ...prev, isPlaying: true }));
       }
     } catch (error) {
       console.error('Audio playback error:', error);
       setState(prev => ({ ...prev, isLoading: false }));
     }
-  }, [state.isPlaying, uri, onPlaybackStatusUpdate]);
+  }, [state.isPlaying, player]);
 
-  const stop = useCallback(async () => {
-    if (soundRef.current) {
-      await soundRef.current.stopAsync();
-      setState(prev => ({ ...prev, isPlaying: false, position: 0 }));
-    }
-  }, []);
+  const stop = useCallback(() => {
+    player.pause();
+    player.seekTo(0);
+    setState(prev => ({ ...prev, isPlaying: false, position: 0 }));
+  }, [player]);
 
-  const seekTo = useCallback(async (position: number) => {
-    if (soundRef.current) {
-      await soundRef.current.setPositionAsync(position);
-    }
-  }, []);
+  const seekTo = useCallback((positionMillis: number) => {
+    player.seekTo(positionMillis / 1000);
+  }, [player]);
 
   const formatTime = useCallback((millis: number = 0) => {
     const totalSeconds = Math.floor(millis / 1000);
@@ -104,7 +76,11 @@ export const useAudioPlayer = (uri: string) => {
   }, []);
 
   return {
-    ...state,
+    sound: null,              // kept for backward compatibility
+    isPlaying: state.isPlaying,
+    position: state.position,
+    duration: state.duration,
+    isLoading: state.isLoading,
     togglePlayback,
     stop,
     seekTo,

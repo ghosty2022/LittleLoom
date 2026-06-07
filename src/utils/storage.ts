@@ -1,7 +1,5 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+﻿import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Universal storage using only AsyncStorage
-// This works in Expo Go, development builds, and production without native modules
 export const storage = {
   async getItemAsync(key: string): Promise<string | null> {
     try {
@@ -30,5 +28,4 @@ export const storage = {
   },
 };
 
-// Always returns false since we're using AsyncStorage only
 export const isSecureStorageAvailable = () => false;

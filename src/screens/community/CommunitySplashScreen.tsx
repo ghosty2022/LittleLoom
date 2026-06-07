@@ -1,17 +1,21 @@
-
-import React, { useEffect, useRef } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  Animated, 
+// src/screens/community/CommunitySplashScreen.tsx
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
   Dimensions,
   StatusBar,
+  Animated,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { CommunityGradients, CommunityColors, CommunityTypography } from '../../theme/CommunityTheme';
+import { useCustomization } from '../../hooks/useCustomization';
+import { useCommunity } from '../../context/CommunityContext';
+import { getSectionState, updateSectionState } from '../../hooks/useIntelligentSplash';
+import { CommunityColors, CommunityGradients } from '../../theme/CommunityTheme';
 
 const { width, height } = Dimensions.get('window');
 
@@ -20,27 +24,115 @@ interface CommunitySplashScreenProps {
   userName?: string;
 }
 
-export default function CommunitySplashScreen({ 
-  onAnimationComplete, 
-  userName = 'Parent' 
+interface SplashContent {
+  emoji: string;
+  title: string;
+  subtitle: string;
+  stats: { label: string; value: string }[];
+  tip: string;
+}
+
+export default function CommunitySplashScreen({
+  onAnimationComplete,
+  userName = 'Parent'
 }: CommunitySplashScreenProps) {
-  // Animation values
+  const { settings, themeColors, shouldReduceMotion } = useCustomization();
+  const { currentUser, getSelectedTopics } = useCommunity();
+  
+  const [splashContent, setSplashContent] = useState<SplashContent | null>(null);
+  const [isReady, setIsReady] = useState(false);
+
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.8)).current;
   const slideUpAnim = useRef(new Animated.Value(50)).current;
   const iconRotateAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const progressAnim = useRef(new Animated.Value(0)).current;
+  const statsAnim = useRef(new Animated.Value(0)).current;
+
+  // Generate intelligent content based on user state
+  useEffect(() => {
+    const generateContent = async () => {
+      const sectionState = await getSectionState('community');
+      const selectedTopics = getSelectedTopics();
+      const topicCount = selectedTopics.length;
+      const hasTopics = topicCount > 0;
+
+      let content: SplashContent;
+
+      if (sectionState.firstTime) {
+        // First time - warm welcome with topic discovery hint
+        content = {
+          emoji: '👋',
+          title: `Welcome, ${userName}!`,
+          subtitle: 'Discover a supportive community of parents just like you. Share experiences, get advice, and celebrate milestones together.',
+          stats: [
+            { label: 'Topics', value: '50+' },
+            { label: 'Parents', value: '12.5K' },
+            { label: 'Countries', value: '80+' },
+          ],
+          tip: '💡 Select your favorite topics to personalize your feed',
+        };
+      } else if (!hasTopics) {
+        // Returning user without topics - gentle nudge
+        content = {
+          emoji: '🎯',
+          title: 'Personalize Your Feed',
+          subtitle: 'You haven\'t selected any topics yet. Pick what matters to you for a tailored community experience.',
+          stats: [
+            { label: 'Available', value: '50+' },
+            { label: 'Selected', value: '0' },
+            { label: 'Trending', value: '12' },
+          ],
+          tip: '💡 Tap "Get Started" to choose your topics',
+        };
+      } else if (topicCount < 3) {
+        // Some topics but could use more
+        content = {
+          emoji: '🌱',
+          title: 'Growing Your Community',
+          subtitle: `You have ${topicCount} topic${topicCount === 1 ? '' : 's'} selected. Add more to discover even more relevant conversations.`,
+          stats: [
+            { label: 'Your Topics', value: `${topicCount}` },
+            { label: 'New Posts', value: '24' },
+            { label: 'Unread', value: '3' },
+          ],
+          tip: '💡 You can select up to 5 topics for the best experience',
+        };
+      } else {
+        // Fully onboarded - personalized welcome back
+        const topicNames = selectedTopics.slice(0, 3).map(t => t.name).join(', ');
+        content = {
+          emoji: '🌟',
+          title: 'Welcome Back!',
+          subtitle: `Your communities in ${topicNames}${selectedTopics.length > 3 ? ' & more' : ''} are buzzing with activity.`,
+          stats: [
+            { label: 'Your Topics', value: `${topicCount}` },
+            { label: 'New Posts', value: '24' },
+            { label: 'Mentions', value: '2' },
+          ],
+          tip: '💡 Pull down to refresh your personalized feed',
+        };
+      }
+
+      setSplashContent(content);
+      setIsReady(true);
+    };
+
+    generateContent();
+  }, [userName, getSelectedTopics]);
 
   useEffect(() => {
-    // Trigger haptic feedback for engagement
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    
-    // Entrance animations
+    if (!isReady || !splashContent) return;
+
+    if (settings.hapticFeedback && !shouldReduceMotion) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    }
+
     const entranceAnimation = Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 800,
+        duration: shouldReduceMotion ? 200 : 800,
         useNativeDriver: true,
       }),
       Animated.spring(scaleAnim, {
@@ -51,12 +143,11 @@ export default function CommunitySplashScreen({
       }),
       Animated.timing(slideUpAnim, {
         toValue: 0,
-        duration: 600,
+        duration: shouldReduceMotion ? 100 : 600,
         useNativeDriver: true,
       }),
     ]);
 
-    // Icon rotation
     const rotateAnimation = Animated.loop(
       Animated.timing(iconRotateAnim, {
         toValue: 1,
@@ -65,7 +156,6 @@ export default function CommunitySplashScreen({
       })
     );
 
-    // Pulse animation for social icons
     const pulseAnimation = Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, {
@@ -81,39 +171,47 @@ export default function CommunitySplashScreen({
       ])
     );
 
-    // Progress bar animation
     const progressAnimation = Animated.timing(progressAnim, {
       toValue: 1,
-      duration: 2500,
+      duration: shouldReduceMotion ? 500 : 2500,
       useNativeDriver: false,
     });
 
-    // Run animations
-    entranceAnimation.start();
-    rotateAnimation.start();
-    pulseAnimation.start();
-    progressAnimation.start();
+    const statsEntrance = Animated.timing(statsAnim, {
+      toValue: 1,
+      duration: shouldReduceMotion ? 200 : 600,
+      delay: shouldReduceMotion ? 0 : 400,
+      useNativeDriver: true,
+    });
 
-    // Exit animation
+    entranceAnimation.start();
+    if (!shouldReduceMotion) {
+      rotateAnimation.start();
+      pulseAnimation.start();
+    }
+    progressAnimation.start();
+    statsEntrance.start();
+
     const timer = setTimeout(() => {
       Animated.parallel([
         Animated.timing(fadeAnim, {
           toValue: 0,
-          duration: 400,
+          duration: shouldReduceMotion ? 150 : 400,
           useNativeDriver: true,
         }),
         Animated.timing(scaleAnim, {
           toValue: 1.1,
-          duration: 400,
+          duration: shouldReduceMotion ? 150 : 400,
           useNativeDriver: true,
         }),
       ]).start(() => {
+        updateSectionState('community', { firstTime: false });
         onAnimationComplete();
       });
-    }, 2800);
+    }, shouldReduceMotion ? 1500 : 2800);
 
     return () => clearTimeout(timer);
-  }, []);
+  }, [isReady, splashContent, shouldReduceMotion, settings.hapticFeedback, onAnimationComplete]);
 
   const spin = iconRotateAnim.interpolate({
     inputRange: [0, 1],
@@ -125,44 +223,61 @@ export default function CommunitySplashScreen({
     outputRange: ['0%', '100%'],
   });
 
+  if (!isReady || !splashContent) {
+    return (
+      <View style={[styles.container, { backgroundColor: CommunityColors.background.main }]}>
+        <StatusBar barStyle="light-content" />
+      </View>
+    );
+  }
+
+  const isDark = settings.darkMode;
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
-      
-      {/* Background Gradient - Sunset Social Theme */}
-      <LinearGradient 
+
+      <LinearGradient
         colors={CommunityGradients.header}
         style={styles.gradient}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       >
         {/* Animated Background Circles */}
-        <Animated.View 
-          style={[
-            styles.bgCircle,
-            { transform: [{ rotate: spin }, { scale: pulseAnim }] }
-          ]} 
-        />
-        <Animated.View 
-          style={[
-            styles.bgCircle2,
-            { transform: [{ rotate: spin }, { scale: pulseAnim }] }
-          ]} 
-        />
+        {!shouldReduceMotion && (
+          <>
+            <Animated.View
+              style={[
+                styles.bgCircle,
+                { transform: [{ rotate: spin }, { scale: pulseAnim }] }
+              ]}
+            />
+            <Animated.View
+              style={[
+                styles.bgCircle2,
+                { transform: [{ rotate: spin }, { scale: pulseAnim }] }
+              ]}
+            />
+          </>
+        )}
 
         {/* Floating Social Icons */}
-        <Animated.View style={[styles.floatingIcon1, { transform: [{ scale: pulseAnim }] }]}>
-          <Ionicons name="heart" size={24} color="rgba(255,255,255,0.3)" />
-        </Animated.View>
-        <Animated.View style={[styles.floatingIcon2, { transform: [{ scale: pulseAnim }] }]}>
-          <Ionicons name="chatbubble" size={20} color="rgba(255,255,255,0.25)" />
-        </Animated.View>
-        <Animated.View style={[styles.floatingIcon3, { transform: [{ scale: pulseAnim }] }]}>
-          <Ionicons name="people" size={28} color="rgba(255,255,255,0.2)" />
-        </Animated.View>
+        {!shouldReduceMotion && (
+          <>
+            <Animated.View style={[styles.floatingIcon1, { transform: [{ scale: pulseAnim }] }]}>
+              <Ionicons name="heart" size={24} color="rgba(255,255,255,0.3)" />
+            </Animated.View>
+            <Animated.View style={[styles.floatingIcon2, { transform: [{ scale: pulseAnim }] }]}>
+              <Ionicons name="chatbubble" size={20} color="rgba(255,255,255,0.25)" />
+            </Animated.View>
+            <Animated.View style={[styles.floatingIcon3, { transform: [{ scale: pulseAnim }] }]}>
+              <Ionicons name="people" size={28} color="rgba(255,255,255,0.2)" />
+            </Animated.View>
+          </>
+        )}
 
         {/* Main Content */}
-        <Animated.View 
+        <Animated.View
           style={[
             styles.content,
             {
@@ -174,69 +289,61 @@ export default function CommunitySplashScreen({
             },
           ]}
         >
-          {/* Community Logo Container */}
+          {/* Dynamic Emoji */}
           <View style={styles.logoContainer}>
             <LinearGradient
               colors={['rgba(255,255,255,0.3)', 'rgba(255,255,255,0.1)']}
               style={styles.logoRing}
             >
               <View style={styles.logoInner}>
-                <Text style={styles.logoEmoji}>👥</Text>
+                <Text style={styles.logoEmoji}>{splashContent.emoji}</Text>
                 <View style={styles.onlineIndicator}>
                   <View style={styles.onlineDot} />
                 </View>
               </View>
             </LinearGradient>
-            
-            {/* Connection Lines */}
-            <View style={styles.connectionLines}>
-              <View style={styles.line1} />
-              <View style={styles.line2} />
-              <View style={styles.line3} />
-            </View>
           </View>
 
-          {/* Title */}
-          <Text style={styles.title}>Community</Text>
-          
-          {/* Subtitle with user name */}
-          <Text style={styles.subtitle}>
-            Welcome back, {userName}!
-          </Text>
-          
-          <Text style={styles.description}>
-            Connect with parents worldwide
-          </Text>
+          {/* Dynamic Title */}
+          <Text style={styles.title}>{splashContent.title}</Text>
 
-          {/* Stats Preview */}
-          <View style={styles.statsContainer}>
-            <View style={styles.statItem}>
-              <Text style={styles.statNumber}>12.5K</Text>
-              <Text style={styles.statLabel}>Parents</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statItem}>
-              <Text style={styles.statNumber}>2.4K</Text>
-              <Text style={styles.statLabel}>Online</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statItem}>
-              <Text style={styles.statNumber}>856</Text>
-              <Text style={styles.statLabel}>Topics</Text>
-            </View>
+          {/* Dynamic Subtitle */}
+          <Text style={styles.subtitle}>{splashContent.subtitle}</Text>
+
+          {/* Intelligent Stats */}
+          <Animated.View
+            style={[
+              styles.statsContainer,
+              { opacity: statsAnim, transform: [{ translateY: statsAnim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }] }
+            ]}
+          >
+            {splashContent.stats.map((stat, index) => (
+              <React.Fragment key={stat.label}>
+                <View style={styles.statItem}>
+                  <Text style={styles.statNumber}>{stat.value}</Text>
+                  <Text style={styles.statLabel}>{stat.label}</Text>
+                </View>
+                {index < splashContent.stats.length - 1 && <View style={styles.statDivider} />}
+              </React.Fragment>
+            ))}
+          </Animated.View>
+
+          {/* Smart Tip */}
+          <View style={styles.tipContainer}>
+            <Text style={styles.tipText}>{splashContent.tip}</Text>
           </View>
 
           {/* Loading Progress */}
           <View style={styles.progressContainer}>
             <View style={styles.progressBar}>
-              <Animated.View 
+              <Animated.View
                 style={[
                   styles.progressFill,
                   { width: progressWidth }
-                ]} 
+                ]}
               />
             </View>
-            <Text style={styles.progressText}>Loading your feed...</Text>
+            <Text style={styles.progressText}>Loading your community...</Text>
           </View>
         </Animated.View>
 
@@ -244,7 +351,7 @@ export default function CommunitySplashScreen({
         <View style={styles.bottomBranding}>
           <Text style={styles.brandingText}>LittleLoom</Text>
           <View style={styles.brandingDot} />
-          <Text style={styles.brandingSubtext}>Social</Text>
+          <Text style={styles.brandingSubtext}>Community</Text>
         </View>
       </LinearGradient>
     </View>
@@ -352,63 +459,24 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     backgroundColor: CommunityColors.success,
   },
-  connectionLines: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  line1: {
-    position: 'absolute',
-    width: 40,
-    height: 2,
-    backgroundColor: 'rgba(255,255,255,0.3)',
-    transform: [{ rotate: '45deg' }],
-    left: -20,
-    top: 30,
-  },
-  line2: {
-    position: 'absolute',
-    width: 30,
-    height: 2,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    transform: [{ rotate: '-30deg' }],
-    right: -10,
-    top: 50,
-  },
-  line3: {
-    position: 'absolute',
-    width: 25,
-    height: 2,
-    backgroundColor: 'rgba(255,255,255,0.25)',
-    transform: [{ rotate: '60deg' }],
-    right: 0,
-    bottom: 30,
-  },
   title: {
-    fontSize: 42,
+    fontSize: 32,
     fontWeight: '900',
     color: '#fff',
-    marginBottom: 8,
-    letterSpacing: -1,
+    marginBottom: 12,
+    letterSpacing: -0.5,
+    textAlign: 'center',
     textShadowColor: 'rgba(0,0,0,0.1)',
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 4,
   },
   subtitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#fff',
-    marginBottom: 4,
-    opacity: 0.95,
-  },
-  description: {
     fontSize: 16,
-    color: 'rgba(255,255,255,0.8)',
-    marginBottom: 32,
+    color: 'rgba(255,255,255,0.9)',
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 22,
+    paddingHorizontal: 20,
     fontWeight: '500',
   },
   statsContainer: {
@@ -418,8 +486,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     paddingVertical: 16,
     paddingHorizontal: 24,
-    marginBottom: 40,
-    backdropFilter: 'blur(10px)',
+    marginBottom: 20,
   },
   statItem: {
     alignItems: 'center',
@@ -443,6 +510,21 @@ const styles = StyleSheet.create({
     height: 30,
     backgroundColor: 'rgba(255,255,255,0.3)',
     marginHorizontal: 16,
+  },
+  tipContainer: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+  },
+  tipText: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.85)',
+    fontWeight: '500',
+    textAlign: 'center',
   },
   progressContainer: {
     width: '100%',

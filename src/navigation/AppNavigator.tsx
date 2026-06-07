@@ -1,8 +1,7 @@
-// src/navigation/AppNavigator.tsx
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { 
   View, 
-  useColorScheme,
+  Text,
   AppState,
   AppStateStatus,
   InteractionManager,
@@ -17,54 +16,54 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import SplashScreen from '../screens/SplashScreen';
-import OnboardingScreen from '../screens/OnboardingScreen';
-import LoginScreen from '../screens/LoginScreen';
-import SignUpScreen from '../screens/SignUpScreen';
-import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
-import Parent2OptionalScreen from '../screens/Parent2OptionalScreen';
-import Parent2SetupScreen from '../screens/Parent2SetupScreen';
-import BabyOptionalScreen from '../screens/BabyOptionalScreen';
-import CreateBabyProfileScreen from '../screens/CreateBabyProfileScreen';
-import AddParentScreen from '../screens/AddParentScreen';
-import HomeScreen from '../screens/HomeScreen';
-import TrackScreen from '../screens/TrackScreen';
-import SafetyCornerScreen from '../screens/SafetyCornerScreen';
-import MoreScreen from '../screens/MoreScreen';
+import OnboardingScreen from '../screens/auth/OnboardingScreen';
+import LoginScreen from '../screens/auth/LoginScreen';
+import SignUpScreen from '../screens/auth/SignUpScreen';
+import ForgotPasswordScreen from '../screens/auth/ForgotPasswordScreen';
+import Parent2OptionalScreen from '../screens/baby/Parent2OptionalScreen';
+import Parent2SetupScreen from '../screens/baby/Parent2SetupScreen';
+import BabyOptionalScreen from '../screens/baby/BabyOptionalScreen';
+import CreateBabyProfileScreen from '../screens/baby/CreateBabyProfileScreen';
+import AddParentScreen from '../screens/family/AddParentScreen';
+import HomeScreen from '../screens/main/HomeScreen';
+import TrackScreen from '../screens/main/TrackScreen';
+import MoreScreen from '../screens/main/MoreScreen';
+import SafetyCornerScreen from '../screens/safety/SafetyCornerScreen';
+import BackupRestoreScreen from '../screens/backup/BackupRestoreScreen';
+import HelpCenterScreen from '../screens/settings/HelpCenterScreen';
+import ContactSupportScreen from '../screens/settings/ContactSupportScreen';
+import PrivacyPolicyScreen from '../screens/settings/PrivacyPolicyScreen';
+import TermsOfServiceScreen from '../screens/settings/TermsOfServiceScreen';
+import AboutScreen from '../screens/settings/AboutScreen';
+import LanguageSettingsScreen from '../screens/settings/LanguageSettingsScreen';
+import UnitSettingsScreen from '../screens/settings/UnitSettingsScreen';
 
 import CommunityNavigator from './CommunityNavigator';
 
-import ChatScreen from '../screens/community/ChatScreen';
-import UserProfileScreen from '../screens/community/UserProfileScreen';
-import NotificationsScreen from '../screens/community/NotificationsScreen';
-import EditCommunityProfileScreen from '../screens/community/EditCommunityProfileScreen';
-
-import AddLogScreen from '../screens/AddLogScreen';
-import AchievementsScreen from '../screens/AchievementsScreen';
-import GrowthChartScreen from '../screens/GrowthChartScreen';
-import RemindersScreen from '../screens/RemindersScreen';
-import FamilySharingScreen from '../screens/FamilySharingScreen';
-import ProfileScreen from '../screens/ProfileScreen';
-import EditProfileScreen from '../screens/EditProfileScreen';
-import EditGuardianScreen from '../screens/EditGuardianScreen';
-import SoundMixerScreen from '../screens/SoundMixerScreen';
-import SecurityLockScreen from '../screens/SecurityLockScreen';
-import BiometricSetupScreen from '../screens/BiometricSetupScreen';
-import ChangePinScreen from '../screens/ChangePinScreen';
-import SwitchBabyScreen from '../screens/SwitchBabyScreen';
-import CustomizeScreen from '../screens/CustomizeScreen';
-import UniversalTrackerScreen from '../screens/UniversalTrackerScreen';
-import GalleryScreen from '../screens/GalleryScreen';
-import FamilyChatListScreen from '../screens/FamilyChatListScreen';
-import FamilyChatScreen from '../screens/FamilyChatScreen';
+import AddLogScreen from '../screens/tracking/AddLogScreen';
+import AchievementsScreen from '../screens/settings/AchievementsScreen';
+import GrowthChartScreen from '../screens/tracking/GrowthChartScreen';
+import RemindersScreen from '../screens/tracking/RemindersScreen';
+import FamilySharingScreen from '../screens/family/FamilySharingScreen';
+import ProfileScreen from '../screens/baby/ProfileScreen';
+import EditProfileScreen from '../screens/baby/EditProfileScreen';
+import EditGuardianScreen from '../screens/family/EditGuardianScreen';
+import SoundMixerScreen from '../screens/gallery/SoundMixerScreen';
+import SecurityLockScreen from '../screens/security/SecurityLockScreen';
+import BiometricSetupScreen from '../screens/security/BiometricSetupScreen';
+import SwitchBabyScreen from '../screens/baby/SwitchBabyScreen';
+import CustomizeScreen from '../screens/settings/CustomizeScreen';
+import UniversalTrackerScreen from '../screens/tracking/UniversalTrackerScreen';
+import GalleryScreen from '../screens/gallery/GalleryScreen';
+import FamilyChatListScreen from '../screens/family/FamilyChatListScreen';
+import FamilyChatScreen from '../screens/family/FamilyChatScreen';
 
 import LiquidGlassNavigation from '../components/LiquidGlassNavigation';
-import UniversalSpinner from '../components/UniversalSpinner';
+import { InlineSpinner } from '../components/UniversalSpinner';
 
-import { useAuth } from '../context/AuthContext';
-import { useBaby } from '../context/BabyContext';
 import { useSecurity } from '../context/SecurityContext';
-import { NavigationProvider } from '../context/NavigationContext';
+// 🔑 Use the safe context hooks instead of direct imports to avoid circular issues
+import { useSafeApp, useSafeBaby, useSafeAuth } from '../hooks/useSafeContexts';
 
 import { statePersistence } from '../utils/statePersistence';
 
@@ -73,8 +72,9 @@ import { RootStackParamList, MainTabParamList, NavigationState } from '../types/
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
-const NAVIGATION_STATE_KEY = '@littleloom_nav_state_v1';
-const LAST_ROUTE_KEY = '@littleloom_last_route_v1';
+const NAVIGATION_STATE_KEY = '@littleloom_nav_state_v2';
+const LAST_ROUTE_KEY = '@littleloom_last_route_v2';
+const FIRST_OPEN_KEY = '@littleloom_first_open_v2';
 
 const CustomLightTheme = {
   ...DefaultTheme,
@@ -110,11 +110,13 @@ const MAIN_FLOW_SCREENS = [
   'Profile', 'SwitchBaby', 'EditProfile', 'EditGuardian',
   'Gallery', 'FamilyChatList', 'FamilyChat',
   'AddLog', 'Achievements', 'GrowthChart', 'Reminders', 'FamilySharing', 'SoundMixer', 'Customize',
-  'BiometricSetup', 'ChangePin',
+  'BiometricSetup', 'SecurityCenter',
+  'BackupRestore', 'HelpCenter', 'ContactSupport', 'PrivacyPolicy', 'TermsOfService', 'About',
+  'LanguageSettings', 'UnitSettings',
 ];
 
 const AUTH_FLOW_SCREENS = [
-  'Splash', 'Onboarding', 'Login', 'SignUp', 'ForgotPassword',
+  'Onboarding', 'Login', 'SignUp', 'ForgotPassword',
 ];
 
 const SETUP_FLOW_SCREENS = [
@@ -122,33 +124,29 @@ const SETUP_FLOW_SCREENS = [
 ];
 
 function MainTabs() {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+  // 🔑 Use safe hook with fallback
+  const { isDark, colors } = useSafeApp();
 
   return (
-    <NavigationProvider>
-      <Tab.Navigator
-        tabBar={(props) => <LiquidGlassNavigation {...props} />}
-        screenOptions={{ 
-          headerShown: false,
-          tabBarStyle: {
-            backgroundColor: isDark ? '#0a0a0a' : '#ffffff',
-            borderTopWidth: 0,
-            elevation: 0,
-            shadowOpacity: 0,
-          },
-        }}
-        sceneContainerStyle={{
-          backgroundColor: isDark ? '#000000' : '#f8faff',
-        }}
-      >
-        <Tab.Screen name="Home" component={HomeScreen} />
-        <Tab.Screen name="Track" component={TrackScreen} />
-        <Tab.Screen name="Grow" component={GrowthChartScreen} />
-        <Tab.Screen name="Connect" component={CommunityNavigator} />
-        <Tab.Screen name="More" component={MoreScreen} />
-      </Tab.Navigator>
-    </NavigationProvider>
+    <Tab.Navigator
+      tabBar={(props) => <LiquidGlassNavigation {...props} />}
+      screenOptions={{ 
+        headerShown: false,
+        tabBarStyle: {
+          backgroundColor: colors?.navBackground || '#ffffff',
+          borderTopWidth: 0,
+          elevation: 0,
+          shadowOpacity: 0,
+        },
+      }}
+      sceneContainerStyle={{ backgroundColor: colors?.background || '#f8faff' }}
+    >
+      <Tab.Screen name="Home" component={HomeScreen} />
+      <Tab.Screen name="Track" component={TrackScreen} />
+      <Tab.Screen name="Grow" component={GrowthChartScreen} />
+      <Tab.Screen name="Connect" component={CommunityNavigator} />
+      <Tab.Screen name="More" component={MoreScreen} />
+    </Tab.Navigator>
   );
 }
 
@@ -163,14 +161,16 @@ function getNavigationState(
   babiesCount: number,
   hasSkippedBaby: boolean,
   hasSeenOnboarding: boolean,
+  isFirstOpen: boolean,
 ): NavigationState {
 
   if (authLoading) return 'LOADING';
 
+  if (isFirstOpen && !hasSeenOnboarding) {
+    return 'ONBOARDING';
+  }
+
   if (!isAuthenticated) {
-    if (!hasSeenOnboarding) {
-      return 'ONBOARDING';
-    }
     return 'LOGIN';
   }
 
@@ -179,35 +179,84 @@ function getNavigationState(
   }
 
   if (!setupComplete) {
-    if (!hasParent2) {
+    if (hasParent2 !== true && hasParent2 !== 'skipped') {
       return 'SETUP_PARENT2';
     }
+
     const hasBabyProfile = babiesCount > 0;
-    if (!hasBaby && !hasSkippedBaby && !hasBabyProfile) {
+    const babySetupDone = hasBaby === true || hasBaby === 'skipped' || hasSkippedBaby || hasBabyProfile;
+
+    if (!babySetupDone) {
       return 'SETUP_BABY';
     }
-    console.log('⚠️ Setup state inconsistent, marking complete');
+
     return 'MAIN';
   }
 
   return 'MAIN';
 }
 
-interface AppNavigatorProps {
-  isDark?: boolean;
-  initialState?: any;
-  onStateChange?: (state: any) => void;
-}
+const AppLoadingScreen = React.memo(() => {
+  const { colors } = useSafeApp();
+  return (
+    <View style={{ flex: 1, backgroundColor: colors?.background || '#f8faff', justifyContent: 'center', alignItems: 'center' }}>
+      <InlineSpinner size={40} color="#667eea" />
+      <Text style={{ marginTop: 16, fontSize: 15, fontWeight: '600', color: colors?.text || '#1a1a1a' }}>
+        Loading your world...
+      </Text>
+    </View>
+  );
+});
+
+// 🔑 FIX: Replace React.lazy with a safe require pattern that won't crash Metro
+// React.lazy is not supported in React Native without Suspense boundaries
+const SecurityCenterScreen = React.memo(() => {
+  const [Component, setComponent] = useState<any>(null);
+  
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      try {
+        const module = await import('../screens/security/SecurityCenterScreen');
+        if (mounted) setComponent(() => module.default);
+      } catch {
+        if (mounted) {
+          setComponent(() => () => (
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+              <Text>Pin Management Coming Soon</Text>
+            </View>
+          ));
+        }
+      }
+    };
+    load();
+    return () => { mounted = false; };
+  }, []);
+  
+  if (!Component) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <InlineSpinner size={24} color="#667eea" />
+      </View>
+    );
+  }
+  
+  return <Component />;
+});
 
 function NavigationContent({ 
-  isDark, 
+  isDark: propIsDark, 
   initialState, 
   onStateChange 
 }: { 
-  isDark: boolean; 
+  isDark?: boolean; 
   initialState?: any;
   onStateChange?: (state: any) => void;
 }) {
+  const { isDark: contextIsDark, colors } = useSafeApp();
+  const isDark = propIsDark !== undefined ? propIsDark : contextIsDark;
+
+  // 🔑 Use safe auth hook with fallback
   const { 
     isLoading: authLoading, 
     isAuthenticated,
@@ -217,7 +266,7 @@ function NavigationContent({
     hasSeenOnboarding,
     setSetupCompleteCallback,
     isBiometricLoginEnabled,
-  } = useAuth();
+  } = useSafeAuth();
 
   const { 
     babies, 
@@ -225,7 +274,7 @@ function NavigationContent({
     loadBabies,
     hasSkippedBaby,
     currentBabyId,
-  } = useBaby();
+  } = useSafeBaby();
 
   const {
     isSecurityLocked,
@@ -235,11 +284,11 @@ function NavigationContent({
     clearSecurityState,
   } = useSecurity();
 
-  const [showSplash, setShowSplash] = useState(true);
   const [navState, setNavState] = useState<NavigationState>('LOADING');
   const [initialCheckDone, setInitialCheckDone] = useState(false);
   const [shouldShowSwitchBaby, setShouldShowSwitchBaby] = useState(false);
   const [isNavContainerReady, setIsNavContainerReady] = useState(false);
+  const [isFirstOpen, setIsFirstOpen] = useState(false);
 
   const navigationRef = useRef<NavigationContainerRef<RootStackParamList>>(null);
   const appState = useRef<AppStateStatus>(AppState.currentState);
@@ -247,19 +296,40 @@ function NavigationContent({
   const isNavigating = useRef(false);
   const hasInitiallyLoaded = useRef(false);
   const lastNavigationTime = useRef(0);
-  const isFirstMount = useRef(true);
-  const stateChangeTimeout = useRef<NodeJS.Timeout | null>(null);
   const hasShownSwitchBaby = useRef(false);
   const pendingNavAction = useRef<(() => void) | null>(null);
-  // CRITICAL FIX: Track last security check time to prevent rapid re-checks
   const lastSecurityCheckTime = useRef<number>(0);
-  // CRITICAL FIX: Track if we just came from SecurityLock
   const wasOnSecurityLock = useRef<boolean>(false);
+  const stateChangeTimeout = useRef<NodeJS.Timeout | null>(null);
+  const isMounted = useRef(true);
 
   const securityEnabled = useMemo(() => 
-    securitySettings.isPinEnabled || securitySettings.isBiometricEnabled,
-    [securitySettings.isPinEnabled, securitySettings.isBiometricEnabled]
+    securitySettings?.isPinEnabled || securitySettings?.isBiometricEnabled,
+    [securitySettings?.isPinEnabled, securitySettings?.isBiometricEnabled]
   );
+
+  useEffect(() => {
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const checkFirstOpen = async () => {
+      try {
+        const firstOpen = await AsyncStorage.getItem(FIRST_OPEN_KEY);
+        if (!firstOpen) {
+          setIsFirstOpen(true);
+          await AsyncStorage.setItem(FIRST_OPEN_KEY, 'true');
+        } else {
+          setIsFirstOpen(false);
+        }
+      } catch (e) {
+        setIsFirstOpen(false);
+      }
+    };
+    checkFirstOpen();
+  }, []);
 
   useEffect(() => {
     if (setSetupCompleteCallback && forceUnlock) {
@@ -283,26 +353,26 @@ function NavigationContent({
       setupComplete,
       hasParent2,
       hasBaby,
-      babies.length,
+      babies?.length || 0,
       hasSkippedBaby,
       hasSeenOnboarding,
+      isFirstOpen,
     );
 
     if (newState === 'MAIN' && 
         lastNavState.current !== 'MAIN' &&
-        babies.length > 1 && 
+        babies?.length > 1 && 
         !hasShownSwitchBaby.current && 
         isAuthenticated && 
-        setupComplete) {
+        setupComplete &&
+        !isFirstOpen) {
       setShouldShowSwitchBaby(true);
     }
 
     if (newState !== lastNavState.current) {
-      console.log('🧭 Navigation state:', lastNavState.current, '->', newState);
-      // CRITICAL FIX: Track if we're leaving SecurityLock
+      console.log('Navigation state:', lastNavState.current, '->', newState);
       if (lastNavState.current === 'SECURITY_LOCK' && newState === 'MAIN') {
         wasOnSecurityLock.current = true;
-        // Clear the flag after 3 seconds
         setTimeout(() => {
           wasOnSecurityLock.current = false;
         }, 3000);
@@ -318,29 +388,22 @@ function NavigationContent({
     setupComplete,
     hasParent2,
     hasBaby,
-    babies.length,
+    babies?.length,
     hasSkippedBaby,
     hasSeenOnboarding,
+    isFirstOpen,
   ]);
 
   useEffect(() => {
-    if (!isFirstMount.current) {
-      setShowSplash(false);
+    if (!authLoading && !isFirstOpen) {
       setInitialCheckDone(true);
       return;
     }
-    isFirstMount.current = false;
-    if (isAuthenticated && !authLoading) {
-      setShowSplash(false);
-      setInitialCheckDone(true);
-      return;
+    if (!authLoading && isFirstOpen) {
+      const timer = setTimeout(() => setInitialCheckDone(true), 100);
+      return () => clearTimeout(timer);
     }
-    const timer = setTimeout(() => {
-      setShowSplash(false);
-      setInitialCheckDone(true);
-    }, 1200);
-    return () => clearTimeout(timer);
-  }, []);
+  }, [authLoading, isFirstOpen]);
 
   useEffect(() => {
     if (isAuthenticated && !authLoading && !hasInitiallyLoaded.current) {
@@ -351,7 +414,6 @@ function NavigationContent({
     }
   }, [isAuthenticated, authLoading, loadBabies]);
 
-  // CRITICAL FIX: AppState handling with better guards
   useEffect(() => {
     const subscription = AppState.addEventListener('change', async (nextAppState) => {
       const wasInactive = appState.current.match(/inactive|background/);
@@ -381,26 +443,20 @@ function NavigationContent({
       if (wasInactive && isActive) {
         if (isAuthenticated && setupComplete) {
           const currentRoute = navigationRef.current?.getCurrentRoute()?.name;
-          
-          // CRITICAL FIX: Don't check security if we're currently on SecurityLock
+
           if (currentRoute === 'SecurityLock') {
-            console.log('🔒 Already on SecurityLock, skipping check');
             appState.current = nextAppState;
             return;
           }
 
-          // CRITICAL FIX: Don't check security if we just came from SecurityLock
           if (wasOnSecurityLock.current) {
-            console.log('🔒 Just came from SecurityLock, skipping check');
             wasOnSecurityLock.current = false;
             appState.current = nextAppState;
             return;
           }
 
-          // CRITICAL FIX: Throttle security checks (max once per 3 seconds)
           const now = Date.now();
           if (now - lastSecurityCheckTime.current < 3000) {
-            console.log('⏸️ Security check throttled');
             appState.current = nextAppState;
             return;
           }
@@ -418,7 +474,7 @@ function NavigationContent({
                 const isOnTab = ['Main', 'Home', 'Track', 'Grow', 'Connect', 'More'].includes(currentRoute?.name || '');
                 const shouldBeOnTab = ['Main', 'Home', 'Track', 'Grow', 'Connect', 'More'].includes(name);
                 if (isOnTab && !shouldBeOnTab && navigationRef.current?.isReady()) {
-                  console.log('🔄 Restoring route:', name);
+                  console.log('Restoring route:', name);
                   pendingNavAction.current = () => {
                     navigationRef.current?.navigate(name as any, params);
                   };
@@ -461,7 +517,7 @@ function NavigationContent({
   }, []);
 
   useEffect(() => {
-    if (!navigationRef.current?.isReady() || !isNavContainerReady || showSplash || isNavigating.current || !initialCheckDone) {
+    if (!navigationRef.current?.isReady() || !isNavContainerReady || isNavigating.current || !initialCheckDone) {
       return;
     }
 
@@ -471,14 +527,14 @@ function NavigationContent({
       hasShownSwitchBaby.current = true;
       setShouldShowSwitchBaby(false);
       if (currentRoute !== 'SwitchBaby') {
-        console.log('🧭 Navigating to SwitchBaby');
+        console.log('Navigating to SwitchBaby');
         safeNavigate('SwitchBaby');
         return;
       }
     }
 
     const routeMap: Record<NavigationState, keyof RootStackParamList> = {
-      'LOADING': 'Splash',
+      'LOADING': 'Login',
       'ONBOARDING': 'Onboarding',
       'LOGIN': 'Login',
       'SETUP_PARENT2': 'Parent2Optional',
@@ -501,7 +557,7 @@ function NavigationContent({
       const comingFromNonMain = AUTH_FLOW_SCREENS.includes(lastNavState.current) || 
                                 SETUP_FLOW_SCREENS.includes(lastNavState.current) ||
                                 lastNavState.current === 'SECURITY_LOCK';
-      
+
       if (!comingFromNonMain) {
         if (pendingNavAction.current) {
           pendingNavAction.current();
@@ -516,7 +572,7 @@ function NavigationContent({
       return;
     }
 
-    console.log('🧭 Enforcing navigation:', currentRoute, '->', targetRoute);
+    console.log('Enforcing navigation:', currentRoute, '->', targetRoute);
 
     isNavigating.current = true;
     lastNavigationTime.current = now;
@@ -541,7 +597,7 @@ function NavigationContent({
     }, 600);
 
     lastNavState.current = navState;
-  }, [navState, showSplash, initialCheckDone, shouldShowSwitchBaby, isNavContainerReady]);
+  }, [navState, initialCheckDone, shouldShowSwitchBaby, isNavContainerReady]);
 
   const safeNavigate = useCallback((route: keyof RootStackParamList) => {
     if (!navigationRef.current?.isReady()) return;
@@ -551,22 +607,8 @@ function NavigationContent({
     navigationRef.current.navigate(route);
   }, []);
 
-  if (authLoading || (showSplash && !isAuthenticated)) {
-    return <SplashScreen />;
-  }
-
-  if (babyLoading && isAuthenticated && !setupComplete) {
-    return (
-      <View style={{ flex: 1, backgroundColor: isDark ? '#000' : '#f8faff' }}>
-        <UniversalSpinner 
-          visible={true} 
-          text="Loading..." 
-          size="large"
-          overlay={true}
-          blur={true}
-        />
-      </View>
-    );
+  if (authLoading || !initialCheckDone) {
+    return <AppLoadingScreen />;
   }
 
   return (
@@ -577,7 +619,7 @@ function NavigationContent({
       onStateChange={handleStateChange}
       onReady={() => {
         setIsNavContainerReady(true);
-        console.log('✅ Navigation container ready');
+        console.log('Navigation container ready');
       }}
     >
       <Stack.Navigator 
@@ -585,11 +627,10 @@ function NavigationContent({
           headerShown: false,
           animation: 'slide_from_right',
           contentStyle: { 
-            backgroundColor: isDark ? '#000000' : '#f8faff',
+            backgroundColor: colors?.background || '#f8faff',
           },
         }}
       >
-        <Stack.Screen name="Splash" component={SplashScreen} options={{ animation: 'fade' }} />
         <Stack.Screen name="Onboarding" component={OnboardingScreen} options={{ animation: 'fade' }} />
 
         <Stack.Group screenOptions={{ animation: 'slide_from_bottom' }}>
@@ -627,7 +668,17 @@ function NavigationContent({
         <Stack.Screen name="FamilyChatList" component={FamilyChatListScreen} />
         <Stack.Screen name="FamilyChat" component={FamilyChatScreen} />
 
-                <Stack.Group screenOptions={{ presentation: 'modal', animation: 'slide_from_bottom' }}>
+        <Stack.Screen name="BackupRestore" component={BackupRestoreScreen} options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="HelpCenter" component={HelpCenterScreen} options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="ContactSupport" component={ContactSupportScreen} options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="TermsOfService" component={TermsOfServiceScreen} options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="About" component={AboutScreen} options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="LanguageSettings" component={LanguageSettingsScreen} options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="UnitSettings" component={UnitSettingsScreen} options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="SafetyCorner" component={SafetyCornerScreen} options={{ animation: 'slide_from_right' }} />
+
+        <Stack.Group screenOptions={{ presentation: 'modal', animation: 'slide_from_bottom' }}>
           <Stack.Screen name="AddLog" component={AddLogScreen} />
           <Stack.Screen name="Achievements" component={AchievementsScreen} />
           <Stack.Screen name="GrowthChart" component={GrowthChartScreen} />
@@ -640,7 +691,7 @@ function NavigationContent({
         <Stack.Group screenOptions={{ presentation: 'fullScreenModal', animation: 'fade' }}>
           <Stack.Screen name="SecurityLock" component={SecurityLockScreen} />
           <Stack.Screen name="BiometricSetup" component={BiometricSetupScreen} />
-          <Stack.Screen name="ChangePin" component={ChangePinScreen} />
+          <Stack.Screen name="SecurityCenter" component={SecurityCenterScreen} />
         </Stack.Group>
       </Stack.Navigator>
     </NavigationContainer>
@@ -651,13 +702,14 @@ export default function AppNavigator({
   isDark: propIsDark, 
   initialState, 
   onStateChange 
-}: AppNavigatorProps = {}) {
-  const colorScheme = useColorScheme();
-  const isDark = propIsDark !== undefined ? propIsDark : colorScheme === 'dark';
-
+}: {
+  isDark?: boolean;
+  initialState?: any;
+  onStateChange?: (state: any) => void;
+} = {}) {
   return (
     <NavigationContent 
-      isDark={isDark} 
+      isDark={propIsDark} 
       initialState={initialState} 
       onStateChange={onStateChange} 
     />

@@ -1,53 +1,31 @@
-// src/screens/community/NotificationsScreen.tsx
-import React, { useState, useCallback } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  Alert,
-  RefreshControl,
-  Image,
-} from 'react-native';
+import React, { useCallback, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, RefreshControl, StatusBar } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInUp } from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CommunityStackParamList } from '../../types/navigation';
 import { useCommunity, Notification } from '../../context/CommunityContext';
-import { 
-  CommunityColors, 
-  CommunityGradients, 
-  CommunitySpacing, 
-  CommunityBorderRadius,
-  CommunityShadows 
-} from '../../theme/CommunityTheme';
+import { useCustomization } from '../../hooks/useCustomization';
+import { SafeAvatar } from '../../components/SafeAvatar';
+import { AutoHideFlatList } from '../../components/AutoHideScrollWrappers';
+import { CommunityColors, CommunityGradients, CommunitySpacing, CommunityBorderRadius, CommunityShadows } from '../../theme/CommunityTheme';
+
 
 type NotificationsScreenProps = NativeStackScreenProps<CommunityStackParamList, 'Notifications'>;
 
-// Safe Avatar Component - handles emoji, file://, http://, and data: URIs
-const SafeAvatar: React.FC<{ avatar?: string | null; size?: number }> = ({ avatar, size = 40 }) => {
-  const isImageUri = avatar && (avatar.startsWith('http') || avatar.startsWith('file://') || avatar.startsWith('data:'));
-  const isEmoji = avatar && !isImageUri && avatar.length <= 4;
-
-  if (isImageUri) {
-    return (
-      <Image
-        source={{ uri: avatar }}
-        style={{ width: size, height: size, borderRadius: size / 2 }}
-        resizeMode="cover"
-      />
-    );
-  }
-
+const NotificationAvatar = ({ avatar, size = 40 }: { avatar?: string | null; size?: number }) => {
   return (
-    <View style={[styles.avatarFallback, { width: size, height: size, borderRadius: size / 2 }]}>
-      <Text style={{ fontSize: size * 0.5 }}>{isEmoji ? avatar : '👤'}</Text>
-    </View>
+    <SafeAvatar
+      avatar={avatar}
+      size={size}
+      fallbackIcon="person"
+      fallbackColor={CommunityColors.primary}
+      fallbackBgColor={CommunityColors.background.elevated}
+      borderWidth={1}
+      borderColor={CommunityColors.border}
+    />
   );
 };
 
@@ -70,6 +48,12 @@ export default function NotificationsScreen({ navigation }: NotificationsScreenP
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<'all' | 'mentions' | 'likes'>('all');
 
+  const {
+    shouldReduceMotion,
+    triggerHaptic,
+    spinnerColor,
+  } = useCustomization();
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await new Promise(resolve => setTimeout(resolve, 1000));
@@ -77,12 +61,12 @@ export default function NotificationsScreen({ navigation }: NotificationsScreenP
   }, []);
 
   const handleMarkAllRead = async () => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    triggerHaptic('success');
     await markAllNotificationsRead();
   };
 
   const handleNotificationPress = async (notification: Notification) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    triggerHaptic('light');
     await markNotificationRead(notification.id);
 
     switch (notification.type) {
@@ -116,9 +100,9 @@ export default function NotificationsScreen({ navigation }: NotificationsScreenP
 
   const renderNotification = ({ item, index }: { item: Notification; index: number }) => {
     const icon = getIcon(item.type);
-    
+
     return (
-      <Animated.View entering={FadeInUp.delay(index * 30)}>
+      <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(index * 30)}>
         <TouchableOpacity 
           style={[styles.notificationItem, !item.read && styles.unreadItem]}
           onPress={() => handleNotificationPress(item)}
@@ -129,7 +113,15 @@ export default function NotificationsScreen({ navigation }: NotificationsScreenP
               <Ionicons name={icon.name as any} size={20} color={icon.color} />
             </View>
             <View style={styles.avatarContainer}>
-              <SafeAvatar avatar={item.user.avatar} size={40} />
+              <SafeAvatar
+                avatar={item.user.avatar}
+                size={40}
+                fallbackIcon="person"
+                fallbackColor={CommunityColors.primary}
+                fallbackBgColor={CommunityColors.background.elevated}
+                borderWidth={1}
+                borderColor={CommunityColors.border}
+              />
               {!item.read && <View style={styles.unreadDot} />}
             </View>
           </View>
@@ -160,15 +152,15 @@ export default function NotificationsScreen({ navigation }: NotificationsScreenP
 
   return (
     <LinearGradient colors={CommunityColors.background.gradient} style={styles.container}>
-      <StatusBar style="dark" />
-      
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={28} color={CommunityColors.text.primary} />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
-          <Text style={styles.title}>Notifications 🔔</Text>
+          <Text style={styles.title}>Notifications</Text>
           {unreadCount > 0 && (
             <View style={styles.unreadBadge}>
               <Text style={styles.unreadText}>{unreadCount} new</Text>
@@ -202,20 +194,24 @@ export default function NotificationsScreen({ navigation }: NotificationsScreenP
       </View>
 
       {/* Notifications List */}
-      <FlatList
+      <AutoHideFlatList
         data={filteredNotifications}
         renderItem={renderNotification}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContainer}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={CommunityColors.primary} />
+          <RefreshControl 
+            refreshing={refreshing} 
+            onRefresh={onRefresh} 
+            tintColor={spinnerColor} 
+          />
         }
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <Ionicons name="notifications-off-outline" size={48} color={CommunityColors.text.tertiary} />
             <Text style={styles.emptyText}>No notifications</Text>
-            <Text style={styles.emptySubtext}>You're all caught up!</Text>
+            <Text style={styles.emptySubtext}>You are all caught up!</Text>
           </View>
         }
       />
@@ -224,85 +220,120 @@ export default function NotificationsScreen({ navigation }: NotificationsScreenP
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: {
+    flex: 1,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: CommunitySpacing.lg,
-    paddingTop: 60,
-    paddingBottom: 20,
+    paddingHorizontal: CommunitySpacing.md,
+    paddingTop: CommunitySpacing.xl + 20,
+    paddingBottom: CommunitySpacing.md,
   },
   backButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.5)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    padding: CommunitySpacing.sm,
+    borderRadius: CommunityBorderRadius.full,
+    backgroundColor: CommunityColors.background.elevated,
+    ...CommunityShadows.small,
   },
-  headerCenter: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  title: { fontSize: 28, fontWeight: '800', color: CommunityColors.text.primary },
+  headerCenter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: CommunitySpacing.sm,
+  },
+  title: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: CommunityColors.text.primary,
+  },
   unreadBadge: {
     backgroundColor: CommunityColors.error,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
+    borderRadius: CommunityBorderRadius.full,
+    paddingHorizontal: CommunitySpacing.sm,
+    paddingVertical: 2,
   },
-  unreadText: { color: 'white', fontSize: 12, fontWeight: '600' },
-  markRead: { fontSize: 14, color: CommunityColors.primary, fontWeight: '600' },
-  markReadDisabled: { color: CommunityColors.text.tertiary },
+  unreadText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  markRead: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: CommunityColors.primary,
+  },
+  markReadDisabled: {
+    color: CommunityColors.text.tertiary,
+  },
   filterContainer: {
     flexDirection: 'row',
-    paddingHorizontal: CommunitySpacing.lg,
-    marginBottom: 16,
-    gap: 24,
+    paddingHorizontal: CommunitySpacing.md,
+    paddingBottom: CommunitySpacing.md,
+    gap: CommunitySpacing.sm,
   },
-  filterTab: { paddingVertical: 8, position: 'relative' },
-  filterTabActive: {},
-  filterText: { fontSize: 16, fontWeight: '600', color: CommunityColors.text.tertiary },
-  filterTextActive: { color: CommunityColors.text.primary },
+  filterTab: {
+    paddingVertical: CommunitySpacing.sm,
+    paddingHorizontal: CommunitySpacing.md,
+    borderRadius: CommunityBorderRadius.full,
+    backgroundColor: CommunityColors.background.elevated,
+    position: 'relative',
+  },
+  filterTabActive: {
+    backgroundColor: CommunityColors.primary + '15',
+  },
+  filterText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: CommunityColors.text.secondary,
+  },
+  filterTextActive: {
+    color: CommunityColors.primary,
+  },
   filterIndicator: {
     position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
+    bottom: -4,
+    left: '30%',
+    right: '30%',
     height: 3,
-    backgroundColor: CommunityColors.primary,
     borderRadius: 2,
+    backgroundColor: CommunityColors.primary,
   },
-  listContainer: { paddingHorizontal: CommunitySpacing.lg, paddingBottom: 100 },
+  listContainer: {
+    padding: CommunitySpacing.md,
+    paddingBottom: CommunitySpacing.xl,
+  },
   notificationItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: CommunityColors.divider,
+    padding: CommunitySpacing.md,
+    borderRadius: CommunityBorderRadius.lg,
+    backgroundColor: CommunityColors.background.card,
+    marginBottom: CommunitySpacing.sm,
+    ...CommunityShadows.small,
   },
   unreadItem: {
-    backgroundColor: CommunityColors.background.overlay,
-    marginHorizontal: -24,
-    paddingHorizontal: 24,
-    borderRadius: 12,
+    backgroundColor: CommunityColors.primary + '08',
+    borderLeftWidth: 3,
+    borderLeftColor: CommunityColors.primary,
   },
-  notificationLeft: { flexDirection: 'row', alignItems: 'center', marginRight: 12 },
+  notificationLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: CommunitySpacing.sm,
+  },
   iconContainer: {
     width: 36,
     height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
+    borderRadius: CommunityBorderRadius.full,
     justifyContent: 'center',
-    marginRight: 8,
-  },
-  avatarContainer: { position: 'relative' },
-  avatarFallback: {
-    backgroundColor: CommunityColors.background.elevated,
     alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: CommunityColors.border,
+    marginRight: -8,
+    zIndex: 1,
   },
-  userAvatar: { fontSize: 40 },
+  avatarContainer: {
+    position: 'relative',
+  },
   unreadDot: {
     position: 'absolute',
     top: 0,
@@ -310,17 +341,50 @@ const styles = StyleSheet.create({
     width: 12,
     height: 12,
     borderRadius: 6,
-    backgroundColor: CommunityColors.primary,
+    backgroundColor: CommunityColors.error,
     borderWidth: 2,
-    borderColor: 'white',
+    borderColor: CommunityColors.background.card,
   },
-  notificationContent: { flex: 1 },
-  notificationText: { fontSize: 15, color: CommunityColors.text.primary, lineHeight: 20, marginBottom: 4 },
-  userName: { fontWeight: '700', color: CommunityColors.text.primary },
-  targetText: { fontWeight: '600', color: CommunityColors.primary },
-  notificationTime: { fontSize: 13, color: CommunityColors.text.secondary },
-  moreButton: { padding: 8 },
-  emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
-  emptyText: { fontSize: 16, color: CommunityColors.text.secondary, marginTop: 12 },
-  emptySubtext: { fontSize: 14, color: CommunityColors.text.tertiary, marginTop: 4 },
+  notificationContent: {
+    flex: 1,
+    marginRight: CommunitySpacing.sm,
+  },
+  notificationText: {
+    fontSize: 14,
+    color: CommunityColors.text.primary,
+    lineHeight: 20,
+  },
+  userName: {
+    fontWeight: '700',
+    color: CommunityColors.text.primary,
+  },
+  targetText: {
+    color: CommunityColors.text.secondary,
+    fontStyle: 'italic',
+  },
+  notificationTime: {
+    fontSize: 12,
+    color: CommunityColors.text.tertiary,
+    marginTop: 4,
+  },
+  moreButton: {
+    padding: CommunitySpacing.sm,
+    borderRadius: CommunityBorderRadius.full,
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: CommunitySpacing.xxl,
+  },
+  emptyText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: CommunityColors.text.secondary,
+    marginTop: CommunitySpacing.md,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: CommunityColors.text.tertiary,
+    marginTop: CommunitySpacing.xs,
+  },
 });

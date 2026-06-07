@@ -1,44 +1,19 @@
-
-// src/screens/community/EditCommunityProfileScreen.tsx
-// FIXED VERSION - Addresses:
-// 1. Proper username validation with uniqueness check
-// 2. Atomic username updates
-// 3. Profile sync across contexts
-// 4. Better error handling
-
-import React, { useState, useCallback } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
-  Alert,
-  Image,
-  ActivityIndicator,
-} from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Alert, Image, ActivityIndicator, StatusBar  } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import Animated, { FadeInUp } from 'react-native-reanimated';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { CommunityStackParamList } from '../../types/navigation';
+import type {  NativeStackScreenProps  } from '@react-navigation/native-stack';
+import type {  CommunityStackParamList  } from '../../types/navigation';
 import { useCommunity } from '../../context/CommunityContext';
 import { useUser } from '../../context/UserContext';
 import { showSuccessModal, showErrorModal } from '../../utils/modal';
-import { 
-  CommunityColors, 
-  CommunityGradients, 
-  CommunitySpacing, 
-  CommunityBorderRadius,
-  CommunityShadows 
-} from '../../theme/CommunityTheme';
+import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
+import { CommunityColors, CommunityGradients, CommunitySpacing, CommunityBorderRadius, CommunityShadows } from '../../theme/CommunityTheme';
+
 
 type EditCommunityProfileScreenProps = NativeStackScreenProps<CommunityStackParamList, 'EditCommunityProfile'>;
 
@@ -70,7 +45,6 @@ export default function EditCommunityProfileScreen({ navigation, route }: EditCo
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [isCheckingUsername, setIsCheckingUsername] = useState(false);
 
-  // FIXED: Image picker using correct mediaTypes format
   const handleImagePick = async () => {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -88,7 +62,6 @@ export default function EditCommunityProfileScreen({ navigation, route }: EditCo
 
       if (!result.canceled && result.assets[0]) {
         setIsUploadingImage(true);
-        // Simulate upload
         await new Promise(resolve => setTimeout(resolve, 800));
         setProfileImage(result.assets[0].uri);
         setSelectedAvatar(result.assets[0].uri); // Use image URI as avatar
@@ -102,7 +75,6 @@ export default function EditCommunityProfileScreen({ navigation, route }: EditCo
     }
   };
 
-  // FIXED: Real-time username validation with uniqueness check using CommunityContext
   const validateUsernameAsync = useCallback(async (value: string): Promise<boolean> => {
     if (!value.trim()) {
       setUsernameError('Username is required');
@@ -112,14 +84,12 @@ export default function EditCommunityProfileScreen({ navigation, route }: EditCo
     setIsCheckingUsername(true);
     
     try {
-      // Use CommunityContext validateUsername if available, fallback to UserContext
       let result;
       if (validateUsername) {
         result = await validateUsername(value, currentUser?.id);
       } else if (checkUsernameAvailable) {
         result = await checkUsernameAvailable(value, currentUser?.id);
       } else {
-        // Fallback basic validation
         const trimmed = value.trim().toLowerCase().replace(/^@/, '');
         if (trimmed.length < 3) {
           setUsernameError('Username must be at least 3 characters');
@@ -145,15 +115,13 @@ export default function EditCommunityProfileScreen({ navigation, route }: EditCo
     }
   }, [validateUsername, checkUsernameAvailable, currentUser?.id]);
 
-  // FIXED: Save with atomic username update
+
   const handleSave = async () => {
-    // Validate display name
     if (!displayName.trim()) {
       showErrorModal({ message: 'Display name is required' });
       return;
     }
 
-    // Validate username with uniqueness check
     const isUsernameValid = await validateUsernameAsync(username);
     if (!isUsernameValid) {
       showErrorModal({ message: usernameError || 'Invalid username' });
@@ -167,19 +135,16 @@ export default function EditCommunityProfileScreen({ navigation, route }: EditCo
       const handle = username.startsWith('@') ? username : `@${username}`;
       const oldHandle = currentUser?.handle;
 
-      // FIXED: Use atomic updateUsername if available
       if (oldHandle && oldHandle !== handle && updateUsername) {
         const result = await updateUsername(oldHandle, handle, currentUser?.id || '');
         if (!result.success) {
           throw new Error(result.message);
         }
       } else if (oldHandle && oldHandle !== handle) {
-        // Fallback: manual unregister + register
         await unregisterUsername(oldHandle);
         await registerUsername(handle, currentUser?.id || '');
       }
 
-      // Update UserContext (source of truth for profile data)
       await updateUserContextProfile({
         displayName: displayName.trim(),
         handle: handle.toLowerCase(),
@@ -187,7 +152,6 @@ export default function EditCommunityProfileScreen({ navigation, route }: EditCo
         avatar: profileImage || selectedAvatar,
       });
 
-      // Update CommunityContext currentUser
       await updateCommunityProfile({
         displayName: displayName.trim(),
         handle: handle.toLowerCase(),
@@ -195,7 +159,6 @@ export default function EditCommunityProfileScreen({ navigation, route }: EditCo
         avatar: profileImage || selectedAvatar,
       });
 
-      // Sync profile changes to all posts
       await syncUserProfileAcrossPosts(currentUser?.id || '', {
         displayName: displayName.trim(),
         handle: handle.toLowerCase(),
@@ -214,7 +177,7 @@ export default function EditCommunityProfileScreen({ navigation, route }: EditCo
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container]}>
       <StatusBar style="dark" />
       <LinearGradient colors={CommunityColors.background.gradient} style={StyleSheet.absoluteFill} />
 
@@ -239,7 +202,7 @@ export default function EditCommunityProfileScreen({ navigation, route }: EditCo
           </TouchableOpacity>
         </View>
 
-        <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        <AutoHideScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           {/* Profile Image Upload */}
           <Animated.View entering={FadeInUp}>
             <View style={styles.imageUploadContainer}>
@@ -358,7 +321,7 @@ export default function EditCommunityProfileScreen({ navigation, route }: EditCo
               <Text style={styles.tipText}>• Be authentic and kind</Text>
             </LinearGradient>
           </Animated.View>
-        </ScrollView>
+        </AutoHideScrollView>
       </KeyboardAvoidingView>
     </View>
   );
@@ -390,7 +353,6 @@ const styles = StyleSheet.create({
   saveButtonText: { fontSize: 16, fontWeight: '700', color: CommunityColors.text.tertiary },
   saveButtonTextActive: { color: 'white' },
 
-  // Image Upload
   imageUploadContainer: {
     alignItems: 'center',
     marginBottom: 24,
@@ -550,3 +512,5 @@ const styles = StyleSheet.create({
   tipsTitle: { fontSize: 14, fontWeight: '800', color: CommunityColors.secondary, marginBottom: 12 },
   tipText: { fontSize: 13, color: CommunityColors.text.secondary, marginBottom: 6 },
 });
+
+

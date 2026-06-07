@@ -1,5 +1,5 @@
 // src/components/LiquidGlassNavigation.tsx
-import React, { useCallback, useRef, useState, useEffect } from 'react';
+import React, { useCallback, useRef, useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -18,7 +18,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { useNavigationContext } from '../context/NavigationContext';
+import { useNavigationVisibility, useTheme } from '../context/AppContext';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -54,6 +54,26 @@ const TABS: TabItem[] = [
   { name: 'More', shortName: '•••', icon: '⚙️', activeIcon: '🔧', route: 'More', color: '#64748b', showInCompact: false, hapticStyle: Haptics.ImpactFeedbackStyle.Light, description: 'Settings' },
 ];
 
+// ============================================
+// ROUTES THAT MUST HIDE THE TAB BAR COMPLETELY
+// ============================================
+// These are routes OUTSIDE the tab navigator (stack screens)
+// AND community screens inside the Connect tab
+const HIDDEN_TAB_ROUTES = new Set([
+  // Stack screens (outside tabs)
+  'SwitchBaby', 'EditProfile', 'EditGuardian', 'Gallery', 'FamilyChatList', 'FamilyChat',
+  'AddLog', 'Achievements', 'GrowthChart', 'Reminders', 'FamilySharing', 'SoundMixer', 'Customize',
+  'BiometricSetup', 'SecurityCenter', 'SecurityLock',
+  'BackupRestore', 'HelpCenter', 'ContactSupport', 'PrivacyPolicy', 'TermsOfService', 'About',
+  'LanguageSettings', 'UnitSettings', 'SafetyCorner',
+  'UniversalTracker', 'PottyTracker', 'FeedTracker', 'SleepTracker',
+  'Profile', 'CreateBabyProfile', 'AddParent',
+  // Community screens (nested inside Connect tab)
+  'CommunityMain', 'Topic', 'CreatePost', 'PostDetail', 'UserProfile', 'Chat', 'ChatList',
+  'Notifications', 'EditCommunityProfile', 'TopicMembers', 'Followers', 'Following', 'SearchUsers',
+  'BlockedUsers', 'Report',
+]);
+
 // Dimensions
 const EXPANDED_WIDTH = SCREEN_WIDTH - 170;
 const COMPACT_WIDTH = 150;
@@ -61,7 +81,7 @@ const TAB_BAR_HEIGHT = 158;
 const COMPACT_TAB_BAR_HEIGHT = 148;
 const COMPACT_OFFSET_X = -SCREEN_WIDTH + COMPACT_WIDTH + 70;
 const BOTTOM_MARGIN = 50;
-const HIDDEN_TRANSLATE_Y = 200;
+const HIDDEN_TRANSLATE_Y = 300;
 
 // Date helper
 const getCurrentDate = () => {
@@ -162,10 +182,11 @@ const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({ state, descriptors
     hideNav,
     toggleCompact,
     isCommunityScreen,
+    setCommunityRoute,
     forceShowNav,
-    isDark,
-    colors,
-  } = useNavigationContext();
+  } = useNavigationVisibility();
+
+  const { isDark, colors } = useTheme();
 
   const [currentDate, setCurrentDate] = useState(getCurrentDate());
 
@@ -182,8 +203,31 @@ const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({ state, descriptors
   }, []);
 
   const activeIndex = state.index;
+  const activeRouteName = state.routes[activeIndex]?.name;
 
-  const isTrackScreen = state.routes[activeIndex].name === 'Track';
+  // 🔑 CRITICAL: Detect if current route should hide tab bar completely
+  // This covers both stack screens AND nested community screens
+  const shouldHideCompletely = useMemo(() => {
+    // Check if current tab is Connect — community screens are nested here
+    if (activeRouteName === 'Connect') {
+      // CommunityNavigator is active — check if we're in a community sub-screen
+      // The community route state is available in descriptors
+      const connectDescriptor = descriptors[state.routes[activeIndex].key];
+      const connectState = connectDescriptor?.state;
+      if (connectState) {
+        const communityRoute = connectState.routes?.[connectState.index];
+        if (communityRoute && HIDDEN_TAB_ROUTES.has(communityRoute.name)) {
+          return true;
+        }
+      }
+      // Also rely on isCommunityScreen from AppContext as fallback
+      return isCommunityScreen;
+    }
+    // For non-tab screens (stack navigator), always hide
+    return HIDDEN_TAB_ROUTES.has(activeRouteName) || isCommunityScreen;
+  }, [activeRouteName, state, descriptors, activeIndex, isCommunityScreen]);
+
+  const isTrackScreen = activeRouteName === 'Track';
 
   // Animated values
   const translateY = useSharedValue(0);
@@ -196,16 +240,25 @@ const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({ state, descriptors
   // Track previous states for animation decisions
   const prevVisible = useRef(true);
   const prevCompact = useRef(false);
+  const prevHidden = useRef(false);
 
-  // Update animations
+  // 🔑 FIXED: Update animations — completely hide when on hidden routes
   useEffect(() => {
-    // Community screen: completely hide
-    if (isCommunityScreen) {
-      translateY.value = withSpring(HIDDEN_TRANSLATE_Y, { damping: 15, stiffness: 100 });
-      opacity.value = withSpring(0, { damping: 15 });
-      dateFabScale.value = withSpring(0, { damping: 15 });
+    // Completely hidden (community screens or stack screens)
+    if (shouldHideCompletely) {
+      translateY.value = withSpring(HIDDEN_TRANSLATE_Y, { damping: 20, stiffness: 120 });
+      opacity.value = withSpring(0, { damping: 20 });
+      dateFabScale.value = withSpring(0, { damping: 20 });
+      prevHidden.current = true;
       prevVisible.current = false;
       return;
+    }
+
+    // Was previously hidden, now showing
+    if (prevHidden.current && !shouldHideCompletely) {
+      prevHidden.current = false;
+      translateY.value = withSpring(0, { damping: 15, stiffness: 120 });
+      opacity.value = withSpring(1, { damping: 15 });
     }
 
     // Normal screen: respond to visibility
@@ -220,8 +273,8 @@ const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({ state, descriptors
       }
     }
 
-    // Compact mode (only when visible)
-    if (isNavVisible && isNavCompact !== prevCompact.current) {
+    // Compact mode (only when visible and not hidden)
+    if (isNavVisible && !shouldHideCompletely && isNavCompact !== prevCompact.current) {
       prevCompact.current = isNavCompact;
       translateX.value = withSpring(isNavCompact ? COMPACT_OFFSET_X : 0, { damping: 15 });
       width.value = withSpring(isNavCompact ? COMPACT_WIDTH : EXPANDED_WIDTH, { damping: 15 });
@@ -229,8 +282,24 @@ const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({ state, descriptors
     }
 
     // Date FAB
-    dateFabScale.value = withSpring(isTrackScreen && isNavVisible ? 1 : 0, { damping: 12, stiffness: 100 });
-  }, [isNavVisible, isNavCompact, isTrackScreen, isCommunityScreen]);
+    dateFabScale.value = withSpring(isTrackScreen && isNavVisible && !shouldHideCompletely ? 1 : 0, { damping: 12, stiffness: 100 });
+  }, [isNavVisible, isNavCompact, isTrackScreen, shouldHideCompletely]);
+
+  // 🔑 Sync community route state to AppContext for other consumers
+  useEffect(() => {
+    if (activeRouteName === 'Connect') {
+      const connectDescriptor = descriptors[state.routes[activeIndex].key];
+      const connectState = connectDescriptor?.state;
+      if (connectState) {
+        const communityRoute = connectState.routes?.[connectState.index];
+        if (communityRoute?.name) {
+          setCommunityRoute(communityRoute.name);
+        }
+      }
+    } else {
+      setCommunityRoute(null);
+    }
+  }, [activeRouteName, state, descriptors, activeIndex, setCommunityRoute]);
 
   const containerStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }, { translateX: translateX.value }],
@@ -287,8 +356,10 @@ const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({ state, descriptors
     })
   ).current;
 
-  // Don't render on community screens
-  if (isCommunityScreen) return null;
+  // 🔑 Don't render at all when completely hidden (performance + no ghost touches)
+  if (shouldHideCompletely) {
+    return null;
+  }
 
   return (
     <View

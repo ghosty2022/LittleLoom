@@ -1,33 +1,27 @@
-import { create } from 'zustand';
+﻿import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Baby, TimelineEvent, SoundItem } from '../types';
 
 interface BabyState {
-  // Baby Profile
   baby: Baby;
   updateBaby: (updates: Partial<Baby>) => void;
   
-  // Timeline
   timeline: TimelineEvent[];
   addEvent: (event: Omit<TimelineEvent, 'id' | 'timestamp'>) => void;
   removeEvent: (id: string) => void;
   clearTimeline: () => void;
   
-  // Sounds
   sounds: SoundItem[];
   updateSoundStatus: (id: string, status: Partial<SoundItem>) => void;
   stopAllSounds: () => void;
   
-  // UI State
   nextPottyTime: number;
   updateNextPottyTime: (minutes: number) => void;
   
-  // Hydration
   isHydrated: boolean;
   setHydrated: (value: boolean) => void;
   
-  // Actions
   resetStreak: () => void;
   incrementStreak: () => void;
   resetStore: () => void;

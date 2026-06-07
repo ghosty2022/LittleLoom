@@ -1,64 +1,57 @@
 // src/screens/community/TopicScreen.tsx
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  FlatList,
   TouchableOpacity,
   Alert,
   RefreshControl,
   Dimensions,
-  Image,
+  StatusBar,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInUp } from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CommunityStackParamList } from '../../types/navigation';
 import { useCommunity, Post, Topic } from '../../context/CommunityContext';
 import { useUser } from '../../context/UserContext';
-import { 
-  CommunityColors, 
-  CommunityGradients, 
-  CommunitySpacing, 
+import { useReportRoute } from '../../hooks/useReportRoute';
+import { useSafeCustomization } from '../../hooks/useSafeContexts';
+import { SafeAvatar } from '../../components/SafeAvatar';
+import { AutoHideFlatList } from '../../components/AutoHideScrollWrappers';
+import {
+  CommunityColors,
+  CommunitySpacing,
   CommunityBorderRadius,
-  CommunityShadows 
+  CommunityShadows,
 } from '../../theme/CommunityTheme';
 
 type TopicScreenProps = NativeStackScreenProps<CommunityStackParamList, 'Topic'>;
 
 const { width } = Dimensions.get('window');
 
-// ─── Avatar Component (Same as CommunityScreen) ───────────────
-const AvatarImage = ({ uri, size = 40 }: { uri: string; size?: number }) => {
-  const isEmoji = !uri || (!uri.includes('://') && !uri.startsWith('/') && uri.length <= 4);
-  
-  if (isEmoji) {
-    return <Text style={{ fontSize: size }}>{uri || '👤'}</Text>;
-  }
-
-  const normalizedUri = uri.startsWith('file://') ? uri : uri.startsWith('/') ? `file://${uri}` : uri;
-
-  return (
-    <Image
-      source={{ uri: normalizedUri }}
-      style={{ width: size, height: size, borderRadius: size / 2 }}
-      resizeMode="cover"
-
-    />
-  );
-};
+const AvatarImage = ({ uri, size = 40 }: { uri: string; size?: number }) => (
+  <SafeAvatar
+    avatar={uri}
+    size={size}
+    fallbackIcon="person"
+    fallbackColor={CommunityColors.primary}
+    fallbackBgColor={CommunityColors.primary + '20'}
+    borderWidth={0}
+  />
+);
 
 export default function TopicScreen({ navigation, route }: TopicScreenProps) {
+  useReportRoute();
+
   const { topicId } = route.params;
-  const { 
-    getTopicById, 
-    getPostsByTopic, 
-    joinTopic, 
+  const {
+    getTopicById,
+    getPostsByTopic,
+    joinTopic,
     leaveTopic,
     likePost,
     unlikePost,
@@ -70,50 +63,53 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
   } = useCommunity();
   const { communityProfile } = useUser();
 
+  // 🔑 Single safe hook call with destructuring
+  const {
+    themeColors = { spinnerColor: '#667eea' },
+    shouldReduceMotion = false,
+    triggerHaptic = () => {},
+  } = useSafeCustomization();
+
   const [refreshing, setRefreshing] = useState(false);
   const [sortBy, setSortBy] = useState<'trending' | 'newest' | 'popular'>('trending');
   const [topic, setTopic] = useState<Topic | undefined>(undefined);
   const [posts, setPosts] = useState<Post[]>([]);
 
-  // Sync profile changes when communityProfile updates
+  // Sync profile changes across posts
   useEffect(() => {
-    if (currentUser?.id && communityProfile) {
-      const hasChanges = 
-        communityProfile.displayName !== currentUser.displayName ||
-        communityProfile.handle !== currentUser.handle ||
-        communityProfile.avatar !== currentUser.avatar;
+    if (!currentUser?.id || !communityProfile) return;
 
-      if (hasChanges) {
-        syncUserProfileAcrossPosts(currentUser.id, {
-          displayName: communityProfile.displayName,
-          handle: communityProfile.handle,
-          avatar: communityProfile.avatar,
-          bio: communityProfile.bio,
-        });
-      }
+    const hasChanges =
+      communityProfile.displayName !== currentUser.displayName ||
+      communityProfile.handle !== currentUser.handle ||
+      communityProfile.avatar !== currentUser.avatar;
+
+    if (hasChanges) {
+      syncUserProfileAcrossPosts(currentUser.id, {
+        displayName: communityProfile.displayName,
+        handle: communityProfile.handle,
+        avatar: communityProfile.avatar,
+        bio: communityProfile.bio,
+      });
     }
   }, [communityProfile?.displayName, communityProfile?.handle, communityProfile?.avatar]);
 
+  // Load topic data
   useEffect(() => {
-    const loadTopicData = () => {
-      const currentTopic = getTopicById(topicId);
-      const topicPosts = getPostsByTopic(topicId);
-      setTopic(currentTopic);
-      setPosts(topicPosts);
-    };
-
-    loadTopicData();
+    const currentTopic = getTopicById(topicId);
+    const topicPosts = getPostsByTopic(topicId);
+    setTopic(currentTopic);
+    setPosts(topicPosts);
   }, [topicId, getTopicById, getPostsByTopic]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await refreshFeed();
-    const topicPosts = getPostsByTopic(topicId);
-    setPosts(topicPosts);
+    setPosts(getPostsByTopic(topicId));
     setRefreshing(false);
   }, [topicId, refreshFeed, getPostsByTopic]);
 
-  const handleJoinToggle = async () => {
+  const handleJoinToggle = useCallback(async () => {
     if (!topic) return;
 
     if (topic.isJoined) {
@@ -122,67 +118,73 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
         `Are you sure you want to leave ${topic.name}?`,
         [
           { text: 'Cancel', style: 'cancel' },
-          { 
-            text: 'Leave', 
-            style: 'destructive', 
+          {
+            text: 'Leave',
+            style: 'destructive',
             onPress: async () => {
               await leaveTopic(topic.id);
-              setTopic(prev => prev ? { ...prev, isJoined: false, members: Math.max(0, prev.members - 1) } : undefined);
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            }
+              setTopic((prev) =>
+                prev
+                  ? { ...prev, isJoined: false, members: Math.max(0, prev.members - 1) }
+                  : undefined
+              );
+              triggerHaptic('success');
+            },
           },
         ]
       );
     } else {
       await joinTopic(topic.id);
-      setTopic(prev => prev ? { ...prev, isJoined: true, members: prev.members + 1 } : undefined);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setTopic((prev) =>
+        prev ? { ...prev, isJoined: true, members: prev.members + 1 } : undefined
+      );
+      triggerHaptic('success');
     }
-  };
+  }, [topic, joinTopic, leaveTopic, triggerHaptic]);
 
-  const handlePostLike = async (post: Post) => {
-    if (post.isLiked) {
-      await unlikePost(post.id);
-    } else {
-      await likePost(post.id);
-    }
-    const updatedPosts = getPostsByTopic(topicId);
-    setPosts(updatedPosts);
-  };
+  const handlePostLike = useCallback(
+    async (post: Post) => {
+      if (post.isLiked) {
+        await unlikePost(post.id);
+      } else {
+        await likePost(post.id);
+      }
+      setPosts(getPostsByTopic(topicId));
+    },
+    [topicId, likePost, unlikePost, getPostsByTopic]
+  );
 
-  const handlePostRepost = async (post: Post) => {
-    if (post.isReposted) {
-      await unrepostPost(post.id);
-    } else {
-      await repostPost(post.id);
-    }
-    const updatedPosts = getPostsByTopic(topicId);
-    setPosts(updatedPosts);
-  };
+  const handlePostRepost = useCallback(
+    async (post: Post) => {
+      if (post.isReposted) {
+        await unrepostPost(post.id);
+      } else {
+        await repostPost(post.id);
+      }
+      setPosts(getPostsByTopic(topicId));
+    },
+    [topicId, repostPost, unrepostPost, getPostsByTopic]
+  );
 
-  const navigateToPostDetail = (postId: string) => {
-    navigation.navigate('PostDetail', { postId });
-  };
+  const navigateToPostDetail = useCallback(
+    (postId: string) => navigation.navigate('PostDetail', { postId }),
+    [navigation]
+  );
 
-  const navigateToUserProfile = (userId: string) => {
-    navigation.navigate('UserProfile', { userId });
-  };
+  const navigateToUserProfile = useCallback(
+    (userId: string) => {
+      triggerHaptic('light');
+      navigation.navigate('UserProfile', { userId });
+    },
+    [navigation, triggerHaptic]
+  );
 
-  const navigateToCreatePost = () => {
-    navigation.navigate('CreatePost', { topicId });
-  };
+  const navigateToCreatePost = useCallback(
+    () => navigation.navigate('CreatePost', { topicId }),
+    [navigation, topicId]
+  );
 
-  if (!topic) {
-    return (
-      <View style={[styles.container, styles.centered]}>
-        <Text style={styles.errorText}>Topic not found</Text>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.goBackButton}>
-          <Text style={styles.goBackText}>Go Back</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
+  // Sort posts
   const sortedPosts = [...posts].sort((a, b) => {
     switch (sortBy) {
       case 'newest':
@@ -194,99 +196,109 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
     }
   });
 
-  const renderPost = ({ item, index }: { item: Post; index: number }) => (
-    <Animated.View entering={FadeInUp.delay(index * 50)}>
-      <TouchableOpacity 
-        onPress={() => navigateToPostDetail(item.id)}
-        activeOpacity={0.9}
-      >
-        <BlurView intensity={80} style={styles.postCard} tint="light">
-          <TouchableOpacity 
-            style={styles.postHeader}
-            onPress={() => navigateToUserProfile(item.author.id)}
-          >
-            <AvatarImage uri={item.author.avatar} size={40} />
-            <View style={{ marginLeft: 12, flex: 1 }}>
-              <View style={styles.postNameRow}>
-                <Text style={styles.postAuthor}>{item.author.displayName}</Text>
-                {item.author.isVerified && (
-                  <Ionicons name="checkmark-circle" size={14} color={CommunityColors.primary} />
-                )}
+  // Render post item
+  const renderPost = useCallback(
+    ({ item, index }: { item: Post; index: number }) => (
+      <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(index * 50)}>
+        <TouchableOpacity onPress={() => navigateToPostDetail(item.id)} activeOpacity={0.9}>
+          <BlurView intensity={80} style={styles.postCard} tint="light">
+            <TouchableOpacity
+              style={styles.postHeader}
+              onPress={() => navigateToUserProfile(item.author.id)}
+            >
+              <AvatarImage uri={item.author.avatar} size={40} />
+              <View style={styles.postHeaderText}>
+                <View style={styles.postNameRow}>
+                  <Text style={styles.postAuthor}>{item.author.displayName}</Text>
+                  {item.author.isVerified && (
+                    <Ionicons name="checkmark-circle" size={14} color={CommunityColors.primary} />
+                  )}
+                </View>
+                <Text style={styles.postTime}>{item.time}</Text>
               </View>
-              <Text style={styles.postTime}>{item.time}</Text>
-            </View>
-          </TouchableOpacity>
+            </TouchableOpacity>
 
-          <Text style={styles.postContent} numberOfLines={3}>{item.content}</Text>
-          
-          {/* Post Images */}
-          {item.images && item.images.length > 0 && (
-            <View style={styles.postImagesContainer}>
-              {item.images.map((img, idx) => (
-                <Image
-                  key={idx}
-                  source={{ 
-                    uri: img.startsWith('file://') ? img : img.startsWith('/') ? `file://${img}` : img 
-                  }}
-                  style={styles.postImage}
-                  resizeMode="cover"
+            <Text style={styles.postContent} numberOfLines={3}>
+              {item.content}
+            </Text>
+
+            {item.images && item.images.length > 0 && (
+              <View style={styles.postImagesContainer}>
+                {item.images.map((img, idx) => (
+                  <SafeAvatar
+                    key={idx}
+                    avatar={img}
+                    size={(width - 88) / 2}
+                    fallbackIcon="image"
+                    fallbackColor={CommunityColors.primary}
+                    fallbackBgColor={CommunityColors.primary + '15'}
+                    borderWidth={1}
+                    borderColor={CommunityColors.border}
+                    style={styles.postImageAvatar}
+                  />
+                ))}
+              </View>
+            )}
+
+            <View style={styles.postActions}>
+              <TouchableOpacity style={styles.action} onPress={() => handlePostLike(item)}>
+                <Ionicons
+                  name={item.isLiked ? 'heart' : 'heart-outline'}
+                  size={20}
+                  color={item.isLiked ? CommunityColors.error : CommunityColors.text.secondary}
                 />
-              ))}
+                <Text style={[styles.actionText, item.isLiked && styles.actionTextActive]}>
+                  {item.likes}
+                </Text>
+              </TouchableOpacity>
+
+              <View style={styles.action}>
+                <Ionicons name="chatbubble-outline" size={20} color={CommunityColors.text.secondary} />
+                <Text style={styles.actionText}>{item.commentsCount}</Text>
+              </View>
+
+              <TouchableOpacity style={styles.action} onPress={() => handlePostRepost(item)}>
+                <Ionicons
+                  name={item.isReposted ? 'repeat' : 'repeat-outline'}
+                  size={20}
+                  color={item.isReposted ? CommunityColors.secondary : CommunityColors.text.secondary}
+                />
+                <Text style={[styles.actionText, item.isReposted && styles.actionTextActive]}>
+                  {item.reposts}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.action}>
+                <Ionicons name="share-outline" size={20} color={CommunityColors.text.secondary} />
+              </TouchableOpacity>
             </View>
-          )}
-
-          <View style={styles.postActions}>
-            <TouchableOpacity 
-              style={styles.action}
-              onPress={() => handlePostLike(item)}
-            >
-              <Ionicons 
-                name={item.isLiked ? "heart" : "heart-outline"} 
-                size={20} 
-                color={item.isLiked ? CommunityColors.error : CommunityColors.text.secondary} 
-              />
-              <Text style={[styles.actionText, item.isLiked && styles.actionTextActive]}>
-                {item.likes}
-              </Text>
-            </TouchableOpacity>
-
-            <View style={styles.action}>
-              <Ionicons name="chatbubble-outline" size={20} color={CommunityColors.text.secondary} />
-              <Text style={styles.actionText}>{item.commentsCount}</Text>
-            </View>
-
-            <TouchableOpacity 
-              style={styles.action}
-              onPress={() => handlePostRepost(item)}
-            >
-              <Ionicons 
-                name={item.isReposted ? "repeat" : "repeat-outline"} 
-                size={20} 
-                color={item.isReposted ? CommunityColors.secondary : CommunityColors.text.secondary} 
-              />
-              <Text style={[styles.actionText, item.isReposted && styles.actionTextActive]}>
-                {item.reposts}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.action}>
-              <Ionicons name="share-outline" size={20} color={CommunityColors.text.secondary} />
-            </TouchableOpacity>
-          </View>
-        </BlurView>
-      </TouchableOpacity>
-    </Animated.View>
+          </BlurView>
+        </TouchableOpacity>
+      </Animated.View>
+    ),
+    [shouldReduceMotion, navigateToPostDetail, navigateToUserProfile, handlePostLike, handlePostRepost]
   );
 
+  // Empty state
+  if (!topic) {
+    return (
+      <View style={[styles.container, styles.centered]}>
+        <Text style={styles.errorText}>Topic not found</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.goBackButton}>
+          <Text style={styles.goBackText}>Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   return (
-    <LinearGradient 
-      colors={[topic.color + '20', ...CommunityColors.background.gradient]} 
+    <LinearGradient
+      colors={[topic.color + '20', ...CommunityColors.background.gradient]}
       style={styles.container}
     >
-      <StatusBar style="dark" />
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
 
-      {/* Header Background */}
-      <LinearGradient 
+      <LinearGradient
         colors={[topic.color + '60', topic.color + '20', 'transparent']}
         style={styles.headerGradient}
       >
@@ -294,22 +306,28 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <Ionicons name="arrow-back" size={28} color={CommunityColors.text.primary} />
           </TouchableOpacity>
-          <TouchableOpacity 
-            onPress={() => {
+          <TouchableOpacity
+            onPress={() =>
               Alert.alert('Topic Options', '', [
                 { text: 'Cancel', style: 'cancel' },
                 { text: 'Share Topic', onPress: () => console.log('Share') },
-                { text: 'Report', style: 'destructive', onPress: () => {
-                  Alert.alert('Reported', 'Thank you. We will review this topic.');
-                }},
-              ]);
-            }}
+                {
+                  text: 'Report',
+                  style: 'destructive',
+                  onPress: () =>
+                    navigation.navigate('Report', {
+                      type: 'topic',
+                      targetId: topic.id,
+                      targetUserId: topic.id,
+                    }),
+                },
+              ])
+            }
           >
             <Ionicons name="ellipsis-horizontal" size={24} color={CommunityColors.text.primary} />
           </TouchableOpacity>
         </View>
 
-        {/* Topic Info */}
         <View style={styles.topicInfo}>
           <Text style={styles.topicEmoji}>{topic.emoji}</Text>
           <Text style={styles.topicName}>{topic.name}</Text>
@@ -319,29 +337,30 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
             <Text style={styles.statDot}>•</Text>
             <Text style={styles.stat}>{topic.posts.toLocaleString()} posts</Text>
           </View>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.joinButton, topic.isJoined && styles.joinedButton]}
             onPress={handleJoinToggle}
           >
             <Text style={[styles.joinText, topic.isJoined && styles.joinedText]}>
               {topic.isJoined ? 'Joined ✓' : 'Join Topic'}
-                          </Text>
+            </Text>
           </TouchableOpacity>
         </View>
       </LinearGradient>
 
-      {/* Content */}
       <View style={styles.content}>
-        {/* Sort Options */}
         <View style={styles.sortContainer}>
-          <TouchableOpacity style={styles.sortButton} onPress={() => {
-            Alert.alert('Sort by', '', [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'Trending', onPress: () => setSortBy('trending') },
-              { text: 'Newest', onPress: () => setSortBy('newest') },
-              { text: 'Most Popular', onPress: () => setSortBy('popular') },
-            ]);
-          }}>
+          <TouchableOpacity
+            style={styles.sortButton}
+            onPress={() =>
+              Alert.alert('Sort by', '', [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Trending', onPress: () => setSortBy('trending') },
+                { text: 'Newest', onPress: () => setSortBy('newest') },
+                { text: 'Most Popular', onPress: () => setSortBy('popular') },
+              ])
+            }
+          >
             <Text style={styles.sortText}>
               {sortBy.charAt(0).toUpperCase() + sortBy.slice(1)}
             </Text>
@@ -352,15 +371,18 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
           </TouchableOpacity>
         </View>
 
-        {/* Posts */}
-        <FlatList
+        <AutoHideFlatList
           data={sortedPosts}
           renderItem={renderPost}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.postsList}
           showsVerticalScrollIndicator={false}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={CommunityColors.primary} />
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={themeColors.spinnerColor}
+            />
           }
           ListEmptyComponent={
             <View style={styles.emptyState}>
@@ -372,7 +394,6 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
         />
       </View>
 
-      {/* Floating Post Button */}
       <TouchableOpacity style={styles.fab} onPress={navigateToCreatePost}>
         <LinearGradient colors={[topic.color, topic.color + 'aa']} style={styles.fabGradient}>
           <Ionicons name="create-outline" size={28} color="white" />
@@ -474,6 +495,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
   },
+  postHeaderText: { marginLeft: 12, flex: 1 },
   postNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   postAuthor: { fontSize: 15, fontWeight: '700', color: CommunityColors.text.primary },
   postTime: { fontSize: 13, color: CommunityColors.text.tertiary, marginTop: 2 },
@@ -484,10 +506,9 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 16,
   },
-  postImage: {
-    width: (width - 88) / 2,
-    height: 150,
+  postImageAvatar: {
     borderRadius: CommunityBorderRadius.lg,
+    overflow: 'hidden',
   },
   postActions: { flexDirection: 'row', gap: 24 },
   action: { flexDirection: 'row', alignItems: 'center', gap: 6 },

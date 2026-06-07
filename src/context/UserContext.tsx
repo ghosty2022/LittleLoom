@@ -1,19 +1,12 @@
 // src/context/UserContext.tsx
-// FIXED VERSION - Addresses:
-// 1. Race conditions in username registration
-// 2. Atomic username operations
-// 3. Better error handling
-// 4. Consistent profile sync
-
-import React, { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 
-// Import UserRole and permissions from central location
 import { UserRole, Permission, ROLE_PERMISSIONS } from '../types/roles';
+import { useAuth } from './AuthContext';
 
-// Use same keys as AuthContext for consistency
 const SECURE_KEYS = {
   USER_PROFILE: 'littleloom_user_profile_secure',
   COMMUNITY_PROFILE: 'littleloom_community_profile_secure',
@@ -21,13 +14,12 @@ const SECURE_KEYS = {
 } as const;
 
 const ASYNC_KEYS = {
-  USER_PROFILE: 'littleloom_user_profile',
   COMMUNITY_PROFILE: 'littleloom_community_profile',
   USERNAME_REGISTRY: 'littleloom_username_registry',
   PROFILE_SYNC_QUEUE: 'littleloom_profile_sync_queue',
+  COMMUNITY_SELECTED_TOPICS: '@community_selected_topics',
 } as const;
 
-// Secure storage wrapper with better error handling
 const secureStorage = {
   async getItem(key: string): Promise<string | null> {
     try {
@@ -59,7 +51,6 @@ const secureStorage = {
   },
 };
 
-// Community-specific types
 export interface CommunityProfile {
   userId: string;
   displayName: string;
@@ -92,7 +83,6 @@ export interface CommunityBadge {
   earnedAt: string;
 }
 
-// Updated to match AuthContext UserProfile exactly
 export interface UserProfile {
   id: string;
   fullName: string;
@@ -107,12 +97,11 @@ export interface UserProfile {
   };
   createdAt: string;
   lastLoginAt: string;
-  // Community linkage
   communityProfile?: CommunityProfile;
 }
 
 interface UsernameRegistry {
-  [username: string]: string; // username -> userId mapping
+  [username: string]: string;
 }
 
 interface UserState {
@@ -123,7 +112,6 @@ interface UserState {
   usernameRegistry: UsernameRegistry;
 }
 
-// FIX: Default context value that NEVER throws — provides safe no-ops until Provider mounts
 const DEFAULT_USER_STATE: UserState = {
   isLoading: true,
   profile: null,
@@ -133,44 +121,42 @@ const DEFAULT_USER_STATE: UserState = {
 };
 
 interface UserContextType extends UserState {
-  // Family/Parent methods
   loadUser: () => Promise<void>;
   updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
   updateAvatar: (uri: string) => Promise<void>;
   updatePreferences: (prefs: Partial<UserProfile['preferences']>) => Promise<void>;
   hasPermission: (action: keyof Permission) => boolean;
   canAccessFeature: (feature: string) => boolean;
-
-  // Community methods
   loadCommunityProfile: (userId?: string) => Promise<CommunityProfile | null>;
   updateCommunityProfile: (updates: Partial<CommunityProfile>) => Promise<void>;
   toggleCommunityPrivacy: () => Promise<void>;
   getCommunityStats: () => Promise<CommunityProfile['stats']>;
   isCommunityProfileComplete: () => boolean;
-
-  // Username security - FIXED: Atomic operations
   checkUsernameAvailable: (username: string, currentUserId?: string) => Promise<{ available: boolean; message: string }>;
   registerUsername: (username: string, userId: string) => Promise<boolean>;
   unregisterUsername: (username: string) => Promise<boolean>;
-  // NEW: Atomic username update
   updateUsername: (oldUsername: string, newUsername: string, userId: string) => Promise<{ success: boolean; message: string }>;
-
-  // Topic preferences
   updateSelectedTopics: (topics: string[]) => Promise<void>;
   getSelectedTopics: () => string[];
-
-  // Profile sync
   syncProfileToPosts: () => Promise<void>;
-
-  // Utility
   getDisplayName: () => string;
   getUserType: () => 'parent' | 'guardian' | 'community';
   clearUserData: () => Promise<void>;
+  isReady: boolean;
+  // NEW: Community-specific profile updates
+  updateCommunityDisplayName: (name: string) => Promise<void>;
+  updateCommunityBio: (bio: string) => Promise<void>;
+  updateCommunityAvatar: (uri: string) => Promise<void>;
+  updateCommunityHandle: (handle: string) => Promise<{ success: boolean; message: string }>;
+  getCommunityHandle: () => string;
+  // NEW: Seamless auth integration
+  syncWithAuthProfile: () => Promise<void>;
+  getAuthProfile: () => UserProfile | null;
 }
 
-// FIX: Create context with a default value that has all methods as no-ops
 const createDefaultContextValue = (): UserContextType => ({
   ...DEFAULT_USER_STATE,
+  isReady: false,
   loadUser: async () => {},
   updateProfile: async () => {},
   updateAvatar: async () => {},
@@ -192,73 +178,101 @@ const createDefaultContextValue = (): UserContextType => ({
   getDisplayName: () => 'Anonymous',
   getUserType: () => 'community',
   clearUserData: async () => {},
+  updateCommunityDisplayName: async () => {},
+  updateCommunityBio: async () => {},
+  updateCommunityAvatar: async () => {},
+  updateCommunityHandle: async () => ({ success: false, message: '' }),
+  getCommunityHandle: () => '',
+  syncWithAuthProfile: async () => {},
+  getAuthProfile: () => null,
 });
 
 const UserContext = createContext<UserContextType>(createDefaultContextValue());
 
-// FIX: Import useAuth at module level to avoid dynamic require issues
-let useAuthHook: any = null;
-try {
-  const AuthModule = require('./AuthContext');
-  useAuthHook = AuthModule.useAuth;
-} catch (e) {
-  // AuthContext not available yet — will retry in provider
-}
-
 export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const auth = useAuthHook ? useAuthHook() : { 
-    isAuthenticated: false, 
-    isLoading: false, 
-    userProfile: null, 
-    updateUserProfile: async () => {} 
-  };
-  
-  const { isAuthenticated, isLoading: authLoading, userProfile: authProfile, updateUserProfile: updateAuthProfile } = auth;
+  const { isAuthenticated, isLoading: authLoading, userProfile: authProfile, updateUserProfile: updateAuthProfile, getCurrentUserProfile } = useAuth();
 
   const [state, setState] = useState<UserState>(DEFAULT_USER_STATE);
   const [isReady, setIsReady] = useState(false);
   const syncQueueRef = useRef<Partial<CommunityProfile>[]>([]);
   const initRef = useRef(false);
-  // NEW: Lock for atomic username operations
   const usernameLockRef = useRef(false);
 
-  // FIX: Load user data immediately on mount, don't wait for auth effect
+  // Gate initialization on auth being ready
   useEffect(() => {
     if (initRef.current) return;
+    if (authLoading) return;
+
     initRef.current = true;
-    
     const initialize = async () => {
       await loadUser();
       setIsReady(true);
     };
-    
     initialize();
-  }, []);
+  }, [authLoading]);
 
-  // React to auth changes after initial load
+  // React to auth state changes after initial load
   useEffect(() => {
     if (!isReady) return;
-    
-    if (isAuthenticated && !authLoading) {
+    if (authLoading) return;
+
+    if (isAuthenticated && authProfile) {
       loadUser();
     } else if (!isAuthenticated) {
       setState(DEFAULT_USER_STATE);
+      setIsReady(false);
+      initRef.current = false;
     }
-  }, [isAuthenticated, authLoading, isReady]);
+  }, [isAuthenticated, authLoading, isReady, authProfile?.id]);
+
+  const saveCommunityProfile = async (profile: CommunityProfile): Promise<void> => {
+    const profileStr = JSON.stringify(profile);
+    await Promise.all([
+      secureStorage.setItem(SECURE_KEYS.COMMUNITY_PROFILE, profileStr),
+      AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_PROFILE, profileStr),
+    ]);
+  };
+
+  const createDefaultCommunityProfile = (userProfile: UserProfile): CommunityProfile => ({
+    userId: userProfile.id,
+    displayName: userProfile.fullName,
+    handle: `@${userProfile.fullName.toLowerCase().replace(/\s+/g, '_')}_${userProfile.id.slice(0, 4)}`,
+    bio: '',
+    isVerified: false,
+    joinDate: new Date().toISOString(),
+    stats: {
+      posts: 0,
+      followers: 0,
+      following: 0,
+      helpful: 0,
+    },
+    badges: [],
+    preferences: {
+      isPublic: true,
+      allowMessages: true,
+      showLocation: false,
+      selectedTopics: [],
+    },
+  });
+
+  const saveUsernameRegistry = async (registry: UsernameRegistry): Promise<void> => {
+    const registryStr = JSON.stringify(registry);
+    await Promise.all([
+      secureStorage.setItem(SECURE_KEYS.USERNAME_REGISTRY, registryStr),
+      AsyncStorage.setItem(ASYNC_KEYS.USERNAME_REGISTRY, registryStr),
+    ]);
+  };
 
   const loadUser = useCallback(async () => {
     setState(prev => ({ ...prev, isLoading: true }));
     try {
-      const [secureData, asyncData, communitySecure, communityAsync, registrySecure, registryAsync] = await Promise.all([
-        secureStorage.getItem(SECURE_KEYS.USER_PROFILE),
-        AsyncStorage.getItem(ASYNC_KEYS.USER_PROFILE),
+      const [communitySecure, communityAsync, registrySecure, registryAsync] = await Promise.all([
         secureStorage.getItem(SECURE_KEYS.COMMUNITY_PROFILE),
         AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_PROFILE),
         secureStorage.getItem(SECURE_KEYS.USERNAME_REGISTRY),
         AsyncStorage.getItem(ASYNC_KEYS.USERNAME_REGISTRY),
       ]);
 
-      const profileStr = secureData || asyncData;
       const communityStr = communitySecure || communityAsync;
       const registryStr = registrySecure || registryAsync;
 
@@ -266,22 +280,23 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       let communityProfile: CommunityProfile | null = null;
       let usernameRegistry: UsernameRegistry = {};
 
-      if (profileStr) {
-        try { profile = JSON.parse(profileStr); } catch (e) { /* ignore parse error */ }
-      }
-      
-      // Only use authProfile if no stored profile exists
-      if (!profile && authProfile) {
+      // AuthContext is the single source of truth for auth profile
+      if (authProfile) {
         profile = {
-          ...authProfile,
+          id: authProfile.id,
+          fullName: authProfile.fullName,
+          email: authProfile.email,
+          phoneNumber: authProfile.phoneNumber,
+          avatar: authProfile.avatar,
+          role: authProfile.role as UserRole | 'parent1' | 'parent2' | 'guardian',
           preferences: {
-            notifications: true,
-            darkMode: 'system',
+            notifications: authProfile.preferences?.notifications ?? true,
+            darkMode: (authProfile.preferences?.darkMode as 'system' | 'light' | 'dark') ?? 'system',
             units: 'metric',
           },
+          createdAt: authProfile.createdAt,
           lastLoginAt: new Date().toISOString(),
         };
-        await saveUserProfile(profile);
       }
 
       if (communityStr) {
@@ -295,7 +310,6 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         try { usernameRegistry = JSON.parse(registryStr); } catch (e) { /* ignore */ }
       }
 
-      // Calculate permissions based on role
       const role = profile?.role;
       let permissions: Permission | null = null;
 
@@ -317,53 +331,6 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [authProfile]);
 
-  const saveUserProfile = async (profile: UserProfile): Promise<void> => {
-    const profileStr = JSON.stringify(profile);
-    await Promise.all([
-      secureStorage.setItem(SECURE_KEYS.USER_PROFILE, profileStr),
-      AsyncStorage.setItem(ASYNC_KEYS.USER_PROFILE, profileStr),
-    ]);
-  };
-
-  const createDefaultCommunityProfile = (userProfile: UserProfile): CommunityProfile => ({
-    userId: userProfile.id,
-    displayName: userProfile.fullName,
-    handle: `@${userProfile.fullName.toLowerCase().replace(/\\s+/g, '_')}_${userProfile.id.slice(0, 4)}`,
-    bio: '',
-    isVerified: false,
-    joinDate: new Date().toISOString(),
-    stats: {
-      posts: 0,
-      followers: 0,
-      following: 0,
-      helpful: 0,
-    },
-    badges: [],
-    preferences: {
-      isPublic: true,
-      allowMessages: true,
-      showLocation: false,
-      selectedTopics: [],
-    },
-  });
-
-  const saveCommunityProfile = async (profile: CommunityProfile): Promise<void> => {
-    const profileStr = JSON.stringify(profile);
-    await Promise.all([
-      secureStorage.setItem(SECURE_KEYS.COMMUNITY_PROFILE, profileStr),
-      AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_PROFILE, profileStr),
-    ]);
-  };
-
-  const saveUsernameRegistry = async (registry: UsernameRegistry): Promise<void> => {
-    const registryStr = JSON.stringify(registry);
-    await Promise.all([
-      secureStorage.setItem(SECURE_KEYS.USERNAME_REGISTRY, registryStr),
-      AsyncStorage.setItem(ASYNC_KEYS.USERNAME_REGISTRY, registryStr),
-    ]);
-  };
-
-  // FIXED: USERNAME SECURITY METHODS with atomic operations
   const checkUsernameAvailable = useCallback(async (
     username: string, 
     currentUserId?: string
@@ -392,7 +359,6 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { available: false, message: 'This username is reserved' };
     }
 
-    // Check registry
     const registry = state.usernameRegistry;
     const existingUserId = registry[trimmed];
 
@@ -403,11 +369,9 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { available: true, message: 'Username is available' };
   }, [state.usernameRegistry]);
 
-  // FIXED: Atomic username registration with lock
   const registerUsername = useCallback(async (username: string, userId: string): Promise<boolean> => {
     const trimmed = username.trim().toLowerCase().replace(/^@/, '');
     
-    // Wait for any ongoing operation
     while (usernameLockRef.current) {
       await new Promise(resolve => setTimeout(resolve, 50));
     }
@@ -415,7 +379,6 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     usernameLockRef.current = true;
     
     try {
-      // Re-check availability under lock
       const check = await checkUsernameAvailable(trimmed, userId);
       if (!check.available) {
         return false;
@@ -450,7 +413,6 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [state.usernameRegistry]);
 
-  // NEW: Atomic username update (unregister old + register new)
   const updateUsername = useCallback(async (
     oldUsername: string, 
     newUsername: string, 
@@ -463,13 +425,11 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     usernameLockRef.current = true;
     
     try {
-      // Validate new username
       const check = await checkUsernameAvailable(newUsername, userId);
       if (!check.available) {
         return { success: false, message: check.message };
       }
       
-      // Unregister old
       const oldTrimmed = oldUsername.trim().toLowerCase().replace(/^@/, '');
       const newTrimmed = newUsername.trim().toLowerCase().replace(/^@/, '');
       
@@ -494,14 +454,14 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     try {
       const newProfile = { ...state.profile, ...updates };
-      await saveUserProfile(newProfile);
-
+      
+      // Sync back to AuthContext (single source of truth for auth profile)
       try {
         if (updateAuthProfile) {
           await updateAuthProfile(updates);
         }
       } catch (authError) {
-        console.log('AuthContext sync failed, local storage is source of truth');
+        console.log('AuthContext sync failed:', authError);
       }
 
       let permissions = state.permissions;
@@ -558,14 +518,12 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return null;
   }, [state.communityProfile, state.profile]);
 
-  // FIXED: updateCommunityProfile with atomic username handling
   const updateCommunityProfile = useCallback(async (updates: Partial<CommunityProfile>) => {
     if (!state.communityProfile) return;
 
     try {
       const newProfile = { ...state.communityProfile, ...updates };
 
-      // Handle username change atomically
       if (updates.handle && updates.handle !== state.communityProfile.handle) {
         const oldHandle = state.communityProfile.handle.replace(/^@/, '');
         const newHandle = updates.handle.replace(/^@/, '');
@@ -584,6 +542,51 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       Alert.alert('Error', 'Failed to update community profile');
     }
   }, [state.communityProfile, updateUsername]);
+
+  // NEW: Community-specific convenience methods
+  const updateCommunityDisplayName = useCallback(async (name: string) => {
+    if (!state.communityProfile) return;
+    await updateCommunityProfile({ displayName: name.trim() });
+  }, [state.communityProfile, updateCommunityProfile]);
+
+  const updateCommunityBio = useCallback(async (bio: string) => {
+    if (!state.communityProfile) return;
+    await updateCommunityProfile({ bio: bio.trim() });
+  }, [state.communityProfile, updateCommunityProfile]);
+
+  const updateCommunityAvatar = useCallback(async (uri: string) => {
+    if (!state.communityProfile) return;
+    await updateCommunityProfile({ avatar: uri });
+    // Also sync to auth profile
+    await updateProfile({ avatar: uri });
+  }, [state.communityProfile, updateCommunityProfile, updateProfile]);
+
+  const updateCommunityHandle = useCallback(async (handle: string): Promise<{ success: boolean; message: string }> => {
+    if (!state.communityProfile) {
+      return { success: false, message: 'No community profile found' };
+    }
+    
+    const cleanHandle = handle.trim().toLowerCase().replace(/^@/, '');
+    const currentHandle = state.communityProfile.handle.replace(/^@/, '');
+    
+    if (cleanHandle === currentHandle) {
+      return { success: true, message: 'No changes needed' };
+    }
+
+    try {
+      const result = await updateUsername(currentHandle, cleanHandle, state.communityProfile.userId);
+      if (result.success) {
+        await updateCommunityProfile({ handle: `@${cleanHandle}` });
+      }
+      return result;
+    } catch (error) {
+      return { success: false, message: 'Failed to update handle' };
+    }
+  }, [state.communityProfile, updateUsername, updateCommunityProfile]);
+
+  const getCommunityHandle = useCallback((): string => {
+    return state.communityProfile?.handle || state.profile?.fullName || 'Anonymous';
+  }, [state.communityProfile, state.profile]);
 
   const toggleCommunityPrivacy = useCallback(async () => {
     if (!state.communityProfile) return;
@@ -622,9 +625,9 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     await saveCommunityProfile(newProfile);
-    await AsyncStorage.setItem('@community_selected_topics', JSON.stringify(trimmedTopics));
+    await AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS, JSON.stringify(trimmedTopics));
     if (state.profile?.id) {
-      await AsyncStorage.setItem(`@community_selected_topics_${state.profile.id}`, JSON.stringify(trimmedTopics));
+      await AsyncStorage.setItem(`${ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS}_${state.profile.id}`, JSON.stringify(trimmedTopics));
     }
 
     setState(prev => ({ ...prev, communityProfile: newProfile }));
@@ -684,20 +687,53 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     await Promise.all([
-      secureStorage.deleteItem(SECURE_KEYS.USER_PROFILE),
       secureStorage.deleteItem(SECURE_KEYS.COMMUNITY_PROFILE),
       secureStorage.deleteItem(SECURE_KEYS.USERNAME_REGISTRY),
-      AsyncStorage.removeItem(ASYNC_KEYS.USER_PROFILE),
       AsyncStorage.removeItem(ASYNC_KEYS.COMMUNITY_PROFILE),
       AsyncStorage.removeItem(ASYNC_KEYS.USERNAME_REGISTRY),
       AsyncStorage.removeItem(ASYNC_KEYS.PROFILE_SYNC_QUEUE),
     ]);
     setState(DEFAULT_USER_STATE);
+    setIsReady(false);
+    initRef.current = false;
   }, [state.communityProfile, unregisterUsername]);
 
-  // FIX: Memoize value so it's stable and immediately available to children
+  // NEW: Seamless auth integration
+  const syncWithAuthProfile = useCallback(async () => {
+    if (!authProfile) return;
+
+    try {
+      const updates: Partial<UserProfile> = {
+        id: authProfile.id,
+        fullName: authProfile.fullName,
+        email: authProfile.email,
+        avatar: authProfile.avatar,
+      };
+
+      await updateProfile(updates);
+
+      // Sync community-specific fields if they exist in auth
+      if (authProfile.communityDisplayName || authProfile.communityBio || authProfile.communityAvatar) {
+        const commUpdates: Partial<CommunityProfile> = {};
+        if (authProfile.communityDisplayName) commUpdates.displayName = authProfile.communityDisplayName;
+        if (authProfile.communityBio) commUpdates.bio = authProfile.communityBio;
+        if (authProfile.communityAvatar) commUpdates.avatar = authProfile.communityAvatar;
+        if (authProfile.communityHandle) commUpdates.handle = authProfile.communityHandle;
+
+        await updateCommunityProfile(commUpdates);
+      }
+    } catch (error) {
+      console.error('syncWithAuthProfile error:', error);
+    }
+  }, [authProfile, updateProfile, updateCommunityProfile]);
+
+  const getAuthProfile = useCallback(() => {
+    return state.profile;
+  }, [state.profile]);
+
   const value = useMemo(() => ({
     ...state,
+    isReady,
     loadUser,
     updateProfile,
     updateAvatar,
@@ -719,8 +755,15 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     getDisplayName,
     getUserType,
     clearUserData,
+    updateCommunityDisplayName,
+    updateCommunityBio,
+    updateCommunityAvatar,
+    updateCommunityHandle,
+    getCommunityHandle,
+    syncWithAuthProfile,
+    getAuthProfile,
   }), [
-    state, 
+    state, isReady,
     loadUser, 
     updateProfile, 
     updateAvatar, 
@@ -742,6 +785,13 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     getDisplayName,
     getUserType,
     clearUserData,
+    updateCommunityDisplayName,
+    updateCommunityBio,
+    updateCommunityAvatar,
+    updateCommunityHandle,
+    getCommunityHandle,
+    syncWithAuthProfile,
+    getAuthProfile,
   ]);
 
   return (
@@ -751,7 +801,6 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   );
 };
 
-// FIX: Safe useUser that never throws during initialization
 export const useUser = () => {
   const context = useContext(UserContext);
   return context;

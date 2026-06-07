@@ -1,46 +1,24 @@
-// src/screens/community/FollowingScreen.tsx
-// FIXED VERSION - Addresses:
-// 1. Proper async getFollowing usage
-// 2. Consistent user data handling
-// 3. Proper loading states
-
-import React, { useState, useCallback, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  TextInput,
-  RefreshControl,
-  Alert,
-  Dimensions,
-  Image,
-} from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, RefreshControl, Alert, Dimensions, StatusBar  } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInUp } from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { CommunityStackParamList } from '../../types/navigation';
+import type {  NativeStackScreenProps  } from '@react-navigation/native-stack';
+import type {  CommunityStackParamList  } from '../../types/navigation';
 import { useCommunity, CommunityUser } from '../../context/CommunityContext';
 import { useUser } from '../../context/UserContext';
 import { showSuccessModal, showErrorModal } from '../../utils/modal';
-import { 
-  CommunityColors, 
-  CommunityGradients, 
-  CommunitySpacing, 
-  CommunityBorderRadius,
-  CommunityShadows 
-} from '../../theme/CommunityTheme';
+import { useCustomization } from '../../hooks/useCustomization';
+import { SafeAvatar } from '../../components/SafeAvatar';
+import { AutoHideFlatList } from '../../components/AutoHideScrollWrappers';
+import { CommunityColors, CommunityGradients, CommunitySpacing, CommunityBorderRadius, CommunityShadows } from '../../theme/CommunityTheme';
+
 
 type FollowingScreenProps = NativeStackScreenProps<CommunityStackParamList, 'Following'>;
 
 const { width } = Dimensions.get('window');
 
-// LittleLoom Team as default following (cannot be unfollowed)
 const LITTLELOOM_TEAM: CommunityUser = {
   id: 'littleloom_team',
   displayName: 'LittleLoom Team',
@@ -63,7 +41,6 @@ const LITTLELOOM_TEAM: CommunityUser = {
   isFollowing: true,
 };
 
-// Generate realistic demo following data
 const generateDemoFollowing = (count: number, baseId: string): CommunityUser[] => {
   const names = [
     'Jessica White', 'Andrew Kim', 'Michelle Lee', 'Brandon Scott', 'Stephanie Cruz',
@@ -74,7 +51,7 @@ const generateDemoFollowing = (count: number, baseId: string): CommunityUser[] =
     'Steven Hill', 'Melissa Green', 'Jason Adams', 'Rebecca Baker', 'Daniel Nelson',
   ];
   
-  const avatars = ['👩', '👨', '👧', '👦', '👵', '👴', '👱\\u200d♀️', '👱\\u200d♂️', '🧑', '👳\\u200d♀️', '👳\\u200d♂️', '👲', '👮\\u200d♀️', '👮\\u200d♂️', '👷\\u200d♀️', '👷\\u200d♂️', '💂\\u200d♀️', '💂\\u200d♂️', '🕵️\\u200d♀️', '🕵️\\u200d♂️', '👩\\u200d⚕️', '👨\\u200d⚕️', '👩\\u200d🌾', '👨\\u200d🌾', '👩\\u200d🍳', '👨\\u200d🍳', '👩\\u200d🎓', '👨\\u200d🎓', '👩\\u200d🎤', '👨\\u200d🎤'];
+  const avatars = ['👩', '👨', '👧', '👦', '👵', '👴', '👱‍♀️', '👱‍♂️', '🧑', '👳‍♀️', '👳‍♂️', '👲', '👮‍♀️', '👮‍♂️', '👷‍♀️', '👷‍♂️', '💂‍♀️', '💂‍♂️', '🕵️‍♀️', '🕵️‍♂️', '👩‍⚕️', '👨‍⚕️', '👩‍🌾', '👨‍🌾', '👩‍🍳', '👨‍🍳', '👩‍🎓', '👨‍🎓', '👩‍🎤', '👨‍🎤'];
   
   const bios = [
     'Sharing parenting wins & fails 😅',
@@ -92,7 +69,7 @@ const generateDemoFollowing = (count: number, baseId: string): CommunityUser[] =
   return Array.from({ length: count }, (_, i) => ({
     id: `following_${baseId}_${i}`,
     displayName: names[i % names.length],
-    handle: `@${names[i % names.length].toLowerCase().replace(/\\s+/g, '_')}_${Math.floor(Math.random() * 999)}`,
+    handle: `@${names[i % names.length].toLowerCase().replace(/\s+/g, '_')}_${Math.floor(Math.random() * 999)}`,
     avatar: avatars[i % avatars.length],
     isVerified: i % 5 === 0,
     bio: bios[i % bios.length],
@@ -112,31 +89,17 @@ const generateDemoFollowing = (count: number, baseId: string): CommunityUser[] =
   }));
 };
 
-// Helper to check if avatar is an image URL
-const isImageAvatar = (avatar: string): boolean => {
-  if (!avatar) return false;
-  return avatar.startsWith('file://') || avatar.startsWith('http') || avatar.startsWith('data:image');
-};
-
-// Render avatar component
-const RenderAvatar = ({ avatar, size = 44 }: { avatar: string; size?: number }) => {
-  if (isImageAvatar(avatar)) {
-    return (
-      <Image 
-        source={{ uri: avatar }} 
-        style={{ width: size, height: size, borderRadius: size / 2 }} 
-        resizeMode="cover"
-      />
-    );
-  }
-  return <Text style={{ fontSize: size * 0.6, textAlign: 'center', lineHeight: size }}>{avatar}</Text>;
-};
-
 export default function FollowingScreen({ navigation, route }: FollowingScreenProps) {
   const { userId } = route.params;
   const { currentUser, followUser, unfollowUser, isFollowing, blockUser, isUserBlocked, getUserById, getFollowing } = useCommunity();
   const { profile } = useUser();
   
+  const {
+    shouldReduceMotion,
+    triggerHaptic,
+    spinnerColor,
+  } = useCustomization();
+
   const [followingList, setFollowingList] = useState<CommunityUser[]>([]);
   const [filteredFollowing, setFilteredFollowing] = useState<CommunityUser[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -146,16 +109,13 @@ export default function FollowingScreen({ navigation, route }: FollowingScreenPr
 
   const isOwnProfile = userId === currentUser?.id;
 
-  // FIXED: Proper async loading with await
   const loadFollowing = useCallback(async () => {
     setLoading(true);
     try {
       await new Promise(resolve => setTimeout(resolve, 600));
       
-      // Always include LittleLoom Team as first following
       let demoFollowing = [LITTLELOOM_TEAM];
       
-      // FIXED: Await the async getFollowing
       let actualFollowing: string[] = [];
       try {
         actualFollowing = await getFollowing(userId);
@@ -163,16 +123,13 @@ export default function FollowingScreen({ navigation, route }: FollowingScreenPr
         console.log('Could not load persisted following:', e);
       }
       
-      // Get target user for stats
       const targetUser = getUserById(userId);
       const count = targetUser?.stats?.following || Math.floor(Math.random() * 40) + 5;
       
-      // Generate additional following based on count
       const additionalFollowing = generateDemoFollowing(Math.min(count, 30), userId);
       
       demoFollowing = [...demoFollowing, ...additionalFollowing];
       
-      // FIXED: Remove duplicates properly
       const seen = new Set<string>();
       const uniqueFollowing = demoFollowing.filter((user) => {
         if (seen.has(user.id)) return false;
@@ -215,9 +172,8 @@ export default function FollowingScreen({ navigation, route }: FollowingScreenPr
   };
 
   const handleUnfollow = async (user: CommunityUser) => {
-    // Prevent unfollowing LittleLoom Team
     if (user.id === 'littleloom_team') {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      triggerHaptic('error');
       showErrorModal({ message: 'Cannot unfollow LittleLoom Team' });
       return;
     }
@@ -225,7 +181,7 @@ export default function FollowingScreen({ navigation, route }: FollowingScreenPr
     if (unfollowLoading[user.id]) return;
     
     setUnfollowLoading(prev => ({ ...prev, [user.id]: true }));
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    triggerHaptic('light');
     
     try {
       await unfollowUser(user.id);
@@ -260,7 +216,7 @@ export default function FollowingScreen({ navigation, route }: FollowingScreenPr
   };
 
   const handleMoreOptions = (user: CommunityUser) => {
-    const isBlocked = isUserBlocked(user.id);
+    const blocked = isUserBlocked(user.id);
     
     Alert.alert(
       user.displayName,
@@ -268,13 +224,13 @@ export default function FollowingScreen({ navigation, route }: FollowingScreenPr
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: isBlocked ? 'Unblock' : 'Block',
+          text: blocked ? 'Unblock' : 'Block',
           style: 'destructive',
           onPress: async () => {
             try {
               await blockUser(user.id);
               showSuccessModal({ 
-                message: isBlocked ? 'User unblocked' : 'User blocked' 
+                message: blocked ? 'User unblocked' : 'User blocked' 
               });
             } catch (error) {
               showErrorModal({ message: 'Failed to block user' });
@@ -304,14 +260,23 @@ export default function FollowingScreen({ navigation, route }: FollowingScreenPr
     const isTeam = item.id === 'littleloom_team';
     
     return (
-      <Animated.View entering={FadeInUp.delay(index * 30)}>
+      <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(index * 30)}>
         <TouchableOpacity 
           style={styles.userCard}
           onPress={() => handleUserPress(item.id)}
           activeOpacity={0.8}
         >
           <View style={styles.avatarContainer}>
-            <RenderAvatar avatar={item.avatar} size={44} />
+            {/* UPGRADED: Use SafeAvatar with online status */}
+            <SafeAvatar
+              avatar={item.avatar}
+              size={44}
+              fallbackIcon="person"
+              fallbackColor={CommunityColors.primary}
+              fallbackBgColor={CommunityColors.background.elevated}
+              borderWidth={2}
+              borderColor={item.onlineStatus === 'online' ? CommunityColors.success : '#fff'}
+            />
             {item.onlineStatus === 'online' && (
               <View style={styles.onlineDot} />
             )}
@@ -399,7 +364,7 @@ export default function FollowingScreen({ navigation, route }: FollowingScreenPr
   );
 
   return (
-    <LinearGradient colors={CommunityColors.background.gradient} style={styles.container}>
+    <LinearGradient colors={CommunityColors.background.gradient} style={[styles.container]}>
       <StatusBar style="dark" />
       
       {/* Header */}
@@ -447,14 +412,18 @@ export default function FollowingScreen({ navigation, route }: FollowingScreenPr
           <Text style={styles.loadingText}>Loading...</Text>
         </View>
       ) : (
-        <FlatList
+        <AutoHideFlatList
           data={filteredFollowing}
           renderItem={renderFollowing}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContainer}
           showsVerticalScrollIndicator={false}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={CommunityColors.primary} />
+            <RefreshControl 
+              refreshing={refreshing} 
+              onRefresh={onRefresh} 
+              tintColor={spinnerColor} 
+            />
           }
           ListEmptyComponent={renderEmpty}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
@@ -465,7 +434,7 @@ export default function FollowingScreen({ navigation, route }: FollowingScreenPr
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+container: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -508,7 +477,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 12,
   },
-  avatarContainer: { position: 'relative', marginRight: 12, width: 44, height: 44, borderRadius: 22, backgroundColor: CommunityColors.background.elevated, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
+  avatarContainer: { 
+    position: 'relative', 
+    marginRight: 12 
+  },
   onlineDot: {
     position: 'absolute',
     bottom: 2,
@@ -522,7 +494,11 @@ const styles = StyleSheet.create({
   },
   userInfo: { flex: 1, marginRight: 8 },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  displayName: { fontSize: 15, fontWeight: '700', color: CommunityColors.text.primary },
+  displayName: { 
+    fontSize: 15, 
+    fontWeight: '700', 
+    color: CommunityColors.text.primary 
+  },
   teamBadge: {
     backgroundColor: CommunityColors.primary + '20',
     paddingHorizontal: 6,
@@ -535,9 +511,21 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: CommunityColors.primary,
   },
-  handle: { fontSize: 13, color: CommunityColors.text.secondary, marginTop: 1 },
-  bio: { fontSize: 12, color: CommunityColors.text.tertiary, marginTop: 2 },
-  actions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  handle: { 
+    fontSize: 13, 
+    color: CommunityColors.text.secondary, 
+    marginTop: 1 
+  },
+  bio: { 
+    fontSize: 12, 
+    color: CommunityColors.text.tertiary, 
+    marginTop: 2 
+  },
+  actions: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 8 
+  },
   followBtn: {
     backgroundColor: CommunityColors.background.card,
     borderWidth: 1,
@@ -557,11 +545,17 @@ const styles = StyleSheet.create({
     borderColor: CommunityColors.error,
   },
   loadingBtn: { opacity: 0.6 },
-  followBtnText: { color: CommunityColors.text.primary, fontSize: 13, fontWeight: '700' },
+  followBtnText: { 
+    color: CommunityColors.text.primary, 
+    fontSize: 13, 
+    fontWeight: '700' 
+  },
   teamBtnText: {
     color: CommunityColors.primary,
   },
-  blockedBtnText: { color: CommunityColors.error },
+  blockedBtnText: { 
+    color: CommunityColors.error 
+  },
   moreBtn: { padding: 4 },
   youBadge: {
     backgroundColor: CommunityColors.primary + '15',
@@ -569,7 +563,11 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 8,
   },
-  youText: { color: CommunityColors.primary, fontSize: 12, fontWeight: '700' },
+  youText: { 
+    color: CommunityColors.primary, 
+    fontSize: 12, 
+    fontWeight: '700' 
+  },
   separator: {
     height: 1,
     backgroundColor: CommunityColors.divider,
@@ -580,7 +578,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  loadingText: { fontSize: 16, color: CommunityColors.text.secondary },
+  loadingText: { 
+    fontSize: 16, 
+    color: CommunityColors.text.secondary 
+  },
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -606,5 +607,10 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 24,
   },
-  exploreText: { color: 'white', fontSize: 16, fontWeight: '700' },
+  exploreText: { 
+    color: 'white', 
+    fontSize: 16, 
+    fontWeight: '700' 
+  },
 });
+

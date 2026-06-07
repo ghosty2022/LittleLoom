@@ -1,6 +1,4 @@
-// src/hooks/useModal.ts
-// Easy-to-use modal hook with Sweet Alert functions
-
+﻿
 import { useModal as useModalContext, SweetAlert, ModalConfig } from '../utils/modal';
 
 export const useModal = () => {
@@ -8,7 +6,6 @@ export const useModal = () => {
 
   return {
     ...modal,
-    // Sweet Alert style shortcuts
     alert: (title: string, message?: string) => {
       modal.show(SweetAlert.info(title, message));
     },

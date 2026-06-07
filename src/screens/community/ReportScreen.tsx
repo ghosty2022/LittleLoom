@@ -1,41 +1,24 @@
-// src/screens/community/ReportScreen.tsx
 import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  TextInput,
-  KeyboardAvoidingView,
-  Platform,
-  Alert,
-  Dimensions,
-} from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, Alert, Dimensions, ActivityIndicator, StatusBar  } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInUp, FadeIn } from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { CommunityStackParamList } from '../../types/navigation';
+import type {  NativeStackScreenProps  } from '@react-navigation/native-stack';
+import type {  CommunityStackParamList  } from '../../types/navigation';
 import { useCommunity } from '../../context/CommunityContext';
 import { useUser } from '../../context/UserContext';
 import { showSuccessModal, showErrorModal } from '../../utils/modal';
-import { 
-  CommunityColors, 
-  CommunityGradients, 
-  CommunitySpacing, 
-  CommunityBorderRadius,
-  CommunityShadows 
-} from '../../theme/CommunityTheme';
+import { useReportRoute } from '../../hooks/useReportRoute';
+import { useCustomization } from '../../hooks/useCustomization';
+import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
+import { CommunityColors, CommunityGradients, CommunitySpacing, CommunityBorderRadius, CommunityShadows } from '../../theme/CommunityTheme';
+
 
 type ReportScreenProps = NativeStackScreenProps<CommunityStackParamList, 'Report'>;
 
 const { width } = Dimensions.get('window');
 
-// Report categories with descriptions
 const REPORT_CATEGORIES = [
   {
     id: 'spam',
@@ -109,7 +92,6 @@ const REPORT_CATEGORIES = [
   },
 ];
 
-// Severity levels
 const SEVERITY_LEVELS = [
   { id: 'low', label: 'Low', description: 'Annoying but not harmful', color: '#34C759' },
   { id: 'medium', label: 'Medium', description: 'Potentially harmful', color: '#FF9500' },
@@ -118,9 +100,17 @@ const SEVERITY_LEVELS = [
 ];
 
 export default function ReportScreen({ navigation, route }: ReportScreenProps) {
+  useReportRoute();
+
   const { type, targetId, targetUserId, postId } = route.params;
   const { currentUser, blockUser, isUserBlocked } = useCommunity();
   const { communityProfile } = useUser();
+
+  const {
+    shouldReduceMotion,
+    triggerHaptic,
+    spinnerColor,
+  } = useCustomization();
 
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedSeverity, setSelectedSeverity] = useState<string>('medium');
@@ -129,14 +119,13 @@ export default function ReportScreen({ navigation, route }: ReportScreenProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentStep, setCurrentStep] = useState<'category' | 'details' | 'confirm'>('category');
 
-  const targetLabel = type === 'user' ? 'User' : type === 'post' ? 'Post' : 'Content';
+  const targetLabel = type === 'user' ? 'User' : type === 'post' ? 'Post' : type === 'comment' ? 'Comment' : 'Topic';
   const isBlocked = targetUserId ? isUserBlocked(targetUserId) : false;
 
   const handleCategorySelect = (categoryId: string) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    triggerHaptic('light');
     setSelectedCategory(categoryId);
 
-    // Auto-set severity for certain categories
     if (['self_harm', 'minor_safety', 'harassment'].includes(categoryId)) {
       setSelectedSeverity('high');
     }
@@ -151,18 +140,15 @@ export default function ReportScreen({ navigation, route }: ReportScreenProps) {
     }
 
     setIsSubmitting(true);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    triggerHaptic('success');
 
     try {
-      // Simulate API call
       await new Promise(resolve => setTimeout(resolve, 1500));
 
-      // If user chose to block also
       if (blockAlso && targetUserId && !isBlocked) {
         await blockUser(targetUserId);
       }
 
-      // Log report for analytics (in production, send to backend)
       console.log('Report submitted:', {
         reporterId: currentUser?.id,
         reporterHandle: communityProfile?.handle,
@@ -197,9 +183,8 @@ export default function ReportScreen({ navigation, route }: ReportScreenProps) {
   const selectedCategoryData = REPORT_CATEGORIES.find(c => c.id === selectedCategory);
   const selectedSeverityData = SEVERITY_LEVELS.find(s => s.id === selectedSeverity);
 
-  // Render Category Selection Step
   const renderCategoryStep = () => (
-    <Animated.View entering={FadeIn}>
+    <Animated.View entering={shouldReduceMotion ? undefined : FadeIn}>
       <Text style={styles.stepTitle}>Why are you reporting this {targetLabel.toLowerCase()}?</Text>
       <Text style={styles.stepSubtitle}>
         Your report is anonymous. The person you report will not know who reported them.
@@ -209,7 +194,7 @@ export default function ReportScreen({ navigation, route }: ReportScreenProps) {
         {REPORT_CATEGORIES.map((category, index) => (
           <Animated.View 
             key={category.id} 
-            entering={FadeInUp.delay(index * 40)}
+            entering={shouldReduceMotion ? undefined : FadeInUp.delay(index * 40)}
           >
             <TouchableOpacity
               style={[
@@ -238,9 +223,8 @@ export default function ReportScreen({ navigation, route }: ReportScreenProps) {
     </Animated.View>
   );
 
-  // Render Details Step
   const renderDetailsStep = () => (
-    <Animated.View entering={FadeIn}>
+    <Animated.View entering={shouldReduceMotion ? undefined : FadeIn}>
       <TouchableOpacity 
         style={styles.backStepBtn}
         onPress={() => setCurrentStep('category')}
@@ -249,7 +233,6 @@ export default function ReportScreen({ navigation, route }: ReportScreenProps) {
         <Text style={styles.backStepText}>Change reason</Text>
       </TouchableOpacity>
 
-      {/* Selected Category Summary */}
       {selectedCategoryData && (
         <BlurView intensity={60} style={styles.selectedCategoryBanner} tint="light">
           <View style={[styles.selectedCatIcon, { backgroundColor: selectedCategoryData.color + '20' }]}>
@@ -262,7 +245,6 @@ export default function ReportScreen({ navigation, route }: ReportScreenProps) {
         </BlurView>
       )}
 
-      {/* Severity Selection */}
       <Text style={styles.sectionLabel}>How serious is this?</Text>
       <View style={styles.severityContainer}>
         {SEVERITY_LEVELS.map((level) => (
@@ -272,18 +254,17 @@ export default function ReportScreen({ navigation, route }: ReportScreenProps) {
               styles.severityBtn,
               selectedSeverity === level.id && { 
                 backgroundColor: level.color + '20',
-                borderColor: level.color,
-              }
+                borderColor: level.color },
             ]}
             onPress={() => {
               setSelectedSeverity(level.id);
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              triggerHaptic('light');
             }}
           >
             <View style={[styles.severityDot, { backgroundColor: level.color }]} />
             <Text style={[
               styles.severityLabel,
-              selectedSeverity === level.id && { color: level.color, fontWeight: '700' }
+              selectedSeverity === level.id && { color: level.color, fontWeight: '700' },
             ]}>
               {level.label}
             </Text>
@@ -292,7 +273,6 @@ export default function ReportScreen({ navigation, route }: ReportScreenProps) {
         ))}
       </View>
 
-      {/* Description Input */}
       <Text style={styles.sectionLabel}>Additional Details (Optional)</Text>
       <BlurView intensity={60} style={styles.inputContainer} tint="light">
         <TextInput
@@ -309,13 +289,12 @@ export default function ReportScreen({ navigation, route }: ReportScreenProps) {
         <Text style={styles.charCount}>{description.length}/500</Text>
       </BlurView>
 
-      {/* Block Option */}
       {targetUserId && targetUserId !== currentUser?.id && (
         <TouchableOpacity 
           style={styles.blockOption}
           onPress={() => {
             setBlockAlso(!blockAlso);
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            triggerHaptic('light');
           }}
         >
           <View style={styles.blockOptionLeft}>
@@ -334,7 +313,6 @@ export default function ReportScreen({ navigation, route }: ReportScreenProps) {
         </TouchableOpacity>
       )}
 
-      {/* Submit Button */}
       <TouchableOpacity
         style={[styles.submitBtn, isSubmitting && styles.submitBtnDisabled]}
         onPress={handleSubmit}
@@ -344,14 +322,19 @@ export default function ReportScreen({ navigation, route }: ReportScreenProps) {
           colors={isSubmitting ? ['#ccc', '#aaa'] : CommunityGradients.primary} 
           style={styles.submitGradient}
         >
-          <Ionicons name="shield-checkmark" size={20} color="white" />
-          <Text style={styles.submitText}>
-            {isSubmitting ? 'Submitting...' : 'Submit Report'}
-          </Text>
+          {isSubmitting ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <>
+              <Ionicons name="shield-checkmark" size={20} color="white" />
+              <Text style={styles.submitText}>
+                {isSubmitting ? 'Submitting...' : 'Submit Report'}
+              </Text>
+            </>
+          )}
         </LinearGradient>
       </TouchableOpacity>
 
-      {/* Safety Notice */}
       <View style={styles.safetyNotice}>
         <Ionicons name="information-circle" size={16} color={CommunityColors.info} />
         <Text style={styles.safetyText}>
@@ -361,9 +344,8 @@ export default function ReportScreen({ navigation, route }: ReportScreenProps) {
     </Animated.View>
   );
 
-  // Render Confirmation Step
   const renderConfirmStep = () => (
-    <Animated.View entering={FadeIn} style={styles.confirmContainer}>
+    <Animated.View entering={shouldReduceMotion ? undefined : FadeIn} style={styles.confirmContainer}>
       <View style={styles.confirmIcon}>
         <Ionicons name="shield-checkmark" size={64} color={CommunityColors.success} />
       </View>
@@ -434,14 +416,14 @@ export default function ReportScreen({ navigation, route }: ReportScreenProps) {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
       >
-        <ScrollView 
+        <AutoHideScrollView 
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
         >
           {currentStep === 'category' && renderCategoryStep()}
           {currentStep === 'details' && renderDetailsStep()}
           {currentStep === 'confirm' && renderConfirmStep()}
-        </ScrollView>
+        </AutoHideScrollView>
       </KeyboardAvoidingView>
     </View>
   );

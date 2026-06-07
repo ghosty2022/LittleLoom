@@ -1,16 +1,17 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 
-// Import roles, permissions, and types from central location
 import { UserRole, Permission, ROLE_PERMISSIONS, FamilyMember } from '../types/roles';
+export { FamilyMember } from '../types/roles';
 
-// Import from actual contexts - no more placeholders
 import { useUser } from './UserContext';
 import { useBaby } from './BabyContext';
 
 const PARENT2_PROFILE_KEY = 'littleloom_parent2_profile_secure';
+
+const EMAIL_REGEX = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
 
 interface FamilyState {
   isLoading: boolean;
@@ -35,8 +36,14 @@ interface FamilyContextType extends FamilyState {
 
 const FamilyContext = createContext<FamilyContextType | null>(null);
 
+const generateId = (): string => {
+  const timestamp = Date.now().toString(36);
+  const random = Math.random().toString(36).substring(2, 11);
+  return `${timestamp}-${random}`;
+};
+
 export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { profile, permissions: myPermissions } = useUser();
+  const { profile, permissions: myPermissions, isLoading: userLoading } = useUser();
   const { currentBaby, updateBaby, babies, switchBaby } = useBaby();
   
   const [state, setState] = useState<FamilyState>({
@@ -48,27 +55,49 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     pendingInvites: [],
   });
 
-  // Load family when baby changes
+  const initRef = useRef(false);
+
+  // Gate on user profile being ready
   useEffect(() => {
-    if (currentBaby) {
-      loadFamily();
+    if (userLoading) return;
+    if (!currentBaby) {
+      setState({
+        isLoading: false,
+        members: [],
+        parent1: null,
+        parent2: null,
+        guardians: [],
+        pendingInvites: [],
+      });
+      initRef.current = false;
+      return;
     }
-  }, [currentBaby?.id]); // Only reload when baby ID changes, not entire object
+    if (initRef.current) {
+      // Already initialized, just refresh
+      loadFamily();
+      return;
+    }
+    
+    initRef.current = true;
+    loadFamily();
+  }, [currentBaby?.id, userLoading, profile?.id]);
 
   const loadFamily = useCallback(async () => {
     if (!currentBaby) return;
+    if (userLoading) return;
+    
     setState(prev => ({ ...prev, isLoading: true }));
     
     try {
       const members: FamilyMember[] = [];
       
-      // Load Parent 1 (current user)
+      // Parent 1: from UserContext profile (single source of truth)
       if (currentBaby.parent1Id && profile) {
         members.push({
           id: currentBaby.parent1Id,
           userId: currentBaby.parent1Id,
-          fullName: profile.fullName,
-          email: profile.email,
+          fullName: profile.fullName || 'Parent',
+          email: profile.email || '',
           avatar: profile.avatar,
           role: UserRole.PARENT_1,
           relationship: 'Parent',
@@ -79,9 +108,25 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           phoneNumber: profile.phoneNumber,
           notificationsEnabled: true,
         });
+      } else if (currentBaby.parent1Id && !profile) {
+        // Graceful fallback: profile not loaded yet, use placeholder
+        // This prevents the warning — we know the ID but profile hasn't synced yet
+        members.push({
+          id: currentBaby.parent1Id,
+          userId: currentBaby.parent1Id,
+          fullName: 'Loading...',
+          email: '',
+          role: UserRole.PARENT_1,
+          relationship: 'Parent',
+          permissions: ROLE_PERMISSIONS[UserRole.PARENT_1],
+          addedAt: currentBaby.createdAt,
+          addedBy: currentBaby.parent1Id,
+          canBeRemoved: false,
+          notificationsEnabled: true,
+        });
       }
 
-      // Load Parent 2 from secure storage if exists
+      // Parent 2: from secure storage
       if (currentBaby.parent2Id) {
         try {
           const parent2Str = await SecureStore.getItemAsync(PARENT2_PROFILE_KEY);
@@ -109,18 +154,22 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
       }
 
-      // Load guardians from AsyncStorage
+      // Guardians: from AsyncStorage
       const guardiansKey = `littleloom_guardians_${currentBaby.id}`;
       const guardiansStr = await AsyncStorage.getItem(guardiansKey);
       if (guardiansStr) {
-        const guardianData = JSON.parse(guardiansStr);
-        guardianData.forEach((g: FamilyMember) => {
-          members.push({
-            ...g,
-            permissions: ROLE_PERMISSIONS[g.role] || ROLE_PERMISSIONS[UserRole.VIEWER],
-            canBeRemoved: true,
+        try {
+          const guardianData = JSON.parse(guardiansStr);
+          guardianData.forEach((g: FamilyMember) => {
+            members.push({
+              ...g,
+              permissions: ROLE_PERMISSIONS[g.role] || ROLE_PERMISSIONS[UserRole.VIEWER],
+              canBeRemoved: true,
+            });
           });
-        });
+        } catch (parseError) {
+          console.error('Error parsing guardians data:', parseError);
+        }
       }
 
       setState({
@@ -129,21 +178,25 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         parent1: members.find(m => m.role === UserRole.PARENT_1) || null,
         parent2: members.find(m => m.role === UserRole.PARENT_2) || null,
         guardians: members.filter(m => m.role === UserRole.GUARDIAN || m.role === UserRole.VIEWER),
-        pendingInvites: members.filter(m => !m.lastActive), // Members who haven't accepted yet
+        pendingInvites: members.filter(m => !m.lastActive && m.role !== UserRole.PARENT_1),
       });
     } catch (error) {
       console.error('Error loading family:', error);
       setState(prev => ({ ...prev, isLoading: false }));
     }
-  }, [currentBaby, profile]);
+  }, [currentBaby, profile, userLoading]);
 
-  const updateParent2Profile = useCallback(async (updates: Partial<Omit<FamilyMember, 'id' | 'userId' | 'role' | 'permissions' | 'addedAt' | 'addedBy' | 'canBeRemoved'>>): Promise<boolean> => {
+  const updateParent2Profile = useCallback(async (
+    updates: Partial<Omit<FamilyMember, 'id' | 'userId' | 'role' | 'permissions' | 'addedAt' | 'addedBy' | 'canBeRemoved'>>
+  ): Promise<boolean> => {
     if (!currentBaby?.parent2Id) {
       Alert.alert('Error', 'No Parent 2 found');
       return false;
     }
 
-    if (!myPermissions?.manageFamily) {
+    const canManage = myPermissions?.manageFamily ?? false;
+      
+    if (!canManage) {
       Alert.alert('Error', 'You do not have permission to update family members');
       return false;
     }
@@ -163,10 +216,9 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
       });
 
-      // Update current baby if parent2Id exists
       if (updates.fullName || updates.email) {
         await updateBaby(currentBaby.id, {
-          parent2Id: currentBaby.parent2Id, // Ensure it stays linked
+          parent2Id: currentBaby.parent2Id,
         });
       }
 
@@ -203,7 +255,9 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, [currentBaby, myPermissions, updateBaby]);
 
   const updateGuardianProfile = useCallback(async (memberId: string, updates: Partial<FamilyMember>): Promise<boolean> => {
-    if (!myPermissions?.manageFamily) {
+    const canManage = myPermissions?.manageFamily ?? false;
+      
+    if (!canManage) {
       Alert.alert('Error', 'Permission denied');
       return false;
     }
@@ -219,7 +273,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       );
 
       await AsyncStorage.setItem(guardiansKey, JSON.stringify(updated));
-      await loadFamily(); // Refresh state
+      await loadFamily();
       
       return true;
     } catch (error) {
@@ -229,12 +283,19 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, [currentBaby, myPermissions, loadFamily]);
 
   const inviteMember = useCallback(async (email: string, role: UserRole, relationship: string) => {
-    if (!myPermissions?.manageFamily || !profile || !currentBaby) return false;
+    const canManage = myPermissions?.manageFamily ?? false;
+      
+    if (!canManage || !profile || !currentBaby) return false;
+
+    if (!EMAIL_REGEX.test(email)) {
+      Alert.alert('Invalid Email', 'Please enter a valid email address');
+      return false;
+    }
 
     try {
       const newMember: FamilyMember = {
-        id: Math.random().toString(36).substr(2, 9),
-        userId: '', // Will be set when they accept
+        id: generateId(),
+        userId: '',
         fullName: 'Pending Invitation',
         email,
         role,
@@ -249,17 +310,22 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const guardiansKey = `littleloom_guardians_${currentBaby.id}`;
       const existing = await AsyncStorage.getItem(guardiansKey);
       const guardians: FamilyMember[] = existing ? JSON.parse(existing) : [];
+      
+      const existingInvite = guardians.find(g => g.email.toLowerCase() === email.toLowerCase());
+      if (existingInvite) {
+        Alert.alert('Duplicate Invite', 'An invitation has already been sent to this email');
+        return false;
+      }
+      
       guardians.push(newMember);
 
       await AsyncStorage.setItem(guardiansKey, JSON.stringify(guardians));
       
-      // Update baby's guardianIds
       const updatedGuardianIds = [...(currentBaby.guardianIds || []), newMember.id];
       await updateBaby(currentBaby.id, { guardianIds: updatedGuardianIds });
 
       await loadFamily();
       
-      // Simulate sending invite
       Alert.alert('Invitation Sent', `An invitation has been sent to ${email}`);
       
       return true;
@@ -270,10 +336,16 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, [myPermissions, profile, currentBaby, updateBaby, loadFamily]);
 
   const removeMember = useCallback(async (memberId: string) => {
-    if (!myPermissions?.manageFamily || !currentBaby) return false;
+    const canManage = myPermissions?.manageFamily ?? false;
+      
+    if (!canManage || !currentBaby) return false;
+
+    if (profile?.id === memberId) {
+      Alert.alert('Error', 'You cannot remove yourself from the family');
+      return false;
+    }
 
     try {
-      // Remove from guardians storage
       const guardiansKey = `littleloom_guardians_${currentBaby.id}`;
       const existing = await AsyncStorage.getItem(guardiansKey);
       
@@ -283,11 +355,9 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         await AsyncStorage.setItem(guardiansKey, JSON.stringify(filtered));
       }
 
-      // Update baby's guardianIds
       const updatedGuardianIds = (currentBaby.guardianIds || []).filter(id => id !== memberId);
       await updateBaby(currentBaby.id, { guardianIds: updatedGuardianIds });
 
-      // Handle Parent 2 removal
       if (state.parent2?.id === memberId) {
         await SecureStore.deleteItemAsync(PARENT2_PROFILE_KEY);
         await updateBaby(currentBaby.id, { parent2Id: undefined });
@@ -305,7 +375,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       Alert.alert('Error', 'Failed to remove member');
       return false;
     }
-  }, [myPermissions, currentBaby, updateBaby, state.parent2]);
+  }, [myPermissions, currentBaby, updateBaby, state.parent2, profile]);
 
   const resendInvite = useCallback(async (memberId: string): Promise<boolean> => {
     const member = state.members.find(m => m.id === memberId);
@@ -320,7 +390,6 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, [removeMember]);
 
   const refreshMemberStatus = useCallback(async (memberId: string) => {
-    // Check if member has accepted invite
     await loadFamily();
   }, [loadFamily]);
 

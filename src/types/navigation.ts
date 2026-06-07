@@ -1,11 +1,9 @@
-// src/types/navigation.ts
-
+﻿
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { CompositeScreenProps } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native'; 
 
-// Baby Profile Type
 export interface BabyProfile {
   id: string;
   name: string;
@@ -20,7 +18,6 @@ export interface BabyProfile {
   age?: string;
 }
 
-// Parent Profile Type
 export interface ParentProfile {
   id: string;
   type: 'parent1' | 'parent2' | 'guardian';
@@ -32,9 +29,6 @@ export interface ParentProfile {
   bio?: string;
 }
 
-// ============================================
-// USER ROLE ENUM
-// ============================================
 export enum UserRole {
   PARENT_1 = 'parent1',
   PARENT_2 = 'parent2',
@@ -56,9 +50,6 @@ export const ROLE_COLORS: Record<UserRole, string> = {
   [UserRole.VIEWER]: '#64748b',
 };
 
-// ============================================
-// PERMISSION SYSTEM
-// ============================================
 export interface Permission {
   read: boolean;
   write: boolean;
@@ -103,9 +94,6 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission> = {
   },
 };
 
-// ============================================
-// AUTH CONTEXT TYPES (for reference)
-// ============================================
 
 export interface UserProfile {
   id: string;
@@ -136,51 +124,38 @@ export interface AuthState {
   hasBaby: boolean | 'skipped';
 }
 
-// ============================================
-// NAVIGATION TYPES - RENAMED FOR BETTER UX
-// ============================================
 
 export type RootStackParamList = {
-  // Splash & Onboarding
   Splash: undefined;
   Onboarding: undefined;
 
-  // Auth Flow
   Login: undefined;
   SignUp: undefined;
   ForgotPassword: undefined;
 
-  // Setup Flow (Optional Steps)
   Parent2Optional: undefined;
   Parent2Setup: undefined;
   BabyOptional: undefined;
 
-  // Main Features
   CreateBabyProfile: { fromSetup?: boolean } | undefined;
   AddParent: { fromSetup?: boolean } | undefined;
   SwitchBaby: undefined;
 
-  // Main App
   Main: undefined;
 
-  // Universal Activity Tracker
   UniversalTracker: { type?: string; babyId?: string } | undefined;
 
-  // Legacy Individual Trackers
   PottyTracker: { babyId?: string } | undefined;
   FeedTracker: { babyId?: string } | undefined;
   SleepTracker: { babyId?: string } | undefined;
 
-  // Profile Management - ENHANCED
   Profile: { 
     tab?: 'parents' | 'guardians';
     selectedId?: string;
   } | undefined;
 
-  // Gallery
   Gallery: undefined;
 
-  // Modals
   AddLog: { 
     type?: string; 
     babyId?: string; 
@@ -188,7 +163,6 @@ export type RootStackParamList = {
     eventId?: string;
   } | undefined;
   
-  // ENHANCED: Achievements with baby context
   Achievements: { 
     babyId?: string;
     highlightAchievement?: string;
@@ -197,14 +171,12 @@ export type RootStackParamList = {
   
   GrowthChart: { babyId?: string } | undefined;
   
-  // ENHANCED: Reminders with achievement integration
   Reminders: { 
     fromAchievement?: string;
     suggestedType?: 'potty' | 'feed' | 'sleep' | 'milestone' | 'streak';
     babyId?: string;
   } | undefined;
 
-  // FAMILY SHARING - ENHANCED
   FamilySharing: undefined;
   EditProfile: { 
     mode: 'baby' | 'parent';
@@ -212,34 +184,45 @@ export type RootStackParamList = {
     parentId?: string;
   } | undefined;
 
-  // Family Chat - Enhanced with proper params
   FamilyChatList: undefined;
   FamilyChat: { 
     chatId?: string; 
     memberId?: string;
-    memberName?: string;  // NEW: Pass member name directly
-    memberAvatar?: string;  // NEW: Pass avatar directly
-    memberRole?: string;   // NEW: Pass role directly
-    familyCode?: string;   // NEW: Pass family code
+    memberName?: string;
+    memberAvatar?: string;
+    memberRole?: string;
+    familyCode?: string;
   } | undefined;
 
   EditGuardian: {
     guardianId: string;
-    mode?: 'guardian' | 'parent2' | 'viewer';  // NEW: Explicit mode
-    fromChat?: boolean;  // NEW: Track if coming from chat
+    mode?: 'guardian' | 'parent2' | 'viewer';
+    fromChat?: boolean;
   } | undefined;
 
   SoundMixer: undefined;
   Customize: undefined;
   BabySelector: undefined;
 
-  // Security
   SecurityLock: undefined;
   BiometricSetup: undefined;
-  ChangePin: undefined;
+  SecurityCenter: {
+    mode?: 'setup' | 'change' | 'forgot' | 'reset';
+    fromForgotPassword?: boolean;
+  } | undefined;
 
-  // Safety Corner
   SafetyCorner: undefined;
+  BackupRestore: undefined;
+  HelpCenter: undefined;
+  ContactSupport: undefined;
+
+  PrivacyPolicy: undefined;
+  TermsOfService: undefined;
+  About: undefined;
+
+  LanguageSettings: undefined;
+  UnitSettings: undefined;
+
 };
 
 export type CommunityStackParamList = {
@@ -256,7 +239,7 @@ export type CommunityStackParamList = {
   Followers: { userId: string };
   Following: { userId: string };
   SearchUsers: { 
-    initialQuery?: string;  // FIX: Removed space in "initialQ uery"
+    initialQuery?: string;
     filter?: 'all' | 'followers' | 'following' | 'topic';
     topicId?: string;
   };
@@ -265,23 +248,18 @@ export type CommunityStackParamList = {
     type: 'user' | 'post' | 'comment' | 'topic';
     targetId: string;
     targetUserId: string;
+    postId?: string; // ADDED: Optional postId for post reports
   };
 };
 
-// ============================================
-// RENAMED MAIN TAB PARAM LIST - UX OPTIMIZED
-// ============================================
 export type MainTabParamList = {
   Home: undefined;
   Track: undefined;
   Grow: undefined;
   Connect: undefined;
   More: undefined;
+  SafetyCorner: undefined;  
 };
-
-// ============================================
-// SCREEN PROPS TYPES
-// ============================================
 
 export type RootStackScreenProps<T extends keyof RootStackParamList> = 
   NativeStackScreenProps<RootStackParamList, T>;
@@ -295,37 +273,27 @@ export type MainTabScreenProps<T extends keyof MainTabParamList> =
     RootStackScreenProps<keyof RootStackParamList>
   >;
 
-// Navigation helper types
 export type NavigationProp = RootStackScreenProps<keyof RootStackParamList>['navigation'];
 export type CommunityNavigationProp = CommunityStackScreenProps<keyof CommunityStackParamList>['navigation'];
 
-// Activity Tracker specific navigation helpers
 export type UniversalTrackerNavigationProp = NativeStackScreenProps<RootStackParamList, 'UniversalTracker'>['navigation'];
 export type UniversalTrackerRouteProp = RouteProp<RootStackParamList, 'UniversalTracker'>;
 
-// AddLog specific navigation helpers
 export type AddLogNavigationProp = NativeStackScreenProps<RootStackParamList, 'AddLog'>['navigation'];
 export type AddLogRouteProp = RouteProp<RootStackParamList, 'AddLog'>;
 
-// Family Chat specific navigation helpers
 export type FamilyChatNavigationProp = NativeStackScreenProps<RootStackParamList, 'FamilyChat'>['navigation'];
 export type FamilyChatRouteProp = RouteProp<RootStackParamList, 'FamilyChat'>;
 
-// Edit Guardian specific navigation helpers
 export type EditGuardianNavigationProp = NativeStackScreenProps<RootStackParamList, 'EditGuardian'>['navigation'];
 export type EditGuardianRouteProp = RouteProp<RootStackParamList, 'EditGuardian'>;
 
-// Achievements specific navigation helpers
 export type AchievementsNavigationProp = NativeStackScreenProps<RootStackParamList, 'Achievements'>['navigation'];
 export type AchievementsRouteProp = RouteProp<RootStackParamList, 'Achievements'>;
 
-// Reminders specific navigation helpers
 export type RemindersNavigationProp = NativeStackScreenProps<RootStackParamList, 'Reminders'>['navigation'];
 export type RemindersRouteProp = RouteProp<RootStackParamList, 'Reminders'>;
 
-// ============================================
-// NAVIGATION STATE MACHINE TYPE
-// ============================================
 
 export type NavigationState = 
   | 'LOADING'

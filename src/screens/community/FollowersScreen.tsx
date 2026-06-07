@@ -1,26 +1,7 @@
-// src/screens/community/FollowersScreen.tsx
-// FIXED VERSION - Addresses:
-// 1. Proper async getFollowers usage
-// 2. Consistent user data handling
-// 3. Proper loading states
-// 4. Fixed follow/unfollow toggle
-
-import React, { useState, useCallback, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  TextInput,
-  RefreshControl,
-  Alert,
-  Dimensions,
-  Image,
-} from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, RefreshControl, Alert, Dimensions, Image, StatusBar } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInUp, FadeIn } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
@@ -29,19 +10,14 @@ import type { CommunityStackParamList } from '../../types/navigation';
 import { useCommunity, CommunityUser } from '../../context/CommunityContext';
 import { useUser } from '../../context/UserContext';
 import { showSuccessModal, showErrorModal } from '../../utils/modal';
-import { 
-  CommunityColors, 
-  CommunityGradients, 
-  CommunitySpacing, 
-  CommunityBorderRadius,
-  CommunityShadows 
-} from '../../theme/CommunityTheme';
+import { AutoHideFlatList } from '../../components/AutoHideScrollWrappers';
+import { CommunityColors, CommunityGradients, CommunitySpacing, CommunityBorderRadius, CommunityShadows } from '../../theme/CommunityTheme';
+
 
 type FollowersScreenProps = NativeStackScreenProps<CommunityStackParamList, 'Followers'>;
 
 const { width } = Dimensions.get('window');
 
-// LittleLoom Team as default follower
 const LITTLELOOM_TEAM: CommunityUser = {
   id: 'littleloom_team',
   displayName: 'LittleLoom Team',
@@ -64,7 +40,6 @@ const LITTLELOOM_TEAM: CommunityUser = {
   isFollowing: true,
 };
 
-// Generate realistic demo followers data
 const generateDemoFollowers = (count: number, baseId: string): CommunityUser[] => {
   const names = [
     'Sarah Johnson', 'Mike Chen', 'Emma Wilson', 'David Park', 'Lisa Brown',
@@ -74,9 +49,9 @@ const generateDemoFollowers = (count: number, baseId: string): CommunityUser[] =
     'Nina Patel', 'Jordan Brooks', 'Maya Singh', 'Leo Fernandez', 'Zoe Mitchell',
     'Ethan Cooper', 'Chloe Adams', 'Lucas Rivera', 'Isabella Nguyen', 'Mason Phillips',
   ];
-  
+
   const avatars = ['👩', '👨', '👧', '👦', '👵', '👴', '👱‍♀️', '👱‍♂️', '🧑', '👳‍♀️', '👳‍♂️', '👲', '👮‍♀️', '👮‍♂️', '👷‍♀️', '👷‍♂️', '💂‍♀️', '💂‍♂️', '🕵️‍♀️', '🕵️‍♂️', '👩‍⚕️', '👨‍⚕️', '👩‍🌾', '👨‍🌾', '👩‍🍳', '👨‍🍳', '👩‍🎓', '👨‍🎓', '👩‍🎤', '👨‍🎤'];
-  
+
   const bios = [
     'Proud parent of two 👶👶',
     'First-time mom sharing my journey',
@@ -93,7 +68,7 @@ const generateDemoFollowers = (count: number, baseId: string): CommunityUser[] =
   return Array.from({ length: count }, (_, i) => ({
     id: `follower_${baseId}_${i}`,
     displayName: names[i % names.length],
-    handle: `@${names[i % names.length].toLowerCase().replace(/\\s+/g, '_')}_${Math.floor(Math.random() * 999)}`,
+    handle: `@${names[i % names.length].toLowerCase().replace(/\s+/g, '_')}_${Math.floor(Math.random() * 999)}`,
     avatar: avatars[i % avatars.length],
     isVerified: i % 7 === 0,
     bio: bios[i % bios.length],
@@ -113,13 +88,11 @@ const generateDemoFollowers = (count: number, baseId: string): CommunityUser[] =
   }));
 };
 
-// Helper to check if avatar is an image URL
 const isImageAvatar = (avatar: string): boolean => {
   if (!avatar) return false;
   return avatar.startsWith('file://') || avatar.startsWith('http') || avatar.startsWith('data:image');
 };
 
-// Render avatar component
 const RenderAvatar = ({ avatar, size = 44 }: { avatar: string; size?: number }) => {
   if (isImageAvatar(avatar)) {
     return (
@@ -137,7 +110,7 @@ export default function FollowersScreen({ navigation, route }: FollowersScreenPr
   const { userId } = route.params;
   const { currentUser, followUser, unfollowUser, isFollowing, blockUser, isUserBlocked, getUserById, getFollowers } = useCommunity();
   const { profile } = useUser();
-  
+
   const [followers, setFollowers] = useState<CommunityUser[]>([]);
   const [filteredFollowers, setFilteredFollowers] = useState<CommunityUser[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -147,31 +120,25 @@ export default function FollowersScreen({ navigation, route }: FollowersScreenPr
 
   const isOwnProfile = userId === currentUser?.id;
 
-  // FIXED: Proper async loading with await
   const loadFollowers = useCallback(async () => {
     setLoading(true);
     try {
       await new Promise(resolve => setTimeout(resolve, 600));
-      
-      // Always include LittleLoom Team as first follower
+
       let demoFollowers = [LITTLELOOM_TEAM];
-      
-      // FIXED: Await the async getFollowers
+
       let actualFollowers: string[] = [];
       try {
         actualFollowers = await getFollowers(userId);
       } catch (e) {
         console.log('Could not load persisted followers:', e);
       }
-      
-      // Get target user for stats
+
       const targetUser = getUserById(userId);
       const count = targetUser?.stats?.followers || Math.floor(Math.random() * 50) + 10;
-      
-      // Generate additional followers based on count
+
       const additionalFollowers = generateDemoFollowers(Math.min(count, 30), userId);
-      
-      // Merge and remove duplicates
+
       demoFollowers = [...demoFollowers, ...additionalFollowers];
       const seen = new Set<string>();
       const uniqueFollowers = demoFollowers.filter((user) => {
@@ -179,7 +146,7 @@ export default function FollowersScreen({ navigation, route }: FollowersScreenPr
         seen.add(user.id);
         return true;
       });
-      
+
       setFollowers(uniqueFollowers);
       setFilteredFollowers(uniqueFollowers);
     } catch (error) {
@@ -214,23 +181,21 @@ export default function FollowersScreen({ navigation, route }: FollowersScreenPr
     setRefreshing(false);
   };
 
-  // FIXED: Proper follow toggle with error handling
   const handleFollowToggle = async (follower: CommunityUser) => {
     if (followLoading[follower.id]) return;
-    
+
     setFollowLoading(prev => ({ ...prev, [follower.id]: true }));
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    
+
     try {
       const currentlyFollowing = isFollowing(follower.id);
-      
+
       if (currentlyFollowing) {
         await unfollowUser(follower.id);
       } else {
         await followUser(follower.id);
       }
-      
-      // Update local state immediately for responsiveness
+
       setFollowers(prev => prev.map(f => 
         f.id === follower.id 
           ? { ...f, isFollowing: !currentlyFollowing }
@@ -259,7 +224,7 @@ export default function FollowersScreen({ navigation, route }: FollowersScreenPr
 
   const handleMoreOptions = (follower: CommunityUser) => {
     const isBlocked = isUserBlocked(follower.id);
-    
+
     Alert.alert(
       follower.displayName,
       follower.handle,
@@ -301,7 +266,7 @@ export default function FollowersScreen({ navigation, route }: FollowersScreenPr
     const blocked = isUserBlocked(item.id);
     const isMe = item.id === currentUser?.id;
     const isTeam = item.id === 'littleloom_team';
-    
+
     return (
       <Animated.View entering={FadeInUp.delay(index * 30)}>
         <TouchableOpacity 
@@ -315,7 +280,7 @@ export default function FollowersScreen({ navigation, route }: FollowersScreenPr
               <View style={styles.onlineDot} />
             )}
           </View>
-          
+
           <View style={styles.userInfo}>
             <View style={styles.nameRow}>
               <Text style={styles.displayName} numberOfLines={1}>
@@ -335,7 +300,7 @@ export default function FollowersScreen({ navigation, route }: FollowersScreenPr
               <Text style={styles.bio} numberOfLines={1}>{item.bio}</Text>
             )}
           </View>
-          
+
           {!isMe && (
             <View style={styles.actions}>
               <TouchableOpacity
@@ -356,7 +321,7 @@ export default function FollowersScreen({ navigation, route }: FollowersScreenPr
                   {blocked ? 'Blocked' : following ? 'Following' : 'Follow'}
                 </Text>
               </TouchableOpacity>
-              
+
               <TouchableOpacity 
                 style={styles.moreBtn}
                 onPress={() => handleMoreOptions(item)}
@@ -365,7 +330,7 @@ export default function FollowersScreen({ navigation, route }: FollowersScreenPr
               </TouchableOpacity>
             </View>
           )}
-          
+
           {isMe && (
             <View style={styles.youBadge}>
               <Text style={styles.youText}>You</Text>
@@ -388,8 +353,8 @@ export default function FollowersScreen({ navigation, route }: FollowersScreenPr
 
   return (
     <LinearGradient colors={CommunityColors.background.gradient} style={styles.container}>
-      <StatusBar style="dark" />
-      
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+
       {/* Header */}
       <BlurView intensity={95} style={styles.header} tint="light">
         <LinearGradient 
@@ -399,12 +364,12 @@ export default function FollowersScreen({ navigation, route }: FollowersScreenPr
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
           <Ionicons name="arrow-back" size={24} color={CommunityColors.text.primary} />
         </TouchableOpacity>
-        
+
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Followers</Text>
           <Text style={styles.headerSubtitle}>{followers.length.toLocaleString()}</Text>
         </View>
-        
+
         <View style={styles.headerButton} />
       </BlurView>
 
@@ -435,7 +400,7 @@ export default function FollowersScreen({ navigation, route }: FollowersScreenPr
           <Text style={styles.loadingText}>Loading followers...</Text>
         </View>
       ) : (
-        <FlatList
+        <AutoHideFlatList
           data={filteredFollowers}
           renderItem={renderFollower}
           keyExtractor={(item) => item.id}
@@ -453,89 +418,134 @@ export default function FollowersScreen({ navigation, route }: FollowersScreenPr
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: {
+    flex: 1,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: CommunitySpacing.md,
-    paddingTop: 50,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: CommunityColors.divider,
+    paddingTop: CommunitySpacing.xl + 20,
+    paddingBottom: CommunitySpacing.md,
     overflow: 'hidden',
   },
-  headerButton: { padding: 8, width: 40 },
-  headerCenter: { alignItems: 'center' },
-  headerTitle: { fontSize: 18, fontWeight: '800', color: CommunityColors.text.primary },
-  headerSubtitle: { fontSize: 13, color: CommunityColors.text.secondary, marginTop: 2 },
+  headerButton: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerCenter: {
+    alignItems: 'center',
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: CommunityColors.text.primary,
+  },
+  headerSubtitle: {
+    fontSize: 13,
+    color: CommunityColors.text.tertiary,
+    marginTop: 2,
+  },
   searchContainer: {
-    paddingHorizontal: CommunitySpacing.lg,
-    paddingVertical: 12,
+    paddingHorizontal: CommunitySpacing.md,
+    paddingVertical: CommunitySpacing.sm,
   },
   searchWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: CommunityColors.background.elevated,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 8,
-    borderWidth: 1,
-    borderColor: CommunityColors.border,
+    borderRadius: CommunityBorderRadius.full,
+    paddingHorizontal: CommunitySpacing.md,
+    paddingVertical: CommunitySpacing.sm,
+    gap: CommunitySpacing.sm,
   },
   searchInput: {
     flex: 1,
     fontSize: 15,
     color: CommunityColors.text.primary,
-    paddingVertical: 2,
+    paddingVertical: 4,
   },
-  listContainer: { paddingHorizontal: CommunitySpacing.lg, paddingBottom: 40 },
+  listContainer: {
+    padding: CommunitySpacing.md,
+    paddingBottom: CommunitySpacing.xxl,
+  },
   userCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
+    padding: CommunitySpacing.md,
+    backgroundColor: CommunityColors.background.card,
+    borderRadius: CommunityBorderRadius.lg,
+    ...CommunityShadows.small,
   },
-  avatarContainer: { position: 'relative', marginRight: 12, width: 44, height: 44, borderRadius: 22, backgroundColor: CommunityColors.background.elevated, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
+  avatarContainer: {
+    position: 'relative',
+    marginRight: CommunitySpacing.md,
+  },
   onlineDot: {
     position: 'absolute',
-    bottom: 2,
-    right: 2,
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+    bottom: 0,
+    right: 0,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
     backgroundColor: CommunityColors.success,
     borderWidth: 2,
-    borderColor: 'white',
+    borderColor: CommunityColors.background.card,
   },
-  userInfo: { flex: 1, marginRight: 8 },
-  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  displayName: { fontSize: 15, fontWeight: '700', color: CommunityColors.text.primary },
+  userInfo: {
+    flex: 1,
+    marginRight: CommunitySpacing.sm,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: CommunitySpacing.xs,
+  },
+  displayName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: CommunityColors.text.primary,
+    flexShrink: 1,
+  },
   teamBadge: {
-    backgroundColor: CommunityColors.primary + '20',
+    backgroundColor: CommunityColors.primary,
+    borderRadius: CommunityBorderRadius.sm,
     paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: 4,
-    marginLeft: 4,
   },
   teamBadgeText: {
     fontSize: 10,
     fontWeight: '700',
-    color: CommunityColors.primary,
+    color: '#fff',
   },
-  handle: { fontSize: 13, color: CommunityColors.text.secondary, marginTop: 1 },
-  bio: { fontSize: 12, color: CommunityColors.text.tertiary, marginTop: 2 },
-  actions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  handle: {
+    fontSize: 13,
+    color: CommunityColors.text.tertiary,
+    marginTop: 2,
+  },
+  bio: {
+    fontSize: 12,
+    color: CommunityColors.text.secondary,
+    marginTop: 2,
+  },
+  actions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: CommunitySpacing.sm,
+  },
   followBtn: {
     backgroundColor: CommunityColors.primary,
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 8,
+    paddingHorizontal: CommunitySpacing.md,
+    paddingVertical: CommunitySpacing.sm,
+    borderRadius: CommunityBorderRadius.full,
     minWidth: 80,
     alignItems: 'center',
   },
   followingBtn: {
-    backgroundColor: 'transparent',
+    backgroundColor: CommunityColors.background.elevated,
     borderWidth: 1,
     borderColor: CommunityColors.border,
   },
@@ -543,45 +553,65 @@ const styles = StyleSheet.create({
     backgroundColor: CommunityColors.error + '15',
     borderColor: CommunityColors.error,
   },
-  loadingBtn: { opacity: 0.6 },
-  followBtnText: { color: 'white', fontSize: 13, fontWeight: '700' },
-  followingBtnText: { color: CommunityColors.text.primary },
-  blockedBtnText: { color: CommunityColors.error },
-  moreBtn: { padding: 4 },
-  youBadge: {
-    backgroundColor: CommunityColors.primary + '15',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
+  loadingBtn: {
+    opacity: 0.6,
   },
-  youText: { color: CommunityColors.primary, fontSize: 12, fontWeight: '700' },
+  followBtnText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  followingBtnText: {
+    color: CommunityColors.text.primary,
+  },
+  blockedBtnText: {
+    color: CommunityColors.error,
+  },
+  moreBtn: {
+    padding: CommunitySpacing.sm,
+    borderRadius: CommunityBorderRadius.full,
+  },
+  youBadge: {
+    backgroundColor: CommunityColors.background.elevated,
+    paddingHorizontal: CommunitySpacing.md,
+    paddingVertical: CommunitySpacing.sm,
+    borderRadius: CommunityBorderRadius.full,
+    borderWidth: 1,
+    borderColor: CommunityColors.border,
+  },
+  youText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: CommunityColors.text.secondary,
+  },
   separator: {
-    height: 1,
-    backgroundColor: CommunityColors.divider,
-    marginLeft: 60,
+    height: CommunitySpacing.sm,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  loadingText: { fontSize: 16, color: CommunityColors.text.secondary },
+  loadingText: {
+    fontSize: 16,
+    color: CommunityColors.text.tertiary,
+  },
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: 100,
-    paddingHorizontal: 40,
+    paddingVertical: CommunitySpacing.xxl,
   },
   emptyTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: CommunityColors.text.primary,
-    marginTop: 16,
+    color: CommunityColors.text.secondary,
+    marginTop: CommunitySpacing.md,
   },
   emptyText: {
     fontSize: 14,
-    color: CommunityColors.text.secondary,
+    color: CommunityColors.text.tertiary,
+    marginTop: CommunitySpacing.sm,
     textAlign: 'center',
-    marginTop: 8,
+    paddingHorizontal: CommunitySpacing.xl,
   },
 });

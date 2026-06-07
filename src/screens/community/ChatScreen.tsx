@@ -1,9 +1,8 @@
-import React, { useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  FlatList,
   TouchableOpacity,
   TextInput,
   KeyboardAvoidingView,
@@ -13,13 +12,19 @@ import {
   Alert,
   ActivityIndicator,
   Modal,
-  ScrollView,
+  StatusBar,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
-import Animated, { FadeInUp, FadeIn, Layout, useAnimatedStyle, withSpring, useSharedValue, runOnJS } from 'react-native-reanimated';
+import Animated, {
+  FadeInUp,
+  FadeIn,
+  Layout,
+  useAnimatedStyle,
+  withSpring,
+  useSharedValue,
+} from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
@@ -27,25 +32,62 @@ import * as FileSystem from 'expo-file-system';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CommunityStackParamList } from '../../types/navigation';
-import { useCommunity, Message, MessageType, FileMetadata } from '../../context/CommunityContext';
+import {
+  useCommunity,
+  Message,
+  MessageType,
+  FileMetadata,
+} from '../../context/CommunityContext';
 import { useUser } from '../../context/UserContext';
 import { showErrorModal, showConfirmModal } from '../../utils/modal';
+import { useCustomization } from '../../hooks/useCustomization';
 import {
-  CommunityColors,
-  CommunityGradients,
+  AutoHideScrollView,
+  AutoHideFlatList,
+} from '../../components/AutoHideScrollWrappers';
+import {
   CommunitySpacing,
   CommunityBorderRadius,
-  CommunityShadows
+  CommunityShadows,
 } from '../../theme/CommunityTheme';
 
-type ChatScreenProps = NativeStackScreenProps<<CommunityStackParamList, 'Chat'>;
+type ChatScreenProps = NativeStackScreenProps<CommunityStackParamList, 'Chat'>;
 
 const { width, height } = Dimensions.get('window');
 
-// ==================== IMAGE UTILITY FUNCTIONS ====================
+interface ChatTheme {
+  primary: string;
+  secondary: string;
+  accent: string;
+  background: {
+    gradient: [string, string, string];
+    card: string;
+    elevated: string;
+    main: string;
+  };
+  text: {
+    primary: string;
+    secondary: string;
+    tertiary: string;
+  };
+  error: string;
+  success: string;
+  info: string;
+  divider: string;
+  border: string;
+  overlay: {
+    background: string;
+    border: string;
+  };
+}
+
 const isImageUri = (value: string | undefined | null): boolean => {
   if (!value || typeof value !== 'string') return false;
-  return value.startsWith('http') || value.startsWith('file://') || value.startsWith('data:');
+  return (
+    value.startsWith('http') ||
+    value.startsWith('file://') ||
+    value.startsWith('data:')
+  );
 };
 
 const isEmoji = (value: string | undefined | null): boolean => {
@@ -53,42 +95,73 @@ const isEmoji = (value: string | undefined | null): boolean => {
   if (value.length > 4) return false;
   for (const char of value) {
     const code = char.codePointAt(0) || 0;
-    const isEmojiChar = (
-      (code >= 0x1F600 && code <= 0x1F64F) || (code >= 0x1F300 && code <= 0x1F5FF) ||
-      (code >= 0x1F680 && code <= 0x1F6FF) || (code >= 0x1F1E0 && code <= 0x1F1FF) ||
-      (code >= 0x2600 && code <= 0x26FF) || (code >= 0x2700 && code <= 0x27BF) ||
-      (code >= 0x1F900 && code <= 0x1F9FF) || (code >= 0x1F018 && code <= 0x1F270) ||
-      code === 0x238C || code === 0x2B06 || code === 0x2B07 || code === 0x2B05 ||
-      code === 0x27A1 || (code >= 0x2194 && code <= 0x2199) ||
-      (code >= 0x21A9 && code <= 0x21AA) || (code >= 0x2934 && code <= 0x2935) ||
-      (code >= 0x25AA && code <= 0x25AB) || (code >= 0x25FB && code <= 0x25FE) ||
-      code === 0x25B6 || code === 0x25C0 || (code >= 0x1F200 && code <= 0x1F251) ||
-      code === 0x1F004 || code === 0x1F0CF || (code >= 0x1F170 && code <= 0x1F171) ||
-      (code >= 0x1F17E && code <= 0x1F17F) || code === 0x1F18E || code === 0x3030 ||
-      code === 0x2B50 || code === 0x2B55 || (code >= 0x23E9 && code <= 0x23EC) ||
-      code === 0x23F0 || code === 0x23F3 || (code >= 0x231A && code <= 0x231B) ||
-      (code >= 0x23F8 && code <= 0x23FA) || code === 0x24C2 ||
-      (code >= 0x1F3FB && code <= 0x1F3FF) || (code >= 0x1F3E0 && code <= 0x1F3F4) ||
-      (code >= 0x1F3F8 && code <= 0x1F43F) || code === 0x1F440 ||
-      (code >= 0x1F442 && code <= 0x1F4FF) || (code >= 0x1F500 && code <= 0x1F53D) ||
-      (code >= 0x1F54B && code <= 0x1F54E) || (code >= 0x1F550 && code <= 0x1F567) ||
-      (code >= 0x1F595 && code <= 0x1F596) || (code >= 0x1F5FB && code <= 0x1F64F) ||
-      (code >= 0x1F680 && code <= 0x1F6C5) || (code >= 0x1F6CB && code <= 0x1F6D2) ||
-      (code >= 0x1F6E0 && code <= 0x1F6E5) || code === 0x1F6E9 ||
-      (code >= 0x1F6EB && code <= 0x1F6EC) || code === 0x1F6F0 ||
-      (code >= 0x1F6F3 && code <= 0x1F6F8) || (code >= 0x1F910 && code <= 0x1F93A) ||
-      (code >= 0x1F93C && code <= 0x1F93E) || (code >= 0x1F940 && code <= 0x1F945) ||
-      (code >= 0x1F947 && code <= 0x1F94C) || (code >= 0x1F950 && code <= 0x1F96B) ||
-      (code >= 0x1F980 && code <= 0x1F997) || code === 0x1F9C0 ||
-      (code >= 0x1F9D0 && code <= 0x1F9E6)
-    );
+    const isEmojiChar =
+      (code >= 0x1f600 && code <= 0x1f64f) ||
+      (code >= 0x1f300 && code <= 0x1f5ff) ||
+      (code >= 0x1f680 && code <= 0x1f6ff) ||
+      (code >= 0x1f1e0 && code <= 0x1f1ff) ||
+      (code >= 0x2600 && code <= 0x26ff) ||
+      (code >= 0x2700 && code <= 0x27bf) ||
+      (code >= 0x1f900 && code <= 0x1f9ff) ||
+      (code >= 0x1f018 && code <= 0x1f270) ||
+      code === 0x238c ||
+      code === 0x2b06 ||
+      code === 0x2b07 ||
+      code === 0x2b05 ||
+      code === 0x27a1 ||
+      (code >= 0x2194 && code <= 0x2199) ||
+      (code >= 0x21a9 && code <= 0x21aa) ||
+      (code >= 0x2934 && code <= 0x2935) ||
+      (code >= 0x25aa && code <= 0x25ab) ||
+      (code >= 0x25fb && code <= 0x25fe) ||
+      code === 0x25b6 ||
+      code === 0x25c0 ||
+      (code >= 0x1f200 && code <= 0x1f251) ||
+      code === 0x1f004 ||
+      code === 0x1f0cf ||
+      (code >= 0x1f170 && code <= 0x1f171) ||
+      (code >= 0x1f17e && code <= 0x1f17f) ||
+      code === 0x1f18e ||
+      code === 0x3030 ||
+      code === 0x2b50 ||
+      code === 0x2b55 ||
+      (code >= 0x23e9 && code <= 0x23ec) ||
+      code === 0x23f0 ||
+      code === 0x23f3 ||
+      (code >= 0x231a && code <= 0x231b) ||
+      (code >= 0x23f8 && code <= 0x23fa) ||
+      code === 0x24c2 ||
+      (code >= 0x1f3fb && code <= 0x1f3ff) ||
+      (code >= 0x1f3e0 && code <= 0x1f3f4) ||
+      (code >= 0x1f3f8 && code <= 0x1f43f) ||
+      code === 0x1f440 ||
+      (code >= 0x1f442 && code <= 0x1f4ff) ||
+      (code >= 0x1f500 && code <= 0x1f53d) ||
+      (code >= 0x1f54b && code <= 0x1f54e) ||
+      (code >= 0x1f550 && code <= 0x1f567) ||
+      (code >= 0x1f595 && code <= 0x1f596) ||
+      (code >= 0x1f5fb && code <= 0x1f64f) ||
+      (code >= 0x1f680 && code <= 0x1f6c5) ||
+      (code >= 0x1f6cb && code <= 0x1f6d2) ||
+      (code >= 0x1f6e0 && code <= 0x1f6e5) ||
+      code === 0x1f6e9 ||
+      (code >= 0x1f6eb && code <= 0x1f6ec) ||
+      code === 0x1f6f0 ||
+      (code >= 0x1f6f3 && code <= 0x1f6f8) ||
+      (code >= 0x1f910 && code <= 0x1f93a) ||
+      (code >= 0x1f93c && code <= 0x1f93e) ||
+      (code >= 0x1f940 && code <= 0x1f945) ||
+      (code >= 0x1f947 && code <= 0x1f94c) ||
+      (code >= 0x1f950 && code <= 0x1f96b) ||
+      (code >= 0x1f980 && code <= 0x1f997) ||
+      code === 0x1f9c0 ||
+      (code >= 0x1f9d0 && code <= 0x1f9e6);
     if (!isEmojiChar) return false;
   }
   return true;
 };
 
-// ==================== SAFE AVATAR RENDERER ====================
-const SafeAvatar: React.FC<<{
+const SafeAvatar: React.FC<{
   avatar?: string | null;
   size?: number;
   fallbackEmoji?: string;
@@ -100,52 +173,106 @@ const SafeAvatar: React.FC<<{
   return (
     <View style={[styles.avatarWrapper, { width: size, height: size }]}>
       <LinearGradient
-        colors={hasImage ? ['#f0f0f0', '#e0e0e0'] : [fallbackColor + '40', fallbackColor + '20']}
-        style={[styles.avatarGradient, { width: size, height: size, borderRadius: size / 2 }]}
+        colors={
+          hasImage
+            ? ['#f0f0f0', '#e0e0e0']
+            : [fallbackColor + '40', fallbackColor + '20']
+        }
+        style={[
+          styles.avatarGradient,
+          { width: size, height: size, borderRadius: size / 2 },
+        ]}
       >
         {hasImage ? (
           <Image
             source={{ uri: avatar! }}
-            style={{ width: size, height: size, borderRadius: size / 2 }}
+            style={{
+              width: size,
+              height: size,
+              borderRadius: size / 2,
+            }}
             resizeMode="cover"
-            onError={(e) => console.log('Avatar image error:', e.nativeEvent.error)}
+            onError={(e) =>
+              console.log('Avatar image error:', e.nativeEvent.error)
+            }
           />
         ) : hasEmoji ? (
-          <Text style={[styles.avatarEmoji, { fontSize: size * 0.5 }]}>{avatar}</Text>
+          <Text style={[styles.avatarEmoji, { fontSize: size * 0.5 }]}>
+            {avatar}
+          </Text>
         ) : (
-          <Text style={[styles.avatarEmoji, { fontSize: size * 0.5 }]}>{fallbackEmoji}</Text>
+          <Text style={[styles.avatarEmoji, { fontSize: size * 0.5 }]}>
+            {fallbackEmoji}
+          </Text>
         )}
       </LinearGradient>
     </View>
   );
 };
 
-// ==================== DELIVERY STATUS INDICATOR ====================
-const DeliveryStatus: React.FC<{ status: Message['deliveryStatus'] }> = ({ status }) => {
+const DeliveryStatus: React.FC<{ status: Message['deliveryStatus'] }> = ({
+  status,
+}) => {
   if (status === 'sending') {
-    return <ActivityIndicator size={12} color="rgba(255,255,255,0.7)" style={{ marginLeft: 4 }} />;
+    return (
+      <ActivityIndicator
+        size={12}
+        color="rgba(255,255,255,0.7)"
+        style={{ marginLeft: 4 }}
+      />
+    );
   }
   if (status === 'failed') {
-    return <Ionicons name="alert-circle" size={14} color="#ff4757" style={{ marginLeft: 4 }} />;
+    return (
+      <Ionicons
+        name="alert-circle"
+        size={14}
+        color="#ff4757"
+        style={{ marginLeft: 4 }}
+      />
+    );
   }
   if (status === 'sent') {
-    return <Ionicons name="checkmark" size={14} color="rgba(255,255,255,0.7)" style={{ marginLeft: 4 }} />;
+    return (
+      <Ionicons
+        name="checkmark"
+        size={14}
+        color="rgba(255,255,255,0.7)"
+        style={{ marginLeft: 4 }}
+      />
+    );
   }
   if (status === 'delivered') {
-    return <Ionicons name="checkmark-done" size={14} color="rgba(255,255,255,0.7)" style={{ marginLeft: 4 }} />;
+    return (
+      <Ionicons
+        name="checkmark-done"
+        size={14}
+        color="rgba(255,255,255,0.7)"
+        style={{ marginLeft: 4 }}
+      />
+    );
   }
   if (status === 'read') {
-    return <Ionicons name="checkmark-done" size={14} color="#34b7f1" style={{ marginLeft: 4 }} />;
+    return (
+      <Ionicons
+        name="checkmark-done"
+        size={14}
+        color="#34b7f1"
+        style={{ marginLeft: 4 }}
+      />
+    );
   }
   return null;
 };
 
-// ==================== FILE BUBBLE COMPONENT ====================
-const FileBubble: React.FC<<{
+const FileBubble: React.FC<{
   fileMeta?: FileMetadata;
   isMe: boolean;
   onPress: () => void;
-}> = ({ fileMeta, isMe, onPress }) => {
+  primaryColor: string;
+  textPrimary: string;
+  textSecondary: string;
+}> = ({ fileMeta, isMe, onPress, primaryColor, textPrimary, textSecondary }) => {
   if (!fileMeta) return null;
 
   const formatFileSize = (bytes: number) => {
@@ -165,38 +292,95 @@ const FileBubble: React.FC<<{
   };
 
   return (
-    <TouchableOpacity style={styles.fileBubble} onPress={onPress} activeOpacity={0.8}>
-      <View style={[styles.fileIconContainer, { backgroundColor: isMe ? 'rgba(255,255,255,0.2)' : '#667eea20' }]}>
-        <Ionicons name={getFileIcon() as any} size={24} color={isMe ? '#fff' : '#667eea'} />
+    <TouchableOpacity
+      style={styles.fileBubble}
+      onPress={onPress}
+      activeOpacity={0.8}
+    >
+      <View
+        style={[
+          styles.fileIconContainer,
+          {
+            backgroundColor: isMe
+              ? 'rgba(255,255,255,0.2)'
+              : primaryColor + '20',
+          },
+        ]}
+      >
+        <Ionicons
+          name={getFileIcon() as any}
+          size={24}
+          color={isMe ? '#fff' : primaryColor}
+        />
       </View>
       <View style={styles.fileInfo}>
-        <Text style={[styles.fileName, isMe && styles.fileNameMe]} numberOfLines={1}>
+        <Text
+          style={[
+            styles.fileName,
+            { color: isMe ? '#fff' : textPrimary },
+          ]}
+          numberOfLines={1}
+        >
           {fileMeta.name}
         </Text>
-        <Text style={[styles.fileSize, isMe && styles.fileSizeMe]}>
+        <Text
+          style={[
+            styles.fileSize,
+            { color: isMe ? 'rgba(255,255,255,0.7)' : textSecondary },
+          ]}
+        >
           {formatFileSize(fileMeta.size)}
         </Text>
       </View>
-      <Ionicons name="download-outline" size={18} color={isMe ? 'rgba(255,255,255,0.8)' : '#667eea'} />
+      <Ionicons
+        name="download-outline"
+        size={18}
+        color={isMe ? 'rgba(255,255,255,0.8)' : primaryColor}
+      />
     </TouchableOpacity>
   );
 };
 
-// ==================== IMAGE PREVIEW MODAL ====================
-const ImagePreviewModal: React.FC<<{
+const ImagePreviewModal: React.FC<{
   visible: boolean;
   imageUrl: string;
   onClose: () => void;
-}> = ({ visible, imageUrl, onClose }) => {
+  primaryColor: string;
+  hapticFeedback: boolean;
+  reduceMotion: boolean;
+}> = ({
+  visible,
+  imageUrl,
+  onClose,
+  primaryColor,
+  hapticFeedback,
+  reduceMotion,
+}) => {
   const [loading, setLoading] = useState(true);
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <TouchableOpacity style={styles.imagePreviewOverlay} onPress={onClose} activeOpacity={1}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <TouchableOpacity
+        style={styles.imagePreviewOverlay}
+        onPress={onClose}
+        activeOpacity={1}
+      >
         <BlurView intensity={95} style={StyleSheet.absoluteFill} tint="dark" />
-        <Animated.View entering={FadeIn} style={styles.imagePreviewContainer}>
+        <Animated.View
+          entering={reduceMotion ? undefined : FadeIn}
+          style={styles.imagePreviewContainer}
+        >
           {loading && (
-            <ActivityIndicator size="large" color="#667eea" style={styles.imagePreviewLoader} />
+            <ActivityIndicator
+              size="large"
+              color={primaryColor}
+              style={styles.imagePreviewLoader}
+            />
           )}
           <Image
             source={{ uri: imageUrl }}
@@ -206,7 +390,15 @@ const ImagePreviewModal: React.FC<<{
             onLoadEnd={() => setLoading(false)}
             onError={() => setLoading(false)}
           />
-          <TouchableOpacity style={styles.imagePreviewClose} onPress={onClose}>
+          <TouchableOpacity
+            style={styles.imagePreviewClose}
+            onPress={() => {
+              if (hapticFeedback) {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              }
+              onClose();
+            }}
+          >
             <BlurView intensity={80} style={styles.imagePreviewCloseBlur}>
               <Ionicons name="close" size={24} color="#fff" />
             </BlurView>
@@ -217,12 +409,12 @@ const ImagePreviewModal: React.FC<<{
   );
 };
 
-// ==================== MESSAGE BUBBLE COMPONENT ====================
-const MessageBubble: React.FC<<{
+const MessageBubble: React.FC<{
   message: Message;
   isMe: boolean;
   user: any;
   showAvatar: boolean;
+  theme: ChatTheme;
   onReaction: (emoji: string) => void;
   onReply: () => void;
   onDelete: () => void;
@@ -230,11 +422,14 @@ const MessageBubble: React.FC<<{
   onImagePress: (url: string) => void;
   onFilePress: (meta?: FileMetadata) => void;
   onResend: () => void;
+  hapticFeedback: boolean;
+  reduceMotion: boolean;
 }> = ({
   message,
   isMe,
   user,
   showAvatar,
+  theme,
   onReaction,
   onReply,
   onDelete,
@@ -242,6 +437,8 @@ const MessageBubble: React.FC<<{
   onImagePress,
   onFilePress,
   onResend,
+  hapticFeedback,
+  reduceMotion,
 }) => {
   const [showActions, setShowActions] = useState(false);
   const [imageLoading, setImageLoading] = useState(true);
@@ -252,7 +449,9 @@ const MessageBubble: React.FC<<{
   }));
 
   const handleLongPress = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    if (hapticFeedback) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    }
     scale.value = withSpring(0.98, { damping: 20 });
     setShowActions(true);
     setTimeout(() => {
@@ -261,21 +460,34 @@ const MessageBubble: React.FC<<{
   };
 
   const formatTime = (timestamp: string) => {
-    return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return new Date(timestamp).toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
   };
 
   return (
     <Animated.View
-      entering={isMe ? FadeInUp : FadeInUp}
-      layout={Layout.springify()}
-      style={[styles.messageContainer, isMe ? styles.myMessage : styles.theirMessage]}
+      entering={reduceMotion ? undefined : isMe ? FadeInUp : FadeInUp}
+      layout={reduceMotion ? undefined : Layout.springify()}
+      style={[
+        styles.messageContainer,
+        isMe ? styles.myMessage : styles.theirMessage,
+      ]}
     >
       {!isMe && showAvatar && (
         <TouchableOpacity
-          onPress={() => user && Alert.alert(user.displayName, `Handle: ${user.handle}`)}
+          onPress={() =>
+            user && Alert.alert(user.displayName, `Handle: ${user.handle}`)
+          }
           style={styles.avatarSmall}
         >
-          <SafeAvatar avatar={user?.avatar} size={32} fallbackEmoji="👤" fallbackColor="#667eea" />
+          <SafeAvatar
+            avatar={user?.avatar}
+            size={32}
+            fallbackEmoji="👤"
+            fallbackColor={theme.primary}
+          />
         </TouchableOpacity>
       )}
 
@@ -286,16 +498,58 @@ const MessageBubble: React.FC<<{
             activeOpacity={0.9}
             delayLongPress={200}
           >
-            <View style={[
-              styles.messageBubble,
-              isMe ? styles.myBubble : styles.theirBubble,
-            ]}>
+            <View
+              style={[
+                styles.messageBubble,
+                isMe
+                  ? [styles.myBubble, { backgroundColor: theme.primary }]
+                  : [
+                      styles.theirBubble,
+                      {
+                        backgroundColor: theme.background.card,
+                        borderColor: theme.border,
+                      },
+                    ],
+              ]}
+            >
               {/* Reply reference */}
               {message.replyTo && (
-                <View style={[styles.replyPreview, isMe ? styles.replyPreviewMe : styles.replyPreviewThem]}>
-                  <View style={[styles.replyLine, { backgroundColor: isMe ? 'rgba(255,255,255,0.5)' : '#667eea' }]} />
+                <View
+                  style={[
+                    styles.replyPreview,
+                    isMe
+                      ? [
+                          styles.replyPreviewMe,
+                          { backgroundColor: 'rgba(255,255,255,0.2)' },
+                        ]
+                      : [
+                          styles.replyPreviewThem,
+                          { backgroundColor: theme.primary + '15' },
+                        ],
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.replyLine,
+                      {
+                        backgroundColor: isMe
+                          ? 'rgba(255,255,255,0.5)'
+                          : theme.primary,
+                      },
+                    ]}
+                  />
                   <View style={styles.replyContent}>
-                    <Text style={[styles.replyName, isMe && styles.replyNameMe]} numberOfLines={1}>
+                    <Text
+                      style={[
+                        styles.replyName,
+                        {
+                          color: isMe
+                            ? 'rgba(255,255,255,0.8)'
+                            : theme.primary,
+                        },
+                      ]}
+                      numberOfLines={1}
+                    >
                       {message.replyToPreview || 'Replying to message...'}
                     </Text>
                   </View>
@@ -305,18 +559,26 @@ const MessageBubble: React.FC<<{
               {/* Failed retry */}
               {message.deliveryStatus === 'failed' && isMe && (
                 <TouchableOpacity onPress={onResend} style={styles.resendButton}>
-                  <Ionicons name="refresh" size={16} color="#ff4757" />
-                  <Text style={styles.resendText}>Tap to retry</Text>
+                  <Ionicons name="refresh" size={16} color={theme.error} />
+                  <Text style={[styles.resendText, { color: theme.error }]}>
+                    Tap to retry
+                  </Text>
                 </TouchableOpacity>
               )}
 
               {/* Message content */}
               {message.type === 'image' && message.imageUrl ? (
-                <TouchableOpacity onPress={() => onImagePress(message.imageUrl)} activeOpacity={0.9}>
+                <TouchableOpacity
+                  onPress={() => onImagePress(message.imageUrl)}
+                  activeOpacity={0.9}
+                >
                   <View style={styles.imageContainer}>
                     {imageLoading && (
                       <View style={styles.imagePlaceholder}>
-                        <ActivityIndicator size="small" color={isMe ? '#fff' : '#667eea'} />
+                        <ActivityIndicator
+                          size="small"
+                          color={isMe ? '#fff' : theme.primary}
+                        />
                       </View>
                     )}
                     <Image
@@ -334,20 +596,48 @@ const MessageBubble: React.FC<<{
                   fileMeta={message.fileMetadata}
                   isMe={isMe}
                   onPress={() => onFilePress(message.fileMetadata)}
+                  primaryColor={theme.primary}
+                  textPrimary={theme.text.primary}
+                  textSecondary={theme.text.secondary}
                 />
               ) : (
-                <Text style={[styles.messageText, isMe ? styles.myText : styles.theirText]}>
+                <Text
+                  style={[
+                    styles.messageText,
+                    { color: isMe ? '#fff' : theme.text.primary },
+                  ]}
+                >
                   {message.content}
                 </Text>
               )}
 
               {/* Footer */}
               <View style={styles.messageFooter}>
-                <Text style={[styles.messageTime, isMe ? styles.myTime : styles.theirTime]}>
+                <Text
+                  style={[
+                    styles.messageTime,
+                    {
+                      color: isMe
+                        ? 'rgba(255,255,255,0.7)'
+                        : theme.text.tertiary,
+                    },
+                  ]}
+                >
                   {formatTime(message.timestamp)}
                 </Text>
                 {message.isEdited && (
-                  <Text style={[styles.editedLabel, isMe && styles.editedLabelMe]}>edited</Text>
+                  <Text
+                    style={[
+                      styles.editedLabel,
+                      {
+                        color: isMe
+                          ? 'rgba(255,255,255,0.6)'
+                          : theme.text.tertiary,
+                      },
+                    ]}
+                  >
+                    edited
+                  </Text>
                 )}
                 {isMe && <DeliveryStatus status={message.deliveryStatus} />}
               </View>
@@ -357,34 +647,75 @@ const MessageBubble: React.FC<<{
       </View>
 
       {/* Action Menu */}
-      <Modal visible={showActions} transparent animationType="fade" onRequestClose={() => setShowActions(false)}>
-        <TouchableOpacity style={styles.actionOverlay} onPress={() => setShowActions(false)}>
+      <Modal
+        visible={showActions}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowActions(false)}
+      >
+        <TouchableOpacity
+          style={styles.actionOverlay}
+          onPress={() => setShowActions(false)}
+        >
           <BlurView intensity={90} style={styles.actionMenu} tint="light">
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.emojiRow}>
-              {['❤️', '👍', '😂', '😮', '😢', '🎉'].map(emoji => (
+            <AutoHideScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={[styles.emojiRow, { borderBottomColor: theme.overlay.border }]}
+            >
+              {['❤️', '👍', '😂', '😮', '😢', '🎉'].map((emoji) => (
                 <TouchableOpacity
                   key={emoji}
                   style={styles.emojiButton}
-                  onPress={() => { onReaction(emoji); setShowActions(false); }}
+                  onPress={() => {
+                    onReaction(emoji);
+                    setShowActions(false);
+                  }}
                 >
                   <Text style={styles.emojiText}>{emoji}</Text>
                 </TouchableOpacity>
               ))}
-            </ScrollView>
+            </AutoHideScrollView>
             <View style={styles.actionButtons}>
-              <TouchableOpacity style={styles.actionItem} onPress={() => { onReply(); setShowActions(false); }}>
-                <Ionicons name="arrow-undo" size={20} color="#667eea" />
-                <Text style={styles.actionText}>Reply</Text>
+              <TouchableOpacity
+                style={styles.actionItem}
+                onPress={() => {
+                  onReply();
+                  setShowActions(false);
+                }}
+              >
+                <Ionicons name="arrow-undo" size={20} color={theme.primary} />
+                <Text style={[styles.actionText, { color: theme.text.primary }]}>
+                  Reply
+                </Text>
               </TouchableOpacity>
               {isMe && (
                 <>
-                  <TouchableOpacity style={styles.actionItem} onPress={() => { onEdit(); setShowActions(false); }}>
-                    <Ionicons name="pencil" size={20} color="#f59e0b" />
-                    <Text style={styles.actionText}>Edit</Text>
+                  <TouchableOpacity
+                    style={styles.actionItem}
+                    onPress={() => {
+                      onEdit();
+                      setShowActions(false);
+                    }}
+                  >
+                    <Ionicons name="pencil" size={20} color={theme.accent} />
+                    <Text
+                      style={[styles.actionText, { color: theme.text.primary }]}
+                    >
+                      Edit
+                    </Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={styles.actionItem} onPress={() => { onDelete(); setShowActions(false); }}>
-                    <Ionicons name="trash" size={20} color="#ff4757" />
-                    <Text style={[styles.actionText, { color: '#ff4757' }]}>Delete</Text>
+                  <TouchableOpacity
+                    style={styles.actionItem}
+                    onPress={() => {
+                      onDelete();
+                      setShowActions(false);
+                    }}
+                  >
+                    <Ionicons name="trash" size={20} color={theme.error} />
+                    <Text style={[styles.actionText, { color: theme.error }]}>
+                      Delete
+                    </Text>
                   </TouchableOpacity>
                 </>
               )}
@@ -396,30 +727,55 @@ const MessageBubble: React.FC<<{
   );
 };
 
-// ==================== REPLY PREVIEW BAR ====================
-const ReplyPreviewBar: React.FC<<{
+const ReplyPreviewBar: React.FC<{
   replyTo: { id: string; content: string; senderName: string } | null;
   onCancel: () => void;
-}> = ({ replyTo, onCancel }) => {
+  theme: ChatTheme;
+  hapticFeedback: boolean;
+}> = ({ replyTo, onCancel, theme, hapticFeedback }) => {
   if (!replyTo) return null;
 
   return (
-    <View style={styles.replyBar}>
+    <View
+      style={[
+        styles.replyBar,
+        {
+          backgroundColor: theme.background.elevated,
+          borderTopColor: theme.divider,
+        },
+      ]}
+    >
       <View style={styles.replyBarContent}>
-        <View style={styles.replyBarLine} />
+        <View
+          style={[styles.replyBarLine, { backgroundColor: theme.primary }]}
+        />
         <View style={styles.replyBarText}>
-          <Text style={styles.replyBarName}>{replyTo.senderName}</Text>
-          <Text style={styles.replyBarPreview} numberOfLines={1}>{replyTo.content}</Text>
+          <Text style={[styles.replyBarName, { color: theme.primary }]}>
+            {replyTo.senderName}
+          </Text>
+          <Text
+            style={[styles.replyBarPreview, { color: theme.text.secondary }]}
+            numberOfLines={1}
+          >
+            {replyTo.content}
+          </Text>
         </View>
       </View>
-      <TouchableOpacity onPress={onCancel} style={styles.replyBarClose}>
-        <Ionicons name="close" size={20} color="#666" />
+      <TouchableOpacity
+        onPress={() => {
+          if (hapticFeedback) {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          }
+          onCancel();
+        }}
+        style={styles.replyBarClose}
+      >
+        <Ionicons name="close" size={20} color={theme.text.tertiary} />
       </TouchableOpacity>
     </View>
   );
 };
 
-// ==================== MAIN SCREEN ====================
 export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   const { userId } = route.params;
   const {
@@ -438,7 +794,49 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     resendMessage,
   } = useCommunity();
   const { profile } = useUser();
+
+  const {
+    themeColors,
+    avatar,
+    darkMode,
+    hapticFeedback,
+    soundEffects,
+    reduceMotion,
+    compactView,
+  } = useCustomization();
+
   const insets = useSafeAreaInsets();
+
+  const theme: ChatTheme = useMemo(() => {
+    const isDark = darkMode;
+    return {
+      primary: themeColors.primary,
+      secondary: themeColors.secondary,
+      accent: themeColors.accent,
+      background: {
+        gradient: themeColors.colors,
+        card: isDark ? '#1e1e2e' : '#ffffff',
+        elevated: isDark ? '#2a2a3c' : '#f8faff',
+        main: isDark ? '#0f0f1e' : '#f8faff',
+      },
+      text: {
+        primary: isDark ? '#ffffff' : '#1a1a1a',
+        secondary: isDark ? '#a0a0a0' : '#666666',
+        tertiary: isDark ? '#666666' : '#999999',
+      },
+      error: '#ff4757',
+      success: '#43e97b',
+      info: '#4facfe',
+      divider: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
+      border: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
+      overlay: {
+        background: isDark
+          ? 'rgba(30,30,46,0.95)'
+          : 'rgba(255,255,255,0.95)',
+        border: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
+      },
+    };
+  }, [themeColors, darkMode]);
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
@@ -446,11 +844,15 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [showOptions, setShowOptions] = useState(false);
   const [isBlocked, setIsBlocked] = useState(false);
-  const [replyingTo, setReplyingTo] = useState<{ id: string; content: string; senderName: string } | null>(null);
+  const [replyingTo, setReplyingTo] = useState<{
+    id: string;
+    content: string;
+    senderName: string;
+  } | null>(null);
   const [editingMessage, setEditingMessage] = useState<string | null>(null);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
 
-  const flatListRef = useRef<<FlatList>(null);
+  const flatListRef = useRef<AutoHideFlatList>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
@@ -494,23 +896,50 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
       await editMessage(userId, editingMessage, content);
       setEditingMessage(null);
     } else {
-      await sendMessage(userId, content, 'text', undefined, undefined, replyingTo?.id);
+      await sendMessage(
+        userId,
+        content,
+        'text',
+        undefined,
+        undefined,
+        replyingTo?.id
+      );
     }
 
     setReplyingTo(null);
     setTypingStatus(userId, false);
     refreshMessages();
 
-    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }, [inputText, userId, currentUser, isBlocked, editingMessage, replyingTo, sendMessage, editMessage, setTypingStatus]);
+    setTimeout(
+      () => flatListRef.current?.scrollToEnd({ animated: true }),
+      100
+    );
+
+    if (hapticFeedback) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+  }, [
+    inputText,
+    userId,
+    currentUser,
+    isBlocked,
+    editingMessage,
+    replyingTo,
+    sendMessage,
+    editMessage,
+    setTypingStatus,
+    hapticFeedback,
+  ]);
 
   const handleInputChange = (text: string) => {
     setInputText(text);
     if (text.length > 0) {
       setTypingStatus(userId, true);
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-      typingTimeoutRef.current = setTimeout(() => setTypingStatus(userId, false), 3000);
+      typingTimeoutRef.current = setTimeout(
+        () => setTypingStatus(userId, false),
+        3000
+      );
     } else {
       setTypingStatus(userId, false);
     }
@@ -536,7 +965,8 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
           quality: 0.8,
         });
       } else {
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        const { status } =
+          await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (status !== 'granted') {
           showErrorModal({ message: 'Photo library permission required' });
           return;
@@ -552,13 +982,21 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
       if (!result.canceled && result.assets[0]) {
         const uri = result.assets[0].uri;
         const fileName = `chat_img_${Date.now()}.jpg`;
-        const permanentUri = FileSystem.documentDirectory + 'community_chat_media/' + fileName;
-        await FileSystem.makeDirectoryAsync(FileSystem.documentDirectory + 'community_chat_media/', { intermediates: true });
+        const permanentUri =
+          FileSystem.documentDirectory +
+          'community_chat_media/' +
+          fileName;
+        await FileSystem.makeDirectoryAsync(
+          FileSystem.documentDirectory + 'community_chat_media/',
+          { intermediates: true }
+        );
         await FileSystem.copyAsync({ from: uri, to: permanentUri });
 
         await sendMessage(userId, '📷 Photo', 'image', permanentUri);
         refreshMessages();
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        if (hapticFeedback) {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
       }
     } catch (error) {
       console.error('Image pick error:', error);
@@ -582,11 +1020,18 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
 
       const asset = result.assets[0];
       const fileInfo = await FileSystem.getInfoAsync(asset.uri);
-      const size = fileInfo.exists && 'size' in fileInfo ? fileInfo.size : 0;
+      const size =
+        fileInfo.exists && 'size' in fileInfo ? fileInfo.size : 0;
 
       const fileName = `chat_file_${Date.now()}_${asset.name}`;
-      const permanentUri = FileSystem.documentDirectory + 'community_chat_files/' + fileName;
-      await FileSystem.makeDirectoryAsync(FileSystem.documentDirectory + 'community_chat_files/', { intermediates: true });
+      const permanentUri =
+        FileSystem.documentDirectory +
+        'community_chat_files/' +
+        fileName;
+      await FileSystem.makeDirectoryAsync(
+        FileSystem.documentDirectory + 'community_chat_files/',
+        { intermediates: true }
+      );
       await FileSystem.copyAsync({ from: asset.uri, to: permanentUri });
 
       const fileMeta: FileMetadata = {
@@ -596,9 +1041,17 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
         uri: permanentUri,
       };
 
-      await sendMessage(userId, `📎 ${asset.name}`, 'file', permanentUri, fileMeta);
+      await sendMessage(
+        userId,
+        `📎 ${asset.name}`,
+        'file',
+        permanentUri,
+        fileMeta
+      );
       refreshMessages();
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      if (hapticFeedback) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
     } catch (error) {
       console.error('File pick error:', error);
       showErrorModal({ message: 'Failed to send file' });
@@ -606,24 +1059,20 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   };
 
   const showImageSourceAlert = () => {
-    Alert.alert(
-      'Send Photo',
-      'Choose a photo source',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: '📷 Camera', onPress: () => handleImagePick(true) },
-        { text: '🖼️ Gallery', onPress: () => handleImagePick(false) },
-      ]
-    );
+    Alert.alert('Send Photo', 'Choose a photo source', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: '📷 Camera', onPress: () => handleImagePick(true) },
+      { text: '🖼️ Gallery', onPress: () => handleImagePick(false) },
+    ]);
   };
 
   const handleReaction = async (messageId: string, emoji: string) => {
-    // Community context doesn't have addReaction yet, but we can add it later
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (hapticFeedback) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
   };
 
   const handleDelete = async (messageId: string) => {
-    // Use deleteChat or implement per-message delete in context
     refreshMessages();
   };
 
@@ -633,34 +1082,45 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   };
 
   const handleReply = (message: Message) => {
+    if (hapticFeedback) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
     setReplyingTo({
       id: message.id,
-      content: message.content || (message.type === 'image' ? '📷 Photo' : message.type === 'file' ? '📎 File' : '...'),
-      senderName: message.senderId === currentUser?.id ? 'You' : user?.displayName || 'User',
+      content:
+        message.content ||
+        (message.type === 'image'
+          ? '📷 Photo'
+          : message.type === 'file'
+            ? '📎 File'
+            : '...'),
+      senderName:
+        message.senderId === currentUser?.id
+          ? 'You'
+          : user?.displayName || 'User',
     });
   };
 
   const handleImagePress = (url: string) => {
     setPreviewImageUrl(url);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (hapticFeedback) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
   };
 
   const handleFilePress = async (meta?: FileMetadata) => {
     if (!meta) return;
     try {
-      Alert.alert(
-        meta.name,
-        `Size: ${meta.size} bytes\nType: ${meta.type}`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Share', onPress: async () => {
-              const { Share } = await import('react-native');
-              Share.share({ url: meta.uri, title: meta.name });
-            }
+      Alert.alert(meta.name, `Size: ${meta.size} bytes\nType: ${meta.type}`, [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Share',
+          onPress: async () => {
+            const { Share } = await import('react-native');
+            Share.share({ url: meta.uri, title: meta.name });
           },
-        ]
-      );
+        },
+      ]);
     } catch (error) {
       console.error('File open error:', error);
     }
@@ -697,7 +1157,10 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     const diff = now.getTime() - date.getTime();
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
     if (days > 0) return `${days}d ago`;
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
   };
 
   const getStatusText = () => {
@@ -712,12 +1175,20 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     if (minutes < 60) return `Active ${minutes}m ago`;
     const hours = Math.floor(minutes / 60);
     if (hours < 24) return `Active ${hours}h ago`;
-        return `Active ${Math.floor(hours / 24)}d ago`;
+    return `Active ${Math.floor(hours / 24)}d ago`;
   };
 
-  const renderMessage = ({ item, index }: { item: Message; index: number }) => {
+  const renderMessage = ({
+    item,
+    index,
+  }: {
+    item: Message;
+    index: number;
+  }) => {
     const isMe = item.senderId === currentUser?.id;
-    const showAvatar = !isMe && (index === 0 || messages[index - 1]?.senderId !== item.senderId);
+    const showAvatar =
+      !isMe &&
+      (index === 0 || messages[index - 1]?.senderId !== item.senderId);
 
     return (
       <MessageBubble
@@ -725,6 +1196,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
         isMe={isMe}
         user={user}
         showAvatar={showAvatar}
+        theme={theme}
         onReaction={(emoji) => handleReaction(item.id, emoji)}
         onReply={() => handleReply(item)}
         onDelete={() => handleDelete(item.id)}
@@ -732,6 +1204,8 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
         onImagePress={handleImagePress}
         onFilePress={handleFilePress}
         onResend={() => handleResend(item.id)}
+        hapticFeedback={hapticFeedback}
+        reduceMotion={reduceMotion}
       />
     );
   };
@@ -739,8 +1213,11 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   if (isLoading) {
     return (
       <View style={[styles.container, styles.centered]}>
-        <LinearGradient colors={CommunityGradients.header} style={StyleSheet.absoluteFill} />
-        <ActivityIndicator size="large" color={CommunityColors.primary} />
+        <LinearGradient
+          colors={theme.background.gradient}
+          style={StyleSheet.absoluteFill}
+        />
+        <ActivityIndicator size="large" color={theme.primary} />
       </View>
     );
   }
@@ -748,9 +1225,17 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   if (!user) {
     return (
       <View style={[styles.container, styles.centered]}>
-        <LinearGradient colors={CommunityGradients.header} style={StyleSheet.absoluteFill} />
-        <Text style={styles.errorText}>User not found</Text>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.goBackButton}>
+        <LinearGradient
+          colors={theme.background.gradient}
+          style={StyleSheet.absoluteFill}
+        />
+        <Text style={[styles.errorText, { color: theme.text.secondary }]}>
+          User not found
+        </Text>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={[styles.goBackButton, { backgroundColor: theme.primary }]}
+        >
           <Text style={styles.goBackText}>Go Back</Text>
         </TouchableOpacity>
       </View>
@@ -759,112 +1244,226 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
 
   return (
     <View style={styles.container}>
-      <StatusBar style="dark" />
-      <LinearGradient colors={CommunityColors.background.gradient} style={StyleSheet.absoluteFill} />
+      <StatusBar barStyle={darkMode ? 'light-content' : 'dark-content'} />
+      <LinearGradient
+        colors={theme.background.gradient}
+        style={StyleSheet.absoluteFill}
+      />
 
       {/* Image Preview Modal */}
       <ImagePreviewModal
         visible={!!previewImageUrl}
         imageUrl={previewImageUrl || ''}
         onClose={() => setPreviewImageUrl(null)}
+        primaryColor={theme.primary}
+        hapticFeedback={hapticFeedback}
+        reduceMotion={reduceMotion}
       />
 
       {/* Header */}
-      <BlurView intensity={95} style={[styles.header, { paddingTop: insets.top + 10 }]} tint="light">
+      <BlurView
+        intensity={95}
+        style={[styles.header, { paddingTop: insets.top + 10 }]}
+        tint={darkMode ? 'dark' : 'light'}
+      >
         <LinearGradient
-          colors={['rgba(255,255,255,0.95)', 'rgba(255,250,250,0.98)']}
+          colors={
+            darkMode
+              ? ['rgba(15,15,30,0.95)', 'rgba(15,15,30,0.98)']
+              : ['rgba(255,255,255,0.95)', 'rgba(255,250,250,0.98)']
+          }
           style={StyleSheet.absoluteFill}
         />
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
-          <Ionicons name="arrow-back" size={24} color={CommunityColors.text.primary} />
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.headerButton}
+        >
+          <Ionicons name="arrow-back" size={24} color={theme.text.primary} />
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.userInfo}
-          onPress={() => navigation.navigate('UserProfile', { userId: user.id })}
+          onPress={() =>
+            navigation.navigate('UserProfile', { userId: user.id })
+          }
         >
           <View style={styles.avatarContainer}>
-            <SafeAvatar avatar={user.avatar} size={44} fallbackEmoji="👤" fallbackColor="#667eea" />
+            <SafeAvatar
+              avatar={user.avatar}
+              size={44}
+              fallbackEmoji={avatar || '👤'}
+              fallbackColor={theme.primary}
+            />
             {!isBlocked && (
-              <View style={[styles.userStatusDot, {
-                backgroundColor: user.onlineStatus === 'online' ? CommunityColors.success :
-                  user.onlineStatus === 'away' ? CommunityColors.accent :
-                    CommunityColors.text.tertiary
-              }]} />
+              <View
+                style={[
+                  styles.userStatusDot,
+                  {
+                    backgroundColor:
+                      user.onlineStatus === 'online'
+                        ? theme.success
+                        : user.onlineStatus === 'away'
+                          ? theme.accent
+                          : theme.text.tertiary,
+                  },
+                ]}
+              />
             )}
           </View>
           <View>
             <View style={styles.nameRow}>
-              <Text style={[styles.userName, isBlocked && styles.blockedText]}>
+              <Text
+                style={[
+                  styles.userName,
+                  {
+                    color: isBlocked
+                      ? theme.text.tertiary
+                      : theme.text.primary,
+                  },
+                ]}
+              >
                 {user.displayName}
               </Text>
               {user.isVerified && !isBlocked && (
-                <View style={styles.verifiedBadge}>
+                <View
+                  style={[
+                    styles.verifiedBadge,
+                    { backgroundColor: theme.info },
+                  ]}
+                >
                   <Ionicons name="checkmark" size={10} color="#fff" />
                 </View>
               )}
             </View>
-            <Text style={[styles.userStatus, isBlocked && styles.blockedStatus, getTypingStatus(userId) && styles.typingStatus]}>
+            <Text
+              style={[
+                styles.userStatus,
+                isBlocked && { color: theme.error },
+                getTypingStatus(userId) && {
+                  color: theme.secondary,
+                  fontStyle: 'italic',
+                  fontWeight: '600',
+                },
+              ]}
+            >
               {getStatusText()}
             </Text>
           </View>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => setShowOptions(true)} style={styles.headerButton}>
-          <Ionicons name="ellipsis-vertical" size={24} color={CommunityColors.text.primary} />
+        <TouchableOpacity
+          onPress={() => setShowOptions(true)}
+          style={styles.headerButton}
+        >
+          <Ionicons
+            name="ellipsis-vertical"
+            size={24}
+            color={theme.text.primary}
+          />
         </TouchableOpacity>
       </BlurView>
 
       {/* Messages */}
-      <FlatList
+      <AutoHideFlatList
         ref={flatListRef}
         data={messages}
         renderItem={renderMessage}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.messagesList}
         showsVerticalScrollIndicator={false}
-        onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
+        onContentSizeChange={() =>
+          flatListRef.current?.scrollToEnd({ animated: false })
+        }
         ListEmptyComponent={
           <View style={styles.emptyChat}>
-            <Ionicons name="chatbubbles-outline" size={64} color={CommunityColors.text.tertiary} />
-            <Text style={styles.emptyText}>No messages yet</Text>
-            <Text style={styles.emptySubtext}>Say hello to start the conversation!</Text>
+            <Ionicons
+              name="chatbubbles-outline"
+              size={64}
+              color={theme.text.tertiary}
+            />
+            <Text
+              style={[styles.emptyText, { color: theme.text.secondary }]}
+            >
+              No messages yet
+            </Text>
+            <Text
+              style={[styles.emptySubtext, { color: theme.text.tertiary }]}
+            >
+              Say hello to start the conversation!
+            </Text>
           </View>
         }
       />
 
       {/* Typing Indicator */}
       {getTypingStatus(userId) && !isBlocked && (
-        <Animated.View entering={FadeIn} style={styles.typingContainer}>
-          <BlurView intensity={80} style={styles.typingBubble} tint="light">
-            <Text style={styles.typingText}>{user.displayName} is typing</Text>
-            <ActivityIndicator size="small" color={CommunityColors.primary} style={styles.typingDots} />
+        <Animated.View
+          entering={reduceMotion ? undefined : FadeIn}
+          style={styles.typingContainer}
+        >
+          <BlurView
+            intensity={80}
+            style={styles.typingBubble}
+            tint={darkMode ? 'dark' : 'light'}
+          >
+            <Text
+              style={[styles.typingText, { color: theme.text.secondary }]}
+            >
+              {user.displayName} is typing
+            </Text>
+            <ActivityIndicator
+              size="small"
+              color={theme.primary}
+              style={styles.typingDots}
+            />
           </BlurView>
         </Animated.View>
       )}
 
       {/* Blocked Warning */}
       {isBlocked && (
-        <View style={styles.blockedBanner}>
-          <Ionicons name="ban" size={20} color={CommunityColors.error} />
-          <Text style={styles.blockedBannerText}>You have blocked this user</Text>
+        <View
+          style={[
+            styles.blockedBanner,
+            { backgroundColor: theme.error + '15' },
+          ]}
+        >
+          <Ionicons name="ban" size={20} color={theme.error} />
+          <Text style={[styles.blockedBannerText, { color: theme.error }]}>
+            You have blocked this user
+          </Text>
           <TouchableOpacity onPress={handleBlock}>
-            <Text style={styles.unblockText}>Unblock</Text>
+            <Text style={[styles.unblockText, { color: theme.primary }]}>
+              Unblock
+            </Text>
           </TouchableOpacity>
         </View>
       )}
 
       {/* Reply Preview */}
-      <ReplyPreviewBar replyTo={replyingTo} onCancel={() => setReplyingTo(null)} />
+      <ReplyPreviewBar
+        replyTo={replyingTo}
+        onCancel={() => setReplyingTo(null)}
+        theme={theme}
+        hapticFeedback={hapticFeedback}
+      />
 
       {/* Input */}
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
-        <BlurView intensity={100} style={styles.inputContainer} tint="light">
+        <BlurView
+          intensity={100}
+          style={styles.inputContainer}
+          tint={darkMode ? 'dark' : 'light'}
+        >
           <LinearGradient
-            colors={['rgba(255,255,255,0.98)', 'rgba(255,250,250,0.95)']}
+            colors={
+              darkMode
+                ? ['rgba(15,15,30,0.98)', 'rgba(15,15,30,0.95)']
+                : ['rgba(255,255,255,0.98)', 'rgba(255,250,250,0.95)']
+            }
             style={StyleSheet.absoluteFill}
           />
 
@@ -873,8 +1472,17 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
             onPress={showImageSourceAlert}
             disabled={isBlocked}
           >
-            <View style={[styles.attachButtonBg, { backgroundColor: CommunityColors.primary + '15' }]}>
-              <Ionicons name="image-outline" size={24} color={isBlocked ? CommunityColors.text.tertiary : CommunityColors.primary} />
+            <View
+              style={[
+                styles.attachButtonBg,
+                { backgroundColor: theme.primary + '15' },
+              ]}
+            >
+              <Ionicons
+                name="image-outline"
+                size={24}
+                color={isBlocked ? theme.text.tertiary : theme.primary}
+              />
             </View>
           </TouchableOpacity>
 
@@ -883,16 +1491,42 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
             onPress={handleFilePick}
             disabled={isBlocked}
           >
-            <View style={[styles.attachButtonBg, { backgroundColor: CommunityColors.primary + '15' }]}>
-              <Ionicons name="document-attach-outline" size={24} color={isBlocked ? CommunityColors.text.tertiary : CommunityColors.primary} />
+            <View
+              style={[
+                styles.attachButtonBg,
+                { backgroundColor: theme.primary + '15' },
+              ]}
+            >
+              <Ionicons
+                name="document-attach-outline"
+                size={24}
+                color={isBlocked ? theme.text.tertiary : theme.primary}
+              />
             </View>
           </TouchableOpacity>
 
-          <View style={[styles.inputWrapper, isBlocked && styles.disabledInput]}>
+          <View
+            style={[
+              styles.inputWrapper,
+              {
+                backgroundColor: theme.background.elevated,
+                borderColor: theme.border,
+              },
+              isBlocked && {
+                backgroundColor: theme.background.main,
+              },
+            ]}
+          >
             <TextInput
-              style={styles.input}
-              placeholder={isBlocked ? "Unblock to send messages..." : editingMessage ? "Edit message..." : "Type a message..."}
-              placeholderTextColor={CommunityColors.text.tertiary}
+              style={[styles.input, { color: theme.text.primary }]}
+              placeholder={
+                isBlocked
+                  ? 'Unblock to send messages...'
+                  : editingMessage
+                    ? 'Edit message...'
+                    : 'Type a message...'
+              }
+              placeholderTextColor={theme.text.tertiary}
               value={inputText}
               onChangeText={handleInputChange}
               multiline
@@ -902,18 +1536,30 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
           </View>
 
           <TouchableOpacity
-            style={[styles.sendButton, (inputText.length === 0 || isBlocked) && styles.sendButtonDisabled]}
+            style={[
+              styles.sendButton,
+              (inputText.length === 0 || isBlocked) &&
+                styles.sendButtonDisabled,
+            ]}
             onPress={handleSend}
             disabled={inputText.length === 0 || isBlocked}
           >
             <LinearGradient
-              colors={inputText.length > 0 && !isBlocked ? CommunityGradients.primary : ['transparent', 'transparent']}
+              colors={
+                inputText.length > 0 && !isBlocked
+                  ? [themeColors.primary, themeColors.secondary]
+                  : ['transparent', 'transparent']
+              }
               style={styles.sendButtonGradient}
             >
               <Ionicons
                 name="send"
                 size={20}
-                color={inputText.length > 0 && !isBlocked ? "#fff" : CommunityColors.text.tertiary}
+                color={
+                  inputText.length > 0 && !isBlocked
+                    ? '#fff'
+                    : theme.text.tertiary
+                }
               />
             </LinearGradient>
           </TouchableOpacity>
@@ -932,29 +1578,52 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
           activeOpacity={1}
           onPress={() => setShowOptions(false)}
         >
-          <View style={styles.optionsMenu}>
+          <View
+            style={[
+              styles.optionsMenu,
+              {
+                backgroundColor: theme.background.card,
+                borderColor: theme.border,
+                borderWidth: 1,
+              },
+            ]}
+          >
             <TouchableOpacity style={styles.optionItem} onPress={handleBlock}>
               <Ionicons
-                name={isBlocked ? "checkmark-circle" : "ban"}
+                name={isBlocked ? 'checkmark-circle' : 'ban'}
                 size={24}
-                color={isBlocked ? CommunityColors.success : CommunityColors.error}
+                color={isBlocked ? theme.success : theme.error}
               />
-              <Text style={[styles.optionText, isBlocked && { color: CommunityColors.success }]}>
+              <Text
+                style={[
+                  styles.optionText,
+                  { color: isBlocked ? theme.success : theme.error },
+                ]}
+              >
                 {isBlocked ? 'Unblock User' : 'Block User'}
               </Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.optionItem} onPress={handleDeleteChat}>
-              <Ionicons name="trash" size={24} color={CommunityColors.error} />
-              <Text style={styles.optionText}>Delete Chat</Text>
+            <TouchableOpacity
+              style={styles.optionItem}
+              onPress={handleDeleteChat}
+            >
+              <Ionicons name="trash" size={24} color={theme.error} />
+              <Text style={[styles.optionText, { color: theme.error }]}>
+                Delete Chat
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={[styles.optionItem, styles.optionItemLast]}
-              onPress={() => navigation.navigate('UserProfile', { userId: user.id })}
+              onPress={() =>
+                navigation.navigate('UserProfile', { userId: user.id })
+              }
             >
-              <Ionicons name="person" size={24} color={CommunityColors.primary} />
-              <Text style={styles.optionText}>View Profile</Text>
+              <Ionicons name="person" size={24} color={theme.primary} />
+              <Text style={[styles.optionText, { color: theme.text.primary }]}>
+                View Profile
+              </Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -964,12 +1633,31 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  centered: { justifyContent: 'center', alignItems: 'center' },
+  container: {
+    flex: 1,
+  },
+  centered: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorText: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 16,
+  },
+  goBackButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  goBackText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
 
-  // SafeAvatar
+  // Avatar
   avatarWrapper: {
-    position: 'relative',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -981,44 +1669,180 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  avatarEmoji: {},
+  avatarEmoji: {
+    textAlign: 'center',
+  },
 
-  // File Bubble
-  fileBubble: {
+  // Header
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 10,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    minWidth: 200,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    zIndex: 10,
   },
-  fileIconContainer: {
+  headerButton: {
     width: 40,
     height: 40,
-    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
+    borderRadius: 12,
+  },
+  userInfo: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 12,
+  },
+  avatarContainer: {
+    position: 'relative',
     marginRight: 12,
   },
-  fileInfo: {
-    flex: 1,
-    marginRight: 8,
+  userStatusDot: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 2,
+    borderColor: '#fff',
   },
-  fileName: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1a1a1a',
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
-  fileNameMe: {
-    color: '#fff',
+  userName: {
+    fontSize: 16,
+    fontWeight: '700',
   },
-  fileSize: {
-    fontSize: 12,
-    color: '#64748b',
+  userStatus: {
+    fontSize: 13,
     marginTop: 2,
   },
-  fileSizeMe: {
-    color: 'rgba(255,255,255,0.7)',
+  verifiedBadge: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // Messages
+  messagesList: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 16,
+  },
+  emptyChat: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+  },
+  emptyText: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginTop: 16,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    marginTop: 8,
+  },
+
+  // Message Bubble
+  messageContainer: {
+    marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+  },
+  myMessage: {
+    justifyContent: 'flex-end',
+  },
+  theirMessage: {
+    justifyContent: 'flex-start',
+  },
+  avatarSmall: {
+    marginRight: 8,
+  },
+  messageBubble: {
+    maxWidth: width * 0.75,
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  myBubble: {
+    borderBottomRightRadius: 4,
+  },
+  theirBubble: {
+    borderBottomLeftRadius: 4,
+    borderWidth: 1,
+  },
+  messageText: {
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  messageFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    gap: 6,
+  },
+  messageTime: {
+    fontSize: 11,
+  },
+  editedLabel: {
+    fontSize: 11,
+    fontStyle: 'italic',
+  },
+
+  // Image in message
+  imageContainer: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    width: width * 0.6,
+    height: width * 0.45,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imagePlaceholder: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  messageImage: {
+    width: '100%',
+    height: '100%',
+  },
+
+  // Reply
+  replyPreview: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 8,
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  replyPreviewMe: {
+    backgroundColor: 'rgba(255,255,255,0.15)',
+  },
+  replyPreviewThem: {
+    backgroundColor: 'rgba(102,126,234,0.1)',
+  },
+  replyLine: {
+    width: 3,
+    height: '100%',
+    borderRadius: 2,
+    marginRight: 8,
+  },
+  replyContent: {
+    flex: 1,
+  },
+  replyName: {
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 2,
   },
 
   // Resend
@@ -1026,24 +1850,243 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 8,
-    gap: 4,
+    gap: 6,
   },
   resendText: {
     fontSize: 12,
-    color: '#ff4757',
     fontWeight: '600',
   },
 
-  // Image Preview Modal
+  // File Bubble
+  fileBubble: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 16,
+    gap: 12,
+  },
+  fileIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fileInfo: {
+    flex: 1,
+  },
+  fileName: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  fileSize: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+
+  // Action Menu
+  actionOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.3)',
+  },
+  actionMenu: {
+    margin: 16,
+    borderRadius: 24,
+    padding: 16,
+    overflow: 'hidden',
+  },
+  emojiRow: {
+    flexDirection: 'row',
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+  },
+  emojiButton: {
+    width: 48,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emojiText: {
+    fontSize: 28,
+  },
+  actionButtons: {
+    paddingTop: 12,
+  },
+  actionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    gap: 12,
+  },
+  actionText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+
+  // Reply Bar
+  replyBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+  },
+  replyBarContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  replyBarLine: {
+    width: 3,
+    height: 36,
+    borderRadius: 2,
+    marginRight: 10,
+  },
+  replyBarText: {
+    flex: 1,
+  },
+  replyBarName: {
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  replyBarPreview: {
+    fontSize: 13,
+  },
+  replyBarClose: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // Typing
+  typingContainer: {
+    paddingHorizontal: 16,
+    marginBottom: 8,
+  },
+  typingBubble: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    borderBottomLeftRadius: 4,
+  },
+  typingText: {
+    fontSize: 13,
+    marginRight: 8,
+  },
+  typingDots: {
+    transform: [{ scale: 0.7 }],
+  },
+
+  // Blocked Banner
+  blockedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    gap: 8,
+  },
+  blockedBannerText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  unblockText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+
+  // Input
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    paddingBottom: Platform.OS === 'ios' ? 24 : 10,
+    gap: 8,
+  },
+  attachButton: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  attachButtonBg: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  disabledButton: {
+    opacity: 0.4,
+  },
+  inputWrapper: {
+    flex: 1,
+    borderRadius: 20,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    maxHeight: 100,
+  },
+  input: {
+    fontSize: 15,
+    maxHeight: 80,
+  },
+  sendButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    overflow: 'hidden',
+  },
+  sendButtonDisabled: {
+    opacity: 0.4,
+  },
+  sendButtonGradient: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    justifyContent: 'flex-end',
+  },
+  optionsMenu: {
+    margin: 16,
+    borderRadius: 24,
+    padding: 8,
+  },
+  optionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 12,
+  },
+  optionItemLast: {
+    borderBottomWidth: 0,
+  },
+  optionText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+
+  // Image Preview
   imagePreviewOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.9)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   imagePreviewContainer: {
     width: width,
-    height: height * 0.7,
+    height: height,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1051,8 +2094,8 @@ const styles = StyleSheet.create({
     position: 'absolute',
   },
   imagePreviewImage: {
-    width: width - 40,
-    height: height * 0.6,
+    width: width * 0.9,
+    height: height * 0.7,
     borderRadius: 16,
   },
   imagePreviewClose: {
@@ -1068,328 +2111,4 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
   },
-
-  // Header
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: CommunitySpacing.md,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: CommunityColors.divider,
-    overflow: 'hidden',
-  },
-  headerButton: { padding: 8 },
-  userInfo: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginLeft: 12,
-  },
-  avatarContainer: { position: 'relative', marginRight: 12 },
-  userStatusDot: {
-    position: 'absolute',
-    bottom: 2,
-    right: 2,
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: 'white',
-  },
-  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  userName: { fontSize: 16, fontWeight: '800', color: CommunityColors.text.primary },
-  blockedText: { color: CommunityColors.text.tertiary },
-  verifiedBadge: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: CommunityColors.info,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  userStatus: { fontSize: 13, color: CommunityColors.text.secondary, marginTop: 2 },
-  blockedStatus: { color: CommunityColors.error },
-  typingStatus: { color: CommunityColors.secondary, fontStyle: 'italic', fontWeight: '600' },
-
-  // Messages
-  messagesList: {
-    paddingHorizontal: CommunitySpacing.md,
-    paddingVertical: 20,
-    paddingBottom: 100,
-  },
-  messageContainer: {
-    flexDirection: 'row',
-    marginBottom: 16,
-    alignItems: 'flex-end',
-  },
-  myMessage: { justifyContent: 'flex-end' },
-  theirMessage: { justifyContent: 'flex-start' },
-  avatarSmall: {
-    marginRight: 8,
-    marginBottom: 4,
-  },
-  messageBubble: {
-    maxWidth: width * 0.72,
-    padding: 12,
-    borderRadius: CommunityBorderRadius.lg,
-    ...CommunityShadows.sm,
-  },
-  myBubble: {
-    backgroundColor: CommunityColors.primary,
-    borderBottomRightRadius: 4,
-  },
-  theirBubble: {
-    backgroundColor: CommunityColors.background.card,
-    borderBottomLeftRadius: 4,
-    borderWidth: 1,
-    borderColor: CommunityColors.border,
-  },
-  messageText: { fontSize: 15, lineHeight: 20 },
-  myText: { color: 'white' },
-  theirText: { color: CommunityColors.text.primary },
-
-  // Image in message
-  imageContainer: {
-    position: 'relative',
-    borderRadius: 12,
-    overflow: 'hidden',
-    marginBottom: 4,
-  },
-  imagePlaceholder: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 1,
-  },
-  messageImage: {
-    width: width * 0.6,
-    height: 200,
-    borderRadius: 12,
-  },
-
-  // Reply Preview
-  replyPreview: {
-    flexDirection: 'row',
-    marginBottom: 8,
-    paddingLeft: 8,
-    borderRadius: 8,
-    backgroundColor: 'rgba(0,0,0,0.05)',
-    padding: 8,
-  },
-  replyPreviewMe: { backgroundColor: 'rgba(255,255,255,0.2)' },
-  replyPreviewThem: { backgroundColor: 'rgba(102,126,234,0.1)' },
-  replyLine: { width: 2, borderRadius: 1, marginRight: 8 },
-  replyContent: { flex: 1 },
-  replyName: { fontSize: 12, fontWeight: '600', color: '#667eea', marginBottom: 2 },
-  replyNameMe: { color: 'rgba(255,255,255,0.8)' },
-
-  // Message Footer
-  messageFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    marginTop: 4,
-    gap: 4,
-  },
-  messageTime: { fontSize: 11 },
-  myTime: { color: 'rgba(255,255,255,0.7)' },
-  theirTime: { color: CommunityColors.text.tertiary },
-  editedLabel: { fontSize: 10, color: CommunityColors.text.tertiary, fontStyle: 'italic' },
-  editedLabelMe: { color: 'rgba(255,255,255,0.6)' },
-
-  // Action Menu
-  actionOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  actionMenu: {
-    width: width - 40,
-    borderRadius: 24,
-    padding: 16,
-    backgroundColor: 'rgba(255,255,255,0.95)',
-  },
-  emojiRow: {
-    flexDirection: 'row',
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.1)',
-  },
-  emojiButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 8,
-  },
-  emojiText: { fontSize: 28 },
-  actionButtons: { marginTop: 12 },
-  actionItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    gap: 12,
-  },
-  actionText: { fontSize: 16, color: CommunityColors.text.primary, fontWeight: '500' },
-
-  // Reply Bar
-  replyBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    padding: 12,
-    borderTopWidth: 1,
-    borderTopColor: CommunityColors.divider,
-  },
-  replyBarContent: { flex: 1, flexDirection: 'row', alignItems: 'center' },
-  replyBarLine: { width: 4, height: 36, backgroundColor: CommunityColors.primary, borderRadius: 2, marginRight: 12 },
-  replyBarText: { flex: 1 },
-  replyBarName: { fontSize: 13, fontWeight: '600', color: CommunityColors.primary, marginBottom: 2 },
-  replyBarPreview: { fontSize: 13, color: CommunityColors.text.secondary },
-  replyBarClose: { padding: 4 },
-
-  // Empty State
-  emptyChat: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: height * 0.2,
-  },
-  emptyText: {
-    fontSize: 18,
-    color: CommunityColors.text.secondary,
-    marginTop: 16,
-    fontWeight: '600',
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: CommunityColors.text.tertiary,
-    marginTop: 8,
-  },
-
-  // Typing
-  typingContainer: {
-    paddingHorizontal: CommunitySpacing.md,
-    marginBottom: 8,
-    alignSelf: 'flex-start',
-  },
-  typingBubble: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 16,
-    gap: 8,
-    overflow: 'hidden',
-  },
-  typingText: { fontSize: 13, color: CommunityColors.text.secondary },
-  typingDots: { transform: [{ scale: 0.8 }] },
-
-  // Blocked Banner
-  blockedBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: CommunityColors.error + '15',
-    paddingVertical: 12,
-    gap: 8,
-  },
-  blockedBannerText: {
-    color: CommunityColors.error,
-    fontWeight: '600',
-  },
-  unblockText: {
-    color: CommunityColors.primary,
-    fontWeight: '700',
-    textDecorationLine: 'underline',
-  },
-
-  // Input
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: CommunitySpacing.md,
-    paddingVertical: 12,
-    paddingBottom: 30,
-    overflow: 'hidden',
-  },
-  attachButton: { padding: 4, marginRight: 4 },
-  attachButtonBg: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  disabledButton: { opacity: 0.5 },
-  inputWrapper: {
-    flex: 1,
-    backgroundColor: CommunityColors.background.elevated,
-    borderRadius: 24,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    maxHeight: 100,
-    borderWidth: 1,
-    borderColor: CommunityColors.border,
-  },
-  disabledInput: { backgroundColor: CommunityColors.background.main },
-  input: { fontSize: 16, color: CommunityColors.text.primary, maxHeight: 80 },
-  sendButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    marginLeft: 8,
-    overflow: 'hidden',
-  },
-  sendButtonDisabled: { opacity: 0.5 },
-  sendButtonGradient: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  // Error/Go Back
-  errorText: { fontSize: 18, color: CommunityColors.text.secondary, marginBottom: 16 },
-  goBackButton: {
-    backgroundColor: CommunityColors.primary,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 12,
-  },
-  goBackText: { color: 'white', fontSize: 16, fontWeight: '700' },
-
-  // Modal
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-start',
-    paddingTop: 100,
-    paddingRight: 20,
-  },
-  optionsMenu: {
-    backgroundColor: 'white',
-    borderRadius: 16,
-    marginLeft: 'auto',
-    width: 200,
-    ...CommunityShadows.lg,
-  },
-  optionItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    gap: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: CommunityColors.divider,
-  },
-  optionItemLast: { borderBottomWidth: 0 },
-  optionText: { fontSize: 16, color: CommunityColors.text.primary, fontWeight: '600' },
 });

@@ -1,21 +1,47 @@
 // src/context/SafetyContext.tsx
-import React, { 
-  createContext, 
-  useContext, 
-  useState, 
-  useCallback, 
-  useEffect, 
-  useRef,
+import React, {
+  useCallback,
+  useContext,
+  useEffect,
   useMemo,
-  ReactNode 
+  createContext,
+  useState,
+  useRef,
+  ReactNode,
 } from 'react';
 import { Alert, Linking, Platform, Vibration } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
+import * as Notifications from 'expo-notifications';
 
-const STORAGE_KEY = 'littleloom_safety_data';
-const EMERGENCY_LOG_KEY = 'littleloom_emergency_logs';
+/* ═══════════════════════════════════════════════════════════════
+   CONSTANTS
+   ═══════════════════════════════════════════════════════════════ */
+const STORAGE_KEY = 'littleloom_safety_data_v2';
+const EMERGENCY_LOG_KEY = 'littleloom_emergency_logs_v2';
+const STREAK_KEY = 'littleloom_safety_streak_v2';
+const DOCTOR_REPORTS_KEY = 'littleloom_doctor_reports_v2';
+const MAX_TOPICS_SELECTED = 5;
+
+/* ═══════════════════════════════════════════════════════════════
+   NOTIFICATIONS SETUP — Required for reminders
+   ═══════════════════════════════════════════════════════════════ */
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
+
+/* ═══════════════════════════════════════════════════════════════
+   TYPES
+   ═══════════════════════════════════════════════════════════════ */
+export type EmergencyType = 'emergency' | 'medical' | 'poison' | 'custom' | 'family';
+export type SafetyCategory = 'emergency' | 'prevention' | 'daily';
+export type HapticType = 'light' | 'medium' | 'heavy' | 'success' | 'warning' | 'error';
+export type FirstAidType = 'cpr' | 'choking' | 'burns' | 'bleeding' | 'allergic';
 
 export interface SafetyTopic {
   id: string;
@@ -23,7 +49,7 @@ export interface SafetyTopic {
   title: string;
   description: string;
   color: string;
-  category: 'emergency' | 'prevention' | 'daily';
+  category: SafetyCategory;
   tips: string[];
   emergencyNumbers?: { label: string; number: string }[];
   videoUrl?: string;
@@ -35,11 +61,12 @@ export interface EmergencyContact {
   id: string;
   label: string;
   number: string;
-  type: 'emergency' | 'medical' | 'poison' | 'custom' | 'family';
+  type: EmergencyType;
   icon: string;
   color: string;
   relation?: string;
   isDefault?: boolean;
+  avatar?: string;
 }
 
 export interface EmergencyLog {
@@ -51,12 +78,38 @@ export interface EmergencyLog {
   resolved: boolean;
 }
 
+export interface ChecklistItem {
+  id: string;
+  text: string;
+  completed: boolean;
+  critical: boolean;
+}
+
 export interface SafetyChecklist {
   id: string;
   title: string;
-  items: { id: string; text: string; completed: boolean; critical: boolean }[];
+  items: ChecklistItem[];
   category: 'home' | 'car' | 'sleep' | 'feeding';
   progress: number;
+}
+
+export interface SafetyLocation {
+  latitude: number;
+  longitude: number;
+  address?: string;
+  accuracy?: number;
+  timestamp: string;
+}
+
+export interface DoctorReport {
+  id: string;
+  name: string;
+  uri: string;
+  mimeType: string;
+  size: number;
+  uploadedAt: string;
+  approvedBy?: string;
+  status: 'pending' | 'approved' | 'reviewed';
 }
 
 interface SafetyState {
@@ -68,44 +121,89 @@ interface SafetyState {
   isLoading: boolean;
   lastEmergencyCall: Date | null;
   isLocationAvailable: boolean;
-  currentLocation: { latitude: number; longitude: number; address?: string } | null;
+  currentLocation: SafetyLocation | null;
   isTrackingLocation: boolean;
   safetyScore: number;
   streakDays: number;
   lastActiveDate: string | null;
+  doctorReports: DoctorReport[];
 }
 
 interface SafetyContextType extends SafetyState {
+  // Data loading
   loadSafetyData: () => Promise<void>;
-  callEmergency: (number: string, label: string, type?: 'emergency' | 'medical' | 'custom') => Promise<void>;
+  resetSafetyData: () => Promise<void>;
+
+  // Emergency actions
+  callEmergency: (number: string, label: string, type?: EmergencyType) => Promise<void>;
   triggerSOS: () => Promise<void>;
   findNearbyHospitals: () => Promise<void>;
   findNearbyPediatricians: () => Promise<void>;
   shareLocationWithEmergency: (contactNumber?: string) => Promise<void>;
+
+  // Location
   startLocationTracking: () => Promise<void>;
   stopLocationTracking: () => void;
   getCurrentAddress: () => Promise<string | null>;
+  refreshLocation: () => Promise<SafetyLocation | null>;
+
+  // Topics
   toggleTopicExpanded: (topicId: string) => void;
   markTopicCompleted: (topicId: string) => Promise<void>;
+  markTopicIncomplete: (topicId: string) => Promise<void>;
   getTopicById: (id: string) => SafetyTopic | undefined;
-  getEmergencyTopics: () => SafetyTopic[];
-  getPreventionTopics: () => SafetyTopic[];
-  getDailyTopics: () => SafetyTopic[];
+  getTopicsByCategory: (category: SafetyCategory) => SafetyTopic[];
+  searchTopics: (query: string) => SafetyTopic[];
+
+  // Contacts
   addCustomEmergencyContact: (contact: Omit<EmergencyContact, 'id'>) => Promise<void>;
   removeCustomContact: (id: string) => Promise<void>;
   updateEmergencyContact: (id: string, updates: Partial<EmergencyContact>) => Promise<void>;
-  importFamilyContacts: (familyMembers: any[]) => Promise<void>;
+  importFamilyContacts: (familyMembers: Array<{
+    phoneNumber?: string;
+    fullName?: string;
+    relationship?: string;
+    role?: string;
+    avatar?: string;
+  }>) => Promise<void>;
+  importDeviceContacts: (contacts: EmergencyContact[]) => Promise<void>;
+
+  // Checklists
   toggleChecklistItem: (checklistId: string, itemId: string) => Promise<void>;
   getChecklistProgress: (category: string) => number;
+  resetChecklist: (checklistId: string) => Promise<void>;
+
+  // Tips & scoring
   markTipAsViewed: (topicId: string) => Promise<void>;
   getSafetyScore: () => number;
+  getSafetyLevel: () => 'excellent' | 'good' | 'fair' | 'poor';
+
+  // Logs
   getEmergencyLogs: () => EmergencyLog[];
   addEmergencyLog: (log: Omit<EmergencyLog, 'id' | 'timestamp'>) => Promise<void>;
   resolveEmergencyLog: (logId: string) => Promise<void>;
-  triggerHaptic: (type: 'light' | 'medium' | 'heavy' | 'success' | 'warning' | 'error') => void;
-  getFirstAidSteps: (type: 'cpr' | 'choking' | 'burns' | 'bleeding' | 'allergic') => string[];
+  clearEmergencyLogs: () => Promise<void>;
+
+  // Haptics & feedback
+  triggerHaptic: (type: HapticType) => void;
+
+  // First aid
+  getFirstAidSteps: (type: FirstAidType) => string[];
+
+  // Doctor Reports — NEW
+  addDoctorReport: (report: Omit<DoctorReport, 'id' | 'uploadedAt'>) => Promise<void>;
+  approveDoctorReport: (reportId: string, approvedBy: string) => Promise<void>;
+  getDoctorReports: () => DoctorReport[];
+  deleteDoctorReport: (reportId: string) => Promise<void>;
+
+  // Notifications / Reminders — NEW
+  scheduleSafetyReminder: (title: string, body: string, triggerDate: Date) => Promise<string | null>;
+  cancelSafetyReminder: (identifier: string) => Promise<void>;
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   DEFAULT DATA
+   ═══════════════════════════════════════════════════════════════ */
 const defaultTopics: SafetyTopic[] = [
   {
     id: 'first_aid',
@@ -246,10 +344,10 @@ const defaultTopics: SafetyTopic[] = [
     color: '#17a2b8',
     category: 'prevention',
     tips: [
-      'Never leave baby unattended near water, even for a second',
+      "Never leave baby unattended near water, even for a second",
       'Empty bathtubs, buckets, and containers immediately after use',
       'Keep toilet lids closed and use toilet locks',
-      'Stay within arm\'s reach during bath time',
+      "Stay within arm's reach during bath time",
       'Learn infant CPR - drowning can happen silently',
     ],
   },
@@ -264,17 +362,71 @@ const defaultTopics: SafetyTopic[] = [
       'Watch for hives, swelling, or difficulty breathing',
       'Call 911 for severe reactions (anaphylaxis)',
       'Keep antihistamines on hand for mild reactions',
-      'Know your baby\'s allergy triggers',
+      "Know your baby's allergy triggers",
       'Have an emergency action plan from your pediatrician',
     ],
     emergencyNumbers: [{ label: 'Emergency', number: '911' }],
   },
+  {
+    id: 'sun_safety',
+    icon: 'sunny',
+    title: 'Sun & Heat Safety',
+    description: 'Protecting baby from sun and heat',
+    color: '#f1c40f',
+    category: 'prevention',
+    tips: [
+      'Keep babies under 6 months out of direct sunlight',
+      'Use SPF 30+ sunscreen for babies over 6 months',
+      'Dress in lightweight, light-colored clothing',
+      'Never leave baby in a parked car, even briefly',
+      'Watch for signs of heat exhaustion: fussiness, redness, rapid breathing',
+    ],
+  },
+  {
+    id: 'pet_safety',
+    icon: 'paw',
+    title: 'Pet Safety',
+    description: 'Keeping baby safe around pets',
+    color: '#8e44ad',
+    category: 'daily',
+    tips: [
+      'Never leave baby unattended with any pet',
+      'Teach gentle touch - no pulling tails or ears',
+      'Create pet-free zones for baby sleep and feeding',
+      'Keep pet food and water bowls away from baby',
+      'Watch for signs of pet stress or anxiety',
+    ],
+  },
 ];
 
 const defaultEmergencyContacts: EmergencyContact[] = [
-  { id: '1', label: 'Emergency', number: '911', type: 'emergency', icon: 'call', color: '#ff4757', isDefault: true },
-  { id: '2', label: 'Poison Control', number: '1-800-222-1222', type: 'poison', icon: 'medical', color: '#667eea', isDefault: true },
-  { id: '3', label: 'Pediatrician', number: '', type: 'medical', icon: 'person', color: '#43e97b', isDefault: true },
+  {
+    id: '1',
+    label: 'Emergency',
+    number: '911',
+    type: 'emergency',
+    icon: 'call',
+    color: '#ff4757',
+    isDefault: true,
+  },
+  {
+    id: '2',
+    label: 'Poison Control',
+    number: '1-800-222-1222',
+    type: 'poison',
+    icon: 'medical',
+    color: '#667eea',
+    isDefault: true,
+  },
+  {
+    id: '3',
+    label: 'Pediatrician',
+    number: '',
+    type: 'medical',
+    icon: 'person',
+    color: '#43e97b',
+    isDefault: true,
+  },
 ];
 
 const defaultChecklists: SafetyChecklist[] = [
@@ -318,13 +470,32 @@ const defaultChecklists: SafetyChecklist[] = [
       { id: 's5', text: 'Baby monitor working', completed: false, critical: false },
     ],
   },
+  {
+    id: 'feeding_safety',
+    title: 'Feeding Safety Check',
+    category: 'feeding',
+    progress: 0,
+    items: [
+      { id: 'f1', text: 'High chair secured and stable', completed: false, critical: true },
+      { id: 'f2', text: 'Food cut into appropriate sizes', completed: false, critical: true },
+      { id: 'f3', text: 'Supervise all meals', completed: false, critical: true },
+      { id: 'f4', text: 'Know infant choking first aid', completed: false, critical: true },
+      { id: 'f5', text: 'Clean bottles and utensils properly', completed: false, critical: false },
+    ],
+  },
 ];
 
+/* ═══════════════════════════════════════════════════════════════
+   CONTEXT
+   ═══════════════════════════════════════════════════════════════ */
 const SafetyContext = createContext<SafetyContextType | null>(null);
 
+/* ═══════════════════════════════════════════════════════════════
+   PROVIDER
+   ═══════════════════════════════════════════════════════════════ */
 export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [state, setState] = useState<SafetyState>({
-    topics: defaultTopics.map(t => ({ ...t, isExpanded: false })),
+    topics: defaultTopics.map((t) => ({ ...t, isExpanded: false })),
     emergencyContacts: defaultEmergencyContacts,
     emergencyLogs: [],
     checklists: defaultChecklists,
@@ -337,84 +508,181 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     safetyScore: 0,
     streakDays: 0,
     lastActiveDate: null,
+    doctorReports: [],
   });
 
   const locationSubscription = useRef<Location.LocationSubscription | null>(null);
+  const isMounted = useRef(true);
 
-  const loadSafetyData = useCallback(async () => {
-    try {
-      const [stored, logsStored, streakStored] = await Promise.all([
-        AsyncStorage.getItem(STORAGE_KEY),
-        AsyncStorage.getItem(EMERGENCY_LOG_KEY),
-        AsyncStorage.getItem('littleloom_safety_streak'),
-      ]);
-      
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        setState(prev => ({
-          ...prev,
-          emergencyContacts: parsed.emergencyContacts || defaultEmergencyContacts,
-          recentTipsViewed: parsed.recentTipsViewed || [],
-          checklists: parsed.checklists || defaultChecklists,
-          lastEmergencyCall: parsed.lastEmergencyCall ? new Date(parsed.lastEmergencyCall) : null,
-        }));
-      }
-      
-      if (logsStored) {
-        setState(prev => ({ ...prev, emergencyLogs: JSON.parse(logsStored) }));
-      }
-      
-      if (streakStored) {
-        const { streakDays, lastActiveDate } = JSON.parse(streakStored);
-        setState(prev => ({ ...prev, streakDays, lastActiveDate }));
-      }
-    } catch (error) {
-      console.error('Failed to load safety data:', error);
-    }
+  /* ── Lifecycle ── */
+  useEffect(() => {
+    isMounted.current = true;
+    loadSafetyData();
+    return () => {
+      isMounted.current = false;
+      stopLocationTracking();
+    };
   }, []);
 
-  useEffect(() => {
-    loadSafetyData();
-    checkLocationAvailability();
-  }, [loadSafetyData]);
-
+  /* ── Persistence: Main state ── */
   useEffect(() => {
     const persist = async () => {
       try {
-        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({
-          emergencyContacts: state.emergencyContacts,
-          recentTipsViewed: state.recentTipsViewed,
-          checklists: state.checklists,
-          lastEmergencyCall: state.lastEmergencyCall,
-        }));
+        await AsyncStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify({
+            emergencyContacts: state.emergencyContacts,
+            recentTipsViewed: state.recentTipsViewed,
+            checklists: state.checklists,
+            lastEmergencyCall: state.lastEmergencyCall,
+            doctorReports: state.doctorReports,
+          })
+        );
       } catch (error) {
-        console.error('Failed to save safety data:', error);
+        console.error('[SafetyContext] Failed to save safety data:', error);
       }
     };
     persist();
-  }, [state.emergencyContacts, state.recentTipsViewed, state.checklists, state.lastEmergencyCall]);
+  }, [state.emergencyContacts, state.recentTipsViewed, state.checklists, state.lastEmergencyCall, state.doctorReports]);
 
+  /* ── Persistence: Logs ── */
   useEffect(() => {
     const persistLogs = async () => {
       try {
         await AsyncStorage.setItem(EMERGENCY_LOG_KEY, JSON.stringify(state.emergencyLogs));
       } catch (error) {
-        console.error('Failed to save emergency logs:', error);
+        console.error('[SafetyContext] Failed to save emergency logs:', error);
       }
     };
     persistLogs();
   }, [state.emergencyLogs]);
 
-  const checkLocationAvailability = async () => {
+  /* ── Load data ── */
+  const loadSafetyData = useCallback(async () => {
+    try {
+      const [stored, logsStored, streakStored, reportsStored] = await Promise.all([
+        AsyncStorage.getItem(STORAGE_KEY),
+        AsyncStorage.getItem(EMERGENCY_LOG_KEY),
+        AsyncStorage.getItem(STREAK_KEY),
+        AsyncStorage.getItem(DOCTOR_REPORTS_KEY),
+      ]);
+
+      const updates: Partial<SafetyState> = {};
+
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          updates.emergencyContacts = parsed.emergencyContacts || defaultEmergencyContacts;
+          updates.recentTipsViewed = parsed.recentTipsViewed || [];
+          updates.checklists = parsed.checklists || defaultChecklists;
+          updates.lastEmergencyCall = parsed.lastEmergencyCall ? new Date(parsed.lastEmergencyCall) : null;
+          updates.doctorReports = parsed.doctorReports || [];
+        } catch (e) {
+          console.warn('[SafetyContext] Failed to parse stored data');
+        }
+      }
+
+      if (logsStored) {
+        try {
+          updates.emergencyLogs = JSON.parse(logsStored);
+        } catch (e) {
+          updates.emergencyLogs = [];
+        }
+      }
+
+      if (streakStored) {
+        try {
+          const { streakDays, lastActiveDate } = JSON.parse(streakStored);
+          updates.streakDays = streakDays || 0;
+          updates.lastActiveDate = lastActiveDate || null;
+        } catch (e) {
+          updates.streakDays = 0;
+          updates.lastActiveDate = null;
+        }
+      }
+
+      if (reportsStored) {
+        try {
+          updates.doctorReports = JSON.parse(reportsStored);
+        } catch (e) {
+          updates.doctorReports = [];
+        }
+      }
+
+      if (isMounted.current) {
+        setState((prev) => ({ ...prev, ...updates }));
+      }
+    } catch (error) {
+      console.error('[SafetyContext] Failed to load safety data:', error);
+    }
+  }, []);
+
+  /* ── Reset all data ── */
+  const resetSafetyData = useCallback(async () => {
+    try {
+      await AsyncStorage.multiRemove([STORAGE_KEY, EMERGENCY_LOG_KEY, STREAK_KEY, DOCTOR_REPORTS_KEY]);
+      setState({
+        topics: defaultTopics.map((t) => ({ ...t, isExpanded: false })),
+        emergencyContacts: defaultEmergencyContacts,
+        emergencyLogs: [],
+        checklists: defaultChecklists,
+        recentTipsViewed: [],
+        isLoading: false,
+        lastEmergencyCall: null,
+        isLocationAvailable: true,
+        currentLocation: null,
+        isTrackingLocation: false,
+        safetyScore: 0,
+        streakDays: 0,
+        lastActiveDate: null,
+        doctorReports: [],
+      });
+    } catch (error) {
+      console.error('[SafetyContext] Failed to reset safety data:', error);
+    }
+  }, []);
+
+  /* ── Location helpers ── */
+  const checkLocationAvailability = useCallback(async () => {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
-      setState(prev => ({ ...prev, isLocationAvailable: status === 'granted' }));
+      if (isMounted.current) {
+        setState((prev) => ({ ...prev, isLocationAvailable: status === 'granted' }));
+      }
+      return status === 'granted';
     } catch (error) {
-      setState(prev => ({ ...prev, isLocationAvailable: false }));
+      if (isMounted.current) {
+        setState((prev) => ({ ...prev, isLocationAvailable: false }));
+      }
+      return false;
     }
-  };
+  }, []);
 
-  const triggerHaptic = useCallback((type: 'light' | 'medium' | 'heavy' | 'success' | 'warning' | 'error') => {
+  const refreshLocation = useCallback(async (): Promise<SafetyLocation | null> => {
+    const hasPermission = await checkLocationAvailability();
+    if (!hasPermission) return null;
+
+    try {
+      const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      const location: SafetyLocation = {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        accuracy: position.coords.accuracy ?? undefined,
+        timestamp: new Date().toISOString(),
+      };
+
+      if (isMounted.current) {
+        setState((prev) => ({ ...prev, currentLocation: location }));
+      }
+      return location;
+    } catch (error) {
+      console.error('[SafetyContext] Failed to get location:', error);
+      return null;
+    }
+  }, [checkLocationAvailability]);
+
+  /* ── Haptics ── */
+  const triggerHaptic = useCallback((type: HapticType) => {
     try {
       switch (type) {
         case 'light':
@@ -441,59 +709,67 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }
   }, []);
 
-  const callEmergency = useCallback(async (number: string, label: string, type: 'emergency' | 'medical' | 'custom' = 'emergency') => {
-    if (!number) {
+  /* ── Emergency call ── */
+  const callEmergency = useCallback(
+    async (number: string, label: string, type: EmergencyType = 'emergency') => {
+      if (!number) {
+        Alert.alert('No Number Set', `Please configure your ${label} number first.`, [{ text: 'OK' }]);
+        return;
+      }
+
+      triggerHaptic('warning');
+
       Alert.alert(
-        'No Number Set',
-        `Please configure your ${label} number first.`,
-        [{ text: 'OK' }]
-      );
-      return;
-    }
+        `Call ${label}?`,
+        `Are you sure you want to call ${number}?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Call',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await Linking.openURL(`tel:${number.replace(/\\D/g, '')}`);
 
-    triggerHaptic('warning');
+                const newLog: EmergencyLog = {
+                  id: Date.now().toString(),
+                  type: 'call',
+                  timestamp: new Date().toISOString(),
+                  details: `Called ${label} (${number})`,
+                  location: state.currentLocation
+                    ? {
+                        latitude: state.currentLocation.latitude,
+                        longitude: state.currentLocation.longitude,
+                      }
+                    : undefined,
+                  resolved: false,
+                };
 
-    Alert.alert(
-      `Call ${label}?`,
-      `Are you sure you want to call ${number}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Call',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await Linking.openURL(`tel:${number.replace(/\D/g, '')}`);
-              
-              const newLog: EmergencyLog = {
-                id: Date.now().toString(),
-                type: 'call',
-                timestamp: new Date().toISOString(),
-                details: `Called ${label} (${number})`,
-                location: state.currentLocation || undefined,
-                resolved: false,
-              };
-              
-              setState(prev => ({
-                ...prev,
-                lastEmergencyCall: new Date(),
-                emergencyLogs: [newLog, ...prev.emergencyLogs],
-              }));
-              
-              triggerHaptic('error');
-            } catch (error) {
-              Alert.alert('Error', 'Could not initiate call. Please dial manually.');
-            }
+                if (isMounted.current) {
+                  setState((prev) => ({
+                    ...prev,
+                    lastEmergencyCall: new Date(),
+                    emergencyLogs: [newLog, ...prev.emergencyLogs],
+                  }));
+                }
+
+                triggerHaptic('error');
+              } catch (error) {
+                Alert.alert('Error', 'Could not initiate call. Please dial manually.');
+              }
+            },
           },
-        },
-      ]
-    );
-  }, [state.currentLocation, triggerHaptic]);
+        ]
+      );
+    },
+    [state.currentLocation, triggerHaptic]
+  );
 
+  /* ── SOS trigger ── */
   const triggerSOS = useCallback(async () => {
     triggerHaptic('error');
     Vibration.vibrate([0, 500, 200, 500, 200, 500]);
-    
+
     Alert.alert(
       'SOS EMERGENCY',
       'This will call Emergency Services and share your location with family contacts. Continue?',
@@ -505,66 +781,84 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           onPress: async () => {
             let location = state.currentLocation;
             if (!location) {
-              try {
-                const { coords } = await Location.getCurrentPositionAsync({});
-                location = { latitude: coords.latitude, longitude: coords.longitude };
-              } catch (e) {}
+              location = await refreshLocation();
             }
-            
-            await Linking.openURL('tel:911');
-            
-            const familyContacts = state.emergencyContacts.filter(c => c.type === 'family' && c.number);
+
+            try {
+              await Linking.openURL('tel:911');
+            } catch (e) {
+              console.error('[SafetyContext] Failed to dial 911:', e);
+            }
+
+            const familyContacts = state.emergencyContacts.filter((c) => c.type === 'family' && c.number);
             for (const contact of familyContacts) {
-              const message = `EMERGENCY SOS from LittleLoom\nI triggered an emergency at:\nhttps://maps.google.com/?q=${location?.latitude},${location?.longitude}`;
-              await Linking.openURL(`sms:${contact.number}?body=${encodeURIComponent(message)}`);
+              try {
+                const message = `EMERGENCY SOS from LittleLoom\\nI triggered an emergency at:\\nhttps://maps.google.com/?q=${location?.latitude},${location?.longitude}`;
+                await Linking.openURL(`sms:${contact.number}?body=${encodeURIComponent(message)}`);
+              } catch (e) {
+                console.error(`[SafetyContext] Failed to SMS ${contact.label}:`, e);
+              }
             }
-            
+
             const newLog: EmergencyLog = {
               id: Date.now().toString(),
               type: 'sos',
               timestamp: new Date().toISOString(),
               details: 'SOS triggered - 911 called and location shared',
-              location: location || undefined,
+              location: location
+                ? { latitude: location.latitude, longitude: location.longitude }
+                : undefined,
               resolved: false,
             };
-            
-            setState(prev => ({
-              ...prev,
-              emergencyLogs: [newLog, ...prev.emergencyLogs],
-            }));
+
+            if (isMounted.current) {
+              setState((prev) => ({
+                ...prev,
+                emergencyLogs: [newLog, ...prev.emergencyLogs],
+              }));
+            }
           },
         },
       ]
     );
-  }, [state.currentLocation, state.emergencyContacts, triggerHaptic]);
+  }, [state.currentLocation, state.emergencyContacts, refreshLocation, triggerHaptic]);
 
+  /* ── Get address from coords ── */
   const getCurrentAddress = useCallback(async (): Promise<string | null> => {
     try {
       if (!state.currentLocation) return null;
-      const [address] = await Location.reverseGeocodeAsync(state.currentLocation);
-      return `${address.street}, ${address.city}, ${address.region}`;
+      const [address] = await Location.reverseGeocodeAsync({
+        latitude: state.currentLocation.latitude,
+        longitude: state.currentLocation.longitude,
+      });
+      if (!address) return null;
+      const parts = [address.street, address.city, address.region].filter(Boolean);
+      return parts.join(', ');
     } catch (e) {
       return null;
     }
   }, [state.currentLocation]);
 
+  /* ── Find hospitals ── */
   const findNearbyHospitals = useCallback(async () => {
     triggerHaptic('medium');
-    
+
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
+      const hasPermission = await checkLocationAvailability();
+      if (!hasPermission) {
         Alert.alert('Location Required', 'Please enable location to find nearby hospitals.');
         return;
       }
 
-      const location = await Location.getCurrentPositionAsync({});
+      const position = await Location.getCurrentPositionAsync({});
       const coords = {
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
       };
-      
-      setState(prev => ({ ...prev, currentLocation: coords }));
+
+      if (isMounted.current) {
+        setState((prev) => ({ ...prev, currentLocation: { ...coords, timestamp: new Date().toISOString() } }));
+      }
 
       const url = Platform.select({
         ios: `maps:?q=hospital+near+me&near=${coords.latitude},${coords.longitude}`,
@@ -573,7 +867,7 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
       if (url) {
         await Linking.openURL(url);
-        
+
         const newLog: EmergencyLog = {
           id: Date.now().toString(),
           type: 'first_aid',
@@ -582,273 +876,379 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           location: coords,
           resolved: true,
         };
-        
-        setState(prev => ({
-          ...prev,
-          emergencyLogs: [newLog, ...prev.emergencyLogs],
-        }));
+
+        if (isMounted.current) {
+          setState((prev) => ({
+            ...prev,
+            emergencyLogs: [newLog, ...prev.emergencyLogs],
+          }));
+        }
       }
     } catch (error) {
-      Alert.alert(
-        'Find Hospitals',
-        'Open maps to search for hospitals?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { 
-            text: 'Open Maps', 
-            onPress: () => Linking.openURL('https://maps.google.com/?q=hospital+near+me')
-          }
-        ]
-      );
+      Alert.alert('Find Hospitals', 'Open maps to search for hospitals?', [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Open Maps',
+          onPress: () => Linking.openURL('https://maps.google.com/?q=hospital+near+me'),
+        },
+      ]);
     }
-  }, [triggerHaptic]);
+  }, [checkLocationAvailability, triggerHaptic]);
 
+  /* ── Find pediatricians ── */
   const findNearbyPediatricians = useCallback(async () => {
     triggerHaptic('medium');
-    
+
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
+      const hasPermission = await checkLocationAvailability();
+      if (!hasPermission) {
         Alert.alert('Location Required', 'Please enable location.');
         return;
       }
 
-      const location = await Location.getCurrentPositionAsync({});
+      const position = await Location.getCurrentPositionAsync({});
       const url = Platform.select({
-        ios: `maps:?q=pediatrician+near+me&near=${location.coords.latitude},${location.coords.longitude}`,
-        android: `geo:${location.coords.latitude},${location.coords.longitude}?q=pediatrician`,
+        ios: `maps:?q=pediatrician+near+me&near=${position.coords.latitude},${position.coords.longitude}`,
+        android: `geo:${position.coords.latitude},${position.coords.longitude}?q=pediatrician`,
       });
 
       if (url) await Linking.openURL(url);
     } catch (error) {
       Linking.openURL('https://maps.google.com/?q=pediatrician+near+me');
     }
-  }, [triggerHaptic]);
+  }, [checkLocationAvailability, triggerHaptic]);
 
-  const shareLocationWithEmergency = useCallback(async (contactNumber?: string) => {
-    triggerHaptic('medium');
-    
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Location Required', 'Please enable location sharing.');
-        return;
+  /* ── Share location ── */
+  const shareLocationWithEmergency = useCallback(
+    async (contactNumber?: string) => {
+      triggerHaptic('medium');
+
+      try {
+        const hasPermission = await checkLocationAvailability();
+        if (!hasPermission) {
+          Alert.alert('Location Required', 'Please enable location sharing.');
+          return;
+        }
+
+        const position = await Location.getCurrentPositionAsync({});
+        const coords = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        };
+
+        if (isMounted.current) {
+          setState((prev) => ({
+            ...prev,
+            currentLocation: { ...coords, timestamp: new Date().toISOString() },
+          }));
+        }
+
+        const address = await getCurrentAddress();
+        const message = `LittleLoom Emergency Location Share\\n\\nI'm at: ${address || 'Current Location'}\\nhttps://maps.google.com/?q=${coords.latitude},${coords.longitude}\\n\\nSent via LittleLoom Safety Corner`;
+
+        if (contactNumber) {
+          await Linking.openURL(`sms:${contactNumber}?body=${encodeURIComponent(message)}`);
+        } else {
+          await Linking.openURL(`sms:?body=${encodeURIComponent(message)}`);
+        }
+
+        const newLog: EmergencyLog = {
+          id: Date.now().toString(),
+          type: 'location_share',
+          timestamp: new Date().toISOString(),
+          details: `Location shared${contactNumber ? ' with contact' : ''}`,
+          location: coords,
+          resolved: true,
+        };
+
+        if (isMounted.current) {
+          setState((prev) => ({
+            ...prev,
+            emergencyLogs: [newLog, ...prev.emergencyLogs],
+          }));
+        }
+
+        triggerHaptic('success');
+      } catch (error) {
+        Alert.alert('Error', 'Could not share location.');
       }
+    },
+    [checkLocationAvailability, getCurrentAddress, triggerHaptic]
+  );
 
-      const location = await Location.getCurrentPositionAsync({});
-      const coords = {
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-      };
-      
-      setState(prev => ({ ...prev, currentLocation: coords }));
-      
-      const address = await getCurrentAddress();
-      const message = `LittleLoom Emergency Location Share\n\nI'm at: ${address || 'Current Location'}\nhttps://maps.google.com/?q=${coords.latitude},${coords.longitude}\n\nSent via LittleLoom Safety Corner`;
-      
-      if (contactNumber) {
-        await Linking.openURL(`sms:${contactNumber}?body=${encodeURIComponent(message)}`);
-      } else {
-        await Linking.openURL(`sms:?body=${encodeURIComponent(message)}`);
-      }
-      
-      const newLog: EmergencyLog = {
-        id: Date.now().toString(),
-        type: 'location_share',
-        timestamp: new Date().toISOString(),
-        details: `Location shared${contactNumber ? ' with contact' : ''}`,
-        location: coords,
-        resolved: true,
-      };
-      
-      setState(prev => ({
-        ...prev,
-        emergencyLogs: [newLog, ...prev.emergencyLogs],
-      }));
-      
-      triggerHaptic('success');
-    } catch (error) {
-      Alert.alert('Error', 'Could not share location.');
-    }
-  }, [getCurrentAddress, triggerHaptic]);
-
+  /* ── Location tracking ── */
   const startLocationTracking = useCallback(async () => {
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') return;
-      
+      const hasPermission = await checkLocationAvailability();
+      if (!hasPermission) return;
+
       locationSubscription.current = await Location.watchPositionAsync(
         { accuracy: Location.Accuracy.High, distanceInterval: 10 },
         (location) => {
-          setState(prev => ({
-            ...prev,
-            currentLocation: {
-              latitude: location.coords.latitude,
-              longitude: location.coords.longitude,
-            },
-          }));
+          if (isMounted.current) {
+            setState((prev) => ({
+              ...prev,
+              currentLocation: {
+                latitude: location.coords.latitude,
+                longitude: location.coords.longitude,
+                accuracy: location.coords.accuracy ?? undefined,
+                timestamp: new Date().toISOString(),
+              },
+            }));
+          }
         }
       );
-      
-      setState(prev => ({ ...prev, isTrackingLocation: true }));
+
+      if (isMounted.current) {
+        setState((prev) => ({ ...prev, isTrackingLocation: true }));
+      }
     } catch (error) {
-      console.error('Location tracking error:', error);
+      console.error('[SafetyContext] Location tracking error:', error);
     }
-  }, []);
+  }, [checkLocationAvailability]);
 
   const stopLocationTracking = useCallback(() => {
     locationSubscription.current?.remove();
     locationSubscription.current = null;
-    setState(prev => ({ ...prev, isTrackingLocation: false }));
+    if (isMounted.current) {
+      setState((prev) => ({ ...prev, isTrackingLocation: false }));
+    }
   }, []);
 
+  /* ── Topic management ── */
   const toggleTopicExpanded = useCallback((topicId: string) => {
-    setState(prev => ({
+    setState((prev) => ({
       ...prev,
-      topics: prev.topics.map(t =>
-        t.id === topicId ? { ...t, isExpanded: !t.isExpanded } : t
-      ),
+      topics: prev.topics.map((t) => (t.id === topicId ? { ...t, isExpanded: !t.isExpanded } : t)),
     }));
   }, []);
 
-  const markTopicCompleted = useCallback(async (topicId: string) => {
-    setState(prev => ({
+  const markTopicCompleted = useCallback(
+    async (topicId: string) => {
+      setState((prev) => ({
+        ...prev,
+        topics: prev.topics.map((t) => (t.id === topicId ? { ...t, completedAt: new Date().toISOString() } : t)),
+      }));
+      triggerHaptic('success');
+    },
+    [triggerHaptic]
+  );
+
+  const markTopicIncomplete = useCallback(async (topicId: string) => {
+    setState((prev) => ({
       ...prev,
-      topics: prev.topics.map(t =>
-        t.id === topicId ? { ...t, completedAt: new Date().toISOString() } : t
-      ),
+      topics: prev.topics.map((t) => (t.id === topicId ? { ...t, completedAt: undefined } : t)),
     }));
-    triggerHaptic('success');
-  }, [triggerHaptic]);
+  }, []);
 
-  const getTopicById = useCallback((id: string) => {
-    return state.topics.find(t => t.id === id);
-  }, [state.topics]);
+  const getTopicById = useCallback(
+    (id: string) => state.topics.find((t) => t.id === id),
+    [state.topics]
+  );
 
-  const getEmergencyTopics = useCallback(() => {
-    return state.topics.filter(t => t.category === 'emergency');
-  }, [state.topics]);
+  const getTopicsByCategory = useCallback(
+    (category: SafetyCategory) => state.topics.filter((t) => t.category === category),
+    [state.topics]
+  );
 
-  const getPreventionTopics = useCallback(() => {
-    return state.topics.filter(t => t.category === 'prevention');
-  }, [state.topics]);
+  const searchTopics = useCallback(
+    (query: string) => {
+      const lower = query.toLowerCase().trim();
+      if (!lower) return state.topics;
+      return state.topics.filter(
+        (t) =>
+          t.title.toLowerCase().includes(lower) ||
+          t.description.toLowerCase().includes(lower) ||
+          t.tips.some((tip) => tip.toLowerCase().includes(lower))
+      );
+    },
+    [state.topics]
+  );
 
-  const getDailyTopics = useCallback(() => {
-    return state.topics.filter(t => t.category === 'daily');
-  }, [state.topics]);
-
-  const addCustomEmergencyContact = useCallback(async (contact: Omit<EmergencyContact, 'id'>) => {
-    const newContact: EmergencyContact = {
-      ...contact,
-      id: Date.now().toString(),
-    };
-    setState(prev => ({
-      ...prev,
-      emergencyContacts: [...prev.emergencyContacts, newContact],
-    }));
-    triggerHaptic('success');
-  }, [triggerHaptic]);
+  /* ── Contact management ── */
+  const addCustomEmergencyContact = useCallback(
+    async (contact: Omit<EmergencyContact, 'id'>) => {
+      const newContact: EmergencyContact = {
+        ...contact,
+        id: `contact_${Date.now()}`,
+      };
+      setState((prev) => ({
+        ...prev,
+        emergencyContacts: [...prev.emergencyContacts, newContact],
+      }));
+      triggerHaptic('success');
+    },
+    [triggerHaptic]
+  );
 
   const removeCustomContact = useCallback(async (id: string) => {
-    setState(prev => ({
+    setState((prev) => ({
       ...prev,
-      emergencyContacts: prev.emergencyContacts.filter(c => c.id !== id),
+      emergencyContacts: prev.emergencyContacts.filter((c) => c.id !== id),
     }));
   }, []);
 
   const updateEmergencyContact = useCallback(async (id: string, updates: Partial<EmergencyContact>) => {
-    setState(prev => ({
+    setState((prev) => ({
       ...prev,
-      emergencyContacts: prev.emergencyContacts.map(c =>
-        c.id === id ? { ...c, ...updates } : c
+      emergencyContacts: prev.emergencyContacts.map((c) => (c.id === id ? { ...c, ...updates } : c)),
+    }));
+  }, []);
+
+  const importFamilyContacts = useCallback(
+    async (
+      familyMembers: Array<{
+        phoneNumber?: string;
+        fullName?: string;
+        relationship?: string;
+        role?: string;
+        avatar?: string;
+      }>
+    ) => {
+      const newContacts: EmergencyContact[] = familyMembers
+        .filter((m) => m.phoneNumber)
+        .map((m, idx) => ({
+          id: `family_${idx}_${Date.now()}`,
+          label: m.fullName || m.relationship || 'Family',
+          number: m.phoneNumber!,
+          type: 'family' as EmergencyType,
+          icon: m.role === 'parent2' ? 'people' : 'shield-checkmark',
+          color: m.role === 'parent2' ? '#11998e' : '#fc5c7d',
+          relation: m.relationship,
+          avatar: m.avatar,
+        }));
+
+      if (newContacts.length === 0) return;
+
+      setState((prev) => ({
+        ...prev,
+        emergencyContacts: [
+          ...prev.emergencyContacts.filter((c) => c.type !== 'family'),
+          ...newContacts,
+        ],
+      }));
+    },
+    []
+  );
+
+  /* ── NEW: Import device contacts ── */
+  const importDeviceContacts = useCallback(
+    async (contacts: EmergencyContact[]) => {
+      if (contacts.length === 0) return;
+
+      setState((prev) => ({
+        ...prev,
+        emergencyContacts: [
+          ...prev.emergencyContacts,
+          ...contacts.filter((c) => !prev.emergencyContacts.some((ec) => ec.number === c.number)),
+        ],
+      }));
+      triggerHaptic('success');
+    },
+    [triggerHaptic]
+  );
+
+  /* ── Checklist management ── */
+  const toggleChecklistItem = useCallback(
+    async (checklistId: string, itemId: string) => {
+      setState((prev) => {
+        const newChecklists = prev.checklists.map((cl) => {
+          if (cl.id !== checklistId) return cl;
+
+          const newItems = cl.items.map((item) =>
+            item.id === itemId ? { ...item, completed: !item.completed } : item
+          );
+
+          const completed = newItems.filter((i) => i.completed).length;
+          const progress = Math.round((completed / newItems.length) * 100);
+
+          return { ...cl, items: newItems, progress };
+        });
+
+        return { ...prev, checklists: newChecklists };
+      });
+
+      triggerHaptic('light');
+    },
+    [triggerHaptic]
+  );
+
+  const getChecklistProgress = useCallback(
+    (category: string) => {
+      const checklist = state.checklists.find((c) => c.category === category);
+      return checklist?.progress || 0;
+    },
+    [state.checklists]
+  );
+
+  const resetChecklist = useCallback(async (checklistId: string) => {
+    setState((prev) => ({
+      ...prev,
+      checklists: prev.checklists.map((cl) =>
+        cl.id === checklistId ? { ...cl, items: cl.items.map((i) => ({ ...i, completed: false })), progress: 0 } : cl
       ),
     }));
   }, []);
 
-  const importFamilyContacts = useCallback(async (familyMembers: any[]) => {
-    const newContacts: EmergencyContact[] = familyMembers
-      .filter(m => m.phoneNumber)
-      .map((m, idx) => ({
-        id: `family_${idx}_${Date.now()}`,
-        label: m.fullName || m.relationship || 'Family',
-        number: m.phoneNumber,
-        type: 'family',
-        icon: m.role === 'parent2' ? 'people' : 'shield-checkmark',
-        color: m.role === 'parent2' ? '#11998e' : '#fc5c7d',
-        relation: m.relationship,
-      }));
-    
-    setState(prev => ({
-      ...prev,
-      emergencyContacts: [...prev.emergencyContacts.filter(c => c.type !== 'family'), ...newContacts],
-    }));
-  }, []);
+  /* ── Tips & scoring ── */
+  const markTipAsViewed = useCallback(
+    async (topicId: string) => {
+      if (state.recentTipsViewed.includes(topicId)) return;
 
-  const toggleChecklistItem = useCallback(async (checklistId: string, itemId: string) => {
-    setState(prev => {
-      const newChecklists = prev.checklists.map(cl => {
-        if (cl.id !== checklistId) return cl;
-        
-        const newItems = cl.items.map(item =>
-          item.id === itemId ? { ...item, completed: !item.completed } : item
-        );
-        
-        const completed = newItems.filter(i => i.completed).length;
-        const progress = Math.round((completed / newItems.length) * 100);
-        
-        return { ...cl, items: newItems, progress };
-      });
-      
-      return { ...prev, checklists: newChecklists };
-    });
-    
-    triggerHaptic('light');
-  }, [triggerHaptic]);
-
-  const getChecklistProgress = useCallback((category: string) => {
-    const checklist = state.checklists.find(c => c.category === category);
-    return checklist?.progress || 0;
-  }, [state.checklists]);
-
-  const markTipAsViewed = useCallback(async (topicId: string) => {
-    if (!state.recentTipsViewed.includes(topicId)) {
-      setState(prev => ({
+      setState((prev) => ({
         ...prev,
         recentTipsViewed: [...prev.recentTipsViewed, topicId],
       }));
-      
+
       const today = new Date().toDateString();
       if (state.lastActiveDate !== today) {
-        const newStreak = state.lastActiveDate === new Date(Date.now() - 86400000).toDateString() 
-          ? state.streakDays + 1 
-          : 1;
-        
-        setState(prev => ({
+        const yesterday = new Date(Date.now() - 86400000).toDateString();
+        const newStreak = state.lastActiveDate === yesterday ? state.streakDays + 1 : 1;
+
+        setState((prev) => ({
           ...prev,
           streakDays: newStreak,
           lastActiveDate: today,
         }));
-        
-        await AsyncStorage.setItem('littleloom_safety_streak', JSON.stringify({
-          streakDays: newStreak,
-          lastActiveDate: today,
-        }));
+
+        try {
+          await AsyncStorage.setItem(
+            STREAK_KEY,
+            JSON.stringify({ streakDays: newStreak, lastActiveDate: today })
+          );
+        } catch (e) {
+          console.error('[SafetyContext] Failed to save streak:', e);
+        }
       }
-    }
-  }, [state.recentTipsViewed, state.streakDays, state.lastActiveDate]);
+    },
+    [state.recentTipsViewed, state.streakDays, state.lastActiveDate]
+  );
 
   const getSafetyScore = useCallback(() => {
     const viewedCount = state.recentTipsViewed.length;
     const totalTopics = state.topics.length;
-    const checklistProgress = state.checklists.reduce((acc, cl) => acc + cl.progress, 0) / state.checklists.length;
+    if (totalTopics === 0) return 0;
+
+    const checklistProgress =
+      state.checklists.length > 0
+        ? state.checklists.reduce((acc, cl) => acc + cl.progress, 0) / state.checklists.length
+        : 0;
+
     const baseScore = Math.round((viewedCount / totalTopics) * 50 + (checklistProgress / 100) * 50);
     return Math.min(100, baseScore + (state.streakDays > 0 ? 5 : 0));
   }, [state.recentTipsViewed, state.topics.length, state.checklists, state.streakDays]);
 
+  const getSafetyLevel = useCallback((): 'excellent' | 'good' | 'fair' | 'poor' => {
+    const score = getSafetyScore();
+    if (score >= 90) return 'excellent';
+    if (score >= 70) return 'good';
+    if (score >= 40) return 'fair';
+    return 'poor';
+  }, [getSafetyScore]);
+
+  /* ── Logs ── */
   const getEmergencyLogs = useCallback(() => {
-    return state.emergencyLogs.sort((a, b) => 
-      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-    );
+    return [...state.emergencyLogs].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   }, [state.emergencyLogs]);
 
   const addEmergencyLog = useCallback(async (log: Omit<EmergencyLog, 'id' | 'timestamp'>) => {
@@ -857,25 +1257,36 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       id: Date.now().toString(),
       timestamp: new Date().toISOString(),
     };
-    
-    setState(prev => ({
+
+    setState((prev) => ({
       ...prev,
       emergencyLogs: [newLog, ...prev.emergencyLogs],
     }));
   }, []);
 
-  const resolveEmergencyLog = useCallback(async (logId: string) => {
-    setState(prev => ({
-      ...prev,
-      emergencyLogs: prev.emergencyLogs.map(log =>
-        log.id === logId ? { ...log, resolved: true } : log
-      ),
-    }));
-    triggerHaptic('success');
-  }, [triggerHaptic]);
+  const resolveEmergencyLog = useCallback(
+    async (logId: string) => {
+      setState((prev) => ({
+        ...prev,
+        emergencyLogs: prev.emergencyLogs.map((log) => (log.id === logId ? { ...log, resolved: true } : log)),
+      }));
+      triggerHaptic('success');
+    },
+    [triggerHaptic]
+  );
 
-  const getFirstAidSteps = useCallback((type: 'cpr' | 'choking' | 'burns' | 'bleeding' | 'allergic') => {
-    const steps: Record<string, string[]> = {
+  const clearEmergencyLogs = useCallback(async () => {
+    setState((prev) => ({ ...prev, emergencyLogs: [] }));
+    try {
+      await AsyncStorage.removeItem(EMERGENCY_LOG_KEY);
+    } catch (e) {
+      console.error('[SafetyContext] Failed to clear logs:', e);
+    }
+  }, []);
+
+  /* ── First aid steps ── */
+  const getFirstAidSteps = useCallback((type: FirstAidType) => {
+    const steps: Record<FirstAidType, string[]> = {
       cpr: [
         'Check scene safety',
         'Check responsiveness - tap and shout',
@@ -908,7 +1319,7 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         'Elevate wound above heart if possible',
         'Add more layers if blood soaks through',
         'Apply pressure to pressure point if needed',
-        'Call 911 if bleeding is severe or won\'t stop',
+        'Call 911 if bleeding is severe or will not stop',
         'Monitor for shock (pale, clammy, rapid breathing)',
       ],
       allergic: [
@@ -923,77 +1334,205 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     return steps[type] || [];
   }, []);
 
-  // FIXED: Changed from React.useMemo to useMemo (imported directly)
-  const value = useMemo(() => ({
-    ...state,
-    loadSafetyData,
-    callEmergency,
-    triggerSOS,
-    findNearbyHospitals,
-    findNearbyPediatricians,
-    shareLocationWithEmergency,
-    startLocationTracking,
-    stopLocationTracking,
-    getCurrentAddress,
-    toggleTopicExpanded,
-    markTopicCompleted,
-    getTopicById,
-    getEmergencyTopics,
-    getPreventionTopics,
-    getDailyTopics,
-    addCustomEmergencyContact,
-    removeCustomContact,
-    updateEmergencyContact,
-    importFamilyContacts,
-    toggleChecklistItem,
-    getChecklistProgress,
-    markTipAsViewed,
-    getSafetyScore,
-    getEmergencyLogs,
-    addEmergencyLog,
-    resolveEmergencyLog,
-    triggerHaptic,
-    getFirstAidSteps,
-  }), [
-    state,
-    loadSafetyData,
-    callEmergency,
-    triggerSOS,
-    findNearbyHospitals,
-    findNearbyPediatricians,
-    shareLocationWithEmergency,
-    startLocationTracking,
-    stopLocationTracking,
-    getCurrentAddress,
-    toggleTopicExpanded,
-    markTopicCompleted,
-    getTopicById,
-    getEmergencyTopics,
-    getPreventionTopics,
-    getDailyTopics,
-    addCustomEmergencyContact,
-    removeCustomContact,
-    updateEmergencyContact,
-    importFamilyContacts,
-    toggleChecklistItem,
-    getChecklistProgress,
-    markTipAsViewed,
-    getSafetyScore,
-    getEmergencyLogs,
-    addEmergencyLog,
-    resolveEmergencyLog,
-    triggerHaptic,
-    getFirstAidSteps,
-  ]);
-
-  return (
-    <SafetyContext.Provider value={value}>
-      {children}
-    </SafetyContext.Provider>
+  /* ── NEW: Doctor Reports ── */
+  const addDoctorReport = useCallback(
+    async (report: Omit<DoctorReport, 'id' | 'uploadedAt'>) => {
+      const newReport: DoctorReport = {
+        ...report,
+        id: `report_${Date.now()}`,
+        uploadedAt: new Date().toISOString(),
+      };
+      setState((prev) => ({
+        ...prev,
+        doctorReports: [newReport, ...prev.doctorReports],
+      }));
+      try {
+        await AsyncStorage.setItem(
+          DOCTOR_REPORTS_KEY,
+          JSON.stringify([newReport, ...state.doctorReports])
+        );
+      } catch (e) {
+        console.error('[SafetyContext] Failed to save doctor report:', e);
+      }
+      triggerHaptic('success');
+    },
+    [state.doctorReports, triggerHaptic]
   );
+
+  const approveDoctorReport = useCallback(
+    async (reportId: string, approvedBy: string) => {
+      setState((prev) => ({
+        ...prev,
+        doctorReports: prev.doctorReports.map((r) =>
+          r.id === reportId ? { ...r, status: 'approved' as const, approvedBy } : r
+        ),
+      }));
+      triggerHaptic('success');
+    },
+    [triggerHaptic]
+  );
+
+  const getDoctorReports = useCallback(() => {
+    return [...state.doctorReports].sort(
+      (a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime()
+    );
+  }, [state.doctorReports]);
+
+  const deleteDoctorReport = useCallback(
+    async (reportId: string) => {
+      setState((prev) => ({
+        ...prev,
+        doctorReports: prev.doctorReports.filter((r) => r.id !== reportId),
+      }));
+      try {
+        await AsyncStorage.setItem(
+          DOCTOR_REPORTS_KEY,
+          JSON.stringify(state.doctorReports.filter((r) => r.id !== reportId))
+        );
+      } catch (e) {
+        console.error('[SafetyContext] Failed to delete doctor report:', e);
+      }
+    },
+    [state.doctorReports]
+  );
+
+  /* ── NEW: Notifications / Reminders ── */
+  const scheduleSafetyReminder = useCallback(
+    async (title: string, body: string, triggerDate: Date): Promise<string | null> => {
+      try {
+        const { status } = await Notifications.requestPermissionsAsync();
+        if (status !== 'granted') {
+          console.warn('[SafetyContext] Notification permissions not granted');
+          return null;
+        }
+
+        const identifier = await Notifications.scheduleNotificationAsync({
+          content: {
+            title: `🔔 ${title}`,
+            body: body || 'Safety reminder from LittleLoom',
+            sound: true,
+            priority: Notifications.AndroidImportance.HIGH,
+          },
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.DATE,
+            date: triggerDate,
+          } as any,
+        });
+
+        return identifier;
+      } catch (error) {
+        console.error('[SafetyContext] Failed to schedule reminder:', error);
+        return null;
+      }
+    },
+    []
+  );
+
+  const cancelSafetyReminder = useCallback(async (identifier: string) => {
+    try {
+      await Notifications.cancelScheduledNotificationAsync(identifier);
+    } catch (error) {
+      console.error('[SafetyContext] Failed to cancel reminder:', error);
+    }
+  }, []);
+
+  /* ── Memoized context value ── */
+  const value = useMemo<SafetyContextType>(
+    () => ({
+      ...state,
+      loadSafetyData,
+      resetSafetyData,
+      callEmergency,
+      triggerSOS,
+      findNearbyHospitals,
+      findNearbyPediatricians,
+      shareLocationWithEmergency,
+      startLocationTracking,
+      stopLocationTracking,
+      getCurrentAddress,
+      refreshLocation,
+      toggleTopicExpanded,
+      markTopicCompleted,
+      markTopicIncomplete,
+      getTopicById,
+      getTopicsByCategory,
+      searchTopics,
+      addCustomEmergencyContact,
+      removeCustomContact,
+      updateEmergencyContact,
+      importFamilyContacts,
+      importDeviceContacts,
+      toggleChecklistItem,
+      getChecklistProgress,
+      resetChecklist,
+      markTipAsViewed,
+      getSafetyScore,
+      getSafetyLevel,
+      getEmergencyLogs,
+      addEmergencyLog,
+      resolveEmergencyLog,
+      clearEmergencyLogs,
+      triggerHaptic,
+      getFirstAidSteps,
+      addDoctorReport,
+      approveDoctorReport,
+      getDoctorReports,
+      deleteDoctorReport,
+      scheduleSafetyReminder,
+      cancelSafetyReminder,
+    }),
+    [
+      state,
+      loadSafetyData,
+      resetSafetyData,
+      callEmergency,
+      triggerSOS,
+      findNearbyHospitals,
+      findNearbyPediatricians,
+      shareLocationWithEmergency,
+      startLocationTracking,
+      stopLocationTracking,
+      getCurrentAddress,
+      refreshLocation,
+      toggleTopicExpanded,
+      markTopicCompleted,
+      markTopicIncomplete,
+      getTopicById,
+      getTopicsByCategory,
+      searchTopics,
+      addCustomEmergencyContact,
+      removeCustomContact,
+      updateEmergencyContact,
+      importFamilyContacts,
+      importDeviceContacts,
+      toggleChecklistItem,
+      getChecklistProgress,
+      resetChecklist,
+      markTipAsViewed,
+      getSafetyScore,
+      getSafetyLevel,
+      getEmergencyLogs,
+      addEmergencyLog,
+      resolveEmergencyLog,
+      clearEmergencyLogs,
+      triggerHaptic,
+      getFirstAidSteps,
+      addDoctorReport,
+      approveDoctorReport,
+      getDoctorReports,
+      deleteDoctorReport,
+      scheduleSafetyReminder,
+      cancelSafetyReminder,
+    ]
+  );
+
+  return <SafetyContext.Provider value={value}>{children}</SafetyContext.Provider>;
 };
 
-export const useSafety = () => {
+/* ═══════════════════════════════════════════════════════════════
+   HOOK
+   ═══════════════════════════════════════════════════════════════ */
+export const useSafety = (): SafetyContextType => {
   const context = useContext(SafetyContext);
   if (!context) throw new Error('useSafety must be used within SafetyProvider');
   return context;

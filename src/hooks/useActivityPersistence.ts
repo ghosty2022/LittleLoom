@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+﻿import { useEffect, useRef, useCallback, useState } from 'react';
 import { AppState, AppStateStatus, InteractionManager } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { statePersistence } from '../utils/statePersistence';
@@ -29,12 +29,10 @@ export function useActivityPersistence(options: ActivityPersistenceOptions = {})
   const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const lastActivityRef = useRef(Date.now());
 
-  // Track user activity
   const recordActivity = useCallback(() => {
     lastActivityRef.current = Date.now();
   }, []);
 
-  // Save handler
   const handleSave = useCallback(async () => {
     if (onSave) {
       try {
@@ -46,7 +44,6 @@ export function useActivityPersistence(options: ActivityPersistenceOptions = {})
     }
   }, [onSave]);
 
-  // App state change handler
   useEffect(() => {
     if (!saveOnBackground) return;
 
@@ -54,22 +51,18 @@ export function useActivityPersistence(options: ActivityPersistenceOptions = {})
       const isActive = nextAppState === 'active';
       const wasActive = isActiveRef.current;
 
-      // App going to background
       if (wasActive && !isActive) {
         console.log('📱 App going to background - triggering save');
         
-        // Cancel any pending debounced save
         if (saveTimerRef.current) {
           clearTimeout(saveTimerRef.current);
         }
         
-        // Save immediately
         InteractionManager.runAfterInteractions(() => {
           handleSave();
         });
       }
       
-      // App coming to foreground
       if (!wasActive && isActive) {
         console.log('📱 App returning to foreground');
         onRestore?.();
@@ -81,7 +74,6 @@ export function useActivityPersistence(options: ActivityPersistenceOptions = {})
     return () => subscription.remove();
   }, [saveOnBackground, handleSave, onRestore]);
 
-  // Navigation blur handler (when user leaves screen)
   useEffect(() => {
     if (!saveOnBlur) return;
 
@@ -93,7 +85,6 @@ export function useActivityPersistence(options: ActivityPersistenceOptions = {})
     return unsubscribe;
   }, [navigation, saveOnBlur, handleSave]);
 
-  // Debounced save for active usage
   const triggerDebouncedSave = useCallback(() => {
     recordActivity();
     
@@ -106,7 +97,6 @@ export function useActivityPersistence(options: ActivityPersistenceOptions = {})
     }, debounceMs);
   }, [debounceMs, handleSave, recordActivity]);
 
-  // Cleanup
   useEffect(() => {
     return () => {
       if (saveTimerRef.current) {
@@ -139,7 +129,6 @@ export function useEmergencySave<T>(
   const dataRef = useRef(data);
   const hasSavedRef = useRef(false);
 
-  // Keep ref updated
   useEffect(() => {
     dataRef.current = data;
     hasSavedRef.current = false;
@@ -149,7 +138,6 @@ export function useEmergencySave<T>(
     if (!enabled) return;
 
     const handleAppStateChange = async (nextAppState: AppStateStatus) => {
-      // Save when app goes to background/inactive
       if (nextAppState === 'background' || nextAppState === 'inactive') {
         if (!hasSavedRef.current) {
           console.log(critical ? '🚨 Critical save triggered' : '💾 Emergency save triggered');
@@ -163,7 +151,6 @@ export function useEmergencySave<T>(
         }
       }
       
-      // Reset save flag when app becomes active again
       if (nextAppState === 'active') {
         hasSavedRef.current = false;
       }
@@ -171,7 +158,6 @@ export function useEmergencySave<T>(
 
     const subscription = AppState.addEventListener('change', handleAppStateChange);
 
-    // Also save on beforeunload for web (if applicable)
     const handleBeforeUnload = () => {
       if (!hasSavedRef.current) {
         saveFn(dataRef.current);
@@ -214,7 +200,6 @@ export function useComponentPersistence<T extends Record<string, any>>(
   const [state, setState] = useState<T>(initialState);
   const [isRestored, setIsRestored] = useState(false);
 
-  // Restore on mount
   useEffect(() => {
     if (!restoreOnMount) {
       setIsRestored(true);
@@ -238,7 +223,6 @@ export function useComponentPersistence<T extends Record<string, any>>(
     restore();
   }, [componentId, restoreOnMount, expiryMs]);
 
-  // Persist on dismount
   useEffect(() => {
     return () => {
       if (persistOnDismount) {

@@ -1,5 +1,4 @@
-// src/types/roles.ts
-export enum UserRole {
+﻿export enum UserRole {
   PARENT_1 = 'parent1',
   PARENT_2 = 'parent2',
   GUARDIAN = 'guardian',
@@ -50,7 +49,6 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission> = {
   },
 };
 
-// Helper type for role labels
 export const ROLE_LABELS: Record<UserRole, string> = {
   [UserRole.PARENT_1]: 'Primary Parent',
   [UserRole.PARENT_2]: 'Co-Parent',
@@ -58,7 +56,6 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   [UserRole.VIEWER]: 'Viewer',
 };
 
-// Helper type for role colors
 export const ROLE_COLORS: Record<UserRole, string> = {
   [UserRole.PARENT_1]: '#667eea',
   [UserRole.PARENT_2]: '#fa709a',
@@ -66,7 +63,6 @@ export const ROLE_COLORS: Record<UserRole, string> = {
   [UserRole.VIEWER]: '#64748b',
 };
 
-// FamilyMember interface (used by FamilyContext)
 export interface FamilyMember {
   id: string;
   userId: string;

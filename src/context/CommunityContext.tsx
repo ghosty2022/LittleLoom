@@ -1,13 +1,10 @@
 // src/context/CommunityContext.tsx
-import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
-import { Alert, AppState, AppStateStatus, View } from 'react-native';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, AppState, AppStateStatus } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
-import { useUser } from './UserContext';
-import { showSuccessModal, showErrorModal, showConfirmModal } from '../utils/modal';
-import UniversalSpinner from '../components/UniversalSpinner';
+import { useAuth } from './AuthContext';
 
-// ─── Storage Keys ───────────────────────────────────────────────
 const STORAGE_KEYS = {
   POSTS: '@community_posts_v2',
   TOPICS: '@community_topics_v2',
@@ -27,10 +24,14 @@ const STORAGE_KEYS = {
   USER_FOLLOWING: '@community_user_following_v2',
   USER_PROFILES: '@community_user_profiles_v2',
   INTERACTIONS_VERSION: '@community_interactions_version',
+  POPULAR_POSTS: '@community_popular_posts_v2',
+  TRENDING_TOPICS: '@community_trending_topics_v2',
+  USER_ACTIVITY_LOG: '@community_user_activity_log_v2',
 };
 
-// ─── Types ────────────────────────────────────────────────────
 export type OnlineStatus = 'online' | 'offline' | 'away';
+
+export type MessageType = 'text' | 'image';
 
 export interface CommunityUser {
   id: string;
@@ -54,8 +55,8 @@ export interface CommunityUser {
   isFollowing?: boolean;
   achievements: string[];
   selectedTopics?: string[];
-  followers?: string[];  // NEW: Track follower IDs
-  following?: string[];  // NEW: Track following IDs
+  followers?: string[];
+  following?: string[];
 }
 
 export interface Comment {
@@ -95,6 +96,12 @@ export interface Post {
   isAnonymous?: boolean;
   helpfulVotes: number;
   votedHelpfulBy: string[];
+  // NEW: Popularity tracking
+  popularityScore: number;
+  viewCount: number;
+  engagementRate: number;
+  lastEngagedAt: string;
+  isTrending: boolean;
 }
 
 export interface Topic {
@@ -108,6 +115,9 @@ export interface Topic {
   description: string;
   isJoined: boolean;
   joinedBy: string[];
+  // NEW: Trending metrics
+  engagementScore: number;
+  weeklyGrowth: number;
 }
 
 export interface Notification {
@@ -131,7 +141,7 @@ export interface Message {
   content: string;
   timestamp: string;
   read: boolean;
-  type: 'text' | 'image';
+  type: MessageType;
   imageUrl?: string;
 }
 
@@ -152,6 +162,12 @@ export interface UserActivity {
   status: OnlineStatus;
 }
 
+export interface PopularPost {
+  postId: string;
+  score: number;
+  timestamp: string;
+}
+
 interface CommunityState {
   posts: Post[];
   topics: Topic[];
@@ -163,6 +179,8 @@ interface CommunityState {
   userActivities: Map<string, UserActivity>;
   blockedUsers: string[];
   selectedTopics: string[];
+  popularPosts: PopularPost[];
+  trendingTopics: string[];
 }
 
 interface CommunityContextType extends CommunityState {
@@ -195,7 +213,7 @@ interface CommunityContextType extends CommunityState {
   markNotificationRead: (notificationId: string) => Promise<void>;
   markAllNotificationsRead: () => Promise<void>;
   getUnreadCount: () => number;
-  sendMessage: (userId: string, content: string, type?: 'text' | 'image', imageUrl?: string) => Promise<void>;
+  sendMessage: (userId: string, content: string, type?: MessageType, imageUrl?: string) => Promise<void>;
   getChatMessages: (userId: string) => Message[];
   markChatRead: (userId: string) => Promise<void>;
   getOrCreateChat: (userId: string) => Chat | undefined;
@@ -217,28 +235,38 @@ interface CommunityContextType extends CommunityState {
   getFollowing: (userId: string) => Promise<string[]>;
   getAllUsers: () => CommunityUser[];
   syncUserProfileAcrossPosts: (userId: string, profileUpdates: Partial<CommunityUser>) => Promise<void>;
-  getFeedPosts: () => Post[];  // NEW: Get personalized feed
+  getFeedPosts: () => Post[];
+  // NEW: Popularity & trending
+  getPopularPosts: (limit?: number) => Post[];
+  getTrendingTopics: () => Topic[];
+  incrementViewCount: (postId: string) => Promise<void>;
+  getPostRank: (postId: string) => number;
+  // NEW: Profile management
+  updateUsername: (newUsername: string) => Promise<{ success: boolean; message: string }>;
+  updateDisplayName: (newName: string) => Promise<void>;
+  updateAvatar: (avatarUri: string) => Promise<void>;
+  updateBio: (bio: string) => Promise<void>;
+  getUserProfile: () => CommunityUser | null;
+  isAuthenticated: () => boolean;
 }
 
 const CommunityContext = createContext<CommunityContextType | null>(null);
 
-// ─── Initial Topics ───────────────────────────────────────────
 export const INITIAL_TOPICS: Topic[] = [
-  { id: 'topic_1', name: 'Potty Training', emoji: '🚽', color: '#667eea', members: 12500, posts: 3200, trending: true, description: 'Tips, tricks, and support for potty training success', isJoined: false, joinedBy: [] },
-  { id: 'topic_2', name: 'Sleep Tips', emoji: '😴', color: '#11998e', members: 18200, posts: 5100, trending: true, description: 'Better sleep for babies and parents', isJoined: false, joinedBy: [] },
-  { id: 'topic_3', name: 'Feeding & Nutrition', emoji: '🍼', color: '#fa709a', members: 15800, posts: 4700, trending: false, description: 'From breastfeeding to first foods', isJoined: false, joinedBy: [] },
-  { id: 'topic_4', name: 'Milestones', emoji: '🏆', color: '#fee140', members: 9300, posts: 2100, trending: false, description: 'Celebrate every achievement', isJoined: false, joinedBy: [] },
-  { id: 'topic_5', name: 'Health & Wellness', emoji: '💊', color: '#fc5c7d', members: 11700, posts: 3800, trending: true, description: 'Keeping your little ones healthy', isJoined: false, joinedBy: [] },
-  { id: 'topic_6', name: 'Parenting Hacks', emoji: '💡', color: '#6a82fb', members: 22400, posts: 8900, trending: true, description: 'Clever solutions for everyday challenges', isJoined: false, joinedBy: [] },
-  { id: 'topic_7', name: 'Baby Names', emoji: '✨', color: '#f093fb', members: 8500, posts: 4200, trending: false, description: 'Find the perfect name for your little one', isJoined: false, joinedBy: [] },
-  { id: 'topic_8', name: 'Work-Life Balance', emoji: '⚖️', color: '#4facfe', members: 11200, posts: 3600, trending: true, description: 'Juggling career and parenting', isJoined: false, joinedBy: [] },
-  { id: 'topic_9', name: 'Toddler Tantrums', emoji: '😤', color: '#fa709a', members: 15600, posts: 5400, trending: true, description: 'Navigating the terrible twos and beyond', isJoined: false, joinedBy: [] },
-  { id: 'topic_10', name: 'Education', emoji: '📚', color: '#43e97b', members: 9800, posts: 2800, trending: false, description: 'Early learning and school prep', isJoined: false, joinedBy: [] },
-  { id: 'topic_11', name: 'Single Parenting', emoji: '💪', color: '#fa709a', members: 7200, posts: 1900, trending: false, description: 'Support and advice for single parents', isJoined: false, joinedBy: [] },
-  { id: 'topic_12', name: 'Special Needs', emoji: '🌈', color: '#667eea', members: 6400, posts: 1500, trending: false, description: 'Resources and community for special needs parenting', isJoined: false, joinedBy: [] },
+  { id: 'topic_1', name: 'Potty Training', emoji: '🚽', color: '#667eea', members: 12500, posts: 3200, trending: true, description: 'Tips, tricks, and support for potty training success', isJoined: false, joinedBy: [], engagementScore: 85, weeklyGrowth: 12 },
+  { id: 'topic_2', name: 'Sleep Tips', emoji: '😴', color: '#11998e', members: 18200, posts: 5100, trending: true, description: 'Better sleep for babies and parents', isJoined: false, joinedBy: [], engagementScore: 92, weeklyGrowth: 18 },
+  { id: 'topic_3', name: 'Feeding & Nutrition', emoji: '🍼', color: '#fa709a', members: 15800, posts: 4700, trending: false, description: 'From breastfeeding to first foods', isJoined: false, joinedBy: [], engagementScore: 78, weeklyGrowth: 8 },
+  { id: 'topic_4', name: 'Milestones', emoji: '🏆', color: '#fee140', members: 9300, posts: 2100, trending: false, description: 'Celebrate every achievement', isJoined: false, joinedBy: [], engagementScore: 65, weeklyGrowth: 5 },
+  { id: 'topic_5', name: 'Health & Wellness', emoji: '💊', color: '#fc5c7d', members: 11700, posts: 3800, trending: true, description: 'Keeping your little ones healthy', isJoined: false, joinedBy: [], engagementScore: 88, weeklyGrowth: 15 },
+  { id: 'topic_6', name: 'Parenting Hacks', emoji: '💡', color: '#6a82fb', members: 22400, posts: 8900, trending: true, description: 'Clever solutions for everyday challenges', isJoined: false, joinedBy: [], engagementScore: 95, weeklyGrowth: 22 },
+  { id: 'topic_7', name: 'Baby Names', emoji: '✨', color: '#f093fb', members: 8500, posts: 4200, trending: false, description: 'Find the perfect name for your little one', isJoined: false, joinedBy: [], engagementScore: 72, weeklyGrowth: 7 },
+  { id: 'topic_8', name: 'Work-Life Balance', emoji: '⚖️', color: '#4facfe', members: 11200, posts: 3600, trending: true, description: 'Juggling career and parenting', isJoined: false, joinedBy: [], engagementScore: 82, weeklyGrowth: 11 },
+  { id: 'topic_9', name: 'Toddler Tantrums', emoji: '😤', color: '#fa709a', members: 15600, posts: 5400, trending: true, description: 'Navigating the terrible twos and beyond', isJoined: false, joinedBy: [], engagementScore: 90, weeklyGrowth: 17 },
+  { id: 'topic_10', name: 'Education', emoji: '📚', color: '#43e97b', members: 9800, posts: 2800, trending: false, description: 'Early learning and school prep', isJoined: false, joinedBy: [], engagementScore: 70, weeklyGrowth: 6 },
+  { id: 'topic_11', name: 'Single Parenting', emoji: '💪', color: '#fa709a', members: 7200, posts: 1900, trending: false, description: 'Support and advice for single parents', isJoined: false, joinedBy: [], engagementScore: 68, weeklyGrowth: 4 },
+  { id: 'topic_12', name: 'Special Needs', emoji: '🌈', color: '#667eea', members: 6400, posts: 1500, trending: false, description: 'Resources and community for special needs parenting', isJoined: false, joinedBy: [], engagementScore: 75, weeklyGrowth: 9 },
 ];
 
-// ─── Achievements ─────────────────────────────────────────────
 const ACHIEVEMENTS = {
   FIRST_POST: { id: 'first_post', emoji: '📝', name: 'First Steps', description: 'Made your first post' },
   HELPFUL_PARENT: { id: 'helpful_parent', emoji: '💙', name: 'Helpful Parent', description: 'Received 50+ likes' },
@@ -248,9 +276,10 @@ const ACHIEVEMENTS = {
   RISING_STAR: { id: 'rising_star', emoji: '⭐', name: 'Rising Star', description: 'Gained 1000 followers' },
   STORYTELLER: { id: 'storyteller', emoji: '📖', name: 'Storyteller', description: '50+ posts shared' },
   SOCIAL_BUTTERFLY: { id: 'social_butterfly', emoji: '🦋', name: 'Social Butterfly', description: 'Following 100+ users' },
+  TRENDSETTER: { id: 'trendsetter', emoji: '🚀', name: 'Trendsetter', description: 'Post reached 100+ reshares' },
+  INFLUENCER: { id: 'influencer', emoji: '👑', name: 'Influencer', description: '10K+ total engagement' },
 };
 
-// ─── LittleLoom Team User ─────────────────────────────────────
 const LITTLELOOM_TEAM: CommunityUser = {
   id: 'littleloom_team',
   displayName: 'LittleLoom Team',
@@ -263,13 +292,12 @@ const LITTLELOOM_TEAM: CommunityUser = {
   onlineStatus: 'online',
   lastActive: new Date().toISOString(),
   stats: { posts: 1, followers: 9999, following: 0, helpful: 999, streakDays: 999, lastStreakDate: new Date().toISOString() },
-  achievements: ['top_contributor', 'rising_star'],
+  achievements: ['top_contributor', 'rising_star', 'influencer'],
   isFollowing: false,
   followers: [],
   following: [],
 };
 
-// ─── Helpers ──────────────────────────────────────────────────
 const formatTimeAgo = (date: string): string => {
   const now = new Date();
   const then = new Date(date);
@@ -328,10 +356,15 @@ We're so glad you're here. 💙`,
     isAnonymous: false,
     helpfulVotes: 856,
     votedHelpfulBy: [],
+    // NEW: Popularity metrics
+    popularityScore: 9999,
+    viewCount: 15000,
+    engagementRate: 0.85,
+    lastEngagedAt: timestamp,
+    isTrending: true,
   };
 };
 
-// ─── Normalize file:// URIs ───────────────────────────────────
 const normalizeImageUri = (uri: string): string => {
   if (!uri) return '';
   if (uri.startsWith('file://')) return uri;
@@ -339,16 +372,35 @@ const normalizeImageUri = (uri: string): string => {
   return uri;
 };
 
-// ─── Get Date String (for streaks) ───────────────────────────
 const getDateString = (date: Date): string => {
   return date.toISOString().split('T')[0];
 };
 
-// ═══════════════════════════════════════════════════════════════
-// PROVIDER
-// ═══════════════════════════════════════════════════════════════
+// Calculate popularity score for a post
+const calculatePopularityScore = (post: Post): number => {
+  const likesWeight = 1;
+  const commentsWeight = 2;
+  const repostsWeight = 3;
+  const helpfulWeight = 2;
+  const viewsWeight = 0.1;
+  const recencyBonus = Math.max(0, 24 - (Date.now() - new Date(post.timestamp).getTime()) / (1000 * 60 * 60));
+  
+  return (
+    post.likes * likesWeight +
+    post.commentsCount * commentsWeight +
+    post.reposts * repostsWeight +
+    post.helpfulVotes * helpfulWeight +
+    post.viewCount * viewsWeight +
+    recencyBonus * 10
+  );
+};
+
+// ============================================
+// CommunityProvider with AuthContext Integration
+// ============================================
 export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { profile, communityProfile, updateCommunityProfile: updateUserCommunityProfile } = useUser();
+  // Get auth context for seamless user integration
+  const { userProfile, isAuthenticated, isLoading: authLoading } = useAuth();
 
   const [state, setState] = useState<CommunityState>({
     posts: [],
@@ -361,12 +413,13 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     userActivities: new Map(),
     blockedUsers: [],
     selectedTopics: [],
+    popularPosts: [],
+    trendingTopics: [],
   });
 
   const [isInitialized, setIsInitialized] = useState(false);
   const typingTimeouts = useRef<Map<string, NodeJS.Timeout>>(new Map());
   
-  // Refs for latest state to use in async operations
   const stateRef = useRef(state);
   const persistQueue = useRef<Set<string>>(new Set());
   const isPersisting = useRef(false);
@@ -375,47 +428,124 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     stateRef.current = state;
   }, [state]);
 
-  // ─── Load Persisted Data ────────────────────────────────────
   useEffect(() => {
     loadPersistedData();
 
     const subscription = AppState.addEventListener('change', handleAppStateChange);
-    const syncInterval = setInterval(processPersistQueue, 5000); // Batch save every 5s
+    const syncInterval = setInterval(processPersistQueue, 5000);
+    // Recalculate trending every 5 minutes
+    const trendingInterval = setInterval(updateTrendingData, 300000);
 
     return () => {
       subscription.remove();
       clearInterval(syncInterval);
+      clearInterval(trendingInterval);
     };
   }, []);
 
-  // ─── Initialize Current User ─────────────────────────────────
+  // Sync with AuthContext user profile
   useEffect(() => {
-    if (profile && communityProfile && isInitialized) {
-      initializeCurrentUser();
+    if (authLoading) return;
+    
+    if (isAuthenticated && userProfile) {
+      syncWithAuthUser(userProfile);
+    } else if (!isAuthenticated && state.currentUser) {
+      // User logged out, keep currentUser for seamless experience but mark as offline
+      setState(prev => ({
+        ...prev,
+        currentUser: prev.currentUser ? {
+          ...prev.currentUser,
+          onlineStatus: 'offline'
+        } : null
+      }));
     }
-  }, [profile, communityProfile, isInitialized]);
+  }, [isAuthenticated, userProfile, authLoading]);
 
-  // ─── Sync Profile Changes ───────────────────────────────────
-  useEffect(() => {
-    if (state.currentUser?.id && communityProfile) {
-      const hasChanges = 
-        communityProfile.displayName !== state.currentUser.displayName ||
-        communityProfile.handle !== state.currentUser.handle ||
-        communityProfile.avatar !== state.currentUser.avatar ||
-        communityProfile.bio !== state.currentUser.bio;
+  const syncWithAuthUser = async (authProfile: any) => {
+    try {
+      const existingStats = await AsyncStorage.getItem(`${STORAGE_KEYS.USER_STATS}_${authProfile.id}`);
+      const parsedStats = existingStats ? JSON.parse(existingStats) : null;
 
-      if (hasChanges) {
-        syncUserProfileAcrossPosts(state.currentUser.id, {
-          displayName: communityProfile.displayName,
-          handle: communityProfile.handle,
-          avatar: communityProfile.avatar,
-          bio: communityProfile.bio,
-        });
+      const communityUser: CommunityUser = {
+        id: authProfile.id,
+        displayName: authProfile.communityDisplayName || authProfile.fullName || 'Parent',
+        handle: authProfile.communityHandle || `@${(authProfile.fullName || 'parent').toLowerCase().replace(/\s+/g, '_')}`,
+        avatar: authProfile.communityAvatar || authProfile.avatar || '👤',
+        isVerified: false,
+        bio: authProfile.communityBio || '',
+        location: '',
+        country: 'Unknown',
+        onlineStatus: 'online',
+        lastActive: new Date().toISOString(),
+        stats: parsedStats || {
+          posts: 0,
+          followers: 1,
+          following: 1,
+          helpful: 0,
+          streakDays: 0,
+          lastStreakDate: new Date().toISOString(),
+        },
+        achievements: [],
+        selectedTopics: authProfile.communitySelectedTopics || [],
+        followers: ['littleloom_team'],
+        following: ['littleloom_team'],
+      };
+
+      setState(prev => ({
+        ...prev,
+        currentUser: communityUser,
+        selectedTopics: communityUser.selectedTopics || [],
+      }));
+
+      // Ensure following LittleLoom team
+      if (!communityUser.following?.includes('littleloom_team')) {
+        const updatedFollowing = ['littleloom_team', ...(communityUser.following || [])];
+        await AsyncStorage.setItem(
+          `${STORAGE_KEYS.USER_FOLLOWING}_${authProfile.id}`,
+          JSON.stringify(updatedFollowing)
+        );
       }
-    }
-  }, [communityProfile?.displayName, communityProfile?.handle, communityProfile?.avatar, communityProfile?.bio]);
 
-  // ─── Persist Queue Processor ─────────────────────────────────
+      await updateOnlineStatus('online');
+      await checkStreak();
+    } catch (error) {
+      console.error('Error syncing with auth user:', error);
+    }
+  };
+
+  const updateTrendingData = () => {
+    setState(prev => {
+      // Calculate trending topics
+      const topicScores = new Map<string, number>();
+      prev.posts.forEach(post => {
+        const score = calculatePopularityScore(post);
+        const current = topicScores.get(post.topicId) || 0;
+        topicScores.set(post.topicId, current + score);
+      });
+
+      const trendingTopics = Array.from(topicScores.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([id]) => id);
+
+      // Calculate popular posts
+      const popularPosts = prev.posts
+        .map(post => ({
+          postId: post.id,
+          score: calculatePopularityScore(post),
+          timestamp: post.timestamp,
+        }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 20);
+
+      return {
+        ...prev,
+        trendingTopics,
+        popularPosts,
+      };
+    });
+  };
+
   const processPersistQueue = async () => {
     if (isPersisting.current || persistQueue.current.size === 0) return;
     isPersisting.current = true;
@@ -445,6 +575,12 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (keysToPersist.includes('selectedTopics')) {
         promises.push(AsyncStorage.setItem(STORAGE_KEYS.SELECTED_TOPICS, JSON.stringify(currentState.selectedTopics)));
       }
+      if (keysToPersist.includes('popularPosts')) {
+        promises.push(AsyncStorage.setItem(STORAGE_KEYS.POPULAR_POSTS, JSON.stringify(currentState.popularPosts)));
+      }
+      if (keysToPersist.includes('trendingTopics')) {
+        promises.push(AsyncStorage.setItem(STORAGE_KEYS.TRENDING_TOPICS, JSON.stringify(currentState.trendingTopics)));
+      }
 
       await Promise.all(promises);
     } catch (error) {
@@ -458,18 +594,16 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     persistQueue.current.add(key);
   };
 
-  // ─── App State Handler ──────────────────────────────────────
   const handleAppStateChange = async (nextAppState: AppStateStatus) => {
     if (nextAppState === 'active') {
       await updateOnlineStatus('online');
       await checkStreak();
     } else if (nextAppState === 'background') {
       await updateOnlineStatus('away');
-      await processPersistQueue(); // Force save on background
+      await processPersistQueue();
     }
   };
 
-  // ─── Load All Persisted Data ────────────────────────────────
   const loadPersistedData = async () => {
     try {
       const [
@@ -483,6 +617,8 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         likesData,
         bookmarksData,
         repostsData,
+        popularPostsData,
+        trendingTopicsData,
       ] = await Promise.all([
         AsyncStorage.getItem(STORAGE_KEYS.POSTS),
         AsyncStorage.getItem(STORAGE_KEYS.TOPICS),
@@ -494,18 +630,20 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         AsyncStorage.getItem(STORAGE_KEYS.LIKES),
         AsyncStorage.getItem(STORAGE_KEYS.BOOKMARKS),
         AsyncStorage.getItem(STORAGE_KEYS.REPOSTS),
+        AsyncStorage.getItem(STORAGE_KEYS.POPULAR_POSTS),
+        AsyncStorage.getItem(STORAGE_KEYS.TRENDING_TOPICS),
       ]);
 
       let loadedPosts: Post[] = postsData ? JSON.parse(postsData) : [];
       const loadedTopics = topicsData ? JSON.parse(topicsData) : INITIAL_TOPICS;
       let loadedSelectedTopics: string[] = selectedTopicsData ? JSON.parse(selectedTopicsData) : [];
+      const loadedPopularPosts = popularPostsData ? JSON.parse(popularPostsData) : [];
+      const loadedTrendingTopics = trendingTopicsData ? JSON.parse(trendingTopicsData) : [];
 
-      // Restore interactions (likes, bookmarks, reposts)
       const likedPosts: string[] = likesData ? JSON.parse(likesData) : [];
       const bookmarkedPosts: string[] = bookmarksData ? JSON.parse(bookmarksData) : [];
       const repostedPosts: string[] = repostsData ? JSON.parse(repostsData) : [];
 
-      // Apply interaction states to posts
       if (loadedPosts.length > 0) {
         loadedPosts = loadedPosts.map(post => ({
           ...post,
@@ -515,7 +653,6 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }));
       }
 
-      // If onboarding was completed with topics, use those
       if (onboardingData) {
         const parsedOnboarding = JSON.parse(onboardingData);
         if (parsedOnboarding.selectedTopics?.length > 0) {
@@ -523,7 +660,6 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }
       }
 
-      // Inject default welcome post if feed is empty
       if (loadedPosts.length === 0) {
         loadedPosts = [createDefaultPost()];
         await AsyncStorage.setItem(STORAGE_KEYS.POSTS, JSON.stringify(loadedPosts));
@@ -537,10 +673,13 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         chats: chatsData ? JSON.parse(chatsData) : [],
         blockedUsers: blockedUsersData ? JSON.parse(blockedUsersData) : [],
         selectedTopics: loadedSelectedTopics,
+        popularPosts: loadedPopularPosts,
+        trendingTopics: loadedTrendingTopics,
         isLoading: false,
       }));
 
       setIsInitialized(true);
+      updateTrendingData();
     } catch (error) {
       console.error('Error loading persisted data:', error);
       setState(prev => ({ ...prev, isLoading: false }));
@@ -548,67 +687,6 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   };
 
-  // ─── Initialize Current User ────────────────────────────────
-  const initializeCurrentUser = async () => {
-    if (!profile || !communityProfile) return;
-
-    const userId = profile.id;
-
-    const [
-      existingStats,
-      existingSelectedTopics,
-      existingFollowers,
-      existingFollowing,
-    ] = await Promise.all([
-      AsyncStorage.getItem(`${STORAGE_KEYS.USER_STATS}_${userId}`),
-      AsyncStorage.getItem(`${STORAGE_KEYS.SELECTED_TOPICS}_${userId}`),
-      AsyncStorage.getItem(`${STORAGE_KEYS.USER_FOLLOWERS}_${userId}`),
-      AsyncStorage.getItem(`${STORAGE_KEYS.USER_FOLLOWING}_${userId}`),
-    ]);
-
-    const parsedStats = existingStats ? JSON.parse(existingStats) : null;
-    const parsedSelectedTopics = existingSelectedTopics ? JSON.parse(existingSelectedTopics) : [];
-    const parsedFollowers = existingFollowers ? JSON.parse(existingFollowers) : ['littleloom_team'];
-    const parsedFollowing = existingFollowing ? JSON.parse(existingFollowing) : [];
-
-    const currentUser: CommunityUser = {
-      id: userId,
-      displayName: communityProfile.displayName || profile.fullName,
-      handle: communityProfile.handle || `@${profile.fullName.toLowerCase().replace(/\s+/g, '_')}`,
-      avatar: profile.avatar || '👤',
-      isVerified: communityProfile.isVerified || false,
-      bio: communityProfile.bio || '',
-      location: communityProfile.location,
-      country: communityProfile.country || 'Unknown',
-      onlineStatus: 'online',
-      lastActive: new Date().toISOString(),
-      stats: parsedStats || {
-        posts: 0,
-        followers: parsedFollowers.length,
-        following: parsedFollowing.length,
-        helpful: 0,
-        streakDays: 0,
-        lastStreakDate: new Date().toISOString(),
-      },
-      achievements: communityProfile.badges?.map(b => b.id) || [],
-      selectedTopics: parsedSelectedTopics.length > 0 ? parsedSelectedTopics : communityProfile.preferences?.selectedTopics || [],
-      followers: parsedFollowers,
-      following: parsedFollowing,
-    };
-
-    setState(prev => ({ ...prev, currentUser, selectedTopics: currentUser.selectedTopics || [] }));
-
-    // Ensure LittleLoom Team is a follower for new users
-    if (!parsedFollowers.includes('littleloom_team')) {
-      const updatedFollowers = ['littleloom_team', ...parsedFollowers.filter((id: string) => id !== 'littleloom_team')];
-      await AsyncStorage.setItem(`${STORAGE_KEYS.USER_FOLLOWERS}_${userId}`, JSON.stringify(updatedFollowers));
-    }
-
-    await updateOnlineStatus('online');
-    await checkStreak();
-  };
-
-  // ─── Check Streak ───────────────────────────────────────────
   const checkStreak = async () => {
     if (!stateRef.current.currentUser) return;
 
@@ -642,7 +720,6 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (newStreak === 30) await awardAchievement('streak_30');
   };
 
-  // ─── Award Achievement ──────────────────────────────────────
   const awardAchievement = async (achievementId: string) => {
     const currentUser = stateRef.current.currentUser;
     if (!currentUser) return;
@@ -657,16 +734,13 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     const achievement = Object.values(ACHIEVEMENTS).find(a => a.id === achievementId);
     if (achievement) {
-      showSuccessModal({
-        title: 'Achievement Unlocked! 🎉',
-        message: `${achievement.emoji} ${achievement.name}\n${achievement.description}`,
-      });
+      // Show success modal or toast
+      console.log(`Achievement unlocked: ${achievement.emoji} ${achievement.name}`);
     }
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
-  // ─── Sync User Profile Across Posts ─────────────────────────
   const syncUserProfileAcrossPosts = useCallback(async (userId: string, profileUpdates: Partial<CommunityUser>) => {
     setState(prev => {
       const updatedPosts = prev.posts.map(post => {
@@ -676,7 +750,6 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             author: { ...post.author, ...profileUpdates },
           };
         }
-        // Update comments by this user
         const updatedComments = post.comments.map(comment => {
           if (comment.authorId === userId) {
             return { ...comment, author: { ...comment.author, ...profileUpdates } };
@@ -696,7 +769,6 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         ? { ...prev.currentUser, ...profileUpdates }
         : prev.currentUser;
 
-      // Persist updated posts
       AsyncStorage.setItem(STORAGE_KEYS.POSTS, JSON.stringify(updatedPosts)).catch(console.error);
 
       return {
@@ -707,24 +779,22 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   }, []);
 
-  // ─── Create Post ────────────────────────────────────────────
   const createPost = useCallback(async (content: string, topicId: string, images?: string[], isAnonymous?: boolean) => {
     const currentUser = stateRef.current.currentUser;
     if (!currentUser) {
-      showErrorModal({ message: 'Please sign in to create posts' });
+      Alert.alert('Sign In Required', 'Please sign in to create posts');
       return;
     }
 
     const topic = stateRef.current.topics.find(t => t.id === topicId);
     if (!topic) {
-      showErrorModal({ message: 'Topic not found' });
+      Alert.alert('Error', 'Topic not found');
       return;
     }
 
     const now = new Date();
     const timestamp = now.toISOString();
 
-    // Normalize image URIs
     const normalizedImages = images?.map(img => normalizeImageUri(img)) || [];
 
     const newPost: Post = {
@@ -751,6 +821,12 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       isAnonymous,
       helpfulVotes: 0,
       votedHelpfulBy: [],
+      // NEW: Popularity metrics
+      popularityScore: 0,
+      viewCount: 0,
+      engagementRate: 0,
+      lastEngagedAt: timestamp,
+      isTrending: false,
     };
 
     setState(prev => {
@@ -766,7 +842,6 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         posts: currentUser.stats.posts + 1,
       };
 
-      // Persist immediately for posts
       AsyncStorage.setItem(STORAGE_KEYS.POSTS, JSON.stringify(updatedPosts)).catch(console.error);
       AsyncStorage.setItem(STORAGE_KEYS.TOPICS, JSON.stringify(updatedTopics)).catch(console.error);
       AsyncStorage.setItem(`${STORAGE_KEYS.USER_STATS}_${currentUser.id}`, JSON.stringify(updatedStats)).catch(console.error);
@@ -784,14 +859,13 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (postCount === 50) await awardAchievement('storyteller');
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    showSuccessModal({ message: 'Post created successfully!' });
+    console.log('Post created successfully!');
   }, []);
 
-  // ─── Like Post ──────────────────────────────────────────────
   const likePost = useCallback(async (postId: string) => {
     const currentUser = stateRef.current.currentUser;
     if (!currentUser) {
-      showErrorModal({ message: 'Please sign in to like posts' });
+      Alert.alert('Sign In Required', 'Please sign in to like posts');
       return;
     }
 
@@ -800,7 +874,6 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setState(prev => {
       let newNotification: Notification | null = null;
       let targetPost: Post | null = null;
-      let updatedLikedPosts: string[] = [];
 
       const updatedPosts = prev.posts.map(post => {
         if (post.id === postId) {
@@ -808,7 +881,6 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           const isNowLiked = !post.likedBy.includes(currentUser.id);
           
           if (isNowLiked) {
-            // Like
             if (post.authorId !== currentUser.id) {
               newNotification = {
                 id: `notif_${Date.now()}`,
@@ -823,22 +895,24 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                 read: false,
               };
             }
-            updatedLikedPosts = [...(prev.posts.find(p => p.id === postId)?.likedBy || []), currentUser.id];
             
-            return {
+            const updatedPost = {
               ...post,
               isLiked: true,
               likes: post.likes + 1,
               likedBy: [...post.likedBy, currentUser.id],
+              lastEngagedAt: new Date().toISOString(),
+              popularityScore: calculatePopularityScore({ ...post, likes: post.likes + 1 }),
             };
+            return updatedPost;
           } else {
-            // Unlike (shouldn't happen via likePost, but handle anyway)
-            updatedLikedPosts = post.likedBy.filter(id => id !== currentUser.id);
             return {
               ...post,
               isLiked: false,
               likes: Math.max(0, post.likes - 1),
               likedBy: post.likedBy.filter(id => id !== currentUser.id),
+              lastEngagedAt: new Date().toISOString(),
+              popularityScore: calculatePopularityScore({ ...post, likes: post.likes - 1 }),
             };
           }
         }
@@ -849,22 +923,19 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         ? [newNotification, ...prev.notifications] 
         : prev.notifications;
 
-      // Persist likes list
-      const allLikedPosts = Array.from(new Set([
-        ...updatedPosts.filter(p => p.isLiked).map(p => p.id),
-      ]));
+      const allLikedPosts = updatedPosts.filter(p => p.isLiked).map(p => p.id);
       AsyncStorage.setItem(STORAGE_KEYS.LIKES, JSON.stringify(allLikedPosts)).catch(console.error);
       
       if (newNotification) {
         AsyncStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(updatedNotifications)).catch(console.error);
       }
       AsyncStorage.setItem(STORAGE_KEYS.POSTS, JSON.stringify(updatedPosts)).catch(console.error);
+      queuePersist('popularPosts');
 
       return { ...prev, posts: updatedPosts, notifications: updatedNotifications };
     });
   }, []);
 
-  // ─── Unlike Post ────────────────────────────────────────────
   const unlikePost = useCallback(async (postId: string) => {
     const currentUser = stateRef.current.currentUser;
     if (!currentUser) return;
@@ -877,25 +948,26 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             isLiked: false,
             likes: Math.max(0, post.likes - 1),
             likedBy: post.likedBy.filter(id => id !== currentUser.id),
+            lastEngagedAt: new Date().toISOString(),
+            popularityScore: calculatePopularityScore({ ...post, likes: post.likes - 1 }),
           };
         }
         return post;
       });
 
-      // Persist likes list
       const allLikedPosts = updatedPosts.filter(p => p.isLiked).map(p => p.id);
       AsyncStorage.setItem(STORAGE_KEYS.LIKES, JSON.stringify(allLikedPosts)).catch(console.error);
       AsyncStorage.setItem(STORAGE_KEYS.POSTS, JSON.stringify(updatedPosts)).catch(console.error);
+      queuePersist('popularPosts');
 
       return { ...prev, posts: updatedPosts };
     });
   }, []);
 
-  // ─── Repost Post ────────────────────────────────────────────
   const repostPost = useCallback(async (postId: string) => {
     const currentUser = stateRef.current.currentUser;
     if (!currentUser) {
-      showErrorModal({ message: 'Please sign in to repost' });
+      Alert.alert('Sign In Required', 'Please sign in to repost');
       return;
     }
 
@@ -921,12 +993,15 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             };
           }
 
-          return {
+          const updatedPost = {
             ...post,
             isReposted: true,
             reposts: post.reposts + 1,
             repostedBy: [...post.repostedBy, currentUser.id],
+            lastEngagedAt: new Date().toISOString(),
+            popularityScore: calculatePopularityScore({ ...post, reposts: post.reposts + 1 }),
           };
+          return updatedPost;
         }
         return post;
       });
@@ -935,7 +1010,6 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         ? [newNotification, ...prev.notifications] 
         : prev.notifications;
 
-      // Persist reposts list
       const allRepostedPosts = updatedPosts.filter(p => p.isReposted).map(p => p.id);
       AsyncStorage.setItem(STORAGE_KEYS.REPOSTS, JSON.stringify(allRepostedPosts)).catch(console.error);
       
@@ -943,12 +1017,18 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         AsyncStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(updatedNotifications)).catch(console.error);
       }
       AsyncStorage.setItem(STORAGE_KEYS.POSTS, JSON.stringify(updatedPosts)).catch(console.error);
+      queuePersist('popularPosts');
+
+      // Check for trendsetter achievement
+      const repostedPost = updatedPosts.find(p => p.id === postId);
+      if (repostedPost && repostedPost.reposts >= 100) {
+        awardAchievement('trendsetter');
+      }
 
       return { ...prev, posts: updatedPosts, notifications: updatedNotifications };
     });
   }, []);
 
-  // ─── Unrepost Post ──────────────────────────────────────────
   const unrepostPost = useCallback(async (postId: string) => {
     const currentUser = stateRef.current.currentUser;
     if (!currentUser) return;
@@ -961,6 +1041,8 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             isReposted: false,
             reposts: Math.max(0, post.reposts - 1),
             repostedBy: post.repostedBy.filter(id => id !== currentUser.id),
+            lastEngagedAt: new Date().toISOString(),
+            popularityScore: calculatePopularityScore({ ...post, reposts: post.reposts - 1 }),
           };
         }
         return post;
@@ -969,16 +1051,16 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const allRepostedPosts = updatedPosts.filter(p => p.isReposted).map(p => p.id);
       AsyncStorage.setItem(STORAGE_KEYS.REPOSTS, JSON.stringify(allRepostedPosts)).catch(console.error);
       AsyncStorage.setItem(STORAGE_KEYS.POSTS, JSON.stringify(updatedPosts)).catch(console.error);
+      queuePersist('popularPosts');
 
       return { ...prev, posts: updatedPosts };
     });
   }, []);
 
-  // ─── Bookmark Post ──────────────────────────────────────────
   const bookmarkPost = useCallback(async (postId: string) => {
     const currentUser = stateRef.current.currentUser;
     if (!currentUser) {
-      showErrorModal({ message: 'Please sign in to bookmark' });
+      Alert.alert('Sign In Required', 'Please sign in to bookmark');
       return;
     }
 
@@ -1000,7 +1082,6 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   }, []);
 
-  // ─── Vote Helpful ───────────────────────────────────────────
   const voteHelpful = useCallback(async (postId: string) => {
     const currentUser = stateRef.current.currentUser;
     if (!currentUser) return;
@@ -1008,47 +1089,64 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setState(prev => {
       const updatedPosts = prev.posts.map(post => {
         if (post.id === postId && !post.votedHelpfulBy.includes(currentUser.id)) {
-          return {
+          const updatedPost = {
             ...post,
             helpfulVotes: post.helpfulVotes + 1,
             votedHelpfulBy: [...post.votedHelpfulBy, currentUser.id],
+            lastEngagedAt: new Date().toISOString(),
+            popularityScore: calculatePopularityScore({ ...post, helpfulVotes: post.helpfulVotes + 1 }),
           };
+          return updatedPost;
         }
         return post;
       });
 
       AsyncStorage.setItem(STORAGE_KEYS.POSTS, JSON.stringify(updatedPosts)).catch(console.error);
+      queuePersist('popularPosts');
+
+      // Check for helpful parent achievement
+      const totalHelpful = updatedPosts
+        .filter(p => p.authorId === currentUser.id)
+        .reduce((sum, p) => sum + p.helpfulVotes, 0);
+      if (totalHelpful >= 50) awardAchievement('helpful_parent');
+      if (totalHelpful >= 100) awardAchievement('top_contributor');
+
       return { ...prev, posts: updatedPosts };
     });
   }, []);
 
-  // ─── Delete Post ────────────────────────────────────────────
   const deletePost = useCallback(async (postId: string) => {
-    showConfirmModal({
-      title: 'Delete Post',
-      message: 'Are you sure you want to delete this post? This action cannot be undone.',
-      onConfirm: () => {
-        setState(prev => {
-          const updatedPosts = prev.posts.filter(post => post.id !== postId);
-          AsyncStorage.setItem(STORAGE_KEYS.POSTS, JSON.stringify(updatedPosts)).catch(console.error);
-          return { ...prev, posts: updatedPosts };
-        });
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        showSuccessModal({ message: 'Post deleted successfully' });
-      },
-    });
+    Alert.alert(
+      'Delete Post',
+      'Are you sure you want to delete this post? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            setState(prev => {
+              const updatedPosts = prev.posts.filter(post => post.id !== postId);
+              AsyncStorage.setItem(STORAGE_KEYS.POSTS, JSON.stringify(updatedPosts)).catch(console.error);
+              queuePersist('popularPosts');
+              return { ...prev, posts: updatedPosts };
+            });
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            console.log('Post deleted successfully');
+          },
+        },
+      ]
+    );
   }, []);
 
-  // ─── Get Post By ID ─────────────────────────────────────────
   const getPostById = useCallback((postId: string) => {
     return stateRef.current.posts.find(post => post.id === postId);
   }, []);
 
-  // ─── Add Comment ──────────────────────────────────────────────
   const addComment = useCallback(async (postId: string, content: string) => {
     const currentUser = stateRef.current.currentUser;
     if (!currentUser) {
-      showErrorModal({ message: 'Please sign in to comment' });
+      Alert.alert('Sign In Required', 'Please sign in to comment');
       return;
     }
 
@@ -1087,11 +1185,14 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             };
           }
 
-          return {
+          const updatedPost = {
             ...post,
             comments: [...post.comments, newComment],
             commentsCount: post.commentsCount + 1,
+            lastEngagedAt: new Date().toISOString(),
+            popularityScore: calculatePopularityScore({ ...post, commentsCount: post.commentsCount + 1 }),
           };
+          return updatedPost;
         }
         return post;
       });
@@ -1104,6 +1205,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (newNotification) {
         AsyncStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(updatedNotifications)).catch(console.error);
       }
+      queuePersist('popularPosts');
 
       return { ...prev, posts: updatedPosts, notifications: updatedNotifications };
     });
@@ -1111,7 +1213,6 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }, []);
 
-  // ─── Like Comment ───────────────────────────────────────────
   const likeComment = useCallback(async (postId: string, commentId: string) => {
     const currentUser = stateRef.current.currentUser;
     if (!currentUser) return;
@@ -1145,7 +1246,6 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   }, []);
 
-  // ─── Vote Comment Helpful ───────────────────────────────────
   const voteCommentHelpful = useCallback(async (postId: string, commentId: string) => {
     const currentUser = stateRef.current.currentUser;
     if (!currentUser) return;
@@ -1175,7 +1275,6 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   }, []);
 
-  // ─── Reply To Comment ───────────────────────────────────────
   const replyToComment = useCallback(async (postId: string, commentId: string, content: string) => {
     const currentUser = stateRef.current.currentUser;
     if (!currentUser) return;
@@ -1220,11 +1319,10 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   }, []);
 
-  // ─── Join Topic ─────────────────────────────────────────────
   const joinTopic = useCallback(async (topicId: string) => {
     const currentUser = stateRef.current.currentUser;
     if (!currentUser) {
-      showErrorModal({ message: 'Please sign in to join topics' });
+      Alert.alert('Sign In Required', 'Please sign in to join topics');
       return;
     }
 
@@ -1248,7 +1346,6 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   }, []);
 
-  // ─── Leave Topic ────────────────────────────────────────────
   const leaveTopic = useCallback(async (topicId: string) => {
     const currentUser = stateRef.current.currentUser;
     if (!currentUser) return;
@@ -1271,21 +1368,18 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   }, []);
 
-  // ─── Get Topic By ID ────────────────────────────────────────
   const getTopicById = useCallback((topicId: string) => {
     return stateRef.current.topics.find(topic => topic.id === topicId);
   }, []);
 
-  // ─── Get Posts By Topic ─────────────────────────────────────
   const getPostsByTopic = useCallback((topicId: string) => {
     return stateRef.current.posts.filter(post => post.topicId === topicId);
   }, []);
 
-  // ─── Follow User ────────────────────────────────────────────
   const followUser = useCallback(async (userId: string) => {
     const currentUser = stateRef.current.currentUser;
     if (!currentUser || userId === currentUser.id) {
-      showErrorModal({ message: 'Cannot follow yourself' });
+      Alert.alert('Error', 'Cannot follow yourself');
       return;
     }
 
@@ -1294,7 +1388,6 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const followersKey = `${STORAGE_KEYS.USER_FOLLOWERS}_${userId}`;
     const followingKey = `${STORAGE_KEYS.USER_FOLLOWING}_${currentUser.id}`;
 
-    // Update target user's followers
     const existingFollowers = await AsyncStorage.getItem(followersKey);
     const followers = existingFollowers ? JSON.parse(existingFollowers) : [];
     if (!followers.includes(currentUser.id)) {
@@ -1302,7 +1395,6 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       await AsyncStorage.setItem(followersKey, JSON.stringify(followers));
     }
 
-    // Update current user's following
     const existingFollowing = await AsyncStorage.getItem(followingKey);
     const following = existingFollowing ? JSON.parse(existingFollowing) : [];
     if (!following.includes(userId)) {
@@ -1367,7 +1459,6 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, []);
 
-  // ─── Unfollow User ──────────────────────────────────────────
   const unfollowUser = useCallback(async (userId: string) => {
     const currentUser = stateRef.current.currentUser;
     if (!currentUser) return;
@@ -1375,13 +1466,11 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const followersKey = `${STORAGE_KEYS.USER_FOLLOWERS}_${userId}`;
     const followingKey = `${STORAGE_KEYS.USER_FOLLOWING}_${currentUser.id}`;
 
-    // Update target user's followers
     const existingFollowers = await AsyncStorage.getItem(followersKey);
     const followers = existingFollowers ? JSON.parse(existingFollowers) : [];
     const updatedFollowers = followers.filter((id: string) => id !== currentUser.id);
     await AsyncStorage.setItem(followersKey, JSON.stringify(updatedFollowers));
 
-    // Update current user's following
     const existingFollowing = await AsyncStorage.getItem(followingKey);
     const following = existingFollowing ? JSON.parse(existingFollowing) : [];
     const updatedFollowing = following.filter((id: string) => id !== userId);
@@ -1425,7 +1514,6 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   }, []);
 
-  // ─── Get User By ID ─────────────────────────────────────────
   const getUserById = useCallback((userId: string) => {
     if (userId === stateRef.current.currentUser?.id) return stateRef.current.currentUser;
     if (userId === 'littleloom_team') return LITTLELOOM_TEAM;
@@ -1434,19 +1522,16 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return undefined;
   }, []);
 
-  // ─── Get User Posts ─────────────────────────────────────────
   const getUserPosts = useCallback((userId: string) => {
     return stateRef.current.posts.filter(post => post.authorId === userId);
   }, []);
 
-  // ─── Is Following ───────────────────────────────────────────
   const isFollowing = useCallback((userId: string) => {
     const currentUser = stateRef.current.currentUser;
     if (!currentUser) return false;
     return currentUser.following?.includes(userId) || false;
   }, []);
 
-  // ─── Get Followers ──────────────────────────────────────────
   const getFollowers = useCallback(async (userId: string): Promise<string[]> => {
     try {
       const followersKey = `${STORAGE_KEYS.USER_FOLLOWERS}_${userId}`;
@@ -1454,7 +1539,6 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (existingFollowers) {
         return JSON.parse(existingFollowers);
       }
-      // Default: LittleLoom Team follows everyone
       if (userId === stateRef.current.currentUser?.id) {
         return ['littleloom_team'];
       }
@@ -1464,7 +1548,6 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, []);
 
-  // ─── Get Following ──────────────────────────────────────────
   const getFollowing = useCallback(async (userId: string): Promise<string[]> => {
     try {
       const followingKey = `${STORAGE_KEYS.USER_FOLLOWING}_${userId}`;
@@ -1478,7 +1561,6 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, []);
 
-  // ─── Get All Users ──────────────────────────────────────────
   const getAllUsers = useCallback((): CommunityUser[] => {
     const users = new Map<string, CommunityUser>();
     users.set('littleloom_team', LITTLELOOM_TEAM);
@@ -1493,7 +1575,6 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return Array.from(users.values());
   }, []);
 
-  // ─── Update User Bio ────────────────────────────────────────
   const updateUserBio = useCallback(async (bio: string) => {
     const currentUser = stateRef.current.currentUser;
     if (!currentUser) return;
@@ -1502,11 +1583,8 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       ...prev,
       currentUser: { ...prev.currentUser!, bio },
     }));
+  }, []);
 
-    await updateUserCommunityProfile({ bio });
-  }, [updateUserCommunityProfile]);
-
-  // ─── Update User Location ───────────────────────────────────
   const updateUserLocation = useCallback(async (country: string) => {
     const currentUser = stateRef.current.currentUser;
     if (!currentUser) return;
@@ -1517,7 +1595,6 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }));
   }, []);
 
-  // ─── Update Online Status ───────────────────────────────────
   const updateOnlineStatus = useCallback(async (status: OnlineStatus) => {
     const currentUser = stateRef.current.currentUser;
     if (!currentUser) return;
@@ -1535,14 +1612,12 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }));
   }, []);
 
-  // ─── Get User Stats ─────────────────────────────────────────
   const getUserStats = useCallback((userId: string) => {
     if (userId === stateRef.current.currentUser?.id) return stateRef.current.currentUser.stats;
     const user = getUserById(userId);
     return user?.stats;
   }, [getUserById]);
 
-  // ─── Mark Notification Read ─────────────────────────────────
   const markNotificationRead = useCallback(async (notificationId: string) => {
     setState(prev => {
       const updatedNotifications = prev.notifications.map(notif => 
@@ -1553,7 +1628,6 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   }, []);
 
-  // ─── Mark All Notifications Read ────────────────────────────
   const markAllNotificationsRead = useCallback(async () => {
     setState(prev => {
       const updatedNotifications = prev.notifications.map(notif => ({ ...notif, read: true }));
@@ -1562,21 +1636,19 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   }, []);
 
-  // ─── Get Unread Count ─────────────────────────────────────
   const getUnreadCount = useCallback(() => {
     return stateRef.current.notifications.filter(n => !n.read).length;
   }, []);
 
-  // ─── Send Message ───────────────────────────────────────────
-  const sendMessage = useCallback(async (userId: string, content: string, type: 'text' | 'image' = 'text', imageUrl?: string) => {
+  const sendMessage = useCallback(async (userId: string, content: string, type: MessageType = 'text', imageUrl?: string) => {
     const currentUser = stateRef.current.currentUser;
     if (!currentUser) {
-      showErrorModal({ message: 'Please sign in to send messages' });
+      Alert.alert('Sign In Required', 'Please sign in to send messages');
       return;
     }
 
     if (stateRef.current.blockedUsers.includes(userId)) {
-      showErrorModal({ message: 'You have blocked this user. Unblock to send messages.' });
+      Alert.alert('Blocked', 'You have blocked this user. Unblock to send messages.');
       return;
     }
 
@@ -1646,13 +1718,11 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }, [getUserById]);
 
-  // ─── Get Chat Messages ──────────────────────────────────────
   const getChatMessages = useCallback((userId: string): Message[] => {
     const chat = stateRef.current.chats.find(c => c.participantId === userId);
     return chat?.messages || [];
   }, []);
 
-  // ─── Mark Chat Read ─────────────────────────────────────────
   const markChatRead = useCallback(async (userId: string) => {
     setState(prev => {
       const updatedChats = prev.chats.map(chat => 
@@ -1663,12 +1733,10 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   }, []);
 
-  // ─── Get Or Create Chat ─────────────────────────────────────
   const getOrCreateChat = useCallback((userId: string) => {
     return stateRef.current.chats.find(c => c.participantId === userId);
   }, []);
 
-  // ─── Set Typing Status ──────────────────────────────────────
   const setTypingStatus = useCallback((userId: string, isTyping: boolean) => {
     setState(prev => ({
       ...prev,
@@ -1693,13 +1761,11 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, []);
 
-  // ─── Get Typing Status ──────────────────────────────────────
   const getTypingStatus = useCallback((userId: string) => {
     const chat = stateRef.current.chats.find(c => c.participantId === userId);
     return chat?.isTyping || false;
   }, []);
 
-  // ─── Delete Chat ────────────────────────────────────────────
   const deleteChat = useCallback(async (userId: string) => {
     setState(prev => {
       const updatedChats = prev.chats.filter(chat => chat.participantId !== userId);
@@ -1709,7 +1775,6 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }, []);
 
-  // ─── Block User ─────────────────────────────────────────────
   const blockUser = useCallback(async (userId: string) => {
     setState(prev => {
       const isBlocked = prev.blockedUsers.includes(userId);
@@ -1717,11 +1782,11 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       if (isBlocked) {
         updatedBlockedUsers = prev.blockedUsers.filter(id => id !== userId);
-        showSuccessModal({ message: 'User unblocked' });
+        console.log('User unblocked');
       } else {
         updatedBlockedUsers = [...prev.blockedUsers, userId];
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-        showSuccessModal({ message: 'User blocked' });
+        console.log('User blocked');
       }
 
       AsyncStorage.setItem(STORAGE_KEYS.BLOCKED_USERS, JSON.stringify(updatedBlockedUsers)).catch(console.error);
@@ -1729,12 +1794,10 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   }, []);
 
-  // ─── Is User Blocked ────────────────────────────────────────
   const isUserBlocked = useCallback((userId: string) => {
     return stateRef.current.blockedUsers.includes(userId);
   }, []);
 
-  // ─── Refresh Feed ───────────────────────────────────────────
   const refreshFeed = useCallback(async () => {
     setState(prev => ({ ...prev, isLoading: true }));
     await new Promise(resolve => setTimeout(resolve, 1500));
@@ -1742,12 +1805,10 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setState(prev => ({ ...prev, isLoading: false }));
   }, []);
 
-  // ─── Load More Posts ────────────────────────────────────────
   const loadMorePosts = useCallback(async () => {
     await new Promise(resolve => setTimeout(resolve, 1000));
   }, []);
 
-  // ─── Update Community Profile ───────────────────────────────
   const updateCommunityProfile = useCallback(async (updates: Partial<CommunityUser>) => {
     const currentUser = stateRef.current.currentUser;
     if (!currentUser) return;
@@ -1757,20 +1818,15 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       currentUser: { ...prev.currentUser!, ...updates },
     }));
 
-    if (updates.bio) await updateUserCommunityProfile({ bio: updates.bio });
-
-    // Sync to all posts by this user
     if (updates.displayName || updates.handle || updates.avatar || updates.bio) {
       await syncUserProfileAcrossPosts(currentUser.id, updates);
     }
-  }, [updateUserCommunityProfile, syncUserProfileAcrossPosts]);
+  }, [syncUserProfileAcrossPosts]);
 
-  // ─── Get Current User Profile ───────────────────────────────
   const getCurrentUserProfile = useCallback(() => {
     return stateRef.current.currentUser;
   }, []);
 
-  // ─── Check And Award Achievements ───────────────────────────
   const checkAndAwardAchievements = useCallback(async (): Promise<string[]> => {
     const currentUser = stateRef.current.currentUser;
     if (!currentUser) return [];
@@ -1780,6 +1836,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       { id: 'helpful_parent', condition: currentUser.stats.helpful >= 50 },
       { id: 'top_contributor', condition: currentUser.stats.helpful >= 100 },
       { id: 'rising_star', condition: currentUser.stats.followers >= 1000 },
+      { id: 'influencer', condition: (currentUser.stats.followers + currentUser.stats.following + currentUser.stats.posts) >= 10000 },
     ];
 
     for (const check of checks) {
@@ -1792,14 +1849,12 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return newAchievements;
   }, []);
 
-  // ─── Get User Achievements ──────────────────────────────────
   const getUserAchievements = useCallback((userId: string): string[] => {
     if (userId === stateRef.current.currentUser?.id) return stateRef.current.currentUser.achievements;
     const user = getUserById(userId);
     return user?.achievements || [];
   }, [getUserById]);
 
-  // ─── Check Onboarding Status ──────────────────────────────────
   const checkOnboardingStatus = useCallback(async (): Promise<boolean> => {
     try {
       const data = await AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING);
@@ -1813,21 +1868,18 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, []);
 
-  // ─── Update Selected Topics ─────────────────────────────────
   const updateSelectedTopics = useCallback(async (topics: string[]) => {
     const currentUser = stateRef.current.currentUser;
     if (!currentUser) return;
 
-    // Enforce max 5 topics
     if (topics.length > 5) {
-      showErrorModal({ message: 'You can select up to 5 topics only.' });
+      Alert.alert('Limit Reached', 'You can select up to 5 topics only.');
       return;
     }
 
     await AsyncStorage.setItem(`${STORAGE_KEYS.SELECTED_TOPICS}_${currentUser.id}`, JSON.stringify(topics));
     await AsyncStorage.setItem(STORAGE_KEYS.SELECTED_TOPICS, JSON.stringify(topics));
 
-    // Also update onboarding data to keep in sync
     const onboardingData = await AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING);
     if (onboardingData) {
       const parsed = JSON.parse(onboardingData);
@@ -1844,40 +1896,142 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }));
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        showSuccessModal({ message: 'Topics updated successfully!' });
+    console.log('Topics updated successfully!');
   }, []);
 
-  // ─── Get Selected Topics ────────────────────────────────────
   const getSelectedTopics = useCallback((): string[] => {
     return stateRef.current.selectedTopics || [];
   }, []);
 
-  // ─── Get Feed Posts (NEW: Personalized by selected topics) ──
   const getFeedPosts = useCallback((): Post[] => {
     const currentUser = stateRef.current.currentUser;
     const allPosts = stateRef.current.posts;
     
     if (!currentUser) return allPosts;
 
-    // If user has selected topics, filter posts to those topics + their own posts
     const userTopics = currentUser.selectedTopics || [];
     
     if (userTopics.length === 0) {
-      // No topics selected, show all posts except blocked users
       return allPosts.filter(post => !stateRef.current.blockedUsers.includes(post.authorId));
     }
 
-    // Filter to posts from selected topics OR user's own posts
     return allPosts.filter(post => {
-      if (post.authorId === currentUser.id) return true; // Always show own posts
-      if (stateRef.current.blockedUsers.includes(post.authorId)) return false; // Hide blocked
+      if (post.authorId === currentUser.id) return true;
+      if (stateRef.current.blockedUsers.includes(post.authorId)) return false;
       return userTopics.includes(post.topicId);
     });
   }, []);
 
-  // ═══════════════════════════════════════════════════════════════
-  // VALUE MEMOIZATION
-  // ═══════════════════════════════════════════════════════════════
+  // NEW: Popularity & trending methods
+  const getPopularPosts = useCallback((limit: number = 10): Post[] => {
+    return [...stateRef.current.posts]
+      .sort((a, b) => b.popularityScore - a.popularityScore)
+      .slice(0, limit);
+  }, []);
+
+  const getTrendingTopics = useCallback((): Topic[] => {
+    return stateRef.current.topics
+      .filter(t => t.trending)
+      .sort((a, b) => b.engagementScore - a.engagementScore);
+  }, []);
+
+  const incrementViewCount = useCallback(async (postId: string) => {
+    setState(prev => {
+      const updatedPosts = prev.posts.map(post => {
+        if (post.id === postId) {
+          return {
+            ...post,
+            viewCount: post.viewCount + 1,
+            popularityScore: calculatePopularityScore({ ...post, viewCount: post.viewCount + 1 }),
+          };
+        }
+        return post;
+      });
+      return { ...prev, posts: updatedPosts };
+    });
+  }, []);
+
+  const getPostRank = useCallback((postId: string): number => {
+    const sorted = [...stateRef.current.posts].sort((a, b) => b.popularityScore - a.popularityScore);
+    return sorted.findIndex(p => p.id === postId) + 1;
+  }, []);
+
+  // NEW: Profile management methods
+  const updateUsername = useCallback(async (newUsername: string): Promise<{ success: boolean; message: string }> => {
+    const currentUser = stateRef.current.currentUser;
+    if (!currentUser) return { success: false, message: 'Not authenticated' };
+
+    const trimmed = newUsername.trim().toLowerCase().replace(/^@/, '');
+    
+    if (trimmed.length < 3) return { success: false, message: 'Username must be at least 3 characters' };
+    if (trimmed.length > 30) return { success: false, message: 'Username must be less than 30 characters' };
+    
+    const validPattern = /^[a-zA-Z][a-zA-Z0-9_.]*$/;
+    if (!validPattern.test(trimmed)) {
+      return { success: false, message: 'Must start with a letter. Only letters, numbers, underscores, and dots allowed.' };
+    }
+
+    const newHandle = `@${trimmed}`;
+    
+    setState(prev => ({
+      ...prev,
+      currentUser: prev.currentUser ? { ...prev.currentUser, handle: newHandle } : null,
+    }));
+
+    await syncUserProfileAcrossPosts(currentUser.id, { handle: newHandle });
+
+    return { success: true, message: 'Username updated successfully' };
+  }, [syncUserProfileAcrossPosts]);
+
+  const updateDisplayName = useCallback(async (newName: string) => {
+    const currentUser = stateRef.current.currentUser;
+    if (!currentUser) return;
+
+    const trimmed = newName.trim();
+    if (!trimmed) return;
+
+    setState(prev => ({
+      ...prev,
+      currentUser: prev.currentUser ? { ...prev.currentUser, displayName: trimmed } : null,
+    }));
+
+    await syncUserProfileAcrossPosts(currentUser.id, { displayName: trimmed });
+  }, [syncUserProfileAcrossPosts]);
+
+  const updateAvatar = useCallback(async (avatarUri: string) => {
+    const currentUser = stateRef.current.currentUser;
+    if (!currentUser) return;
+
+    const normalized = normalizeImageUri(avatarUri);
+
+    setState(prev => ({
+      ...prev,
+      currentUser: prev.currentUser ? { ...prev.currentUser, avatar: normalized } : null,
+    }));
+
+    await syncUserProfileAcrossPosts(currentUser.id, { avatar: normalized });
+  }, [syncUserProfileAcrossPosts]);
+
+  const updateBio = useCallback(async (bio: string) => {
+    const currentUser = stateRef.current.currentUser;
+    if (!currentUser) return;
+
+    setState(prev => ({
+      ...prev,
+      currentUser: prev.currentUser ? { ...prev.currentUser, bio: bio.trim() } : null,
+    }));
+
+    await syncUserProfileAcrossPosts(currentUser.id, { bio: bio.trim() });
+  }, [syncUserProfileAcrossPosts]);
+
+  const getUserProfile = useCallback(() => {
+    return stateRef.current.currentUser;
+  }, []);
+
+const checkIsAuthenticated = useCallback(() => {
+  return !!stateRef.current.currentUser;
+}, []);
+
   const value = React.useMemo(() => ({
     ...state,
     createPost,
@@ -1931,7 +2085,19 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     getFollowing,
     getAllUsers,
     syncUserProfileAcrossPosts,
-    getFeedPosts,  // NEW
+    getFeedPosts,
+    // NEW: Popularity & trending
+    getPopularPosts,
+    getTrendingTopics,
+    incrementViewCount,
+    getPostRank,
+    // NEW: Profile management
+    updateUsername,
+    updateDisplayName,
+    updateAvatar,
+    updateBio,
+    getUserProfile,
+    isAuthenticated: checkIsAuthenticated,
   }), [
     state,
     createPost,
@@ -1986,17 +2152,21 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     getAllUsers,
     syncUserProfileAcrossPosts,
     getFeedPosts,
+    getPopularPosts,
+    getTrendingTopics,
+    incrementViewCount,
+    getPostRank,
+    updateUsername,
+    updateDisplayName,
+    updateAvatar,
+    updateBio,
+    getUserProfile,
+    isAuthenticated,
   ]);
 
   return (
     <CommunityContext.Provider value={value}>
-      {state.isLoading ? (
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-          <UniversalSpinner size={48} color="#667eea" />
-        </View>
-      ) : (
-        children
-      )}
+      {children}
     </CommunityContext.Provider>
   );
 };

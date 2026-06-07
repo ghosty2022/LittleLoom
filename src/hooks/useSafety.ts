@@ -1,5 +1,4 @@
-// src/hooks/useSafety.ts
-import { useContext } from 'react';
+﻿import { useContext } from 'react';
 import { SafetyContext } from '../context/SafetyContext';
 
 export const useSafety = () => {

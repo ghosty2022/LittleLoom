@@ -1,5 +1,4 @@
-// src/utils/statePersistence.ts
-import AsyncStorage from '@react-native-async-storage/async-storage';
+﻿import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState, AppStateStatus } from 'react-native';
 
 const STORAGE_KEYS = {
@@ -89,7 +88,6 @@ class StatePersistenceManager {
       
       drafts[screenName] = state;
       
-      // Clean old drafts (older than 7 days)
       const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
       Object.keys(drafts).forEach(key => {
         if (drafts[key].timestamp < sevenDaysAgo) {
@@ -111,7 +109,6 @@ class StatePersistenceManager {
       const drafts: Record<string, PersistedFormState> = JSON.parse(data);
       const draft = drafts[screenName];
       
-      // Only return if less than 24 hours old
       if (draft && Date.now() - draft.timestamp < 24 * 60 * 60 * 1000) {
         return draft.formData;
       }
