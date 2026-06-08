@@ -1,0 +1,1924 @@
+// src/config/defaultTrackers.ts
+// All 70+ default trackers defined via schema — NO hardcoded ActivityEntry fields
+// Adding a new tracker = add an entry here. Nothing else changes.
+
+import { UnifiedTrackerConfig, FieldConfig } from '../types/trackers';
+
+// ─── Shared Field Builders ───
+const f = {
+  text: (id: string, label: string, opts?: Partial<FieldConfig>): FieldConfig => ({
+    id, label, type: 'text', ...opts,
+  }),
+  number: (id: string, label: string, unit?: string, opts?: Partial<FieldConfig>): FieldConfig => ({
+    id, label, type: 'number', unit, ...opts,
+  }),
+  select: (id: string, label: string, options: { id: string; label: string; emoji?: string }[], opts?: Partial<FieldConfig>): FieldConfig => ({
+    id, label, type: 'select', options, ...opts,
+  }),
+  multiselect: (id: string, label: string, options: { id: string; label: string; emoji?: string }[], opts?: Partial<FieldConfig>): FieldConfig => ({
+    id, label, type: 'multiselect', options, ...opts,
+  }),
+  toggle: (id: string, label: string, opts?: Partial<FieldConfig>): FieldConfig => ({
+    id, label, type: 'toggle', ...opts,
+  }),
+  duration: (id: string, label: string, opts?: Partial<FieldConfig>): FieldConfig => ({
+    id, label, type: 'duration', ...opts,
+  }),
+  rating: (id: string, label: string, max = 5, opts?: Partial<FieldConfig>): FieldConfig => ({
+    id, label, type: 'rating', max, ...opts,
+  }),
+  textarea: (id: string, label: string, opts?: Partial<FieldConfig>): FieldConfig => ({
+    id, label, type: 'textarea', ...opts,
+  }),
+  temperature: (id: string, label: string, opts?: Partial<FieldConfig>): FieldConfig => ({
+    id, label, type: 'temperature', ...opts,
+  }),
+  measurement: (id: string, label: string, unit: string, opts?: Partial<FieldConfig>): FieldConfig => ({
+    id, label, type: 'measurement', unit, ...opts,
+  }),
+  mood: (id: string, label: string, opts?: Partial<FieldConfig>): FieldConfig => ({
+    id, label, type: 'mood_emoji', ...opts,
+  }),
+  datetime: (id: string, label: string, opts?: Partial<FieldConfig>): FieldConfig => ({
+    id, label, type: 'datetime', ...opts,
+  }),
+  time: (id: string, label: string, opts?: Partial<FieldConfig>): FieldConfig => ({
+    id, label, type: 'time', ...opts,
+  }),
+  photo: (id: string, label: string, opts?: Partial<FieldConfig>): FieldConfig => ({
+    id, label, type: 'photo', ...opts,
+  }),
+};
+
+// ─── Default Permission Template ───
+const defaultPerms = {
+  familyRoles: ['parent1', 'parent2', 'guardian'] as ('parent1' | 'parent2' | 'guardian')[],
+  allowGuardiansCreate: true,
+  allowGuardiansEditOwn: true,
+  allowGuardiansDeleteOwn: true,
+};
+
+const restrictedPerms = {
+  familyRoles: ['parent1', 'parent2'] as ('parent1' | 'parent2' | 'guardian')[],
+  allowGuardiansCreate: false,
+  allowGuardiansEditOwn: false,
+  allowGuardiansDeleteOwn: false,
+};
+// ═══════════════════════════════════════════════════════════════
+// DEFAULT TRACKERS (70+)
+// ═══════════════════════════════════════════════════════════════
+
+export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
+  // ═══ ESSENTIAL DAILY (6) ═══
+  {
+    id: 'feed', name: 'Feeding', emoji: '🍼', icon: 'nutrition-outline',
+    color: '#FF9F43', gradient: ['#FF9F43', '#FF6B6B'],
+    description: 'Track breastfeeding, bottles, and solid food',
+    category: 'essential', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.select('feedType', 'Type', [
+        { id: 'breast', label: 'Breast', emoji: '🤱' },
+        { id: 'bottle', label: 'Bottle', emoji: '🍼' },
+        { id: 'solid', label: 'Solid Food', emoji: '🥄' },
+        { id: 'snack', label: 'Snack', emoji: '🍌' },
+        { id: 'water', label: 'Water', emoji: '💧' },
+      ], { required: true }),
+      f.number('amount', 'Amount', 'ml', { showIf: { field: 'feedType', equals: 'bottle' } }),
+      f.select('unit', 'Unit', [
+        { id: 'ml', label: 'ml' }, { id: 'oz', label: 'oz' },
+      ], { showIf: { field: 'feedType', equals: 'bottle' } }),
+      f.select('side', 'Side', [
+        { id: 'left', label: 'Left', emoji: '⬅️' },
+        { id: 'right', label: 'Right', emoji: '➡️' },
+        { id: 'both', label: 'Both', emoji: '↔️' },
+      ], { showIf: { field: 'feedType', equals: 'breast' } }),
+      f.duration('duration', 'Duration', { showIf: { field: 'feedType', equals: 'breast' } }),
+      f.text('food', 'Food Item', { placeholder: 'e.g., Apple puree', showIf: { field: 'feedType', equals: 'solid' } }),
+      f.toggle('spitUp', 'Spit Up?'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Cluster feed', 'Long feed', 'Refused', 'Spit up', 'Gassy'],
+  },
+  {
+    id: 'sleep', name: 'Sleep', emoji: '😴', icon: 'moon-outline',
+    color: '#5F27CD', gradient: ['#5F27CD', '#341F97'],
+    description: 'Track naps and nighttime sleep',
+    category: 'essential', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.select('sleepType', 'Type', [
+        { id: 'nap', label: 'Nap', emoji: '☀️' },
+        { id: 'night', label: 'Night', emoji: '🌙' },
+        { id: 'wake', label: 'Wake Window', emoji: '⏰' },
+      ], { required: true }),
+      f.datetime('startTime', 'Start Time', { required: true }),
+      f.datetime('endTime', 'End Time'),
+      f.duration('duration', 'Duration'),
+      f.rating('quality', 'Sleep Quality', 5),
+      f.select('location', 'Location', [
+        { id: 'crib', label: 'Crib', emoji: '🛏️' },
+        { id: 'stroller', label: 'Stroller', emoji: '🚗' },
+        { id: 'carrier', label: 'Carrier', emoji: '🎒' },
+        { id: 'bed', label: 'Parent Bed', emoji: '👨‍👩‍👧' },
+        { id: 'other', label: 'Other', emoji: '📍' },
+      ]),
+      f.toggle('selfSoothing', 'Self-soothed?'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Easy put-down', 'Fought sleep', 'Woke early', 'Sleep regression'],
+  },
+  {
+    id: 'diaper', name: 'Diaper', emoji: '👶', icon: 'water-outline',
+    color: '#54A0FF', gradient: ['#54A0FF', '#2E86DE'],
+    description: 'Track diaper changes',
+    category: 'essential', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.select('type', 'Type', [
+        { id: 'wet', label: 'Wet', emoji: '💧' },
+        { id: 'dirty', label: 'Dirty', emoji: '💩' },
+        { id: 'both', label: 'Both', emoji: '💧💩' },
+        { id: 'dry', label: 'Dry', emoji: '✅' },
+      ], { required: true }),
+      f.select('color', 'Color', [
+        { id: 'yellow', label: 'Yellow', emoji: '🟡' },
+        { id: 'brown', label: 'Brown', emoji: '🟤' },
+        { id: 'green', label: 'Green', emoji: '🟢' },
+        { id: 'black', label: 'Black (Meconium)', emoji: '⚫' },
+        { id: 'red', label: 'Red/Bloody', emoji: '🔴' },
+        { id: 'white', label: 'White/Chalky', emoji: '⚪' },
+      ], { showIf: { field: 'type', notEquals: 'dry' } }),
+      f.toggle('rash', 'Rash?'),
+      f.toggle('blowout', 'Blowout?'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Blowout', 'Rash', 'Teething poop', 'Normal'],
+  },
+  {
+    id: 'potty', name: 'Potty', emoji: '🚽', icon: 'happy-outline',
+    color: '#1DD1A1', gradient: ['#1DD1A1', '#10AC84'],
+    description: 'Potty training progress',
+    category: 'essential', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.select('type', 'Type', [
+        { id: 'pee', label: 'Pee', emoji: '💧' },
+        { id: 'poop', label: 'Poop', emoji: '💩' },
+        { id: 'both', label: 'Both', emoji: '💧💩' },
+        { id: 'attempt', label: 'Attempt', emoji: '🚽' },
+        { id: 'accident', label: 'Accident', emoji: '😰' },
+      ], { required: true }),
+      f.toggle('successful', 'Successful?', { required: true }),
+      f.select('location', 'Location', [
+        { id: 'potty', label: 'Potty Chair', emoji: '🪑' },
+        { id: 'toilet', label: 'Toilet', emoji: '🚽' },
+        { id: 'floor', label: 'Floor', emoji: '😰' },
+        { id: 'diaper', label: 'Diaper', emoji: '👶' },
+      ]),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['First success!', 'Self-initiated', 'Accident', 'Dry night'],
+  },
+  {
+    id: 'bath', name: 'Bath', emoji: '🛁', icon: 'water-outline',
+    color: '#48DBFB', gradient: ['#48DBFB', '#0ABDE3'],
+    description: 'Bath time tracking',
+    category: 'essential', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.duration('duration', 'Duration'),
+      f.select('waterTemp', 'Water Temp', [
+        { id: 'warm', label: 'Warm', emoji: '🌡️' },
+        { id: 'cool', label: 'Cool', emoji: '❄️' },
+        { id: 'hot', label: 'Hot', emoji: '🔥' },
+      ]),
+      f.toggle('shampoo', 'Shampoo used?'),
+      f.toggle('soap', 'Soap used?'),
+      f.toggle('lotion', 'Lotion after?'),
+      f.toggle('enjoyed', 'Enjoyed it?'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Splashed', 'Cried', 'Loved it', 'Hair wash'],
+  },
+  {
+    id: 'pumping', name: 'Pumping', emoji: '🤱', icon: 'flash-outline',
+    color: '#FF9FF3', gradient: ['#FF9FF3', '#F368E0'],
+    description: 'Breast pumping sessions',
+    category: 'essential', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.select('side', 'Side', [
+        { id: 'left', label: 'Left', emoji: '⬅️' },
+        { id: 'right', label: 'Right', emoji: '➡️' },
+        { id: 'both', label: 'Both', emoji: '↔️' },
+      ], { required: true }),
+      f.number('amount', 'Amount', 'ml', { required: true }),
+      f.duration('duration', 'Duration'),
+      f.rating('comfort', 'Comfort Level', 5),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['High output', 'Low output', 'Clogged duct', 'Power pump'],
+  },
+
+  // ═══ HEALTH & MEDICAL (10) ═══
+  {
+    id: 'growth', name: 'Growth', emoji: '📏', icon: 'trending-up-outline',
+    color: '#10AC84', gradient: ['#10AC84', '#1DD1A1'],
+    description: 'Height, weight, and head measurements',
+    category: 'health', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.select('measurementType', 'Type', [
+        { id: 'height', label: 'Height', emoji: '📏' },
+        { id: 'weight', label: 'Weight', emoji: '⚖️' },
+        { id: 'head', label: 'Head Circumference', emoji: '🧠' },
+      ], { required: true }),
+      f.number('value', 'Value', '', { required: true }),
+      f.select('unit', 'Unit', [
+        { id: 'cm', label: 'cm' }, { id: 'in', label: 'in' },
+        { id: 'kg', label: 'kg' }, { id: 'lb', label: 'lb' },
+        { id: 'oz', label: 'oz' },
+      ], { required: true }),
+      f.number('percentile', 'Percentile', '%', { min: 0, max: 100 }),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Percentile jump', 'Steady growth', 'Concern'],
+  },
+  {
+    id: 'temperature', name: 'Temperature', emoji: '🌡️', icon: 'thermometer-outline',
+    color: '#EE5A24', gradient: ['#EE5A24', '#FF6348'],
+    description: 'Body temperature readings',
+    category: 'health', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.temperature('value', 'Temperature', { required: true }),
+      f.select('unit', 'Unit', [
+        { id: 'celsius', label: '°C' }, { id: 'fahrenheit', label: '°F' },
+      ], { required: true }),
+      f.select('method', 'Method', [
+        { id: 'oral', label: 'Oral', emoji: '👄' },
+        { id: 'ear', label: 'Ear', emoji: '👂' },
+        { id: 'forehead', label: 'Forehead', emoji: '🌡️' },
+        { id: 'armpit', label: 'Armpit', emoji: '💪' },
+        { id: 'rectal', label: 'Rectal', emoji: '🔴' },
+      ]),
+      f.multiselect('symptoms', 'Symptoms', [
+        { id: 'fever', label: 'Fever', emoji: '🔥' },
+        { id: 'chills', label: 'Chills', emoji: '❄️' },
+        { id: 'sweating', label: 'Sweating', emoji: '💦' },
+        { id: 'irritable', label: 'Irritable', emoji: '😤' },
+        { id: 'lethargic', label: 'Lethargic', emoji: '😴' },
+      ]),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Fever', 'Normal', 'After vaccine', 'Teething'],
+  },
+  {
+    id: 'medication', name: 'Medication', emoji: '💊', icon: 'medkit-outline',
+    color: '#FF6B6B', gradient: ['#FF6B6B', '#EE5A24'],
+    description: 'Medicine and dosage tracking',
+    category: 'health', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.text('name', 'Medication Name', { required: true, placeholder: 'e.g., Acetaminophen' }),
+      f.text('dosage', 'Dosage', { required: true, placeholder: 'e.g., 2.5ml' }),
+      f.select('type', 'Type', [
+        { id: 'liquid', label: 'Liquid', emoji: '🧪' },
+        { id: 'tablet', label: 'Tablet', emoji: '💊' },
+        { id: 'drops', label: 'Drops', emoji: '💧' },
+        { id: 'injection', label: 'Injection', emoji: '💉' },
+        { id: 'suppository', label: 'Suppository', emoji: '🔴' },
+      ]),
+      f.text('reason', 'Reason', { placeholder: 'e.g., Fever' }),
+      f.toggle('given', 'Given successfully?'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Fever reducer', 'Antibiotic', 'Vitamin', 'Allergy'],
+  },
+  {
+    id: 'symptom', name: 'Symptom', emoji: '😷', icon: 'pulse-outline',
+    color: '#FF9F43', gradient: ['#FF9F43', '#EE5A24'],
+    description: 'Track symptoms and illness',
+    category: 'health', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.multiselect('symptoms', 'Symptoms', [
+        { id: 'cough', label: 'Cough', emoji: '😤' },
+        { id: 'runny_nose', label: 'Runny Nose', emoji: '👃' },
+        { id: 'congestion', label: 'Congestion', emoji: '😷' },
+        { id: 'vomiting', label: 'Vomiting', emoji: '🤮' },
+        { id: 'diarrhea', label: 'Diarrhea', emoji: '💩' },
+        { id: 'rash', label: 'Rash', emoji: '🔴' },
+        { id: 'fever', label: 'Fever', emoji: '🔥' },
+        { id: 'ear_pain', label: 'Ear Pain', emoji: '👂' },
+        { id: 'sore_throat', label: 'Sore Throat', emoji: '😰' },
+      ], { required: true }),
+      f.rating('severity', 'Severity', 5),
+      f.datetime('startedAt', 'Started At'),
+      f.toggle('ongoing', 'Still ongoing?'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Getting worse', 'Improving', 'Called doctor', 'Emergency'],
+  },
+  {
+    id: 'vaccine', name: 'Vaccine', emoji: '💉', icon: 'shield-checkmark-outline',
+    color: '#5F27CD', gradient: ['#5F27CD', '#341F97'],
+    description: 'Immunization records',
+    category: 'health', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.text('name', 'Vaccine Name', { required: true, placeholder: 'e.g., DTaP #1' }),
+      f.text('batch', 'Batch/Lot Number'),
+      f.text('provider', 'Provider', { placeholder: 'e.g., Dr. Smith' }),
+      f.text('site', 'Injection Site', { placeholder: 'e.g., Left thigh' }),
+      f.multiselect('reactions', 'Reactions', [
+        { id: 'none', label: 'None', emoji: '✅' },
+        { id: 'redness', label: 'Redness', emoji: '🔴' },
+        { id: 'swelling', label: 'Swelling', emoji: '📍' },
+        { id: 'fever', label: 'Fever', emoji: '🔥' },
+        { id: 'fussy', label: 'Fussy', emoji: '😤' },
+        { id: 'sleepy', label: 'Sleepy', emoji: '😴' },
+      ]),
+      f.toggle('nextScheduled', 'Next dose scheduled?'),
+      f.datetime('nextDate', 'Next Dose Date', { showIf: { field: 'nextScheduled', equals: true } }),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['On schedule', 'Delayed', 'Reaction', 'Complete'],
+  },
+  {
+    id: 'doctor_visit', name: 'Doctor Visit', emoji: '👨‍⚕️', icon: 'medical-outline',
+    color: '#00D2D3', gradient: ['#00D2D3', '#54A0FF'],
+    description: 'Medical appointments',
+    category: 'health', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.select('type', 'Visit Type', [
+        { id: 'checkup', label: 'Checkup', emoji: '✅' },
+        { id: 'sick', label: 'Sick Visit', emoji: '😷' },
+        { id: 'followup', label: 'Follow-up', emoji: '🔄' },
+        { id: 'specialist', label: 'Specialist', emoji: '👨‍⚕️' },
+        { id: 'emergency', label: 'Emergency', emoji: '🚨' },
+      ], { required: true }),
+      f.text('provider', 'Provider Name'),
+      f.text('reason', 'Reason for Visit'),
+      f.textarea('diagnosis', 'Diagnosis / Notes'),
+      f.toggle('followUpNeeded', 'Follow-up needed?'),
+      f.datetime('followUpDate', 'Follow-up Date', { showIf: { field: 'followUpNeeded', equals: true } }),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Routine', 'Sick', 'Vaccines', 'Concern'],
+  },
+  {
+    id: 'teething', name: 'Teething', emoji: '🦷', icon: 'sad-outline',
+    color: '#FF6B6B', gradient: ['#FF6B6B', '#FF9F43'],
+    description: 'Teething symptoms and relief',
+    category: 'health', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.select('gumArea', 'Gum Area', [
+        { id: 'bottom_front', label: 'Bottom Front', emoji: '👇' },
+        { id: 'top_front', label: 'Top Front', emoji: '👆' },
+        { id: 'side', label: 'Side/Molar', emoji: '👉' },
+        { id: 'unknown', label: 'Unknown', emoji: '❓' },
+      ]),
+      f.multiselect('symptoms', 'Symptoms', [
+        { id: 'drooling', label: 'Drooling', emoji: '💧' },
+        { id: 'chewing', label: 'Chewing everything', emoji: '😬' },
+        { id: 'fussy', label: 'Fussy', emoji: '😤' },
+        { id: 'sleep_disturbance', label: 'Sleep disturbance', emoji: '😴' },
+        { id: 'fever', label: 'Low fever', emoji: '🌡️' },
+        { id: 'rash', label: 'Rash', emoji: '🔴' },
+      ]),
+      f.multiselect('relief', 'Relief Methods', [
+        { id: 'teether', label: 'Teether', emoji: '🦷' },
+        { id: 'cold_washcloth', label: 'Cold Washcloth', emoji: '🧊' },
+        { id: 'massage', label: 'Gum Massage', emoji: '👆' },
+        { id: 'medicine', label: 'Pain Reliever', emoji: '💊' },
+        { id: 'amber', label: 'Amber Necklace', emoji: '📿' },
+      ]),
+      f.rating('severity', 'Discomfort Level', 5),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['First tooth!', 'Bad day', 'Relief helped', 'No sleep'],
+  },
+  {
+    id: 'allergy', name: 'Allergy', emoji: '🤧', icon: 'warning-outline',
+    color: '#EE5A24', gradient: ['#EE5A24', '#FF6B6B'],
+    description: 'Allergic reactions and triggers',
+    category: 'health', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.select('severity', 'Severity', [
+        { id: 'mild', label: 'Mild', emoji: '🟡' },
+        { id: 'moderate', label: 'Moderate', emoji: '🟠' },
+        { id: 'severe', label: 'Severe', emoji: '🔴' },
+        { id: 'anaphylaxis', label: 'Anaphylaxis', emoji: '🚨' },
+      ], { required: true }),
+      f.multiselect('triggers', 'Triggers', [
+        { id: 'food', label: 'Food', emoji: '🥜' },
+        { id: 'pollen', label: 'Pollen', emoji: '🌸' },
+        { id: 'dust', label: 'Dust', emoji: '🏠' },
+        { id: 'pet', label: 'Pet Dander', emoji: '🐕' },
+        { id: 'medication', label: 'Medication', emoji: '💊' },
+        { id: 'insect', label: 'Insect Bite', emoji: '🦟' },
+        { id: 'latex', label: 'Latex', emoji: '🧤' },
+      ], { required: true }),
+      f.multiselect('symptoms', 'Symptoms', [
+        { id: 'hives', label: 'Hives', emoji: '🔴' },
+        { id: 'swelling', label: 'Swelling', emoji: '📍' },
+        { id: 'breathing', label: 'Breathing difficulty', emoji: '😰' },
+        { id: 'vomiting', label: 'Vomiting', emoji: '🤮' },
+        { id: 'diarrhea', label: 'Diarrhea', emoji: '💩' },
+      ]),
+      f.toggle('epipen', 'EpiPen used?'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['New trigger', 'Emergency', 'Improving', 'Avoided'],
+  },
+  {
+    id: 'skin_condition', name: 'Skin Condition', emoji: '🔴', icon: 'sunny-outline',
+    color: '#F368E0', gradient: ['#F368E0', '#FF9FF3'],
+    description: 'Rashes, eczema, and skin issues',
+    category: 'health', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.select('condition', 'Condition', [
+        { id: 'eczema', label: 'Eczema', emoji: '🔴' },
+        { id: 'diaper_rash', label: 'Diaper Rash', emoji: '👶' },
+        { id: 'heat_rash', label: 'Heat Rash', emoji: '☀️' },
+        { id: 'cradle_cap', label: 'Cradle Cap', emoji: '👶' },
+        { id: 'acne', label: 'Baby Acne', emoji: '🔴' },
+        { id: 'hives', label: 'Hives', emoji: '🔴' },
+        { id: 'other', label: 'Other', emoji: '❓' },
+      ], { required: true }),
+      f.select('severity', 'Severity', [
+        { id: 'mild', label: 'Mild', emoji: '🟢' },
+        { id: 'moderate', label: 'Moderate', emoji: '🟡' },
+        { id: 'severe', label: 'Severe', emoji: '🔴' },
+      ]),
+      f.multiselect('location', 'Body Location', [
+        { id: 'face', label: 'Face', emoji: '😊' },
+        { id: 'scalp', label: 'Scalp', emoji: '👶' },
+        { id: 'chest', label: 'Chest', emoji: '👕' },
+        { id: 'back', label: 'Back', emoji: '👤' },
+        { id: 'arms', label: 'Arms', emoji: '💪' },
+        { id: 'legs', label: 'Legs', emoji: '🦵' },
+        { id: 'diaper_area', label: 'Diaper Area', emoji: '👶' },
+      ]),
+      f.multiselect('treatments', 'Treatments', [
+        { id: 'cream', label: 'Cream/Ointment', emoji: '🧴' },
+        { id: 'ointment', label: 'Petroleum Jelly', emoji: '🔵' },
+        { id: 'steroid', label: 'Steroid Cream', emoji: '💊' },
+        { id: 'bath', label: 'Oatmeal Bath', emoji: '🛁' },
+        { id: 'air', label: 'Air Time', emoji: '💨' },
+      ]),
+      f.photo('photos', 'Photos'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Flare up', 'Improving', 'New spot', 'Cleared up'],
+  },
+  {
+    id: 'immunization', name: 'Immunization', emoji: '🛡️', icon: 'shield-outline',
+    color: '#5F27CD', gradient: ['#5F27CD', '#00D2D3'],
+    description: 'Full immunization schedule tracking',
+    category: 'health', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.text('vaccineName', 'Vaccine Name', { required: true }),
+      f.number('doseNumber', 'Dose #', '', { min: 1, max: 10 }),
+      f.datetime('dateGiven', 'Date Given', { required: true }),
+      f.text('provider', 'Provider'),
+      f.text('batchNumber', 'Batch/Lot #'),
+      f.toggle('reaction', 'Any reaction?'),
+      f.textarea('reactionDetails', 'Reaction Details', { showIf: { field: 'reaction', equals: true } }),
+      f.datetime('nextDue', 'Next Dose Due'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['On schedule', 'Delayed', 'Reaction', 'Complete'],
+  },
+
+  // ═══ DEVELOPMENT (8) ═══
+  {
+    id: 'milestone', name: 'Milestone', emoji: '🏆', icon: 'trophy-outline',
+    color: '#FFD700', gradient: ['#FFD700', '#FFA502'],
+    description: 'Developmental milestones',
+    category: 'development', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.text('title', 'Milestone Title', { required: true, placeholder: 'e.g., First steps' }),
+      f.select('category', 'Category', [
+        { id: 'physical', label: 'Physical', emoji: '🏃' },
+        { id: 'cognitive', label: 'Cognitive', emoji: '🧠' },
+        { id: 'social', label: 'Social', emoji: '👥' },
+        { id: 'language', label: 'Language', emoji: '💬' },
+        { id: 'emotional', label: 'Emotional', emoji: '❤️' },
+      ], { required: true }),
+      f.toggle('firstTime', 'First time?', { defaultValue: true }),
+      f.textarea('description', 'Description'),
+      f.photo('photos', 'Photos'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['First time!', 'Early', 'On track', 'Late'],
+  },
+  {
+    id: 'play', name: 'Play', emoji: '🧸', icon: 'game-controller-outline',
+    color: '#FF6B6B', gradient: ['#FF6B6B', '#FF9F43'],
+    description: 'Play activities and engagement',
+    category: 'development', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.select('playType', 'Type', [
+        { id: 'tummy', label: 'Tummy Time', emoji: '😴' },
+        { id: 'floor', label: 'Floor Play', emoji: '🧸' },
+        { id: 'peekaboo', label: 'Peek-a-boo', emoji: '🙈' },
+        { id: 'stacking', label: 'Stacking', emoji: '🧱' },
+        { id: 'puzzle', label: 'Puzzle', emoji: '🧩' },
+        { id: 'imaginative', label: 'Imaginative', emoji: '👑' },
+        { id: 'sensory', label: 'Sensory Bin', emoji: '👋' },
+        { id: 'water', label: 'Water Play', emoji: '💧' },
+      ], { required: true }),
+      f.duration('duration', 'Duration'),
+      f.rating('engagement', 'Engagement', 5),
+      f.toggle('initiated', 'Self-initiated?'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Loved it', 'New toy', 'Shared play', 'Independent'],
+  },
+  {
+    id: 'tummy_time', name: 'Tummy Time', emoji: '😤', icon: 'fitness-outline',
+    color: '#1DD1A1', gradient: ['#1DD1A1', '#10AC84'],
+    description: 'Tummy time sessions',
+    category: 'development', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.duration('duration', 'Duration', { required: true }),
+      f.rating('tolerance', 'Tolerance', 5),
+      f.toggle('reached', 'Reached for toys?'),
+      f.toggle('liftedHead', 'Lifted head?'),
+      f.toggle('rolled', 'Rolled over?'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Hated it', 'Loved it', 'Rolled!', 'Head up'],
+  },
+  {
+    id: 'reading', name: 'Reading', emoji: '📚', icon: 'book-outline',
+    color: '#5F27CD', gradient: ['#5F27CD', '#341F97'],
+    description: 'Reading sessions',
+    category: 'development', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.text('bookTitle', 'Book Title', { placeholder: 'e.g., Goodnight Moon' }),
+      f.duration('duration', 'Duration'),
+      f.rating('engagement', 'Engagement', 5),
+      f.toggle('turnedPages', 'Turned pages?'),
+      f.toggle('pointed', 'Pointed at pictures?'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Favorite', 'New book', 'Interactive', 'Bedtime'],
+  },
+  {
+    id: 'music', name: 'Music', emoji: '🎵', icon: 'musical-notes-outline',
+    color: '#FF9FF3', gradient: ['#FF9FF3', '#F368E0'],
+    description: 'Musical activities',
+    category: 'development', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.select('musicType', 'Type', [
+        { id: 'singing', label: 'Singing', emoji: '🎤' },
+        { id: 'instrument', label: 'Instrument', emoji: '🎹' },
+        { id: 'dancing', label: 'Dancing', emoji: '💃' },
+        { id: 'listening', label: 'Listening', emoji: '🎧' },
+        { id: 'nursery', label: 'Nursery Rhymes', emoji: '👶' },
+      ], { required: true }),
+      f.duration('duration', 'Duration'),
+      f.rating('enjoyment', 'Enjoyment', 5),
+      f.toggle('participated', 'Participated?'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Danced', 'Sang along', 'Calmed down', 'Favorite song'],
+  },
+  {
+    id: 'outdoor', name: 'Outdoor', emoji: '🌳', icon: 'leaf-outline',
+    color: '#1DD1A1', gradient: ['#1DD1A1', '#10AC84'],
+    description: 'Outdoor activities and nature',
+    category: 'development', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.select('activity', 'Activity', [
+        { id: 'walk', label: 'Walk/Stroller', emoji: '🚶' },
+        { id: 'park', label: 'Park/Playground', emoji: '🛝' },
+        { id: 'beach', label: 'Beach', emoji: '🏖️' },
+        { id: 'hike', label: 'Hike/Nature', emoji: '🥾' },
+        { id: 'backyard', label: 'Backyard', emoji: '🏡' },
+        { id: 'pool', label: 'Pool/Water', emoji: '🏊' },
+      ], { required: true }),
+      f.duration('duration', 'Duration'),
+      f.toggle('sunscreen', 'Sunscreen applied?'),
+      f.toggle('hat', 'Wore hat?'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['First time', ' Loved it', 'Fell asleep', 'Explored'],
+  },
+  {
+    id: 'sensory', name: 'Sensory', emoji: '👋', icon: 'hand-left-outline',
+    color: '#FF9F43', gradient: ['#FF9F43', '#FFD700'],
+    description: 'Sensory play activities',
+    category: 'development', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.select('sensoryType', 'Type', [
+        { id: 'touch', label: 'Touch/Texture', emoji: '👋' },
+        { id: 'sound', label: 'Sound', emoji: '🔔' },
+        { id: 'sight', label: 'Sight/Light', emoji: '👁️' },
+        { id: 'smell', label: 'Smell', emoji: '👃' },
+        { id: 'taste', label: 'Taste', emoji: '👅' },
+        { id: 'vestibular', label: 'Movement', emoji: '🔄' },
+        { id: 'proprioception', label: 'Body Awareness', emoji: '💪' },
+      ], { required: true }),
+      f.duration('duration', 'Duration'),
+      f.rating('engagement', 'Engagement', 5),
+      f.toggle('messy', 'Messy play?'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Messy', 'Calming', 'Overstimulated', 'Loved it'],
+  },
+  {
+    id: 'speech', name: 'Speech', emoji: '💬', icon: 'chatbubble-outline',
+    color: '#54A0FF', gradient: ['#54A0FF', '#5F27CD'],
+    description: 'Language and speech development',
+    category: 'development', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.text('word', 'Word/Phrase', { placeholder: 'e.g., Mama, Dada, Ball' }),
+      f.select('type', 'Type', [
+        { id: 'first_word', label: 'First Word', emoji: '🎉' },
+        { id: 'new_word', label: 'New Word', emoji: '✨' },
+        { id: 'phrase', label: 'Phrase', emoji: '💬' },
+        { id: 'sign', label: 'Sign Language', emoji: '✋' },
+        { id: 'sound', label: 'Sound Imitation', emoji: '🐕' },
+        { id: 'gesture', label: 'Gesture', emoji: '👋' },
+      ], { required: true }),
+      f.toggle('understood', 'Understood context?'),
+      f.toggle('repeated', 'Repeated after you?'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['First word!', 'Mimic', 'Understood', 'Signed'],
+  },
+
+  // ═══ EMOTIONAL & SOCIAL (5) ═══
+  {
+    id: 'mood', name: 'Mood', emoji: '😊', icon: 'happy-outline',
+    color: '#FFD700', gradient: ['#FFD700', '#FF9F43'],
+    description: 'Daily mood tracking',
+    category: 'emotional', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.mood('mood', 'How are they feeling?', { required: true }),
+      f.select('energy', 'Energy Level', [
+        { id: 'high', label: 'High', emoji: '⚡' },
+        { id: 'normal', label: 'Normal', emoji: '✅' },
+        { id: 'low', label: 'Low', emoji: '😴' },
+        { id: 'lethargic', label: 'Lethargic', emoji: '💤' },
+      ]),
+      f.multiselect('factors', 'Contributing Factors', [
+        { id: 'slept_well', label: 'Slept well', emoji: '😴' },
+        { id: 'hungry', label: 'Hungry', emoji: '🍽️' },
+        { id: 'teething', label: 'Teething', emoji: '🦷' },
+        { id: 'sick', label: 'Not feeling well', emoji: '😷' },
+        { id: 'overstimulated', label: 'Overstimulated', emoji: '😵' },
+        { id: 'growth_spurt', label: 'Growth spurt', emoji: '📈' },
+        { id: 'routine_change', label: 'Routine change', emoji: '🔄' },
+      ]),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Happy day', 'Fussy', 'Teething', 'Sick'],
+  },
+  {
+    id: 'attachment', name: 'Attachment', emoji: '❤️', icon: 'heart-outline',
+    color: '#FF6B6B', gradient: ['#FF6B6B', '#FF9FF3'],
+    description: 'Bonding and attachment moments',
+    category: 'emotional', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.select('moment', 'Moment Type', [
+        { id: 'eye_contact', label: 'Eye Contact', emoji: '👁️' },
+        { id: 'smile', label: 'Social Smile', emoji: '😊' },
+        { id: 'cuddle', label: 'Cuddling', emoji: '🤗' },
+        { id: 'reaching', label: 'Reaching for You', emoji: '👋' },
+        { id: 'separation', label: 'Separation Anxiety', emoji: '😰' },
+        { id: 'stranger', label: 'Stranger Anxiety', emoji: '👤' },
+        { id: 'comfort', label: 'Seeks Comfort', emoji: '❤️' },
+      ], { required: true }),
+      f.rating('intensity', 'Intensity', 5),
+      f.toggle('reciprocated', 'Reciprocated?'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Strong bond', 'Anxious', 'New person', 'Comforted'],
+  },
+  {
+    id: 'social', name: 'Social', emoji: '👥', icon: 'people-outline',
+    color: '#54A0FF', gradient: ['#54A0FF', '#00D2D3'],
+    description: 'Social interactions',
+    category: 'emotional', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.select('interaction', 'Interaction Type', [
+        { id: 'family', label: 'Family', emoji: '👨‍👩‍👧' },
+        { id: 'friend', label: 'Friend/Peer', emoji: '👫' },
+        { id: 'stranger', label: 'Stranger', emoji: '👤' },
+        { id: 'group', label: 'Group/Class', emoji: '👥' },
+        { id: 'pet', label: 'Pet', emoji: '🐕' },
+        { id: 'sibling', label: 'Sibling', emoji: '👶' },
+      ], { required: true }),
+      f.rating('response', 'Response', 5),
+      f.toggle('initiated', 'Self-initiated?'),
+      f.toggle('shared', 'Shared toy/attention?'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Shy', 'Outgoing', 'Shared', 'Conflict'],
+  },
+  {
+    id: 'crying', name: 'Crying', emoji: '😭', icon: 'sad-outline',
+    color: '#5F27CD', gradient: ['#5F27CD', '#341F97'],
+    description: 'Crying episodes and patterns',
+    category: 'emotional', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.select('reason', 'Reason', [
+        { id: 'hunger', label: 'Hunger', emoji: '🍽️' },
+        { id: 'tired', label: 'Tired', emoji: '😴' },
+        { id: 'discomfort', label: 'Discomfort', emoji: '😣' },
+        { id: 'pain', label: 'Pain', emoji: '😰' },
+        { id: 'overstimulated', label: 'Overstimulated', emoji: '😵' },
+        { id: 'attention', label: 'Wants Attention', emoji: '👀' },
+        { id: 'unknown', label: 'Unknown', emoji: '❓' },
+      ]),
+      f.duration('duration', 'Duration'),
+      f.rating('intensity', 'Intensity', 5),
+      f.select('soothedBy', 'Soothed By', [
+        { id: 'feeding', label: 'Feeding', emoji: '🍼' },
+        { id: 'rocking', label: 'Rocking', emoji: '🪑' },
+        { id: 'pacifier', label: 'Pacifier', emoji: '😶' },
+        { id: 'walking', label: 'Walking', emoji: '🚶' },
+        { id: 'singing', label: 'Singing', emoji: '🎵' },
+        { id: 'none', label: 'Nothing worked', emoji: '😭' },
+      ]),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Colic', 'Teething', 'Overtired', 'Growth spurt'],
+  },
+  {
+    id: 'soothing', name: 'Soothing', emoji: '😌', icon: 'cloud-outline',
+    color: '#48DBFB', gradient: ['#48DBFB', '#0ABDE3'],
+    description: 'Calming techniques and effectiveness',
+    category: 'emotional', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.multiselect('methods', 'Methods Used', [
+        { id: 'swaddle', label: 'Swaddle', emoji: '📦' },
+        { id: 'white_noise', label: 'White Noise', emoji: '🔊' },
+        { id: 'rocking', label: 'Rocking', emoji: '🪑' },
+        { id: 'pacifier', label: 'Pacifier', emoji: '😶' },
+        { id: 'walking', label: 'Walking', emoji: '🚶' },
+        { id: 'singing', label: 'Singing', emoji: '🎵' },
+        { id: 'massage', label: 'Massage', emoji: '💆' },
+        { id: 'bath', label: 'Warm Bath', emoji: '🛁' },
+        { id: 'carrier', label: 'Baby Carrier', emoji: '🎒' },
+      ], { required: true }),
+      f.rating('effectiveness', 'Effectiveness', 5),
+      f.duration('timeToCalm', 'Time to Calm'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Worked instantly', 'Took time', 'Did not work', 'Combo worked'],
+  },
+
+  // ═══ PHYSICAL CARE (8) ═══
+  {
+    id: 'nail_care', name: 'Nail Care', emoji: '💅', icon: 'cut-outline',
+    color: '#FF9FF3', gradient: ['#FF9FF3', '#F368E0'],
+    description: 'Nail trimming and care',
+    category: 'physical', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.select('type', 'Type', [
+        { id: 'fingers', label: 'Fingernails', emoji: '👆' },
+        { id: 'toes', label: 'Toenails', emoji: '🦶' },
+        { id: 'both', label: 'Both', emoji: '👐' },
+      ], { required: true }),
+      f.toggle('cooperative', 'Cooperative?'),
+      f.toggle('cut', 'Any accidental cut?'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Easy', 'Fought', 'Cut skin', 'Slept through'],
+  },
+  {
+    id: 'hair_care', name: 'Hair Care', emoji: '💇', icon: 'brush-outline',
+    color: '#5F27CD', gradient: ['#5F27CD', '#FF9FF3'],
+    description: 'Hair washing and brushing',
+    category: 'physical', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.select('type', 'Type', [
+        { id: 'wash', label: 'Wash', emoji: '🚿' },
+        { id: 'brush', label: 'Brush', emoji: '🖌️' },
+        { id: 'trim', label: 'Trim', emoji: '✂️' },
+        { id: 'style', label: 'Style', emoji: '💇' },
+      ], { required: true }),
+      f.toggle('cooperative', 'Cooperative?'),
+      f.toggle('tears', 'Any tears?'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['First haircut!', 'Loved it', 'Hated it', 'Cried'],
+  },
+  {
+    id: 'skin_care', name: 'Skin Care', emoji: '🧴', icon: 'water-outline',
+    color: '#F368E0', gradient: ['#F368E0', '#FF9FF3'],
+    description: 'Skin moisturizing and care',
+    category: 'physical', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.select('product', 'Product Type', [
+        { id: 'lotion', label: 'Lotion', emoji: '🧴' },
+        { id: 'cream', label: 'Cream', emoji: '🧈' },
+        { id: 'oil', label: 'Oil', emoji: '🫒' },
+        { id: 'ointment', label: 'Ointment', emoji: '🔵' },
+        { id: 'spf', label: 'Sunscreen', emoji: '☀️' },
+      ], { required: true }),
+      f.multiselect('areas', 'Body Areas', [
+        { id: 'face', label: 'Face', emoji: '😊' },
+        { id: 'body', label: 'Body', emoji: '👤' },
+        { id: 'hands', label: 'Hands', emoji: '✋' },
+        { id: 'feet', label: 'Feet', emoji: '🦶' },
+        { id: 'diaper', label: 'Diaper Area', emoji: '👶' },
+      ]),
+      f.toggle('reaction', 'Any reaction?'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Dry skin', 'Eczema care', 'After bath', 'Sunscreen'],
+  },
+  {
+    id: 'sunscreen', name: 'Sunscreen', emoji: '☀️', icon: 'sunny-outline',
+    color: '#FFD700', gradient: ['#FFD700', '#FF9F43'],
+    description: 'Sun protection application',
+    category: 'physical', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.number('spf', 'SPF', '', { min: 1, max: 100 }),
+      f.select('type', 'Type', [
+        { id: 'lotion', label: 'Lotion', emoji: '🧴' },
+        { id: 'spray', label: 'Spray', emoji: '💨' },
+        { id: 'stick', label: 'Stick', emoji: '💄' },
+        { id: 'mineral', label: 'Mineral', emoji: '⛰️' },
+      ]),
+      f.multiselect('areas', 'Applied To', [
+        { id: 'face', label: 'Face', emoji: '😊' },
+        { id: 'ears', label: 'Ears', emoji: '👂' },
+        { id: 'neck', label: 'Neck', emoji: '👤' },
+        { id: 'arms', label: 'Arms', emoji: '💪' },
+        { id: 'legs', label: 'Legs', emoji: '🦵' },
+        { id: 'full', label: 'Full Body', emoji: '👤' },
+      ]),
+      f.toggle('reapplied', 'Reapplied?'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Beach day', 'Park', 'Reapplied', 'First time'],
+  },
+  {
+    id: 'insect_repellent', name: 'Insect Repellent', emoji: '🦟', icon: 'bug-outline',
+    color: '#1DD1A1', gradient: ['#1DD1A1', '#10AC84'],
+    description: 'Bug protection',
+    category: 'physical', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.select('type', 'Type', [
+        { id: 'spray', label: 'Spray', emoji: '💨' },
+        { id: 'lotion', label: 'Lotion', emoji: '🧴' },
+        { id: 'wipes', label: 'Wipes', emoji: '🧻' },
+        { id: 'clothing', label: 'Treated Clothing', emoji: '👕' },
+        { id: 'natural', label: 'Natural/Oil', emoji: '🌿' },
+      ], { required: true }),
+      f.text('brand', 'Brand'),
+      f.toggle('deet', 'Contains DEET?'),
+      f.multiselect('areas', 'Applied To', [
+        { id: 'exposed', label: 'Exposed Skin', emoji: '👤' },
+        { id: 'clothing', label: 'Clothing', emoji: '👕' },
+        { id: 'stroller', label: 'Stroller', emoji: '🚗' },
+      ]),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Mosquitoes', 'Ticks', 'Outdoor', 'Natural'],
+  },
+  {
+    id: 'oral_hygiene', name: 'Oral Hygiene', emoji: '🦷', icon: 'tooth-outline',
+    color: '#54A0FF', gradient: ['#54A0FF', '#5F27CD'],
+    description: 'Teeth and gum care',
+    category: 'physical', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.select('type', 'Type', [
+        { id: 'brush', label: 'Brushing', emoji: '🪥' },
+        { id: 'wipe', label: 'Gum Wipe', emoji: '🧻' },
+        { id: 'floss', label: 'Floss', emoji: '🧵' },
+        { id: 'first_tooth', label: 'First Tooth!', emoji: '🎉' },
+      ], { required: true }),
+      f.toggle('cooperative', 'Cooperative?'),
+      f.rating('thoroughness', 'Thoroughness', 5),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['First tooth!', 'Cooperative', 'Fought', 'Gum bleed'],
+  },
+  {
+    id: 'ear_care', name: 'Ear Care', emoji: '👂', icon: 'ear-outline',
+    color: '#FF9FF3', gradient: ['#FF9FF3', '#F368E0'],
+    description: 'Ear cleaning and checks',
+    category: 'physical', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.select('type', 'Type', [
+        { id: 'clean', label: 'Clean Outer Ear', emoji: '🧼' },
+        { id: 'check', label: 'Visual Check', emoji: '👁️' },
+        { id: 'infection', label: 'Infection Signs', emoji: '🔴' },
+        { id: 'wax', label: 'Wax Buildup', emoji: '🟡' },
+      ], { required: true }),
+      f.toggle('bothEars', 'Both ears?'),
+      f.toggle('concern', 'Any concern?'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Normal', 'Redness', 'Wax', 'Infection concern'],
+  },
+  {
+    id: 'nose_care', name: 'Nose Care', emoji: '👃', icon: 'nose-outline',
+    color: '#00D2D3', gradient: ['#00D2D3', '#54A0FF'],
+    description: 'Nasal care and suction',
+    category: 'physical', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.select('type', 'Type', [
+        { id: 'suction', label: 'Nasal Suction', emoji: '🧽' },
+        { id: 'saline', label: 'Saline Spray', emoji: '💧' },
+        { id: 'wipe', label: 'Wipe', emoji: '🧻' },
+        { id: 'check', label: 'Visual Check', emoji: '👁️' },
+      ], { required: true }),
+      f.toggle('congested', 'Congested?'),
+      f.toggle('bloody', 'Any blood?'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Stuffy', 'Clear', 'Bloody', 'After bath'],
+  },
+
+  // ═══ NUTRITION (6) ═══
+  {
+    id: 'solid_food', name: 'Solid Food', emoji: '🥄', icon: 'restaurant-outline',
+    color: '#FF9F43', gradient: ['#FF9F43', '#FFD700'],
+    description: 'First foods and meals',
+    category: 'nutrition', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.text('food', 'Food Item', { required: true, placeholder: 'e.g., Sweet potato' }),
+      f.select('texture', 'Texture', [
+        { id: 'puree', label: 'Puree', emoji: '🥣' },
+        { id: 'mashed', label: 'Mashed', emoji: '🥔' },
+        { id: 'soft', label: 'Soft Chunks', emoji: '🍌' },
+        { id: 'finger', label: 'Finger Food', emoji: '👆' },
+        { id: 'table', label: 'Table Food', emoji: '🍽️' },
+      ]),
+      f.number('amount', 'Amount', 'tbsp'),
+      f.rating('acceptance', 'Acceptance', 5),
+      f.toggle('allergicReaction', 'Any reaction?'),
+      f.textarea('reactionDetails', 'Reaction Details', { showIf: { field: 'allergicReaction', equals: true } }),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Loved it', 'Refused', 'New food', 'Allergic reaction'],
+  },
+  {
+    id: 'water', name: 'Water', emoji: '💧', icon: 'water-outline',
+    color: '#48DBFB', gradient: ['#48DBFB', '#0ABDE3'],
+    description: 'Water intake',
+    category: 'nutrition', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.number('amount', 'Amount', 'ml', { required: true }),
+      f.select('vessel', 'From', [
+        { id: 'bottle', label: 'Bottle', emoji: '🍼' },
+        { id: 'sippy', label: 'Sippy Cup', emoji: '🥤' },
+        { id: 'straw', label: 'Straw Cup', emoji: '🧃' },
+        { id: 'open', label: 'Open Cup', emoji: '🥛' },
+        { id: 'spoon', label: 'Spoon', emoji: '🥄' },
+      ]),
+      f.toggle('requested', 'Self-requested?'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Hot day', 'Sick', 'Requested', 'Refused'],
+  },
+  {
+    id: 'vitamin', name: 'Vitamin', emoji: '💊', icon: 'nutrition-outline',
+    color: '#1DD1A1', gradient: ['#1DD1A1', '#10AC84'],
+    description: 'Vitamin and supplement tracking',
+    category: 'nutrition', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.text('name', 'Vitamin/Supplement', { required: true, placeholder: 'e.g., Vitamin D drops' }),
+      f.text('dosage', 'Dosage', { placeholder: 'e.g., 1 drop (400 IU)' }),
+      f.select('type', 'Type', [
+        { id: 'drops', label: 'Drops', emoji: '💧' },
+        { id: 'liquid', label: 'Liquid', emoji: '🧪' },
+        { id: 'chewable', label: 'Chewable', emoji: '🍬' },
+        { id: 'powder', label: 'Powder', emoji: '📦' },
+        { id: 'gummy', label: 'Gummy', emoji: '🐻' },
+      ]),
+      f.toggle('given', 'Given successfully?'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Daily routine', 'Missed', 'Refused', 'New supplement'],
+  },
+  {
+    id: 'allergen_intro', name: 'Allergen Intro', emoji: '🥜', icon: 'warning-outline',
+    color: '#EE5A24', gradient: ['#EE5A24', '#FF6B6B'],
+    description: 'Introducing allergenic foods safely',
+    category: 'nutrition', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.select('allergen', 'Allergen', [
+        { id: 'peanut', label: 'Peanut', emoji: '🥜' },
+        { id: 'egg', label: 'Egg', emoji: '🥚' },
+        { id: 'dairy', label: 'Dairy', emoji: '🥛' },
+        { id: 'wheat', label: 'Wheat', emoji: '🌾' },
+        { id: 'soy', label: 'Soy', emoji: '🫘' },
+        { id: 'fish', label: 'Fish', emoji: '🐟' },
+        { id: 'shellfish', label: 'Shellfish', emoji: '🦐' },
+        { id: 'tree_nut', label: 'Tree Nut', emoji: '🌰' },
+        { id: 'sesame', label: 'Sesame', emoji: '🫘' },
+      ], { required: true }),
+      f.text('food', 'Specific Food', { placeholder: 'e.g., Peanut butter powder' }),
+      f.number('amount', 'Amount', 'tsp'),
+      f.select('method', 'Method', [
+        { id: 'mix', label: 'Mixed with food', emoji: '🥣' },
+        { id: 'thin', label: 'Thinned out', emoji: '💧' },
+        { id: 'baked', label: 'Baked in', emoji: '🍞' },
+        { id: 'direct', label: 'Direct (older)', emoji: '👆' },
+      ]),
+      f.toggle('reaction', 'Any reaction?'),
+      f.textarea('reactionDetails', 'Reaction Details', { showIf: { field: 'reaction', equals: true } }),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['First exposure', 'No reaction', 'Mild reaction', 'Cleared'],
+  },
+  {
+    id: 'feeding_reaction', name: 'Feeding Reaction', emoji: '😰', icon: 'alert-circle-outline',
+    color: '#FF6B6B', gradient: ['#FF6B6B', '#EE5A24'],
+    description: 'Reactions to foods or feeding',
+    category: 'nutrition', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.text('trigger', 'Trigger Food', { required: true }),
+      f.select('timing', 'Reaction Timing', [
+        { id: 'immediate', label: 'Immediate (<5 min)', emoji: '⚡' },
+        { id: 'quick', label: 'Quick (5-30 min)', emoji: '⏱️' },
+        { id: 'delayed', label: 'Delayed (30+ min)', emoji: '🕐' },
+        { id: 'next_day', label: 'Next Day', emoji: '🌅' },
+      ]),
+      f.multiselect('symptoms', 'Symptoms', [
+        { id: 'hives', label: 'Hives', emoji: '🔴' },
+        { id: 'vomiting', label: 'Vomiting', emoji: '🤮' },
+        { id: 'diarrhea', label: 'Diarrhea', emoji: '💩' },
+        { id: 'coughing', label: 'Coughing', emoji: '😤' },
+        { id: 'wheezing', label: 'Wheezing', emoji: '🫁' },
+        { id: 'swelling', label: 'Swelling', emoji: '📍' },
+        { id: 'eczema', label: 'Eczema flare', emoji: '🔴' },
+        { id: 'fussy', label: 'Fussy/Colic', emoji: '😤' },
+        { id: 'refusal', label: 'Food refusal', emoji: '🙅' },
+      ], { required: true }),
+      f.rating('severity', 'Severity', 5),
+      f.toggle('medicalAttention', 'Needed medical attention?'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Mild', 'Severe', 'ER visit', 'Improving'],
+  },
+  {
+    id: 'breastfeeding', name: 'Breastfeeding', emoji: '🤱', icon: 'heart-outline',
+    color: '#FF9FF3', gradient: ['#FF9FF3', '#F368E0'],
+    description: 'Dedicated breastfeeding tracker',
+    category: 'nutrition', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.select('side', 'Side', [
+        { id: 'left', label: 'Left', emoji: '⬅️' },
+        { id: 'right', label: 'Right', emoji: '➡️' },
+        { id: 'both', label: 'Both', emoji: '↔️' },
+      ], { required: true }),
+      f.duration('duration', 'Duration', { required: true }),
+      f.select('position', 'Position', [
+        { id: 'cradle', label: 'Cradle Hold', emoji: '🤱' },
+        { id: 'football', label: 'Football Hold', emoji: '🏈' },
+        { id: 'side', label: 'Side-Lying', emoji: '😴' },
+        { id: 'laidback', label: 'Laid-Back', emoji: '🛋️' },
+        { id: 'cross', label: 'Cross-Cradle', emoji: '↔️' },
+      ]),
+      f.toggle('letdown', 'Strong letdown?'),
+      f.toggle('cluster', 'Cluster feeding?'),
+      f.toggle('pain', 'Any pain?'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Good latch', 'Cluster feed', 'Painful', 'Long session'],
+  },
+
+  // ═══ SAFETY (5) ═══
+  {
+    id: 'accident', name: 'Accident', emoji: '⚠️', icon: 'alert-triangle-outline',
+    color: '#EE5A24', gradient: ['#EE5A24', '#FF6B6B'],
+    description: 'Accidents and near-misses',
+    category: 'safety', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.select('type', 'Type', [
+        { id: 'fall', label: 'Fall', emoji: '📉' },
+        { id: 'bump', label: 'Bump/Hit', emoji: '💥' },
+        { id: 'cut', label: 'Cut/Scrape', emoji: '✂️' },
+        { id: 'burn', label: 'Burn', emoji: '🔥' },
+        { id: 'choking', label: 'Choking', emoji: '😰' },
+        { id: 'near_miss', label: 'Near Miss', emoji: '⚠️' },
+        { id: 'other', label: 'Other', emoji: '❓' },
+      ], { required: true }),
+      f.select('severity', 'Severity', [
+        { id: 'minor', label: 'Minor', emoji: '🟢' },
+        { id: 'moderate', label: 'Moderate', emoji: '🟡' },
+        { id: 'serious', label: 'Serious', emoji: '🔴' },
+        { id: 'emergency', label: 'Emergency', emoji: '🚨' },
+      ], { required: true }),
+      f.text('location', 'Where did it happen?', { placeholder: 'e.g., Living room, playground' }),
+      f.toggle('medicalAttention', 'Medical attention needed?'),
+      f.textarea('injuryDetails', 'Injury Details'),
+      f.photo('photos', 'Photos of Injury'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Minor', 'Doctor called', 'ER visit', 'Near miss'],
+  },
+  {
+    id: 'injury', name: 'Injury', emoji: '🩹', icon: 'bandage-outline',
+    color: '#FF6B6B', gradient: ['#FF6B6B', '#EE5A24'],
+    description: 'Injury tracking and healing',
+    category: 'safety', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.select('type', 'Type', [
+        { id: 'bruise', label: 'Bruise', emoji: '🟣' },
+        { id: 'cut', label: 'Cut/Laceration', emoji: '✂️' },
+        { id: 'scrape', label: 'Scrape/Abrasion', emoji: '🔴' },
+        { id: 'burn', label: 'Burn', emoji: '🔥' },
+        { id: 'bite', label: 'Bite', emoji: '🦷' },
+        { id: 'sting', label: 'Sting', emoji: '🐝' },
+        { id: 'sprain', label: 'Sprain', emoji: '🦶' },
+      ], { required: true }),
+      f.select('severity', 'Severity', [
+        { id: 'mild', label: 'Mild', emoji: '🟢' },
+        { id: 'moderate', label: 'Moderate', emoji: '🟡' },
+        { id: 'severe', label: 'Severe', emoji: '🔴' },
+      ]),
+      f.text('location', 'Body Location', { placeholder: 'e.g., Left knee, forehead' }),
+      f.toggle('bleeding', 'Bleeding?'),
+      f.toggle('swelling', 'Swelling?'),
+      f.toggle('tetanus', 'Tetanus shot needed?'),
+      f.photo('photos', 'Photos'),
+      f.textarea('treatment', 'Treatment Given'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Healing', 'Infected', 'Scar', 'Doctor visit'],
+  },
+  {
+    id: 'choking', name: 'Choking', emoji: '😰', icon: 'warning-outline',
+    color: '#FF0000', gradient: ['#FF0000', '#EE5A24'],
+    description: 'Choking incidents and response',
+    category: 'safety', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.select('severity', 'Severity', [
+        { id: 'mild', label: 'Mild (self-resolved)', emoji: '🟡' },
+        { id: 'moderate', label: 'Moderate (coughing)', emoji: '🟠' },
+        { id: 'severe', label: 'Severe (intervention)', emoji: '🔴' },
+        { id: 'life_threatening', label: 'Life-threatening', emoji: '🚨' },
+      ], { required: true }),
+      f.text('object', 'Object/Food', { placeholder: 'e.g., Grape, small toy' }),
+      f.select('response', 'Response Used', [
+        { id: 'cough', label: 'Encouraged coughing', emoji: '😤' },
+        { id: 'back_blows', label: 'Back blows', emoji: '👋' },
+        { id: 'chest_thrusts', label: 'Chest thrusts', emoji: '👊' },
+        { id: 'heimlich', label: 'Heimlich (older)', emoji: '🫁' },
+        { id: 'cpr', label: 'CPR', emoji: '🫀' },
+        { id: 'none', label: 'None needed', emoji: '✅' },
+      ]),
+      f.toggle('resolved', 'Resolved fully?'),
+      f.toggle('medicalCalled', 'Medical help called?'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Resolved', 'Called 911', 'Food', 'Toy'],
+  },
+  {
+    id: 'car_seat', name: 'Car Seat', emoji: '🚗', icon: 'car-outline',
+    color: '#5F27CD', gradient: ['#5F27CD', '#341F97'],
+    description: 'Car seat checks and installation',
+    category: 'safety', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.select('checkType', 'Check Type', [
+        { id: 'install', label: 'Installation Check', emoji: '🔧' },
+        { id: 'daily', label: 'Daily Buckle Check', emoji: '✅' },
+        { id: 'adjust', label: 'Harness Adjustment', emoji: '📏' },
+        { id: 'clean', label: 'Cleaning', emoji: '🧼' },
+        { id: 'expire', label: 'Expiration Check', emoji: '📅' },
+      ], { required: true }),
+      f.select('position', 'Seat Position', [
+        { id: 'rear', label: 'Rear-facing', emoji: '👶' },
+        { id: 'forward', label: 'Forward-facing', emoji: '👦' },
+        { id: 'booster', label: 'Booster', emoji: '🪑' },
+      ]),
+      f.toggle('tight', 'Straps tight enough?'),
+      f.toggle('chestClip', 'Chest clip at armpit?'),
+      f.toggle('pinchTest', 'Pinch test passed?'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Installed', 'Adjusted', 'Expired', 'New seat'],
+  },
+  {
+    id: 'babyproofing', name: 'Babyproofing', emoji: '🛡️', icon: 'shield-checkmark-outline',
+    color: '#1DD1A1', gradient: ['#1DD1A1', '#10AC84'],
+    description: 'Home safety checks',
+    category: 'safety', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.select('area', 'Area', [
+        { id: 'kitchen', label: 'Kitchen', emoji: '🍳' },
+        { id: 'bathroom', label: 'Bathroom', emoji: '🚿' },
+        { id: 'living', label: 'Living Room', emoji: '🛋️' },
+        { id: 'bedroom', label: 'Bedroom', emoji: '🛏️' },
+        { id: 'stairs', label: 'Stairs', emoji: '📶' },
+        { id: 'outdoor', label: 'Outdoor', emoji: '🌳' },
+        { id: 'garage', label: 'Garage', emoji: '🚗' },
+        { id: 'whole', label: 'Whole House', emoji: '🏠' },
+      ], { required: true }),
+      f.multiselect('measures', 'Measures Checked', [
+        { id: 'outlets', label: 'Outlet Covers', emoji: '🔌' },
+        { id: 'gates', label: 'Safety Gates', emoji: '🚧' },
+        { id: 'cabinets', label: 'Cabinet Locks', emoji: '🔒' },
+        { id: 'furniture', label: 'Furniture Anchors', emoji: '📌' },
+        { id: 'blinds', label: 'Blind Cords', emoji: '🪟' },
+        { id: 'corners', label: 'Corner Guards', emoji: '🔺' },
+        { id: 'chemicals', label: 'Chemicals Secured', emoji: '☠️' },
+        { id: 'medicine', label: 'Medicine Locked', emoji: '💊' },
+      ]),
+      f.toggle('complete', 'All measures in place?'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Updated', 'New hazard', 'All clear', 'Needs work'],
+  },
+
+  // ═══ SCHEDULE & ROUTINE (5) ═══
+  {
+    id: 'wake_time', name: 'Wake Time', emoji: '⏰', icon: 'sunny-outline',
+    color: '#FFD700', gradient: ['#FFD700', '#FF9F43'],
+    description: 'Morning wake time',
+    category: 'schedule', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.time('time', 'Wake Time', { required: true }),
+      f.select('mood', 'Wake Mood', [
+        { id: 'happy', label: 'Happy', emoji: '😊' },
+        { id: 'fussy', label: 'Fussy', emoji: '😤' },
+        { id: 'crying', label: 'Crying', emoji: '😭' },
+        { id: 'tired', label: 'Still Tired', emoji: '😴' },
+        { id: 'alert', label: 'Alert & Calm', emoji: '👀' },
+      ]),
+      f.toggle('selfWoke', 'Self-woke?'),
+      f.toggle('nightFeed', 'Night feeding before?'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Early', 'Late', 'Slept through', 'Night feed'],
+  },
+  {
+    id: 'bedtime', name: 'Bedtime', emoji: '🌙', icon: 'moon-outline',
+    color: '#5F27CD', gradient: ['#5F27CD', '#341F97'],
+    description: 'Bedtime routine and sleep onset',
+    category: 'schedule', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.time('time', 'Bedtime', { required: true }),
+      f.duration('routineDuration', 'Routine Duration'),
+      f.multiselect('routine', 'Routine Steps', [
+        { id: 'bath', label: 'Bath', emoji: '🛁' },
+        { id: 'lotion', label: 'Lotion/Massage', emoji: '🧴' },
+        { id: 'pjs', label: 'PJs', emoji: '👕' },
+        { id: 'nurse', label: 'Nurse/Bottle', emoji: '🍼' },
+        { id: 'book', label: 'Book', emoji: '📚' },
+        { id: 'song', label: 'Song', emoji: '🎵' },
+        { id: 'prayer', label: 'Prayer', emoji: '🙏' },
+        { id: 'white_noise', label: 'White Noise', emoji: '🔊' },
+        { id: 'pacifier', label: 'Pacifier', emoji: '😶' },
+        { id: 'swaddle', label: 'Swaddle', emoji: '📦' },
+      ]),
+      f.rating('ease', 'Ease of Going Down', 5),
+      f.toggle('asleepIndependently', 'Fell asleep independently?'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Easy', 'Fought', 'Routine complete', 'Skipped step'],
+  },
+  {
+    id: 'nap', name: 'Nap', emoji: '💤', icon: 'bed-outline',
+    color: '#54A0FF', gradient: ['#54A0FF', '#5F27CD'],
+    description: 'Nap schedule tracking',
+    category: 'schedule', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.number('napNumber', 'Nap #', '', { min: 1, max: 5 }),
+      f.time('startTime', 'Start Time'),
+      f.duration('duration', 'Duration'),
+      f.rating('quality', 'Quality', 5),
+      f.select('location', 'Location', [
+        { id: 'crib', label: 'Crib', emoji: '🛏️' },
+        { id: 'stroller', label: 'Stroller', emoji: '🚗' },
+        { id: 'carrier', label: 'Carrier', emoji: '🎒' },
+        { id: 'car', label: 'Car', emoji: '🚙' },
+        { id: 'lap', label: 'Lap', emoji: '👨‍👩‍👧' },
+      ]),
+      f.toggle('fought', 'Fought sleep?'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Good nap', 'Short nap', 'Skipped', 'Contact nap'],
+  },
+  {
+    id: 'screen_time', name: 'Screen Time', emoji: '📱', icon: 'phone-portrait-outline',
+    color: '#5F27CD', gradient: ['#5F27CD', '#FF6B6B'],
+    description: 'Screen exposure tracking',
+    category: 'schedule', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.duration('duration', 'Duration', { required: true }),
+      f.select('type', 'Content Type', [
+        { id: 'educational', label: 'Educational', emoji: '📚' },
+        { id: 'entertainment', label: 'Entertainment', emoji: '🎬' },
+        { id: 'video_call', label: 'Video Call', emoji: '📹' },
+        { id: 'music', label: 'Music Video', emoji: '🎵' },
+      ]),
+      f.text('content', 'Specific Content', { placeholder: 'e.g., Ms. Rachel, ABC song' }),
+      f.select('device', 'Device', [
+        { id: 'tv', label: 'TV', emoji: '📺' },
+        { id: 'tablet', label: 'Tablet', emoji: '📱' },
+        { id: 'phone', label: 'Phone', emoji: '📲' },
+      ]),
+      f.toggle('coViewing', 'Co-viewing with adult?'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Educational', 'Limit reached', 'Co-viewing', 'Solo'],
+  },
+  {
+    id: 'outdoor_time', name: 'Outdoor Time', emoji: '🌳', icon: 'leaf-outline',
+    color: '#1DD1A1', gradient: ['#1DD1A1', '#10AC84'],
+    description: 'Time spent outdoors',
+    category: 'schedule', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.duration('duration', 'Duration', { required: true }),
+      f.select('activity', 'Activity', [
+        { id: 'walk', label: 'Walk', emoji: '🚶' },
+        { id: 'park', label: 'Park/Playground', emoji: '🛝' },
+        { id: 'backyard', label: 'Backyard', emoji: '🏡' },
+        { id: 'nature', label: 'Nature/Hike', emoji: '🥾' },
+        { id: 'sports', label: 'Sports', emoji: '⚽' },
+        { id: 'water', label: 'Water Play', emoji: '💧' },
+      ]),
+      f.toggle('sunscreen', 'Sunscreen applied?'),
+      f.toggle('hat', 'Wore hat?'),
+      f.toggle('hydrated', 'Stayed hydrated?'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Good weather', 'Rainy', 'Active', 'Relaxed'],
+  },
+
+  // ═══ PARENTAL CARE (5) ═══
+  {
+    id: 'note', name: 'Note', emoji: '📝', icon: 'create-outline',
+    color: '#54A0FF', gradient: ['#54A0FF', '#5F27CD'],
+    description: 'Quick notes and observations',
+    category: 'parental', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.text('subject', 'Subject', { placeholder: 'e.g., New daycare teacher' }),
+      f.textarea('content', 'Note', { required: true, placeholder: 'Write your observation here...' }),
+      f.multiselect('tags', 'Tags', [
+        { id: 'milestone', label: 'Milestone', emoji: '🏆' },
+        { id: 'concern', label: 'Concern', emoji: '⚠️' },
+        { id: 'funny', label: 'Funny', emoji: '😂' },
+        { id: 'cute', label: 'Cute', emoji: '🥰' },
+        { id: 'memory', label: 'Memory', emoji: '💭' },
+        { id: 'todo', label: 'To-Do', emoji: '✅' },
+      ]),
+    ],
+    quickTags: ['Important', 'Funny', 'To remember', 'Question for doctor'],
+  },
+  {
+    id: 'photo', name: 'Photo', emoji: '📸', icon: 'camera-outline',
+    color: '#FF9FF3', gradient: ['#FF9FF3', '#F368E0'],
+    description: 'Photo moments and memories',
+    category: 'parental', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.text('caption', 'Caption', { placeholder: 'e.g., First smile!' }),
+      f.photo('photos', 'Photos', { required: true }),
+      f.text('location', 'Location'),
+      f.multiselect('tags', 'Tags', [
+        { id: 'milestone', label: 'Milestone', emoji: '🏆' },
+        { id: 'family', label: 'Family', emoji: '👨‍👩‍👧' },
+        { id: 'funny', label: 'Funny', emoji: '😂' },
+        { id: 'cute', label: 'Cute', emoji: '🥰' },
+        { id: 'holiday', label: 'Holiday', emoji: '🎄' },
+      ]),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['First!', 'Family', 'Silly', 'Professional'],
+  },
+  {
+    id: 'video', name: 'Video', emoji: '🎥', icon: 'videocam-outline',
+    color: '#FF6B6B', gradient: ['#FF6B6B', '#FF9F43'],
+    description: 'Video memories',
+    category: 'parental', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.text('title', 'Title', { required: true, placeholder: 'e.g., First steps!' }),
+      f.video('video', 'Video', { required: true }),
+      f.duration('duration', 'Video Length'),
+      f.text('location', 'Location'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['First!', 'Funny', 'Cute', 'Share with family'],
+  },
+  {
+    id: 'voice_memo', name: 'Voice Memo', emoji: '🎙️', icon: 'mic-outline',
+    color: '#5F27CD', gradient: ['#5F27CD', '#341F97'],
+    description: 'Audio recordings',
+    category: 'parental', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.text('title', 'Title', { required: true, placeholder: 'e.g., Babbling sounds' }),
+      f.text('category', 'Category', { placeholder: 'e.g., Sounds, Words, Crying' }),
+      f.duration('duration', 'Recording Length'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['First word', 'Babbling', 'Laughing', 'Singing'],
+  },
+  {
+    id: 'journal', name: 'Journal', emoji: '📔', icon: 'journal-outline',
+    color: '#FFD700', gradient: ['#FFD700', '#FF9F43'],
+    description: 'Detailed journal entries',
+    category: 'parental', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.text('title', 'Entry Title', { required: true }),
+      f.textarea('entry', 'Journal Entry', { required: true, placeholder: 'How was your day with baby?' }),
+      f.select('mood', 'Your Mood', [
+        { id: 'happy', label: 'Happy', emoji: '😊' },
+        { id: 'tired', label: 'Tired', emoji: '😴' },
+        { id: 'stressed', label: 'Stressed', emoji: '😰' },
+        { id: 'grateful', label: 'Grateful', emoji: '🙏' },
+        { id: 'overwhelmed', label: 'Overwhelmed', emoji: '😵' },
+        { id: 'loving', label: 'Loving', emoji: '❤️' },
+      ]),
+      f.toggle('share', 'Share with co-parent?'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Milestone day', 'Hard day', 'Grateful', 'Funny moment'],
+  },
+
+  // ═══ TRAVEL & OUTINGS (4) ═══
+  {
+    id: 'trip', name: 'Trip', emoji: '✈️', icon: 'airplane-outline',
+    color: '#54A0FF', gradient: ['#54A0FF', '#5F27CD'],
+    description: 'Travel and trips',
+    category: 'travel', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.text('destination', 'Destination', { required: true, placeholder: 'e.g., Grandma\'s house' }),
+      f.select('type', 'Trip Type', [
+        { id: 'day', label: 'Day Trip', emoji: '☀️' },
+        { id: 'overnight', label: 'Overnight', emoji: '🌙' },
+        { id: 'vacation', label: 'Vacation', emoji: '🏖️' },
+        { id: 'visit', label: 'Family Visit', emoji: '👨‍👩‍👧' },
+        { id: 'medical', label: 'Medical', emoji: '🏥' },
+      ], { required: true }),
+      f.datetime('departure', 'Departure'),
+      f.datetime('return', 'Return'),
+      f.toggle('packingList', 'Packing list complete?'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['First trip!', 'Went well', 'Hard travel', 'Packed light'],
+  },
+  {
+    id: 'travel', name: 'Travel Mode', emoji: '🚙', icon: 'car-outline',
+    color: '#1DD1A1', gradient: ['#1DD1A1', '#10AC84'],
+    description: 'Transportation and logistics',
+    category: 'travel', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.select('mode', 'Mode', [
+        { id: 'car', label: 'Car', emoji: '🚗' },
+        { id: 'plane', label: 'Plane', emoji: '✈️' },
+        { id: 'train', label: 'Train', emoji: '🚂' },
+        { id: 'bus', label: 'Bus', emoji: '🚌' },
+        { id: 'walk', label: 'Walk', emoji: '🚶' },
+      ], { required: true }),
+      f.duration('duration', 'Travel Duration'),
+      f.rating('comfort', 'Comfort', 5),
+      f.toggle('carSeat', 'Car seat used?'),
+      f.toggle('slept', 'Slept during?'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Smooth', 'Crying', 'Slept whole way', 'Motion sick'],
+  },
+  {
+    id: 'daycare', name: 'Daycare', emoji: '🏫', icon: 'school-outline',
+    color: '#FFD700', gradient: ['#FFD700', '#FF9F43'],
+    description: 'Daycare and school tracking',
+    category: 'travel', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.text('name', 'Daycare/School Name'),
+      f.time('dropoff', 'Drop-off Time'),
+      f.time('pickup', 'Pickup Time'),
+      f.duration('duration', 'Duration'),
+      f.toggle('ateWell', 'Ate well?'),
+      f.toggle('napped', 'Napped?'),
+      f.toggle('happy', 'Happy at pickup?'),
+      f.textarea('teacherNotes', 'Teacher Notes'),
+      f.textarea('notes', 'Your Notes'),
+    ],
+    quickTags: ['Good day', 'Rough day', 'New teacher', 'Milestone'],
+  },
+  {
+    id: 'babysitter', name: 'Babysitter', emoji: '👤', icon: 'person-outline',
+    color: '#FF9FF3', gradient: ['#FF9FF3', '#F368E0'],
+    description: 'Babysitter and caregiver logs',
+    category: 'travel', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.text('name', 'Sitter Name', { required: true }),
+      f.datetime('startTime', 'Start Time'),
+      f.datetime('endTime', 'End Time'),
+      f.duration('duration', 'Duration'),
+      f.toggle('instructionsGiven', 'Instructions given?'),
+      f.toggle('emergencyInfo', 'Emergency info shared?'),
+      f.textarea('instructions', 'Special Instructions'),
+      f.textarea('report', 'Sitter Report'),
+      f.textarea('notes', 'Your Notes'),
+    ],
+    quickTags: ['New sitter', 'Regular', 'Went well', 'Issues'],
+  },
+
+  // ═══ SPECIAL NEEDS (7) ═══
+  {
+    id: 'reflux', name: 'Reflux', emoji: '😣', icon: 'arrow-up-outline',
+    color: '#FF6B6B', gradient: ['#FF6B6B', '#EE5A24'],
+    description: 'GERD and reflux episodes',
+    category: 'special_needs', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.select('severity', 'Severity', [
+        { id: 'mild', label: 'Mild (spit up)', emoji: '🟢' },
+        { id: 'moderate', label: 'Moderate (discomfort)', emoji: '🟡' },
+        { id: 'severe', label: 'Severe (pain/vomiting)', emoji: '🔴' },
+      ], { required: true }),
+      f.select('timing', 'Timing', [
+        { id: 'after_feed', label: 'After Feeding', emoji: '🍼' },
+        { id: 'during_feed', label: 'During Feeding', emoji: '🥄' },
+        { id: 'lying', label: 'While Lying Down', emoji: '🛏️' },
+        { id: 'random', label: 'Random', emoji: '❓' },
+      ]),
+      f.toggle('projectile', 'Projectile?'),
+      f.toggle('blood', 'Blood in vomit?'),
+      f.multiselect('triggers', 'Triggers', [
+        { id: 'overfeeding', label: 'Overfeeding', emoji: '🍼' },
+        { id: 'position', label: 'Position', emoji: '🛏️' },
+        { id: 'food', label: 'Specific Food', emoji: '🥜' },
+        { id: 'stress', label: 'Stress', emoji: '😰' },
+      ]),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['After feed', 'Projectile', 'Blood', 'Medication helped'],
+  },
+  {
+    id: 'colic', name: 'Colic', emoji: '😭', icon: 'time-outline',
+    color: '#5F27CD', gradient: ['#5F27CD', '#341F97'],
+    description: 'Colic episodes and patterns',
+    category: 'special_needs', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.time('startTime', 'Episode Start'),
+      f.duration('duration', 'Duration'),
+      f.rating('intensity', 'Intensity', 5),
+      f.multiselect('symptoms', 'Symptoms', [
+        { id: 'crying', label: 'Intense Crying', emoji: '😭' },
+        { id: 'clenched', label: 'Clenched Fists', emoji: '✊' },
+        { id: 'legs', label: 'Legs to Tummy', emoji: '🦵' },
+        { id: 'flushed', label: 'Flushed Face', emoji: '🔴' },
+        { id: 'inconsolable', label: 'Inconsolable', emoji: '😰' },
+      ]),
+      f.multiselect('relief', 'Relief Attempted', [
+        { id: 'swaddle', label: 'Swaddle', emoji: '📦' },
+        { id: 'white_noise', label: 'White Noise', emoji: '🔊' },
+        { id: 'walking', label: 'Walking', emoji: '🚶' },
+        { id: 'driving', label: 'Driving', emoji: '🚗' },
+        { id: 'probiotics', label: 'Probiotics', emoji: '💊' },
+        { id: 'gas_drops', label: 'Gas Drops', emoji: '💧' },
+      ]),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Evening', 'Predictable', 'Nothing worked', 'Gas drops helped'],
+  },
+  {
+    id: 'gas', name: 'Gas', emoji: '💨', icon: 'cloud-outline',
+    color: '#1DD1A1', gradient: ['#1DD1A1', '#10AC84'],
+    description: 'Gas and bloating tracking',
+    category: 'special_needs', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.select('severity', 'Severity', [
+        { id: 'mild', label: 'Mild (passes easily)', emoji: '🟢' },
+        { id: 'moderate', label: 'Moderate (some discomfort)', emoji: '🟡' },
+        { id: 'severe', label: 'Severe (pain/crying)', emoji: '🔴' },
+      ], { required: true }),
+      f.multiselect('symptoms', 'Symptoms', [
+        { id: 'fussy', label: 'Fussy', emoji: '😤' },
+        { id: 'crying', label: 'Crying', emoji: '😭' },
+        { id: 'arching', label: 'Back Arching', emoji: '😣' },
+        { id: 'drawing_legs', label: 'Drawing Legs Up', emoji: '🦵' },
+        { id: 'bloated', label: 'Bloated Tummy', emoji: '🎈' },
+      ]),
+      f.multiselect('relief', 'Relief Methods', [
+        { id: 'bicycle', label: 'Bicycle Legs', emoji: '🚲' },
+        { id: 'tummy_rub', label: 'Tummy Rub', emoji: '💆' },
+        { id: 'warm_bath', label: 'Warm Bath', emoji: '🛁' },
+        { id: 'gas_drops', label: 'Gas Drops', emoji: '💧' },
+        { id: 'probiotics', label: 'Probiotics', emoji: '💊' },
+        { id: 'position', label: 'Position Change', emoji: '🔄' },
+      ]),
+      f.toggle('relieved', 'Relieved?'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['After feed', 'All day', 'Relieved', 'Medication helped'],
+  },
+  {
+    id: 'constipation', name: 'Constipation', emoji: '😣', icon: 'remove-circle-outline',
+    color: '#EE5A24', gradient: ['#EE5A24', '#FF6B6B'],
+    description: 'Constipation tracking and relief',
+    category: 'special_needs', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.number('daysSince', 'Days Since Last BM', '', { min: 0 }),
+      f.select('stoolType', 'Stool Type (Bristol)', [
+        { id: '1', label: 'Type 1: Separate hard lumps', emoji: '⚫' },
+        { id: '2', label: 'Type 2: Sausage-shaped but lumpy', emoji: '🟤' },
+        { id: '3', label: 'Type 3: Sausage with cracks', emoji: '🟤' },
+        { id: '4', label: 'Type 4: Smooth soft sausage', emoji: '🟢' },
+        { id: '5', label: 'Type 5: Soft blobs', emoji: '🟡' },
+      ]),
+      f.multiselect('symptoms', 'Symptoms', [
+        { id: 'straining', label: 'Straining', emoji: '😣' },
+        { id: 'pain', label: 'Pain', emoji: '😰' },
+        { id: 'refusal', label: 'Refusing to eat', emoji: '🙅' },
+        { id: 'bloating', label: 'Bloating', emoji: '🎈' },
+        { id: 'cranky', label: 'Cranky', emoji: '😤' },
+      ]),
+      f.multiselect('relief', 'Relief Attempted', [
+        { id: 'prune', label: 'Prune Juice/Puree', emoji: '🟣' },
+        { id: 'pear', label: 'Pear Juice', emoji: '🍐' },
+        { id: 'water', label: 'Extra Water', emoji: '💧' },
+        { id: 'fiber', label: 'Fiber Foods', emoji: '🥦' },
+        { id: 'bicycle', label: 'Bicycle Legs', emoji: '🚲' },
+        { id: 'massage', label: 'Tummy Massage', emoji: '💆' },
+        { id: 'suppository', label: 'Suppository', emoji: '🔴' },
+      ]),
+      f.toggle('relieved', 'Relieved?'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Day 3+', 'Relieved', 'Prune helped', 'Doctor called'],
+  },
+  {
+    id: 'diarrhea', name: 'Diarrhea', emoji: '💩', icon: 'water-outline',
+    color: '#1DD1A1', gradient: ['#1DD1A1', '#48DBFB'],
+    description: 'Diarrhea episodes and hydration',
+    category: 'special_needs', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.number('episodes', 'Episodes Today', '', { min: 0 }),
+      f.select('consistency', 'Consistency', [
+        { id: 'watery', label: 'Watery', emoji: '💧' },
+        { id: 'loose', label: 'Loose/Mushy', emoji: '🟡' },
+        { id: 'mucus', label: 'Mucus', emoji: '🟢' },
+        { id: 'bloody', label: 'Bloody', emoji: '🔴' },
+      ], { required: true }),
+      f.toggle('fever', 'Fever?'),
+      f.toggle('vomiting', 'Vomiting?'),
+      f.toggle('dehydration', 'Signs of dehydration?'),
+      f.multiselect('hydration', 'Hydration Given', [
+        { id: 'breastmilk', label: 'Breastmilk', emoji: '🤱' },
+        { id: 'formula', label: 'Formula', emoji: '🍼' },
+        { id: 'pedialyte', label: 'Pedialyte', emoji: '💧' },
+        { id: 'water', label: 'Water', emoji: '💧' },
+      ]),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Mild', 'Severe', 'Dehydration concern', 'Improving'],
+  },
+  {
+    id: 'eczema', name: 'Eczema', emoji: '🔴', icon: 'sunny-outline',
+    color: '#F368E0', gradient: ['#F368E0', '#FF9FF3'],
+    description: 'Eczema flare tracking',
+    category: 'special_needs', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.select('severity', 'Severity', [
+        { id: 'clear', label: 'Clear/Remission', emoji: '🟢' },
+        { id: 'mild', label: 'Mild', emoji: '🟡' },
+        { id: 'moderate', label: 'Moderate', emoji: '🟠' },
+        { id: 'severe', label: 'Severe', emoji: '🔴' },
+        { id: 'infected', label: 'Infected', emoji: '🚨' },
+      ], { required: true }),
+      f.multiselect('location', 'Body Location', [
+        { id: 'face', label: 'Face', emoji: '😊' },
+        { id: 'scalp', label: 'Scalp', emoji: '👶' },
+        { id: 'elbows', label: 'Elbows', emoji: '💪' },
+        { id: 'knees', label: 'Knees', emoji: '🦵' },
+        { id: 'hands', label: 'Hands', emoji: '✋' },
+        { id: 'feet', label: 'Feet', emoji: '🦶' },
+        { id: 'full', label: 'Full Body', emoji: '👤' },
+      ]),
+      f.multiselect('triggers', 'Suspected Triggers', [
+        { id: 'food', label: 'Food', emoji: '🥜' },
+        { id: 'weather', label: 'Weather', emoji: '🌡️' },
+        { id: 'soap', label: 'Soap/Detergent', emoji: '🧼' },
+        { id: 'stress', label: 'Stress', emoji: '😰' },
+        { id: 'clothing', label: 'Clothing Material', emoji: '👕' },
+        { id: 'sweat', label: 'Sweat', emoji: '💦' },
+      ]),
+      f.multiselect('treatments', 'Treatments', [
+        { id: 'moisturizer', label: 'Moisturizer', emoji: '🧴' },
+        { id: 'steroid', label: 'Steroid Cream', emoji: '💊' },
+        { id: 'antihistamine', label: 'Antihistamine', emoji: '💊' },
+        { id: 'wet_wrap', label: 'Wet Wraps', emoji: '🧻' },
+        { id: 'oatmeal', label: 'Oatmeal Bath', emoji: '🛁' },
+      ]),
+      f.photo('photos', 'Photos'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['Flare up', 'Improving', 'Infected', 'New trigger'],
+  },
+  {
+    id: 'cradle_cap', name: 'Cradle Cap', emoji: '👶', icon: 'headset-outline',
+    color: '#FFD700', gradient: ['#FFD700', '#FF9F43'],
+    description: 'Cradle cap treatment',
+    category: 'special_needs', isCustom: false, createdAt: 0, updatedAt: 0,
+    permissions: defaultPerms,
+    fields: [
+      f.select('severity', 'Severity', [
+        { id: 'mild', label: 'Mild (slight flaking)', emoji: '🟡' },
+        { id: 'moderate', label: 'Moderate (yellow patches)', emoji: '🟠' },
+        { id: 'severe', label: 'Severe (thick scales)', emoji: '🔴' },
+      ], { required: true }),
+      f.multiselect('treatments', 'Treatments', [
+        { id: 'oil', label: 'Baby Oil/Mineral Oil', emoji: '🫒' },
+        { id: 'brush', label: 'Soft Brush', emoji: '🖌️' },
+        { id: 'shampoo', label: 'Medicated Shampoo', emoji: '🧴' },
+        { id: 'cream', label: 'Anti-fungal Cream', emoji: '💊' },
+        { id: 'petroleum', label: 'Petroleum Jelly', emoji: '🔵' },
+      ]),
+      f.toggle('improving', 'Improving?'),
+      f.toggle('spread', 'Spread beyond scalp?'),
+      f.textarea('notes', 'Notes'),
+    ],
+    quickTags: ['New', 'Spreading', 'Improving', 'Cleared'],
+  },
+];
+
+// ═══════════════════════════════════════════════════════════════
+// CUSTOM TRACKER FACTORY
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Creates a new custom tracker configuration
+ * Parents and guardians can call this to build their own trackers
+ */
+export const createCustomTracker = (
+  name: string,
+  emoji: string,
+  category: TrackerCategory,
+  fields: FieldConfig[],
+  createdBy: string,
+  options?: {
+    icon?: string;
+    color?: string;
+    gradient?: [string, string];
+    description?: string;
+    quickTags?: string[];
+    permissions?: UnifiedTrackerConfig['permissions'];
+  }
+): UnifiedTrackerConfig => {
+  const id = `custom_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  
+  return {
+    id,
+    name,
+    emoji,
+    icon: options?.icon || 'add-circle-outline',
+    color: options?.color || '#5F27CD',
+    gradient: options?.gradient || ['#5F27CD', '#341F97'],
+    description: options?.description || `Custom tracker: ${name}`,
+    category,
+    fields,
+    quickTags: options?.quickTags || [],
+    isCustom: true,
+    createdBy,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    permissions: options?.permissions || {
+      familyRoles: ['parent1', 'parent2', 'guardian'],
+      allowGuardiansCreate: true,
+      allowGuardiansEditOwn: true,
+      allowGuardiansDeleteOwn: true,
+    },
+  };
+};
+
+/**
+ * Validates that a custom tracker has valid configuration
+ */
+export const validateCustomTracker = (tracker: UnifiedTrackerConfig): { valid: boolean; errors: string[] } => {
+  const errors: string[] = [];
+  
+  if (!tracker.name || tracker.name.trim().length < 2) {
+    errors.push('Name must be at least 2 characters');
+  }
+  if (!tracker.emoji) {
+    errors.push('Emoji is required');
+  }
+  if (!tracker.fields || tracker.fields.length === 0) {
+    errors.push('At least one field is required');
+  }
+  if (!tracker.category) {
+    errors.push('Category is required');
+  }
+  
+  // Validate field configurations
+  tracker.fields?.forEach((field, index) => {
+    if (!field.id || !/^[a-z][a-z0-9_]*$/.test(field.id)) {
+      errors.push(`Field ${index + 1}: ID must be snake_case starting with a letter`);
+    }
+    if (!field.label) {
+      errors.push(`Field ${index + 1}: Label is required`);
+    }
+    if (field.type === 'select' || field.type === 'multiselect') {
+      if (!field.options || field.options.length === 0) {
+        errors.push(`Field ${index + 1}: Select fields require options`);
+      }
+    }
+  });
+  
+  return { valid: errors.length === 0, errors };
+};
+
+/**
+ * Gets default tracker by ID
+ */
+export const getDefaultTracker = (id: string): UnifiedTrackerConfig | undefined => {
+  return DEFAULT_TRACKERS.find(t => t.id === id);
+};
+
+/**
+ * Gets all default tracker IDs
+ */
+export const getDefaultTrackerIds = (): string[] => DEFAULT_TRACKERS.map(t => t.id);
+
+/**
+ * Gets all default trackers by category
+ */
+export const getTrackersByCategory = (category: TrackerCategory): UnifiedTrackerConfig[] => {
+  return DEFAULT_TRACKERS.filter(t => t.category === category);
+};
+
+/**
+ * Gets all available categories with counts
+ */
+export const getCategorySummary = (): { category: TrackerCategory; count: number; emoji: string }[] => {
+  const emojiMap: Record<TrackerCategory, string> = {
+    essential: '⭐', health: '🏥', development: '🧠', emotional: '❤️',
+    physical: '💅', nutrition: '🍎', safety: '🛡️', schedule: '⏰',
+    parental: '👨‍👩‍👧', travel: '✈️', special_needs: '♿', custom: '✨',
+  };
+  
+  const counts = DEFAULT_TRACKERS.reduce((acc, t) => {
+    acc[t.category] = (acc[t.category] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+  
+  return (Object.keys(emojiMap) as TrackerCategory[]).map(cat => ({
+    category: cat,
+    count: counts[cat] || 0,
+    emoji: emojiMap[cat],
+  }));
+};
