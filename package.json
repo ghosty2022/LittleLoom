@@ -32,7 +32,6 @@
     "@supabase/supabase-js": "^2.47.0",
     "date-fns": "^4.1.0",
     "dayjs": "^1.11.13",
-    "expo": "~52.0.0",
     "expo-apple-authentication": "~7.1.0",
     "expo-application": "~6.0.1",
     "expo-asset": "~11.0.5",
@@ -109,6 +108,7 @@
     "eslint": "^8.57.0",
     "eslint-config-expo": "~8.0.0",
     "eslint-plugin-react": "^7.37.0",
+    "expo": "~52.0.0",
     "jest-expo": "~52.0.0",
     "metro": "^0.81.0",
     "metro-minify-terser": "^0.81.0",
@@ -125,7 +125,5 @@
         "listUnknownPackages": true
       }
     }
-  },
-  "resolutions": { "expo-modules-core": "~1.12.0" }
+  }
 }
-
