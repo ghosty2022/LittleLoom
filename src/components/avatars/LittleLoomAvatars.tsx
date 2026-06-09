@@ -1,13 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-﻿/**
- * LittleLoom Avatar Library
- * Comprehensive avatar system with baby-themed illustrations,
- * emoji avatars, gender-aware defaults, and theme integration
- */
-
 import { View, Text, Image, StyleSheet, TouchableOpacity, ActivityIndicator, Pressable, Dimensions, Modal, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 
 const { width } = Dimensions.get('window');
@@ -349,7 +344,7 @@ export const LittleLoomAvatar: React.FC<LittleLoomAvatarProps> = ({
               width: avatarSize,
               height: avatarSize,
               borderRadius: avatarSize / 2,
-              backgroundColor: `${genderConfig.defaultColor }15`,
+              backgroundColor: `${genderConfig.defaultColor}15`,
             },
           ]}>
             <Text style={[styles.emoji, { fontSize: avatarSize * 0.5 }]}>
@@ -747,7 +742,7 @@ export const AvatarPicker: React.FC<AvatarPickerProps> = ({
                 key={tab}
                 style={[
                   styles.pickerTab,
-                  activeTab === tab && { backgroundColor: `$${genderConfig.defaultColor }20 },
+                  activeTab === tab && { backgroundColor: `${genderConfig.defaultColor}20` },
                 ]}
                 onPress={() => setActiveTab(tab)}
               >

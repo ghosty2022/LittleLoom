@@ -1,33 +1,29 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, RefreshControl, StatusBar } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  RefreshControl,
+  StatusBar,
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CommunityStackParamList } from '../../types/navigation';
+
 import { useCommunity, Notification } from '../../context/CommunityContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { SafeAvatar } from '../../components/SafeAvatar';
-import { AutoHideFlatList } from '../../components/AutoHideScrollWrappers';
-import { CommunityColors, CommunityGradients, CommunitySpacing, CommunityBorderRadius, CommunityShadows } from '../../theme/CommunityTheme';
+import { useSweetAlert } from '../../components/SweetAlert';
+import { InlineSpinner, CommunitySpinner } from '../../components/UniversalSpinner';
 
+import { AutoHideFlatList } from '../../components/AutoHideScrollWrappers';
+import { CommunityColors, CommunitySpacing, CommunityBorderRadius, CommunityShadows } from '../../theme/CommunityTheme';
 
 type NotificationsScreenProps = NativeStackScreenProps<CommunityStackParamList, 'Notifications'>;
-
-const NotificationAvatar = ({ avatar, size = 40 }: { avatar?: string | null; size?: number }) => {
-  return (
-    <SafeAvatar
-      avatar={avatar}
-      size={size}
-      fallbackIcon="person"
-      fallbackColor={CommunityColors.primary}
-      fallbackBgColor={CommunityColors.background.elevated}
-      borderWidth={1}
-      borderColor={CommunityColors.border}
-    />
-  );
-};
 
 const getIcon = (type: string) => {
   switch (type) {
@@ -54,6 +50,9 @@ export default function NotificationsScreen({ navigation }: NotificationsScreenP
     spinnerColor,
   } = useCustomization();
 
+  // SweetAlert for all alerts
+  const sweetAlert = useSweetAlert();
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await new Promise(resolve => setTimeout(resolve, 1000));
@@ -63,6 +62,7 @@ export default function NotificationsScreen({ navigation }: NotificationsScreenP
   const handleMarkAllRead = async () => {
     triggerHaptic('success');
     await markAllNotificationsRead();
+    sweetAlert.toast('All Read', 'All notifications marked as read', 'success');
   };
 
   const handleNotificationPress = async (notification: Notification) => {
@@ -90,6 +90,23 @@ export default function NotificationsScreen({ navigation }: NotificationsScreenP
     }
   };
 
+  const handleMoreOptions = (notification: Notification) => {
+    sweetAlert.confirm(
+      'Notification Options',
+      '',
+      () => {
+        // Delete action
+        console.log('Delete notification:', notification.id);
+      },
+      () => {
+        // Mark read/unread
+        markNotificationRead(notification.id);
+      },
+      'Delete',
+      notification.read ? 'Mark Unread' : 'Mark Read'
+    );
+  };
+
   const filteredNotifications = notifications.filter(n => {
     if (filter === 'mentions') return n.type === 'mention' || n.type === 'comment';
     if (filter === 'likes') return n.type === 'like' || n.type === 'helpful';
@@ -113,12 +130,12 @@ export default function NotificationsScreen({ navigation }: NotificationsScreenP
               <Ionicons name={icon.name as any} size={20} color={icon.color} />
             </View>
             <View style={styles.avatarContainer}>
+              {/* SafeAvatar for notification user */}
               <SafeAvatar
                 avatar={item.user.avatar}
                 size={40}
                 fallbackIcon="person"
                 fallbackColor={CommunityColors.primary}
-                fallbackBgColor={CommunityColors.background.elevated}
                 borderWidth={1}
                 borderColor={CommunityColors.border}
               />
@@ -135,13 +152,7 @@ export default function NotificationsScreen({ navigation }: NotificationsScreenP
           </View>
           <TouchableOpacity 
             style={styles.moreButton}
-            onPress={() => {
-              Alert.alert('Options', '', [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Delete', style: 'destructive', onPress: () => console.log('Delete') },
-                { text: item.read ? 'Mark Unread' : 'Mark Read', onPress: () => markNotificationRead(item.id) },
-              ]);
-            }}
+            onPress={() => handleMoreOptions(item)}
           >
             <Ionicons name="ellipsis-horizontal" size={20} color={CommunityColors.text.tertiary} />
           </TouchableOpacity>
@@ -249,7 +260,7 @@ const styles = StyleSheet.create({
   },
   unreadBadge: {
     backgroundColor: CommunityColors.error,
-    borderRadius: CommunityBorderRadius.full,
+        borderRadius: CommunityBorderRadius.full,
     paddingHorizontal: CommunitySpacing.sm,
     paddingVertical: 2,
   },

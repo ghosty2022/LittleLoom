@@ -1,3 +1,9 @@
+
+// src/screens/baby/SwitchBabyScreen.tsx
+// FIXED: Proper post-setup navigation, no duplicate partner setup
+// FIXED: Consistent navigation pattern (replace for main flow)
+// FIXED: Proper baby switching with setup state awareness
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, Dimensions, Image, StatusBar } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -90,16 +96,6 @@ export default function SwitchBabyScreen({ navigation }: SwitchBabyScreenProps) 
     }
   }, [currentBabyId, switchBaby, loadBabies, navigation, showError, showSuccess]);
 
-  const handleAddPartner = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    navigation.navigate('Parent2Setup');
-  }, [navigation]);
-
-  const handleSkipPartner = useCallback(async () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    navigation.replace('Main');
-  }, [navigation]);
-
   const handleDeleteBaby = useCallback((babyId: string, babyName: string) => {
     if (babies.length <= 1) {
       Alert.alert('Cannot Delete', 'You must have at least one baby profile');
@@ -143,6 +139,10 @@ export default function SwitchBabyScreen({ navigation }: SwitchBabyScreenProps) 
 
   const handleAddBaby = useCallback(() => {
     navigation.navigate('CreateBabyProfile');
+  }, [navigation]);
+
+  const handleContinue = useCallback(() => {
+    navigation.replace('Main');
   }, [navigation]);
 
   if (babyLoading && babies.length === 0) {
@@ -277,54 +277,8 @@ export default function SwitchBabyScreen({ navigation }: SwitchBabyScreenProps) 
           </TouchableOpacity>
         </Animated.View>
 
-        {/* Partner Section */}
-        {!hasPartner && (
-          <Animated.View entering={FadeInUp.delay(400 + babies.length * 60)}>
-            <View style={styles.partnerSection}>
-              <Text style={[styles.partnerLabel, isDark && { color: '#94a3b8' }]}>
-                Co-Parent
-              </Text>
-
-              <GlassmorphismCard style={styles.partnerCard} isDark={isDark}>
-                <View style={styles.partnerContent}>
-                  <View style={[styles.partnerIconContainer, { backgroundColor: themeColors.primary + '15' }]}>
-                    <Ionicons name="people-outline" size={28} color={themeColors.primary} />
-                  </View>
-                  <View style={styles.partnerInfo}>
-                    <Text style={[styles.partnerTitle, isDark && styles.textDark]}>
-                      Add a Co-Parent?
-                    </Text>
-                    <Text style={styles.partnerSubtitle}>
-                      Invite your partner to share baby tracking
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.partnerActions}>
-                  <TouchableOpacity
-                    style={styles.skipPartnerButton}
-                    onPress={handleSkipPartner}
-                  >
-                    <Text style={styles.skipPartnerText}>Skip</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.addPartnerButton}
-                    onPress={handleAddPartner}
-                  >
-                    <LinearGradient colors={[themeColors.primary, themeColors.secondary]} style={styles.addPartnerGradient}>
-                      <Ionicons name="person-add" size={18} color="#fff" />
-                      <Text style={styles.addPartnerButtonText}>Add</Text>
-                    </LinearGradient>
-                  </TouchableOpacity>
-                </View>
-              </GlassmorphismCard>
-            </View>
-          </Animated.View>
-        )}
-
         {/* Family Info Footer */}
-        <Animated.View entering={FadeIn.delay(500 + babies.length * 60)}>
+        <Animated.View entering={FadeIn.delay(400 + babies.length * 60)}>
           <BlurView intensity={60} style={styles.familyInfo} tint={isDark ? 'dark' : 'light'}>
             <Ionicons name="people" size={20} color={themeColors.primary} />
             <Text style={[styles.familyText, isDark && { color: '#94a3b8' }]}>
@@ -337,10 +291,10 @@ export default function SwitchBabyScreen({ navigation }: SwitchBabyScreenProps) 
         </Animated.View>
 
         {/* Continue Button */}
-        <Animated.View entering={FadeInUp.delay(600 + babies.length * 60)}>
+        <Animated.View entering={FadeInUp.delay(500 + babies.length * 60)}>
           <TouchableOpacity
             style={styles.continueButton}
-            onPress={() => navigation.replace('Main')}
+            onPress={handleContinue}
           >
             <LinearGradient colors={[themeColors.primary, themeColors.secondary]} style={styles.continueGradient}>
               <Text style={styles.continueText}>Continue to App</Text>
@@ -525,81 +479,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#1e293b',
-  },
-
-  partnerSection: {
-    marginTop: 8,
-    marginBottom: 16,
-  },
-  partnerLabel: {
-    fontSize: 14,
-    color: '#64748b',
-    marginBottom: 12,
-    fontWeight: '500',
-  },
-  partnerCard: {
-    borderRadius: 24,
-    overflow: 'hidden',
-    padding: 20,
-  },
-  partnerContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  partnerIconContainer: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 16,
-  },
-  partnerInfo: {
-    flex: 1,
-  },
-  partnerTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#1e293b',
-    marginBottom: 4,
-  },
-  partnerSubtitle: {
-    fontSize: 13,
-    color: '#64748b',
-  },
-  partnerActions: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  skipPartnerButton: {
-    flex: 1,
-    backgroundColor: 'rgba(100,116,139,0.1)',
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  skipPartnerText: {
-    color: '#64748b',
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  addPartnerButton: {
-    flex: 1,
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  addPartnerGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    gap: 8,
-  },
-  addPartnerButtonText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '700',
   },
 
   continueButton: {

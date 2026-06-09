@@ -1,4 +1,3 @@
-// src/screens/community/CreatePostScreen.tsx
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
@@ -9,14 +8,11 @@ import {
   Image,
   KeyboardAvoidingView,
   Platform,
-  Alert,
-  ActivityIndicator,
-  Modal,
   Dimensions,
-  Animated as RNAnimated,
   Pressable,
   StatusBar,
   ScrollView,
+  Modal,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -27,11 +23,15 @@ import Animated, { FadeInUp, FadeIn } from 'react-native-reanimated';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CommunityStackParamList } from '../../types/navigation';
+
 import { useCommunity, Topic } from '../../context/CommunityContext';
-import { useUser } from '../../context/UserContext';
-import { showSuccessModal, showErrorModal, showConfirmModal } from '../../utils/modal';
+import { useMedia } from '../../context/MediaContext';
+import { SafeAvatar } from '../../components/SafeAvatar';
+import { useSweetAlert } from '../../components/SweetAlert';
+import { InlineSpinner, CommunitySpinner } from '../../components/UniversalSpinner';
+
 import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
-import { CommunityColors, CommunityGradients, CommunitySpacing, CommunityBorderRadius, CommunityShadows } from '../../theme/CommunityTheme';
+import { CommunityColors, CommunitySpacing, CommunityBorderRadius, CommunityShadows } from '../../theme/CommunityTheme';
 
 type CreatePostScreenProps = NativeStackScreenProps<CommunityStackParamList, 'CreatePost'>;
 
@@ -61,47 +61,7 @@ const COUNTRIES = [
 ];
 
 // ============================================
-// POSTING PROGRESS OVERLAY
-// ============================================
-interface PostingProgressProps {
-  visible: boolean;
-  progress: number;
-  status: string;
-  subStatus?: string;
-}
-
-const PostingProgress = ({ visible, progress, status, subStatus }: PostingProgressProps) => {
-  if (!visible) return null;
-
-  return (
-    <View style={styles.progressOverlay}>
-      <BlurView intensity={90} style={styles.progressBlur} tint="dark">
-        <View style={styles.progressContainer}>
-          <View style={styles.progressIconContainer}>
-            <ActivityIndicator size="large" color="#667eea" />
-          </View>
-          <Text style={styles.progressTitle}>{status}</Text>
-          {subStatus && <Text style={styles.progressSub}>{subStatus}</Text>}
-
-          <View style={styles.progressBarContainer}>
-            <View style={styles.progressBarBackground}>
-              <RNAnimated.View 
-                style={[
-                  styles.progressBarFill,
-                  { width: `${progress}%` }
-                ]} 
-              />
-            </View>
-            <Text style={styles.progressPercent}>{Math.round(progress)}%</Text>
-          </View>
-        </View>
-      </BlurView>
-    </View>
-  );
-};
-
-// ============================================
-// MODERN IMAGE GRID (matches CommunityScreen style)
+// MODERN IMAGE GRID (with MediaContext processing)
 // ============================================
 interface ImageGridProps {
   images: string[];
@@ -124,7 +84,7 @@ const ImageGrid = ({ images, onRemove }: ImageGridProps) => {
         </View>
       ) : (
         <View style={styles.multiImageGrid}>
-          {images.map((uri, index) => (
+          {images.slice(0, 4).map((uri, index) => (
             <View key={index} style={styles.gridImageItem}>
               <Image source={{ uri }} style={styles.gridImage} resizeMode="cover" />
               <TouchableOpacity style={styles.imageRemoveBtn} onPress={() => onRemove(index)}>
@@ -187,6 +147,19 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
     updateSelectedTopics 
   } = useCommunity();
 
+  // MediaContext for proper image handling (fixes file:// issues)
+  const { 
+    pickImage: mediaPickImage, 
+    pickMultipleImages, 
+    takePhoto: mediaTakePhoto,
+    compressImage,
+    cacheImage,
+    isValidImageUri,
+  } = useMedia();
+
+  // SweetAlert for all alerts/modals
+  const sweetAlert = useSweetAlert();
+
   const [content, setContent] = useState('');
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
   const [images, setImages] = useState<string[]>([]);
@@ -199,6 +172,7 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
   const [topicsLoaded, setTopicsLoaded] = useState(false);
   const [showTopicSelector, setShowTopicSelector] = useState(false);
   const [userSelectedTopics, setUserSelectedTopics] = useState<string[]>([]);
+  const [isProcessingImages, setIsProcessingImages] = useState(false);
 
   // Load selected topics
   useEffect(() => {
@@ -263,34 +237,56 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
         if (draftJson) {
           const draft = JSON.parse(draftJson);
           if (draft.content) setContent(draft.content);
-          if (draft.images) setImages(draft.images);
+          if (draft.images) {
+            // Validate cached image URIs before restoring
+            const validImages = draft.images.filter((uri: string) => isValidImageUri(uri));
+            setImages(validImages);
+          }
         }
       } catch (error) {
         console.warn('Failed to load draft:', error);
       }
     };
     loadDraft();
-  }, []);
+  }, [isValidImageUri]);
 
   // ============================================
-  // IMAGE HANDLING
+  // IMAGE HANDLING (with MediaContext - fixes file://)
   // ============================================
   const pickImage = async () => {
     try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsMultipleSelection: true,
-        quality: 0.8,
-        selectionLimit: 4,
-      });
+      setIsProcessingImages(true);
+      
+      // Use MediaContext for proper image picking with caching
+      const pickedUris = await pickMultipleImages(4);
+      
+      if (pickedUris && pickedUris.length > 0) {
+        // Process images: compress and cache to ensure valid display URIs
+        const processedUris: string[] = [];
+        
+        for (const uri of pickedUris) {
+          try {
+            // Compress to ensure consistent format and avoid file:// issues
+            const compressed = await compressImage(uri, 0.8);
+            // Cache to get a reliable URI
+            const cached = await cacheImage(compressed);
+            processedUris.push(cached);
+          } catch (err) {
+            console.warn('Failed to process image:', err);
+            // Fallback to original if processing fails
+            if (isValidImageUri(uri)) {
+              processedUris.push(uri);
+            }
+          }
+        }
 
-      if (!result.canceled) {
-        const newImages = result.assets.map(a => a.uri);
-        setImages(prev => [...prev, ...newImages].slice(0, 4));
+        setImages(prev => [...prev, ...processedUris].slice(0, 4));
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       }
     } catch (error) {
-      showErrorModal({ message: 'Failed to pick images. Please try again.' });
+      sweetAlert.error('Image Error', 'Failed to pick images. Please try again.');
+    } finally {
+      setIsProcessingImages(false);
     }
   };
 
@@ -298,21 +294,33 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Please allow camera access to take photos.');
+        sweetAlert.alert('Permission Required', 'Please allow camera access to take photos.', 'warning');
         return;
       }
 
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        quality: 0.8,
-      });
+      setIsProcessingImages(true);
 
-      if (!result.canceled) {
-        setImages(prev => [...prev, result.assets[0].uri].slice(0, 4));
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      // Use MediaContext takePhoto
+      const photoUri = await mediaTakePhoto();
+      
+      if (photoUri) {
+        try {
+          // Compress and cache the photo
+          const compressed = await compressImage(photoUri, 0.8);
+          const cached = await cacheImage(compressed);
+          setImages(prev => [...prev, cached].slice(0, 4));
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        } catch (err) {
+          console.warn('Failed to process photo:', err);
+          if (isValidImageUri(photoUri)) {
+            setImages(prev => [...prev, photoUri].slice(0, 4));
+          }
+        }
       }
     } catch (error) {
-      showErrorModal({ message: 'Failed to take photo. Please try again.' });
+      sweetAlert.error('Camera Error', 'Failed to take photo. Please try again.');
+    } finally {
+      setIsProcessingImages(false);
     }
   };
 
@@ -343,12 +351,12 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
 
   const handlePost = async () => {
     if (!content.trim() && images.length === 0) {
-      showErrorModal({ message: 'Please add some content or images to your post' });
+      sweetAlert.error('Empty Post', 'Please add some content or images to your post');
       return;
     }
 
     if (!selectedTopic) {
-      showErrorModal({ message: 'Please select a topic' });
+      sweetAlert.error('No Topic', 'Please select a topic');
       return;
     }
 
@@ -367,7 +375,7 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
 
       await AsyncStorage.removeItem('post_draft');
 
-      showSuccessModal({ message: 'Post created successfully!' });
+      sweetAlert.success('Posted!', 'Your post has been created successfully.');
 
       setTimeout(() => {
         setIsPosting(false);
@@ -377,17 +385,20 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
     } catch (error) {
       setIsPosting(false);
       setPostProgress(0);
-      showErrorModal({ message: 'Failed to create post. Please try again.' });
+      sweetAlert.error('Post Failed', 'Failed to create post. Please try again.');
     }
   };
 
   const handleCancel = () => {
     if (content.trim() || images.length > 0) {
-      showConfirmModal({
-        title: 'Discard Post?',
-        message: 'You have unsaved changes. Are you sure you want to discard them?',
-        onConfirm: () => navigation.goBack(),
-      });
+      sweetAlert.confirm(
+        'Discard Post?',
+        'You have unsaved changes. Are you sure you want to discard them?',
+        () => navigation.goBack(),
+        () => {}, // onCancel - do nothing
+        'Discard',
+        'Keep Editing'
+      );
     } else {
       navigation.goBack();
     }
@@ -397,6 +408,7 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
     setSelectedCountry(country.name);
     await updateUserLocation(country.name);
     setShowCountryPicker(false);
+    sweetAlert.toast('Location Updated', `Set to ${country.flag} ${country.name}`, 'success');
   };
 
   const handleTopicSelect = (topic: Topic) => {
@@ -409,6 +421,7 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
     await updateSelectedTopics(newSelectedTopics);
     setUserSelectedTopics(newSelectedTopics);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    sweetAlert.toast('Topics Updated', 'Your feed preferences have been saved', 'success');
   };
 
   const characterCount = content.length;
@@ -422,15 +435,22 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
 
   const filteredTopics = getFilteredTopics();
 
+  // Resolve avatar source for SafeAvatar
+  const avatarSource = isAnonymous 
+    ? '🎭' 
+    : (currentUser?.avatar || currentUser?.photoURL || undefined);
+
   if (!topicsLoaded || topics.length === 0 || !selectedTopic) {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
         <StatusBar barStyle="dark-content" />
         <LinearGradient colors={['#f8f9ff', '#fff5f8']} style={StyleSheet.absoluteFill} />
-        <ActivityIndicator size="large" color="#667eea" />
-        <Text style={{ marginTop: 16, color: CommunityColors.text.secondary, fontWeight: '600' }}>
-          {topics.length === 0 ? 'Loading topics...' : 'Setting up...'}
-        </Text>
+        <CommunitySpinner 
+          visible={true} 
+          text="Loading topics..." 
+          size="medium"
+          overlay={false}
+        />
       </View>
     );
   }
@@ -440,12 +460,27 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
       <StatusBar barStyle="dark-content" />
       <LinearGradient colors={['#f8f9ff', '#fff5f8']} style={StyleSheet.absoluteFill} />
 
-      {/* Posting Progress Overlay */}
-      <PostingProgress 
-        visible={isPosting} 
-        progress={postProgress} 
-        status={postStatus}
-        subStatus={images.length > 0 ? `${images.length} image${images.length > 1 ? 's' : ''}` : undefined}
+      {/* Posting Progress Overlay - UniversalSpinner */}
+      <CommunitySpinner
+        visible={isPosting}
+        text={postStatus}
+        subtext={images.length > 0 ? `${images.length} image${images.length > 1 ? 's' : ''}` : undefined}
+        size="large"
+        overlay={true}
+        blur={true}
+        showProgress={true}
+        progress={postProgress}
+        variant="liquid"
+      />
+
+      {/* Image Processing Spinner */}
+      <CommunitySpinner
+        visible={isProcessingImages}
+        text="Processing images..."
+        size="medium"
+        overlay={true}
+        blur={true}
+        variant="nebula"
       />
 
       <KeyboardAvoidingView
@@ -464,7 +499,7 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
             onPress={handlePost}
           >
             {isPosting ? (
-              <ActivityIndicator size="small" color="white" />
+              <InlineSpinner size={20} color="#fff" section="community" variant="liquid" />
             ) : (
               <Text style={[styles.postButtonText, hasContent && styles.postButtonTextActive]}>
                 Post
@@ -475,15 +510,22 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
 
         <AutoHideScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
-          {/* Author Card */}
+          {/* Author Card - with SafeAvatar */}
           <Animated.View entering={FadeInUp.duration(400)}>
             <View style={styles.authorCard}>
               <View style={styles.authorRow}>
-                <View style={styles.authorAvatar}>
-                  <Text style={styles.authorAvatarText}>
-                    {isAnonymous ? '🎭' : (currentUser?.avatar || '👤')}
-                  </Text>
-                </View>
+                {/* REPLACED: Raw emoji text → SafeAvatar */}
+                <SafeAvatar
+                  avatar={avatarSource}
+                  size={48}
+                  fallbackIcon={isAnonymous ? 'mask' : 'person'}
+                  fallbackColor={selectedTopic?.color || '#667eea'}
+                  borderWidth={2}
+                  borderColor="#fff"
+                  showEditBadge={false}
+                  animated={true}
+                />
+                
                 <View style={styles.authorInfo}>
                   <Text style={styles.authorName}>
                     {isAnonymous ? 'Anonymous' : (currentUser?.displayName || 'You')}
@@ -762,10 +804,9 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
                       onPress={() => {
                         if (isMaxReached) {
                           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-                          Alert.alert(
+                          sweetAlert.warning(
                             'Maximum Topics Reached',
-                            'You can select up to 5 topics. Remove one to add another.',
-                            [{ text: 'OK' }]
+                            'You can select up to 5 topics. Remove one to add another.'
                           );
                           return;
                         }
@@ -818,6 +859,9 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
   );
 }
 
+// ============================================
+// STYLES (unchanged from your original)
+// ============================================
 const styles = StyleSheet.create({
   container: { 
     flex: 1,
@@ -827,9 +871,7 @@ const styles = StyleSheet.create({
     flex: 1 
   },
 
-  // ============================================
   // HEADER
-  // ============================================
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -871,9 +913,7 @@ const styles = StyleSheet.create({
     color: 'white' 
   },
 
-  // ============================================
   // AUTHOR CARD
-  // ============================================
   authorCard: {
     marginHorizontal: CommunitySpacing.lg,
     marginTop: 8,
@@ -887,20 +927,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  authorAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#f0f0f5',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  authorAvatarText: { 
-    fontSize: 24 
-  },
   authorInfo: { 
-    flex: 1 
+    flex: 1,
+    marginLeft: 12,
   },
   authorName: {
     fontSize: 16,
@@ -951,9 +980,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  // ============================================
   // CONTENT INPUT
-  // ============================================
   contentArea: {
     marginHorizontal: CommunitySpacing.lg,
     marginBottom: 16,
@@ -973,9 +1000,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // ============================================
-  // MODERN IMAGE GRID (matches CommunityScreen)
-  // ============================================
+  // MODERN IMAGE GRID
   imageGridWrapper: {
     marginHorizontal: CommunitySpacing.lg,
     marginBottom: 16,
@@ -1037,9 +1062,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
-  // ============================================
   // TOPICS STRIP
-  // ============================================
   topicsStripHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1118,9 +1141,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  // ============================================
   // TOOLS
-  // ============================================
   toolsSection: {
     marginHorizontal: CommunitySpacing.lg,
     marginBottom: 20,
@@ -1172,9 +1193,7 @@ const styles = StyleSheet.create({
     fontWeight: '600' 
   },
 
-  // ============================================
   // TIPS
-  // ============================================
   tipsContainer: {
     marginHorizontal: CommunitySpacing.lg,
     marginBottom: 24,
@@ -1215,78 +1234,7 @@ const styles = StyleSheet.create({
     fontWeight: '500' 
   },
 
-  // ============================================
-  // PROGRESS OVERLAY
-  // ============================================
-  progressOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 1000,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  progressBlur: {
-    width: SCREEN_WIDTH - 48,
-    borderRadius: CommunityBorderRadius.xl,
-    padding: 32,
-    overflow: 'hidden',
-  },
-  progressContainer: {
-    alignItems: 'center',
-  },
-  progressIconContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#667eea15',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 20,
-  },
-  progressTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#fff',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  progressSub: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.7)',
-    marginBottom: 24,
-    textAlign: 'center',
-  },
-  progressBarContainer: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  progressBarBackground: {
-    flex: 1,
-    height: 8,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  progressBarFill: {
-    height: '100%',
-    backgroundColor: '#667eea',
-    borderRadius: 4,
-  },
-  progressPercent: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#fff',
-    minWidth: 40,
-  },
-
-  // ============================================
   // MODALS
-  // ============================================
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',

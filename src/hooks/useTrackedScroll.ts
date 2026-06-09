@@ -5,16 +5,32 @@ import { useSafeApp } from '../hooks/useSafeContexts';
 export const useTrackedScroll = (
   userOnScroll?: (e: NativeSyntheticEvent<NativeScrollEvent>) => void
 ) => {
-  const { handleScroll } = useSafeApp(); // ✅ FIXED: was useApp() — doesn't exist
+  const { handleScroll, isCommunityScreen } = useSafeApp();
   const lastY = useRef(0);
-  const lastTime = useRef(0);
+  const lastTime = useRef(Date.now());
+  const lastProcessedY = useRef(0);
+  const lastProcessedTime = useRef(Date.now());
 
   const onScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const now = Date.now();
     const currentY = event.nativeEvent.contentOffset.y;
-    const deltaTime = now - lastTime.current;
+    const isAtTop = currentY <= 5;
 
-    // Throttle to ~60fps
+    // Always update last known position for continuity
+    lastY.current = currentY;
+    lastTime.current = now;
+
+    // Skip nav handling on community screens
+    if (isCommunityScreen) {
+      if (typeof userOnScroll === 'function') {
+        userOnScroll(event);
+      }
+      return;
+    }
+
+    const deltaTime = now - lastProcessedTime.current;
+
+    // Throttle: only process for nav every ~16ms (60fps), but always process user callback
     if (deltaTime < 16) {
       if (typeof userOnScroll === 'function') {
         userOnScroll(event);
@@ -22,21 +38,20 @@ export const useTrackedScroll = (
       return;
     }
 
-    const deltaY = currentY - lastY.current;
+    const deltaY = currentY - lastProcessedY.current;
     const velocity = deltaTime > 0 ? Math.abs(deltaY / deltaTime) : 0;
-    const isAtTop = currentY <= 5;
 
-    // Only emit if meaningful scroll
-    if (Math.abs(deltaY) > 0.5) {
+    // Only emit to nav handler if meaningful scroll occurred
+    if (Math.abs(deltaY) > 0.5 || isAtTop) {
       handleScroll(currentY, velocity, isAtTop);
-      lastY.current = currentY;
+      lastProcessedY.current = currentY;
+      lastProcessedTime.current = now;
     }
 
-    lastTime.current = now;
     if (typeof userOnScroll === 'function') {
       userOnScroll(event);
     }
-  }, [handleScroll, userOnScroll]);
+  }, [handleScroll, userOnScroll, isCommunityScreen]);
 
   return onScroll;
 };

@@ -1,3 +1,7 @@
+// src/screens/baby/CreateBabyProfileScreen.tsx
+// FIXED: Image properly persisted using baby ID after creation
+// FIXED: Setup completion flow with proper error handling
+// FIXED: Avatar state management with temp vs permanent URIs
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -192,7 +196,7 @@ export default function CreateBabyProfileScreen({ navigation }: CreateBabyProfil
   const insets = useSafeAreaInsets();
   const { darkMode: isDark, themeColors, triggerHaptic, shouldReduceMotion } = useCustomization();
   const { userProfile, completeSetup } = useAuth();
-  const { createBaby, calculateAge } = useBaby();
+  const { createBaby, updateBaby, calculateAge } = useBaby();
 
   /* ---- Form state ---- */
   const [name, setName] = useState('');
@@ -371,7 +375,7 @@ export default function CreateBabyProfileScreen({ navigation }: CreateBabyProfil
       if (navigation.canGoBack()) {
         navigation.goBack();
       } else {
-        navigation.replace('Main');
+        navigation.replace('BabyOptional');
       }
     }
   }, [currentStep, navigation, triggerHaptic]);
@@ -384,13 +388,17 @@ export default function CreateBabyProfileScreen({ navigation }: CreateBabyProfil
     triggerHaptic('medium');
 
     try {
-      // First create the baby to get the real ID, then copy image if needed
-      const success = await createBaby({
+      // Determine avatar value to save
+      const hasCustomImage = isImageUri(avatar);
+      const avatarToSave = hasCustomImage ? '👶' : avatar; // placeholder for now
+
+      // Create the baby profile
+      const babyId = await createBaby({
         name: name.trim(),
         birthDate: birthDate.toISOString(),
         gender,
         skinTone,
-        avatar: isImageUri(avatar) ? '👶' : avatar, // placeholder first
+        avatar: avatarToSave,
         weight: weight.trim() || undefined,
         height: height.trim() || undefined,
         bloodType: bloodType.trim().toUpperCase() || undefined,
@@ -398,17 +406,24 @@ export default function CreateBabyProfileScreen({ navigation }: CreateBabyProfil
         medicalNotes: medicalNotes.trim() || undefined,
       });
 
-      if (!success) {
+      if (!babyId) {
         showToast('error', 'Error', 'Failed to create profile. Please try again.');
         setIsLoading(false);
         return;
       }
 
-      // If we have a custom image, we need to copy it using the actual baby ID
-      // Since createBaby doesn't return the ID, we get it from the context after creation
-      // For now, we skip the permanent copy and just use the temp URI
-      // The image will be copied when the baby profile is edited later
+      // CRITICAL FIX: If we have a custom image, copy it to permanent storage and update
+      if (hasCustomImage && babyId) {
+        try {
+          const permanentUri = await copyImageToPermanent(avatar, babyId, 'avatar');
+          await updateBaby(babyId, { avatar: permanentUri });
+        } catch (imgError) {
+          console.warn('Failed to persist baby image:', imgError);
+          // Non-critical: baby created, image will be placeholder
+        }
+      }
 
+      // Mark baby setup as complete
       const setupSuccess = await completeSetup('baby');
       if (!setupSuccess) {
         showToast('warning', 'Warning', 'Profile created but setup incomplete. Please restart the app.');
@@ -418,6 +433,7 @@ export default function CreateBabyProfileScreen({ navigation }: CreateBabyProfil
 
       showToast('success', 'Welcome! 🎉', `${name.trim()}'s profile created successfully`);
 
+      // Use replace to prevent going back to setup
       setTimeout(() => {
         navigation.replace('Main');
       }, 1500);
@@ -439,6 +455,7 @@ export default function CreateBabyProfileScreen({ navigation }: CreateBabyProfil
     allergies,
     medicalNotes,
     createBaby,
+    updateBaby,
     completeSetup,
     navigation,
     validateStep1,

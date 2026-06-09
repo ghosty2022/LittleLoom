@@ -662,8 +662,8 @@ interface DoctorReportModalProps {
 
 const DoctorReportModal = memo<DoctorReportModalProps>(({ visible, onClose, baby, measurements, milestones }) => {
   const { themeColors } = useCustomization();
-  const latestHeight = measurements.filter(m => m.type === 'height').pop();
-  const latestWeight = measurements.filter(m => m.type === 'weight').pop();
+  const latestHeight = measurements.filter(m => m.type === 'height').sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+  const latestWeight = measurements.filter(m => m.type === 'weight').sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>

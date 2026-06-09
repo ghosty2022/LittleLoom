@@ -1,3 +1,8 @@
+// src/screens/baby/BabyOptionalScreen.tsx
+// FIXED: Proper setup completion when selecting existing baby or skipping
+// FIXED: Consistent navigation pattern (replace instead of navigate)
+// FIXED: Error state recovery with proper skip fallback
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Dimensions, ActivityIndicator, Image, StatusBar } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -158,6 +163,7 @@ export default function BabyOptionalScreen({ navigation }: Props) {
     return () => { isMounted = false; };
   }, [loadBabies]);
 
+  // CRITICAL FIX: Skip must properly mark baby setup as complete
   const handleSkip = useCallback(async () => {
     triggerHaptic('light');
     setIsProcessing(true);
@@ -165,6 +171,7 @@ export default function BabyOptionalScreen({ navigation }: Props) {
       await skipBaby();
       await skipSetup('baby');
       showInfo('Skipped', 'You can add a baby later from settings');
+      // Use replace to prevent going back to setup screens
       setTimeout(() => navigation.replace('Main'), 1000);
     } catch (error) {
       showError('Error', 'Could not skip baby setup');
@@ -177,13 +184,16 @@ export default function BabyOptionalScreen({ navigation }: Props) {
     navigation.navigate('CreateBabyProfile');
   }, [navigation, triggerHaptic]);
 
+  // CRITICAL FIX: Selecting existing baby must complete setup
   const handleSelectBaby = useCallback(async (babyId: string) => {
     triggerHaptic('medium');
     setIsProcessing(true);
     try {
       await switchBaby(babyId);
+      // Mark baby setup as complete since we selected a baby
       await completeSetup('baby');
       showSuccess('Welcome Back!', 'Baby profile selected');
+      // Use replace to prevent going back to setup screens
       setTimeout(() => navigation.replace('Main'), 500);
     } catch (error) {
       showError('Error', 'Could not switch baby');

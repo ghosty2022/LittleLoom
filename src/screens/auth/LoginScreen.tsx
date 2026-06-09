@@ -1,3 +1,10 @@
+
+// src/screens/auth/LoginScreen.tsx
+// FIXED: Removed duplicate navigation logic - AppNavigator is single source of truth
+// FIXED: Social auth flow, biometric auto-login, form validation
+// FIXED: Proper integration with AuthContext and SecurityContext
+// NOTE: Navigation after auth is handled entirely by AppNavigator.tsx
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
@@ -9,9 +16,9 @@ import {
   Platform,
   ActivityIndicator,
   Dimensions,
-  useColorScheme,
   StatusBar,
   Keyboard,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -30,6 +37,7 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+
 import { useAuth } from '../../context/AuthContext';
 import { useSecurity } from '../../context/SecurityContext';
 import { useCustomization } from '../../hooks/useCustomization';
@@ -43,10 +51,22 @@ const { width, height } = Dimensions.get('window');
 
 WebBrowser.maybeCompleteAuthSession();
 
-const GOOGLE_CLIENT_ID = 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com';
+// ==================== SOCIAL AUTH CONFIG ====================
+
+const GOOGLE_CLIENT_ID = Platform.select({
+  ios: 'YOUR_IOS_GOOGLE_CLIENT_ID.apps.googleusercontent.com',
+  android: 'YOUR_ANDROID_GOOGLE_CLIENT_ID.apps.googleusercontent.com',
+  default: 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com',
+});
+
 const FACEBOOK_APP_ID = 'YOUR_FACEBOOK_APP_ID';
 
-const redirectUri = AuthSession.makeRedirectUri({ useProxy: true });
+const redirectUri = AuthSession.makeRedirectUri({ 
+  scheme: 'littleloom',
+  useProxy: Platform.OS !== 'web' 
+});
+
+// ==================== SOCIAL BUTTON ====================
 
 interface SocialButtonProps {
   provider: 'google' | 'apple' | 'facebook';
@@ -58,7 +78,7 @@ interface SocialButtonProps {
 const SocialButton = React.memo(({ provider, onPress, disabled, isDark }: SocialButtonProps) => {
   const configs = useMemo(() => ({
     google: {
-      icon: 'logo-google',
+      icon: 'logo-google' as const,
       iconColor: '#DB4437',
       label: 'Continue with Google',
       textColor: '#1e293b',
@@ -66,7 +86,7 @@ const SocialButton = React.memo(({ provider, onPress, disabled, isDark }: Social
       shadowColor: 'rgba(0,0,0,0.1)',
     },
     apple: {
-      icon: 'logo-apple',
+      icon: 'logo-apple' as const,
       iconColor: isDark ? '#FFFFFF' : '#000000',
       label: 'Continue with Apple',
       textColor: isDark ? '#FFFFFF' : '#000000',
@@ -74,7 +94,7 @@ const SocialButton = React.memo(({ provider, onPress, disabled, isDark }: Social
       shadowColor: 'rgba(0,0,0,0.1)',
     },
     facebook: {
-      icon: 'logo-facebook',
+      icon: 'logo-facebook' as const,
       iconColor: '#1877F2',
       label: 'Continue with Facebook',
       textColor: '#1877F2',
@@ -99,7 +119,7 @@ const SocialButton = React.memo(({ provider, onPress, disabled, isDark }: Social
       activeOpacity={0.85}
     >
       <View style={styles.socialButtonInner}>
-        <Ionicons name={config.icon as any} size={22} color={config.iconColor} />
+        <Ionicons name={config.icon} size={22} color={config.iconColor} />
         <Text style={[styles.socialButtonText, { color: config.textColor }]}>
           {config.label}
         </Text>
@@ -108,10 +128,14 @@ const SocialButton = React.memo(({ provider, onPress, disabled, isDark }: Social
   );
 });
 
+// ==================== VALIDATION ====================
+
 const isValidEmail = (email: string): boolean => {
-  const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const re = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;
   return re.test(email.trim().toLowerCase());
 };
+
+// ==================== MAIN COMPONENT ====================
 
 export default function LoginScreen({ navigation }: LoginScreenProps) {
   const [email, setEmail] = useState('');
@@ -119,10 +143,11 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showBiometricButton, setShowBiometricButton] = useState(false);
-  const [showSplash, setShowSplash] = useState(false);
+  const [authInitialized, setAuthInitialized] = useState(false);
 
   const {
     signIn,
+    signInWithSocial,
     isLoading: authLoading,
     isAuthenticated,
     isBiometricAvailable,
@@ -150,38 +175,64 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
   const isMounted = useRef(true);
   const loginAttempted = useRef(false);
   const autoLoginAttempted = useRef(false);
-  const hasNavigated = useRef(false);
   const biometricCheckComplete = useRef(false);
-  const navLock = useRef(false);
+  const socialAuthInProgress = useRef(false);
 
   const userName = userProfile?.fullName || 'there';
 
+  // Google OAuth
   const [googleRequest, googleResponse, googlePromptAsync] = AuthSession.useAuthRequest(
     {
       clientId: GOOGLE_CLIENT_ID,
       redirectUri,
       scopes: ['openid', 'profile', 'email'],
+      responseType: 'token',
     },
-    { authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth' }
+    { 
+      authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
+      tokenEndpoint: 'https://oauth2.googleapis.com/token',
+    }
   );
 
+  // Facebook OAuth
   const [fbRequest, fbResponse, fbPromptAsync] = AuthSession.useAuthRequest(
     {
       clientId: FACEBOOK_APP_ID,
       redirectUri,
       scopes: ['public_profile', 'email'],
+      responseType: 'token',
     },
-    { authorizationEndpoint: 'https://www.facebook.com/v18.0/dialog/oauth' }
+    { 
+      authorizationEndpoint: 'https://www.facebook.com/v18.0/dialog/oauth',
+      tokenEndpoint: 'https://graph.facebook.com/v18.0/oauth/access_token',
+    }
   );
 
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       isMounted.current = false;
       loginAttempted.current = false;
       autoLoginAttempted.current = false;
+      socialAuthInProgress.current = false;
     };
   }, []);
 
+  // Entrance animations
+  useEffect(() => {
+    logoScale.value = withSequence(
+      withTiming(0.8, { duration: 0 }),
+      withSpring(1, { damping: 12, stiffness: 100 })
+    );
+
+    formTranslateY.value = withSequence(
+      withTiming(50, { duration: 0 }),
+      withSpring(0, { damping: 15, stiffness: 100, delay: 200 })
+    );
+  }, []);
+
+  // ==================== GOOGLE AUTH HANDLER ====================
+  
   useEffect(() => {
     if (googleResponse?.type === 'success') {
       const { authentication } = googleResponse;
@@ -191,20 +242,12 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     } else if (googleResponse?.type === 'error') {
       showError('Google Error', 'Authentication failed. Please try again.');
       setIsProcessing(false);
+      socialAuthInProgress.current = false;
+    } else if (googleResponse?.type === 'cancel') {
+      setIsProcessing(false);
+      socialAuthInProgress.current = false;
     }
   }, [googleResponse]);
-
-  useEffect(() => {
-    if (fbResponse?.type === 'success') {
-      const { authentication } = fbResponse;
-      if (authentication?.accessToken) {
-        handleFacebookUserInfo(authentication.accessToken);
-      }
-    } else if (fbResponse?.type === 'error') {
-      showError('Facebook Error', 'Authentication failed. Please try again.');
-      setIsProcessing(false);
-    }
-  }, [fbResponse]);
 
   const handleGoogleUserInfo = async (accessToken: string) => {
     try {
@@ -222,8 +265,27 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
       console.error('Google user info error:', error);
       showError('Google Error', 'Could not retrieve account information');
       setIsProcessing(false);
+      socialAuthInProgress.current = false;
     }
   };
+
+  // ==================== FACEBOOK AUTH HANDLER ====================
+  
+  useEffect(() => {
+    if (fbResponse?.type === 'success') {
+      const { authentication } = fbResponse;
+      if (authentication?.accessToken) {
+        handleFacebookUserInfo(authentication.accessToken);
+      }
+    } else if (fbResponse?.type === 'error') {
+      showError('Facebook Error', 'Authentication failed. Please try again.');
+      setIsProcessing(false);
+      socialAuthInProgress.current = false;
+    } else if (fbResponse?.type === 'cancel') {
+      setIsProcessing(false);
+      socialAuthInProgress.current = false;
+    }
+  }, [fbResponse]);
 
   const handleFacebookUserInfo = async (accessToken: string) => {
     try {
@@ -246,45 +308,57 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
       console.error('Facebook user info error:', error);
       showError('Facebook Error', 'Could not retrieve account information');
       setIsProcessing(false);
+      socialAuthInProgress.current = false;
     }
   };
 
-  useEffect(() => {
-    if (isAuthenticated && !hasNavigated.current && !navLock.current) {
-      navLock.current = true;
-      hasNavigated.current = true;
+  // ==================== SOCIAL LOGIN ====================
 
-      const timer = setTimeout(() => {
-        if (!isMounted.current) return;
-
-        if (!setupComplete) {
-          if (!hasParent2) {
-            navigation.replace('Parent2Optional');
-          } else if (!hasBaby) {
-            navigation.replace('BabyOptional');
-          } else {
-            navigation.replace('Main');
-          }
-        } else {
-          navigation.replace('Main');
-        }
-      }, 800);
-
-      return () => clearTimeout(timer);
+  const handleSocialLogin = async (
+    provider: 'google' | 'apple' | 'facebook',
+    email: string,
+    name: string,
+    avatar?: string
+  ) => {
+    if (!email) {
+      showError('Auth Failed', `Could not get ${provider} account information`);
+      setIsProcessing(false);
+      socialAuthInProgress.current = false;
+      return;
     }
-  }, [isAuthenticated, setupComplete, hasParent2, hasBaby, navigation]);
 
-  useEffect(() => {
-    logoScale.value = withSequence(
-      withTiming(0.8, { duration: 0 }),
-      withSpring(1, { damping: 12, stiffness: 100 })
-    );
+    setIsProcessing(true);
+    try {
+      const success = await signInWithSocial({
+        id: `${provider}_${Date.now()}`,
+        email,
+        fullName: name,
+        avatar,
+        provider,
+      });
 
-    formTranslateY.value = withSequence(
-      withTiming(50, { duration: 0 }),
-      withSpring(0, { damping: 15, stiffness: 100, delay: 200 })
-    );
-  }, []);
+      if (success && isMounted.current) {
+        showSuccess('Welcome!', `Signed in with ${provider.charAt(0).toUpperCase() + provider.slice(1)}`);
+        forceUnlock().catch(() => {});
+        // AppNavigator will handle navigation based on auth state
+      }
+    } catch (error) {
+      showError('Login Failed', 'Social authentication failed');
+    } finally {
+      if (isMounted.current) {
+        setIsProcessing(false);
+        socialAuthInProgress.current = false;
+      }
+    }
+  };
+
+  // ==================== NAVIGATION AFTER AUTH — REMOVED ====================
+  // CRITICAL FIX: Navigation is now handled SOLELY by AppNavigator.tsx
+  // which computes navState from auth context and enforces the correct screen.
+  // Removing this prevents race conditions where both LoginScreen and 
+  // AppNavigator try to navigate simultaneously.
+
+  // ==================== BIOMETRIC CHECK ====================
 
   useEffect(() => {
     if (biometricCheckComplete.current || !isBiometricAvailable) return;
@@ -297,16 +371,21 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
           biometricScale.value = withSpring(1, { damping: 12, delay: 400 });
         }
         biometricCheckComplete.current = true;
+        setAuthInitialized(true);
       } catch (error) {
         console.error('Error checking biometric status:', error);
+        biometricCheckComplete.current = true;
+        setAuthInitialized(true);
       }
     };
 
     checkBiometricStatus();
   }, [isBiometricAvailable, hasBiometricLoginCredentials]);
 
+  // ==================== AUTO BIOMETRIC LOGIN ====================
+
   useEffect(() => {
-    if (isAuthenticated || autoLoginAttempted.current || !biometricCheckComplete.current) return;
+    if (isAuthenticated || autoLoginAttempted.current || !biometricCheckComplete.current || !authInitialized) return;
 
     const attemptAutoLogin = async () => {
       const hasCreds = await hasBiometricLoginCredentials();
@@ -317,23 +396,25 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
           if (!isMounted.current || isAuthenticated) return;
           resetUnlockLock();
           await handleBiometricLogin();
-        }, 600);
+        }, 800);
       }
     };
 
     attemptAutoLogin();
-  }, [isAuthenticated, isBiometricAvailable]);
+  }, [isAuthenticated, isBiometricAvailable, authInitialized]);
 
+  // Reset on focus
   useEffect(() => {
     resetUnlockLock();
 
     const unsubscribe = navigation.addListener('focus', () => {
       resetUnlockLock();
       loginAttempted.current = false;
-      navLock.current = false;
     });
     return unsubscribe;
   }, [navigation, resetUnlockLock]);
+
+  // ==================== ANIMATED STYLES ====================
 
   const logoStyle = useAnimatedStyle(() => ({
     transform: [{ scale: logoScale.value }],
@@ -348,34 +429,11 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     opacity: biometricScale.value,
   }));
 
-  const handleSocialLogin = async (
-    provider: 'google' | 'apple' | 'facebook',
-    email: string,
-    name: string,
-    avatar?: string
-  ) => {
-    if (!email) {
-      showError('Auth Failed', `Could not get ${provider} account information`);
-      setIsProcessing(false);
-      return;
-    }
-
-    setIsProcessing(true);
-    try {
-      const success = await signIn(email, `social_${provider}_${Date.now()}`);
-
-      if (success && isMounted.current) {
-        showSuccess('Welcome!', `Signed in with ${provider.charAt(0).toUpperCase() + provider.slice(1)}`);
-        forceUnlock().catch(() => {});
-      }
-    } catch (error) {
-      showError('Login Failed', 'Social authentication failed');
-    } finally {
-      if (isMounted.current) setIsProcessing(false);
-    }
-  };
+  // ==================== HANDLERS ====================
 
   const handleGoogleLogin = async () => {
+    if (socialAuthInProgress.current) return;
+    socialAuthInProgress.current = true;
     triggerHaptic('light');
     setIsProcessing(true);
     try {
@@ -383,11 +441,14 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     } catch (error) {
       showError('Google Error', 'Could not open Google sign-in');
       setIsProcessing(false);
+      socialAuthInProgress.current = false;
     }
   };
 
   const handleAppleLogin = async () => {
+    if (socialAuthInProgress.current) return;
     triggerHaptic('light');
+    
     try {
       const { AppleAuthentication } = await import('expo-apple-authentication');
 
@@ -412,6 +473,8 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
   };
 
   const handleFacebookLogin = async () => {
+    if (socialAuthInProgress.current) return;
+    socialAuthInProgress.current = true;
     triggerHaptic('light');
     setIsProcessing(true);
     try {
@@ -419,14 +482,16 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     } catch (error) {
       showError('Facebook Error', 'Could not open Facebook sign-in');
       setIsProcessing(false);
+      socialAuthInProgress.current = false;
     }
   };
 
   const handleLogin = useCallback(async () => {
-    if (loginAttempted.current || isProcessing || authLoading || hasNavigated.current) {
+    if (loginAttempted.current || isProcessing || authLoading) {
       return;
     }
 
+    // Validation
     if (!email.trim()) {
       showError('Missing Email', 'Please enter your email address');
       triggerHaptic('error');
@@ -454,7 +519,6 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     loginAttempted.current = true;
     setIsProcessing(true);
     Keyboard.dismiss();
-
     triggerHaptic('medium');
 
     try {
@@ -464,14 +528,16 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
         showSuccess(`Welcome Back${userName !== 'there' ? `, ${userName}` : ''}!`, 'Successfully signed in');
         forceUnlock().catch(() => {});
 
+        // Prompt for biometric after successful login
         if (hasSeenOnboarding) {
           const shouldPrompt = await shouldShowBiometricPrompt();
           if (shouldPrompt) {
             setTimeout(() => {
               promptEnableBiometricLogin(email.trim(), password);
-            }, 800);
+            }, 1000);
           }
         }
+        // AppNavigator will handle navigation based on auth state
       } else {
         showError('Login Failed', 'Invalid email or password');
         loginAttempted.current = false;
@@ -497,18 +563,16 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     triggerHaptic,
     showError,
     showSuccess,
-    toast,
   ]);
 
   const handleBiometricLogin = useCallback(async () => {
-    if (loginAttempted.current || isProcessing || authLoading || hasNavigated.current) {
+    if (loginAttempted.current || isProcessing || authLoading) {
       return false;
     }
 
     resetUnlockLock();
     loginAttempted.current = true;
     setIsProcessing(true);
-
     triggerHaptic('medium');
 
     try {
@@ -517,6 +581,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
       if (success && isMounted.current) {
         showSuccess(`Welcome${userName !== 'there' ? `, ${userName}` : ''}!`, 'Biometric login successful');
         forceUnlock().catch(() => {});
+        // AppNavigator will handle navigation based on auth state
         return true;
       } else if (!success) {
         showError('Biometric Failed', 'Please use your password');
@@ -570,14 +635,16 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     );
   };
 
-  const isLoading = authLoading || isProcessing;
+  const isLoading = authLoading || isProcessing || !authInitialized;
+
+  // ==================== RENDER ====================
 
   return (
     <View style={[styles.container, { backgroundColor: isDark ? '#0a0a0a' : '#f8faff' }]}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
       <UniversalSpinner
-        visible={showSplash || (isLoading && !isAuthenticated)}
+        visible={isLoading && !isAuthenticated}
         text="Signing you in..."
         subtext="Please wait a moment"
         size="medium"
@@ -604,16 +671,16 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Logo Section */}
+          {/* Logo */}
           <Animated.View style={[styles.logoContainer, logoStyle]}>
             <View style={[styles.logoCircle, isDark && styles.logoCircleDark]}>
-              <Text style={styles.logoEmoji}>👶</Text>
+              <Text style={styles.logoEmoji}>🍼</Text>
             </View>
             <Text style={styles.logoText}>LittleLoom</Text>
             <Text style={styles.logoTagline}>Track every precious moment</Text>
           </Animated.View>
 
-          {/* Glass Card Form */}
+          {/* Form Card */}
           <Animated.View style={[styles.formContainer, formStyle]}>
             <BlurView intensity={isDark ? 40 : 80} style={styles.glassCard} tint={isDark ? 'dark' : 'light'}>
               <LinearGradient
@@ -631,7 +698,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
                 Welcome Back{userName !== 'there' ? `, ${userName}` : ''}
               </Text>
 
-              {/* Social Login Buttons - Icon Only */}
+              {/* Social Login Icons */}
               <View style={styles.socialIconsContainer}>
                 <TouchableOpacity
                   style={[styles.socialIconButton, { borderColor: 'rgba(219,68,55,0.2)' }]}
@@ -671,7 +738,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
                 <View style={[styles.dividerLine, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
               </View>
 
-              {/* Biometric Login - Generic Text */}
+              {/* Biometric Login */}
               {showBiometricButton && (
                 <Animated.View style={[styles.biometricSection, biometricStyle]}>
                   <TouchableOpacity
@@ -771,7 +838,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
                 </LinearGradient>
               </TouchableOpacity>
 
-              {/* Fallback Biometric - Generic */}
+              {/* Fallback Biometric */}
               {!showBiometricButton && isBiometricAvailable && (
                 <Animated.View entering={FadeInUp.delay(600)} style={styles.biometricFallback}>
                   <TouchableOpacity
@@ -801,6 +868,8 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     </View>
   );
 }
+
+// ==================== STYLES ====================
 
 const styles = StyleSheet.create({
   container: {
@@ -1023,5 +1092,26 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 15,
     fontWeight: '700',
+  },
+  socialButton: {
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    marginBottom: 12,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  socialButtonInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  socialButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
   },
 });

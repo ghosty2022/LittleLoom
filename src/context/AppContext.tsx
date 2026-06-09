@@ -1,16 +1,14 @@
 // src/context/AppContext.tsx
-// FULLY SYNCED: Respects useCustomization theme, SafeAvatar colors, BabyContext data
-// FIXED: Nav visibility restoration now respects previous scroll state
-// FIXED: AppState listener correctly detects background -> active transitions
-// FIXED: Appearance mode now fully supports trueBlack and pureWhite via sync with useCustomization
-// FIXED: Theme mode and appearance properly unified
+// UNIFIED: Single source of truth for theme, nav visibility, and scroll handling
+// FIXED: No compact/sideways mode, pure vertical hide/show, synced with useCustomization
+// FIXED: State persistence integration for nav visibility across sessions
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useColorScheme, AppState, AppStateStatus, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useCustomization, AppearanceMode } from '../hooks/useCustomization';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
-export type AppearanceMode = 'system' | 'light' | 'dark' | 'trueBlack' | 'pureWhite';
 
 export interface ThemeColors {
   background: string;
@@ -32,7 +30,7 @@ export interface ThemeColors {
   shadowColor: string;
 }
 
-// Light mode colors
+// Unified color palette - synced with useCustomization
 const LIGHT_COLORS: ThemeColors = {
   background: '#f8faff',
   surface: '#ffffff',
@@ -53,7 +51,6 @@ const LIGHT_COLORS: ThemeColors = {
   shadowColor: '#667eea',
 };
 
-// Dark mode (gray-based, easy on eyes)
 const DARK_COLORS: ThemeColors = {
   background: '#0f0f1e',
   surface: '#1a1a2e',
@@ -74,7 +71,6 @@ const DARK_COLORS: ThemeColors = {
   shadowColor: '#000000',
 };
 
-// True Black (OLED optimized - pure black)
 const TRUE_BLACK_COLORS: ThemeColors = {
   background: '#000000',
   surface: '#0a0a0a',
@@ -95,7 +91,6 @@ const TRUE_BLACK_COLORS: ThemeColors = {
   shadowColor: '#000000',
 };
 
-// Pure White (maximum contrast light)
 const PURE_WHITE_COLORS: ThemeColors = {
   background: '#ffffff',
   surface: '#fafafa',
@@ -129,10 +124,8 @@ export interface AppContextType {
   setDarkMode: (isDark: boolean) => void;
   themeReady: boolean;
   isNavVisible: boolean;
-  isNavCompact: boolean;
   showNav: () => void;
   hideNav: () => void;
-  toggleCompact: () => void;
   forceShowNav: () => void;
   forceHideNav: () => void;
   isCommunityScreen: boolean;
@@ -142,6 +135,7 @@ export interface AppContextType {
 
 const THEME_STORAGE_KEY = '@littleloom_theme_v2';
 const APPEARANCE_STORAGE_KEY = '@littleloom_appearance_v1';
+const NAV_VISIBILITY_KEY = '@littleloom_nav_visible_v1';
 
 // Community routes that should hide the navigation bar
 const COMMUNITY_ROUTES = new Set([
@@ -151,10 +145,10 @@ const COMMUNITY_ROUTES = new Set([
 ]);
 
 const SCROLL_CONFIG = {
-  HIDE_THRESHOLD: 60,
-  SHOW_THRESHOLD: 20,
-  VELOCITY_THRESHOLD: 0.3,
-  SCROLL_END_DELAY: 150,
+  HIDE_THRESHOLD: 50,
+  SHOW_THRESHOLD: 15,
+  VELOCITY_THRESHOLD: 0.25,
+  SCROLL_END_DELAY: 120,
 };
 
 const AppContext = createContext<AppContextType>({
@@ -170,10 +164,8 @@ const AppContext = createContext<AppContextType>({
   setDarkMode: () => {},
   themeReady: false,
   isNavVisible: true,
-  isNavCompact: false,
   showNav: () => {},
   hideNav: () => {},
-  toggleCompact: () => {},
   forceShowNav: () => {},
   forceHideNav: () => {},
   isCommunityScreen: false,
@@ -183,12 +175,13 @@ const AppContext = createContext<AppContextType>({
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const systemColorScheme = useColorScheme();
+  const customization = useCustomization();
 
   const [themeMode, setThemeModeState] = useState<ThemeMode>('system');
   const [appearance, setAppearanceState] = useState<AppearanceMode>('system');
   const [themeReady, setThemeReady] = useState(false);
 
-  // Load theme and appearance from storage
+  // Load theme and appearance from storage (synced with useCustomization)
   useEffect(() => {
     let mounted = true;
     const loadTheme = async () => {
@@ -214,6 +207,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => { mounted = false; };
   }, []);
 
+  // Sync with useCustomization when it loads
+  useEffect(() => {
+    if (customization.isLoaded && customization.settings.appearance) {
+      const customAppearance = customization.settings.appearance;
+      if (customAppearance !== appearance) {
+        setAppearanceState(customAppearance);
+        // Sync themeMode based on appearance
+        if (customAppearance === 'light' || customAppearance === 'pureWhite') {
+          setThemeModeState('light');
+        } else if (customAppearance === 'dark' || customAppearance === 'trueBlack') {
+          setThemeModeState('dark');
+        } else {
+          setThemeModeState('system');
+        }
+      }
+    }
+  }, [customization.isLoaded, customization.settings.appearance]);
+
   const setThemeMode = useCallback(async (mode: ThemeMode) => {
     setThemeModeState(mode);
     try {
@@ -225,19 +236,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const setAppearance = useCallback(async (newAppearance: AppearanceMode) => {
     setAppearanceState(newAppearance);
+    // Also update useCustomization
+    customization.updateSettings({ appearance: newAppearance });
     try {
       await AsyncStorage.setItem(APPEARANCE_STORAGE_KEY, newAppearance);
     } catch (e) {
       console.warn('Appearance save failed:', e);
     }
-  }, []);
+  }, [customization]);
 
   const toggleTheme = useCallback(() => {
     const modes: AppearanceMode[] = ['system', 'light', 'dark', 'trueBlack', 'pureWhite'];
     setAppearanceState(prev => {
       const next = modes[(modes.indexOf(prev) + 1) % modes.length];
       AsyncStorage.setItem(APPEARANCE_STORAGE_KEY, next).catch(() => {});
-      // Sync themeMode for backward compatibility
+      customization.updateSettings({ appearance: next });
+      
       if (next === 'light' || next === 'pureWhite') {
         setThemeModeState('light');
         AsyncStorage.setItem(THEME_STORAGE_KEY, 'light').catch(() => {});
@@ -250,27 +264,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       return next;
     });
-  }, []);
+  }, [customization]);
 
   const setDarkMode = useCallback((dark: boolean) => {
     const newMode: ThemeMode = dark ? 'dark' : 'light';
     const newAppearance: AppearanceMode = dark ? 'dark' : 'light';
     setThemeModeState(newMode);
     setAppearanceState(newAppearance);
+    customization.updateSettings({ appearance: newAppearance });
     AsyncStorage.setItem(THEME_STORAGE_KEY, newMode).catch(() => {});
     AsyncStorage.setItem(APPEARANCE_STORAGE_KEY, newAppearance).catch(() => {});
-  }, []);
+  }, [customization]);
 
-  // Determine effective dark mode and colors
+  // Determine effective dark mode and colors - PRIORITIZE useCustomization
+  const effectiveAppearance = useMemo(() => {
+    return customization.isLoaded ? customization.settings.appearance : appearance;
+  }, [customization.isLoaded, customization.settings.appearance, appearance]);
+
   const isDark = useMemo(() => {
-    if (appearance === 'system') return systemColorScheme === 'dark';
-    if (appearance === 'trueBlack') return true;
-    if (appearance === 'pureWhite') return false;
-    return appearance === 'dark';
-  }, [appearance, systemColorScheme]);
+    if (effectiveAppearance === 'system') return systemColorScheme === 'dark';
+    if (effectiveAppearance === 'trueBlack') return true;
+    if (effectiveAppearance === 'pureWhite') return false;
+    return effectiveAppearance === 'dark';
+  }, [effectiveAppearance, systemColorScheme]);
 
-  const isTrueBlack = useMemo(() => appearance === 'trueBlack', [appearance]);
-  const isPureWhite = useMemo(() => appearance === 'pureWhite', [appearance]);
+  const isTrueBlack = useMemo(() => effectiveAppearance === 'trueBlack', [effectiveAppearance]);
+  const isPureWhite = useMemo(() => effectiveAppearance === 'pureWhite', [effectiveAppearance]);
 
   const colors = useMemo(() => {
     if (isTrueBlack) return TRUE_BLACK_COLORS;
@@ -278,9 +297,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return isDark ? DARK_COLORS : LIGHT_COLORS;
   }, [isDark, isTrueBlack, isPureWhite]);
 
-  // Navigation visibility
+  // ============================================
+  // NAVIGATION VISIBILITY - Unified vertical only
+  // ============================================
   const [isNavVisible, setIsNavVisible] = useState(true);
-  const [isNavCompact, setIsNavCompact] = useState(false);
   const [isCommunityScreen, setIsCommunityScreen] = useState(false);
 
   const scrollStateRef = useRef({
@@ -291,15 +311,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     timeout: null as ReturnType<typeof setTimeout> | null,
   });
 
-  // FIXED: setCommunityRoute now properly handles nav visibility restoration
+  // Load saved nav visibility state
+  useEffect(() => {
+    const loadNavVisibility = async () => {
+      try {
+        const saved = await AsyncStorage.getItem(NAV_VISIBILITY_KEY);
+        if (saved !== null) {
+          setIsNavVisible(saved === 'true');
+        }
+      } catch (e) {
+        console.warn('Nav visibility load failed:', e);
+      }
+    };
+    loadNavVisibility();
+  }, []);
+
+  const saveNavVisibility = useCallback(async (visible: boolean) => {
+    try {
+      await AsyncStorage.setItem(NAV_VISIBILITY_KEY, String(visible));
+    } catch (e) {
+      console.warn('Nav visibility save failed:', e);
+    }
+  }, []);
+
   const setCommunityRoute = useCallback((routeName: string | null) => {
     const isCommunity = routeName ? COMMUNITY_ROUTES.has(routeName) : false;
     setIsCommunityScreen(isCommunity);
     if (isCommunity) {
       setIsNavVisible(false);
-      setIsNavCompact(false);
     } else {
-      // FIXED: Only show nav if it wasn't hidden by scroll
       const wasHiddenByScroll = scrollStateRef.current.hiddenByScroll;
       if (!wasHiddenByScroll) {
         setIsNavVisible(true);
@@ -310,27 +350,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const showNav = useCallback(() => {
     if (isCommunityScreen) return;
     setIsNavVisible(true);
+    saveNavVisibility(true);
     const s = scrollStateRef.current;
     s.hiddenByScroll = false;
     s.accumulatedDown = 0;
     s.accumulatedUp = 0;
-  }, [isCommunityScreen]);
+  }, [isCommunityScreen, saveNavVisibility]);
 
   const hideNav = useCallback(() => {
     setIsNavVisible(false);
+    saveNavVisibility(false);
     scrollStateRef.current.hiddenByScroll = true;
-  }, []);
-
-  const toggleCompact = useCallback(() => {
-    setIsNavCompact(prev => !prev);
-  }, []);
+  }, [saveNavVisibility]);
 
   const forceShowNav = useCallback(() => {
     if (isCommunityScreen) return;
     setIsNavVisible(true);
-    setIsNavCompact(false);
+    saveNavVisibility(true);
     scrollStateRef.current.hiddenByScroll = false;
-  }, [isCommunityScreen]);
+  }, [isCommunityScreen, saveNavVisibility]);
 
   const forceHideNav = useCallback(() => {
     hideNav();
@@ -373,7 +411,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }, SCROLL_CONFIG.SCROLL_END_DELAY);
   }, [isCommunityScreen, showNav, hideNav]);
 
-  // FIXED: AppState listener correctly detects background -> active transitions
+  // AppState listener - show nav when returning to app
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextAppState) => {
@@ -398,12 +436,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const value = useMemo<AppContextType>(() => ({
     themeMode, appearance, isDark, isTrueBlack, isPureWhite, colors,
     setThemeMode, setAppearance, toggleTheme, setDarkMode, themeReady,
-    isNavVisible, isNavCompact, showNav, hideNav, toggleCompact, forceShowNav, forceHideNav,
+    isNavVisible, showNav, hideNav, forceShowNav, forceHideNav,
     isCommunityScreen, setCommunityRoute, handleScroll,
   }), [
     themeMode, appearance, isDark, isTrueBlack, isPureWhite, colors,
     setThemeMode, setAppearance, toggleTheme, setDarkMode, themeReady,
-    isNavVisible, isNavCompact, showNav, hideNav, toggleCompact, forceShowNav, forceHideNav,
+    isNavVisible, showNav, hideNav, forceShowNav, forceHideNav,
     isCommunityScreen, setCommunityRoute, handleScroll,
   ]);
 
@@ -427,13 +465,13 @@ export const useTheme = () => {
 
 export const useNavigationVisibility = () => {
   const {
-    isNavVisible, isNavCompact, showNav, hideNav,
-    toggleCompact, forceShowNav, forceHideNav,
+    isNavVisible, showNav, hideNav,
+    forceShowNav, forceHideNav,
     isCommunityScreen, setCommunityRoute,
   } = useApp();
   return {
-    isNavVisible, isNavCompact, showNav, hideNav,
-    toggleCompact, forceShowNav, forceHideNav,
+    isNavVisible, showNav, hideNav,
+    forceShowNav, forceHideNav,
     isCommunityScreen, setCommunityRoute,
   };
 };

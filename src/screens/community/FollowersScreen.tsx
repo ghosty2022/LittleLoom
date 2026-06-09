@@ -1,5 +1,14 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, RefreshControl, Alert, Dimensions, Image, StatusBar } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  TextInput,
+  RefreshControl,
+  Dimensions,
+  StatusBar,
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,12 +16,15 @@ import Animated, { FadeInUp, FadeIn } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CommunityStackParamList } from '../../types/navigation';
+
 import { useCommunity, CommunityUser } from '../../context/CommunityContext';
 import { useUser } from '../../context/UserContext';
-import { showSuccessModal, showErrorModal } from '../../utils/modal';
-import { AutoHideFlatList } from '../../components/AutoHideScrollWrappers';
-import { CommunityColors, CommunityGradients, CommunitySpacing, CommunityBorderRadius, CommunityShadows } from '../../theme/CommunityTheme';
+import { SafeAvatar } from '../../components/SafeAvatar';
+import { useSweetAlert } from '../../components/SweetAlert';
+import { InlineSpinner, CommunitySpinner } from '../../components/UniversalSpinner';
 
+import { AutoHideFlatList } from '../../components/AutoHideScrollWrappers';
+import { CommunityColors, CommunitySpacing, CommunityBorderRadius, CommunityShadows } from '../../theme/CommunityTheme';
 
 type FollowersScreenProps = NativeStackScreenProps<CommunityStackParamList, 'Followers'>;
 
@@ -88,28 +100,13 @@ const generateDemoFollowers = (count: number, baseId: string): CommunityUser[] =
   }));
 };
 
-const isImageAvatar = (avatar: string): boolean => {
-  if (!avatar) return false;
-  return avatar.startsWith('file://') || avatar.startsWith('http') || avatar.startsWith('data:image');
-};
-
-const RenderAvatar = ({ avatar, size = 44 }: { avatar: string; size?: number }) => {
-  if (isImageAvatar(avatar)) {
-    return (
-      <Image 
-        source={{ uri: avatar }} 
-        style={{ width: size, height: size, borderRadius: size / 2 }} 
-        resizeMode="cover"
-      />
-    );
-  }
-  return <Text style={{ fontSize: size * 0.6, textAlign: 'center', lineHeight: size }}>{avatar}</Text>;
-};
-
 export default function FollowersScreen({ navigation, route }: FollowersScreenProps) {
   const { userId } = route.params;
   const { currentUser, followUser, unfollowUser, isFollowing, blockUser, isUserBlocked, getUserById, getFollowers } = useCommunity();
   const { profile } = useUser();
+  
+  // SweetAlert for all alerts
+  const sweetAlert = useSweetAlert();
 
   const [followers, setFollowers] = useState<CommunityUser[]>([]);
   const [filteredFollowers, setFilteredFollowers] = useState<CommunityUser[]>([]);
@@ -151,11 +148,11 @@ export default function FollowersScreen({ navigation, route }: FollowersScreenPr
       setFilteredFollowers(uniqueFollowers);
     } catch (error) {
       console.error('Error loading followers:', error);
-      showErrorModal({ message: 'Failed to load followers list' });
+      sweetAlert.error('Load Failed', 'Failed to load followers list');
     } finally {
       setLoading(false);
     }
-  }, [userId, currentUser, getFollowers, getUserById]);
+  }, [userId, currentUser, getFollowers, getUserById, sweetAlert]);
 
   useEffect(() => {
     loadFollowers();
@@ -208,7 +205,7 @@ export default function FollowersScreen({ navigation, route }: FollowersScreenPr
       ));
     } catch (error) {
       console.error('Follow toggle error:', error);
-      showErrorModal({ message: 'Failed to update follow status' });
+      sweetAlert.error('Action Failed', 'Failed to update follow status');
     } finally {
       setFollowLoading(prev => ({ ...prev, [follower.id]: false }));
     }
@@ -225,39 +222,25 @@ export default function FollowersScreen({ navigation, route }: FollowersScreenPr
   const handleMoreOptions = (follower: CommunityUser) => {
     const isBlocked = isUserBlocked(follower.id);
 
-    Alert.alert(
+    sweetAlert.confirm(
       follower.displayName,
       follower.handle,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: isBlocked ? 'Unblock' : 'Block',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await blockUser(follower.id);
-              showSuccessModal({ 
-                message: isBlocked ? 'User unblocked' : 'User blocked. You will no longer see their content.' 
-              });
-            } catch (error) {
-              showErrorModal({ message: 'Failed to block user' });
-            }
-          }
-        },
-        {
-          text: 'Report',
-          style: 'destructive',
-          onPress: () => navigation.navigate('Report', { 
-            type: 'user', 
-            targetId: follower.id,
-            targetUserId: follower.id 
+      () => {
+        // Block/Unblock action
+        blockUser(follower.id)
+          .then(() => {
+            sweetAlert.success(
+              isBlocked ? 'Unblocked' : 'Blocked',
+              isBlocked ? 'User has been unblocked' : 'You will no longer see their content.'
+            );
           })
-        },
-        {
-          text: 'Message',
-          onPress: () => navigation.navigate('Chat', { userId: follower.id })
-        },
-      ]
+          .catch(() => {
+            sweetAlert.error('Action Failed', 'Failed to block user');
+          });
+      },
+      () => {}, // Cancel
+      isBlocked ? 'Unblock' : 'Block',
+      'Cancel'
     );
   };
 
@@ -275,7 +258,15 @@ export default function FollowersScreen({ navigation, route }: FollowersScreenPr
           activeOpacity={0.8}
         >
           <View style={styles.avatarContainer}>
-            <RenderAvatar avatar={item.avatar} size={44} />
+            {/* REPLACED: RenderAvatar → SafeAvatar */}
+            <SafeAvatar
+              avatar={item.avatar}
+              size={44}
+              fallbackIcon="person"
+              fallbackColor={CommunityColors.primary}
+              borderWidth={2}
+              borderColor={item.onlineStatus === 'online' ? CommunityColors.success : '#fff'}
+            />
             {item.onlineStatus === 'online' && (
               <View style={styles.onlineDot} />
             )}
@@ -313,13 +304,17 @@ export default function FollowersScreen({ navigation, route }: FollowersScreenPr
                 onPress={() => handleFollowToggle(item)}
                 disabled={followLoading[item.id] || blocked}
               >
-                <Text style={[
-                  styles.followBtnText,
-                  following && styles.followingBtnText,
-                  blocked && styles.blockedBtnText
-                ]}>
-                  {blocked ? 'Blocked' : following ? 'Following' : 'Follow'}
-                </Text>
+                {followLoading[item.id] ? (
+                  <InlineSpinner size={14} color={following ? CommunityColors.text.primary : '#fff'} section="community" />
+                ) : (
+                  <Text style={[
+                    styles.followBtnText,
+                    following && styles.followingBtnText,
+                    blocked && styles.blockedBtnText
+                  ]}>
+                    {blocked ? 'Blocked' : following ? 'Following' : 'Follow'}
+                  </Text>
+                )}
               </TouchableOpacity>
 
               <TouchableOpacity 
@@ -354,6 +349,15 @@ export default function FollowersScreen({ navigation, route }: FollowersScreenPr
   return (
     <LinearGradient colors={CommunityColors.background.gradient} style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+
+      {/* Loading Spinner */}
+      <CommunitySpinner
+        visible={loading && followers.length === 0}
+        text="Loading followers..."
+        size="medium"
+        overlay={false}
+        variant="liquid"
+      />
 
       {/* Header */}
       <BlurView intensity={95} style={styles.header} tint="light">
@@ -395,24 +399,18 @@ export default function FollowersScreen({ navigation, route }: FollowersScreenPr
       </View>
 
       {/* Followers List */}
-      {loading ? (
-        <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>Loading followers...</Text>
-        </View>
-      ) : (
-        <AutoHideFlatList
-          data={filteredFollowers}
-          renderItem={renderFollower}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContainer}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={CommunityColors.primary} />
-          }
-          ListEmptyComponent={renderEmpty}
-          ItemSeparatorComponent={() => <View style={styles.separator} />}
-        />
-      )}
+      <AutoHideFlatList
+        data={filteredFollowers}
+        renderItem={renderFollower}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.listContainer}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={CommunityColors.primary} />
+        }
+        ListEmptyComponent={!loading ? renderEmpty : null}
+        ItemSeparatorComponent={() => <View style={styles.separator} />}
+      />
     </LinearGradient>
   );
 }

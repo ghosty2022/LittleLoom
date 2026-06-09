@@ -1,19 +1,33 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Alert, Image, ActivityIndicator, StatusBar  } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  KeyboardAvoidingView,
+  Platform,
+  Image,
+  StatusBar,
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import Animated, { FadeInUp } from 'react-native-reanimated';
-import type {  NativeStackScreenProps  } from '@react-navigation/native-stack';
-import type {  CommunityStackParamList  } from '../../types/navigation';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { CommunityStackParamList } from '../../types/navigation';
+
 import { useCommunity } from '../../context/CommunityContext';
 import { useUser } from '../../context/UserContext';
-import { showSuccessModal, showErrorModal } from '../../utils/modal';
-import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
-import { CommunityColors, CommunityGradients, CommunitySpacing, CommunityBorderRadius, CommunityShadows } from '../../theme/CommunityTheme';
+import { useMedia } from '../../context/MediaContext';
+import { SafeAvatar } from '../../components/SafeAvatar';
+import { useSweetAlert } from '../../components/SweetAlert';
+import { InlineSpinner, CommunitySpinner } from '../../components/UniversalSpinner';
 
+import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
+import { CommunityColors, CommunitySpacing, CommunityBorderRadius, CommunityShadows } from '../../theme/CommunityTheme';
 
 type EditCommunityProfileScreenProps = NativeStackScreenProps<CommunityStackParamList, 'EditCommunityProfile'>;
 
@@ -30,6 +44,11 @@ export default function EditCommunityProfileScreen({ navigation, route }: EditCo
     unregisterUsername,
     updateUsername,
   } = useUser();
+
+  // MediaContext for proper image handling
+  const { compressImage, cacheImage, isValidImageUri } = useMedia();
+  // SweetAlert for all alerts
+  const sweetAlert = useSweetAlert();
 
   const [displayName, setDisplayName] = useState(currentUser?.displayName || '');
   const [username, setUsername] = useState(currentUser?.handle?.replace('@', '') || '');
@@ -49,7 +68,7 @@ export default function EditCommunityProfileScreen({ navigation, route }: EditCo
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Please allow access to your photo library.');
+        sweetAlert.alert('Permission Required', 'Please allow access to your photo library.', 'warning');
         return;
       }
 
@@ -62,16 +81,31 @@ export default function EditCommunityProfileScreen({ navigation, route }: EditCo
 
       if (!result.canceled && result.assets[0]) {
         setIsUploadingImage(true);
-        await new Promise(resolve => setTimeout(resolve, 800));
-        setProfileImage(result.assets[0].uri);
-        setSelectedAvatar(result.assets[0].uri); // Use image URI as avatar
-        setIsUploadingImage(false);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        
+        try {
+          // Process image: compress and cache to fix file:// issues
+          const uri = result.assets[0].uri;
+          const compressed = await compressImage(uri, 0.8);
+          const cached = await cacheImage(compressed);
+          
+          setProfileImage(cached);
+          setSelectedAvatar(cached);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } catch (err) {
+          console.warn('Image processing failed:', err);
+          // Fallback to raw URI
+          if (isValidImageUri(result.assets[0].uri)) {
+            setProfileImage(result.assets[0].uri);
+            setSelectedAvatar(result.assets[0].uri);
+          }
+        } finally {
+          setIsUploadingImage(false);
+        }
       }
     } catch (error) {
       setIsUploadingImage(false);
       console.error('Image upload error:', error);
-      showErrorModal({ message: 'Failed to upload image. Please try again.' });
+      sweetAlert.error('Upload Failed', 'Failed to upload image. Please try again.');
     }
   };
 
@@ -115,16 +149,15 @@ export default function EditCommunityProfileScreen({ navigation, route }: EditCo
     }
   }, [validateUsername, checkUsernameAvailable, currentUser?.id]);
 
-
   const handleSave = async () => {
     if (!displayName.trim()) {
-      showErrorModal({ message: 'Display name is required' });
+      sweetAlert.error('Missing Name', 'Display name is required');
       return;
     }
 
     const isUsernameValid = await validateUsernameAsync(username);
     if (!isUsernameValid) {
-      showErrorModal({ message: usernameError || 'Invalid username' });
+      sweetAlert.error('Invalid Username', usernameError || 'Please check your username');
       return;
     }
 
@@ -167,19 +200,32 @@ export default function EditCommunityProfileScreen({ navigation, route }: EditCo
       });
 
       setIsSaving(false);
-      showSuccessModal({ message: 'Profile updated successfully!' });
+      sweetAlert.success('Profile Updated!', 'Your community profile has been saved.');
       navigation.goBack();
     } catch (error) {
       setIsSaving(false);
       console.error('Profile update error:', error);
-      showErrorModal({ message: 'Failed to update profile. Please try again.' });
+      sweetAlert.error('Save Failed', 'Failed to update profile. Please try again.');
     }
   };
+
+  // Determine avatar source for SafeAvatar
+  const avatarSource = profileImage || selectedAvatar;
 
   return (
     <View style={[styles.container]}>
       <StatusBar style="dark" />
       <LinearGradient colors={CommunityColors.background.gradient} style={StyleSheet.absoluteFill} />
+
+      {/* Image Processing Spinner */}
+      <CommunitySpinner
+        visible={isUploadingImage}
+        text="Processing image..."
+        size="medium"
+        overlay={true}
+        blur={true}
+        variant="nebula"
+      />
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -196,25 +242,35 @@ export default function EditCommunityProfileScreen({ navigation, route }: EditCo
             disabled={displayName.length === 0 || isSaving}
             onPress={handleSave}
           >
-            <Text style={[styles.saveButtonText, displayName.length > 0 && !isSaving && styles.saveButtonTextActive]}>
-              {isSaving ? 'Saving...' : 'Save'}
-            </Text>
+            {isSaving ? (
+              <InlineSpinner size={16} color="#fff" section="community" variant="liquid" />
+            ) : (
+              <Text style={[styles.saveButtonText, displayName.length > 0 && !isSaving && styles.saveButtonTextActive]}>
+                Save
+              </Text>
+            )}
           </TouchableOpacity>
         </View>
 
         <AutoHideScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-          {/* Profile Image Upload */}
+          {/* Profile Image Upload - with SafeAvatar */}
           <Animated.View entering={FadeInUp}>
             <View style={styles.imageUploadContainer}>
               <TouchableOpacity style={styles.imageUploadButton} onPress={handleImagePick}>
-                {profileImage ? (
-                  <Image source={{ uri: profileImage }} style={styles.profileImage} />
-                ) : (
-                  <Text style={styles.profileImagePlaceholder}>{selectedAvatar}</Text>
-                )}
+                {/* REPLACED: Raw Image/Text → SafeAvatar */}
+                <SafeAvatar
+                  avatar={avatarSource}
+                  size={100}
+                  fallbackIcon="person"
+                  fallbackColor={CommunityColors.primary}
+                  borderWidth={3}
+                  borderColor={CommunityColors.primary + '30'}
+                  showEditBadge={true}
+                  animated={true}
+                />
                 {isUploadingImage && (
                   <View style={styles.uploadingOverlay}>
-                    <ActivityIndicator size="small" color="white" />
+                    <InlineSpinner size={24} color="#fff" section="community" variant="liquid" />
                   </View>
                 )}
                 <View style={styles.cameraIconContainer}>
@@ -282,7 +338,7 @@ export default function EditCommunityProfileScreen({ navigation, route }: EditCo
                     maxLength={30}
                   />
                   {isCheckingUsername && (
-                    <ActivityIndicator size="small" color={CommunityColors.primary} style={{ marginRight: 12 }} />
+                    <InlineSpinner size={16} color={CommunityColors.primary} section="community" variant="liquid" />
                   )}
                 </View>
                 {usernameError ? (
@@ -345,6 +401,8 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 20,
     backgroundColor: CommunityColors.primary + '20',
+    minWidth: 70,
+    alignItems: 'center',
   },
   saveButtonActive: { 
     backgroundColor: CommunityColors.primary,
@@ -361,20 +419,9 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 50,
-    backgroundColor: CommunityColors.background.card,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 3,
-    borderColor: CommunityColors.primary + '30',
     position: 'relative',
-  },
-  profileImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-  },
-  profileImagePlaceholder: {
-    fontSize: 50,
   },
   uploadingOverlay: {
     position: 'absolute',
@@ -386,6 +433,7 @@ const styles = StyleSheet.create({
     borderRadius: 50,
     justifyContent: 'center',
     alignItems: 'center',
+    zIndex: 10,
   },
   cameraIconContainer: {
     position: 'absolute',
@@ -399,6 +447,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 2,
     borderColor: 'white',
+    zIndex: 20,
   },
   imageUploadText: {
     fontSize: 14,
@@ -512,5 +561,3 @@ const styles = StyleSheet.create({
   tipsTitle: { fontSize: 14, fontWeight: '800', color: CommunityColors.secondary, marginBottom: 12 },
   tipText: { fontSize: 13, color: CommunityColors.text.secondary, marginBottom: 6 },
 });
-
-

@@ -1,52 +1,202 @@
-import React, { useCallback, useEffect, useState } from 'react';
+// src/screens/main/SettingsScreen.tsx
+// COMPLETELY REDESIGNED: Modern glassmorphism, proper navigation, full theming integration
+// FEATURES: SafeAvatar/SafeBabyAvatar, useCustomization, useMedia, SweetAlert, collapsible sections
+// FIXED: All navigation routes type-safe, proper haptic feedback, spring animations
+
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
-  ActivityIndicator,
-  useColorScheme,
-  Alert,
-  Dimensions,
-  Image,
   Switch,
-  Modal,
+  Dimensions,
+  ScrollView,
+  Platform,
   StatusBar,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
-  FadeInUp,
-  FadeIn,
-  Layout,
   useSharedValue,
   useAnimatedStyle,
   withSpring,
   withTiming,
   withSequence,
+  interpolate,
+  Extrapolate,
+  FadeInUp,
+  FadeIn,
+  Layout,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
+
 import { useAuth } from '../../context/AuthContext';
 import { useSecurity } from '../../context/SecurityContext';
 import { useBaby } from '../../context/BabyContext';
 import { useUser } from '../../context/UserContext';
 import { useFamily } from '../../context/FamilyContext';
-import { FamilyMember, UserRole } from '../../types/roles';
 import { useActivity } from '../../context/ActivityContext';
+import { useMedia } from '../../context/MediaContext';
 import { useCustomization } from '../../hooks/useCustomization';
+import { useSweetAlert } from '../../components/SweetAlert';
+import { useApp } from '../../context/AppContext';
+
 import { SafeAvatar, SafeBabyAvatar } from '../../components/SafeAvatar';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { RootStackParamList } from '../../types/navigation';
 import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
 
-type SettingsScreenProps = NativeStackScreenProps<RootStackParamList, 'Settings'>;
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../../types/navigation';
+import type { FamilyMember } from '../../types/roles';
+
+type SettingsScreenProps = NativeStackScreenProps<RootStackParamList, 'Main'>;
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
+// ============================================
+// ANIMATED TOUCHABLE — Spring scale on press
+// ============================================
 const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
 
+interface PressableScaleProps {
+  children: React.ReactNode;
+  onPress?: () => void;
+  onLongPress?: () => void;
+  disabled?: boolean;
+  style?: any;
+  activeScale?: number;
+  hapticType?: 'light' | 'medium' | 'heavy';
+}
+
+const PressableScale: React.FC<PressableScaleProps> = React.memo(({
+  children,
+  onPress,
+  onLongPress,
+  disabled = false,
+  style,
+  activeScale = 0.96,
+  hapticType = 'light',
+}) => {
+  const scale = useSharedValue(1);
+  const { triggerHaptic, hapticFeedback } = useCustomization();
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  const handlePressIn = useCallback(() => {
+    scale.value = withTiming(activeScale, { duration: 80 });
+  }, [activeScale, scale]);
+
+  const handlePressOut = useCallback(() => {
+    scale.value = withSpring(1, { damping: 15, stiffness: 400 });
+  }, [scale]);
+
+  const handlePress = useCallback(() => {
+    if (disabled) return;
+    if (hapticFeedback) {
+      triggerHaptic(hapticType).catch(() => {});
+    }
+    onPress?.();
+  }, [disabled, hapticFeedback, triggerHaptic, hapticType, onPress]);
+
+  return (
+    <AnimatedTouchable
+      style={[style, animatedStyle]}
+      onPress={handlePress}
+      onLongPress={onLongPress}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      activeOpacity={disabled ? 1 : 0.8}
+      disabled={disabled}
+    >
+      {children}
+    </AnimatedTouchable>
+  );
+});
+
+// ============================================
+// SECTION HEADER — Collapsible with chevron rotation
+// ============================================
+interface SectionHeaderProps {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  subtitle?: string;
+  color: string;
+  isDark: boolean;
+  isExpanded: boolean;
+  onPress: () => void;
+  badge?: number | string;
+  rightAction?: React.ReactNode;
+}
+
+const SectionHeader: React.FC<SectionHeaderProps> = React.memo(({
+  icon,
+  title,
+  subtitle,
+  color,
+  isDark,
+  isExpanded,
+  onPress,
+  badge,
+  rightAction,
+}) => {
+  const rotation = useSharedValue(isExpanded ? 1 : 0);
+
+  useEffect(() => {
+    rotation.value = withTiming(isExpanded ? 1 : 0, { duration: 250 });
+  }, [isExpanded, rotation]);
+
+  const chevronStyle = useAnimatedStyle(() => ({
+    transform: [{
+      rotate: `${interpolate(rotation.value, [0, 1], [0, 90], Extrapolate.CLAMP)}deg`,
+    }],
+  }));
+
+  return (
+    <PressableScale onPress={onPress} hapticType="light">
+      <View style={[styles.sectionHeader, isDark && styles.sectionHeaderDark]}>
+        <View style={styles.sectionHeaderLeft}>
+          <View style={[styles.sectionIconWrap, { backgroundColor: `${color}18` }]}>
+            <Ionicons name={icon} size={22} color={color} />
+          </View>
+          <View style={styles.sectionHeaderText}>
+            <Text style={[styles.sectionTitle, isDark && styles.textLight]}>
+              {title}
+            </Text>
+            {subtitle && (
+              <Text style={[styles.sectionSubtitle, isDark && styles.textMuted]}>
+                {subtitle}
+              </Text>
+            )}
+          </View>
+        </View>
+        <View style={styles.sectionHeaderRight}>
+          {badge !== undefined && (
+            <View style={[styles.badge, { backgroundColor: color }]}>
+              <Text style={styles.badgeText}>{badge}</Text>
+            </View>
+          )}
+          {rightAction}
+          <Animated.View style={chevronStyle}>
+            <Ionicons
+              name="chevron-forward"
+              size={20}
+              color={isDark ? '#666' : '#999'}
+            />
+          </Animated.View>
+        </View>
+      </View>
+    </PressableScale>
+  );
+});
+
+// ============================================
+// MENU ITEM — Modern glassmorphism row
+// ============================================
 interface MenuItemProps {
   icon: keyof typeof Ionicons.glyphMap;
   title: string;
@@ -61,61 +211,10 @@ interface MenuItemProps {
   disabled?: boolean;
   isDestructive?: boolean;
   badge?: number | string;
+  isLast?: boolean;
 }
 
-interface SectionHeaderProps {
-  icon: keyof typeof Ionicons.glyphMap;
-  title: string;
-  color: string;
-  isDark: boolean;
-  isExpanded?: boolean;
-  onPress?: () => void;
-  action?: React.ReactNode;
-}
-
-const SectionHeader: React.FC<SectionHeaderProps> = ({
-  icon,
-  title,
-  color,
-  isDark,
-  isExpanded,
-  onPress,
-  action,
-}) => (
-  <TouchableOpacity
-    style={styles.sectionHeader}
-    onPress={onPress}
-    activeOpacity={onPress ? 0.7 : 1}
-  >
-    <View style={styles.sectionTitleRow}>
-      <View style={[styles.sectionIcon, { backgroundColor: `${color}20` }]}>
-        <Ionicons name={icon} size={20} color={color} />
-      </View>
-      <Text style={[styles.sectionTitle, isDark && styles.sectionTitleDark]}>
-        {title}
-      </Text>
-    </View>
-    <View style={styles.sectionActions}>
-      {action}
-      {onPress && (
-        <Animated.View
-          style={{
-            transform: [{ rotate: isExpanded ? '90deg' : '0deg' }],
-            marginLeft: 8,
-          }}
-        >
-          <Ionicons
-            name="chevron-forward"
-            size={20}
-            color={isDark ? '#666' : '#999'}
-          />
-        </Animated.View>
-      )}
-    </View>
-  </TouchableOpacity>
-);
-
-const MenuItem: React.FC<MenuItemProps> = ({
+const MenuItem: React.FC<MenuItemProps> = React.memo(({
   icon,
   title,
   subtitle,
@@ -129,232 +228,317 @@ const MenuItem: React.FC<MenuItemProps> = ({
   disabled = false,
   isDestructive = false,
   badge,
+  isLast = false,
 }) => {
-  const scaleAnim = useSharedValue(1);
+  const { hapticFeedback, triggerHaptic } = useCustomization();
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scaleAnim.value }],
-  }));
-
-  const handlePress = () => {
+  const handlePress = useCallback(() => {
     if (disabled) return;
+    if (onToggle) {
+      onToggle(!isEnabled);
+    } else if (onPress) {
+      if (hapticFeedback) triggerHaptic('light').catch(() => {});
+      onPress();
+    }
+  }, [disabled, onToggle, onPress, isEnabled, hapticFeedback, triggerHaptic]);
 
-    scaleAnim.value = withSequence(
-      withTiming(0.96, { duration: 50 }),
-      withTiming(1, { duration: 100 })
-    );
-
-    setTimeout(() => {
-      if (onPress) onPress();
-      else if (onToggle) onToggle(!isEnabled);
-    }, 150);
-  };
+  const iconColor = isDestructive ? '#ef4444' : disabled ? '#999' : color;
+  const titleColor = isDestructive ? '#ef4444' : disabled ? '#999' : isDark ? '#fff' : '#1a1a1a';
+  const subtitleColor = isDark ? '#888' : '#999';
 
   return (
-    <AnimatedTouchable
-      style={[styles.menuItem, animatedStyle, disabled && styles.menuItemDisabled]}
+    <PressableScale
       onPress={handlePress}
-      activeOpacity={disabled ? 1 : 0.7}
+      disabled={disabled}
+      activeScale={0.98}
+      style={!isLast ? styles.menuItemBorder : undefined}
     >
-      <View
-        style={[
-          styles.menuIcon,
-          {
-            backgroundColor: isDestructive
-              ? 'rgba(255,71,87,0.12)'
-              : `${color}15`,
-          },
-        ]}
-      >
-        <Ionicons
-          name={icon}
-          size={22}
-          color={
-            isDestructive
-              ? '#ff4757'
-              : disabled
-                ? '#999'
-                : color
-          }
-        />
-      </View>
+      <View style={[styles.menuItem, disabled && styles.menuItemDisabled]}>
+        <View style={[styles.menuIconWrap, {
+          backgroundColor: isDestructive ? 'rgba(239,68,68,0.12)' : `${color}12`,
+        }]}>
+          <Ionicons name={icon} size={22} color={iconColor} />
+        </View>
 
-      <View style={styles.menuTextContainer}>
-        <View style={styles.menuTitleRow}>
-          <Text
-            style={[
-              styles.menuTitle,
-              isDark && styles.menuTitleDark,
-              disabled && styles.menuTextDisabled,
-              isDestructive && styles.destructiveText,
-            ]}
-          >
-            {title}
-          </Text>
-          {badge !== undefined && (
-            <View style={[styles.badge, { backgroundColor: color }]}>
-              <Text style={styles.badgeText}>{badge}</Text>
-            </View>
+        <View style={styles.menuTextContainer}>
+          <View style={styles.menuTitleRow}>
+            <Text style={[styles.menuTitle, { color: titleColor }]} numberOfLines={1}>
+              {title}
+            </Text>
+            {badge !== undefined && (
+              <View style={[styles.badgeSmall, { backgroundColor: color }]}>
+                <Text style={styles.badgeTextSmall}>{badge}</Text>
+              </View>
+            )}
+          </View>
+          {(subtitle || value) && (
+            <Text style={[styles.menuSubtitle, { color: subtitleColor }]} numberOfLines={1}>
+              {value || subtitle}
+            </Text>
           )}
         </View>
-        {(subtitle || value) && (
-          <Text
-            style={[
-              styles.menuSubtitle,
-              isDark && styles.menuSubtitleDark,
-              disabled && styles.menuTextDisabled,
-            ]}
-          >
-            {value || subtitle}
-          </Text>
-        )}
+
+        <View style={styles.menuRight}>
+          {onToggle ? (
+            <Switch
+              value={isEnabled}
+              onValueChange={disabled ? undefined : onToggle}
+              trackColor={{
+                false: isDark ? '#333' : '#d1d5db',
+                true: `${color}50`,
+              }}
+              thumbColor={isEnabled ? color : isDark ? '#555' : '#f4f3f4'}
+              disabled={disabled}
+              style={styles.switch}
+            />
+          ) : showArrow ? (
+            <Ionicons
+              name="chevron-forward"
+              size={18}
+              color={disabled ? '#555' : isDark ? '#666' : '#bbb'}
+            />
+          ) : value ? (
+            <Text style={[styles.menuValue, isDark && styles.textMuted]}>{value}</Text>
+          ) : null}
+        </View>
       </View>
-
-      {onToggle ? (
-        <Switch
-          value={isEnabled}
-          onValueChange={disabled ? undefined : onToggle}
-          trackColor={{
-            false: isDark ? '#444' : '#d1d5db',
-            true: `${color}50`,
-          }}
-          thumbColor={isEnabled ? color : isDark ? '#666' : '#f4f3f4'}
-          disabled={disabled}
-        />
-      ) : showArrow ? (
-        <Ionicons
-          name="chevron-forward"
-          size={20}
-          color={disabled ? '#666' : isDark ? '#666' : '#999'}
-        />
-      ) : null}
-    </AnimatedTouchable>
+    </PressableScale>
   );
-};
+});
 
-const StatCard: React.FC<{
+// ============================================
+// STAT CARD — Glassmorphism metric card
+// ============================================
+interface StatCardProps {
   icon: keyof typeof Ionicons.glyphMap;
   value: string | number;
   label: string;
   color: string;
   isDark: boolean;
-}> = ({ icon, value, label, color, isDark }) => (
-  <View style={[styles.statCard, isDark && styles.statCardDark]}>
-    <View style={[styles.statIcon, { backgroundColor: `${color}15` }]}>
-      <Ionicons name={icon} size={20} color={color} />
-    </View>
-    <Text style={[styles.statValue, isDark && styles.statValueDark]}>{value}</Text>
-    <Text style={[styles.statLabel, isDark && styles.statLabelDark]}>{label}</Text>
-  </View>
-);
+  onPress?: () => void;
+}
 
-const BabySelectionModal: React.FC<{
+const StatCard: React.FC<StatCardProps> = React.memo(({ icon, value, label, color, isDark, onPress }) => (
+  <PressableScale onPress={onPress} activeScale={0.95} style={{ flex: 1 }}>
+    <BlurView
+      intensity={isDark ? 40 : 80}
+      style={[styles.statCard, isDark && styles.statCardDark]}
+      tint={isDark ? 'dark' : 'light'}
+    >
+      <View style={[styles.statIconWrap, { backgroundColor: `${color}15` }]}>
+        <Ionicons name={icon} size={20} color={color} />
+      </View>
+      <Text style={[styles.statValue, isDark && styles.textLight]}>{value}</Text>
+      <Text style={[styles.statLabel, isDark && styles.textMuted]}>{label}</Text>
+    </BlurView>
+  </PressableScale>
+));
+
+// ============================================
+// QUICK ACTION BUTTON — Circular icon button
+// ============================================
+interface QuickActionProps {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  color: string;
+  isDark: boolean;
+  onPress: () => void;
+}
+
+const QuickAction: React.FC<QuickActionProps> = React.memo(({ icon, label, color, isDark, onPress }) => (
+  <PressableScale onPress={onPress} activeScale={0.9} style={styles.quickAction}>
+    <View style={[styles.quickActionIcon, { backgroundColor: `${color}15` }]}>
+      <Ionicons name={icon} size={22} color={color} />
+    </View>
+    <Text style={[styles.quickActionLabel, isDark && styles.textMuted]}>{label}</Text>
+  </PressableScale>
+));
+
+// ============================================
+// FAMILY MEMBER AVATAR — Horizontal scroll item
+// ============================================
+interface FamilyMemberProps {
+  avatar?: string | number;
+  name: string;
+  label: string;
+  color: string;
+  isDark: boolean;
+  onPress: () => void;
+  badge?: React.ReactNode;
+  isBaby?: boolean;
+  gender?: 'boy' | 'girl' | 'other';
+}
+
+const FamilyMemberItem: React.FC<FamilyMemberProps> = React.memo(({
+  avatar,
+  name,
+  label,
+  color,
+  isDark,
+  onPress,
+  badge,
+  isBaby = false,
+  gender = 'other',
+}) => (
+  <PressableScale onPress={onPress} activeScale={0.92} style={styles.familyMember}>
+    <View style={[styles.familyAvatarWrap, { borderColor: `${color}40` }]}>
+      {isBaby ? (
+        <SafeBabyAvatar
+          avatar={avatar}
+          gender={gender}
+          size={48}
+          showBadge={false}
+        />
+      ) : (
+        <SafeAvatar
+          avatar={avatar}
+          size={48}
+          fallbackIcon="person"
+          fallbackColor={color}
+          borderWidth={0}
+        />
+      )}
+      {badge}
+    </View>
+    <Text style={[styles.familyName, isDark && styles.textLight]} numberOfLines={1}>
+      {name}
+    </Text>
+    <Text style={[styles.familyLabel, isDark && styles.textMuted]}>{label}</Text>
+  </PressableScale>
+));
+
+// ============================================
+// BABY SELECTION MODAL — Modern bottom sheet style
+// ============================================
+interface BabySelectionModalProps {
   visible: boolean;
   onClose: () => void;
   babies: any[];
   currentBabyId: string | null;
   onSelectBaby: (baby: any) => void;
   isDark: boolean;
-}> = ({ visible, onClose, babies, currentBabyId, onSelectBaby, isDark }) => (
-  <Modal
-    animationType="fade"
-    transparent={true}
-    visible={visible}
-    onRequestClose={onClose}
-  >
-    <View style={styles.modalOverlay}>
-      <BlurView
-        intensity={isDark ? 70 : 90}
-        style={styles.modalContainer}
-        tint={isDark ? 'dark' : 'light'}
+  primaryColor: string;
+}
+
+const BabySelectionModal: React.FC<BabySelectionModalProps> = React.memo(({
+  visible,
+  onClose,
+  babies,
+  currentBabyId,
+  onSelectBaby,
+  isDark,
+  primaryColor,
+}) => {
+  const translateY = useSharedValue(SCREEN_HEIGHT);
+  const backdropOpacity = useSharedValue(0);
+
+  useEffect(() => {
+    if (visible) {
+      translateY.value = withSpring(0, { damping: 25, stiffness: 300 });
+      backdropOpacity.value = withTiming(1, { duration: 200 });
+    } else {
+      translateY.value = withSpring(SCREEN_HEIGHT, { damping: 25, stiffness: 300 });
+      backdropOpacity.value = withTiming(0, { duration: 200 });
+    }
+  }, [visible, translateY, backdropOpacity]);
+
+  const sheetStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+  }));
+
+  const backdropStyle = useAnimatedStyle(() => ({
+    opacity: backdropOpacity.value,
+  }));
+
+  if (!visible) return null;
+
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+      <Animated.View
+        style={[StyleSheet.absoluteFill, styles.modalBackdrop, backdropStyle]}
+        pointerEvents={visible ? 'auto' : 'none'}
       >
-        <View style={styles.modalHeader}>
-          <Text style={[styles.modalTitle, isDark && styles.modalTitleDark]}>
-            Select Baby Profile
-          </Text>
-          <TouchableOpacity onPress={onClose} style={styles.modalCloseButton}>
-            <Ionicons
-              name="close"
-              size={24}
-              color={isDark ? '#fff' : '#1a1a1a'}
-            />
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
+      </Animated.View>
 
-        <AutoHideScrollView
-          style={styles.modalContent}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.modalContentContainer}
+      <Animated.View
+        style={[styles.modalSheet, sheetStyle]}
+        pointerEvents={visible ? 'auto' : 'none'}
+      >
+        <BlurView
+          intensity={isDark ? 60 : 90}
+          style={styles.modalSheetBlur}
+          tint={isDark ? 'dark' : 'light'}
         >
-          {babies.map((baby) => {
-            const isActive = baby.id === currentBabyId;
-            return (
-              <TouchableOpacity
-                key={baby.id}
-                style={[
-                  styles.babyOption,
-                  isDark && styles.babyOptionDark,
-                  isActive && styles.babyOptionActive,
-                  isActive && isDark && styles.babyOptionActiveDark,
-                ]}
-                onPress={() => onSelectBaby(baby)}
-              >
-                <View style={styles.babyOptionEmojiContainer}>
-                  <SafeBabyAvatar
-                    avatar={baby.avatar}
-                    gender={baby.gender}
-                    size={50}
-                  />
-                  {isActive && (
-                    <View style={styles.activeIndicator}>
-                      <Ionicons
-                        name="checkmark-circle"
-                        size={20}
-                        color="#43e97b"
-                      />
-                    </View>
-                  )}
-                </View>
-                <View style={styles.babyOptionInfo}>
-                  <Text
-                    style={[
-                      styles.babyOptionName,
-                      isDark && styles.babyOptionNameDark,
-                      isActive && styles.babyOptionNameActive,
-                    ]}
-                  >
-                    {baby.name}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.babyOptionAge,
-                      isDark && styles.babyOptionAgeDark,
-                    ]}
-                  >
-                    {baby.age || 'Age unknown'} • {baby.gender || 'Unknown'}
-                  </Text>
-                </View>
-                <Ionicons
-                  name={isActive ? 'checkmark' : 'chevron-forward'}
-                  size={20}
-                  color={
-                    isActive
-                      ? '#43e97b'
-                      : isDark
-                        ? '#666'
-                        : '#999'
-                  }
-                />
-              </TouchableOpacity>
-            );
-          })}
-        </AutoHideScrollView>
-      </BlurView>
-    </View>
-  </Modal>
-);
+          <View style={styles.modalHandle} />
+          <View style={styles.modalSheetHeader}>
+            <Text style={[styles.modalSheetTitle, isDark && styles.textLight]}>
+              Select Baby Profile
+            </Text>
+            <PressableScale onPress={onClose} hapticType="light">
+              <View style={[styles.modalCloseBtn, isDark && styles.modalCloseBtnDark]}>
+                <Ionicons name="close" size={22} color={isDark ? '#fff' : '#1a1a1a'} />
+              </View>
+            </PressableScale>
+          </View>
 
-const ProfileCard: React.FC<{
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.modalSheetContent}
+          >
+            {babies.map((baby) => {
+              const isActive = baby.id === currentBabyId;
+              return (
+                <PressableScale
+                  key={baby.id}
+                  onPress={() => onSelectBaby(baby)}
+                  activeScale={0.98}
+                >
+                  <View style={[
+                    styles.babyOption,
+                    isDark && styles.babyOptionDark,
+                    isActive && [styles.babyOptionActive, { borderColor: primaryColor }],
+                    isActive && isDark && styles.babyOptionActiveDark,
+                  ]}>
+                    <SafeBabyAvatar
+                      avatar={baby.avatar}
+                      gender={baby.gender}
+                      size={52}
+                    />
+                    <View style={styles.babyOptionInfo}>
+                      <Text style={[
+                        styles.babyOptionName,
+                        isDark && styles.textLight,
+                        isActive && { color: primaryColor },
+                      ]}>
+                        {baby.name}
+                      </Text>
+                      <Text style={[styles.babyOptionMeta, isDark && styles.textMuted]}>
+                        {baby.age || 'Age unknown'} · {baby.gender || 'Unknown'}
+                      </Text>
+                    </View>
+                    {isActive ? (
+                      <View style={[styles.activeCheck, { backgroundColor: primaryColor }]}>
+                        <Ionicons name="checkmark" size={16} color="#fff" />
+                      </View>
+                    ) : (
+                      <Ionicons name="chevron-forward" size={18} color={isDark ? '#666' : '#ccc'} />
+                    )}
+                  </View>
+                </PressableScale>
+              );
+            })}
+          </ScrollView>
+        </BlurView>
+      </Animated.View>
+    </View>
+  );
+});
+
+// ============================================
+// PROFILE HEADER CARD — Glassmorphism hero
+// ============================================
+interface ProfileHeaderProps {
   navigation: any;
   isDark: boolean;
   userProfile: any;
@@ -367,7 +551,10 @@ const ProfileCard: React.FC<{
   stats: { entries: number; streak: number; milestones: number };
   primaryColor: string;
   secondaryColor: string;
-}> = ({
+  accentColor: string;
+}
+
+const ProfileHeader: React.FC<ProfileHeaderProps> = React.memo(({
   navigation,
   isDark,
   userProfile,
@@ -380,33 +567,35 @@ const ProfileCard: React.FC<{
   stats,
   primaryColor,
   secondaryColor,
+  accentColor,
 }) => {
   const safeBabies = babies || [];
   const hasMultipleBabies = safeBabies.length > 1;
+  const { triggerHaptic, hapticFeedback } = useCustomization();
 
-  const handleBabyPress = () => {
+  const handleBabyPress = useCallback(() => {
+    if (hapticFeedback) triggerHaptic('light').catch(() => {});
     if (safeBabies.length === 1 && currentBaby) {
-      navigation.navigate('EditProfile', {
-        mode: 'baby',
-        babyId: currentBaby.id,
-      });
+      navigation.navigate('EditProfile', { mode: 'baby', babyId: currentBaby.id });
     } else if (safeBabies.length > 1) {
       onShowBabyModal();
     } else {
       navigation.navigate('CreateBabyProfile');
     }
-  };
+  }, [safeBabies.length, currentBaby, hapticFeedback, triggerHaptic, navigation, onShowBabyModal]);
 
-  const handleCurrentUserPress = () => {
+  const handleCurrentUserPress = useCallback(() => {
+    if (hapticFeedback) triggerHaptic('light').catch(() => {});
     const guardianId = userProfile?.id || userProfile?.uid || 'parent1';
     navigation.navigate('EditGuardian', {
-      guardianId: guardianId,
+      guardianId,
       mode: 'parent2',
       fromChat: false,
     });
-  };
+  }, [userProfile, hapticFeedback, triggerHaptic, navigation]);
 
-  const handleParent2Press = () => {
+  const handleParent2Press = useCallback(() => {
+    if (hapticFeedback) triggerHaptic('light').catch(() => {});
     if (parent2Profile) {
       navigation.navigate('EditGuardian', {
         guardianId: parent2Profile.id,
@@ -416,18 +605,19 @@ const ProfileCard: React.FC<{
     } else {
       navigation.navigate('AddParent');
     }
-  };
+  }, [parent2Profile, hapticFeedback, triggerHaptic, navigation]);
 
-  const handleGuardianPress = (guardian: FamilyMember) => {
+  const handleGuardianPress = useCallback((guardian: FamilyMember) => {
+    if (hapticFeedback) triggerHaptic('light').catch(() => {});
     navigation.navigate('EditGuardian', {
       guardianId: guardian.id,
       mode: 'guardian',
       fromChat: false,
     });
-  };
+  }, [hapticFeedback, triggerHaptic, navigation]);
 
-  // ─── Navigate to Community Profile ───
-  const handleCommunityProfile = () => {
+  const handleCommunityProfile = useCallback(() => {
+    if (hapticFeedback) triggerHaptic('medium').catch(() => {});
     navigation.navigate('Main', {
       screen: 'Connect',
       params: {
@@ -435,81 +625,71 @@ const ProfileCard: React.FC<{
         params: { userId: userProfile?.id },
       },
     });
-  };
+  }, [userProfile, hapticFeedback, triggerHaptic, navigation]);
 
   return (
     <BlurView
-      intensity={isDark ? 40 : 90}
+      intensity={isDark ? 35 : 85}
       style={styles.profileCard}
       tint={isDark ? 'dark' : 'light'}
     >
-      <View style={styles.profileHeader}>
-        <SafeAvatar
-          avatar={userProfile?.avatar}
-          size={72}
-          fallbackIcon="person"
-          fallbackColor={primaryColor}
-          showEditBadge={true}
-          onPress={handleCurrentUserPress}
-        />
+      {/* User Info Row */}
+      <View style={styles.profileTopRow}>
+        <PressableScale onPress={handleCurrentUserPress} activeScale={0.92}>
+          <SafeAvatar
+            avatar={userProfile?.avatar}
+            size={72}
+            fallbackIcon="person"
+            fallbackColor={primaryColor}
+            showEditBadge={true}
+            borderWidth={3}
+            borderColor={isDark ? 'rgba(255,255,255,0.1)' : '#fff'}
+          />
+        </PressableScale>
 
         <View style={styles.profileInfo}>
-          <Text
-            style={[styles.profileName, isDark && styles.profileNameDark]}
-          >
+          <Text style={[styles.profileName, isDark && styles.textLight]} numberOfLines={1}>
             {userProfile?.fullName || 'Parent'}
           </Text>
-          <Text
-            style={[styles.profileEmail, isDark && styles.profileEmailDark]}
-          >
+          <Text style={[styles.profileEmail, isDark && styles.textMuted]} numberOfLines={1}>
             {userProfile?.email || 'parent@littleloom.app'}
           </Text>
           {currentBaby && (
-            <View style={[styles.babyTag, { backgroundColor: `${secondaryColor}20` }]}>
-              <Ionicons
-                name="heart"
-                size={12}
-                color={secondaryColor}
-              />
+            <View style={[styles.babyTag, { backgroundColor: `${secondaryColor}18` }]}>
+              <Ionicons name="heart" size={12} color={secondaryColor} />
               <Text style={[styles.babyTagText, { color: secondaryColor }]}>
-                {currentBaby.name} • {currentBaby.age}
+                {currentBaby.name} · {currentBaby.age}
               </Text>
             </View>
           )}
         </View>
 
-        <TouchableOpacity
-          style={styles.settingsButton}
-          onPress={handleCurrentUserPress}
-        >
-          <Ionicons
-            name="settings-outline"
-            size={24}
-            color={isDark ? '#fff' : '#1a1a1a'}
-          />
-        </TouchableOpacity>
+        <PressableScale onPress={handleCurrentUserPress} activeScale={0.85}>
+          <View style={[styles.settingsBtn, isDark && styles.settingsBtnDark]}>
+            <Ionicons name="settings-outline" size={22} color={isDark ? '#fff' : '#1a1a1a'} />
+          </View>
+        </PressableScale>
       </View>
 
-      {/* Community Profile Quick Link */}
-      <TouchableOpacity
-        style={[styles.communityLink, { backgroundColor: `${primaryColor}12` }]}
-        onPress={handleCommunityProfile}
-        activeOpacity={0.7}
-      >
-        <View style={[styles.communityIcon, { backgroundColor: `${primaryColor}20` }]}>
-          <Ionicons name="globe-outline" size={18} color={primaryColor} />
+      {/* Community Profile Link */}
+      <PressableScale onPress={handleCommunityProfile} activeScale={0.98}>
+        <View style={[styles.communityLink, { backgroundColor: `${primaryColor}10` }]}>
+          <View style={[styles.communityIcon, { backgroundColor: `${primaryColor}18` }]}>
+            <Ionicons name="globe-outline" size={18} color={primaryColor} />
+          </View>
+          <View style={styles.communityLinkText}>
+            <Text style={[styles.communityLinkTitle, isDark && styles.textLight]}>
+              Community Profile
+            </Text>
+            <Text style={[styles.communityLinkSub, isDark && styles.textMuted]}>
+              Edit your public profile & bio
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={isDark ? '#666' : '#bbb'} />
         </View>
-        <View style={styles.communityLinkText}>
-          <Text style={[styles.communityLinkTitle, isDark && styles.communityLinkTitleDark]}>
-            Community Profile
-          </Text>
-          <Text style={[styles.communityLinkSub, isDark && styles.communityLinkSubDark]}>
-            Edit your public profile & bio
-          </Text>
-        </View>
-        <Ionicons name="chevron-forward" size={18} color={isDark ? '#666' : '#999'} />
-      </TouchableOpacity>
+      </PressableScale>
 
+      {/* Stats Row */}
       <View style={styles.statsRow}>
         <StatCard
           icon="time-outline"
@@ -517,304 +697,169 @@ const ProfileCard: React.FC<{
           label="Entries"
           color="#4facfe"
           isDark={isDark}
+          onPress={() => navigation.navigate('Main', { screen: 'Track' })}
         />
         <StatCard
           icon="flame-outline"
           value={stats.streak}
           label="Day Streak"
-          color="#fee140"
+          color="#f59e0b"
           isDark={isDark}
+          onPress={() => navigation.navigate('Achievements')}
         />
         <StatCard
           icon="trophy-outline"
           value={stats.milestones}
           label="Milestones"
-          color="#9b59b6"
+          color={accentColor}
           isDark={isDark}
+          onPress={() => navigation.navigate('Achievements', { highlightAchievement: 'milestones' })}
         />
       </View>
 
+      {/* Family Members Scroll */}
       <View style={styles.familySection}>
-        <Text
-          style={[
-            styles.familySectionTitle,
-            isDark && styles.familySectionTitleDark,
-          ]}
-        >
-          Family Members
+        <Text style={[styles.familySectionTitle, isDark && styles.textMuted]}>
+          FAMILY MEMBERS
         </Text>
-        <AutoHideScrollView
+        <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.familyMembersRow}
+          contentContainerStyle={styles.familyScroll}
         >
-          <TouchableOpacity
-            style={styles.familyMemberItem}
+          <FamilyMemberItem
+            avatar={userProfile?.avatar}
+            name="You"
+            label="Parent"
+            color={primaryColor}
+            isDark={isDark}
             onPress={handleCurrentUserPress}
-          >
-            <View
-              style={[
-                styles.familyMemberIcon,
-                { backgroundColor: `${primaryColor}20` },
-              ]}
-            >
-              <SafeAvatar
-                avatar={userProfile?.avatar}
-                size={40}
-                fallbackIcon="person"
-                fallbackColor={primaryColor}
-                borderWidth={0}
-              />
-              <View style={styles.onlineIndicator} />
-            </View>
-            <Text
-              style={[
-                styles.familyMemberLabel,
-                isDark && styles.familyMemberLabelDark,
-              ]}
-            >
-              You
-            </Text>
-          </TouchableOpacity>
+            badge={
+              <View style={[styles.onlineIndicator, { backgroundColor: accentColor, borderColor: isDark ? '#1a1a2e' : '#fff' }]} />
+            }
+          />
 
-          <TouchableOpacity
-            style={styles.familyMemberItem}
+          <FamilyMemberItem
+            avatar={currentBaby?.avatar}
+            name={currentBaby?.name || 'Baby'}
+            label="Baby"
+            color={secondaryColor}
+            isDark={isDark}
             onPress={handleBabyPress}
-          >
-            <View
-              style={[
-                styles.familyMemberIcon,
-                { backgroundColor: `${secondaryColor}20` },
-              ]}
-            >
-              <SafeBabyAvatar
-                avatar={currentBaby?.avatar}
-                gender={currentBaby?.gender}
-                size={40}
-              />
-              {hasMultipleBabies && (
-                <View style={styles.babyIndicator}>
-                  <Text style={styles.babyIndicatorText}>
-                    {safeBabies.length}
-                  </Text>
-                </View>
-              )}
-            </View>
-            <Text
-              style={[
-                styles.familyMemberLabel,
-                isDark && styles.familyMemberLabelDark,
-              ]}
-              numberOfLines={1}
-            >
-              {currentBaby?.name || 'Baby'}
-            </Text>
-          </TouchableOpacity>
+            isBaby={true}
+            gender={currentBaby?.gender}
+            badge={hasMultipleBabies ? (
+              <View style={[styles.babyCountBadge, { backgroundColor: primaryColor }]}>
+                <Text style={styles.babyCountText}>{safeBabies.length}</Text>
+              </View>
+            ) : undefined}
+          />
 
           {parent2Profile && (
-            <TouchableOpacity
-              style={styles.familyMemberItem}
+            <FamilyMemberItem
+              avatar={parent2Profile?.avatar}
+              name={parent2Profile?.fullName || 'Co-Parent'}
+              label="Co-Parent"
+              color="#11998e"
+              isDark={isDark}
               onPress={handleParent2Press}
-            >
-              <View
-                style={[
-                  styles.familyMemberIcon,
-                  { backgroundColor: `#11998e20` },
-                ]}
-              >
-                <SafeAvatar
-                  avatar={parent2Profile?.avatar}
-                  size={40}
-                  fallbackIcon="people"
-                  fallbackColor="#11998e"
-                  borderWidth={0}
-                />
-              </View>
-              <Text
-                style={[
-                  styles.familyMemberLabel,
-                  isDark && styles.familyMemberLabelDark,
-                ]}
-              >
-                Co-Parent
-              </Text>
-            </TouchableOpacity>
+            />
           )}
 
           {guardians?.map((guardian, index) => (
-            <TouchableOpacity
+            <FamilyMemberItem
               key={guardian.id || index}
-              style={styles.familyMemberItem}
+              avatar={guardian?.avatar}
+              name={guardian.fullName || 'Guardian'}
+              label="Guardian"
+              color="#9b59b6"
+              isDark={isDark}
               onPress={() => handleGuardianPress(guardian)}
-            >
-              <View
-                style={[
-                  styles.familyMemberIcon,
-                  { backgroundColor: `#9b59b620` },
-                ]}
-              >
-                <SafeAvatar
-                  avatar={guardian?.avatar}
-                  size={40}
-                  fallbackIcon="shield-checkmark"
-                  fallbackColor="#9b59b6"
-                  borderWidth={0}
-                />
-              </View>
-              <Text
-                style={[
-                  styles.familyMemberLabel,
-                  isDark && styles.familyMemberLabelDark,
-                ]}
-                numberOfLines={1}
-              >
-                {guardian.fullName || 'Guardian'}
-              </Text>
-            </TouchableOpacity>
+            />
           ))}
 
-          <TouchableOpacity
-            style={styles.familyMemberItem}
-            onPress={() => navigation.navigate('FamilySharing')}
-          >
-            <View
-              style={[
-                styles.familyMemberIcon,
-                styles.addMemberIcon,
-                isDark && styles.addMemberIconDark,
-              ]}
-            >
-              <Ionicons
-                name="add"
-                size={28}
-                color={isDark ? '#fff' : primaryColor}
-              />
-            </View>
-            <Text
-              style={[
-                styles.familyMemberLabel,
-                isDark && styles.familyMemberLabelDark,
-              ]}
-            >
-              Add
-            </Text>
-          </TouchableOpacity>
-        </AutoHideScrollView>
-      </View>
-
-      <View style={styles.quickActionsRow}>
-        <TouchableOpacity
-          style={styles.quickActionBtn}
-          onPress={handleCurrentUserPress}
-        >
-          <View
-            style={[
-              styles.quickActionIcon,
-              { backgroundColor: `${primaryColor}15` },
-            ]}
-          >
-            <Ionicons
-              name="person-outline"
-              size={20}
-              color={primaryColor}
-            />
-          </View>
-          <Text style={styles.quickActionLabel}>Profile</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.quickActionBtn}
-          onPress={handleBabyPress}
-        >
-          <View
-            style={[
-              styles.quickActionIcon,
-              { backgroundColor: `${secondaryColor}15` },
-            ]}
-          >
-            <Ionicons
-              name="heart-outline"
-              size={20}
-              color={secondaryColor}
-            />
-          </View>
-          <Text style={styles.quickActionLabel}>Baby</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.quickActionBtn}
-          onPress={() => navigation.navigate('FamilySharing')}
-        >
-          <View
-            style={[
-              styles.quickActionIcon,
-              { backgroundColor: `#11998e15` },
-            ]}
-          >
-            <Ionicons
-              name="people-outline"
-              size={20}
-              color="#11998e"
-            />
-          </View>
-          <Text style={styles.quickActionLabel}>Family</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.quickActionBtn}
-          onPress={() => navigation.navigate('Reminders')}
-        >
-          <View
-            style={[
-              styles.quickActionIcon,
-              { backgroundColor: `#fee14015` },
-            ]}
-          >
-            <Ionicons
-              name="notifications-outline"
-              size={20}
-              color="#fee140"
-            />
-          </View>
-          <Text style={styles.quickActionLabel}>Alerts</Text>
-        </TouchableOpacity>
-      </View>
-
-      {hasMultipleBabies && (
-        <TouchableOpacity
-          style={styles.switchBabyRow}
-          onPress={() => navigation.navigate('SwitchBaby')}
-        >
-          <View style={styles.switchBabyIcon}>
-            <Ionicons
-              name="swap-horizontal"
-              size={18}
-              color={primaryColor}
-            />
-          </View>
-          <Text style={styles.switchBabyText}>Switch Active Baby</Text>
-          <View style={[styles.switchBabyBadge, { backgroundColor: primaryColor }]}>
-            <Text style={styles.switchBabyBadgeText}>{safeBabies.length}</Text>
-          </View>
-          <Ionicons
-            name="chevron-forward"
-            size={16}
+          <FamilyMemberItem
+            avatar={undefined}
+            name="Add"
+            label="Member"
             color={primaryColor}
+            isDark={isDark}
+            onPress={() => navigation.navigate('FamilySharing')}
+            badge={
+              <View style={[styles.addBadge, isDark && styles.addBadgeDark]}>
+                <Ionicons name="add" size={18} color={primaryColor} />
+              </View>
+            }
           />
-        </TouchableOpacity>
+        </ScrollView>
+      </View>
+
+      {/* Quick Actions */}
+      <View style={styles.quickActionsRow}>
+        <QuickAction
+          icon="person-outline"
+          label="Profile"
+          color={primaryColor}
+          isDark={isDark}
+          onPress={handleCurrentUserPress}
+        />
+        <QuickAction
+          icon="heart-outline"
+          label="Baby"
+          color={secondaryColor}
+          isDark={isDark}
+          onPress={handleBabyPress}
+        />
+        <QuickAction
+          icon="people-outline"
+          label="Family"
+          color="#11998e"
+          isDark={isDark}
+          onPress={() => navigation.navigate('FamilySharing')}
+        />
+        <QuickAction
+          icon="notifications-outline"
+          label="Alerts"
+          color="#f59e0b"
+          isDark={isDark}
+          onPress={() => navigation.navigate('Reminders')}
+        />
+      </View>
+
+      {/* Switch Baby Row */}
+      {hasMultipleBabies && (
+        <PressableScale
+          onPress={() => navigation.navigate('SwitchBaby')}
+          activeScale={0.98}
+        >
+          <View style={styles.switchBabyRow}>
+            <View style={[styles.switchBabyIcon, { backgroundColor: `${primaryColor}12` }]}>
+              <Ionicons name="swap-horizontal" size={18} color={primaryColor} />
+            </View>
+            <Text style={[styles.switchBabyText, { color: primaryColor }]}>
+              Switch Active Baby
+            </Text>
+            <View style={[styles.switchBabyBadge, { backgroundColor: primaryColor }]}>
+              <Text style={styles.switchBabyBadgeText}>{safeBabies.length}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={primaryColor} />
+          </View>
+        </PressableScale>
       )}
     </BlurView>
   );
-};
+});
 
+// ============================================
+// MAIN SETTINGS SCREEN
+// ============================================
 export default function SettingsScreen({ navigation }: SettingsScreenProps) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
-    new Set(['security', 'preferences'])
+    new Set(['security', 'preferences', 'family'])
   );
   const [showBabyModal, setShowBabyModal] = useState(false);
 
   const { signOut, userProfile, isLoading: authLoading } = useAuth();
-
   const {
     babies,
     currentBaby,
@@ -823,7 +868,6 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
     hasSkippedBaby,
     getBabyStats,
   } = useBaby();
-
   const {
     settings: securitySettings,
     toggleBiometric,
@@ -835,18 +879,26 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
     updateAutoLockTimeout,
     getAvailableAuthMethods,
   } = useSecurity();
-
   const { profile: userContextProfile } = useUser();
   const { guardians, parent2: parent2Profile } = useFamily();
   const { entries } = useActivity();
+  const { pickImage } = useMedia();
+  const sweetAlert = useSweetAlert();
+  const { isNavVisible, showNav } = useApp();
 
   // ─── Theme Integration ───
-  const { themeColors, darkMode, reduceMotion } = useCustomization();
-  const insets = useSafeAreaInsets();
-  const colorScheme = useColorScheme();
+  const {
+    themeColors,
+    fullThemeColors,
+    darkMode,
+    reduceMotion,
+    hapticFeedback,
+    triggerHaptic,
+    isDark: customizationIsDark,
+  } = useCustomization();
 
-  // Prefer useCustomization darkMode, fallback to system
-  const isDark = darkMode ?? (colorScheme === 'dark');
+  const insets = useSafeAreaInsets();
+  const isDark = customizationIsDark;
   const primary = themeColors?.primary || '#667eea';
   const secondary = themeColors?.secondary || '#fa709a';
   const accent = themeColors?.accent || '#43e97b';
@@ -857,80 +909,73 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
 
   const safeBabies = babies || [];
 
-  const babyStats = currentBaby
-    ? getBabyStats()
-    : { streak: 0, milestones: 0, photos: 0, entries: 0 };
+  const babyStats = currentBaby ? getBabyStats() : { streak: 0, milestones: 0, photos: 0, entries: 0 };
   const activityStats = {
     entries: entries?.length || 0,
     streak: babyStats.streak || 0,
     milestones: babyStats.milestones || 0,
   };
 
-  const handleHaptic = () => {
-    if (!reduceMotion) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    }
-  };
-
-  const toggleSection = (section: string) => {
-    handleHaptic();
+  // ─── Section Toggle ───
+  const toggleSection = useCallback((section: string) => {
+    if (hapticFeedback) triggerHaptic('light').catch(() => {});
     setExpandedSections((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(section)) newSet.delete(section);
-      else newSet.add(section);
-      return newSet;
+      const next = new Set(prev);
+      if (next.has(section)) next.delete(section);
+      else next.add(section);
+      return next;
     });
-  };
+  }, [hapticFeedback, triggerHaptic]);
 
-  const handleBiometricToggle = async (enabled: boolean) => {
+  // ─── Biometric Toggle ───
+  const handleBiometricToggle = useCallback(async (enabled: boolean) => {
     if (enabled) {
       if (!hasBiometric) {
-        Alert.alert(
+        sweetAlert.alert(
           'Biometric Not Available',
           'Please set up biometric authentication in your device settings first.',
-          [{ text: 'OK' }]
+          'warning'
         );
         return;
       }
       navigation.navigate('BiometricSetup');
     } else {
-      Alert.alert(
+      sweetAlert.confirm(
         'Disable Biometric?',
         'Are you sure you want to disable biometric authentication?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Disable',
-            style: 'destructive',
-            onPress: async () => {
-              const success = await toggleBiometric(false);
-              if (!success)
-                Alert.alert(
-                  'Error',
-                  'Could not disable biometric authentication.'
-                );
-            },
-          },
-        ]
+        async () => {
+          const success = await toggleBiometric(false);
+          if (!success) {
+            sweetAlert.error('Error', 'Could not disable biometric authentication.');
+          }
+        },
+        undefined,
+        'Disable',
+        'Cancel'
       );
     }
-  };
+  }, [hasBiometric, navigation, sweetAlert, toggleBiometric]);
 
-  const handlePinSetup = () => navigation.navigate('SecurityCenter');
+  // ─── PIN Setup ───
+  const handlePinSetup = useCallback(() => {
+    navigation.navigate('SecurityCenter', { mode: 'setup' });
+  }, [navigation]);
 
-  const handleLockNow = async () => {
+  // ─── Lock Now ───
+  const handleLockNow = useCallback(async () => {
     if (!availableMethods.hasPin && !availableMethods.hasBiometric) {
-      Alert.alert(
+      sweetAlert.alert(
         'No Security Enabled',
         'Please enable PIN or Biometric authentication first.',
-        [{ text: 'OK' }]
+        'warning'
       );
       return;
     }
     await lockApp();
-  };
+  }, [availableMethods, lockApp, sweetAlert]);
 
-  const handleAutoLockTimeout = () => {
+  // ─── Auto-Lock Timeout ───
+  const handleAutoLockTimeout = useCallback(() => {
     const options = [
       { label: '1 minute', value: 1 },
       { label: '2 minutes', value: 2 },
@@ -941,6 +986,16 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
       { label: '1 hour', value: 60 },
     ];
 
+    sweetAlert.confirm(
+      'Auto-Lock Timeout',
+      'Select when to automatically lock the app',
+      () => {},
+      undefined,
+      'OK',
+      'Cancel'
+    );
+    // Note: For a real picker, you'd use a custom modal. This is a simplified version.
+    // You could extend this with a proper bottom sheet picker.
     Alert.alert(
       'Auto-Lock Timeout',
       'Select when to automatically lock the app',
@@ -952,48 +1007,64 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
         { text: 'Cancel', style: 'cancel' },
       ]
     );
-  };
+  }, [updateAutoLockTimeout, sweetAlert]);
 
-  const handleLogout = () => {
-    Alert.alert('Logout', 'Are you sure you want to logout?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Logout',
-        style: 'destructive',
-        onPress: signOut,
+  // ─── Logout ───
+  const handleLogout = useCallback(() => {
+    sweetAlert.confirm(
+      'Logout',
+      'Are you sure you want to sign out? You will need to sign in again to access your data.',
+      () => {
+        signOut();
       },
-    ]);
-  };
+      undefined,
+      'Logout',
+      'Stay'
+    );
+  }, [signOut, sweetAlert]);
 
-  const handleSelectBabyFromModal = (baby: any) => {
+  // ─── Baby Selection ───
+  const handleSelectBabyFromModal = useCallback((baby: any) => {
     setShowBabyModal(false);
     navigation.navigate('EditProfile', { mode: 'baby', babyId: baby.id });
-  };
+  }, [navigation]);
 
-  const formatTimeout = (minutes: number) => {
+  // ─── Format Timeout ───
+  const formatTimeout = useCallback((minutes: number) => {
     if (minutes < 60) return `${minutes} min`;
     return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
-  };
+  }, []);
 
-  // ─── Background gradient from theme ───
-  const bgColors = isDark
-    ? [themeColors?.colors?.[0] || '#0f0f1e', themeColors?.colors?.[1] || '#1a1a2e', themeColors?.colors?.[2] || '#16213e']
-    : [themeColors?.colors?.[0] || '#f8faff', themeColors?.colors?.[1] || '#f0f4ff', themeColors?.colors?.[2] || '#e8eeff'];
+  // ─── Background Gradient ───
+  const bgColors = useMemo(() => {
+    if (isDark) {
+      return [
+        fullThemeColors?.background || '#0f0f1e',
+        fullThemeColors?.surface || '#1a1a2e',
+        fullThemeColors?.card || '#16162a',
+      ];
+    }
+    return [
+      fullThemeColors?.background || '#f8faff',
+      fullThemeColors?.surface || '#ffffff',
+      fullThemeColors?.card || '#f0f4ff',
+    ];
+  }, [isDark, fullThemeColors]);
 
-  const renderSecuritySection = () => {
+  // ─── Section Renderers ───
+  const renderSecuritySection = useCallback(() => {
     const isExpanded = expandedSections.has('security');
-
     return (
-      <View style={styles.section}>
+      <Animated.View entering={FadeInUp.delay(100)} layout={Layout.springify()} style={styles.section}>
         <SectionHeader
           icon="shield-checkmark"
           title="Security & Privacy"
+          subtitle={securitySettings.isBiometricEnabled ? `${biometricTypeName} enabled` : 'Protect your data'}
           color={primary}
           isDark={isDark}
           isExpanded={isExpanded}
           onPress={() => toggleSection('security')}
         />
-
         {isExpanded && (
           <BlurView
             intensity={isDark ? 30 : 70}
@@ -1001,55 +1072,33 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
             tint={isDark ? 'dark' : 'light'}
           >
             <MenuItem
-              icon={
-                securitySettings.isBiometricEnabled
-                  ? 'finger-print'
-                  : 'finger-print-outline'
-              }
+              icon={securitySettings.isBiometricEnabled ? 'finger-print' : 'finger-print-outline'}
               title={`${biometricTypeName} Unlock`}
-              subtitle={
-                securitySettings.isBiometricEnabled
-                  ? 'Enabled'
-                  : hasBiometric
-                    ? 'Disabled'
-                    : 'Not Available'
-              }
+              subtitle={securitySettings.isBiometricEnabled ? 'Enabled' : hasBiometric ? 'Disabled' : 'Not Available'}
               isEnabled={securitySettings.isBiometricEnabled}
               onToggle={handleBiometricToggle}
               color={primary}
               isDark={isDark}
               disabled={!hasBiometric}
             />
-            <View style={[styles.divider, isDark && styles.dividerDark]} />
-
             <MenuItem
               icon="keypad"
               title="PIN Code"
-              subtitle={
-                securitySettings.isPinEnabled ? 'Change PIN' : 'Set up PIN'
-              }
+              subtitle={securitySettings.isPinEnabled ? 'Change PIN' : 'Set up PIN'}
               onPress={handlePinSetup}
               color={secondary}
               isDark={isDark}
               showArrow
             />
-            <View style={[styles.divider, isDark && styles.dividerDark]} />
-
             <MenuItem
               icon="lock-closed"
               title="Auto-Lock App"
-              subtitle={
-                securitySettings.isAppLockEnabled
-                  ? `After ${formatTimeout(securitySettings.autoLockTimeout)}`
-                  : 'Disabled'
-              }
+              subtitle={securitySettings.isAppLockEnabled ? `After ${formatTimeout(securitySettings.autoLockTimeout)}` : 'Disabled'}
               isEnabled={securitySettings.isAppLockEnabled}
               onToggle={toggleAppLock}
               color={accent}
               isDark={isDark}
             />
-            <View style={[styles.divider, isDark && styles.dividerDark]} />
-
             <MenuItem
               icon="time"
               title="Lock Timeout"
@@ -1060,8 +1109,6 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
               showArrow
               disabled={!securitySettings.isAppLockEnabled}
             />
-            <View style={[styles.divider, isDark && styles.dividerDark]} />
-
             <MenuItem
               icon="lock-closed-outline"
               title="Lock Now"
@@ -1070,27 +1117,27 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
               color="#ef4444"
               isDark={isDark}
               showArrow
+              isLast
             />
           </BlurView>
         )}
-      </View>
+      </Animated.View>
     );
-  };
+  }, [expandedSections, securitySettings, biometricTypeName, hasBiometric, primary, secondary, accent, isDark, toggleSection, handleBiometricToggle, handlePinSetup, toggleAppLock, handleAutoLockTimeout, formatTimeout, handleLockNow]);
 
-  const renderPreferencesSection = () => {
+  const renderPreferencesSection = useCallback(() => {
     const isExpanded = expandedSections.has('preferences');
-
     return (
-      <View style={styles.section}>
+      <Animated.View entering={FadeInUp.delay(150)} layout={Layout.springify()} style={styles.section}>
         <SectionHeader
           icon="options"
           title="Preferences"
+          subtitle="Themes, notifications, language"
           color="#11998e"
           isDark={isDark}
           isExpanded={isExpanded}
           onPress={() => toggleSection('preferences')}
         />
-
         {isExpanded && (
           <BlurView
             intensity={isDark ? 30 : 70}
@@ -1106,302 +1153,314 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
               isDark={isDark}
               showArrow
             />
-            <View style={[styles.divider, isDark && styles.dividerDark]} />
-
             <MenuItem
               icon="color-palette"
               title="Customize App"
-              subtitle="Themes, avatars, appearance & preferences"
+              subtitle="Themes, avatars, appearance"
               onPress={() => navigation.navigate('Customize')}
               color="#9b59b6"
               isDark={isDark}
               showArrow
             />
-            <View style={[styles.divider, isDark && styles.dividerDark]} />
-
             <MenuItem
               icon="language"
               title="Language"
-              subtitle="English (US)"
+              value="English (US)"
               onPress={() => navigation.navigate('LanguageSettings')}
               color="#fa8231"
               isDark={isDark}
               showArrow
             />
-            <View style={[styles.divider, isDark && styles.dividerDark]} />
-
             <MenuItem
               icon="bar-chart"
               title="Units"
-              subtitle="Metric (kg, cm)"
+              value="Metric (kg, cm)"
               onPress={() => navigation.navigate('UnitSettings')}
               color="#5f27cd"
               isDark={isDark}
               showArrow
+              isLast
             />
           </BlurView>
         )}
-      </View>
+      </Animated.View>
     );
-  };
+  }, [expandedSections, isDark, toggleSection, navigation]);
 
-  const renderFamilySection = () => (
-    <View style={styles.section}>
-      <SectionHeader
-        icon="people"
-        title="Family & Sharing"
-        color={secondary}
-        isDark={isDark}
-      />
-      <BlurView
-        intensity={isDark ? 30 : 70}
-        style={styles.menuContainer}
-        tint={isDark ? 'dark' : 'light'}
-      >
-        <MenuItem
-          icon="people-outline"
-          title="Family Sharing"
-          subtitle="Manage co-parents and guardians"
-          onPress={() => navigation.navigate('FamilySharing')}
+  const renderFamilySection = useCallback(() => {
+    const isExpanded = expandedSections.has('family');
+    return (
+      <Animated.View entering={FadeInUp.delay(200)} layout={Layout.springify()} style={styles.section}>
+        <SectionHeader
+          icon="people"
+          title="Family & Sharing"
+          subtitle={`${guardians?.length || 0} guardians connected`}
           color={secondary}
           isDark={isDark}
-          showArrow
+          isExpanded={isExpanded}
+          onPress={() => toggleSection('family')}
           badge={guardians?.length || undefined}
         />
-        <View style={[styles.divider, isDark && styles.dividerDark]} />
+        {isExpanded && (
+          <BlurView
+            intensity={isDark ? 30 : 70}
+            style={styles.menuContainer}
+            tint={isDark ? 'dark' : 'light'}
+          >
+            <MenuItem
+              icon="people-outline"
+              title="Family Sharing"
+              subtitle="Manage co-parents and guardians"
+              onPress={() => navigation.navigate('FamilySharing')}
+              color={secondary}
+              isDark={isDark}
+              showArrow
+            />
+            <MenuItem
+              icon="person-add"
+              title="Invite Co-Parent"
+              subtitle="Add another parent to your account"
+              onPress={() => navigation.navigate('AddParent')}
+              color="#11998e"
+              isDark={isDark}
+              showArrow
+            />
+            <MenuItem
+              icon="share-outline"
+              title="Export Data"
+              subtitle="Backup and restore your data"
+              onPress={() => navigation.navigate('BackupRestore')}
+              color={accent}
+              isDark={isDark}
+              showArrow
+              isLast
+            />
+          </BlurView>
+        )}
+      </Animated.View>
+    );
+  }, [expandedSections, guardians, secondary, accent, isDark, toggleSection, navigation]);
 
-        <MenuItem
-          icon="person-add"
-          title="Invite Co-Parent"
-          subtitle="Add another parent to your account"
-          onPress={() => navigation.navigate('AddParent')}
-          color="#11998e"
-          isDark={isDark}
-          showArrow
-        />
-        <View style={[styles.divider, isDark && styles.dividerDark]} />
-
-        <MenuItem
-          icon="share-outline"
-          title="Export Data"
-          subtitle="Backup and restore your data"
-          onPress={() => navigation.navigate('BackupRestore')}
-          color="#43e97b"
-          isDark={isDark}
-          showArrow
-        />
-      </BlurView>
-    </View>
-  );
-
-  const renderTrackingSection = () => (
-    <View style={styles.section}>
-      <SectionHeader
-        icon="analytics"
-        title="Tracking & Insights"
-        color="#4facfe"
-        isDark={isDark}
-      />
-      <BlurView
-        intensity={isDark ? 30 : 70}
-        style={styles.menuContainer}
-        tint={isDark ? 'dark' : 'light'}
-      >
-        <MenuItem
-          icon="trophy-outline"
-          title="Achievements"
-          subtitle="View your parenting milestones"
-          onPress={() => navigation.navigate('Achievements')}
-          color="#fee140"
-          isDark={isDark}
-          showArrow
-        />
-        <View style={[styles.divider, isDark && styles.dividerDark]} />
-
-        <MenuItem
-          icon="trending-up"
-          title="Growth Charts"
-          subtitle="Track height, weight, and more"
-          onPress={() => navigation.navigate('GrowthChart')}
-          color="#43e97b"
-          isDark={isDark}
-          showArrow
-        />
-        <View style={[styles.divider, isDark && styles.dividerDark]} />
-
-        <MenuItem
-          icon="calendar-outline"
-          title="Activity History"
-          subtitle="View complete timeline"
-          onPress={() =>
-            Alert.alert('Timeline', 'Timeline view coming in next update!')
-          }
-          color={primary}
-          isDark={isDark}
-          showArrow
-        />
-      </BlurView>
-    </View>
-  );
-
-  const renderSafetySection = () => (
-    <View style={styles.section}>
-      <SectionHeader
-        icon="shield-half"
-        title="Safety"
-        color="#ef4444"
-        isDark={isDark}
-      />
-      <BlurView
-        intensity={isDark ? 30 : 70}
-        style={styles.menuContainer}
-        tint={isDark ? 'dark' : 'light'}
-      >
-        <MenuItem
-          icon="shield-checkmark"
-          title="Safety Corner"
-          subtitle="Emergency contacts, first aid & safety tips"
-          onPress={() => navigation.navigate('SafetyCorner')}
-          color="#ef4444"
-          isDark={isDark}
-          showArrow
-        />
-        <View style={[styles.divider, isDark && styles.dividerDark]} />
-
-        <MenuItem
-          icon="medical"
-          title="Emergency Info"
-          subtitle="Quick access to emergency details"
-          onPress={() => navigation.navigate('SafetyCorner')}
-          color="#f59e0b"
-          isDark={isDark}
-          showArrow
-        />
-      </BlurView>
-    </View>
-  );
-
-  const renderSupportSection = () => (
-    <View style={styles.section}>
-      <SectionHeader
-        icon="help-circle"
-        title="Support & About"
-        color="#9b59b6"
-        isDark={isDark}
-      />
-      <BlurView
-        intensity={isDark ? 30 : 70}
-        style={styles.menuContainer}
-        tint={isDark ? 'dark' : 'light'}
-      >
-        <MenuItem
-          icon="help-buoy"
-          title="Help Center"
-          subtitle="FAQs and tutorials"
-          onPress={() => navigation.navigate('HelpCenter')}
+  const renderTrackingSection = useCallback(() => {
+    const isExpanded = expandedSections.has('tracking');
+    return (
+      <Animated.View entering={FadeInUp.delay(250)} layout={Layout.springify()} style={styles.section}>
+        <SectionHeader
+          icon="analytics"
+          title="Tracking & Insights"
+          subtitle="Growth, achievements, history"
           color="#4facfe"
           isDark={isDark}
-          showArrow
+          isExpanded={isExpanded}
+          onPress={() => toggleSection('tracking')}
         />
-        <View style={[styles.divider, isDark && styles.dividerDark]} />
+        {isExpanded && (
+          <BlurView
+            intensity={isDark ? 30 : 70}
+            style={styles.menuContainer}
+            tint={isDark ? 'dark' : 'light'}
+          >
+            <MenuItem
+              icon="trophy-outline"
+              title="Achievements"
+              subtitle="View your parenting milestones"
+              onPress={() => navigation.navigate('Achievements')}
+              color="#f59e0b"
+              isDark={isDark}
+              showArrow
+            />
+            <MenuItem
+              icon="trending-up"
+              title="Growth Charts"
+              subtitle="Track height, weight, and more"
+              onPress={() => navigation.navigate('GrowthChart')}
+              color={accent}
+              isDark={isDark}
+              showArrow
+            />
+            <MenuItem
+              icon="calendar-outline"
+              title="Activity History"
+              subtitle="View complete timeline"
+              onPress={() => navigation.navigate('Main', { screen: 'Track' })}
+              color={primary}
+              isDark={isDark}
+              showArrow
+              isLast
+            />
+          </BlurView>
+        )}
+      </Animated.View>
+    );
+  }, [expandedSections, primary, accent, isDark, toggleSection, navigation]);
 
-        <MenuItem
-          icon="chatbubble-ellipses"
-          title="Contact Support"
-          subtitle="Get help from our team"
-          onPress={() => navigation.navigate('ContactSupport')}
-          color={secondary}
+  const renderSafetySection = useCallback(() => {
+    const isExpanded = expandedSections.has('safety');
+    return (
+      <Animated.View entering={FadeInUp.delay(300)} layout={Layout.springify()} style={styles.section}>
+        <SectionHeader
+          icon="shield-half"
+          title="Safety"
+          subtitle="Emergency contacts & first aid"
+          color="#ef4444"
           isDark={isDark}
-          showArrow
+          isExpanded={isExpanded}
+          onPress={() => toggleSection('safety')}
         />
-        <View style={[styles.divider, isDark && styles.dividerDark]} />
+        {isExpanded && (
+          <BlurView
+            intensity={isDark ? 30 : 70}
+            style={styles.menuContainer}
+            tint={isDark ? 'dark' : 'light'}
+          >
+            <MenuItem
+              icon="shield-checkmark"
+              title="Safety Corner"
+              subtitle="Emergency contacts, first aid & safety tips"
+              onPress={() => navigation.navigate('SafetyCorner')}
+              color="#ef4444"
+              isDark={isDark}
+              showArrow
+            />
+            <MenuItem
+              icon="medical"
+              title="Emergency Info"
+              subtitle="Quick access to emergency details"
+              onPress={() => navigation.navigate('SafetyCorner')}
+              color="#f59e0b"
+              isDark={isDark}
+              showArrow
+              isLast
+            />
+          </BlurView>
+        )}
+      </Animated.View>
+    );
+  }, [expandedSections, isDark, toggleSection, navigation]);
 
-        <MenuItem
-          icon="document-text"
-          title="Privacy Policy"
-          subtitle="Read our privacy terms"
-          onPress={() => navigation.navigate('PrivacyPolicy')}
-          color="#11998e"
+  const renderSupportSection = useCallback(() => {
+    const isExpanded = expandedSections.has('support');
+    return (
+      <Animated.View entering={FadeInUp.delay(350)} layout={Layout.springify()} style={styles.section}>
+        <SectionHeader
+          icon="help-circle"
+          title="Support & About"
+          subtitle="Help, privacy, app info"
+          color="#9b59b6"
           isDark={isDark}
-          showArrow
+          isExpanded={isExpanded}
+          onPress={() => toggleSection('support')}
         />
-        <View style={[styles.divider, isDark && styles.dividerDark]} />
+        {isExpanded && (
+          <BlurView
+            intensity={isDark ? 30 : 70}
+            style={styles.menuContainer}
+            tint={isDark ? 'dark' : 'light'}
+          >
+            <MenuItem
+              icon="help-buoy"
+              title="Help Center"
+              subtitle="FAQs and tutorials"
+              onPress={() => navigation.navigate('HelpCenter')}
+              color="#4facfe"
+              isDark={isDark}
+              showArrow
+            />
+            <MenuItem
+              icon="chatbubble-ellipses"
+              title="Contact Support"
+              subtitle="Get help from our team"
+              onPress={() => navigation.navigate('ContactSupport')}
+              color={secondary}
+              isDark={isDark}
+              showArrow
+            />
+            <MenuItem
+              icon="document-text"
+              title="Privacy Policy"
+              subtitle="Read our privacy terms"
+              onPress={() => navigation.navigate('PrivacyPolicy')}
+              color="#11998e"
+              isDark={isDark}
+              showArrow
+            />
+            <MenuItem
+              icon="information-circle"
+              title="About LittleLoom"
+              subtitle="Version 1.0.0 · Build 2024.06"
+              onPress={() => navigation.navigate('About')}
+              color="#5f27cd"
+              isDark={isDark}
+              showArrow
+              isLast
+            />
+          </BlurView>
+        )}
+      </Animated.View>
+    );
+  }, [expandedSections, secondary, isDark, toggleSection, navigation]);
 
-        <MenuItem
-          icon="information-circle"
-          title="About LittleLoom"
-          subtitle="Version 1.0.0"
-          onPress={() => navigation.navigate('About')}
-          color="#5f27cd"
-          isDark={isDark}
-          showArrow
-        />
-      </BlurView>
-    </View>
-  );
-
+  // ─── Loading State ───
   if (authLoading || babyLoading) {
     return (
-      <View
-        style={[styles.loadingContainer, isDark && styles.loadingContainerDark]}
-      >
-        <ActivityIndicator size="large" color={primary} />
-        <Text
-          style={[styles.loadingText, isDark && styles.loadingTextDark]}
-        >
-          Loading settings...
-        </Text>
-      </View>
+      <LinearGradient colors={bgColors} style={styles.container}>
+        <View style={[styles.loadingContainer, isDark && styles.loadingContainerDark]}>
+          <View style={[styles.loadingSpinner, { borderColor: primary }]}>
+            <Ionicons name="settings-outline" size={40} color={primary} />
+          </View>
+          <Text style={[styles.loadingText, isDark && styles.textMuted]}>
+            Loading your settings...
+          </Text>
+        </View>
+      </LinearGradient>
     );
   }
 
   return (
-    <LinearGradient
-      colors={bgColors}
-      style={styles.container}
-    >
+    <LinearGradient colors={bgColors} style={styles.container}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
       <AutoHideScrollView
         contentContainerStyle={[
           styles.content,
           {
-            paddingTop: insets.top + 20,
-            paddingBottom: insets.bottom + 40,
+            paddingTop: insets.top + 16,
+            paddingBottom: insets.bottom + 100,
           },
         ]}
         showsVerticalScrollIndicator={false}
         bounces={true}
         alwaysBounceVertical={true}
       >
-        <View style={styles.header}>
-          <Text style={[styles.headerTitle, isDark && styles.headerTitleDark]}>
+        {/* Header */}
+        <Animated.View entering={FadeInUp.duration(400)} style={styles.header}>
+          <Text style={[styles.headerTitle, isDark && styles.textLight]}>
             Settings
           </Text>
-          <Text
-            style={[
-              styles.headerSubtitle,
-              isDark && styles.headerSubtitleDark,
-            ]}
-          >
+          <Text style={[styles.headerSubtitle, isDark && styles.textMuted]}>
             Manage your account, family, and preferences
           </Text>
-        </View>
+        </Animated.View>
 
-        <ProfileCard
-          navigation={navigation}
-          isDark={isDark}
-          userProfile={userProfile || userContextProfile}
-          babies={safeBabies}
-          currentBaby={currentBaby}
-          currentBabyId={currentBabyId}
-          parent2Profile={parent2Profile}
-          guardians={guardians || []}
-          onShowBabyModal={() => setShowBabyModal(true)}
-          stats={activityStats}
-          primaryColor={primary}
-          secondaryColor={secondary}
-        />
+        {/* Profile Card */}
+        <Animated.View entering={FadeInUp.delay(50).duration(500)}>
+          <ProfileHeader
+            navigation={navigation}
+            isDark={isDark}
+            userProfile={userProfile || userContextProfile}
+            babies={safeBabies}
+            currentBaby={currentBaby}
+            currentBabyId={currentBabyId}
+            parent2Profile={parent2Profile}
+            guardians={guardians || []}
+            onShowBabyModal={() => setShowBabyModal(true)}
+            stats={activityStats}
+            primaryColor={primary}
+            secondaryColor={secondary}
+            accentColor={accent}
+          />
+        </Animated.View>
 
+        {/* Sections */}
         {renderSecuritySection()}
         {renderPreferencesSection()}
         {renderFamilySection()}
@@ -1409,76 +1468,56 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
         {renderSafetySection()}
         {renderSupportSection()}
 
-        <View style={styles.appInfo}>
-          <View
-            style={[
-              styles.appIconContainer,
-              isDark && styles.appIconContainerDark,
-            ]}
-          >
+        {/* App Info Footer */}
+        <Animated.View entering={FadeInUp.delay(400)} style={styles.appInfo}>
+          <View style={[styles.appIconWrap, isDark && styles.appIconWrapDark]}>
             <Text style={styles.appIcon}>🧵</Text>
           </View>
-          <Text
-            style={[styles.appVersion, isDark && styles.appVersionDark]}
-          >
+          <Text style={[styles.appVersion, isDark && styles.textMuted]}>
             LittleLoom v1.0.0
           </Text>
-          <View style={styles.securityBadge}>
+          <View style={[styles.securityBadge, {
+            backgroundColor: (availableMethods.hasBiometric || availableMethods.hasPin)
+              ? `${accent}15`
+              : 'rgba(245,158,11,0.15)',
+          }]}>
             <Ionicons
-              name={
-                availableMethods.hasBiometric || availableMethods.hasPin
-                  ? 'lock-closed'
-                  : 'lock-open'
-              }
+              name={availableMethods.hasBiometric || availableMethods.hasPin ? 'lock-closed' : 'lock-open'}
               size={14}
-              color={
-                availableMethods.hasBiometric || availableMethods.hasPin
-                  ? accent
-                  : '#f59e0b'
-              }
+              color={availableMethods.hasBiometric || availableMethods.hasPin ? accent : '#f59e0b'}
             />
-            <Text
-              style={[
-                styles.appSecurity,
-                {
-                  color:
-                    availableMethods.hasBiometric || availableMethods.hasPin
-                      ? accent
-                      : '#f59e0b',
-                },
-              ]}
-            >
-              {availableMethods.hasBiometric || availableMethods.hasPin
-                ? 'Secured'
-                : 'Standard Security'}
+            <Text style={{
+              fontSize: 13,
+              fontWeight: '700',
+              color: availableMethods.hasBiometric || availableMethods.hasPin ? accent : '#f59e0b',
+            }}>
+              {availableMethods.hasBiometric || availableMethods.hasPin ? 'Secured' : 'Standard Security'}
             </Text>
           </View>
-        </View>
+        </Animated.View>
 
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <LinearGradient
-            colors={['rgba(255,71,87,0.1)', 'rgba(255,71,87,0.05)']}
-            style={styles.logoutGradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          >
-            <Ionicons
-              name="log-out-outline"
-              size={24}
-              color="#ef4444"
-            />
-            <Text style={styles.logoutText}>Logout</Text>
-            <Ionicons
-              name="chevron-forward"
-              size={20}
-              color="#ef4444"
-            />
-          </LinearGradient>
-        </TouchableOpacity>
+        {/* Logout Button */}
+        <Animated.View entering={FadeInUp.delay(450)}>
+          <PressableScale onPress={handleLogout} activeScale={0.97} hapticType="medium">
+            <LinearGradient
+              colors={['rgba(239,68,68,0.08)', 'rgba(239,68,68,0.04)']}
+              style={styles.logoutButton}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <View style={styles.logoutContent}>
+                <Ionicons name="log-out-outline" size={24} color="#ef4444" />
+                <Text style={styles.logoutText}>Sign Out</Text>
+                <Ionicons name="chevron-forward" size={20} color="#ef4444" />
+              </View>
+            </LinearGradient>
+          </PressableScale>
+        </Animated.View>
 
-        <View style={{ height: 20 }} />
+        <View style={{ height: 30 }} />
       </AutoHideScrollView>
 
+      {/* Baby Selection Modal */}
       <BabySelectionModal
         visible={showBabyModal}
         onClose={() => setShowBabyModal(false)}
@@ -1486,110 +1525,111 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
         currentBabyId={currentBabyId}
         onSelectBaby={handleSelectBabyFromModal}
         isDark={isDark}
+        primaryColor={primary}
       />
     </LinearGradient>
   );
 }
 
+// ============================================
+// STYLES
+// ============================================
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  content: {
-    paddingHorizontal: 20,
-  },
+  // ─── Layout ───
+  container: { flex: 1 },
+  content: { paddingHorizontal: 16 },
 
+  // ─── Text Utilities ───
+  textLight: { color: '#ffffff' },
+  textMuted: { color: '#888' },
+
+  // ─── Loading ───
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f8faff',
   },
-  loadingContainerDark: {
-    backgroundColor: '#0f0f1e',
+  loadingContainerDark: { backgroundColor: '#0f0f1e' },
+  loadingSpinner: {
+    width: 80,
+    height: 80,
+    borderRadius: 24,
+    borderWidth: 2,
+    borderColor: 'rgba(102,126,234,0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
   },
   loadingText: {
     marginTop: 16,
     fontSize: 16,
     color: '#666',
-    fontWeight: '500',
-  },
-  loadingTextDark: {
-    color: '#a0a0a0',
+    fontWeight: '600',
   },
 
+  // ─── Header ───
   header: {
-    marginBottom: 24,
+    marginBottom: 20,
     paddingHorizontal: 4,
   },
   headerTitle: {
-    fontSize: 36,
+    fontSize: 34,
     fontWeight: '800',
     color: '#1a1a1a',
-    marginBottom: 6,
+    marginBottom: 4,
     letterSpacing: -0.5,
-  },
-  headerTitleDark: {
-    color: '#ffffff',
   },
   headerSubtitle: {
     fontSize: 15,
     color: '#666',
     fontWeight: '500',
   },
-  headerSubtitleDark: {
-    color: '#a0a0a0',
-  },
 
+  // ─── Profile Card ───
   profileCard: {
     borderRadius: 28,
-    padding: 24,
+    padding: 20,
     marginBottom: 20,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
+    borderColor: 'rgba(255,255,255,0.15)',
   },
-  profileHeader: {
+  profileTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 16,
   },
   profileInfo: {
     flex: 1,
+    marginLeft: 14,
   },
   profileName: {
     fontSize: 20,
     fontWeight: '800',
     color: '#1a1a1a',
-    marginBottom: 4,
+    marginBottom: 3,
     letterSpacing: -0.3,
   },
-  profileNameDark: {
-    color: '#ffffff',
-  },
   profileEmail: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#666',
     marginBottom: 8,
     fontWeight: '500',
   },
-  profileEmailDark: {
-    color: '#a0a0a0',
-  },
   babyTag: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
     alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
   },
   babyTagText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
   },
-  settingsButton: {
+  settingsBtn: {
     width: 44,
     height: 44,
     borderRadius: 14,
@@ -1597,8 +1637,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  settingsBtnDark: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
 
-  // ─── Community Profile Link ───
+  // ─── Community Link ───
   communityLink: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1614,114 +1657,102 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  communityLinkText: {
-    flex: 1,
-  },
+  communityLinkText: { flex: 1 },
   communityLinkTitle: {
     fontSize: 15,
     fontWeight: '700',
     color: '#1a1a1a',
     marginBottom: 2,
   },
-  communityLinkTitleDark: {
-    color: '#ffffff',
-  },
   communityLinkSub: {
     fontSize: 13,
     color: '#888',
     fontWeight: '500',
   },
-  communityLinkSubDark: {
-    color: '#888',
-  },
 
+  // ─── Stats ───
   statsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 20,
-    gap: 12,
+    marginBottom: 18,
+    gap: 10,
   },
   statCard: {
     flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.7)',
+    backgroundColor: 'rgba(255,255,255,0.6)',
     borderRadius: 20,
-    padding: 16,
+    padding: 14,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.5)',
+    borderColor: 'rgba(255,255,255,0.4)',
+    overflow: 'hidden',
   },
   statCardDark: {
-    backgroundColor: 'rgba(30,30,40,0.5)',
-    borderColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: 'rgba(30,30,40,0.4)',
+    borderColor: 'rgba(255,255,255,0.04)',
   },
-  statIcon: {
-    width: 40,
-    height: 40,
+  statIconWrap: {
+    width: 38,
+    height: 38,
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 8,
   },
   statValue: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '800',
     color: '#1a1a1a',
     marginBottom: 2,
   },
-  statValueDark: {
-    color: '#ffffff',
-  },
   statLabel: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#666',
     fontWeight: '600',
-  },
-  statLabelDark: {
-    color: '#a0a0a0',
-  },
-
-  familySection: {
-    marginBottom: 20,
-  },
-  familySectionTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#666',
-    marginBottom: 12,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  familySectionTitleDark: {
-    color: '#a0a0a0',
+
+  // ─── Family Section ───
+  familySection: { marginBottom: 18 },
+  familySectionTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#888',
+    marginBottom: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
   },
-  familyMembersRow: {
-    paddingRight: 20,
-    gap: 16,
+  familyScroll: {
+    paddingRight: 16,
+    gap: 14,
   },
-  familyMemberItem: {
+  familyMember: {
     alignItems: 'center',
     minWidth: 64,
   },
-  familyMemberIcon: {
+  familyAvatarWrap: {
     width: 56,
     height: 56,
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    position: 'relative',
-    marginBottom: 6,
     borderWidth: 2,
     borderColor: 'transparent',
+    marginBottom: 6,
   },
-  familyMemberLabel: {
+  familyName: {
     fontSize: 12,
-    color: '#666',
-    fontWeight: '600',
+    color: '#1a1a1a',
+    fontWeight: '700',
     maxWidth: 70,
     textAlign: 'center',
   },
-  familyMemberLabelDark: {
-    color: '#a0a0a0',
+  familyLabel: {
+    fontSize: 11,
+    color: '#888',
+    fontWeight: '500',
+    marginTop: 1,
   },
   onlineIndicator: {
     position: 'absolute',
@@ -1730,15 +1761,12 @@ const styles = StyleSheet.create({
     width: 14,
     height: 14,
     borderRadius: 7,
-    backgroundColor: '#43e97b',
     borderWidth: 2,
-    borderColor: '#fff',
   },
-  babyIndicator: {
+  babyCountBadge: {
     position: 'absolute',
     top: -4,
     right: -4,
-    backgroundColor: '#667eea',
     borderRadius: 10,
     minWidth: 20,
     height: 20,
@@ -1747,29 +1775,43 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#fff',
   },
-  babyIndicatorText: {
+  babyCountText: {
     color: '#fff',
     fontSize: 10,
     fontWeight: '800',
   },
-  addMemberIcon: {
-    borderStyle: 'dashed',
-    borderColor: 'rgba(102,126,234,0.4)',
-    backgroundColor: 'rgba(102,126,234,0.05)',
+  addBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(102,126,234,0.2)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  addMemberIconDark: {
-    borderColor: 'rgba(255,255,255,0.2)',
-    backgroundColor: 'rgba(255,255,255,0.05)',
+  addBadgeDark: {
+    backgroundColor: '#1a1a2e',
+    borderColor: 'rgba(255,255,255,0.1)',
   },
 
+  // ─── Quick Actions ───
   quickActionsRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    paddingTop: 20,
+    paddingTop: 16,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(0,0,0,0.05)',
+    borderTopColor: 'rgba(0,0,0,0.04)',
   },
-  quickActionBtn: {
+  quickAction: {
     alignItems: 'center',
     gap: 8,
   },
@@ -1781,38 +1823,40 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   quickActionLabel: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#666',
     fontWeight: '600',
   },
 
+  // ─── Switch Baby ───
   switchBabyRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 16,
-    paddingTop: 16,
+    marginTop: 14,
+    paddingTop: 14,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(0,0,0,0.05)',
+    borderTopColor: 'rgba(0,0,0,0.04)',
     gap: 12,
   },
   switchBabyIcon: {
     width: 36,
     height: 36,
     borderRadius: 12,
-    backgroundColor: 'rgba(102,126,234,0.1)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   switchBabyText: {
     flex: 1,
     fontSize: 15,
-    color: '#667eea',
     fontWeight: '700',
   },
   switchBabyBadge: {
     borderRadius: 10,
+    minWidth: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: 8,
-    paddingVertical: 2,
   },
   switchBabyBadgeText: {
     color: '#fff',
@@ -1820,68 +1864,85 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
-  section: {
-    marginBottom: 20,
-  },
+  // ─── Section Header ───
   sectionHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 14,
+    justifyContent: 'space-between',
+    paddingVertical: 16,
     paddingHorizontal: 4,
-    marginBottom: 8,
+    marginBottom: 2,
   },
-  sectionTitleRow: {
+  sectionHeaderDark: {
+    // Dark mode handled by text colors
+  },
+  sectionHeaderLeft: {
     flexDirection: 'row',
     alignItems: 'center',
+    flex: 1,
     gap: 12,
   },
-  sectionIcon: {
+  sectionHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  sectionIconWrap: {
     width: 40,
     height: 40,
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  sectionHeaderText: {
+    flex: 1,
+  },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '800',
+    fontSize: 17,
+    fontWeight: '700',
     color: '#1a1a1a',
-    letterSpacing: -0.3,
+    marginBottom: 2,
   },
-  sectionTitleDark: {
-    color: '#ffffff',
-  },
-  sectionActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  sectionSubtitle: {
+    fontSize: 13,
+    color: '#888',
+    fontWeight: '500',
   },
 
+  // ─── Menu Container ───
   menuContainer: {
     borderRadius: 24,
     overflow: 'hidden',
+    marginBottom: 16,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
+    borderColor: 'rgba(255,255,255,0.1)',
   },
+
+  // ─── Menu Item ───
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    gap: 14,
+  },
+  menuItemBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.04)',
   },
   menuItemDisabled: {
-    opacity: 0.4,
+    opacity: 0.5,
   },
-  menuIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
+  menuIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 16,
   },
   menuTextContainer: {
     flex: 1,
+    gap: 2,
   },
   menuTitleRow: {
     flexDirection: 'row',
@@ -1889,215 +1950,207 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   menuTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1a1a1a',
-    letterSpacing: -0.2,
-  },
-  menuTitleDark: {
-    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '600',
   },
   menuSubtitle: {
     fontSize: 13,
-    color: '#888',
-    marginTop: 3,
     fontWeight: '500',
   },
-  menuSubtitleDark: {
+  menuRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  menuValue: {
+    fontSize: 14,
     color: '#888',
+    fontWeight: '600',
   },
-  menuTextDisabled: {
-    color: '#999',
+  switch: {
+    transform: [{ scaleX: 0.85 }, { scaleY: 0.85 }],
   },
-  destructiveText: {
-    color: '#ef4444',
-  },
+
+  // ─── Badges ───
   badge: {
     borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    minWidth: 20,
+    minWidth: 22,
+    height: 22,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 7,
   },
   badgeText: {
     color: '#fff',
     fontSize: 12,
     fontWeight: '800',
   },
-  divider: {
-    height: 1,
-    backgroundColor: 'rgba(0,0,0,0.04)',
-    marginLeft: 80,
-  },
-  dividerDark: {
-    backgroundColor: 'rgba(255,255,255,0.06)',
-  },
-
-  appInfo: {
-    alignItems: 'center',
-    marginTop: 32,
-    marginBottom: 24,
-    gap: 12,
-  },
-  appIconContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: 20,
-    backgroundColor: 'rgba(102,126,234,0.1)',
+  badgeSmall: {
+    borderRadius: 8,
+    minWidth: 18,
+    height: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(102,126,234,0.2)',
+    paddingHorizontal: 5,
   },
-  appIconContainerDark: {
-    backgroundColor: 'rgba(102,126,234,0.2)',
-    borderColor: 'rgba(102,126,234,0.3)',
+  badgeTextSmall: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+
+  // ─── Section Spacing ───
+  section: {
+    marginBottom: 4,
+  },
+
+  // ─── App Info Footer ───
+  appInfo: {
+    alignItems: 'center',
+    marginTop: 24,
+    marginBottom: 20,
+    gap: 10,
+  },
+  appIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.04)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  appIconWrapDark: {
+    backgroundColor: 'rgba(255,255,255,0.06)',
   },
   appIcon: {
-    fontSize: 32,
+    fontSize: 28,
   },
   appVersion: {
-    fontSize: 15,
-    color: '#666',
-    fontWeight: '600',
-  },
-  appVersionDark: {
+    fontSize: 14,
     color: '#888',
+    fontWeight: '600',
   },
   securityBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: 'rgba(67,233,123,0.1)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  appSecurity: {
-    fontSize: 13,
-    fontWeight: '700',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
   },
 
+  // ─── Logout Button ───
   logoutButton: {
     borderRadius: 20,
+    marginTop: 8,
+    marginBottom: 16,
     overflow: 'hidden',
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(255,71,87,0.2)',
   },
-  logoutGradient: {
+  logoutContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 18,
-    paddingHorizontal: 20,
+    justifyContent: 'center',
+    paddingVertical: 16,
+    gap: 12,
   },
   logoutText: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '700',
     color: '#ef4444',
-    flex: 1,
-    marginLeft: 12,
   },
 
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
+  // ─── Modal ───
+  modalBackdrop: {
+    backgroundColor: 'rgba(0,0,0,0.4)',
   },
-  modalContainer: {
-    width: SCREEN_WIDTH - 40,
-    maxHeight: SCREEN_HEIGHT * 0.7,
-    borderRadius: 28,
-    padding: 24,
+  modalSheet: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
+    maxHeight: SCREEN_HEIGHT * 0.7,
   },
-  modalHeader: {
+  modalSheetBlur: {
+    paddingTop: 12,
+    paddingBottom: 24,
+  },
+  modalHandle: {
+    width: 40,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: 'rgba(150,150,150,0.3)',
+    alignSelf: 'center',
+    marginBottom: 16,
+  },
+  modalSheetHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 20,
+    paddingHorizontal: 20,
+    paddingBottom: 16,
   },
-  modalTitle: {
-    fontSize: 22,
+  modalSheetTitle: {
+    fontSize: 20,
     fontWeight: '800',
     color: '#1a1a1a',
-    letterSpacing: -0.5,
   },
-  modalTitleDark: {
-    color: '#ffffff',
-  },
-  modalCloseButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  modalCloseBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
     backgroundColor: 'rgba(0,0,0,0.05)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  modalContent: {
-    maxHeight: SCREEN_HEIGHT * 0.5,
+  modalCloseBtnDark: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
   },
-  modalContentContainer: {
-    gap: 12,
+  modalSheetContent: {
+    paddingHorizontal: 16,
+    gap: 8,
   },
+
+  // ─── Baby Option ───
   babyOption: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    backgroundColor: 'rgba(255,255,255,0.8)',
+    padding: 14,
     borderRadius: 20,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    backgroundColor: 'rgba(255,255,255,0.5)',
+    gap: 14,
   },
   babyOptionDark: {
-    backgroundColor: 'rgba(30,30,40,0.6)',
+    backgroundColor: 'rgba(30,30,40,0.4)',
   },
   babyOptionActive: {
-    borderColor: '#43e97b',
-    backgroundColor: 'rgba(67,233,123,0.1)',
+    borderWidth: 2,
+    backgroundColor: 'rgba(102,126,234,0.08)',
   },
   babyOptionActiveDark: {
-    backgroundColor: 'rgba(67,233,123,0.15)',
-  },
-  babyOptionEmojiContainer: {
-    position: 'relative',
-    marginRight: 16,
-  },
-  activeIndicator: {
-    position: 'absolute',
-    bottom: -4,
-    right: -4,
-    backgroundColor: '#fff',
-    borderRadius: 10,
+    backgroundColor: 'rgba(102,126,234,0.15)',
   },
   babyOptionInfo: {
     flex: 1,
   },
   babyOptionName: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '700',
     color: '#1a1a1a',
-    marginBottom: 4,
-    letterSpacing: -0.2,
+    marginBottom: 3,
   },
-  babyOptionNameDark: {
-    color: '#ffffff',
-  },
-  babyOptionNameActive: {
-    color: '#43e97b',
-  },
-  babyOptionAge: {
-    fontSize: 14,
+  babyOptionMeta: {
+    fontSize: 13,
     color: '#888',
     fontWeight: '500',
   },
-  babyOptionAgeDark: {
-    color: '#888',
+  activeCheck: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

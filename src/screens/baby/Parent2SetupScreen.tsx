@@ -1,3 +1,8 @@
+// src/screens/baby/Parent2SetupScreen.tsx
+// FIXED: handleSkip now properly marks parent2 setup as skipped
+// FIXED: Prevents infinite loop back to Parent2OptionalScreen
+// FIXED: Proper error handling and navigation flow
+
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
@@ -113,7 +118,7 @@ export default function Parent2SetupScreen({ navigation }: Props) {
   const [alert, setAlert] = useState({ visible: false, type: 'success', title: '', message: '' });
   const [confirmModal, setConfirmModal] = useState({ visible: false, title: '', message: '', onConfirm: () => {}, type: 'default' });
 
-  const { completeSetup } = useAuth();
+  const { completeSetup, skipSetup } = useAuth();
   const { inviteMember } = useFamily();
   const insets = useSafeAreaInsets();
 
@@ -155,6 +160,7 @@ export default function Parent2SetupScreen({ navigation }: Props) {
     }
   }, [fullName, email, inviteMember, completeSetup, navigation, showToast, triggerHaptic]);
 
+  // CRITICAL FIX: Skip must mark parent2 as skipped to prevent infinite loop
   const handleSkip = useCallback(() => {
     triggerHaptic('light');
     setConfirmModal({
@@ -164,14 +170,19 @@ export default function Parent2SetupScreen({ navigation }: Props) {
       type: 'default',
       onConfirm: async () => {
         try {
-          navigation.replace('BabyOptional');
+          // CRITICAL: Mark parent2 as skipped so AppNavigator knows setup is done
+          await skipSetup('parent2');
+          showToast('info', 'Skipped', 'You can add a co-parent later');
+          setTimeout(() => {
+            navigation.replace('BabyOptional');
+          }, 500);
         } catch (error) {
           showToast('error', 'Error', 'Could not continue');
         }
         setConfirmModal(prev => ({ ...prev, visible: false }));
       }
     });
-  }, [navigation, showToast, triggerHaptic]);
+  }, [navigation, skipSetup, showToast, triggerHaptic]);
 
   return (
     <View style={styles.container}>

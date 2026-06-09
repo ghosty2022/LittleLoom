@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useCallback } from 'react';
 import {
   View,
   StyleSheet,
@@ -6,6 +6,8 @@ import {
   RefreshControl,
   ViewStyle,
   useColorScheme,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigationVisibility } from '../context/AppContext';
@@ -16,7 +18,7 @@ interface ScreenWrapperProps {
   refreshControl?: React.ReactElement;
   contentContainerStyle?: ViewStyle;
   style?: ViewStyle;
-  onScroll?: (event: any) => void;
+  onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
 }
 
 const DOCK_HEIGHT = 120; // Height of LiquidGlassNavigation dock
@@ -35,13 +37,40 @@ export const ScreenWrapper: React.FC<ScreenWrapperProps> = ({
   const isDark = colorScheme === 'dark';
   const { handleScroll, isCommunityScreen } = useNavigationVisibility();
 
-  const handleScrollEvent = (event: any) => {
+  // Track scroll state for velocity computation
+  const lastYRef = useRef(0);
+  const lastTimeRef = useRef(Date.now());
+  const isAtTopRef = useRef(true);
+
+  const handleScrollEvent = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { contentOffset } = event.nativeEvent;
+    const currentY = contentOffset.y;
+    const now = Date.now();
+    const deltaTime = now - lastTimeRef.current;
+
+    // Compute velocity in pixels per ms (same unit as useTrackedScroll)
+    const velocity = deltaTime > 0 ? Math.abs((currentY - lastYRef.current) / deltaTime) : 0;
+    const isAtTop = currentY <= 5;
+    isAtTopRef.current = isAtTop;
+
     // Only handle scroll for nav visibility when NOT on community screens
     if (!isCommunityScreen) {
-      handleScroll(event.nativeEvent.contentOffset.y, 0, event.nativeEvent.contentOffset.y <= 0);
+      handleScroll(currentY, velocity, isAtTop);
     }
+
+    // Update refs
+    lastYRef.current = currentY;
+    lastTimeRef.current = now;
+
     onScroll?.(event);
-  };
+  }, [handleScroll, isCommunityScreen, onScroll]);
+
+  // Reset scroll tracking when community screen state changes
+  React.useEffect(() => {
+    lastYRef.current = 0;
+    lastTimeRef.current = Date.now();
+    isAtTopRef.current = true;
+  }, [isCommunityScreen]);
 
   // Use minimal bottom padding on community screens (no dock), full padding elsewhere
   const bottomPadding = isCommunityScreen

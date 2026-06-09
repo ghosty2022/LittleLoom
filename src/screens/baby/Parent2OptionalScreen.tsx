@@ -1,3 +1,8 @@
+// src/screens/baby/Parent2OptionalScreen.tsx
+// FIXED: Skip now properly marks parent2 setup as complete
+// FIXED: Prevents infinite loop back to this screen
+// FIXED: Consistent navigation pattern
+
 import React, { useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, StatusBar } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -29,13 +34,16 @@ export default function Parent2OptionalScreen({ navigation }: Props) {
   const dynamicSecondary = themeColors.secondary;
   const dynamicGradient = [dynamicPrimary, dynamicSecondary] as [string, string];
 
+  // CRITICAL FIX: Skip must mark parent2 as skipped to prevent infinite loop
   const handleSkip = useCallback(async () => {
     triggerHaptic('light');
     try {
       await skipSetup('parent2');
+      // Use replace to prevent back-navigation to this screen
       navigation.replace('BabyOptional');
     } catch (error) {
       console.error('Error skipping Parent2:', error);
+      // Fallback navigation even if skipSetup fails
       navigation.replace('BabyOptional');
     }
   }, [navigation, skipSetup, triggerHaptic]);

@@ -9,11 +9,6 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import { LittleLoomAvatar, BabyAvatar, SkinTonePicker, BABY_EMOJIS, ALL_EMOJIS, ILLUSTRATION_AVATARS, GRADIENT_PRESETS, GENDER_CONFIG, SKIN_TONES, type BabyGender, type AvatarSize } from './LittleLoomAvatars';
-﻿/**
- * LittleLoom Avatar Picker Screen v2
- * Premium full-screen avatar selection with glassmorphism,
- * animated transitions, and 5 picker modes
- */
 
 
 const { width, height } = Dimensions.get('window');
@@ -318,7 +313,7 @@ export const AvatarPickerScreen: React.FC<AvatarPickerScreenProps> = ({
                         styles.emojiOptionSelected,
                         {
                           borderColor: genderConfig.defaultColor,
-                          backgroundColor: `${genderConfig.defaultColor }18`,
+                          backgroundColor: `${genderConfig.defaultColor}18`,
                         },
                       ],
                     ]}
@@ -604,7 +599,7 @@ export const AvatarPickerScreen: React.FC<AvatarPickerScreenProps> = ({
                   style={[
                     styles.tab,
                     isActive && {
-                      backgroundColor: `$${tab.color }18,
+                      backgroundColor: `${tab.color}18`,
                       borderColor: tab.color,
                     },
                   ]}
@@ -635,7 +630,7 @@ export const AvatarPickerScreen: React.FC<AvatarPickerScreenProps> = ({
 
         {/* Content */}
         <AnimatedScrollView
-          contentContainerstyle={[
+          contentContainerStyle={[
             styles.scrollContent,
             { paddingBottom: insets.bottom + 100 },
           ]}

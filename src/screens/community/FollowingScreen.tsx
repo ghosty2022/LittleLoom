@@ -1,19 +1,30 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, RefreshControl, Alert, Dimensions, StatusBar  } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  TextInput,
+  RefreshControl,
+  Dimensions,
+  StatusBar,
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInUp } from 'react-native-reanimated';
-import type {  NativeStackScreenProps  } from '@react-navigation/native-stack';
-import type {  CommunityStackParamList  } from '../../types/navigation';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { CommunityStackParamList } from '../../types/navigation';
+
 import { useCommunity, CommunityUser } from '../../context/CommunityContext';
 import { useUser } from '../../context/UserContext';
-import { showSuccessModal, showErrorModal } from '../../utils/modal';
 import { useCustomization } from '../../hooks/useCustomization';
 import { SafeAvatar } from '../../components/SafeAvatar';
-import { AutoHideFlatList } from '../../components/AutoHideScrollWrappers';
-import { CommunityColors, CommunityGradients, CommunitySpacing, CommunityBorderRadius, CommunityShadows } from '../../theme/CommunityTheme';
+import { useSweetAlert } from '../../components/SweetAlert';
+import { InlineSpinner, CommunitySpinner } from '../../components/UniversalSpinner';
 
+import { AutoHideFlatList } from '../../components/AutoHideScrollWrappers';
+import { CommunityColors, CommunitySpacing, CommunityBorderRadius, CommunityShadows } from '../../theme/CommunityTheme';
 
 type FollowingScreenProps = NativeStackScreenProps<CommunityStackParamList, 'Following'>;
 
@@ -100,6 +111,9 @@ export default function FollowingScreen({ navigation, route }: FollowingScreenPr
     spinnerColor,
   } = useCustomization();
 
+  // SweetAlert for all alerts
+  const sweetAlert = useSweetAlert();
+
   const [followingList, setFollowingList] = useState<CommunityUser[]>([]);
   const [filteredFollowing, setFilteredFollowing] = useState<CommunityUser[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -141,11 +155,11 @@ export default function FollowingScreen({ navigation, route }: FollowingScreenPr
       setFilteredFollowing(uniqueFollowing);
     } catch (error) {
       console.error('Error loading following:', error);
-      showErrorModal({ message: 'Failed to load following list' });
+      sweetAlert.error('Load Failed', 'Failed to load following list');
     } finally {
       setLoading(false);
     }
-  }, [userId, currentUser, getFollowing, getUserById]);
+  }, [userId, currentUser, getFollowing, getUserById, sweetAlert]);
 
   useEffect(() => {
     loadFollowing();
@@ -174,7 +188,7 @@ export default function FollowingScreen({ navigation, route }: FollowingScreenPr
   const handleUnfollow = async (user: CommunityUser) => {
     if (user.id === 'littleloom_team') {
       triggerHaptic('error');
-      showErrorModal({ message: 'Cannot unfollow LittleLoom Team' });
+      sweetAlert.error('Cannot Unfollow', 'Cannot unfollow LittleLoom Team');
       return;
     }
     
@@ -198,10 +212,10 @@ export default function FollowingScreen({ navigation, route }: FollowingScreenPr
         ));
       }
       
-      showSuccessModal({ message: `Unfollowed ${user.displayName}` });
+      sweetAlert.success('Unfollowed', `You unfollowed ${user.displayName}`);
     } catch (error) {
       console.error('Unfollow error:', error);
-      showErrorModal({ message: 'Failed to unfollow user' });
+      sweetAlert.error('Action Failed', 'Failed to unfollow user');
     } finally {
       setUnfollowLoading(prev => ({ ...prev, [user.id]: false }));
     }
@@ -218,39 +232,24 @@ export default function FollowingScreen({ navigation, route }: FollowingScreenPr
   const handleMoreOptions = (user: CommunityUser) => {
     const blocked = isUserBlocked(user.id);
     
-    Alert.alert(
+    sweetAlert.confirm(
       user.displayName,
       user.handle,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: blocked ? 'Unblock' : 'Block',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await blockUser(user.id);
-              showSuccessModal({ 
-                message: blocked ? 'User unblocked' : 'User blocked' 
-              });
-            } catch (error) {
-              showErrorModal({ message: 'Failed to block user' });
-            }
-          }
-        },
-        {
-          text: 'Report',
-          style: 'destructive',
-          onPress: () => navigation.navigate('Report', { 
-            type: 'user', 
-            targetId: user.id,
-            targetUserId: user.id 
+      () => {
+        blockUser(user.id)
+          .then(() => {
+            sweetAlert.success(
+              blocked ? 'Unblocked' : 'Blocked',
+              blocked ? 'User has been unblocked' : 'User blocked'
+            );
           })
-        },
-        {
-          text: 'Message',
-          onPress: () => navigation.navigate('Chat', { userId: user.id })
-        },
-      ]
+          .catch(() => {
+            sweetAlert.error('Action Failed', 'Failed to block user');
+          });
+      },
+      () => {}, // Cancel
+      blocked ? 'Unblock' : 'Block',
+      'Cancel'
     );
   };
 
@@ -267,13 +266,12 @@ export default function FollowingScreen({ navigation, route }: FollowingScreenPr
           activeOpacity={0.8}
         >
           <View style={styles.avatarContainer}>
-            {/* UPGRADED: Use SafeAvatar with online status */}
+            {/* SafeAvatar with online status indicator */}
             <SafeAvatar
               avatar={item.avatar}
               size={44}
               fallbackIcon="person"
               fallbackColor={CommunityColors.primary}
-              fallbackBgColor={CommunityColors.background.elevated}
               borderWidth={2}
               borderColor={item.onlineStatus === 'online' ? CommunityColors.success : '#fff'}
             />
@@ -314,13 +312,17 @@ export default function FollowingScreen({ navigation, route }: FollowingScreenPr
                 onPress={() => handleUnfollow(item)}
                 disabled={unfollowLoading[item.id] || blocked || isTeam}
               >
-                <Text style={[
-                  styles.followBtnText,
-                  blocked && styles.blockedBtnText,
-                  isTeam && styles.teamBtnText
-                ]}>
-                  {isTeam ? 'Following' : blocked ? 'Blocked' : 'Unfollow'}
-                </Text>
+                {unfollowLoading[item.id] ? (
+                  <InlineSpinner size={14} color={CommunityColors.text.primary} section="community" />
+                ) : (
+                  <Text style={[
+                    styles.followBtnText,
+                    blocked && styles.blockedBtnText,
+                    isTeam && styles.teamBtnText
+                  ]}>
+                    {isTeam ? 'Following' : blocked ? 'Blocked' : 'Unfollow'}
+                  </Text>
+                )}
               </TouchableOpacity>
               
               <TouchableOpacity 
@@ -367,6 +369,15 @@ export default function FollowingScreen({ navigation, route }: FollowingScreenPr
     <LinearGradient colors={CommunityColors.background.gradient} style={[styles.container]}>
       <StatusBar style="dark" />
       
+      {/* Loading Spinner */}
+      <CommunitySpinner
+        visible={loading && followingList.length === 0}
+        text="Loading..."
+        size="medium"
+        overlay={false}
+        variant="liquid"
+      />
+
       {/* Header */}
       <BlurView intensity={95} style={styles.header} tint="light">
         <LinearGradient 
@@ -407,34 +418,28 @@ export default function FollowingScreen({ navigation, route }: FollowingScreenPr
       </View>
 
       {/* Following List */}
-      {loading ? (
-        <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>Loading...</Text>
-        </View>
-      ) : (
-        <AutoHideFlatList
-          data={filteredFollowing}
-          renderItem={renderFollowing}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContainer}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl 
-              refreshing={refreshing} 
-              onRefresh={onRefresh} 
-              tintColor={spinnerColor} 
-            />
-          }
-          ListEmptyComponent={renderEmpty}
-          ItemSeparatorComponent={() => <View style={styles.separator} />}
-        />
-      )}
+      <AutoHideFlatList
+        data={filteredFollowing}
+        renderItem={renderFollowing}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.listContainer}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl 
+            refreshing={refreshing} 
+            onRefresh={onRefresh} 
+            tintColor={spinnerColor} 
+          />
+        }
+        ListEmptyComponent={!loading ? renderEmpty : null}
+        ItemSeparatorComponent={() => <View style={styles.separator} />}
+      />
     </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
-container: { flex: 1 },
+  container: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -613,4 +618,3 @@ container: { flex: 1 },
     fontWeight: '700' 
   },
 });
-

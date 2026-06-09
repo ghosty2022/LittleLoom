@@ -1,7 +1,8 @@
 // src/providers/ContextProvider.tsx
 // FULLY SYNCED: All contexts integrated with notification/activity sync
+// ADDED: TrackerProvider integration — unified tracker system
 // FIXED: Proper children prop typing, no TypeScript errors
-// FIXED: Cross-context bridges for Activity ↔ Baby ↔ Notification
+// FIXED: Cross-context bridges for Activity ↔ Baby ↔ Notification ↔ Tracker
 // FIXED: useCustomization hook called at top level, not inside useMemo
 
 import React, { useEffect, useRef, useMemo } from 'react';
@@ -17,6 +18,7 @@ import { CommunityProvider } from '@/context/CommunityContext';
 import { SafetyProvider } from '@/context/SafetyContext';
 import { AudioProvider } from '@/context/AudioContext';
 import { AppProvider, useTheme } from '@/context/AppContext';
+import { TrackerProvider } from '@/context/TrackerContext';
 import { SweetAlertProvider } from '@/components/SweetAlert';
 import useCustomization from '@/hooks/useCustomization';
 import { notificationService } from '@/services/NotificationService';
@@ -51,7 +53,7 @@ const ActivitySyncBridge: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     if (!currentBabyId || initRef.current) return;
     initRef.current = true;
-    
+
     const doSync = async () => {
       await syncWithBabyContext(currentBabyId);
     };
@@ -67,6 +69,17 @@ const ActivitySyncBridge: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   return <>{children}</>;
+};
+
+// Bridge: Provides babyId to TrackerProvider
+const TrackerBridge: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { currentBaby } = useBaby();
+
+  return (
+    <TrackerProvider babyId={currentBaby?.id || ''}>
+      {children}
+    </TrackerProvider>
+  );
 };
 
 // Inner wrapper — called AFTER all providers are mounted
@@ -128,9 +141,11 @@ export default function ContextProvider({ children }: ContextProviderProps) {
                         <CommunityProvider>
                           <SafetyProvider>
                             <AudioProvider>
-                              <SweetAlertWrapper>
-                                {children}
-                              </SweetAlertWrapper>
+                              <TrackerBridge>
+                                <SweetAlertWrapper>
+                                  {children}
+                                </SweetAlertWrapper>
+                              </TrackerBridge>
                             </AudioProvider>
                           </SafetyProvider>
                         </CommunityProvider>

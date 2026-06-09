@@ -1,12 +1,22 @@
 // src/context/BabyContext.tsx
-// FULLY SYNCED: Integrates with ActivityContext, NotificationService, AppContext
-// Cross-context sync: Activities auto-sync to ActivityContext, notifications on key events
-// FIXED: Zero unused variables, proper TypeScript strict compliance, all @/ aliases
+// COMPATIBILITY LAYER: Delegates activities to TrackerContext
+// KEEPS ALL DIRECT STORAGE/CRUD for: Sleep, Feeding, Potty, Medication, Growth, Milestones
+// RESTORED: All helpers, cross-context sync, notifications, retry logic, auto age refresh
+// FIXED: Zero repetition, unified storage, family-synced, full backward compatibility
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
+
+// Import the unified system (optional — gracefully degrades if not available)
+let useTrackerHook: (() => any) | null = null;
+try {
+  const trackerModule = require('./TrackerContext');
+  useTrackerHook = trackerModule.useTracker;
+} catch {
+  useTrackerHook = null;
+}
 
 /* ------------------------------------------------------------------ */
 /*  Storage Keys                                                      */
@@ -31,28 +41,38 @@ const NOTIFICATION_PREFIX = '@littleloom_activity_notif_';
 /*  Lazy imports to avoid circular dependencies                       */
 /* ------------------------------------------------------------------ */
 const getNotificationService = async () => {
-  const { notificationService } = await import('@/services/NotificationService');
-  return notificationService;
+  try {
+    const { notificationService } = await import('@/services/NotificationService');
+    return notificationService;
+  } catch {
+    return null;
+  }
 };
 
 /* ------------------------------------------------------------------ */
-/*  Types                                                              */
+/*  Types — ALL 70+ TRACKING ASPECTS                                */
 /* ------------------------------------------------------------------ */
 export type Gender = 'boy' | 'girl' | 'other';
+
 export type ActivityType =
-  | 'potty'
-  | 'feed'
-  | 'sleep'
-  | 'growth'
-  | 'medication'
-  | 'milestone'
-  | 'diaper'
-  | 'note'
-  | 'bath'
-  | 'pumping'
-  | 'temperature'
-  | 'symptom'
-  | 'play';
+  | 'potty' | 'diaper' | 'feed' | 'pumping' | 'sleep' | 'bath'
+  | 'growth' | 'temperature' | 'medication' | 'symptom'
+  | 'vaccine' | 'doctor_visit' | 'teething' | 'allergy'
+  | 'skin_condition' | 'immunization'
+  | 'milestone' | 'play' | 'tummy_time' | 'reading'
+  | 'music' | 'outdoor' | 'sensory' | 'speech'
+  | 'mood' | 'attachment' | 'social' | 'crying' | 'soothing'
+  | 'nail_care' | 'hair_care' | 'skin_care' | 'sunscreen'
+  | 'insect_repellent' | 'oral_hygiene' | 'ear_care' | 'nose_care'
+  | 'solid_food' | 'water' | 'vitamin' | 'allergen_intro'
+  | 'feeding_reaction' | 'breastfeeding'
+  | 'accident' | 'injury' | 'choking' | 'car_seat' | 'babyproofing'
+  | 'wake_time' | 'bedtime' | 'nap' | 'screen_time' | 'outdoor_time'
+  | 'note' | 'photo' | 'video' | 'voice_memo' | 'journal'
+  | 'trip' | 'travel' | 'daycare' | 'babysitter'
+  | 'reflux' | 'colic' | 'gas' | 'constipation'
+  | 'diarrhea' | 'eczema' | 'cradle_cap'
+  | string;
 
 export interface BabyProfile {
   id: string;
@@ -98,6 +118,9 @@ export interface Milestone {
   achievedAt: string;
   imageUrl?: string;
   notes?: string;
+  isFirstTime?: boolean;
+  recordedBy?: string;
+  recordedByName?: string;
 }
 
 export interface SleepLog {
@@ -158,16 +181,106 @@ export interface ActivityEntry {
   icon?: string;
   loggedBy: string;
   loggedByName: string;
+  // Potty fields
   pottyType?: PottyLog['type'];
+  successful?: boolean;
+  // Feed fields
   feedType?: FeedingLog['type'];
-  sleepType?: SleepLog['type'];
   amount?: string;
   duration?: string;
+  side?: string;
+  food?: string;
+  // Sleep fields
+  sleepType?: 'nap' | 'night' | 'wake';
+  quality?: number;
+  location?: string;
+  // Growth fields
   measurementType?: GrowthMeasurement['type'];
   value?: string;
   unit?: string;
-  milestoneTitle?: string;
-  medicationName?: string;
+  percentile?: number;
+  // Medication fields
+  medName?: string;
+  dosage?: string;
+  medType?: string;
+  reason?: string;
+  givenBy?: string;
+  // Milestone fields
+  milestoneType?: string;
+  firstTime?: boolean;
+  description?: string;
+  // Symptom fields
+  symptomType?: string;
+  severity?: number;
+  // Temperature fields
+  tempValue?: number;
+  tempUnit?: 'celsius' | 'fahrenheit';
+  method?: string;
+  symptoms?: string[];
+  // Play fields
+  playType?: string;
+  engagement?: number;
+  // Development fields
+  tummyTime?: string;
+  readingDuration?: string;
+  musicType?: string;
+  outdoorActivity?: string;
+  sensoryType?: string;
+  speechWord?: string;
+  // Emotional fields
+  moodType?: string;
+  attachmentType?: string;
+  socialType?: string;
+  cryingDuration?: string;
+  soothingMethod?: string;
+  // Physical care fields
+  nailCareType?: string;
+  hairCareType?: string;
+  skinCareType?: string;
+  sunscreenSpf?: string;
+  repellentType?: string;
+  oralCareType?: string;
+  earCareType?: string;
+  noseCareType?: string;
+  // Nutrition fields
+  solidFoodType?: string;
+  waterAmount?: string;
+  vitaminName?: string;
+  allergenType?: string;
+  reactionType?: string;
+  breastfeedingDuration?: string;
+  // Safety fields
+  accidentType?: string;
+  injuryType?: string;
+  chokingResponse?: string;
+  carSeatType?: string;
+  babyproofingArea?: string;
+  // Schedule fields
+  wakeTime?: string;
+  bedtimeRoutine?: string;
+  napDuration?: string;
+  screenTimeDuration?: string;
+  outdoorTimeDuration?: string;
+  // Parental fields
+  content?: string;
+  photoUri?: string;
+  videoUri?: string;
+  voiceMemoUri?: string;
+  journalEntry?: string;
+  // Travel fields
+  tripDestination?: string;
+  travelMode?: string;
+  daycareNotes?: string;
+  babysitterName?: string;
+  // Special needs fields
+  refluxSeverity?: string;
+  colicDuration?: string;
+  gasRelief?: string;
+  constipationRelief?: string;
+  diarrheaFrequency?: string;
+  eczemaSeverity?: string;
+  cradleCapTreatment?: string;
+  // General
   notes?: string;
   photo?: string;
   tags?: string[];
@@ -195,13 +308,9 @@ interface BabyState {
 }
 
 interface BabyContextType extends BabyState {
+  // Baby profile CRUD
   loadBabies: () => Promise<void>;
-  createBaby: (
-    data: Omit<
-      BabyProfile,
-      'id' | 'streak' | 'milestones' | 'photos' | 'createdAt' | 'age' | 'lastUpdated' | 'parent1Id'
-    >
-  ) => Promise<boolean>;
+  createBaby: (data: Omit<BabyProfile, 'id' | 'streak' | 'milestones' | 'photos' | 'createdAt' | 'age' | 'lastUpdated' | 'parent1Id'>) => Promise<boolean>;
   updateBaby: (id: string, updates: Partial<BabyProfile>) => Promise<void>;
   deleteBaby: (id: string) => Promise<boolean>;
   switchBaby: (id: string) => Promise<boolean>;
@@ -210,36 +319,49 @@ interface BabyContextType extends BabyState {
   clearSkipBaby: () => Promise<void>;
   calculateAge: (birthDate: string) => string;
   getBabyAge: (babyId?: string) => string;
-  addGrowthMeasurement: (
-    measurement: Omit<GrowthMeasurement, 'id' | 'createdAt'>
-  ) => Promise<boolean>;
+
+  // Growth
+  addGrowthMeasurement: (measurement: Omit<GrowthMeasurement, 'id' | 'createdAt'>) => Promise<boolean>;
   getGrowthData: (type?: GrowthMeasurement['type']) => GrowthMeasurement[];
   getLatestMeasurements: () => Record<GrowthMeasurement['type'], GrowthMeasurement | null>;
   deleteGrowthMeasurement: (id: string) => Promise<boolean>;
+
+  // Milestones
   addMilestone: (milestone: Omit<Milestone, 'id'>) => Promise<boolean>;
   getMilestones: (category?: Milestone['category']) => Milestone[];
   deleteMilestone: (id: string) => Promise<boolean>;
+
+  // Sleep
   addSleepLog: (log: Omit<SleepLog, 'id' | 'createdAt'>) => Promise<boolean>;
   getSleepLogs: (days?: number) => SleepLog[];
   endSleepSession: (logId: string, endTime: string) => Promise<boolean>;
   getTodaySleepCount: () => number;
+
+  // Feeding
   addFeedingLog: (log: Omit<FeedingLog, 'id' | 'createdAt'>) => Promise<boolean>;
   getFeedingLogs: (days?: number) => FeedingLog[];
   getTodayFeedCount: () => number;
+
+  // Potty
   addPottyLog: (log: Omit<PottyLog, 'id' | 'createdAt'>) => Promise<boolean>;
   getPottyLogs: (days?: number) => PottyLog[];
   getPottyStreak: () => number;
   getTodayPottyCount: () => number;
   getPottySuccessRate: () => number;
+
+  // Medication
   addMedicationLog: (log: Omit<MedicationLog, 'id' | 'createdAt'>) => Promise<boolean>;
   getMedicationLogs: (days?: number) => MedicationLog[];
+
+  // Activities (delegates to TrackerContext when available, falls back to direct storage)
   addActivity: (entry: Omit<ActivityEntry, 'id'>) => Promise<boolean>;
   getRecentActivities: (limit?: number) => ActivityEntry[];
   getActivitiesByType: (type: ActivityType) => ActivityEntry[];
   deleteActivity: (id: string) => Promise<boolean>;
   getBabyStats: () => { streak: number; milestones: number; photos: number; entries: number };
   updateBabyStats: (updates: Partial<BabyProfile>) => Promise<void>;
-  // ActivityContext compatibility layer
+
+  // ActivityContext compatibility
   entries: ActivityEntry[];
   isLoadingEntries: boolean;
   loadEntries: () => Promise<void>;
@@ -248,15 +370,13 @@ interface BabyContextType extends BabyState {
   updateEntry: (id: string, entry: Partial<ActivityEntry>) => Promise<boolean>;
   getEntryById: (id: string) => ActivityEntry | undefined;
   getDateTitle: (timestamp: number | string) => string;
+
   // Cross-context sync
   syncWithActivityContext: () => Promise<void>;
   scheduleActivityReminder: (entry: ActivityEntry, minutes: number) => Promise<string | null>;
   cancelActivityReminder: (notificationId: string) => Promise<void>;
 }
 
-/* ------------------------------------------------------------------ */
-/*  Context                                                            */
-/* ------------------------------------------------------------------ */
 const BabyContext = createContext<BabyContextType | null>(null);
 
 /* ------------------------------------------------------------------ */
@@ -270,12 +390,7 @@ const generateId = (): string => {
 
 const safeParse = <T,>(json: string | null, fallback: T): T => {
   if (!json) return fallback;
-  try {
-    return JSON.parse(json) as T;
-  } catch {
-    console.warn('Failed to parse JSON from storage, using fallback');
-    return fallback;
-  }
+  try { return JSON.parse(json) as T; } catch { return fallback; }
 };
 
 const getStartOfDay = (date = new Date()): Date => {
@@ -312,6 +427,9 @@ const withRetry = async <T,>(
 /*  Provider                                                           */
 /* ------------------------------------------------------------------ */
 export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // Try to get TrackerContext (gracefully handles if not available)
+  const tracker = useTrackerHook ? useTrackerHook() : null;
+
   const [state, setState] = useState<BabyState>({
     isLoading: false,
     babies: [],
@@ -336,7 +454,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const calculateAge = useCallback((birthDate: string): string => {
     const birth = new Date(birthDate);
     const now = new Date();
-
     if (isNaN(birth.getTime())) return 'Invalid date';
     if (birth > now) return 'Not born yet';
 
@@ -359,61 +476,54 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const years = Math.floor(months / 12);
     const remainingMonths = months % 12;
-
     return remainingMonths > 0 ? `${years}y ${remainingMonths}m` : `${years} year${years !== 1 ? 's' : ''}`;
   }, []);
 
-  const getBabyAge = useCallback(
-    (babyId?: string): string => {
-      const id = babyId || state.currentBabyId;
-      if (!id) return '';
-      const baby = state.babies.find((b) => b.id === id);
-      return baby?.age || '';
-    },
-    [state.babies, state.currentBabyId]
-  );
+  const getBabyAge = useCallback((babyId?: string): string => {
+    const id = babyId || state.currentBabyId;
+    if (!id) return '';
+    const baby = state.babies.find(b => b.id === id);
+    return baby?.age || '';
+  }, [state.babies, state.currentBabyId]);
 
   /* ---- Data loading ---- */
-  const loadAllBabyData = useCallback(
-    async (babyId: string) => {
-      setState((prev) => ({ ...prev, isLoading: true }));
-      setIsLoadingEntries(true);
+  const loadAllBabyData = useCallback(async (babyId: string) => {
+    setState(prev => ({ ...prev, isLoading: true }));
+    setIsLoadingEntries(true);
 
-      try {
-        const [growthStr, milestonesStr, sleepStr, feedingStr, pottyStr, medicationStr, activitiesStr] =
-          await Promise.all([
-            withRetry(() => AsyncStorage.getItem(STORAGE_KEYS.GROWTH_DATA(babyId))),
-            withRetry(() => AsyncStorage.getItem(STORAGE_KEYS.MILESTONES(babyId))),
-            withRetry(() => AsyncStorage.getItem(STORAGE_KEYS.SLEEP_LOGS(babyId))),
-            withRetry(() => AsyncStorage.getItem(STORAGE_KEYS.FEEDING_LOGS(babyId))),
-            withRetry(() => AsyncStorage.getItem(STORAGE_KEYS.POTTY_LOGS(babyId))),
-            withRetry(() => AsyncStorage.getItem(STORAGE_KEYS.MEDICATION_LOGS(babyId))),
-            withRetry(() => AsyncStorage.getItem(STORAGE_KEYS.ACTIVITIES(babyId))),
-          ]);
+    try {
+      const [growthStr, milestonesStr, sleepStr, feedingStr, pottyStr, medicationStr, activitiesStr] =
+        await Promise.all([
+          withRetry(() => AsyncStorage.getItem(STORAGE_KEYS.GROWTH_DATA(babyId))),
+          withRetry(() => AsyncStorage.getItem(STORAGE_KEYS.MILESTONES(babyId))),
+          withRetry(() => AsyncStorage.getItem(STORAGE_KEYS.SLEEP_LOGS(babyId))),
+          withRetry(() => AsyncStorage.getItem(STORAGE_KEYS.FEEDING_LOGS(babyId))),
+          withRetry(() => AsyncStorage.getItem(STORAGE_KEYS.POTTY_LOGS(babyId))),
+          withRetry(() => AsyncStorage.getItem(STORAGE_KEYS.MEDICATION_LOGS(babyId))),
+          withRetry(() => AsyncStorage.getItem(STORAGE_KEYS.ACTIVITIES(babyId))),
+        ]);
 
-        setState((prev) => ({
-          ...prev,
-          isLoading: false,
-          growthData: safeParse<GrowthMeasurement[]>(growthStr, []),
-          milestones: safeParse<Milestone[]>(milestonesStr, []),
-          sleepLogs: safeParse<SleepLog[]>(sleepStr, []),
-          feedingLogs: safeParse<FeedingLog[]>(feedingStr, []),
-          pottyLogs: safeParse<PottyLog[]>(pottyStr, []),
-          medicationLogs: safeParse<MedicationLog[]>(medicationStr, []),
-          activities: safeParse<ActivityEntry[]>(activitiesStr, []),
-        }));
-      } catch (error) {
-        console.error('Error loading baby data:', error);
-        setState((prev) => ({ ...prev, isLoading: false }));
-      } finally {
-        setIsLoadingEntries(false);
-      }
-    },
-    []
-  );
+      setState(prev => ({
+        ...prev,
+        isLoading: false,
+        growthData: safeParse<GrowthMeasurement[]>(growthStr, []),
+        milestones: safeParse<Milestone[]>(milestonesStr, []),
+        sleepLogs: safeParse<SleepLog[]>(sleepStr, []),
+        feedingLogs: safeParse<FeedingLog[]>(feedingStr, []),
+        pottyLogs: safeParse<PottyLog[]>(pottyStr, []),
+        medicationLogs: safeParse<MedicationLog[]>(medicationStr, []),
+        activities: safeParse<ActivityEntry[]>(activitiesStr, []),
+      }));
+    } catch (error) {
+      console.error('Error loading baby data:', error);
+      setState(prev => ({ ...prev, isLoading: false }));
+    } finally {
+      setIsLoadingEntries(false);
+    }
+  }, []);
 
   const loadBabies = useCallback(async () => {
-    setState((prev) => ({ ...prev, isLoading: true }));
+    setState(prev => ({ ...prev, isLoading: true }));
 
     try {
       const [babiesStr, currentId, hasSkipped] = await Promise.all([
@@ -423,20 +533,16 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       ]);
 
       let babies: BabyProfile[] = safeParse<BabyProfile[]>(babiesStr, []);
-      babies = babies.map((b) => ({
-        ...b,
-        age: calculateAge(b.birthDate),
-      }));
+      babies = babies.map(b => ({ ...b, age: calculateAge(b.birthDate) }));
 
       const effectiveCurrentId = currentId || babies[0]?.id || null;
-
       if (effectiveCurrentId && !currentId && babies.length > 0) {
         await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY, effectiveCurrentId);
       }
 
-      const currentBaby = babies.find((b) => b.id === effectiveCurrentId) || babies[0] || null;
+      const currentBaby = babies.find(b => b.id === effectiveCurrentId) || babies[0] || null;
 
-      setState((prev) => ({
+      setState(prev => ({
         ...prev,
         isLoading: false,
         babies,
@@ -450,7 +556,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     } catch (error) {
       console.error('Error loading babies:', error);
-      setState((prev) => ({ ...prev, isLoading: false }));
+      setState(prev => ({ ...prev, isLoading: false }));
     }
   }, [calculateAge, loadAllBabyData]);
 
@@ -466,12 +572,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (state.babies.length === 0) return;
 
     const updateAges = () => {
-      setState((prev) => ({
+      setState(prev => ({
         ...prev,
-        babies: prev.babies.map((b) => ({
-          ...b,
-          age: calculateAge(b.birthDate),
-        })),
+        babies: prev.babies.map(b => ({ ...b, age: calculateAge(b.birthDate) })),
         currentBaby: prev.currentBaby
           ? { ...prev.currentBaby, age: calculateAge(prev.currentBaby.birthDate) }
           : null,
@@ -493,7 +596,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const skipBaby = useCallback(async () => {
     try {
       await AsyncStorage.setItem(STORAGE_KEYS.HAS_SKIPPED_BABY, 'true');
-      setState((prev) => ({ ...prev, hasSkippedBaby: true }));
+      setState(prev => ({ ...prev, hasSkippedBaby: true }));
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     } catch (error) {
       console.error('Error skipping baby:', error);
@@ -503,199 +606,175 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const clearSkipBaby = useCallback(async () => {
     try {
       await AsyncStorage.removeItem(STORAGE_KEYS.HAS_SKIPPED_BABY);
-      setState((prev) => ({ ...prev, hasSkippedBaby: false }));
+      setState(prev => ({ ...prev, hasSkippedBaby: false }));
     } catch (error) {
       console.error('Error clearing skip baby:', error);
     }
   }, []);
 
   /* ---- Create baby ---- */
-  const createBaby = useCallback(
-    async (
-      data: Omit<BabyProfile, 'id' | 'streak' | 'milestones' | 'photos' | 'createdAt' | 'age' | 'lastUpdated' | 'parent1Id'>
-    ): Promise<boolean> => {
-      const birthDate = new Date(data.birthDate);
-      const now = new Date();
-      if (birthDate > now) {
-        Alert.alert('Invalid Date', 'Birth date cannot be in the future');
-        return false;
+  const createBaby = useCallback(async (
+    data: Omit<BabyProfile, 'id' | 'streak' | 'milestones' | 'photos' | 'createdAt' | 'age' | 'lastUpdated' | 'parent1Id'>
+  ): Promise<boolean> => {
+    const birthDate = new Date(data.birthDate);
+    const now = new Date();
+    if (birthDate > now) {
+      Alert.alert('Invalid Date', 'Birth date cannot be in the future');
+      return false;
+    }
+    if (isNaN(birthDate.getTime())) {
+      Alert.alert('Invalid Date', 'Please enter a valid birth date');
+      return false;
+    }
+
+    try {
+      const nowISO = new Date().toISOString();
+      const newBaby: BabyProfile = {
+        ...data,
+        id: generateId(),
+        parent1Id: 'default',
+        streak: 0,
+        milestones: 0,
+        photos: 0,
+        createdAt: nowISO,
+        lastUpdated: nowISO,
+        age: calculateAge(data.birthDate),
+      };
+
+      const updatedBabies = [...state.babies, newBaby];
+      await AsyncStorage.setItem(STORAGE_KEYS.BABIES, JSON.stringify(updatedBabies));
+
+      const isFirstBaby = state.babies.length === 0;
+      const newCurrentId = isFirstBaby ? newBaby.id : state.currentBabyId;
+
+      if (isFirstBaby && newCurrentId) {
+        await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY, newCurrentId);
       }
-      if (isNaN(birthDate.getTime())) {
-        Alert.alert('Invalid Date', 'Please enter a valid birth date');
-        return false;
-      }
 
-      try {
-        const nowISO = new Date().toISOString();
-        const newBaby: BabyProfile = {
-          ...data,
-          id: generateId(),
-          parent1Id: 'default',
-          streak: 0,
-          milestones: 0,
-          photos: 0,
-          createdAt: nowISO,
-          lastUpdated: nowISO,
-          age: calculateAge(data.birthDate),
-        };
+      await clearSkipBaby();
 
-        const updatedBabies = [...state.babies, newBaby];
-        await AsyncStorage.setItem(STORAGE_KEYS.BABIES, JSON.stringify(updatedBabies));
+      setState(prev => ({
+        ...prev,
+        babies: updatedBabies,
+        currentBabyId: newCurrentId || newBaby.id,
+        currentBaby: isFirstBaby ? newBaby : prev.currentBaby,
+      }));
 
-        const isFirstBaby = state.babies.length === 0;
-        const newCurrentId = isFirstBaby ? newBaby.id : state.currentBabyId;
-
-        if (isFirstBaby && newCurrentId) {
-          await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY, newCurrentId);
-        }
-
-        await clearSkipBaby();
-
-        setState((prev) => ({
-          ...prev,
-          babies: updatedBabies,
-          currentBabyId: newCurrentId || newBaby.id,
-          currentBaby: isFirstBaby ? newBaby : prev.currentBaby,
-        }));
-
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-        return true;
-      } catch (error) {
-        console.error('Create baby error:', error);
-        Alert.alert('Error', 'Failed to create baby profile');
-        return false;
-      }
-    },
-    [state.babies, state.currentBabyId, calculateAge, clearSkipBaby]
-  );
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      return true;
+    } catch (error) {
+      console.error('Create baby error:', error);
+      Alert.alert('Error', 'Failed to create baby profile');
+      return false;
+    }
+  }, [state.babies, state.currentBabyId, calculateAge, clearSkipBaby]);
 
   /* ---- Update baby ---- */
-  const updateBaby = useCallback(
-    async (id: string, updates: Partial<BabyProfile>) => {
-      try {
-        const updated = state.babies.map((b) => {
-          if (b.id === id) {
-            const updatedBaby: BabyProfile = {
-              ...b,
-              ...updates,
-              lastUpdated: new Date().toISOString(),
-            };
-            if (updates.birthDate) {
-              updatedBaby.age = calculateAge(updates.birthDate);
-            }
-            return updatedBaby;
-          }
-          return b;
-        });
+  const updateBaby = useCallback(async (id: string, updates: Partial<BabyProfile>) => {
+    try {
+      const updated = state.babies.map(b => {
+        if (b.id === id) {
+          const updatedBaby: BabyProfile = { ...b, ...updates, lastUpdated: new Date().toISOString() };
+          if (updates.birthDate) updatedBaby.age = calculateAge(updates.birthDate);
+          return updatedBaby;
+        }
+        return b;
+      });
 
-        await AsyncStorage.setItem(STORAGE_KEYS.BABIES, JSON.stringify(updated));
+      await AsyncStorage.setItem(STORAGE_KEYS.BABIES, JSON.stringify(updated));
 
-        setState((prev) => ({
-          ...prev,
-          babies: updated,
-          currentBaby:
-            prev.currentBaby?.id === id
-              ? updated.find((b) => b.id === id) || null
-              : prev.currentBaby,
-        }));
-      } catch (error) {
-        console.error('Update baby error:', error);
-        Alert.alert('Error', 'Failed to update baby profile');
-      }
-    },
-    [state.babies, calculateAge]
-  );
+      setState(prev => ({
+        ...prev,
+        babies: updated,
+        currentBaby: prev.currentBaby?.id === id ? updated.find(b => b.id === id) || null : prev.currentBaby,
+      }));
+    } catch (error) {
+      console.error('Update baby error:', error);
+      Alert.alert('Error', 'Failed to update baby profile');
+    }
+  }, [state.babies, calculateAge]);
 
   /* ---- Delete baby ---- */
-  const deleteBaby = useCallback(
-    async (id: string): Promise<boolean> => {
-      try {
-        const filtered = state.babies.filter((b) => b.id !== id);
-        await AsyncStorage.setItem(STORAGE_KEYS.BABIES, JSON.stringify(filtered));
+  const deleteBaby = useCallback(async (id: string): Promise<boolean> => {
+    try {
+      const filtered = state.babies.filter(b => b.id !== id);
+      await AsyncStorage.setItem(STORAGE_KEYS.BABIES, JSON.stringify(filtered));
 
-        const cleanupKeys = [
-          STORAGE_KEYS.GROWTH_DATA(id),
-          STORAGE_KEYS.MILESTONES(id),
-          STORAGE_KEYS.SLEEP_LOGS(id),
-          STORAGE_KEYS.FEEDING_LOGS(id),
-          STORAGE_KEYS.POTTY_LOGS(id),
-          STORAGE_KEYS.MEDICATION_LOGS(id),
-          STORAGE_KEYS.ACTIVITIES(id),
-        ];
+      const cleanupKeys = [
+        STORAGE_KEYS.GROWTH_DATA(id),
+        STORAGE_KEYS.MILESTONES(id),
+        STORAGE_KEYS.SLEEP_LOGS(id),
+        STORAGE_KEYS.FEEDING_LOGS(id),
+        STORAGE_KEYS.POTTY_LOGS(id),
+        STORAGE_KEYS.MEDICATION_LOGS(id),
+        STORAGE_KEYS.ACTIVITIES(id),
+      ];
 
-        await Promise.all(cleanupKeys.map((key) => AsyncStorage.removeItem(key)));
+      await Promise.all(cleanupKeys.map(key => AsyncStorage.removeItem(key)));
 
-        let newCurrentId = state.currentBabyId;
-        if (state.currentBabyId === id) {
-          newCurrentId = filtered[0]?.id || null;
-          if (newCurrentId) {
-            await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY, newCurrentId);
-          } else {
-            await AsyncStorage.multiRemove([
-              STORAGE_KEYS.CURRENT_BABY,
-              STORAGE_KEYS.HAS_SKIPPED_BABY,
-            ]);
-          }
-        }
-
-        const newCurrentBaby = filtered.find((b) => b.id === newCurrentId) || null;
-
-        setState((prev) => ({
-          ...prev,
-          babies: filtered,
-          currentBabyId: newCurrentId,
-          currentBaby: newCurrentBaby,
-          growthData: newCurrentId ? prev.growthData : [],
-          milestones: newCurrentId ? prev.milestones : [],
-          sleepLogs: newCurrentId ? prev.sleepLogs : [],
-          feedingLogs: newCurrentId ? prev.feedingLogs : [],
-          pottyLogs: newCurrentId ? prev.pottyLogs : [],
-          medicationLogs: newCurrentId ? prev.medicationLogs : [],
-          activities: newCurrentId ? prev.activities : [],
-        }));
-
+      let newCurrentId = state.currentBabyId;
+      if (state.currentBabyId === id) {
+        newCurrentId = filtered[0]?.id || null;
         if (newCurrentId) {
-          await loadAllBabyData(newCurrentId);
+          await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY, newCurrentId);
+        } else {
+          await AsyncStorage.multiRemove([STORAGE_KEYS.CURRENT_BABY, STORAGE_KEYS.HAS_SKIPPED_BABY]);
         }
-
-        return true;
-      } catch (error) {
-        console.error('Delete baby error:', error);
-        Alert.alert('Error', 'Failed to delete baby profile');
-        return false;
       }
-    },
-    [state.babies, state.currentBabyId, loadAllBabyData]
-  );
+
+      const newCurrentBaby = filtered.find(b => b.id === newCurrentId) || null;
+
+      setState(prev => ({
+        ...prev,
+        babies: filtered,
+        currentBabyId: newCurrentId,
+        currentBaby: newCurrentBaby,
+        growthData: newCurrentId ? prev.growthData : [],
+        milestones: newCurrentId ? prev.milestones : [],
+        sleepLogs: newCurrentId ? prev.sleepLogs : [],
+        feedingLogs: newCurrentId ? prev.feedingLogs : [],
+        pottyLogs: newCurrentId ? prev.pottyLogs : [],
+        medicationLogs: newCurrentId ? prev.medicationLogs : [],
+        activities: newCurrentId ? prev.activities : [],
+      }));
+
+      if (newCurrentId) {
+        await loadAllBabyData(newCurrentId);
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Delete baby error:', error);
+      Alert.alert('Error', 'Failed to delete baby profile');
+      return false;
+    }
+  }, [state.babies, state.currentBabyId, loadAllBabyData]);
 
   /* ---- Switch baby ---- */
-  const switchBaby = useCallback(
-    async (id: string): Promise<boolean> => {
-      const baby = state.babies.find((b) => b.id === id);
-      if (!baby) {
-        console.warn(`Baby with id ${id} not found`);
-        return false;
-      }
+  const switchBaby = useCallback(async (id: string): Promise<boolean> => {
+    const baby = state.babies.find(b => b.id === id);
+    if (!baby) {
+      console.warn(`Baby with id ${id} not found`);
+      return false;
+    }
 
-      try {
-        await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY, id);
-        await loadAllBabyData(id);
+    try {
+      await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY, id);
+      await loadAllBabyData(id);
 
-        setState((prev) => ({
-          ...prev,
-          currentBabyId: id,
-          currentBaby: baby,
-        }));
+      setState(prev => ({
+        ...prev,
+        currentBabyId: id,
+        currentBaby: baby,
+      }));
 
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-        return true;
-      } catch (error) {
-        console.error('Error switching baby:', error);
-        return false;
-      }
-    },
-    [state.babies, loadAllBabyData]
-  );
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      return true;
+    } catch (error) {
+      console.error('Error switching baby:', error);
+      return false;
+    }
+  }, [state.babies, loadAllBabyData]);
 
   /* ---- Refresh current baby ---- */
   const refreshCurrentBaby = useCallback(async () => {
@@ -704,19 +783,13 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const babiesStr = await AsyncStorage.getItem(STORAGE_KEYS.BABIES);
       const babies = safeParse<BabyProfile[]>(babiesStr, []);
-      const currentBaby = babies.find((b) => b.id === state.currentBabyId);
+      const currentBaby = babies.find(b => b.id === state.currentBabyId);
 
       if (currentBaby) {
-        setState((prev) => ({
+        setState(prev => ({
           ...prev,
-          babies: babies.map((b) => ({
-            ...b,
-            age: calculateAge(b.birthDate),
-          })),
-          currentBaby: {
-            ...currentBaby,
-            age: calculateAge(currentBaby.birthDate),
-          },
+          babies: babies.map(b => ({ ...b, age: calculateAge(b.birthDate) })),
+          currentBaby: { ...currentBaby, age: calculateAge(currentBaby.birthDate) },
         }));
 
         await loadAllBabyData(state.currentBabyId);
@@ -727,307 +800,247 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [state.currentBabyId, calculateAge, loadAllBabyData]);
 
   /* ---- Growth ---- */
-  const addGrowthMeasurement = useCallback(
-    async (measurement: Omit<GrowthMeasurement, 'id' | 'createdAt'>): Promise<boolean> => {
-      try {
-        const newMeasurement: GrowthMeasurement = {
-          ...measurement,
-          id: generateId(),
-          createdAt: new Date().toISOString(),
-        };
+  const addGrowthMeasurement = useCallback(async (
+    measurement: Omit<GrowthMeasurement, 'id' | 'createdAt'>
+  ): Promise<boolean> => {
+    try {
+      const newMeasurement: GrowthMeasurement = { ...measurement, id: generateId(), createdAt: new Date().toISOString() };
 
-        const key = STORAGE_KEYS.GROWTH_DATA(measurement.babyId);
-        const existing = await AsyncStorage.getItem(key);
-        const measurements: GrowthMeasurement[] = safeParse(existing, []);
-        measurements.push(newMeasurement);
+      const key = STORAGE_KEYS.GROWTH_DATA(measurement.babyId);
+      const existing = await AsyncStorage.getItem(key);
+      const measurements: GrowthMeasurement[] = safeParse(existing, []);
+      measurements.push(newMeasurement);
 
-        await AsyncStorage.setItem(key, JSON.stringify(measurements));
+      await AsyncStorage.setItem(key, JSON.stringify(measurements));
 
-        if (measurement.babyId === state.currentBabyId) {
-          setState((prev) => ({ ...prev, growthData: measurements }));
-        }
-
-        const baby = state.babies.find((b) => b.id === measurement.babyId);
-        if (baby) {
-          const updates: Partial<BabyProfile> = {};
-          if (measurement.type === 'height') {
-            updates.height = `${measurement.value} ${measurement.unit}`;
-          }
-          if (measurement.type === 'weight') {
-            updates.weight = `${measurement.value} ${measurement.unit}`;
-          }
-          if (Object.keys(updates).length > 0) {
-            await updateBaby(measurement.babyId, updates);
-          }
-        }
-
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-        return true;
-      } catch (error) {
-        console.error('Add growth measurement error:', error);
-        Alert.alert('Error', 'Failed to save measurement');
-        return false;
+      if (measurement.babyId === state.currentBabyId) {
+        setState(prev => ({ ...prev, growthData: measurements }));
       }
-    },
-    [state.currentBabyId, state.babies, updateBaby]
-  );
 
-  const getGrowthData = useCallback(
-    (type?: GrowthMeasurement['type']) => {
-      let data = [...state.growthData];
-      if (type) {
-        data = data.filter((m) => m.type === type);
+      const baby = state.babies.find(b => b.id === measurement.babyId);
+      if (baby) {
+        const updates: Partial<BabyProfile> = {};
+        if (measurement.type === 'height') updates.height = `${measurement.value} ${measurement.unit}`;
+        if (measurement.type === 'weight') updates.weight = `${measurement.value} ${measurement.unit}`;
+        if (Object.keys(updates).length > 0) {
+          await updateBaby(measurement.babyId, updates);
+        }
       }
-      return data.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    },
-    [state.growthData]
-  );
+
+      // Also log as tracker entry for timeline (if TrackerContext available)
+      if (tracker?.addEntry) {
+        await tracker.addEntry('growth', {
+          measurementType: measurement.type,
+          value: measurement.value,
+          unit: measurement.unit,
+        }, { title: `📏 Growth: ${measurement.type}` });
+      }
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      return true;
+    } catch (error) {
+      console.error('Add growth measurement error:', error);
+      Alert.alert('Error', 'Failed to save measurement');
+      return false;
+    }
+  }, [state.currentBabyId, state.babies, updateBaby, tracker]);
+
+  const getGrowthData = useCallback((type?: GrowthMeasurement['type']) => {
+    let data = [...state.growthData];
+    if (type) data = data.filter(m => m.type === type);
+    return data.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [state.growthData]);
 
   const getLatestMeasurements = useCallback((): Record<GrowthMeasurement['type'], GrowthMeasurement | null> => {
     const types: GrowthMeasurement['type'][] = ['height', 'weight', 'head', 'temperature'];
-    const latest: Record<GrowthMeasurement['type'], GrowthMeasurement | null> = {
-      height: null,
-      weight: null,
-      head: null,
-      temperature: null,
-    };
-
-    types.forEach((type) => {
-      const typeData = state.growthData
-        .filter((m) => m.type === type)
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    const latest: Record<GrowthMeasurement['type'], GrowthMeasurement | null> = { height: null, weight: null, head: null, temperature: null };
+    types.forEach(type => {
+      const typeData = state.growthData.filter(m => m.type === type).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       latest[type] = typeData[0] || null;
     });
-
     return latest;
   }, [state.growthData]);
 
-  const deleteGrowthMeasurement = useCallback(
-    async (id: string): Promise<boolean> => {
-      try {
-        if (!state.currentBabyId) return false;
-
-        const key = STORAGE_KEYS.GROWTH_DATA(state.currentBabyId);
-        const filtered = state.growthData.filter((m) => m.id !== id);
-
-        await AsyncStorage.setItem(key, JSON.stringify(filtered));
-        setState((prev) => ({ ...prev, growthData: filtered }));
-
-        return true;
-      } catch (error) {
-        console.error('Delete growth measurement error:', error);
-        return false;
-      }
-    },
-    [state.currentBabyId, state.growthData]
-  );
+  const deleteGrowthMeasurement = useCallback(async (id: string): Promise<boolean> => {
+    try {
+      if (!state.currentBabyId) return false;
+      const key = STORAGE_KEYS.GROWTH_DATA(state.currentBabyId);
+      const filtered = state.growthData.filter(m => m.id !== id);
+      await AsyncStorage.setItem(key, JSON.stringify(filtered));
+      setState(prev => ({ ...prev, growthData: filtered }));
+      return true;
+    } catch (error) {
+      console.error('Delete growth measurement error:', error);
+      return false;
+    }
+  }, [state.currentBabyId, state.growthData]);
 
   /* ---- Milestones ---- */
-  const addMilestone = useCallback(
-    async (milestone: Omit<Milestone, 'id'>): Promise<boolean> => {
-      try {
-        const newMilestone: Milestone = {
-          ...milestone,
-          id: generateId(),
-        };
+  const addMilestone = useCallback(async (milestone: Omit<Milestone, 'id'>): Promise<boolean> => {
+    try {
+      const newMilestone: Milestone = { ...milestone, id: generateId() };
 
-        const key = STORAGE_KEYS.MILESTONES(milestone.babyId);
-        const existing = await AsyncStorage.getItem(key);
-        const milestones: Milestone[] = safeParse(existing, []);
-        milestones.push(newMilestone);
+      const key = STORAGE_KEYS.MILESTONES(milestone.babyId);
+      const existing = await AsyncStorage.getItem(key);
+      const milestones: Milestone[] = safeParse(existing, []);
+      milestones.push(newMilestone);
 
-        await AsyncStorage.setItem(key, JSON.stringify(milestones));
+      await AsyncStorage.setItem(key, JSON.stringify(milestones));
 
-        if (milestone.babyId === state.currentBabyId) {
-          setState((prev) => ({ ...prev, milestones }));
-        }
-
-        const baby = state.babies.find((b) => b.id === milestone.babyId);
-        if (baby) {
-          await updateBaby(milestone.babyId, { milestones: baby.milestones + 1 });
-        }
-
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-        return true;
-      } catch (error) {
-        console.error('Add milestone error:', error);
-        Alert.alert('Error', 'Failed to save milestone');
-        return false;
+      if (milestone.babyId === state.currentBabyId) {
+        setState(prev => ({ ...prev, milestones }));
       }
-    },
-    [state.currentBabyId, state.babies, updateBaby]
-  );
 
-  const getMilestones = useCallback(
-    (category?: Milestone['category']) => {
-      let data = [...state.milestones];
-      if (category) {
-        data = data.filter((m) => m.category === category);
+      const baby = state.babies.find(b => b.id === milestone.babyId);
+      if (baby) {
+        await updateBaby(milestone.babyId, { milestones: baby.milestones + 1 });
       }
-      return data.sort((a, b) => new Date(b.achievedAt).getTime() - new Date(a.achievedAt).getTime());
-    },
-    [state.milestones]
-  );
 
-  const deleteMilestone = useCallback(
-    async (id: string): Promise<boolean> => {
-      try {
-        if (!state.currentBabyId) return false;
-
-        const key = STORAGE_KEYS.MILESTONES(state.currentBabyId);
-        const filtered = state.milestones.filter((m) => m.id !== id);
-
-        await AsyncStorage.setItem(key, JSON.stringify(filtered));
-        setState((prev) => ({ ...prev, milestones: filtered }));
-
-        return true;
-      } catch (error) {
-        console.error('Delete milestone error:', error);
-        return false;
+      // Also log as tracker entry (if TrackerContext available)
+      if (tracker?.addEntry) {
+        await tracker.addEntry('milestone', {
+          title: milestone.title,
+          category: milestone.category,
+          firstTime: milestone.isFirstTime,
+          description: milestone.description,
+        }, { title: `🏆 Milestone: ${milestone.title}` });
       }
-    },
-    [state.currentBabyId, state.milestones]
-  );
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      return true;
+    } catch (error) {
+      console.error('Add milestone error:', error);
+      Alert.alert('Error', 'Failed to save milestone');
+      return false;
+    }
+  }, [state.currentBabyId, state.babies, updateBaby, tracker]);
+
+  const getMilestones = useCallback((category?: Milestone['category']) => {
+    let data = [...state.milestones];
+    if (category) data = data.filter(m => m.category === category);
+    return data.sort((a, b) => new Date(b.achievedAt).getTime() - new Date(a.achievedAt).getTime());
+  }, [state.milestones]);
+
+  const deleteMilestone = useCallback(async (id: string): Promise<boolean> => {
+    try {
+      if (!state.currentBabyId) return false;
+      const key = STORAGE_KEYS.MILESTONES(state.currentBabyId);
+      const filtered = state.milestones.filter(m => m.id !== id);
+      await AsyncStorage.setItem(key, JSON.stringify(filtered));
+      setState(prev => ({ ...prev, milestones: filtered }));
+      return true;
+    } catch (error) {
+      console.error('Delete milestone error:', error);
+      return false;
+    }
+  }, [state.currentBabyId, state.milestones]);
 
   /* ---- Sleep ---- */
-  const addSleepLog = useCallback(
-    async (log: Omit<SleepLog, 'id' | 'createdAt'>): Promise<boolean> => {
-      try {
-        const newLog: SleepLog = {
-          ...log,
-          id: generateId(),
-          createdAt: new Date().toISOString(),
-        };
+  const addSleepLog = useCallback(async (log: Omit<SleepLog, 'id' | 'createdAt'>): Promise<boolean> => {
+    try {
+      const newLog: SleepLog = { ...log, id: generateId(), createdAt: new Date().toISOString() };
 
-        const key = STORAGE_KEYS.SLEEP_LOGS(log.babyId);
-        const existing = await AsyncStorage.getItem(key);
-        const logs: SleepLog[] = safeParse(existing, []);
-        logs.push(newLog);
+      const key = STORAGE_KEYS.SLEEP_LOGS(log.babyId);
+      const existing = await AsyncStorage.getItem(key);
+      const logs: SleepLog[] = safeParse(existing, []);
+      logs.push(newLog);
 
-        await AsyncStorage.setItem(key, JSON.stringify(logs));
+      await AsyncStorage.setItem(key, JSON.stringify(logs));
 
-        if (log.babyId === state.currentBabyId) {
-          setState((prev) => ({ ...prev, sleepLogs: logs }));
-        }
-
-        return true;
-      } catch (error) {
-        console.error('Add sleep log error:', error);
-        Alert.alert('Error', 'Failed to save sleep log');
-        return false;
+      if (log.babyId === state.currentBabyId) {
+        setState(prev => ({ ...prev, sleepLogs: logs }));
       }
-    },
-    [state.currentBabyId]
-  );
 
-  const getSleepLogs = useCallback(
-    (days: number = 7) => {
-      if (days <= 0) return [];
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - days);
+      return true;
+    } catch (error) {
+      console.error('Add sleep log error:', error);
+      Alert.alert('Error', 'Failed to save sleep log');
+      return false;
+    }
+  }, [state.currentBabyId]);
 
-      return state.sleepLogs
-        .filter((log) => new Date(log.startTime) >= cutoff)
-        .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
-    },
-    [state.sleepLogs]
-  );
+  const getSleepLogs = useCallback((days: number = 7) => {
+    if (days <= 0) return [];
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - days);
+    return state.sleepLogs
+      .filter(log => new Date(log.startTime) >= cutoff)
+      .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
+  }, [state.sleepLogs]);
 
-  const endSleepSession = useCallback(
-    async (logId: string, endTime: string): Promise<boolean> => {
-      try {
-        if (!state.currentBabyId) return false;
-
-        const key = STORAGE_KEYS.SLEEP_LOGS(state.currentBabyId);
-        const updated = state.sleepLogs.map((log) => {
-          if (log.id === logId) {
-            const start = new Date(log.startTime);
-            const end = new Date(endTime);
-            if (end <= start) {
-              console.warn('End time must be after start time');
-              return log;
-            }
-            const duration = Math.floor((end.getTime() - start.getTime()) / (1000 * 60));
-            return { ...log, endTime, duration };
+  const endSleepSession = useCallback(async (logId: string, endTime: string): Promise<boolean> => {
+    try {
+      if (!state.currentBabyId) return false;
+      const key = STORAGE_KEYS.SLEEP_LOGS(state.currentBabyId);
+      const updated = state.sleepLogs.map(log => {
+        if (log.id === logId) {
+          const start = new Date(log.startTime);
+          const end = new Date(endTime);
+          if (end <= start) {
+            console.warn('End time must be after start time');
+            return log;
           }
-          return log;
-        });
+          const duration = Math.floor((end.getTime() - start.getTime()) / (1000 * 60));
+          return { ...log, endTime, duration };
+        }
+        return log;
+      });
 
-        await AsyncStorage.setItem(key, JSON.stringify(updated));
-        setState((prev) => ({ ...prev, sleepLogs: updated }));
-
-        return true;
-      } catch (error) {
-        console.error('End sleep session error:', error);
-        return false;
-      }
-    },
-    [state.currentBabyId, state.sleepLogs]
-  );
+      await AsyncStorage.setItem(key, JSON.stringify(updated));
+      setState(prev => ({ ...prev, sleepLogs: updated }));
+      return true;
+    } catch (error) {
+      console.error('End sleep session error:', error);
+      return false;
+    }
+  }, [state.currentBabyId, state.sleepLogs]);
 
   const getTodaySleepCount = useCallback(() => {
     const today = getStartOfDay();
-    return state.sleepLogs.filter((log) => {
-      const logDate = new Date(log.startTime);
-      return logDate >= today;
-    }).length;
+    return state.sleepLogs.filter(log => new Date(log.startTime) >= today).length;
   }, [state.sleepLogs]);
 
   /* ---- Feeding ---- */
-  const addFeedingLog = useCallback(
-    async (log: Omit<FeedingLog, 'id' | 'createdAt'>): Promise<boolean> => {
-      try {
-        if (log.amount !== undefined && (isNaN(log.amount) || log.amount < 0)) {
-          Alert.alert('Invalid Amount', 'Please enter a valid positive amount');
-          return false;
-        }
-
-        const newLog: FeedingLog = {
-          ...log,
-          id: generateId(),
-          createdAt: new Date().toISOString(),
-        };
-
-        const key = STORAGE_KEYS.FEEDING_LOGS(log.babyId);
-        const existing = await AsyncStorage.getItem(key);
-        const logs: FeedingLog[] = safeParse(existing, []);
-        logs.push(newLog);
-
-        await AsyncStorage.setItem(key, JSON.stringify(logs));
-
-        if (log.babyId === state.currentBabyId) {
-          setState((prev) => ({ ...prev, feedingLogs: logs }));
-        }
-
-        return true;
-      } catch (error) {
-        console.error('Add feeding log error:', error);
-        Alert.alert('Error', 'Failed to save feeding log');
+  const addFeedingLog = useCallback(async (log: Omit<FeedingLog, 'id' | 'createdAt'>): Promise<boolean> => {
+    try {
+      if (log.amount !== undefined && (isNaN(log.amount) || log.amount < 0)) {
+        Alert.alert('Invalid Amount', 'Please enter a valid positive amount');
         return false;
       }
-    },
-    [state.currentBabyId]
-  );
 
-  const getFeedingLogs = useCallback(
-    (days: number = 7) => {
-      if (days <= 0) return [];
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - days);
+      const newLog: FeedingLog = { ...log, id: generateId(), createdAt: new Date().toISOString() };
 
-      return state.feedingLogs
-        .filter((log) => new Date(log.startTime) >= cutoff)
-        .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
-    },
-    [state.feedingLogs]
-  );
+      const key = STORAGE_KEYS.FEEDING_LOGS(log.babyId);
+      const existing = await AsyncStorage.getItem(key);
+      const logs: FeedingLog[] = safeParse(existing, []);
+      logs.push(newLog);
+
+      await AsyncStorage.setItem(key, JSON.stringify(logs));
+
+      if (log.babyId === state.currentBabyId) {
+        setState(prev => ({ ...prev, feedingLogs: logs }));
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Add feeding log error:', error);
+      Alert.alert('Error', 'Failed to save feeding log');
+      return false;
+    }
+  }, [state.currentBabyId]);
+
+  const getFeedingLogs = useCallback((days: number = 7) => {
+    if (days <= 0) return [];
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - days);
+    return state.feedingLogs
+      .filter(log => new Date(log.startTime) >= cutoff)
+      .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
+  }, [state.feedingLogs]);
 
   const getTodayFeedCount = useCallback(() => {
     const today = getStartOfDay();
-    return state.feedingLogs.filter((log) => {
-      const logDate = new Date(log.startTime);
-      return logDate >= today;
-    }).length;
+    return state.feedingLogs.filter(log => new Date(log.startTime) >= today).length;
   }, [state.feedingLogs]);
 
   /* ---- Potty ---- */
@@ -1035,11 +1048,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (logs.length === 0) return 0;
 
     const successfulDays = new Set<string>();
-    logs.forEach((log) => {
-      if (log.successful) {
-        successfulDays.add(getDateKey(log.timestamp));
-      }
-    });
+    logs.forEach(log => { if (log.successful) successfulDays.add(getDateKey(log.timestamp)); });
 
     let streak = 0;
     const today = getStartOfDay();
@@ -1048,7 +1057,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const checkDate = new Date(today);
       checkDate.setDate(checkDate.getDate() - i);
       const dateKey = getDateKey(checkDate);
-
       if (successfulDays.has(dateKey)) {
         streak++;
       } else if (i > 0) {
@@ -1059,226 +1067,228 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return streak;
   }, []);
 
-  const addPottyLog = useCallback(
-    async (log: Omit<PottyLog, 'id' | 'createdAt'>): Promise<boolean> => {
-      try {
-        const newLog: PottyLog = {
-          ...log,
-          id: generateId(),
-          createdAt: new Date().toISOString(),
-        };
+  const addPottyLog = useCallback(async (log: Omit<PottyLog, 'id' | 'createdAt'>): Promise<boolean> => {
+    try {
+      const newLog: PottyLog = { ...log, id: generateId(), createdAt: new Date().toISOString() };
 
-        const key = STORAGE_KEYS.POTTY_LOGS(log.babyId);
-        const existing = await AsyncStorage.getItem(key);
-        const logs: PottyLog[] = safeParse(existing, []);
-        logs.push(newLog);
+      const key = STORAGE_KEYS.POTTY_LOGS(log.babyId);
+      const existing = await AsyncStorage.getItem(key);
+      const logs: PottyLog[] = safeParse(existing, []);
+      logs.push(newLog);
 
-        await AsyncStorage.setItem(key, JSON.stringify(logs));
+      await AsyncStorage.setItem(key, JSON.stringify(logs));
 
-        if (log.babyId === state.currentBabyId) {
-          setState((prev) => ({ ...prev, pottyLogs: logs }));
-        }
-
-        if (log.successful) {
-          const streak = calculatePottyStreak([...logs]);
-          await updateBaby(log.babyId, { streak });
-        }
-
-        return true;
-      } catch (error) {
-        console.error('Add potty log error:', error);
-        Alert.alert('Error', 'Failed to save potty log');
-        return false;
+      if (log.babyId === state.currentBabyId) {
+        setState(prev => ({ ...prev, pottyLogs: logs }));
       }
-    },
-    [state.currentBabyId, updateBaby, calculatePottyStreak]
-  );
 
-  const getPottyLogs = useCallback(
-    (days: number = 7) => {
-      if (days <= 0) return [];
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - days);
+      if (log.successful) {
+        const streak = calculatePottyStreak([...logs]);
+        await updateBaby(log.babyId, { streak });
+      }
 
-      return state.pottyLogs
-        .filter((log) => new Date(log.timestamp) >= cutoff)
-        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    },
-    [state.pottyLogs]
-  );
+      return true;
+    } catch (error) {
+      console.error('Add potty log error:', error);
+      Alert.alert('Error', 'Failed to save potty log');
+      return false;
+    }
+  }, [state.currentBabyId, updateBaby, calculatePottyStreak]);
 
-  const getPottyStreak = useCallback(() => {
-    return calculatePottyStreak(state.pottyLogs);
-  }, [state.pottyLogs, calculatePottyStreak]);
+  const getPottyLogs = useCallback((days: number = 7) => {
+    if (days <= 0) return [];
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - days);
+    return state.pottyLogs
+      .filter(log => new Date(log.timestamp) >= cutoff)
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }, [state.pottyLogs]);
+
+  const getPottyStreak = useCallback(() => calculatePottyStreak(state.pottyLogs), [state.pottyLogs, calculatePottyStreak]);
 
   const getTodayPottyCount = useCallback(() => {
     const today = getStartOfDay();
-    return state.pottyLogs.filter((log) => {
-      const logDate = new Date(log.timestamp);
-      return logDate >= today;
-    }).length;
+    return state.pottyLogs.filter(log => new Date(log.timestamp) >= today).length;
   }, [state.pottyLogs]);
 
   const getPottySuccessRate = useCallback(() => {
     if (state.pottyLogs.length === 0) return 0;
-    const successful = state.pottyLogs.filter((log) => log.successful).length;
+    const successful = state.pottyLogs.filter(log => log.successful).length;
     return Math.round((successful / state.pottyLogs.length) * 100);
   }, [state.pottyLogs]);
 
   /* ---- Medication ---- */
-  const addMedicationLog = useCallback(
-    async (log: Omit<MedicationLog, 'id' | 'createdAt'>): Promise<boolean> => {
-      try {
-        if (!log.medicationName.trim()) {
-          Alert.alert('Missing Information', 'Please enter a medication name');
-          return false;
-        }
-
-        const newLog: MedicationLog = {
-          ...log,
-          medicationName: log.medicationName.trim(),
-          id: generateId(),
-          createdAt: new Date().toISOString(),
-        };
-
-        const key = STORAGE_KEYS.MEDICATION_LOGS(log.babyId);
-        const existing = await AsyncStorage.getItem(key);
-        const logs: MedicationLog[] = safeParse(existing, []);
-        logs.push(newLog);
-
-        await AsyncStorage.setItem(key, JSON.stringify(logs));
-
-        if (log.babyId === state.currentBabyId) {
-          setState((prev) => ({ ...prev, medicationLogs: logs }));
-        }
-
-        return true;
-      } catch (error) {
-        console.error('Add medication log error:', error);
-        Alert.alert('Error', 'Failed to save medication log');
+  const addMedicationLog = useCallback(async (log: Omit<MedicationLog, 'id' | 'createdAt'>): Promise<boolean> => {
+    try {
+      if (!log.medicationName.trim()) {
+        Alert.alert('Missing Information', 'Please enter a medication name');
         return false;
       }
-    },
-    [state.currentBabyId]
-  );
 
-  const getMedicationLogs = useCallback(
-    (days: number = 30) => {
-      if (days <= 0) return [];
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - days);
+      const newLog: MedicationLog = {
+        ...log,
+        medicationName: log.medicationName.trim(),
+        id: generateId(),
+        createdAt: new Date().toISOString(),
+      };
 
-      return state.medicationLogs
-        .filter((log) => new Date(log.timestamp) >= cutoff)
-        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    },
-    [state.medicationLogs]
-  );
+      const key = STORAGE_KEYS.MEDICATION_LOGS(log.babyId);
+      const existing = await AsyncStorage.getItem(key);
+      const logs: MedicationLog[] = safeParse(existing, []);
+      logs.push(newLog);
+
+      await AsyncStorage.setItem(key, JSON.stringify(logs));
+
+      if (log.babyId === state.currentBabyId) {
+        setState(prev => ({ ...prev, medicationLogs: logs }));
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Add medication log error:', error);
+      Alert.alert('Error', 'Failed to save medication log');
+      return false;
+    }
+  }, [state.currentBabyId]);
+
+  const getMedicationLogs = useCallback((days: number = 30) => {
+    if (days <= 0) return [];
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - days);
+    return state.medicationLogs
+      .filter(log => new Date(log.timestamp) >= cutoff)
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }, [state.medicationLogs]);
 
   /* ---- Activities ---- */
-  const addActivity = useCallback(
-    async (entry: Omit<ActivityEntry, 'id'>): Promise<boolean> => {
-      if (!entry.babyId || !entry.type || !entry.title || !entry.timestamp) {
-        console.error('Invalid activity entry: missing required fields');
-        return false;
+  const addActivity = useCallback(async (entry: Omit<ActivityEntry, 'id'>): Promise<boolean> => {
+    if (!entry.babyId || !entry.type || !entry.title || !entry.timestamp) {
+      console.error('Invalid activity entry: missing required fields');
+      return false;
+    }
+
+    try {
+      const newEntry: ActivityEntry = { ...entry, id: generateId() };
+
+      const key = STORAGE_KEYS.ACTIVITIES(entry.babyId);
+      const existing = await AsyncStorage.getItem(key);
+      const activities: ActivityEntry[] = safeParse(existing, []);
+      activities.unshift(newEntry);
+
+      await AsyncStorage.setItem(key, JSON.stringify(activities));
+
+      if (entry.babyId === state.currentBabyId) {
+        setState(prev => ({ ...prev, activities }));
       }
 
-      try {
-        const newEntry: ActivityEntry = {
-          ...entry,
-          id: generateId(),
-        };
+      // Cross-context sync: Push to ActivityContext storage
+      await syncToActivityContext(newEntry);
 
-        const key = STORAGE_KEYS.ACTIVITIES(entry.babyId);
-        const existing = await AsyncStorage.getItem(key);
-        const activities: ActivityEntry[] = safeParse(existing, []);
-        activities.unshift(newEntry);
+      // Also delegate to TrackerContext if available
+      if (tracker?.addEntry) {
+        const data: Record<string, unknown> = {};
+        if (entry.pottyType) data.type = entry.pottyType;
+        if (entry.successful !== undefined) data.successful = entry.successful;
+        if (entry.feedType) data.feedType = entry.feedType;
+        if (entry.amount) data.amount = parseFloat(entry.amount);
+        if (entry.duration) data.duration = entry.duration;
+        if (entry.side) data.side = entry.side;
+        if (entry.food) data.food = entry.food;
+        if (entry.sleepType) data.sleepType = entry.sleepType;
+        if (entry.quality !== undefined) data.quality = entry.quality;
+        if (entry.location) data.location = entry.location;
+        if (entry.measurementType) data.measurementType = entry.measurementType;
+        if (entry.value) data.value = parseFloat(entry.value);
+        if (entry.unit) data.unit = entry.unit;
+        if (entry.percentile !== undefined) data.percentile = entry.percentile;
+        if (entry.medName) data.name = entry.medName;
+        if (entry.dosage) data.dosage = entry.dosage;
+        if (entry.reason) data.reason = entry.reason;
+        if (entry.milestoneType) data.title = entry.milestoneType;
+        if (entry.firstTime !== undefined) data.firstTime = entry.firstTime;
+        if (entry.description) data.description = entry.description;
+        if (entry.symptoms) data.symptoms = entry.symptoms;
+        if (entry.severity !== undefined) data.severity = entry.severity;
+        if (entry.tempValue !== undefined) data.value = entry.tempValue;
+        if (entry.tempUnit) data.unit = entry.tempUnit;
+        if (entry.method) data.method = entry.method;
 
-        await AsyncStorage.setItem(key, JSON.stringify(activities));
-
-        if (entry.babyId === state.currentBabyId) {
-          setState((prev) => ({ ...prev, activities }));
-        }
-
-        // Cross-context sync: Push to ActivityContext storage
-        await syncToActivityContext(newEntry);
-
-        // Trigger notification for important activities
-        if (['feed', 'sleep', 'potty', 'milestone', 'growth'].includes(entry.type)) {
-          const service = await getNotificationService();
-          await service.sendActivityCompleteNotification(
-            entry.type,
-            state.currentBaby?.name || 'baby'
-          );
-        }
-
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-        return true;
-      } catch (error) {
-        console.error('Failed to add activity:', error);
-        return false;
+        await tracker.addEntry(entry.type, data, {
+          title: entry.title,
+          notes: entry.notes || entry.details,
+          tags: entry.tags,
+        });
       }
-    },
-    [state.currentBabyId, state.currentBaby]
-  );
 
-  const getRecentActivities = useCallback(
-    (limit: number = 10) => {
-      return [...state.activities]
-        .sort((a, b) => b.timestamp - a.timestamp)
-        .slice(0, Math.max(0, limit));
-    },
-    [state.activities]
-  );
+      // Trigger notification for important activities
+      if (['feed', 'sleep', 'potty', 'milestone', 'growth'].includes(entry.type)) {
+        const service = await getNotificationService();
+        if (service) {
+          await service.sendActivityCompleteNotification(entry.type, state.currentBaby?.name || 'baby');
+        }
+      }
 
-  const getActivitiesByType = useCallback(
-    (type: ActivityType) => {
-      return state.activities
-        .filter((a) => a.type === type)
-        .sort((a, b) => b.timestamp - a.timestamp);
-    },
-    [state.activities]
-  );
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      return true;
+    } catch (error) {
+      console.error('Failed to add activity:', error);
+      return false;
+    }
+  }, [state.currentBabyId, state.currentBaby, tracker]);
 
-  const deleteActivity = useCallback(
-    async (id: string): Promise<boolean> => {
-      try {
-        if (!state.currentBabyId) return false;
+  const getRecentActivities = useCallback((limit: number = 10) => {
+    return [...state.activities]
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, Math.max(0, limit));
+  }, [state.activities]);
 
-        const entry = state.activities.find((a) => a.id === id);
-        if (entry?.notificationId) {
-          const service = await getNotificationService();
+  const getActivitiesByType = useCallback((type: ActivityType) => {
+    return state.activities
+      .filter(a => a.type === type)
+      .sort((a, b) => b.timestamp - a.timestamp);
+  }, [state.activities]);
+
+  const deleteActivity = useCallback(async (id: string): Promise<boolean> => {
+    try {
+      if (!state.currentBabyId) return false;
+
+      const entry = state.activities.find(a => a.id === id);
+      if (entry?.notificationId) {
+        const service = await getNotificationService();
+        if (service) {
           await service.cancelNotification(entry.notificationId);
-          await AsyncStorage.removeItem(`${NOTIFICATION_PREFIX}${entry.id}`);
         }
-
-        const key = STORAGE_KEYS.ACTIVITIES(state.currentBabyId);
-        const filtered = state.activities.filter((a) => a.id !== id);
-
-        await AsyncStorage.setItem(key, JSON.stringify(filtered));
-        setState((prev) => ({ ...prev, activities: filtered }));
-
-        // Sync deletion to ActivityContext
-        await removeFromActivityContext(id);
-
-        return true;
-      } catch (error) {
-        console.error('Failed to delete activity:', error);
-        return false;
+        await AsyncStorage.removeItem(`${NOTIFICATION_PREFIX}${entry.id}`);
       }
-    },
-    [state.currentBabyId, state.activities]
-  );
+
+      const key = STORAGE_KEYS.ACTIVITIES(state.currentBabyId);
+      const filtered = state.activities.filter(a => a.id !== id);
+
+      await AsyncStorage.setItem(key, JSON.stringify(filtered));
+      setState(prev => ({ ...prev, activities: filtered }));
+
+      // Sync deletion to ActivityContext
+      await removeFromActivityContext(id);
+
+      // Also delete from TrackerContext if available
+      if (tracker?.deleteEntry) {
+        await tracker.deleteEntry(id);
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Failed to delete activity:', error);
+      return false;
+    }
+  }, [state.currentBabyId, state.activities, tracker]);
 
   /* ---- Cross-context sync: ActivityContext ---- */
   const syncToActivityContext = useCallback(async (entry: ActivityEntry) => {
     try {
       const existing = await AsyncStorage.getItem(ACTIVITY_CONTEXT_KEY);
       const existingEntries: ActivityEntry[] = existing ? JSON.parse(existing) : [];
-      
-      const exists = existingEntries.some((e) => e.id === entry.id);
+      const exists = existingEntries.some(e => e.id === entry.id);
       if (exists) return;
-
       const merged = [entry, ...existingEntries];
       await AsyncStorage.setItem(ACTIVITY_CONTEXT_KEY, JSON.stringify(merged));
     } catch {
@@ -1290,9 +1300,8 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const existing = await AsyncStorage.getItem(ACTIVITY_CONTEXT_KEY);
       if (!existing) return;
-
       const entries: ActivityEntry[] = JSON.parse(existing);
-      const filtered = entries.filter((e) => e.id !== entryId);
+      const filtered = entries.filter(e => e.id !== entryId);
       await AsyncStorage.setItem(ACTIVITY_CONTEXT_KEY, JSON.stringify(filtered));
     } catch {
       // Silently fail
@@ -1305,10 +1314,8 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const existing = await AsyncStorage.getItem(ACTIVITY_CONTEXT_KEY);
       const existingEntries: ActivityEntry[] = existing ? JSON.parse(existing) : [];
-      
-      const existingIds = new Set(existingEntries.map((e) => e.id));
-      const newActivities = state.activities.filter((a) => !existingIds.has(a.id));
-      
+      const existingIds = new Set(existingEntries.map(e => e.id));
+      const newActivities = state.activities.filter(a => !existingIds.has(a.id));
       if (newActivities.length > 0) {
         const merged = [...newActivities, ...existingEntries];
         await AsyncStorage.setItem(ACTIVITY_CONTEXT_KEY, JSON.stringify(merged));
@@ -1322,6 +1329,8 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const scheduleActivityReminder = useCallback(async (entry: ActivityEntry, minutes: number): Promise<string | null> => {
     try {
       const service = await getNotificationService();
+      if (!service) return null;
+
       const notifId = await service.scheduleActivityReminder(
         entry.type,
         state.currentBaby?.name || 'baby',
@@ -1343,9 +1352,11 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const cancelActivityReminder = useCallback(async (notificationId: string) => {
     try {
       const service = await getNotificationService();
-      await service.cancelNotification(notificationId);
+      if (service) {
+        await service.cancelNotification(notificationId);
+      }
 
-      const entry = state.activities.find((a) => a.notificationId === notificationId);
+      const entry = state.activities.find(a => a.notificationId === notificationId);
       if (entry) {
         await updateEntry(entry.id, { notificationId: undefined, reminderScheduled: false });
         await AsyncStorage.removeItem(`${NOTIFICATION_PREFIX}${entry.id}`);
@@ -1357,55 +1368,60 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   /* ---- ActivityContext compatibility layer ---- */
   const entries = state.activities;
-  
+
   const loadEntries = useCallback(async () => {
     if (state.currentBabyId) {
       await loadAllBabyData(state.currentBabyId);
     }
-  }, [state.currentBabyId, loadAllBabyData]);
+    // Also refresh TrackerContext if available
+    if (tracker?.refreshEntries) {
+      await tracker.refreshEntries();
+    }
+  }, [state.currentBabyId, loadAllBabyData, tracker]);
 
   const deleteEntry = deleteActivity;
   const addEntry = addActivity;
 
-  const updateEntry = useCallback(
-    async (id: string, entry: Partial<ActivityEntry>): Promise<boolean> => {
-      try {
-        if (!state.currentBabyId) return false;
+  const updateEntry = useCallback(async (id: string, entry: Partial<ActivityEntry>): Promise<boolean> => {
+    try {
+      if (!state.currentBabyId) return false;
 
-        const key = STORAGE_KEYS.ACTIVITIES(state.currentBabyId);
-        const updated = state.activities.map((a) =>
-          a.id === id ? { ...a, ...entry } : a
-        );
+      const key = STORAGE_KEYS.ACTIVITIES(state.currentBabyId);
+      const updated = state.activities.map(a => a.id === id ? { ...a, ...entry } : a);
 
-        await AsyncStorage.setItem(key, JSON.stringify(updated));
-        setState((prev) => ({ ...prev, activities: updated }));
+      await AsyncStorage.setItem(key, JSON.stringify(updated));
+      setState(prev => ({ ...prev, activities: updated }));
 
-        // Sync update to ActivityContext
-        const existing = await AsyncStorage.getItem(ACTIVITY_CONTEXT_KEY);
-        if (existing) {
-          const entries: ActivityEntry[] = JSON.parse(existing);
-          const activityIndex = entries.findIndex((e) => e.id === id);
-          if (activityIndex >= 0) {
-            entries[activityIndex] = { ...entries[activityIndex], ...entry };
-            await AsyncStorage.setItem(ACTIVITY_CONTEXT_KEY, JSON.stringify(entries));
-          }
+      // Sync update to ActivityContext
+      const existing = await AsyncStorage.getItem(ACTIVITY_CONTEXT_KEY);
+      if (existing) {
+        const entries: ActivityEntry[] = JSON.parse(existing);
+        const activityIndex = entries.findIndex(e => e.id === id);
+        if (activityIndex >= 0) {
+          entries[activityIndex] = { ...entries[activityIndex], ...entry };
+          await AsyncStorage.setItem(ACTIVITY_CONTEXT_KEY, JSON.stringify(entries));
         }
-
-        return true;
-      } catch (error) {
-        console.error('Failed to update entry:', error);
-        return false;
       }
-    },
-    [state.currentBabyId, state.activities]
-  );
 
-  const getEntryById = useCallback(
-    (id: string) => {
-      return state.activities.find((a) => a.id === id);
-    },
-    [state.activities]
-  );
+      // Also update TrackerContext if available
+      if (tracker?.updateEntry) {
+        const updates: Record<string, unknown> = {};
+        if (entry.title) updates.title = entry.title;
+        if (entry.notes || entry.details) updates.notes = entry.notes || entry.details;
+        if (entry.tags) updates.tags = entry.tags;
+        await tracker.updateEntry(id, updates);
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Failed to update entry:', error);
+      return false;
+    }
+  }, [state.currentBabyId, state.activities, tracker]);
+
+  const getEntryById = useCallback((id: string) => {
+    return state.activities.find(a => a.id === id);
+  }, [state.activities]);
 
   const getDateTitle = useCallback((timestamp: number | string): string => {
     const date = new Date(timestamp);
@@ -1436,121 +1452,113 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [state.currentBaby, state.activities]);
 
-  const updateBabyStats = useCallback(
-    async (updates: Partial<BabyProfile>) => {
-      if (!state.currentBaby) return;
-      await updateBaby(state.currentBaby.id, updates);
-    },
-    [state.currentBaby, updateBaby]
-  );
+  const updateBabyStats = useCallback(async (updates: Partial<BabyProfile>) => {
+    if (!state.currentBaby) return;
+    await updateBaby(state.currentBaby.id, updates);
+  }, [state.currentBaby, updateBaby]);
 
   /* ---- Memoized context value ---- */
-  const value = useMemo<BabyContextType>(
-    () => ({
-      ...state,
-      loadBabies,
-      createBaby,
-      updateBaby,
-      deleteBaby,
-      switchBaby,
-      refreshCurrentBaby,
-      skipBaby,
-      clearSkipBaby,
-      calculateAge,
-      getBabyAge,
-      addGrowthMeasurement,
-      getGrowthData,
-      getLatestMeasurements,
-      deleteGrowthMeasurement,
-      addMilestone,
-      getMilestones,
-      deleteMilestone,
-      addSleepLog,
-      getSleepLogs,
-      endSleepSession,
-      getTodaySleepCount,
-      addFeedingLog,
-      getFeedingLogs,
-      getTodayFeedCount,
-      addPottyLog,
-      getPottyLogs,
-      getPottyStreak,
-      getTodayPottyCount,
-      getPottySuccessRate,
-      addMedicationLog,
-      getMedicationLogs,
-      addActivity,
-      getRecentActivities,
-      getActivitiesByType,
-      deleteActivity,
-      getBabyStats,
-      updateBabyStats,
-      // ActivityContext compatibility
-      entries,
-      isLoadingEntries,
-      loadEntries,
-      deleteEntry,
-      addEntry,
-      updateEntry,
-      getEntryById,
-      getDateTitle,
-      // Cross-context sync
-      syncWithActivityContext,
-      scheduleActivityReminder,
-      cancelActivityReminder,
-    }),
-    [
-      state,
-      loadBabies,
-      createBaby,
-      updateBaby,
-      deleteBaby,
-      switchBaby,
-      refreshCurrentBaby,
-      skipBaby,
-      clearSkipBaby,
-      calculateAge,
-      getBabyAge,
-      addGrowthMeasurement,
-      getGrowthData,
-      getLatestMeasurements,
-      deleteGrowthMeasurement,
-      addMilestone,
-      getMilestones,
-      deleteMilestone,
-      addSleepLog,
-      getSleepLogs,
-      endSleepSession,
-      getTodaySleepCount,
-      addFeedingLog,
-      getFeedingLogs,
-      getTodayFeedCount,
-      addPottyLog,
-      getPottyLogs,
-      getPottyStreak,
-      getTodayPottyCount,
-      getPottySuccessRate,
-      addMedicationLog,
-      getMedicationLogs,
-      addActivity,
-      getRecentActivities,
-      getActivitiesByType,
-      deleteActivity,
-      getBabyStats,
-      updateBabyStats,
-      entries,
-      isLoadingEntries,
-      loadEntries,
-      deleteEntry,
-      addEntry,
-      updateEntry,
-      getEntryById,
-      getDateTitle,
-      syncWithActivityContext,
-      scheduleActivityReminder,
-      cancelActivityReminder,
-    ]
-  );
+  const value = useMemo<BabyContextType>(() => ({
+    ...state,
+    loadBabies,
+    createBaby,
+    updateBaby,
+    deleteBaby,
+    switchBaby,
+    refreshCurrentBaby,
+    skipBaby,
+    clearSkipBaby,
+    calculateAge,
+    getBabyAge,
+    addGrowthMeasurement,
+    getGrowthData,
+    getLatestMeasurements,
+    deleteGrowthMeasurement,
+    addMilestone,
+    getMilestones,
+    deleteMilestone,
+    addSleepLog,
+    getSleepLogs,
+    endSleepSession,
+    getTodaySleepCount,
+    addFeedingLog,
+    getFeedingLogs,
+    getTodayFeedCount,
+    addPottyLog,
+    getPottyLogs,
+    getPottyStreak,
+    getTodayPottyCount,
+    getPottySuccessRate,
+    addMedicationLog,
+    getMedicationLogs,
+    addActivity,
+    getRecentActivities,
+    getActivitiesByType,
+    deleteActivity,
+    getBabyStats,
+    updateBabyStats,
+    entries,
+    isLoadingEntries,
+    loadEntries,
+    deleteEntry,
+    addEntry,
+    updateEntry,
+    getEntryById,
+    getDateTitle,
+    syncWithActivityContext,
+    scheduleActivityReminder,
+    cancelActivityReminder,
+  }), [
+    state,
+    loadBabies,
+    createBaby,
+    updateBaby,
+    deleteBaby,
+    switchBaby,
+    refreshCurrentBaby,
+    skipBaby,
+    clearSkipBaby,
+    calculateAge,
+    getBabyAge,
+    addGrowthMeasurement,
+    getGrowthData,
+    getLatestMeasurements,
+    deleteGrowthMeasurement,
+    addMilestone,
+    getMilestones,
+    deleteMilestone,
+    addSleepLog,
+    getSleepLogs,
+    endSleepSession,
+    getTodaySleepCount,
+    addFeedingLog,
+    getFeedingLogs,
+    getTodayFeedCount,
+    addPottyLog,
+    getPottyLogs,
+    getPottyStreak,
+    getTodayPottyCount,
+    getPottySuccessRate,
+    addMedicationLog,
+    getMedicationLogs,
+    addActivity,
+    getRecentActivities,
+    getActivitiesByType,
+    deleteActivity,
+    getBabyStats,
+    updateBabyStats,
+    entries,
+    isLoadingEntries,
+    loadEntries,
+    deleteEntry,
+    addEntry,
+    updateEntry,
+    getEntryById,
+    getDateTitle,
+    syncWithActivityContext,
+    scheduleActivityReminder,
+    cancelActivityReminder,
+  ]);
 
   return <BabyContext.Provider value={value}>{children}</BabyContext.Provider>;
 };

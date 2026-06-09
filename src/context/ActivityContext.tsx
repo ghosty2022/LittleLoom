@@ -1,7 +1,7 @@
 // src/context/ActivityContext.tsx
-// FULLY SYNCED: Integrates with NotificationService, BabyContext, AppContext
+// FULLY SYNCED: Integrates with BabyContext, NotificationService, TrackerContext
+// FIXED: syncWithBabyContext reads from BabyContext's per-baby storage keys
 // FIXED: Zero unused variables, proper TypeScript strict compliance
-// FIXED: Console usage safe-guarded, all imports use @/ aliases
 
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -70,12 +70,11 @@ export interface ActivityEntry {
 
   notes?: string;
   photo?: string;
-  
-  // Notification sync fields
+
   notificationId?: string;
   reminderScheduled?: boolean;
   syncedAt?: string;
-  
+
   [key: string]: unknown;
 }
 
@@ -92,7 +91,7 @@ interface ActivityContextType {
   getEntriesByBaby: (babyId: string) => ActivityEntry[];
   getEntriesByDateRange: (startDate: number, endDate: number, babyId?: string) => ActivityEntry[];
   getEntryById: (id: string) => ActivityEntry | undefined;
-  
+
   getRecentTimelineEvents: (limit?: number, babyId?: string) => ActivityEntry[];
   addTimelineEvent: (entry: Omit<ActivityEntry, 'id'>) => Promise<void>;
 
@@ -107,72 +106,75 @@ interface ActivityContextType {
   loadEntries: () => Promise<void>;
   syncEntries: () => Promise<void>;
   clearEntries: () => Promise<void>;
-  
-  // Notification integration
+
   scheduleActivityReminder: (entry: ActivityEntry, minutes: number) => Promise<string | null>;
   cancelActivityReminder: (notificationId: string) => Promise<void>;
-  
-  // Cross-context sync
+
+  // Cross-context sync with BabyContext
   syncWithBabyContext: (babyId: string) => Promise<void>;
   getEntriesForNotification: () => ActivityEntry[];
 }
 
+const ActivityContext = createContext<ActivityContextType | undefined>(undefined);
+
+const STORAGE_KEY = '@littleloom_activities_v3';
+const NOTIFICATION_PREFIX = '@littleloom_activity_notif_';
+const BABY_ACTIVITIES_KEY = (babyId: string) => `@littleloom_activities_${babyId}`;
+
+// Lazy import to avoid circular dependency
+const getNotificationService = async () => {
+  try {
+    const { notificationService } = await import('@/services/NotificationService');
+    return notificationService;
+  } catch {
+    return null;
+  }
+};
+
 export function getDateTitle(timestamp: number): string {
   const date = new Date(timestamp);
   const now = new Date();
-  
+
   const dateCopy = new Date(date);
   const nowCopy = new Date(now);
   dateCopy.setHours(0, 0, 0, 0);
   nowCopy.setHours(0, 0, 0, 0);
-  
+
   const diffTime = nowCopy.getTime() - dateCopy.getTime();
   const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-  
-  if (diffDays === 0) {
-    return 'Today';
-  } else if (diffDays === 1) {
-    return 'Yesterday';
-  } else if (diffDays < 7) {
+
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return 'Yesterday';
+  if (diffDays < 7) {
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     return days[date.getDay()] ?? 'Unknown';
-  } else if (diffDays < 14) {
-    return 'Last week';
-  } else {
-    return date.toLocaleDateString('en-US', { 
-      month: 'short', 
-      day: 'numeric',
-      year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
-    });
   }
+  if (diffDays < 14) return 'Last week';
+
+  return date.toLocaleDateString('en-US', { 
+    month: 'short', 
+    day: 'numeric',
+    year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
+  });
 }
 
 export function getRelativeTime(timestamp: number): string {
   const now = Date.now();
   const diff = now - timestamp;
-  
   const seconds = Math.floor(diff / 1000);
   const minutes = Math.floor(seconds / 60);
   const hours = Math.floor(minutes / 60);
   const days = Math.floor(hours / 24);
-  
-  if (seconds < 60) {
-    return 'just now';
-  } else if (minutes < 60) {
-    return `${minutes}m ago`;
-  } else if (hours < 24) {
-    return `${hours}h ago`;
-  } else if (days < 7) {
-    return `${days}d ago`;
-  } else {
-    return new Date(timestamp).toLocaleDateString();
-  }
+
+  if (seconds < 60) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days < 7) return `${days}d ago`;
+  return new Date(timestamp).toLocaleDateString();
 }
 
 export function formatDuration(minutes: number): string {
-  if (minutes < 60) {
-    return `${minutes}m`;
-  }
+  if (minutes < 60) return `${minutes}m`;
   const hours = Math.floor(minutes / 60);
   const mins = minutes % 60;
   return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
@@ -206,22 +208,11 @@ export const ACTIVITY_ICONS: Record<string, string> = {
   default: 'ellipse-outline'
 };
 
-const ActivityContext = createContext<ActivityContextType | undefined>(undefined);
-
-const STORAGE_KEY = '@littleloom_activities_v3';
-const NOTIFICATION_PREFIX = '@littleloom_activity_notif_';
-
-// Lazy import to avoid circular dependency
-const getNotificationService = async () => {
-  const { notificationService } = await import('@/services/NotificationService');
-  return notificationService;
-};
-
 export function ActivityProvider({ children }: { children: React.ReactNode }): JSX.Element {
   const [entries, setEntries] = useState<ActivityEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+
   const initRef = useRef(false);
 
   useEffect(() => {
@@ -269,6 +260,17 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
       await saveEntries(updatedEntries);
       setEntries(updatedEntries);
 
+      // Also save to BabyContext's per-baby storage for cross-context sync
+      try {
+        const babyKey = BABY_ACTIVITIES_KEY(entry.babyId);
+        const babyStored = await AsyncStorage.getItem(babyKey);
+        const babyActivities: ActivityEntry[] = babyStored ? JSON.parse(babyStored) : [];
+        babyActivities.unshift(newEntry);
+        await AsyncStorage.setItem(babyKey, JSON.stringify(babyActivities));
+      } catch {
+        // Silently fail — BabyContext storage is secondary
+      }
+
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to save entry';
@@ -287,6 +289,25 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
       await saveEntries(updatedEntries);
       setEntries(updatedEntries);
 
+      // Sync to BabyContext storage
+      const entry = entries.find(e => e.id === id);
+      if (entry) {
+        try {
+          const babyKey = BABY_ACTIVITIES_KEY(entry.babyId);
+          const babyStored = await AsyncStorage.getItem(babyKey);
+          if (babyStored) {
+            const babyActivities: ActivityEntry[] = JSON.parse(babyStored);
+            const idx = babyActivities.findIndex(a => a.id === id);
+            if (idx >= 0) {
+              babyActivities[idx] = { ...babyActivities[idx], ...updates };
+              await AsyncStorage.setItem(babyKey, JSON.stringify(babyActivities));
+            }
+          }
+        } catch {
+          // Silently fail
+        }
+      }
+
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to update entry';
@@ -301,12 +322,27 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
       const entry = entries.find(e => e.id === id);
       if (entry?.notificationId) {
         const service = await getNotificationService();
-        await service.cancelNotification(entry.notificationId);
+        if (service) await service.cancelNotification(entry.notificationId);
       }
 
       const updatedEntries = entries.filter(entry => entry.id !== id);
       await saveEntries(updatedEntries);
       setEntries(updatedEntries);
+
+      // Sync deletion to BabyContext storage
+      if (entry) {
+        try {
+          const babyKey = BABY_ACTIVITIES_KEY(entry.babyId);
+          const babyStored = await AsyncStorage.getItem(babyKey);
+          if (babyStored) {
+            const babyActivities: ActivityEntry[] = JSON.parse(babyStored);
+            const filtered = babyActivities.filter(a => a.id !== id);
+            await AsyncStorage.setItem(babyKey, JSON.stringify(filtered));
+          }
+        } catch {
+          // Silently fail
+        }
+      }
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     } catch (err) {
@@ -343,14 +379,8 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
 
   const getRecentTimelineEvents = useCallback((limit = 10, babyId?: string) => {
     let filtered = entries;
-    
-    if (babyId) {
-      filtered = entries.filter(entry => entry.babyId === babyId);
-    }
-    
-    return filtered
-      .sort((a, b) => b.timestamp - a.timestamp)
-      .slice(0, limit);
+    if (babyId) filtered = entries.filter(entry => entry.babyId === babyId);
+    return filtered.sort((a, b) => b.timestamp - a.timestamp).slice(0, limit);
   }, [entries]);
 
   const addTimelineEvent = useCallback(async (entry: Omit<ActivityEntry, 'id'>) => {
@@ -378,7 +408,6 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
     });
 
     if (typeEntries.length === 0) return 0;
-
     const successfulEntries = typeEntries.filter(entry => entry.successful === true);
     return Math.round((successfulEntries.length / typeEntries.length) * 100);
   }, [entries]);
@@ -427,11 +456,8 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
 
   const clearEntries = useCallback(async () => {
     try {
-      // Cancel all associated notifications
-      const notifKeys = await AsyncStorage.getAllKeys();
-      const activityNotifKeys = notifKeys.filter(k => k.startsWith(NOTIFICATION_PREFIX));
-      await AsyncStorage.multiRemove(activityNotifKeys);
-      
+      const notifKeys = (await AsyncStorage.getAllKeys()).filter(k => k.startsWith(NOTIFICATION_PREFIX));
+      await AsyncStorage.multiRemove(notifKeys);
       await AsyncStorage.removeItem(STORAGE_KEY);
       setEntries([]);
     } catch (err) {
@@ -444,6 +470,8 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
   const scheduleActivityReminder = useCallback(async (entry: ActivityEntry, minutes: number): Promise<string | null> => {
     try {
       const service = await getNotificationService();
+      if (!service) return null;
+
       const notifId = await service.scheduleLocalNotification({
         title: `⏰ Reminder: ${entry.title}`,
         body: entry.details || `Time for ${entry.type} activity`,
@@ -455,15 +483,12 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
         },
         trigger: { seconds: minutes * 60 },
       });
-      
+
       if (notifId) {
-        await updateEntry(entry.id, { 
-          notificationId: notifId, 
-          reminderScheduled: true 
-        });
+        await updateEntry(entry.id, { notificationId: notifId, reminderScheduled: true });
         await AsyncStorage.setItem(`${NOTIFICATION_PREFIX}${entry.id}`, notifId);
       }
-      
+
       return notifId;
     } catch {
       return null;
@@ -473,14 +498,11 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
   const cancelActivityReminder = useCallback(async (notificationId: string) => {
     try {
       const service = await getNotificationService();
-      await service.cancelNotification(notificationId);
-      
+      if (service) await service.cancelNotification(notificationId);
+
       const entry = entries.find(e => e.notificationId === notificationId);
       if (entry) {
-        await updateEntry(entry.id, { 
-          notificationId: undefined, 
-          reminderScheduled: false 
-        });
+        await updateEntry(entry.id, { notificationId: undefined, reminderScheduled: false });
         await AsyncStorage.removeItem(`${NOTIFICATION_PREFIX}${entry.id}`);
       }
     } catch {
@@ -488,20 +510,19 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
     }
   }, [entries, updateEntry]);
 
-  // Cross-context sync with BabyContext
+  // Cross-context sync with BabyContext — reads from BabyContext's per-baby storage
   const syncWithBabyContext = useCallback(async (babyId: string) => {
     try {
-      // Load baby-specific activities from BabyContext storage
-      const babyActivitiesKey = `@littleloom_activities_${babyId}`;
-      const stored = await AsyncStorage.getItem(babyActivitiesKey);
-      
+      const babyKey = BABY_ACTIVITIES_KEY(babyId);
+      const stored = await AsyncStorage.getItem(babyKey);
+
       if (stored) {
         const babyActivities = JSON.parse(stored) as ActivityEntry[];
-        
+
         // Merge without duplicates (by id)
         const existingIds = new Set(entries.map(e => e.id));
         const newActivities = babyActivities.filter(a => !existingIds.has(a.id));
-        
+
         if (newActivities.length > 0) {
           const merged = [...newActivities, ...entries];
           await saveEntries(merged);
@@ -509,14 +530,14 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
         }
       }
     } catch {
-      // Silently fail - BabyContext data may not exist yet
+      // Silently fail — BabyContext data may not exist yet
     }
   }, [entries, saveEntries]);
 
   const getEntriesForNotification = useCallback(() => {
     const now = Date.now();
     const oneHourAgo = now - (60 * 60 * 1000);
-    
+
     return entries
       .filter(e => e.timestamp >= oneHourAgo)
       .sort((a, b) => b.timestamp - a.timestamp)

@@ -1,1229 +1,77 @@
+// src/screens/tracking/AddLogScreen.tsx
+// MODERNIZED: SweetAlert, SafeAvatar, full useCustomization integration
+// Universal dynamic form — glassmorphism, gradients, haptics preserved
+
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, Switch, Alert, Modal, Dimensions, Image, StatusBar } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
+  Switch,
+  Alert,
+  Modal,
+  Dimensions,
+  Image,
+  StatusBar,
+  ScrollView,
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
-import Animated, { FadeIn, FadeInUp, FadeInDown, Layout, useSharedValue, useAnimatedStyle, withSpring, interpolate, Extrapolation } from 'react-native-reanimated';
+import Animated, {
+  FadeIn,
+  FadeInUp,
+  FadeInDown,
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  interpolate,
+  Extrapolation,
+} from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { format, isToday, isYesterday } from 'date-fns';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as ImagePicker from 'expo-image-picker';
-import { useActivity, ActivityEntry, ActivityType } from '../../context/ActivityContext';
-import { useBaby } from '../../context/BabyContext';
-import { useAuth } from '../../context/AuthContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../../types/navigation';
 import { useCustomization } from '../../hooks/useCustomization';
-import type {  NativeStackNavigationProp  } from '@react-navigation/native-stack';
-import type {  RootStackParamList  } from '../../types/navigation';
 import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
+import { useTracker } from '../../context/TrackerContext';
+import { TrackerConfig, TrackerField, TrackerFieldType } from '../../types/trackers';
+import { SafeAvatar } from '../../components/SafeAvatar';
+import { useSweetAlert } from '../../components/SweetAlert';
+import * as ImagePicker from 'expo-image-picker';
 
+const { width } = Dimensions.get('window');
 
-const { width, height } = Dimensions.get('window');
-
-
-export type FieldType =
-  | 'text'
-  | 'number'
-  | 'select'
-  | 'multiselect'
-  | 'toggle'
-  | 'duration'
-  | 'rating'
-  | 'textarea'
-  | 'photo'
-  | 'date'
-  | 'time'
-  | 'temperature'
-  | 'measurement';
-
-export interface FieldOption {
-  id: string;
-  label: string;
-  emoji?: string;
-  icon?: string;
-  color?: string;
-}
-
-export interface FieldConfig {
-  id: string;
-  label: string;
-  type: FieldType;
-  options?: FieldOption[];
-  placeholder?: string;
-  required?: boolean;
-  showIf?: (data: any) => boolean;
-  max?: number;
-  min?: number;
-  unit?: string;
-  step?: number;
-  defaultValue?: any;
-}
-
-export interface LogTypeConfig {
-  id: ActivityType;
-  name: string;
-  emoji: string;
-  icon: string;
-  color: string;
-  gradient: [string, string];
-  fields: FieldConfig[];
-  quickTags: string[];
-  description: string;
-  isCustom?: boolean;
-  createdAt?: number;
-  category: 'essential' | 'health' | 'development' | 'daily' | 'custom';
-}
-
-
-const DEFAULT_LOG_TYPES: Record<string, LogTypeConfig> = {
-  potty: {
-    id: 'potty',
-    name: 'Potty',
-    emoji: '🚽',
-    icon: 'water-outline',
-    color: '#667eea',
-    gradient: ['#667eea', '#764ba2'],
-    description:
-      'Track bathroom visits and potty training progress',
-    category: 'essential',
-    fields: [
-      {
-        id: 'pottyType',
-        label: 'Type',
-        type: 'select',
-        required: true,
-        options: [
-          { id: 'pee', label: 'Pee', emoji: '💧', color: '#3b82f6' },
-          { id: 'poop', label: 'Poop', emoji: '💩', color: '#8b5cf6' },
-          {
-            id: 'both',
-            label: 'Both',
-            emoji: '💧💩',
-            color: '#06b6d4',
-          },
-          {
-            id: 'accident',
-            label: 'Accident',
-            emoji: '⚠️',
-            color: '#ef4444',
-          },
-          {
-            id: 'attempt',
-            label: 'Attempt',
-            emoji: '⏰',
-            color: '#f59e0b',
-          },
-        ],
-      },
-      {
-        id: 'location',
-        label: 'Location',
-        type: 'select',
-        options: [
-          { id: 'potty', label: 'Potty Chair', icon: 'body-outline' },
-          { id: 'toilet', label: 'Toilet', icon: 'man-outline' },
-          { id: 'floor', label: 'Floor', icon: 'map-outline' },
-          { id: 'diaper', label: 'Diaper', icon: 'shirt-outline' },
-          { id: 'bed', label: 'Bed', icon: 'bed-outline' },
-        ],
-      },
-      {
-        id: 'successful',
-        label: 'Successful',
-        type: 'toggle',
-        defaultValue: true,
-      },
-      {
-        id: 'notes',
-        label: 'Notes',
-        type: 'textarea',
-        placeholder: 'Any details about the visit...',
-      },
-    ],
-    quickTags: [
-      'Self-initiated',
-      'With help',
-      'Dry night',
-      'Accident',
-      'Success',
-      'No success',
-      'Before bed',
-      'After meal',
-    ],
-  },
-
-  diaper: {
-    id: 'diaper',
-    name: 'Diaper',
-    emoji: '🧷',
-    icon: 'shirt-outline',
-    color: '#fc5c7d',
-    gradient: ['#fc5c7d', '#fd79a8'],
-    description: 'Track diaper changes and contents',
-    category: 'essential',
-    fields: [
-      {
-        id: 'diaperType',
-        label: 'Type',
-        type: 'select',
-        required: true,
-        options: [
-          { id: 'wet', label: 'Wet', emoji: '💧', color: '#3b82f6' },
-          {
-            id: 'dirty',
-            label: 'Dirty',
-            emoji: '💩',
-            color: '#8b5cf6',
-          },
-          {
-            id: 'both',
-            label: 'Both',
-            emoji: '💧💩',
-            color: '#06b6d4',
-          },
-          { id: 'dry', label: 'Dry', emoji: '✓', color: '#10b981' },
-          {
-            id: 'blowout',
-            label: 'Blowout',
-            emoji: '💥',
-            color: '#ef4444',
-          },
-        ],
-      },
-      { id: 'rash', label: 'Rash Present', type: 'toggle' },
-      {
-        id: 'cream',
-        label: 'Cream Applied',
-        type: 'select',
-        options: [
-          { id: 'none', label: 'None' },
-          { id: 'zinc', label: 'Zinc Oxide', emoji: '🧴' },
-          {
-            id: 'petroleum',
-            label: 'Petroleum Jelly',
-            emoji: '🛢️',
-          },
-          { id: 'antifungal', label: 'Antifungal', emoji: '🔬' },
-          { id: 'other', label: 'Other', emoji: '📋' },
-        ],
-      },
-      {
-        id: 'notes',
-        label: 'Notes',
-        type: 'textarea',
-        placeholder: 'Color, consistency, any concerns...',
-      },
-    ],
-    quickTags: [
-      'Normal',
-      'Loose stool',
-      'Constipated',
-      'Teething',
-      'New food',
-      'Redness',
-      'Irritated skin',
-      'Cleared up',
-    ],
-  },
-
-  feed: {
-    id: 'feed',
-    name: 'Feed',
-    emoji: '🍼',
-    icon: 'nutrition-outline',
-    color: '#fa709a',
-    gradient: ['#fa709a', '#f5576c'],
-    description:
-      'Track breastfeeding, bottles, and solid foods',
-    category: 'essential',
-    fields: [
-      {
-        id: 'feedType',
-        label: 'Feed Type',
-        type: 'select',
-        required: true,
-        options: [
-          {
-            id: 'breast',
-            label: 'Breast',
-            emoji: '🤱',
-            color: '#ec4899',
-          },
-          {
-            id: 'bottle',
-            label: 'Bottle',
-            emoji: '🍼',
-            color: '#3b82f6',
-          },
-          {
-            id: 'solid',
-            label: 'Solid Food',
-            emoji: '🥄',
-            color: '#f59e0b',
-          },
-          {
-            id: 'snack',
-            label: 'Snack',
-            emoji: '🍎',
-            color: '#10b981',
-          },
-          {
-            id: 'water',
-            label: 'Water',
-            emoji: '💧',
-            color: '#06b6d4',
-          },
-        ],
-      },
-      {
-        id: 'amount',
-        label: 'Amount',
-        type: 'number',
-        placeholder: 'Amount',
-        unit: 'oz/ml',
-        showIf: (data) => ['bottle', 'water'].includes(data.feedType),
-      },
-      {
-        id: 'duration',
-        label: 'Duration',
-        type: 'duration',
-        showIf: (data) => ['breast', 'bottle'].includes(data.feedType),
-      },
-      {
-        id: 'side',
-        label: 'Side',
-        type: 'select',
-        options: [
-          { id: 'left', label: 'Left', emoji: '⬅️' },
-          { id: 'right', label: 'Right', emoji: '➡️' },
-          { id: 'both', label: 'Both', emoji: '↔️' },
-        ],
-        showIf: (data) => data.feedType === 'breast',
-      },
-      {
-        id: 'food',
-        label: 'Food Items',
-        type: 'text',
-        placeholder: 'What did they eat?',
-        showIf: (data) => ['solid', 'snack'].includes(data.feedType),
-      },
-      {
-        id: 'notes',
-        label: 'Notes',
-        type: 'textarea',
-        placeholder: 'Any reactions or preferences...',
-      },
-    ],
-    quickTags: [
-      'Liked it',
-      'Disliked',
-      'Allergic reaction',
-      'Spit up',
-      'Finished all',
-      'Left some',
-      'Hungry',
-      'Not interested',
-    ],
-  },
-
-  pumping: {
-    id: 'pumping',
-    name: 'Pumping',
-    emoji: '🤱',
-    icon: 'flask-outline',
-    color: '#ec4899',
-    gradient: ['#ec4899', '#be185d'],
-    description: 'Track breast pumping sessions',
-    category: 'essential',
-    fields: [
-      {
-        id: 'side',
-        label: 'Side',
-        type: 'select',
-        required: true,
-        options: [
-          { id: 'left', label: 'Left', emoji: '⬅️' },
-          { id: 'right', label: 'Right', emoji: '➡️' },
-          { id: 'both', label: 'Both', emoji: '↔️' },
-        ],
-      },
-      {
-        id: 'duration',
-        label: 'Duration',
-        type: 'duration',
-        required: true,
-      },
-      {
-        id: 'amount',
-        label: 'Amount Collected',
-        type: 'number',
-        placeholder: 'Amount',
-        unit: 'oz/ml',
-      },
-      {
-        id: 'notes',
-        label: 'Notes',
-        type: 'textarea',
-        placeholder: 'How did it go? Any issues?',
-      },
-    ],
-    quickTags: [
-      'Good flow',
-      'Low supply',
-      'Clogged duct',
-      'Letdown fast',
-      'Letdown slow',
-      'Comfortable',
-      'Painful',
-    ],
-  },
-
-  sleep: {
-    id: 'sleep',
-    name: 'Sleep',
-    emoji: '😴',
-    icon: 'moon-outline',
-    color: '#11998e',
-    gradient: ['#11998e', '#38ef7d'],
-    description: 'Track naps and nighttime sleep',
-    category: 'essential',
-    fields: [
-      {
-        id: 'sleepType',
-        label: 'Sleep Type',
-        type: 'select',
-        required: true,
-        options: [
-          {
-            id: 'nap',
-            label: 'Nap',
-            emoji: '☀️',
-            color: '#f59e0b',
-          },
-          {
-            id: 'night',
-            label: 'Night Sleep',
-            emoji: '🌙',
-            color: '#6366f1',
-          },
-          {
-            id: 'wake',
-            label: 'Wake Window',
-            emoji: '👀',
-            color: '#10b981',
-          },
-        ],
-      },
-      {
-        id: 'duration',
-        label: 'Duration',
-        type: 'duration',
-        required: true,
-      },
-      {
-        id: 'quality',
-        label: 'Sleep Quality',
-        type: 'rating',
-        max: 5,
-        defaultValue: 3,
-      },
-      {
-        id: 'location',
-        label: 'Location',
-        type: 'select',
-        options: [
-          { id: 'crib', label: 'Crib', icon: 'bed-outline' },
-          {
-            id: 'bed',
-            label: 'Parent Bed',
-            icon: 'people-outline',
-          },
-          {
-            id: 'stroller',
-            label: 'Stroller',
-            icon: 'walk-outline',
-          },
-          { id: 'car', label: 'Car', icon: 'car-outline' },
-          {
-            id: 'carrier',
-            label: 'Carrier',
-            icon: 'body-outline',
-          },
-          {
-            id: 'arms',
-            label: 'In Arms',
-            icon: 'people-outline',
-          },
-        ],
-      },
-      {
-        id: 'notes',
-        label: 'Notes',
-        type: 'textarea',
-        placeholder: 'How did they sleep?',
-      },
-    ],
-    quickTags: [
-      'Self-soothed',
-      'Needed rocking',
-      'Woke up crying',
-      'Peaceful',
-      'Short nap',
-      'Long nap',
-      'Easy bedtime',
-      'Fought sleep',
-    ],
-  },
-
-  bath: {
-    id: 'bath',
-    name: 'Bath',
-    emoji: '🛁',
-    icon: 'water-outline',
-    color: '#06b6d4',
-    gradient: ['#06b6d4', '#0891b2'],
-    description: 'Track bath time and hygiene',
-    category: 'essential',
-    fields: [
-      {
-        id: 'bathType',
-        label: 'Type',
-        type: 'select',
-        options: [
-          { id: 'full', label: 'Full Bath', emoji: '🛁' },
-          {
-            id: 'sponge',
-            label: 'Sponge Bath',
-            emoji: '🧽',
-          },
-          {
-            id: 'hair',
-            label: 'Hair Wash',
-            emoji: '🧴',
-          },
-          {
-            id: 'quick',
-            label: 'Quick Rinse',
-            emoji: '💧',
-          },
-        ],
-      },
-      { id: 'duration', label: 'Duration', type: 'duration' },
-      {
-        id: 'temperature',
-        label: 'Water Temperature',
-        type: 'temperature',
-      },
-      {
-        id: 'soap',
-        label: 'Soap Used',
-        type: 'toggle',
-        defaultValue: true,
-      },
-      {
-        id: 'shampoo',
-        label: 'Shampoo Used',
-        type: 'toggle',
-        defaultValue: true,
-      },
-      {
-        id: 'lotion',
-        label: 'Lotion After',
-        type: 'toggle',
-        defaultValue: true,
-      },
-      {
-        id: 'enjoyed',
-        label: 'Enjoyed It',
-        type: 'toggle',
-        defaultValue: true,
-      },
-      {
-        id: 'notes',
-        label: 'Notes',
-        type: 'textarea',
-        placeholder: 'How was bath time?',
-      },
-    ],
-    quickTags: [
-      'Loved it',
-      'Hated it',
-      'Cried',
-      'Played',
-      'Splashed',
-      'Calm',
-      'Quick',
-      'Long',
-    ],
-  },
-
-  growth: {
-    id: 'growth',
-    name: 'Growth',
-    emoji: '📏',
-    icon: 'trending-up-outline',
-    color: '#43e97b',
-    gradient: ['#43e97b', '#38f9d7'],
-    description:
-      'Track height, weight, and head circumference',
-    category: 'health',
-    fields: [
-      {
-        id: 'measurementType',
-        label: 'Measurement Type',
-        type: 'select',
-        required: true,
-        options: [
-          {
-            id: 'weight',
-            label: 'Weight',
-            emoji: '⚖️',
-            color: '#f59e0b',
-          },
-          {
-            id: 'height',
-            label: 'Height',
-            emoji: '📏',
-            color: '#3b82f6',
-          },
-          {
-            id: 'head',
-            label: 'Head Circumference',
-            emoji: '🧠',
-            color: '#ec4899',
-          },
-          {
-            id: 'temperature',
-            label: 'Temperature',
-            emoji: '🌡️',
-            color: '#ef4444',
-          },
-        ],
-      },
-      {
-        id: 'value',
-        label: 'Value',
-        type: 'number',
-        required: true,
-        step: 0.1,
-      },
-      {
-        id: 'unit',
-        label: 'Unit',
-        type: 'select',
-        options: [
-          { id: 'kg', label: 'kg' },
-          { id: 'lb', label: 'lb' },
-          { id: 'oz', label: 'oz' },
-          { id: 'cm', label: 'cm' },
-          { id: 'in', label: 'in' },
-          { id: 'celsius', label: '°C' },
-          { id: 'fahrenheit', label: '°F' },
-        ],
-      },
-      {
-        id: 'percentile',
-        label: 'Percentile',
-        type: 'number',
-        placeholder: 'Optional',
-        min: 0,
-        max: 100,
-      },
-      {
-        id: 'notes',
-        label: 'Notes',
-        type: 'textarea',
-        placeholder: 'Any observations...',
-      },
-    ],
-    quickTags: [
-      'Doctor visit',
-      'Home measurement',
-      'New milestone',
-      'Concern',
-      'Normal range',
-      'Above average',
-      'Below average',
-    ],
-  },
-
-  temperature: {
-    id: 'temperature',
-    name: 'Temperature',
-    emoji: '🌡️',
-    icon: 'thermometer-outline',
-    color: '#ef4444',
-    gradient: ['#ef4444', '#dc2626'],
-    description: 'Track fever and body temperature',
-    category: 'health',
-    fields: [
-      {
-        id: 'tempValue',
-        label: 'Temperature',
-        type: 'number',
-        required: true,
-        step: 0.1,
-        placeholder: '36.5',
-      },
-      {
-        id: 'tempUnit',
-        label: 'Unit',
-        type: 'select',
-        options: [
-          { id: 'celsius', label: '°C Celsius' },
-          { id: 'fahrenheit', label: '°F Fahrenheit' },
-        ],
-        defaultValue: 'celsius',
-      },
-      {
-        id: 'method',
-        label: 'Measurement Method',
-        type: 'select',
-        options: [
-          { id: 'oral', label: 'Oral', icon: 'happy-outline' },
-          { id: 'ear', label: 'Ear', icon: 'headset-outline' },
-          {
-            id: 'forehead',
-            label: 'Forehead',
-            icon: 'scan-circle-outline',
-          },
-          { id: 'armpit', label: 'Armpit', icon: 'man-outline' },
-          {
-            id: 'rectal',
-            label: 'Rectal',
-            icon: 'medical-outline',
-          },
-        ],
-      },
-      {
-        id: 'symptoms',
-        label: 'Symptoms',
-        type: 'multiselect',
-        options: [
-          { id: 'fussy', label: 'Fussy', emoji: '😢' },
-          { id: 'lethargic', label: 'Lethargic', emoji: '😴' },
-          {
-            id: 'eating_less',
-            label: 'Eating Less',
-            emoji: '🍼',
-          },
-          {
-            id: 'sleeping_more',
-            label: 'Sleeping More',
-            emoji: '🛏️',
-          },
-          { id: 'rash', label: 'Rash', emoji: '🔴' },
-          { id: 'cough', label: 'Cough', emoji: '😷' },
-          { id: 'none', label: 'None', emoji: '✅' },
-        ],
-      },
-      {
-        id: 'notes',
-        label: 'Notes',
-        type: 'textarea',
-        placeholder:
-          'How are they acting? Any other symptoms?',
-      },
-    ],
-    quickTags: [
-      'Fever',
-      'Normal temp',
-      'Teething',
-      'After vaccine',
-      'Before bed',
-      'Woke up hot',
-      'Medicine given',
-      'Doctor called',
-    ],
-  },
-
-  medication: {
-    id: 'medication',
-    name: 'Medication',
-    emoji: '💊',
-    icon: 'medical-outline',
-    color: '#ff6b6b',
-    gradient: ['#ff6b6b', '#ee5a5a'],
-    description:
-      'Track medicines, vitamins, and vaccines',
-    category: 'health',
-    fields: [
-      {
-        id: 'medName',
-        label: 'Medicine Name',
-        type: 'text',
-        required: true,
-        placeholder: 'e.g., Tylenol, Vitamin D',
-      },
-      {
-        id: 'dosage',
-        label: 'Dosage',
-        type: 'text',
-        required: true,
-        placeholder: 'e.g., 5ml, 1 tablet',
-      },
-      {
-        id: 'medType',
-        label: 'Type',
-        type: 'select',
-        options: [
-          {
-            id: 'fever',
-            label: 'Fever/Pain',
-            emoji: '🤒',
-            color: '#ef4444',
-          },
-          {
-            id: 'vitamin',
-            label: 'Vitamin',
-            emoji: '💊',
-            color: '#f59e0b',
-          },
-          {
-            id: 'antibiotic',
-            label: 'Antibiotic',
-            emoji: '🔬',
-            color: '#3b82f6',
-          },
-          {
-            id: 'allergy',
-            label: 'Allergy',
-            emoji: '🤧',
-            color: '#10b981',
-          },
-          {
-            id: 'vaccine',
-            label: 'Vaccine',
-            emoji: '💉',
-            color: '#8b5cf6',
-          },
-          {
-            id: 'other',
-            label: 'Other',
-            emoji: '📋',
-            color: '#6b7280',
-          },
-        ],
-      },
-      {
-        id: 'reason',
-        label: 'Reason',
-        type: 'text',
-        placeholder: 'Why was this given?',
-      },
-      {
-        id: 'givenBy',
-        label: 'Given By',
-        type: 'select',
-        options: [
-          { id: 'parent1', label: 'Parent 1' },
-          { id: 'parent2', label: 'Parent 2' },
-          { id: 'doctor', label: 'Doctor' },
-          { id: 'grandparent', label: 'Grandparent' },
-          { id: 'other', label: 'Other' },
-        ],
-      },
-      {
-        id: 'notes',
-        label: 'Notes',
-        type: 'textarea',
-        placeholder: 'Any reactions or notes...',
-      },
-    ],
-    quickTags: [
-      'No reaction',
-      'Mild reaction',
-      'Slept after',
-      'Fussy after',
-      'Took easily',
-      'Refused at first',
-      'With food',
-      'Empty stomach',
-    ],
-  },
-
-  symptom: {
-    id: 'symptom',
-    name: 'Symptom',
-    emoji: '🤒',
-    icon: 'pulse-outline',
-    color: '#f97316',
-    gradient: ['#f97316', '#ea580c'],
-    description: 'Track symptoms and illness',
-    category: 'health',
-    fields: [
-      {
-        id: 'symptomType',
-        label: 'Symptom',
-        type: 'select',
-        required: true,
-        options: [
-          {
-            id: 'fever',
-            label: 'Fever',
-            emoji: '🌡️',
-            color: '#ef4444',
-          },
-          {
-            id: 'cough',
-            label: 'Cough',
-            emoji: '😷',
-            color: '#f97316',
-          },
-          {
-            id: 'runny_nose',
-            label: 'Runny Nose',
-            emoji: '🤧',
-            color: '#3b82f6',
-          },
-          {
-            id: 'vomiting',
-            label: 'Vomiting',
-            emoji: '🤢',
-            color: '#8b5cf6',
-          },
-          {
-            id: 'diarrhea',
-            label: 'Diarrhea',
-            emoji: '💩',
-            color: '#a855f7',
-          },
-          {
-            id: 'rash',
-            label: 'Rash',
-            emoji: '🔴',
-            color: '#ec4899',
-          },
-          {
-            id: 'irritability',
-            label: 'Irritability',
-            emoji: '😢',
-            color: '#f59e0b',
-          },
-          {
-            id: 'lethargy',
-            label: 'Lethargy',
-            emoji: '😴',
-            color: '#64748b',
-          },
-          {
-            id: 'other',
-            label: 'Other',
-            emoji: '📋',
-            color: '#6b7280',
-          },
-        ],
-      },
-      {
-        id: 'severity',
-        label: 'Severity',
-        type: 'rating',
-        max: 5,
-        defaultValue: 3,
-      },
-      { id: 'duration', label: 'Duration', type: 'duration' },
-      {
-        id: 'notes',
-        label: 'Notes',
-        type: 'textarea',
-        placeholder:
-          'Describe symptoms, when they started, etc.',
-      },
-    ],
-    quickTags: [
-      'Getting better',
-      'Getting worse',
-      'Same',
-      'Doctor consulted',
-      'Medicine given',
-      'Sleeping',
-      'Eating normal',
-      'Not eating',
-    ],
-  },
-
-  milestone: {
-    id: 'milestone',
-    name: 'Milestone',
-    emoji: '🏆',
-    icon: 'trophy-outline',
-    color: '#ffd700',
-    gradient: ['#ffd700', '#ffaa00'],
-    description: 'Celebrate achievements and firsts',
-    category: 'development',
-    fields: [
-      {
-        id: 'milestoneType',
-        label: 'Category',
-        type: 'select',
-        required: true,
-        options: [
-          {
-            id: 'motor',
-            label: 'Motor Skills',
-            emoji: '🏃',
-            color: '#3b82f6',
-          },
-          {
-            id: 'cognitive',
-            label: 'Cognitive',
-            emoji: '🧠',
-            color: '#8b5cf6',
-          },
-          {
-            id: 'social',
-            label: 'Social',
-            emoji: '👋',
-            color: '#f59e0b',
-          },
-          {
-            id: 'language',
-            label: 'Language',
-            emoji: '🗣️',
-            color: '#ec4899',
-          },
-          {
-            id: 'emotional',
-            label: 'Emotional',
-            emoji: '❤️',
-            color: '#ef4444',
-          },
-          {
-            id: 'other',
-            label: 'Other',
-            emoji: '✨',
-            color: '#10b981',
-          },
-        ],
-      },
-      {
-        id: 'title',
-        label: 'Milestone',
-        type: 'text',
-        required: true,
-        placeholder: 'What did they do?',
-      },
-      {
-        id: 'description',
-        label: 'Description',
-        type: 'textarea',
-        placeholder: 'Describe what happened...',
-      },
-      {
-        id: 'firstTime',
-        label: 'First Time',
-        type: 'toggle',
-        defaultValue: true,
-      },
-      { id: 'photo', label: 'Add Photo', type: 'photo' },
-    ],
-    quickTags: [
-      'First time',
-      'Practicing',
-      'Mastered',
-      'Surprised us',
-      'Early',
-      'Right on time',
-      'With help',
-      'Independent',
-    ],
-  },
-
-  play: {
-    id: 'play',
-    name: 'Play',
-    emoji: '🧸',
-    icon: 'game-controller-outline',
-    color: '#a855f7',
-    gradient: ['#a855f7', '#9333ea'],
-    description: 'Track play time and activities',
-    category: 'development',
-    fields: [
-      {
-        id: 'playType',
-        label: 'Activity Type',
-        type: 'select',
-        options: [
-          {
-            id: 'tummy',
-            label: 'Tummy Time',
-            emoji: '😊',
-            color: '#f59e0b',
-          },
-          {
-            id: 'sensory',
-            label: 'Sensory Play',
-            emoji: '👋',
-            color: '#ec4899',
-          },
-          {
-            id: 'reading',
-            label: 'Reading',
-            emoji: '📚',
-            color: '#3b82f6',
-          },
-          {
-            id: 'music',
-            label: 'Music',
-            emoji: '🎵',
-            color: '#8b5cf6',
-          },
-          {
-            id: 'outdoor',
-            label: 'Outdoor',
-            emoji: '🌳',
-            color: '#10b981',
-          },
-          {
-            id: 'blocks',
-            label: 'Blocks/Toys',
-            emoji: '🧱',
-            color: '#f97316',
-          },
-          {
-            id: 'art',
-            label: 'Art/Crafts',
-            emoji: '🎨',
-            color: '#06b6d4',
-          },
-        ],
-      },
-      { id: 'duration', label: 'Duration', type: 'duration' },
-      {
-        id: 'engagement',
-        label: 'Engagement Level',
-        type: 'rating',
-        max: 5,
-        defaultValue: 4,
-      },
-      {
-        id: 'notes',
-        label: 'Notes',
-        type: 'textarea',
-        placeholder:
-          'What did they enjoy? New skills shown?',
-      },
-    ],
-    quickTags: [
-      'Loved it',
-      'Interested',
-      'Distracted',
-      'Learned new',
-      'Practiced skill',
-      'Social',
-      'Solo play',
-      'Interactive',
-    ],
-  },
-
-  note: {
-    id: 'note',
-    name: 'Note',
-    emoji: '📝',
-    icon: 'document-text-outline',
-    color: '#94a3b8',
-    gradient: ['#94a3b8', '#64748b'],
-    description: 'General notes and observations',
-    category: 'daily',
-    fields: [
-      {
-        id: 'title',
-        label: 'Title',
-        type: 'text',
-        required: true,
-        placeholder: 'What is this about?',
-      },
-      {
-        id: 'content',
-        label: 'Content',
-        type: 'textarea',
-        placeholder: 'Write your note here...',
-      },
-      {
-        id: 'mood',
-        label: 'Mood',
-        type: 'select',
-        options: [
-          {
-            id: 'happy',
-            label: 'Happy',
-            emoji: '😊',
-            color: '#f59e0b',
-          },
-          {
-            id: 'neutral',
-            label: 'Neutral',
-            emoji: '😐',
-            color: '#94a3b8',
-          },
-          {
-            id: 'sad',
-            label: 'Sad',
-            emoji: '😢',
-            color: '#3b82f6',
-          },
-          {
-            id: 'excited',
-            label: 'Excited',
-            emoji: '🤩',
-            color: '#ec4899',
-          },
-          {
-            id: 'tired',
-            label: 'Tired',
-            emoji: '😴',
-            color: '#8b5cf6',
-          },
-          {
-            id: 'sick',
-            label: 'Sick',
-            emoji: '🤒',
-            color: '#ef4444',
-          },
-        ],
-      },
-      { id: 'photo', label: 'Attach Photo', type: 'photo' },
-    ],
-    quickTags: [
-      'Cute moment',
-      'Funny',
-      'Concern',
-      'Question for doctor',
-      'New skill',
-      'Bad day',
-      'Great day',
-      'Routine',
-    ],
-  },
-
-};
-
-
-const CUSTOM_TRACKERS_KEY = '@littleloom_custom_log_types';
-
+type AddLogRouteProp = RouteProp<RootStackParamList, 'AddLog'>;
+type AddLogNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpacity);
 
+// ─── Confirmation Modal (modernized with SafeAvatar) ───
 interface ConfirmationModalProps {
   visible: boolean;
   onClose: () => void;
   onConfirm: () => void;
-  data: any;
-  logType: LogTypeConfig;
+  data: Record<string, unknown>;
+  tracker: TrackerConfig;
   babyName: string;
+  babyAvatar?: string;
+  date: Date;
+  notes?: string;
+  tags: string[];
 }
 
-const ConfirmationModal: React.FC<
-  ConfirmationModalProps
-> = ({
-  visible,
-  onClose,
-  onConfirm,
-  data,
-  logType,
-  babyName,
+const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
+  visible, onClose, onConfirm, data, tracker, babyName, babyAvatar, date, notes, tags,
 }) => {
+  const { fullThemeColors, borderRadiusValue, fontSizeMultiplier } = useCustomization();
   const scale = useSharedValue(0.8);
   const opacity = useSharedValue(0);
 
@@ -1242,181 +90,90 @@ const ConfirmationModal: React.FC<
     opacity: opacity.value,
   }));
 
-  const formatValue = (key: string, value: any) => {
-    if (
-      value === undefined ||
-      value === null ||
-      value === ''
-    )
-      return null;
+  const formatValue = (key: string, value: unknown) => {
+    if (value === undefined || value === null || value === '') return null;
     if (typeof value === 'boolean') return value ? 'Yes' : 'No';
     if (Array.isArray(value)) return value.join(', ');
     return String(value);
   };
 
-  const previewData = Object.entries(data).filter(
-    ([key, value]) => {
-      if (
-        [
-          'id',
-          'timestamp',
-          'babyId',
-          'loggedBy',
-          'loggedByName',
-          'type',
-          'title',
-          'details',
-          'photoUri',
-        ].includes(key)
-      )
-        return false;
-      return formatValue(key, value) !== null;
-    }
-  );
+  const previewData = Object.entries(data).filter(([key, value]) => {
+    if (['id', 'timestamp', 'babyId', 'type', 'title', 'icon', 'photoUris'].includes(key)) return false;
+    return formatValue(key, value) !== null;
+  });
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="none"
-      onRequestClose={onClose}
-    >
-      <View style={styles.modalOverlay}>
-        <Animated.View
-          style={[styles.modalContent, animatedStyle]}
-        >
-          <LinearGradient
-            colors={['#ffffff', '#f8fafc']}
-            style={styles.modalGradient}
-          >
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
+      <View style={[styles.modalOverlay, { backgroundColor: fullThemeColors.shadow + '80' }]}>
+        <Animated.View style={[styles.modalContent, animatedStyle, { borderRadius: borderRadiusValue * 2 }]}>
+          <LinearGradient colors={[fullThemeColors.surface, fullThemeColors.background]} style={[styles.modalGradient, { borderRadius: borderRadiusValue * 2 }]}>
             <View style={styles.modalHeader}>
-              <View
-                style={[
-                  styles.modalIconContainer,
-                  { backgroundColor: `${logType.color }20` },
-                ]}
-              >
-                <Text style={styles.modalIcon}>
-                  {logType.emoji}
-                </Text>
+              <View style={[styles.modalIconContainer, { backgroundColor: `${tracker.gradient[0]}20`, borderRadius: borderRadiusValue }]}>
+                <Text style={styles.modalIcon}>{tracker.emoji}</Text>
               </View>
-              <Text style={styles.modalTitle}>
-                Confirm {logType.name}
+              <Text style={[styles.modalTitle, { color: fullThemeColors.text, fontSize: 22 * fontSizeMultiplier }]}>
+                Confirm {tracker.name}
               </Text>
-              <Text style={styles.modalSubtitle}>
-                For {babyName}
-              </Text>
+              <View style={styles.modalBabyRow}>
+                <SafeAvatar avatar={babyAvatar} size={28} fallbackIcon="person" borderWidth={0} animated={false} />
+                <Text style={[styles.modalSubtitle, { color: fullThemeColors.textSecondary }]}>For {babyName}</Text>
+              </View>
             </View>
 
-            <AutoHideScrollView
-              style={styles.modalBody}
-              showsVerticalScrollIndicator={false}
-            >
-              <View style={styles.previewCard}>
-                <Text style={styles.previewTime}>
-                  {format(
-                    data.timestamp || Date.now(),
-                    'MMM d, yyyy • h:mm a'
-                  )}
+            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+              <View style={[styles.previewCard, { backgroundColor: fullThemeColors.glassBg, borderColor: fullThemeColors.border, borderRadius: borderRadiusValue }]}>
+                <Text style={[styles.previewTime, { color: fullThemeColors.textSecondary }]}>
+                  {format(date, 'MMM d, yyyy • h:mm a')}
                 </Text>
 
-                {data.photoUri && (
-                  <View
-                    style={styles.previewPhotoContainer}
-                  >
-                    <Image
-                      source={{ uri: data.photoUri }}
-                      style={styles.previewPhoto}
-                      resizeMode="cover"
-                    />
+                {data.photoUris && Array.isArray(data.photoUris) && (data.photoUris as string[]).length > 0 && (
+                  <View style={[styles.previewPhotoContainer, { borderRadius: borderRadiusValue }]}>
+                    <Image source={{ uri: (data.photoUris as string[])[0] }} style={styles.previewPhoto} resizeMode="cover" />
                   </View>
                 )}
 
-                {data.title && (
-                  <Text style={styles.previewTitle}>
-                    {data.title}
-                  </Text>
-                )}
+                <Text style={[styles.previewTitle, { color: fullThemeColors.text, fontSize: 18 * fontSizeMultiplier }]}>
+                  {tracker.emoji} {tracker.name}
+                </Text>
 
-                {data.details && (
-                  <Text style={styles.previewDetails}>
-                    {data.details}
-                  </Text>
-                )}
+                {notes && <Text style={[styles.previewDetails, { color: fullThemeColors.textSecondary }]}>{notes}</Text>}
 
                 {previewData.length > 0 && (
                   <View style={styles.previewFields}>
                     {previewData.map(([key, value]) => (
-                      <View
-                        key={key}
-                        style={styles.previewField}
-                      >
-                        <Text
-                          style={styles.previewFieldLabel}
-                        >
-                          {key
-                            .replace(/([A-Z])/g, ' $1')
-                            .replace(/^./, (str) =>
-                              str.toUpperCase()
-                            )}
+                      <View key={key} style={styles.previewField}>
+                        <Text style={[styles.previewFieldLabel, { color: fullThemeColors.textSecondary }]}>
+                          {key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
                         </Text>
-                        <Text
-                          style={styles.previewFieldValue}
-                        >
-                          {formatValue(key, value)}
-                        </Text>
+                        <Text style={[styles.previewFieldValue, { color: fullThemeColors.text }]}>{formatValue(key, value)}</Text>
                       </View>
                     ))}
                   </View>
                 )}
 
-                {data.notes && (
+                {tags.length > 0 && (
                   <View style={styles.previewNotes}>
-                    <Ionicons
-                      name="chatbubble-outline"
-                      size={16}
-                      color="#64748b"
-                    />
-                    <Text
-                      style={styles.previewNotesText}
-                    >
-                      {data.notes}
-                    </Text>
+                    <Ionicons name="pricetag-outline" size={16} color={fullThemeColors.textSecondary} />
+                    <Text style={[styles.previewNotesText, { color: fullThemeColors.textSecondary }]}>{tags.join(', ')}</Text>
                   </View>
                 )}
               </View>
-            </AutoHideScrollView>
+            </ScrollView>
 
             <View style={styles.modalActions}>
-              <TouchableOpacity
-                onPress={onClose}
-                style={styles.cancelButton}
-              >
-                <Text style={styles.cancelButtonText}>
-                  Edit
-                </Text>
+              <TouchableOpacity onPress={onClose} style={[styles.cancelButton, { borderRadius: borderRadiusValue }]}>
+                <Text style={[styles.cancelButtonText, { color: fullThemeColors.textSecondary }]}>Edit</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity
-                onPress={onConfirm}
-                style={styles.confirmButton}
-              >
+              <TouchableOpacity onPress={onConfirm} style={[styles.confirmButton, { borderRadius: borderRadiusValue }]}>
                 <LinearGradient
-                  colors={logType.gradient}
+                  colors={tracker.gradient}
                   style={styles.confirmGradient}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
                 >
-                  <Ionicons
-                    name="checkmark-circle"
-                    size={20}
-                    color="#fff"
-                  />
-                  <Text
-                    style={styles.confirmButtonText}
-                  >
-                    Save Entry
-                  </Text>
+                  <Ionicons name="checkmark-circle" size={20} color="#fff" />
+                  <Text style={styles.confirmButtonText}>Save Entry</Text>
                 </LinearGradient>
               </TouchableOpacity>
             </View>
@@ -1427,2578 +184,518 @@ const ConfirmationModal: React.FC<
   );
 };
 
-
-const BABY_ICONS = [
-  {
-    name: 'water-outline',
-    category: 'Care',
-    label: 'Potty',
-  },
-  {
-    name: 'nutrition-outline',
-    category: 'Care',
-    label: 'Feed',
-  },
-  {
-    name: 'moon-outline',
-    category: 'Care',
-    label: 'Sleep',
-  },
-  {
-    name: 'shirt-outline',
-    category: 'Care',
-    label: 'Diaper',
-  },
-  {
-    name: 'flask-outline',
-    category: 'Care',
-    label: 'Pump',
-  },
-  {
-    name: 'water-outline',
-    category: 'Care',
-    label: 'Bath',
-  },
-
-  {
-    name: 'trending-up-outline',
-    category: 'Health',
-    label: 'Growth',
-  },
-  {
-    name: 'thermometer-outline',
-    category: 'Health',
-    label: 'Temp',
-  },
-  {
-    name: 'medical-outline',
-    category: 'Health',
-    label: 'Meds',
-  },
-  {
-    name: 'pulse-outline',
-    category: 'Health',
-    label: 'Vitals',
-  },
-  {
-    name: 'fitness-outline',
-    category: 'Health',
-    label: 'Exercise',
-  },
-  {
-    name: 'bandage-outline',
-    category: 'Health',
-    label: 'Injury',
-  },
-  {
-    name: 'eyedrop-outline',
-    category: 'Health',
-    label: 'Drops',
-  },
-  {
-    name: 'heart-outline',
-    category: 'Health',
-    label: 'Heart',
-  },
-
-  {
-    name: 'trophy-outline',
-    category: 'Develop',
-    label: 'Milestone',
-  },
-  {
-    name: 'game-controller-outline',
-    category: 'Develop',
-    label: 'Play',
-  },
-  {
-    name: 'book-outline',
-    category: 'Develop',
-    label: 'Reading',
-  },
-  {
-    name: 'musical-notes-outline',
-    category: 'Develop',
-    label: 'Music',
-  },
-  {
-    name: 'color-palette-outline',
-    category: 'Develop',
-    label: 'Art',
-  },
-  {
-    name: 'football-outline',
-    category: 'Develop',
-    label: 'Sports',
-  },
-  {
-    name: 'bicycle-outline',
-    category: 'Develop',
-    label: 'Bike',
-  },
-  {
-    name: 'walk-outline',
-    category: 'Develop',
-    label: 'Walking',
-  },
-
-  {
-    name: 'document-text-outline',
-    category: 'Daily',
-    label: 'Note',
-  },
-  {
-    name: 'camera-outline',
-    category: 'Daily',
-    label: 'Photo',
-  },
-  {
-    name: 'videocam-outline',
-    category: 'Daily',
-    label: 'Video',
-  },
-  {
-    name: 'mic-outline',
-    category: 'Daily',
-    label: 'Voice',
-  },
-  {
-    name: 'location-outline',
-    category: 'Daily',
-    label: 'Location',
-  },
-  {
-    name: 'sunny-outline',
-    category: 'Daily',
-    label: 'Weather',
-  },
-  {
-    name: 'umbrella-outline',
-    category: 'Daily',
-    label: 'Rain',
-  },
-  {
-    name: 'snow-outline',
-    category: 'Daily',
-    label: 'Cold',
-  },
-
-  {
-    name: 'happy-outline',
-    category: 'Social',
-    label: 'Happy',
-  },
-  {
-    name: 'sad-outline',
-    category: 'Social',
-    label: 'Sad',
-  },
-  {
-    name: 'chatbubble-outline',
-    category: 'Social',
-    label: 'Chat',
-  },
-  {
-    name: 'call-outline',
-    category: 'Social',
-    label: 'Call',
-  },
-  {
-    name: 'mail-outline',
-    category: 'Social',
-    label: 'Message',
-  },
-  {
-    name: 'people-outline',
-    category: 'Social',
-    label: 'People',
-  },
-  {
-    name: 'person-outline',
-    category: 'Social',
-    label: 'Person',
-  },
-  {
-    name: 'hand-left-outline',
-    category: 'Social',
-    label: 'Hand',
-  },
-
-  {
-    name: 'airplane-outline',
-    category: 'Travel',
-    label: 'Travel',
-  },
-  {
-    name: 'car-outline',
-    category: 'Travel',
-    label: 'Car',
-  },
-  {
-    name: 'bus-outline',
-    category: 'Travel',
-    label: 'Bus',
-  },
-  {
-    name: 'restaurant-outline',
-    category: 'Food',
-    label: 'Restaurant',
-  },
-  {
-    name: 'cafe-outline',
-    category: 'Food',
-    label: 'Cafe',
-  },
-  {
-    name: 'pizza-outline',
-    category: 'Food',
-    label: 'Food',
-  },
-  {
-    name: 'ice-cream-outline',
-    category: 'Food',
-    label: 'Treat',
-  },
-  {
-    name: 'beer-outline',
-    category: 'Food',
-    label: 'Drink',
-  },
-
-  {
-    name: 'home-outline',
-    category: 'Home',
-    label: 'Home',
-  },
-  {
-    name: 'bed-outline',
-    category: 'Home',
-    label: 'Bed',
-  },
-  {
-    name: 'tv-outline',
-    category: 'Home',
-    label: 'Screen',
-  },
-  {
-    name: 'phone-portrait-outline',
-    category: 'Home',
-    label: 'Phone',
-  },
-  {
-    name: 'laptop-outline',
-    category: 'Home',
-    label: 'Computer',
-  },
-  {
-    name: 'wifi-outline',
-    category: 'Home',
-    label: 'WiFi',
-  },
-  {
-    name: 'battery-full-outline',
-    category: 'Home',
-    label: 'Battery',
-  },
-  {
-    name: 'flashlight-outline',
-    category: 'Home',
-    label: 'Light',
-  },
-
-  {
-    name: 'analytics-outline',
-    category: 'Other',
-    label: 'Stats',
-  },
-  {
-    name: 'timer-outline',
-    category: 'Other',
-    label: 'Timer',
-  },
-  {
-    name: 'alarm-outline',
-    category: 'Other',
-    label: 'Alarm',
-  },
-  {
-    name: 'calendar-outline',
-    category: 'Other',
-    label: 'Calendar',
-  },
-  {
-    name: 'clipboard-outline',
-    category: 'Other',
-    label: 'List',
-  },
-  {
-    name: 'bookmark-outline',
-    category: 'Other',
-    label: 'Save',
-  },
-  {
-    name: 'star-outline',
-    category: 'Other',
-    label: 'Star',
-  },
-  {
-    name: 'flag-outline',
-    category: 'Other',
-    label: 'Flag',
-  },
-  {
-    name: 'pin-outline',
-    category: 'Other',
-    label: 'Pin',
-  },
-  {
-    name: 'link-outline',
-    category: 'Other',
-    label: 'Link',
-  },
-  {
-    name: 'share-outline',
-    category: 'Other',
-    label: 'Share',
-  },
-  {
-    name: 'print-outline',
-    category: 'Other',
-    label: 'Print',
-  },
-  {
-    name: 'download-outline',
-    category: 'Other',
-    label: 'Download',
-  },
-  {
-    name: 'cloud-outline',
-    category: 'Other',
-    label: 'Cloud',
-  },
-  {
-    name: 'sunny-outline',
-    category: 'Other',
-    label: 'Sun',
-  },
-  {
-    name: 'moon-outline',
-    category: 'Other',
-    label: 'Moon',
-  },
-];
-
-const COLOR_PRESETS = [
-  { color: '#667eea', name: 'Lavender' },
-  { color: '#fa709a', name: 'Pink' },
-  { color: '#11998e', name: 'Teal' },
-  { color: '#43e97b', name: 'Mint' },
-  { color: '#ff6b6b', name: 'Coral' },
-  { color: '#ffd700', name: 'Gold' },
-  { color: '#fc5c7d', name: 'Rose' },
-  { color: '#94a3b8', name: 'Slate' },
-  { color: '#a855f7', name: 'Purple' },
-  { color: '#ec4899', name: 'Magenta' },
-  { color: '#06b6d4', name: 'Cyan' },
-  { color: '#f59e0b', name: 'Amber' },
-  { color: '#10b981', name: 'Emerald' },
-  { color: '#ef4444', name: 'Red' },
-  { color: '#3b82f6', name: 'Blue' },
-  { color: '#6366f1', name: 'Indigo' },
-  { color: '#8b5cf6', name: 'Violet' },
-  { color: '#14b8a6', name: 'Turquoise' },
-  { color: '#f97316', name: 'Orange' },
-  { color: '#84cc16', name: 'Lime' },
-];
-
-const FIELD_TYPE_OPTIONS: {
-  id: FieldType;
-  label: string;
-  icon: string;
-  description: string;
-}[] = [
-  {
-    id: 'text',
-    label: 'Text',
-    icon: 'text-outline',
-    description: 'Single line text',
-  },
-  {
-    id: 'number',
-    label: 'Number',
-    icon: 'calculator-outline',
-    description: 'Numeric value',
-  },
-  {
-    id: 'select',
-    label: 'Select',
-    icon: 'list-outline',
-    description: 'Choose one option',
-  },
-  {
-    id: 'multiselect',
-    label: 'Multi-Select',
-    icon: 'checkbox-outline',
-    description: 'Choose multiple',
-  },
-  {
-    id: 'toggle',
-    label: 'Toggle',
-    icon: 'toggle-outline',
-    description: 'Yes/No switch',
-  },
-  {
-    id: 'duration',
-    label: 'Duration',
-    icon: 'time-outline',
-    description: 'Time period',
-  },
-  {
-    id: 'rating',
-    label: 'Rating',
-    icon: 'star-outline',
-    description: '1-5 stars',
-  },
-  {
-    id: 'textarea',
-    label: 'Notes',
-    icon: 'chatbox-outline',
-    description: 'Multi-line text',
-  },
-  {
-    id: 'photo',
-    label: 'Photo',
-    icon: 'camera-outline',
-    description: 'Attach image',
-  },
-  {
-    id: 'date',
-    label: 'Date',
-    icon: 'calendar-outline',
-    description: 'Date picker',
-  },
-  {
-    id: 'time',
-    label: 'Time',
-    icon: 'timer-outline',
-    description: 'Time picker',
-  },
-  {
-    id: 'temperature',
-    label: 'Temperature',
-    icon: 'thermometer-outline',
-    description: 'Temperature reading',
-  },
-  {
-    id: 'measurement',
-    label: 'Measurement',
-    icon: 'analytics-outline',
-    description: 'Height/Weight/etc',
-  },
-];
-
-const DEFAULT_CUSTOM_TAGS = [
-  'Morning',
-  'Afternoon',
-  'Evening',
-  'Night',
-  'Good',
-  'Okay',
-  'Difficult',
-  'Easy',
-  'First time',
-  'Routine',
-  'Important',
-  'Follow up',
-];
-
-interface CustomTrackerModalProps {
-  visible: boolean;
-  onClose: () => void;
-  onSave: (tracker: LogTypeConfig) => void;
-}
-
-const CustomTrackerModal: React.FC<
-  CustomTrackerModalProps
-> = ({ visible, onClose, onSave }) => {
-  const [step, setStep] = useState(1);
-  const [name, setName] = useState('');
-  const [emoji, setEmoji] = useState('📊');
-  const [selectedColor, setSelectedColor] = useState('#667eea');
-  const [selectedIcon, setSelectedIcon] = useState(
-    'analytics-outline'
-  );
-  const [selectedCategory, setSelectedCategory] =
-    useState('custom');
-  const [fields, setFields] = useState<FieldConfig[]>([
-    {
-      id: 'value',
-      label: 'Value',
-      type: 'text',
-      required: true,
-    },
-  ]);
-  const [quickTags, setQuickTags] = useState(
-    DEFAULT_CUSTOM_TAGS.join(', ')
-  );
-  const [showEmojiPicker, setShowEmojiPicker] =
-    useState(false);
-  const [iconFilter, setIconFilter] = useState('All');
-  const [errors, setErrors] = useState<string[]>([]);
-
-  const QUICK_EMOJIS = [
-    '📊',
-    '🍼',
-    '🚽',
-    '😴',
-    '🧷',
-    '🤱',
-    '🛁',
-    '📏',
-    '🌡️',
-    '💊',
-    '🤒',
-    '🏆',
-    '🧸',
-    '📚',
-    '🎵',
-    '🎨',
-    '🧱',
-    '🌳',
-    '📝',
-    '📷',
-    '🍎',
-    '🥄',
-    '💧',
-    '🧴',
-    '☀️',
-    '🌙',
-    '👶',
-    '👼',
-    '🎀',
-    '⭐',
-    '❤️',
-    '💚',
-    '💙',
-    '💛',
-    '💜',
-    '🧡',
-    '🤍',
-    '🖤',
-    '💯',
-    '✅',
-    '⚠️',
-    '🔴',
-    '🟢',
-    '🔵',
-    '🟡',
-    '🟣',
-    '⬆️',
-    '⬇️',
-    '↗️',
-    '↘️',
-  ];
-
-  const iconCategories = [
-    'All',
-    ...Array.from(new Set(BABY_ICONS.map((i) => i.category))),
-  ];
-  const filteredIcons =
-    iconFilter === 'All'
-      ? BABY_ICONS
-      : BABY_ICONS.filter(
-          (i) => i.category === iconFilter
-        );
-
-  const addField = (type: FieldType) => {
-    const newField: FieldConfig = {
-      id: `field_${Date.now()}`,
-      label: '',
-      type,
-      required: false,
-    };
-
-    if (type === 'select' || type === 'multiselect') {
-      newField.options = [
-        { id: 'option1', label: 'Option 1' },
-        { id: 'option2', label: 'Option 2' },
-      ];
-    }
-    if (type === 'rating') {
-      newField.max = 5;
-    }
-    if (type === 'number') {
-      newField.step = 0.1;
-    }
-
-    setFields((prev) => [...prev, newField]);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  };
-
-  const updateField = (
-    index: number,
-    updates: Partial<FieldConfig>
-  ) => {
-    setFields((prev) =>
-      prev.map((f, i) =>
-        i === index ? { ...f, ...updates } : f
-      )
-    );
-  };
-
-  const removeField = (index: number) => {
-    setFields((prev) => prev.filter((_, i) => i !== index));
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  };
-
-  const addOptionToField = (fieldIndex: number) => {
-    setFields((prev) =>
-      prev.map((f, i) => {
-        if (i !== fieldIndex || !f.options) return f;
-        return {
-          ...f,
-          options: [
-            ...f.options,
-            {
-              id: `opt_${Date.now()}`,
-              label: `Option ${f.options.length + 1}`,
-            },
-          ],
-        };
-      })
-    );
-  };
-
-  const updateOption = (
-    fieldIndex: number,
-    optIndex: number,
-    updates: Partial<FieldOption>
-  ) => {
-    setFields((prev) =>
-      prev.map((f, i) => {
-        if (i !== fieldIndex || !f.options) return f;
-        return {
-          ...f,
-          options: f.options.map((o, j) =>
-            j === optIndex ? { ...o, ...updates } : o
-          ),
-        };
-      })
-    );
-  };
-
-  const removeOption = (
-    fieldIndex: number,
-    optIndex: number
-  ) => {
-    setFields((prev) =>
-      prev.map((f, i) => {
-        if (i !== fieldIndex || !f.options) return f;
-        return {
-          ...f,
-          options: f.options.filter((_, j) => j !== optIndex),
-        };
-      })
-    );
-  };
-
-  const validate = (): boolean => {
-    const errs: string[] = [];
-    if (!name.trim()) errs.push('Tracker name is required');
-    if (fields.length === 0)
-      errs.push('At least one field is required');
-    fields.forEach((f, i) => {
-      if (!f.label.trim())
-        errs.push(`Field ${i + 1} needs a label`);
-      if (
-        (f.type === 'select' || f.type === 'multiselect') &&
-        (!f.options || f.options.length < 2)
-      ) {
-        errs.push(
-          `Field "${f.label || i + 1}" needs at least 2 options`
-        );
-      }
-    });
-    setErrors(errs);
-    return errs.length === 0;
-  };
-
-  const handleSave = () => {
-    if (!validate()) {
-      Haptics.notificationAsync(
-        Haptics.NotificationFeedbackType.Error
-      );
-      return;
-    }
-
-    const newTracker: LogTypeConfig = {
-      id: `custom_${Date.now()}`,
-      name: name.trim(),
-      emoji: emoji || '📊',
-      icon: selectedIcon,
-      color: selectedColor,
-      gradient: [selectedColor, selectedColor],
-      description: `Custom tracker for ${name.trim()}`,
-      category: 'custom',
-      fields: fields.map((f, i) => ({
-        ...f,
-        id: f.id || `field_${i}`,
-        placeholder:
-          f.placeholder || `Enter ${f.label.toLowerCase()}...`,
-      })),
-      quickTags: quickTags
-        .split(',')
-        .map((t) => t.trim())
-        .filter(Boolean),
-      isCustom: true,
-      createdAt: Date.now(),
-    };
-
-    onSave(newTracker);
-    reset();
-    onClose();
-    Haptics.notificationAsync(
-      Haptics.NotificationFeedbackType.Success
-    );
-  };
-
-  const reset = () => {
-    setStep(1);
-    setName('');
-    setEmoji('📊');
-    setSelectedColor('#667eea');
-    setSelectedIcon('analytics-outline');
-    setSelectedCategory('custom');
-    setFields([
-      {
-        id: 'value',
-        label: 'Value',
-        type: 'text',
-        required: true,
-      },
-    ]);
-    setQuickTags(DEFAULT_CUSTOM_TAGS.join(', '));
-    setShowEmojiPicker(false);
-    setIconFilter('All');
-    setErrors([]);
-  };
-
-  const renderStepIndicator = () => (
-    <View style={styles.stepIndicator}>
-      {[1, 2, 3].map((s) => (
-        <View key={s} style={styles.stepRow}>
-          <View
-            style={[
-              styles.stepDot,
-              step >= s && { backgroundColor: selectedColor },
-            ]}
-          />
-          {s < 3 && (
-            <View
-              style={[
-                styles.stepLine,
-                step >= s && { backgroundColor: selectedColor },
-              ]}
-            />
-          )}
-        </View>
-      ))}
-    </View>
-  );
-
-  const renderStep1 = () => (
-    <View>
-      <View style={styles.fieldGroup}>
-        <Text style={styles.fieldLabel}>Tracker Name *</Text>
-        <TextInput
-          style={styles.textInput}
-          placeholder="e.g., Brushing Teeth, Reading Time..."
-          value={name}
-          onChangeText={setName}
-          maxLength={30}
-          autoFocus
-        />
-      </View>
-
-      <View style={styles.fieldGroup}>
-        <Text style={styles.fieldLabel}>Category</Text>
-        <View style={styles.categoryGrid}>
-          {[
-            'essential',
-            'health',
-            'development',
-            'daily',
-            'custom',
-          ].map((cat) => (
-            <TouchableOpacity
-              key={cat}
-              style={[
-                styles.categoryOption,
-                                selectedCategory === cat && {
-                  backgroundColor: `${selectedColor}20`,
-                  borderColor: selectedColor,
-                },
-              ]}
-              onPress={() => {
-                Haptics.impactAsync(
-                  Haptics.ImpactFeedbackStyle.Light
-                );
-                setSelectedCategory(cat);
-              }}
-            >
-              <Text
-                style={[
-                  styles.categoryOptionText,
-                  selectedCategory === cat && {
-                    color: selectedColor,
-                    fontWeight: '700',
-                  },
-                ]}
-              >
-                {cat.charAt(0).toUpperCase() + cat.slice(1)}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-
-      <View style={styles.fieldGroup}>
-        <View style={styles.emojiHeader}>
-          <Text style={styles.fieldLabel}>Emoji Icon</Text>
-          <TouchableOpacity
-            onPress={() =>
-              setShowEmojiPicker(!showEmojiPicker)
-            }
-          >
-            <Text
-              style={[
-                styles.emojiToggle,
-                { color: selectedColor },
-              ]}
-            >
-              {showEmojiPicker ? 'Hide' : 'Show'} Picker
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {showEmojiPicker ? (
-          <View style={styles.emojiGrid}>
-            {QUICK_EMOJIS.map((em) => (
-              <TouchableOpacity
-                key={em}
-                style={[
-                  styles.emojiOption,
-                  emoji === em && {
-                    backgroundColor: `${selectedColor}30`,
-                    borderColor: selectedColor,
-                  },
-                ]}
-                onPress={() => {
-                  Haptics.impactAsync(
-                    Haptics.ImpactFeedbackStyle.Light
-                  );
-                  setEmoji(em);
-                }}
-              >
-                <Text style={styles.emojiOptionText}>
-                  {em}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        ) : (
-                  <TextInput
-          style={[styles.textInput, { width: 80, textAlign: 'center' }]}
-            placeholder="📊"
-            maxLength={2}
-            value={emoji}
-            onChangeText={setEmoji}
-          />
-        )}
-      </View>
-
-      <View style={styles.fieldGroup}>
-        <Text style={styles.fieldLabel}>Choose Icon</Text>
-        <AutoHideScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.iconCategoryScroll}
-        >
-          {iconCategories.map((cat) => (
-            <TouchableOpacity
-              key={cat}
-              style={[
-                styles.iconCategoryPill,
-                iconFilter === cat && {
-                  backgroundColor: selectedColor,
-                },
-              ]}
-              onPress={() => setIconFilter(cat)}
-            >
-              <Text
-                style={[
-                  styles.iconCategoryText,
-                  iconFilter === cat && {
-                    color: '#fff',
-                    fontWeight: '700',
-                  },
-                ]}
-              >
-                {cat}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </AutoHideScrollView>
-
-        <View style={styles.iconGridLarge}>
-          {filteredIcons.map((icon) => (
-            <TouchableOpacity
-              key={icon.name}
-              style={[
-                styles.iconOptionLarge,
-                selectedIcon === icon.name && {
-                  backgroundColor: `${selectedColor}20`,
-                  borderColor: selectedColor,
-                },
-              ]}
-              onPress={() => {
-                Haptics.impactAsync(
-                  Haptics.ImpactFeedbackStyle.Light
-                );
-                setSelectedIcon(icon.name);
-              }}
-            >
-              <Ionicons
-                name={icon.name as any}
-                size={24}
-                color={
-                  selectedIcon === icon.name
-                    ? selectedColor
-                    : '#64748b'
-                }
-              />
-              <Text
-                style={[
-                  styles.iconLabel,
-                  selectedIcon === icon.name && {
-                    color: selectedColor,
-                    fontWeight: '700',
-                  },
-                ]}
-              >
-                {icon.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-
-      <View style={styles.fieldGroup}>
-        <Text style={styles.fieldLabel}>Color Theme</Text>
-        <View style={styles.colorGridEnhanced}>
-          {COLOR_PRESETS.map((preset) => (
-            <TouchableOpacity
-              key={preset.color}
-              style={[
-                styles.colorOptionEnhanced,
-                { backgroundColor: preset.color },
-                selectedColor === preset.color &&
-                  styles.colorOptionSelectedEnhanced,
-              ]}
-              onPress={() => {
-                Haptics.impactAsync(
-                  Haptics.ImpactFeedbackStyle.Light
-                );
-                setSelectedColor(preset.color);
-              }}
-            >
-              {selectedColor === preset.color && (
-                <Ionicons
-                  name="checkmark"
-                  size={16}
-                  color="#fff"
-                />
-              )}
-            </TouchableOpacity>
-          ))}
-        </View>
-        <View style={styles.colorNameRow}>
-          <Text style={styles.colorName}>
-            {COLOR_PRESETS.find((c) => c.color === selectedColor)
-              ?.name || 'Custom'}
-          </Text>
-        </View>
-      </View>
-    </View>
-  );
-
-  const renderStep2 = () => (
-    <View>
-      <View style={styles.fieldGroup}>
-        <Text style={styles.fieldLabel}>Configure Fields *</Text>
-        <Text style={styles.fieldSubLabel}>
-          Add fields to collect data
-        </Text>
-      </View>
-
-      {fields.map((field, index) => (
-        <View
-          key={field.id}
-          style={styles.fieldConfigCard}
-        >
-          <View style={styles.fieldConfigHeader}>
-            <Text style={styles.fieldConfigTitle}>
-              Field {index + 1}
-            </Text>
-            <TouchableOpacity
-              onPress={() => removeField(index)}
-            >
-              <Ionicons
-                name="trash-outline"
-                size={20}
-                color="#ef4444"
-              />
-            </TouchableOpacity>
-          </View>
-
-          <TextInput
-            style={[
-              styles.textInput,
-              styles.fieldConfigInput,
-            ]}
-            placeholder="Field label (e.g., Duration, Amount...)"
-            value={field.label}
-            onChangeText={(text) =>
-              updateField(index, { label: text })
-            }
-          />
-
-          <View style={styles.fieldTypeBadge}>
-            <Ionicons
-              name={
-                (FIELD_TYPE_OPTIONS.find(
-                  (t) => t.id === field.type
-                )?.icon as any) || 'help-circle-outline'
-              }
-              size={16}
-              color={selectedColor}
-            />
-            <Text
-              style={[
-                styles.fieldTypeText,
-                { color: selectedColor },
-              ]}
-            >
-              {FIELD_TYPE_OPTIONS.find(
-                (t) => t.id === field.type
-              )?.label || field.type}
-            </Text>
-          </View>
-
-          <View style={styles.fieldOptionsRow}>
-            <TouchableOpacity
-              style={[
-                styles.fieldToggle,
-                field.required && {
-                  backgroundColor: `${selectedColor}20`,
-               },
-              ]}
-              onPress={() =>
-                updateField(index, {
-                  required: !field.required,
-                })
-              }
-            >
-              <Text
-                style={[
-                  styles.fieldToggleText,
-                  field.required && {
-                    color: selectedColor,
-                    fontWeight: '700',
-                  },
-                ]}
-              >
-                {field.required ? '✓ Required' : 'Optional'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {(field.type === 'select' ||
-            field.type === 'multiselect') && (
-            <View style={styles.optionsEditor}>
-              <Text style={styles.optionsEditorLabel}>
-                Options:
-              </Text>
-              {field.options?.map((opt, optIndex) => (
-                <View
-                  key={opt.id}
-                  style={styles.optionEditorRow}
-                >
-                  <TextInput
-                    style={[
-                      styles.textInput,
-                      styles.optionInput,
-                    ]}
-                    placeholder="Option label"
-                    value={opt.label}
-                    onChangeText={(text) =>
-                      updateOption(index, optIndex, {
-                        label: text,
-                      })
-                    }
-                  />
-                  <TouchableOpacity
-                    onPress={() =>
-                      removeOption(index, optIndex)
-                    }
-                  >
-                    <Ionicons
-                      name="close-circle"
-                      size={20}
-                      color="#ef4444"
-                    />
-                  </TouchableOpacity>
-                </View>
-              ))}
-              <TouchableOpacity
-                style={styles.addOptionBtn}
-                onPress={() => addOptionToField(index)}
-              >
-                <Ionicons
-                  name="add-circle"
-                  size={18}
-                  color={selectedColor}
-                />
-                <Text
-                  style={[
-                    styles.addOptionText,
-                    { color: selectedColor },
-                  ]}
-                >
-                  Add Option
-                </Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {field.type === 'number' && (
-            <View style={styles.numberConfig}>
-              <TextInput
-                style={[
-                  styles.textInput,
-                  styles.unitInput,
-                ]}
-                placeholder="Unit (e.g., oz, ml, cm)"
-                value={field.unit || ''}
-                onChangeText={(text) =>
-                  updateField(index, { unit: text })
-                }
-              />
-              <TextInput
-                style={[
-                  styles.textInput,
-                  styles.unitInput,
-                ]}
-                placeholder="Step (e.g., 0.1, 1)"
-                value={field.step?.toString() || ''}
-                keyboardType="decimal-pad"
-                onChangeText={(text) =>
-                  updateField(index, {
-                    step: parseFloat(text) || 0.1,
-                  })
-                }
-              />
-            </View>
-          )}
-        </View>
-      ))}
-
-      <View style={styles.fieldGroup}>
-        <Text style={styles.fieldLabel}>Add New Field</Text>
-        <View style={styles.fieldTypeGrid}>
-          {FIELD_TYPE_OPTIONS.map((ft) => (
-            <TouchableOpacity
-              key={ft.id}
-              style={styles.fieldTypeCard}
-              onPress={() => addField(ft.id)}
-            >
-              <Ionicons
-                name={ft.icon as any}
-                size={24}
-                color={selectedColor}
-              />
-              <Text style={styles.fieldTypeCardLabel}>
-                {ft.label}
-              </Text>
-              <Text style={styles.fieldTypeCardDesc}>
-                {ft.description}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-    </View>
-  );
-
-  const renderStep3 = () => (
-    <View>
-      <View style={styles.fieldGroup}>
-        <Text style={styles.fieldLabel}>
-          Quick Tags (Optional)
-        </Text>
-        <Text style={styles.fieldSubLabel}>
-          Comma-separated tags for quick entry
-        </Text>
-        <TextInput
-          style={styles.textInput}
-          placeholder="e.g., Morning, Evening, Urgent, Routine..."
-          value={quickTags}
-          onChangeText={setQuickTags}
-        />
-      </View>
-
-      <View style={styles.previewCard}>
-        <Text style={styles.previewLabel}>Preview</Text>
-        <View
-          style={[
-            styles.previewTrackerCard,
-            { borderColor: selectedColor },
-          ]}
-        >
-          <View
-            style={[
-              styles.previewIconBg,
-              {
-                backgroundColor: `${selectedColor}15`,
-            },
-            ]}
-          >
-            <Text style={styles.previewEmoji}>
-              {emoji}
-            </Text>
-          </View>
-          <View style={styles.previewContent}>
-            <Text style={styles.previewName}>
-              {name || 'Tracker Name'}
-            </Text>
-            <Text style={styles.previewMeta}>
-              {fields.length} field
-              {fields.length !== 1 ? 's' : ''} •{' '}
-              {selectedCategory}
-            </Text>
-          </View>
-          <Ionicons
-            name={selectedIcon as any}
-            size={24}
-            color={selectedColor}
-          />
-        </View>
-      </View>
-
-      {errors.length > 0 && (
-        <View style={styles.errorsContainer}>
-          {errors.map((error, idx) => (
-            <View key={idx} style={styles.errorRow}>
-              <Ionicons
-                name="alert-circle"
-                size={16}
-                color="#ef4444"
-              />
-              <Text style={styles.errorText}>{error}</Text>
-            </View>
-          ))}
-        </View>
-      )}
-    </View>
-  );
-
-  return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-    >
-      <KeyboardAvoidingView
-        behavior={
-          Platform.OS === 'ios' ? 'padding' : 'height'
-        }
-        style={styles.modalOverlay}
-      >
-        <BlurView
-          intensity={95}
-          style={styles.customModalContentEnhanced}
-        >
-          <View style={styles.customModalHeader}>
-            <View>
-              <Text style={styles.customModalTitle}>
-                Create Custom Tracker
-              </Text>
-              <Text style={styles.customModalSubtitle}>
-                Step {step} of 3
-              </Text>
-            </View>
-            <TouchableOpacity
-              onPress={() => {
-                reset();
-                onClose();
-              }}
-              style={styles.customModalClose}
-            >
-              <Ionicons
-                name="close"
-                size={24}
-                color="#64748b"
-              />
-            </TouchableOpacity>
-          </View>
-
-          {renderStepIndicator()}
-
-          <AutoHideScrollView
-            showsVerticalScrollIndicator={false}
-            style={styles.modalScroll}
-          >
-            {step === 1 && renderStep1()}
-            {step === 2 && renderStep2()}
-            {step === 3 && renderStep3()}
-          </AutoHideScrollView>
-
-          <View style={styles.modalFooter}>
-            {step > 1 && (
-              <TouchableOpacity
-                style={styles.backButton}
-                onPress={() => setStep(step - 1)}
-              >
-                <Text style={styles.backButtonText}>
-                  Back
-                </Text>
-              </TouchableOpacity>
-            )}
-
-            {step < 3 ? (
-              <TouchableOpacity
-                style={[
-                  styles.nextButton,
-                  { backgroundColor: selectedColor },
-                ]}
-                onPress={() => setStep(step + 1)}
-              >
-                <Text style={styles.nextButtonText}>
-                  Next
-                </Text>
-                <Ionicons
-                  name="chevron-forward"
-                  size={20}
-                  color="#fff"
-                />
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity
-                style={[
-                  styles.createButtonEnhanced,
-                  { backgroundColor: selectedColor },
-                ]}
-                onPress={handleSave}
-              >
-                <Ionicons
-                  name="checkmark"
-                  size={24}
-                  color="#fff"
-                />
-                <Text
-                  style={styles.createButtonTextEnhanced}
-                >
-                  Create Tracker
-                </Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        </BlurView>
-      </KeyboardAvoidingView>
-    </Modal>
-  );
-};
-
-
-type UniversalAddLogRouteProp = RouteProp<
-  RootStackParamList,
-  'AddLog'
->;
-type UniversalAddLogNavigationProp =
-  NativeStackNavigationProp<RootStackParamList>;
-
-export default function UniversalAddLogScreen() {
-  const navigation =
-    useNavigation<UniversalAddLogNavigationProp>();
-  const route = useRoute<UniversalAddLogRouteProp>();
-
-  const { addEntry, updateEntry, getEntryById } =
-    useActivity();
-  const { currentBaby } = useBaby();
-  const { userProfile } = useAuth();
+// ─── Main Screen ───
+export default function AddLogScreen() {
+  const navigation = useNavigation<AddLogNavigationProp>();
+  const route = useRoute<AddLogRouteProp>();
+  const insets = useSafeAreaInsets();
 
   const {
+    fullThemeColors,
+    themeColors,
+    isDark,
     hapticFeedback,
-    soundEffects,
     reduceMotion,
-    compactView,
+    triggerHaptic,
+    borderRadiusValue,
+    fontSizeMultiplier,
+    shouldReduceMotion,
   } = useCustomization();
+  const { getTracker, addEntry, getEntries, currentBaby } = useTracker();
+  const { success, error } = useSweetAlert();
 
-  const [logTypes, setLogTypes] =
-    useState<Record<string, LogTypeConfig>>(
-      DEFAULT_LOG_TYPES
-    );
-  const [selectedType, setSelectedType] =
-    useState<ActivityType>(
-      route.params?.type || 'potty'
-    );
-  const [formData, setFormData] = useState<
-    Record<string, any>
-  >({});
+  const trackerId = route.params?.trackerId || 'potty';
+  const editEntryId = route.params?.editMode ? route.params?.eventId : undefined;
+  const viewMode = route.params?.viewMode;
+
+  const tracker = getTracker(trackerId);
+
+  // Form state
+  const [formData, setFormData] = useState<Record<string, unknown>>({});
   const [date, setDate] = useState(new Date());
-  const [showDatePicker, setShowDatePicker] =
-    useState(false);
-  const [showTimePicker, setShowTimePicker] =
-    useState(false);
-  const [pickerMode, setPickerMode] = useState<
-    'date' | 'time'
-  >('date');
-  const [selectedTags, setSelectedTags] = useState<
-    string[]
-  >([]);
-  const [showConfirmation, setShowConfirmation] =
-    useState(false);
-  const [showCustomModal, setShowCustomModal] =
-    useState(false);
-  const [isEditMode, setIsEditMode] = useState(false);
-  const [editEntryId, setEditEntryId] = useState<
-    string | null
-  >(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [notes, setNotes] = useState('');
+  const [showConfirmation, setShowConfirmation] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
+  const [photoUris, setPhotoUris] = useState<string[]>([]);
 
+  // Load edit data
   useEffect(() => {
-    loadCustomTrackers();
-  }, []);
-
-  useEffect(() => {
-    if (route.params?.editMode && route.params?.eventId) {
-      const entry = getEntryById(route.params.eventId);
+    if (editEntryId) {
+      const entry = getEntries(trackerId).find(e => e.id === editEntryId);
       if (entry) {
-        setIsEditMode(true);
-        setEditEntryId(entry.id);
-        setSelectedType(entry.type);
+        setFormData(entry.data || {});
         setDate(new Date(entry.timestamp));
-        setFormData(entry);
-        if (entry.tags) setSelectedTags(entry.tags);
+        setNotes(entry.notes || '');
+        setSelectedTags(entry.tags || []);
+        setPhotoUris(entry.photoUris || []);
       }
     }
-  }, [route.params]);
+  }, [editEntryId, trackerId, getEntries]);
 
-  const loadCustomTrackers = async () => {
-    try {
-      const stored = await AsyncStorage.getItem(
-        CUSTOM_TRACKERS_KEY
-      );
-      if (stored) {
-        const custom = JSON.parse(stored);
-        const normalizedCustom: Record<
-          string,
-          LogTypeConfig
-        > = {};
-        Object.entries(custom).forEach(
-          ([key, tracker]: [string, any]) => {
-            normalizedCustom[key] = {
-              ...tracker,
-              category: 'custom',
-              quickTags:
-                tracker.quickTags?.length
-                  ? tracker.quickTags
-                  : DEFAULT_CUSTOM_TAGS,
-            };
-          }
-        );
-        setLogTypes((prev) => ({
-          ...prev,
-          ...normalizedCustom,
-        }));
-      }
-    } catch (e) {
-      console.error('Failed to load custom trackers', e);
-    }
-  };
+  const recentEntries = useMemo(() => {
+    return tracker ? getEntries(trackerId, 3) : [];
+  }, [tracker, trackerId, getEntries]);
 
-  const saveCustomTracker = async (
-    tracker: LogTypeConfig
-  ) => {
-    try {
-      const stored = await AsyncStorage.getItem(
-        CUSTOM_TRACKERS_KEY
-      );
-      const custom = stored ? JSON.parse(stored) : {};
-      custom[tracker.id] = tracker;
-      await AsyncStorage.setItem(
-        CUSTOM_TRACKERS_KEY,
-        JSON.stringify(custom)
-      );
-
-      setLogTypes((prev) => ({
-        ...prev,
-        [tracker.id]: tracker,
-      }));
-      setSelectedType(tracker.id);
-      setShowCustomModal(false);
-      if (hapticFeedback) {
-        Haptics.notificationAsync(
-          Haptics.NotificationFeedbackType.Success
-        );
-      }
-    } catch (e) {
-      console.error('Failed to save custom tracker', e);
-    }
-  };
-
-  const currentConfig =
-    logTypes[selectedType] || logTypes['potty'];
-
-  const handleFieldChange = (
-    fieldId: string,
-    value: any
-  ) => {
-    setFormData((prev) => ({ ...prev, [fieldId]: value }));
+  const handleFieldChange = (fieldId: string, value: unknown) => {
+    setFormData(prev => ({ ...prev, [fieldId]: value }));
     if (errors.length > 0) setErrors([]);
   };
 
   const toggleTag = (tag: string) => {
-    if (hapticFeedback) {
-      Haptics.impactAsync(
-        Haptics.ImpactFeedbackStyle.Light
-      );
-    }
-    setSelectedTags((prev) =>
-      prev.includes(tag)
-        ? prev.filter((t) => t !== tag)
-        : [...prev, tag]
+    if (hapticFeedback) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSelectedTags(prev =>
+      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
     );
   };
 
-  const showAndroidPicker = useCallback(
-    (mode: 'date' | 'time') => {
-      try {
-        DateTimePickerAndroid.open({
-          value: date,
-          mode,
-          is24Hour: false,
-          onChange: (event, selectedDate) => {
-            if (event.type === 'set' && selectedDate) {
-              const currentDate = new Date(date);
-              if (mode === 'date') {
-                currentDate.setFullYear(
-                  selectedDate.getFullYear()
-                );
-                currentDate.setMonth(
-                  selectedDate.getMonth()
-                );
-                currentDate.setDate(
-                  selectedDate.getDate()
-                );
-                setDate(currentDate);
-                setTimeout(
-                  () => showAndroidPicker('time'),
-                  300
-                );
-              } else {
-                currentDate.setHours(
-                  selectedDate.getHours()
-                );
-                currentDate.setMinutes(
-                  selectedDate.getMinutes()
-                );
-                setDate(currentDate);
-              }
+  const showAndroidPicker = useCallback((mode: 'date' | 'time') => {
+    try {
+      DateTimePickerAndroid.open({
+        value: date,
+        mode,
+        is24Hour: false,
+        onChange: (event, selectedDate) => {
+          if (event.type === 'set' && selectedDate) {
+            const currentDate = new Date(date);
+            if (mode === 'date') {
+              currentDate.setFullYear(selectedDate.getFullYear());
+              currentDate.setMonth(selectedDate.getMonth());
+              currentDate.setDate(selectedDate.getDate());
+              setDate(currentDate);
+              setTimeout(() => showAndroidPicker('time'), 300);
+            } else {
+              currentDate.setHours(selectedDate.getHours());
+              currentDate.setMinutes(selectedDate.getMinutes());
+              setDate(currentDate);
             }
-          },
-        });
-      } catch (error) {
-        console.error('DateTimePicker error:', error);
-        Alert.alert(
-          'Error',
-          'Could not open date picker. Please try again.'
-        );
-      }
-    },
-    [date]
-  );
+          }
+        },
+      });
+    } catch {
+      error('Error', 'Could not open date picker.');
+    }
+  }, [date, error]);
 
   const handleDatePress = () => {
-    if (hapticFeedback) {
-      Haptics.impactAsync(
-        Haptics.ImpactFeedbackStyle.Light
-      );
-    }
+    triggerHaptic('light');
     if (Platform.OS === 'android') {
       showAndroidPicker('date');
     } else {
-      setPickerMode('date');
       setShowDatePicker(true);
     }
   };
 
   const handleTimePress = () => {
-    if (hapticFeedback) {
-      Haptics.impactAsync(
-        Haptics.ImpactFeedbackStyle.Light
-      );
-    }
+    triggerHaptic('light');
     if (Platform.OS === 'android') {
       showAndroidPicker('time');
     } else {
-      setPickerMode('time');
       setShowTimePicker(true);
     }
   };
 
-  const onDateChange = (
-    event: any,
-    selectedDate?: Date
-  ) => {
+  const onDateChange = (event: any, selectedDate?: Date) => {
     if (Platform.OS === 'android') {
       setShowDatePicker(false);
       setShowTimePicker(false);
     }
+    if (selectedDate) setDate(selectedDate);
+  };
 
-    if (selectedDate) {
-      setDate(selectedDate);
+  const handlePhotoPick = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      error('Permission needed', 'Please allow access to photos.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.8,
+    });
+    if (!result.canceled && result.assets?.length > 0) {
+      setPhotoUris(prev => [...prev, result.assets[0].uri]);
+      triggerHaptic('success');
     }
   };
 
-
-  const handlePhotoPick = async (fieldId: string) => {
-    try {
-      const { status } =
-        await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert(
-          'Permission needed',
-          'Please allow access to photos to attach images.'
-        );
-        return;
-      }
-
-      const result =
-        await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          allowsEditing: true,
-          aspect: [4, 3],
-          quality: 0.8,
-        });
-
-      if (
-        !result.canceled &&
-        result.assets &&
-        result.assets.length > 0
-      ) {
-        const uri = result.assets[0].uri;
-        handleFieldChange(fieldId, uri);
-        if (hapticFeedback) {
-          Haptics.notificationAsync(
-            Haptics.NotificationFeedbackType.Success
-          );
-        }
-      }
-    } catch (error) {
-      console.error('Photo pick error:', error);
-      Alert.alert(
-        'Error',
-        'Failed to pick photo. Please try again.'
-      );
+  const handleCameraCapture = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      error('Permission needed', 'Please allow camera access.');
+      return;
     }
-  };
-
-  const handleCameraCapture = async (fieldId: string) => {
-    try {
-      const { status } =
-        await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert(
-          'Permission needed',
-          'Please allow camera access to take photos.'
-        );
-        return;
-      }
-
-      const result =
-        await ImagePicker.launchCameraAsync({
-          allowsEditing: true,
-          aspect: [4, 3],
-          quality: 0.8,
-        });
-
-      if (
-        !result.canceled &&
-        result.assets &&
-        result.assets.length > 0
-      ) {
-        const uri = result.assets[0].uri;
-        handleFieldChange(fieldId, uri);
-        if (hapticFeedback) {
-          Haptics.notificationAsync(
-            Haptics.NotificationFeedbackType.Success
-          );
-        }
-      }
-    } catch (error) {
-      console.error('Camera error:', error);
-      Alert.alert(
-        'Error',
-        'Failed to capture photo. Please try again.'
-      );
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.8,
+    });
+    if (!result.canceled && result.assets?.length > 0) {
+      setPhotoUris(prev => [...prev, result.assets[0].uri]);
+      triggerHaptic('success');
     }
-  };
-
-  const handleRemovePhoto = (fieldId: string) => {
-    Alert.alert(
-      'Remove Photo',
-      'Are you sure you want to remove this photo?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: () => {
-            handleFieldChange(fieldId, null);
-            if (hapticFeedback) {
-              Haptics.impactAsync(
-                Haptics.ImpactFeedbackStyle.Light
-              );
-            }
-          },
-        },
-      ]
-    );
   };
 
   const validateForm = (): boolean => {
+    if (!tracker) return false;
     const newErrors: string[] = [];
-
-    currentConfig.fields.forEach((field) => {
+    tracker.fields.forEach(field => {
       if (field.required) {
         const value = formData[field.id];
-        const shouldShow =
-          !field.showIf || field.showIf(formData);
-
-        if (
-          shouldShow &&
-          (value === undefined ||
-            value === null ||
-            value === '')
-        ) {
+        const shouldShow = !field.showIf || field.showIf(formData);
+        if (shouldShow && (value === undefined || value === null || value === '')) {
           newErrors.push(`${field.label} is required`);
         }
       }
     });
-
     setErrors(newErrors);
     return newErrors.length === 0;
   };
 
   const buildTitle = (): string => {
+    if (!tracker) return 'Entry';
     const data = formData;
-
-    switch (selectedType) {
-      case 'potty':
-        const pottyType = currentConfig.fields
-          .find((f) => f.id === 'pottyType')
-          ?.options?.find((o) => o.id === data.pottyType);
-        return `${pottyType?.label || 'Potty'} ${
-          data.successful ? '✓' : ''
-        }`;
-
-      case 'feed':
-        const feedType = currentConfig.fields
-          .find((f) => f.id === 'feedType')
-          ?.options?.find((o) => o.id === data.feedType);
-        return `${feedType?.label || 'Feed'}${
-          data.amount ? ` (${data.amount})` : ''
-        }`;
-
-      case 'sleep':
-        const sleepType = currentConfig.fields
-          .find((f) => f.id === 'sleepType')
-          ?.options?.find((o) => o.id === data.sleepType);
-        return `${sleepType?.label || 'Sleep'}${
-          data.duration ? ` • ${data.duration}` : ''
-        }`;
-
-      case 'growth':
-        const measureType = currentConfig.fields
-          .find((f) => f.id === 'measurementType')
-          ?.options?.find(
-            (o) => o.id === data.measurementType
-          );
-        return `${measureType?.label || 'Measurement'}: ${
-          data.value || ''
-        }${data.unit || ''}`;
-
-      case 'medication':
-        return `${data.medName || 'Medicine'} ${
-          data.dosage || ''
-        }`;
-
-      case 'milestone':
-        return `🌟 ${data.title || 'New Milestone'}`;
-
-      case 'diaper':
-        const diaperType = currentConfig.fields
-          .find((f) => f.id === 'diaperType')
-          ?.options?.find(
-            (o) => o.id === data.diaperType
-          );
-        return `${
-          diaperType?.label || 'Diaper'
-        } Change`;
-
-      case 'temperature':
-        return `🌡️ ${data.tempValue || ''}${
-          data.tempUnit === 'fahrenheit' ? '°F' : '°C'
-        }`;
-
-      case 'note':
-        return data.title || 'Note';
-
-      default:
-        return (
-          data.title ||
-          data.name ||
-          `${currentConfig.emoji} ${currentConfig.name}`
-        );
+    switch (tracker.id) {
+      case 'potty': return `${data.type || 'Potty'} ${data.successful ? '✓' : ''}`;
+      case 'feed': return `${data.feedType || 'Feed'}${data.amount ? ` (${data.amount})` : ''}`;
+      case 'sleep': return `${data.sleepType || 'Sleep'}${data.duration ? ` • ${data.duration}` : ''}`;
+      case 'growth': return `${data.measurementType || 'Measurement'}: ${data.value || ''}${data.unit || ''}`;
+      case 'medication': return `${data.name || 'Medicine'} ${data.dosage || ''}`;
+      case 'milestone': return `🌟 ${data.title || 'New Milestone'}`;
+      case 'diaper': return `${data.type || 'Diaper'} Change`;
+      case 'temperature': return `🌡️ ${data.value || ''}${data.unit === 'fahrenheit' ? '°F' : '°C'}`;
+      case 'note': return data.title || 'Note';
+      default: return `${tracker.emoji} ${tracker.name}`;
     }
-  };
-
-  const buildDetails = (): string => {
-    const details: string[] = [];
-    const data = formData;
-
-    currentConfig.fields.forEach((field) => {
-      if (
-        field.id === 'notes' ||
-        field.id === 'description' ||
-        field.id === 'content'
-      )
-        return;
-      if (field.type === 'photo') return; // Don't include photo URI in details text
-
-      const value = data[field.id];
-      if (
-        value === undefined ||
-        value === null ||
-        value === ''
-      )
-        return;
-
-      if (field.showIf && !field.showIf(data)) return;
-
-      if (field.type === 'toggle') {
-        if (value) details.push(field.label);
-      } else if (field.type === 'select') {
-        const option = field.options?.find(
-          (o) => o.id === value
-        );
-        if (option)
-          details.push(
-            `${field.label}: ${option.label}`
-          );
-      } else if (field.type === 'multiselect') {
-        const labels = value
-          .map(
-            (v: string) =>
-              field.options?.find((o) => o.id === v)
-                ?.label
-          )
-          .filter(Boolean);
-        if (labels.length)
-          details.push(
-            `${field.label}: ${labels.join(', ')}`
-          );
-      } else if (field.type === 'rating') {
-        details.push(
-          `${field.label}: ${'⭐'.repeat(value)}`
-        );
-      } else if (field.type === 'duration') {
-        details.push(`${field.label}: ${value}`);
-      } else {
-        details.push(
-          `${field.label}: ${value}${
-            field.unit ? field.unit : ''
-          }`
-        );
-      }
-    });
-
-    return details.join(' • ');
   };
 
   const handleSave = () => {
     if (!validateForm()) {
-      if (hapticFeedback) {
-        Haptics.notificationAsync(
-          Haptics.NotificationFeedbackType.Error
-        );
-      }
+      triggerHaptic('error');
+      error('Validation Error', 'Please fill in all required fields.');
       return;
     }
-
-    const entryData = {
-      ...formData,
-      type: selectedType,
-      title: buildTitle(),
-      details: buildDetails(),
-      timestamp: date.getTime(),
-      babyId: currentBaby?.id || '',
-      loggedBy: userProfile?.id || 'unknown',
-      loggedByName:
-        userProfile?.fullName?.split(' ')[0] || 'Parent',
-      tags: selectedTags,
-      icon: currentConfig.emoji,
-    };
-
     setShowConfirmation(true);
   };
 
   const confirmSave = async () => {
     try {
-      const entryData = {
-        ...formData,
-        type: selectedType,
+      const entry = await addEntry(trackerId, formData, {
         title: buildTitle(),
-        details: buildDetails(),
-        timestamp: date.getTime(),
-        babyId: currentBaby?.id || '',
-        loggedBy: userProfile?.id || 'unknown',
-        loggedByName:
-          userProfile?.fullName?.split(' ')[0] || 'Parent',
+        notes,
         tags: selectedTags,
-        icon: currentConfig.emoji,
-      };
+        photoUris: photoUris.length > 0 ? photoUris : undefined,
+        timestamp: date.getTime(),
+      });
 
-      if (isEditMode && editEntryId) {
-        await updateEntry(editEntryId, entryData);
-      } else {
-        await addEntry(entryData);
+      if (entry) {
+        triggerHaptic('success');
+        setShowConfirmation(false);
+        success('Saved!', `${tracker?.name} entry added successfully.`);
+        navigation.goBack();
       }
-
-      if (hapticFeedback) {
-        Haptics.notificationAsync(
-          Haptics.NotificationFeedbackType.Success
-        );
-      }
-      setShowConfirmation(false);
-      navigation.goBack();
-    } catch (error) {
-      console.error('Failed to save entry:', error);
-      Alert.alert(
-        'Error',
-        'Failed to save entry. Please try again.'
-      );
+    } catch {
+      error('Error', 'Failed to save entry. Please try again.');
     }
   };
 
-  const renderField = (field: FieldConfig) => {
-    if (field.showIf && !field.showIf(formData)) {
-      return null;
-    }
+  // ─── Render Field (modernized with theme integration) ───
+  const renderField = (field: TrackerField) => {
+    if (!tracker) return null;
+    if (field.showIf && !field.showIf(formData)) return null;
 
     const value = formData[field.id] ?? field.defaultValue;
+    const hasError = errors.some(e => e.includes(field.label));
+
+    const fieldContainer = (children: React.ReactNode) => (
+      <Animated.View
+        entering={shouldReduceMotion ? undefined : FadeInUp.delay(100)}
+        key={field.id}
+        style={styles.fieldContainer}
+      >
+        <Text style={[styles.fieldLabel, { color: fullThemeColors.text, fontSize: 14 * fontSizeMultiplier }]}>
+          {field.label}
+          {field.required && <Text style={[styles.required, { color: fullThemeColors.error }]}> *</Text>}
+        </Text>
+        {children}
+      </Animated.View>
+    );
+
+    const inputStyle = [
+      styles.textInput,
+      {
+        borderColor: hasError ? fullThemeColors.error : fullThemeColors.border,
+        backgroundColor: fullThemeColors.surface,
+        color: fullThemeColors.text,
+        borderRadius: borderRadiusValue,
+        fontSize: 16 * fontSizeMultiplier,
+      },
+      hasError && { backgroundColor: fullThemeColors.error + '15' },
+    ];
 
     switch (field.type) {
       case 'text':
-        return (
-          <Animated.View
-            entering={
-              reduceMotion
-                ? undefined
-                : FadeInUp.delay(100)
-            }
-            key={field.id}
-            style={styles.fieldContainer}
-          >
-            <Text style={styles.fieldLabel}>
-              {field.label}
-              {field.required && (
-                <Text style={styles.required}> *</Text>
-              )}
-            </Text>
-            <TextInput
-              style={[
-                styles.textInput,
-                errors.some((e) =>
-                  e.includes(field.label)
-                ) && styles.inputError,
-              ]}
-              placeholder={field.placeholder}
-              value={value || ''}
-              onChangeText={(text) =>
-                handleFieldChange(field.id, text)
-              }
-            />
-          </Animated.View>
+        return fieldContainer(
+          <TextInput
+            style={inputStyle}
+            placeholder={field.placeholder}
+            placeholderTextColor={fullThemeColors.textSecondary}
+            value={value as string || ''}
+            onChangeText={text => handleFieldChange(field.id, text)}
+          />
         );
 
       case 'number':
-        return (
-          <Animated.View
-            entering={
-              reduceMotion
-                ? undefined
-                : FadeInUp.delay(100)
-            }
-            key={field.id}
-            style={styles.fieldContainer}
-          >
-            <Text style={styles.fieldLabel}>
-              {field.label}
-              {field.required && (
-                <Text style={styles.required}> *</Text>
-              )}
-            </Text>
-            <View
-              style={styles.numberInputContainer}
-            >
-              <TextInput
-                style={[
-                  styles.numberInput,
-                  errors.some((e) =>
-                    e.includes(field.label)
-                  ) && styles.inputError,
-                ]}
-                placeholder={field.placeholder}
-                value={value?.toString() || ''}
-                onChangeText={(text) =>
-                  handleFieldChange(
-                    field.id,
-                    parseFloat(text) || text
-                  )
-                }
-                keyboardType="decimal-pad"
-              />
-              {field.unit && (
-                <Text style={styles.unitLabel}>
-                  {field.unit}
-                </Text>
-              )}
-            </View>
-          </Animated.View>
+        return fieldContainer(
+          <View style={[styles.numberInputContainer, { borderColor: hasError ? fullThemeColors.error : fullThemeColors.border, backgroundColor: fullThemeColors.surface, borderRadius: borderRadiusValue }]}>
+            <TextInput
+              style={[styles.numberInput, { color: fullThemeColors.text, fontSize: 16 * fontSizeMultiplier }]}
+              placeholder={field.placeholder}
+              placeholderTextColor={fullThemeColors.textSecondary}
+              value={value?.toString() || ''}
+              onChangeText={text => handleFieldChange(field.id, parseFloat(text) || text)}
+              keyboardType="decimal-pad"
+            />
+            {field.unit && <Text style={[styles.unitLabel, { color: fullThemeColors.textSecondary }]}>{field.unit}</Text>}
+          </View>
         );
 
       case 'textarea':
-        return (
-          <Animated.View
-            entering={
-              reduceMotion
-                ? undefined
-                : FadeInUp.delay(100)
-            }
-            key={field.id}
-            style={styles.fieldContainer}
-          >
-            <Text style={styles.fieldLabel}>
-              {field.label}
-            </Text>
-            <TextInput
-              style={[
-                styles.textareaInput,
-                errors.some((e) =>
-                  e.includes(field.label)
-                ) && styles.inputError,
-              ]}
-              placeholder={field.placeholder}
-              value={value || ''}
-              onChangeText={(text) =>
-                handleFieldChange(field.id, text)
-              }
-              multiline
-              numberOfLines={4}
-              textAlignVertical="top"
-            />
-          </Animated.View>
+        return fieldContainer(
+          <TextInput
+            style={[inputStyle, styles.textareaInput, { minHeight: 100 * fontSizeMultiplier }]}
+            placeholder={field.placeholder}
+            placeholderTextColor={fullThemeColors.textSecondary}
+            value={value as string || ''}
+            onChangeText={text => handleFieldChange(field.id, text)}
+            multiline
+            numberOfLines={4}
+            textAlignVertical="top"
+          />
         );
 
       case 'select':
-        return (
-          <Animated.View
-            entering={
-              reduceMotion
-                ? undefined
-                : FadeInUp.delay(100)
-            }
-            key={field.id}
-            style={styles.fieldContainer}
-          >
-            <Text style={styles.fieldLabel}>
-              {field.label}
-              {field.required && (
-                <Text style={styles.required}> *</Text>
-              )}
-            </Text>
-            <View style={styles.optionsContainer}>
-              {field.options?.map((option) => (
+        return fieldContainer(
+          <View style={styles.optionsContainer}>
+            {field.options?.map(option => (
+              <TouchableOpacity
+                key={option.id}
+                style={[
+                  styles.optionButton,
+                  {
+                    backgroundColor: fullThemeColors.surface,
+                    borderColor: value === option.id ? tracker.gradient[0] : fullThemeColors.border,
+                    borderRadius: borderRadiusValue,
+                  },
+                  value === option.id && { backgroundColor: `${tracker.gradient[0]}20`, borderWidth: 2 },
+                ]}
+                onPress={() => {
+                  triggerHaptic('light');
+                  handleFieldChange(field.id, option.id);
+                }}
+              >
+                {option.emoji && <Text style={styles.optionEmoji}>{option.emoji}</Text>}
+                {option.icon && (
+                  <Ionicons
+                    name={option.icon as any}
+                    size={20}
+                    color={value === option.id ? tracker.gradient[0] : fullThemeColors.textSecondary}
+                  />
+                )}
+                <Text
+                  style={[
+                    styles.optionLabel,
+                    { color: value === option.id ? tracker.gradient[0] : fullThemeColors.textSecondary },
+                    value === option.id && { fontWeight: '700' },
+                  ]}
+                >
+                  {option.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        );
+
+      case 'multiselect':
+        return fieldContainer(
+          <View style={styles.optionsContainer}>
+            {field.options?.map(option => {
+              const isSelected = (value as string[] || []).includes(option.id);
+              return (
                 <TouchableOpacity
                   key={option.id}
                   style={[
                     styles.optionButton,
-                    value === option.id && {
-                      backgroundColor: `${currentConfig.color}20`,
-                   borderColor: currentConfig.color,
-                      borderWidth: 2,
+                    {
+                      backgroundColor: fullThemeColors.surface,
+                      borderColor: isSelected ? tracker.gradient[0] : fullThemeColors.border,
+                      borderRadius: borderRadiusValue,
                     },
+                    isSelected && { backgroundColor: `${tracker.gradient[0]}20`, borderWidth: 2 },
                   ]}
                   onPress={() => {
-                    if (hapticFeedback) {
-                      Haptics.impactAsync(
-                        Haptics.ImpactFeedbackStyle.Light
-                      );
-                    }
-                    handleFieldChange(
-                      field.id,
-                      option.id
-                    );
+                    triggerHaptic('light');
+                    const current = (value as string[]) || [];
+                    const updated = isSelected
+                      ? current.filter(v => v !== option.id)
+                      : [...current, option.id];
+                    handleFieldChange(field.id, updated);
                   }}
                 >
-                  {option.emoji && (
-                    <Text style={styles.optionEmoji}>
-                      {option.emoji}
-                    </Text>
-                  )}
-                  {option.icon && (
-                    <Ionicons
-                      name={option.icon as any}
-                      size={20}
-                      color={
-                        value === option.id
-                          ? currentConfig.color
-                          : '#64748b'
-                      }
-                    />
-                  )}
+                  {option.emoji && <Text style={styles.optionEmoji}>{option.emoji}</Text>}
                   <Text
                     style={[
                       styles.optionLabel,
-                      value === option.id && {
-                        color: currentConfig.color,
-                        fontWeight: '700',
-                      },
+                      { color: isSelected ? tracker.gradient[0] : fullThemeColors.textSecondary },
+                      isSelected && { fontWeight: '700' },
                     ]}
                   >
                     {option.label}
                   </Text>
                 </TouchableOpacity>
-              ))}
-            </View>
-          </Animated.View>
-        );
-
-      case 'multiselect':
-        return (
-          <Animated.View
-            entering={
-              reduceMotion
-                ? undefined
-                : FadeInUp.delay(100)
-            }
-            key={field.id}
-            style={styles.fieldContainer}
-          >
-            <Text style={styles.fieldLabel}>
-              {field.label}
-              {field.required && (
-                <Text style={styles.required}> *</Text>
-              )}
-            </Text>
-            <View style={styles.optionsContainer}>
-              {field.options?.map((option) => {
-                const isSelected = (
-                  value || []
-                ).includes(option.id);
-                return (
-                  <TouchableOpacity
-                    key={option.id}
-                    style={[
-                      styles.optionButton,
-                      isSelected && {
-                        backgroundColor: `${currentConfig.color}20`,
-                    borderColor: currentConfig.color,
-                        borderWidth: 2,
-                      },
-                    ]}
-                    onPress={() => {
-                      if (hapticFeedback) {
-                        Haptics.impactAsync(
-                          Haptics.ImpactFeedbackStyle.Light
-                        );
-                      }
-                      const current = value || [];
-                      const updated = isSelected
-                        ? current.filter(
-                            (v: string) =>
-                              v !== option.id
-                          )
-                        : [...current, option.id];
-                      handleFieldChange(
-                        field.id,
-                        updated
-                      );
-                    }}
-                  >
-                    {option.emoji && (
-                      <Text style={styles.optionEmoji}>
-                        {option.emoji}
-                      </Text>
-                    )}
-                    <Text
-                      style={[
-                        styles.optionLabel,
-                        isSelected && {
-                          color: currentConfig.color,
-                          fontWeight: '700',
-                      },
-                      ]}
-                    >
-                      {option.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </Animated.View>
+              );
+            })}
+          </View>
         );
 
       case 'toggle':
-        return (
-          <Animated.View
-            entering={
-              reduceMotion
-                ? undefined
-                : FadeInUp.delay(100)
-            }
-            key={field.id}
-            style={styles.fieldContainer}
-          >
-            <View style={styles.toggleContainer}>
-              <Text style={styles.fieldLabel}>
-                {field.label}
-              </Text>
-              <Switch
-                value={value || false}
-                onValueChange={(val) => {
-                  if (hapticFeedback) {
-                    Haptics.impactAsync(
-                      Haptics.ImpactFeedbackStyle.Light
-                    );
-                  }
-                  handleFieldChange(field.id, val);
-                }}
-                trackColor={{
-                  false: '#e2e8f0',
-                  true: `${currentConfig.color}50`,
-                }}
-                thumbColor={
-                  value ? currentConfig.color : '#fff'
-                }
-              />
-            </View>
-          </Animated.View>
+        return fieldContainer(
+          <View style={[styles.toggleContainer, { backgroundColor: fullThemeColors.surface, borderColor: fullThemeColors.border, borderRadius: borderRadiusValue }]}>
+            <Switch
+              value={value as boolean || false}
+              onValueChange={val => {
+                triggerHaptic('light');
+                handleFieldChange(field.id, val);
+              }}
+              trackColor={{ false: fullThemeColors.border, true: `${tracker.gradient[0]}50` }}
+              thumbColor={value ? tracker.gradient[0] : fullThemeColors.textSecondary}
+            />
+          </View>
         );
 
       case 'duration':
-        return (
-          <Animated.View
-            entering={
-              reduceMotion
-                ? undefined
-                : FadeInUp.delay(100)
-            }
-            key={field.id}
-            style={styles.fieldContainer}
-          >
-            <Text style={styles.fieldLabel}>
-              {field.label}
-              {field.required && (
-                <Text style={styles.required}> *</Text>
-              )}
-            </Text>
-            <View style={styles.durationContainer}>
-              {[
-                '5m',
-                '10m',
-                '15m',
-                '20m',
-                '30m',
-                '45m',
-                '1h',
-                '1.5h',
-                '2h',
-                '3h+',
-              ].map((dur) => (
-                <TouchableOpacity
-                  key={dur}
+        return fieldContainer(
+          <View style={styles.durationContainer}>
+            {['5m', '10m', '15m', '20m', '30m', '45m', '1h', '1.5h', '2h', '3h+'].map(dur => (
+              <TouchableOpacity
+                key={dur}
+                style={[
+                  styles.durationButton,
+                  {
+                    backgroundColor: value === dur ? tracker.gradient[0] : fullThemeColors.surface,
+                    borderColor: fullThemeColors.border,
+                    borderRadius: borderRadiusValue,
+                  },
+                ]}
+                onPress={() => {
+                  triggerHaptic('light');
+                  handleFieldChange(field.id, dur);
+                }}
+              >
+                <Text
                   style={[
-                    styles.durationButton,
-                    value === dur && {
-                      backgroundColor:
-                        currentConfig.color,
-                      },
+                    styles.durationText,
+                    { color: value === dur ? '#fff' : fullThemeColors.textSecondary },
+                    value === dur && { fontWeight: '700' },
                   ]}
-                  onPress={() => {
-                    if (hapticFeedback) {
-                      Haptics.impactAsync(
-                        Haptics.ImpactFeedbackStyle.Light
-                      );
-                    }
-                    handleFieldChange(field.id, dur);
-                  }}
                 >
-                  <Text
-                    style={[
-                      styles.durationText,
-                      value === dur && {
-                        color: '#fff',
-                        fontWeight: '700',
-                      },
-                    ]}
-                  >
-                    {dur}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </Animated.View>
+                  {dur}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         );
 
       case 'rating':
-        return (
-          <Animated.View
-            entering={
-              reduceMotion
-                ? undefined
-                : FadeInUp.delay(100)
-            }
-            key={field.id}
-            style={styles.fieldContainer}
-          >
-            <Text style={styles.fieldLabel}>
-              {field.label}
-            </Text>
-            <View style={styles.ratingContainer}>
-              {[1, 2, 3, 4, 5].map((star) => (
-                <TouchableOpacity
-                  key={star}
-                  onPress={() => {
-                    if (hapticFeedback) {
-                      Haptics.impactAsync(
-                        Haptics.ImpactFeedbackStyle.Light
-                      );
-                    }
-                    handleFieldChange(field.id, star);
-                  }}
-                >
-                  <Ionicons
-                    name={
-                      star <= (value || 0)
-                        ? 'star'
-                        : 'star-outline'
-                    }
-                    size={36}
-                    color={
-                      star <= (value || 0)
-                        ? '#ffd700'
-                        : '#e2e8f0'
-                    }
-                  />
-                </TouchableOpacity>
-              ))}
-            </View>
-          </Animated.View>
+        return fieldContainer(
+          <View style={styles.ratingContainer}>
+            {[1, 2, 3, 4, 5].map(star => (
+              <TouchableOpacity
+                key={star}
+                onPress={() => {
+                  triggerHaptic('light');
+                  handleFieldChange(field.id, star);
+                }}
+              >
+                <Ionicons
+                  name={star <= (value as number || 0) ? 'star' : 'star-outline'}
+                  size={36}
+                  color={star <= (value as number || 0) ? fullThemeColors.warning : fullThemeColors.border}
+                />
+              </TouchableOpacity>
+            ))}
+          </View>
         );
 
       case 'temperature':
-        return (
-          <Animated.View
-            entering={
-              reduceMotion
-                ? undefined
-                : FadeInUp.delay(100)
-            }
-            key={field.id}
-            style={styles.fieldContainer}
-          >
-            <Text style={styles.fieldLabel}>
-              {field.label}
-              {field.required && (
-                <Text style={styles.required}> *</Text>
-              )}
-            </Text>
-            <View style={styles.tempContainer}>
-              <View
-                style={styles.tempInputWrapper}
-              >
-                <TextInput
-                  style={[
-                    styles.tempInput,
-                    errors.some((e) =>
-                      e.includes(field.label)
-                    ) && styles.inputError,
-                  ]}
-                  placeholder="36.5"
-                  value={value?.toString() || ''}
-                  onChangeText={(text) =>
-                    handleFieldChange(
-                      field.id,
-                      parseFloat(text) || text
-                    )
-                  }
-                  keyboardType="decimal-pad"
-                />
-                <Text style={styles.tempUnit}>
-                  °C / °F
-                </Text>
-              </View>
-              <View style={styles.tempScale}>
-                <View
-                  style={styles.tempIndicator}
-                >
-                  <View
-                    style={[
-                      styles.tempBar,
-                      {
-                        backgroundColor:
-                          value > 38 || value > 100.4
-                            ? '#ef4444'
-                            : value > 37.5 ||
-                              value > 99.5
-                            ? '#f59e0b'
-                            : '#10b981',
-                    },
-                  ]}
-                  />
-                </View>
-                <View style={styles.tempLabels}>
-                  <Text style={styles.tempLabel}>
-                    Normal
-                  </Text>
-                  <Text style={styles.tempLabel}>
-                    High
-                  </Text>
-                  <Text style={styles.tempLabel}>
-                    Fever
-                  </Text>
-                </View>
-              </View>
+        return fieldContainer(
+          <View style={styles.tempContainer}>
+            <View style={[styles.tempInputWrapper, { borderColor: hasError ? fullThemeColors.error : fullThemeColors.border, backgroundColor: fullThemeColors.surface, borderRadius: borderRadiusValue }]}>
+              <TextInput
+                style={[styles.tempInput, { color: fullThemeColors.text, fontSize: 24 * fontSizeMultiplier }]}
+                placeholder="36.5"
+                placeholderTextColor={fullThemeColors.textSecondary}
+                value={value?.toString() || ''}
+                onChangeText={text => handleFieldChange(field.id, parseFloat(text) || text)}
+                keyboardType="decimal-pad"
+              />
+              <Text style={[styles.tempUnit, { color: fullThemeColors.textSecondary }]}>°C / °F</Text>
             </View>
-          </Animated.View>
+          </View>
         );
 
       case 'photo':
-        return (
-          <Animated.View
-            entering={
-              reduceMotion
-                ? undefined
-                : FadeInUp.delay(100)
-            }
-            key={field.id}
-            style={styles.fieldContainer}
-          >
-            <Text style={styles.fieldLabel}>
-              {field.label}
-            </Text>
-            {value ? (
-              <View
-                style={styles.photoPreviewContainer}
-              >
-                <Image
-                  source={{ uri: value }}
-                  style={styles.photoPreview}
-                  resizeMode="cover"
-                />
+        return fieldContainer(
+          <View>
+            {photoUris.length > 0 ? (
+              <View style={[styles.photoPreviewContainer, { borderRadius: borderRadiusValue }]}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  {photoUris.map((uri, idx) => (
+                    <View key={idx} style={styles.photoWrapper}>
+                      <Image source={{ uri }} style={[styles.photoPreview, { borderRadius: borderRadiusValue }]} resizeMode="cover" />
+                      <TouchableOpacity
+                        style={styles.photoRemoveBtn}
+                        onPress={() => setPhotoUris(prev => prev.filter((_, i) => i !== idx))}
+                      >
+                        <Ionicons name="close-circle" size={24} color={fullThemeColors.error} />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </ScrollView>
                 <View style={styles.photoOverlay}>
-                  <TouchableOpacity
-                    style={styles.photoActionBtn}
-                    onPress={() =>
-                      handlePhotoPick(field.id)
-                    }
-                  >
-                    <Ionicons
-                      name="image-outline"
-                      size={20}
-                      color="#fff"
-                    />
-                    <Text
-                      style={styles.photoActionText}
-                    >
-                      Change
-                    </Text>
+                  <TouchableOpacity style={[styles.photoActionBtn, { borderRadius: borderRadiusValue / 2 }]} onPress={handlePhotoPick}>
+                    <Ionicons name="image-outline" size={20} color="#fff" />
+                    <Text style={styles.photoActionText}>Add More</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.photoActionBtn,
-                      styles.photoRemoveBtn,
-                    ]}
-                    onPress={() =>
-                      handleRemovePhoto(field.id)
-                    }
-                  >
-                    <Ionicons
-                      name="trash-outline"
-                      size={20}
-                      color="#fff"
-                    />
-                    <Text
-                      style={styles.photoActionText}
-                    >
-                      Remove
-                    </Text>
+                  <TouchableOpacity style={[styles.photoActionBtn, { borderRadius: borderRadiusValue / 2 }]} onPress={handleCameraCapture}>
+                    <Ionicons name="camera-outline" size={20} color="#fff" />
+                    <Text style={styles.photoActionText}>Camera</Text>
                   </TouchableOpacity>
                 </View>
               </View>
             ) : (
               <View style={styles.photoButtonsRow}>
                 <TouchableOpacity
-                  style={styles.photoButtonHalf}
-                  onPress={() =>
-                    handleCameraCapture(field.id)
-                  }
+                  style={[styles.photoButtonHalf, { borderColor: fullThemeColors.border, borderRadius: borderRadiusValue }]}
+                  onPress={handleCameraCapture}
                 >
-                  <Ionicons
-                    name="camera-outline"
-                    size={24}
-                    color={currentConfig.color}
-                  />
-                  <Text
-                    style={styles.photoButtonText}
-                  >
-                    Camera
-                  </Text>
+                  <Ionicons name="camera-outline" size={24} color={tracker.gradient[0]} />
+                  <Text style={[styles.photoButtonText, { color: fullThemeColors.textSecondary }]}>Camera</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={styles.photoButtonHalf}
-                  onPress={() =>
-                    handlePhotoPick(field.id)
-                  }
+                  style={[styles.photoButtonHalf, { borderColor: fullThemeColors.border, borderRadius: borderRadiusValue }]}
+                  onPress={handlePhotoPick}
                 >
-                  <Ionicons
-                    name="images-outline"
-                    size={24}
-                    color={currentConfig.color}
-                  />
-                  <Text
-                    style={styles.photoButtonText}
-                  >
-                    Gallery
-                  </Text>
+                  <Ionicons name="images-outline" size={24} color={tracker.gradient[0]} />
+                  <Text style={[styles.photoButtonText, { color: fullThemeColors.textSecondary }]}>Gallery</Text>
                 </TouchableOpacity>
               </View>
             )}
-          </Animated.View>
+          </View>
         );
 
       default:
@@ -4006,673 +703,156 @@ export default function UniversalAddLogScreen() {
     }
   };
 
-  const groupedLogTypes = useMemo(() => {
-    const groups: Record<string, LogTypeConfig[]> = {
-      essential: [],
-      health: [],
-      development: [],
-      daily: [],
-      custom: [],
-    };
+  if (!tracker) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center', backgroundColor: fullThemeColors.background }]}>
+        <Text style={[styles.errorText, { color: fullThemeColors.textSecondary, fontSize: 18 * fontSizeMultiplier }]}>Tracker not found</Text>
+      </View>
+    );
+  }
 
-    Object.values(logTypes).forEach((type) => {
-      const category = type.isCustom
-        ? 'custom'
-        : type.category || 'daily';
-      if (groups[category]) {
-        groups[category].push(type);
-      } else {
-        groups.custom.push(type);
-      }
-    });
-
-    return groups;
-  }, [logTypes]);
+  const gradientColors: [string, string, string] = [
+    tracker.gradient[0] + '15',
+    tracker.gradient[1] + '10',
+    fullThemeColors.background,
+  ];
 
   return (
-    <LinearGradient
-      colors={[
-        currentConfig.gradient[0] + '15',
-        currentConfig.gradient[1] + '10',
-        '#ffffff',
-      ]}
-      style={styles.container}
-    >
-      <StatusBar style="dark" />
+    <LinearGradient colors={gradientColors} style={styles.container}>
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
-      <KeyboardAvoidingView
-        behavior={
-          Platform.OS === 'ios' ? 'padding' : 'height'
-        }
-        style={styles.keyboardView}
-      >
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.keyboardView}>
         <AutoHideScrollView
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[styles.content, { paddingTop: insets.top + 20 }]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Header */}
-          <Animated.View
-            entering={reduceMotion ? undefined : FadeInDown}
-            style={styles.header}
-          >
-            <TouchableOpacity
-              onPress={() => navigation.goBack()}
-              style={styles.closeButton}
-            >
-              <BlurView
-                intensity={80}
-                style={styles.closeBlur}
-              >
-                <Ionicons
-                  name="close"
-                  size={24}
-                  color="#1e293b"
-                />
+          {/* Header with SafeAvatar */}
+          <Animated.View entering={shouldReduceMotion ? undefined : FadeInDown} style={styles.header}>
+            <TouchableOpacity onPress={() => navigation.goBack()} style={[styles.closeButton, { borderRadius: borderRadiusValue }]}>
+              <BlurView intensity={isDark ? 40 : 80} style={[styles.closeBlur, { borderRadius: borderRadiusValue }]} tint={isDark ? 'dark' : 'light'}>
+                <Ionicons name="close" size={24} color={fullThemeColors.text} />
               </BlurView>
             </TouchableOpacity>
 
             <View style={styles.headerCenter}>
-              <Text style={styles.headerTitle}>
-                {isEditMode ? 'Edit' : 'Add'}{' '}
-                {currentConfig.name}
+              <SafeAvatar
+                avatar={currentBaby?.avatar}
+                size={40}
+                fallbackIcon="person"
+                borderColor={tracker.gradient[0]}
+                borderWidth={2}
+                animated={false}
+              />
+              <Text style={[styles.headerTitle, { color: fullThemeColors.text, fontSize: 20 * fontSizeMultiplier }]}>
+                {editEntryId ? 'Edit' : 'Add'} {tracker.name}
               </Text>
-              <Text style={styles.headerSubtitle}>
-                {currentBaby?.name || 'Baby'}
-              </Text>
+              <Text style={[styles.headerSubtitle, { color: fullThemeColors.textSecondary }]}>{currentBaby?.name || 'Baby'}</Text>
             </View>
 
-            <TouchableOpacity
-              onPress={handleSave}
-              style={styles.saveButton}
-            >
-              <LinearGradient
-                colors={currentConfig.gradient}
-                style={styles.saveGradient}
-              >
-                <Text style={styles.saveButtonText}>
-                  Save
-                </Text>
+            <TouchableOpacity onPress={handleSave} style={[styles.saveButton, { borderRadius: borderRadiusValue }]}>
+              <LinearGradient colors={tracker.gradient} style={[styles.saveGradient, { borderRadius: borderRadiusValue }]}>
+                <Text style={[styles.saveButtonText, { fontSize: 16 * fontSizeMultiplier }]}>Save</Text>
               </LinearGradient>
             </TouchableOpacity>
           </Animated.View>
 
-          {/* Type Selector - FIXED: Separate Custom section, no more merged Daily & Other */}
-          <Animated.View
-            entering={
-              reduceMotion
-                ? undefined
-                : FadeInUp.delay(100)
-            }
-            style={styles.typeSection}
-          >
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionLabel}>
-                Log Type
+          {/* Recent entries context */}
+          {recentEntries.length > 0 && !editEntryId && (
+            <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(50)} style={styles.recentSection}>
+              <Text style={[styles.recentTitle, { color: fullThemeColors.textSecondary, fontSize: 13 * fontSizeMultiplier }]}>
+                Recent {tracker.name}
               </Text>
-              <TouchableOpacity
-                onPress={() => setShowCustomModal(true)}
-                style={styles.addTypeButton}
-              >
-                <Ionicons
-                  name="add-circle"
-                  size={20}
-                  color={currentConfig.color}
-                />
-                <Text
-                  style={[
-                    styles.addTypeText,
-                    { color: currentConfig.color },
-                  ]}
-                >
-                  Custom
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            <AutoHideScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.typesContainer}
-              decelerationRate="fast"
-              snapToInterval={95}
-              snapToAlignment="start"
-            >
-              {/* Essential Care */}
-              {groupedLogTypes.essential.length > 0 && (
-                <View style={styles.categorySection}>
-                  <Text style={styles.categoryLabel}>
-                    Essential
-                  </Text>
-                  <View style={styles.typeRow}>
-                    {groupedLogTypes.essential.map(
-                      (type, index) => (
-                        <AnimatedTouchableOpacity
-                          entering={
-                            reduceMotion
-                              ? undefined
-                              : FadeIn.delay(index * 50)
-                          }
-                          key={type.id}
-                          style={[
-                            styles.typeCard,
-                            selectedType === type.id && {
-                              borderColor: type.color,
-                              backgroundColor: `${type.color}20`,
-                         transform: [
-                                { scale: 1.05 },
-                              ],
-                            },
-                          ]}
-                          onPress={() => {
-                            if (hapticFeedback) {
-                              Haptics.impactAsync(
-                                Haptics.ImpactFeedbackStyle.Medium
-                              );
-                            }
-                            setSelectedType(type.id);
-                            setFormData({});
-                            setSelectedTags([]);
-                          }}
-                        >
-                          <View
-                            style={[
-                              styles.emojiContainer,
-                              {
-                                backgroundColor: `${type.color}15`,
-                        },
-                            ]}
-                          >
-                            <Text
-                              style={styles.typeEmoji}
-                            >
-                              {type.emoji}
-                            </Text>
-                          </View>
-                          <Text
-                            style={[
-                              styles.typeLabel,
-                              selectedType === type.id && {
-                                color: type.color,
-                                fontWeight: '700',
-                              },
-                            ]}
-                          >
-                            {type.name}
-                          </Text>
-                        </AnimatedTouchableOpacity>
-                      )
-                    )}
-                  </View>
-                </View>
-              )}
-
-              {/* Health */}
-              {groupedLogTypes.health.length > 0 && (
-                <View style={styles.categorySection}>
-                  <Text style={styles.categoryLabel}>
-                    Health
-                  </Text>
-                  <View style={styles.typeRow}>
-                    {groupedLogTypes.health.map(
-                      (type, index) => (
-                        <AnimatedTouchableOpacity
-                          entering={
-                            reduceMotion
-                              ? undefined
-                              : FadeIn.delay(index * 50)
-                          }
-                          key={type.id}
-                          style={[
-                            styles.typeCard,
-                            selectedType === type.id && {
-                              borderColor: type.color,
-                              backgroundColor: `${type.color}20`,
-                       transform: [
-                                { scale: 1.05 },
-                              ],
-                            },
-                          ]}
-                          onPress={() => {
-                            if (hapticFeedback) {
-                              Haptics.impactAsync(
-                                Haptics.ImpactFeedbackStyle.Medium
-                              );
-                            }
-                            setSelectedType(type.id);
-                            setFormData({});
-                            setSelectedTags([]);
-                          }}
-                        >
-                          <View
-                            style={[
-                              styles.emojiContainer,
-                              {
-                                backgroundColor: `${type.color}15`,
-                      },
-                            ]}
-                          >
-                            <Text
-                              style={styles.typeEmoji}
-                            >
-                              {type.emoji}
-                            </Text>
-                          </View>
-                          <Text
-                            style={[
-                              styles.typeLabel,
-                              selectedType === type.id && {
-                                color: type.color,
-                                fontWeight: '700',
-                              },
-                            ]}
-                          >
-                            {type.name}
-                          </Text>
-                        </AnimatedTouchableOpacity>
-                      )
-                    )}
-                  </View>
-                </View>
-              )}
-
-              {/* Development */}
-              {groupedLogTypes.development.length > 0 && (
-                <View style={styles.categorySection}>
-                  <Text style={styles.categoryLabel}>
-                    Development
-                  </Text>
-                  <View style={styles.typeRow}>
-                    {groupedLogTypes.development.map(
-                      (type, index) => (
-                        <AnimatedTouchableOpacity
-                          entering={
-                            reduceMotion
-                              ? undefined
-                              : FadeIn.delay(index * 50)
-                          }
-                          key={type.id}
-                          style={[
-                            styles.typeCard,
-                            selectedType === type.id && {
-                              borderColor: type.color,
-                              backgroundColor: `${type.color}20`,
-                     transform: [
-                                { scale: 1.05 },
-                              ],
-                            },
-                          ]}
-                          onPress={() => {
-                            if (hapticFeedback) {
-                              Haptics.impactAsync(
-                                Haptics.ImpactFeedbackStyle.Medium
-                              );
-                            }
-                            setSelectedType(type.id);
-                            setFormData({});
-                            setSelectedTags([]);
-                          }}
-                        >
-                          <View
-                            style={[
-                              styles.emojiContainer,
-                              {
-                                backgroundColor: `${type.color}15`,
-                    },
-                            ]}
-                          >
-                            <Text
-                              style={styles.typeEmoji}
-                            >
-                              {type.emoji}
-                            </Text>
-                          </View>
-                          <Text
-                            style={[
-                              styles.typeLabel,
-                              selectedType === type.id && {
-                                color: type.color,
-                                fontWeight: '700',
-                              },
-                            ]}
-                          >
-                            {type.name}
-                          </Text>
-                        </AnimatedTouchableOpacity>
-                      )
-                    )}
-                  </View>
-                </View>
-              )}
-
-              {/* Daily */}
-              {groupedLogTypes.daily.length > 0 && (
-                <View style={styles.categorySection}>
-                  <Text style={styles.categoryLabel}>
-                    Daily
-                  </Text>
-                  <View style={styles.typeRow}>
-                    {groupedLogTypes.daily.map(
-                      (type, index) => (
-                        <AnimatedTouchableOpacity
-                          entering={
-                            reduceMotion
-                              ? undefined
-                              : FadeIn.delay(index * 50)
-                          }
-                          key={type.id}
-                          style={[
-                            styles.typeCard,
-                            selectedType === type.id && {
-                              borderColor: type.color,
-                              backgroundColor: `${type.color}20`,
-                   transform: [
-                                { scale: 1.05 },
-                              ],
-                            },
-                          ]}
-                          onPress={() => {
-                            if (hapticFeedback) {
-                              Haptics.impactAsync(
-                                Haptics.ImpactFeedbackStyle.Medium
-                              );
-                            }
-                            setSelectedType(type.id);
-                            setFormData({});
-                            setSelectedTags([]);
-                          }}
-                        >
-                          <View
-                            style={[
-                              styles.emojiContainer,
-                              {
-                                backgroundColor: `${type.color}15`,
-                  },
-                            ]}
-                          >
-                            <Text
-                              style={styles.typeEmoji}
-                            >
-                              {type.emoji}
-                            </Text>
-                          </View>
-                          <Text
-                            style={[
-                              styles.typeLabel,
-                              selectedType === type.id && {
-                                color: type.color,
-                                fontWeight: '700',
-                              },
-                            ]}
-                          >
-                            {type.name}
-                          </Text>
-                        </AnimatedTouchableOpacity>
-                      )
-                    )}
-                  </View>
-                </View>
-              )}
-
-              {/* Custom Trackers - FIXED: Dedicated section instead of merged with Daily */}
-              {groupedLogTypes.custom.length > 0 && (
-                <View style={styles.categorySection}>
-                  <Text
-                    style={[
-                      styles.categoryLabel,
-                      { color: '#a855f7' },
-                    ]}
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                {recentEntries.map(entry => (
+                  <View
+                    key={entry.id}
+                    style={[styles.recentCard, { backgroundColor: fullThemeColors.glassBg, borderColor: fullThemeColors.border, borderRadius: borderRadiusValue }]}
                   >
-                    Custom
-                  </Text>
-                  <View style={styles.typeRow}>
-                    {groupedLogTypes.custom.map(
-                      (type, index) => (
-                        <AnimatedTouchableOpacity
-                          entering={
-                            reduceMotion
-                              ? undefined
-                              : FadeIn.delay(index * 50)
-                          }
-                          key={type.id}
-                          style={[
-                            styles.typeCard,
-                            selectedType === type.id && {
-                              borderColor: type.color,
-                              backgroundColor: `${type.color}20`,
-                 transform: [
-                                { scale: 1.05 },
-                              ],
-                            },
-                          ]}
-                          onPress={() => {
-                            if (hapticFeedback) {
-                              Haptics.impactAsync(
-                                Haptics.ImpactFeedbackStyle.Medium
-                              );
-                            }
-                            setSelectedType(type.id);
-                            setFormData({});
-                            setSelectedTags([]);
-                          }}
-                        >
-                          <View
-                            style={[
-                              styles.emojiContainer,
-                              {
-                                backgroundColor: `${type.color}15`,
-                },
-                            ]}
-                          >
-                            <Text
-                              style={styles.typeEmoji}
-                            >
-                              {type.emoji}
-                            </Text>
-                          </View>
-                          <Text
-                            style={[
-                              styles.typeLabel,
-                              selectedType === type.id && {
-                                color: type.color,
-                                fontWeight: '700',
-                              },
-                            ]}
-                          >
-                            {type.name}
-                          </Text>
-                          {type.isCustom && (
-                            <View
-                              style={[
-                                styles.customBadge,
-                                {
-                                  backgroundColor:
-                                    type.color,
-                                  },
-                              ]}
-                            >
-                              <Text
-                                style={styles.customBadgeText}
-                              >
-                                ★
-                              </Text>
-                            </View>
-                          )}
-                        </AnimatedTouchableOpacity>
-                      )
-                    )}
+                    <Text style={styles.recentEmoji}>{tracker.emoji}</Text>
+                    <Text style={[styles.recentTime, { color: fullThemeColors.textSecondary }]}>
+                      {format(new Date(entry.timestamp), 'h:mm a')}
+                    </Text>
                   </View>
-                </View>
-              )}
-            </AutoHideScrollView>
-          </Animated.View>
+                ))}
+              </ScrollView>
+            </Animated.View>
+          )}
 
           {/* Date/Time */}
-          <Animated.View
-            entering={
-              reduceMotion
-                ? undefined
-                : FadeInUp.delay(150)
-            }
-            style={styles.timeSection}
-          >
-            <Text style={styles.sectionLabel}>When</Text>
+          <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(100)} style={styles.timeSection}>
+            <Text style={[styles.sectionLabel, { color: fullThemeColors.text, fontSize: 16 * fontSizeMultiplier }]}>When</Text>
             <View style={styles.timeButtonsContainer}>
               <TouchableOpacity
-                style={styles.timeButton}
+                style={[styles.timeButton, { backgroundColor: fullThemeColors.glassBg, borderColor: fullThemeColors.border, borderRadius: borderRadiusValue }]}
                 onPress={handleDatePress}
               >
-                <View
-                  style={[
-                    styles.timeIconContainer,
-                    {
-                      backgroundColor: `${currentConfig.color}15`,
-     },
-                  ]}
-                >
-                  <Ionicons
-                    name="calendar-outline"
-                    size={22}
-                    color={currentConfig.color}
-                  />
+                <View style={[styles.timeIconContainer, { backgroundColor: `${tracker.gradient[0]}15` }]}>
+                  <Ionicons name="calendar-outline" size={22} color={tracker.gradient[0]} />
                 </View>
-                               <View style={styles.timeTextContainer}>
-                  <Text style={styles.timeMainText}>
-                    {isToday(date)
-                      ? 'Today'
-                      : isYesterday(date)
-                      ? 'Yesterday'
-                      : format(date, 'EEE, MMM d')}
+                <View style={styles.timeTextContainer}>
+                  <Text style={[styles.timeMainText, { color: fullThemeColors.text, fontSize: 15 * fontSizeMultiplier }]}>
+                    {isToday(date) ? 'Today' : isYesterday(date) ? 'Yesterday' : format(date, 'EEE, MMM d')}
                   </Text>
                 </View>
-                <Ionicons
-                  name="chevron-forward"
-                  size={20}
-                  color="#94a3b8"
-                />
+                <Ionicons name="chevron-forward" size={20} color={fullThemeColors.textSecondary} />
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.timeButton}
+                style={[styles.timeButton, { backgroundColor: fullThemeColors.glassBg, borderColor: fullThemeColors.border, borderRadius: borderRadiusValue }]}
                 onPress={handleTimePress}
               >
-                <View
-                  style={[
-                    styles.timeIconContainer,
-                    {
-                      backgroundColor: `${currentConfig.color}15`,
-    },
-                  ]}
-                >
-                  <Ionicons
-                    name="time-outline"
-                    size={22}
-                    color={currentConfig.color}
-                  />
+                <View style={[styles.timeIconContainer, { backgroundColor: `${tracker.gradient[0]}15` }]}>
+                  <Ionicons name="time-outline" size={22} color={tracker.gradient[0]} />
                 </View>
                 <View style={styles.timeTextContainer}>
-                  <Text style={styles.timeMainText}>
+                  <Text style={[styles.timeMainText, { color: fullThemeColors.text, fontSize: 15 * fontSizeMultiplier }]}>
                     {format(date, 'h:mm a')}
                   </Text>
                 </View>
-                <Ionicons
-                  name="chevron-forward"
-                  size={20}
-                  color="#94a3b8"
-                />
+                <Ionicons name="chevron-forward" size={20} color={fullThemeColors.textSecondary} />
               </TouchableOpacity>
             </View>
 
-            {/* iOS Date/Time Pickers */}
+            {/* iOS Pickers */}
             {Platform.OS === 'ios' && showDatePicker && (
-              <Modal
-                transparent={true}
-                animationType="slide"
-                visible={showDatePicker}
-                onRequestClose={() =>
-                  setShowDatePicker(false)
-                }
-              >
-                <View style={styles.pickerModalOverlay}>
-                  <View style={styles.pickerModalContent}>
-                    <View style={styles.pickerHeader}>
-                      <TouchableOpacity
-                        onPress={() =>
-                          setShowDatePicker(false)
-                        }
-                      >
-                        <Text
-                          style={styles.pickerDoneButton}
-                        >
-                          Done
-                        </Text>
+              <Modal transparent animationType="slide" visible={showDatePicker}>
+                <View style={[styles.pickerModalOverlay, { backgroundColor: fullThemeColors.shadow + '80' }]}>
+                  <View style={[styles.pickerModalContent, { backgroundColor: fullThemeColors.surface, borderRadius: borderRadiusValue * 2 }]}>
+                    <View style={[styles.pickerHeader, { borderBottomColor: fullThemeColors.border }]}>
+                      <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                        <Text style={[styles.pickerDoneButton, { color: themeColors.primary }]}>Done</Text>
                       </TouchableOpacity>
                     </View>
-                    <DateTimePicker
-                      value={date}
-                      mode="date"
-                      display="spinner"
-                      onChange={onDateChange}
-                    />
+                    <DateTimePicker value={date} mode="date" display="spinner" onChange={onDateChange} textColor={fullThemeColors.text} />
                   </View>
                 </View>
               </Modal>
             )}
 
             {Platform.OS === 'ios' && showTimePicker && (
-              <Modal
-                transparent={true}
-                animationType="slide"
-                visible={showTimePicker}
-                onRequestClose={() =>
-                  setShowTimePicker(false)
-                }
-              >
-                <View style={styles.pickerModalOverlay}>
-                  <View style={styles.pickerModalContent}>
-                    <View style={styles.pickerHeader}>
-                      <TouchableOpacity
-                        onPress={() =>
-                          setShowTimePicker(false)
-                        }
-                      >
-                        <Text
-                          style={styles.pickerDoneButton}
-                        >
-                          Done
-                        </Text>
+              <Modal transparent animationType="slide" visible={showTimePicker}>
+                <View style={[styles.pickerModalOverlay, { backgroundColor: fullThemeColors.shadow + '80' }]}>
+                  <View style={[styles.pickerModalContent, { backgroundColor: fullThemeColors.surface, borderRadius: borderRadiusValue * 2 }]}>
+                    <View style={[styles.pickerHeader, { borderBottomColor: fullThemeColors.border }]}>
+                      <TouchableOpacity onPress={() => setShowTimePicker(false)}>
+                        <Text style={[styles.pickerDoneButton, { color: themeColors.primary }]}>Done</Text>
                       </TouchableOpacity>
                     </View>
-                    <DateTimePicker
-                      value={date}
-                      mode="time"
-                      display="spinner"
-                      onChange={onDateChange}
-                    />
+                    <DateTimePicker value={date} mode="time" display="spinner" onChange={onDateChange} textColor={fullThemeColors.text} />
                   </View>
                 </View>
               </Modal>
             )}
           </Animated.View>
 
-          {/* Error Display */}
+          {/* Errors */}
           {errors.length > 0 && (
-            <Animated.View
-              entering={
-                reduceMotion ? undefined : FadeInDown
-              }
-              style={styles.errorsContainer}
-            >
-              {errors.map((error, idx) => (
+            <Animated.View entering={shouldReduceMotion ? undefined : FadeInDown} style={[styles.errorsContainer, { backgroundColor: fullThemeColors.error + '15', borderLeftColor: fullThemeColors.error, borderRadius: borderRadiusValue }]}>
+              {errors.map((err, idx) => (
                 <View key={idx} style={styles.errorRow}>
-                  <Ionicons
-                    name="alert-circle"
-                    size={16}
-                    color="#ef4444"
-                  />
-                  <Text style={styles.errorText}>
-                    {error}
-                  </Text>
+                  <Ionicons name="alert-circle" size={16} color={fullThemeColors.error} />
+                  <Text style={[styles.errorText, { color: fullThemeColors.error }]}>{err}</Text>
                 </View>
               ))}
             </Animated.View>
@@ -4680,30 +860,37 @@ export default function UniversalAddLogScreen() {
 
           {/* Dynamic Fields */}
           <View style={styles.fieldsSection}>
-            {currentConfig.fields.map(renderField)}
+            {tracker.fields.map(renderField)}
           </View>
 
+          {/* Notes */}
+          <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(200)} style={styles.fieldContainer}>
+            <Text style={[styles.fieldLabel, { color: fullThemeColors.text, fontSize: 14 * fontSizeMultiplier }]}>Notes</Text>
+            <TextInput
+              style={[styles.textareaInput, { borderColor: fullThemeColors.border, backgroundColor: fullThemeColors.surface, color: fullThemeColors.text, borderRadius: borderRadiusValue, fontSize: 16 * fontSizeMultiplier }]}
+              placeholder="Any additional details..."
+              placeholderTextColor={fullThemeColors.textSecondary}
+              value={notes}
+              onChangeText={setNotes}
+              multiline
+              numberOfLines={3}
+              textAlignVertical="top"
+            />
+          </Animated.View>
+
           {/* Quick Tags */}
-          <Animated.View
-            entering={
-              reduceMotion
-                ? undefined
-                : FadeInUp.delay(300)
-            }
-            style={styles.tagsSection}
-          >
-            <Text style={styles.sectionLabel}>
-              Quick Tags
-            </Text>
+          <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(250)} style={styles.tagsSection}>
+            <Text style={[styles.sectionLabel, { color: fullThemeColors.text, fontSize: 16 * fontSizeMultiplier }]}>Quick Tags</Text>
             <View style={styles.tagsContainer}>
-              {currentConfig.quickTags.map((tag) => (
+              {tracker.quickTags?.map(tag => (
                 <TouchableOpacity
                   key={tag}
                   style={[
                     styles.tag,
-                    selectedTags.includes(tag) && {
-                      backgroundColor: `${currentConfig.color}30`,
-     borderColor: currentConfig.color,
+                    {
+                      backgroundColor: selectedTags.includes(tag) ? `${tracker.gradient[0]}30` : fullThemeColors.glassBg,
+                      borderColor: selectedTags.includes(tag) ? tracker.gradient[0] : fullThemeColors.border,
+                      borderRadius: borderRadiusValue,
                     },
                   ]}
                   onPress={() => toggleTag(tag)}
@@ -4711,10 +898,8 @@ export default function UniversalAddLogScreen() {
                   <Text
                     style={[
                       styles.tagText,
-                      selectedTags.includes(tag) && {
-                        color: currentConfig.color,
-                        fontWeight: '700',
-                      },
+                      { color: selectedTags.includes(tag) ? tracker.gradient[0] : fullThemeColors.textSecondary },
+                      selectedTags.includes(tag) && { fontWeight: '700' },
                     ]}
                   >
                     {tag}
@@ -4724,7 +909,6 @@ export default function UniversalAddLogScreen() {
             </View>
           </Animated.View>
 
-          {/* Bottom Padding */}
           <View style={styles.bottomPadding} />
         </AutoHideScrollView>
       </KeyboardAvoidingView>
@@ -4734,1084 +918,129 @@ export default function UniversalAddLogScreen() {
         visible={showConfirmation}
         onClose={() => setShowConfirmation(false)}
         onConfirm={confirmSave}
-        data={{ ...formData, timestamp: date.getTime(), notes: formData.notes }}
-        logType={currentConfig}
+        data={{ ...formData, photoUris }}
+        tracker={tracker}
         babyName={currentBaby?.name || 'Baby'}
-      />
-
-      {/* Custom Tracker Modal */}
-      <CustomTrackerModal
-        visible={showCustomModal}
-        onClose={() => setShowCustomModal(false)}
-        onSave={saveCustomTracker}
+        babyAvatar={currentBaby?.avatar}
+        date={date}
+        notes={notes}
+        tags={selectedTags}
       />
     </LinearGradient>
   );
 }
 
+// ─── Modernized Styles ───
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  keyboardView: {
-    flex: 1,
-  },
-  content: {
-    paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'ios' ? 60 : 40,
-    paddingBottom: 40,
-  },
+  container: { flex: 1 },
+  keyboardView: { flex: 1 },
+  content: { paddingHorizontal: 20, paddingBottom: 40 },
 
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 24,
-  },
-  closeButton: {
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  closeBlur: {
-    width: 44,
-    height: 44,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.8)',
-  },
-  headerCenter: {
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#1e293b',
-    letterSpacing: -0.5,
-  },
-  headerSubtitle: {
-    fontSize: 13,
-    color: '#64748b',
-    marginTop: 2,
-    fontWeight: '500',
-  },
-  saveButton: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  saveGradient: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 16,
-  },
-  saveButtonText: {
-    color: 'white',
-    fontWeight: '700',
-    fontSize: 16,
-  },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, paddingTop: 8 },
+  closeButton: { overflow: 'hidden' },
+  closeBlur: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  headerCenter: { alignItems: 'center', gap: 6 },
+  headerTitle: { fontWeight: '800', letterSpacing: -0.5 },
+  headerSubtitle: { fontSize: 13, fontWeight: '500' },
+  saveButton: { overflow: 'hidden', elevation: 5 },
+  saveGradient: { paddingHorizontal: 20, paddingVertical: 12 },
+  saveButtonText: { color: 'white', fontWeight: '700' },
 
-  typeSection: {
-    marginBottom: 24,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  sectionLabel: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1e293b',
-    letterSpacing: -0.3,
-  },
-  addTypeButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  addTypeText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  typesContainer: {
-    paddingHorizontal: 4,
-    paddingVertical: 8,
-    paddingBottom: 16,
-  },
-  categorySection: {
-    marginRight: 20,
-  },
-  categoryLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#94a3b8',
-    marginBottom: 10,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginLeft: 4,
-  },
-  typeRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  typeCard: {
-    width: 85,
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    borderRadius: 20,
-    padding: 12,
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: 'transparent',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  emojiContainer: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
-  },
-  typeEmoji: {
-    fontSize: 28,
-  },
-  typeLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#64748b',
-    textAlign: 'center',
-  },
-  customBadge: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  customBadgeText: {
-    fontSize: 10,
-    color: '#fff',
-    fontWeight: '800',
-  },
+  recentSection: { marginBottom: 20 },
+  recentTitle: { fontWeight: '600', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
+  recentCard: { width: 80, height: 80, alignItems: 'center', justifyContent: 'center', marginRight: 12, borderWidth: 1 },
+  recentEmoji: { fontSize: 28 },
+  recentTime: { fontSize: 12, marginTop: 4, fontWeight: '600' },
 
-  timeSection: {
-    marginBottom: 24,
-  },
-  timeButtonsContainer: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  timeButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.05)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  timeIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  timeTextContainer: {
-    flex: 1,
-  },
-  timeMainText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#1e293b',
-  },
+  timeSection: { marginBottom: 24 },
+  sectionLabel: { fontWeight: '700', letterSpacing: -0.3, marginBottom: 12 },
+  timeButtonsContainer: { flexDirection: 'row', gap: 12 },
+  timeButton: { flex: 1, flexDirection: 'row', alignItems: 'center', padding: 14, borderWidth: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
+  timeIconContainer: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  timeTextContainer: { flex: 1 },
+  timeMainText: { fontWeight: '700' },
 
-  pickerModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'flex-end',
-  },
-  pickerModalContent: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingBottom: Platform.OS === 'ios' ? 40 : 20,
-  },
-  pickerHeader: {
-    alignItems: 'flex-end',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
-  },
-  pickerDoneButton: {
-    color: '#3b82f6',
-    fontSize: 16,
-    fontWeight: '600',
-  },
+  pickerModalOverlay: { flex: 1, justifyContent: 'flex-end' },
+  pickerModalContent: { paddingBottom: Platform.OS === 'ios' ? 40 : 20 },
+  pickerHeader: { alignItems: 'flex-end', padding: 16, borderBottomWidth: 1 },
+  pickerDoneButton: { fontSize: 16, fontWeight: '600' },
 
-  errorsContainer: {
-    backgroundColor: '#fef2f2',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: '#ef4444',
-  },
-  errorRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 4,
-  },
-  errorText: {
-    color: '#ef4444',
-    fontSize: 13,
-    fontWeight: '500',
-  },
+  errorsContainer: { borderRadius: 12, padding: 12, marginBottom: 16, borderLeftWidth: 4 },
+  errorRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
+  errorText: { fontSize: 13, fontWeight: '500' },
 
-  fieldsSection: {
-    gap: 4,
-  },
-  fieldContainer: {
-    marginBottom: 16,
-  },
-  fieldLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1e293b',
-    marginBottom: 10,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  required: {
-    color: '#ef4444',
-  },
-  textInput: {
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.08)',
-    borderRadius: 16,
-    padding: 16,
-    fontSize: 16,
-    color: '#1e293b',
-    backgroundColor: 'rgba(255,255,255,0.9)',
-  },
-  inputError: {
-    borderColor: '#ef4444',
-    backgroundColor: '#fef2f2',
-  },
-  numberInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.08)',
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    paddingRight: 16,
-  },
-  numberInput: {
-    flex: 1,
-    padding: 16,
-    fontSize: 16,
-    color: '#1e293b',
-  },
-  unitLabel: {
-    fontSize: 14,
-    color: '#64748b',
-    fontWeight: '600',
-  },
-  textareaInput: {
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.08)',
-    borderRadius: 16,
-    padding: 16,
-    fontSize: 16,
-    color: '#1e293b',
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    minHeight: 100,
-    textAlignVertical: 'top',
-  },
+  fieldsSection: { gap: 4 },
+  fieldContainer: { marginBottom: 16 },
+  fieldLabel: { fontWeight: '700', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
+  required: { fontWeight: '700' },
+  textInput: { borderWidth: 1, padding: 16, fontWeight: '500' },
+  textareaInput: { minHeight: 100, textAlignVertical: 'top' },
+  numberInputContainer: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, paddingRight: 16 },
+  numberInput: { flex: 1, padding: 16, fontWeight: '500' },
+  unitLabel: { fontSize: 14, fontWeight: '600' },
 
-  optionsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  optionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    borderWidth: 2,
-    borderColor: 'transparent',
-    gap: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  optionEmoji: {
-    fontSize: 20,
-  },
-  optionLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#64748b',
-  },
+  optionsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  optionButton: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderWidth: 2, gap: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2 },
+  optionEmoji: { fontSize: 20 },
+  optionLabel: { fontSize: 14, fontWeight: '600' },
 
-  toggleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.08)',
-  },
+  toggleContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderWidth: 1 },
 
-  durationContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  durationButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.08)',
-  },
-  durationText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#64748b',
-  },
+  durationContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  durationButton: { paddingHorizontal: 16, paddingVertical: 12, borderWidth: 1 },
+  durationText: { fontSize: 14, fontWeight: '600' },
 
-  ratingContainer: {
-    flexDirection: 'row',
-    gap: 12,
-    paddingVertical: 8,
-  },
+  ratingContainer: { flexDirection: 'row', gap: 12, paddingVertical: 8 },
 
-  tempContainer: {
-    gap: 12,
-  },
-  tempInputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.08)',
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    paddingHorizontal: 16,
-  },
-  tempInput: {
-    flex: 1,
-    paddingVertical: 16,
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#1e293b',
-  },
-  tempUnit: {
-    fontSize: 16,
-    color: '#64748b',
-    fontWeight: '600',
-  },
-  tempScale: {
-    gap: 8,
-  },
-  tempIndicator: {
-    height: 8,
-    backgroundColor: '#e2e8f0',
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  tempBar: {
-    height: '100%',
-    width: '33%',
-    borderRadius: 4,
-  },
-  tempLabels: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  tempLabel: {
-    fontSize: 12,
-    color: '#94a3b8',
-    fontWeight: '500',
-  },
+  tempContainer: { gap: 12 },
+  tempInputWrapper: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, paddingHorizontal: 16 },
+  tempInput: { flex: 1, paddingVertical: 16, fontWeight: '700' },
+  tempUnit: { fontSize: 16, fontWeight: '600' },
 
-  photoButtonsRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  photoButtonHalf: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 20,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    borderWidth: 2,
-    borderColor: 'rgba(0,0,0,0.08)',
-    borderStyle: 'dashed',
-    gap: 8,
-  },
-  photoPreviewContainer: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    backgroundColor: '#f1f5f9',
-    position: 'relative',
-  },
-  photoPreview: {
-    width: '100%',
-    height: 200,
-    borderRadius: 16,
-  },
-  photoOverlay: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    padding: 12,
-    gap: 12,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-  },
-  photoActionBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-  },
-  photoRemoveBtn: {
-    backgroundColor: 'rgba(239,68,68,0.3)',
-  },
-  photoActionText: {
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  photoButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#64748b',
-  },
+  photoButtonsRow: { flexDirection: 'row', gap: 12 },
+  photoButtonHalf: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20, borderWidth: 2, borderStyle: 'dashed', gap: 8 },
+  photoPreviewContainer: { overflow: 'hidden', position: 'relative' },
+  photoWrapper: { position: 'relative', marginRight: 12 },
+  photoPreview: { width: 120, height: 120 },
+  photoRemoveBtn: { position: 'absolute', top: -8, right: -8, backgroundColor: '#fff', borderRadius: 12 },
+  photoOverlay: { flexDirection: 'row', padding: 12, gap: 12 },
+  photoActionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, backgroundColor: 'rgba(0,0,0,0.5)' },
+  photoActionText: { color: '#fff', fontSize: 13, fontWeight: '600' },
+  photoButtonText: { fontSize: 14, fontWeight: '600' },
 
-  tagsSection: {
-    marginTop: 8,
-  },
-  tagsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  tag: {
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.08)',
-  },
-  tagText: {
-    color: '#64748b',
-    fontSize: 13,
-    fontWeight: '500',
-  },
+  tagsSection: { marginTop: 8 },
+  tagsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  tag: { paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1 },
+  tagText: { fontSize: 13, fontWeight: '500' },
 
-  bottomPadding: {
-    height: 100,
-  },
+  bottomPadding: { height: 100 },
 
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  modalContent: {
-    width: '100%',
-    maxHeight: '80%',
-    borderRadius: 28,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.3,
-    shadowRadius: 40,
-    elevation: 20,
-  },
-  modalGradient: {
-    padding: 24,
-  },
-  modalHeader: {
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  modalIconContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  modalIcon: {
-    fontSize: 32,
-  },
-  modalTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#1e293b',
-    marginBottom: 4,
-  },
-  modalSubtitle: {
-    fontSize: 14,
-    color: '#64748b',
-    fontWeight: '500',
-  },
-  modalBody: {
-    maxHeight: 300,
-  },
-  previewCard: {
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    borderRadius: 20,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.05)',
-  },
-  previewTime: {
-    fontSize: 13,
-    color: '#64748b',
-    fontWeight: '600',
-    marginBottom: 8,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  previewPhotoContainer: {
-    borderRadius: 12,
-    overflow: 'hidden',
-    marginBottom: 12,
-    height: 120,
-  },
-  previewPhoto: {
-    width: '100%',
-    height: '100%',
-  },
-  previewTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#1e293b',
-    marginBottom: 8,
-  },
-  previewDetails: {
-    fontSize: 14,
-    color: '#64748b',
-    marginBottom: 12,
-    lineHeight: 20,
-  },
-  previewFields: {
-    gap: 8,
-    marginTop: 8,
-  },
-  previewField: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.05)',
-  },
-  previewFieldLabel: {
-    fontSize: 13,
-    color: '#94a3b8',
-    fontWeight: '500',
-  },
-  previewFieldValue: {
-    fontSize: 13,
-    color: '#1e293b',
-    fontWeight: '600',
-  },
-  previewNotes: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(0,0,0,0.05)',
-  },
-  previewNotesText: {
-    flex: 1,
-    fontSize: 14,
-    color: '#64748b',
-    fontStyle: 'italic',
-    lineHeight: 20,
-  },
-  modalActions: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 20,
-  },
-  cancelButton: {
-    flex: 1,
-    paddingVertical: 16,
-    borderRadius: 16,
-    backgroundColor: 'rgba(0,0,0,0.05)',
-    alignItems: 'center',
-  },
-  cancelButtonText: {
-    color: '#64748b',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  confirmButton: {
-    flex: 2,
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  confirmGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 16,
-  },
-  confirmButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-
-  customModalContentEnhanced: {
-    backgroundColor: 'rgba(255,255,255,0.98)',
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    padding: 24,
-    paddingBottom: Platform.OS === 'ios' ? 40 : 20,
-    maxHeight: '92%',
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-  },
-  customModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  customModalTitle: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#1e293b',
-  },
-  customModalSubtitle: {
-    fontSize: 14,
-    color: '#94a3b8',
-    marginTop: 2,
-    fontWeight: '500',
-  },
-  customModalClose: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0,0,0,0.05)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalScroll: {
-    maxHeight: '70%',
-  },
-  modalFooter: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(0,0,0,0.05)',
-  },
-  backButton: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 16,
-    backgroundColor: 'rgba(0,0,0,0.05)',
-    alignItems: 'center',
-  },
-  backButtonText: {
-    color: '#64748b',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  nextButton: {
-    flex: 2,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 14,
-    borderRadius: 16,
-  },
-  nextButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  createButtonEnhanced: {
-    flex: 2,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 16,
-    borderRadius: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  createButtonTextEnhanced: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-
-  stepIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 20,
-    gap: 4,
-  },
-  stepRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  stepDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#e2e8f0',
-  },
-  stepLine: {
-    width: 40,
-    height: 2,
-    backgroundColor: '#e2e8f0',
-    marginHorizontal: 4,
-  },
-
-  emojiHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  emojiToggle: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  emojiGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    padding: 8,
-    backgroundColor: 'rgba(0,0,0,0.02)',
-    borderRadius: 16,
-  },
-  emojiOption: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: 'transparent',
-    backgroundColor: 'rgba(255,255,255,0.8)',
-  },
-  emojiOptionText: {
-    fontSize: 24,
-  },
-
-  categoryGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  categoryOption: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.8)',
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  categoryOptionText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#64748b',
-  },
-
-  iconCategoryScroll: {
-    gap: 8,
-    paddingBottom: 12,
-  },
-  iconCategoryPill: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0,0,0,0.05)',
-  },
-  iconCategoryText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#64748b',
-  },
-  iconGridLarge: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  iconOptionLarge: {
-    width: 72,
-    height: 72,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.8)',
-    borderWidth: 2,
-    borderColor: 'transparent',
-    gap: 4,
-  },
-  iconLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#94a3b8',
-  },
-
-  colorGridEnhanced: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  colorOptionEnhanced: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: 'transparent',
-  },
-  colorOptionSelectedEnhanced: {
-    borderColor: '#1e293b',
-    transform: [{ scale: 1.1 }],
-  },
-  colorNameRow: {
-    marginTop: 8,
-    alignItems: 'center',
-  },
-  colorName: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#64748b',
-  },
-
-  fieldConfigCard: {
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.05)',
-  },
-  fieldConfigHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  fieldConfigTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1e293b',
-  },
-  fieldConfigInput: {
-    marginBottom: 10,
-  },
-  fieldTypeBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 10,
-  },
-  fieldTypeText: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  fieldOptionsRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  fieldToggle: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: 'rgba(0,0,0,0.05)',
-  },
-  fieldToggleText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#94a3b8',
-  },
-
-  optionsEditor: {
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(0,0,0,0.05)',
-  },
-  optionsEditorLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#64748b',
-    marginBottom: 8,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  optionEditorRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 8,
-  },
-  optionInput: {
-    flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-  },
-  addOptionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 8,
-  },
-  addOptionText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-
-  numberConfig: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 10,
-  },
-  unitInput: {
-    flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-  },
-
-  fieldTypeGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  fieldTypeCard: {
-    width: '30%',
-    aspectRatio: 1,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.05)',
-    gap: 4,
-  },
-  fieldTypeCardLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#1e293b',
-  },
-  fieldTypeCardDesc: {
-    fontSize: 10,
-    color: '#94a3b8',
-    textAlign: 'center',
-  },
-
-  previewLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#64748b',
-    marginBottom: 10,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  previewTrackerCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    borderWidth: 2,
-    borderColor: 'transparent',
-    gap: 12,
-  },
-  previewIconBg: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  previewEmoji: {
-    fontSize: 24,
-  },
-  previewContent: {
-    flex: 1,
-  },
-  previewName: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#1e293b',
-  },
-  previewMeta: {
-    fontSize: 13,
-    color: '#94a3b8',
-    marginTop: 2,
-  },
-
-  fieldSubLabel: {
-    fontSize: 13,
-    color: '#94a3b8',
-    marginBottom: 10,
-    marginTop: -4,
-  },
+  modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
+  modalContent: { width: '100%', maxHeight: '80%', overflow: 'hidden', elevation: 20 },
+  modalGradient: { padding: 24 },
+  modalHeader: { alignItems: 'center', marginBottom: 20 },
+  modalIconContainer: { width: 64, height: 64, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+  modalIcon: { fontSize: 32 },
+  modalTitle: { fontWeight: '800', marginBottom: 4 },
+  modalBabyRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  modalSubtitle: { fontSize: 14, fontWeight: '500' },
+  modalBody: { maxHeight: 300 },
+  previewCard: { padding: 20, borderWidth: 1 },
+  previewTime: { fontSize: 13, fontWeight: '600', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+  previewPhotoContainer: { overflow: 'hidden', marginBottom: 12, height: 120 },
+  previewPhoto: { width: '100%', height: '100%' },
+  previewTitle: { fontWeight: '800', marginBottom: 8 },
+  previewDetails: { fontSize: 14, marginBottom: 12, lineHeight: 20 },
+  previewFields: { gap: 8, marginTop: 8 },
+  previewField: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
+  previewFieldLabel: { fontSize: 13, fontWeight: '500' },
+  previewFieldValue: { fontSize: 13, fontWeight: '600' },
+  previewNotes: { flexDirection: 'row', gap: 8, marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.05)' },
+  previewNotesText: { flex: 1, fontSize: 14, fontStyle: 'italic', lineHeight: 20 },
+  modalActions: { flexDirection: 'row', gap: 12, marginTop: 20 },
+  cancelButton: { flex: 1, paddingVertical: 16, alignItems: 'center' },
+  cancelButtonText: { fontSize: 16, fontWeight: '700' },
+  confirmButton: { flex: 2, overflow: 'hidden' },
+  confirmGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 16 },
+  confirmButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 });

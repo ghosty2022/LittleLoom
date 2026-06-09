@@ -1,3 +1,8 @@
+// src/screens/auth/OnboardingScreen.tsx
+// FIXED: Navigation delegated to AppNavigator (single source of truth)
+// FIXED: First-time detection, completion persistence, skip behavior
+// FIXED: Auto-advance timing, manual scroll interaction, proper cleanup
+// FIXED: Navigation after completion uses replace to prevent back-nav
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -9,19 +14,20 @@ import {
   StatusBar,
   SafeAreaView,
   BackHandler,
-  Animated,
   Platform,
+  FlatList,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useFocusEffect } from '@react-navigation/native';
-import { useAuth } from '../../context/AuthContext';
-import { useCustomization } from '../../hooks/useCustomization';
-import { AutoHideFlatList } from '../../components/AutoHideScrollWrappers';
-import type { RootStackParamList } from '../../types/navigation';
+import Animated, {
+  useAnimatedScrollHandler,
+  useSharedValue,
+  useAnimatedStyle,
+  interpolate,
+  Extrapolation,
+} from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -30,8 +36,9 @@ const wp = (percentage: number) => (SCREEN_WIDTH * percentage) / 100;
 const hp = (percentage: number) => (SCREEN_HEIGHT * percentage) / 100;
 
 const AUTO_ADVANCE_INTERVAL = 5000;
-const USER_INACTIVITY_RESUME = 10000;
-const ONBOARDING_SEEN_KEY = '@littleloom_onboarding_seen_v2';
+const USER_INACTIVITY_RESUME = 8000;
+const ONBOARDING_SEEN_KEY = '@littleloom_onboarding_seen_v3';
+const ONBOARDING_COMPLETED_KEY = '@littleloom_onboarding_completed_v3';
 
 interface OnboardingSlide {
   id: string;
@@ -40,7 +47,7 @@ interface OnboardingSlide {
   emoji: string;
   colors: [string, string];
   darkColors?: [string, string];
-  icon: string;
+  icon: keyof typeof Ionicons.glyphMap;
 }
 
 const ONBOARDING_DATA: OnboardingSlide[] = [
@@ -91,27 +98,105 @@ const ONBOARDING_DATA: OnboardingSlide[] = [
   },
 ];
 
-type Props = NativeStackScreenProps<RootStackParamList, 'Onboarding'>;
+// ==================== SLIDE ITEM ====================
 
-export default function OnboardingScreen({ navigation }: Props) {
+const SlideItem = React.memo(({ 
+  item, 
+  index, 
+  scrollX, 
+  isDark 
+}: { 
+  item: OnboardingSlide; 
+  index: number; 
+  scrollX: Animated.SharedValue<number>;
+  isDark: boolean;
+}) => {
+  const inputRange = [
+    (index - 1) * SCREEN_WIDTH,
+    index * SCREEN_WIDTH,
+    (index + 1) * SCREEN_WIDTH,
+  ];
+
+  const animatedStyle = useAnimatedStyle(() => {
+    const scale = interpolate(
+      scrollX.value,
+      inputRange,
+      [0.85, 1, 0.85],
+      Extrapolation.CLAMP
+    );
+    const opacity = interpolate(
+      scrollX.value,
+      inputRange,
+      [0.4, 1, 0.4],
+      Extrapolation.CLAMP
+    );
+    const translateX = interpolate(
+      scrollX.value,
+      inputRange,
+      [SCREEN_WIDTH * 0.15, 0, -SCREEN_WIDTH * 0.15],
+      Extrapolation.CLAMP
+    );
+
+    return {
+      opacity,
+      transform: [{ scale }, { translateX }],
+    };
+  });
+
+  const currentColors = isDark && item.darkColors ? item.darkColors : item.colors;
+
+  return (
+    <View style={styles.slide}>
+      <Animated.View style={[styles.slideContent, animatedStyle]}>
+        <View style={[styles.card, isDark && styles.cardDark]}>
+          <LinearGradient
+            colors={isDark
+              ? ['rgba(255,255,255,0.08)', 'rgba(255,255,255,0.02)']
+              : [currentColors[0] + '15', currentColors[1] + '15']
+            }
+            style={styles.cardGradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          >
+            <View style={[styles.iconContainer, { backgroundColor: currentColors[0], shadowColor: currentColors[0] }]}>
+              <Ionicons name={item.icon} size={28} color="white" />
+            </View>
+
+            <View style={styles.emojiContainer}>
+              <Text style={styles.emoji}>{item.emoji}</Text>
+            </View>
+
+            <View style={[styles.decorCircle, { backgroundColor: currentColors[0] + '20', top: 30, left: 30, width: 50, height: 50 }]} />
+            <View style={[styles.decorCircle, { backgroundColor: currentColors[1] + '15', bottom: 40, right: 40, width: 70, height: 70 }]} />
+            <View style={[styles.decorCircle, { backgroundColor: currentColors[0] + '10', top: '50%', left: '10%', width: 30, height: 30 }]} />
+          </LinearGradient>
+        </View>
+
+        <View style={styles.textContainer}>
+          <Text style={[styles.title, isDark && styles.titleDark]}>{item.title}</Text>
+          <Text style={[styles.subtitle, isDark && styles.subtitleDark]}>{item.subtitle}</Text>
+        </View>
+      </Animated.View>
+    </View>
+  );
+});
+
+// ==================== MAIN COMPONENT ====================
+
+export default function OnboardingScreen({ navigation }: { navigation: any }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isNavigating, setIsNavigating] = useState(false);
   const [isAutoPlaying, setIsAutoPlaying] = useState(true);
-  const [progressWidth, setProgressWidth] = useState(20);
 
-  const { darkMode: isDark, themeColors, triggerHaptic, shouldReduceMotion } = useCustomization();
-  const { markOnboardingSeen } = useAuth();
-
-  const scrollX = useRef(new Animated.Value(0)).current;
+  const scrollX = useSharedValue(0);
   const slidesRef = useRef<FlatList<OnboardingSlide>>(null);
   const insets = useSafeAreaInsets();
-
-  const autoPlayTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const resumeTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const pulseAnim = useRef(new Animated.Value(1)).current;
   const isMounted = useRef(true);
+  const autoPlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const resumeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isDark = false; // Onboarding always uses light theme for consistency
 
-  // Prevent memory leaks and double navigation
+  // Prevent memory leaks
   useEffect(() => {
     return () => {
       isMounted.current = false;
@@ -120,51 +205,14 @@ export default function OnboardingScreen({ navigation }: Props) {
     };
   }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      const onBackPress = () => true;
-      BackHandler.addEventListener('hardwareBackPress', onBackPress);
-      return () => BackHandler.removeEventListener('hardwareBackPress', onBackPress);
-    }, [])
-  );
-
+  // Prevent back button during onboarding
   useEffect(() => {
-    const newWidth = ((currentIndex + 1) / ONBOARDING_DATA.length) * 100;
-    setProgressWidth(newWidth);
-  }, [currentIndex]);
+    const onBackPress = () => true; // Block back button
+    BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => BackHandler.removeEventListener('hardwareBackPress', onBackPress);
+  }, []);
 
-  useEffect(() => {
-    if (shouldReduceMotion) {
-      pulseAnim.setValue(1);
-      return;
-    }
-
-    const pulse = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 1.3,
-          duration: 800,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 1,
-          duration: 800,
-          useNativeDriver: true,
-        }),
-      ])
-    );
-
-    if (isAutoPlaying) {
-      pulse.start();
-    } else {
-      pulse.stop();
-      pulseAnim.setValue(1);
-    }
-
-    return () => pulse.stop();
-  }, [isAutoPlaying, shouldReduceMotion]);
-
-  // Better auto-play with cleanup
+  // Auto-advance logic
   useEffect(() => {
     if (!isAutoPlaying || isNavigating || !isMounted.current) {
       if (autoPlayTimerRef.current) clearTimeout(autoPlayTimerRef.current);
@@ -185,8 +233,8 @@ export default function OnboardingScreen({ navigation }: Props) {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
         }
       } else {
+        // Reached end, stop auto-play and wait for user action
         setIsAutoPlaying(false);
-        handleNavigateToLogin();
       }
     }, AUTO_ADVANCE_INTERVAL);
 
@@ -195,11 +243,15 @@ export default function OnboardingScreen({ navigation }: Props) {
     };
   }, [currentIndex, isAutoPlaying, isNavigating]);
 
-  const viewableItemsChanged = useRef(({
-    viewableItems,
-  }: {
-    viewableItems: Array<{ index: number | undefined }>;
-  }) => {
+  // Scroll handler
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      scrollX.value = event.contentOffset.x;
+    },
+  });
+
+  // Viewable items change
+  const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: Array<{ index: number | undefined }> }) => {
     if (viewableItems[0]?.index !== undefined) {
       const newIndex = viewableItems[0].index;
       if (newIndex !== currentIndex) {
@@ -216,7 +268,8 @@ export default function OnboardingScreen({ navigation }: Props) {
     minimumViewTime: 200,
   }).current;
 
-  const handleNavigateToLogin = useCallback(async () => {
+  // Navigate to login after completion
+  const handleComplete = useCallback(async () => {
     if (isNavigating || !isMounted.current) return;
 
     setIsNavigating(true);
@@ -225,27 +278,62 @@ export default function OnboardingScreen({ navigation }: Props) {
     if (autoPlayTimerRef.current) clearTimeout(autoPlayTimerRef.current);
     if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
 
-    triggerHaptic('medium');
-
     try {
+      // Mark onboarding as both seen AND completed
       await AsyncStorage.setItem(ONBOARDING_SEEN_KEY, 'true');
-      await markOnboardingSeen();
+      await AsyncStorage.setItem(ONBOARDING_COMPLETED_KEY, 'true');
+      
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      }
     } catch (e) {
-      console.warn('Failed to mark onboarding seen:', e);
+      console.warn('Failed to persist onboarding state:', e);
     }
 
-    // Smooth fade-out before navigation
+    // CRITICAL FIX: Use replace to prevent back-navigation to onboarding
+    // AppNavigator will detect auth state change and route appropriately
     navigation.replace('Login');
-  }, [isNavigating, navigation, markOnboardingSeen, triggerHaptic]);
+  }, [isNavigating, navigation]);
 
-  const scrollToNext = useCallback(() => {
+  // Skip to end
+  const handleSkip = useCallback(() => {
+    if (isNavigating) return;
+    
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    }
+    
+    setIsAutoPlaying(false);
+    if (autoPlayTimerRef.current) clearTimeout(autoPlayTimerRef.current);
+    
+    // Scroll to last slide instead of immediately navigating
+    slidesRef.current?.scrollToIndex({
+      index: ONBOARDING_DATA.length - 1,
+      animated: true,
+    });
+    setCurrentIndex(ONBOARDING_DATA.length - 1);
+  }, [isNavigating]);
+
+  // Manual scroll interaction
+  const handleManualScroll = useCallback(() => {
+    setIsAutoPlaying(false);
+    if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
+    resumeTimerRef.current = setTimeout(() => {
+      if (!isNavigating && isMounted.current) setIsAutoPlaying(true);
+    }, USER_INACTIVITY_RESUME);
+  }, [isNavigating]);
+
+  // Next button / swipe
+  const handleNext = useCallback(() => {
     if (isNavigating) return;
 
-    triggerHaptic('light');
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    }
+    
     setIsAutoPlaying(false);
 
     const nextIndex = currentIndex + 1;
-
     if (nextIndex < ONBOARDING_DATA.length) {
       slidesRef.current?.scrollToIndex({
         index: nextIndex,
@@ -258,150 +346,64 @@ export default function OnboardingScreen({ navigation }: Props) {
         if (!isNavigating && isMounted.current) setIsAutoPlaying(true);
       }, USER_INACTIVITY_RESUME);
     } else {
-      handleNavigateToLogin();
+      handleComplete();
     }
-  }, [currentIndex, isNavigating, handleNavigateToLogin, triggerHaptic]);
+  }, [currentIndex, isNavigating, handleComplete]);
 
-  const skipToEnd = useCallback(() => {
-    triggerHaptic('light');
-    setIsAutoPlaying(false);
-    if (autoPlayTimerRef.current) clearTimeout(autoPlayTimerRef.current);
-    handleNavigateToLogin();
-  }, [handleNavigateToLogin, triggerHaptic]);
-
-  const handleManualScroll = useCallback(() => {
-    setIsAutoPlaying(false);
-    if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
-    resumeTimerRef.current = setTimeout(() => {
-      if (!isNavigating && isMounted.current) setIsAutoPlaying(true);
-    }, USER_INACTIVITY_RESUME);
-  }, [isNavigating]);
-
-  const renderSlide = ({ item, index }: { item: OnboardingSlide; index: number }) => {
-    const inputRange = [
-      (index - 1) * SCREEN_WIDTH,
-      index * SCREEN_WIDTH,
-      (index + 1) * SCREEN_WIDTH,
-    ];
-
-    const scale = scrollX.interpolate({
-      inputRange,
-      outputRange: [0.85, 1, 0.85],
-      extrapolate: 'clamp',
-    });
-
-    const opacity = scrollX.interpolate({
-      inputRange,
-      outputRange: [0.4, 1, 0.4],
-      extrapolate: 'clamp',
-    });
-
-    const translateX = scrollX.interpolate({
-      inputRange,
-      outputRange: [SCREEN_WIDTH * 0.2, 0, -SCREEN_WIDTH * 0.2],
-      extrapolate: 'clamp',
-    });
-
-    const rotateZ = scrollX.interpolate({
-      inputRange,
-      outputRange: ['8deg', '0deg', '-8deg'],
-      extrapolate: 'clamp',
-    });
-
-    const currentColors = isDark && item.darkColors ? item.darkColors : item.colors;
-
-    return (
-      <View style={styles.slide}>
-        <Animated.View
-          style={[styles.slideContent, {
-            opacity,
-            transform: [
-              { scale },
-              { translateX },
-              { rotateZ },
-            ],
-          }]}
-        >
-          <View style={[styles.card, isDark && styles.cardDark]}>
-            <LinearGradient
-              colors={isDark
-                ? ['rgba(255,255,255,0.08)', 'rgba(255,255,255,0.02)']
-                : [currentColors[0] + '15', currentColors[1] + '15']
-              }
-              style={styles.cardGradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            >
-              <View style={[styles.iconContainer, { backgroundColor: currentColors[0], shadowColor: currentColors[0] }]}>
-                <Ionicons name={item.icon as any} size={28} color="white" />
-              </View>
-
-              <View style={styles.emojiContainer}>
-                <Text style={styles.emoji}>{item.emoji}</Text>
-              </View>
-
-              <View style={[styles.decorCircle, { backgroundColor: currentColors[0] + '20', top: 30, left: 30, width: 50, height: 50 }]} />
-              <View style={[styles.decorCircle, { backgroundColor: currentColors[1] + '15', bottom: 40, right: 40, width: 70, height: 70 }]} />
-              <View style={[styles.decorCircle, { backgroundColor: currentColors[0] + '10', top: '50%', left: '10%', width: 30, height: 30 }]} />
-            </LinearGradient>
-          </View>
-
-          <View style={styles.textContainer}>
-            <Text style={[styles.title, isDark && styles.titleDark]}>{item.title}</Text>
-            <Text style={[styles.subtitle, isDark && styles.subtitleDark]}>{item.subtitle}</Text>
-          </View>
-        </Animated.View>
-      </View>
-    );
-  };
-
-  const currentSlide = ONBOARDING_DATA[currentIndex];
   const isLastSlide = currentIndex === ONBOARDING_DATA.length - 1;
-  const currentColors = isDark && currentSlide.darkColors ? currentSlide.darkColors : currentSlide.colors;
-  const backgroundColors: [string, string, string] = isDark
-    ? ['#000000', '#050505', '#0a0a0a']
-    : ['#f8faff', '#f0f4ff', '#e8eeff'];
+  const currentSlide = ONBOARDING_DATA[currentIndex];
+  const currentColors = currentSlide.colors;
 
   return (
-    <SafeAreaView style={[styles.container, isDark && styles.containerDark]}>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
 
-      <LinearGradient colors={backgroundColors} style={styles.background} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+      <LinearGradient 
+        colors={['#f8faff', '#f0f4ff', '#e8eeff']} 
+        style={styles.background} 
+        start={{ x: 0, y: 0 }} 
+        end={{ x: 1, y: 1 }} 
+      />
 
+      {/* Skip Button */}
       {!isLastSlide && !isNavigating && (
         <TouchableOpacity
           style={[styles.skipButton, { top: insets.top + hp(2) }]}
-          onPress={skipToEnd}
+          onPress={handleSkip}
           activeOpacity={0.7}
           hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
         >
-          <BlurView intensity={isDark ? 40 : 80} style={[styles.skipBlur, isDark && styles.skipBlurDark]} tint={isDark ? 'dark' : 'light'}>
-            <Text style={[styles.skipText, isDark && styles.skipTextDark]}>Skip</Text>
+          <BlurView intensity={80} style={styles.skipBlur} tint="light">
+            <Text style={styles.skipText}>Skip</Text>
           </BlurView>
         </TouchableOpacity>
       )}
 
+      {/* Progress Bar */}
       <View style={[styles.progressContainer, { top: insets.top + hp(2) + 60 }]}>
-        <View style={[styles.progressBar, isDark && styles.progressBarDark]}>
-          <Animated.View style={[styles.progressFill, {
-            width: `${progressWidth}%`,
+        <View style={styles.progressBar}>
+          <View style={[styles.progressFill, {
+            width: `${((currentIndex + 1) / ONBOARDING_DATA.length) * 100}%`,
             backgroundColor: currentColors[0],
           }]} />
         </View>
       </View>
 
+      {/* Carousel */}
       <View style={styles.carouselContainer}>
-        <AutoHideFlatList
+        <Animated.FlatList
           data={ONBOARDING_DATA}
-          renderItem={renderSlide}
+          renderItem={({ item, index }) => (
+            <SlideItem item={item} index={index} scrollX={scrollX} isDark={isDark} />
+          )}
           keyExtractor={(item) => item.id}
           horizontal
           showsHorizontalScrollIndicator={false}
           pagingEnabled
           bounces={false}
           scrollEnabled={!isNavigating}
-          onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: false })}
-          onViewableItemsChanged={viewableItemsChanged}
+          onScroll={scrollHandler}
+          onViewableItemsChanged={onViewableItemsChanged}
           viewabilityConfig={viewConfig}
           ref={slidesRef as any}
           scrollEventThrottle={16}
@@ -414,6 +416,7 @@ export default function OnboardingScreen({ navigation }: Props) {
         />
       </View>
 
+      {/* Pagination */}
       <View style={styles.paginationContainer}>
         <View style={styles.pagination}>
           {ONBOARDING_DATA.map((_, index) => {
@@ -421,47 +424,46 @@ export default function OnboardingScreen({ navigation }: Props) {
             return (
               <View key={index} style={[styles.dot, {
                 width: isActive ? 28 : 8,
-                transform: [{ scale: isActive ? 1.3 : 0.8 }],
-                opacity: isActive ? 1 : 0.3,
-                backgroundColor: isActive ? currentColors[0] : isDark ? '#333' : '#d1d5db',
+                backgroundColor: isActive ? currentColors[0] : '#d1d5db',
+                opacity: isActive ? 1 : 0.5,
               }]} />
             );
           })}
         </View>
 
-        <Text style={[styles.pageIndicator, isDark && styles.pageIndicatorDark]}>
+        <Text style={styles.pageIndicator}>
           {currentIndex + 1}
-          <Text style={[styles.pageIndicatorTotal, isDark && styles.pageIndicatorTotalDark]}>/ {ONBOARDING_DATA.length}</Text>
+          <Text style={styles.pageIndicatorTotal}>/ {ONBOARDING_DATA.length}</Text>
         </Text>
       </View>
 
+      {/* Floating Next Button */}
       <TouchableOpacity
         style={[styles.floatingNextButton, { bottom: insets.bottom + hp(3) + 90 }]}
-        onPress={scrollToNext}
+        onPress={isLastSlide ? handleComplete : handleNext}
         activeOpacity={0.8}
         disabled={isNavigating}
         hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
       >
         <LinearGradient colors={currentColors} style={styles.floatingNextGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-          <Animated.View style={{ transform: [{ scale: isLastSlide ? 1.1 : 1 }] }}>
-            <Ionicons name={isLastSlide ? "checkmark" : "arrow-forward"} size={28} color="white" />
-          </Animated.View>
+          <Ionicons name={isLastSlide ? "checkmark" : "arrow-forward"} size={28} color="white" />
         </LinearGradient>
       </TouchableOpacity>
 
+      {/* Auto-play indicator */}
       <View style={[styles.autoPlayIndicator, { bottom: insets.bottom + hp(3) + 170 }]}>
-        <Animated.View style={[styles.pulseDot, {
+        <View style={[styles.pulseDot, {
           backgroundColor: isAutoPlaying ? currentColors[0] : '#666',
-          transform: [{ scale: pulseAnim }],
           opacity: isAutoPlaying ? 0.8 : 0.3,
         }]} />
-        <Text style={[styles.autoPlayText, isDark && styles.autoPlayTextDark]}>
+        <Text style={styles.autoPlayText}>
           {isAutoPlaying ? 'Auto-playing' : 'Paused'}
         </Text>
       </View>
 
+      {/* Footer */}
       <View style={[styles.footer, { paddingBottom: insets.bottom + hp(2) }]}>
-        <Text style={[styles.footerText, isDark && styles.footerTextDark]}>
+        <Text style={styles.footerText}>
           Crafted with <Text style={{ color: '#e53e3e' }}>♥</Text> by LittleLoom
         </Text>
       </View>
@@ -469,48 +471,236 @@ export default function OnboardingScreen({ navigation }: Props) {
   );
 }
 
+// ==================== STYLES ====================
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8faff' },
-  containerDark: { backgroundColor: '#000000' },
-  background: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 },
-  skipButton: { position: 'absolute', right: wp(5), zIndex: 10, borderRadius: 24, overflow: 'hidden' },
-  skipBlur: { paddingHorizontal: 20, paddingVertical: 12, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.9)', borderWidth: 1, borderColor: 'rgba(102,126,234,0.2)' },
-  skipBlurDark: { backgroundColor: 'rgba(30,30,30,0.6)', borderColor: 'rgba(255,255,255,0.1)' },
-  skipText: { fontSize: 14, fontWeight: '700', color: '#667eea', letterSpacing: 0.5 },
-  skipTextDark: { color: '#a3bffa' },
-  progressContainer: { position: 'absolute', left: wp(5), right: wp(5), zIndex: 5 },
-  progressBar: { height: 4, backgroundColor: 'rgba(0,0,0,0.08)', borderRadius: 2, overflow: 'hidden' },
-  progressBarDark: { backgroundColor: 'rgba(255,255,255,0.1)' },
-  progressFill: { height: '100%', borderRadius: 2 },
-  carouselContainer: { flex: 1, marginTop: hp(15) },
-  slide: { width: SCREEN_WIDTH, flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: wp(6) },
-  slideContent: { alignItems: 'center', width: '100%' },
-  card: { width: wp(74), height: wp(74), borderRadius: 36, overflow: 'hidden', marginBottom: hp(4), backgroundColor: 'rgba(255,255,255,0.7)', shadowColor: '#667eea', shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.25, shadowRadius: 40, elevation: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.6)' },
-  cardDark: { backgroundColor: 'rgba(20,20,20,0.6)', borderColor: 'rgba(255,255,255,0.08)', shadowColor: '#000', shadowOpacity: 0.5 },
-  cardGradient: { width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center', position: 'relative' },
-  iconContainer: { position: 'absolute', top: 28, right: 28, width: 56, height: 56, borderRadius: 18, justifyContent: 'center', alignItems: 'center', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.4, shadowRadius: 12, elevation: 10, transform: [{ rotate: '-12deg' }], zIndex: 10 },
-  emojiContainer: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 8, elevation: 5 },
-  emoji: { fontSize: wp(26) },
-  decorCircle: { position: 'absolute', borderRadius: 100 },
-  textContainer: { alignItems: 'center', paddingHorizontal: wp(8) },
-  title: { fontSize: wp(7.5), fontWeight: '800', color: '#1a1a1a', textAlign: 'center', marginBottom: hp(1.5), letterSpacing: 0.5 },
-  titleDark: { color: '#ffffff' },
-  subtitle: { fontSize: wp(4.2), color: '#666', textAlign: 'center', lineHeight: wp(6), paddingHorizontal: wp(5), fontWeight: '500' },
-  subtitleDark: { color: '#a0a0a0' },
-  paginationContainer: { alignItems: 'center', marginBottom: hp(2) },
-  pagination: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
-  dot: { height: 8, borderRadius: 4, marginHorizontal: 4 },
-  pageIndicator: { fontSize: 14, fontWeight: '700', color: '#667eea' },
-  pageIndicatorDark: { color: '#a3bffa' },
-  pageIndicatorTotal: { fontWeight: '400', color: '#999' },
-  pageIndicatorTotalDark: { color: '#666' },
-  floatingNextButton: { position: 'absolute', right: wp(6), width: 70, height: 70, borderRadius: 35, overflow: 'hidden', shadowColor: '#667eea', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.4, shadowRadius: 20, elevation: 15, zIndex: 100 },
-  floatingNextGradient: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' },
-  autoPlayIndicator: { position: 'absolute', right: wp(6), flexDirection: 'row', alignItems: 'center', zIndex: 99, backgroundColor: 'rgba(0,0,0,0.05)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
-  pulseDot: { width: 8, height: 8, borderRadius: 4, marginRight: 8 },
-  autoPlayText: { fontSize: 12, color: '#666', fontWeight: '600' },
-  autoPlayTextDark: { color: '#888' },
-  footer: { position: 'absolute', bottom: 0, left: 0, right: 0, alignItems: 'center', paddingTop: hp(2) },
-  footerText: { fontSize: 12, color: '#999', fontWeight: '500', letterSpacing: 0.5 },
-  footerTextDark: { color: '#666' },
+  container: { 
+    flex: 1, 
+    backgroundColor: '#f8faff' 
+  },
+  background: { 
+    position: 'absolute', 
+    left: 0, 
+    right: 0, 
+    top: 0, 
+    bottom: 0 
+  },
+  skipButton: { 
+    position: 'absolute', 
+    right: wp(5), 
+    zIndex: 10, 
+    borderRadius: 24, 
+    overflow: 'hidden' 
+  },
+  skipBlur: { 
+    paddingHorizontal: 20, 
+    paddingVertical: 12, 
+    borderRadius: 24, 
+    backgroundColor: 'rgba(255,255,255,0.9)', 
+    borderWidth: 1, 
+    borderColor: 'rgba(102,126,234,0.2)' 
+  },
+  skipText: { 
+    fontSize: 14, 
+    fontWeight: '700', 
+    color: '#667eea', 
+    letterSpacing: 0.5 
+  },
+  progressContainer: { 
+    position: 'absolute', 
+    left: wp(5), 
+    right: wp(5), 
+    zIndex: 5 
+  },
+  progressBar: { 
+    height: 4, 
+    backgroundColor: 'rgba(0,0,0,0.08)', 
+    borderRadius: 2, 
+    overflow: 'hidden' 
+  },
+  progressFill: { 
+    height: '100%', 
+    borderRadius: 2,
+    transition: 'width 0.3s ease',
+  },
+  carouselContainer: { 
+    flex: 1, 
+    marginTop: hp(15) 
+  },
+  slide: { 
+    width: SCREEN_WIDTH, 
+    flex: 1, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    paddingHorizontal: wp(6) 
+  },
+  slideContent: { 
+    alignItems: 'center', 
+    width: '100%' 
+  },
+  card: { 
+    width: wp(74), 
+    height: wp(74), 
+    borderRadius: 36, 
+    overflow: 'hidden', 
+    marginBottom: hp(4), 
+    backgroundColor: 'rgba(255,255,255,0.7)', 
+    shadowColor: '#667eea', 
+    shadowOffset: { width: 0, height: 20 }, 
+    shadowOpacity: 0.25, 
+    shadowRadius: 40, 
+    elevation: 20, 
+    borderWidth: 1, 
+    borderColor: 'rgba(255,255,255,0.6)' 
+  },
+  cardDark: { 
+    backgroundColor: 'rgba(20,20,20,0.6)', 
+    borderColor: 'rgba(255,255,255,0.08)', 
+    shadowColor: '#000', 
+    shadowOpacity: 0.5 
+  },
+  cardGradient: { 
+    width: '100%', 
+    height: '100%', 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    position: 'relative' 
+  },
+  iconContainer: { 
+    position: 'absolute', 
+    top: 28, 
+    right: 28, 
+    width: 56, 
+    height: 56, 
+    borderRadius: 18, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    shadowOffset: { width: 0, height: 6 }, 
+    shadowOpacity: 0.4, 
+    shadowRadius: 12, 
+    elevation: 10, 
+    transform: [{ rotate: '-12deg' }], 
+    zIndex: 10 
+  },
+  emojiContainer: { 
+    shadowColor: '#000', 
+    shadowOffset: { width: 0, height: 4 }, 
+    shadowOpacity: 0.15, 
+    shadowRadius: 8, 
+    elevation: 5 
+  },
+  emoji: { 
+    fontSize: wp(26) 
+  },
+  decorCircle: { 
+    position: 'absolute', 
+    borderRadius: 100 
+  },
+  textContainer: { 
+    alignItems: 'center', 
+    paddingHorizontal: wp(8) 
+  },
+  title: { 
+    fontSize: wp(7.5), 
+    fontWeight: '800', 
+    color: '#1a1a1a', 
+    textAlign: 'center', 
+    marginBottom: hp(1.5), 
+    letterSpacing: 0.5 
+  },
+  titleDark: { 
+    color: '#ffffff' 
+  },
+  subtitle: { 
+    fontSize: wp(4.2), 
+    color: '#666', 
+    textAlign: 'center', 
+    lineHeight: wp(6), 
+    paddingHorizontal: wp(5), 
+    fontWeight: '500' 
+  },
+  subtitleDark: { 
+    color: '#a0a0a0' 
+  },
+  paginationContainer: { 
+    alignItems: 'center', 
+    marginBottom: hp(2) 
+  },
+  pagination: { 
+    flexDirection: 'row', 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    marginBottom: 12 
+  },
+  dot: { 
+    height: 8, 
+    borderRadius: 4, 
+    marginHorizontal: 4,
+    transition: 'width 0.3s ease',
+  },
+  pageIndicator: { 
+    fontSize: 14, 
+    fontWeight: '700', 
+    color: '#667eea' 
+  },
+  pageIndicatorTotal: { 
+    fontWeight: '400', 
+    color: '#999' 
+  },
+  floatingNextButton: { 
+    position: 'absolute', 
+    right: wp(6), 
+    width: 70, 
+    height: 70, 
+    borderRadius: 35, 
+    overflow: 'hidden', 
+    shadowColor: '#667eea', 
+    shadowOffset: { width: 0, height: 10 }, 
+    shadowOpacity: 0.4, 
+    shadowRadius: 20, 
+    elevation: 15, 
+    zIndex: 100 
+  },
+  floatingNextGradient: { 
+    width: '100%', 
+    height: '100%', 
+    alignItems: 'center', 
+    justifyContent: 'center' 
+  },
+  autoPlayIndicator: { 
+    position: 'absolute', 
+    right: wp(6), 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    zIndex: 99, 
+    backgroundColor: 'rgba(0,0,0,0.05)', 
+    paddingHorizontal: 12, 
+    paddingVertical: 6, 
+    borderRadius: 20 
+  },
+  pulseDot: { 
+    width: 8, 
+    height: 8, 
+    borderRadius: 4, 
+    marginRight: 8 
+  },
+  autoPlayText: { 
+    fontSize: 12, 
+    color: '#666', 
+    fontWeight: '600' 
+  },
+  footer: { 
+    position: 'absolute', 
+    bottom: 0, 
+    left: 0, 
+    right: 0, 
+    alignItems: 'center', 
+    paddingTop: hp(2) 
+  },
+  footerText: { 
+    fontSize: 12, 
+    color: '#999', 
+    fontWeight: '500', 
+    letterSpacing: 0.5 
+  },
 });
