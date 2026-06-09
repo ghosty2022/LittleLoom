@@ -3802,9 +3802,9 @@ ee-first@1.1.1:
   integrity sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==
 
 electron-to-chromium@^1.5.328:
-  version "1.5.369"
-  resolved "https://registry.yarnpkg.com/electron-to-chromium/-/electron-to-chromium-1.5.369.tgz#8c6e6a6d2d120311a853b76adde90bcd49e3076c"
-  integrity sha512-XM22K9FNaaCOvMMrBn1caIc8v0g6+pKt660ZbfQqUZvfil0hEzr8ZoiY7VcSLGM3L/x3rz5PqZrk+bKOOmVM9w==
+  version "1.5.370"
+  resolved "https://registry.yarnpkg.com/electron-to-chromium/-/electron-to-chromium-1.5.370.tgz#47dbc6565e5f13991a483e10cddff4bf0933de96"
+  integrity sha512-D5tSHJReAb/Kf3Hu9F/GO4lJuSWzEWHwvQ/kKSUP7pimNgvxkSKj+gUQhHpKKACwrin7rS3byU7IxreF56rl5g==
 
 emittery@^0.13.1:
   version "0.13.1"
@@ -4381,10 +4381,10 @@ expo-auth-session@~6.0.0:
     expo-web-browser "~14.0.2"
     invariant "^2.2.4"
 
-expo-av@^16.0.8:
-  version "16.0.8"
-  resolved "https://registry.yarnpkg.com/expo-av/-/expo-av-16.0.8.tgz#b1671127f3b2ecaeb9c69fc2301cf791d4504dd6"
-  integrity sha512-cmVPftGR/ca7XBgs7R6ky36lF3OC0/MM/lpgX/yXqfv0jASTsh7AYX9JxHCwFmF+Z6JEB1vne9FDx4GiLcGreQ==
+expo-av@~15.0.2:
+  version "15.0.2"
+  resolved "https://registry.yarnpkg.com/expo-av/-/expo-av-15.0.2.tgz#65bb08658a7fe3a67aa47da614abbfae9adb684e"
+  integrity sha512-AHIHXdqLgK1dfHZF0JzX3YSVySGMrWn9QtPzaVjw54FAzvXfMt4sIoq4qRL/9XWCP9+ICcCs/u3EcvmxQjrfcA==
 
 expo-background-fetch@~13.0.6:
   version "13.0.6"
@@ -4595,10 +4595,10 @@ expo-modules-autolinking@2.0.8:
     require-from-string "^2.0.2"
     resolve-from "^5.0.0"
 
-expo-modules-core@2.2.3:
-  version "2.2.3"
-  resolved "https://registry.yarnpkg.com/expo-modules-core/-/expo-modules-core-2.2.3.tgz#438084d5386a95dc7327656072c4ff05dd101d99"
-  integrity sha512-01QqZzpP/wWlxnNly4G06MsOBUTbMDj02DQigZoXfDh80vd/rk3/uVXqnZgOdLSggTs6DnvOgAUy0H2q30XdUg==
+expo-modules-core@2.2.3, expo-modules-core@~1.12.0:
+  version "1.12.26"
+  resolved "https://registry.yarnpkg.com/expo-modules-core/-/expo-modules-core-1.12.26.tgz#86c4087dc6246abfc4d7f5e61097dc8cc4b22262"
+  integrity sha512-y8yDWjOi+rQRdO+HY+LnUlz8qzHerUaw/LUjKPU/mX8PRXP4UUPEEp5fjAwBU44xjNmYSHWZDwet4IBBE+yQUA==
   dependencies:
     invariant "^2.2.4"
 
