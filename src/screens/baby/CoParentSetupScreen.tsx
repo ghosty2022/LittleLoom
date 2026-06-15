@@ -1,8 +1,3 @@
-// src/screens/baby/Parent2SetupScreen.tsx
-// FIXED: handleSkip now properly marks parent2 setup as skipped
-// FIXED: Prevents infinite loop back to Parent2OptionalScreen
-// FIXED: Proper error handling and navigation flow
-
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
@@ -27,6 +22,7 @@ import { useFamily } from '../../context/FamilyContext';
 import type { RootStackParamList } from '../../types/navigation';
 import { useCustomization } from '../../hooks/useCustomization';
 import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
+import { SafeAvatar } from '../../components/SafeAvatar';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Parent2Setup'>;
 
@@ -110,7 +106,7 @@ const ConfirmModal = ({ visible, title, message, onConfirm, onCancel, type = 'de
   );
 };
 
-export default function Parent2SetupScreen({ navigation }: Props) {
+export default function CoParentSetupScreen({ navigation }: Props) {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -160,7 +156,6 @@ export default function Parent2SetupScreen({ navigation }: Props) {
     }
   }, [fullName, email, inviteMember, completeSetup, navigation, showToast, triggerHaptic]);
 
-  // CRITICAL FIX: Skip must mark parent2 as skipped to prevent infinite loop
   const handleSkip = useCallback(() => {
     triggerHaptic('light');
     setConfirmModal({
@@ -170,7 +165,6 @@ export default function Parent2SetupScreen({ navigation }: Props) {
       type: 'default',
       onConfirm: async () => {
         try {
-          // CRITICAL: Mark parent2 as skipped so AppNavigator knows setup is done
           await skipSetup('parent2');
           showToast('info', 'Skipped', 'You can add a co-parent later');
           setTimeout(() => {
@@ -211,6 +205,26 @@ export default function Parent2SetupScreen({ navigation }: Props) {
               </TouchableOpacity>
               <Text style={[styles.title, isDark && styles.textDark]}>Add Co-Parent</Text>
               <View style={styles.placeholder} />
+            </AnimatedReanimated.View>
+
+            <AnimatedReanimated.View
+              entering={shouldReduceMotion ? undefined : FadeInUp.delay(50)}
+              style={styles.avatarSection}
+            >
+              <SafeAvatar
+                avatar={null}
+                size={96}
+                fallbackIcon="person-add"
+                fallbackColor={dynamicPrimary}
+                fallbackBgColor={dynamicPrimary + '15'}
+                borderWidth={3}
+                borderColor={dynamicPrimary + '40'}
+                borderRadius={48}
+                animated={!shouldReduceMotion}
+              />
+              <Text style={[styles.avatarLabel, isDark && { color: '#94a3b8' }]}>
+                Invite your partner to join
+              </Text>
             </AnimatedReanimated.View>
 
             <AnimatedReanimated.View
@@ -496,5 +510,16 @@ const styles = StyleSheet.create({
     color: '#64748b',
     fontSize: 15,
     fontWeight: '600'
+  },
+
+  avatarSection: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+
+  avatarLabel: {
+    fontSize: 14,
+    color: '#64748b',
+    fontWeight: '500',
   },
 });

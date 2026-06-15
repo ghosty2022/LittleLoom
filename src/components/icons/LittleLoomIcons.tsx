@@ -1,8 +1,3 @@
-/**
- * LittleLoom Custom Icon Library
- * Comprehensive baby-care themed icons with theme support
- */
-
 import React from 'react';
 import { View, StyleSheet, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -302,8 +297,7 @@ export const LittleLoomIcon: React.FC<LittleLoomIconProps> = ({
         <Text style={[
           styles.iconLabel,
           labelPosition === 'right' && styles.iconLabelRight,
-          { color: iconColor }}
-        ]}>
+          { color: iconColor }]}>
           {config.label}
         </Text>
       )}
@@ -464,3 +458,4 @@ const styles = StyleSheet.create({
 });
 
 export default BABY_ICONS;
+

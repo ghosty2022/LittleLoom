@@ -1,8 +1,3 @@
-// src/screens/main/SettingsScreen.tsx
-// COMPLETELY REDESIGNED: Modern glassmorphism, proper navigation, full theming integration
-// FEATURES: SafeAvatar/SafeBabyAvatar, useCustomization, useMedia, SweetAlert, collapsible sections
-// FIXED: All navigation routes type-safe, proper haptic feedback, spring animations
-
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
@@ -56,9 +51,6 @@ type SettingsScreenProps = NativeStackScreenProps<RootStackParamList, 'Main'>;
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-// ============================================
-// ANIMATED TOUCHABLE — Spring scale on press
-// ============================================
 const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
 
 interface PressableScaleProps {
@@ -118,9 +110,6 @@ const PressableScale: React.FC<PressableScaleProps> = React.memo(({
   );
 });
 
-// ============================================
-// SECTION HEADER — Collapsible with chevron rotation
-// ============================================
 interface SectionHeaderProps {
   icon: keyof typeof Ionicons.glyphMap;
   title: string;
@@ -194,9 +183,6 @@ const SectionHeader: React.FC<SectionHeaderProps> = React.memo(({
   );
 });
 
-// ============================================
-// MENU ITEM — Modern glassmorphism row
-// ============================================
 interface MenuItemProps {
   icon: keyof typeof Ionicons.glyphMap;
   title: string;
@@ -306,9 +292,6 @@ const MenuItem: React.FC<MenuItemProps> = React.memo(({
   );
 });
 
-// ============================================
-// STAT CARD — Glassmorphism metric card
-// ============================================
 interface StatCardProps {
   icon: keyof typeof Ionicons.glyphMap;
   value: string | number;
@@ -334,9 +317,6 @@ const StatCard: React.FC<StatCardProps> = React.memo(({ icon, value, label, colo
   </PressableScale>
 ));
 
-// ============================================
-// QUICK ACTION BUTTON — Circular icon button
-// ============================================
 interface QuickActionProps {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
@@ -354,9 +334,6 @@ const QuickAction: React.FC<QuickActionProps> = React.memo(({ icon, label, color
   </PressableScale>
 ));
 
-// ============================================
-// FAMILY MEMBER AVATAR — Horizontal scroll item
-// ============================================
 interface FamilyMemberProps {
   avatar?: string | number;
   name: string;
@@ -407,9 +384,6 @@ const FamilyMemberItem: React.FC<FamilyMemberProps> = React.memo(({
   </PressableScale>
 ));
 
-// ============================================
-// BABY SELECTION MODAL — Modern bottom sheet style
-// ============================================
 interface BabySelectionModalProps {
   visible: boolean;
   onClose: () => void;
@@ -535,9 +509,6 @@ const BabySelectionModal: React.FC<BabySelectionModalProps> = React.memo(({
   );
 });
 
-// ============================================
-// PROFILE HEADER CARD — Glassmorphism hero
-// ============================================
 interface ProfileHeaderProps {
   navigation: any;
   isDark: boolean;
@@ -822,7 +793,7 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = React.memo(({
           label="Alerts"
           color="#f59e0b"
           isDark={isDark}
-          onPress={() => navigation.navigate('Reminders')}
+          onPress={() => navigation.navigate('TrackerReminders')}
         />
       </View>
 
@@ -850,9 +821,6 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = React.memo(({
   );
 });
 
-// ============================================
-// MAIN SETTINGS SCREEN
-// ============================================
 export default function SettingsScreen({ navigation }: SettingsScreenProps) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
     new Set(['security', 'preferences', 'family'])
@@ -886,7 +854,6 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
   const sweetAlert = useSweetAlert();
   const { isNavVisible, showNav } = useApp();
 
-  // ─── Theme Integration ───
   const {
     themeColors,
     fullThemeColors,
@@ -916,7 +883,6 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
     milestones: babyStats.milestones || 0,
   };
 
-  // ─── Section Toggle ───
   const toggleSection = useCallback((section: string) => {
     if (hapticFeedback) triggerHaptic('light').catch(() => {});
     setExpandedSections((prev) => {
@@ -927,15 +893,10 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
     });
   }, [hapticFeedback, triggerHaptic]);
 
-  // ─── Biometric Toggle ───
   const handleBiometricToggle = useCallback(async (enabled: boolean) => {
     if (enabled) {
       if (!hasBiometric) {
-        sweetAlert.alert(
-          'Biometric Not Available',
-          'Please set up biometric authentication in your device settings first.',
-          'warning'
-        );
+        sweetAlert.alert('Biometric Not Available', 'Please set up biometric authentication in your device settings first.', 'warning');
         return;
       }
       navigation.navigate('BiometricSetup');
@@ -956,25 +917,18 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
     }
   }, [hasBiometric, navigation, sweetAlert, toggleBiometric]);
 
-  // ─── PIN Setup ───
   const handlePinSetup = useCallback(() => {
     navigation.navigate('SecurityCenter', { mode: 'setup' });
   }, [navigation]);
 
-  // ─── Lock Now ───
   const handleLockNow = useCallback(async () => {
     if (!availableMethods.hasPin && !availableMethods.hasBiometric) {
-      sweetAlert.alert(
-        'No Security Enabled',
-        'Please enable PIN or Biometric authentication first.',
-        'warning'
-      );
+      sweetAlert.alert('No Security Enabled', 'Please enable PIN or Biometric authentication first.', 'warning');
       return;
     }
     await lockApp();
   }, [availableMethods, lockApp, sweetAlert]);
 
-  // ─── Auto-Lock Timeout ───
   const handleAutoLockTimeout = useCallback(() => {
     const options = [
       { label: '1 minute', value: 1 },
@@ -987,15 +941,13 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
     ];
 
     sweetAlert.confirm(
-      'Auto-Lock Timeout',
-      'Select when to automatically lock the app',
-      () => {},
-      undefined,
-      'OK',
-      'Cancel'
-    );
-    // Note: For a real picker, you'd use a custom modal. This is a simplified version.
-    // You could extend this with a proper bottom sheet picker.
+    'Auto-Lock Timeout',
+    'Select when to automatically lock the app',
+    () => {},
+    undefined,
+    'OK',
+    'Cancel'
+  );
     Alert.alert(
       'Auto-Lock Timeout',
       'Select when to automatically lock the app',
@@ -1009,33 +961,29 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
     );
   }, [updateAutoLockTimeout, sweetAlert]);
 
-  // ─── Logout ───
   const handleLogout = useCallback(() => {
     sweetAlert.confirm(
-      'Logout',
-      'Are you sure you want to sign out? You will need to sign in again to access your data.',
-      () => {
+    'Logout',
+    'Are you sure you want to sign out? You will need to sign in again to access your data.',
+    () => {
         signOut();
       },
-      undefined,
-      'Logout',
-      'Stay'
-    );
+    undefined,
+    'Logout',
+    'Stay'
+  );
   }, [signOut, sweetAlert]);
 
-  // ─── Baby Selection ───
   const handleSelectBabyFromModal = useCallback((baby: any) => {
     setShowBabyModal(false);
     navigation.navigate('EditProfile', { mode: 'baby', babyId: baby.id });
   }, [navigation]);
 
-  // ─── Format Timeout ───
   const formatTimeout = useCallback((minutes: number) => {
     if (minutes < 60) return `${minutes} min`;
     return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
   }, []);
 
-  // ─── Background Gradient ───
   const bgColors = useMemo(() => {
     if (isDark) {
       return [
@@ -1051,7 +999,6 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
     ];
   }, [isDark, fullThemeColors]);
 
-  // ─── Section Renderers ───
   const renderSecuritySection = useCallback(() => {
     const isExpanded = expandedSections.has('security');
     return (
@@ -1148,7 +1095,7 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
               icon="notifications"
               title="Notifications"
               subtitle="Manage push notifications"
-              onPress={() => navigation.navigate('Reminders')}
+              onPress={() => navigation.navigate('TrackerReminders')}
               color="#4facfe"
               isDark={isDark}
               showArrow
@@ -1209,7 +1156,7 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
           >
             <MenuItem
               icon="people-outline"
-              title="Family Sharing"
+              title="Family Dashboard"
               subtitle="Manage co-parents and guardians"
               onPress={() => navigation.navigate('FamilySharing')}
               color={secondary}
@@ -1273,7 +1220,7 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
               icon="trending-up"
               title="Growth Charts"
               subtitle="Track height, weight, and more"
-              onPress={() => navigation.navigate('GrowthChart')}
+              onPress={() => navigation.navigate('GrowthDashboard')}
               color={accent}
               isDark={isDark}
               showArrow
@@ -1400,7 +1347,6 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
     );
   }, [expandedSections, secondary, isDark, toggleSection, navigation]);
 
-  // ─── Loading State ───
   if (authLoading || babyLoading) {
     return (
       <LinearGradient colors={bgColors} style={styles.container}>
@@ -1531,19 +1477,13 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
   );
 }
 
-// ============================================
-// STYLES
-// ============================================
 const styles = StyleSheet.create({
-  // ─── Layout ───
   container: { flex: 1 },
   content: { paddingHorizontal: 16 },
 
-  // ─── Text Utilities ───
   textLight: { color: '#ffffff' },
   textMuted: { color: '#888' },
 
-  // ─── Loading ───
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -1567,7 +1507,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // ─── Header ───
   header: {
     marginBottom: 20,
     paddingHorizontal: 4,
@@ -1585,7 +1524,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
-  // ─── Profile Card ───
   profileCard: {
     borderRadius: 28,
     padding: 20,
@@ -1641,7 +1579,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.08)',
   },
 
-  // ─── Community Link ───
   communityLink: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1670,7 +1607,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
-  // ─── Stats ───
   statsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1713,7 +1649,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
 
-  // ─── Family Section ───
   familySection: { marginBottom: 18 },
   familySectionTitle: {
     fontSize: 11,
@@ -1803,7 +1738,6 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.1)',
   },
 
-  // ─── Quick Actions ───
   quickActionsRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
@@ -1828,7 +1762,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // ─── Switch Baby ───
   switchBabyRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1864,7 +1797,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
-  // ─── Section Header ───
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1874,7 +1806,6 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   sectionHeaderDark: {
-    // Dark mode handled by text colors
   },
   sectionHeaderLeft: {
     flexDirection: 'row',
@@ -1909,7 +1840,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
-  // ─── Menu Container ───
   menuContainer: {
     borderRadius: 24,
     overflow: 'hidden',
@@ -1918,7 +1848,6 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.1)',
   },
 
-  // ─── Menu Item ───
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1971,7 +1900,6 @@ const styles = StyleSheet.create({
     transform: [{ scaleX: 0.85 }, { scaleY: 0.85 }],
   },
 
-  // ─── Badges ───
   badge: {
     borderRadius: 10,
     minWidth: 22,
@@ -1999,12 +1927,10 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
-  // ─── Section Spacing ───
   section: {
     marginBottom: 4,
   },
 
-  // ─── App Info Footer ───
   appInfo: {
     alignItems: 'center',
     marginTop: 24,
@@ -2039,7 +1965,6 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
 
-  // ─── Logout Button ───
   logoutButton: {
     borderRadius: 20,
     marginTop: 8,
@@ -2059,7 +1984,6 @@ const styles = StyleSheet.create({
     color: '#ef4444',
   },
 
-  // ─── Modal ───
   modalBackdrop: {
     backgroundColor: 'rgba(0,0,0,0.4)',
   },
@@ -2113,7 +2037,6 @@ const styles = StyleSheet.create({
     gap: 8,
   },
 
-  // ─── Baby Option ───
   babyOption: {
     flexDirection: 'row',
     alignItems: 'center',

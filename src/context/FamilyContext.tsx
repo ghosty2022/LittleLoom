@@ -42,6 +42,15 @@ const generateId = (): string => {
   return `${timestamp}-${random}`;
 };
 
+// ✅ Safe alert that doesn't depend on external hooks
+const showAlert = (title: string, message: string) => {
+  if (typeof Alert !== 'undefined') {
+    Alert.alert(title, message);
+  } else {
+    console.warn(`[FamilyContext] ${title}: ${message}`);
+  }
+};
+
 export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { profile, permissions: myPermissions, isLoading: userLoading } = useUser();
   const { currentBaby, updateBaby, babies, switchBaby } = useBaby();
@@ -57,7 +66,6 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const initRef = useRef(false);
 
-  // Gate on user profile being ready
   useEffect(() => {
     if (userLoading) return;
     if (!currentBaby) {
@@ -73,7 +81,6 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return;
     }
     if (initRef.current) {
-      // Already initialized, just refresh
       loadFamily();
       return;
     }
@@ -91,7 +98,6 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     try {
       const members: FamilyMember[] = [];
       
-      // Parent 1: from UserContext profile (single source of truth)
       if (currentBaby.parent1Id && profile) {
         members.push({
           id: currentBaby.parent1Id,
@@ -109,8 +115,6 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           notificationsEnabled: true,
         });
       } else if (currentBaby.parent1Id && !profile) {
-        // Graceful fallback: profile not loaded yet, use placeholder
-        // This prevents the warning — we know the ID but profile hasn't synced yet
         members.push({
           id: currentBaby.parent1Id,
           userId: currentBaby.parent1Id,
@@ -126,7 +130,6 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         });
       }
 
-      // Parent 2: from secure storage
       if (currentBaby.parent2Id) {
         try {
           const parent2Str = await SecureStore.getItemAsync(PARENT2_PROFILE_KEY);
@@ -154,7 +157,6 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
       }
 
-      // Guardians: from AsyncStorage
       const guardiansKey = `littleloom_guardians_${currentBaby.id}`;
       const guardiansStr = await AsyncStorage.getItem(guardiansKey);
       if (guardiansStr) {
@@ -190,14 +192,14 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     updates: Partial<Omit<FamilyMember, 'id' | 'userId' | 'role' | 'permissions' | 'addedAt' | 'addedBy' | 'canBeRemoved'>>
   ): Promise<boolean> => {
     if (!currentBaby?.parent2Id) {
-      Alert.alert('Error', 'No Parent 2 found');
+      showAlert('Error', 'No Parent 2 found');
       return false;
     }
 
     const canManage = myPermissions?.manageFamily ?? false;
       
     if (!canManage) {
-      Alert.alert('Error', 'You do not have permission to update family members');
+      showAlert('Error', 'You do not have permission to update family members');
       return false;
     }
 
@@ -249,7 +251,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return true;
     } catch (error) {
       console.error('Error updating parent2 profile:', error);
-      Alert.alert('Error', 'Failed to update Parent 2 profile');
+      showAlert('Error', 'Failed to update Parent 2 profile');
       return false;
     }
   }, [currentBaby, myPermissions, updateBaby]);
@@ -258,7 +260,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const canManage = myPermissions?.manageFamily ?? false;
       
     if (!canManage) {
-      Alert.alert('Error', 'Permission denied');
+      showAlert('Error', 'Permission denied');
       return false;
     }
 
@@ -277,7 +279,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       
       return true;
     } catch (error) {
-      Alert.alert('Error', 'Failed to update guardian');
+      showAlert('Error', 'Failed to update guardian');
       return false;
     }
   }, [currentBaby, myPermissions, loadFamily]);
@@ -288,7 +290,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (!canManage || !profile || !currentBaby) return false;
 
     if (!EMAIL_REGEX.test(email)) {
-      Alert.alert('Invalid Email', 'Please enter a valid email address');
+      showAlert('Invalid Email', 'Please enter a valid email address');
       return false;
     }
 
@@ -313,7 +315,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       
       const existingInvite = guardians.find(g => g.email.toLowerCase() === email.toLowerCase());
       if (existingInvite) {
-        Alert.alert('Duplicate Invite', 'An invitation has already been sent to this email');
+        showAlert('Duplicate Invite', 'An invitation has already been sent to this email');
         return false;
       }
       
@@ -326,11 +328,11 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       await loadFamily();
       
-      Alert.alert('Invitation Sent', `An invitation has been sent to ${email}`);
+      showAlert('Invitation Sent', `An invitation has been sent to ${email}`);
       
       return true;
     } catch (error) {
-      Alert.alert('Error', 'Failed to send invitation');
+      showAlert('Error', 'Failed to send invitation');
       return false;
     }
   }, [myPermissions, profile, currentBaby, updateBaby, loadFamily]);
@@ -341,7 +343,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (!canManage || !currentBaby) return false;
 
     if (profile?.id === memberId) {
-      Alert.alert('Error', 'You cannot remove yourself from the family');
+      showAlert('Error', 'You cannot remove yourself from the family');
       return false;
     }
 
@@ -372,7 +374,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       return true;
     } catch (error) {
-      Alert.alert('Error', 'Failed to remove member');
+      showAlert('Error', 'Failed to remove member');
       return false;
     }
   }, [myPermissions, currentBaby, updateBaby, state.parent2, profile]);
@@ -381,7 +383,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const member = state.members.find(m => m.id === memberId);
     if (!member) return false;
     
-    Alert.alert('Invitation Resent', `A new invitation has been sent to ${member.email}`);
+    showAlert('Invitation Resent', `A new invitation has been sent to ${member.email}`);
     return true;
   }, [state.members]);
 

@@ -1,1 +1,1 @@
-﻿export { useActivity } from '../context/ActivityContext';
+export { useActivity } from '../context/ActivityContext';

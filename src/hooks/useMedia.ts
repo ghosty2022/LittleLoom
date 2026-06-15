@@ -1,1 +1,1 @@
-﻿export { useMedia } from '../context/MediaContext';
+export { useMedia } from '../context/MediaContext';

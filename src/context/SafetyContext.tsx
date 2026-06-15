@@ -1,4 +1,4 @@
-// src/context/SafetyContext.tsx
+import { useSweetAlert } from '../../components/SweetAlert';
 import React, {
   useCallback,
   useContext,
@@ -130,24 +130,20 @@ interface SafetyState {
 }
 
 interface SafetyContextType extends SafetyState {
-  // Data loading
   loadSafetyData: () => Promise<void>;
   resetSafetyData: () => Promise<void>;
 
-  // Emergency actions
   callEmergency: (number: string, label: string, type?: EmergencyType) => Promise<void>;
   triggerSOS: () => Promise<void>;
   findNearbyHospitals: () => Promise<void>;
   findNearbyPediatricians: () => Promise<void>;
   shareLocationWithEmergency: (contactNumber?: string) => Promise<void>;
 
-  // Location
   startLocationTracking: () => Promise<void>;
   stopLocationTracking: () => void;
   getCurrentAddress: () => Promise<string | null>;
   refreshLocation: () => Promise<SafetyLocation | null>;
 
-  // Topics
   toggleTopicExpanded: (topicId: string) => void;
   markTopicCompleted: (topicId: string) => Promise<void>;
   markTopicIncomplete: (topicId: string) => Promise<void>;
@@ -155,7 +151,6 @@ interface SafetyContextType extends SafetyState {
   getTopicsByCategory: (category: SafetyCategory) => SafetyTopic[];
   searchTopics: (query: string) => SafetyTopic[];
 
-  // Contacts
   addCustomEmergencyContact: (contact: Omit<EmergencyContact, 'id'>) => Promise<void>;
   removeCustomContact: (id: string) => Promise<void>;
   updateEmergencyContact: (id: string, updates: Partial<EmergencyContact>) => Promise<void>;
@@ -168,35 +163,28 @@ interface SafetyContextType extends SafetyState {
   }>) => Promise<void>;
   importDeviceContacts: (contacts: EmergencyContact[]) => Promise<void>;
 
-  // Checklists
   toggleChecklistItem: (checklistId: string, itemId: string) => Promise<void>;
   getChecklistProgress: (category: string) => number;
   resetChecklist: (checklistId: string) => Promise<void>;
 
-  // Tips & scoring
   markTipAsViewed: (topicId: string) => Promise<void>;
   getSafetyScore: () => number;
   getSafetyLevel: () => 'excellent' | 'good' | 'fair' | 'poor';
 
-  // Logs
   getEmergencyLogs: () => EmergencyLog[];
   addEmergencyLog: (log: Omit<EmergencyLog, 'id' | 'timestamp'>) => Promise<void>;
   resolveEmergencyLog: (logId: string) => Promise<void>;
   clearEmergencyLogs: () => Promise<void>;
 
-  // Haptics & feedback
   triggerHaptic: (type: HapticType) => void;
 
-  // First aid
   getFirstAidSteps: (type: FirstAidType) => string[];
 
-  // Doctor Reports — NEW
   addDoctorReport: (report: Omit<DoctorReport, 'id' | 'uploadedAt'>) => Promise<void>;
   approveDoctorReport: (reportId: string, approvedBy: string) => Promise<void>;
   getDoctorReports: () => DoctorReport[];
   deleteDoctorReport: (reportId: string) => Promise<void>;
 
-  // Notifications / Reminders — NEW
   scheduleSafetyReminder: (title: string, body: string, triggerDate: Date) => Promise<string | null>;
   cancelSafetyReminder: (identifier: string) => Promise<void>;
 }
@@ -713,7 +701,7 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const callEmergency = useCallback(
     async (number: string, label: string, type: EmergencyType = 'emergency') => {
       if (!number) {
-        Alert.alert('No Number Set', `Please configure your ${label} number first.`, [{ text: 'OK' }]);
+        sweetAlert.alert('No Number Set', 'Please configure your ${label} number first.', 'info');
         return;
       }
 
@@ -755,7 +743,7 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
                 triggerHaptic('error');
               } catch (error) {
-                Alert.alert('Error', 'Could not initiate call. Please dial manually.');
+                sweetAlert.alert('Error', 'Could not initiate call. Please dial manually.', 'warning');
               }
             },
           },
@@ -846,7 +834,7 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     try {
       const hasPermission = await checkLocationAvailability();
       if (!hasPermission) {
-        Alert.alert('Location Required', 'Please enable location to find nearby hospitals.');
+        sweetAlert.alert('Location Required', 'Please enable location to find nearby hospitals.', 'warning');
         return;
       }
 
@@ -902,7 +890,7 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     try {
       const hasPermission = await checkLocationAvailability();
       if (!hasPermission) {
-        Alert.alert('Location Required', 'Please enable location.');
+        sweetAlert.alert('Location Required', 'Please enable location.', 'warning');
         return;
       }
 
@@ -926,7 +914,7 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       try {
         const hasPermission = await checkLocationAvailability();
         if (!hasPermission) {
-          Alert.alert('Location Required', 'Please enable location sharing.');
+          sweetAlert.alert('Location Required', 'Please enable location sharing.', 'warning');
           return;
         }
 
@@ -970,7 +958,7 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
         triggerHaptic('success');
       } catch (error) {
-        Alert.alert('Error', 'Could not share location.');
+        sweetAlert.alert('Error', 'Could not share location.', 'warning');
       }
     },
     [checkLocationAvailability, getCurrentAddress, triggerHaptic]

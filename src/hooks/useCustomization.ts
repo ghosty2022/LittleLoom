@@ -1,16 +1,7 @@
-﻿// src/hooks/useCustomization.ts
-// FULLY SYNCED: Single source of truth for all customization settings
-// FIXED: Removed redundant saveSettings/updateSettings
-// FIXED: isDark now properly handles pureWhite as light mode
-// FIXED: getFullThemeColors now integrated and exposed
-// FIXED: Haptic spam reduced (no console.warn on unsupported devices)
-
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useColorScheme } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
-
-// ==================== THEME COLOR DEFINITIONS ====================
 
 export interface ThemeColors {
   primary: string;
@@ -37,7 +28,6 @@ export interface FullThemeColors extends ThemeColors {
   shadow: string;
 }
 
-// Light mode base colors
 const LIGHT_BASE = {
   background: '#f8faff',
   surface: '#ffffff',
@@ -53,7 +43,6 @@ const LIGHT_BASE = {
   shadow: '#667eea',
 };
 
-// Dark mode (gray-dark, not pure black)
 const DARK_BASE = {
   background: '#0f0f1e',
   surface: '#1a1a2e',
@@ -69,7 +58,6 @@ const DARK_BASE = {
   shadow: '#000000',
 };
 
-// True Black (OLED optimized)
 const TRUE_BLACK_BASE = {
   background: '#000000',
   surface: '#0a0a0a',
@@ -85,7 +73,6 @@ const TRUE_BLACK_BASE = {
   shadow: '#000000',
 };
 
-// Pure White (high contrast light)
 const PURE_WHITE_BASE = {
   background: '#ffffff',
   surface: '#fafafa',
@@ -212,8 +199,6 @@ export const THEME_MAP: Record<string, ThemeColors> = {
   },
 };
 
-// ==================== APPEARANCE MODES ====================
-
 export type AppearanceMode = 'system' | 'light' | 'dark' | 'trueBlack' | 'pureWhite';
 
 export const APPEARANCE_OPTIONS: { id: AppearanceMode; label: string; emoji: string; desc: string }[] = [
@@ -224,15 +209,11 @@ export const APPEARANCE_OPTIONS: { id: AppearanceMode; label: string; emoji: str
   { id: 'pureWhite', label: 'Pure White', emoji: '⚪', desc: 'Maximum contrast' },
 ];
 
-// ==================== AVATAR OPTIONS ====================
-
 export const AVATAR_OPTIONS = [
   '👶', '🍼', '🧸', '🎀', '👑', '🌟', '🦁', '🐰', '🐻', '🦊',
   '🐼', '🐨', '🦄', '🐣', '🌈', '🍭', '🎈', '🎁', '⭐', '💫',
   '🌸', '🌺', '🌻', '🍀', '🦋', '🐞', '🐙', '🐬', '🦕', '🦖',
 ];
-
-// ==================== CUSTOMIZATION SETTINGS ====================
 
 export interface CustomizationSettings {
   theme: string;
@@ -278,7 +259,18 @@ export const DEFAULT_SETTINGS: CustomizationSettings = {
 
 const STORAGE_KEY = '@littleloom_customization_v3';
 
-// ==================== UTILITY FUNCTIONS ====================
+// ─── FIX #7: Module-level cache for instant first read ─────────────────
+let _settingsCache: CustomizationSettings | null = null;
+let _cacheInitialized = false;
+
+const getCachedSettings = (): CustomizationSettings | null => {
+  return _settingsCache;
+};
+
+const setCachedSettings = (settings: CustomizationSettings) => {
+  _settingsCache = settings;
+  _cacheInitialized = true;
+};
 
 export const getThemeColorsById = (themeId: string): ThemeColors => {
   return THEME_MAP[themeId] || THEME_MAP.purple;
@@ -353,26 +345,36 @@ export const getAnimationDuration = (speed: CustomizationSettings['animationSpee
   }
 };
 
-// ==================== HAPTIC FEEDBACK TYPES ====================
-
 export type HapticType = 'light' | 'medium' | 'heavy' | 'success' | 'warning' | 'error' | 'selection';
-
-// ==================== HOOK ====================
 
 export function useCustomization() {
   const systemColorScheme = useColorScheme();
-  const [settings, setSettings] = useState<CustomizationSettings>(DEFAULT_SETTINGS);
-  const [isLoaded, setIsLoaded] = useState(false);
 
-  // Load from storage
+  // ─── FIX #8: Initialize from cache if available, else defaults ───────
+  const [settings, setSettings] = useState<CustomizationSettings>(() => {
+    return getCachedSettings() ?? DEFAULT_SETTINGS;
+  });
+  const [isLoaded, setIsLoaded] = useState(() => _cacheInitialized);
+
   useEffect(() => {
     let mounted = true;
+
+    // If already cached, skip loading
+    if (_cacheInitialized && _settingsCache) {
+      if (mounted) {
+        setSettings(_settingsCache);
+        setIsLoaded(true);
+      }
+      return;
+    }
+
     const load = async () => {
       try {
         const saved = await AsyncStorage.getItem(STORAGE_KEY);
         if (saved && mounted) {
-          const parsed = JSON.parse(saved);
-          setSettings(prev => ({ ...prev, ...parsed }));
+          const parsed = { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
+          setSettings(parsed);
+          setCachedSettings(parsed);
         }
       } catch (e) {
         console.warn('Failed to load customization:', e);
@@ -380,14 +382,15 @@ export function useCustomization() {
         if (mounted) setIsLoaded(true);
       }
     };
+
     load();
     return () => { mounted = false; };
   }, []);
 
-  // Save to storage — SINGLE unified save function
   const updateSettings = useCallback(async (newSettings: Partial<CustomizationSettings>) => {
     const updated = { ...settings, ...newSettings };
     setSettings(updated);
+    setCachedSettings(updated);
     try {
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
     } catch (e) {
@@ -397,6 +400,7 @@ export function useCustomization() {
 
   const reset = useCallback(async () => {
     setSettings(DEFAULT_SETTINGS);
+    setCachedSettings(DEFAULT_SETTINGS);
     try {
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_SETTINGS));
     } catch (e) {
@@ -406,20 +410,19 @@ export function useCustomization() {
 
   const themeColors = useMemo(() => getThemeColorsById(settings.theme), [settings.theme]);
 
-  const fullThemeColors = useMemo(() => 
+  const fullThemeColors = useMemo(() =>
     getFullThemeColors(settings.theme, settings.appearance, systemColorScheme === 'dark'),
     [settings.theme, settings.appearance, systemColorScheme]
   );
 
   const avatar = useMemo(() => AVATAR_OPTIONS[settings.avatar] || AVATAR_OPTIONS[0], [settings.avatar]);
 
-  // FIXED: Properly handle all appearance modes including pureWhite
   const isDark = useMemo(() => {
     if (settings.appearance === 'system') {
       return systemColorScheme === 'dark';
     }
     if (settings.appearance === 'pureWhite') {
-      return false; // pureWhite is explicitly light
+      return false;
     }
     return settings.appearance === 'dark' || settings.appearance === 'trueBlack';
   }, [settings.appearance, systemColorScheme]);
@@ -433,7 +436,6 @@ export function useCustomization() {
   const borderRadiusValue = useMemo(() => getBorderRadiusValue(settings.borderRadius), [settings.borderRadius]);
   const animationDuration = useMemo(() => getAnimationDuration(settings.animationSpeed), [settings.animationSpeed]);
 
-  // ==================== HAPTIC TRIGGER ====================
   const triggerHaptic = useCallback(async (type: HapticType) => {
     if (!settings.hapticFeedback) return;
     try {
@@ -461,30 +463,26 @@ export function useCustomization() {
           break;
       }
     } catch {
-      // Silently fail on devices without haptics — no console spam
+      // Haptics not available
     }
   }, [settings.hapticFeedback]);
 
   return {
-    // Core settings object
     settings,
     isLoaded,
-    
-    // Derived theme values
+
     themeColors,
     fullThemeColors,
     avatar,
     isDark,
     isTrueBlack,
     isPureWhite,
-    
-    // Accessibility/UX
+
     shouldReduceMotion,
     fontSizeMultiplier,
     borderRadiusValue,
     animationDuration,
-    
-    // Convenience direct access to common settings (prevents undefined errors)
+
     hapticFeedback: settings.hapticFeedback,
     soundEffects: settings.soundEffects,
     reduceMotion: settings.reduceMotion,
@@ -496,8 +494,7 @@ export function useCustomization() {
     highContrast: settings.highContrast,
     boldText: settings.boldText,
     notifications: settings.notifications,
-    
-    // Actions
+
     updateSettings,
     reset,
     triggerHaptic,

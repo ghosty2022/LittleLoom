@@ -1,4 +1,3 @@
-// src/components/GlobalAudioPlayer.tsx
 import React, { useState } from 'react';
 import {
   View,
@@ -37,9 +36,6 @@ import { useSafeApp, useSafeBaby, useSafeAuth, useUnifiedTheme } from '../hooks/
 
 const { width, height } = Dimensions.get('window');
 
-// ============================================
-// SLEEP TIMER MODAL
-// ============================================
 const SleepTimerModal = ({ 
   visible, 
   onClose, 
@@ -102,9 +98,6 @@ const SleepTimerModal = ({
   );
 };
 
-// ============================================
-// FLOATING BALL PLAYER
-// ============================================
 const FloatingBall = () => {
   const { currentTrack, isPlaying, expandPlayer } = useAudio();
   const colorScheme = useColorScheme();
@@ -168,9 +161,6 @@ const FloatingBall = () => {
   );
 };
 
-// ============================================
-// MINI PLAYER
-// ============================================
 const MiniPlayer = () => {
   const { currentTrack, isPlaying, togglePlayback, expandPlayer, collapseToBall, progress } = useAudio();
   const colorScheme = useColorScheme();
@@ -240,9 +230,6 @@ const MiniPlayer = () => {
   );
 };
 
-// ============================================
-// FULL PLAYER
-// ============================================
 const FullPlayer = () => {
   const {
     currentTrack,
@@ -458,9 +445,6 @@ const FullPlayer = () => {
   );
 };
 
-// ============================================
-// MAIN EXPORT COMPONENT
-// ============================================
 export const GlobalAudioPlayer = () => {
   const { playerMode, currentTrack } = useAudio();
   if (!currentTrack) return null;
@@ -474,13 +458,11 @@ export const GlobalAudioPlayer = () => {
   );
 };
 
-// ✅ FIX: Also export as default for backward compatibility
 export default GlobalAudioPlayer;
 
 const styles = StyleSheet.create({
   textDark: { color: '#ffffff' },
   
-  // Floating Ball
   floatingBallContainer: { position: 'absolute', zIndex: 999 },
   ballBlur: { width: 64, height: 64, borderRadius: 32, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 10 },
   ballGradient: { flex: 1, justifyContent: 'center', alignItems: 'center' },
@@ -488,7 +470,6 @@ const styles = StyleSheet.create({
   playingIndicator: { position: 'absolute', bottom: 4, flexDirection: 'row', gap: 2 },
   dot: { width: 4, height: 4, borderRadius: 2 },
 
-  // Mini Player
   miniPlayerContainer: { position: 'absolute', bottom: 90, left: 20, right: 20, zIndex: 998 },
   miniPlayerTouchable: { borderRadius: 24, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.12, shadowRadius: 24, elevation: 10 },
   miniPlayerBlur: { borderRadius: 24, overflow: 'hidden' },
@@ -505,7 +486,6 @@ const styles = StyleSheet.create({
   miniPlayGradient: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   collapseButton: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(100,116,139,0.1)', alignItems: 'center', justifyContent: 'center' },
 
-  // Full Player
   backdrop: { ...StyleSheet.absoluteFillObject, zIndex: 997 },
   fullPlayerContainer: { position: 'absolute', bottom: 0, left: 0, right: 0, height: height * 0.88, borderTopLeftRadius: 40, borderTopRightRadius: 40, overflow: 'hidden', zIndex: 998 },
   dragHandleContainer: { alignItems: 'center', paddingTop: 12, paddingBottom: 8 },
@@ -540,7 +520,6 @@ const styles = StyleSheet.create({
   timerDot: { position: 'absolute', top: 8, right: 8, width: 8, height: 8, borderRadius: 4, backgroundColor: '#10b981' },
   swipeHintText: { fontSize: 12, color: '#94a3b8', textAlign: 'center', marginTop: 30, fontWeight: '500' },
 
-  // Timer Modal
   timerModal: { width: width - 60, borderRadius: 24, padding: 24, shadowColor: '#000', shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.3, shadowRadius: 40, elevation: 20 },
   timerTitle: { fontSize: 22, fontWeight: '800', marginBottom: 4 },
   timerSubtitle: { fontSize: 14, color: '#64748b', marginBottom: 20 },

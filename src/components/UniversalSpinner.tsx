@@ -1,10 +1,3 @@
-// src/components/UniversalSpinner.tsx
-// FIXED: All Rules of Hooks violations eliminated (useAnimatedStyle inside loops)
-// FIXED: Safe fallback for missing customization context
-// FIXED: Proper TypeScript types replacing 'any'
-// FIXED: ScreenSkeletons now proper React components
-// FIXED: ShimmerLoader width calculation improved
-
 import React, { useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   View,
@@ -35,9 +28,6 @@ import { useCustomization } from '../hooks/useCustomization';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
-// ============================================
-// SECTION-AWARE SPINNER CONFIG
-// ============================================
 export type SpinnerSection = 'main' | 'community' | 'auth' | 'settings' | 'tracking';
 
 interface SectionTheme {
@@ -86,9 +76,6 @@ const SECTION_THEMES: Record<SpinnerSection, SectionTheme> = {
   },
 };
 
-// ============================================
-// SAFE THEME RESOLVER — Crash-proof
-// ============================================
 interface ThemeColorsSafe {
   colors?: string[];
   spinnerColor?: string;
@@ -124,9 +111,6 @@ const resolveTheme = (
   return base;
 };
 
-// ============================================
-// INDIVIDUAL LIQUID DOT (Hook-safe component)
-// ============================================
 interface LiquidDotProps {
   index: number;
   totalDots: number;
@@ -181,9 +165,6 @@ const LiquidDot: React.FC<LiquidDotProps> = React.memo(({ index, totalDots, prog
   );
 });
 
-// ============================================
-// LIQUID DOTS — Modern & Polished
-// ============================================
 const LiquidDots: React.FC<{
   colors: [string, string, string, string];
   size?: number;
@@ -216,9 +197,6 @@ const LiquidDots: React.FC<{
   );
 };
 
-// ============================================
-// INDIVIDUAL AURORA RING (Hook-safe component)
-// ============================================
 interface AuroraRingProps {
   color: string;
   size: number;
@@ -230,7 +208,6 @@ const AuroraRing: React.FC<AuroraRingProps> = React.memo(({ color, size, delay }
 
   useEffect(() => {
     const config = { duration: 2000, easing: Easing.out(Easing.ease) };
-    // Start with delay by using initial value
     anim.value = delay;
     anim.value = withRepeat(withTiming(1 + delay, config), -1, false);
     return () => { cancelAnimation(anim); };
@@ -263,9 +240,6 @@ const AuroraRing: React.FC<AuroraRingProps> = React.memo(({ color, size, delay }
   );
 });
 
-// ============================================
-// AURORA RINGS — Secondary option
-// ============================================
 const AuroraRings: React.FC<{
   colors: [string, string, string, string];
   size?: number;
@@ -280,9 +254,6 @@ const AuroraRings: React.FC<{
   );
 };
 
-// ============================================
-// INDIVIDUAL NEBULA ORBIT DOT (Hook-safe)
-// ============================================
 interface NebulaDotProps {
   angle: number;
   color: string;
@@ -326,9 +297,6 @@ const NebulaDot: React.FC<NebulaDotProps> = React.memo(({ angle, color, size, or
   );
 });
 
-// ============================================
-// NEBULA ORBIT — Third option
-// ============================================
 const NebulaOrbit: React.FC<{
   colors: [string, string, string, string];
   size?: number;
@@ -384,9 +352,6 @@ const NebulaOrbit: React.FC<{
   );
 };
 
-// ============================================
-// UNIVERSAL SPINNER (Full-screen overlay)
-// ============================================
 interface UniversalSpinnerProps {
   visible: boolean;
   text?: string;
@@ -417,7 +382,6 @@ export const UniversalSpinner: React.FC<UniversalSpinnerProps> = ({
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   
-  // Safe customization hook usage
   let customization: ReturnType<typeof useCustomization> | null = null;
   let customizationError = false;
   try {
@@ -562,9 +526,6 @@ export const UniversalSpinner: React.FC<UniversalSpinnerProps> = ({
   return <Spinner />;
 };
 
-// ============================================
-// INLINE SPINNER — UNIFIED MULTI-DOT SYSTEM
-// ============================================
 interface InlineSpinnerProps {
   size?: number;
   color?: string;
@@ -578,7 +539,6 @@ export const InlineSpinner: React.FC<InlineSpinnerProps> = ({
   section = 'main',
   variant = 'liquid',
 }) => {
-  // Safe customization hook usage
   let customization: ReturnType<typeof useCustomization> | null = null;
   let customizationError = false;
   try {
@@ -590,7 +550,6 @@ export const InlineSpinner: React.FC<InlineSpinnerProps> = ({
   const themeColors = customizationError ? null : customization?.themeColors;
   const shouldReduceMotion = customizationError ? false : customization?.shouldReduceMotion ?? false;
 
-  // Safe color resolution
   const spinnerColor = useMemo(() => {
     if (color) return color;
     if (section === 'main' && themeColors?.spinnerColor) {
@@ -599,7 +558,6 @@ export const InlineSpinner: React.FC<InlineSpinnerProps> = ({
     return SECTION_THEMES[section]?.spinnerColor || SECTION_THEMES.main.spinnerColor;
   }, [color, section, themeColors]);
 
-  // Build colors array for sub-components
   const colors = useMemo((): [string, string, string, string] => {
     if (section === 'main' && themeColors?.colors && Array.isArray(themeColors.colors)) {
       const c = themeColors.colors;
@@ -609,7 +567,6 @@ export const InlineSpinner: React.FC<InlineSpinnerProps> = ({
     return base;
   }, [section, themeColors, spinnerColor]);
 
-  // Scale down the full spinner for inline use
   const SpinnerComponent =
     variant === 'aurora' ? AuroraRings :
     variant === 'nebula' ? NebulaOrbit :
@@ -630,9 +587,6 @@ export const InlineSpinner: React.FC<InlineSpinnerProps> = ({
   );
 };
 
-// ============================================
-// SECTION-SPECIFIC SPINNER EXPORTS
-// ============================================
 export const CommunitySpinner: React.FC<Omit<UniversalSpinnerProps, 'section'>> = (props) => (
   <UniversalSpinner {...props} section="community" />
 );
@@ -649,9 +603,6 @@ export const TrackingSpinner: React.FC<Omit<UniversalSpinnerProps, 'section'>> =
   <UniversalSpinner {...props} section="tracking" />
 );
 
-// ============================================
-// SKELETON LOADER — CRASH-PROOF
-// ============================================
 export const SkeletonLoader: React.FC<{
   width?: number | string;
   height?: number;
@@ -667,7 +618,6 @@ export const SkeletonLoader: React.FC<{
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   
-  // Safe customization hook usage
   let shouldReduceMotion = false;
   try {
     const customization = useCustomization();
@@ -698,9 +648,6 @@ export const SkeletonLoader: React.FC<{
   );
 };
 
-// ============================================
-// SHIMMER LOADER — CRASH-PROOF
-// ============================================
 interface ShimmerLoaderProps {
   width?: number | string;
   height?: number;
@@ -720,7 +667,6 @@ export const ShimmerLoader: React.FC<ShimmerLoaderProps> = ({
   style,
   section = 'main',
 }) => {
-  // Safe customization hook usage
   let customization: ReturnType<typeof useCustomization> | null = null;
   let customizationError = false;
   try {
@@ -766,9 +712,6 @@ export const ShimmerLoader: React.FC<ShimmerLoaderProps> = ({
   );
 };
 
-// ============================================
-// SHIMMER PRESETS — Proper React Components
-// ============================================
 export const ShimmerPresets = {
   Text: ({ width = 200, lines = 1, section = 'main' as SpinnerSection }: { width?: number; lines?: number; section?: SpinnerSection }) => (
     <View style={{ gap: 8 }}>
@@ -795,9 +738,6 @@ export const ShimmerPresets = {
   ),
 };
 
-// ============================================
-// SCREEN SKELETONS — Proper React Components
-// ============================================
 export const ScreenSkeletons = {
   Timeline: ({ count = 3, section = 'main' as SpinnerSection }: { count?: number; section?: SpinnerSection }) => (
     <View style={skeletonStyles.container}>
@@ -859,9 +799,6 @@ export const ScreenSkeletons = {
   ),
 };
 
-// ============================================
-// STYLES
-// ============================================
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,

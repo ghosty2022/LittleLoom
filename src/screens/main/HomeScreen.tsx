@@ -35,7 +35,6 @@ import * as Haptics from 'expo-haptics';
 import { formatDistanceToNow, format } from 'date-fns';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 
-// ─── CONTEXT IMPORTS ───
 import { useAuth } from '../../context/AuthContext';
 import { useBaby } from '../../context/BabyContext';
 import { useActivity } from '../../context/ActivityContext';
@@ -44,21 +43,17 @@ import { useCommunity } from '../../context/CommunityContext';
 import { useAudio, SOUND_TRACKS } from '../../context/AudioContext';
 import { useMedia } from '../../context/MediaContext';
 
-// ─── HOOK IMPORTS ───
 import { useCustomization, getFullThemeColors, type FullThemeColors } from '../../hooks/useCustomization';
 
-// ─── COMPONENT IMPORTS ───
 import { SafeBabyAvatar, SafeParentAvatar } from '../../components/SafeAvatar';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
 
-// ─── NAVIGATION TYPES ───
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
 
 const { width, height } = Dimensions.get('window');
 
-// ==================== TYPE DEFINITIONS ====================
 
 type HomeScreenProps = NativeStackScreenProps<RootStackParamList, 'Main'>;
 
@@ -83,14 +78,13 @@ interface FeatureCard {
   params?: Record<string, any>;
 }
 
-// ==================== NAVIGATION MAP (Centralized) ====================
 const NAVIGATION_MAP: Record<string, { screen: string; params?: Record<string, any> }> = {
   'Main': { screen: 'Main', params: {} },
   'Connect': { screen: 'Main', params: { screen: 'Connect' } },
   'Settings': { screen: 'More', params: { screen: 'Settings' } },
   'More': { screen: 'More', params: {} },
   'UniversalTracker': { screen: 'UniversalTracker', params: {} },
-  'GrowthChart': { screen: 'GrowthChart', params: {} },
+  'Grow': { screen: 'Grow', params: {} },
   'Achievements': { screen: 'Achievements', params: {} },
   'Reminders': { screen: 'Reminders', params: {} },
   'SafetyCorner': { screen: 'SafetyCorner', params: {} },
@@ -106,7 +100,6 @@ const NAVIGATION_MAP: Record<string, { screen: string; params?: Record<string, a
   'EditProfile': { screen: 'EditProfile', params: {} },
 };
 
-// ==================== CONFIGURATION ====================
 
 const getGridColumns = () => {
   if (width >= 768) return 6;
@@ -116,13 +109,12 @@ const getGridColumns = () => {
 
 const GRID_COLUMNS = getGridColumns();
 
-// ─── Quick Actions ───
 const DEFAULT_QUICK_ACTIONS: QuickAction[] = [
   { id: 'potty', label: 'Potty', icon: '🚽', color: '#667eea', gradient: ['#667eea', '#764ba2'], screen: 'UniversalTracker', params: { type: 'potty' } },
   { id: 'feed', label: 'Feed', icon: '🍼', color: '#fa709a', gradient: ['#fa709a', '#fee140'], screen: 'UniversalTracker', params: { type: 'feed' } },
   { id: 'sleep', label: 'Sleep', icon: '😴', color: '#11998e', gradient: ['#11998e', '#38ef7d'], screen: 'UniversalTracker', params: { type: 'sleep' } },
   { id: 'diaper', label: 'Diaper', icon: '🧷', color: '#fc5c7d', gradient: ['#fc5c7d', '#6a82fb'], screen: 'UniversalTracker', params: { type: 'diaper' } },
-  { id: 'growth', label: 'Growth', icon: '📏', color: '#43e97b', gradient: ['#43e97b', '#38f9d7'], screen: 'GrowthChart', params: {} },
+  { id: 'growth', label: 'Growth', icon: '📏', color: '#43e97b', gradient: ['#43e97b', '#38f9d7'], screen: 'Grow', params: {} },
   { id: 'milestone', label: 'Milestone', icon: '🌟', color: '#f59e0b', gradient: ['#f59e0b', '#fbbf24'], screen: 'Achievements', params: {} },
   { id: 'medication', label: 'Meds', icon: '💊', color: '#ef4444', gradient: ['#ef4444', '#f87171'], screen: 'UniversalTracker', params: { type: 'medication' } },
   { id: 'note', label: 'Note', icon: '📝', color: '#64748b', gradient: ['#64748b', '#94a3b8'], screen: 'UniversalTracker', params: { type: 'note' } },
@@ -143,11 +135,10 @@ const AVAILABLE_ACTIONS: QuickAction[] = [
   { id: 'settings', label: 'Settings', icon: '⚙️', color: '#64748b', gradient: ['#64748b', '#94a3b8'], screen: 'Settings', params: {} },
 ];
 
-// ─── Feature Cards ───
 const DEFAULT_FEATURE_CARDS: FeatureCard[] = [
   { id: 'reminders', label: 'Reminders', icon: 'alarm', color: '#f59e0b', screen: 'Reminders', badge: '3', usageCount: 0 },
   { id: 'achievements', label: 'Milestones', icon: 'trophy', color: '#ec4899', screen: 'Achievements', usageCount: 0 },
-  { id: 'growth', label: 'Growth', icon: 'trending-up', color: '#10b981', screen: 'GrowthChart', usageCount: 0 },
+  { id: 'growth', label: 'Growth', icon: 'trending-up', color: '#10b981', screen: 'Grow', usageCount: 0 },
   { id: 'family', label: 'Family', icon: 'people', color: '#3b82f6', screen: 'FamilySharing', usageCount: 0 },
   { id: 'safety', label: 'Safety', icon: 'shield-checkmark', color: '#ef4444', screen: 'SafetyCorner', usageCount: 0 },
   { id: 'gallery', label: 'Gallery', icon: 'images', color: '#8b5cf6', screen: 'Gallery', badge: 'New', usageCount: 0 },
@@ -159,7 +150,6 @@ const DEFAULT_FEATURE_CARDS: FeatureCard[] = [
   { id: 'support', label: 'Support', icon: 'chatbubble-ellipses', color: '#11998e', screen: 'ContactSupport', usageCount: 0 },
 ];
 
-// ==================== GLASSMORPHISM CARD ====================
 const GlassmorphismCard: React.FC<{ children: React.ReactNode; style?: any; onPress?: () => void; intensity?: number }> = ({ children, style, onPress, intensity = 80 }) => {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -174,7 +164,6 @@ const GlassmorphismCard: React.FC<{ children: React.ReactNode; style?: any; onPr
   );
 };
 
-// ==================== CIRCULAR PROGRESS ====================
 const CircularProgress: React.FC<{ progress: number; value: string; label: string; color: string; onPress?: () => void; size?: number }> = ({ progress, value, label, color, onPress, size = 60 }) => {
   const radius = size / 2 - 6;
   const circumference = 2 * Math.PI * radius;
@@ -198,7 +187,6 @@ const CircularProgress: React.FC<{ progress: number; value: string; label: strin
     </TouchableOpacity>
   );
 };
-// ==================== NOTIFICATION CHOOSER MODAL ====================
 const NotificationChooserModal = ({ visible, onClose, onSelect, isDark }: { visible: boolean; onClose: () => void; onSelect: (type: 'app' | 'community') => void; isDark: boolean }) => {
   const opacity = useSharedValue(0);
   const scale = useSharedValue(0.9);
@@ -241,8 +229,6 @@ const NotificationChooserModal = ({ visible, onClose, onSelect, isDark }: { visi
   );
 };
 
-// ==================== ADD ACTION MODAL ====================
-// FIX: Ensure disabled prop is always a boolean, never null/undefined
 const AddActionModal = ({ visible, onClose, onAdd, isDark, existingActions }: { visible: boolean; onClose: () => void; onAdd: (action: QuickAction) => void; isDark: boolean; existingActions: QuickAction[] }) => {
   const opacity = useSharedValue(0);
   const scale = useSharedValue(0.9);
@@ -292,7 +278,6 @@ const AddActionModal = ({ visible, onClose, onAdd, isDark, existingActions }: { 
   );
 };
 
-// ==================== DRAGGABLE GRID ====================
 const DraggableGrid: React.FC<{ items: QuickAction[]; onPress: (item: QuickAction) => void; onRemove: (id: string) => void; onAdd: () => void; onReorder: (newItems: QuickAction[]) => void; columns: number; isDark: boolean }> = ({ items, onPress, onRemove, onAdd, onReorder, columns, isDark }) => {
   const [isEditMode, setIsEditMode] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -341,7 +326,6 @@ const DraggableGrid: React.FC<{ items: QuickAction[]; onPress: (item: QuickActio
   );
 };
 
-// ==================== SORTABLE FEATURE GRID ====================
 const SortableFeatureGrid: React.FC<{ items: FeatureCard[]; onPress: (item: FeatureCard) => void; onReorder: (newItems: FeatureCard[]) => void; isDark: boolean; onUsageIncrement: (id: string) => void }> = ({ items, onPress, onReorder, isDark, onUsageIncrement }) => {
   const [isEditMode, setIsEditMode] = useState(false);
   const [localItems, setLocalItems] = useState<FeatureCard[]>(items);
@@ -393,7 +377,6 @@ const SortableFeatureGrid: React.FC<{ items: FeatureCard[]; onPress: (item: Feat
   );
 };
 
-// ==================== PAGINATED ACTIVITY LIST ====================
 const PaginatedActivityList: React.FC<{ activities: any[]; isDark: boolean; navigation: any; onLoadMore: () => void; hasMore: boolean; isLoading: boolean }> = ({ activities, isDark, navigation, onLoadMore, hasMore, isLoading }) => {
   const [displayCount, setDisplayCount] = useState(5);
   const displayedActivities = activities.slice(0, displayCount);
@@ -412,7 +395,7 @@ const PaginatedActivityList: React.FC<{ activities: any[]; isDark: boolean; navi
     <View>
       {displayedActivities.map((item, index) => (
         <Animated.View key={item.id} entering={FadeInUp.delay(index * 80)} layout={Layout.springify()}>
-          <TouchableOpacity onPress={() => navigation.navigate('UniversalTracker', { type: item.type })} activeOpacity={0.8}>
+          <TouchableOpacity onPress={() => navigation.navigate('Timeline', { type: item.type })} activeOpacity={0.8}>
             <GlassmorphismCard style={styles.activityItem} intensity={60}>
               <View style={[styles.activityIcon, { backgroundColor: `${item.color || '#667eea'}20` }]}><Text style={styles.activityEmoji}>{item.icon || '📝'}</Text></View>
               <View style={styles.activityContent}>
@@ -435,7 +418,7 @@ const PaginatedActivityList: React.FC<{ activities: any[]; isDark: boolean; navi
           </View>
         </TouchableOpacity>
       )}
-      <TouchableOpacity style={styles.viewAllButton} onPress={() => navigation.navigate('UniversalTracker', { type: 'all' })}>
+      <TouchableOpacity style={styles.viewAllButton} onPress={() => navigation.navigate('Timeline', { type: 'all' })}>
         <Text style={styles.viewAllText}>View All Activity</Text>
         <Ionicons name="arrow-forward" size={16} color="#667eea" />
       </TouchableOpacity>
@@ -443,7 +426,6 @@ const PaginatedActivityList: React.FC<{ activities: any[]; isDark: boolean; navi
   );
 };
 
-// ==================== SOUND MIXER SECTION ====================
 const SoundMixerSection: React.FC<{ onPress: () => void; isDark: boolean }> = ({ onPress, isDark }) => {
   const { playTrack, currentTrack, isPlaying, togglePlayback } = useAudio();
   const handlePlayTrack = (track: typeof SOUND_TRACKS[0]) => { if (currentTrack?.id === track.id) togglePlayback(); else playTrack(track); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); };
@@ -478,7 +460,6 @@ const SoundMixerSection: React.FC<{ onPress: () => void; isDark: boolean }> = ({
     </TouchableOpacity>
   );
 };
-// ==================== STICKY HEADER (FULLY CUSTOMIZED) ====================
 interface StickyAppHeaderProps {
   isDark: boolean;
   currentBaby: any;
@@ -493,7 +474,6 @@ interface StickyAppHeaderProps {
   primaryColor: string;
   secondaryColor: string;
   accentColor: string;
-  // Customization props
   borderRadius: number;
   fontSizeMultiplier: number;
   useGradients: boolean;
@@ -543,7 +523,6 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = ({
     },
   }, [headerVisible]);
 
-  // Dynamic styles based on customization
   const headerPaddingTop = Platform.OS === 'ios' ? (compactSpacing ? 44 : 52) : (compactSpacing ? 28 : 36);
   const headerPaddingBottom = compactSpacing ? 8 : 12;
   const iconSize = Math.round(22 * fontSizeMultiplier);
@@ -753,11 +732,9 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = ({
     </Animated.View>
   );
 };
-// ==================== MAIN SCREEN ====================
 export default function HomeScreen({ navigation }: HomeScreenProps) {
   const colorScheme = useColorScheme();
 
-  // ─── THEME & CUSTOMIZATION ───
   const {
     settings,
     themeColors,
@@ -781,7 +758,6 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   const scrollY = useSharedValue(0);
   const headerVisible = useSharedValue(1);
 
-  // ─── CONTEXTS ───
   const { userProfile, signOut, isLoading: authLoading } = useAuth();
   const { currentBaby, loadBabies, getPottyStreak } = useBaby();
   const { entries: activities, getRecentTimelineEvents, getTodayCount, loadEntries: loadActivities, isLoading: activitiesLoading } = useActivity();
@@ -789,7 +765,6 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   const { getUnreadCount } = useCommunity();
   const media = useMedia();
 
-  // ─── SWEET ALERT ───
   const { success, error, confirm, toast } = useSweetAlert();
 
   const [refreshing, setRefreshing] = useState(false);
@@ -802,7 +777,6 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [showNotificationChooser, setShowNotificationChooser] = useState(false);
 
-  // ─── LOAD SAVED LAYOUTS (PERSISTENT) ───
   useEffect(() => {
     const loadSavedData = async () => {
       try {
@@ -823,7 +797,6 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     loadSavedData();
   }, []);
 
-  // ─── PERSIST LAYOUTS TO ASYNCSTORAGE ───
   useEffect(() => {
     AsyncStorage.setItem('@littleloom_quick_actions', JSON.stringify(quickActions)).catch(() => {});
   }, [quickActions]);
@@ -852,7 +825,6 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     onScroll: (event) => { scrollY.value = event.contentOffset.y; },
   });
 
-  // ─── NAVIGATION HELPER ───
   const navigateToScreen = useCallback((screenName: string, params?: Record<string, any>) => {
     const navConfig = NAVIGATION_MAP[screenName];
     if (!navConfig) {
@@ -869,7 +841,6 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     }
   }, [navigation]);
 
-  // ─── HANDLERS ───
   const handleNotificationPress = useCallback(() => {
     triggerHaptic('light');
     setShowNotificationChooser(true);
@@ -1012,7 +983,6 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     ? [fullThemeColors?.background || '#0a0a0a', '#1a1a2e', '#16213e']
     : [fullThemeColors?.background || '#f8fafc', '#e2e8f0', '#dbeafe'];
 
-  // Dynamic padding based on customization
   const scrollTopPadding = Platform.OS === 'ios'
     ? (settings.compactSpacing ? 120 : 140)
     : (settings.compactSpacing ? 110 : 125);
@@ -1277,7 +1247,6 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     </View>
   );
 }
-// ==================== STYLES ====================
 const styles = StyleSheet.create({
   centeredModal: { position: 'absolute', top: height * 0.15, left: 20, right: 20, maxHeight: height * 0.7, borderRadius: 28, padding: 24, shadowColor: '#000', shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.4, shadowRadius: 40, elevation: 25, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
   centeredModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 },

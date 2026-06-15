@@ -1,8 +1,3 @@
-// src/utils/UnitUtils.ts
-// Universal Unit System for LittleLoom — Weight, Height, Temperature, Volume
-
-// ==================== TYPES ====================
-
 export type WeightUnit = 'kg' | 'g' | 'lb' | 'oz';
 export type HeightUnit = 'cm' | 'm' | 'ft' | 'in';
 export type TemperatureUnit = 'c' | 'f';
@@ -24,7 +19,6 @@ export const DEFAULT_UNITS: UnitPreferences = {
   useMetric: true,
 };
 
-// ==================== CONVERSION CONSTANTS ====================
 
 const CONVERSIONS = {
   weight: {
@@ -51,7 +45,6 @@ const CONVERSIONS = {
   },
 };
 
-// ==================== CONVERSION FUNCTIONS ====================
 
 export function convertWeight(value: number, from: WeightUnit, to: WeightUnit): number {
   if (from === to) return value;
@@ -78,7 +71,6 @@ export function convertVolume(value: number, from: VolumeUnit, to: VolumeUnit): 
   return baseValue / CONVERSIONS.volume[to].toBase;
 }
 
-// ==================== FORMATTING ====================
 
 export function formatWeight(value: number, unit: WeightUnit, decimals: number = 2): string {
   return `${value.toFixed(decimals)} ${CONVERSIONS.weight[unit].label}`;
@@ -101,7 +93,6 @@ export function formatVolume(value: number, unit: VolumeUnit, decimals: number =
   return `${value.toFixed(decimals)} ${CONVERSIONS.volume[unit].label}`;
 }
 
-// ==================== SMART CONVERSION (Auto-detect best unit) ====================
 
 export function smartWeightDisplay(valueKg: number, locale: string = 'en'): string {
   const isMetric = !['US', 'LR', 'MM'].includes(locale); // US, Liberia, Myanmar use imperial
@@ -126,12 +117,10 @@ export function smartHeightDisplay(valueCm: number, locale: string = 'en'): stri
   return `${feet}'${inches}"`;
 }
 
-// ==================== PARSING ====================
 
 export function parseHeightInput(input: string): { value: number; unit: HeightUnit } | null {
   const trimmed = input.trim().toLowerCase();
   
-  // Try "5'6" or "5'6"" format
   const ftInMatch = trimmed.match(/^(\d+)'(\d+)(?:"|in)?$/);
   if (ftInMatch) {
     const feet = parseInt(ftInMatch[1]);
@@ -139,7 +128,6 @@ export function parseHeightInput(input: string): { value: number; unit: HeightUn
     return { value: feet + inches / 12, unit: 'ft' };
   }
   
-  // Try "170cm" or "1.7m" format
   const cmMatch = trimmed.match(/^(\d+(?:\.\d+)?)\s*(cm|m)$/);
   if (cmMatch) {
     const value = parseFloat(cmMatch[1]);
@@ -150,7 +138,6 @@ export function parseHeightInput(input: string): { value: number; unit: HeightUn
   return null;
 }
 
-// ==================== HOOK ====================
 
 export function useUnitPreferences() {
   const [preferences, setPreferences] = React.useState<UnitPreferences>(DEFAULT_UNITS);
@@ -181,7 +168,6 @@ export function useUnitPreferences() {
   };
 }
 
-// ==================== NAMESPACE EXPORT ====================
 
 export const UnitUtils = {
   convertWeight,

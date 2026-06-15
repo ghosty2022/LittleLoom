@@ -1,4 +1,3 @@
-// src/utils/themeEvents.ts
 type ThemeListener = () => void;
 
 class ThemeEventBus {

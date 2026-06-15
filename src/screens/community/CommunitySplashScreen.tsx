@@ -1,4 +1,3 @@
-// src/screens/community/CommunitySplashScreen.tsx
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View,
@@ -12,6 +11,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { useAutoHideNav } from '../../hooks/useAutoHideNav';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useCommunity } from '../../context/CommunityContext';
 import { getSectionState, updateSectionState } from '../../hooks/useIntelligentSplash';
@@ -36,9 +36,11 @@ export default function CommunitySplashScreen({
   onAnimationComplete,
   userName = 'Parent'
 }: CommunitySplashScreenProps) {
+  useAutoHideNav({ isCommunityScreen: true });
+
   const { settings, themeColors, shouldReduceMotion } = useCustomization();
   const { currentUser, getSelectedTopics } = useCommunity();
-  
+
   const [splashContent, setSplashContent] = useState<SplashContent | null>(null);
   const [isReady, setIsReady] = useState(false);
 
@@ -50,7 +52,6 @@ export default function CommunitySplashScreen({
   const progressAnim = useRef(new Animated.Value(0)).current;
   const statsAnim = useRef(new Animated.Value(0)).current;
 
-  // Generate intelligent content based on user state
   useEffect(() => {
     const generateContent = async () => {
       const sectionState = await getSectionState('community');
@@ -61,7 +62,6 @@ export default function CommunitySplashScreen({
       let content: SplashContent;
 
       if (sectionState.firstTime) {
-        // First time - warm welcome with topic discovery hint
         content = {
           emoji: '👋',
           title: `Welcome, ${userName}!`,
@@ -74,7 +74,6 @@ export default function CommunitySplashScreen({
           tip: '💡 Select your favorite topics to personalize your feed',
         };
       } else if (!hasTopics) {
-        // Returning user without topics - gentle nudge
         content = {
           emoji: '🎯',
           title: 'Personalize Your Feed',
@@ -87,7 +86,6 @@ export default function CommunitySplashScreen({
           tip: '💡 Tap "Get Started" to choose your topics',
         };
       } else if (topicCount < 3) {
-        // Some topics but could use more
         content = {
           emoji: '🌱',
           title: 'Growing Your Community',
@@ -100,7 +98,6 @@ export default function CommunitySplashScreen({
           tip: '💡 You can select up to 5 topics for the best experience',
         };
       } else {
-        // Fully onboarded - personalized welcome back
         const topicNames = selectedTopics.slice(0, 3).map(t => t.name).join(', ');
         content = {
           emoji: '🌟',
@@ -230,8 +227,6 @@ export default function CommunitySplashScreen({
       </View>
     );
   }
-
-  const isDark = settings.darkMode;
 
   return (
     <View style={styles.container}>

@@ -1,3 +1,4 @@
+import { useSweetAlert } from '../../components/SweetAlert';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
@@ -481,16 +482,9 @@ const VaultLockModal = ({
       setPin('');
 
       if (newAttempts >= MAX_ATTEMPTS) {
-        Alert.alert(
-          'Security Lockout',
-          'Too many failed attempts. Please restart the app.',
-          [{ text: 'OK' }]
-        );
+        sweetAlert.alert('Security Lockout', 'Too many failed attempts. Please restart the app.', 'info');
       } else {
-        Alert.alert(
-          'Incorrect PIN',
-          `${MAX_ATTEMPTS - newAttempts} attempts remaining`
-        );
+        sweetAlert.alert('Incorrect PIN', '${MAX_ATTEMPTS - newAttempts} attempts remaining', 'warning');
       }
     }
   };
@@ -3289,7 +3283,7 @@ export default function GalleryScreen({
               onPress={() => {
                 setShowLinkEntryModal(false);
                 setSelectedPhoto(null);
-                navigation.navigate('GrowthChart');
+                navigation.navigate('GrowthDashboard');
               }}
             >
               <LinearGradient

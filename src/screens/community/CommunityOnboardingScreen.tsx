@@ -1,4 +1,4 @@
-// src/screens/community/CommunityOnboardingScreen.tsx
+import { useSweetAlert } from '../../components/SweetAlert';
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
@@ -10,24 +10,28 @@ import {
   StatusBar,
   Platform,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInUp, FadeIn, FadeInDown } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAutoHideNav } from '../../hooks/useAutoHideNav';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useCommunity } from '../../context/CommunityContext';
 import { useUser } from '../../context/UserContext';
-import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
 import { updateSectionState } from '../../hooks/useIntelligentSplash';
 import { CommunityColors, CommunityGradients, CommunityBorderRadius, CommunityShadows } from '../../theme/CommunityTheme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width } = Dimensions.get('window');
 const ONBOARDING_KEY = '@littleloom_community_onboarding_v3';
 
 interface CommunityOnboardingScreenProps {
-  onComplete: () => void;
+  navigation?: any;
+  route?: any;
+  onComplete?: () => void;
 }
 
 interface TopicRecommendation {
@@ -36,56 +40,58 @@ interface TopicRecommendation {
   confidence: 'high' | 'medium' | 'low';
 }
 
-// ─── FALLBACK TOPICS (defensive) ───
 const FALLBACK_TOPICS = [
-  { id: 'topic_1', name: 'Getting Pregnant', emoji: '🤰', description: 'Fertility, conception & planning', color: '#fa709a' },
-  { id: 'topic_2', name: 'Pregnancy', emoji: '🤱', description: 'Prenatal care & wellness', color: '#667eea' },
-  { id: 'topic_3', name: 'Newborn Care', emoji: '👶', description: 'First months essentials', color: '#11998e' },
-  { id: 'topic_4', name: 'Baby Milestones', emoji: '📸', description: 'Track development stages', color: '#f59e0b' },
-  { id: 'topic_5', name: 'Feeding & Nutrition', emoji: '🍼', description: 'Breastfeeding, formula & solids', color: '#fc5c7d' },
-  { id: 'topic_6', name: 'Sleep Training', emoji: '🌙', description: 'Healthy sleep habits', color: '#764ba2' },
-  { id: 'topic_7', name: 'Health & Safety', emoji: '🏥', description: 'Pediatric care & first aid', color: '#e53e3e' },
-  { id: 'topic_8', name: 'Parenting Tips', emoji: '💡', description: 'Advice from experienced parents', color: '#38b2ac' },
-  { id: 'topic_9', name: 'Toddler Life', emoji: '🧒', description: '1-3 years adventures', color: '#ed8936' },
-  { id: 'topic_10', name: 'Early Learning', emoji: '📚', description: 'Education & activities', color: '#4299e1' },
+  { id: 'topic_6', name: 'Parenting Hacks', emoji: '💡', description: 'Clever solutions for everyday challenges', color: '#6a82fb' },
+  { id: 'topic_2', name: 'Sleep Tips', emoji: '😴', description: 'Better sleep for babies and parents', color: '#11998e' },
+  { id: 'topic_5', name: 'Health & Wellness', emoji: '💊', description: 'Keeping your little ones healthy', color: '#fc5c7d' },
+  { id: 'topic_3', name: 'Feeding & Nutrition', emoji: '🍼', description: 'From breastfeeding to first foods', color: '#fa709a' },
+  { id: 'topic_9', name: 'Toddler Tantrums', emoji: '😤', description: 'Navigating the terrible twos and beyond', color: '#fa709a' },
+  { id: 'topic_1', name: 'Potty Training', emoji: '🚽', description: 'Tips, tricks, and support for potty training success', color: '#667eea' },
+  { id: 'topic_4', name: 'Milestones', emoji: '🏆', description: 'Celebrate every achievement', color: '#fee140' },
+  { id: 'topic_8', name: 'Work-Life Balance', emoji: '⚖️', description: 'Juggling career and parenting', color: '#4facfe' },
+  { id: 'topic_10', name: 'Education', emoji: '📚', description: 'Early learning and school prep', color: '#43e97b' },
+  { id: 'topic_7', name: 'Baby Names', emoji: '✨', description: 'Find the perfect name for your little one', color: '#f093fb' },
 ];
 
-export default function CommunityOnboardingScreen({ onComplete }: CommunityOnboardingScreenProps) {
+export default function CommunityOnboardingScreen({ navigation, route, onComplete }: CommunityOnboardingScreenProps) {
+  const sweetAlert = useSweetAlert();
+  useAutoHideNav({ isCommunityScreen: true });
+  const insets = useSafeAreaInsets();
+
   const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
   const [recommendedTopics, setRecommendedTopics] = useState<TopicRecommendation[]>([]);
   const [showRecommendations, setShowRecommendations] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  
+  const [hasSavedData, setHasSavedData] = useState(false);
+
   const communityCtx = useCommunity();
   const { updateSelectedTopics: updateCommunityTopics, INITIAL_TOPICS: ctxTopics } = communityCtx || {};
   const { updateSelectedTopics: updateUserTopics, profile } = useUser();
   const { settings, themeColors, triggerHaptic } = useCustomization();
 
-  // ─── SAFE TOPICS (fallback if context fails) ───
   const INITIAL_TOPICS = ctxTopics && Array.isArray(ctxTopics) && ctxTopics.length > 0 
     ? ctxTopics 
     : FALLBACK_TOPICS;
 
-  // Generate intelligent recommendations based on user profile
   useEffect(() => {
     const generateRecommendations = async () => {
       const recommendations: TopicRecommendation[] = [];
-      
+
       const hasBaby = profile?.babies && profile.babies.length > 0;
       const babyAge = profile?.babies?.[0]?.age;
-      
+
       if (babyAge) {
         const ageMonths = parseInt(babyAge);
         if (ageMonths < 6) {
           recommendations.push({ topicId: 'topic_3', reason: 'Perfect for your newborn', confidence: 'high' });
           recommendations.push({ topicId: 'topic_2', reason: 'Essential early months', confidence: 'high' });
-          recommendations.push({ topicId: 'topic_1', reason: 'Getting ready?', confidence: 'medium' });
+          recommendations.push({ topicId: 'topic_6', reason: 'Getting ready?', confidence: 'medium' });
         } else if (ageMonths < 12) {
           recommendations.push({ topicId: 'topic_3', reason: 'Time for solids!', confidence: 'high' });
           recommendations.push({ topicId: 'topic_4', reason: 'Track those firsts', confidence: 'high' });
         } else if (ageMonths < 24) {
           recommendations.push({ topicId: 'topic_9', reason: 'Toddler years ahead', confidence: 'high' });
-          recommendations.push({ topicId: 'topic_1', reason: 'Getting ready?', confidence: 'medium' });
+          recommendations.push({ topicId: 'topic_1', reason: 'Potty training soon', confidence: 'medium' });
         } else {
           recommendations.push({ topicId: 'topic_9', reason: 'Active toddler days', confidence: 'high' });
           recommendations.push({ topicId: 'topic_10', reason: 'Early learning', confidence: 'medium' });
@@ -102,21 +108,25 @@ export default function CommunityOnboardingScreen({ onComplete }: CommunityOnboa
     generateRecommendations();
   }, [profile]);
 
-  // Load previous selections
   useEffect(() => {
     const loadPreviousTopics = async () => {
       try {
-        const [onboardingData, communityTopics] = await Promise.all([
+        const [onboardingData, communityTopics, userTopicsData] = await Promise.all([
           AsyncStorage.getItem(ONBOARDING_KEY),
           AsyncStorage.getItem('@community_selected_topics_v2'),
+          AsyncStorage.getItem('@community_selected_topics'),
         ]);
 
         let topics: string[] = [];
+        let savedCompleted = false;
 
         if (onboardingData) {
           const parsed = JSON.parse(onboardingData);
           if (parsed.selectedTopics?.length > 0) {
             topics = parsed.selectedTopics;
+          }
+          if (parsed.completed === true) {
+            savedCompleted = true;
           }
         }
 
@@ -124,14 +134,21 @@ export default function CommunityOnboardingScreen({ onComplete }: CommunityOnboa
           topics = JSON.parse(communityTopics);
         }
 
+        if (topics.length === 0 && userTopicsData) {
+          topics = JSON.parse(userTopicsData);
+        }
+
         if (topics.length > 0) {
-          setSelectedTopics(topics.slice(0, 5));
+          const validTopics = topics.filter(t => INITIAL_TOPICS.some(it => it.id === t));
+          setSelectedTopics(validTopics.slice(0, 5));
+          setHasSavedData(true);
         } else if (recommendedTopics.length > 0) {
           const autoSelected = recommendedTopics
             .filter(r => r.confidence === 'high')
             .slice(0, 3)
             .map(r => r.topicId);
-          setSelectedTopics(autoSelected);
+          const validAutoSelected = autoSelected.filter(id => INITIAL_TOPICS.some(t => t.id === id));
+          setSelectedTopics(validAutoSelected);
           setShowRecommendations(true);
         }
       } catch (error) {
@@ -142,7 +159,7 @@ export default function CommunityOnboardingScreen({ onComplete }: CommunityOnboa
     };
 
     loadPreviousTopics();
-  }, [recommendedTopics]);
+  }, [recommendedTopics, INITIAL_TOPICS]);
 
   const toggleTopic = (topicId: string) => {
     if (settings.hapticFeedback) {
@@ -157,11 +174,7 @@ export default function CommunityOnboardingScreen({ onComplete }: CommunityOnboa
           if (settings.hapticFeedback) {
             triggerHaptic('error');
           }
-          Alert.alert(
-            'Maximum Topics Reached',
-            'You can select up to 5 topics. Remove one to add another.',
-            [{ text: 'OK' }]
-          );
+          sweetAlert.alert('Maximum Topics Reached', 'You can select up to 5 topics. Remove one to add another.', 'info');
           return prev;
         }
         return [...prev, topicId];
@@ -171,11 +184,7 @@ export default function CommunityOnboardingScreen({ onComplete }: CommunityOnboa
 
   const handleComplete = async () => {
     if (selectedTopics.length === 0) {
-      Alert.alert(
-        'Select Topics',
-        'Please select at least 1 topic to personalize your feed.',
-        [{ text: 'OK' }]
-      );
+      sweetAlert.alert('Select Topics', 'Please select at least 1 topic to personalize your feed.', 'info');
       return;
     }
 
@@ -201,10 +210,17 @@ export default function CommunityOnboardingScreen({ onComplete }: CommunityOnboa
       if (settings.hapticFeedback) {
         triggerHaptic('success');
       }
-      onComplete();
+      
+      if (onComplete) {
+        onComplete();
+      }
+      
+      if (navigation && navigation.replace) {
+        navigation.replace('CommunityMain');
+      }
     } catch (error) {
       console.error('Error saving topics:', error);
-      Alert.alert('Error', 'Failed to save your preferences. Please try again.');
+      sweetAlert.alert('Error', 'Failed to save your preferences. Please try again.', 'warning');
     }
   };
 
@@ -230,7 +246,14 @@ export default function CommunityOnboardingScreen({ onComplete }: CommunityOnboa
               if (updateCommunityTopics) await updateCommunityTopics([]);
               if (updateUserTopics) await updateUserTopics([]);
               await updateSectionState('community', { onboardingComplete: true, topicSelected: false });
-              onComplete();
+              
+              if (onComplete) {
+                onComplete();
+              }
+              
+              if (navigation && navigation.replace) {
+                navigation.replace('CommunityMain');
+              }
             } catch (error) {
               console.error('Error skipping onboarding:', error);
             }
@@ -246,6 +269,10 @@ export default function CommunityOnboardingScreen({ onComplete }: CommunityOnboa
 
   const isDark = settings.darkMode;
 
+  const bottomBarHeight = Platform.OS === 'ios' ? 34 : 20;
+  const tabBarHeight = 68 + 14 + bottomBarHeight; // pill height + margin + safe area
+  const extraPadding = 20; // extra space for comfort
+
   if (isLoading) {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
@@ -257,12 +284,16 @@ export default function CommunityOnboardingScreen({ onComplete }: CommunityOnboa
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
-      <StatusBar barStyle="light" />
+      <StatusBar barStyle="light-content" />
       <LinearGradient colors={CommunityGradients.header} style={StyleSheet.absoluteFill} />
 
-      <AutoHideScrollView 
+      <ScrollView 
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: tabBarHeight + extraPadding + insets.bottom }
+        ]}
+        keyboardShouldPersistTaps="handled"
       >
         <Animated.View entering={FadeIn} style={styles.header}>
           <Text style={styles.emoji}>👋</Text>
@@ -270,7 +301,7 @@ export default function CommunityOnboardingScreen({ onComplete }: CommunityOnboa
           <Text style={styles.subtitle}>
             Pick up to 5 topics you're interested in to personalize your feed
           </Text>
-          
+
           <View style={styles.counterContainer}>
             <View style={[styles.counterBar, { width: `${(selectedTopics.length / 5) * 100}%` }]} />
             <Text style={styles.counter}>
@@ -322,7 +353,7 @@ export default function CommunityOnboardingScreen({ onComplete }: CommunityOnboa
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
                   />
-                  
+
                   {recommendation && !isSelected && (
                     <View style={[styles.recommendationBadge, { backgroundColor: topic.color + '40' }]}>
                       <Ionicons name="star" size={10} color="#fff" />
@@ -346,9 +377,17 @@ export default function CommunityOnboardingScreen({ onComplete }: CommunityOnboa
             );
           })}
         </View>
-      </AutoHideScrollView>
 
-      <View style={[styles.bottomBar, isDark && styles.bottomBarDark]}>
+        {/* FIX #3: Bottom spacer to ensure content is scrollable above the fixed bottom bar */}
+        <View style={{ height: tabBarHeight + extraPadding }} />
+      </ScrollView>
+
+      {/* FIX #3: Fixed bottom bar with proper bottom padding to sit above navigation pill */}
+      <View style={[
+        styles.bottomBar, 
+        isDark && styles.bottomBarDark,
+        { paddingBottom: Math.max(insets.bottom, bottomBarHeight) + 10 + tabBarHeight }
+      ]}>
         <TouchableOpacity onPress={handleSkip} style={styles.skipButton}>
           <Text style={styles.skipText}>Skip for now</Text>
         </TouchableOpacity>
@@ -382,7 +421,7 @@ export default function CommunityOnboardingScreen({ onComplete }: CommunityOnboa
 const styles = StyleSheet.create({
   container: { flex: 1 },
   containerDark: { backgroundColor: '#000' },
-  scrollContent: { paddingTop: 80, paddingBottom: 160, paddingHorizontal: 20 },
+  scrollContent: { paddingTop: 60, paddingBottom: 0, paddingHorizontal: 20 },
   header: { alignItems: 'center', marginBottom: 40 },
   emoji: { fontSize: 64, marginBottom: 16 },
   title: { fontSize: 32, fontWeight: '900', color: '#fff', textAlign: 'center', marginBottom: 12 },
@@ -471,7 +510,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.98)',
     paddingHorizontal: 24,
     paddingTop: 20,
-    paddingBottom: 40,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     ...CommunityShadows.lg,

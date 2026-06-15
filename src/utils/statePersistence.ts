@@ -1,43 +1,24 @@
-﻿// src/utils/statePersistence.ts
-// UNIFIED: Single source of truth for ALL state persistence
-// FIXED: Eliminates duplication between App.tsx, AppNavigator, and statePersistence
-// FIXED: Single storage key strategy, clear responsibility separation
-
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState, AppStateStatus } from 'react-native';
 
-// ============================================
-// STORAGE KEYS - Unified naming convention
-// ============================================
 const STORAGE_KEYS = {
-  // Navigation state (full React Navigation state tree)
   NAVIGATION_STATE: '@littleloom_nav_state_v4',
   
-  // Last active route (lightweight, for quick restore)
   LAST_ROUTE: '@littleloom_last_route_v4',
   
-  // Form drafts
   FORM_STATE: '@littleloom_form_state_v2',
   
-  // Scroll positions
   SCROLL_POSITIONS: '@littleloom_scroll_positions_v2',
   
-  // Component state (for modals, wizards, etc.)
   COMPONENT_STATE: '@littleloom_component_state_v2',
   
-  // App session metadata
   SESSION_META: '@littleloom_session_meta_v2',
   
-  // Security state
   SECURITY_STATE: '@littleloom_security_state_v2',
   
-  // Nav visibility preference
   NAV_VISIBILITY: '@littleloom_nav_visible_v2',
 } as const;
 
-// ============================================
-// TYPES
-// ============================================
 
 export interface PersistedNavigationState {
   state: object;
@@ -75,9 +56,6 @@ export interface SecurityPersistedState {
   lastAuthTime: number;
 }
 
-// ============================================
-// MAIN MANAGER
-// ============================================
 
 class StatePersistenceManager {
   private static instance: StatePersistenceManager;
@@ -111,9 +89,6 @@ class StatePersistenceManager {
     }
   }
 
-  // ============================================
-  // APP STATE HANDLER
-  // ============================================
   
   private async handleAppStateChange(nextAppState: AppStateStatus): Promise<void> {
     if (nextAppState === 'background' || nextAppState === 'inactive') {
@@ -121,9 +96,6 @@ class StatePersistenceManager {
     }
   }
 
-  // ============================================
-  // NAVIGATION STATE (Full tree)
-  // ============================================
   
   async saveNavigationState(state: object, routeName: string, params?: Record<string, any>): Promise<void> {
     try {
@@ -147,13 +119,11 @@ class StatePersistenceManager {
       
       const parsed: PersistedNavigationState = JSON.parse(data);
       
-      // Validate age
       if (Date.now() - parsed.timestamp > this.MAX_AGE_MS) {
         await this.clearNavigationState();
         return null;
       }
       
-      // Validate version (optional migration handling)
       if (parsed.appVersion !== this.APP_VERSION) {
         console.log('Navigation state from different app version, may need migration');
       }
@@ -174,9 +144,6 @@ class StatePersistenceManager {
     }
   }
 
-  // ============================================
-  // LAST ROUTE (Lightweight quick restore)
-  // ============================================
   
   async saveLastRoute(routeName: string, params?: Record<string, any>): Promise<void> {
     try {
@@ -187,7 +154,6 @@ class StatePersistenceManager {
       };
       await AsyncStorage.setItem(STORAGE_KEYS.LAST_ROUTE, JSON.stringify(route));
       
-      // Also update session meta
       await this.updateSessionMeta({ lastRoute: routeName, lastRouteParams: params });
     } catch (error) {
       console.warn('Failed to save last route:', error);
@@ -213,9 +179,6 @@ class StatePersistenceManager {
     }
   }
 
-  // ============================================
-  // SESSION METADATA
-  // ============================================
   
   async updateSessionMeta(updates: Partial<SessionMetadata>): Promise<void> {
     try {
@@ -246,9 +209,6 @@ class StatePersistenceManager {
     }
   }
 
-  // ============================================
-  // FORM STATE
-  // ============================================
   
   async saveFormState(screenName: string, formData: Record<string, any>): Promise<void> {
     try {
@@ -263,7 +223,6 @@ class StatePersistenceManager {
       
       drafts[screenName] = state;
       
-      // Clean old drafts (older than 24 hours)
       const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
       Object.keys(drafts).forEach(key => {
         if (drafts[key].timestamp < oneDayAgo) {
@@ -308,9 +267,6 @@ class StatePersistenceManager {
     }
   }
 
-  // ============================================
-  // SCROLL POSITIONS
-  // ============================================
   
   async saveScrollPosition(screenName: string, position: number): Promise<void> {
     try {
@@ -347,9 +303,6 @@ class StatePersistenceManager {
     }
   }
 
-  // ============================================
-  // COMPONENT STATE (Modals, wizards, etc.)
-  // ============================================
   
   async saveComponentState(componentId: string, data: any, expiryMs?: number): Promise<void> {
     try {
@@ -363,7 +316,6 @@ class StatePersistenceManager {
       const states: Record<string, any> = existing ? JSON.parse(existing) : {};
       states[componentId] = payload;
       
-      // Clean expired states
       const now = Date.now();
       Object.keys(states).forEach(key => {
         if (now - states[key].timestamp > states[key].expiry) {
@@ -408,9 +360,6 @@ class StatePersistenceManager {
     }
   }
 
-  // ============================================
-  // SECURITY STATE
-  // ============================================
   
   async saveSecurityState(state: SecurityPersistedState): Promise<void> {
     try {
@@ -430,9 +379,6 @@ class StatePersistenceManager {
     }
   }
 
-  // ============================================
-  // NAV VISIBILITY
-  // ============================================
   
   async saveNavVisibility(visible: boolean): Promise<void> {
     try {
@@ -452,9 +398,6 @@ class StatePersistenceManager {
     }
   }
 
-  // ============================================
-  // BATCH OPERATIONS
-  // ============================================
   
   async flushPendingSaves(): Promise<void> {
     if (this.isSaving || this.pendingSaves.size === 0) return;
@@ -476,7 +419,6 @@ class StatePersistenceManager {
   queueSave(key: string, data: any): void {
     this.pendingSaves.set(key, { data, timestamp: Date.now() });
     
-    // Debounce flush
     if (this.saveTimeout) {
       clearTimeout(this.saveTimeout);
     }
@@ -485,9 +427,6 @@ class StatePersistenceManager {
     }, 500);
   }
 
-  // ============================================
-  // CLEANUP
-  // ============================================
   
   async clearAllState(): Promise<void> {
     try {
@@ -503,7 +442,6 @@ class StatePersistenceManager {
     try {
       const cutoff = Date.now() - (maxAgeDays * 24 * 60 * 60 * 1000);
       
-      // Clean form states
       const formData = await AsyncStorage.getItem(STORAGE_KEYS.FORM_STATE);
       if (formData) {
         const drafts = JSON.parse(formData);
@@ -513,7 +451,6 @@ class StatePersistenceManager {
         await AsyncStorage.setItem(STORAGE_KEYS.FORM_STATE, JSON.stringify(drafts));
       }
       
-      // Clean component states
       const compData = await AsyncStorage.getItem(STORAGE_KEYS.COMPONENT_STATE);
       if (compData) {
         const states = JSON.parse(compData);
@@ -523,7 +460,6 @@ class StatePersistenceManager {
         await AsyncStorage.setItem(STORAGE_KEYS.COMPONENT_STATE, JSON.stringify(states));
       }
       
-      // Clean scroll positions
       await AsyncStorage.removeItem(STORAGE_KEYS.SCROLL_POSITIONS);
       
     } catch (error) {
@@ -531,9 +467,6 @@ class StatePersistenceManager {
     }
   }
 
-  // ============================================
-  // RESTORE HELPERS
-  // ============================================
   
   async shouldRestoreRoute(): Promise<{ shouldRestore: boolean; route?: string; params?: any }> {
     const meta = await this.getSessionMeta();
@@ -543,8 +476,6 @@ class StatePersistenceManager {
       return { shouldRestore: false };
     }
     
-    // Don't restore if app was killed (no state saved)
-    // Don't restore auth/security screens
     const nonRestorableRoutes = [
       'SecurityLock', 'Login', 'SignUp', 'ForgotPassword', 
       'Onboarding', 'BiometricSetup'
@@ -554,7 +485,6 @@ class StatePersistenceManager {
       return { shouldRestore: false };
     }
     
-    // Check if session is still valid (within 30 minutes)
     const sessionValid = Date.now() - meta.lastActive < 30 * 60 * 1000;
     
     return {
@@ -565,16 +495,10 @@ class StatePersistenceManager {
   }
 }
 
-// ============================================
-// EXPORT SINGLETON
-// ============================================
 
 export const statePersistence = StatePersistenceManager.getInstance();
 export default statePersistence;
 
-// ============================================
-// CONVENIENCE EXPORTS (for backward compatibility)
-// ============================================
 
 export const saveNavigationState = (state: object, routeName: string, params?: Record<string, any>) => 
   statePersistence.saveNavigationState(state, routeName, params);

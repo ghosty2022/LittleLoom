@@ -1,10 +1,4 @@
-// src/screens/auth/OnboardingScreen.tsx
-// FIXED: Navigation delegated to AppNavigator (single source of truth)
-// FIXED: First-time detection, completion persistence, skip behavior
-// FIXED: Auto-advance timing, manual scroll interaction, proper cleanup
-// FIXED: Navigation after completion uses replace to prevent back-nav
-
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -37,8 +31,9 @@ const hp = (percentage: number) => (SCREEN_HEIGHT * percentage) / 100;
 
 const AUTO_ADVANCE_INTERVAL = 5000;
 const USER_INACTIVITY_RESUME = 8000;
+
+const ONBOARDING_COMPLETE_KEY = '@littleloom_onboarding_complete_v3';
 const ONBOARDING_SEEN_KEY = '@littleloom_onboarding_seen_v3';
-const ONBOARDING_COMPLETED_KEY = '@littleloom_onboarding_completed_v3';
 
 interface OnboardingSlide {
   id: string;
@@ -98,7 +93,6 @@ const ONBOARDING_DATA: OnboardingSlide[] = [
   },
 ];
 
-// ==================== SLIDE ITEM ====================
 
 const SlideItem = React.memo(({ 
   item, 
@@ -181,7 +175,6 @@ const SlideItem = React.memo(({
   );
 });
 
-// ==================== MAIN COMPONENT ====================
 
 export default function OnboardingScreen({ navigation }: { navigation: any }) {
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -196,7 +189,6 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
   const resumeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isDark = false; // Onboarding always uses light theme for consistency
 
-  // Prevent memory leaks
   useEffect(() => {
     return () => {
       isMounted.current = false;
@@ -205,14 +197,12 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
     };
   }, []);
 
-  // Prevent back button during onboarding
   useEffect(() => {
     const onBackPress = () => true; // Block back button
     BackHandler.addEventListener('hardwareBackPress', onBackPress);
     return () => BackHandler.removeEventListener('hardwareBackPress', onBackPress);
   }, []);
 
-  // Auto-advance logic
   useEffect(() => {
     if (!isAutoPlaying || isNavigating || !isMounted.current) {
       if (autoPlayTimerRef.current) clearTimeout(autoPlayTimerRef.current);
@@ -233,7 +223,6 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
         }
       } else {
-        // Reached end, stop auto-play and wait for user action
         setIsAutoPlaying(false);
       }
     }, AUTO_ADVANCE_INTERVAL);
@@ -243,14 +232,12 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
     };
   }, [currentIndex, isAutoPlaying, isNavigating]);
 
-  // Scroll handler
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
       scrollX.value = event.contentOffset.x;
     },
   });
 
-  // Viewable items change
   const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: Array<{ index: number | undefined }> }) => {
     if (viewableItems[0]?.index !== undefined) {
       const newIndex = viewableItems[0].index;
@@ -268,7 +255,6 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
     minimumViewTime: 200,
   }).current;
 
-  // Navigate to login after completion
   const handleComplete = useCallback(async () => {
     if (isNavigating || !isMounted.current) return;
 
@@ -279,10 +265,9 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
     if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
 
     try {
-      // Mark onboarding as both seen AND completed
       await AsyncStorage.setItem(ONBOARDING_SEEN_KEY, 'true');
-      await AsyncStorage.setItem(ONBOARDING_COMPLETED_KEY, 'true');
-      
+      await AsyncStorage.setItem(ONBOARDING_COMPLETE_KEY, 'true');
+
       if (Platform.OS !== 'web') {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       }
@@ -290,23 +275,19 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
       console.warn('Failed to persist onboarding state:', e);
     }
 
-    // CRITICAL FIX: Use replace to prevent back-navigation to onboarding
-    // AppNavigator will detect auth state change and route appropriately
     navigation.replace('Login');
   }, [isNavigating, navigation]);
 
-  // Skip to end
   const handleSkip = useCallback(() => {
     if (isNavigating) return;
-    
+
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     }
-    
+
     setIsAutoPlaying(false);
     if (autoPlayTimerRef.current) clearTimeout(autoPlayTimerRef.current);
-    
-    // Scroll to last slide instead of immediately navigating
+
     slidesRef.current?.scrollToIndex({
       index: ONBOARDING_DATA.length - 1,
       animated: true,
@@ -314,7 +295,6 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
     setCurrentIndex(ONBOARDING_DATA.length - 1);
   }, [isNavigating]);
 
-  // Manual scroll interaction
   const handleManualScroll = useCallback(() => {
     setIsAutoPlaying(false);
     if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
@@ -323,14 +303,13 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
     }, USER_INACTIVITY_RESUME);
   }, [isNavigating]);
 
-  // Next button / swipe
   const handleNext = useCallback(() => {
     if (isNavigating) return;
 
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     }
-    
+
     setIsAutoPlaying(false);
 
     const nextIndex = currentIndex + 1;
@@ -471,7 +450,6 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
   );
 }
 
-// ==================== STYLES ====================
 
 const styles = StyleSheet.create({
   container: { 
@@ -521,7 +499,6 @@ const styles = StyleSheet.create({
   progressFill: { 
     height: '100%', 
     borderRadius: 2,
-    transition: 'width 0.3s ease',
   },
   carouselContainer: { 
     flex: 1, 
@@ -636,7 +613,6 @@ const styles = StyleSheet.create({
     height: 8, 
     borderRadius: 4, 
     marginHorizontal: 4,
-    transition: 'width 0.3s ease',
   },
   pageIndicator: { 
     fontSize: 14, 

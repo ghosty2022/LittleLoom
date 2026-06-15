@@ -1,10 +1,14 @@
-// src/screens/baby/BabyOptionalScreen.tsx
-// FIXED: Proper setup completion when selecting existing baby or skipping
-// FIXED: Consistent navigation pattern (replace instead of navigate)
-// FIXED: Error state recovery with proper skip fallback
-
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Dimensions, ActivityIndicator, Image, StatusBar } from 'react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Dimensions,
+  ActivityIndicator,
+  StatusBar,
+  Alert,
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,6 +20,7 @@ import { useAuth } from '../../context/AuthContext';
 import type { RootStackParamList } from '../../types/navigation';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
+import { SafeBabyAvatar } from '../../components/SafeAvatar';
 import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
 
 const { width } = Dimensions.get('window');
@@ -23,100 +28,9 @@ const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpaci
 
 type Props = NativeStackScreenProps<RootStackParamList, 'BabyOptional'>;
 
-const isImageUri = (value: string | undefined | null): boolean => {
-  if (!value || typeof value !== 'string') return false;
-  return value.startsWith('http') || value.startsWith('file://') || value.startsWith('data:');
-};
-
-const isEmoji = (value: string | undefined | null): boolean => {
-  if (!value || typeof value !== 'string') return false;
-  if (value.length > 4) return false;
-  for (const char of value) {
-    const code = char.codePointAt(0) || 0;
-    const isEmojiChar = (
-      (code >= 0x1F600 && code <= 0x1F64F) || (code >= 0x1F300 && code <= 0x1F5FF) ||
-      (code >= 0x1F680 && code <= 0x1F6FF) || (code >= 0x1F1E0 && code <= 0x1F1FF) ||
-      (code >= 0x2600 && code <= 0x26FF) || (code >= 0x2700 && code <= 0x27BF) ||
-      (code >= 0x1F900 && code <= 0x1F9FF) || (code >= 0x1F018 && code <= 0x1F270) ||
-      code === 0x238C || code === 0x2B06 || code === 0x2B07 || code === 0x2B05 ||
-      code === 0x27A1 || (code >= 0x2194 && code <= 0x2199) ||
-      (code >= 0x21A9 && code <= 0x21AA) || (code >= 0x2934 && code <= 0x2935) ||
-      (code >= 0x25AA && code <= 0x25AB) || (code >= 0x25FB && code <= 0x25FE) ||
-      code === 0x25B6 || code === 0x25C0 || (code >= 0x1F200 && code <= 0x1F251) ||
-      code === 0x1F004 || code === 0x1F0CF || (code >= 0x1F170 && code <= 0x1F171) ||
-      (code >= 0x1F17E && code <= 0x1F17F) || code === 0x1F18E || code === 0x3030 ||
-      code === 0x2B50 || code === 0x2B55 || (code >= 0x23E9 && code <= 0x23EC) ||
-      code === 0x23F0 || code === 0x23F3 || (code >= 0x231A && code <= 0x231B) ||
-      (code >= 0x23F8 && code <= 0x23FA) || code === 0x24C2 ||
-      (code >= 0x1F3FB && code <= 0x1F3FF) || (code >= 0x1F3E0 && code <= 0x1F3F4) ||
-      (code >= 0x1F3F8 && code <= 0x1F43F) || code === 0x1F440 ||
-      (code >= 0x1F442 && code <= 0x1F4FF) || (code >= 0x1F500 && code <= 0x1F53D) ||
-      (code >= 0x1F54B && code <= 0x1F54E) || (code >= 0x1F550 && code <= 0x1F567) ||
-      (code >= 0x1F595 && code <= 0x1F596) || (code >= 0x1F5FB && code <= 0x1F64F) ||
-      (code >= 0x1F680 && code <= 0x1F6C5) || (code >= 0x1F6CB && code <= 0x1F6D2) ||
-      (code >= 0x1F6E0 && code <= 0x1F6E5) || code === 0x1F6E9 ||
-      (code >= 0x1F6EB && code <= 0x1F6EC) || code === 0x1F6F0 ||
-      (code >= 0x1F6F3 && code <= 0x1F6F8) || (code >= 0x1F910 && code <= 0x1F93A) ||
-      (code >= 0x1F93C && code <= 0x1F93E) || (code >= 0x1F940 && code <= 0x1F945) ||
-      (code >= 0x1F947 && code <= 0x1F94C) || (code >= 0x1F950 && code <= 0x1F96B) ||
-      (code >= 0x1F980 && code <= 0x1F997) || code === 0x1F9C0 ||
-      (code >= 0x1F9D0 && code <= 0x1F9E6)
-    );
-    if (!isEmojiChar) return false;
-  }
-  return true;
-};
-
-const GENDER_OPTIONS = [
-  { value: 'boy', label: 'Boy', icon: 'male', color: '#667eea', gradient: ['#667eea', '#764ba2'] },
-  { value: 'girl', label: 'Girl', icon: 'female', color: '#fa709a', gradient: ['#fa709a', '#fee140'] },
-  { value: 'other', label: 'Other', icon: 'ellipse', color: '#11998e', gradient: ['#11998e', '#38ef7d'] },
-];
-
-const SafeBabyAvatar: React.FC<{
-  avatar?: string | null;
-  gender?: string;
-  size?: number;
-}> = ({ avatar, gender = 'other', size = 64 }) => {
-  const hasImage = isImageUri(avatar);
-  const hasEmoji = isEmoji(avatar);
-
-  const genderOption = GENDER_OPTIONS.find(g => g.value === gender);
-  const gradientColors = genderOption?.gradient || ['#667eea', '#764ba2'];
-
-  return (
-    <LinearGradient
-      colors={gradientColors as [string, string]}
-      style={[
-        styles.avatarGradient,
-        { width: size, height: size, borderRadius: size / 2 }
-      ]}
-    >
-      {hasImage ? (
-        <Image
-          source={{ uri: avatar! }}
-          style={{ width: size, height: size, borderRadius: size / 2 }}
-          resizeMode="cover"
-          onError={(e) => console.log('Baby avatar image error:', e.nativeEvent.error)}
-        />
-      ) : hasEmoji ? (
-        <Text style={[styles.avatarEmoji, { fontSize: size * 0.5 }]}>
-          {avatar}
-        </Text>
-      ) : (
-        <Ionicons
-          name={genderOption?.icon as any || 'ellipse'}
-          size={size * 0.4}
-          color="#fff"
-        />
-      )}
-    </LinearGradient>
-  );
-};
-
-export default function BabyOptionalScreen({ navigation }: Props) {
+export default function BabyOnboardingScreen({ navigation }: Props) {
   const {
-    skipBaby, babies, currentBabyId, switchBaby, loadBabies, isLoading: babyLoading
+    babies, currentBabyId, switchBaby, loadBabies, isLoading: babyLoading
   } = useBaby();
   const { userProfile, skipSetup, completeSetup } = useAuth();
   const insets = useSafeAreaInsets();
@@ -135,66 +49,71 @@ export default function BabyOptionalScreen({ navigation }: Props) {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
+    isMountedRef.current = true;
     loadingTimeoutRef.current = setTimeout(() => {
-      if (localLoading) {
+      if (localLoading && isMountedRef.current) {
         setLocalLoading(false);
       }
     }, 8000);
-    return () => { if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current); };
+    return () => {
+      isMountedRef.current = false;
+      if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
+    };
   }, []);
 
   useEffect(() => {
-    let isMounted = true;
     const loadData = async () => {
       try {
         setLocalLoading(true);
         await loadBabies();
-        if (isMounted) setLocalLoading(false);
+        if (isMountedRef.current) setLocalLoading(false);
       } catch (error) {
-        if (isMounted) {
+        if (isMountedRef.current) {
           setLoadError('Failed to load babies');
           setLocalLoading(false);
         }
       }
     };
     loadData();
-    return () => { isMounted = false; };
   }, [loadBabies]);
 
-  // CRITICAL FIX: Skip must properly mark baby setup as complete
   const handleSkip = useCallback(async () => {
     triggerHaptic('light');
     setIsProcessing(true);
     try {
-      await skipBaby();
       await skipSetup('baby');
       showInfo('Skipped', 'You can add a baby later from settings');
-      // Use replace to prevent going back to setup screens
-      setTimeout(() => navigation.replace('Main'), 1000);
+      setTimeout(() => {
+        if (isMountedRef.current) {
+          navigation.replace('Main');
+        }
+      }, 1000);
     } catch (error) {
       showError('Error', 'Could not skip baby setup');
       setIsProcessing(false);
     }
-  }, [skipBaby, skipSetup, navigation, showError, showInfo, triggerHaptic]);
+  }, [skipSetup, navigation, showError, showInfo, triggerHaptic]);
 
   const handleCreateBaby = useCallback(() => {
     triggerHaptic('medium');
     navigation.navigate('CreateBabyProfile');
   }, [navigation, triggerHaptic]);
 
-  // CRITICAL FIX: Selecting existing baby must complete setup
   const handleSelectBaby = useCallback(async (babyId: string) => {
     triggerHaptic('medium');
     setIsProcessing(true);
     try {
       await switchBaby(babyId);
-      // Mark baby setup as complete since we selected a baby
       await completeSetup('baby');
       showSuccess('Welcome Back!', 'Baby profile selected');
-      // Use replace to prevent going back to setup screens
-      setTimeout(() => navigation.replace('Main'), 500);
+      setTimeout(() => {
+        if (isMountedRef.current) {
+          navigation.replace('Main');
+        }
+      }, 500);
     } catch (error) {
       showError('Error', 'Could not switch baby');
       setIsProcessing(false);
@@ -206,10 +125,12 @@ export default function BabyOptionalScreen({ navigation }: Props) {
     setLocalLoading(true);
     try {
       await loadBabies();
-      setLocalLoading(false);
+      if (isMountedRef.current) setLocalLoading(false);
     } catch (error) {
-      setLoadError('Still unable to load');
-      setLocalLoading(false);
+      if (isMountedRef.current) {
+        setLoadError('Still unable to load');
+        setLocalLoading(false);
+      }
     }
   }, [loadBabies]);
 
@@ -301,6 +222,7 @@ export default function BabyOptionalScreen({ navigation }: Props) {
                       avatar={baby.avatar}
                       gender={baby.gender}
                       size={64}
+                      animated={!shouldReduceMotion}
                     />
                     <View style={styles.babyInfo}>
                       <Text style={[styles.babyName, isDark && styles.textDark]}>{baby.name}</Text>
@@ -457,14 +379,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
     color: '#64748b',
-  },
-  avatarGradient: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    overflow: 'hidden',
-  },
-  avatarEmoji: {
-    textAlign: 'center',
   },
   errorTitle: {
     fontSize: 24,

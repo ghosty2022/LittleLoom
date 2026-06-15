@@ -28,7 +28,6 @@ const CARD_GAP = 12;
 const HORIZONTAL_PADDING = 40; // 20px each side
 const CARD_WIDTH = (SCREEN_WIDTH - HORIZONTAL_PADDING - CARD_GAP) / 2;
 
-// ─── Service Links Configuration ───
 interface ServiceLink {
   icon: keyof typeof Ionicons.glyphMap;
   title: string;
@@ -39,7 +38,6 @@ interface ServiceLink {
   isExternal: boolean;
 }
 
-// ─── Feature Cards with Navigation ───
 interface FeatureItem {
   icon: keyof typeof Ionicons.glyphMap;
   title: string;
@@ -59,7 +57,7 @@ const FEATURES: FeatureItem[] = [
   },
   {
     icon: 'people',
-    title: 'Family Sharing',
+    title: 'Family Dashboard',
     desc: 'Invite co-parents and guardians',
     route: 'FamilySharing',
     color: '#667eea',
@@ -68,7 +66,7 @@ const FEATURES: FeatureItem[] = [
     icon: 'trending-up',
     title: 'Growth Tracking',
     desc: 'Monitor height, weight, milestones',
-    route: 'GrowthChart',
+    route: 'Grow',
     color: '#f59e0b',
   },
   {
@@ -141,7 +139,6 @@ const TEAM = [
   { name: 'Refresh', role: ' By TPM Solutions' },
 ];
 
-// ─── Reusable Components ───
 
 const SectionHeader: React.FC<{
   icon: keyof typeof Ionicons.glyphMap;
@@ -231,7 +228,6 @@ const FeatureCard: React.FC<{
   </TouchableOpacity>
 );
 
-// ─── 2×2 Feature Row Component ───
 const FeatureRow: React.FC<{
   features: [FeatureItem, FeatureItem] | [FeatureItem];
   startIndex: number;
@@ -289,7 +285,6 @@ export default function AboutScreen({ navigation }: Props) {
     }
   };
 
-  // ─── Service Links Data ───
   const serviceLinks: ServiceLink[] = [
     {
       icon: 'document-text-outline',
@@ -350,7 +345,6 @@ export default function AboutScreen({ navigation }: Props) {
     }
   };
 
-  // Group features into pairs for 2×2 layout
   const featurePairs: (FeatureItem[] | [FeatureItem])[] = [];
   for (let i = 0; i < FEATURES.length; i += 2) {
     if (i + 1 < FEATURES.length) {
@@ -360,7 +354,6 @@ export default function AboutScreen({ navigation }: Props) {
     }
   }
 
-  // Background gradient colors based on theme
   const bgColors = isDark
     ? [themeColors?.colors?.[0] || '#0f0f1e', themeColors?.colors?.[1] || '#1a1a2e', themeColors?.colors?.[2] || '#16213e']
     : [themeColors?.colors?.[0] || '#f8faff', themeColors?.colors?.[1] || '#f0f4ff', themeColors?.colors?.[2] || '#e8eeff'];
@@ -573,7 +566,6 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { paddingHorizontal: 20 },
 
-  // ─── Header ───
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -595,7 +587,6 @@ const styles = StyleSheet.create({
   },
   headerTitleDark: { color: '#fff' },
 
-  // ─── Section Header (matches SettingsScreen) ───
   sectionWrapper: { marginBottom: 20 },
   sectionHeader: {
     flexDirection: 'row',
@@ -620,7 +611,6 @@ const styles = StyleSheet.create({
   },
   sectionTitleDark: { color: '#ffffff' },
 
-  // ─── Logo / Brand ───
   logoSection: { alignItems: 'center', marginBottom: 24 },
   logoCard: {
     width: '100%',
@@ -669,7 +659,6 @@ const styles = StyleSheet.create({
   },
   taglineDark: { color: '#a0a0a0' },
 
-  // ─── Features (2×2 Grid) ───
   featuresContainer: {
     borderRadius: 24,
     overflow: 'hidden',
@@ -732,7 +721,6 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
 
-  // ─── Team ───
   teamContainer: {
     borderRadius: 24,
     overflow: 'hidden',
@@ -775,7 +763,6 @@ const styles = StyleSheet.create({
   },
   teamRoleDark: { color: '#bbb' },
 
-  // ─── Service Links (matches SettingsScreen MenuItem) ───
   linksContainer: {
     borderRadius: 24,
     overflow: 'hidden',
@@ -816,7 +803,6 @@ const styles = StyleSheet.create({
   },
   linkSubtitleDark: { color: '#888' },
 
-  // ─── Divider ───
   divider: {
     height: 1,
     backgroundColor: 'rgba(0,0,0,0.04)',
@@ -826,7 +812,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.06)',
   },
 
-  // ─── Copyright ───
   copyright: {
     alignItems: 'center',
     marginTop: 32,

@@ -1,13 +1,9 @@
-// src/hooks/useSafeContexts.ts
-// UNIFIED Safe Context Hooks — zero undefined errors, bulletproof fallbacks
-
 import { useTheme as useThemeOriginal } from '../context/AppContext';
 import { useAuth as useAuthOriginal } from '../context/AuthContext';
 import { useBaby as useBabyOriginal } from '../context/BabyContext';
 import { useActivity as useActivityOriginal } from '../context/ActivityContext';
 import useCustomizationOriginal from './useCustomization';
 
-// ==================== DEFAULTS ====================
 
 const DEFAULT_APP_COLORS = {
   background: '#f8faff',
@@ -73,16 +69,12 @@ const DEFAULT_CUSTOMIZATION = {
   triggerHaptic: async () => {},
 };
 
-// ==================== SAFE APP CONTEXT ====================
-// 🔑 useThemeOriginal returns: themeMode, appearance, isDark, isTrueBlack, isPureWhite, colors, setThemeMode, setAppearance, toggleTheme, setDarkMode, themeReady
-// But AppContext also has nav methods. We need to call useApp for full context, but since it's not exported separately, we use useTheme and add nav fallbacks.
 
 export function useSafeApp() {
   try {
     const app = useThemeOriginal();
     return {
       ...app,
-      // Nav visibility fallbacks (not in useTheme but needed by consumers)
       isNavVisible: true,
       isNavCompact: false,
       showNav: () => {},
@@ -121,7 +113,6 @@ export function useSafeApp() {
   }
 }
 
-// ==================== SAFE AUTH CONTEXT ====================
 
 export function useSafeAuth() {
   try {
@@ -178,7 +169,6 @@ export function useSafeAuth() {
   }
 }
 
-// ==================== SAFE BABY CONTEXT ====================
 
 export function useSafeBaby() {
   try {
@@ -238,7 +228,6 @@ export function useSafeBaby() {
   }
 }
 
-// ==================== SAFE ACTIVITY CONTEXT ====================
 
 export function useSafeActivity() {
   try {
@@ -270,7 +259,6 @@ export function useSafeActivity() {
   }
 }
 
-// ==================== SAFE CUSTOMIZATION ====================
 
 export function useSafeCustomization() {
   try {
@@ -280,7 +268,6 @@ export function useSafeCustomization() {
   }
 }
 
-// ==================== UNIFIED THEME HOOK ====================
 
 export function useUnifiedTheme() {
   const app = useSafeApp();
@@ -316,7 +303,6 @@ export function useUnifiedTheme() {
   };
 }
 
-// ==================== SINGLE EXPORT ====================
 
 export {
   useSafeApp,

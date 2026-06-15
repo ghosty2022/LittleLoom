@@ -6,6 +6,8 @@ import {
   FlatListProps,
   SectionList,
   SectionListProps,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
 } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useTrackedScroll } from '../hooks/useTrackedScroll';

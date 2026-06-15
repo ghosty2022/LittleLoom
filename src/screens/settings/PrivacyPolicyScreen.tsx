@@ -43,7 +43,7 @@ We do NOT collect:
 • Display timelines and charts
 • Calculate statistics and streaks
 • Generate reminders and notifications
-• Enable family sharing (only with people you explicitly invite)
+• Enable Family Dashboard (only with people you explicitly invite)
 
 We never sell, rent, or share your data with third parties for advertising or marketing purposes.`,
   },
@@ -57,12 +57,12 @@ We never sell, rent, or share your data with third parties for advertising or ma
 You control your data through:
 • Local PIN/Biometric app lock
 • Manual encrypted JSON backups
-• Family sharing permissions you set
+• Family Dashboard permissions you set
 
 We do not operate servers that store your baby data. Your information never leaves your device unless you explicitly choose to share it (e.g., creating a backup file or inviting a family member).`,
   },
   {
-    title: '4. Family Sharing',
+    title: '4. Family Dashboard',
     content: `When you invite a co-parent or guardian:
 
 • They receive only the data you authorize
@@ -292,10 +292,8 @@ const styles = StyleSheet.create({
   },
   headerSubtitleDark: { color: '#a0a0a0' },
 
-  // Section Wrapper
   sectionWrapper: { marginBottom: 12 },
 
-  // Intro
   introCard: {
     borderRadius: 24,
     padding: 24,
@@ -329,7 +327,6 @@ const styles = StyleSheet.create({
   },
   introTextDark: { color: '#a0a0a0' },
 
-  // Section Card
   sectionCard: {
     borderRadius: 24,
     padding: 20,
@@ -355,7 +352,6 @@ const styles = StyleSheet.create({
   },
   sectionTextDark: { color: '#a0a0a0' },
 
-  // Footer
   footer: {
     marginTop: 20,
     marginBottom: 20,

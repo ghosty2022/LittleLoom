@@ -1,1 +1,1 @@
-﻿export { useSecurity } from '../context/SecurityContext';
+export { useSecurity } from '../context/SecurityContext';

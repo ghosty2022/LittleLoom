@@ -1,4 +1,4 @@
-// src/context/UserContext.tsx
+import { useSweetAlert } from '../../components/SweetAlert';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -143,13 +143,11 @@ interface UserContextType extends UserState {
   getUserType: () => 'parent' | 'guardian' | 'community';
   clearUserData: () => Promise<void>;
   isReady: boolean;
-  // NEW: Community-specific profile updates
   updateCommunityDisplayName: (name: string) => Promise<void>;
   updateCommunityBio: (bio: string) => Promise<void>;
   updateCommunityAvatar: (uri: string) => Promise<void>;
   updateCommunityHandle: (handle: string) => Promise<{ success: boolean; message: string }>;
   getCommunityHandle: () => string;
-  // NEW: Seamless auth integration
   syncWithAuthProfile: () => Promise<void>;
   getAuthProfile: () => UserProfile | null;
 }
@@ -198,7 +196,6 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const initRef = useRef(false);
   const usernameLockRef = useRef(false);
 
-  // Gate initialization on auth being ready
   useEffect(() => {
     if (initRef.current) return;
     if (authLoading) return;
@@ -211,7 +208,6 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initialize();
   }, [authLoading]);
 
-  // React to auth state changes after initial load
   useEffect(() => {
     if (!isReady) return;
     if (authLoading) return;
@@ -280,7 +276,6 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       let communityProfile: CommunityProfile | null = null;
       let usernameRegistry: UsernameRegistry = {};
 
-      // AuthContext is the single source of truth for auth profile
       if (authProfile) {
         profile = {
           id: authProfile.id,
@@ -455,7 +450,6 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const newProfile = { ...state.profile, ...updates };
       
-      // Sync back to AuthContext (single source of truth for auth profile)
       try {
         if (updateAuthProfile) {
           await updateAuthProfile(updates);
@@ -476,7 +470,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }));
     } catch (error) {
       console.error('updateProfile error:', error);
-      Alert.alert('Error', 'Failed to update profile');
+      sweetAlert.alert('Error', 'Failed to update profile', 'warning');
     }
   }, [state.profile, state.permissions, updateAuthProfile]);
 
@@ -539,11 +533,10 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       syncQueueRef.current.push(updates);
     } catch (error) {
       console.error('updateCommunityProfile error:', error);
-      Alert.alert('Error', 'Failed to update community profile');
+      sweetAlert.alert('Error', 'Failed to update community profile', 'warning');
     }
   }, [state.communityProfile, updateUsername]);
 
-  // NEW: Community-specific convenience methods
   const updateCommunityDisplayName = useCallback(async (name: string) => {
     if (!state.communityProfile) return;
     await updateCommunityProfile({ displayName: name.trim() });
@@ -557,7 +550,6 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const updateCommunityAvatar = useCallback(async (uri: string) => {
     if (!state.communityProfile) return;
     await updateCommunityProfile({ avatar: uri });
-    // Also sync to auth profile
     await updateProfile({ avatar: uri });
   }, [state.communityProfile, updateCommunityProfile, updateProfile]);
 
@@ -698,7 +690,6 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initRef.current = false;
   }, [state.communityProfile, unregisterUsername]);
 
-  // NEW: Seamless auth integration
   const syncWithAuthProfile = useCallback(async () => {
     if (!authProfile) return;
 
@@ -712,7 +703,6 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       await updateProfile(updates);
 
-      // Sync community-specific fields if they exist in auth
       if (authProfile.communityDisplayName || authProfile.communityBio || authProfile.communityAvatar) {
         const commUpdates: Partial<CommunityProfile> = {};
         if (authProfile.communityDisplayName) commUpdates.displayName = authProfile.communityDisplayName;

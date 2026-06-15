@@ -1,4 +1,4 @@
-﻿export enum UserRole {
+export enum UserRole {
   PARENT_1 = 'parent1',
   PARENT_2 = 'parent2',
   GUARDIAN = 'guardian',

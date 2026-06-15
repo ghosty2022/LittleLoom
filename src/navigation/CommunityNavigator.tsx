@@ -1,6 +1,5 @@
-// src/navigation/CommunityNavigator.tsx
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, StyleSheet, Text, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, Text } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
@@ -35,9 +34,10 @@ const Stack = createNativeStackNavigator<CommunityStackParamList>();
 const COUNTRY_CACHE_KEY = '@littleloom_country_detected_v2';
 const COUNTRY_CACHE_TTL = 7 * 24 * 60 * 60 * 1000;
 
-// ============================================
-// AUTOMATIC COUNTRY DETECTION HOOK
-// ============================================
+// ─── ONBOARDING KEYS (should match CommunityContext if it has its own) ─
+const COMMUNITY_ONBOARDING_KEY = '@littleloom_community_onboarding_done';
+const COMMUNITY_TOPICS_KEY = '@littleloom_community_topics_selected';
+
 const useAutomaticCountryDetection = () => {
   const { currentUser, updateUserLocation } = useCommunity();
   const [isDetecting, setIsDetecting] = useState(false);
@@ -80,7 +80,6 @@ const useAutomaticCountryDetection = () => {
           return;
         }
 
-        // Defer location permission to after interactions
         setTimeout(async () => {
           try {
             const { status } = await Location.requestForegroundPermissionsAsync();
@@ -127,9 +126,6 @@ const useAutomaticCountryDetection = () => {
   return isDetecting;
 };
 
-// ============================================
-// INLINE LOADING VIEW
-// ============================================
 const InlineLoadingView = React.memo(({ text }: { text: string }) => (
   <View style={styles.inlineLoadingContainer}>
     <View style={styles.inlineLoadingCard}>
@@ -139,67 +135,86 @@ const InlineLoadingView = React.memo(({ text }: { text: string }) => (
   </View>
 ));
 
-// ============================================
-// MAIN COMMUNITY NAVIGATOR
-// ============================================
+// ─── TYPES FOR NAVIGATOR STATE ──────────────────────────────────────────
+type CommunityPhase = 'loading' | 'onboarding' | 'splash' | 'main';
+
 const CommunityNavigator = React.memo(() => {
-  const { isLoading, currentUser, checkOnboardingStatus, getSelectedTopics } = useCommunity();
+  const { isLoading, currentUser, checkOnboardingStatus, getSelectedTopics, isInitialized } = useCommunity();
   const { profile: userProfile } = useUser();
   const { settings, shouldReduceMotion } = useCustomization();
   const isDetectingCountry = useAutomaticCountryDetection();
 
-  // Intelligent splash system
   const {
     isReady: splashReady,
     shouldShowSplash,
     markShown: markSplashShown,
   } = useIntelligentSplash('community', shouldReduceMotion, settings.compactView);
 
-  const [showSplash, setShowSplash] = useState(false);
-  const [showOnboarding, setShowOnboarding] = useState(false);
-  const [onboardingChecked, setOnboardingChecked] = useState(false);
-  const [isReady, setIsReady] = useState(false);
+  // ─── FIX: Single phase state instead of disconnected booleans ─────────
+  const [phase, setPhase] = useState<CommunityPhase>('loading');
+  const [navigatorKey, setNavigatorKey] = useState(0);
+  const initDone = useRef(false);
 
+  const isContextReady = !isLoading && isInitialized && splashReady;
+
+  // ─── FIX: One-time init that determines the correct starting phase ───
   useEffect(() => {
-    if (!splashReady) return;
-    
-    if (shouldShowSplash && !isLoading && !isDetectingCountry) {
-      setShowSplash(true);
+    if (!isContextReady || initDone.current) return;
+
+    const initialize = async () => {
+      initDone.current = true;
+
+      // Check onboarding status from BOTH context AND storage for reliability
+      const [completed, selectedTopics] = await Promise.all([
+        checkOnboardingStatus(),
+        getSelectedTopics(),
+      ]);
+
+      // Also check storage directly as fallback
+      const onboardingDone = await AsyncStorage.getItem(COMMUNITY_ONBOARDING_KEY);
+      const topicsStored = await AsyncStorage.getItem(COMMUNITY_TOPICS_KEY);
+      const hasTopics = selectedTopics.length > 0 || (topicsStored ? JSON.parse(topicsStored).length > 0 : false);
+      const isOnboardingDone = completed || onboardingDone === 'true';
+
+      console.log('[CommunityNavigator] Init - onboardingDone:', isOnboardingDone, 'hasTopics:', hasTopics);
+
+      if (!isOnboardingDone || !hasTopics) {
+        // User needs onboarding
+        setPhase('onboarding');
+      } else if (shouldShowSplash && !isDetectingCountry) {
+        // User is set up, show splash once
+        setPhase('splash');
+      } else {
+        // Go straight to main
+        setPhase('main');
+      }
+    };
+
+    initialize();
+  }, [isContextReady, checkOnboardingStatus, getSelectedTopics, shouldShowSplash, isDetectingCountry]);
+
+  // ─── FIX: After phase changes, increment navigator key to force remount
+  // ONLY when transitioning FROM loading TO a real phase
+  useEffect(() => {
+    if (phase !== 'loading') {
+      setNavigatorKey(prev => prev + 1);
     }
-  }, [splashReady, shouldShowSplash, isLoading, isDetectingCountry]);
+  }, [phase]);
 
   const handleSplashComplete = useCallback(async () => {
     await markSplashShown();
-    setShowSplash(false);
-    
-    const completed = await checkOnboardingStatus();
-    const hasTopics = getSelectedTopics().length > 0;
-    setShowOnboarding(!completed || !hasTopics);
-    setOnboardingChecked(true);
-    setIsReady(true);
-  }, [markSplashShown, checkOnboardingStatus, getSelectedTopics]);
+    setPhase('main');
+  }, [markSplashShown]);
 
-  useEffect(() => {
-    if (isLoading || isDetectingCountry || showSplash) return;
+  const handleOnboardingComplete = useCallback(async () => {
+    // Persist onboarding completion immediately
+    await AsyncStorage.setItem(COMMUNITY_ONBOARDING_KEY, 'true');
+    setPhase('main');
+    markSplashShown();
+  }, [markSplashShown]);
 
-    if (!showSplash && splashReady) {
-      const check = async () => {
-        const completed = await checkOnboardingStatus();
-        const hasTopics = getSelectedTopics().length > 0;
-        setShowOnboarding(!completed || !hasTopics);
-        setOnboardingChecked(true);
-        setIsReady(true);
-      };
-      check();
-    }
-  }, [isLoading, isDetectingCountry, showSplash, splashReady, checkOnboardingStatus, getSelectedTopics]);
-
-  const handleOnboardingComplete = useCallback(() => {
-    setShowOnboarding(false);
-  }, []);
-
-  // Show community-specific spinner during initial load
-  if (isLoading || isDetectingCountry || !splashReady) {
+  // ─── LOADING STATE ────────────────────────────────────────────────────
+  if (!isContextReady || phase === 'loading') {
     return (
       <CommunitySpinner
         visible={true}
@@ -212,24 +227,65 @@ const CommunityNavigator = React.memo(() => {
     );
   }
 
-  // Show intelligent splash screen
-  if (showSplash) {
+  // ─── FIX: Use phase to determine which navigator to render ─────────────
+  // Each phase gets its own Stack.Navigator with the correct initial route
+  // This avoids the "initialRouteName doesn't update" problem entirely
+
+  if (phase === 'onboarding') {
     return (
-      <CommunitySplashScreen
-        onAnimationComplete={handleSplashComplete}
-        userName={userProfile?.fullName || currentUser?.displayName || 'Parent'}
-      />
+      <Stack.Navigator
+        key="community-onboarding"
+        initialRouteName="CommunityOnboarding"
+        screenOptions={{
+          headerShown: false,
+          animation: 'slide_from_right',
+          gestureEnabled: false,
+          contentStyle: { backgroundColor: CommunityColors.background.main },
+        }}
+      >
+        <Stack.Screen name="CommunityOnboarding">
+          {(props) => (
+            <CommunityOnboardingScreen
+              {...props}
+              onComplete={handleOnboardingComplete}
+            />
+          )}
+        </Stack.Screen>
+      </Stack.Navigator>
     );
   }
 
-  // Show onboarding for new/incomplete users
-  if (showOnboarding && onboardingChecked) {
-    return <CommunityOnboardingScreen onComplete={handleOnboardingComplete} />;
+  if (phase === 'splash') {
+    return (
+      <Stack.Navigator
+        key="community-splash"
+        initialRouteName="CommunitySplash"
+        screenOptions={{
+          headerShown: false,
+          animation: 'fade',
+          gestureEnabled: false,
+          contentStyle: { backgroundColor: CommunityColors.background.main },
+        }}
+      >
+        <Stack.Screen name="CommunitySplash">
+          {(props) => (
+            <CommunitySplashScreen
+              {...props}
+              onAnimationComplete={handleSplashComplete}
+              userName={userProfile?.fullName || currentUser?.displayName || 'Parent'}
+            />
+          )}
+        </Stack.Screen>
+      </Stack.Navigator>
+    );
   }
 
-  // Main community navigator
+  // ─── MAIN PHASE: Full navigator with all routes ───────────────────────
+  // Splash and Onboarding are NOT defined here — they can't be navigated to accidentally
   return (
     <Stack.Navigator
+      key={`community-main-${navigatorKey}`}
+      initialRouteName="CommunityMain"
       screenOptions={{
         headerShown: false,
         animation: 'slide_from_right',
@@ -237,7 +293,12 @@ const CommunityNavigator = React.memo(() => {
         contentStyle: { backgroundColor: CommunityColors.background.main },
       }}
     >
-      <Stack.Screen name="CommunityMain" component={CommunityScreen} options={{ animation: 'fade' }} />
+      <Stack.Screen 
+        name="CommunityMain" 
+        component={CommunityScreen} 
+        options={{ animation: 'fade' }} 
+      />
+
       <Stack.Screen name="Topic" component={TopicScreen} />
       <Stack.Screen name="CreatePost" component={CreatePostScreen} options={{ animation: 'slide_from_bottom', gestureEnabled: false }} />
       <Stack.Screen name="PostDetail" component={PostDetailScreen} />
@@ -253,9 +314,6 @@ const CommunityNavigator = React.memo(() => {
   );
 });
 
-// ============================================
-// COUNTRY HELPERS
-// ============================================
 const getCountryNameFromCode = (code: string): string | null => {
   const countryMap: Record<string, string> = {
     'US': 'United States', 'GB': 'United Kingdom', 'CA': 'Canada', 'AU': 'Australia',

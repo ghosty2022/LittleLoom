@@ -1,11 +1,11 @@
-// src/screens/SafetyCornerScreen.tsx
 import React, {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
-  useMemo,
   memo,
+  useLayoutEffect,
 } from 'react';
 import {
   View,
@@ -14,17 +14,15 @@ import {
   TouchableOpacity,
   Dimensions,
   Linking,
-  Alert,
   Share,
   Platform,
   Modal,
   Vibration,
   StatusBar,
-  Animated,
   ScrollView,
-  FlatList,
   Switch,
   TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -33,6 +31,21 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Contacts from 'expo-contacts';
 import * as Notifications from 'expo-notifications';
 import * as DocumentPicker from 'expo-document-picker';
+import * as Haptics from 'expo-haptics';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withTiming,
+  withSequence,
+  interpolate,
+  Extrapolate,
+  FadeInUp,
+  FadeIn,
+  Layout,
+  useAnimatedScrollHandler,
+  runOnJS,
+} from 'react-native-reanimated';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { MainTabParamList } from '../../types/navigation';
 
@@ -41,7 +54,6 @@ import type { EmergencyContact, SafetyTopic, SafetyChecklist } from '../../conte
 import { useBaby } from '../../context/BabyContext';
 import { useFamily } from '../../context/FamilyContext';
 import { useAuth } from '../../context/AuthContext';
-import { useUser } from '../../context/UserContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
@@ -53,119 +65,184 @@ type SafetyCornerScreenProps = BottomTabScreenProps<MainTabParamList, 'SafetyCor
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
 /* ═══════════════════════════════════════════════════════════════
-   THEME & DESIGN TOKENS — Uses customization theme colors
+   DESIGN TOKENS — Centralized theme-aware constants
    ═══════════════════════════════════════════════════════════════ */
-const createTheme = (themeColors: { primary: string; secondary: string; accent: string }) => ({
+const TOKENS = {
   emergency: {
     primary: '#ff4757',
     secondary: '#ff6b81',
     gradient: ['#ff4757', '#ff6348'] as const,
     glow: 'rgba(255,71,87,0.15)',
   },
-  prevention: {
-    primary: themeColors.accent || '#43e97b',
-    secondary: '#38f9d7',
-    gradient: [themeColors.accent || '#43e97b', '#38f9d7'] as const,
-    glow: `rgba(${parseInt((themeColors.accent || '#43e97b').slice(1, 3), 16)}, ${parseInt((themeColors.accent || '#43e97b').slice(3, 5), 16)}, ${parseInt((themeColors.accent || '#43e97b').slice(5, 7), 16)}, 0.15)`,
-  },
-  daily: {
-    primary: themeColors.primary || '#667eea',
-    secondary: themeColors.secondary || '#764ba2',
-    gradient: [themeColors.primary || '#667eea', themeColors.secondary || '#764ba2'] as const,
-    glow: `rgba(${parseInt((themeColors.primary || '#667eea').slice(1, 3), 16)}, ${parseInt((themeColors.primary || '#667eea').slice(3, 5), 16)}, ${parseInt((themeColors.primary || '#667eea').slice(5, 7), 16)}, 0.15)`,
-  },
-  warning: '#f39c12',
-  success: themeColors.accent || '#43e97b',
-  info: '#17a2b8',
-} as const);
-
-const SPRING = { damping: 15, mass: 1, stiffness: 150 };
-const FADE_DURATION = 400;
-const STAGGER_DELAY = 100;
+  warning: '#f59e0b',
+  success: '#22c55e',
+  info: '#3b82f6',
+  spring: { damping: 15, mass: 1, stiffness: 150 },
+  fadeDuration: 400,
+  staggerDelay: 100,
+} as const;
 
 /* ═══════════════════════════════════════════════════════════════
-   NOTIFICATIONS SETUP
+   NOTIFICATIONS SETUP — SDK 52+ compliant
    ═══════════════════════════════════════════════════════════════ */
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
   }),
 });
 
 /* ═══════════════════════════════════════════════════════════════
-   UTILITY: Get category color safely
+   HOOK: useSafetyTheme — Extracted theme logic
    ═══════════════════════════════════════════════════════════════ */
-const getCategoryColor = (category: SafetyTopic['category'], themeColors: { primary: string; secondary: string; accent: string }) => {
-  const THEME = createTheme(themeColors);
-  switch (category) {
-    case 'emergency': return THEME.emergency.primary;
-    case 'prevention': return THEME.prevention.primary;
-    case 'daily': return THEME.daily.primary;
-    default: return THEME.daily.primary;
-  }
-};
+const useSafetyTheme = () => {
+  const { themeColors, isDark, triggerHaptic, hapticFeedback } = useCustomization();
 
-const getCategoryGradient = (category: SafetyTopic['category'], themeColors: { primary: string; secondary: string; accent: string }) => {
-  const THEME = createTheme(themeColors);
-  switch (category) {
-    case 'emergency': return THEME.emergency.gradient;
-    case 'prevention': return THEME.prevention.gradient;
-    case 'daily': return THEME.daily.gradient;
-    default: return THEME.daily.gradient;
-  }
+  const colors = useMemo(() => ({
+    text: isDark ? '#ffffff' : '#1a1a2e',
+    textDark: '#ffffff',
+    muted: '#6b7280',
+    mutedDark: '#a0a0b0',
+    card: isDark ? 'rgba(255,255,255,0.05)' : '#ffffff',
+    cardBorder: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)',
+    bgLight: ['#f8faff', '#f0f4ff', '#e8eeff'] as const,
+    bgDark: ['#0f0f1e', '#1a1a2e', '#16213e'] as const,
+    primary: themeColors?.primary || '#667eea',
+    secondary: themeColors?.secondary || '#764ba2',
+    accent: themeColors?.accent || '#43e97b',
+  }), [isDark, themeColors]);
+
+  const getCategoryColor = useCallback((category: SafetyTopic['category']) => {
+    switch (category) {
+      case 'emergency': return TOKENS.emergency.primary;
+      case 'prevention': return colors.accent;
+      case 'daily': return colors.primary;
+      default: return colors.primary;
+    }
+  }, [colors]);
+
+  const getCategoryGradient = useCallback((category: SafetyTopic['category']) => {
+    switch (category) {
+      case 'emergency': return TOKENS.emergency.gradient;
+      case 'prevention': return [colors.accent, '#38f9d7'] as const;
+      case 'daily': return [colors.primary, colors.secondary] as const;
+      default: return [colors.primary, colors.secondary] as const;
+    }
+  }, [colors]);
+
+  return {
+    isDark,
+    colors,
+    getCategoryColor,
+    getCategoryGradient,
+    triggerHaptic,
+    hapticFeedback,
+    themeColors,
+  };
 };
 
 /* ═══════════════════════════════════════════════════════════════
-   COMPONENT: Animated Pressable Card Wrapper
+   HOOK: useNotificationPermission — Consolidated permission handling
    ═══════════════════════════════════════════════════════════════ */
-interface PressableCardProps {
+const useNotificationPermission = () => {
+  const [granted, setGranted] = useState(false);
+  const { error: showError } = useSweetAlert();
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const { status } = await Notifications.getPermissionsAsync();
+      if (mounted) setGranted(status === 'granted');
+      if (status !== 'granted') {
+        const { status: newStatus } = await Notifications.requestPermissionsAsync();
+        if (mounted) setGranted(newStatus === 'granted');
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+  const ensurePermission = useCallback(async () => {
+    if (granted) return true;
+    const { status } = await Notifications.requestPermissionsAsync();
+    const ok = status === 'granted';
+    setGranted(ok);
+    if (!ok) {
+      showError('Permission Required', 'Please enable notifications in Settings to use reminders.');
+      if (Platform.OS === 'ios') Linking.openURL('app-settings:');
+      else Linking.openSettings();
+    }
+    return ok;
+  }, [granted, showError]);
+
+  return { granted, ensurePermission };
+};
+
+/* ═══════════════════════════════════════════════════════════════
+   COMPONENT: PressableScale — Reanimated v3 spring press
+   ═══════════════════════════════════════════════════════════════ */
+interface PressableScaleProps {
   children: React.ReactNode;
   onPress: () => void;
   onPressIn?: () => void;
-  onPressOut?: () => void;
   style?: any;
-  activeOpacity?: number;
+  activeScale?: number;
+  hapticType?: 'light' | 'medium' | 'heavy' | 'success';
+  disabled?: boolean;
   accessibilityLabel?: string;
   accessibilityHint?: string;
-  accessibilityRole?: 'button' | 'link';
+  accessibilityRole?: 'button' | 'link' | 'checkbox';
 }
 
-const PressableCard = memo<PressableCardProps>(({
+const PressableScale = memo<PressableScaleProps>(({
   children,
   onPress,
   onPressIn,
-  onPressOut,
   style,
-  activeOpacity = 0.8,
+  activeScale = 0.96,
+  hapticType = 'light',
+  disabled = false,
   accessibilityLabel,
   accessibilityHint,
   accessibilityRole = 'button',
 }) => {
-  const scale = useRef(new Animated.Value(1)).current;
+  const { triggerHaptic, hapticFeedback } = useCustomization();
+  const scale = useSharedValue(1);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
 
   const handlePressIn = useCallback(() => {
-    Animated.spring(scale, { toValue: 0.96, useNativeDriver: true, ...SPRING }).start();
+    scale.value = withTiming(activeScale, { duration: 80 });
     onPressIn?.();
-  }, [onPressIn, scale]);
+  }, [activeScale, onPressIn, scale]);
 
   const handlePressOut = useCallback(() => {
-    Animated.spring(scale, { toValue: 1, useNativeDriver: true, ...SPRING }).start();
-    onPressOut?.();
-  }, [onPressOut, scale]);
+    scale.value = withSpring(1, TOKENS.spring);
+  }, [scale]);
+
+  const handlePress = useCallback(() => {
+    if (disabled) return;
+    if (hapticFeedback) triggerHaptic(hapticType).catch(() => {});
+    onPress();
+  }, [disabled, hapticFeedback, triggerHaptic, hapticType, onPress]);
 
   return (
-    <Animated.View style={[{ transform: [{ scale }] }, style]}>
+    <Animated.View style={[style, animatedStyle]}>
       <TouchableOpacity
-        onPress={onPress}
+        onPress={handlePress}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
-        activeOpacity={activeOpacity}
+        activeOpacity={disabled ? 1 : 0.8}
+        disabled={disabled}
         accessible
         accessibilityLabel={accessibilityLabel}
         accessibilityHint={accessibilityHint}
         accessibilityRole={accessibilityRole}
+        accessibilityState={{ disabled }}
       >
         {children}
       </TouchableOpacity>
@@ -173,79 +250,51 @@ const PressableCard = memo<PressableCardProps>(({
   );
 });
 
-PressableCard.displayName = 'PressableCard';
+PressableScale.displayName = 'PressableScale';
 
 /* ═══════════════════════════════════════════════════════════════
-   COMPONENT: Safety Card (Memoized) — Uses customization theming
+   COMPONENT: SafetyCard — Memoized with reanimated entry
    ═══════════════════════════════════════════════════════════════ */
 interface SafetyCardProps {
   topic: SafetyTopic;
-  isDark: boolean;
-  onPress: () => void;
   index: number;
-  themeColors: { primary: string; secondary: string; accent: string };
-  colors: {
-    card: string;
-    cardDark: string;
-    text: string;
-    textDark: string;
-    muted: string;
-    mutedDark: string;
-  };
+  onPress: () => void;
+  onPressIn?: () => void;
 }
 
-const SafetyCard = memo<SafetyCardProps>(({
-  topic,
-  isDark,
-  onPress,
-  index,
-  themeColors,
-  colors,
-}) => {
-  const translateY = useRef(new Animated.Value(50)).current;
-  const opacity = useRef(new Animated.Value(0)).current;
-  const { triggerHaptic } = useCustomization();
+const SafetyCard = memo<SafetyCardProps>(({ topic, index, onPress, onPressIn }) => {
+  const { isDark, colors, getCategoryColor, triggerHaptic } = useSafetyTheme();
+  const translateY = useSharedValue(50);
+  const opacity = useSharedValue(0);
 
   useEffect(() => {
-    const anim = Animated.parallel([
-      Animated.timing(translateY, {
-        toValue: 0,
-        duration: FADE_DURATION,
-        delay: index * STAGGER_DELAY,
-        useNativeDriver: true,
-      }),
-      Animated.timing(opacity, {
-        toValue: 1,
-        duration: FADE_DURATION,
-        delay: index * STAGGER_DELAY,
-        useNativeDriver: true,
-      }),
-    ]);
-    anim.start();
-    return () => anim.stop();
+    const delay = index * TOKENS.staggerDelay;
+    translateY.value = withTiming(0, { duration: TOKENS.fadeDuration, delay });
+    opacity.value = withTiming(1, { duration: TOKENS.fadeDuration, delay });
   }, [index, translateY, opacity]);
 
-  const borderLeftColor = getCategoryColor(topic.category, themeColors);
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+    opacity: opacity.value,
+  }));
+
+  const borderLeftColor = getCategoryColor(topic.category);
   const isEmergency = topic.category === 'emergency';
   const isCompleted = !!topic.completedAt;
 
   const handlePressIn = useCallback(() => {
     triggerHaptic('light');
-  }, [triggerHaptic]);
+    onPressIn?.();
+  }, [triggerHaptic, onPressIn]);
 
   return (
-    <Animated.View
-      style={[
-        styles.cardContainer,
-        { transform: [{ translateY }], opacity },
-      ]}
-    >
-      <PressableCard
+    <Animated.View style={[styles.cardContainer, animatedStyle]}>
+      <PressableScale
         onPress={onPress}
         onPressIn={handlePressIn}
         style={[
           styles.safetyCard,
-          isDark && styles.safetyCardDark,
+          isDark && { backgroundColor: colors.card, borderColor: colors.cardBorder },
           { borderLeftColor, borderLeftWidth: 4 },
           isEmergency && styles.emergencyGlow,
           isCompleted && styles.completedCard,
@@ -267,7 +316,7 @@ const SafetyCard = memo<SafetyCardProps>(({
         </View>
         <View style={styles.cardContent}>
           <View style={styles.cardHeader}>
-            <Text style={[styles.cardTitle, isDark && { color: colors.textDark }]} numberOfLines={1}>
+            <Text style={[styles.cardTitle, { color: colors.text }]} numberOfLines={1}>
               {topic.title}
             </Text>
             {isEmergency && (
@@ -276,10 +325,7 @@ const SafetyCard = memo<SafetyCardProps>(({
               </View>
             )}
           </View>
-          <Text
-            style={[styles.cardDescription, isDark && { color: colors.mutedDark }]}
-            numberOfLines={2}
-          >
+          <Text style={[styles.cardDescription, { color: isDark ? colors.mutedDark : colors.muted }]} numberOfLines={2}>
             {topic.description}
           </Text>
         </View>
@@ -288,7 +334,7 @@ const SafetyCard = memo<SafetyCardProps>(({
           size={20}
           color={isDark ? colors.mutedDark : colors.muted}
         />
-      </PressableCard>
+      </PressableScale>
     </Animated.View>
   );
 });
@@ -296,59 +342,51 @@ const SafetyCard = memo<SafetyCardProps>(({
 SafetyCard.displayName = 'SafetyCard';
 
 /* ═══════════════════════════════════════════════════════════════
-   COMPONENT: Emergency Button (Memoized) — Uses customization theming
+   COMPONENT: EmergencyButton — With pulse animation
    ═══════════════════════════════════════════════════════════════ */
 interface EmergencyButtonProps {
   contact: EmergencyContact;
-  isDark: boolean;
   onPress: () => void;
   isSOS?: boolean;
-  colors: { muted: string; mutedDark: string };
-  themeColors: { primary: string; secondary: string; accent: string };
+  style?: any;
 }
 
-const EmergencyButton = memo<EmergencyButtonProps>(({
-  contact,
-  isDark,
-  onPress,
-  isSOS,
-  colors,
-  themeColors,
-}) => {
-  const pulseAnim = useRef(new Animated.Value(1)).current;
+const EmergencyButton = memo<EmergencyButtonProps>(({ contact, onPress, isSOS, style }) => {
+  const { isDark, colors } = useSafetyTheme();
+  const pulseAnim = useSharedValue(1);
 
   useEffect(() => {
     if (!isSOS && contact.type !== 'emergency') return;
-    const pulse = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1.08, duration: 800, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
-      ])
+    pulseAnim.value = withSequence(
+      withTiming(1.08, { duration: 800 }),
+      withTiming(1, { duration: 800 })
     );
-    pulse.start();
-    return () => pulse.stop();
   }, [isSOS, contact.type, pulseAnim]);
+
+  const pulseStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: pulseAnim.value }],
+  }));
 
   const iconName = isSOS ? 'alert' : (contact.icon as keyof typeof Ionicons.glyphMap);
   const iconSize = isSOS ? 32 : 24;
-  const textColor = isSOS ? '#ff4757' : contact.color;
+  const textColor = isSOS ? TOKENS.emergency.primary : contact.color;
   const gradientColors = isSOS
-    ? [`#ff475730`, `#ff475710`]
+    ? ['#ff475720', '#ff475705']
     : [`${contact.color}20`, `${contact.color}05`];
 
   return (
-    <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
-      <PressableCard
+    <Animated.View style={[pulseStyle, style]}>
+      <PressableScale
         onPress={onPress}
         style={[
           styles.emergencyBtn,
           isDark && styles.emergencyBtnDark,
           isSOS && styles.sosButton,
-          { borderColor: isSOS ? '#ff4757' : contact.color },
+          { borderColor: isSOS ? TOKENS.emergency.primary : contact.color },
         ]}
+        hapticType={isSOS ? 'heavy' : 'medium'}
         accessibilityLabel={isSOS ? 'SOS Emergency button' : `Call ${contact.label}`}
         accessibilityHint={isSOS ? 'Triggers emergency protocol' : `Dials ${contact.number || 'not set'}`}
-        accessibilityRole="button"
       >
         <LinearGradient colors={gradientColors as [string, string]} style={styles.emergencyBtnGradient}>
           <Ionicons name={iconName} size={iconSize} color={textColor} />
@@ -356,12 +394,12 @@ const EmergencyButton = memo<EmergencyButtonProps>(({
             {isSOS ? 'SOS EMERGENCY' : contact.label}
           </Text>
           {!isSOS && contact.number && (
-            <Text style={[styles.emergencyBtnNumber, isDark && { color: colors.mutedDark }]}>
+            <Text style={[styles.emergencyBtnNumber, { color: isDark ? colors.mutedDark : colors.muted }]}>
               {contact.number}
             </Text>
           )}
         </LinearGradient>
-      </PressableCard>
+      </PressableScale>
     </Animated.View>
   );
 });
@@ -369,915 +407,82 @@ const EmergencyButton = memo<EmergencyButtonProps>(({
 EmergencyButton.displayName = 'EmergencyButton';
 
 /* ═══════════════════════════════════════════════════════════════
-   COMPONENT: Quick Action Card (Memoized) — Uses customization theming
+   COMPONENT: QuickActionCard
    ═══════════════════════════════════════════════════════════════ */
-interface QuickActionProps {
+interface QuickActionCardProps {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   gradient: readonly [string, string];
   iconColor: string;
-  isDark: boolean;
   onPress: () => void;
-  colors: { text: string; textDark: string };
 }
 
-const QuickActionCard = memo<QuickActionProps>(({
-  icon,
-  label,
-  gradient,
-  iconColor,
-  isDark,
-  onPress,
-  colors,
-}) => (
-  <PressableCard
-    onPress={onPress}
-    style={[styles.quickActionCard, isDark && styles.quickActionCardDark]}
-    accessibilityLabel={label}
-  >
-    <LinearGradient colors={gradient as [string, string]} style={styles.quickActionGradient}>
-      <Ionicons name={icon} size={24} color={iconColor} />
-      <Text style={[styles.quickActionText, isDark && { color: colors.textDark }]}>
-        {label}
-      </Text>
-    </LinearGradient>
-  </PressableCard>
-));
+const QuickActionCard = memo<QuickActionCardProps>(({ icon, label, gradient, iconColor, onPress }) => {
+  const { isDark, colors } = useSafetyTheme();
+
+  return (
+    <PressableScale
+      onPress={onPress}
+      style={[styles.quickActionCard, isDark && { backgroundColor: colors.card }]}
+      accessibilityLabel={label}
+    >
+      <LinearGradient colors={gradient as [string, string]} style={styles.quickActionGradient}>
+        <Ionicons name={icon} size={24} color={iconColor} />
+        <Text style={[styles.quickActionText, { color: colors.text }]}>{label}</Text>
+      </LinearGradient>
+    </PressableScale>
+  );
+});
 
 QuickActionCard.displayName = 'QuickActionCard';
 
 /* ═══════════════════════════════════════════════════════════════
-   COMPONENT: Contact Import Modal
-   ═══════════════════════════════════════════════════════════════ */
-interface ContactImportModalProps {
-  visible: boolean;
-  onClose: () => void;
-  isDark: boolean;
-  onImport: (contacts: EmergencyContact[]) => void;
-  themeColors: { primary: string; secondary: string; accent: string };
-}
-
-const ContactImportModal = memo<ContactImportModalProps>(({
-  visible,
-  onClose,
-  isDark,
-  onImport,
-  themeColors,
-}) => {
-  const [deviceContacts, setDeviceContacts] = useState<Contacts.Contact[]>([]);
-  const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set());
-  const [loading, setLoading] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const { success, error: showError } = useSweetAlert();
-
-  const loadContacts = useCallback(async () => {
-    setLoading(true);
-    try {
-      const { status } = await Contacts.requestPermissionsAsync();
-      if (status !== 'granted') {
-        showError('Permission Denied', 'Please allow access to contacts to import emergency contacts.');
-        onClose();
-        return;
-      }
-
-      const { data } = await Contacts.getContactsAsync({
-        fields: [Contacts.Fields.PhoneNumbers, Contacts.Fields.Name],
-      });
-
-      // Filter contacts with phone numbers
-      const validContacts = data.filter(c => c.phoneNumbers && c.phoneNumbers.length > 0);
-      setDeviceContacts(validContacts);
-    } catch (err) {
-      showError('Error', 'Failed to load contacts from device.');
-    } finally {
-      setLoading(false);
-    }
-  }, [onClose, showError]);
-
-  useEffect(() => {
-    if (visible) {
-      loadContacts();
-    }
-  }, [visible, loadContacts]);
-
-  const toggleSelection = useCallback((id: string) => {
-    setSelectedContacts(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  }, []);
-
-  const handleImport = useCallback(() => {
-    const imported: EmergencyContact[] = [];
-    deviceContacts.forEach(contact => {
-      if (selectedContacts.has(contact.id)) {
-        const phone = contact.phoneNumbers?.[0]?.number || '';
-        imported.push({
-          id: `imported_${contact.id}_${Date.now()}`,
-          label: contact.name || 'Unknown',
-          number: phone,
-          type: 'family',
-          icon: 'person',
-          color: themeColors.primary,
-          relation: 'Imported',
-        });
-      }
-    });
-
-    onImport(imported);
-    success('Contacts Imported', `Successfully imported ${imported.length} contacts.`);
-    onClose();
-    setSelectedContacts(new Set());
-  }, [deviceContacts, selectedContacts, onImport, onClose, success, themeColors]);
-
-  const filteredContacts = useMemo(() => {
-    if (!searchQuery.trim()) return deviceContacts;
-    const query = searchQuery.toLowerCase();
-    return deviceContacts.filter(c => 
-      c.name?.toLowerCase().includes(query) ||
-      c.phoneNumbers?.some(p => p.number?.includes(query))
-    );
-  }, [deviceContacts, searchQuery]);
-
-  const bgColor = isDark ? '#1a1a2e' : '#ffffff';
-  const textColor = isDark ? '#ffffff' : '#1a1a2e';
-  const mutedColor = isDark ? '#a0a0b0' : '#6b7280';
-
-  return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.modalOverlay}>
-        <View style={[styles.importModalContainer, { backgroundColor: bgColor }]}>
-          <View style={styles.importModalHeader}>
-            <Text style={[styles.importModalTitle, { color: textColor }]}>
-              Import Contacts
-            </Text>
-            <TouchableOpacity onPress={onClose} style={styles.modalCloseBtn}>
-              <Ionicons name="close" size={24} color={textColor} />
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.searchContainer}>
-            <Ionicons name="search" size={18} color={mutedColor} />
-            <TextInput
-              style={[styles.searchInput, { color: textColor }]}
-              placeholder="Search contacts..."
-              placeholderTextColor={mutedColor}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-            />
-          </View>
-
-          {loading ? (
-            <UniversalSpinner visible={true} text="Loading contacts..." section="main" size="small" overlay={false} />
-          ) : (
-            <FlatList
-              data={filteredContacts}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item }) => {
-                const isSelected = selectedContacts.has(item.id);
-                const phone = item.phoneNumbers?.[0]?.number || 'No number';
-                return (
-                  <TouchableOpacity
-                    style={[
-                      styles.contactItem,
-                      isSelected && { backgroundColor: `${themeColors.primary}15`, borderColor: themeColors.primary },
-                    ]}
-                    onPress={() => toggleSelection(item.id)}
-                  >
-                    <View style={[styles.contactAvatar, { backgroundColor: `${themeColors.primary}20` }]}>
-                      <Text style={[styles.contactAvatarText, { color: themeColors.primary }]}>
-                        {item.name?.[0]?.toUpperCase() || '?'}
-                      </Text>
-                    </View>
-                    <View style={styles.contactInfo}>
-                      <Text style={[styles.contactName, { color: textColor }]}>{item.name || 'Unknown'}</Text>
-                      <Text style={[styles.contactPhone, { color: mutedColor }]}>{phone}</Text>
-                    </View>
-                    <View style={[
-                      styles.checkbox,
-                      isSelected && { backgroundColor: themeColors.primary, borderColor: themeColors.primary }
-                    ]}>
-                      {isSelected && <Ionicons name="checkmark" size={16} color="#fff" />}
-                    </View>
-                  </TouchableOpacity>
-                );
-              }}
-              style={styles.contactList}
-            />
-          )}
-
-          <TouchableOpacity
-            style={[styles.importButton, { backgroundColor: themeColors.primary }]}
-            onPress={handleImport}
-            disabled={selectedContacts.size === 0}
-          >
-            <Text style={styles.importButtonText}>
-              Import {selectedContacts.size} Contact{selectedContacts.size !== 1 ? 's' : ''}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
-  );
-});
-
-ContactImportModal.displayName = 'ContactImportModal';
-
-/* ═══════════════════════════════════════════════════════════════
-   COMPONENT: Reminder Modal
-   ═══════════════════════════════════════════════════════════════ */
-interface ReminderModalProps {
-  visible: boolean;
-  onClose: () => void;
-  isDark: boolean;
-  themeColors: { primary: string; secondary: string; accent: string };
-}
-
-const ReminderModal = memo<ReminderModalProps>(({
-  visible,
-  onClose,
-  isDark,
-  themeColors,
-}) => {
-  const [title, setTitle] = useState('');
-  const [body, setBody] = useState('');
-  const [hours, setHours] = useState('1');
-  const [loading, setLoading] = useState(false);
-  const { success, error: showError } = useSweetAlert();
-
-  const scheduleReminder = useCallback(async () => {
-    if (!title.trim()) {
-      showError('Missing Title', 'Please enter a reminder title.');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const { status } = await Notifications.requestPermissionsAsync();
-      if (status !== 'granted') {
-        showError('Permission Denied', 'Notification permissions are required for reminders.');
-        return;
-      }
-
-      const trigger = new Date(Date.now() + parseInt(hours || '1') * 60 * 60 * 1000);
-      
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: `🔔 ${title}`,
-          body: body || 'Safety reminder from LittleLoom',
-          sound: true,
-          priority: Notifications.AndroidImportance.HIGH,
-          badge: 1,
-        },
-        trigger: {
-          type: Notifications.SchedulableTriggerInputTypes.DATE,
-          date: trigger,
-        } as any,
-      });
-
-      success('Reminder Set', `You'll be reminded in ${hours} hour${parseInt(hours) !== 1 ? 's' : ''}.`);
-      setTitle('');
-      setBody('');
-      setHours('1');
-      onClose();
-    } catch (err) {
-      showError('Error', 'Failed to schedule reminder.');
-    } finally {
-      setLoading(false);
-    }
-  }, [title, body, hours, onClose, success, showError]);
-
-  const bgColor = isDark ? '#1a1a2e' : '#ffffff';
-  const textColor = isDark ? '#ffffff' : '#1a1a2e';
-  const mutedColor = isDark ? '#a0a0b0' : '#6b7280';
-
-  return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.modalOverlay}>
-        <View style={[styles.reminderModalContainer, { backgroundColor: bgColor }]}>
-          <View style={styles.importModalHeader}>
-            <Text style={[styles.importModalTitle, { color: textColor }]}>Safety Reminder</Text>
-            <TouchableOpacity onPress={onClose}>
-              <Ionicons name="close" size={24} color={textColor} />
-            </TouchableOpacity>
-          </View>
-
-          <Text style={[styles.inputLabel, { color: mutedColor }]}>Reminder Title</Text>
-          <TextInput
-            style={[styles.textInput, { color: textColor, borderColor: isDark ? '#333' : '#e2e8f0' }]}
-            placeholder="e.g., Check car seat installation"
-            placeholderTextColor={mutedColor}
-            value={title}
-            onChangeText={setTitle}
-          />
-
-          <Text style={[styles.inputLabel, { color: mutedColor }]}>Details (optional)</Text>
-          <TextInput
-            style={[styles.textInput, { color: textColor, borderColor: isDark ? '#333' : '#e2e8f0', height: 80 }]}
-            placeholder="Additional details..."
-            placeholderTextColor={mutedColor}
-            value={body}
-            onChangeText={setBody}
-            multiline
-          />
-
-          <Text style={[styles.inputLabel, { color: mutedColor }]}>Remind me in (hours)</Text>
-          <View style={styles.hoursRow}>
-            {['1', '2', '4', '8', '24', '48'].map(h => (
-              <TouchableOpacity
-                key={h}
-                style={[
-                  styles.hourChip,
-                  hours === h && { backgroundColor: themeColors.primary },
-                ]}
-                onPress={() => setHours(h)}
-              >
-                <Text style={[styles.hourChipText, hours === h && { color: '#fff' }]}>
-                  {h}h
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <TouchableOpacity
-            style={[styles.importButton, { backgroundColor: themeColors.primary, marginTop: 20 }]}
-            onPress={scheduleReminder}
-            disabled={loading}
-          >
-            {loading ? (
-              <Text style={styles.importButtonText}>Scheduling...</Text>
-            ) : (
-              <Text style={styles.importButtonText}>Set Reminder</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
-  );
-});
-
-ReminderModal.displayName = 'ReminderModal';
-
-/* ═══════════════════════════════════════════════════════════════
-   COMPONENT: Doctor Report Modal
-   ═══════════════════════════════════════════════════════════════ */
-interface DoctorReport {
-  id: string;
-  name: string;
-  uri: string;
-  mimeType: string;
-  size: number;
-  uploadedAt: string;
-  approvedBy?: string;
-  status: 'pending' | 'approved' | 'reviewed';
-}
-
-interface DoctorReportModalProps {
-  visible: boolean;
-  onClose: () => void;
-  isDark: boolean;
-  themeColors: { primary: string; secondary: string; accent: string };
-}
-
-const DoctorReportModal = memo<DoctorReportModalProps>(({
-  visible,
-  onClose,
-  isDark,
-  themeColors,
-}) => {
-  const [reports, setReports] = useState<DoctorReport[]>([]);
-  const { success, error: showError, confirm } = useSweetAlert();
-
-  useEffect(() => {
-    // Load from AsyncStorage or context
-    const loadReports = async () => {
-      // This would typically come from a context or API
-      // For now, we'll use local state
-    };
-    if (visible) loadReports();
-  }, [visible]);
-
-  const pickDocument = useCallback(async () => {
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: 'application/pdf',
-        multiple: false,
-      });
-
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const asset = result.assets[0];
-        const newReport: DoctorReport = {
-          id: `report_${Date.now()}`,
-          name: asset.name || 'Unknown Report',
-          uri: asset.uri,
-          mimeType: asset.mimeType || 'application/pdf',
-          size: asset.size || 0,
-          uploadedAt: new Date().toISOString(),
-          status: 'pending',
-        };
-
-        setReports(prev => [newReport, ...prev]);
-        success('Report Added', 'Doctor report has been uploaded and is pending review.');
-      }
-    } catch (err) {
-      showError('Error', 'Failed to pick document.');
-    }
-  }, [success, showError]);
-
-  const approveReport = useCallback((reportId: string) => {
-    confirm(
-      'Approve Report',
-      'Mark this doctor report as reviewed and approved?',
-      () => {
-        setReports(prev => prev.map(r => 
-          r.id === reportId ? { ...r, status: 'approved', approvedBy: 'You' } : r
-        ));
-        success('Report Approved', 'The report has been marked as reviewed.');
-      },
-      () => {},
-      'Approve',
-      'Cancel'
-    );
-  }, [confirm, success]);
-
-  const bgColor = isDark ? '#1a1a2e' : '#ffffff';
-  const textColor = isDark ? '#ffffff' : '#1a1a2e';
-  const mutedColor = isDark ? '#a0a0b0' : '#6b7280';
-
-  return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.modalOverlay}>
-        <View style={[styles.reportModalContainer, { backgroundColor: bgColor }]}>
-          <View style={styles.importModalHeader}>
-            <Text style={[styles.importModalTitle, { color: textColor }]}>Doctor Reports</Text>
-            <TouchableOpacity onPress={onClose}>
-              <Ionicons name="close" size={24} color={textColor} />
-            </TouchableOpacity>
-          </View>
-
-          <TouchableOpacity
-            style={[styles.addReportButton, { borderColor: themeColors.primary }]}
-            onPress={pickDocument}
-          >
-            <Ionicons name="document-attach" size={20} color={themeColors.primary} />
-            <Text style={[styles.addReportText, { color: themeColors.primary }]}>Upload PDF Report</Text>
-          </TouchableOpacity>
-
-          <FlatList
-            data={reports}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
-              <View style={[styles.reportItem, isDark && { backgroundColor: 'rgba(255,255,255,0.05)' }]}>
-                <View style={[styles.reportIcon, { backgroundColor: `${themeColors.primary}15` }]}>
-                  <Ionicons name="document-text" size={24} color={themeColors.primary} />
-                </View>
-                <View style={styles.reportInfo}>
-                  <Text style={[styles.reportName, { color: textColor }]} numberOfLines={1}>{item.name}</Text>
-                  <Text style={[styles.reportMeta, { color: mutedColor }]}>
-                    {item.size > 0 ? `${(item.size / 1024).toFixed(1)} KB` : 'Size unknown'} • {new Date(item.uploadedAt).toLocaleDateString()}
-                  </Text>
-                  <View style={styles.reportStatusRow}>
-                    <View style={[
-                      styles.statusBadge,
-                      item.status === 'approved' && { backgroundColor: '#22c55e20' },
-                      item.status === 'pending' && { backgroundColor: '#f59e0b20' },
-                      item.status === 'reviewed' && { backgroundColor: '#3b82f620' },
-                    ]}>
-                      <Text style={[
-                        styles.statusText,
-                        item.status === 'approved' && { color: '#22c55e' },
-                        item.status === 'pending' && { color: '#f59e0b' },
-                        item.status === 'reviewed' && { color: '#3b82f6' },
-                      ]}>
-                        {item.status === 'approved' ? `✓ Approved by ${item.approvedBy}` : item.status}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-                {item.status !== 'approved' && (
-                  <TouchableOpacity
-                    style={[styles.approveBtn, { backgroundColor: themeColors.primary }]}
-                    onPress={() => approveReport(item.id)}
-                  >
-                    <Ionicons name="checkmark" size={16} color="#fff" />
-                  </TouchableOpacity>
-                )}
-              </View>
-            )}
-            ListEmptyComponent={
-              <View style={styles.emptyReports}>
-                <Ionicons name="documents-outline" size={48} color={mutedColor} />
-                <Text style={[styles.emptyReportsText, { color: mutedColor }]}>
-                  No reports yet. Upload a PDF to get started.
-                </Text>
-              </View>
-            }
-            style={styles.reportList}
-          />
-        </View>
-      </View>
-    </Modal>
-  );
-});
-
-DoctorReportModal.displayName = 'DoctorReportModal';
-
-/* ═══════════════════════════════════════════════════════════════
-   COMPONENT: Checklist Modal — FIXED & WORKING
-   ═══════════════════════════════════════════════════════════════ */
-interface ChecklistModalProps {
-  visible: boolean;
-  onClose: () => void;
-  isDark: boolean;
-  themeColors: { primary: string; secondary: string; accent: string };
-}
-
-const ChecklistModal = memo<ChecklistModalProps>(({ visible, onClose, isDark, themeColors }) => {
-  const { checklists, toggleChecklistItem, triggerHaptic } = useSafety();
-  const [activeChecklistId, setActiveChecklistId] = useState<string | null>(null);
-  const { success } = useSweetAlert();
-
-  // FIX: Initialize active checklist properly
-  useEffect(() => {
-    if (visible && checklists.length > 0 && !activeChecklistId) {
-      setActiveChecklistId(checklists[0].id);
-    }
-  }, [visible, checklists, activeChecklistId]);
-
-  const activeChecklist = useMemo(() => 
-    checklists.find(cl => cl.id === activeChecklistId) || checklists[0] || null,
-    [checklists, activeChecklistId]
-  );
-
-  const handleToggle = useCallback((itemId: string) => {
-    if (!activeChecklist) return;
-    toggleChecklistItem(activeChecklist.id, itemId);
-    triggerHaptic('light');
-    
-    // Check if all items completed
-    const checklist = checklists.find(c => c.id === activeChecklist.id);
-    if (checklist) {
-      const allCompleted = checklist.items.every(item => item.completed);
-      if (allCompleted) {
-        success('Checklist Complete!', `You've completed the ${checklist.title}. Great job!`);
-      }
-    }
-  }, [activeChecklist, toggleChecklistItem, triggerHaptic, checklists, success]);
-
-  const accentColor = themeColors.accent || '#43e97b';
-  const emergencyColor = '#ff4757';
-  const bgColor = isDark ? '#1a1a2e' : '#ffffff';
-  const textColor = isDark ? '#ffffff' : '#1a1a2e';
-  const mutedColor = isDark ? '#a0a0b0' : '#6b7280';
-
-  if (!activeChecklist) return null;
-
-  return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.modalOverlay}>
-        <View style={[styles.checklistContainer, { backgroundColor: bgColor }]}>
-          <View style={styles.checklistHeader}>
-            <Text style={[styles.checklistTitle, { color: textColor }]}>
-              Safety Checklist
-            </Text>
-            <TouchableOpacity onPress={onClose} style={styles.modalCloseBtn} accessibilityLabel="Close checklist">
-              <Ionicons name="close" size={24} color={textColor} />
-            </TouchableOpacity>
-          </View>
-
-          {/* Category Tabs */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.checklistTabs}
-          >
-            {checklists.map((cl) => (
-              <TouchableOpacity
-                key={cl.id}
-                style={[
-                  styles.checklistTab,
-                  activeChecklistId === cl.id && { backgroundColor: accentColor },
-                ]}
-                onPress={() => setActiveChecklistId(cl.id)}
-              >
-                <Text
-                  style={[
-                    styles.checklistTabText,
-                    activeChecklistId === cl.id && styles.checklistTabTextActive,
-                  ]}
-                >
-                  {cl.category}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-
-          {/* Progress Bar */}
-          <View style={styles.progressBar}>
-            <View
-              style={[
-                styles.progressFill,
-                {
-                  width: `${activeChecklist.progress}%`,
-                  backgroundColor: accentColor,
-                },
-              ]}
-            />
-          </View>
-          <Text style={[styles.progressText, { color: textColor }]}>
-            {activeChecklist.progress}% Complete
-          </Text>
-
-          {/* Checklist Items */}
-          <ScrollView style={styles.checklistContent} showsVerticalScrollIndicator={false}>
-            {activeChecklist.items.map((item) => (
-              <TouchableOpacity
-                key={item.id}
-                style={styles.checklistItem}
-                onPress={() => handleToggle(item.id)}
-                accessibilityLabel={`${item.text}${item.completed ? ', completed' : ''}${item.critical ? ', critical' : ''}`}
-                accessibilityRole="checkbox"
-                accessibilityState={{ checked: item.completed }}
-              >
-                <View
-                  style={[
-                    styles.checkbox,
-                    item.completed && {
-                      backgroundColor: accentColor,
-                      borderColor: accentColor,
-                    },
-                    item.critical && !item.completed && { borderColor: emergencyColor },
-                  ]}
-                >
-                  {item.completed && <Ionicons name="checkmark" size={16} color="#fff" />}
-                </View>
-                <Text
-                  style={[
-                    styles.checklistItemText,
-                    { color: textColor },
-                    item.completed && styles.checklistItemCompleted,
-                    item.critical && !item.completed && { color: emergencyColor },
-                  ]}
-                >
-                  {item.text}
-                  {item.critical && <Text style={styles.criticalTag}> CRITICAL</Text>}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-
-          {/* Reset Button */}
-          <TouchableOpacity
-            style={[styles.resetChecklistBtn, { borderColor: isDark ? '#444' : '#e2e8f0' }]}
-            onPress={() => {
-              // Reset all items in current checklist
-              activeChecklist.items.forEach(item => {
-                if (item.completed) {
-                  toggleChecklistItem(activeChecklist.id, item.id);
-                }
-              });
-              success('Checklist Reset', 'All items have been reset.');
-            }}
-          >
-            <Ionicons name="refresh" size={16} color={mutedColor} />
-            <Text style={[styles.resetChecklistText, { color: mutedColor }]}>Reset Checklist</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
-  );
-});
-
-ChecklistModal.displayName = 'ChecklistModal';
-
-/* ═══════════════════════════════════════════════════════════════
-   COMPONENT: Topic Detail Modal — Uses SafeBabyAvatar & customization theming
-   ═══════════════════════════════════════════════════════════════ */
-interface TopicModalProps {
-  visible: boolean;
-  topic: SafetyTopic | null;
-  isDark: boolean;
-  themeColors: { primary: string; secondary: string; accent: string };
-  colors: {
-    text: string;
-    textDark: string;
-    muted: string;
-    mutedDark: string;
-  };
-  currentBaby: { name: string; age: string; avatar?: string | null; gender?: string } | null;
-  onClose: () => void;
-  onComplete: (topicId: string) => void;
-  onCallEmergency: (number: string, label: string, type: string) => void;
-}
-
-const TopicDetailModal = memo<TopicModalProps>(({
-  visible,
-  topic,
-  isDark,
-  themeColors,
-  colors,
-  currentBaby,
-  onClose,
-  onComplete,
-  onCallEmergency,
-}) => {
-  const { triggerHaptic } = useCustomization();
-  const { success } = useSweetAlert();
-
-  const handleComplete = useCallback(() => {
-    if (!topic) return;
-    onComplete(topic.id);
-    triggerHaptic('success');
-    success('Topic Completed!', `You've completed "${topic.title}". Your safety score has improved!`);
-    onClose();
-  }, [topic, onComplete, triggerHaptic, onClose, success]);
-
-  const handleShare = useCallback(() => {
-    if (!topic) return;
-    Share.share({
-      message: `${topic.title}\n\n${topic.tips.join('\n')}`,
-    });
-  }, [topic]);
-
-  if (!topic) return null;
-
-  const accentColor = themeColors.accent || '#43e97b';
-  const bgColor = isDark ? '#1a1a2e' : '#ffffff';
-  const textColor = isDark ? '#ffffff' : '#1a1a2e';
-  const mutedColor = isDark ? '#a0a0b0' : '#6b7280';
-
-  return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.modalOverlay}>
-        <Animated.View style={[styles.modalContainer, { backgroundColor: bgColor }]}>
-          <View style={styles.modalHandle} />
-
-          <AutoHideScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalScrollContent}>
-            <View style={styles.modalHeader}>
-              <View style={[styles.modalIconContainer, { backgroundColor: `${topic.color}15` }]}>
-                <Ionicons
-                  name={topic.icon as keyof typeof Ionicons.glyphMap}
-                  size={28}
-                  color={topic.color}
-                />
-              </View>
-              <TouchableOpacity
-                onPress={onClose}
-                style={styles.modalCloseBtn}
-                accessibilityLabel="Close topic details"
-              >
-                <BlurView intensity={80} style={styles.closeBtnBlur}>
-                  <Ionicons name="close" size={20} color={textColor} />
-                </BlurView>
-              </TouchableOpacity>
-            </View>
-
-            <Text style={[styles.modalTitle, { color: textColor }]}>
-              {topic.title}
-            </Text>
-            <Text style={[styles.modalDescription, { color: mutedColor }]}>
-              {topic.description}
-            </Text>
-
-            {currentBaby && (
-              <View style={[styles.babyBanner, isDark && { backgroundColor: 'rgba(250,112,154,0.2)' }]}>
-                <SafeBabyAvatar 
-                  avatar={currentBaby.avatar || null} 
-                  gender={currentBaby.gender || 'other'} 
-                  size={40} 
-                />
-                <Text style={[styles.babyBannerText, isDark && { color: '#fc5c7d' }]}>
-                  Tips for {currentBaby.name} ({currentBaby.age})
-                </Text>
-              </View>
-            )}
-
-            <View style={styles.tipsContainer}>
-              <Text style={[styles.tipsTitle, { color: textColor }]}>
-                Key Safety Tips
-              </Text>
-              {topic.tips.map((tip: string, index: number) => (
-                <View key={index} style={styles.tipItem}>
-                  <View style={[styles.tipBullet, { backgroundColor: topic.color }]}>
-                    <Text style={styles.tipNumber}>{index + 1}</Text>
-                  </View>
-                  <Text style={[styles.tipText, { color: isDark ? '#d1d5db' : '#4b5563' }]}>
-                    {tip}
-                  </Text>
-                </View>
-              ))}
-            </View>
-
-            {topic.emergencyNumbers && topic.emergencyNumbers.length > 0 && (
-              <View style={styles.emergencyActionsContainer}>
-                <Text style={[styles.emergencyActionsTitle, { color: textColor }]}>
-                  Emergency Actions
-                </Text>
-                {topic.emergencyNumbers.map((num, idx: number) => (
-                  <TouchableOpacity
-                    key={idx}
-                    style={[styles.emergencyActionBtn, { backgroundColor: topic.color }]}
-                    onPress={() => onCallEmergency(num.number, num.label, 'emergency')}
-                    accessibilityLabel={`Call ${num.label}`}
-                    accessibilityRole="button"
-                  >
-                    <Ionicons name="call" size={20} color="#fff" />
-                    <Text style={styles.emergencyActionText}>Call {num.label}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-
-            <TouchableOpacity
-              style={[styles.completeBtn, { backgroundColor: accentColor }]}
-              onPress={handleComplete}
-              accessibilityLabel="Mark topic as completed"
-              accessibilityRole="button"
-            >
-              <Ionicons name="checkmark-circle" size={20} color="#fff" />
-              <Text style={styles.completeBtnText}>Mark as Completed</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.shareBtn} onPress={handleShare} accessibilityLabel="Share safety tips">
-              <Ionicons name="share-outline" size={20} color={isDark ? '#fff' : themeColors.primary} />
-              <Text style={[styles.shareText, isDark && { color: '#a0a0b0' }]}>Share Tips</Text>
-            </TouchableOpacity>
-          </AutoHideScrollView>
-        </Animated.View>
-      </View>
-    </Modal>
-  );
-});
-
-TopicDetailModal.displayName = 'TopicDetailModal';
-
-/* ═══════════════════════════════════════════════════════════════
-   COMPONENT: Stat Card — Uses customization theming
+   COMPONENT: StatCard
    ═══════════════════════════════════════════════════════════════ */
 interface StatCardProps {
   icon: keyof typeof Ionicons.glyphMap;
   iconColor: string;
   value: string | number;
   label: string;
-  isDark: boolean;
   onPress?: () => void;
-  colors: { text: string; textDark: string; muted: string; mutedDark: string };
 }
 
-const StatCard = memo<StatCardProps>(({
-  icon,
-  iconColor,
-  value,
-  label,
-  isDark,
-  onPress,
-  colors,
-}) => (
-  <PressableCard
-    onPress={onPress || (() => {})}
-    style={[styles.statItem, isDark && styles.statItemDark]}
-    accessibilityLabel={`${label}: ${value}`}
-  >
-    <Ionicons name={icon} size={20} color={iconColor} />
-    <Text style={[styles.statValue, isDark && { color: colors.textDark }]}>{value}</Text>
-    <Text style={[styles.statLabel, isDark && { color: colors.mutedDark }]}>{label}</Text>
-  </PressableCard>
-));
+const StatCard = memo<StatCardProps>(({ icon, iconColor, value, label, onPress }) => {
+  const { isDark, colors } = useSafetyTheme();
+
+  return (
+    <PressableScale
+      onPress={onPress || (() => {})}
+      style={[styles.statItem, isDark && { backgroundColor: colors.card }]}
+      accessibilityLabel={`${label}: ${value}`}
+    >
+      <Ionicons name={icon} size={20} color={iconColor} />
+      <Text style={[styles.statValue, { color: colors.text }]}>{value}</Text>
+      <Text style={[styles.statLabel, { color: isDark ? colors.mutedDark : colors.muted }]}>{label}</Text>
+    </PressableScale>
+  );
+});
 
 StatCard.displayName = 'StatCard';
 
 /* ═══════════════════════════════════════════════════════════════
-   COMPONENT: Filter Chip — Uses customization theming
+   COMPONENT: FilterChip
    ═══════════════════════════════════════════════════════════════ */
 interface FilterChipProps {
   label: string;
   active: boolean;
   category: 'all' | 'emergency' | 'prevention' | 'daily';
   onPress: () => void;
-  themeColors: { primary: string; secondary: string; accent: string };
 }
 
-const FilterChip = memo<FilterChipProps>(({ label, active, category, onPress, themeColors }) => {
-  const activeColor = useMemo(() => {
-    const THEME = createTheme(themeColors);
-    switch (category) {
-      case 'emergency': return THEME.emergency.primary;
-      case 'prevention': return THEME.prevention.primary;
-      case 'daily': return THEME.daily.primary;
-      default: return themeColors.primary || '#667eea';
-    }
-  }, [category, themeColors]);
+const FilterChip = memo<FilterChipProps>(({ label, active, category, onPress }) => {
+  const { getCategoryColor, colors } = useSafetyTheme();
+  const activeColor = category === 'all' ? colors.primary : getCategoryColor(category);
 
   return (
     <TouchableOpacity
       style={[
         styles.filterChip,
-        active && styles.filterChipActive,
         active && { backgroundColor: activeColor },
       ]}
       onPress={onPress}
@@ -1295,7 +500,733 @@ const FilterChip = memo<FilterChipProps>(({ label, active, category, onPress, th
 FilterChip.displayName = 'FilterChip';
 
 /* ═══════════════════════════════════════════════════════════════
-   MAIN SCREEN COMPONENT — Complete Rewrite with All Features
+   COMPONENT: UnifiedBottomModal — Reusable modal shell
+   ═══════════════════════════════════════════════════════════════ */
+interface UnifiedBottomModalProps {
+  visible: boolean;
+  onClose: () => void;
+  title: string;
+  children: React.ReactNode;
+  maxHeight?: number;
+  showHandle?: boolean;
+}
+
+const UnifiedBottomModal = memo<UnifiedBottomModalProps>(({
+  visible,
+  onClose,
+  title,
+  children,
+  maxHeight = SCREEN_H * 0.85,
+  showHandle = true,
+}) => {
+  const { isDark, colors } = useSafetyTheme();
+  const translateY = useSharedValue(SCREEN_H);
+  const backdropOpacity = useSharedValue(0);
+
+  useEffect(() => {
+    if (visible) {
+      translateY.value = withSpring(0, { damping: 25, stiffness: 300 });
+      backdropOpacity.value = withTiming(1, { duration: 200 });
+    } else {
+      translateY.value = withSpring(SCREEN_H, { damping: 25, stiffness: 300 });
+      backdropOpacity.value = withTiming(0, { duration: 200 });
+    }
+  }, [visible, translateY, backdropOpacity]);
+
+  const sheetStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+  }));
+
+  const backdropStyle = useAnimatedStyle(() => ({
+    opacity: backdropOpacity.value,
+  }));
+
+  if (!visible) return null;
+
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+      <Animated.View
+        style={[StyleSheet.absoluteFill, styles.modalBackdrop, backdropStyle]}
+        pointerEvents={visible ? 'auto' : 'none'}
+      >
+        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
+      </Animated.View>
+
+      <Animated.View
+        style={[
+          styles.unifiedModalSheet,
+          sheetStyle,
+          { maxHeight },
+        ]}
+        pointerEvents={visible ? 'auto' : 'none'}
+      >
+        <BlurView
+          intensity={isDark ? 60 : 90}
+          style={styles.unifiedModalBlur}
+          tint={isDark ? 'dark' : 'light'}
+        >
+          {showHandle && <View style={styles.modalHandle} />}
+          <View style={styles.unifiedModalHeader}>
+            <Text style={[styles.unifiedModalTitle, { color: colors.text }]}>{title}</Text>
+            <PressableScale onPress={onClose} hapticType="light" activeScale={0.85}>
+              <View style={[styles.modalCloseBtn, isDark && styles.modalCloseBtnDark]}>
+                <Ionicons name="close" size={22} color={colors.text} />
+              </View>
+            </PressableScale>
+          </View>
+          {children}
+        </BlurView>
+      </Animated.View>
+    </View>
+  );
+});
+
+UnifiedBottomModal.displayName = 'UnifiedBottomModal';
+
+/* ═══════════════════════════════════════════════════════════════
+   COMPONENT: ContactImportModal — Inside UnifiedBottomModal
+   ═══════════════════════════════════════════════════════════════ */
+interface ContactImportModalProps {
+  visible: boolean;
+  onClose: () => void;
+  onImport: (contacts: EmergencyContact[]) => void;
+}
+
+const ContactImportModal = memo<ContactImportModalProps>(({ visible, onClose, onImport }) => {
+  const { isDark, colors, themeColors } = useSafetyTheme();
+  const [deviceContacts, setDeviceContacts] = useState<Contacts.Contact[]>([]);
+  const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const { success, error: showError } = useSweetAlert();
+
+  useEffect(() => {
+    if (!visible) return;
+    let mounted = true;
+    setLoading(true);
+    Contacts.requestPermissionsAsync().then(({ status }) => {
+      if (status !== 'granted') {
+        showError('Permission Denied', 'Please allow access to contacts.');
+        if (mounted) onClose();
+        return;
+      }
+      return Contacts.getContactsAsync({
+        fields: [Contacts.Fields.PhoneNumbers, Contacts.Fields.Name],
+      });
+    }).then(result => {
+      if (!mounted || !result) return;
+      const valid = result.data.filter(c => c.phoneNumbers && c.phoneNumbers.length > 0);
+      setDeviceContacts(valid);
+    }).catch(() => {
+      showError('Error', 'Failed to load contacts.');
+    }).finally(() => {
+      if (mounted) setLoading(false);
+    });
+    return () => { mounted = false; };
+  }, [visible, onClose, showError]);
+
+  const toggleSelection = useCallback((id: string) => {
+    setSelectedContacts(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }, []);
+
+  const handleImport = useCallback(() => {
+    const imported: EmergencyContact[] = [];
+    deviceContacts.forEach(contact => {
+      if (selectedContacts.has(contact.id)) {
+        imported.push({
+          id: `imported_${contact.id}_${Date.now()}`,
+          label: contact.name || 'Unknown',
+          number: contact.phoneNumbers?.[0]?.number || '',
+          type: 'family',
+          icon: 'person',
+          color: themeColors?.primary || '#667eea',
+          relation: 'Imported',
+        });
+      }
+    });
+    onImport(imported);
+    success('Contacts Imported', `Successfully imported ${imported.length} contacts.`);
+    onClose();
+    setSelectedContacts(new Set());
+  }, [deviceContacts, selectedContacts, onImport, onClose, success, themeColors]);
+
+  const filteredContacts = useMemo(() => {
+    if (!searchQuery.trim()) return deviceContacts;
+    const q = searchQuery.toLowerCase();
+    return deviceContacts.filter(c =>
+      c.name?.toLowerCase().includes(q) ||
+      c.phoneNumbers?.some(p => p.number?.includes(q))
+    );
+  }, [deviceContacts, searchQuery]);
+
+  return (
+    <UnifiedBottomModal visible={visible} onClose={onClose} title="Import Contacts" maxHeight={SCREEN_H * 0.9}>
+      <View style={styles.searchContainer}>
+        <Ionicons name="search" size={18} color={isDark ? colors.mutedDark : colors.muted} />
+        <TextInput
+          style={[styles.searchInput, { color: colors.text }]}
+          placeholder="Search contacts..."
+          placeholderTextColor={isDark ? colors.mutedDark : colors.muted}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
+      </View>
+
+      {loading ? (
+        <View style={styles.modalLoading}>
+          <ActivityIndicator color={colors.primary} />
+          <Text style={[styles.modalLoadingText, { color: isDark ? colors.mutedDark : colors.muted }]}>
+            Loading contacts...
+          </Text>
+        </View>
+      ) : (
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.modalScrollContent}
+          style={{ maxHeight: SCREEN_H * 0.5 }}
+        >
+          {filteredContacts.map(contact => {
+            const isSelected = selectedContacts.has(contact.id);
+            const phone = contact.phoneNumbers?.[0]?.number || 'No number';
+            return (
+              <TouchableOpacity
+                key={contact.id}
+                style={[
+                  styles.contactItem,
+                  isSelected && { backgroundColor: `${colors.primary}15`, borderColor: colors.primary },
+                ]}
+                onPress={() => toggleSelection(contact.id)}
+              >
+                <View style={[styles.contactAvatar, { backgroundColor: `${colors.primary}20` }]}>
+                  <Text style={[styles.contactAvatarText, { color: colors.primary }]}>
+                    {contact.name?.[0]?.toUpperCase() || '?'}
+                  </Text>
+                </View>
+                <View style={styles.contactInfo}>
+                  <Text style={[styles.contactName, { color: colors.text }]}>{contact.name || 'Unknown'}</Text>
+                  <Text style={[styles.contactPhone, { color: isDark ? colors.mutedDark : colors.muted }]}>{phone}</Text>
+                </View>
+                <View style={[
+                  styles.checkbox,
+                  isSelected && { backgroundColor: colors.primary, borderColor: colors.primary }
+                ]}>
+                  {isSelected && <Ionicons name="checkmark" size={16} color="#fff" />}
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      )}
+
+      <TouchableOpacity
+        style={[styles.importButton, { backgroundColor: colors.primary, opacity: selectedContacts.size === 0 ? 0.5 : 1 }]}
+        onPress={handleImport}
+        disabled={selectedContacts.size === 0}
+      >
+        <Text style={styles.importButtonText}>
+          Import {selectedContacts.size > 0 ? `${selectedContacts.size} ` : ''}Contact{selectedContacts.size !== 1 ? 's' : ''}
+        </Text>
+      </TouchableOpacity>
+    </UnifiedBottomModal>
+  );
+});
+
+ContactImportModal.displayName = 'ContactImportModal';
+
+/* ═══════════════════════════════════════════════════════════════
+   COMPONENT: ReminderModal — SDK 52+ API with proper trigger types
+   ═══════════════════════════════════════════════════════════════ */
+interface ReminderModalProps {
+  visible: boolean;
+  onClose: () => void;
+}
+
+const ReminderModal = memo<ReminderModalProps>(({ visible, onClose }) => {
+  const { isDark, colors } = useSafetyTheme();
+  const { ensurePermission } = useNotificationPermission();
+  const [title, setTitle] = useState('');
+  const [body, setBody] = useState('');
+  const [hours, setHours] = useState('1');
+  const [loading, setLoading] = useState(false);
+  const { success, error: showError } = useSweetAlert();
+
+  const scheduleReminder = useCallback(async () => {
+    if (!title.trim()) {
+      showError('Missing Title', 'Please enter a reminder title.');
+      return;
+    }
+
+    const hasPermission = await ensurePermission();
+    if (!hasPermission) return;
+
+    setLoading(true);
+    try {
+      const triggerDate = new Date(Date.now() + parseInt(hours || '1') * 60 * 60 * 1000);
+      
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: `🔔 ${title}`,
+          body: body || 'Safety reminder from LittleLoom',
+          sound: true,
+          priority: Notifications.AndroidImportance.HIGH,
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DATE,
+          date: triggerDate,
+        },
+      });
+
+      success('Reminder Set', `You'll be reminded in ${hours} hour${parseInt(hours) !== 1 ? 's' : ''}.`);
+      setTitle('');
+      setBody('');
+      setHours('1');
+      onClose();
+    } catch (err) {
+      showError('Error', 'Failed to schedule reminder.');
+    } finally {
+      setLoading(false);
+    }
+  }, [title, body, hours, onClose, success, showError, ensurePermission]);
+
+  const hourOptions = ['1', '2', '4', '8', '24', '48'];
+
+  return (
+    <UnifiedBottomModal visible={visible} onClose={onClose} title="Safety Reminder">
+      <Text style={[styles.inputLabel, { color: isDark ? colors.mutedDark : colors.muted }]}>Reminder Title</Text>
+      <TextInput
+        style={[styles.textInput, { color: colors.text, borderColor: isDark ? '#333' : '#e2e8f0' }]}
+        placeholder="e.g., Check car seat installation"
+        placeholderTextColor={isDark ? colors.mutedDark : colors.muted}
+        value={title}
+        onChangeText={setTitle}
+      />
+
+      <Text style={[styles.inputLabel, { color: isDark ? colors.mutedDark : colors.muted }]}>Details (optional)</Text>
+      <TextInput
+        style={[styles.textInput, { color: colors.text, borderColor: isDark ? '#333' : '#e2e8f0', height: 80 }]}
+        placeholder="Additional details..."
+        placeholderTextColor={isDark ? colors.mutedDark : colors.muted}
+        value={body}
+        onChangeText={setBody}
+        multiline
+      />
+
+      <Text style={[styles.inputLabel, { color: isDark ? colors.mutedDark : colors.muted }]}>Remind me in</Text>
+      <View style={styles.hoursRow}>
+        {hourOptions.map(h => (
+          <TouchableOpacity
+            key={h}
+            style={[
+              styles.hourChip,
+              hours === h && { backgroundColor: colors.primary },
+            ]}
+            onPress={() => setHours(h)}
+          >
+            <Text style={[styles.hourChipText, hours === h && { color: '#fff' }]}>{h}h</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      <TouchableOpacity
+        style={[styles.importButton, { backgroundColor: colors.primary, marginTop: 20, opacity: loading ? 0.7 : 1 }]}
+        onPress={scheduleReminder}
+        disabled={loading}
+      >
+        <Text style={styles.importButtonText}>{loading ? 'Scheduling...' : 'Set Reminder'}</Text>
+      </TouchableOpacity>
+    </UnifiedBottomModal>
+  );
+});
+
+ReminderModal.displayName = 'ReminderModal';
+
+/* ═══════════════════════════════════════════════════════════════
+   COMPONENT: DoctorReportModal
+   ═══════════════════════════════════════════════════════════════ */
+interface DoctorReport {
+  id: string;
+  name: string;
+  uri: string;
+  mimeType: string;
+  size: number;
+  uploadedAt: string;
+  approvedBy?: string;
+  status: 'pending' | 'approved' | 'reviewed';
+}
+
+interface DoctorReportModalProps {
+  visible: boolean;
+  onClose: () => void;
+}
+
+const DoctorReportModal = memo<DoctorReportModalProps>(({ visible, onClose }) => {
+  const { isDark, colors } = useSafetyTheme();
+  const [reports, setReports] = useState<DoctorReport[]>([]);
+  const { success, error: showError, confirm } = useSweetAlert();
+
+  const pickDocument = useCallback(async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'application/pdf',
+        multiple: false,
+      });
+
+      if (!result.canceled && result.assets?.[0]) {
+        const asset = result.assets[0];
+        const newReport: DoctorReport = {
+          id: `report_${Date.now()}`,
+          name: asset.name || 'Unknown Report',
+          uri: asset.uri,
+          mimeType: asset.mimeType || 'application/pdf',
+          size: asset.size || 0,
+          uploadedAt: new Date().toISOString(),
+          status: 'pending',
+        };
+        setReports(prev => [newReport, ...prev]);
+        success('Report Added', 'Doctor report uploaded and is pending review.');
+      }
+    } catch {
+      showError('Error', 'Failed to pick document.');
+    }
+  }, [success, showError]);
+
+  const approveReport = useCallback((reportId: string) => {
+    confirm(
+      'Approve Report',
+      'Mark this doctor report as reviewed and approved?',
+      () => {
+        setReports(prev => prev.map(r =>
+          r.id === reportId ? { ...r, status: 'approved', approvedBy: 'You' } : r
+        ));
+        success('Report Approved', 'The report has been marked as reviewed.');
+      },
+      () => {},
+      'Approve',
+      'Cancel'
+    );
+  }, [confirm, success]);
+
+  return (
+    <UnifiedBottomModal visible={visible} onClose={onClose} title="Doctor Reports" maxHeight={SCREEN_H * 0.9}>
+      <TouchableOpacity
+        style={[styles.addReportButton, { borderColor: colors.primary }]}
+        onPress={pickDocument}
+      >
+        <Ionicons name="document-attach" size={20} color={colors.primary} />
+        <Text style={[styles.addReportText, { color: colors.primary }]}>Upload PDF Report</Text>
+      </TouchableOpacity>
+
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        style={{ maxHeight: SCREEN_H * 0.5 }}
+        contentContainerStyle={styles.modalScrollContent}
+      >
+        {reports.map(item => (
+          <View key={item.id} style={[styles.reportItem, isDark && { backgroundColor: 'rgba(255,255,255,0.05)' }]}>
+            <View style={[styles.reportIcon, { backgroundColor: `${colors.primary}15` }]}>
+              <Ionicons name="document-text" size={24} color={colors.primary} />
+            </View>
+            <View style={styles.reportInfo}>
+              <Text style={[styles.reportName, { color: colors.text }]} numberOfLines={1}>{item.name}</Text>
+              <Text style={[styles.reportMeta, { color: isDark ? colors.mutedDark : colors.muted }]}>
+                {item.size > 0 ? `${(item.size / 1024).toFixed(1)} KB` : 'Size unknown'} • {new Date(item.uploadedAt).toLocaleDateString()}
+              </Text>
+              <View style={styles.reportStatusRow}>
+                <View style={[
+                  styles.statusBadge,
+                  item.status === 'approved' && { backgroundColor: '#22c55e20' },
+                  item.status === 'pending' && { backgroundColor: '#f59e0b20' },
+                ]}>
+                  <Text style={[
+                    styles.statusText,
+                    item.status === 'approved' && { color: TOKENS.success },
+                    item.status === 'pending' && { color: TOKENS.warning },
+                  ]}>
+                    {item.status === 'approved' ? `✓ Approved by ${item.approvedBy}` : item.status}
+                  </Text>
+                </View>
+              </View>
+            </View>
+            {item.status !== 'approved' && (
+              <TouchableOpacity
+                style={[styles.approveBtn, { backgroundColor: colors.primary }]}
+                onPress={() => approveReport(item.id)}
+              >
+                <Ionicons name="checkmark" size={16} color="#fff" />
+              </TouchableOpacity>
+            )}
+          </View>
+        ))}
+        {reports.length === 0 && (
+          <View style={styles.emptyReports}>
+            <Ionicons name="documents-outline" size={48} color={isDark ? colors.mutedDark : colors.muted} />
+            <Text style={[styles.emptyReportsText, { color: isDark ? colors.mutedDark : colors.muted }]}>
+              No reports yet. Upload a PDF to get started.
+            </Text>
+          </View>
+        )}
+      </ScrollView>
+    </UnifiedBottomModal>
+  );
+});
+
+DoctorReportModal.displayName = 'DoctorReportModal';
+
+/* ═══════════════════════════════════════════════════════════════
+   COMPONENT: ChecklistModal
+   ═══════════════════════════════════════════════════════════════ */
+const ChecklistModal = memo<{ visible: boolean; onClose: () => void }>(({ visible, onClose }) => {
+  const { isDark, colors } = useSafetyTheme();
+  const { checklists, toggleChecklistItem, triggerHaptic } = useSafety();
+  const [activeChecklistId, setActiveChecklistId] = useState<string | null>(null);
+  const { success } = useSweetAlert();
+
+  useEffect(() => {
+    if (visible && checklists.length > 0 && !activeChecklistId) {
+      setActiveChecklistId(checklists[0].id);
+    }
+  }, [visible, checklists, activeChecklistId]);
+
+  const activeChecklist = useMemo(() =>
+    checklists.find(cl => cl.id === activeChecklistId) || checklists[0] || null,
+    [checklists, activeChecklistId]
+  );
+
+  const handleToggle = useCallback((itemId: string) => {
+    if (!activeChecklist) return;
+    toggleChecklistItem(activeChecklist.id, itemId);
+    triggerHaptic('light');
+    const checklist = checklists.find(c => c.id === activeChecklist.id);
+    if (checklist?.items.every(item => item.completed)) {
+      success('Checklist Complete!', `You've completed the ${checklist.title}. Great job!`);
+    }
+  }, [activeChecklist, toggleChecklistItem, triggerHaptic, checklists, success]);
+
+  if (!activeChecklist) return null;
+
+  return (
+    <UnifiedBottomModal visible={visible} onClose={onClose} title="Safety Checklist" maxHeight={SCREEN_H * 0.85}>
+      {/* Category Tabs */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.checklistTabs}
+      >
+        {checklists.map(cl => (
+          <TouchableOpacity
+            key={cl.id}
+            style={[
+              styles.checklistTab,
+              activeChecklistId === cl.id && { backgroundColor: colors.accent },
+            ]}
+            onPress={() => setActiveChecklistId(cl.id)}
+          >
+            <Text style={[
+              styles.checklistTabText,
+              activeChecklistId === cl.id && styles.checklistTabTextActive,
+            ]}>
+              {cl.category}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
+      {/* Progress */}
+      <View style={styles.progressBar}>
+        <Animated.View
+          style={[
+            styles.progressFill,
+            { width: `${activeChecklist.progress}%`, backgroundColor: colors.accent },
+          ]}
+        />
+      </View>
+      <Text style={[styles.progressText, { color: colors.text }]}>
+        {activeChecklist.progress}% Complete
+      </Text>
+
+      {/* Items */}
+      <ScrollView style={{ maxHeight: SCREEN_H * 0.4 }} showsVerticalScrollIndicator={false}>
+        {activeChecklist.items.map(item => (
+          <TouchableOpacity
+            key={item.id}
+            style={styles.checklistItem}
+            onPress={() => handleToggle(item.id)}
+            accessibilityLabel={`${item.text}${item.completed ? ', completed' : ''}${item.critical ? ', critical' : ''}`}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: item.completed }}
+          >
+            <View style={[
+              styles.checkbox,
+              item.completed && { backgroundColor: colors.accent, borderColor: colors.accent },
+              item.critical && !item.completed && { borderColor: TOKENS.emergency.primary },
+            ]}>
+              {item.completed && <Ionicons name="checkmark" size={16} color="#fff" />}
+            </View>
+            <Text style={[
+              styles.checklistItemText,
+              { color: colors.text },
+              item.completed && styles.checklistItemCompleted,
+              item.critical && !item.completed && { color: TOKENS.emergency.primary },
+            ]}>
+              {item.text}
+              {item.critical && <Text style={styles.criticalTag}> CRITICAL</Text>}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
+      <TouchableOpacity
+        style={[styles.resetChecklistBtn, { borderColor: isDark ? '#444' : '#e2e8f0' }]}
+        onPress={() => {
+          activeChecklist.items.forEach(item => {
+            if (item.completed) toggleChecklistItem(activeChecklist.id, item.id);
+          });
+          success('Checklist Reset', 'All items have been reset.');
+        }}
+      >
+        <Ionicons name="refresh" size={16} color={isDark ? colors.mutedDark : colors.muted} />
+        <Text style={[styles.resetChecklistText, { color: isDark ? colors.mutedDark : colors.muted }]}>Reset Checklist</Text>
+      </TouchableOpacity>
+    </UnifiedBottomModal>
+  );
+});
+
+ChecklistModal.displayName = 'ChecklistModal';
+
+/* ═══════════════════════════════════════════════════════════════
+   COMPONENT: TopicDetailModal
+   ═══════════════════════════════════════════════════════════════ */
+interface TopicModalProps {
+  visible: boolean;
+  topic: SafetyTopic | null;
+  currentBaby: { name: string; age: string; avatar?: string | null; gender?: string } | null;
+  onClose: () => void;
+  onComplete: (topicId: string) => void;
+  onCallEmergency: (number: string, label: string, type: string) => void;
+}
+
+const TopicDetailModal = memo<TopicModalProps>(({
+  visible,
+  topic,
+  currentBaby,
+  onClose,
+  onComplete,
+  onCallEmergency,
+}) => {
+  const { isDark, colors, triggerHaptic } = useSafetyTheme();
+  const { success } = useSweetAlert();
+
+  const handleComplete = useCallback(() => {
+    if (!topic) return;
+    onComplete(topic.id);
+    triggerHaptic('success');
+    success('Topic Completed!', `You've completed "${topic.title}". Your safety score has improved!`);
+    onClose();
+  }, [topic, onComplete, triggerHaptic, onClose, success]);
+
+  const handleShare = useCallback(() => {
+    if (!topic) return;
+    Share.share({ message: `${topic.title}\n\n${topic.tips.join('\n')}` });
+  }, [topic]);
+
+  if (!topic) return null;
+
+  return (
+    <UnifiedBottomModal visible={visible} onClose={onClose} title="" maxHeight={SCREEN_H * 0.92}>
+      <AutoHideScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.topicScrollContent}>
+        <View style={styles.modalHeader}>
+          <View style={[styles.modalIconContainer, { backgroundColor: `${topic.color}15` }]}>
+            <Ionicons name={topic.icon as keyof typeof Ionicons.glyphMap} size={28} color={topic.color} />
+          </View>
+        </View>
+
+        <Text style={[styles.modalTitle, { color: colors.text }]}>{topic.title}</Text>
+        <Text style={[styles.modalDescription, { color: isDark ? colors.mutedDark : colors.muted }]}>
+          {topic.description}
+        </Text>
+
+        {currentBaby && (
+          <View style={[styles.babyBanner, isDark && { backgroundColor: 'rgba(250,112,154,0.2)' }]}>
+            <SafeBabyAvatar avatar={currentBaby.avatar || null} gender={currentBaby.gender || 'other'} size={40} />
+            <Text style={[styles.babyBannerText, isDark && { color: '#fc5c7d' }]}>
+              Tips for {currentBaby.name} ({currentBaby.age})
+            </Text>
+          </View>
+        )}
+
+        <View style={styles.tipsContainer}>
+          <Text style={[styles.tipsTitle, { color: colors.text }]}>Key Safety Tips</Text>
+          {topic.tips.map((tip, index) => (
+            <View key={index} style={styles.tipItem}>
+              <View style={[styles.tipBullet, { backgroundColor: topic.color }]}>
+                <Text style={styles.tipNumber}>{index + 1}</Text>
+              </View>
+              <Text style={[styles.tipText, { color: isDark ? '#d1d5db' : '#4b5563' }]}>{tip}</Text>
+            </View>
+          ))}
+        </View>
+
+        {topic.emergencyNumbers && topic.emergencyNumbers.length > 0 && (
+          <View style={styles.emergencyActionsContainer}>
+            <Text style={[styles.emergencyActionsTitle, { color: colors.text }]}>Emergency Actions</Text>
+            {topic.emergencyNumbers.map((num, idx) => (
+              <TouchableOpacity
+                key={idx}
+                style={[styles.emergencyActionBtn, { backgroundColor: topic.color }]}
+                onPress={() => onCallEmergency(num.number, num.label, 'emergency')}
+                accessibilityLabel={`Call ${num.label}`}
+              >
+                <Ionicons name="call" size={20} color="#fff" />
+                <Text style={styles.emergencyActionText}>Call {num.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        <TouchableOpacity
+          style={[styles.completeBtn, { backgroundColor: colors.accent }]}
+          onPress={handleComplete}
+        >
+          <Ionicons name="checkmark-circle" size={20} color="#fff" />
+          <Text style={styles.completeBtnText}>Mark as Completed</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.shareBtn} onPress={handleShare}>
+          <Ionicons name="share-outline" size={20} color={isDark ? '#fff' : colors.primary} />
+          <Text style={[styles.shareText, isDark && { color: '#a0a0b0' }]}>Share Tips</Text>
+        </TouchableOpacity>
+      </AutoHideScrollView>
+    </UnifiedBottomModal>
+  );
+});
+
+TopicDetailModal.displayName = 'TopicDetailModal';
+
+/* ═══════════════════════════════════════════════════════════════
+   COMPONENT: SafetyPill
+   ═══════════════════════════════════════════════════════════════ */
+interface SafetyPillProps {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  color: string;
+  onPress: () => void;
+}
+
+const SafetyPill = memo<SafetyPillProps>(({ icon, label, color, onPress }) => (
+  <PressableScale onPress={onPress} style={[styles.pill, { backgroundColor: `${color}15` }]} activeScale={0.95}>
+    <Ionicons name={icon} size={16} color={color} />
+    <Text style={[styles.pillText, { color }]}>{label}</Text>
+  </PressableScale>
+));
+
+SafetyPill.displayName = 'SafetyPill';
+
+/* ═══════════════════════════════════════════════════════════════
+   MAIN SCREEN — Clean, feature-driven layout
    ═══════════════════════════════════════════════════════════════ */
 export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenProps) {
   const [selectedTopic, setSelectedTopic] = useState<SafetyTopic | null>(null);
@@ -1326,88 +1257,44 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
   const { currentBaby } = useBaby();
   const { guardians, parent2 } = useFamily();
   const { userProfile: authProfile } = useAuth();
-  const { darkMode: isDark, themeColors, triggerHaptic } = useCustomization();
-  const { success, error: showError, confirm } = useSweetAlert();
-
+  const { isDark, colors, getCategoryColor, triggerHaptic } = useSafetyTheme();
+  const { success, confirm } = useSweetAlert();
   const insets = useSafeAreaInsets();
-  const scrollY = useRef(new Animated.Value(0)).current;
 
-  /* ── Theme from customization ── */
-  const THEME = useMemo(() => createTheme(themeColors), [themeColors]);
+  const scrollY = useSharedValue(0);
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => { scrollY.value = event.contentOffset.y; },
+  });
 
-  /* ── Memoized color palette using themeColors ── */
-  const colors = useMemo(() => ({
-    text: '#1a1a2e',
-    textDark: '#ffffff',
-    muted: '#6b7280',
-    mutedDark: '#a0a0b0',
-    card: '#ffffff',
-    cardDark: 'rgba(255,255,255,0.05)',
-    bgLight: ['#f8faff', '#f0f4ff', '#e8eeff'] as const,
-    bgDark: ['#0f0f1e', '#1a1a2e', '#16213e'] as const,
-  }), []);
+  const headerOpacity = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, [0, 100], [0, 1], Extrapolate.CLAMP),
+  }));
 
-  /* ── Import family contacts on mount ── */
   useEffect(() => {
     const familyMembers: any[] = [];
-    if (authProfile?.phoneNumber) {
-      familyMembers.push({ ...authProfile, relationship: 'Parent (You)', role: 'parent1' });
-    }
-    if (parent2?.phoneNumber) {
-      familyMembers.push({ ...parent2, relationship: 'Co-Parent', role: 'parent2' });
-    }
-    if (guardians?.length) {
-      familyMembers.push(...guardians);
-    }
-    if (familyMembers.length > 0) {
-      importFamilyContacts(familyMembers);
-    }
+    if (authProfile?.phoneNumber) familyMembers.push({ ...authProfile, relationship: 'Parent (You)', role: 'parent1' });
+    if (parent2?.phoneNumber) familyMembers.push({ ...parent2, relationship: 'Co-Parent', role: 'parent2' });
+    if (guardians?.length) familyMembers.push(...guardians);
+    if (familyMembers.length > 0) importFamilyContacts(familyMembers);
   }, [authProfile, parent2, guardians, importFamilyContacts]);
 
-  /* ── Request notification permissions on mount ── */
-  useEffect(() => {
-    (async () => {
-      const { status } = await Notifications.getPermissionsAsync();
-      if (status !== 'granted') {
-        await Notifications.requestPermissionsAsync();
-      }
-    })();
-  }, []);
-
-  /* ── Memoized computations ── */
   const safetyScore = useMemo(() => getSafetyScore(), [getSafetyScore]);
-
-  const completedCount = useMemo(
-    () => topics.filter((t: SafetyTopic) => t.completedAt).length,
-    [topics]
-  );
-
-  const filteredTopics = useMemo(
-    () => topics.filter((t: SafetyTopic) => (activeCategory === 'all' ? true : t.category === activeCategory)),
-    [topics, activeCategory]
-  );
-
-  const defaultContacts = useMemo(
-    () => emergencyContacts.filter((c: EmergencyContact) => c.isDefault),
-    [emergencyContacts]
-  );
-
-  const familyContacts = useMemo(
-    () => emergencyContacts.filter((c: EmergencyContact) => c.type === 'family'),
-    [emergencyContacts]
-  );
+  const completedCount = useMemo(() => topics.filter((t: SafetyTopic) => t.completedAt).length, [topics]);
+  const filteredTopics = useMemo(() => topics.filter((t: SafetyTopic) => activeCategory === 'all' || t.category === activeCategory), [topics, activeCategory]);
+  const defaultContacts = useMemo(() => emergencyContacts.filter((c: EmergencyContact) => c.isDefault), [emergencyContacts]);
+  const familyContacts = useMemo(() => emergencyContacts.filter((c: EmergencyContact) => c.type === 'family'), [emergencyContacts]);
 
   const babyInfo = useMemo(() => {
     if (!currentBaby) return null;
-    return { 
-      name: currentBaby.name, 
-      age: currentBaby.age,
-      avatar: currentBaby.avatar,
-      gender: currentBaby.gender 
-    };
+    return { name: currentBaby.name, age: currentBaby.age, avatar: currentBaby.avatar, gender: currentBaby.gender };
   }, [currentBaby]);
 
-  /* ── Callbacks ── */
+  const scoreColor = useMemo(() => {
+    if (safetyScore > 80) return TOKENS.success;
+    if (safetyScore > 50) return TOKENS.warning;
+    return TOKENS.emergency.primary;
+  }, [safetyScore]);
+
   const handleTopicPress = useCallback(async (topic: SafetyTopic) => {
     setSelectedTopic(topic);
     setModalVisible(true);
@@ -1430,19 +1317,15 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
     );
   }, [triggerSOS, confirm, success]);
 
-  const handleCategoryChange = useCallback((cat: 'all' | 'emergency' | 'prevention' | 'daily') => {
+  const handleCategoryChange = useCallback((cat: typeof activeCategory) => {
     setActiveCategory(cat);
     triggerHaptic('light');
   }, [triggerHaptic]);
 
-  const handleCompleteTopic = useCallback((topicId: string) => {
-    markTopicCompleted(topicId);
-  }, [markTopicCompleted]);
-
+  const handleCompleteTopic = useCallback((topicId: string) => markTopicCompleted(topicId), [markTopicCompleted]);
   const handleCloseModal = useCallback(() => setModalVisible(false), []);
   const handleCloseChecklist = useCallback(() => setChecklistVisible(false), []);
 
-  /* ── Handle imported contacts ── */
   const handleImportContacts = useCallback((imported: EmergencyContact[]) => {
     imported.forEach(contact => {
       addCustomEmergencyContact({
@@ -1450,369 +1333,235 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
         number: contact.number,
         type: 'family',
         icon: 'person',
-        color: themeColors.primary,
+        color: colors.primary,
         relation: contact.relation,
       });
     });
-  }, [addCustomEmergencyContact, themeColors]);
+  }, [addCustomEmergencyContact, colors.primary]);
 
-  /* ── Animated header opacity ── */
-  const headerOpacity = useMemo(
-    () => scrollY.interpolate({ inputRange: [0, 100], outputRange: [0, 1], extrapolate: 'clamp' }),
-    [scrollY]
-  );
-
-  /* ── Scroll handler (memoized) ── */
-  const handleScroll = useMemo(
-    () =>
-      Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
-        useNativeDriver: true,
-      }),
-    [scrollY]
-  );
-
-  /* ── Score color (memoized) using themeColors ── */
-  const scoreColor = useMemo(() => {
-    if (safetyScore > 80) return THEME.success;
-    if (safetyScore > 50) return THEME.warning;
-    return THEME.emergency.primary;
-  }, [safetyScore, THEME]);
-
-  /* ═══════════════════════════════════════════════════════════════
-     RENDER
-     ═══════════════════════════════════════════════════════════════ */
   return (
     <View style={styles.container}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
-      {/* Floating Header */}
-      <Animated.View
-        style={[
-          styles.floatingHeader,
-          { opacity: headerOpacity, paddingTop: insets.top },
-        ]}
-      >
-        <BlurView intensity={isDark ? 40 : 80} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
-        <View style={styles.floatingHeaderContent}>
-          <Text style={[styles.floatingHeaderText, isDark && { color: colors.textDark }]}>
-            Safety Corner
-          </Text>
-          {streakDays > 0 && (
-            <View style={styles.streakBadge}>
-              <Ionicons name="flame" size={14} color="#ff9500" />
-              <Text style={styles.streakText}>{streakDays} day streak</Text>
-            </View>
-          )}
-        </View>
-      </Animated.View>
+{/* Floating Header */}
+<Animated.View style={[styles.floatingHeader, headerOpacity, { paddingTop: insets.top }]}>
+  <BlurView intensity={isDark ? 40 : 80} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
+  <View style={styles.floatingHeaderContent}>
+    <Text style={[styles.floatingHeaderText, { color: colors.text }]}>Safety Corner</Text>
+    {streakDays > 0 && (
+      <View style={styles.streakBadge}>
+        <Ionicons name="flame" size={14} color="#ff9500" />
+        <Text style={styles.streakText}>{streakDays} day streak</Text>
+      </View>
+    )}
+  </View>
+</Animated.View>
 
       {/* Main Content */}
       <LinearGradient colors={isDark ? colors.bgDark : colors.bgLight} style={[styles.gradient, { paddingTop: insets.top }]}>
         <AutoHideScrollView
           contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 100 }]}
           showsVerticalScrollIndicator={false}
-          onScroll={handleScroll}
+          onScroll={scrollHandler}
           scrollEventThrottle={16}
         >
-          {/* Hero Section with SafeBabyAvatar */}
-          <View style={styles.heroSection}>
+          {/* Hero */}
+          <Animated.View entering={FadeInUp.duration(500)} style={styles.heroSection}>
             <View style={styles.heroIconContainer}>
-              <LinearGradient colors={THEME.emergency.gradient} style={styles.heroIconGradient}>
+              <LinearGradient colors={TOKENS.emergency.gradient} style={styles.heroIconGradient}>
                 <Ionicons name="shield-checkmark" size={40} color="#fff" />
               </LinearGradient>
               <View style={[styles.scoreBadge, { backgroundColor: scoreColor }]}>
                 <Text style={styles.scoreText}>{safetyScore}%</Text>
               </View>
             </View>
-            <Text style={[styles.heroTitle, isDark && { color: colors.textDark }]}>
-              Safety Corner
-            </Text>
-            <Text style={[styles.heroSubtitle, isDark && { color: colors.mutedDark }]}>
-              {babyInfo
-                ? `Protecting ${babyInfo.name} (${babyInfo.age})`
-                : 'Your family safety hub'}
+            <Text style={[styles.heroTitle, { color: colors.text }]}>Safety Corner</Text>
+            <Text style={[styles.heroSubtitle, { color: isDark ? colors.mutedDark : colors.muted }]}>
+              {babyInfo ? `Protecting ${babyInfo.name} (${babyInfo.age})` : 'Your family safety hub'}
             </Text>
 
-            {/* Baby Avatar Display */}
             {babyInfo && (
               <View style={styles.babyAvatarSection}>
-                <SafeBabyAvatar 
-                  avatar={babyInfo.avatar || null} 
-                  gender={babyInfo.gender || 'other'} 
-                  size={60} 
-                />
-                <Text style={[styles.babyAvatarLabel, isDark && { color: colors.mutedDark }]}>
-                  {babyInfo.name}
-                </Text>
+                <SafeBabyAvatar avatar={babyInfo.avatar || null} gender={babyInfo.gender || 'other'} size={60} />
+                <Text style={[styles.babyAvatarLabel, { color: isDark ? colors.mutedDark : colors.muted }]}>{babyInfo.name}</Text>
               </View>
             )}
 
-            {/* Quick Stats */}
             <View style={styles.quickStats}>
-              <StatCard
-                icon="checkmark-circle"
-                iconColor={THEME.prevention.primary}
-                value={completedCount}
-                label="Completed"
-                isDark={isDark}
-                colors={colors}
-              />
-              <StatCard
-                icon="flame"
-                iconColor="#ff9500"
-                value={streakDays}
-                label="Day Streak"
-                isDark={isDark}
-                colors={colors}
-              />
-              <StatCard
-                icon="list"
-                iconColor={THEME.daily.primary}
-                value="Check"
-                label="List"
-                isDark={isDark}
-                onPress={() => setChecklistVisible(true)}
-                colors={colors}
-              />
+              <StatCard icon="checkmark-circle" iconColor={colors.accent} value={completedCount} label="Completed" />
+              <StatCard icon="flame" iconColor="#ff9500" value={streakDays} label="Day Streak" />
+              <StatCard icon="list" iconColor={colors.primary} value="Check" label="List" onPress={() => setChecklistVisible(true)} />
             </View>
-          </View>
+          </Animated.View>
 
-          {/* SOS Emergency Button */}
-          <View style={styles.sosSection}>
+          {/* SOS */}
+          <Animated.View entering={FadeInUp.delay(100)} style={styles.sosSection}>
             <EmergencyButton
-              contact={{
-                id: 'sos',
-                label: 'SOS',
-                number: '911',
-                type: 'emergency',
-                icon: 'alert',
-                color: THEME.emergency.primary,
-              }}
-              isDark={isDark}
+              contact={{ id: 'sos', label: 'SOS', number: '911', type: 'emergency', icon: 'alert', color: TOKENS.emergency.primary }}
               onPress={handleSOS}
               isSOS
-              colors={colors}
-              themeColors={themeColors}
             />
-            <Text style={[styles.sosDisclaimer, isDark && { color: colors.mutedDark }]}>
+            <Text style={[styles.sosDisclaimer, { color: isDark ? colors.mutedDark : colors.muted }]}>
               Press in life-threatening emergencies only. Calls 911 and alerts family.
             </Text>
-          </View>
+          </Animated.View>
 
-          {/* NEW: Quick Actions Bar */}
-          <View style={styles.quickActionsBar}>
-            <TouchableOpacity
-              style={[styles.quickBarBtn, { backgroundColor: `${themeColors.primary}15` }]}
+          {/* Quick Actions Bar */}
+          <Animated.View entering={FadeInUp.delay(150)} style={styles.quickActionsBar}>
+            <PressableScale
               onPress={() => setContactImportVisible(true)}
+              style={[styles.quickBarBtn, { backgroundColor: `${colors.primary}15` }]}
+              activeScale={0.95}
             >
-              <Ionicons name="people" size={20} color={themeColors.primary} />
-              <Text style={[styles.quickBarText, { color: themeColors.primary }]}>Import Contacts</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.quickBarBtn, { backgroundColor: `${themeColors.accent}15` }]}
+              <Ionicons name="people" size={20} color={colors.primary} />
+              <Text style={[styles.quickBarText, { color: colors.primary }]}>Import Contacts</Text>
+            </PressableScale>
+            <PressableScale
               onPress={() => setReminderVisible(true)}
+              style={[styles.quickBarBtn, { backgroundColor: `${colors.accent}15` }]}
+              activeScale={0.95}
             >
-              <Ionicons name="notifications" size={20} color={themeColors.accent} />
-              <Text style={[styles.quickBarText, { color: themeColors.accent }]}>Set Reminder</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.quickBarBtn, { backgroundColor: `${THEME.info}15` }]}
+              <Ionicons name="notifications" size={20} color={colors.accent} />
+              <Text style={[styles.quickBarText, { color: colors.accent }]}>Set Reminder</Text>
+            </PressableScale>
+            <PressableScale
               onPress={() => setReportVisible(true)}
+              style={[styles.quickBarBtn, { backgroundColor: `${TOKENS.info}15` }]}
+              activeScale={0.95}
             >
-              <Ionicons name="document-text" size={20} color={THEME.info} />
-              <Text style={[styles.quickBarText, { color: THEME.info }]}>Reports</Text>
-            </TouchableOpacity>
-          </View>
+              <Ionicons name="document-text" size={20} color={TOKENS.info} />
+              <Text style={[styles.quickBarText, { color: TOKENS.info }]}>Reports</Text>
+            </PressableScale>
+          </Animated.View>
 
           {/* Emergency Contacts */}
-          <View style={styles.emergencySection}>
+          <Animated.View entering={FadeInUp.delay(200)} style={styles.emergencySection}>
             <View style={styles.sectionHeaderRow}>
-              <Text style={[styles.sectionLabel, { color: THEME.emergency.secondary }]}>
-                EMERGENCY CONTACTS
-              </Text>
+              <Text style={[styles.sectionLabel, { color: TOKENS.emergency.secondary }]}>EMERGENCY CONTACTS</Text>
               <TouchableOpacity onPress={() => setContactImportVisible(true)}>
-                <Text style={[styles.importLink, { color: themeColors.primary }]}>+ Import</Text>
+                <Text style={[styles.importLink, { color: colors.primary }]}>+ Import</Text>
               </TouchableOpacity>
             </View>
             <View style={styles.emergencyGrid}>
-              {defaultContacts.map((contact: EmergencyContact) => (
+              {defaultContacts.map(contact => (
                 <EmergencyButton
                   key={contact.id}
                   contact={contact}
-                  isDark={isDark}
                   onPress={() => callEmergency(contact.number, contact.label, contact.type)}
-                  colors={colors}
-                  themeColors={themeColors}
                 />
               ))}
             </View>
 
-            {/* Family Contacts with SafeParentAvatar */}
             {familyContacts.length > 0 && (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={styles.familyContactsScroll}
-                contentContainerStyle={styles.familyContactsContent}
-              >
-                {familyContacts.map((contact: EmergencyContact) => (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.familyContactsScroll} contentContainerStyle={styles.familyContactsContent}>
+                {familyContacts.map(contact => (
                   <TouchableOpacity
                     key={contact.id}
                     style={[styles.familyChip, isDark && styles.familyChipDark]}
                     onPress={() => callEmergency(contact.number, contact.label, 'family')}
-                    accessibilityLabel={`Call ${contact.label}`}
                   >
                     {contact.avatar ? (
-                      <SafeParentAvatar 
-                        avatar={contact.avatar} 
-                        name={contact.label} 
-                        size={28} 
-                      />
+                      <SafeParentAvatar avatar={contact.avatar} name={contact.label} size={28} />
                     ) : (
-                      <Ionicons
-                        name={contact.icon as keyof typeof Ionicons.glyphMap}
-                        size={16}
-                        color={contact.color}
-                      />
+                      <Ionicons name={contact.icon as keyof typeof Ionicons.glyphMap} size={16} color={contact.color} />
                     )}
-                    <Text style={[styles.familyChipText, isDark && { color: colors.textDark }]}>
-                      {contact.label}
-                    </Text>
+                    <Text style={[styles.familyChipText, { color: colors.text }]}>{contact.label}</Text>
                   </TouchableOpacity>
                 ))}
               </ScrollView>
             )}
-          </View>
+          </Animated.View>
 
-          {/* Category Filter */}
-          <View style={styles.filterContainer}>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.filterContent}
-            >
-              {(['all', 'emergency', 'prevention', 'daily'] as const).map((cat) => (
+          {/* Filter */}
+          <Animated.View entering={FadeInUp.delay(250)} style={styles.filterContainer}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterContent}>
+              {(['all', 'emergency', 'prevention', 'daily'] as const).map(cat => (
                 <FilterChip
                   key={cat}
                   label={cat.charAt(0).toUpperCase() + cat.slice(1)}
                   active={activeCategory === cat}
                   category={cat}
                   onPress={() => handleCategoryChange(cat)}
-                  themeColors={themeColors}
                 />
               ))}
             </ScrollView>
-          </View>
+          </Animated.View>
 
           {/* Safety Topics */}
-          <View style={styles.section}>
-            <Text style={[styles.sectionTitle, isDark && { color: colors.textDark }]}>
-              Safety Topics
-            </Text>
-            {filteredTopics.map((topic: SafetyTopic, index: number) => (
+          <Animated.View entering={FadeInUp.delay(300)} layout={Layout.springify()} style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Safety Topics</Text>
+            {filteredTopics.map((topic, index) => (
               <SafetyCard
                 key={topic.id}
                 topic={topic}
-                isDark={isDark}
-                onPress={() => handleTopicPress(topic)}
                 index={index}
-                themeColors={themeColors}
-                colors={colors}
+                onPress={() => handleTopicPress(topic)}
               />
             ))}
             {filteredTopics.length === 0 && (
               <View style={styles.emptyState}>
-                <Ionicons name="shield-outline" size={48} color={colors.muted} />
-                <Text style={[styles.emptyText, isDark && { color: colors.mutedDark }]}>
-                  No topics in this category
-                </Text>
+                <Ionicons name="shield-outline" size={48} color={isDark ? colors.mutedDark : colors.muted} />
+                <Text style={[styles.emptyText, { color: isDark ? colors.mutedDark : colors.muted }]}>No topics in this category</Text>
               </View>
             )}
-          </View>
+          </Animated.View>
 
-          {/* Location Services */}
+          {/* Location */}
           {currentLocation && (
             <BlurView intensity={isDark ? 20 : 60} style={styles.locationCard} tint={isDark ? 'dark' : 'light'}>
-              <Ionicons name="location" size={20} color={themeColors.primary} />
-              <Text style={[styles.locationText, isDark && { color: colors.mutedDark }]}>
+              <Ionicons name="location" size={20} color={colors.primary} />
+              <Text style={[styles.locationText, { color: isDark ? colors.mutedDark : colors.muted }]}>
                 Location active • Ready for emergency sharing
               </Text>
             </BlurView>
           )}
 
-          {/* Quick Actions using themeColors */}
-          <View style={styles.section}>
-            <Text style={[styles.sectionTitle, isDark && { color: colors.textDark }]}>
-              Quick Actions
-            </Text>
+          {/* Quick Actions Grid */}
+          <Animated.View entering={FadeInUp.delay(350)} style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Quick Actions</Text>
             <View style={styles.quickActionsGrid}>
               <QuickActionCard
                 icon="call"
                 label="Call 911"
-                gradient={[`${THEME.emergency.primary}20`, `${THEME.emergency.primary}05`]}
-                iconColor={THEME.emergency.primary}
-                isDark={isDark}
+                gradient={[`${TOKENS.emergency.primary}20`, `${TOKENS.emergency.primary}05`]}
+                iconColor={TOKENS.emergency.primary}
                 onPress={() => callEmergency('911', 'Emergency', 'emergency')}
-                colors={colors}
               />
               <QuickActionCard
                 icon="location"
                 label="Hospitals"
                 gradient={['#11998e20', '#11998e05']}
                 iconColor="#11998e"
-                isDark={isDark}
                 onPress={findNearbyHospitals}
-                colors={colors}
               />
               <QuickActionCard
                 icon="medical"
                 label="Pediatrician"
-                gradient={[`${themeColors.primary}20`, `${themeColors.primary}05`]}
-                iconColor={themeColors.primary}
-                isDark={isDark}
+                gradient={[`${colors.primary}20`, `${colors.primary}05`]}
+                iconColor={colors.primary}
                 onPress={findNearbyPediatricians}
-                colors={colors}
               />
               <QuickActionCard
                 icon="share"
                 label="Share Loc"
-                gradient={[`${themeColors.accent}20`, `${themeColors.accent}05`]}
-                iconColor={themeColors.accent}
-                isDark={isDark}
+                gradient={[`${colors.accent}20`, `${colors.accent}05`]}
+                iconColor={colors.accent}
                 onPress={() => shareLocationWithEmergency()}
-                colors={colors}
               />
             </View>
-          </View>
+          </Animated.View>
 
-          {/* NEW: Safety Pills / Quick Tips */}
-          <View style={styles.section}>
-            <Text style={[styles.sectionTitle, isDark && { color: colors.textDark }]}>
-              Quick Safety Pills
-            </Text>
+          {/* Safety Pills */}
+          <Animated.View entering={FadeInUp.delay(400)} style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Quick Safety Pills</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pillsContainer}>
-              <TouchableOpacity style={[styles.pill, { backgroundColor: `${THEME.emergency.primary}15` }]}>
-                <Ionicons name="medical" size={16} color={THEME.emergency.primary} />
-                <Text style={[styles.pillText, { color: THEME.emergency.primary }]}>CPR Guide</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.pill, { backgroundColor: `${THEME.warning}15` }]}>
-                <Ionicons name="warning" size={16} color={THEME.warning} />
-                <Text style={[styles.pillText, { color: THEME.warning }]}>Choking</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.pill, { backgroundColor: `${THEME.info}15` }]}>
-                <Ionicons name="water" size={16} color={THEME.info} />
-                <Text style={[styles.pillText, { color: THEME.info }]}>Water Safety</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.pill, { backgroundColor: `${themeColors.accent}15` }]}>
-                <Ionicons name="sunny" size={16} color={themeColors.accent} />
-                <Text style={[styles.pillText, { color: themeColors.accent }]}>Sun Safety</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.pill, { backgroundColor: `${themeColors.primary}15` }]}>
-                <Ionicons name="bed" size={16} color={themeColors.primary} />
-                <Text style={[styles.pillText, { color: themeColors.primary }]}>Safe Sleep</Text>
-              </TouchableOpacity>
+              <SafetyPill icon="medical" label="CPR Guide" color={TOKENS.emergency.primary} onPress={() => {}} />
+              <SafetyPill icon="warning" label="Choking" color={TOKENS.warning} onPress={() => {}} />
+              <SafetyPill icon="water" label="Water Safety" color={TOKENS.info} onPress={() => {}} />
+              <SafetyPill icon="sunny" label="Sun Safety" color={colors.accent} onPress={() => {}} />
+              <SafetyPill icon="bed" label="Safe Sleep" color={colors.primary} onPress={() => {}} />
             </ScrollView>
-          </View>
+          </Animated.View>
 
           {/* Disclaimer */}
           <BlurView intensity={isDark ? 20 : 60} style={styles.disclaimer} tint={isDark ? 'dark' : 'light'}>
@@ -1825,58 +1574,29 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
       </LinearGradient>
 
       {/* Modals */}
-      <ChecklistModal 
-        visible={checklistVisible} 
-        onClose={handleCloseChecklist} 
-        isDark={isDark} 
-        themeColors={themeColors} 
-      />
-
+      <ChecklistModal visible={checklistVisible} onClose={handleCloseChecklist} />
       <TopicDetailModal
         visible={modalVisible}
         topic={selectedTopic}
-        isDark={isDark}
-        themeColors={themeColors}
-        colors={colors}
         currentBaby={babyInfo}
         onClose={handleCloseModal}
         onComplete={handleCompleteTopic}
         onCallEmergency={callEmergency}
       />
-
-      <ContactImportModal
-        visible={contactImportVisible}
-        onClose={() => setContactImportVisible(false)}
-        isDark={isDark}
-        onImport={handleImportContacts}
-        themeColors={themeColors}
-      />
-
-      <ReminderModal
-        visible={reminderVisible}
-        onClose={() => setReminderVisible(false)}
-        isDark={isDark}
-        themeColors={themeColors}
-      />
-
-      <DoctorReportModal
-        visible={reportVisible}
-        onClose={() => setReportVisible(false)}
-        isDark={isDark}
-        themeColors={themeColors}
-      />
+      <ContactImportModal visible={contactImportVisible} onClose={() => setContactImportVisible(false)} onImport={handleImportContacts} />
+      <ReminderModal visible={reminderVisible} onClose={() => setReminderVisible(false)} />
+      <DoctorReportModal visible={reportVisible} onClose={() => setReportVisible(false)} />
     </View>
   );
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   STYLES — Extended with new modal styles
+   STYLES — Consolidated and organized
    ═══════════════════════════════════════════════════════════════ */
 const styles = StyleSheet.create({
   container: { flex: 1 },
   gradient: { flex: 1 },
 
-  // Floating Header
   floatingHeader: {
     position: 'absolute',
     top: 0,
@@ -1905,10 +1625,8 @@ const styles = StyleSheet.create({
   },
   streakText: { fontSize: 12, fontWeight: '600', color: '#ff9500' },
 
-  // Content
   content: { paddingHorizontal: 20 },
 
-  // Hero Section
   heroSection: { alignItems: 'center', marginTop: 20, marginBottom: 24 },
   heroIconContainer: { position: 'relative', marginBottom: 16 },
   heroIconGradient: {
@@ -1935,33 +1653,11 @@ const styles = StyleSheet.create({
   },
   scoreText: { color: '#fff', fontSize: 12, fontWeight: '800' },
   heroTitle: { fontSize: 32, fontWeight: '800', color: '#1a1a2e', marginBottom: 8 },
-  heroSubtitle: {
-    fontSize: 14,
-    color: '#6b7280',
-    textAlign: 'center',
-    lineHeight: 20,
-    paddingHorizontal: 20,
-  },
+  heroSubtitle: { fontSize: 14, color: '#6b7280', textAlign: 'center', lineHeight: 20, paddingHorizontal: 20 },
+  babyAvatarSection: { alignItems: 'center', marginTop: 16, marginBottom: 8, gap: 8 },
+  babyAvatarLabel: { fontSize: 14, fontWeight: '600', color: '#6b7280' },
 
-  // Baby Avatar Section
-  babyAvatarSection: {
-    alignItems: 'center',
-    marginTop: 16,
-    marginBottom: 8,
-    gap: 8,
-  },
-  babyAvatarLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#6b7280',
-  },
-
-  // Quick Stats
-  quickStats: {
-    flexDirection: 'row',
-    gap: 16,
-    marginTop: 20,
-  },
+  quickStats: { flexDirection: 'row', gap: 16, marginTop: 20 },
   statItem: {
     alignItems: 'center',
     backgroundColor: '#ffffff',
@@ -1974,27 +1670,13 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
-  statItemDark: { backgroundColor: 'rgba(255,255,255,0.05)' },
   statValue: { fontSize: 18, fontWeight: '700', color: '#1a1a2e', marginTop: 4 },
   statLabel: { fontSize: 11, color: '#6b7280', marginTop: 2 },
 
-    // SOS Section
   sosSection: { marginBottom: 24, alignItems: 'center' },
-  sosDisclaimer: { 
-    fontSize: 11, 
-    color: '#999', 
-    marginTop: 8, 
-    textAlign: 'center',
-    paddingHorizontal: 40,
-  },
+  sosDisclaimer: { fontSize: 11, color: '#999', marginTop: 8, textAlign: 'center', paddingHorizontal: 40 },
 
-  // Quick Actions Bar (NEW)
-  quickActionsBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 24,
-    gap: 10,
-  },
+  quickActionsBar: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 24, gap: 10 },
   quickBarBtn: {
     flex: 1,
     flexDirection: 'row',
@@ -2005,66 +1687,26 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     gap: 6,
   },
-  quickBarText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
+  quickBarText: { fontSize: 12, fontWeight: '700' },
 
-  // Emergency Section
   emergencySection: { marginBottom: 24 },
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  importLink: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  sectionLabel: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#ff4757',
-    letterSpacing: 1,
-  },
-  emergencyGrid: { 
-    flexDirection: 'row', 
-    flexWrap: 'wrap', 
-    gap: 10 
-  },
+  sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  importLink: { fontSize: 13, fontWeight: '700' },
+  sectionLabel: { fontSize: 12, fontWeight: '800', color: '#ff4757', letterSpacing: 1 },
+  emergencyGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
 
-  // Emergency Button
   emergencyBtn: {
     width: (SCREEN_W - 50) / 2,
     borderRadius: 16,
     borderWidth: 1,
     overflow: 'hidden',
   },
-  sosButton: {
-    width: SCREEN_W - 40,
-    borderWidth: 2,
-    borderRadius: 20,
-  },
-  emergencyBtnDark: { 
-    borderColor: 'rgba(255,255,255,0.1)' 
-  },
-  emergencyBtnGradient: { 
-    padding: 16, 
-    alignItems: 'center', 
-    gap: 6 
-  },
-  emergencyBtnText: { 
-    fontSize: 13, 
-    fontWeight: '700' 
-  },
-  emergencyBtnNumber: { 
-    fontSize: 11, 
-    color: '#6b7280', 
-    fontWeight: '500' 
-  },
+  sosButton: { width: SCREEN_W - 40, borderWidth: 2, borderRadius: 20 },
+  emergencyBtnDark: { borderColor: 'rgba(255,255,255,0.1)' },
+  emergencyBtnGradient: { padding: 16, alignItems: 'center', gap: 6 },
+  emergencyBtnText: { fontSize: 13, fontWeight: '700' },
+  emergencyBtnNumber: { fontSize: 11, color: '#6b7280', fontWeight: '500' },
 
-  // Family Contacts
   familyContactsScroll: { marginTop: 12 },
   familyContactsContent: { paddingRight: 20 },
   familyChip: {
@@ -2082,66 +1724,22 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
-  familyChipDark: { 
-    backgroundColor: 'rgba(255,255,255,0.05)' 
-  },
-  familyChipText: { 
-    fontSize: 12, 
-    fontWeight: '600', 
-    color: '#1a1a2e' 
-  },
+  familyChipDark: { backgroundColor: 'rgba(255,255,255,0.05)' },
+  familyChipText: { fontSize: 12, fontWeight: '600', color: '#1a1a2e' },
 
-  // Filter
   filterContainer: { marginBottom: 20 },
-  filterContent: { 
-    paddingRight: 20, 
-    gap: 8 
-  },
-  filterChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0,0,0,0.05)',
-  },
-  filterChipActive: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  filterChipText: { 
-    fontSize: 13, 
-    fontWeight: '600', 
-    color: '#6b7280' 
-  },
-  filterChipTextActive: { 
-    color: '#fff' 
-  },
+  filterContent: { paddingRight: 20, gap: 8 },
+  filterChip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: 'rgba(0,0,0,0.05)' },
+  filterChipActive: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 },
+  filterChipText: { fontSize: 13, fontWeight: '600', color: '#6b7280' },
+  filterChipTextActive: { color: '#fff' },
 
-  // Section
   section: { marginBottom: 24 },
-  sectionTitle: { 
-    fontSize: 20, 
-    fontWeight: '700', 
-    color: '#1a1a2e', 
-    marginBottom: 12 
-  },
+  sectionTitle: { fontSize: 20, fontWeight: '700', color: '#1a1a2e', marginBottom: 12 },
 
-  // Empty State
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 40,
-    gap: 12,
-  },
-  emptyText: { 
-    fontSize: 15, 
-    color: '#6b7280', 
-    fontWeight: '500' 
-  },
+  emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 40, gap: 12 },
+  emptyText: { fontSize: 15, color: '#6b7280', fontWeight: '500' },
 
-  // Safety Card
   cardContainer: { marginBottom: 10 },
   safetyCard: {
     flexDirection: 'row',
@@ -2154,9 +1752,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 8,
     elevation: 2,
-  },
-  safetyCardDark: { 
-    backgroundColor: 'rgba(255,255,255,0.05)' 
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.04)',
   },
   emergencyGlow: {
     shadowColor: '#ff4757',
@@ -2218,7 +1815,6 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 
-  // Location Card
   locationCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2233,7 +1829,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // Quick Actions Grid
   quickActionsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -2250,9 +1845,6 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
-  quickActionCardDark: { 
-    backgroundColor: 'rgba(255,255,255,0.05)' 
-  },
   quickActionGradient: {
     padding: 16,
     alignItems: 'center',
@@ -2264,7 +1856,6 @@ const styles = StyleSheet.create({
     color: '#1a1a2e',
   },
 
-  // Safety Pills (NEW)
   pillsContainer: {
     paddingRight: 20,
     gap: 10,
@@ -2283,7 +1874,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // Disclaimer
   disclaimer: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -2299,34 +1889,67 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 
-  // Modal Overlay
-  modalOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 1000,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
+  modalBackdrop: {
+    backgroundColor: 'rgba(0,0,0,0.4)',
   },
-
-  // Import Modal
-  importModalContainer: {
-    backgroundColor: '#fff',
+  unifiedModalSheet: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
-    maxHeight: SCREEN_H * 0.85,
-    padding: 24,
-    paddingTop: 12,
+    overflow: 'hidden',
   },
-  importModalHeader: {
+  unifiedModalBlur: {
+    paddingTop: 12,
+    paddingBottom: 24,
+  },
+  modalHandle: {
+    width: 40,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: 'rgba(150,150,150,0.3)',
+    alignSelf: 'center',
+    marginBottom: 16,
+  },
+  unifiedModalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 16,
+    paddingHorizontal: 20,
+    paddingBottom: 16,
   },
-  importModalTitle: {
+  unifiedModalTitle: {
     fontSize: 20,
-    fontWeight: '700',
+    fontWeight: '800',
     color: '#1a1a2e',
   },
+  modalCloseBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalCloseBtnDark: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  modalScrollContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 20,
+  },
+  modalLoading: {
+    alignItems: 'center',
+    paddingVertical: 40,
+    gap: 12,
+  },
+  modalLoadingText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2334,6 +1957,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
+    marginHorizontal: 16,
     marginBottom: 16,
     gap: 8,
   },
@@ -2342,14 +1966,12 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '500',
   },
-  contactList: {
-    maxHeight: SCREEN_H * 0.5,
-  },
   contactItem: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 12,
     borderRadius: 12,
+    marginHorizontal: 16,
     marginBottom: 8,
     borderWidth: 1,
     borderColor: 'transparent',
@@ -2391,7 +2013,8 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 16,
     alignItems: 'center',
-    marginTop: 16,
+    marginHorizontal: 16,
+    marginTop: 8,
   },
   importButtonText: {
     color: '#fff',
@@ -2399,19 +2022,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  // Reminder Modal
-  reminderModalContainer: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    padding: 24,
-    paddingTop: 12,
-  },
   inputLabel: {
     fontSize: 13,
     fontWeight: '600',
     marginBottom: 8,
     marginTop: 16,
+    marginHorizontal: 16,
   },
   textInput: {
     borderWidth: 1,
@@ -2420,11 +2036,13 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     fontSize: 15,
     fontWeight: '500',
+    marginHorizontal: 16,
   },
   hoursRow: {
     flexDirection: 'row',
     gap: 8,
     marginTop: 8,
+    marginHorizontal: 16,
   },
   hourChip: {
     paddingHorizontal: 16,
@@ -2438,15 +2056,6 @@ const styles = StyleSheet.create({
     color: '#6b7280',
   },
 
-  // Report Modal
-  reportModalContainer: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    maxHeight: SCREEN_H * 0.85,
-    padding: 24,
-    paddingTop: 12,
-  },
   addReportButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2456,14 +2065,12 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderStyle: 'dashed',
     gap: 8,
+    marginHorizontal: 16,
     marginBottom: 16,
   },
   addReportText: {
     fontSize: 15,
     fontWeight: '700',
-  },
-  reportList: {
-    maxHeight: SCREEN_H * 0.5,
   },
   reportItem: {
     flexDirection: 'row',
@@ -2471,6 +2078,7 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 16,
     backgroundColor: 'rgba(0,0,0,0.02)',
+    marginHorizontal: 16,
     marginBottom: 10,
   },
   reportIcon: {
@@ -2524,32 +2132,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  // Topic Detail Modal
-  modalContainer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    maxHeight: SCREEN_H * 0.9,
-    paddingTop: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 20,
-    elevation: 20,
-  },
-  modalHandle: {
-    width: 40,
-    height: 4,
-    backgroundColor: 'rgba(0,0,0,0.2)',
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginBottom: 8,
-  },
-  modalScrollContent: {
+  topicScrollContent: {
     padding: 24,
     paddingTop: 8,
   },
@@ -2566,17 +2149,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  modalCloseBtn: {
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  closeBtnBlur: {
-    width: 36,
-    height: 36,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   modalTitle: {
     fontSize: 24,
     fontWeight: '800',
@@ -2590,7 +2162,6 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
 
-  // Baby Banner
   babyBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2606,7 +2177,6 @@ const styles = StyleSheet.create({
     color: '#fa709a',
   },
 
-  // Tips
   tipsContainer: { marginBottom: 24 },
   tipsTitle: {
     fontSize: 17,
@@ -2641,7 +2211,6 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
 
-  // Emergency Actions
   emergencyActionsContainer: { marginBottom: 24 },
   emergencyActionsTitle: {
     fontSize: 17,
@@ -2664,7 +2233,6 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
 
-  // Complete Button
   completeBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2680,7 +2248,6 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
 
-  // Share Button
   shareBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2697,35 +2264,11 @@ const styles = StyleSheet.create({
     color: '#667eea',
   },
 
-  // Checklist Modal
-  checklistContainer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    maxHeight: SCREEN_H * 0.8,
-    padding: 24,
-    paddingTop: 12,
-  },
-  checklistHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  checklistTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#1a1a2e',
-  },
   checklistTabs: {
     flexDirection: 'row',
     gap: 8,
     marginBottom: 16,
-    paddingRight: 20,
+    paddingHorizontal: 16,
   },
   checklistTab: {
     paddingHorizontal: 16,
@@ -2739,17 +2282,13 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     textTransform: 'capitalize',
   },
-  checklistTabTextActive: { 
-    color: '#fff' 
-  },
-  checklistContent: { 
-    maxHeight: SCREEN_H * 0.45 
-  },
+  checklistTabTextActive: { color: '#fff' },
   progressBar: {
     height: 6,
     backgroundColor: 'rgba(0,0,0,0.1)',
     borderRadius: 3,
     marginBottom: 8,
+    marginHorizontal: 16,
     overflow: 'hidden',
   },
   progressFill: {
@@ -2761,11 +2300,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1a1a2e',
     marginBottom: 16,
+    marginHorizontal: 16,
   },
   checklistItem: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 12,
+    paddingHorizontal: 16,
     gap: 12,
   },
   checklistItemText: {
@@ -2791,6 +2332,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     marginTop: 16,
+    marginHorizontal: 16,
     gap: 6,
   },
   resetChecklistText: {

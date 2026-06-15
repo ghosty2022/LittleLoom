@@ -1,4 +1,3 @@
-﻿
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { CompositeScreenProps } from '@react-navigation/native';
@@ -61,39 +60,18 @@ export interface Permission {
 
 export const ROLE_PERMISSIONS: Record<UserRole, Permission> = {
   [UserRole.PARENT_1]: {
-    read: true,
-    write: true,
-    delete: true,
-    manageFamily: true,
-    manageSecurity: true,
-    exportData: true,
+    read: true, write: true, delete: true, manageFamily: true, manageSecurity: true, exportData: true,
   },
   [UserRole.PARENT_2]: {
-    read: true,
-    write: true,
-    delete: true,
-    manageFamily: true,
-    manageSecurity: false,
-    exportData: true,
+    read: true, write: true, delete: true, manageFamily: true, manageSecurity: false, exportData: true,
   },
   [UserRole.GUARDIAN]: {
-    read: true,
-    write: true,
-    delete: false,
-    manageFamily: false,
-    manageSecurity: false,
-    exportData: false,
+    read: true, write: true, delete: false, manageFamily: false, manageSecurity: false, exportData: false,
   },
   [UserRole.VIEWER]: {
-    read: true,
-    write: false,
-    delete: false,
-    manageFamily: false,
-    manageSecurity: false,
-    exportData: false,
+    read: true, write: false, delete: false, manageFamily: false, manageSecurity: false, exportData: false,
   },
 };
-
 
 export interface UserProfile {
   id: string;
@@ -117,61 +95,67 @@ export interface AuthState {
   userProfile: UserProfile | null;
   onboardingComplete: boolean;
   isBiometricAvailable: boolean;
-  isBiometricEnabled: boolean;        // For app unlock/security
-  isBiometricLoginEnabled: boolean;    // For login screen (persistent)
+  isBiometricEnabled: boolean;
+  isBiometricLoginEnabled: boolean;
   setupComplete: boolean;
   hasParent2: boolean | 'skipped';
   hasBaby: boolean | 'skipped';
 }
 
-
 export type RootStackParamList = {
   Splash: undefined;
   Onboarding: undefined;
-
   Login: undefined;
   SignUp: undefined;
   ForgotPassword: undefined;
-
   Parent2Optional: undefined;
   Parent2Setup: undefined;
   BabyOptional: undefined;
-
   CreateBabyProfile: { fromSetup?: boolean } | undefined;
   AddParent: { fromSetup?: boolean } | undefined;
   SwitchBaby: undefined;
-
   Main: undefined;
 
-  UniversalTracker: { type?: string; babyId?: string } | undefined;
+  UniversalTrackerHub: undefined;
 
-  PottyTracker: { babyId?: string } | undefined;
-  FeedTracker: { babyId?: string } | undefined;
-  SleepTracker: { babyId?: string } | undefined;
+  Timeline: { trackerId?: string; type?: string; babyId?: string; filter?: string } | undefined;
+
+  PottyTracker: { babyId?: string; trackerId?: string } | undefined;
+  FeedTracker: { babyId?: string; trackerId?: string } | undefined;
+  SleepTracker: { babyId?: string; trackerId?: string } | undefined;
+
+  CreateCustomTracker: undefined;
 
   Profile: { 
     tab?: 'parents' | 'guardians';
     selectedId?: string;
   } | undefined;
-
   Gallery: undefined;
 
-  AddLog: { 
+  AddEntry: { 
+    trackerId?: string;
     type?: string; 
     babyId?: string; 
     editMode?: boolean; 
     eventId?: string;
+    viewMode?: boolean;
+    presetData?: Record<string, unknown>;
   } | undefined;
-  
+
   Achievements: { 
     babyId?: string;
     highlightAchievement?: string;
     openReminderSetup?: boolean;
   } | undefined;
-  
-  GrowthChart: { babyId?: string } | undefined;
-  
-  Reminders: { 
+
+  GrowthDashboard: { babyId?: string } | undefined;
+
+  VaccinationSchedule: { 
+    babyId?: string; 
+    birthDate?: string;
+  } | undefined;
+
+  TrackerReminders: { 
     fromAchievement?: string;
     suggestedType?: 'potty' | 'feed' | 'sleep' | 'milestone' | 'streak';
     babyId?: string;
@@ -183,7 +167,6 @@ export type RootStackParamList = {
     babyId?: string;
     parentId?: string;
   } | undefined;
-
   FamilyChatList: undefined;
   FamilyChat: { 
     chatId?: string; 
@@ -193,39 +176,34 @@ export type RootStackParamList = {
     memberRole?: string;
     familyCode?: string;
   } | undefined;
-
   EditGuardian: {
     guardianId: string;
     mode?: 'guardian' | 'parent2' | 'viewer';
     fromChat?: boolean;
   } | undefined;
-
   SoundMixer: undefined;
   Customize: undefined;
   BabySelector: undefined;
-
   SecurityLock: undefined;
   BiometricSetup: undefined;
   SecurityCenter: {
     mode?: 'setup' | 'change' | 'forgot' | 'reset';
     fromForgotPassword?: boolean;
   } | undefined;
-
   SafetyCorner: undefined;
   BackupRestore: undefined;
   HelpCenter: undefined;
   ContactSupport: undefined;
-
   PrivacyPolicy: undefined;
   TermsOfService: undefined;
   About: undefined;
-
   LanguageSettings: undefined;
   UnitSettings: undefined;
-
 };
 
 export type CommunityStackParamList = {
+  CommunitySplash: undefined;
+  CommunityOnboarding: { onComplete?: () => void } | undefined;
   CommunityMain: undefined;
   Topic: { topicId: string };
   CreatePost: { topicId?: string };
@@ -247,8 +225,8 @@ export type CommunityStackParamList = {
   Report: { 
     type: 'user' | 'post' | 'comment' | 'topic';
     targetId: string;
-    targetUserId: string;
-    postId?: string; // ADDED: Optional postId for post reports
+    targetUserId?: string;
+    postId?: string;
   };
 };
 
@@ -276,11 +254,13 @@ export type MainTabScreenProps<T extends keyof MainTabParamList> =
 export type NavigationProp = RootStackScreenProps<keyof RootStackParamList>['navigation'];
 export type CommunityNavigationProp = CommunityStackScreenProps<keyof CommunityStackParamList>['navigation'];
 
-export type UniversalTrackerNavigationProp = NativeStackScreenProps<RootStackParamList, 'UniversalTracker'>['navigation'];
-export type UniversalTrackerRouteProp = RouteProp<RootStackParamList, 'UniversalTracker'>;
+export type TimelineNavigationProp = NativeStackScreenProps<RootStackParamList, 'Timeline'>['navigation'];
+export type TimelineRouteProp = RouteProp<RootStackParamList, 'Timeline'>;
 
-export type AddLogNavigationProp = NativeStackScreenProps<RootStackParamList, 'AddLog'>['navigation'];
-export type AddLogRouteProp = RouteProp<RootStackParamList, 'AddLog'>;
+export type UniversalTrackerHubNavigationProp = NativeStackScreenProps<RootStackParamList, 'UniversalTrackerHub'>['navigation'];
+
+export type AddEntryNavigationProp = NativeStackScreenProps<RootStackParamList, 'AddEntry'>['navigation'];
+export type AddEntryRouteProp = RouteProp<RootStackParamList, 'AddEntry'>;
 
 export type FamilyChatNavigationProp = NativeStackScreenProps<RootStackParamList, 'FamilyChat'>['navigation'];
 export type FamilyChatRouteProp = RouteProp<RootStackParamList, 'FamilyChat'>;
@@ -291,9 +271,10 @@ export type EditGuardianRouteProp = RouteProp<RootStackParamList, 'EditGuardian'
 export type AchievementsNavigationProp = NativeStackScreenProps<RootStackParamList, 'Achievements'>['navigation'];
 export type AchievementsRouteProp = RouteProp<RootStackParamList, 'Achievements'>;
 
-export type RemindersNavigationProp = NativeStackScreenProps<RootStackParamList, 'Reminders'>['navigation'];
-export type RemindersRouteProp = RouteProp<RootStackParamList, 'Reminders'>;
+export type TrackerRemindersNavigationProp = NativeStackScreenProps<RootStackParamList, 'TrackerReminders'>['navigation'];
+export type TrackerRemindersRouteProp = RouteProp<RootStackParamList, 'TrackerReminders'>;
 
+export type CreateCustomTrackerNavigationProp = NativeStackScreenProps<RootStackParamList, 'CreateCustomTracker'>['navigation'];
 
 export type NavigationState = 
   | 'LOADING'

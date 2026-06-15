@@ -1,11 +1,3 @@
-// src/components/SafeAvatar.tsx
-// FULLY SYNCED: Respects useCustomization theme, AppContext colors, BabyContext data
-// FIXED: Rules of Hooks violations eliminated
-// FIXED: Image source typing now properly supports require() static resources
-// FIXED: Safe fallback chain for missing customization context
-// FIXED: Unified border radius logic
-// FIXED: Extracted shared utilities
-
 import React, { useCallback, useState, useMemo } from 'react';
 import {
   View,
@@ -23,7 +15,6 @@ import { useCustomization, getThemeColorsById, AVATAR_OPTIONS } from '../hooks/u
 import type { ThemeColors } from '../hooks/useCustomization';
 import { isValidImageUri, isEmoji } from '../utils/imageUtils';
 
-// ==================== TYPES ====================
 
 export type AvatarSource = string | number | undefined | null;
 
@@ -65,7 +56,6 @@ export interface SafeParentAvatarProps {
   animated?: boolean;
 }
 
-// ==================== DEFAULT THEME COLORS ====================
 
 const DEFAULT_THEME_COLORS: ThemeColors = {
   primary: '#667eea',
@@ -77,19 +67,21 @@ const DEFAULT_THEME_COLORS: ThemeColors = {
   lightText: '#ffffff',
 };
 
-// ==================== UNIFIED IMAGE SOURCE RESOLVER ====================
 
 /**
  * Safely resolves an avatar source into a React Native Image source.
- * Handles: remote URLs, local require() numbers, null/undefined.
+ * Handles: remote URLs, local file:// URIs, data: URIs, static require() numbers, null/undefined.
  */
 export const resolveAvatarSource = (avatar: AvatarSource): ImageSourcePropType | null => {
   if (avatar == null) return null;
   if (typeof avatar === 'number') {
-    // Static require() — e.g., require('../assets/avatar.png')
     return avatar;
   }
   if (typeof avatar === 'string' && avatar.length > 0) {
+    // Ensure file:// URIs are properly formatted
+    if (avatar.startsWith('file://')) {
+      return { uri: avatar };
+    }
     return { uri: avatar };
   }
   return null;
@@ -97,6 +89,7 @@ export const resolveAvatarSource = (avatar: AvatarSource): ImageSourcePropType |
 
 /**
  * Checks if the avatar has a displayable image (not emoji, not null).
+ * Supports: http/https, file://, data:, asset:, content://, ph://, static require
  */
 export const hasDisplayableImage = (avatar: AvatarSource, hasError: boolean): boolean => {
   if (avatar == null || hasError) return false;
@@ -107,7 +100,6 @@ export const hasDisplayableImage = (avatar: AvatarSource, hasError: boolean): bo
   return false;
 };
 
-// ==================== SAFE THEME HOOKS ====================
 
 /**
  * Safely gets theme colors with full fallback chain:
@@ -119,27 +111,23 @@ export const hasDisplayableImage = (avatar: AvatarSource, hasError: boolean): bo
  * but safely handles missing context.
  */
 const useSafeThemeColors = (themeId?: string): ThemeColors => {
-  // Always call hook unconditionally (React rules)
   let customization: ReturnType<typeof useCustomization> | null = null;
   let hookError = false;
-  
+
   try {
     customization = useCustomization();
   } catch {
     hookError = true;
   }
 
-  // If themeId provided, use that directly (bypasses hook result)
   if (themeId) {
     return getThemeColorsById(themeId);
   }
-  
-  // If hook loaded successfully, use its themeColors
+
   if (!hookError && customization?.themeColors) {
     return customization.themeColors;
   }
-  
-  // Ultimate fallback
+
   return DEFAULT_THEME_COLORS;
 };
 
@@ -152,7 +140,6 @@ const useSafeReduceMotion = (): boolean => {
   }
 };
 
-// ==================== SHARED AVATAR CONTENT ====================
 
 interface AvatarContentProps {
   avatar: AvatarSource;
@@ -190,6 +177,8 @@ const AvatarContent: React.FC<AvatarContentProps> = ({
           resizeMode="cover"
           onError={onError}
           onLoad={onLoad}
+          accessible={true}
+          accessibilityLabel="Avatar image"
         />
         {isLoading && (
           <View style={[styles.loadingOverlay, { borderRadius }]}>
@@ -229,7 +218,6 @@ const AvatarContent: React.FC<AvatarContentProps> = ({
   );
 };
 
-// ==================== SAFE AVATAR COMPONENT ====================
 
 export const SafeAvatar: React.FC<SafeAvatarProps> = ({
   avatar,
@@ -249,7 +237,6 @@ export const SafeAvatar: React.FC<SafeAvatarProps> = ({
   const [hasError, setHasError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Safe theme access - never crashes
   const themeColors = useSafeThemeColors(themeId);
   const shouldReduceMotion = useSafeReduceMotion();
 
@@ -326,7 +313,6 @@ export const SafeAvatar: React.FC<SafeAvatarProps> = ({
   );
 };
 
-// ==================== SAFE BABY AVATAR COMPONENT ====================
 
 export const SafeBabyAvatar: React.FC<SafeBabyAvatarProps> = ({
   avatar,
@@ -410,7 +396,6 @@ export const SafeBabyAvatar: React.FC<SafeBabyAvatarProps> = ({
   );
 };
 
-// ==================== SAFE PARENT AVATAR COMPONENT ====================
 
 export const SafeParentAvatar: React.FC<SafeParentAvatarProps> = ({
   avatar,
@@ -468,6 +453,8 @@ export const SafeParentAvatar: React.FC<SafeParentAvatarProps> = ({
                 resizeMode="cover"
                 onError={() => { setHasError(true); setIsLoading(false); }}
                 onLoad={() => setIsLoading(false)}
+                accessible={true}
+                accessibilityLabel="Parent avatar image"
               />
               {isLoading && (
                 <View
@@ -510,7 +497,6 @@ export const SafeParentAvatar: React.FC<SafeParentAvatarProps> = ({
   );
 };
 
-// ==================== STYLES ====================
 
 const styles = StyleSheet.create({
   wrapper: {
@@ -564,7 +550,6 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
 
-  // Baby styles
   babyWrapper: {
     position: 'relative',
     shadowColor: '#000',
@@ -602,7 +587,6 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
 
-  // Parent styles
   parentWrapper: {
     position: 'relative',
     shadowColor: '#000',

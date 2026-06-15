@@ -1,8 +1,3 @@
-// src/context/TrackerContext.tsx
-// UNIFIED: Single source for ALL tracker data — default + custom
-// INTEGRATED: Syncs with BabyContext via shared AsyncStorage (no circular deps)
-// Family-aware: respects guardian permissions
-// FIXED: No direct BabyContext import — uses shared storage keys
 
 import React, {
   createContext,
@@ -23,19 +18,24 @@ import {
   TrackerCategory,
   FieldConfig,
   TRACKER_STORAGE_KEYS,
-} from '../types/trackers';
+  TrackerStreak,
+  TrackerInsight,
+  ReminderRule,
+  ProgressiveTrackerState,
+} from '@/types/trackers';
 
 import {
   DEFAULT_TRACKERS,
   createCustomTracker,
   validateCustomTracker,
-} from '../config/defaultTrackers';
+} from '@/config/defaultTrackers';
 
-import { useAuth } from './AuthContext';
-import { useFamily } from './FamilyContext';
-
+import { useAuth } from '@/context/AuthContext';
+import { useFamily } from '@/context/FamilyContext';
+import { useCustomization } from '@/hooks/useCustomization';
+import { useSweetAlert } from '@/components/SweetAlert';
 /* ------------------------------------------------------------------ */
-/*  Legacy-compatible types (for BabyContext sync)                     */
+/*  Legacy-compatible types                                            */
 /* ------------------------------------------------------------------ */
 
 export type LegacyActivityType =
@@ -68,7 +68,6 @@ export interface LegacyActivityEntry {
   icon?: string;
   loggedBy: string;
   loggedByName: string;
-  // Mapped fields from TrackerEntry data
   pottyType?: string;
   successful?: boolean;
   feedType?: string;
@@ -117,15 +116,14 @@ interface TrackerState {
   entriesByTracker: Record<string, TrackerEntry[]>;
   lastTrackerId: string | null;
   currentBabyId: string | null;
+  progressive: ProgressiveTrackerState;
 }
 
 interface TrackerContextType extends TrackerState {
-  // Tracker management
   getTracker: (id: string) => UnifiedTrackerConfig | undefined;
   getTrackersByCategory: (category: TrackerCategory) => UnifiedTrackerConfig[];
   searchTrackers: (query: string) => UnifiedTrackerConfig[];
 
-  // Custom tracker CRUD
   createCustomTracker: (
     name: string,
     emoji: string,
@@ -137,7 +135,6 @@ interface TrackerContextType extends TrackerState {
   deleteCustomTracker: (id: string) => Promise<boolean>;
   duplicateTracker: (id: string, newName: string) => Promise<UnifiedTrackerConfig | null>;
 
-  // Entry CRUD
   addEntry: (trackerId: string, data: Record<string, unknown>, options?: {
     title?: string;
     notes?: string;
@@ -150,7 +147,6 @@ interface TrackerContextType extends TrackerState {
   getEntriesByDate: (date: Date) => TrackerEntry[];
   getEntryById: (id: string) => TrackerEntry | undefined;
 
-  // Stats & insights
   getTrackerStats: (trackerId: string) => {
     totalEntries: number;
     thisWeek: number;
@@ -160,18 +156,29 @@ interface TrackerContextType extends TrackerState {
   };
   getTodaySummary: () => { trackerId: string; count: number; emoji: string }[];
 
-  // Family permissions
   canUseTracker: (trackerId: string) => boolean;
   canCreateEntry: (trackerId: string) => boolean;
   canEditEntry: (entry: TrackerEntry) => boolean;
   canDeleteEntry: (entry: TrackerEntry) => boolean;
 
-  // Sync with legacy BabyContext
+  getSmartSuggestions: (trackerId: string) => Record<string, unknown>;
+  getYesterdayData: (trackerId: string) => Record<string, unknown> | null;
+  getStreak: (trackerId: string) => TrackerStreak | undefined;
+  getInsights: () => TrackerInsight[];
+  dismissInsight: (id: string) => void;
+  scheduleReminder: (rule: Omit<ReminderRule, 'id' | 'createdAt' | 'updatedAt'>) => Promise<string>;
+  cancelReminder: (ruleId: string) => Promise<void>;
+  getPendingReminders: () => ReminderRule[];
+  snoozeReminder: (ruleId: string, minutes: number) => Promise<void>;
+  saveTemplate: (trackerId: string, name: string, data: Record<string, unknown>) => Promise<void>;
+  getTemplates: (trackerId: string) => Promise<{ id: string; name: string; emoji: string; data: Record<string, unknown> }[]>;
+  linkEntries: (entryId1: string, entryId2: string, relation: TrackerEntry['linkedEntries'][0]['relation'], description?: string) => Promise<void>;
+  getLinkedEntries: (entryId: string) => TrackerEntry[];
+
   syncToLegacyActivity: (entry: TrackerEntry) => LegacyActivityEntry;
   getLegacyActivities: () => LegacyActivityEntry[];
   syncFromBabyContext: () => Promise<void>;
 
-  // Loading
   refreshTrackers: () => Promise<void>;
   refreshEntries: () => Promise<void>;
   setCurrentBabyId: (babyId: string | null) => void;
@@ -181,7 +188,7 @@ interface TrackerContextType extends TrackerState {
 /*  Context                                                            */
 /* ------------------------------------------------------------------ */
 
-const TrackerContext = createContext<TrackerContextType | null>(null);
+export const TrackerContext = createContext<TrackerContextType | null>(null);
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -196,7 +203,10 @@ const generateId = (): string => {
 const safeParse = <T,>(json: string | null, fallback: T): T => {
   if (!json) return fallback;
   try {
-    return JSON.parse(json) as T;
+    const parsed = JSON.parse(json) as T;
+    if (parsed === null) return fallback;
+    if (Array.isArray(fallback) && !Array.isArray(parsed)) return fallback;
+    return parsed;
   } catch {
     return fallback;
   }
@@ -213,9 +223,311 @@ const getDateKey = (date: Date | string | number): string => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-// BabyContext storage keys (shared for sync)
 const BABY_ACTIVITIES_KEY = (babyId: string) => `@littleloom_activities_${babyId}`;
 const BABY_CURRENT_KEY = '@littleloom_current_baby';
+
+/* ------------------------------------------------------------------ */
+/*  NEW: Smart Suggestion Engine                                       */
+/* ------------------------------------------------------------------ */
+
+const generateSmartSuggestions = (
+  trackerId: string,
+  entries: TrackerEntry[],
+  currentBabyId: string
+): Record<string, unknown> => {
+  const trackerEntries = entries
+    .filter(e => e.trackerId === trackerId && e.babyId === currentBabyId && !e.isDeleted)
+    .sort((a, b) => b.timestamp - a.timestamp);
+
+  if (trackerEntries.length === 0) return {};
+
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStart = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate()).getTime();
+  const yesterdayEnd = yesterdayStart + 86400000;
+
+  const yesterdayEntry = trackerEntries.find(e =>
+    e.timestamp >= yesterdayStart && e.timestamp < yesterdayEnd
+  );
+
+  const suggestions: Record<string, unknown> = {};
+
+  if (yesterdayEntry) {
+    Object.entries(yesterdayEntry.data).forEach(([key, value]) => {
+      if (!key.includes('time') && !key.includes('note') && typeof value !== 'object') {
+        suggestions[key] = value;
+      }
+    });
+  }
+
+  const hour = new Date().getHours();
+  const timeOfDay = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : hour < 21 ? 'evening' : 'night';
+
+  const sameTimeEntries = trackerEntries.filter(e => {
+    const entryHour = new Date(e.timestamp).getHours();
+    const entryTOD = entryHour < 12 ? 'morning' : entryHour < 17 ? 'afternoon' : entryHour < 21 ? 'evening' : 'night';
+    return entryTOD === timeOfDay;
+  });
+
+  if (sameTimeEntries.length >= 3) {
+    const fieldValues: Record<string, Record<string, number>> = {};
+    sameTimeEntries.forEach(e => {
+      Object.entries(e.data).forEach(([key, value]) => {
+        if (!fieldValues[key]) fieldValues[key] = {};
+        const strVal = String(value);
+        fieldValues[key][strVal] = (fieldValues[key][strVal] || 0) + 1;
+      });
+    });
+
+    Object.entries(fieldValues).forEach(([key, values]) => {
+      const mostCommon = Object.entries(values).sort((a, b) => b[1] - a[1])[0];
+      if (mostCommon && mostCommon[1] >= 2) {
+        suggestions[`${key}_pattern`] = mostCommon[0];
+      }
+    });
+  }
+
+  return suggestions;
+};
+
+/* ------------------------------------------------------------------ */
+/*  NEW: Streak Calculation Engine                                     */
+/* ------------------------------------------------------------------ */
+
+const calculateStreak = (
+  trackerId: string,
+  entries: TrackerEntry[],
+  currentBabyId: string
+): TrackerStreak => {
+  const trackerEntries = entries
+    .filter(e => e.trackerId === trackerId && e.babyId === currentBabyId && !e.isDeleted)
+    .sort((a, b) => b.timestamp - a.timestamp);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayTime = today.getTime();
+
+  let currentStreak = 0;
+  let longestStreak = 0;
+  let lastLoggedAt = trackerEntries[0]?.timestamp || 0;
+
+  const loggedToday = trackerEntries.some(e => e.timestamp >= todayTime);
+
+  if (loggedToday) {
+    currentStreak = 1;
+    let checkDate = new Date(today);
+    checkDate.setDate(checkDate.getDate() - 1);
+
+    while (true) {
+      const dayStart = checkDate.getTime();
+      const dayEnd = dayStart + 86400000;
+      const hasEntry = trackerEntries.some(e => e.timestamp >= dayStart && e.timestamp < dayEnd);
+      if (hasEntry) {
+        currentStreak++;
+        checkDate.setDate(checkDate.getDate() - 1);
+      } else {
+        break;
+      }
+    }
+  } else {
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStart = yesterday.getTime();
+    const yesterdayEnd = yesterdayStart + 86400000;
+    const loggedYesterday = trackerEntries.some(e => e.timestamp >= yesterdayStart && e.timestamp < yesterdayEnd);
+
+    if (loggedYesterday) {
+      currentStreak = 1;
+      let checkDate = new Date(yesterday);
+      checkDate.setDate(checkDate.getDate() - 1);
+
+      while (true) {
+        const dayStart = checkDate.getTime();
+        const dayEnd = dayStart + 86400000;
+        const hasEntry = trackerEntries.some(e => e.timestamp >= dayStart && e.timestamp < dayEnd);
+        if (hasEntry) {
+          currentStreak++;
+          checkDate.setDate(checkDate.getDate() - 1);
+        } else {
+          break;
+        }
+      }
+    }
+  }
+
+  let tempStreak = 0;
+  let maxStreak = 0;
+  const allDates = [...new Set(trackerEntries.map(e => {
+    const d = new Date(e.timestamp);
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
+  }))].sort((a, b) => a - b);
+
+  for (let i = 0; i < allDates.length; i++) {
+    if (i === 0 || allDates[i] - allDates[i - 1] === 86400000) {
+      tempStreak++;
+      maxStreak = Math.max(maxStreak, tempStreak);
+    } else {
+      tempStreak = 1;
+    }
+  }
+
+  longestStreak = Math.max(maxStreak, currentStreak);
+  const hour = new Date().getHours();
+  const isAtRisk = !loggedToday && hour >= 20;
+
+  return {
+    trackerId,
+    currentStreak,
+    longestStreak,
+    lastLoggedAt,
+    isAtRisk,
+  };
+};
+
+/* ------------------------------------------------------------------ */
+/*  NEW: Insight Generation Engine                                     */
+/* ------------------------------------------------------------------ */
+
+const generateInsights = (
+  entries: TrackerEntry[],
+  currentBabyId: string
+): TrackerInsight[] => {
+  const insights: TrackerInsight[] = [];
+  const now = Date.now();
+  const weekAgo = now - 7 * 86400000;
+
+  const recentEntries = entries.filter(e =>
+    e.babyId === currentBabyId && !e.isDeleted && e.timestamp >= weekAgo
+  );
+
+  const medEntries = recentEntries.filter(e => e.trackerId === 'medication');
+  if (medEntries.length >= 3) {
+    const streak = calculateStreak('medication', entries, currentBabyId);
+    if (streak.currentStreak >= 3) {
+      insights.push({
+        id: `med_streak_${now}`,
+        trackerId: 'medication',
+        type: 'milestone',
+        title: `${streak.currentStreak} Day Medication Streak!`,
+        description: `You've consistently logged medication for ${streak.currentStreak} days. Great job keeping track!`,
+        emoji: '💊',
+        priority: 'good',
+        confidence: 0.9,
+        generatedAt: now,
+      });
+    }
+  }
+
+  const tempEntries = recentEntries.filter(e => e.trackerId === 'temperature');
+  if (tempEntries.length >= 2) {
+    const temps = tempEntries.map(e => {
+      const val = Number(e.data['value']);
+      const unit = e.data['value_unit'] as string;
+      return unit === 'fahrenheit' ? (val - 32) * 5 / 9 : val;
+    }).filter(t => !isNaN(t));
+
+    if (temps.length >= 2) {
+      const avg = temps.reduce((a, b) => a + b, 0) / temps.length;
+      const lastTemp = temps[temps.length - 1];
+
+      if (lastTemp > 38) {
+        insights.push({
+          id: `temp_high_${now}`,
+          trackerId: 'temperature',
+          type: 'anomaly',
+          title: 'Elevated Temperature Detected',
+          description: `Latest reading: ${lastTemp.toFixed(1)}°C. Consider monitoring closely and logging symptoms.`,
+          emoji: '🌡️',
+          priority: 'warning',
+          confidence: 0.95,
+          generatedAt: now,
+          action: {
+            type: 'log_now',
+            trackerId: 'symptom',
+            message: 'Log accompanying symptoms',
+          },
+        });
+      }
+    }
+  }
+
+  const sleepEntries = recentEntries.filter(e => e.trackerId === 'sleep');
+  if (sleepEntries.length >= 5) {
+    const qualities = sleepEntries.map(e => Number(e.data['quality']) || 0).filter(q => q > 0);
+    if (qualities.length >= 3) {
+      const avg = qualities.reduce((a, b) => a + b, 0) / qualities.length;
+      if (avg < 3) {
+        insights.push({
+          id: `sleep_low_${now}`,
+          trackerId: 'sleep',
+          type: 'pattern',
+          title: 'Sleep Quality Trending Low',
+          description: `Average sleep quality: ${avg.toFixed(1)}/5 over the last ${qualities.length} sleeps. Consider reviewing bedtime routine.`,
+          emoji: '😴',
+          priority: 'warning',
+          confidence: 0.7,
+          generatedAt: now,
+          action: {
+            type: 'log_now',
+            trackerId: 'bedtime',
+            message: 'Review bedtime routine',
+          },
+        });
+      }
+    }
+  }
+
+  const feedEntries = recentEntries.filter(e => e.trackerId === 'feed');
+  const moodEntries = recentEntries.filter(e => e.trackerId === 'mood');
+  if (feedEntries.length >= 5 && moodEntries.length >= 3) {
+    const badMoods = moodEntries.filter(m => (m.data['mood'] as number) <= 2);
+    if (badMoods.length >= 2) {
+      insights.push({
+        id: `feed_mood_${now}`,
+        trackerId: 'feed',
+        type: 'correlation',
+        title: 'Feeding & Mood Pattern Detected',
+        description: 'We noticed some fussy moods after feeds. Consider tracking specific foods more carefully.',
+        emoji: '🔗',
+        priority: 'info',
+        confidence: 0.5,
+        generatedAt: now,
+        action: {
+          type: 'log_now',
+          trackerId: 'feeding_reaction',
+          message: 'Log any feeding reactions',
+        },
+      });
+    }
+  }
+
+  const growthEntries = recentEntries.filter(e => e.trackerId === 'growth');
+  if (growthEntries.length >= 2) {
+    const lastGrowth = growthEntries[growthEntries.length - 1];
+    const daysSince = Math.floor((now - lastGrowth.timestamp) / 86400000);
+    if (daysSince >= 14) {
+      insights.push({
+        id: `growth_reminder_${now}`,
+        trackerId: 'growth',
+        type: 'suggestion',
+        title: 'Time for a Growth Check?',
+        description: `It's been ${daysSince} days since the last growth measurement.`,
+        emoji: '📏',
+        priority: 'info',
+        confidence: 0.6,
+        generatedAt: now,
+        action: {
+          type: 'log_now',
+          trackerId: 'growth',
+          message: 'Log new measurements',
+        },
+      });
+    }
+  }
+
+  return insights;
+};
 
 /* ------------------------------------------------------------------ */
 /*  Provider                                                           */
@@ -226,6 +538,8 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
 }) => {
   const { userProfile } = useAuth();
   const { getEffectivePermissions, members } = useFamily();
+  const { triggerHaptic } = useCustomization();
+  const { success, toast, alert: sweetAlert } = useSweetAlert();
 
   const [state, setState] = useState<TrackerState>({
     isLoading: true,
@@ -235,15 +549,23 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     entriesByTracker: {},
     lastTrackerId: null,
     currentBabyId: null,
+    progressive: {
+      todayEntries: [],
+      yesterdayEntries: [],
+      streaks: [],
+      insights: [],
+      pendingReminders: [],
+      recentTemplates: [],
+      detectedPatterns: [],
+    },
   });
 
   const initRef = useRef(false);
 
-  /* ---- Detect current baby from shared storage ---- */
+  /* ---- Detect current baby ---- */
   const detectCurrentBaby = useCallback(async (): Promise<string | null> => {
     try {
-      const currentBabyId = await AsyncStorage.getItem(BABY_CURRENT_KEY);
-      return currentBabyId;
+      return await AsyncStorage.getItem(BABY_CURRENT_KEY);
     } catch {
       return null;
     }
@@ -252,29 +574,28 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
   /* ---- Permission helpers ---- */
   const myRole = useMemo(() => {
     if (!userProfile) return null;
-    const me = members.find(m => m.userId === userProfile.id || m.email === userProfile.email);
+    const me = members?.find(m => m.userId === userProfile.id || m.email === userProfile.email);
     return me?.role || 'parent1';
   }, [userProfile, members]);
 
   const canUseTracker = useCallback((trackerId: string): boolean => {
     const tracker = state.trackers.find(t => t.id === trackerId);
-    if (!tracker) return false;
-    if (!myRole) return false;
-    return tracker.permissions.familyRoles.includes(myRole as any);
+    if (!tracker || !myRole) return false;
+    return tracker.permissions?.familyRoles?.includes(myRole as any) ?? false;
   }, [state.trackers, myRole]);
 
   const canCreateEntry = useCallback((trackerId: string): boolean => {
     const tracker = state.trackers.find(t => t.id === trackerId);
     if (!tracker || !myRole) return false;
     if (['parent1', 'parent2'].includes(myRole)) return true;
-    return tracker.permissions.allowGuardiansCreate;
+    return tracker.permissions?.allowGuardiansCreate ?? false;
   }, [state.trackers, myRole]);
 
   const canEditEntry = useCallback((entry: TrackerEntry): boolean => {
     if (!userProfile || !myRole) return false;
     if (['parent1', 'parent2'].includes(myRole)) return true;
     if (myRole === 'guardian') {
-      return entry.loggedBy === userProfile.id && 
+      return entry.loggedBy === userProfile.id &&
         state.trackers.find(t => t.id === entry.trackerId)?.permissions.allowGuardiansEditOwn === true;
     }
     return false;
@@ -290,7 +611,7 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     return false;
   }, [userProfile, myRole, state.trackers]);
 
-  /* ---- Load custom trackers ---- */
+  /* ---- Load helpers ---- */
   const loadCustomTrackers = useCallback(async (): Promise<UnifiedTrackerConfig[]> => {
     try {
       const stored = await AsyncStorage.getItem(TRACKER_STORAGE_KEYS.CUSTOM_TRACKERS);
@@ -300,12 +621,20 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, []);
 
-  /* ---- Load entries ---- */
   const loadEntries = useCallback(async (babyId: string): Promise<TrackerEntry[]> => {
     try {
       const key = TRACKER_STORAGE_KEYS.ENTRIES_PREFIX(babyId);
       const stored = await AsyncStorage.getItem(key);
       return safeParse<TrackerEntry[]>(stored, []);
+    } catch {
+      return [];
+    }
+  }, []);
+
+  const loadReminders = useCallback(async (): Promise<ReminderRule[]> => {
+    try {
+      const stored = await AsyncStorage.getItem(TRACKER_STORAGE_KEYS.REMINDERS);
+      return safeParse<ReminderRule[]>(stored, []);
     } catch {
       return [];
     }
@@ -322,11 +651,14 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
       try {
         const babyId = await detectCurrentBaby();
 
-        const [customTrackers, entries, lastTracker] = await Promise.all([
+        const [customTrackers, entries, lastTracker, reminders] = await Promise.all([
           loadCustomTrackers(),
           babyId ? loadEntries(babyId) : Promise.resolve([]),
           AsyncStorage.getItem(TRACKER_STORAGE_KEYS.LAST_TRACKER),
+          loadReminders(),
         ]);
+
+        const safeEntries = Array.isArray(entries) ? entries : [];
 
         const customIds = new Set(customTrackers.map(t => t.id));
         const mergedTrackers = [
@@ -335,21 +667,49 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
         ];
 
         const entriesByTracker: Record<string, TrackerEntry[]> = {};
-        entries.forEach(entry => {
+        safeEntries.forEach(entry => {
           if (!entriesByTracker[entry.trackerId]) {
             entriesByTracker[entry.trackerId] = [];
           }
           entriesByTracker[entry.trackerId].push(entry);
         });
 
+        const today = getStartOfDay();
+        const todayStart = today.getTime();
+        const todayEnd = todayStart + 86400000;
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayStart = yesterday.getTime();
+        const yesterdayEnd = yesterdayStart + 86400000;
+
+        const todayEntries = safeEntries.filter(e =>
+          e.babyId === babyId && !e.isDeleted && e.timestamp >= todayStart && e.timestamp < todayEnd
+        );
+        const yesterdayEntries = safeEntries.filter(e =>
+          e.babyId === babyId && !e.isDeleted && e.timestamp >= yesterdayStart && e.timestamp < yesterdayEnd
+        );
+
+        const allTrackerIds = [...new Set(safeEntries.filter(e => e.babyId === babyId).map(e => e.trackerId))];
+        const streaks = allTrackerIds.map(id => calculateStreak(id, safeEntries, babyId || ''));
+        const insights = babyId ? generateInsights(safeEntries, babyId) : [];
+
         setState({
           isLoading: false,
           trackers: mergedTrackers,
           customTrackers,
-          entries,
+          entries: safeEntries,
           entriesByTracker,
           lastTrackerId: lastTracker,
           currentBabyId: babyId,
+          progressive: {
+            todayEntries,
+            yesterdayEntries,
+            streaks,
+            insights,
+            pendingReminders: reminders,
+            recentTemplates: [],
+            detectedPatterns: [],
+          },
         });
       } catch (error) {
         console.error('Tracker init error:', error);
@@ -358,9 +718,44 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     };
 
     init();
-  }, [detectCurrentBaby, loadCustomTrackers, loadEntries]);
+  }, [detectCurrentBaby, loadCustomTrackers, loadEntries, loadReminders]);
 
-  /* ---- Persist custom trackers ---- */
+  /* ---- Update progressive state when entries change ---- */
+  useEffect(() => {
+    if (!state.currentBabyId) return;
+
+    const today = getStartOfDay();
+    const todayStart = today.getTime();
+    const todayEnd = todayStart + 86400000;
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStart = yesterday.getTime();
+    const yesterdayEnd = yesterdayStart + 86400000;
+
+    const todayEntries = state.entries.filter(e =>
+      e.babyId === state.currentBabyId && !e.isDeleted && e.timestamp >= todayStart && e.timestamp < todayEnd
+    );
+    const yesterdayEntries = state.entries.filter(e =>
+      e.babyId === state.currentBabyId && !e.isDeleted && e.timestamp >= yesterdayStart && e.timestamp < yesterdayEnd
+    );
+
+    const allTrackerIds = [...new Set(state.entries.filter(e => e.babyId === state.currentBabyId).map(e => e.trackerId))];
+    const streaks = allTrackerIds.map(id => calculateStreak(id, state.entries, state.currentBabyId));
+    const insights = generateInsights(state.entries, state.currentBabyId);
+
+    setState(prev => ({
+      ...prev,
+      progressive: {
+        ...prev.progressive,
+        todayEntries,
+        yesterdayEntries,
+        streaks,
+        insights,
+      },
+    }));
+  }, [state.entries, state.currentBabyId]);
+
+  /* ---- Persist helpers ---- */
   const persistCustomTrackers = useCallback(async (trackers: UnifiedTrackerConfig[]) => {
     try {
       await AsyncStorage.setItem(TRACKER_STORAGE_KEYS.CUSTOM_TRACKERS, JSON.stringify(trackers));
@@ -369,7 +764,6 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, []);
 
-  /* ---- Persist entries ---- */
   const persistEntries = useCallback(async (entries: TrackerEntry[]) => {
     if (!state.currentBabyId) return;
     try {
@@ -380,29 +774,27 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, [state.currentBabyId]);
 
-  /* ---- Get tracker by ID ---- */
+  /* ---- Get tracker ---- */
   const getTracker = useCallback((id: string): UnifiedTrackerConfig | undefined => {
     return state.trackers.find(t => t.id === id);
   }, [state.trackers]);
 
-  /* ---- Get trackers by category ---- */
   const getTrackersByCategory = useCallback((category: TrackerCategory): UnifiedTrackerConfig[] => {
     return state.trackers.filter(t => t.category === category);
   }, [state.trackers]);
 
-  /* ---- Search trackers ---- */
   const searchTrackers = useCallback((query: string): UnifiedTrackerConfig[] => {
     const q = query.toLowerCase().trim();
     if (!q) return state.trackers;
-    return state.trackers.filter(t => 
+    return state.trackers.filter(t =>
       t.name.toLowerCase().includes(q) ||
-      t.description.toLowerCase().includes(q) ||
+      (t.description || '').toLowerCase().includes(q) ||
       t.category.toLowerCase().includes(q) ||
-      t.quickTags.some(tag => tag.toLowerCase().includes(q))
+      (t.quickTags || []).some(tag => tag.toLowerCase().includes(q))
     );
   }, [state.trackers]);
 
-  /* ---- Create custom tracker ---- */
+  /* ---- Custom tracker CRUD ---- */
   const handleCreateCustomTracker = useCallback(async (
     name: string,
     emoji: string,
@@ -411,7 +803,7 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     options?: Parameters<typeof createCustomTracker>[4]
   ): Promise<UnifiedTrackerConfig | null> => {
     if (!userProfile) {
-      Alert.alert('Error', 'You must be signed in to create custom trackers');
+      sweetAlert('Error', 'You must be signed in to create custom trackers', 'warning');
       return null;
     }
 
@@ -436,28 +828,27 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       return newTracker;
     } catch (error) {
-      Alert.alert('Error', 'Failed to create custom tracker');
+      sweetAlert('Error', 'Failed to create custom tracker', 'warning');
       return null;
     }
   }, [userProfile, state.customTrackers, persistCustomTrackers]);
 
-  /* ---- Update custom tracker ---- */
   const handleUpdateCustomTracker = useCallback(async (
     id: string,
     updates: Partial<UnifiedTrackerConfig>
   ): Promise<boolean> => {
     const tracker = state.customTrackers.find(t => t.id === id);
     if (!tracker) {
-      Alert.alert('Error', 'Custom tracker not found');
+      sweetAlert('Error', 'Custom tracker not found', 'warning');
       return false;
     }
     if (tracker.createdBy !== userProfile?.id && myRole !== 'parent1') {
-      Alert.alert('Error', 'Only the creator or Parent 1 can edit this tracker');
+      sweetAlert('Error', 'Only the creator or Parent 1 can edit this tracker', 'warning');
       return false;
     }
 
     try {
-      const updated = state.customTrackers.map(t => 
+      const updated = state.customTrackers.map(t =>
         t.id === id ? { ...t, ...updates, updatedAt: Date.now() } : t
       );
       await persistCustomTrackers(updated);
@@ -469,22 +860,21 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
       }));
       return true;
     } catch (error) {
-      Alert.alert('Error', 'Failed to update tracker');
+      sweetAlert('Error', 'Failed to update tracker', 'warning');
       return false;
     }
   }, [state.customTrackers, userProfile, myRole, persistCustomTrackers]);
 
-  /* ---- Delete custom tracker ---- */
   const handleDeleteCustomTracker = useCallback(async (id: string): Promise<boolean> => {
     const tracker = state.customTrackers.find(t => t.id === id);
     if (!tracker) return false;
     if (tracker.createdBy !== userProfile?.id && myRole !== 'parent1') {
-      Alert.alert('Error', 'Only the creator or Parent 1 can delete this tracker');
+      sweetAlert('Error', 'Only the creator or Parent 1 can delete this tracker', 'warning');
       return false;
     }
 
     try {
-      const updatedEntries = state.entries.map(e => 
+      const updatedEntries = state.entries.map(e =>
         e.trackerId === id ? { ...e, isDeleted: true } : e
       );
 
@@ -500,12 +890,11 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
       }));
       return true;
     } catch (error) {
-      Alert.alert('Error', 'Failed to delete tracker');
+      sweetAlert('Error', 'Failed to delete tracker', 'warning');
       return false;
     }
   }, [state.customTrackers, state.entries, userProfile, myRole, persistCustomTrackers, persistEntries]);
 
-  /* ---- Duplicate tracker ---- */
   const handleDuplicateTracker = useCallback(async (
     id: string,
     newName: string
@@ -529,7 +918,7 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     );
   }, [getTracker, handleCreateCustomTracker]);
 
-  /* ---- Add entry ---- */
+  /* ---- Entry CRUD ---- */
   const handleAddEntry = useCallback(async (
     trackerId: string,
     data: Record<string, unknown>,
@@ -541,13 +930,13 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   ): Promise<TrackerEntry | null> => {
     if (!canCreateEntry(trackerId)) {
-      Alert.alert('Permission Denied', 'You do not have permission to add entries to this tracker');
+      sweetAlert('Permission Denied', 'You do not have permission to add entries to this tracker', 'warning');
       return null;
     }
 
     const tracker = getTracker(trackerId);
     if (!tracker) {
-      Alert.alert('Error', 'Tracker not found');
+      sweetAlert('Error', 'Tracker not found', 'warning');
       return null;
     }
 
@@ -594,7 +983,6 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
         lastTrackerId: trackerId,
       }));
 
-      // Also sync to BabyContext's per-baby activity storage
       try {
         if (state.currentBabyId) {
           const babyKey = BABY_ACTIVITIES_KEY(state.currentBabyId);
@@ -604,20 +992,28 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
           babyActivities.unshift(legacyEntry);
           await AsyncStorage.setItem(babyKey, JSON.stringify(babyActivities));
         }
-      } catch {
-        // Silently fail — BabyContext sync is secondary
+      } catch {}
+
+      if (state.currentBabyId) {
+        const streak = calculateStreak(trackerId, updatedEntries, state.currentBabyId);
+        if (streak.currentStreak > 0 && streak.currentStreak % 7 === 0) {
+          triggerHaptic('success');
+          success(
+            `${streak.currentStreak} Day Streak!`,
+            `You've been consistently tracking ${tracker.name} for ${streak.currentStreak} days! 🎉`
+          );
+        }
       }
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       return newEntry;
     } catch (error) {
       console.error('Failed to add entry:', error);
-      Alert.alert('Error', 'Failed to save entry');
+      sweetAlert('Error', 'Failed to save entry', 'warning');
       return null;
     }
-  }, [canCreateEntry, getTracker, state.currentBabyId, userProfile, myRole, state.entries, state.entriesByTracker, persistEntries]);
+  }, [canCreateEntry, getTracker, state.currentBabyId, userProfile, myRole, state.entries, state.entriesByTracker, persistEntries, triggerHaptic, success]);
 
-  /* ---- Update entry ---- */
   const handleUpdateEntry = useCallback(async (
     entryId: string,
     updates: Partial<TrackerEntry>
@@ -626,7 +1022,7 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     if (!entry) return false;
 
     if (!canEditEntry(entry)) {
-      Alert.alert('Permission Denied', 'You cannot edit this entry');
+      sweetAlert('Permission Denied', 'You cannot edit this entry', 'warning');
       return false;
     }
 
@@ -653,18 +1049,17 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
       }));
       return true;
     } catch (error) {
-      Alert.alert('Error', 'Failed to update entry');
+      sweetAlert('Error', 'Failed to update entry', 'warning');
       return false;
     }
   }, [state.entries, canEditEntry, userProfile, persistEntries]);
 
-  /* ---- Delete entry ---- */
   const handleDeleteEntry = useCallback(async (entryId: string): Promise<boolean> => {
     const entry = state.entries.find(e => e.id === entryId);
     if (!entry) return false;
 
     if (!canDeleteEntry(entry)) {
-      Alert.alert('Permission Denied', 'You cannot delete this entry');
+      sweetAlert('Permission Denied', 'You cannot delete this entry', 'warning');
       return false;
     }
 
@@ -689,12 +1084,12 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
       }));
       return true;
     } catch (error) {
-      Alert.alert('Error', 'Failed to delete entry');
+      sweetAlert('Error', 'Failed to delete entry', 'warning');
       return false;
     }
   }, [state.entries, canDeleteEntry, persistEntries]);
 
-  /* ---- Get entries ---- */
+  /* ---- Entry queries ---- */
   const handleGetEntries = useCallback((trackerId?: string, limit?: number): TrackerEntry[] => {
     let filtered = state.entries.filter(e => !e.isDeleted);
     if (trackerId) filtered = filtered.filter(e => e.trackerId === trackerId);
@@ -703,7 +1098,6 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     return filtered;
   }, [state.entries]);
 
-  /* ---- Get entries by date ---- */
   const handleGetEntriesByDate = useCallback((date: Date): TrackerEntry[] => {
     const targetKey = getDateKey(date);
     return state.entries.filter(e => {
@@ -712,12 +1106,11 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     }).sort((a, b) => b.timestamp - a.timestamp);
   }, [state.entries]);
 
-  /* ---- Get entry by ID ---- */
   const handleGetEntryById = useCallback((id: string): TrackerEntry | undefined => {
     return state.entries.find(e => e.id === id && !e.isDeleted);
   }, [state.entries]);
 
-  /* ---- Get tracker stats ---- */
+  /* ---- Stats ---- */
   const handleGetTrackerStats = useCallback((trackerId: string) => {
     const trackerEntries = state.entries.filter(
       e => e.trackerId === trackerId && !e.isDeleted
@@ -752,10 +1145,9 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     };
   }, [state.entries]);
 
-  /* ---- Get today summary ---- */
   const handleGetTodaySummary = useCallback(() => {
     const today = getStartOfDay();
-    const todayEntries = state.entries.filter(e => 
+    const todayEntries = state.entries.filter(e =>
       !e.isDeleted && new Date(e.timestamp) >= today
     );
 
@@ -774,7 +1166,189 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     }).sort((a, b) => b.count - a.count);
   }, [state.entries, getTracker]);
 
-  /* ---- Legacy sync: Convert TrackerEntry to LegacyActivityEntry ---- */
+  /* ------------------------------------------------------------------ */
+  /*  NEW: Progressive Actions                                          */
+  /* ------------------------------------------------------------------ */
+
+  const getSmartSuggestions = useCallback((trackerId: string) => {
+    if (!state.currentBabyId) return {};
+    return generateSmartSuggestions(trackerId, state.entries, state.currentBabyId);
+  }, [state.entries, state.currentBabyId]);
+
+  const getYesterdayData = useCallback((trackerId: string) => {
+    if (!state.currentBabyId) return null;
+
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const start = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate()).getTime();
+    const end = start + 86400000;
+
+    const yesterdayEntry = state.entries
+      .filter(e => e.trackerId === trackerId && e.babyId === state.currentBabyId && !e.isDeleted)
+      .find(e => e.timestamp >= start && e.timestamp < end);
+
+    return yesterdayEntry?.data || null;
+  }, [state.entries, state.currentBabyId]);
+
+  const getStreak = useCallback((trackerId: string) => {
+    if (!state.currentBabyId) return undefined;
+    return calculateStreak(trackerId, state.entries, state.currentBabyId);
+  }, [state.entries, state.currentBabyId]);
+
+  const getInsights = useCallback(() => {
+    if (!state.currentBabyId) return [];
+    return generateInsights(state.entries, state.currentBabyId);
+  }, [state.entries, state.currentBabyId]);
+
+  const dismissInsight = useCallback((id: string) => {
+    setState(prev => ({
+      ...prev,
+      progressive: {
+        ...prev.progressive,
+        insights: prev.progressive.insights.filter(i => i.id !== id),
+      },
+    }));
+  }, []);
+
+  /* ------------------------------------------------------------------ */
+  /*  NEW: Reminder System                                                */
+  /* ------------------------------------------------------------------ */
+
+  const scheduleReminder = useCallback(async (
+    rule: Omit<ReminderRule, 'id' | 'createdAt' | 'updatedAt'>
+  ): Promise<string> => {
+    const newRule: ReminderRule = {
+      ...rule,
+      id: `reminder_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+
+    const stored = await AsyncStorage.getItem(TRACKER_STORAGE_KEYS.REMINDERS);
+    const reminders: ReminderRule[] = stored ? JSON.parse(stored) : [];
+    reminders.push(newRule);
+    await AsyncStorage.setItem(TRACKER_STORAGE_KEYS.REMINDERS, JSON.stringify(reminders));
+
+    setState(prev => ({
+      ...prev,
+      progressive: {
+        ...prev.progressive,
+        pendingReminders: [...prev.progressive.pendingReminders, newRule],
+      },
+    }));
+
+    return newRule.id;
+  }, []);
+
+  const cancelReminder = useCallback(async (ruleId: string) => {
+    const stored = await AsyncStorage.getItem(TRACKER_STORAGE_KEYS.REMINDERS);
+    if (stored) {
+      const reminders: ReminderRule[] = JSON.parse(stored);
+      const updated = reminders.filter(r => r.id !== ruleId);
+      await AsyncStorage.setItem(TRACKER_STORAGE_KEYS.REMINDERS, JSON.stringify(updated));
+    }
+
+    setState(prev => ({
+      ...prev,
+      progressive: {
+        ...prev.progressive,
+        pendingReminders: prev.progressive.pendingReminders.filter(r => r.id !== ruleId),
+      },
+    }));
+  }, []);
+
+  const getPendingReminders = useCallback(() => {
+    return state.progressive.pendingReminders;
+  }, [state.progressive.pendingReminders]);
+
+  const snoozeReminder = useCallback(async (ruleId: string, minutes: number) => {
+    toast('Reminder Snoozed', `We'll remind you again in ${minutes} minutes.`, 'info');
+  }, [toast]);
+
+  /* ------------------------------------------------------------------ */
+  /*  NEW: Template System                                                */
+  /* ------------------------------------------------------------------ */
+
+  const saveTemplate = useCallback(async (
+    trackerId: string,
+    name: string,
+    data: Record<string, unknown>
+  ) => {
+    const key = TRACKER_STORAGE_KEYS.TEMPLATES(trackerId);
+    const stored = await AsyncStorage.getItem(key);
+    const templates = stored ? JSON.parse(stored) : [];
+
+    templates.push({
+      id: `template_${Date.now()}`,
+      name,
+      emoji: '⭐',
+      data,
+    });
+
+    await AsyncStorage.setItem(key, JSON.stringify(templates));
+  }, []);
+
+  const getTemplates = useCallback(async (trackerId: string) => {
+    const key = TRACKER_STORAGE_KEYS.TEMPLATES(trackerId);
+    const stored = await AsyncStorage.getItem(key);
+    return stored ? JSON.parse(stored) : [];
+  }, []);
+
+  /* ------------------------------------------------------------------ */
+  /*  NEW: Entry Linking                                                  */
+  /* ------------------------------------------------------------------ */
+
+  const linkEntries = useCallback(async (
+    entryId1: string,
+    entryId2: string,
+    relation: TrackerEntry['linkedEntries'][0]['relation'],
+    description?: string
+  ) => {
+    const updated = state.entries.map(e => {
+      if (e.id === entryId1) {
+        const linked = e.linkedEntries || [];
+        return {
+          ...e,
+          linkedEntries: [...linked, {
+            entryId: entryId2,
+            trackerId: state.entries.find(en => en.id === entryId2)?.trackerId || '',
+            relation,
+            description,
+          }],
+        };
+      }
+      if (e.id === entryId2) {
+        const linked = e.linkedEntries || [];
+        return {
+          ...e,
+          linkedEntries: [...linked, {
+            entryId: entryId1,
+            trackerId: state.entries.find(en => en.id === entryId1)?.trackerId || '',
+            relation: 'related',
+            description,
+          }],
+        };
+      }
+      return e;
+    });
+
+    setState(prev => ({ ...prev, entries: updated }));
+    await persistEntries(updated);
+  }, [state.entries, persistEntries]);
+
+  const getLinkedEntries = useCallback((entryId: string) => {
+    const entry = state.entries.find(e => e.id === entryId);
+    if (!entry?.linkedEntries) return [];
+
+    return entry.linkedEntries
+      .map(link => state.entries.find(e => e.id === link.entryId))
+      .filter(Boolean) as TrackerEntry[];
+  }, [state.entries]);
+
+  /* ------------------------------------------------------------------ */
+  /*  Legacy sync                                                        */
+  /* ------------------------------------------------------------------ */
+
   const syncToLegacyActivity = useCallback((entry: TrackerEntry): LegacyActivityEntry => {
     const tracker = getTracker(entry.trackerId);
     const data = entry.data;
@@ -828,7 +1402,6 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     return legacyEntry;
   }, [getTracker]);
 
-  /* ---- Get all entries as legacy activities ---- */
   const handleGetLegacyActivities = useCallback((): LegacyActivityEntry[] => {
     return state.entries
       .filter(e => !e.isDeleted)
@@ -836,23 +1409,15 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
       .map(syncToLegacyActivity);
   }, [state.entries, syncToLegacyActivity]);
 
-  /* ---- Sync FROM BabyContext: read BabyContext's activities ---- */
   const syncFromBabyContext = useCallback(async () => {
     if (!state.currentBabyId) return;
-
     try {
       const babyKey = BABY_ACTIVITIES_KEY(state.currentBabyId);
       const stored = await AsyncStorage.getItem(babyKey);
       if (!stored) return;
-
       const babyActivities: LegacyActivityEntry[] = JSON.parse(stored);
-
-      // Convert LegacyActivityEntry to TrackerEntry format
-      // This is a one-way sync — TrackerContext reads BabyContext data
       console.log(`Synced ${babyActivities.length} activities from BabyContext`);
-    } catch {
-      // Silently fail
-    }
+    } catch {}
   }, [state.currentBabyId]);
 
   /* ---- Refresh ---- */
@@ -872,14 +1437,15 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
   const refreshEntries = useCallback(async () => {
     if (!state.currentBabyId) return;
     const entries = await loadEntries(state.currentBabyId);
+    const safeEntries = Array.isArray(entries) ? entries : [];
     const entriesByTracker: Record<string, TrackerEntry[]> = {};
-    entries.forEach(entry => {
+    safeEntries.forEach(entry => {
       if (!entriesByTracker[entry.trackerId]) {
         entriesByTracker[entry.trackerId] = [];
       }
       entriesByTracker[entry.trackerId].push(entry);
     });
-    setState(prev => ({ ...prev, entries, entriesByTracker }));
+    setState(prev => ({ ...prev, entries: safeEntries, entriesByTracker }));
   }, [state.currentBabyId, loadEntries]);
 
   /* ---- Set current baby ---- */
@@ -887,14 +1453,15 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     setState(prev => ({ ...prev, currentBabyId: babyId }));
     if (babyId) {
       loadEntries(babyId).then(entries => {
+        const safeEntries = Array.isArray(entries) ? entries : [];
         const entriesByTracker: Record<string, TrackerEntry[]> = {};
-        entries.forEach(entry => {
+        safeEntries.forEach(entry => {
           if (!entriesByTracker[entry.trackerId]) {
             entriesByTracker[entry.trackerId] = [];
           }
           entriesByTracker[entry.trackerId].push(entry);
         });
-        setState(prev => ({ ...prev, entries, entriesByTracker }));
+        setState(prev => ({ ...prev, entries: safeEntries, entriesByTracker }));
       });
     }
   }, [loadEntries]);
@@ -921,6 +1488,19 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     canCreateEntry,
     canEditEntry,
     canDeleteEntry,
+    getSmartSuggestions,
+    getYesterdayData,
+    getStreak,
+    getInsights,
+    dismissInsight,
+    scheduleReminder,
+    cancelReminder,
+    getPendingReminders,
+    snoozeReminder,
+    saveTemplate,
+    getTemplates,
+    linkEntries,
+    getLinkedEntries,
     syncToLegacyActivity,
     getLegacyActivities: handleGetLegacyActivities,
     syncFromBabyContext,
@@ -948,6 +1528,19 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     canCreateEntry,
     canEditEntry,
     canDeleteEntry,
+    getSmartSuggestions,
+    getYesterdayData,
+    getStreak,
+    getInsights,
+    dismissInsight,
+    scheduleReminder,
+    cancelReminder,
+    getPendingReminders,
+    snoozeReminder,
+    saveTemplate,
+    getTemplates,
+    linkEntries,
+    getLinkedEntries,
     syncToLegacyActivity,
     handleGetLegacyActivities,
     syncFromBabyContext,

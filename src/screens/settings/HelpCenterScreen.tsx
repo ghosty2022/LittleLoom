@@ -43,7 +43,7 @@ const FAQS: FaqCategory[] = [
     items: [
       { q: 'How do I add my first baby?', a: 'Go to Settings → Family → Add Baby, or tap the baby icon on your profile card.' },
       { q: 'Can I track multiple babies?', a: 'Yes! Add multiple profiles and switch between them from the profile card or Switch Baby screen.' },
-      { q: 'How do I invite a co-parent?', a: "Settings → Family Sharing → Invite Co-Parent. They'll receive a link to join." },
+      { q: 'How do I invite a co-parent?', a: "Settings → Family Dashboard → Invite Co-Parent. They'll receive a link to join." },
     ],
   },
   {
@@ -63,7 +63,7 @@ const FAQS: FaqCategory[] = [
     items: [
       { q: 'Is my data backed up?', a: 'Data is stored locally. Use Backup & Restore in Settings to create shareable backups.' },
       { q: 'Can I export my data?', a: 'Yes, the backup file is standard JSON — readable by you, portable to any device.' },
-      { q: 'Who can see my data?', a: 'Only people you invite to Family Sharing. We never upload your data to servers.' },
+      { q: 'Who can see my data?', a: 'Only people you invite to Family Dashboard. We never upload your data to servers.' },
     ],
   },
   {
@@ -78,7 +78,6 @@ const FAQS: FaqCategory[] = [
   },
 ];
 
-// ─── Navigable Quick Tips ───
 interface TipItem {
   icon: string;
   title: string;
@@ -396,7 +395,6 @@ const styles = StyleSheet.create({
   },
   headerSubtitleDark: { color: '#a0a0a0' },
 
-  // Section Header
   sectionWrapper: { marginBottom: 20 },
   sectionHeader: {
     flexDirection: 'row',
@@ -421,7 +419,6 @@ const styles = StyleSheet.create({
   },
   sectionTitleDark: { color: '#ffffff' },
 
-  // Search
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -440,7 +437,6 @@ const styles = StyleSheet.create({
   },
   searchInputDark: { color: '#fff' },
 
-  // Tips — Now with navigation
   tipsScroll: { gap: 12, paddingRight: 20 },
   tipCardWrapper: {
     width: 170,
@@ -490,7 +486,6 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
 
-  // FAQ
   categoryCard: {
     borderRadius: 24,
     overflow: 'hidden',
@@ -553,7 +548,6 @@ const styles = StyleSheet.create({
   },
   faqATextDark: { color: '#a0a0a0' },
 
-  // Support CTA
   supportCta: {
     borderRadius: 24,
     overflow: 'hidden',

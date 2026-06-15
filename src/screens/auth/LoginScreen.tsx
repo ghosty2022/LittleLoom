@@ -1,10 +1,3 @@
-
-// src/screens/auth/LoginScreen.tsx
-// FIXED: Removed duplicate navigation logic - AppNavigator is single source of truth
-// FIXED: Social auth flow, biometric auto-login, form validation
-// FIXED: Proper integration with AuthContext and SecurityContext
-// NOTE: Navigation after auth is handled entirely by AppNavigator.tsx
-
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
@@ -51,7 +44,6 @@ const { width, height } = Dimensions.get('window');
 
 WebBrowser.maybeCompleteAuthSession();
 
-// ==================== SOCIAL AUTH CONFIG ====================
 
 const GOOGLE_CLIENT_ID = Platform.select({
   ios: 'YOUR_IOS_GOOGLE_CLIENT_ID.apps.googleusercontent.com',
@@ -66,7 +58,6 @@ const redirectUri = AuthSession.makeRedirectUri({
   useProxy: Platform.OS !== 'web' 
 });
 
-// ==================== SOCIAL BUTTON ====================
 
 interface SocialButtonProps {
   provider: 'google' | 'apple' | 'facebook';
@@ -128,14 +119,12 @@ const SocialButton = React.memo(({ provider, onPress, disabled, isDark }: Social
   );
 });
 
-// ==================== VALIDATION ====================
 
 const isValidEmail = (email: string): boolean => {
   const re = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;
   return re.test(email.trim().toLowerCase());
 };
 
-// ==================== MAIN COMPONENT ====================
 
 export default function LoginScreen({ navigation }: LoginScreenProps) {
   const [email, setEmail] = useState('');
@@ -180,7 +169,6 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
 
   const userName = userProfile?.fullName || 'there';
 
-  // Google OAuth
   const [googleRequest, googleResponse, googlePromptAsync] = AuthSession.useAuthRequest(
     {
       clientId: GOOGLE_CLIENT_ID,
@@ -194,7 +182,6 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     }
   );
 
-  // Facebook OAuth
   const [fbRequest, fbResponse, fbPromptAsync] = AuthSession.useAuthRequest(
     {
       clientId: FACEBOOK_APP_ID,
@@ -208,7 +195,6 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     }
   );
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       isMounted.current = false;
@@ -218,7 +204,6 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     };
   }, []);
 
-  // Entrance animations
   useEffect(() => {
     logoScale.value = withSequence(
       withTiming(0.8, { duration: 0 }),
@@ -231,7 +216,6 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     );
   }, []);
 
-  // ==================== GOOGLE AUTH HANDLER ====================
   
   useEffect(() => {
     if (googleResponse?.type === 'success') {
@@ -269,7 +253,6 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     }
   };
 
-  // ==================== FACEBOOK AUTH HANDLER ====================
   
   useEffect(() => {
     if (fbResponse?.type === 'success') {
@@ -312,7 +295,6 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     }
   };
 
-  // ==================== SOCIAL LOGIN ====================
 
   const handleSocialLogin = async (
     provider: 'google' | 'apple' | 'facebook',
@@ -340,7 +322,6 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
       if (success && isMounted.current) {
         showSuccess('Welcome!', `Signed in with ${provider.charAt(0).toUpperCase() + provider.slice(1)}`);
         forceUnlock().catch(() => {});
-        // AppNavigator will handle navigation based on auth state
       }
     } catch (error) {
       showError('Login Failed', 'Social authentication failed');
@@ -352,13 +333,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     }
   };
 
-  // ==================== NAVIGATION AFTER AUTH — REMOVED ====================
-  // CRITICAL FIX: Navigation is now handled SOLELY by AppNavigator.tsx
-  // which computes navState from auth context and enforces the correct screen.
-  // Removing this prevents race conditions where both LoginScreen and 
-  // AppNavigator try to navigate simultaneously.
 
-  // ==================== BIOMETRIC CHECK ====================
 
   useEffect(() => {
     if (biometricCheckComplete.current || !isBiometricAvailable) return;
@@ -382,7 +357,6 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     checkBiometricStatus();
   }, [isBiometricAvailable, hasBiometricLoginCredentials]);
 
-  // ==================== AUTO BIOMETRIC LOGIN ====================
 
   useEffect(() => {
     if (isAuthenticated || autoLoginAttempted.current || !biometricCheckComplete.current || !authInitialized) return;
@@ -403,7 +377,6 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     attemptAutoLogin();
   }, [isAuthenticated, isBiometricAvailable, authInitialized]);
 
-  // Reset on focus
   useEffect(() => {
     resetUnlockLock();
 
@@ -414,7 +387,6 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     return unsubscribe;
   }, [navigation, resetUnlockLock]);
 
-  // ==================== ANIMATED STYLES ====================
 
   const logoStyle = useAnimatedStyle(() => ({
     transform: [{ scale: logoScale.value }],
@@ -429,7 +401,6 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     opacity: biometricScale.value,
   }));
 
-  // ==================== HANDLERS ====================
 
   const handleGoogleLogin = async () => {
     if (socialAuthInProgress.current) return;
@@ -491,7 +462,6 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
       return;
     }
 
-    // Validation
     if (!email.trim()) {
       showError('Missing Email', 'Please enter your email address');
       triggerHaptic('error');
@@ -528,7 +498,6 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
         showSuccess(`Welcome Back${userName !== 'there' ? `, ${userName}` : ''}!`, 'Successfully signed in');
         forceUnlock().catch(() => {});
 
-        // Prompt for biometric after successful login
         if (hasSeenOnboarding) {
           const shouldPrompt = await shouldShowBiometricPrompt();
           if (shouldPrompt) {
@@ -537,7 +506,6 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
             }, 1000);
           }
         }
-        // AppNavigator will handle navigation based on auth state
       } else {
         showError('Login Failed', 'Invalid email or password');
         loginAttempted.current = false;
@@ -581,7 +549,6 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
       if (success && isMounted.current) {
         showSuccess(`Welcome${userName !== 'there' ? `, ${userName}` : ''}!`, 'Biometric login successful');
         forceUnlock().catch(() => {});
-        // AppNavigator will handle navigation based on auth state
         return true;
       } else if (!success) {
         showError('Biometric Failed', 'Please use your password');
@@ -637,7 +604,6 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
 
   const isLoading = authLoading || isProcessing || !authInitialized;
 
-  // ==================== RENDER ====================
 
   return (
     <View style={[styles.container, { backgroundColor: isDark ? '#0a0a0a' : '#f8faff' }]}>
@@ -869,7 +835,6 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
   );
 }
 
-// ==================== STYLES ====================
 
 const styles = StyleSheet.create({
   container: {

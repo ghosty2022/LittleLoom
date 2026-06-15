@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { AppState, AppStateStatus, InteractionManager } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { statePersistence } from '../utils/statePersistence';

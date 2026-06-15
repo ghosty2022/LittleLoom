@@ -1,7 +1,3 @@
-// src/components/trackers/TrackerEntryCard.tsx
-// MODERNIZED: SafeAvatar, SweetAlert, full useCustomization integration
-// Displays ANY tracker entry based on its schema — works for all 70+ trackers + custom
-
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -57,7 +53,6 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
     return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
   }, [entry.timestamp]);
 
-  // Modernized delete with SweetAlert
   const handleDelete = () => {
     if (!onDelete) return;
     triggerHaptic('warning');
@@ -74,7 +69,6 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
     );
   };
 
-  // Render key data fields based on schema
   const renderDataPreview = () => {
     if (!tracker || !entry.data) return null;
 
@@ -307,7 +301,6 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     marginTop: 8,
   },
-  // Compact styles
   compactCard: {
     flexDirection: 'row',
     alignItems: 'center',

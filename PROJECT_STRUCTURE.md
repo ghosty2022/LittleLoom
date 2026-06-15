@@ -33,7 +33,7 @@
 - 📊 Growth Charts
 - 🏆 Achievements
 - ⏰ Reminders
-- 👨‍👩‍👧 Family Sharing
+- 👨‍👩‍👧 Family Dashboard
 
 ### Navigation Structure
 - Stack Navigator (Auth + Modals)

@@ -340,7 +340,6 @@ export default function AddParentScreen({ navigation }: AddParentScreenProps) {
     triggerHaptic('medium');
 
     try {
-      // Save preferences to AsyncStorage for the new parent
       const parentPrefsKey = `littleloom_parent_prefs_${form.email.toLowerCase().trim()}`;
       await AsyncStorage.setItem(
         parentPrefsKey,
@@ -384,7 +383,6 @@ export default function AddParentScreen({ navigation }: AddParentScreenProps) {
       type: 'danger',
       onConfirm: async () => {
         try {
-          // In a real app, you'd call removeMember here
           showToast('info', 'Removed', 'Co-parent has been removed');
           navigation.goBack();
         } catch (error) {

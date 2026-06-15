@@ -1,7 +1,3 @@
-// src/utils/modal.tsx
-// Universal Modal System for LittleLoom - Glassmorphism Design
-// Usage: import { showModal, hideModal, ModalProvider, showSuccessModal, showErrorModal, showConfirmModal } from '@/utils/modal';
-
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import {
   View,
@@ -22,7 +18,6 @@ import * as Haptics from 'expo-haptics';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-// ==================== TYPES ====================
 
 export type ModalType = 'info' | 'success' | 'warning' | 'error' | 'confirm' | 'custom';
 
@@ -50,7 +45,6 @@ interface ModalContextType {
   isVisible: boolean;
 }
 
-// ==================== QUEUE-BASED EVENT EMITTER ====================
 
 type ModalListener = (config: ModalConfig) => void;
 type HideListener = () => void;
@@ -81,7 +75,6 @@ const emitHide = () => {
   hideListeners.forEach(listener => listener());
 };
 
-// ==================== STANDALONE FUNCTIONS ====================
 
 export const showSuccessModal = (config: { title?: string; message: string }) => {
   emitShow({
@@ -139,7 +132,6 @@ export const hideModal = () => {
   emitHide();
 };
 
-// ==================== CONTEXT ====================
 
 const ModalContext = createContext<ModalContextType | null>(null);
 
@@ -151,7 +143,6 @@ export const useModal = () => {
   return context;
 };
 
-// ==================== MODAL PROVIDER ====================
 
 export const ModalProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isVisible, setIsVisible] = useState(false);
@@ -335,7 +326,6 @@ export const ModalProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   );
 };
 
-// ==================== SWEET ALERT STYLE FUNCTIONS ====================
 
 export const SweetAlert = {
   success: (title: string, message?: string, buttonText?: string) => {
@@ -394,7 +384,6 @@ export const SweetAlert = {
   },
 };
 
-// ==================== STYLES ====================
 
 const styles = StyleSheet.create({
   overlay: {

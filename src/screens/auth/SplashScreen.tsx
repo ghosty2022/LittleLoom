@@ -6,6 +6,7 @@ import {
   StyleSheet,
   Animated,
   Dimensions,
+  Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
@@ -14,7 +15,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const wp = (p: number) => (SCREEN_WIDTH * p) / 100;
 
-const ONBOARDING_SEEN_KEY = '@littleloom_onboarding_seen_v2';
+const ONBOARDING_SEEN_KEY = '@littleloom_onboarding_seen_v3';
 
 interface SplashScreenProps {
   navigation?: any;
@@ -35,20 +36,17 @@ export default function SplashScreen({
   const rotateAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
-  // Check onboarding status and decide where to go
   const checkOnboardingAndNavigate = useCallback(async () => {
     try {
       const hasSeenOnboarding = await AsyncStorage.getItem(ONBOARDING_SEEN_KEY);
 
       if (hasSeenOnboarding === 'true') {
-        // User has seen onboarding before → go to Login
         if (onNavigateToLogin) {
           onNavigateToLogin();
         } else if (navigation?.replace) {
           navigation.replace('Login');
         }
       } else {
-        // First time user → go to Onboarding
         if (onNavigateToOnboarding) {
           onNavigateToOnboarding();
         } else if (navigation?.replace) {
@@ -57,7 +55,6 @@ export default function SplashScreen({
       }
     } catch (error) {
       console.warn('Error checking onboarding status:', error);
-      // Fallback to login on error
       if (onNavigateToLogin) {
         onNavigateToLogin();
       } else if (navigation?.replace) {
@@ -67,7 +64,6 @@ export default function SplashScreen({
   }, [navigation, onNavigateToOnboarding, onNavigateToLogin]);
 
   useEffect(() => {
-    // Entrance animations
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -87,7 +83,6 @@ export default function SplashScreen({
       }),
     ]).start();
 
-    // Rotating gradient animation
     Animated.loop(
       Animated.timing(rotateAnim, {
         toValue: 1,
@@ -96,7 +91,6 @@ export default function SplashScreen({
       })
     ).start();
 
-    // Pulsing animation
     Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, {
@@ -112,7 +106,6 @@ export default function SplashScreen({
       ])
     ).start();
 
-    // Exit animation after delay - then intelligently navigate
     const timer = setTimeout(() => {
       Animated.parallel([
         Animated.timing(fadeAnim, {
@@ -188,7 +181,11 @@ export default function SplashScreen({
               end={{ x: 1, y: 1 }}
             />
           </View>
-          <Text style={styles.logoEmoji}>🍼</Text>
+          <Image
+            source={require('../../../assets/logo.png')}
+            style={styles.logoImage}
+            resizeMode="contain"
+          />
         </View>
 
         {/* Brand Name */}
@@ -256,12 +253,10 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: wp(17.5),
   },
-  logoEmoji: {
-    fontSize: wp(18),
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
+  logoImage: {
+    width: wp(20),
+    height: wp(20),
+    zIndex: 10,
   },
   brandName: {
     fontSize: wp(9),

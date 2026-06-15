@@ -100,7 +100,8 @@ const generateDemoFollowing = (count: number, baseId: string): CommunityUser[] =
   }));
 };
 
-export default function FollowingScreen({ navigation, route }: FollowingScreenProps) {
+export default function FollowingScreen
+  ({ navigation, route }: FollowingScreenProps) {
   const { userId } = route.params;
   const { currentUser, followUser, unfollowUser, isFollowing, blockUser, isUserBlocked, getUserById, getFollowing } = useCommunity();
   const { profile } = useUser();
@@ -111,7 +112,6 @@ export default function FollowingScreen({ navigation, route }: FollowingScreenPr
     spinnerColor,
   } = useCustomization();
 
-  // SweetAlert for all alerts
   const sweetAlert = useSweetAlert();
 
   const [followingList, setFollowingList] = useState<CommunityUser[]>([]);
@@ -212,7 +212,7 @@ export default function FollowingScreen({ navigation, route }: FollowingScreenPr
         ));
       }
       
-      sweetAlert.success('Unfollowed', `You unfollowed ${user.displayName}`);
+      sweetAlert.success('Unfollowed', 'You unfollowed ${user.displayName}');
     } catch (error) {
       console.error('Unfollow error:', error);
       sweetAlert.error('Action Failed', 'Failed to unfollow user');

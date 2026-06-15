@@ -1,13 +1,9 @@
-// src/hooks/useSweetAlert.ts
-// WRAPPER: Convenience hook that auto-detects theme context
-// Use this in screens instead of importing from components directly
-
 import { useCallback } from 'react';
 import { useCustomization } from './useCustomization';
 import { showSweetAlert, SweetAlertConfig, AlertType } from '../components/SweetAlert';
 
 export interface SweetAlertHook {
-  showAlert: (config: SweetAlertConfig) => void;
+  sweetAlert: (config: SweetAlertConfig) => void;
   toast: (title: string, message?: string, type?: AlertType) => void;
   success: (title: string, message?: string) => void;
   error: (title: string, message?: string) => void;
@@ -27,7 +23,7 @@ export interface SweetAlertHook {
 export function useSweetAlert(): SweetAlertHook {
   const { isDark, themeColors, shouldReduceMotion } = useCustomization();
 
-  const showAlert = useCallback((config: SweetAlertConfig) => {
+  const sweetAlert = useCallback((config: SweetAlertConfig) => {
     showSweetAlert({
       ...config,
       reduceMotion: config.reduceMotion ?? shouldReduceMotion,
@@ -35,7 +31,7 @@ export function useSweetAlert(): SweetAlertHook {
   }, [shouldReduceMotion]);
 
   const toast = useCallback((title: string, message?: string, type: AlertType = 'info') => {
-    showAlert({
+    sweetAlert({
       title,
       message,
       type,
@@ -44,10 +40,10 @@ export function useSweetAlert(): SweetAlertHook {
       autoDismiss: true,
       duration: 3000,
     });
-  }, [showAlert]);
+  }, [sweetAlert]);
 
   const success = useCallback((title: string, message?: string) => {
-    showAlert({
+    sweetAlert({
       title,
       message,
       type: 'success',
@@ -56,10 +52,10 @@ export function useSweetAlert(): SweetAlertHook {
       autoDismiss: true,
       duration: 3000,
     });
-  }, [showAlert]);
+  }, [sweetAlert]);
 
   const error = useCallback((title: string, message?: string) => {
-    showAlert({
+    sweetAlert({
       title,
       message,
       type: 'error',
@@ -68,10 +64,10 @@ export function useSweetAlert(): SweetAlertHook {
       autoDismiss: true,
       duration: 4000,
     });
-  }, [showAlert]);
+  }, [sweetAlert]);
 
   const warning = useCallback((title: string, message?: string) => {
-    showAlert({
+    sweetAlert({
       title,
       message,
       type: 'warning',
@@ -80,10 +76,10 @@ export function useSweetAlert(): SweetAlertHook {
       autoDismiss: true,
       duration: 3500,
     });
-  }, [showAlert]);
+  }, [sweetAlert]);
 
   const info = useCallback((title: string, message?: string) => {
-    showAlert({
+    sweetAlert({
       title,
       message,
       type: 'info',
@@ -92,7 +88,7 @@ export function useSweetAlert(): SweetAlertHook {
       autoDismiss: true,
       duration: 3000,
     });
-  }, [showAlert]);
+  }, [sweetAlert]);
 
   const confirm = useCallback((
     title: string,
@@ -102,7 +98,7 @@ export function useSweetAlert(): SweetAlertHook {
     confirmText?: string,
     cancelText?: string
   ) => {
-    showAlert({
+    sweetAlert({
       title,
       message,
       type: 'question',
@@ -114,10 +110,10 @@ export function useSweetAlert(): SweetAlertHook {
       onConfirm,
       onCancel,
     });
-  }, [showAlert]);
+  }, [sweetAlert]);
 
   const alert = useCallback((title: string, message?: string, type: AlertType = 'info') => {
-    showAlert({
+    sweetAlert({
       title,
       message,
       type,
@@ -126,9 +122,9 @@ export function useSweetAlert(): SweetAlertHook {
       showCancel: false,
       confirmText: 'OK',
     });
-  }, [showAlert]);
+  }, [sweetAlert]);
 
-  return { showAlert, toast, success, error, warning, info, confirm, alert };
+  return { sweetAlert, toast, success, error, warning, info, confirm, alert };
 }
 
 export default useSweetAlert;

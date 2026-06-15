@@ -204,7 +204,6 @@ class IntelligentReminderEngine {
     const now = new Date();
     const currentHour = now.getHours();
 
-    // --- POTTY PATTERN ---
     const pottyActs = babyActs.filter((a) => a.type === 'potty');
     if (pottyActs.length >= 3) {
       const avgInterval = this.calculateAverageInterval(pottyActs);
@@ -229,7 +228,6 @@ class IntelligentReminderEngine {
       }
     }
 
-    // --- SLEEP PATTERN ---
     const sleepActs = babyActs.filter((a) => a.type === 'sleep');
     if (sleepActs.length >= 2) {
       const bedtimes = sleepActs
@@ -258,7 +256,6 @@ class IntelligentReminderEngine {
       }
     }
 
-    // --- FEEDING PATTERN ---
     const feedActs = babyActs.filter((a) => a.type === 'feed');
     if (feedActs.length >= 3) {
       const avgInterval = this.calculateAverageInterval(feedActs);
@@ -282,7 +279,6 @@ class IntelligentReminderEngine {
       }
     }
 
-    // --- MEDICATION TRACKING ---
     const medActs = babyActs.filter((a) => a.type === 'medication');
     const activeMeds = medActs.filter((a) => {
       const daysSince = differenceInDays(now, new Date(a.timestamp));
@@ -306,7 +302,6 @@ class IntelligentReminderEngine {
       });
     }
 
-    // --- MILESTONE CHECK ---
     const milestoneActs = babyActs.filter((a) => a.type === 'milestone');
     const daysSinceMilestone = milestoneActs.length > 0
       ? differenceInDays(now, new Date(milestoneActs[milestoneActs.length - 1].timestamp))
@@ -328,7 +323,6 @@ class IntelligentReminderEngine {
       });
     }
 
-    // --- STREAK PROTECTION ---
     const streak = this.calculateStreak();
     if (streak >= 3) {
       const hasTodayActivity = babyActs.some((a) => isSameDay(new Date(a.timestamp), now));
@@ -349,7 +343,6 @@ class IntelligentReminderEngine {
       }
     }
 
-    // --- GROWTH TRACKING ---
     const growthActs = babyActs.filter((a) => a.type === 'growth');
     const daysSinceGrowth = growthActs.length > 0
       ? differenceInDays(now, new Date(growthActs[growthActs.length - 1].timestamp))
@@ -593,7 +586,6 @@ export default function RemindersScreen({ navigation, route }: Props) {
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
 
-  // Form state
   const [formTitle, setFormTitle] = useState('');
   const [formCategory, setFormCategory] = useState<CategoryType>('custom');
   const [formRepeat, setFormRepeat] = useState<RepeatType>('daily');
@@ -654,7 +646,6 @@ export default function RemindersScreen({ navigation, route }: Props) {
     if (route.params?.suggestedType || route.params?.fromAchievement) {
       handleAchievementSuggestion();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baby?.id]);
 
   /* ---- Notification response listener ---- */
@@ -663,9 +654,9 @@ export default function RemindersScreen({ navigation, route }: Props) {
       const data = response.notification.request.content.data;
       if (data?.screen) {
         if (data.screen === 'UniversalTracker' && data.type) {
-          navigation.navigate('UniversalTracker', { type: data.type, babyId: data.babyId });
+          navigation.navigate('Timeline', { type: data.type, babyId: data.babyId });
         } else if (data.screen === 'AddLog') {
-          navigation.navigate('AddLog', { type: data.type, babyId: data.babyId });
+          navigation.navigate('AddEntry', { type: data.type, babyId: data.babyId });
         } else {
           navigation.navigate(data.screen as any, data.params || {});
         }
@@ -681,7 +672,6 @@ export default function RemindersScreen({ navigation, route }: Props) {
       const saved = await AsyncStorage.getItem(STORAGE_KEYS.REMINDERS);
       if (saved) {
         const parsed: Reminder[] = JSON.parse(saved);
-        // Filter by baby if specified, but keep global reminders too
         const filtered = baby ? parsed.filter((r) => !r.babyId || r.babyId === baby.id) : parsed;
         setReminders(filtered);
       } else {
@@ -786,7 +776,6 @@ export default function RemindersScreen({ navigation, route }: Props) {
 
   const saveReminders = async (newReminders: Reminder[]) => {
     try {
-      // Merge with reminders for other babies
       const saved = await AsyncStorage.getItem(STORAGE_KEYS.REMINDERS);
       const allReminders: Reminder[] = saved ? JSON.parse(saved) : [];
       const otherReminders = allReminders.filter(
@@ -894,8 +883,6 @@ export default function RemindersScreen({ navigation, route }: Props) {
           };
           break;
         case 'weekdays':
-          // Schedule for each weekday (Mon-Fri = 2-6 in iOS weekday format where 1=Sunday)
-          // For simplicity, we schedule multiple notifications or use weekly with channel
           trigger = {
             type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
             weekday: 2, // Monday
@@ -921,7 +908,6 @@ export default function RemindersScreen({ navigation, route }: Props) {
           break;
         case 'custom':
           if (reminder.daysOfWeek && reminder.daysOfWeek.length > 0) {
-            // For custom days, we schedule the first upcoming one
             const today = now.getDay();
             const nextDay = reminder.daysOfWeek.find((d) => d > today) || reminder.daysOfWeek[0];
             const daysUntil = nextDay > today ? nextDay - today : 7 - today + nextDay;
@@ -940,7 +926,6 @@ export default function RemindersScreen({ navigation, route }: Props) {
           }
           break;
         default:
-          // One-time
           const scheduledDate = new Date();
           scheduledDate.setHours(hours, minutes, 0, 0);
           if (scheduledDate < now) {
@@ -1084,7 +1069,6 @@ export default function RemindersScreen({ navigation, route }: Props) {
   const updateReminder = async () => {
     if (!editingReminder || !validateForm()) return;
 
-    // Cancel old notification
     await cancelNotification(editingReminder.notificationId);
 
     const updatedReminder = buildReminderFromForm(editingReminder.id);
@@ -1167,7 +1151,6 @@ export default function RemindersScreen({ navigation, route }: Props) {
     setReminders(updated);
     await saveReminders(updated);
 
-    // Remove from suggestions
     dismissSuggestion(suggestion.id);
 
     showToast('success', 'Smart Reminder Added', `AI scheduled: ${suggestion.title}`, suggestion.emoji);
@@ -1175,28 +1158,25 @@ export default function RemindersScreen({ navigation, route }: Props) {
   };
 
   const quickLog = (type: CategoryType) => {
-    navigation.navigate('UniversalTracker', { type, babyId: baby?.id });
+    navigation.navigate('Timeline', { type, babyId: baby?.id });
   };
 
   /* ---- Filtering & Sorting ---- */
   const filteredReminders = useMemo(() => {
     let list = [...reminders];
 
-    // Tab filter
     if (activeTab === 'upcoming') {
       const now = new Date();
       const currentMinutes = now.getHours() * 60 + now.getMinutes();
       list = list.sort((a, b) => {
         const aMin = parseInt(a.time.split(':')[0]) * 60 + parseInt(a.time.split(':')[1]);
         const bMin = parseInt(b.time.split(':')[0]) * 60 + parseInt(b.time.split(':')[1]);
-        // Put upcoming times first, then wrap around
         const aDiff = aMin >= currentMinutes ? aMin - currentMinutes : aMin + 1440 - currentMinutes;
         const bDiff = bMin >= currentMinutes ? bMin - currentMinutes : bMin + 1440 - currentMinutes;
         return aDiff - bDiff;
       });
     }
 
-    // Search filter
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       list = list.filter(
@@ -1217,7 +1197,6 @@ export default function RemindersScreen({ navigation, route }: Props) {
         : [];
     }
 
-    // Group by time period for upcoming tab
     if (activeTab === 'upcoming') {
       const morning: Reminder[] = [];
       const afternoon: Reminder[] = [];
@@ -1254,7 +1233,6 @@ export default function RemindersScreen({ navigation, route }: Props) {
       return result;
     }
 
-    // All tab - group by category
     const byCategory: Record<string, Reminder[]> = {};
     filteredReminders.forEach((r) => {
       const cat = CATEGORY_CONFIG[r.category]?.label || 'Other';
@@ -3090,3 +3068,4 @@ const styles = StyleSheet.create({
     color: '#64748b',
   },
 });
+

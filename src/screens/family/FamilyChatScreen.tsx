@@ -1082,7 +1082,6 @@ const MessageBubble: React.FC<{
   return (
     <Animated.View
       entering={isMe ? SlideInRight : SlideInLeft}
-      // FIXED: Removed layout={Layout.springify()} — Layout removed in reanimated v3
       style={[
         styles.messageContainer,
         isMe ? styles.myMessageContainer : styles.theirMessageContainer,

@@ -1,10 +1,6 @@
-// src/hooks/useIntelligentSplash.ts
 import { useState, useEffect, useCallback, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// ============================================
-// STORAGE KEYS
-// ============================================
 const SPLASH_KEYS = {
   MAIN_APP_SHOWN: '@littleloom_main_splash_shown',
   COMMUNITY_SHOWN: '@littleloom_community_splash_shown',
@@ -13,9 +9,6 @@ const SPLASH_KEYS = {
   SECTION_PREFERENCES: '@littleloom_section_preferences',
 } as const;
 
-// ============================================
-// TYPES
-// ============================================
 export type SplashSection = 'main' | 'community';
 export type SplashFrequency = 'always' | 'daily' | 'weekly' | 'never';
 
@@ -45,9 +38,6 @@ export const DEFAULT_SPLASH_CONFIG: SplashConfig = {
   respectCompactView: true,
 };
 
-// ============================================
-// HELPER FUNCTIONS
-// ============================================
 
 export async function loadSplashConfig(): Promise<SplashConfig> {
   try {
@@ -110,12 +100,10 @@ export async function shouldShowSplash(
   config: SplashConfig,
   reduceMotion: boolean = false
 ): Promise<{ shouldShow: boolean; reason: string }> {
-  // Respect reduce motion
   if (config.respectReduceMotion && reduceMotion) {
     return { shouldShow: false, reason: 'reduce_motion' };
   }
 
-  // Check frequency
   if (config.frequency === 'never') {
     return { shouldShow: false, reason: 'frequency_never' };
   }
@@ -123,17 +111,14 @@ export async function shouldShowSplash(
   const sectionState = await getSectionState(section);
   const now = Date.now();
 
-  // First time always shows (unless never)
   if (sectionState.firstTime) {
     return { shouldShow: true, reason: 'first_time' };
   }
 
-  // Check min interval
   if (now - sectionState.lastVisited < config.minSplashInterval) {
     return { shouldShow: false, reason: 'too_soon' };
   }
 
-  // Check frequency-based rules
   if (config.frequency === 'always') {
     return { shouldShow: true, reason: 'frequency_always' };
   }
@@ -168,9 +153,6 @@ export async function markSplashShown(section: SplashSection): Promise<void> {
   }
 }
 
-// ============================================
-// REACT HOOK
-// ============================================
 
 export interface UseIntelligentSplashReturn {
   isReady: boolean;

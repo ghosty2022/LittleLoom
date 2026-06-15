@@ -1,8 +1,3 @@
-// src/context/ActivityContext.tsx
-// FULLY SYNCED: Integrates with BabyContext, NotificationService, TrackerContext
-// FIXED: syncWithBabyContext reads from BabyContext's per-baby storage keys
-// FIXED: Zero unused variables, proper TypeScript strict compliance
-
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
@@ -110,7 +105,6 @@ interface ActivityContextType {
   scheduleActivityReminder: (entry: ActivityEntry, minutes: number) => Promise<string | null>;
   cancelActivityReminder: (notificationId: string) => Promise<void>;
 
-  // Cross-context sync with BabyContext
   syncWithBabyContext: (babyId: string) => Promise<void>;
   getEntriesForNotification: () => ActivityEntry[];
 }
@@ -121,7 +115,6 @@ const STORAGE_KEY = '@littleloom_activities_v3';
 const NOTIFICATION_PREFIX = '@littleloom_activity_notif_';
 const BABY_ACTIVITIES_KEY = (babyId: string) => `@littleloom_activities_${babyId}`;
 
-// Lazy import to avoid circular dependency
 const getNotificationService = async () => {
   try {
     const { notificationService } = await import('@/services/NotificationService');
@@ -260,7 +253,6 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
       await saveEntries(updatedEntries);
       setEntries(updatedEntries);
 
-      // Also save to BabyContext's per-baby storage for cross-context sync
       try {
         const babyKey = BABY_ACTIVITIES_KEY(entry.babyId);
         const babyStored = await AsyncStorage.getItem(babyKey);
@@ -268,7 +260,6 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
         babyActivities.unshift(newEntry);
         await AsyncStorage.setItem(babyKey, JSON.stringify(babyActivities));
       } catch {
-        // Silently fail — BabyContext storage is secondary
       }
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
@@ -289,7 +280,6 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
       await saveEntries(updatedEntries);
       setEntries(updatedEntries);
 
-      // Sync to BabyContext storage
       const entry = entries.find(e => e.id === id);
       if (entry) {
         try {
@@ -304,7 +294,6 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
             }
           }
         } catch {
-          // Silently fail
         }
       }
 
@@ -329,7 +318,6 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
       await saveEntries(updatedEntries);
       setEntries(updatedEntries);
 
-      // Sync deletion to BabyContext storage
       if (entry) {
         try {
           const babyKey = BABY_ACTIVITIES_KEY(entry.babyId);
@@ -340,7 +328,6 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
             await AsyncStorage.setItem(babyKey, JSON.stringify(filtered));
           }
         } catch {
-          // Silently fail
         }
       }
 
@@ -466,7 +453,6 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
     }
   }, []);
 
-  // Notification integration
   const scheduleActivityReminder = useCallback(async (entry: ActivityEntry, minutes: number): Promise<string | null> => {
     try {
       const service = await getNotificationService();
@@ -506,11 +492,9 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
         await AsyncStorage.removeItem(`${NOTIFICATION_PREFIX}${entry.id}`);
       }
     } catch {
-      // Silently fail
     }
   }, [entries, updateEntry]);
 
-  // Cross-context sync with BabyContext — reads from BabyContext's per-baby storage
   const syncWithBabyContext = useCallback(async (babyId: string) => {
     try {
       const babyKey = BABY_ACTIVITIES_KEY(babyId);
@@ -519,7 +503,6 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
       if (stored) {
         const babyActivities = JSON.parse(stored) as ActivityEntry[];
 
-        // Merge without duplicates (by id)
         const existingIds = new Set(entries.map(e => e.id));
         const newActivities = babyActivities.filter(a => !existingIds.has(a.id));
 
@@ -530,7 +513,6 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
         }
       }
     } catch {
-      // Silently fail — BabyContext data may not exist yet
     }
   }, [entries, saveEntries]);
 

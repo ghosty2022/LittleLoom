@@ -1,20 +1,47 @@
-﻿import { useEffect } from 'react';
+import { useEffect } from 'react';
 import { useNavigationVisibility } from '../context/AppContext';
 
-/**
- * Hook to automatically manage nav visibility based on screen focus
- * Call this in screen components that have scrollable content
- */
-export const useAutoHideNav = () => {
-  const { showNav, forceShowNav } = useNavigationVisibility();
+export interface AutoHideNavOptions {
+  /** Hide the nav bar when this screen is focused (default: false) */
+  hideOnFocus?: boolean;
+  /** Show the nav bar when this screen is blurred/unmounted (default: true) */
+  showOnBlur?: boolean;
+  /** Mark this as a community screen to hide tab bar completely (default: false) */
+  isCommunityScreen?: boolean;
+  /** Route name to set for community detection (optional) */
+  routeName?: string | null;
+}
+
+export const useAutoHideNav = (options: AutoHideNavOptions = {}) => {
+  const { showNav, forceShowNav, forceHideNav, setCommunityRoute } = useNavigationVisibility();
+
+  const {
+    hideOnFocus = false,
+    showOnBlur = true,
+    isCommunityScreen = false,
+    routeName = null,
+  } = options;
 
   useEffect(() => {
-    forceShowNav();
+    if (routeName !== undefined) {
+      setCommunityRoute(routeName);
+    }
+
+    if (isCommunityScreen || hideOnFocus) {
+      forceHideNav();
+    } else {
+      forceShowNav();
+    }
 
     return () => {
-      showNav();
+      if (routeName !== undefined) {
+        setCommunityRoute(null);
+      }
+      if (showOnBlur) {
+        showNav();
+      }
     };
-  }, [showNav, forceShowNav]);
+  }, [showNav, forceShowNav, forceHideNav, setCommunityRoute, hideOnFocus, showOnBlur, isCommunityScreen, routeName]);
 };
 
 export default useAutoHideNav;

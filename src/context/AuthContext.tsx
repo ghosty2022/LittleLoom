@@ -1,11 +1,13 @@
-// src/context/AuthContext.tsx
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, AppState, AppStateStatus } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import * as LocalAuthentication from 'expo-local-authentication';
-// REMOVED: import { supabase } from '../lib/supabase';  // ← unused, removed
 import { SocialUser } from '../hooks/useSocialAuth';
+
+// ─── SINGLE SOURCE OF TRUTH FOR ONBOARDING ─────────────────────────────
+export const ONBOARDING_KEY = '@littleloom_onboarding_complete_v3';
+export const ONBOARDING_SEEN_KEY = '@littleloom_onboarding_seen_v3';
 
 const SECURE_KEYS = {
   AUTH_TOKEN: 'littleloom_auth_token',
@@ -18,8 +20,8 @@ const SECURE_KEYS = {
 } as const;
 
 const ASYNC_KEYS = {
-  ONBOARDING_COMPLETE: 'littleloom_onboarding_complete',
-  HAS_SEEN_ONBOARDING: '@littleloom_has_seen_onboarding',
+  ONBOARDING_COMPLETE: ONBOARDING_KEY,
+  HAS_SEEN_ONBOARDING: ONBOARDING_SEEN_KEY,
   BIOMETRIC_ENABLED: 'littleloom_biometric_enabled',
   BIOMETRIC_AVAILABLE: 'littleloom_biometric_available',
   SETUP_COMPLETE: 'littleloom_setup_complete',
@@ -53,7 +55,6 @@ export interface UserProfile {
     language?: string;
   };
   socialProvider?: 'google' | 'apple' | 'facebook' | null;
-  // Community-specific fields (synced with community profile)
   communityUsername?: string;
   communityHandle?: string;
   communityBio?: string;
@@ -100,7 +101,7 @@ interface AuthContextType extends AuthState {
   updateUserProfile: (updates: Partial<UserProfile>) => Promise<boolean>;
   updateUserPreferences: (prefs: Partial<UserProfile['preferences']>) => Promise<boolean>;
   skipSetup: (step: 'parent2' | 'baby') => Promise<void>;
-  completeSetup: (step: 'parent2' | 'baby') => Promise<void>;
+  completeSetup: (step: 'parent2' | 'baby') => Promise<boolean>;
   resetSetupFlow: () => Promise<void>;
   wasSetupCompleted: () => Promise<{ hasParent2: boolean | 'skipped'; hasBaby: boolean | 'skipped'; setupComplete: boolean }>;
   setSetupCompleteCallback: (callback: (() => Promise<void>) | null) => void;
@@ -111,7 +112,6 @@ interface AuthContextType extends AuthState {
   getBiometricTypeInfo: () => { type: string; icon: string };
   clearAllLocks: () => void;
   getCurrentUserProfile: () => UserProfile | null;
-  // Community profile methods — unified with auth
   updateCommunityProfile: (updates: { username?: string; handle?: string; bio?: string; avatar?: string; displayName?: string }) => Promise<boolean>;
   getCommunityProfile: () => Promise<{ username: string; handle: string; bio: string; avatar: string; displayName: string; stats: any; selectedTopics: string[] } | null>;
   updateCommunityStats: (stats: Partial<UserProfile['communityStats']>) => Promise<boolean>;
@@ -193,16 +193,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const setupCompleteCallbackRef = useRef<(() => Promise<void>) | null>(null);
   
   const signInLock = useRef(false);
-  const signInLockTimer = useRef<NodeJS.Timeout | null>(null);
+  const signInLockTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const biometricLoginLock = useRef(false);
-  const biometricLoginTimer = useRef<NodeJS.Timeout | null>(null);
+  const biometricLoginTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSignInTime = useRef(0);
   
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   const lastActiveTimeRef = useRef<number>(Date.now());
   const isAuthenticatedRef = useRef<boolean>(false);
   
-  // Username registry for community — persisted to AsyncStorage
   const usernameRegistryRef = useRef<Record<string, string>>({});
   const usernameLockRef = useRef(false);
 
@@ -254,7 +253,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => subscription.remove();
   }, []);
 
-  // Load username registry from storage
   const loadUsernameRegistry = useCallback(async () => {
     try {
       const registry = await AsyncStorage.getItem(ASYNC_KEYS.USERNAME_REGISTRY);
@@ -266,7 +264,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  // Save username registry to storage
   const saveUsernameRegistry = useCallback(async (registry: Record<string, string>) => {
     try {
       usernameRegistryRef.current = registry;
@@ -278,6 +275,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
+  // ─── CRITICAL FIX: Single init effect with proper sequencing ─────────
   useEffect(() => {
     if (initComplete.current) return;
     
@@ -286,6 +284,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await new Promise(resolve => setTimeout(resolve, 100));
         await loadUsernameRegistry();
         
+        // Read ALL state keys in parallel
         const [
           token,
           userProfileStr,
@@ -314,7 +313,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         let userProfile = userProfileStr ? JSON.parse(userProfileStr) : null;
         
-        // Load community profile data if exists — MERGED with auth profile
         if (userProfile) {
           const [commUsername, commHandle, commBio, commAvatar, commDisplayName, commStats, commTopics] = await Promise.all([
             AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_USERNAME),
@@ -327,7 +325,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           ]);
           
           const baseName = userProfile.fullName || 'Parent';
-          const baseHandle = `@${baseName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
+          const baseHandle = `@${baseName.toLowerCase().replace(/\\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
           
           userProfile = {
             ...userProfile,
@@ -369,7 +367,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                        hasBabyStr === 'true' ? true :
                        hasBabyStr === 'skipped' ? 'skipped' : false;
 
-        const isSetupComplete = (parent2Completed !== null && babyCompleted !== null) || setupComplete === 'true';
+        // Setup is complete if BOTH steps have been addressed (completed OR skipped)
+        const p2Done = parent2Completed !== null;
+        const bDone = babyCompleted !== null;
+        const isSetupComplete = setupComplete === 'true' || (p2Done && bDone);
+
+        // ─── CRITICAL: Onboarding is "complete" if user has seen it OR has a token ──
+        // This prevents returning to onboarding for logged-in users
+        const isOnboardingDone = onboardingComplete === 'true' || hasSeenOnboarding === 'true' || !!token;
 
         if (isMounted.current) {
           setState({
@@ -377,8 +382,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             isAuthenticated: !!token,
             userToken: token,
             userProfile,
-            onboardingComplete: onboardingComplete === 'true',
-            hasSeenOnboarding: hasSeenOnboarding === 'true',
+            onboardingComplete: isOnboardingDone,
+            hasSeenOnboarding: hasSeenOnboarding === 'true' || !!token,
             isBiometricAvailable: biometricAvailable,
             isBiometricEnabled: biometricEnabled === 'true',
             isBiometricLoginEnabled: biometricLoginEnabled === 'true',
@@ -403,7 +408,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const markOnboardingSeen = useCallback(async () => {
     try {
       await AsyncStorage.setItem(ASYNC_KEYS.HAS_SEEN_ONBOARDING, 'true');
-      if (isMounted.current) setState(prev => ({ ...prev, hasSeenOnboarding: true }));
+      await AsyncStorage.setItem(ASYNC_KEYS.ONBOARDING_COMPLETE, 'true');
+      if (isMounted.current) setState(prev => ({ ...prev, hasSeenOnboarding: true, onboardingComplete: true }));
     } catch (error) { console.error('Error marking onboarding:', error); }
   }, []);
 
@@ -490,10 +496,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) { return false; }
   }, []);
 
+  // ─── FIX: Remove sweetAlert dependency, use console + return false ─────
   const performSignInInternal = useCallback(async (email: string, password: string, isBiometric: boolean = false): Promise<boolean> => {
     try {
       if (!email || !password) {
-        Alert.alert('Error', 'Please enter both email and password');
+        console.warn('[Auth] Sign in failed: missing email or password');
         return false;
       }
 
@@ -502,7 +509,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const token = `auth_token_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       
-      // Load existing community profile or create defaults
       const [commUsername, commHandle, commBio, commAvatar, commDisplayName, commStats, commTopics] = await Promise.all([
         AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_USERNAME),
         AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_HANDLE),
@@ -514,7 +520,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       ]);
       
       const baseName = email.split('@')[0];
-      const baseHandle = `@${baseName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
+      const baseHandle = `@${baseName.toLowerCase().replace(/\\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
       
       const userProfile: UserProfile = {
         id: userId,
@@ -538,11 +544,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       ]);
       
       if (!tokenStored || !profileStored) {
-        Alert.alert('Error', 'Failed to save login data');
+        console.warn('[Auth] Failed to save login data to secure storage');
         return false;
       }
 
+      // ─── CRITICAL: Mark onboarding as complete on sign in ──────────────
       await AsyncStorage.setItem(ASYNC_KEYS.ONBOARDING_COMPLETE, 'true');
+      await AsyncStorage.setItem(ASYNC_KEYS.HAS_SEEN_ONBOARDING, 'true');
 
       if (isMounted.current) {
         setState(prev => ({
@@ -551,11 +559,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           userToken: token,
           userProfile,
           onboardingComplete: true,
+          hasSeenOnboarding: true,
         }));
       }
       return true;
     } catch (error) {
-      Alert.alert('Error', 'Failed to sign in');
+      console.error('[Auth] Sign in error:', error);
       return false;
     }
   }, []);
@@ -581,7 +590,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       const token = `social_token_${socialUser.provider}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       
-      // Load existing community profile or create defaults
       const [commUsername, commHandle, commBio, commAvatar, commDisplayName, commStats, commTopics] = await Promise.all([
         AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_USERNAME),
         AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_HANDLE),
@@ -593,7 +601,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       ]);
       
       const baseName = socialUser.fullName;
-      const baseHandle = `@${baseName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
+      const baseHandle = `@${baseName.toLowerCase().replace(/\\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
       
       const userProfile: UserProfile = {
         id: socialUser.id,
@@ -618,6 +626,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(userProfile)),
         secureStorage.setItem(SECURE_KEYS.SOCIAL_PROVIDER, socialUser.provider),
         AsyncStorage.setItem(ASYNC_KEYS.ONBOARDING_COMPLETE, 'true'),
+        AsyncStorage.setItem(ASYNC_KEYS.HAS_SEEN_ONBOARDING, 'true'),
       ]);
 
       if (isMounted.current) {
@@ -627,6 +636,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           userToken: token,
           userProfile,
           onboardingComplete: true,
+          hasSeenOnboarding: true,
         }));
       }
 
@@ -634,7 +644,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return true;
     } catch (error) {
       console.error('Social sign in error:', error);
-      Alert.alert('Error', 'Social sign in failed');
       return false;
     } finally {
       releaseSignInLock();
@@ -649,7 +658,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const token = `auth_token_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       
-      const handle = `@${fullName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
+      const handle = `@${fullName.toLowerCase().replace(/\\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
       
       const userProfile: UserProfile = {
         id: userId,
@@ -671,6 +680,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         secureStorage.setItem(SECURE_KEYS.AUTH_TOKEN, token),
         secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(userProfile)),
         AsyncStorage.setItem(ASYNC_KEYS.ONBOARDING_COMPLETE, 'true'),
+        AsyncStorage.setItem(ASYNC_KEYS.HAS_SEEN_ONBOARDING, 'true'),
         AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_USERNAME, fullName),
         AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_HANDLE, handle),
         AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_DISPLAY_NAME, fullName),
@@ -683,13 +693,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           userToken: token,
           userProfile,
           onboardingComplete: true,
+          hasSeenOnboarding: true,
         }));
       }
 
       lastSignInTime.current = Date.now();
       return true;
     } catch (error) {
-      Alert.alert('Error', 'Failed to create account');
+      console.error('Sign up error:', error);
       return false;
     } finally { releaseSignInLock(); }
   }, [acquireSignInLock, releaseSignInLock]);
@@ -706,7 +717,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       ]);
 
       if (!storedEmail || !storedPassword) {
-        Alert.alert('Setup Required', `Please log in with your password first to enable ${state.biometricTypeName} login.`);
+        console.warn('[Auth] No biometric credentials stored');
         return false;
       }
 
@@ -757,7 +768,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           isAuthenticated: false,
           userToken: null,
           userProfile: null,
-          onboardingComplete: false,
+          // ─── FIX: Keep onboarding seen so user doesn't re-see it ─────
+          onboardingComplete: hasSeenOnboarding === 'true',
           hasSeenOnboarding: hasSeenOnboarding === 'true',
           isBiometricEnabled: false,
           isBiometricLoginEnabled: biometricLoginEnabled === 'true',
@@ -789,8 +801,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) { return false; }
   }, [state.userProfile]);
 
-  // ==================== COMMUNITY PROFILE METHODS ====================
-  // These are unified with auth so community works seamlessly
 
   const updateCommunityProfile = useCallback(async (updates: { username?: string; handle?: string; bio?: string; avatar?: string; displayName?: string }): Promise<boolean> => {
     try {
@@ -813,7 +823,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       if (updates.avatar !== undefined) {
         updatedProfile.communityAvatar = updates.avatar;
-        // Also update main avatar if not set
         if (!updatedProfile.avatar) {
           updatedProfile.avatar = updates.avatar;
         }
@@ -842,7 +851,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!state.userProfile) return null;
       return {
         username: state.userProfile.communityUsername || state.userProfile.fullName,
-        handle: state.userProfile.communityHandle || `@${state.userProfile.fullName.toLowerCase().replace(/\s+/g, '_')}`,
+        handle: state.userProfile.communityHandle || `@${state.userProfile.fullName.toLowerCase().replace(/\\s+/g, '_')}`,
         bio: state.userProfile.communityBio || '',
         avatar: state.userProfile.communityAvatar || state.userProfile.avatar || '👤',
         displayName: state.userProfile.communityDisplayName || state.userProfile.fullName,
@@ -904,7 +913,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { available: false, message: 'This username is reserved' };
     }
     
-    // Check if current user already owns it
     const currentUserId = state.userProfile?.id;
     const existingUserId = usernameRegistryRef.current[trimmed];
     if (existingUserId && existingUserId !== currentUserId) {
@@ -918,7 +926,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       if (!state.userProfile) return false;
       
-      // Acquire lock
       while (usernameLockRef.current) {
         await new Promise(resolve => setTimeout(resolve, 50));
       }
@@ -932,7 +939,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const newRegistry = { ...usernameRegistryRef.current, [trimmed]: state.userProfile.id };
         await saveUsernameRegistry(newRegistry);
         
-        // Update profile with new username
         await updateCommunityProfile({ 
           username: trimmed,
           handle: `@${trimmed}` 
@@ -954,7 +960,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { success: false, message: 'Not authenticated' };
       }
       
-      // Acquire lock
       while (usernameLockRef.current) {
         await new Promise(resolve => setTimeout(resolve, 50));
       }
@@ -973,7 +978,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return { success: false, message: check.message };
         }
         
-        // Remove old username from registry
         const newRegistry = { ...usernameRegistryRef.current };
         if (currentUsername) {
           delete newRegistry[currentUsername];
@@ -982,7 +986,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         
         await saveUsernameRegistry(newRegistry);
         
-        // Update profile
         await updateCommunityProfile({ 
           username: trimmed,
           handle: `@${trimmed}` 
@@ -1002,7 +1005,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       if (!state.userProfile) return false;
       
-      // Normalize image URI
       let normalizedUri = avatarUri;
       if (avatarUri.startsWith('file://')) {
         normalizedUri = avatarUri;
@@ -1012,7 +1014,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       await updateCommunityProfile({ avatar: normalizedUri });
       
-      // Also update main profile avatar
       const updated = { ...state.userProfile, avatar: normalizedUri };
       await secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(updated));
       if (isMounted.current) setState(prev => ({ ...prev, userProfile: updated }));
@@ -1028,7 +1029,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setupCompleteCallbackRef.current = callback;
   }, []);
 
-  const completeSetup = useCallback(async (step: 'parent2' | 'baby') => {
+  const completeSetup = useCallback(async (step: 'parent2' | 'baby'): Promise<boolean> => {
     try {
       if (step === 'parent2') {
         await Promise.all([
@@ -1043,13 +1044,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ]);
         if (isMounted.current) setState(prev => ({ ...prev, hasBaby: true }));
       }
-      
+
+      // Re-read both keys fresh to determine if setup is truly complete
       const [hasP2, hasB] = await Promise.all([
         AsyncStorage.getItem(ASYNC_KEYS.PARENT2_COMPLETED),
         AsyncStorage.getItem(ASYNC_KEYS.BABY_COMPLETED),
       ]);
-      
-      const setupDone = hasP2 !== null && hasB !== null;
+
+      const p2Done = hasP2 !== null;
+      const bDone = hasB !== null;
+      const setupDone = p2Done && bDone;
+
       if (setupDone) {
         await AsyncStorage.setItem(ASYNC_KEYS.SETUP_COMPLETE, 'true');
         if (isMounted.current) setState(prev => ({ ...prev, setupComplete: true }));
@@ -1057,7 +1062,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           try { await setupCompleteCallbackRef.current(); } catch (error) {}
         }
       }
-    } catch (error) {}
+
+      return true;
+    } catch (error) {
+      console.error('completeSetup error:', error);
+      return false;
+    }
   }, []);
 
   const skipSetup = useCallback(async (step: 'parent2' | 'baby') => {
@@ -1076,8 +1086,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (isMounted.current) setState(prev => ({ ...prev, hasBaby: 'skipped' }));
       }
       
-      await AsyncStorage.setItem(ASYNC_KEYS.SETUP_COMPLETE, 'true');
-      if (isMounted.current) setState(prev => ({ ...prev, setupComplete: true }));
+      // After skipping, check if the OTHER step is also done
+      const [hasP2, hasB] = await Promise.all([
+        AsyncStorage.getItem(ASYNC_KEYS.PARENT2_COMPLETED),
+        AsyncStorage.getItem(ASYNC_KEYS.BABY_COMPLETED),
+      ]);
+      
+      const p2Done = hasP2 !== null;
+      const bDone = hasB !== null;
+      
+      if (p2Done && bDone) {
+        await AsyncStorage.setItem(ASYNC_KEYS.SETUP_COMPLETE, 'true');
+        if (isMounted.current) setState(prev => ({ ...prev, setupComplete: true }));
+      }
       
       if (setupCompleteCallbackRef.current) {
         try { await setupCompleteCallbackRef.current(); } catch (error) {}
@@ -1092,9 +1113,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         AsyncStorage.getItem(ASYNC_KEYS.BABY_COMPLETED),
         AsyncStorage.getItem(ASYNC_KEYS.SETUP_COMPLETE),
       ]);
+      
       const hasParent2 = hasParent2Str === 'true' ? true : hasParent2Str === 'skipped' ? 'skipped' : false;
       const hasBaby = hasBabyStr === 'true' ? true : hasBabyStr === 'skipped' ? 'skipped' : false;
-      return { hasParent2, hasBaby, setupComplete: setupComplete === 'true' || (hasParent2Str !== null && hasBabyStr !== null) };
+      const p2Done = hasParent2Str !== null;
+      const bDone = hasBabyStr !== null;
+      const isComplete = setupComplete === 'true' || (p2Done && bDone);
+      
+      return { hasParent2, hasBaby, setupComplete: isComplete };
     } catch (error) { return { hasParent2: false, hasBaby: false, setupComplete: false }; }
   }, []);
 

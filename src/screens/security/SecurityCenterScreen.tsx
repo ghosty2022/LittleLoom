@@ -63,7 +63,6 @@ const SECURITY_QUESTIONS_POOL = [
   "What is your favorite color?",
 ];
 
-// ─── Types ───
 type Section = 'dashboard' | 'pin' | 'questions' | 'biometric' | 'timeout';
 type PinMode = 'create' | 'change' | 'deactivate' | 'verify';
 type PinStep = 'input' | 'confirm' | 'success';
@@ -73,7 +72,6 @@ interface SecurityQuestion {
   answerHash: string;
 }
 
-// ─── Helper Components ───
 const ReanimatedView = AnimatedRe.View;
 
 const SecurityCard: React.FC<{
@@ -128,7 +126,6 @@ const SectionHeader: React.FC<{ title: string; isDark: boolean }> = ({ title, is
   <Text style={[styles.sectionHeader, { color: isDark ? '#94a3b8' : '#64748b' }]}>{title}</Text>
 );
 
-// ─── Main Screen ───
 export default function SecurityCenterScreen({ navigation, route }: SecurityCenterScreenProps) {
   const {
     settings: securitySettings,
@@ -157,12 +154,10 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
   const { toast, error: showError, success: showSuccess, confirm: showConfirm } = useSweetAlert();
   const insets = useSafeAreaInsets();
 
-  // ─── State ───
   const [activeSection, setActiveSection] = useState<Section>('dashboard');
   const [storedQuestions, setStoredQuestions] = useState<SecurityQuestion[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  // PIN state
   const [pinMode, setPinMode] = useState<PinMode>('create');
   const [pinStep, setPinStep] = useState<PinStep>('input');
   const [pinInput, setPinInput] = useState('');
@@ -171,7 +166,6 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
   const [showPinHint, setShowPinHint] = useState(false);
   const shakeAnim = useRef(new Animated.Value(0)).current;
 
-  // Security questions state
   const [selectedQuestionIndices, setSelectedQuestionIndices] = useState<number[]>([-1, -1, -1]);
   const [questionAnswers, setQuestionAnswers] = useState(['', '', '']);
   const [verifyAnswers, setVerifyAnswers] = useState(['', '', '']);
@@ -179,13 +173,10 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
   const [showQuestionPicker, setShowQuestionPicker] = useState(false);
   const [activeQuestionSlot, setActiveQuestionSlot] = useState(0);
 
-  // Biometric state
   const [biometricLoading, setBiometricLoading] = useState(false);
 
-  // Timeout state
   const [selectedTimeout, setSelectedTimeout] = useState(securitySettings.autoLockTimeout);
 
-  // ─── Effects ───
   useEffect(() => {
     resetUnlockLock();
     loadStoredQuestions();
@@ -208,7 +199,6 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     }
   };
 
-  // ─── Animations ───
   const shake = useCallback(() => {
     triggerHaptic('error');
     Animated.sequence([
@@ -225,7 +215,6 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     width: `${interpolate(progressValue.value, [0, 1], [0, 100])}%`,
   }));
 
-  // ─── PIN Logic ───
   const handlePinDigit = (digit: string) => {
     if (isLoading) return;
     if (pinInput.length < PIN_LENGTH) {
@@ -294,7 +283,6 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
               showSuccess('PIN Set', 'Your PIN is now active');
               setPinMode('verify');
               setPinStep('success');
-              // Prompt to set security questions if not set
               if (!hasSecurityQuestions()) {
                 setTimeout(() => {
                   setActiveSection('questions');
@@ -366,7 +354,6 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     }
   };
 
-  // ─── Security Questions Logic ───
   const handleSaveQuestions = async () => {
     if (selectedQuestionIndices.some(q => q === -1)) {
       showError('Incomplete', 'Select all 3 questions');
@@ -419,7 +406,6 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     }
   };
 
-  // ─── Biometric Logic ───
   const handleToggleBiometric = async () => {
     setBiometricLoading(true);
     try {
@@ -437,14 +423,12 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     }
   };
 
-  // ─── Timeout Logic ───
   const handleTimeoutChange = async (minutes: number) => {
     setSelectedTimeout(minutes);
     await updateAutoLockTimeout(minutes);
     showSuccess('Updated', `Auto-lock set to ${minutes} minute${minutes > 1 ? 's' : ''}`);
   };
 
-  // ─── Render Helpers ───
   const getSecurityScore = () => {
     let score = 0;
     if (securitySettings.isPinEnabled) score += 25;
@@ -463,7 +447,6 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
   const score = getSecurityScore();
   const scoreLabel = getScoreLabel(score);
 
-  // ─── Dashboard ───
   const renderDashboard = () => (
     <AnimatedRe.View entering={FadeInUp.duration(500)} style={styles.section}>
       {/* Security Score Card */}
@@ -604,7 +587,6 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     </AnimatedRe.View>
   );
 
-  // ─── PIN Section ───
   const renderPinSection = () => {
     const isSetup = pinMode === 'create';
     const isChange = pinMode === 'change';
@@ -739,7 +721,6 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     );
   };
 
-  // ─── Security Questions Section ───
   const renderQuestionsSection = () => (
     <AnimatedRe.View entering={SlideInRight.duration(400)} exiting={SlideOutLeft.duration(300)} style={styles.section}>
       <View style={styles.pinHeader}>
@@ -873,7 +854,6 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     </AnimatedRe.View>
   );
 
-  // ─── Biometric Section ───
   const renderBiometricSection = () => {
     const bioName = getBiometricTypeName();
     const bioConfig = availableBiometricTypes[0];
@@ -933,7 +913,6 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     );
   };
 
-  // ─── Timeout Section ───
   const renderTimeoutSection = () => (
     <AnimatedRe.View entering={SlideInRight.duration(400)} exiting={SlideOutLeft.duration(300)} style={styles.section}>
       <View style={styles.pinHeader}>
@@ -982,7 +961,6 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     </AnimatedRe.View>
   );
 
-  // ─── Main Render ───
   return (
     <View style={[styles.container, { backgroundColor: isDark ? '#0a0a0a' : '#f8faff' }]}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
@@ -1013,7 +991,6 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
   );
 }
 
-// ─── Styles ───
 const styles = StyleSheet.create({
   container: { flex: 1 },
   gradient: { ...StyleSheet.absoluteFillObject, opacity: 0.15 },
@@ -1022,7 +999,6 @@ const styles = StyleSheet.create({
   section: { paddingTop: 8 },
   sectionHeader: { fontSize: 13, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.2, marginTop: 24, marginBottom: 12, marginLeft: 4 },
 
-  // Score Card
   scoreCard: { borderRadius: 24, padding: 24, marginBottom: 8, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' },
   scoreCardDark: { borderColor: 'rgba(255,255,255,0.08)' },
   scoreHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
@@ -1035,7 +1011,6 @@ const styles = StyleSheet.create({
   scorePercent: { fontSize: 16, fontWeight: '800', minWidth: 40 },
   scoreHint: { fontSize: 13, marginTop: 12, lineHeight: 18 },
 
-  // Security Cards
   card: { borderRadius: 20, marginBottom: 12, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.15, shadowRadius: 24, elevation: 8 },
   cardDark: { borderColor: 'rgba(255,255,255,0.06)' },
   cardGlow: { ...StyleSheet.absoluteFillObject, opacity: 0.4 },
@@ -1048,7 +1023,6 @@ const styles = StyleSheet.create({
   statusDot: { width: 7, height: 7, borderRadius: 4 },
   statusText: { fontSize: 12, fontWeight: '700' },
 
-  // PIN Section
   pinHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, paddingTop: 8 },
   backBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   pinHeaderTitle: { fontSize: 18, fontWeight: '800', letterSpacing: -0.3 },
@@ -1068,7 +1042,6 @@ const styles = StyleSheet.create({
   pinActionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 4 },
   pinActionText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 
-  // Questions
   questionsContainer: { gap: 14 },
   questionsInfo: { fontSize: 14, textAlign: 'center', marginBottom: 8, lineHeight: 20 },
   questionCard: { backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 18, padding: 16, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' },
@@ -1083,7 +1056,6 @@ const styles = StyleSheet.create({
   actionBtn: { borderRadius: 18, paddingVertical: 16, alignItems: 'center', marginTop: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 12, elevation: 5 },
   actionBtnText: { color: '#fff', fontSize: 16, fontWeight: '700', letterSpacing: 0.5 },
 
-  // Modal / Picker
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   pickerSheet: { backgroundColor: '#fff', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 40, maxHeight: height * 0.6 },
   pickerSheetDark: { backgroundColor: '#1e293b' },
@@ -1092,7 +1064,6 @@ const styles = StyleSheet.create({
   pickerItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14, paddingHorizontal: 14, borderRadius: 12, marginBottom: 4 },
   pickerItemText: { fontSize: 15, fontWeight: '500', flex: 1, marginRight: 8, lineHeight: 20 },
 
-  // Biometric
   bioCard: { borderRadius: 28, padding: 28, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)', overflow: 'hidden' },
   bioCardDark: { borderColor: 'rgba(255,255,255,0.08)' },
   bioIconCircle: { width: 80, height: 80, borderRadius: 40, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
@@ -1103,7 +1074,6 @@ const styles = StyleSheet.create({
   bioPriorityBox: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginTop: 16, padding: 14, backgroundColor: 'rgba(102,126,234,0.08)', borderRadius: 14, width: '100%' },
   bioPriorityText: { fontSize: 13, lineHeight: 18, flex: 1 },
 
-  // Timeout
   timeoutDesc: { fontSize: 14, textAlign: 'center', marginBottom: 20, lineHeight: 20, paddingHorizontal: 20 },
   timeoutGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'center', marginBottom: 24 },
   timeoutOption: { width: (width - 72) / 3, paddingVertical: 16, borderRadius: 16, alignItems: 'center', borderWidth: 2, borderColor: 'rgba(0,0,0,0.08)', backgroundColor: 'rgba(255,255,255,0.9)' },

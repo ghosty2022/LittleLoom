@@ -1,4 +1,3 @@
-// src/components/CircularProgress.tsx
 import React, { memo, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
@@ -50,7 +49,6 @@ export const CircularProgress = memo<CircularProgressProps>(({
   const circumference = radius * 2 * Math.PI;
   const animatedProgress = useSharedValue(0);
 
-  // 🎨 Smart color resolution with fallbacks
   const progressColor = color || 
     (section === 'main' && themeColors?.primary) || 
     (section === 'community' && '#f5576c') ||
@@ -61,7 +59,6 @@ export const CircularProgress = memo<CircularProgressProps>(({
 
   const trackBgColor = trackColor || (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)');
 
-  // ✅ Fixed: Proper animation with completion callback
   useEffect(() => {
     const targetProgress = Math.min(Math.max(progress, 0), 100) / 100;
     
@@ -85,12 +82,10 @@ export const CircularProgress = memo<CircularProgressProps>(({
     return () => clearTimeout(timer);
   }, [progress, delay, shouldReduceMotion, onComplete]);
 
-  // ✅ Fixed: Animated props for SVG
   const animatedProps = useAnimatedProps(() => ({
     strokeDashoffset: circumference * (1 - animatedProgress.value),
   }));
 
-  // Glow effect style
   const glowStyle = showGlow ? {
     shadowColor: progressColor,
     shadowOffset: { width: 0, height: 0 },

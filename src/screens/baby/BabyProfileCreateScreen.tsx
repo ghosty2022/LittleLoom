@@ -1,8 +1,3 @@
-// src/screens/baby/CreateBabyProfileScreen.tsx
-// FIXED: Image properly persisted using baby ID after creation
-// FIXED: Setup completion flow with proper error handling
-// FIXED: Avatar state management with temp vs permanent URIs
-
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
@@ -13,12 +8,12 @@ import {
   Platform,
   KeyboardAvoidingView,
   Dimensions,
-  Alert,
   StatusBar,
   Pressable,
   Modal,
   ActivityIndicator,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -26,15 +21,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   FadeInUp,
   FadeIn,
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-  runOnJS,
 } from 'react-native-reanimated';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import { useAuth } from '../../context/AuthContext';
+import { useSweetAlert } from '../../hooks/useSweetAlert';
 import { useBaby } from '../../context/BabyContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -64,8 +56,27 @@ const copyImageToPermanent = async (
 ): Promise<string> => {
   await ensureDirExists();
   const permanentUri = getPermanentImagePath(babyId, prefix);
-  await FileSystem.copyAsync({ from: tempUri, to: permanentUri });
-  return permanentUri;
+
+  try {
+    await FileSystem.copyAsync({ from: tempUri, to: permanentUri });
+
+    const fileInfo = await FileSystem.getInfoAsync(permanentUri);
+    if (!fileInfo.exists) {
+      throw new Error('File copy verification failed');
+    }
+
+    return permanentUri;
+  } catch (error) {
+    console.error('Failed to copy image:', error);
+    try {
+      await FileSystem.moveAsync({ from: tempUri, to: permanentUri });
+      const fileInfo = await FileSystem.getInfoAsync(permanentUri);
+      if (fileInfo.exists) return permanentUri;
+    } catch (moveError) {
+      console.error('Move fallback also failed:', moveError);
+    }
+    throw error;
+  }
 };
 
 const isImageUri = (value: string | undefined | null): boolean => {
@@ -95,78 +106,6 @@ const isEmoji = (value: string | undefined | null): boolean => {
   return true;
 };
 
-/* ------------------------------------------------------------------ */
-/*  SweetAlert — fully animated, self‑dismissing toast                 */
-/* ------------------------------------------------------------------ */
-type AlertType = 'success' | 'error' | 'info' | 'warning';
-
-interface SweetAlertProps {
-  visible: boolean;
-  type: AlertType;
-  title: string;
-  message: string;
-  onClose: () => void;
-  isDark: boolean;
-}
-
-const ALERT_CONFIG: Record<AlertType, { colors: [string, string]; icon: keyof typeof Ionicons.glyphMap }> = {
-  success: { colors: ['#11998e', '#38ef7d'], icon: 'checkmark-circle' },
-  error:   { colors: ['#ef4444', '#f87171'], icon: 'alert-circle' },
-  info:    { colors: ['#3b82f6', '#60a5fa'], icon: 'information-circle' },
-  warning: { colors: ['#f59e0b', '#fbbf24'], icon: 'warning' },
-};
-
-const SweetAlert = ({ visible, type, title, message, onClose, isDark }: SweetAlertProps) => {
-  const opacity = useSharedValue(0);
-  const translateY = useSharedValue(-20);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-    transform: [{ translateY: translateY.value }],
-  }));
-
-  useEffect(() => {
-    if (visible) {
-      opacity.value = withTiming(1, { duration: 300 });
-      translateY.value = withTiming(0, { duration: 300 });
-
-      timerRef.current = setTimeout(() => {
-        opacity.value = withTiming(0, { duration: 300 }, (finished) => {
-          if (finished) {
-            runOnJS(onClose)();
-          }
-        });
-        translateY.value = withTiming(-20, { duration: 300 });
-      }, 3000);
-    }
-
-    return () => {
-      if (timerRef.current) {
-        clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
-    };
-  }, [visible]);
-
-  if (!visible) return null;
-
-  const config = ALERT_CONFIG[type] ?? ALERT_CONFIG.success;
-
-  return (
-    <Animated.View style={[styles.alertWrapper, animatedStyle]} pointerEvents="none">
-      <View style={[styles.alertContainer, { backgroundColor: isDark ? '#1a1a2e' : '#fff' }]}>
-        <LinearGradient colors={config.colors} style={styles.alertIconBg}>
-          <Ionicons name={config.icon} size={28} color="#fff" />
-        </LinearGradient>
-        <View style={styles.alertTextContainer}>
-          <Text style={[styles.alertTitle, { color: isDark ? '#fff' : '#1e293b' }]}>{title}</Text>
-          <Text style={styles.alertMessage}>{message}</Text>
-        </View>
-      </View>
-    </Animated.View>
-  );
-};
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
@@ -187,16 +126,17 @@ const BLOOD_TYPES = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
-type CreateBabyProfileScreenProps = NativeStackScreenProps<RootStackParamList, 'CreateBabyProfile'>;
+type BabyProfileCreateScreenProps = NativeStackScreenProps<RootStackParamList, 'CreateBabyProfile'>;
 
 /* ------------------------------------------------------------------ */
 /*  Main Component                                                     */
 /* ------------------------------------------------------------------ */
-export default function CreateBabyProfileScreen({ navigation }: CreateBabyProfileScreenProps) {
+export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreateScreenProps) {
   const insets = useSafeAreaInsets();
   const { darkMode: isDark, themeColors, triggerHaptic, shouldReduceMotion } = useCustomization();
   const { userProfile, completeSetup } = useAuth();
-  const { createBaby, updateBaby, calculateAge } = useBaby();
+  const { createBaby, updateBaby, calculateAge, loadBabies } = useBaby();
+  const { error: showError, success: showSuccess } = useSweetAlert();
 
   /* ---- Form state ---- */
   const [name, setName] = useState('');
@@ -214,13 +154,11 @@ export default function CreateBabyProfileScreen({ navigation }: CreateBabyProfil
   const [currentStep, setCurrentStep] = useState(1);
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
 
-  /* ---- Alert state ---- */
-  const [alert, setAlert] = useState<{
-    visible: boolean;
-    type: AlertType;
-    title: string;
-    message: string;
-  }>({ visible: false, type: 'success', title: '', message: '' });
+  /* ---- CRASH FIX: Image picker request guard ---- */
+  const imagePickerLock = useRef(false);
+  const isMounted = useRef(true);
+
+
 
   /* ---- Refs ---- */
   const scrollViewRef = useRef<AutoHideScrollView>(null);
@@ -229,6 +167,7 @@ export default function CreateBabyProfileScreen({ navigation }: CreateBabyProfil
   /* ---- Derived / Memoized ---- */
   const ageDisplay = useMemo(() => calculateAge(birthDate.toISOString()), [birthDate, calculateAge]);
 
+  /* FIX #1: Safely resolve gradient colors with fallback for undefined secondary */
   const gradientColors = useMemo<[string, string, string]>(() => {
     if (isDark) return ['#0a0a0a', '#1a1a2e', '#16213e'];
     const c = themeColors.colors;
@@ -238,16 +177,27 @@ export default function CreateBabyProfileScreen({ navigation }: CreateBabyProfil
     return ['#667eea', '#764ba2', '#f093fb'];
   }, [isDark, themeColors]);
 
+  /* FIX #1: Safely resolve secondary color for buttons */
+  const secondaryColor = useMemo(() => {
+    const c = themeColors.colors;
+    if (Array.isArray(c) && c.length >= 2) {
+      return c[1];
+    }
+    return themeColors.secondary || themeColors.primary || '#764ba2';
+  }, [themeColors]);
+
   const statusBarStyle = useMemo(() => (isDark ? 'light-content' : 'dark-content'), [isDark]);
 
-  /* ---- Helpers ---- */
-  const showToast = useCallback((type: AlertType, title: string, message: string) => {
-    setAlert({ visible: true, type, title, message });
+  /* ---- Lifecycle ---- */
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+      imagePickerLock.current = false;
+    };
   }, []);
 
-  const hideToast = useCallback(() => {
-    setAlert((prev) => ({ ...prev, visible: false }));
-  }, []);
+
 
   /* ---- Date handling ---- */
   const onDateChange = useCallback(
@@ -271,9 +221,33 @@ export default function CreateBabyProfileScreen({ navigation }: CreateBabyProfil
     setShowDatePicker(false);
   }, []);
 
-  /* ---- Image handling ---- */
+  /* ---- CRASH FIX: Image handling with getPendingResultAsync and lock guard ---- */
   const pickImage = useCallback(async () => {
+    if (imagePickerLock.current) {
+      console.log('Image picker already running, skipping');
+      return;
+    }
+    imagePickerLock.current = true;
+
     try {
+      if (Platform.OS === 'android') {
+        try {
+          const pendingResults = await ImagePicker.getPendingResultAsync();
+          if (pendingResults && pendingResults.length > 0 && !pendingResults[0].canceled) {
+            const pending = pendingResults[0];
+            if (pending.assets && pending.assets[0]?.uri) {
+              setAvatar(pending.assets[0].uri);
+              setShowAvatarPicker(false);
+              triggerHaptic('medium');
+              imagePickerLock.current = false;
+              return;
+            }
+          }
+        } catch (pendingError) {
+          console.log('No pending results:', pendingError);
+        }
+      }
+
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
@@ -281,22 +255,49 @@ export default function CreateBabyProfileScreen({ navigation }: CreateBabyProfil
         quality: 0.8,
       });
 
-      if (!result.canceled && result.assets[0]?.uri) {
+      if (!result.canceled && result.assets && result.assets[0]?.uri) {
         setAvatar(result.assets[0].uri);
         setShowAvatarPicker(false);
         triggerHaptic('medium');
       }
     } catch (error) {
       console.error('Image picker error:', error);
-      showToast('error', 'Error', 'Failed to pick image');
+      showError('Failed to pick image');
+    } finally {
+      imagePickerLock.current = false;
     }
-  }, [showToast, triggerHaptic]);
+  }, [showError, triggerHaptic]);
 
   const takePhoto = useCallback(async () => {
+    if (imagePickerLock.current) {
+      console.log('Camera already running, skipping');
+      return;
+    }
+    imagePickerLock.current = true;
+
     try {
+      if (Platform.OS === 'android') {
+        try {
+          const pendingResults = await ImagePicker.getPendingResultAsync();
+          if (pendingResults && pendingResults.length > 0 && !pendingResults[0].canceled) {
+            const pending = pendingResults[0];
+            if (pending.assets && pending.assets[0]?.uri) {
+              setAvatar(pending.assets[0].uri);
+              setShowAvatarPicker(false);
+              triggerHaptic('medium');
+              imagePickerLock.current = false;
+              return;
+            }
+          }
+        } catch (pendingError) {
+          console.log('No pending camera results:', pendingError);
+        }
+      }
+
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
-        showToast('error', 'Permission Required', 'Please allow camera access in settings');
+        showError('Please allow camera access in settings');
+        imagePickerLock.current = false;
         return;
       }
 
@@ -306,56 +307,58 @@ export default function CreateBabyProfileScreen({ navigation }: CreateBabyProfil
         quality: 0.8,
       });
 
-      if (!result.canceled && result.assets[0]?.uri) {
+      if (!result.canceled && result.assets && result.assets[0]?.uri) {
         setAvatar(result.assets[0].uri);
         setShowAvatarPicker(false);
         triggerHaptic('medium');
       }
     } catch (error) {
       console.error('Camera error:', error);
-      showToast('error', 'Error', 'Failed to take photo');
+      showError('Failed to take photo');
+    } finally {
+      imagePickerLock.current = false;
     }
-  }, [showToast, triggerHaptic]);
+  }, [showError, triggerHaptic]);
 
   /* ---- Validation ---- */
   const validateStep1 = useCallback((): boolean => {
     const trimmed = name.trim();
     if (!trimmed) {
-      showToast('error', 'Missing Information', "Please enter your baby's name");
+      showError("Please enter your baby's name");
       return false;
     }
     if (trimmed.length < 2) {
-      showToast('error', 'Invalid Name', 'Name must be at least 2 characters');
+      showError('Name must be at least 2 characters');
       return false;
     }
     if (trimmed.length > 50) {
-      showToast('error', 'Invalid Name', 'Name must be 50 characters or less');
+      showError('Name must be 50 characters or less');
       return false;
     }
     return true;
-  }, [name, showToast]);
+  }, [name]);
 
   const validateStep2 = useCallback((): boolean => {
     if (weight.trim()) {
       const w = parseFloat(weight.trim());
       if (isNaN(w) || w <= 0 || w > 30) {
-        showToast('error', 'Invalid Weight', 'Please enter a valid weight (0.1–30 kg)');
+        showError('Please enter a valid weight (0.1–30 kg)');
         return false;
       }
     }
     if (height.trim()) {
       const h = parseFloat(height.trim());
       if (isNaN(h) || h <= 0 || h > 200) {
-        showToast('error', 'Invalid Height', 'Please enter a valid height (1–200 cm)');
+        showError('Please enter a valid height (1–200 cm)');
         return false;
       }
     }
     if (bloodType.trim() && !BLOOD_TYPES.includes(bloodType.trim().toUpperCase())) {
-      showToast('error', 'Invalid Blood Type', 'Please enter a valid blood type (e.g., A+, O-)');
+      showError('Please enter a valid blood type (e.g., A+, O-)');
       return false;
     }
     return true;
-  }, [weight, height, bloodType, showToast]);
+  }, [weight, height, bloodType]);
 
   /* ---- Navigation ---- */
   const handleNext = useCallback(() => {
@@ -363,7 +366,6 @@ export default function CreateBabyProfileScreen({ navigation }: CreateBabyProfil
     if (currentStep === 1 && validateStep1()) {
       setCurrentStep(2);
     } else if (currentStep === 2 && validateStep2()) {
-      // Allow going back and forth
     }
   }, [currentStep, validateStep1, validateStep2, triggerHaptic]);
 
@@ -381,6 +383,7 @@ export default function CreateBabyProfileScreen({ navigation }: CreateBabyProfil
   }, [currentStep, navigation, triggerHaptic]);
 
   /* ---- Profile creation ---- */
+  /* FIX #2: Remove setTimeout race condition, use proper async/await flow */
   const handleCreateProfile = useCallback(async () => {
     if (!validateStep1() || !validateStep2()) return;
 
@@ -388,12 +391,23 @@ export default function CreateBabyProfileScreen({ navigation }: CreateBabyProfil
     triggerHaptic('medium');
 
     try {
-      // Determine avatar value to save
-      const hasCustomImage = isImageUri(avatar);
-      const avatarToSave = hasCustomImage ? '👶' : avatar; // placeholder for now
+      const babiesCheck = await AsyncStorage.getItem('@littleloom_babies');
+      const existingBabies = babiesCheck ? JSON.parse(babiesCheck) : [];
 
-      // Create the baby profile
-      const babyId = await createBaby({
+      if (existingBabies.length === 0) {
+        await AsyncStorage.removeItem('@littleloom_current_baby');
+      }
+    } catch (cleanupError) {
+      console.warn('Cleanup before create failed:', cleanupError);
+    }
+
+    let babyId: string | null = null;
+
+    try {
+      const hasCustomImage = isImageUri(avatar);
+      const avatarToSave = hasCustomImage ? '👶' : avatar;
+
+      babyId = await createBaby({
         name: name.trim(),
         birthDate: birthDate.toISOString(),
         gender,
@@ -407,41 +421,80 @@ export default function CreateBabyProfileScreen({ navigation }: CreateBabyProfil
       });
 
       if (!babyId) {
-        showToast('error', 'Error', 'Failed to create profile. Please try again.');
-        setIsLoading(false);
+        if (isMounted.current) {
+          showError('Failed to create profile. Please try again.');
+          setIsLoading(false);
+        }
         return;
       }
 
-      // CRITICAL FIX: If we have a custom image, copy it to permanent storage and update
       if (hasCustomImage && babyId) {
         try {
           const permanentUri = await copyImageToPermanent(avatar, babyId, 'avatar');
           await updateBaby(babyId, { avatar: permanentUri });
+          if (isMounted.current) {
+            showSuccess('Profile photo saved successfully');
+          }
         } catch (imgError) {
           console.warn('Failed to persist baby image:', imgError);
-          // Non-critical: baby created, image will be placeholder
+          if (isMounted.current) {
+            showError('Profile created but image could not be saved');
+          }
         }
       }
 
-      // Mark baby setup as complete
-      const setupSuccess = await completeSetup('baby');
-      if (!setupSuccess) {
-        showToast('warning', 'Warning', 'Profile created but setup incomplete. Please restart the app.');
-        setIsLoading(false);
-        return;
+      let setupSuccess = false;
+      try {
+        setupSuccess = await completeSetup('baby');
+      } catch (setupError) {
+        console.warn('completeSetup threw error:', setupError);
       }
 
-      showToast('success', 'Welcome! 🎉', `${name.trim()}'s profile created successfully`);
+      if (!setupSuccess) {
+        console.warn('completeSetup returned false, but baby profile was created — proceeding to Main');
+      }
 
-      // Use replace to prevent going back to setup
-      setTimeout(() => {
-        navigation.replace('Main');
-      }, 1500);
+      if (isMounted.current) {
+        showSuccess(`${name.trim()}'s profile created successfully`);
+      }
+
+      if (!isMounted.current) return;
+
+      try {
+        await loadBabies();
+
+        if (!isMounted.current) return;
+
+        const verifyBabies = await AsyncStorage.getItem('@littleloom_babies');
+        const parsedBabies = verifyBabies ? JSON.parse(verifyBabies) : [];
+
+        if (parsedBabies.length === 0) {
+          console.error('CRITICAL: Baby profile was not persisted to storage!');
+          if (isMounted.current) {
+            showError('Profile could not be saved. Please try again.');
+            setIsLoading(false);
+          }
+          return;
+        }
+
+        console.log('✅ Baby profile verified:', parsedBabies.length, 'baby(ies) in storage');
+        
+        if (isMounted.current) {
+          navigation.replace('Main');
+        }
+      } catch (navError) {
+        console.error('Navigation error:', navError);
+        if (isMounted.current) {
+          showError('Could not navigate to main screen');
+          setIsLoading(false);
+        }
+      }
     } catch (error) {
       console.error('Create baby error:', error);
-      showToast('error', 'Error', 'An unexpected error occurred. Please try again.');
-    } finally {
-      setIsLoading(false);
+      if (isMounted.current) {
+        showError('An unexpected error occurred. Please try again.');
+        setIsLoading(false);
+      }
     }
   }, [
     name,
@@ -456,11 +509,13 @@ export default function CreateBabyProfileScreen({ navigation }: CreateBabyProfil
     medicalNotes,
     createBaby,
     updateBaby,
+    loadBabies,
     completeSetup,
     navigation,
     validateStep1,
     validateStep2,
-    showToast,
+    showError,
+    showSuccess,
     triggerHaptic,
   ]);
 
@@ -719,7 +774,6 @@ export default function CreateBabyProfileScreen({ navigation }: CreateBabyProfil
             style={[styles.input, isDark && styles.textDark]}
             value={weight}
             onChangeText={(text) => {
-              // Allow only valid decimal numbers
               const cleaned = text.replace(/[^0-9.]/g, '');
               const parts = cleaned.split('.');
               const formatted = parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : cleaned;
@@ -905,7 +959,8 @@ export default function CreateBabyProfileScreen({ navigation }: CreateBabyProfil
                   accessibilityRole="button"
                 >
                   <LinearGradient
-                    colors={[themeColors.primary, themeColors.secondary]}
+                    /* FIX #1: Use resolved secondaryColor instead of themeColors.secondary */
+                    colors={[themeColors.primary, secondaryColor]}
                     style={styles.buttonGradient}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 0 }}
@@ -937,7 +992,8 @@ export default function CreateBabyProfileScreen({ navigation }: CreateBabyProfil
                     accessibilityState={{ disabled: isLoading }}
                   >
                     <LinearGradient
-                      colors={[themeColors.primary, themeColors.secondary]}
+                      /* FIX #1: Use resolved secondaryColor instead of themeColors.secondary */
+                      colors={[themeColors.primary, secondaryColor]}
                       style={styles.buttonGradient}
                       start={{ x: 0, y: 0 }}
                       end={{ x: 1, y: 0 }}
@@ -959,12 +1015,6 @@ export default function CreateBabyProfileScreen({ navigation }: CreateBabyProfil
         </KeyboardAvoidingView>
       </LinearGradient>
 
-      {/* Toast */}
-      <SweetAlert
-        {...alert}
-        onClose={hideToast}
-        isDark={isDark}
-      />
     </View>
   );
 }
@@ -976,42 +1026,6 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   gradient: { flex: 1 },
   scrollContent: { paddingHorizontal: 24 },
-
-  /* Alert */
-  alertWrapper: {
-    position: 'absolute',
-    top: 60,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    zIndex: 999,
-  },
-  alertContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 16,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 10,
-    minWidth: 300,
-    maxWidth: width - 32,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
-  },
-  alertIconBg: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  alertTextContainer: { flex: 1 },
-  alertTitle: { fontSize: 16, fontWeight: '700', marginBottom: 2 },
-  alertMessage: { fontSize: 13, color: '#64748b' },
 
   /* iOS Date Picker Modal */
   iosPickerOverlay: {

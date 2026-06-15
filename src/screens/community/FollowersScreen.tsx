@@ -100,12 +100,12 @@ const generateDemoFollowers = (count: number, baseId: string): CommunityUser[] =
   }));
 };
 
-export default function FollowersScreen({ navigation, route }: FollowersScreenProps) {
+export default function FollowersScreen
+  ({ navigation, route }: FollowersScreenProps) {
   const { userId } = route.params;
   const { currentUser, followUser, unfollowUser, isFollowing, blockUser, isUserBlocked, getUserById, getFollowers } = useCommunity();
   const { profile } = useUser();
   
-  // SweetAlert for all alerts
   const sweetAlert = useSweetAlert();
 
   const [followers, setFollowers] = useState<CommunityUser[]>([]);
@@ -226,7 +226,6 @@ export default function FollowersScreen({ navigation, route }: FollowersScreenPr
       follower.displayName,
       follower.handle,
       () => {
-        // Block/Unblock action
         blockUser(follower.id)
           .then(() => {
             sweetAlert.success(

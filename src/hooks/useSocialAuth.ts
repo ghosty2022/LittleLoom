@@ -1,8 +1,6 @@
-﻿// src/hooks/useSocialAuth.ts
 import { useState, useCallback } from 'react';
 import { Alert } from 'react-native';
 
-// ─── Exported Types ───────────────────────────────────────────────
 
 export interface SocialUser {
   id: string;
@@ -19,7 +17,6 @@ export interface SocialAuthState {
   error: string | null;
 }
 
-// ─── Hook ─────────────────────────────────────────────────────────
 
 export const useSocialAuth = () => {
   const [state, setState] = useState<SocialAuthState>({
@@ -32,8 +29,6 @@ export const useSocialAuth = () => {
   const signInWithGoogle = useCallback(async (): Promise<SocialUser | null> => {
     setState(prev => ({ ...prev, isLoading: true, error: null }));
     try {
-      // TODO: Replace with actual Google Sign-In implementation
-      // e.g., using expo-auth-session or @react-native-google-signin/google-signin
       const mockUser: SocialUser = {
         id: `google_${Date.now()}`,
         fullName: 'Google User',
@@ -54,7 +49,6 @@ export const useSocialAuth = () => {
   const signInWithApple = useCallback(async (): Promise<SocialUser | null> => {
     setState(prev => ({ ...prev, isLoading: true, error: null }));
     try {
-      // TODO: Replace with actual Apple Sign-In implementation
       const mockUser: SocialUser = {
         id: `apple_${Date.now()}`,
         fullName: 'Apple User',
@@ -74,7 +68,6 @@ export const useSocialAuth = () => {
   const signInWithFacebook = useCallback(async (): Promise<SocialUser | null> => {
     setState(prev => ({ ...prev, isLoading: true, error: null }));
     try {
-      // TODO: Replace with actual Facebook Sign-In implementation
       const mockUser: SocialUser = {
         id: `facebook_${Date.now()}`,
         fullName: 'Facebook User',

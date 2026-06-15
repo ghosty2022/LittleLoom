@@ -1,7 +1,3 @@
-// src/context/MediaContext.tsx
-// REFACTORED — all image operations delegated to unified imageUtils
-// Only keeps upload tracking/progress state management
-
 import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import { Alert } from 'react-native';
 import * as FileSystem from 'expo-file-system';
@@ -56,37 +52,30 @@ export interface MediaState {
 }
 
 interface MediaContextType extends MediaState {
-  // Picking (delegated to imageUtils)
   pickImage: (options?: PickImageOptions) => Promise<string | null>;
   pickMultipleImages: (limit?: number) => Promise<string[]>;
   takePhoto: () => Promise<string | null>;
 
-  // Upload tracking (context-specific)
   uploadImage: (uri: string, type: MediaType, id: string) => Promise<string>;
   uploadMultiple: (uris: string[], type: MediaType, id: string) => Promise<string[]>;
   cancelUpload: (uploadId: string) => void;
   retryUpload: (uploadId: string) => Promise<void>;
 
-  // Processing (delegated to imageUtils)
   compressImage: (uri: string, quality?: number) => Promise<string>;
   resizeImage: (uri: string, width: number, height?: number) => Promise<string>;
   createThumbnail: (uri: string) => Promise<string>;
 
-  // Cache (delegated to imageUtils)
   cacheImage: (uri: string) => Promise<string>;
   getCachedImage: (uri: string) => Promise<string | null>;
   clearCache: () => Promise<void>;
   getCacheSize: () => Promise<number>;
 
-  // File operations (delegated to imageUtils)
   deleteImage: (uri: string) => Promise<boolean>;
   saveToLibrary: (uri: string) => Promise<boolean>;
   getImageDimensions: (uri: string) => Promise<{ width: number; height: number }>;
 
-  // Batch processing (delegated to imageUtils)
   processBatch: (uris: string[], operations: ('compress' | 'thumbnail')[]) => Promise<string[]>;
 
-  // Validation (delegated to imageUtils)
   isValidImageUri: (uri: string | undefined | null) => boolean;
 }
 
@@ -110,7 +99,6 @@ export const MediaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }));
   };
 
-  // ─── PICKING (delegated to imageUtils) ───
   const handlePickImage = useCallback(async (options?: PickImageOptions): Promise<string | null> => {
     return await pickImage(options);
   }, []);
@@ -123,7 +111,6 @@ export const MediaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return await takePhoto();
   }, []);
 
-  // ─── PROCESSING (delegated to imageUtils) ───
   const handleCompress = useCallback(async (uri: string, quality?: number): Promise<string> => {
     setState(prev => ({ ...prev, isProcessing: true }));
     const result = await compressImage(uri, quality);
@@ -142,7 +129,6 @@ export const MediaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return await createThumbnail(uri);
   }, []);
 
-  // ─── UPLOAD TRACKING (context-specific state) ───
   const uploadImage = useCallback(async (uri: string, type: MediaType, id: string): Promise<string> => {
     const uploadId = generateId();
 
@@ -160,16 +146,13 @@ export const MediaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }));
 
     try {
-      // Simulate progress
       for (let i = 0; i <= 100; i += 10) {
         await new Promise(resolve => setTimeout(resolve, 200));
         updateUpload(uploadId, { progress: i });
       }
 
-      // Cache the final image
       const processedUri = await cacheImage(uri);
 
-      // Get metadata
       const dims = await getImageDimensions(uri);
       const size = await getFileSize(uri);
 
@@ -232,7 +215,6 @@ export const MediaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, [state.uploads]);
 
-  // ─── CACHE (delegated to imageUtils) ───
   const handleCacheImage = useCallback(async (uri: string): Promise<string> => {
     const result = await cacheImage(uri);
     const size = await getCacheSize();
@@ -255,7 +237,6 @@ export const MediaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return size;
   }, []);
 
-  // ─── FILE OPERATIONS (delegated to imageUtils) ───
   const handleDeleteImage = useCallback(async (uri: string): Promise<boolean> => {
     const success = await deleteImage(uri);
     if (success && uri.startsWith(CACHE_DIR)) {
@@ -273,7 +254,6 @@ export const MediaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return await getImageDimensions(uri);
   }, []);
 
-  // ─── BATCH PROCESSING (delegated to imageUtils) ───
   const handleProcessBatch = useCallback(async (
     uris: string[],
     operations: ('compress' | 'thumbnail')[]
@@ -284,7 +264,6 @@ export const MediaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return results;
   }, []);
 
-  // ─── VALIDATION (delegated to imageUtils) ───
   const handleIsValidUri = useCallback((uri: string | undefined | null): boolean => {
     return isValidImageUri(uri);
   }, []);

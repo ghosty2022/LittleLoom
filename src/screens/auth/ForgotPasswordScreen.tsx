@@ -77,7 +77,6 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordScree
     return unsubscribe;
   }, [navigation, resetUnlockLock]);
 
-  // Check if PIN and security questions are set up
   useEffect(() => {
     const checkSecurityStatus = async () => {
       const pinSet = securitySettings.isPinEnabled;
@@ -125,7 +124,6 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordScree
       return;
     }
 
-    // Navigate to SecurityCenter in forgot mode
     navigation.navigate('SecurityCenter', { 
       mode: 'forgot',
       fromForgotPassword: true 
@@ -413,7 +411,6 @@ const styles = StyleSheet.create({
     elevation: 20,
   },
 
-  // Recovery sections
   recoverySection: {
     marginBottom: 8,
   },
@@ -478,7 +475,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
 
-  // Divider
   divider: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -494,7 +490,6 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
   },
 
-  // PIN Reset Button
   pinResetButton: {
     borderRadius: 16,
     overflow: 'hidden',

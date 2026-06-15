@@ -39,7 +39,7 @@ import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
 const { width } = Dimensions.get('window');
 const AnimatedScrollView = AutoHideScrollView;
 
-type ProfileScreenProps = NativeStackScreenProps<RootStackParamList, 'Profile'>;
+type FamilyCenterScreenProps = NativeStackScreenProps<RootStackParamList, 'Profile'>;
 
 const COLORS = {
   primary: { light: '#667eea', dark: '#a3bffa' },
@@ -73,7 +73,6 @@ const isEmoji = (value: string | undefined | null): boolean => {
   return /\p{Emoji}/u.test(value);
 };
 
-// Define FamilyMember interface locally since it's not exported from FamilyContext
 interface FamilyMember {
   id: string;
   fullName: string;
@@ -382,7 +381,7 @@ const MilestoneItem = memo<MilestoneItemProps>(({ milestone, isDark }) => (
   </View>
 ));
 
-export default function ProfileScreen({ navigation }: ProfileScreenProps) {
+export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreenProps) {
   const isDark = useColorScheme() === 'dark';
   const insets = useSafeAreaInsets();
   const scrollY = useSharedValue(0);
@@ -525,7 +524,7 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
   }, [navigation]);
 
   const handleNavigateGrowthChart = useCallback(() => {
-    navigation.navigate('GrowthChart');
+    navigation.navigate('GrowthDashboard');
   }, [navigation]);
 
   const handleNavigateCreateBaby = useCallback(() => {

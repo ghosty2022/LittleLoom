@@ -1,4 +1,4 @@
-﻿export const checkOptimizations = () => {
+export const checkOptimizations = () => {
   const checks = {
     inlineRequires: true, // This is set in metro.config.js
     

@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -7,37 +7,72 @@ import {
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
-  Image,
   StatusBar,
+  ScrollView,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CommunityStackParamList } from '../../types/navigation';
-
 import { useCommunity } from '../../context/CommunityContext';
 import { useUser } from '../../context/UserContext';
 import { useMedia } from '../../context/MediaContext';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { useSweetAlert } from '../../components/SweetAlert';
-import { InlineSpinner, CommunitySpinner } from '../../components/UniversalSpinner';
+import { InlineSpinner } from '../../components/UniversalSpinner';
 
-import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
-import { CommunityColors, CommunitySpacing, CommunityBorderRadius, CommunityShadows } from '../../theme/CommunityTheme';
 
-type EditCommunityProfileScreenProps = NativeStackScreenProps<CommunityStackParamList, 'EditCommunityProfile'>;
+const LL = {
+  primary: '#7c6cf1',
+  primaryLight: '#a5b4fc',
+  primaryDark: '#6b5ce7',
+  primaryGhost: '#7c6cf118',
+  accent: '#f472b6',
+  accentSoft: '#fbcfe8',
+  success: '#34d399',
+  warning: '#fbbf24',
+  info: '#38bdf8',
+  white: '#ffffff',
+  gray50: '#f8f9ff',
+  gray100: '#f0f2ff',
+  gray200: '#e2e8f0',
+  gray300: '#cbd5e1',
+  gray400: '#94a3b8',
+  gray500: '#64748b',
+  gray600: '#475569',
+  gray700: '#334155',
+  gray800: '#1e293b',
+  gray900: '#0f172a',
+  space: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, '2xl': 24, '3xl': 32, '4xl': 40 },
+  radius: { sm: 8, md: 12, lg: 16, xl: 20, '2xl': 24, full: 999 },
+  text: {
+    xs: { size: 11, line: 14, weight: '500' as const },
+    sm: { size: 13, line: 18, weight: '600' as const },
+    base: { size: 15, line: 22, weight: '400' as const },
+    lg: { size: 16, line: 24, weight: '600' as const },
+    xl: { size: 18, line: 26, weight: '700' as const },
+    '2xl': { size: 22, line: 30, weight: '800' as const },
+  },
+  shadow: {
+    sm: { shadowColor: '#7c6cf1', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
+    md: { shadowColor: '#7c6cf1', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.08, shadowRadius: 16, elevation: 5 },
+    lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.12, shadowRadius: 32, elevation: 10 },
+  },
+};
 
-const AVATARS = ['👤', '👩', '👨', '👧', '👦', '👶', '🤱', '👨‍🍼', '👩‍🍼', '🧑‍🍼', '👵', '👴'];
+const AVATARS = ['👤', '👩', '👨', '👧', '👦', '👶', '🤱', '👨‍🍼', '👩‍🍼', '🧑‍🍼', '👵', '👴', '🦸', '🦹', '🧙', '🧚'];
 
-export default function EditCommunityProfileScreen({ navigation, route }: EditCommunityProfileScreenProps) {
-  const { userId } = route.params || {};
+type Props = NativeStackScreenProps<CommunityStackParamList, 'EditCommunityProfile'>;
+
+export default function EditCommunityFamilyCenterScreen
+  ({ navigation }: Props) {
   const { currentUser, updateCommunityProfile, syncUserProfileAcrossPosts, validateUsername } = useCommunity();
-  const { 
-    communityProfile, 
+  const {
+    communityProfile,
     updateCommunityProfile: updateUserContextProfile,
     checkUsernameAvailable,
     registerUsername,
@@ -45,9 +80,7 @@ export default function EditCommunityProfileScreen({ navigation, route }: EditCo
     updateUsername,
   } = useUser();
 
-  // MediaContext for proper image handling
   const { compressImage, cacheImage, isValidImageUri } = useMedia();
-  // SweetAlert for all alerts
   const sweetAlert = useSweetAlert();
 
   const [displayName, setDisplayName] = useState(currentUser?.displayName || '');
@@ -55,14 +88,16 @@ export default function EditCommunityProfileScreen({ navigation, route }: EditCo
   const [bio, setBio] = useState(currentUser?.bio || '');
   const [selectedAvatar, setSelectedAvatar] = useState(currentUser?.avatar || '👤');
   const [profileImage, setProfileImage] = useState<string | null>(
-    currentUser?.avatar?.startsWith('file://') || currentUser?.avatar?.startsWith('http') 
-      ? currentUser.avatar 
+    currentUser?.avatar?.startsWith('file://') || currentUser?.avatar?.startsWith('http')
+      ? currentUser.avatar
       : null
   );
   const [isSaving, setIsSaving] = useState(false);
   const [usernameError, setUsernameError] = useState('');
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [isCheckingUsername, setIsCheckingUsername] = useState(false);
+
+  const avatarSource = profileImage || selectedAvatar;
 
   const handleImagePick = async () => {
     try {
@@ -81,19 +116,15 @@ export default function EditCommunityProfileScreen({ navigation, route }: EditCo
 
       if (!result.canceled && result.assets[0]) {
         setIsUploadingImage(true);
-        
         try {
-          // Process image: compress and cache to fix file:// issues
           const uri = result.assets[0].uri;
           const compressed = await compressImage(uri, 0.8);
           const cached = await cacheImage(compressed);
-          
           setProfileImage(cached);
           setSelectedAvatar(cached);
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         } catch (err) {
           console.warn('Image processing failed:', err);
-          // Fallback to raw URI
           if (isValidImageUri(result.assets[0].uri)) {
             setProfileImage(result.assets[0].uri);
             setSelectedAvatar(result.assets[0].uri);
@@ -116,7 +147,6 @@ export default function EditCommunityProfileScreen({ navigation, route }: EditCo
     }
 
     setIsCheckingUsername(true);
-    
     try {
       let result;
       if (validateUsername) {
@@ -126,25 +156,23 @@ export default function EditCommunityProfileScreen({ navigation, route }: EditCo
       } else {
         const trimmed = value.trim().toLowerCase().replace(/^@/, '');
         if (trimmed.length < 3) {
-          setUsernameError('Username must be at least 3 characters');
+          setUsernameError('At least 3 characters');
           return false;
         }
         result = { available: true, message: '' };
       }
-      
-      setIsCheckingUsername(false);
 
+      setIsCheckingUsername(false);
       if (!result.available) {
         setUsernameError(result.message);
         return false;
       }
-
       setUsernameError('');
       return true;
     } catch (error) {
       setIsCheckingUsername(false);
       console.error('Username validation error:', error);
-      setUsernameError('Failed to validate username');
+      setUsernameError('Failed to validate');
       return false;
     }
   }, [validateUsername, checkUsernameAvailable, currentUser?.id]);
@@ -178,26 +206,16 @@ export default function EditCommunityProfileScreen({ navigation, route }: EditCo
         await registerUsername(handle, currentUser?.id || '');
       }
 
-      await updateUserContextProfile({
+      const updateData = {
         displayName: displayName.trim(),
         handle: handle.toLowerCase(),
         bio: bio.trim(),
         avatar: profileImage || selectedAvatar,
-      });
+      };
 
-      await updateCommunityProfile({
-        displayName: displayName.trim(),
-        handle: handle.toLowerCase(),
-        bio: bio.trim(),
-        avatar: profileImage || selectedAvatar,
-      });
-
-      await syncUserProfileAcrossPosts(currentUser?.id || '', {
-        displayName: displayName.trim(),
-        handle: handle.toLowerCase(),
-        bio: bio.trim(),
-        avatar: profileImage || selectedAvatar,
-      });
+      await updateUserContextProfile(updateData);
+      await updateCommunityProfile(updateData);
+      await syncUserProfileAcrossPosts(currentUser?.id || '', updateData);
 
       setIsSaving(false);
       sweetAlert.success('Profile Updated!', 'Your community profile has been saved.');
@@ -209,88 +227,72 @@ export default function EditCommunityProfileScreen({ navigation, route }: EditCo
     }
   };
 
-  // Determine avatar source for SafeAvatar
-  const avatarSource = profileImage || selectedAvatar;
-
   return (
-    <View style={[styles.container]}>
-      <StatusBar style="dark" />
-      <LinearGradient colors={CommunityColors.background.gradient} style={StyleSheet.absoluteFill} />
+    <View style={[styles.container, { backgroundColor: LL.gray50 }]}>
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
 
-      {/* Image Processing Spinner */}
-      <CommunitySpinner
-        visible={isUploadingImage}
-        text="Processing image..."
-        size="medium"
-        overlay={true}
-        blur={true}
-        variant="nebula"
-      />
+      {/* Header */}
+      <View style={[styles.header, { backgroundColor: LL.white, borderBottomColor: LL.gray200 }]}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerBtn}>
+          <Text style={[styles.cancelText, { color: LL.gray500 }]}>Cancel</Text>
+        </TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: LL.gray900 }]}>Edit Profile</Text>
+        <TouchableOpacity
+          style={[styles.saveBtn, displayName.length > 0 && !isSaving && { backgroundColor: LL.primary }]}
+          disabled={displayName.length === 0 || isSaving}
+          onPress={handleSave}
+        >
+          {isSaving ? (
+            <ActivityIndicator size="small" color={LL.white} />
+          ) : (
+            <Text style={[styles.saveBtnText, displayName.length > 0 && !isSaving && { color: LL.white }]}>
+              Save
+            </Text>
+          )}
+        </TouchableOpacity>
+      </View>
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Text style={styles.cancelText}>Cancel</Text>
-          </TouchableOpacity>
-          <Text style={styles.title}>Edit Profile</Text>
-          <TouchableOpacity 
-            style={[styles.saveButton, displayName.length > 0 && !isSaving && styles.saveButtonActive]}
-            disabled={displayName.length === 0 || isSaving}
-            onPress={handleSave}
-          >
-            {isSaving ? (
-              <InlineSpinner size={16} color="#fff" section="community" variant="liquid" />
-            ) : (
-              <Text style={[styles.saveButtonText, displayName.length > 0 && !isSaving && styles.saveButtonTextActive]}>
-                Save
-              </Text>
-            )}
-          </TouchableOpacity>
-        </View>
-
-        <AutoHideScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-          {/* Profile Image Upload - with SafeAvatar */}
-          <Animated.View entering={FadeInUp}>
-            <View style={styles.imageUploadContainer}>
-              <TouchableOpacity style={styles.imageUploadButton} onPress={handleImagePick}>
-                {/* REPLACED: Raw Image/Text → SafeAvatar */}
+        <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scrollContent}>
+          {/* Avatar Upload */}
+          <Animated.View entering={FadeInUp.duration(400)}>
+            <View style={styles.avatarSection}>
+              <TouchableOpacity onPress={handleImagePick} style={styles.avatarUploadBtn}>
                 <SafeAvatar
                   avatar={avatarSource}
                   size={100}
                   fallbackIcon="person"
-                  fallbackColor={CommunityColors.primary}
+                  fallbackColor={LL.primary}
+                  fallbackBgColor={`${LL.primary}15`}
                   borderWidth={3}
-                  borderColor={CommunityColors.primary + '30'}
-                  showEditBadge={true}
-                  animated={true}
+                  borderColor={`${LL.primary}30`}
                 />
                 {isUploadingImage && (
                   <View style={styles.uploadingOverlay}>
-                    <InlineSpinner size={24} color="#fff" section="community" variant="liquid" />
+                    <ActivityIndicator size="small" color={LL.white} />
                   </View>
                 )}
-                <View style={styles.cameraIconContainer}>
-                  <Ionicons name="camera" size={16} color="white" />
+                <View style={styles.cameraBadge}>
+                  <Ionicons name="camera" size={14} color={LL.white} />
                 </View>
               </TouchableOpacity>
-              <Text style={styles.imageUploadText}>Tap to change photo</Text>
+              <Text style={[styles.avatarHint, { color: LL.primary }]}>Tap to change photo</Text>
             </View>
           </Animated.View>
 
           {/* Avatar Selection */}
-          <Animated.View entering={FadeInUp.delay(50)}>
-            <Text style={styles.sectionLabel}>Or Choose Avatar</Text>
-            <View style={styles.avatarsContainer}>
+          <Animated.View entering={FadeInUp.delay(100)}>
+            <Text style={[styles.sectionLabel, { color: LL.gray500 }]}>Or Choose Avatar</Text>
+            <View style={styles.avatarsGrid}>
               {AVATARS.map((avatar) => (
                 <TouchableOpacity
                   key={avatar}
                   style={[
                     styles.avatarOption,
-                    selectedAvatar === avatar && !profileImage && styles.avatarOptionSelected
+                    selectedAvatar === avatar && !profileImage && styles.avatarOptionSelected,
                   ]}
                   onPress={() => {
                     setSelectedAvatar(avatar);
@@ -305,32 +307,34 @@ export default function EditCommunityProfileScreen({ navigation, route }: EditCo
           </Animated.View>
 
           {/* Form */}
-          <Animated.View entering={FadeInUp.delay(100)}>
-            <BlurView intensity={80} style={styles.formContainer} tint="light">
+          <Animated.View entering={FadeInUp.delay(200)}>
+            <View style={[styles.formCard, { backgroundColor: LL.white, borderColor: LL.gray200 }]}>
+              {/* Display Name */}
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Display Name</Text>
+                <Text style={[styles.inputLabel, { color: LL.gray500 }]}>Display Name</Text>
                 <TextInput
-                  style={styles.textInput}
+                  style={[styles.textInput, { color: LL.gray800, borderColor: LL.gray200 }]}
                   placeholder="Your display name"
-                  placeholderTextColor={CommunityColors.text.tertiary}
+                  placeholderTextColor={LL.gray400}
                   value={displayName}
                   onChangeText={setDisplayName}
                   maxLength={30}
                 />
-                <Text style={styles.characterCount}>{displayName.length}/30</Text>
+                <Text style={[styles.charCount, { color: LL.gray400 }]}>{displayName.length}/30</Text>
               </View>
 
+              {/* Username */}
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Username</Text>
-                <View style={styles.usernameInputContainer}>
-                  <Text style={styles.atSymbol}>@</Text>
+                <Text style={[styles.inputLabel, { color: LL.gray500 }]}>Username</Text>
+                <View style={[styles.usernameWrap, { borderColor: LL.gray200 }]}>
+                  <Text style={[styles.atSymbol, { color: LL.gray400 }]}>@</Text>
                   <TextInput
-                    style={[styles.textInput, styles.usernameInput]}
+                    style={[styles.usernameInput, { color: LL.gray800 }]}
                     placeholder="username"
-                    placeholderTextColor={CommunityColors.text.tertiary}
+                    placeholderTextColor={LL.gray400}
                     value={username}
                     onChangeText={(text) => {
-                      setUsername(text.toLowerCase().replace(/\\s+/g, '_'));
+                      setUsername(text.toLowerCase().replace(/\s+/g, '_'));
                       setUsernameError('');
                     }}
                     onBlur={() => validateUsernameAsync(username)}
@@ -338,89 +342,101 @@ export default function EditCommunityProfileScreen({ navigation, route }: EditCo
                     maxLength={30}
                   />
                   {isCheckingUsername && (
-                    <InlineSpinner size={16} color={CommunityColors.primary} section="community" variant="liquid" />
+                    <ActivityIndicator size="small" color={LL.primary} />
                   )}
                 </View>
                 {usernameError ? (
                   <Text style={styles.errorText}>{usernameError}</Text>
                 ) : (
-                  <Text style={styles.characterCount}>{username.length}/30</Text>
+                  <Text style={[styles.charCount, { color: LL.gray400 }]}>{username.length}/30</Text>
                 )}
               </View>
 
+              {/* Bio */}
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Bio</Text>
+                <Text style={[styles.inputLabel, { color: LL.gray500 }]}>Bio</Text>
                 <TextInput
-                  style={[styles.textInput, styles.bioInput]}
+                  style={[styles.bioInput, { color: LL.gray700, borderColor: LL.gray200 }]}
                   placeholder="Tell us about yourself..."
-                  placeholderTextColor={CommunityColors.text.tertiary}
+                  placeholderTextColor={LL.gray400}
                   value={bio}
                   onChangeText={setBio}
                   multiline
                   maxLength={160}
                 />
-                <Text style={styles.characterCount}>{bio.length}/160</Text>
+                <Text style={[styles.charCount, { color: LL.gray400 }]}>{bio.length}/160</Text>
               </View>
-            </BlurView>
+            </View>
           </Animated.View>
 
           {/* Tips */}
-          <Animated.View entering={FadeInUp.delay(200)} style={styles.tipsContainer}>
-            <LinearGradient 
-              colors={[CommunityColors.secondary + '15', CommunityColors.secondary + '05']}
-              style={styles.tipsGradient}
-            >
-              <Text style={styles.tipsTitle}>💡 Profile Tips</Text>
-              <Text style={styles.tipText}>• Use a friendly display name</Text>
-              <Text style={styles.tipText}>• Share your parenting journey in your bio</Text>
-              <Text style={styles.tipText}>• Choose an avatar that represents you</Text>
-              <Text style={styles.tipText}>• Be authentic and kind</Text>
+          <Animated.View entering={FadeInUp.delay(300)} style={styles.tipsCard}>
+            <LinearGradient colors={[`${LL.primary}10`, `${LL.primary}05`]} style={styles.tipsGradient}>
+              <Text style={[styles.tipsTitle, { color: LL.primary }]}>💡 Profile Tips</Text>
+              <Text style={[styles.tipText, { color: LL.gray600 }]}>• Use a friendly display name parents can relate to</Text>
+              <Text style={[styles.tipText, { color: LL.gray600 }]}>• Share your parenting journey in your bio</Text>
+              <Text style={[styles.tipText, { color: LL.gray600 }]}>• Choose an avatar that represents you</Text>
+              <Text style={[styles.tipText, { color: LL.gray600 }]}>• Be authentic and kind in the community</Text>
             </LinearGradient>
           </Animated.View>
-        </AutoHideScrollView>
+        </ScrollView>
       </KeyboardAvoidingView>
     </View>
   );
 }
 
+
 const styles = StyleSheet.create({
   container: { flex: 1 },
   keyboardView: { flex: 1 },
+  scrollContent: {
+    paddingBottom: LL.space['4xl'],
+  },
+
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: CommunitySpacing.lg,
-    paddingTop: 60,
-    paddingBottom: 20,
+    justifyContent: 'space-between',
+    paddingHorizontal: LL.space.lg,
+    paddingTop: Platform.OS === 'ios' ? 50 : (StatusBar.currentHeight || 0) + 12,
+    paddingBottom: LL.space.md,
+    borderBottomWidth: 1,
+    zIndex: 100,
   },
-  cancelText: { fontSize: 16, color: CommunityColors.text.secondary, fontWeight: '600' },
-  title: { fontSize: 18, fontWeight: '800', color: CommunityColors.text.primary },
-  saveButton: {
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: CommunityColors.primary + '20',
+  headerBtn: {
+    paddingVertical: LL.space.sm,
+    minWidth: 60,
+  },
+  cancelText: {
+    fontSize: LL.text.base.size,
+    fontWeight: '600',
+  },
+  headerTitle: {
+    fontSize: LL.text.lg.size,
+    fontWeight: '800',
+    flex: 1,
+    textAlign: 'center',
+  },
+  saveBtn: {
+    paddingHorizontal: LL.space.lg,
+    paddingVertical: LL.space.sm,
+    borderRadius: LL.radius.full,
+    backgroundColor: LL.gray100,
     minWidth: 70,
     alignItems: 'center',
   },
-  saveButtonActive: { 
-    backgroundColor: CommunityColors.primary,
-    ...CommunityShadows.md,
+  saveBtnText: {
+    fontSize: LL.text.base.size,
+    fontWeight: '700',
+    color: LL.gray400,
   },
-  saveButtonText: { fontSize: 16, fontWeight: '700', color: CommunityColors.text.tertiary },
-  saveButtonTextActive: { color: 'white' },
 
-  imageUploadContainer: {
+  avatarSection: {
     alignItems: 'center',
-    marginBottom: 24,
+    marginTop: LL.space.xl,
+    marginBottom: LL.space.lg,
   },
-  imageUploadButton: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    justifyContent: 'center',
-    alignItems: 'center',
+  avatarUploadBtn: {
     position: 'relative',
   },
   uploadingOverlay: {
@@ -429,135 +445,147 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.4)',
     borderRadius: 50,
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 10,
   },
-  cameraIconContainer: {
+  cameraBadge: {
     position: 'absolute',
-    bottom: -4,
-    right: -4,
-    backgroundColor: CommunityColors.primary,
-    borderRadius: 14,
+    bottom: -2,
+    right: -2,
     width: 28,
     height: 28,
+    borderRadius: 14,
+    backgroundColor: LL.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: 'white',
+    borderWidth: 2.5,
+    borderColor: LL.white,
     zIndex: 20,
   },
-  imageUploadText: {
-    fontSize: 14,
-    color: CommunityColors.primary,
+  avatarHint: {
+    fontSize: LL.text.sm.size,
     fontWeight: '600',
-    marginTop: 12,
+    marginTop: LL.space.md,
   },
 
   sectionLabel: {
-    fontSize: 14,
+    fontSize: LL.text.sm.size,
     fontWeight: '700',
-    color: CommunityColors.text.secondary,
-    marginLeft: CommunitySpacing.lg,
-    marginBottom: 12,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+    marginLeft: LL.space.lg,
+    marginBottom: LL.space.md,
   },
-  avatarsContainer: {
+  avatarsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    paddingHorizontal: 20,
-    gap: 12,
-    marginBottom: 24,
+    paddingHorizontal: LL.space.lg,
+    gap: LL.space.md,
+    marginBottom: LL.space.xl,
   },
   avatarOption: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: CommunityColors.background.card,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: LL.gray100,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
     borderColor: 'transparent',
-    ...CommunityShadows.sm,
   },
   avatarOptionSelected: {
-    borderColor: CommunityColors.primary,
-    backgroundColor: CommunityColors.primary + '20',
+    borderColor: LL.primary,
+    backgroundColor: `${LL.primary}15`,
   },
-  avatarEmoji: { fontSize: 32 },
-  formContainer: {
-    margin: CommunitySpacing.lg,
-    borderRadius: CommunityBorderRadius.xl,
-    padding: 20,
-    overflow: 'hidden',
-    ...CommunityShadows.md,
+  avatarEmoji: { fontSize: 28 },
+
+  formCard: {
+    marginHorizontal: LL.space.lg,
+    borderRadius: LL.radius['2xl'],
+    borderWidth: 1,
+    padding: LL.space.lg,
+    ...LL.shadow.sm,
   },
-  inputGroup: { marginBottom: 20 },
+  inputGroup: {
+    marginBottom: LL.space.xl,
+  },
   inputLabel: {
-    fontSize: 14,
+    fontSize: LL.text.sm.size,
     fontWeight: '700',
-    color: CommunityColors.text.secondary,
-    marginBottom: 8,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+    marginBottom: LL.space.sm,
   },
   textInput: {
-    fontSize: 16,
-    color: CommunityColors.text.primary,
-    backgroundColor: CommunityColors.background.elevated,
-    borderRadius: 12,
-    padding: 16,
+    fontSize: LL.text.base.size,
+    backgroundColor: LL.gray50,
+    borderRadius: LL.radius.lg,
+    padding: LL.space.lg,
     minHeight: 50,
     borderWidth: 1,
-    borderColor: CommunityColors.border,
   },
-  usernameInputContainer: {
+  usernameWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: CommunityColors.background.elevated,
-    borderRadius: 12,
+    backgroundColor: LL.gray50,
+    borderRadius: LL.radius.lg,
     borderWidth: 1,
-    borderColor: CommunityColors.border,
+    paddingHorizontal: LL.space.lg,
   },
   atSymbol: {
     fontSize: 18,
-    color: CommunityColors.text.tertiary,
-    paddingLeft: 16,
     fontWeight: '600',
+    marginRight: LL.space.xs,
   },
   usernameInput: {
     flex: 1,
-    borderWidth: 0,
-    backgroundColor: 'transparent',
-  },
-  errorText: {
-    fontSize: 13,
-    color: CommunityColors.error,
-    marginTop: 4,
+    fontSize: LL.text.base.size,
+    fontWeight: '600',
+    paddingVertical: LL.space.md,
   },
   bioInput: {
+    fontSize: LL.text.base.size,
+    backgroundColor: LL.gray50,
+    borderRadius: LL.radius.lg,
+    padding: LL.space.lg,
     minHeight: 100,
+    borderWidth: 1,
     textAlignVertical: 'top',
   },
-  characterCount: {
-    fontSize: 12,
-    color: CommunityColors.text.tertiary,
+  charCount: {
+    fontSize: LL.text.xs.size,
     textAlign: 'right',
-    marginTop: 4,
+    marginTop: LL.space.xs,
+    fontWeight: '500',
   },
-  tipsContainer: {
-    marginHorizontal: CommunitySpacing.lg,
-    marginBottom: 24,
-    borderRadius: CommunityBorderRadius.xl,
+  errorText: {
+    fontSize: LL.text.sm.size,
+    color: '#ef4444',
+    marginTop: LL.space.xs,
+    fontWeight: '600',
+  },
+
+  tipsCard: {
+    marginHorizontal: LL.space.lg,
+    marginTop: LL.space.xl,
+    borderRadius: LL.radius['2xl'],
     overflow: 'hidden',
-    ...CommunityShadows.sm,
+    ...LL.shadow.sm,
   },
   tipsGradient: {
-    padding: 20,
+    padding: LL.space.lg,
   },
-  tipsTitle: { fontSize: 14, fontWeight: '800', color: CommunityColors.secondary, marginBottom: 12 },
-  tipText: { fontSize: 13, color: CommunityColors.text.secondary, marginBottom: 6 },
+  tipsTitle: {
+    fontSize: LL.text.sm.size,
+    fontWeight: '800',
+    marginBottom: LL.space.md,
+  },
+  tipText: {
+    fontSize: LL.text.sm.size,
+    marginBottom: LL.space.sm,
+    lineHeight: 20,
+  },
 });

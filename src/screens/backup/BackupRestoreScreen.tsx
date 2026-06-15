@@ -1,3 +1,4 @@
+import { useSweetAlert } from '../../components/SweetAlert';
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, Dimensions, Modal, TextInput, Switch } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -33,14 +34,15 @@ interface EncryptModalProps {
   secondaryColor: string;
 }
 
-const EncryptModal = ({ visible, onClose, onConfirm, isDark, primaryColor, secondaryColor }: EncryptModalProps) => {
+const EncryptModal = ({
+  visible, onClose, onConfirm, isDark, primaryColor, secondaryColor }: EncryptModalProps) => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
   const handleConfirm = () => {
     if (password.length < 6) {
-      Alert.alert('Password Too Short', 'Password must be at least 6 characters');
+      sweetAlert.alert('Password Too Short', 'Password must be at least 6 characters', 'warning');
       return;
     }
     if (password !== confirmPassword) {
@@ -134,7 +136,7 @@ const PasswordModal = ({ visible, onClose, onConfirm, isDark, primaryColor, seco
 
   const handleConfirm = () => {
     if (!password) {
-      Alert.alert('Password Required', 'Please enter the backup password');
+      sweetAlert.alert('Password Required', 'Please enter the backup password', 'warning');
       return;
     }
     onConfirm(password);
@@ -552,7 +554,7 @@ export default function BackupRestoreScreen({ navigation }: Props) {
 
     const content = await backupService.readLocalBackup(backup.path);
     if (!content) {
-      Alert.alert('Error', 'Could not read backup file');
+      sweetAlert.alert('Error', 'Could not read backup file', 'warning');
       return;
     }
 
@@ -639,13 +641,13 @@ export default function BackupRestoreScreen({ navigation }: Props) {
       if (result) {
         if (result.success) {
           triggerHaptic('success');
-          Alert.alert('✅ Auto Backup Complete', 'Your data has been backed up successfully.');
+          sweetAlert.alert('✅ Auto Backup Complete', 'Your data has been backed up successfully.', 'warning');
           await loadLocalBackups();
         } else {
           throw new Error(result.error || 'Auto backup failed');
         }
       } else {
-        Alert.alert('Not Due Yet', 'Auto backup is not scheduled to run at this time.');
+        sweetAlert.alert('Not Due Yet', 'Auto backup is not scheduled to run at this time.', 'warning');
       }
     } catch (error) {
       triggerHaptic('error');

@@ -24,7 +24,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CommunityStackParamList } from '../../types/navigation';
 
-import { useCommunity, Topic } from '../../context/CommunityContext';
+import { useCommunity, Topic, PostMood, Poll } from '../../context/CommunityContext';
 import { useMedia } from '../../context/MediaContext';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { useSweetAlert } from '../../components/SweetAlert';
@@ -60,15 +60,21 @@ const COUNTRIES = [
   { code: 'MA', name: 'Morocco', flag: '🇲🇦' },
 ];
 
-// ============================================
-// MODERN IMAGE GRID (with MediaContext processing)
-// ============================================
+const MOODS: { value: PostMood; emoji: string; label: string; color: string; bgColor: string }[] = [
+  { value: 'celebrating', emoji: '🎉', label: 'Celebrating', color: '#f59e0b', bgColor: '#f59e0b15' },
+  { value: 'support', emoji: '💙', label: 'Support', color: '#3b82f6', bgColor: '#3b82f615' },
+  { value: 'advice', emoji: '💡', label: 'Advice', color: '#8b5cf6', bgColor: '#8b5cf615' },
+  { value: 'milestone', emoji: '🏆', label: 'Milestone', color: '#10b981', bgColor: '#10b98115' },
+  { value: 'venting', emoji: '💨', label: 'Venting', color: '#ef4444', bgColor: '#ef444415' },
+];
+
 interface ImageGridProps {
   images: string[];
   onRemove: (index: number) => void;
 }
 
-const ImageGrid = ({ images, onRemove }: ImageGridProps) => {
+const ImageGrid = ({
+  images, onRemove }: ImageGridProps) => {
   if (images.length === 0) return null;
 
   return (
@@ -105,9 +111,6 @@ const ImageGrid = ({ images, onRemove }: ImageGridProps) => {
   );
 };
 
-// ============================================
-// TOOL BUTTON
-// ============================================
 interface ToolButtonProps {
   icon: string;
   label: string;
@@ -131,9 +134,6 @@ const ToolButton = ({ icon, label, color, bgColor, onPress, badge }: ToolButtonP
   </TouchableOpacity>
 );
 
-// ============================================
-// MAIN SCREEN
-// ============================================
 export default function CreatePostScreen({ navigation, route }: CreatePostScreenProps) {
   const routeParams = route?.params ?? {};
   const topicId = routeParams?.topicId;
@@ -147,7 +147,6 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
     updateSelectedTopics 
   } = useCommunity();
 
-  // MediaContext for proper image handling (fixes file:// issues)
   const { 
     pickImage: mediaPickImage, 
     pickMultipleImages, 
@@ -157,7 +156,6 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
     isValidImageUri,
   } = useMedia();
 
-  // SweetAlert for all alerts/modals
   const sweetAlert = useSweetAlert();
 
   const [content, setContent] = useState('');
@@ -173,8 +171,13 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
   const [showTopicSelector, setShowTopicSelector] = useState(false);
   const [userSelectedTopics, setUserSelectedTopics] = useState<string[]>([]);
   const [isProcessingImages, setIsProcessingImages] = useState(false);
+  
+  const [selectedMood, setSelectedMood] = useState<PostMood | undefined>(undefined);
+  const [showPollCreator, setShowPollCreator] = useState(false);
+  const [pollQuestion, setPollQuestion] = useState('');
+  const [pollOptions, setPollOptions] = useState<string[]>(['', '']);
+  const [showMoodPicker, setShowMoodPicker] = useState(false);
 
-  // Load selected topics
   useEffect(() => {
     const loadSelectedTopics = async () => {
       try {
@@ -196,7 +199,6 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
     }
   }, [topics, getSelectedTopics, updateSelectedTopics]);
 
-  // Set initial topic
   useEffect(() => {
     if (topics.length > 0) {
       let targetTopic: Topic | undefined;
@@ -218,18 +220,23 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
     }
   }, [topics, topicId, userSelectedTopics]);
 
-  // Save draft
   useEffect(() => {
     const saveDraft = async () => {
-      const draft = { content, images, selectedTopicId: selectedTopic?.id };
+      const draft = { 
+        content, 
+        images, 
+        selectedTopicId: selectedTopic?.id,
+        mood: selectedMood,
+        pollQuestion,
+        pollOptions,
+      };
       await AsyncStorage.setItem('post_draft', JSON.stringify(draft));
     };
 
     const timer = setTimeout(saveDraft, 1000);
     return () => clearTimeout(timer);
-  }, [content, images, selectedTopic]);
+  }, [content, images, selectedTopic, selectedMood, pollQuestion, pollOptions]);
 
-  // Load draft
   useEffect(() => {
     const loadDraft = async () => {
       try {
@@ -238,10 +245,12 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
           const draft = JSON.parse(draftJson);
           if (draft.content) setContent(draft.content);
           if (draft.images) {
-            // Validate cached image URIs before restoring
             const validImages = draft.images.filter((uri: string) => isValidImageUri(uri));
             setImages(validImages);
           }
+          if (draft.mood) setSelectedMood(draft.mood);
+          if (draft.pollQuestion) setPollQuestion(draft.pollQuestion);
+          if (draft.pollOptions) setPollOptions(draft.pollOptions);
         }
       } catch (error) {
         console.warn('Failed to load draft:', error);
@@ -250,30 +259,22 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
     loadDraft();
   }, [isValidImageUri]);
 
-  // ============================================
-  // IMAGE HANDLING (with MediaContext - fixes file://)
-  // ============================================
   const pickImage = async () => {
     try {
       setIsProcessingImages(true);
       
-      // Use MediaContext for proper image picking with caching
       const pickedUris = await pickMultipleImages(4);
       
       if (pickedUris && pickedUris.length > 0) {
-        // Process images: compress and cache to ensure valid display URIs
         const processedUris: string[] = [];
         
         for (const uri of pickedUris) {
           try {
-            // Compress to ensure consistent format and avoid file:// issues
             const compressed = await compressImage(uri, 0.8);
-            // Cache to get a reliable URI
             const cached = await cacheImage(compressed);
             processedUris.push(cached);
           } catch (err) {
             console.warn('Failed to process image:', err);
-            // Fallback to original if processing fails
             if (isValidImageUri(uri)) {
               processedUris.push(uri);
             }
@@ -300,12 +301,10 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
 
       setIsProcessingImages(true);
 
-      // Use MediaContext takePhoto
       const photoUri = await mediaTakePhoto();
       
       if (photoUri) {
         try {
-          // Compress and cache the photo
           const compressed = await compressImage(photoUri, 0.8);
           const cached = await cacheImage(compressed);
           setImages(prev => [...prev, cached].slice(0, 4));
@@ -329,9 +328,6 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
     setImages(images.filter((_, i) => i !== index));
   };
 
-  // ============================================
-  // POST SUBMISSION
-  // ============================================
   const simulateProgress = async () => {
     const stages = [
       { progress: 15, status: 'Preparing your post...', delay: 300 },
@@ -350,14 +346,29 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
   };
 
   const handlePost = async () => {
-    if (!content.trim() && images.length === 0) {
-      sweetAlert.error('Empty Post', 'Please add some content or images to your post');
+    if (!content.trim() && images.length === 0 && !pollQuestion.trim()) {
+      sweetAlert.error('Empty Post', 'Please add some content, images, or a poll to your post');
       return;
     }
 
     if (!selectedTopic) {
       sweetAlert.error('No Topic', 'Please select a topic');
       return;
+    }
+
+    let poll: Poll | undefined;
+    if (showPollCreator && pollQuestion.trim()) {
+      const validOptions = pollOptions.filter(o => o.trim().length > 0);
+      if (validOptions.length < 2) {
+        sweetAlert.error('Invalid Poll', 'Please add at least 2 poll options');
+        return;
+      }
+      poll = {
+        question: pollQuestion.trim(),
+        options: validOptions.map((text, idx) => ({ id: `opt_${idx}`, text: text.trim(), votes: 0 })),
+        totalVotes: 0,
+        hasVoted: false,
+      };
     }
 
     setIsPosting(true);
@@ -368,8 +379,7 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
     try {
       const progressPromise = simulateProgress();
 
-      // FIXED: Call createPost with correct signature (content, topicId, images, isAnonymous)
-      await createPost(content.trim(), selectedTopic.id, images, isAnonymous);
+      await createPost(content.trim(), selectedTopic.id, images, isAnonymous, selectedMood, poll);
 
       await progressPromise;
 
@@ -390,12 +400,12 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
   };
 
   const handleCancel = () => {
-    if (content.trim() || images.length > 0) {
+    if (content.trim() || images.length > 0 || pollQuestion.trim()) {
       sweetAlert.confirm(
         'Discard Post?',
         'You have unsaved changes. Are you sure you want to discard them?',
         () => navigation.goBack(),
-        () => {}, // onCancel - do nothing
+        () => {},
         'Discard',
         'Keep Editing'
       );
@@ -408,7 +418,7 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
     setSelectedCountry(country.name);
     await updateUserLocation(country.name);
     setShowCountryPicker(false);
-    sweetAlert.toast('Location Updated', `Set to ${country.flag} ${country.name}`, 'success');
+    sweetAlert.toast('Location Updated', 'Set to ${country.flag} ${country.name}', 'success');
   };
 
   const handleTopicSelect = (topic: Topic) => {
@@ -424,9 +434,35 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
     sweetAlert.toast('Topics Updated', 'Your feed preferences have been saved', 'success');
   };
 
+  const handleMoodSelect = (mood: PostMood) => {
+    setSelectedMood(mood);
+    setShowMoodPicker(false);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const addPollOption = () => {
+    if (pollOptions.length < 4) {
+      setPollOptions([...pollOptions, '']);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+  };
+
+  const removePollOption = (index: number) => {
+    if (pollOptions.length > 2) {
+      setPollOptions(pollOptions.filter((_, i) => i !== index));
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+  };
+
+  const updatePollOption = (index: number, text: string) => {
+    const updated = [...pollOptions];
+    updated[index] = text;
+    setPollOptions(updated);
+  };
+
   const characterCount = content.length;
   const maxCharacters = 1000;
-  const hasContent = content.trim().length > 0 || images.length > 0;
+  const hasContent = content.trim().length > 0 || images.length > 0 || pollQuestion.trim().length > 0;
 
   const getFilteredTopics = () => {
     if (!userSelectedTopics || userSelectedTopics.length === 0) return topics;
@@ -435,10 +471,11 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
 
   const filteredTopics = getFilteredTopics();
 
-  // Resolve avatar source for SafeAvatar
   const avatarSource = isAnonymous 
     ? '🎭' 
     : (currentUser?.avatar || currentUser?.photoURL || undefined);
+
+  const selectedMoodConfig = selectedMood ? MOODS.find(m => m.value === selectedMood) : null;
 
   if (!topicsLoaded || topics.length === 0 || !selectedTopic) {
     return (
@@ -514,7 +551,6 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
           <Animated.View entering={FadeInUp.duration(400)}>
             <View style={styles.authorCard}>
               <View style={styles.authorRow}>
-                {/* REPLACED: Raw emoji text → SafeAvatar */}
                 <SafeAvatar
                   avatar={avatarSource}
                   size={48}
@@ -562,6 +598,43 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
             </View>
           </Animated.View>
 
+          {/* Mood Selector */}
+          <Animated.View entering={FadeInUp.delay(30).duration(400)}>
+            <View style={styles.moodSection}>
+              <Text style={styles.sectionLabel}>How are you feeling?</Text>
+              <View style={styles.moodRow}>
+                {MOODS.map((mood) => (
+                  <TouchableOpacity
+                    key={mood.value}
+                    style={[
+                      styles.moodPill,
+                      selectedMood === mood.value && { 
+                        backgroundColor: mood.bgColor,
+                        borderColor: mood.color,
+                      },
+                    ]}
+                    onPress={() => {
+                      if (selectedMood === mood.value) {
+                        setSelectedMood(undefined);
+                      } else {
+                        setSelectedMood(mood.value);
+                      }
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }}
+                  >
+                    <Text style={styles.moodPillEmoji}>{mood.emoji}</Text>
+                    <Text style={[
+                      styles.moodPillLabel,
+                      selectedMood === mood.value && { color: mood.color, fontWeight: '800' },
+                    ]}>
+                      {mood.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          </Animated.View>
+
           {/* Content Input */}
           <Animated.View entering={FadeInUp.delay(50).duration(400)}>
             <View style={styles.contentArea}>
@@ -585,6 +658,69 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
           {images.length > 0 && (
             <Animated.View entering={FadeInUp.duration(300)}>
               <ImageGrid images={images} onRemove={removeImage} />
+            </Animated.View>
+          )}
+
+          {/* Poll Creator */}
+          {showPollCreator && (
+            <Animated.View entering={FadeInUp.duration(300)}>
+              <View style={styles.pollCard}>
+                <View style={styles.pollHeader}>
+                  <View style={styles.pollHeaderLeft}>
+                    <Ionicons name="stats-chart" size={18} color="#667eea" />
+                    <Text style={styles.pollTitle}>Poll</Text>
+                  </View>
+                  <TouchableOpacity onPress={() => {
+                    setShowPollCreator(false);
+                    setPollQuestion('');
+                    setPollOptions(['', '']);
+                  }}>
+                    <Ionicons name="close" size={20} color={CommunityColors.text.tertiary} />
+                  </TouchableOpacity>
+                </View>
+                
+                <TextInput
+                  style={styles.pollQuestionInput}
+                  placeholder="Ask a question..."
+                  placeholderTextColor={CommunityColors.text.tertiary}
+                  value={pollQuestion}
+                  onChangeText={setPollQuestion}
+                  maxLength={200}
+                />
+                
+                <View style={styles.pollOptionsList}>
+                  {pollOptions.map((option, index) => (
+                    <View key={index} style={styles.pollOptionRow}>
+                      <View style={styles.pollOptionInputWrap}>
+                        <Text style={styles.pollOptionBullet}>{String.fromCharCode(65 + index)}</Text>
+                        <TextInput
+                          style={styles.pollOptionInput}
+                          placeholder={`Option ${index + 1}`}
+                          placeholderTextColor={CommunityColors.text.tertiary}
+                          value={option}
+                          onChangeText={(text) => updatePollOption(index, text)}
+                          maxLength={100}
+                        />
+                      </View>
+                      {pollOptions.length > 2 && (
+                        <TouchableOpacity 
+                          style={styles.pollOptionRemove}
+                          onPress={() => removePollOption(index)}
+                        >
+                          <Ionicons name="close-circle" size={22} color="#fc5c7d" />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  ))}
+                </View>
+                
+                {pollOptions.length < 4 && (
+                  <TouchableOpacity style={styles.addOptionBtn} onPress={addPollOption}>
+                    <Ionicons name="add-circle-outline" size={18} color="#667eea" />
+                    <Text style={styles.addOptionText}>Add option</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             </Animated.View>
           )}
 
@@ -672,6 +808,17 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
                 color="#43e97b" 
                 bgColor="#43e97b12"
                 onPress={takePhoto}
+              />
+              <ToolButton 
+                icon="stats-chart-outline" 
+                label="Poll" 
+                color="#fa709a" 
+                bgColor="#fa709a12"
+                onPress={() => {
+                  setShowPollCreator(!showPollCreator);
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                }}
+                badge={showPollCreator ? 1 : undefined}
               />
             </View>
           </Animated.View>
@@ -804,10 +951,7 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
                       onPress={() => {
                         if (isMaxReached) {
                           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-                          sweetAlert.warning(
-                            'Maximum Topics Reached',
-                            'You can select up to 5 topics. Remove one to add another.'
-                          );
+                          sweetAlert.warning('Maximum Topics Reached', 'You can select up to 5 topics. Remove one to add another.');
                           return;
                         }
 
@@ -859,9 +1003,6 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
   );
 }
 
-// ============================================
-// STYLES (unchanged from your original)
-// ============================================
 const styles = StyleSheet.create({
   container: { 
     flex: 1,
@@ -871,7 +1012,6 @@ const styles = StyleSheet.create({
     flex: 1 
   },
 
-  // HEADER
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -913,7 +1053,6 @@ const styles = StyleSheet.create({
     color: 'white' 
   },
 
-  // AUTHOR CARD
   authorCard: {
     marginHorizontal: CommunitySpacing.lg,
     marginTop: 8,
@@ -980,7 +1119,37 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  // CONTENT INPUT
+  moodSection: {
+    marginHorizontal: CommunitySpacing.lg,
+    marginBottom: 16,
+  },
+  moodRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 10,
+  },
+  moodPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: 'transparent',
+    gap: 6,
+    ...CommunityShadows.small,
+  },
+  moodPillEmoji: {
+    fontSize: 16,
+  },
+  moodPillLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: CommunityColors.text.secondary,
+  },
+
   contentArea: {
     marginHorizontal: CommunitySpacing.lg,
     marginBottom: 16,
@@ -1000,7 +1169,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // MODERN IMAGE GRID
   imageGridWrapper: {
     marginHorizontal: CommunitySpacing.lg,
     marginBottom: 16,
@@ -1062,7 +1230,92 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
-  // TOPICS STRIP
+  pollCard: {
+    marginHorizontal: CommunitySpacing.lg,
+    marginBottom: 16,
+    borderRadius: CommunityBorderRadius.xl,
+    padding: 16,
+    backgroundColor: '#fff',
+    ...CommunityShadows.medium,
+  },
+  pollHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  pollHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  pollTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: CommunityColors.text.primary,
+  },
+  pollQuestionInput: {
+    fontSize: 16,
+    color: CommunityColors.text.primary,
+    fontWeight: '600',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    backgroundColor: '#f8f9ff',
+    borderRadius: CommunityBorderRadius.lg,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#e0e0e5',
+  },
+  pollOptionsList: {
+    gap: 10,
+  },
+  pollOptionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  pollOptionInputWrap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8f9ff',
+    borderRadius: CommunityBorderRadius.lg,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: '#e0e0e5',
+  },
+  pollOptionBullet: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#667eea',
+    width: 24,
+  },
+  pollOptionInput: {
+    flex: 1,
+    fontSize: 14,
+    color: CommunityColors.text.primary,
+    paddingVertical: 10,
+  },
+  pollOptionRemove: {
+    padding: 4,
+  },
+  addOptionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: '#667eea08',
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+  },
+  addOptionText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#667eea',
+  },
+
   topicsStripHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1141,7 +1394,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  // TOOLS
   toolsSection: {
     marginHorizontal: CommunitySpacing.lg,
     marginBottom: 20,
@@ -1193,7 +1445,6 @@ const styles = StyleSheet.create({
     fontWeight: '600' 
   },
 
-  // TIPS
   tipsContainer: {
     marginHorizontal: CommunitySpacing.lg,
     marginBottom: 24,
@@ -1234,7 +1485,6 @@ const styles = StyleSheet.create({
     fontWeight: '500' 
   },
 
-  // MODALS
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -1283,8 +1533,8 @@ const styles = StyleSheet.create({
   },
   countryName: { 
     flex: 1, 
-    fontSize: 16, 
-    color: CommunityColors.text.primary 
+        fontSize: 16,
+    color: CommunityColors.text.primary,
   },
   countryNameSelected: { 
     color: '#667eea', 

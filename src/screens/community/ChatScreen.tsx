@@ -1656,7 +1656,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  // Avatar
   avatarWrapper: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -1673,7 +1672,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  // Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1729,7 +1727,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  // Messages
   messagesList: {
     paddingHorizontal: 16,
     paddingTop: 8,
@@ -1750,7 +1747,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
 
-  // Message Bubble
   messageContainer: {
     marginBottom: 8,
     flexDirection: 'row',
@@ -1796,7 +1792,6 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
 
-  // Image in message
   imageContainer: {
     borderRadius: 16,
     overflow: 'hidden',
@@ -1816,7 +1811,6 @@ const styles = StyleSheet.create({
     height: '100%',
   },
 
-  // Reply
   replyPreview: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1845,7 +1839,6 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
 
-  // Resend
   resendButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1857,7 +1850,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // File Bubble
   fileBubble: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1884,7 +1876,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  // Action Menu
   actionOverlay: {
     flex: 1,
     justifyContent: 'flex-end',
@@ -1924,7 +1915,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // Reply Bar
   replyBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1961,7 +1951,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  // Typing
   typingContainer: {
     paddingHorizontal: 16,
     marginBottom: 8,
@@ -1983,7 +1972,6 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.7 }],
   },
 
-  // Blocked Banner
   blockedBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2000,7 +1988,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  // Input
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2052,7 +2039,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  // Modal
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.3)',
@@ -2078,7 +2064,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // Image Preview
   imagePreviewOverlay: {
     flex: 1,
     justifyContent: 'center',

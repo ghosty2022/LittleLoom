@@ -1,4 +1,3 @@
-﻿
 import { useModal as useModalContext, SweetAlert, ModalConfig } from '../utils/modal';
 
 export const useModal = () => {

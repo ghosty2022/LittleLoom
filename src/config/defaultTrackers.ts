@@ -1,10 +1,5 @@
-// src/config/defaultTrackers.ts
-// All 70+ default trackers defined via schema — NO hardcoded ActivityEntry fields
-// Adding a new tracker = add an entry here. Nothing else changes.
-
 import { UnifiedTrackerConfig, FieldConfig } from '../types/trackers';
 
-// ─── Shared Field Builders ───
 const f = {
   text: (id: string, label: string, opts?: Partial<FieldConfig>): FieldConfig => ({
     id, label, type: 'text', ...opts,
@@ -48,9 +43,11 @@ const f = {
   photo: (id: string, label: string, opts?: Partial<FieldConfig>): FieldConfig => ({
     id, label, type: 'photo', ...opts,
   }),
+  video: (id: string, label: string, opts?: Partial<FieldConfig>): FieldConfig => ({
+    id, label, type: 'video', ...opts,
+  }),
 };
 
-// ─── Default Permission Template ───
 const defaultPerms = {
   familyRoles: ['parent1', 'parent2', 'guardian'] as ('parent1' | 'parent2' | 'guardian')[],
   allowGuardiansCreate: true,
@@ -64,12 +61,8 @@ const restrictedPerms = {
   allowGuardiansEditOwn: false,
   allowGuardiansDeleteOwn: false,
 };
-// ═══════════════════════════════════════════════════════════════
-// DEFAULT TRACKERS (70+)
-// ═══════════════════════════════════════════════════════════════
 
 export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
-  // ═══ ESSENTIAL DAILY (6) ═══
   {
     id: 'feed', name: 'Feeding', emoji: '🍼', icon: 'nutrition-outline',
     color: '#FF9F43', gradient: ['#FF9F43', '#FF6B6B'],
@@ -221,7 +214,6 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['High output', 'Low output', 'Clogged duct', 'Power pump'],
   },
 
-  // ═══ HEALTH & MEDICAL (10) ═══
   {
     id: 'growth', name: 'Growth', emoji: '📏', icon: 'trending-up-outline',
     color: '#10AC84', gradient: ['#10AC84', '#1DD1A1'],
@@ -498,7 +490,6 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['On schedule', 'Delayed', 'Reaction', 'Complete'],
   },
 
-  // ═══ DEVELOPMENT (8) ═══
   {
     id: 'milestone', name: 'Milestone', emoji: '🏆', icon: 'trophy-outline',
     color: '#FFD700', gradient: ['#FFD700', '#FFA502'],
@@ -666,7 +657,6 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['First word!', 'Mimic', 'Understood', 'Signed'],
   },
 
-  // ═══ EMOTIONAL & SOCIAL (5) ═══
   {
     id: 'mood', name: 'Mood', emoji: '😊', icon: 'happy-outline',
     color: '#FFD700', gradient: ['#FFD700', '#FF9F43'],
@@ -793,7 +783,6 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['Worked instantly', 'Took time', 'Did not work', 'Combo worked'],
   },
 
-  // ═══ PHYSICAL CARE (8) ═══
   {
     id: 'nail_care', name: 'Nail Care', emoji: '💅', icon: 'cut-outline',
     color: '#FF9FF3', gradient: ['#FF9FF3', '#F368E0'],
@@ -967,7 +956,6 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['Stuffy', 'Clear', 'Bloody', 'After bath'],
   },
 
-  // ═══ NUTRITION (6) ═══
   {
     id: 'solid_food', name: 'Solid Food', emoji: '🥄', icon: 'restaurant-outline',
     color: '#FF9F43', gradient: ['#FF9F43', '#FFD700'],
@@ -1123,7 +1111,6 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['Good latch', 'Cluster feed', 'Painful', 'Long session'],
   },
 
-  // ═══ SAFETY (5) ═══
   {
     id: 'accident', name: 'Accident', emoji: '⚠️', icon: 'alert-triangle-outline',
     color: '#EE5A24', gradient: ['#EE5A24', '#FF6B6B'],
@@ -1272,7 +1259,6 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['Updated', 'New hazard', 'All clear', 'Needs work'],
   },
 
-  // ═══ SCHEDULE & ROUTINE (5) ═══
   {
     id: 'wake_time', name: 'Wake Time', emoji: '⏰', icon: 'sunny-outline',
     color: '#FFD700', gradient: ['#FFD700', '#FF9F43'],
@@ -1393,7 +1379,6 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['Good weather', 'Rainy', 'Active', 'Relaxed'],
   },
 
-  // ═══ PARENTAL CARE (5) ═══
   {
     id: 'note', name: 'Note', emoji: '📝', icon: 'create-outline',
     color: '#54A0FF', gradient: ['#54A0FF', '#5F27CD'],
@@ -1487,7 +1472,6 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['Milestone day', 'Hard day', 'Grateful', 'Funny moment'],
   },
 
-  // ═══ TRAVEL & OUTINGS (4) ═══
   {
     id: 'trip', name: 'Trip', emoji: '✈️', icon: 'airplane-outline',
     color: '#54A0FF', gradient: ['#54A0FF', '#5F27CD'],
@@ -1571,7 +1555,6 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['New sitter', 'Regular', 'Went well', 'Issues'],
   },
 
-  // ═══ SPECIAL NEEDS (7) ═══
   {
     id: 'reflux', name: 'Reflux', emoji: '😣', icon: 'arrow-up-outline',
     color: '#FF6B6B', gradient: ['#FF6B6B', '#EE5A24'],
@@ -1796,9 +1779,6 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
   },
 ];
 
-// ═══════════════════════════════════════════════════════════════
-// CUSTOM TRACKER FACTORY
-// ═══════════════════════════════════════════════════════════════
 
 /**
  * Creates a new custom tracker configuration
@@ -1864,7 +1844,6 @@ export const validateCustomTracker = (tracker: UnifiedTrackerConfig): { valid: b
     errors.push('Category is required');
   }
   
-  // Validate field configurations
   tracker.fields?.forEach((field, index) => {
     if (!field.id || !/^[a-z][a-z0-9_]*$/.test(field.id)) {
       errors.push(`Field ${index + 1}: ID must be snake_case starting with a letter`);

@@ -286,7 +286,6 @@ const styles = StyleSheet.create({
   },
   headerSubtitleDark: { color: '#a0a0a0' },
 
-  // Section Header
   sectionWrapper: { marginBottom: 20 },
   sectionHeader: {
     flexDirection: 'row',
@@ -311,7 +310,6 @@ const styles = StyleSheet.create({
   },
   sectionTitleDark: { color: '#ffffff' },
 
-  // Selector
   selector: {
     flexDirection: 'row',
     gap: 12,
@@ -346,7 +344,6 @@ const styles = StyleSheet.create({
   },
   selectorSubActive: { color: 'rgba(255,255,255,0.8)' },
 
-  // Preview
   previewContainer: {
     borderRadius: 24,
     overflow: 'hidden',

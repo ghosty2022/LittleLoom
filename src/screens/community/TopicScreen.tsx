@@ -1,4 +1,3 @@
-// src/screens/community/TopicScreen.tsx
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
@@ -9,6 +8,7 @@ import {
   RefreshControl,
   Dimensions,
   StatusBar,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -22,6 +22,7 @@ import { useReportRoute } from '../../hooks/useReportRoute';
 import { useSafeCustomization } from '../../hooks/useSafeContexts';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { AutoHideFlatList } from '../../components/AutoHideScrollWrappers';
+import { useAutoHideNav } from '../../hooks/useAutoHideNav';
 import {
   CommunityColors,
   CommunitySpacing,
@@ -32,6 +33,11 @@ import {
 type TopicScreenProps = NativeStackScreenProps<CommunityStackParamList, 'Topic'>;
 
 const { width } = Dimensions.get('window');
+
+const PILL_HEIGHT = 68;
+const PILL_MARGIN = 14;
+const SAFE_AREA_BOTTOM = 20;
+const NAV_PILL_TOTAL_HEIGHT = PILL_HEIGHT + PILL_MARGIN + SAFE_AREA_BOTTOM;
 
 const AvatarImage = ({ uri, size = 40 }: { uri: string; size?: number }) => (
   <SafeAvatar
@@ -45,6 +51,7 @@ const AvatarImage = ({ uri, size = 40 }: { uri: string; size?: number }) => (
 );
 
 export default function TopicScreen({ navigation, route }: TopicScreenProps) {
+  useAutoHideNav({ isCommunityScreen: true });
   useReportRoute();
 
   const { topicId } = route.params;
@@ -63,7 +70,6 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
   } = useCommunity();
   const { communityProfile } = useUser();
 
-  // 🔑 Single safe hook call with destructuring
   const {
     themeColors = { spinnerColor: '#667eea' },
     shouldReduceMotion = false,
@@ -74,32 +80,35 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
   const [sortBy, setSortBy] = useState<'trending' | 'newest' | 'popular'>('trending');
   const [topic, setTopic] = useState<Topic | undefined>(undefined);
   const [posts, setPosts] = useState<Post[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Sync profile changes across posts
   useEffect(() => {
     if (!currentUser?.id || !communityProfile) return;
 
     const hasChanges =
       communityProfile.displayName !== currentUser.displayName ||
       communityProfile.handle !== currentUser.handle ||
-      communityProfile.avatar !== currentUser.avatar;
+      communityProfile.avatar !== currentUser.avatar ||
+      (communityProfile as any).bio !== currentUser.bio;
 
     if (hasChanges) {
       syncUserProfileAcrossPosts(currentUser.id, {
         displayName: communityProfile.displayName,
         handle: communityProfile.handle,
         avatar: communityProfile.avatar,
-        bio: communityProfile.bio,
+        ...((communityProfile as any).bio && { bio: (communityProfile as any).bio }),
       });
     }
-  }, [communityProfile?.displayName, communityProfile?.handle, communityProfile?.avatar]);
+  }, [communityProfile?.displayName, communityProfile?.handle, communityProfile?.avatar, (communityProfile as any)?.bio]);
 
-  // Load topic data
   useEffect(() => {
+    setIsLoading(true);
     const currentTopic = getTopicById(topicId);
     const topicPosts = getPostsByTopic(topicId);
     setTopic(currentTopic);
     setPosts(topicPosts);
+    const timer = setTimeout(() => setIsLoading(false), 100);
+    return () => clearTimeout(timer);
   }, [topicId, getTopicById, getPostsByTopic]);
 
   const onRefresh = useCallback(async () => {
@@ -184,7 +193,6 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
     [navigation, topicId]
   );
 
-  // Sort posts
   const sortedPosts = [...posts].sort((a, b) => {
     switch (sortBy) {
       case 'newest':
@@ -196,7 +204,6 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
     }
   });
 
-  // Render post item
   const renderPost = useCallback(
     ({ item, index }: { item: Post; index: number }) => (
       <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(index * 50)}>
@@ -279,7 +286,15 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
     [shouldReduceMotion, navigateToPostDetail, navigateToUserProfile, handlePostLike, handlePostRepost]
   );
 
-  // Empty state
+  if (isLoading) {
+    return (
+      <View style={[styles.container, styles.centered]}>
+        <ActivityIndicator size="large" color={themeColors.spinnerColor} />
+        <Text style={styles.loadingText}>Loading topic...</Text>
+      </View>
+    );
+  }
+
   if (!topic) {
     return (
       <View style={[styles.container, styles.centered]}>
@@ -318,7 +333,7 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
                     navigation.navigate('Report', {
                       type: 'topic',
                       targetId: topic.id,
-                      targetUserId: topic.id,
+                      targetUserId: 'system',
                     }),
                 },
               ])
@@ -375,7 +390,10 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
           data={sortedPosts}
           renderItem={renderPost}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.postsList}
+          contentContainerStyle={[
+            styles.postsList,
+            { paddingBottom: NAV_PILL_TOTAL_HEIGHT + 20 }
+          ]}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
@@ -406,6 +424,12 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   centered: { justifyContent: 'center', alignItems: 'center' },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: CommunityColors.text.secondary,
+    fontWeight: '600',
+  },
   headerGradient: {
     paddingTop: 60,
     paddingHorizontal: 24,
@@ -483,7 +507,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  postsList: { paddingHorizontal: CommunitySpacing.lg, paddingBottom: 100 },
+  postsList: { 
+    paddingHorizontal: CommunitySpacing.lg, 
+  },
   postCard: {
     borderRadius: 20,
     padding: 20,

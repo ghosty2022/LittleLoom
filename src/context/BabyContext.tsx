@@ -1,27 +1,12 @@
-// src/context/BabyContext.tsx
-// COMPATIBILITY LAYER: Delegates activities to TrackerContext
-// KEEPS ALL DIRECT STORAGE/CRUD for: Sleep, Feeding, Potty, Medication, Growth, Milestones
-// RESTORED: All helpers, cross-context sync, notifications, retry logic, auto age refresh
-// FIXED: Zero repetition, unified storage, family-synced, full backward compatibility
-
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 
-// Import the unified system (optional — gracefully degrades if not available)
-let useTrackerHook: (() => any) | null = null;
-try {
-  const trackerModule = require('./TrackerContext');
-  useTrackerHook = trackerModule.useTracker;
-} catch {
-  useTrackerHook = null;
-}
-
 /* ------------------------------------------------------------------ */
 /*  Storage Keys                                                      */
 /* ------------------------------------------------------------------ */
-const STORAGE_KEYS = {
+export const STORAGE_KEYS = {
   BABIES: '@littleloom_babies',
   CURRENT_BABY: '@littleloom_current_baby',
   HAS_SKIPPED_BABY: '@littleloom_has_skipped_baby',
@@ -50,7 +35,7 @@ const getNotificationService = async () => {
 };
 
 /* ------------------------------------------------------------------ */
-/*  Types — ALL 70+ TRACKING ASPECTS                                */
+/*  Types                                                             */
 /* ------------------------------------------------------------------ */
 export type Gender = 'boy' | 'girl' | 'other';
 
@@ -181,59 +166,47 @@ export interface ActivityEntry {
   icon?: string;
   loggedBy: string;
   loggedByName: string;
-  // Potty fields
   pottyType?: PottyLog['type'];
   successful?: boolean;
-  // Feed fields
   feedType?: FeedingLog['type'];
   amount?: string;
   duration?: string;
   side?: string;
   food?: string;
-  // Sleep fields
   sleepType?: 'nap' | 'night' | 'wake';
   quality?: number;
   location?: string;
-  // Growth fields
   measurementType?: GrowthMeasurement['type'];
   value?: string;
   unit?: string;
   percentile?: number;
-  // Medication fields
   medName?: string;
   dosage?: string;
   medType?: string;
   reason?: string;
   givenBy?: string;
-  // Milestone fields
   milestoneType?: string;
   firstTime?: boolean;
   description?: string;
-  // Symptom fields
   symptomType?: string;
   severity?: number;
-  // Temperature fields
   tempValue?: number;
   tempUnit?: 'celsius' | 'fahrenheit';
   method?: string;
   symptoms?: string[];
-  // Play fields
   playType?: string;
   engagement?: number;
-  // Development fields
   tummyTime?: string;
   readingDuration?: string;
   musicType?: string;
   outdoorActivity?: string;
   sensoryType?: string;
   speechWord?: string;
-  // Emotional fields
   moodType?: string;
   attachmentType?: string;
   socialType?: string;
   cryingDuration?: string;
   soothingMethod?: string;
-  // Physical care fields
   nailCareType?: string;
   hairCareType?: string;
   skinCareType?: string;
@@ -242,37 +215,31 @@ export interface ActivityEntry {
   oralCareType?: string;
   earCareType?: string;
   noseCareType?: string;
-  // Nutrition fields
   solidFoodType?: string;
   waterAmount?: string;
   vitaminName?: string;
   allergenType?: string;
   reactionType?: string;
   breastfeedingDuration?: string;
-  // Safety fields
   accidentType?: string;
   injuryType?: string;
   chokingResponse?: string;
   carSeatType?: string;
   babyproofingArea?: string;
-  // Schedule fields
   wakeTime?: string;
   bedtimeRoutine?: string;
   napDuration?: string;
   screenTimeDuration?: string;
   outdoorTimeDuration?: string;
-  // Parental fields
   content?: string;
   photoUri?: string;
   videoUri?: string;
   voiceMemoUri?: string;
   journalEntry?: string;
-  // Travel fields
   tripDestination?: string;
   travelMode?: string;
   daycareNotes?: string;
   babysitterName?: string;
-  // Special needs fields
   refluxSeverity?: string;
   colicDuration?: string;
   gasRelief?: string;
@@ -280,7 +247,6 @@ export interface ActivityEntry {
   diarrheaFrequency?: string;
   eczemaSeverity?: string;
   cradleCapTreatment?: string;
-  // General
   notes?: string;
   photo?: string;
   tags?: string[];
@@ -308,9 +274,8 @@ interface BabyState {
 }
 
 interface BabyContextType extends BabyState {
-  // Baby profile CRUD
   loadBabies: () => Promise<void>;
-  createBaby: (data: Omit<BabyProfile, 'id' | 'streak' | 'milestones' | 'photos' | 'createdAt' | 'age' | 'lastUpdated' | 'parent1Id'>) => Promise<boolean>;
+  createBaby: (data: Omit<BabyProfile, 'id' | 'streak' | 'milestones' | 'photos' | 'createdAt' | 'age' | 'lastUpdated' | 'parent1Id'>) => Promise<string | null>;
   updateBaby: (id: string, updates: Partial<BabyProfile>) => Promise<void>;
   deleteBaby: (id: string) => Promise<boolean>;
   switchBaby: (id: string) => Promise<boolean>;
@@ -320,40 +285,33 @@ interface BabyContextType extends BabyState {
   calculateAge: (birthDate: string) => string;
   getBabyAge: (babyId?: string) => string;
 
-  // Growth
   addGrowthMeasurement: (measurement: Omit<GrowthMeasurement, 'id' | 'createdAt'>) => Promise<boolean>;
   getGrowthData: (type?: GrowthMeasurement['type']) => GrowthMeasurement[];
   getLatestMeasurements: () => Record<GrowthMeasurement['type'], GrowthMeasurement | null>;
   deleteGrowthMeasurement: (id: string) => Promise<boolean>;
 
-  // Milestones
   addMilestone: (milestone: Omit<Milestone, 'id'>) => Promise<boolean>;
   getMilestones: (category?: Milestone['category']) => Milestone[];
   deleteMilestone: (id: string) => Promise<boolean>;
 
-  // Sleep
   addSleepLog: (log: Omit<SleepLog, 'id' | 'createdAt'>) => Promise<boolean>;
   getSleepLogs: (days?: number) => SleepLog[];
   endSleepSession: (logId: string, endTime: string) => Promise<boolean>;
   getTodaySleepCount: () => number;
 
-  // Feeding
   addFeedingLog: (log: Omit<FeedingLog, 'id' | 'createdAt'>) => Promise<boolean>;
   getFeedingLogs: (days?: number) => FeedingLog[];
   getTodayFeedCount: () => number;
 
-  // Potty
   addPottyLog: (log: Omit<PottyLog, 'id' | 'createdAt'>) => Promise<boolean>;
   getPottyLogs: (days?: number) => PottyLog[];
   getPottyStreak: () => number;
   getTodayPottyCount: () => number;
   getPottySuccessRate: () => number;
 
-  // Medication
   addMedicationLog: (log: Omit<MedicationLog, 'id' | 'createdAt'>) => Promise<boolean>;
   getMedicationLogs: (days?: number) => MedicationLog[];
 
-  // Activities (delegates to TrackerContext when available, falls back to direct storage)
   addActivity: (entry: Omit<ActivityEntry, 'id'>) => Promise<boolean>;
   getRecentActivities: (limit?: number) => ActivityEntry[];
   getActivitiesByType: (type: ActivityType) => ActivityEntry[];
@@ -361,7 +319,6 @@ interface BabyContextType extends BabyState {
   getBabyStats: () => { streak: number; milestones: number; photos: number; entries: number };
   updateBabyStats: (updates: Partial<BabyProfile>) => Promise<void>;
 
-  // ActivityContext compatibility
   entries: ActivityEntry[];
   isLoadingEntries: boolean;
   loadEntries: () => Promise<void>;
@@ -371,7 +328,6 @@ interface BabyContextType extends BabyState {
   getEntryById: (id: string) => ActivityEntry | undefined;
   getDateTitle: (timestamp: number | string) => string;
 
-  // Cross-context sync
   syncWithActivityContext: () => Promise<void>;
   scheduleActivityReminder: (entry: ActivityEntry, minutes: number) => Promise<string | null>;
   cancelActivityReminder: (notificationId: string) => Promise<void>;
@@ -427,8 +383,6 @@ const withRetry = async <T,>(
 /*  Provider                                                           */
 /* ------------------------------------------------------------------ */
 export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Try to get TrackerContext (gracefully handles if not available)
-  const tracker = useTrackerHook ? useTrackerHook() : null;
 
   const [state, setState] = useState<BabyState>({
     isLoading: false,
@@ -449,6 +403,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const ageIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const initRef = useRef(false);
+  
+  /* FIX #5: isMounted ref for all async operations */
+  const isMounted = useRef(true);
 
   /* ---- Age calculation ---- */
   const calculateAge = useCallback((birthDate: string): string => {
@@ -488,6 +445,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   /* ---- Data loading ---- */
   const loadAllBabyData = useCallback(async (babyId: string) => {
+    /* FIX #5: Guard against unmounted component */
+    if (!isMounted.current) return;
+    
     setState(prev => ({ ...prev, isLoading: true }));
     setIsLoadingEntries(true);
 
@@ -503,6 +463,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           withRetry(() => AsyncStorage.getItem(STORAGE_KEYS.ACTIVITIES(babyId))),
         ]);
 
+      /* FIX #5: Check isMounted before setting state */
+      if (!isMounted.current) return;
+
       setState(prev => ({
         ...prev,
         isLoading: false,
@@ -516,13 +479,20 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }));
     } catch (error) {
       console.error('Error loading baby data:', error);
-      setState(prev => ({ ...prev, isLoading: false }));
+      if (isMounted.current) {
+        setState(prev => ({ ...prev, isLoading: false }));
+      }
     } finally {
-      setIsLoadingEntries(false);
+      if (isMounted.current) {
+        setIsLoadingEntries(false);
+      }
     }
   }, []);
 
   const loadBabies = useCallback(async () => {
+    /* FIX #5: Guard against unmounted component */
+    if (!isMounted.current) return;
+    
     setState(prev => ({ ...prev, isLoading: true }));
 
     try {
@@ -535,12 +505,17 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       let babies: BabyProfile[] = safeParse<BabyProfile[]>(babiesStr, []);
       babies = babies.map(b => ({ ...b, age: calculateAge(b.birthDate) }));
 
-      const effectiveCurrentId = currentId || babies[0]?.id || null;
-      if (effectiveCurrentId && !currentId && babies.length > 0) {
+      /* FIX #4: Always set current baby for first baby if none exists */
+      let effectiveCurrentId = currentId;
+      if (!effectiveCurrentId && babies.length > 0) {
+        effectiveCurrentId = babies[0].id;
         await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY, effectiveCurrentId);
       }
 
       const currentBaby = babies.find(b => b.id === effectiveCurrentId) || babies[0] || null;
+
+      /* FIX #5: Check isMounted before setting state */
+      if (!isMounted.current) return;
 
       setState(prev => ({
         ...prev,
@@ -556,15 +531,23 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     } catch (error) {
       console.error('Error loading babies:', error);
-      setState(prev => ({ ...prev, isLoading: false }));
+      if (isMounted.current) {
+        setState(prev => ({ ...prev, isLoading: false }));
+      }
     }
   }, [calculateAge, loadAllBabyData]);
 
-  // Initialize on mount
   useEffect(() => {
     if (initRef.current) return;
     initRef.current = true;
+    
+    /* FIX #5: Track mount status */
+    isMounted.current = true;
     loadBabies();
+    
+    return () => {
+      isMounted.current = false;
+    };
   }, [loadBabies]);
 
   /* ---- Age auto-refresh ---- */
@@ -572,6 +555,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (state.babies.length === 0) return;
 
     const updateAges = () => {
+      /* FIX #5: Guard state updates */
+      if (!isMounted.current) return;
+      
       setState(prev => ({
         ...prev,
         babies: prev.babies.map(b => ({ ...b, age: calculateAge(b.birthDate) })),
@@ -596,7 +582,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const skipBaby = useCallback(async () => {
     try {
       await AsyncStorage.setItem(STORAGE_KEYS.HAS_SKIPPED_BABY, 'true');
-      setState(prev => ({ ...prev, hasSkippedBaby: true }));
+      if (isMounted.current) {
+        setState(prev => ({ ...prev, hasSkippedBaby: true }));
+      }
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     } catch (error) {
       console.error('Error skipping baby:', error);
@@ -606,7 +594,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const clearSkipBaby = useCallback(async () => {
     try {
       await AsyncStorage.removeItem(STORAGE_KEYS.HAS_SKIPPED_BABY);
-      setState(prev => ({ ...prev, hasSkippedBaby: false }));
+      if (isMounted.current) {
+        setState(prev => ({ ...prev, hasSkippedBaby: false }));
+      }
     } catch (error) {
       console.error('Error clearing skip baby:', error);
     }
@@ -615,19 +605,22 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   /* ---- Create baby ---- */
   const createBaby = useCallback(async (
     data: Omit<BabyProfile, 'id' | 'streak' | 'milestones' | 'photos' | 'createdAt' | 'age' | 'lastUpdated' | 'parent1Id'>
-  ): Promise<boolean> => {
+  ): Promise<string | null> => {
     const birthDate = new Date(data.birthDate);
     const now = new Date();
     if (birthDate > now) {
       Alert.alert('Invalid Date', 'Birth date cannot be in the future');
-      return false;
+      return null;
     }
     if (isNaN(birthDate.getTime())) {
       Alert.alert('Invalid Date', 'Please enter a valid birth date');
-      return false;
+      return null;
     }
 
     try {
+      const babiesStr = await AsyncStorage.getItem(STORAGE_KEYS.BABIES);
+      const existingBabies: BabyProfile[] = safeParse(babiesStr, []);
+
       const nowISO = new Date().toISOString();
       const newBaby: BabyProfile = {
         ...data,
@@ -641,38 +634,48 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         age: calculateAge(data.birthDate),
       };
 
-      const updatedBabies = [...state.babies, newBaby];
+      const updatedBabies = [...existingBabies, newBaby];
       await AsyncStorage.setItem(STORAGE_KEYS.BABIES, JSON.stringify(updatedBabies));
 
-      const isFirstBaby = state.babies.length === 0;
-      const newCurrentId = isFirstBaby ? newBaby.id : state.currentBabyId;
+      /* FIX #4: Always set current baby when creating the first baby */
+      const isFirstBaby = existingBabies.length === 0;
+      const newCurrentId = isFirstBaby ? newBaby.id : (state.currentBabyId || newBaby.id);
 
-      if (isFirstBaby && newCurrentId) {
+      if (isFirstBaby || !state.currentBabyId) {
         await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY, newCurrentId);
       }
 
       await clearSkipBaby();
 
-      setState(prev => ({
-        ...prev,
-        babies: updatedBabies,
-        currentBabyId: newCurrentId || newBaby.id,
-        currentBaby: isFirstBaby ? newBaby : prev.currentBaby,
-      }));
+      /* FIX #5: Guard state update */
+      if (isMounted.current) {
+        setState(prev => ({
+          ...prev,
+          babies: updatedBabies,
+          currentBabyId: newCurrentId,
+          currentBaby: isFirstBaby ? newBaby : prev.currentBaby,
+        }));
+      }
+
+      await loadAllBabyData(newBaby.id);
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      return true;
+      return newBaby.id;
     } catch (error) {
       console.error('Create baby error:', error);
       Alert.alert('Error', 'Failed to create baby profile');
-      return false;
+      return null;
     }
-  }, [state.babies, state.currentBabyId, calculateAge, clearSkipBaby]);
+  }, [calculateAge, clearSkipBaby, loadAllBabyData, state.currentBabyId]);
 
   /* ---- Update baby ---- */
   const updateBaby = useCallback(async (id: string, updates: Partial<BabyProfile>) => {
     try {
-      const updated = state.babies.map(b => {
+      /* FIX #5: Read fresh from storage instead of relying on stale state */
+      const babiesStr = await AsyncStorage.getItem(STORAGE_KEYS.BABIES);
+      const allBabies: BabyProfile[] = safeParse(babiesStr, []);
+      
+      const updated = allBabies.map(b => {
         if (b.id === id) {
           const updatedBaby: BabyProfile = { ...b, ...updates, lastUpdated: new Date().toISOString() };
           if (updates.birthDate) updatedBaby.age = calculateAge(updates.birthDate);
@@ -683,21 +686,27 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       await AsyncStorage.setItem(STORAGE_KEYS.BABIES, JSON.stringify(updated));
 
-      setState(prev => ({
-        ...prev,
-        babies: updated,
-        currentBaby: prev.currentBaby?.id === id ? updated.find(b => b.id === id) || null : prev.currentBaby,
-      }));
+      if (isMounted.current) {
+        setState(prev => ({
+          ...prev,
+          babies: updated,
+          currentBaby: prev.currentBaby?.id === id ? updated.find(b => b.id === id) || null : prev.currentBaby,
+        }));
+      }
     } catch (error) {
       console.error('Update baby error:', error);
       Alert.alert('Error', 'Failed to update baby profile');
     }
-  }, [state.babies, calculateAge]);
+  }, [calculateAge]);
 
   /* ---- Delete baby ---- */
   const deleteBaby = useCallback(async (id: string): Promise<boolean> => {
     try {
-      const filtered = state.babies.filter(b => b.id !== id);
+      /* FIX #5: Read fresh from storage */
+      const babiesStr = await AsyncStorage.getItem(STORAGE_KEYS.BABIES);
+      const allBabies: BabyProfile[] = safeParse(babiesStr, []);
+      
+      const filtered = allBabies.filter(b => b.id !== id);
       await AsyncStorage.setItem(STORAGE_KEYS.BABIES, JSON.stringify(filtered));
 
       const cleanupKeys = [
@@ -724,19 +733,21 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const newCurrentBaby = filtered.find(b => b.id === newCurrentId) || null;
 
-      setState(prev => ({
-        ...prev,
-        babies: filtered,
-        currentBabyId: newCurrentId,
-        currentBaby: newCurrentBaby,
-        growthData: newCurrentId ? prev.growthData : [],
-        milestones: newCurrentId ? prev.milestones : [],
-        sleepLogs: newCurrentId ? prev.sleepLogs : [],
-        feedingLogs: newCurrentId ? prev.feedingLogs : [],
-        pottyLogs: newCurrentId ? prev.pottyLogs : [],
-        medicationLogs: newCurrentId ? prev.medicationLogs : [],
-        activities: newCurrentId ? prev.activities : [],
-      }));
+      if (isMounted.current) {
+        setState(prev => ({
+          ...prev,
+          babies: filtered,
+          currentBabyId: newCurrentId,
+          currentBaby: newCurrentBaby,
+          growthData: newCurrentId ? prev.growthData : [],
+          milestones: newCurrentId ? prev.milestones : [],
+          sleepLogs: newCurrentId ? prev.sleepLogs : [],
+          feedingLogs: newCurrentId ? prev.feedingLogs : [],
+          pottyLogs: newCurrentId ? prev.pottyLogs : [],
+          medicationLogs: newCurrentId ? prev.medicationLogs : [],
+          activities: newCurrentId ? prev.activities : [],
+        }));
+      }
 
       if (newCurrentId) {
         await loadAllBabyData(newCurrentId);
@@ -748,11 +759,15 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       Alert.alert('Error', 'Failed to delete baby profile');
       return false;
     }
-  }, [state.babies, state.currentBabyId, loadAllBabyData]);
+  }, [state.currentBabyId, loadAllBabyData]);
 
   /* ---- Switch baby ---- */
   const switchBaby = useCallback(async (id: string): Promise<boolean> => {
-    const baby = state.babies.find(b => b.id === id);
+    /* FIX #5: Read fresh from storage to ensure baby exists */
+    const babiesStr = await AsyncStorage.getItem(STORAGE_KEYS.BABIES);
+    const allBabies: BabyProfile[] = safeParse(babiesStr, []);
+    const baby = allBabies.find(b => b.id === id);
+    
     if (!baby) {
       console.warn(`Baby with id ${id} not found`);
       return false;
@@ -762,11 +777,13 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY, id);
       await loadAllBabyData(id);
 
-      setState(prev => ({
-        ...prev,
-        currentBabyId: id,
-        currentBaby: baby,
-      }));
+      if (isMounted.current) {
+        setState(prev => ({
+          ...prev,
+          currentBabyId: id,
+          currentBaby: baby,
+        }));
+      }
 
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
       return true;
@@ -774,7 +791,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('Error switching baby:', error);
       return false;
     }
-  }, [state.babies, loadAllBabyData]);
+  }, [loadAllBabyData]);
 
   /* ---- Refresh current baby ---- */
   const refreshCurrentBaby = useCallback(async () => {
@@ -785,7 +802,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const babies = safeParse<BabyProfile[]>(babiesStr, []);
       const currentBaby = babies.find(b => b.id === state.currentBabyId);
 
-      if (currentBaby) {
+      if (currentBaby && isMounted.current) {
         setState(prev => ({
           ...prev,
           babies: babies.map(b => ({ ...b, age: calculateAge(b.birthDate) })),
@@ -813,11 +830,14 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       await AsyncStorage.setItem(key, JSON.stringify(measurements));
 
-      if (measurement.babyId === state.currentBabyId) {
+      if (measurement.babyId === state.currentBabyId && isMounted.current) {
         setState(prev => ({ ...prev, growthData: measurements }));
       }
 
-      const baby = state.babies.find(b => b.id === measurement.babyId);
+      /* FIX #5: Read fresh baby data for update */
+      const babiesStr = await AsyncStorage.getItem(STORAGE_KEYS.BABIES);
+      const allBabies: BabyProfile[] = safeParse(babiesStr, []);
+      const baby = allBabies.find(b => b.id === measurement.babyId);
       if (baby) {
         const updates: Partial<BabyProfile> = {};
         if (measurement.type === 'height') updates.height = `${measurement.value} ${measurement.unit}`;
@@ -827,15 +847,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      // Also log as tracker entry for timeline (if TrackerContext available)
-      if (tracker?.addEntry) {
-        await tracker.addEntry('growth', {
-          measurementType: measurement.type,
-          value: measurement.value,
-          unit: measurement.unit,
-        }, { title: `📏 Growth: ${measurement.type}` });
-      }
-
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       return true;
     } catch (error) {
@@ -843,7 +854,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       Alert.alert('Error', 'Failed to save measurement');
       return false;
     }
-  }, [state.currentBabyId, state.babies, updateBaby, tracker]);
+  }, [state.currentBabyId, updateBaby]);
 
   const getGrowthData = useCallback((type?: GrowthMeasurement['type']) => {
     let data = [...state.growthData];
@@ -867,7 +878,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const key = STORAGE_KEYS.GROWTH_DATA(state.currentBabyId);
       const filtered = state.growthData.filter(m => m.id !== id);
       await AsyncStorage.setItem(key, JSON.stringify(filtered));
-      setState(prev => ({ ...prev, growthData: filtered }));
+      if (isMounted.current) {
+        setState(prev => ({ ...prev, growthData: filtered }));
+      }
       return true;
     } catch (error) {
       console.error('Delete growth measurement error:', error);
@@ -887,23 +900,16 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       await AsyncStorage.setItem(key, JSON.stringify(milestones));
 
-      if (milestone.babyId === state.currentBabyId) {
+      if (milestone.babyId === state.currentBabyId && isMounted.current) {
         setState(prev => ({ ...prev, milestones }));
       }
 
-      const baby = state.babies.find(b => b.id === milestone.babyId);
+      /* FIX #5: Read fresh baby data for update */
+      const babiesStr = await AsyncStorage.getItem(STORAGE_KEYS.BABIES);
+      const allBabies: BabyProfile[] = safeParse(babiesStr, []);
+      const baby = allBabies.find(b => b.id === milestone.babyId);
       if (baby) {
         await updateBaby(milestone.babyId, { milestones: baby.milestones + 1 });
-      }
-
-      // Also log as tracker entry (if TrackerContext available)
-      if (tracker?.addEntry) {
-        await tracker.addEntry('milestone', {
-          title: milestone.title,
-          category: milestone.category,
-          firstTime: milestone.isFirstTime,
-          description: milestone.description,
-        }, { title: `🏆 Milestone: ${milestone.title}` });
       }
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
@@ -913,7 +919,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       Alert.alert('Error', 'Failed to save milestone');
       return false;
     }
-  }, [state.currentBabyId, state.babies, updateBaby, tracker]);
+  }, [state.currentBabyId, updateBaby]);
 
   const getMilestones = useCallback((category?: Milestone['category']) => {
     let data = [...state.milestones];
@@ -927,7 +933,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const key = STORAGE_KEYS.MILESTONES(state.currentBabyId);
       const filtered = state.milestones.filter(m => m.id !== id);
       await AsyncStorage.setItem(key, JSON.stringify(filtered));
-      setState(prev => ({ ...prev, milestones: filtered }));
+      if (isMounted.current) {
+        setState(prev => ({ ...prev, milestones: filtered }));
+      }
       return true;
     } catch (error) {
       console.error('Delete milestone error:', error);
@@ -947,7 +955,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       await AsyncStorage.setItem(key, JSON.stringify(logs));
 
-      if (log.babyId === state.currentBabyId) {
+      if (log.babyId === state.currentBabyId && isMounted.current) {
         setState(prev => ({ ...prev, sleepLogs: logs }));
       }
 
@@ -987,7 +995,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       await AsyncStorage.setItem(key, JSON.stringify(updated));
-      setState(prev => ({ ...prev, sleepLogs: updated }));
+      if (isMounted.current) {
+        setState(prev => ({ ...prev, sleepLogs: updated }));
+      }
       return true;
     } catch (error) {
       console.error('End sleep session error:', error);
@@ -1017,7 +1027,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       await AsyncStorage.setItem(key, JSON.stringify(logs));
 
-      if (log.babyId === state.currentBabyId) {
+      if (log.babyId === state.currentBabyId && isMounted.current) {
         setState(prev => ({ ...prev, feedingLogs: logs }));
       }
 
@@ -1078,7 +1088,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       await AsyncStorage.setItem(key, JSON.stringify(logs));
 
-      if (log.babyId === state.currentBabyId) {
+      if (log.babyId === state.currentBabyId && isMounted.current) {
         setState(prev => ({ ...prev, pottyLogs: logs }));
       }
 
@@ -1139,7 +1149,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       await AsyncStorage.setItem(key, JSON.stringify(logs));
 
-      if (log.babyId === state.currentBabyId) {
+      if (log.babyId === state.currentBabyId && isMounted.current) {
         setState(prev => ({ ...prev, medicationLogs: logs }));
       }
 
@@ -1177,50 +1187,12 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       await AsyncStorage.setItem(key, JSON.stringify(activities));
 
-      if (entry.babyId === state.currentBabyId) {
+      if (entry.babyId === state.currentBabyId && isMounted.current) {
         setState(prev => ({ ...prev, activities }));
       }
 
-      // Cross-context sync: Push to ActivityContext storage
       await syncToActivityContext(newEntry);
 
-      // Also delegate to TrackerContext if available
-      if (tracker?.addEntry) {
-        const data: Record<string, unknown> = {};
-        if (entry.pottyType) data.type = entry.pottyType;
-        if (entry.successful !== undefined) data.successful = entry.successful;
-        if (entry.feedType) data.feedType = entry.feedType;
-        if (entry.amount) data.amount = parseFloat(entry.amount);
-        if (entry.duration) data.duration = entry.duration;
-        if (entry.side) data.side = entry.side;
-        if (entry.food) data.food = entry.food;
-        if (entry.sleepType) data.sleepType = entry.sleepType;
-        if (entry.quality !== undefined) data.quality = entry.quality;
-        if (entry.location) data.location = entry.location;
-        if (entry.measurementType) data.measurementType = entry.measurementType;
-        if (entry.value) data.value = parseFloat(entry.value);
-        if (entry.unit) data.unit = entry.unit;
-        if (entry.percentile !== undefined) data.percentile = entry.percentile;
-        if (entry.medName) data.name = entry.medName;
-        if (entry.dosage) data.dosage = entry.dosage;
-        if (entry.reason) data.reason = entry.reason;
-        if (entry.milestoneType) data.title = entry.milestoneType;
-        if (entry.firstTime !== undefined) data.firstTime = entry.firstTime;
-        if (entry.description) data.description = entry.description;
-        if (entry.symptoms) data.symptoms = entry.symptoms;
-        if (entry.severity !== undefined) data.severity = entry.severity;
-        if (entry.tempValue !== undefined) data.value = entry.tempValue;
-        if (entry.tempUnit) data.unit = entry.tempUnit;
-        if (entry.method) data.method = entry.method;
-
-        await tracker.addEntry(entry.type, data, {
-          title: entry.title,
-          notes: entry.notes || entry.details,
-          tags: entry.tags,
-        });
-      }
-
-      // Trigger notification for important activities
       if (['feed', 'sleep', 'potty', 'milestone', 'growth'].includes(entry.type)) {
         const service = await getNotificationService();
         if (service) {
@@ -1234,7 +1206,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('Failed to add activity:', error);
       return false;
     }
-  }, [state.currentBabyId, state.currentBaby, tracker]);
+  }, [state.currentBabyId, state.currentBaby]);
 
   const getRecentActivities = useCallback((limit: number = 10) => {
     return [...state.activities]
@@ -1265,22 +1237,18 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const filtered = state.activities.filter(a => a.id !== id);
 
       await AsyncStorage.setItem(key, JSON.stringify(filtered));
-      setState(prev => ({ ...prev, activities: filtered }));
-
-      // Sync deletion to ActivityContext
-      await removeFromActivityContext(id);
-
-      // Also delete from TrackerContext if available
-      if (tracker?.deleteEntry) {
-        await tracker.deleteEntry(id);
+      if (isMounted.current) {
+        setState(prev => ({ ...prev, activities: filtered }));
       }
+
+      await removeFromActivityContext(id);
 
       return true;
     } catch (error) {
       console.error('Failed to delete activity:', error);
       return false;
     }
-  }, [state.currentBabyId, state.activities, tracker]);
+  }, [state.currentBabyId, state.activities]);
 
   /* ---- Cross-context sync: ActivityContext ---- */
   const syncToActivityContext = useCallback(async (entry: ActivityEntry) => {
@@ -1292,7 +1260,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const merged = [entry, ...existingEntries];
       await AsyncStorage.setItem(ACTIVITY_CONTEXT_KEY, JSON.stringify(merged));
     } catch {
-      // Silently fail - ActivityContext may not be initialized yet
     }
   }, []);
 
@@ -1304,7 +1271,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const filtered = entries.filter(e => e.id !== entryId);
       await AsyncStorage.setItem(ACTIVITY_CONTEXT_KEY, JSON.stringify(filtered));
     } catch {
-      // Silently fail
     }
   }, []);
 
@@ -1321,7 +1287,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await AsyncStorage.setItem(ACTIVITY_CONTEXT_KEY, JSON.stringify(merged));
       }
     } catch {
-      // Silently fail
     }
   }, [state.currentBabyId, state.activities]);
 
@@ -1362,7 +1327,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await AsyncStorage.removeItem(`${NOTIFICATION_PREFIX}${entry.id}`);
       }
     } catch {
-      // Silently fail
     }
   }, [state.activities]);
 
@@ -1373,11 +1337,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (state.currentBabyId) {
       await loadAllBabyData(state.currentBabyId);
     }
-    // Also refresh TrackerContext if available
-    if (tracker?.refreshEntries) {
-      await tracker.refreshEntries();
-    }
-  }, [state.currentBabyId, loadAllBabyData, tracker]);
+  }, [state.currentBabyId, loadAllBabyData]);
 
   const deleteEntry = deleteActivity;
   const addEntry = addActivity;
@@ -1390,9 +1350,10 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const updated = state.activities.map(a => a.id === id ? { ...a, ...entry } : a);
 
       await AsyncStorage.setItem(key, JSON.stringify(updated));
-      setState(prev => ({ ...prev, activities: updated }));
+      if (isMounted.current) {
+        setState(prev => ({ ...prev, activities: updated }));
+      }
 
-      // Sync update to ActivityContext
       const existing = await AsyncStorage.getItem(ACTIVITY_CONTEXT_KEY);
       if (existing) {
         const entries: ActivityEntry[] = JSON.parse(existing);
@@ -1403,21 +1364,12 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      // Also update TrackerContext if available
-      if (tracker?.updateEntry) {
-        const updates: Record<string, unknown> = {};
-        if (entry.title) updates.title = entry.title;
-        if (entry.notes || entry.details) updates.notes = entry.notes || entry.details;
-        if (entry.tags) updates.tags = entry.tags;
-        await tracker.updateEntry(id, updates);
-      }
-
       return true;
     } catch (error) {
       console.error('Failed to update entry:', error);
       return false;
     }
-  }, [state.currentBabyId, state.activities, tracker]);
+  }, [state.currentBabyId, state.activities]);
 
   const getEntryById = useCallback((id: string) => {
     return state.activities.find(a => a.id === id);

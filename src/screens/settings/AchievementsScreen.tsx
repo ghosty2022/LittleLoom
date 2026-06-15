@@ -18,8 +18,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 
 import { useBaby } from '../../context/BabyContext';
-import { useActivity } from '../../context/ActivityContext';
+import { useTracker } from '../../context/TrackerContext';
 import { useCustomization } from '../../hooks/useCustomization';
+import { useTrackerAchievements, Achievement, AchievementCategory } from '../../hooks/useTrackerAchievements';
 import { SafeBabyAvatar } from '../../components/SafeAvatar';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
@@ -31,27 +32,6 @@ const AnimatedFlatList = Animated.createAnimatedComponent(FlatList);
 /* ═══════════════════════════════════════════════════════════════
    TYPES
    ═══════════════════════════════════════════════════════════════ */
-
-interface Achievement {
-  id: string;
-  title: string;
-  description: string;
-  emoji: string;
-  unlocked: boolean;
-  progress: number;
-  maxProgress: number;
-  category: 'milestone' | 'streak' | 'tracking' | 'social' | 'special' | 'care' | 'health';
-  rarity: 'common' | 'rare' | 'epic' | 'legendary';
-  points: number;
-}
-
-interface StreakData {
-  currentStreak: number;
-  longestStreak: number;
-  lastActivity: string | null;
-  streakAtRisk: boolean;
-  hoursUntilBreak: number;
-}
 
 interface AlertState {
   visible: boolean;
@@ -78,6 +58,8 @@ const ACHIEVEMENT_CATEGORIES = {
   special: { label: 'Special', icon: 'star', color: '#8b5cf6' },
   care: { label: 'Care', icon: 'heart', color: '#ec4899' },
   health: { label: 'Health', icon: 'medical', color: '#06b6d4' },
+  growth: { label: 'Growth', icon: 'trending-up', color: '#43e97b' },
+  predictive: { label: 'Smart Insights', icon: 'bulb', color: '#f472b6' },
 } as const;
 
 const RARITY_COLORS = {
@@ -90,14 +72,14 @@ const RARITY_COLORS = {
 const ACHIEVEMENT_REMINDERS_KEY = '@littleloom_achievement_reminders';
 const SCHEDULED_NOTIFICATIONS_KEY = '@littleloom_achievement_notifications';
 const LONGEST_STREAK_KEY = '@littleloom_longest_streak';
-const ACHIEVEMENTS_UNLOCKED_KEY = '@littleloom_achievements_unlocked';
-const ACHIEVEMENTS_PAGE_SIZE = 10;
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true, shouldPlaySound: true, shouldSetBadge: false,
   }),
 });
+
+const ACHIEVEMENTS_PAGE_SIZE = 10;
 
 /* ═══════════════════════════════════════════════════════════════
    GLASSMORPHISM CARD
@@ -209,7 +191,6 @@ interface AchievementCardProps {
   isDark: boolean;
   isNew: boolean;
   hasReminder: boolean;
-  reminderEnabled: Set<string>;
   rarity: typeof RARITY_COLORS[keyof typeof RARITY_COLORS];
   themeColors: any;
   onPress: (a: Achievement) => void;
@@ -217,22 +198,22 @@ interface AchievementCardProps {
   shouldReduceMotion: boolean;
 }
 
-const AchievementCard = React.memo(({ 
-  achievement, index, isDark, isNew, hasReminder, rarity, onPress, onToggleReminder, shouldReduceMotion 
+const AchievementCard = React.memo(({
+  achievement, index, isDark, isNew, hasReminder, rarity, onPress, onToggleReminder, shouldReduceMotion
 }: AchievementCardProps) => {
   const progress = (achievement.progress / achievement.maxProgress) * 100;
-  
+
   return (
-    <Animated.View 
-      entering={shouldReduceMotion ? undefined : FadeInUp.delay(index * 50)} 
+    <Animated.View
+      entering={shouldReduceMotion ? undefined : FadeInUp.delay(index * 50)}
       layout={shouldReduceMotion ? undefined : Layout.springify()}
     >
       <TouchableOpacity onPress={() => onPress(achievement)} activeOpacity={0.9}>
-        <BlurView intensity={achievement.unlocked ? 90 : 70} 
+        <BlurView intensity={achievement.unlocked ? 90 : 70}
           style={[
-            styles.achievementCard, 
+            styles.achievementCard,
             { backgroundColor: rarity.bg, borderColor: achievement.unlocked ? rarity.border : 'rgba(255,255,255,0.1)' }
-          ]} 
+          ]}
           tint={isDark ? 'dark' : 'light'}
         >
           {isNew && <View style={styles.newBadge}><Text style={styles.newBadgeText}>NEW</Text></View>}
@@ -250,13 +231,22 @@ const AchievementCard = React.memo(({
             </View>
           </View>
           <Text style={[
-            styles.achievementTitle, 
-            !achievement.unlocked && { color: '#94a3b8' }, 
+            styles.achievementTitle,
+            !achievement.unlocked && { color: '#94a3b8' },
             isDark && achievement.unlocked && styles.textDark
           ]}>
             {achievement.title}
           </Text>
           <Text style={styles.achievementDesc}>{achievement.description}</Text>
+          {achievement.sourceTrackers && achievement.sourceTrackers.length > 0 && (
+            <View style={styles.sourceTrackers}>
+              {achievement.sourceTrackers.map((tid) => (
+                <View key={tid} style={[styles.sourceChip, { backgroundColor: `${rarity.text}15` }]}>
+                  <Text style={[styles.sourceChipText, { color: rarity.text }]}>{tid}</Text>
+                </View>
+              ))}
+            </View>
+          )}
           <View style={styles.progressBox}>
             <View style={styles.progressBar}>
               <View style={[styles.progressFill, { width: `${Math.min(progress, 100)}%`, backgroundColor: achievement.unlocked ? '#11998e' : rarity.text }]} />
@@ -276,14 +266,17 @@ const AchievementCard = React.memo(({
                   {hasReminder ? 'Daily reminder on' : 'Remind me'}
                 </Text>
               </View>
-              <Switch 
-                value={hasReminder} 
-                onValueChange={() => onToggleReminder(achievement)} 
-                trackColor={{ false: '#ddd', true: rarity.text }} 
-                thumbColor="#fff" 
-                ios_backgroundColor="#ddd" 
+              <Switch
+                value={hasReminder}
+                onValueChange={() => onToggleReminder(achievement)}
+                trackColor={{ false: '#ddd', true: rarity.text }}
+                thumbColor="#fff"
+                ios_backgroundColor="#ddd"
               />
             </View>
+          )}
+          {achievement.unlocked && achievement.earnedSummary && (
+            <Text style={styles.earnedSummary}>{achievement.earnedSummary}</Text>
           )}
         </BlurView>
       </TouchableOpacity>
@@ -299,11 +292,19 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Achievements'>;
 
 export default function AchievementsScreen({ navigation, route }: Props) {
   const scrollY = useSharedValue(0);
-  const { 
-    currentBaby, babies, getPottyStreak, milestones, growthData, 
-    feedingLogs, sleepLogs, pottyLogs, medicationLogs, loadBabies, refreshCurrentBaby 
-  } = useBaby();
-  const { entries: activities, getTodayCount, getSuccessRate, getStreak, getRecentTimelineEvents, getEntryById } = useActivity();
+  const { currentBaby, babies, refreshCurrentBaby } = useBaby();
+  const { entries } = useTracker();
+  const {
+    achievements,
+    stats,
+    streak,
+    newlyUnlocked,
+    growthScore,
+    pendingReminders,
+    isLoading: achievementsLoading,
+    refresh: refreshAchievements,
+  } = useTrackerAchievements();
+
   const { darkMode: isDark, themeColors, triggerHaptic, shouldReduceMotion } = useCustomization();
 
   const [refreshing, setRefreshing] = useState(false);
@@ -312,11 +313,6 @@ export default function AchievementsScreen({ navigation, route }: Props) {
   const [showStreakProtector, setShowStreakProtector] = useState(false);
   const [reminderEnabled, setReminderEnabled] = useState<Set<string>>(new Set());
   const [scheduledNotifications, setScheduledNotifications] = useState<Map<string, string>>(new Map());
-  const [streakData, setStreakData] = useState<StreakData>({
-    currentStreak: 0, longestStreak: 0, lastActivity: null, streakAtRisk: false, hoursUntilBreak: 0,
-  });
-  const [newlyUnlocked, setNewlyUnlocked] = useState<Set<string>>(new Set());
-  const [unlockedHistory, setUnlockedHistory] = useState<Set<string>>(new Set());
   const [displayCount, setDisplayCount] = useState(ACHIEVEMENTS_PAGE_SIZE);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
 
@@ -330,11 +326,9 @@ export default function AchievementsScreen({ navigation, route }: Props) {
   /* ---- Auto-refresh when returning from other screens ---- */
   useFocusEffect(
     useCallback(() => {
-      // Refresh data when user comes back from AddLog/Reminders/etc
       refreshCurrentBaby();
-      checkStreak();
+      refreshAchievements();
       loadReminders();
-      loadUnlockedHistory();
     }, [baby?.id])
   );
 
@@ -342,15 +336,15 @@ export default function AchievementsScreen({ navigation, route }: Props) {
   useEffect(() => {
     loadReminders();
     loadScheduledNotifications();
-    loadUnlockedHistory();
-    checkStreak();
     Notifications.requestPermissionsAsync();
   }, []);
 
   useEffect(() => {
-    const interval = setInterval(checkStreak, 60000);
+    const interval = setInterval(() => {
+      refreshAchievements();
+    }, 60000);
     return () => clearInterval(interval);
-  }, [baby, activities]);
+  }, []);
 
   /* ---- Load reminders from storage ---- */
   const loadReminders = async () => {
@@ -379,7 +373,7 @@ export default function AchievementsScreen({ navigation, route }: Props) {
       await AsyncStorage.setItem(ACHIEVEMENT_REMINDERS_KEY, JSON.stringify([...enabled]));
     } catch (e) {
       console.warn('Failed to save reminders:', e);
-      showAlert('error', 'Save Failed', 'Could not save reminder settings');
+      sweetAlert('error', 'Save Failed', 'Could not save reminder settings');
     }
   };
 
@@ -394,53 +388,8 @@ export default function AchievementsScreen({ navigation, route }: Props) {
     } catch (e) { console.warn('Failed to save scheduled notifications:', e); }
   };
 
-  /* ---- Load unlocked history ---- */
-  const loadUnlockedHistory = async () => {
-    try {
-      const saved = await AsyncStorage.getItem(ACHIEVEMENTS_UNLOCKED_KEY);
-      if (saved) setUnlockedHistory(new Set(JSON.parse(saved)));
-    } catch (e) { console.warn('Failed to load unlocked history:', e); }
-  };
-
-  /* ---- Save unlocked history ---- */
-  const saveUnlockedHistory = async (history: Set<string>) => {
-    try {
-      await AsyncStorage.setItem(ACHIEVEMENTS_UNLOCKED_KEY, JSON.stringify([...history]));
-    } catch (e) { console.warn('Failed to save unlocked history:', e); }
-  };
-
-  /* ---- Check streak status ---- */
-  const checkStreak = useCallback(async () => {
-    if (!baby) return;
-    const pottyStreak = getPottyStreak();
-    const recentEvents = getRecentTimelineEvents(30, baby.id);
-    const lastActivity = recentEvents.length > 0 ? recentEvents[0].timestamp : null;
-    const now = new Date();
-    let streakAtRisk = false;
-    let hoursUntilBreak = 0;
-
-    if (lastActivity) {
-      const hoursSince = differenceInHours(now, new Date(lastActivity));
-      if (hoursSince > 20) { streakAtRisk = true; hoursUntilBreak = Math.max(0, 24 - hoursSince); }
-    }
-
-    const savedLongest = await AsyncStorage.getItem(LONGEST_STREAK_KEY);
-    const parsedLongest = parseInt(savedLongest || '0');
-    const currentLongest = Math.max(pottyStreak, parsedLongest);
-    if (pottyStreak > parsedLongest) await AsyncStorage.setItem(LONGEST_STREAK_KEY, pottyStreak.toString());
-
-    setStreakData({ 
-      currentStreak: pottyStreak, 
-      longestStreak: currentLongest, 
-      lastActivity: lastActivity ? new Date(lastActivity).toISOString() : null, 
-      streakAtRisk, 
-      hoursUntilBreak 
-    });
-    if (streakAtRisk && !showStreakProtector) setShowStreakProtector(true);
-  }, [baby, getPottyStreak, getRecentTimelineEvents, showStreakProtector]);
-
   /* ---- Show alert helper ---- */
-  const showAlert = (type: AlertState['type'], title: string, message: string, emoji?: string) => {
+  const sweetAlert = (type: AlertState['type'], title: string, message: string, emoji?: string) => {
     setAlert({ visible: true, type, title, message, emoji });
     triggerHaptic(type === 'success' || type === 'achievement' ? 'success' : type === 'error' ? 'error' : 'light');
   };
@@ -449,18 +398,16 @@ export default function AchievementsScreen({ navigation, route }: Props) {
   const toggleReminder = async (achievement: Achievement) => {
     const newEnabled = new Set(reminderEnabled);
     const newScheduled = new Map(scheduledNotifications);
-    
+
     if (newEnabled.has(achievement.id)) {
-      // Disable reminder
       newEnabled.delete(achievement.id);
       const notificationId = newScheduled.get(achievement.id);
       if (notificationId) {
         await Notifications.cancelScheduledNotificationAsync(notificationId);
         newScheduled.delete(achievement.id);
       }
-      showAlert('info', 'Reminder Disabled', `No more reminders for "${achievement.title}"`, '🔕');
+      sweetAlert('info', 'Reminder Disabled', `No more reminders for "${achievement.title}"`, '🔕');
     } else {
-      // Enable reminder
       newEnabled.add(achievement.id);
       try {
         const notificationId = await Notifications.scheduleNotificationAsync({
@@ -470,20 +417,20 @@ export default function AchievementsScreen({ navigation, route }: Props) {
             data: { type: 'achievement_reminder', screen: 'Achievements', achievementId: achievement.id },
             sound: true,
           },
-          trigger: { 
-            type: Notifications.SchedulableTriggerInputTypes.DAILY, 
-            hour: 9, 
-            minute: 0 
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.DAILY,
+            hour: 9,
+            minute: 0,
           },
         });
         newScheduled.set(achievement.id, notificationId);
-        showAlert('success', 'Reminder Set!', `We'll remind you daily at 9 AM about "${achievement.title}"`, achievement.emoji);
-      } catch (e) { 
+        sweetAlert('success', 'Reminder Set!', `We'll remind you daily at 9 AM about "${achievement.title}"`, achievement.emoji);
+      } catch (e) {
         console.warn('Failed to schedule notification:', e);
-        showAlert('error', 'Reminder Failed', 'Could not schedule notification. Check permissions.');
+        sweetAlert('error', 'Reminder Failed', 'Could not schedule notification. Check permissions.');
       }
     }
-    
+
     setReminderEnabled(newEnabled);
     setScheduledNotifications(newScheduled);
     await saveReminders(newEnabled);
@@ -491,149 +438,10 @@ export default function AchievementsScreen({ navigation, route }: Props) {
     triggerHaptic('light');
   };
 
-  /* ---- Build achievements with real data - FULLY SYNCED ---- */
-  const achievements: Achievement[] = useMemo(() => {
-    if (!baby?.id) return [];
-    const babyId = baby.id;
-    
-    // Get ALL activities for this baby from ActivityContext (single source of truth)
-    const babyActivities = activities.filter(a => a.babyId === babyId);
-    
-    // Calculate counts from activities
-    const totalSleep = babyActivities.filter(a => a.type === 'sleep').length;
-    const totalFeed = babyActivities.filter(a => a.type === 'feed').length;
-    const totalPotty = babyActivities.filter(a => a.type === 'potty').length;
-    const totalDiaper = babyActivities.filter(a => a.type === 'diaper').length;
-    const totalMedication = babyActivities.filter(a => a.type === 'medication').length;
-    const totalMilestone = babyActivities.filter(a => a.type === 'milestone').length;
-    const totalNote = babyActivities.filter(a => a.type === 'note').length;
-    
-    // Get streaks and rates from context
-    const pottyStreak = getPottyStreak();
-    const pottySuccess = getSuccessRate('potty', babyId);
-    const feedStreak = getStreak('feed', babyId);
-    const sleepStreak = getStreak('sleep', babyId);
-    
-    // Growth data from BabyContext
-    const totalMilestones = milestones?.length || 0;
-    const totalActivities = babyActivities.length;
-    const growthCount = growthData?.length || 0;
-    const hasWeight = growthData?.some(g => g.type === 'weight') || false;
-    const hasHeight = growthData?.some(g => g.type === 'height') || false;
-    
-    // Feeding diversity
-    const feedTypes = new Set(feedingLogs?.map(f => f.type) || []);
-    const feedTypeCount = feedTypes.size;
-    
-    // Sleep quality
-    const goodSleepCount = sleepLogs?.filter(s => s.quality === 'good' || s.quality === 'excellent').length || 0;
-    
-    // Medication
-    const medLogs = medicationLogs?.length || 0;
-    
-    // Age calculations
-    const birthDate = baby.birthDate ? new Date(baby.birthDate) : null;
-    const daysOld = birthDate ? Math.floor((Date.now() - birthDate.getTime()) / (1000 * 60 * 60 * 24)) : 0;
-    
-    // Tracking streak (consecutive days with any activity)
-    let trackingStreak = 0;
-    for (let i = 0; i < 365; i++) {
-      const checkDate = subDays(new Date(), i);
-      const hasActivity = babyActivities.some(a => isSameDay(new Date(a.timestamp), checkDate));
-      if (hasActivity) trackingStreak++; else if (i > 0) break;
-    }
-    
-    // Activity type diversity
-    const usedTypes = new Set(babyActivities.map(a => a.type)).size;
-    
-    // Photos
-    const photoCount = babyActivities.filter(a => a.photo).length;
-    
-    // Time-based achievements
-    const earlyBird = babyActivities.some(a => new Date(a.timestamp).getHours() < 7);
-    const nightOwl = babyActivities.some(a => new Date(a.timestamp).getHours() >= 22);
-    
-    // Social sharing (from activity entries that were shared)
-    const sharedCount = babyActivities.filter(a => a.shared).length;
-
-    return [
-      { id: 'first_milestone', title: 'First Steps', description: 'Record your first milestone', emoji: '🏆', unlocked: totalMilestones >= 1, progress: Math.min(totalMilestones, 1), maxProgress: 1, category: 'milestone', rarity: 'common', points: 100 },
-      { id: 'milestone_collector_5', title: 'Milestone Hunter', description: 'Record 5 milestones', emoji: '🌟', unlocked: totalMilestones >= 5, progress: totalMilestones, maxProgress: 5, category: 'milestone', rarity: 'rare', points: 250 },
-      { id: 'milestone_collector', title: 'Milestone Collector', description: 'Record 10 milestones', emoji: '💫', unlocked: totalMilestones >= 10, progress: totalMilestones, maxProgress: 10, category: 'milestone', rarity: totalMilestones >= 10 ? 'epic' : 'rare', points: 500 },
-      { id: 'milestone_master', title: 'Milestone Master', description: 'Record 25 milestones', emoji: '👑', unlocked: totalMilestones >= 25, progress: totalMilestones, maxProgress: 25, category: 'milestone', rarity: 'legendary', points: 1000 },
-      
-      { id: 'week_warrior', title: 'Week Warrior', description: '7 day potty streak', emoji: '🔥', unlocked: pottyStreak >= 7, progress: pottyStreak, maxProgress: 7, category: 'streak', rarity: pottyStreak >= 7 ? 'rare' : 'common', points: 200 },
-      { id: 'fortnight_hero', title: 'Fortnight Hero', description: '14 day potty streak', emoji: '🔥', unlocked: pottyStreak >= 14, progress: pottyStreak, maxProgress: 14, category: 'streak', rarity: 'rare', points: 400 },
-      { id: 'month_master', title: 'Month Master', description: '30 day potty streak', emoji: '🔥', unlocked: pottyStreak >= 30, progress: pottyStreak, maxProgress: 30, category: 'streak', rarity: 'legendary', points: 1000 },
-      { id: 'tracking_streak_7', title: 'Consistent Tracker', description: '7 days of any activity tracking', emoji: '📅', unlocked: trackingStreak >= 7, progress: trackingStreak, maxProgress: 7, category: 'streak', rarity: 'rare', points: 300 },
-      { id: 'tracking_streak_30', title: 'Daily Devotee', description: '30 days of consecutive tracking', emoji: '📆', unlocked: trackingStreak >= 30, progress: trackingStreak, maxProgress: 30, category: 'streak', rarity: 'legendary', points: 1500 },
-      
-      { id: 'first_log', title: 'First Log', description: 'Create your first activity log', emoji: '📝', unlocked: totalActivities >= 1, progress: Math.min(totalActivities, 1), maxProgress: 1, category: 'tracking', rarity: 'common', points: 50 },
-      { id: 'tracking_pro', title: 'Tracking Pro', description: 'Log 50 activities', emoji: '📊', unlocked: totalActivities >= 50, progress: totalActivities, maxProgress: 50, category: 'tracking', rarity: totalActivities >= 50 ? 'epic' : 'rare', points: 500 },
-      { id: 'tracking_legend', title: 'Tracking Legend', description: 'Log 200 activities', emoji: '📈', unlocked: totalActivities >= 200, progress: totalActivities, maxProgress: 200, category: 'tracking', rarity: 'legendary', points: 2000 },
-      { id: 'sleep_tracker', title: 'Sleep Tracker', description: 'Log 20 sleep sessions', emoji: '😴', unlocked: totalSleep >= 20, progress: totalSleep, maxProgress: 20, category: 'tracking', rarity: 'rare', points: 300 },
-      { id: 'feed_tracker', title: 'Feed Tracker', description: 'Log 30 feeding sessions', emoji: '🍼', unlocked: totalFeed >= 30, progress: totalFeed, maxProgress: 30, category: 'tracking', rarity: 'rare', points: 300 },
-      { id: 'diary_keeper', title: 'Diary Keeper', description: 'Write 10 notes', emoji: '📔', unlocked: totalNote >= 10, progress: totalNote, maxProgress: 10, category: 'tracking', rarity: 'rare', points: 250 },
-      
-      { id: 'diaper_duty', title: 'Diaper Duty', description: 'Log 50 diaper changes', emoji: '🧷', unlocked: totalDiaper >= 50, progress: totalDiaper, maxProgress: 50, category: 'care', rarity: 'rare', points: 350 },
-      { id: 'feeding_diversity', title: 'Food Explorer', description: 'Try all feeding types', emoji: '🍎', unlocked: feedTypeCount >= 4, progress: feedTypeCount, maxProgress: 4, category: 'care', rarity: 'epic', points: 600 },
-      { id: 'good_sleep_10', title: 'Sweet Dreams', description: '10 good or excellent sleep sessions', emoji: '🌙', unlocked: goodSleepCount >= 10, progress: goodSleepCount, maxProgress: 10, category: 'care', rarity: 'rare', points: 350 },
-      
-      { id: 'growth_tracker', title: 'Growth Tracker', description: 'Record weight and height measurements', emoji: '📏', unlocked: hasWeight && hasHeight, progress: (hasWeight ? 1 : 0) + (hasHeight ? 1 : 0), maxProgress: 2, category: 'health', rarity: 'common', points: 150 },
-      { id: 'growth_pro', title: 'Growth Pro', description: 'Record 10 growth measurements', emoji: '📐', unlocked: growthCount >= 10, progress: growthCount, maxProgress: 10, category: 'health', rarity: 'rare', points: 400 },
-      { id: 'medication_master', title: 'Health Guardian', description: 'Log 20 medication records', emoji: '💊', unlocked: medLogs >= 20, progress: medLogs, maxProgress: 20, category: 'health', rarity: 'epic', points: 700 },
-      { id: 'medication_adherent', title: 'Perfect Patient', description: '7 days of medication tracking', emoji: '🩺', unlocked: totalMedication >= 7, progress: totalMedication, maxProgress: 7, category: 'health', rarity: 'rare', points: 350 },
-      
-      { id: 'potty_pro', title: 'Potty Pro', description: '80% potty success rate', emoji: '🚽', unlocked: pottySuccess >= 80, progress: pottySuccess, maxProgress: 80, category: 'special', rarity: pottySuccess >= 80 ? 'epic' : 'rare', points: 600 },
-      { id: 'potty_perfect', title: 'Potty Perfect', description: '95% potty success rate', emoji: '✨', unlocked: pottySuccess >= 95, progress: pottySuccess, maxProgress: 95, category: 'special', rarity: 'legendary', points: 1200 },
-      { id: 'early_bird', title: 'Early Bird', description: 'Track an activity before 7 AM', emoji: '🌅', unlocked: earlyBird, progress: earlyBird ? 1 : 0, maxProgress: 1, category: 'special', rarity: 'rare', points: 300 },
-      { id: 'night_owl', title: 'Night Owl', description: 'Track an activity after 10 PM', emoji: '🦉', unlocked: nightOwl, progress: nightOwl ? 1 : 0, maxProgress: 1, category: 'special', rarity: 'rare', points: 300 },
-      { id: 'hundred_days', title: 'Century Club', description: '100 days of tracking any activity', emoji: '💯', unlocked: trackingStreak >= 100, progress: trackingStreak, maxProgress: 100, category: 'special', rarity: 'legendary', points: 2500 },
-      { id: 'jack_of_all', title: 'Jack of All Trades', description: 'Use all 8 activity types', emoji: '🎯', unlocked: usedTypes >= 8, progress: usedTypes, maxProgress: 8, category: 'special', rarity: 'epic', points: 800 },
-      { id: 'photo_journal', title: 'Photo Journalist', description: 'Add 5 photos to activities', emoji: '📸', unlocked: photoCount >= 5, progress: photoCount, maxProgress: 5, category: 'special', rarity: 'rare', points: 350 },
-      { id: 'veteran_parent', title: 'Veteran Parent', description: 'Track for 365 days', emoji: '🏅', unlocked: daysOld >= 365, progress: Math.min(daysOld, 365), maxProgress: 365, category: 'special', rarity: 'legendary', points: 3000 },
-      { id: 'social_sharer', title: 'Social Sharer', description: 'Share 5 activities', emoji: '🔗', unlocked: sharedCount >= 5, progress: sharedCount, maxProgress: 5, category: 'social', rarity: 'rare', points: 400 },
-    ];
-  }, [baby, activities, milestones, getTodayCount, getPottyStreak, getSuccessRate, getStreak, growthData, feedingLogs, sleepLogs, pottyLogs, medicationLogs]);
-
-  /* ---- Detect newly unlocked achievements ---- */
-  useEffect(() => {
-    const newUnlocks = new Set<string>();
-    achievements.forEach(a => { if (a.unlocked && !unlockedHistory.has(a.id)) newUnlocks.add(a.id); });
-    if (newUnlocks.size > 0) {
-      const firstNew = achievements.find(a => newUnlocks.has(a.id));
-      if (firstNew) showAlert('achievement', 'Achievement Unlocked!', `"${firstNew.title}" — ${firstNew.points} points!`, firstNew.emoji);
-      const updatedHistory = new Set([...unlockedHistory, ...newUnlocks]);
-      setUnlockedHistory(updatedHistory);
-      saveUnlockedHistory(updatedHistory);
-      setNewlyUnlocked(newUnlocks);
-      setTimeout(() => setNewlyUnlocked(new Set()), 5000);
-    }
-  }, [achievements]);
-
-  /* ---- Stats ---- */
-  const stats = useMemo(() => {
-    const unlocked = achievements.filter(a => a.unlocked);
-    const totalPoints = unlocked.reduce((sum, a) => sum + a.points, 0);
-    const byCategory = Object.entries(ACHIEVEMENT_CATEGORIES).map(([key, cat]) => ({
-      category: key as keyof typeof ACHIEVEMENT_CATEGORIES, ...cat,
-      unlocked: achievements.filter(a => a.category === key && a.unlocked).length,
-      total: achievements.filter(a => a.category === key).length,
-    }));
-    return {
-      total: achievements.length, unlocked: unlocked.length,
-      progress: Math.round((unlocked.length / achievements.length) * 100),
-      totalPoints, byCategory,
-      legendary: unlocked.filter(a => a.rarity === 'legendary').length,
-      epic: unlocked.filter(a => a.rarity === 'epic').length,
-      rare: unlocked.filter(a => a.rarity === 'rare').length,
-      common: unlocked.filter(a => a.rarity === 'common').length,
-    };
-  }, [achievements]);
-
+  /* ---- Category filter ---- */
   const filtered = useMemo(() => {
-    const list = selectedCategory === 'all' 
-      ? achievements 
+    const list = selectedCategory === 'all'
+      ? achievements
       : achievements.filter(a => a.category === selectedCategory);
     return list;
   }, [selectedCategory, achievements]);
@@ -654,18 +462,18 @@ export default function AchievementsScreen({ navigation, route }: Props) {
 
   const handleCategoryChange = (category: keyof typeof ACHIEVEMENT_CATEGORIES | 'all') => {
     setSelectedCategory(category);
-    setDisplayCount(ACHIEVEMENTS_PAGE_SIZE); // Reset pagination
+    setDisplayCount(ACHIEVEMENTS_PAGE_SIZE);
     const label = category === 'all' ? 'all achievements' : `${ACHIEVEMENT_CATEGORIES[category].label} achievements`;
-    showAlert('info', 'Filter', `Showing ${label}`);
+    sweetAlert('info', 'Filter', `Showing ${label}`);
   };
 
   /* ---- Refresh ---- */
   const onRefresh = async () => {
     setRefreshing(true);
     await refreshCurrentBaby();
-    await checkStreak();
+    refreshAchievements();
     setRefreshing(false);
-    showAlert('success', 'Refreshed!', 'Achievement data updated');
+    sweetAlert('success', 'Refreshed!', 'Achievement data updated');
   };
 
   /* ---- Share ---- */
@@ -673,46 +481,35 @@ export default function AchievementsScreen({ navigation, route }: Props) {
     triggerHaptic('medium');
     try {
       const message = baby
-        ? `🏆 ${baby.name} has unlocked ${stats.unlocked} achievements on LittleLoom! Total: ${stats.totalPoints} points. ${streakData.currentStreak > 0 ? `${streakData.currentStreak}-day streak! 🔥` : ''}`
+        ? `🏆 ${baby.name} has unlocked ${stats.unlocked} achievements on LittleLoom! Total: ${stats.totalPoints} points. ${streak.currentStreak > 0 ? `${streak.currentStreak}-day streak! 🔥` : ''}`
         : `I've unlocked ${stats.unlocked} achievements on LittleLoom! 🏆 Total: ${stats.totalPoints} points.`;
       await Share.share({ message, title: 'LittleLoom Achievements' });
-      showAlert('success', 'Shared!', 'Your achievements have been shared');
-    } catch { showAlert('error', 'Share Failed', 'Could not share achievements'); }
+      sweetAlert('success', 'Shared!', 'Your achievements have been shared');
+    } catch { sweetAlert('error', 'Share Failed', 'Could not share achievements'); }
   };
 
   /* ---- Achievement press ---- */
   const handlePress = (achievement: Achievement) => {
     triggerHaptic('light');
     if (achievement.unlocked) {
-      showAlert('achievement', achievement.title, `Unlocked! ${achievement.points} points earned`, achievement.emoji);
+      sweetAlert('achievement', achievement.title, `Unlocked! ${achievement.points} points earned`, achievement.emoji);
     } else {
       const remaining = achievement.maxProgress - achievement.progress;
-      showAlert('info', achievement.title, `${remaining} more to unlock! Keep tracking!`, achievement.emoji);
+      sweetAlert('info', achievement.title, `${remaining} more to unlock! Keep tracking!`, achievement.emoji);
     }
   };
 
-  /* ---- Navigation to AddLog (Milestones) ---- */
+  /* ---- Navigation helpers ---- */
   const handleNavigateToMilestones = useCallback(() => {
-    // Navigate to AddLog with milestone type - this opens the milestone modal
-    navigation.navigate('AddLog', { 
-      type: 'milestone', 
-      babyId: baby?.id 
-    });
+    navigation.navigate('AddEntry', { type: 'milestone', babyId: baby?.id });
   }, [navigation, baby?.id]);
 
-  /* ---- Navigation to UniversalTracker ---- */
   const handleNavigateToTracker = useCallback((type: string) => {
-    navigation.navigate('UniversalTracker', { 
-      type, 
-      babyId: baby?.id 
-    });
+    navigation.navigate('Timeline', { type, babyId: baby?.id });
   }, [navigation, baby?.id]);
 
-  /* ---- Navigation to Reminders ---- */
   const handleNavigateToReminders = useCallback(() => {
-    navigation.navigate('Reminders', { 
-      babyId: baby?.id 
-    });
+    navigation.navigate('TrackerReminders', { babyId: baby?.id });
   }, [navigation, baby?.id]);
 
   /* ---- Scroll handler ---- */
@@ -724,9 +521,9 @@ export default function AchievementsScreen({ navigation, route }: Props) {
   /* ---- Render achievement item for FlatList ---- */
   const renderAchievementItem = useCallback(({ item, index }: { item: Achievement; index: number }) => {
     const rarity = RARITY_COLORS[item.rarity];
-    const isNew = newlyUnlocked.has(item.id);
+    const isNew = newlyUnlocked.includes(item.id);
     const hasReminder = reminderEnabled.has(item.id);
-    
+
     return (
       <AchievementCard
         achievement={item}
@@ -734,7 +531,6 @@ export default function AchievementsScreen({ navigation, route }: Props) {
         isDark={isDark}
         isNew={isNew}
         hasReminder={hasReminder}
-        reminderEnabled={reminderEnabled}
         rarity={rarity}
         themeColors={themeColors}
         onPress={handlePress}
@@ -745,6 +541,79 @@ export default function AchievementsScreen({ navigation, route }: Props) {
   }, [isDark, newlyUnlocked, reminderEnabled, themeColors, handlePress, toggleReminder, shouldReduceMotion]);
 
   const keyExtractor = useCallback((item: Achievement) => item.id, []);
+
+  /* ── Growth Score Mini Card ── */
+  const GrowthScoreMini = () => {
+    if (!growthScore) return null;
+    const overall = growthScore.overall?.value || 0;
+    return (
+      <Animated.View entering={shouldReduceMotion ? undefined : FadeInDown.delay(150).springify()}>
+        <GlassmorphismCard style={styles.growthScoreCard}>
+          <View style={styles.growthScoreRow}>
+            <View style={styles.growthScoreLeft}>
+              <Ionicons name="analytics" size={20} color={themeColors.primary} />
+              <Text style={[styles.growthScoreTitle, isDark && styles.textDark]}>Growth Score</Text>
+            </View>
+            <View style={[styles.growthScoreBadge, { backgroundColor: overall >= 80 ? '#11998e20' : overall >= 60 ? '#f59e0b20' : '#ef444420' }]}>
+              <Text style={[styles.growthScoreValue, { color: overall >= 80 ? '#11998e' : overall >= 60 ? '#f59e0b' : '#ef4444' }]}>
+                {Math.round(overall)}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.growthScoreDimensions}>
+            {Object.entries(growthScore.dimensions || {}).slice(0, 4).map(([dim, score]: [string, any]) => (
+              <View key={dim} style={styles.dimensionItem}>
+                <View style={[styles.dimensionDot, { backgroundColor: score >= 70 ? '#11998e' : score >= 50 ? '#f59e0b' : '#ef4444' }]} />
+                <Text style={styles.dimensionLabel}>{dim}</Text>
+                <Text style={styles.dimensionValue}>{Math.round(score)}</Text>
+              </View>
+            ))}
+          </View>
+        </GlassmorphismCard>
+      </Animated.View>
+    );
+  };
+
+  /* ── Predictive Reminders Banner ── */
+  const PredictiveBanner = () => {
+    if (pendingReminders.length === 0) return null;
+    const topReminder = pendingReminders[0];
+    return (
+      <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(250).springify()}>
+        <TouchableOpacity
+          style={[styles.predictiveBanner, { borderColor: topReminder.priority === 'high' ? '#ef444450' : '#f59e0b50' }]}
+          onPress={() => {
+            if (topReminder.action?.screen) {
+              navigation.navigate(topReminder.action.screen as any, topReminder.action.params as any);
+            }
+          }}
+          activeOpacity={0.8}
+        >
+          <LinearGradient
+            colors={topReminder.priority === 'high' ? ['#ef444415', '#f8717110'] : ['#f59e0b15', '#fbbf2410']}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={styles.predictiveHeader}>
+            <Text style={styles.predictiveEmoji}>{topReminder.emoji}</Text>
+            <View style={styles.predictiveMeta}>
+              <Text style={[styles.predictiveTitle, isDark && styles.textDark]}>{topReminder.title}</Text>
+              <Text style={styles.predictiveDesc} numberOfLines={2}>{topReminder.description}</Text>
+            </View>
+            <View style={[styles.confidenceBadge, { backgroundColor: `${topReminder.priority === 'high' ? '#ef4444' : '#f59e0b'}20` }]}>
+              <Text style={[styles.confidenceText, { color: topReminder.priority === 'high' ? '#ef4444' : '#f59e0b' }]}>
+                {Math.round(topReminder.confidence)}%
+              </Text>
+            </View>
+          </View>
+          <View style={styles.predictiveFooter}>
+            <Ionicons name="bulb" size={14} color="#f472b6" />
+            <Text style={styles.predictiveFooterText}>Based on {topReminder.basedOn?.length || 0} data points</Text>
+            <Text style={styles.predictiveAction}>Tap to act →</Text>
+          </View>
+        </TouchableOpacity>
+      </Animated.View>
+    );
+  };
 
   /* ---- No baby state ---- */
   if (!baby) {
@@ -814,25 +683,25 @@ export default function AchievementsScreen({ navigation, route }: Props) {
                     avatar={baby.avatar}
                     gender={baby.gender}
                     size={70}
-                    showBadge={streakData.currentStreak > 0}
+                    showBadge={streak.currentStreak > 0}
                     animated={!shouldReduceMotion}
                   />
                   <View style={styles.babyInfo}>
                     <Text style={[styles.babyName, isDark && styles.textDark]}>{baby.name}</Text>
                     <Text style={styles.babyAge}>{baby.age}</Text>
-                    <View style={[styles.statusBadge, { backgroundColor: streakData.streakAtRisk ? 'rgba(239,68,68,0.2)' : 'rgba(16,185,129,0.2)' }]}>
-                      <Ionicons name={streakData.streakAtRisk ? 'flame-outline' : 'checkmark-circle'} size={14} color={streakData.streakAtRisk ? '#ef4444' : '#10b981'} />
-                      <Text style={[styles.statusText, { color: streakData.streakAtRisk ? '#ef4444' : '#10b981' }]}>
-                        {streakData.streakAtRisk ? 'Streak at risk!' : 'On track'}
+                    <View style={[styles.statusBadge, { backgroundColor: streak.streakAtRisk ? 'rgba(239,68,68,0.2)' : 'rgba(16,185,129,0.2)' }]}>
+                      <Ionicons name={streak.streakAtRisk ? 'flame-outline' : 'checkmark-circle'} size={14} color={streak.streakAtRisk ? '#ef4444' : '#10b981'} />
+                      <Text style={[styles.statusText, { color: streak.streakAtRisk ? '#ef4444' : '#10b981' }]}>
+                        {streak.streakAtRisk ? 'Streak at risk!' : 'On track'}
                       </Text>
                     </View>
                   </View>
                   <View style={styles.statsCol}>
-                    <Text style={[styles.statValue, isDark && styles.textDark]}>{streakData.longestStreak}</Text>
+                    <Text style={[styles.statValue, isDark && styles.textDark]}>{streak.longestStreak}</Text>
                     <Text style={styles.statLabel}>Best</Text>
                   </View>
                 </View>
-                {streakData.streakAtRisk && (
+                {streak.streakAtRisk && (
                   <View style={styles.warningBanner}>
                     <Ionicons name="warning" size={16} color="#ef4444" />
                     <Text style={styles.warningText}>Log an activity today to keep your streak!</Text>
@@ -843,6 +712,12 @@ export default function AchievementsScreen({ navigation, route }: Props) {
                 )}
               </GlassmorphismCard>
             </Animated.View>
+
+            {/* Growth Score Mini Card */}
+            <GrowthScoreMini />
+
+            {/* Predictive Reminders Banner */}
+            <PredictiveBanner />
 
             {/* Overview Card */}
             <Animated.View entering={shouldReduceMotion ? undefined : FadeInDown.delay(200).springify()}>
@@ -899,12 +774,11 @@ export default function AchievementsScreen({ navigation, route }: Props) {
                     <Ionicons name="add-circle" size={20} color="#fff" /><Text style={styles.actionText}>Log</Text>
                   </LinearGradient>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.actionBtn} onPress={() => { setShowStreakProtector(true); showAlert('warning', 'Streak Protector', 'Protect your current streak!'); }}>
+                <TouchableOpacity style={styles.actionBtn} onPress={() => { setShowStreakProtector(true); sweetAlert('warning', 'Streak Protector', 'Protect your current streak!'); }}>
                   <LinearGradient colors={['#ef4444', '#f87171']} style={styles.actionGradient}>
                     <Ionicons name="flame" size={20} color="#fff" /><Text style={styles.actionText}>Protect</Text>
                   </LinearGradient>
                 </TouchableOpacity>
-                {/* FIXED: Navigate to AddLog with milestone type instead of non-existent Milestones screen */}
                 <TouchableOpacity style={styles.actionBtn} onPress={handleNavigateToMilestones}>
                   <LinearGradient colors={['#8b5cf6', '#a78bfa']} style={styles.actionGradient}>
                     <Ionicons name="trophy" size={20} color="#fff" /><Text style={styles.actionText}>Milestones</Text>
@@ -915,16 +789,16 @@ export default function AchievementsScreen({ navigation, route }: Props) {
 
             {/* Category Filter */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
-              <TouchableOpacity 
-                style={[styles.filterChip, selectedCategory === 'all' && { backgroundColor: themeColors.primary, borderColor: 'transparent' }]} 
+              <TouchableOpacity
+                style={[styles.filterChip, selectedCategory === 'all' && { backgroundColor: themeColors.primary, borderColor: 'transparent' }]}
                 onPress={() => handleCategoryChange('all')}
               >
                 <Text style={[styles.filterText, selectedCategory === 'all' && styles.filterTextActive]}>All</Text>
               </TouchableOpacity>
               {Object.entries(ACHIEVEMENT_CATEGORIES).map(([key, cat]) => (
-                <TouchableOpacity 
-                  key={key} 
-                  style={[styles.filterChip, selectedCategory === key && { backgroundColor: themeColors.primary, borderColor: 'transparent' }]} 
+                <TouchableOpacity
+                  key={key}
+                  style={[styles.filterChip, selectedCategory === key && { backgroundColor: themeColors.primary, borderColor: 'transparent' }]}
                   onPress={() => handleCategoryChange(key as any)}
                 >
                   <Ionicons name={cat.icon as any} size={14} color={selectedCategory === key ? '#fff' : cat.color} />
@@ -972,24 +846,24 @@ export default function AchievementsScreen({ navigation, route }: Props) {
             </LinearGradient>
             <View style={styles.modalBody}>
               <Text style={[styles.modalText, isDark && styles.textDark]}>
-                Your {streakData.currentStreak}-day streak ends in <Text style={{ color: '#ef4444', fontWeight: '800' }}>{streakData.hoursUntilBreak} hours</Text>!
+                Your {streak.currentStreak}-day streak ends in <Text style={{ color: '#ef4444', fontWeight: '800' }}>{streak.hoursUntilBreak} hours</Text>!
               </Text>
               <View style={styles.modalActions}>
-                <TouchableOpacity style={styles.modalBtn} onPress={() => { 
-                  setShowStreakProtector(false); 
+                <TouchableOpacity style={styles.modalBtn} onPress={() => {
+                  setShowStreakProtector(false);
                   handleNavigateToReminders();
                 }}>
                   <LinearGradient colors={[themeColors.primary, themeColors.secondary]} style={styles.modalBtnGradient}>
                     <Text style={styles.modalBtnText}>Set Reminder</Text>
                   </LinearGradient>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.modalBtn} onPress={() => { setShowStreakProtector(false); showAlert('info', 'Dismissed', 'You can log an activity anytime'); }}>
+                <TouchableOpacity style={styles.modalBtn} onPress={() => { setShowStreakProtector(false); sweetAlert('info', 'Dismissed', 'You can log an activity anytime'); }}>
                   <View style={[styles.modalBtnGradient, { backgroundColor: 'rgba(100,116,139,0.1)' }]}>
                     <Text style={[styles.modalBtnText, { color: '#64748b' }]}>Dismiss</Text>
                   </View>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.modalBtn} onPress={() => { 
-                  setShowStreakProtector(false); 
+                <TouchableOpacity style={styles.modalBtn} onPress={() => {
+                  setShowStreakProtector(false);
                   handleNavigateToTracker('potty');
                 }}>
                   <LinearGradient colors={['#11998e', '#38ef7d']} style={styles.modalBtnGradient}>
@@ -1096,6 +970,9 @@ const styles = StyleSheet.create({
   rarityLetter: { fontSize: 10, fontWeight: '800', color: '#fff' },
   achievementTitle: { fontSize: 16, fontWeight: '700', color: '#1e293b', marginBottom: 4 },
   achievementDesc: { fontSize: 13, color: '#64748b', lineHeight: 18, marginBottom: 12 },
+  sourceTrackers: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 },
+  sourceChip: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  sourceChipText: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase' },
   progressBox: { marginTop: 'auto' },
   progressBar: { height: 6, backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 3, overflow: 'hidden', marginBottom: 6 },
   progressFill: { height: '100%', borderRadius: 3 },
@@ -1105,7 +982,7 @@ const styles = StyleSheet.create({
   reminderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: 'rgba(100,116,139,0.1)' },
   reminderLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   reminderLabel: { fontSize: 13, color: '#64748b', fontWeight: '600' },
-  unlockedAt: { fontSize: 11, color: '#11998e', marginTop: 8, fontWeight: '600' },
+  earnedSummary: { fontSize: 11, color: '#11998e', marginTop: 8, fontWeight: '600' },
   modal: { width: width - 60, borderRadius: 28, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.4, shadowRadius: 40, elevation: 25 },
   modalHeader: { padding: 24, alignItems: 'center' },
   modalTitle: { fontSize: 22, fontWeight: '800', color: '#fff', marginTop: 12 },
@@ -1115,4 +992,26 @@ const styles = StyleSheet.create({
   modalBtn: { borderRadius: 16, overflow: 'hidden' },
   modalBtnGradient: { paddingVertical: 14, alignItems: 'center', justifyContent: 'center' },
   modalBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  growthScoreCard: { borderRadius: 24, marginBottom: 16, padding: 16, overflow: 'hidden' },
+  growthScoreRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  growthScoreLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  growthScoreTitle: { fontSize: 16, fontWeight: '700', color: '#1e293b' },
+  growthScoreBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
+  growthScoreValue: { fontSize: 18, fontWeight: '800' },
+  growthScoreDimensions: { flexDirection: 'row', justifyContent: 'space-between' },
+  dimensionItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  dimensionDot: { width: 8, height: 8, borderRadius: 4 },
+  dimensionLabel: { fontSize: 11, color: '#64748b', fontWeight: '600' },
+  dimensionValue: { fontSize: 11, fontWeight: '800', color: '#1e293b', marginLeft: 2 },
+  predictiveBanner: { borderRadius: 20, padding: 16, marginBottom: 16, borderWidth: 1.5, overflow: 'hidden' },
+  predictiveHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  predictiveEmoji: { fontSize: 28 },
+  predictiveMeta: { flex: 1 },
+  predictiveTitle: { fontSize: 15, fontWeight: '700', color: '#1e293b', marginBottom: 2 },
+  predictiveDesc: { fontSize: 13, color: '#64748b', lineHeight: 18 },
+  confidenceBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10 },
+  confidenceText: { fontSize: 12, fontWeight: '800' },
+  predictiveFooter: { flexDirection: 'row', alignItems: 'center', marginTop: 10, gap: 6 },
+  predictiveFooterText: { fontSize: 12, color: '#94a3b8', fontWeight: '600' },
+  predictiveAction: { marginLeft: 'auto', fontSize: 12, fontWeight: '700', color: '#f472b6' },
 });

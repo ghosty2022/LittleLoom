@@ -1,32 +1,15 @@
-// src/components/index.ts
-// UNIFIED COMPONENT EXPORTS — Single source of truth for all UI components
-
-// ─── Core UI ───
+export { AutoHideScrollView } from './AutoHideScrollWrappers';
 export { CircularProgress } from './CircularProgress';
-export { SafeAvatar, SafeBabyAvatar, SafeParentAvatar } from './SafeAvatar';
-export { ScreenWrapper } from './ScreenWrapper';
-export { LiquidGlassNavigation } from './LiquidGlassNavigation';
+export { ErrorBoundary } from './ErrorBoundary';
 export { GlobalAudioPlayer } from './GlobalAudioPlayer';
-
-// ─── Loading & Feedback ───
-export {
-  UniversalSpinner,
-  InlineSpinner,
-  CommunitySpinner,
-  AuthSpinner,
-  SettingsSpinner,
-  TrackingSpinner,
-  SkeletonLoader,
-  ShimmerLoader,
-  ShimmerPresets,
-  ScreenSkeletons,
-} from './UniversalSpinner';
-
-// ─── Alerts & Modals ───
-export { SweetAlertProvider, useSweetAlert, showSweetAlert } from './SweetAlert';
-
-// ─── Error Handling ───
-export { ErrorBoundary, useErrorHandler } from './ErrorBoundary';
-
-// ─── Scroll Wrappers ───
-export { AutoHideScrollView, AutoHideAnimatedScrollView } from './AutoHideScrollWrappers';
+export { LiquidGlassNavigation } from './LiquidGlassNavigation';
+export { SafeAvatar, SafeBabyAvatar } from './SafeAvatar';
+export { ScreenWrapper } from './ScreenWrapper';
+export { SweetAlert, useSweetAlert } from './SweetAlert';
+export { TabIcons } from './TabIcons';
+export { InlineSpinner } from './UniversalSpinner';
+export { default as TimelinePicker } from './trackers/TimelinePicker';
+export { default as DynamicTrackerForm } from './trackers/DynamicTrackerForm';
+export { default as TrackerEntryCard } from './trackers/TrackerEntryCard';
+export { default as LittleLoomAvatars } from './avatars/LittleLoomAvatars';
+export { default as LittleLoomIcons } from './icons/LittleLoomIcons';

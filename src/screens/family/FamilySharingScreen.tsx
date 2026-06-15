@@ -1,3 +1,4 @@
+import { useSweetAlert } from '../../components/SweetAlert';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, Image, Platform, ActivityIndicator, Share, Dimensions, Switch, Modal, Linking, RefreshControl, StatusBar } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -460,6 +461,7 @@ const QuickAction: React.FC<QuickActionProps> = ({ icon, label, color, onPress, 
 };
 
 export default function FamilySharingScreen({ navigation }: FamilySharingScreenProps) {
+  const sweetAlert = useSweetAlert();
   const {
     members,
     guardians,
@@ -583,12 +585,12 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
 
   const handleInvite = async () => {
     if (!inviteEmail.trim()) {
-      Alert.alert('Error', 'Please enter an email address');
+      sweetAlert.alert('Error', 'Please enter an email address', 'warning');
       return;
     }
 
     if (!inviteRelationship.trim()) {
-      Alert.alert('Error', 'Please specify the relationship');
+      sweetAlert.alert('Error', 'Please specify the relationship', 'warning');
       return;
     }
 
@@ -602,7 +604,7 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
       setShowInviteModal(false);
       setInviteEmail('');
       setInviteRelationship('');
-      Alert.alert('Success', `Invitation sent to ${inviteEmail}`);
+      sweetAlert.alert('Success', 'Invitation sent to ${inviteEmail}', 'warning');
     } else {
       triggerHaptic('error');
     }
@@ -614,7 +616,7 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
     if (!selectedMember) return;
 
     if (!editForm.fullName.trim()) {
-      Alert.alert('Error', 'Name is required');
+      sweetAlert.alert('Error', 'Name is required', 'warning');
       return;
     }
 
@@ -644,11 +646,11 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
     if (success) {
       triggerHaptic('success');
       setShowEditModal(false);
-      Alert.alert('Success', 'Member updated successfully');
+      sweetAlert.alert('Success', 'Member updated successfully', 'warning');
       loadFamily();
     } else {
       triggerHaptic('error');
-      Alert.alert('Error', 'Failed to update member');
+      sweetAlert.alert('Error', 'Failed to update member', 'warning');
     }
 
     setIsLoading(false);
@@ -658,12 +660,12 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
     if (!selectedMember) return;
 
     if (selectedMember.role === UserRole.PARENT_1) {
-      Alert.alert('Cannot Remove', 'Primary Parent cannot be removed');
+      sweetAlert.alert('Cannot Remove', 'Primary Parent cannot be removed', 'warning');
       return;
     }
 
     if (selectedMember.id === currentUserId) {
-      Alert.alert('Cannot Remove', 'You cannot remove yourself');
+      sweetAlert.alert('Cannot Remove', 'You cannot remove yourself', 'warning');
       return;
     }
 
@@ -694,7 +696,7 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
     if (!selectedMember || !isPrimaryParent) return;
 
     if (selectedMember.role === UserRole.PARENT_1) {
-      Alert.alert('Cannot Change', 'Primary Parent role cannot be changed');
+      sweetAlert.alert('Cannot Change', 'Primary Parent role cannot be changed', 'warning');
       return;
     }
 
@@ -702,7 +704,7 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
     const maxAllowed = ROLE_CONFIG[newRole].maxCount;
 
     if (currentCount >= maxAllowed && newRole !== selectedMember.role) {
-      Alert.alert('Role Limit Reached', `You can only have ${maxAllowed} ${ROLE_CONFIG[newRole].label}(s)`);
+      sweetAlert.alert('Role Limit Reached', 'You can only have ${maxAllowed} ${ROLE_CONFIG[newRole].label}(s)', 'warning');
       return;
     }
 
@@ -753,21 +755,21 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
     switch (type) {
       case 'call':
         if (!selectedMember.phoneNumber) {
-          Alert.alert('No Phone', 'No phone number available');
+          sweetAlert.alert('No Phone', 'No phone number available', 'warning');
           return;
         }
         url = `tel:${selectedMember.phoneNumber.replace(/\s/g, '')}`;
         break;
       case 'email':
         if (!selectedMember.email) {
-          Alert.alert('No Email', 'No email address available');
+          sweetAlert.alert('No Email', 'No email address available', 'warning');
           return;
         }
         url = `mailto:${selectedMember.email}`;
         break;
       case 'sms':
         if (!selectedMember.phoneNumber) {
-          Alert.alert('No Phone', 'No phone number available');
+          sweetAlert.alert('No Phone', 'No phone number available', 'warning');
           return;
         }
         url = `sms:${selectedMember.phoneNumber.replace(/\s/g, '')}`;
@@ -861,7 +863,7 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
 
         <View style={styles.headerTitleContainer}>
           <Text style={[styles.headerTitle, isDark && styles.textDark]}>
-            Family Sharing
+            Family Dashboard
           </Text>
           {currentBaby && (
             <TouchableOpacity
@@ -1817,7 +1819,7 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
             style={[styles.settingsOption, isDark && styles.settingsOptionDark]}
             onPress={() => {
               setShowFamilySettings(false);
-              navigation.navigate('Reminders');
+              navigation.navigate('TrackerReminders');
             }}
           >
             <Ionicons name="notifications-outline" size={24} color="#f59e0b" />
@@ -1843,7 +1845,7 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
                     text: 'Export',
                     onPress: () => {
                       triggerHaptic('success');
-                      Alert.alert('Export Started', 'You will receive an email when ready.');
+                      sweetAlert.alert('Export Started', 'You will receive an email when ready.', 'warning');
                     }
                   }
                 ]

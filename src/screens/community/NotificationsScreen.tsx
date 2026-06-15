@@ -39,7 +39,8 @@ const getIcon = (type: string) => {
   }
 };
 
-export default function NotificationsScreen({ navigation }: NotificationsScreenProps) {
+export default function NotificationsScreen
+  ({ navigation }: NotificationsScreenProps) {
   const { notifications, markNotificationRead, markAllNotificationsRead, getUnreadCount } = useCommunity();
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<'all' | 'mentions' | 'likes'>('all');
@@ -50,7 +51,6 @@ export default function NotificationsScreen({ navigation }: NotificationsScreenP
     spinnerColor,
   } = useCustomization();
 
-  // SweetAlert for all alerts
   const sweetAlert = useSweetAlert();
 
   const onRefresh = useCallback(async () => {
@@ -95,11 +95,9 @@ export default function NotificationsScreen({ navigation }: NotificationsScreenP
       'Notification Options',
       '',
       () => {
-        // Delete action
         console.log('Delete notification:', notification.id);
       },
       () => {
-        // Mark read/unread
         markNotificationRead(notification.id);
       },
       'Delete',

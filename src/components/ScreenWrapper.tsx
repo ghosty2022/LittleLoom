@@ -1,16 +1,16 @@
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useEffect, useMemo } from 'react';
 import {
   View,
   StyleSheet,
   ScrollView,
-  RefreshControl,
   ViewStyle,
-  useColorScheme,
   NativeScrollEvent,
   NativeSyntheticEvent,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigationVisibility } from '../context/AppContext';
+import { useNavigationVisibility, useTheme } from '../context/AppContext';
+import { useNavigationState } from '@react-navigation/native';
 
 interface ScreenWrapperProps {
   children: React.ReactNode;
@@ -19,10 +19,20 @@ interface ScreenWrapperProps {
   contentContainerStyle?: ViewStyle;
   style?: ViewStyle;
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+  scrollEventThrottle?: number;
+  forceHideTabBar?: boolean;
+  extraBottomPadding?: number;
 }
 
-const DOCK_HEIGHT = 120; // Height of LiquidGlassNavigation dock
-const COMMUNITY_BOTTOM = 20; // Minimal padding when tab bar is hidden
+const DOCK_HEIGHT = 72; // Slightly reduced for tighter pill
+const COMMUNITY_BOTTOM = 0; // No extra padding — community screens are full-screen
+
+const FULL_SCREEN_ROUTES = new Set([
+  'CommunitySplash', 'CommunityOnboarding', 'CreatePost', 'EditCommunityProfile', 
+  'Report', 'PostDetail', 'Chat', 'ChatList', 'Notifications',
+  'Topic', 'UserProfile', 'Followers', 'Following', 'SearchUsers', 'BlockedUsers',
+  'TopicMembers',
+]);
 
 export const ScreenWrapper: React.FC<ScreenWrapperProps> = ({
   children,
@@ -31,65 +41,110 @@ export const ScreenWrapper: React.FC<ScreenWrapperProps> = ({
   contentContainerStyle,
   style,
   onScroll,
+  scrollEventThrottle = 16,
+  forceHideTabBar = false,
+  extraBottomPadding = 0,
 }) => {
   const insets = useSafeAreaInsets();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  const { handleScroll, isCommunityScreen } = useNavigationVisibility();
+  const { isDark, colors } = useTheme();
+  const { handleScroll, isCommunityScreen, setCommunityScreen } = useNavigationVisibility();
 
-  // Track scroll state for velocity computation
+  const routeName = useNavigationState(state => {
+    if (!state) return '';
+    const route = state.routes[state.index];
+    if (route.state) {
+      const nested = route.state as any;
+      const nestedRoute = nested.routes?.[nested.index ?? 0];
+      return nestedRoute?.name || route.name;
+    }
+    return route.name;
+  });
+
+  const isFullScreen = useMemo(() => {
+    return forceHideTabBar || FULL_SCREEN_ROUTES.has(routeName) || isCommunityScreen;
+  }, [forceHideTabBar, routeName, isCommunityScreen]);
+
   const lastYRef = useRef(0);
   const lastTimeRef = useRef(Date.now());
   const isAtTopRef = useRef(true);
+  const scrollDirectionRef = useRef<'up' | 'down'>('up');
+  const accumulatedDeltaRef = useRef(0);
+  const hideThreshold = 60; // pixels to scroll before hiding
+  const showThreshold = 20; // pixels to scroll up before showing
 
   const handleScrollEvent = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const { contentOffset } = event.nativeEvent;
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
     const currentY = contentOffset.y;
     const now = Date.now();
     const deltaTime = now - lastTimeRef.current;
-
-    // Compute velocity in pixels per ms (same unit as useTrackedScroll)
-    const velocity = deltaTime > 0 ? Math.abs((currentY - lastYRef.current) / deltaTime) : 0;
-    const isAtTop = currentY <= 5;
+    const deltaY = currentY - lastYRef.current;
+    const isAtTop = currentY <= 2;
+    const isAtBottom = currentY + layoutMeasurement.height >= contentSize.height - 2;
     isAtTopRef.current = isAtTop;
 
-    // Only handle scroll for nav visibility when NOT on community screens
-    if (!isCommunityScreen) {
-      handleScroll(currentY, velocity, isAtTop);
+    if (Math.abs(deltaY) > 0.5) {
+      scrollDirectionRef.current = deltaY > 0 ? 'down' : 'up';
     }
 
-    // Update refs
+    if (scrollDirectionRef.current === 'down' && deltaY > 0) {
+      accumulatedDeltaRef.current += deltaY;
+    } else if (scrollDirectionRef.current === 'up' && deltaY < 0) {
+      accumulatedDeltaRef.current += Math.abs(deltaY);
+    } else {
+      accumulatedDeltaRef.current = Math.abs(deltaY);
+    }
+
+    const velocity = deltaTime > 0 ? Math.abs(deltaY / deltaTime) : 0;
+
+    if (!isFullScreen) {
+      if (isAtTop || isAtBottom) {
+        handleScroll(currentY, velocity, true);
+        accumulatedDeltaRef.current = 0;
+      } else if (scrollDirectionRef.current === 'down' && accumulatedDeltaRef.current > hideThreshold) {
+        handleScroll(currentY, velocity, false);
+        accumulatedDeltaRef.current = 0;
+      } else if (scrollDirectionRef.current === 'up' && accumulatedDeltaRef.current > showThreshold) {
+        handleScroll(currentY, velocity, true);
+        accumulatedDeltaRef.current = 0;
+      }
+    }
+
     lastYRef.current = currentY;
     lastTimeRef.current = now;
 
     onScroll?.(event);
-  }, [handleScroll, isCommunityScreen, onScroll]);
+  }, [handleScroll, isFullScreen, onScroll]);
 
-  // Reset scroll tracking when community screen state changes
-  React.useEffect(() => {
+  useEffect(() => {
     lastYRef.current = 0;
     lastTimeRef.current = Date.now();
     isAtTopRef.current = true;
-  }, [isCommunityScreen]);
+    accumulatedDeltaRef.current = 0;
+    scrollDirectionRef.current = 'up';
+  }, [isFullScreen, routeName]);
 
-  // Use minimal bottom padding on community screens (no dock), full padding elsewhere
-  const bottomPadding = isCommunityScreen
-    ? Math.max(insets.bottom, 12) + COMMUNITY_BOTTOM
-    : Math.max(insets.bottom, 12) + DOCK_HEIGHT;
+  const bottomPadding = useMemo(() => {
+    if (isFullScreen) {
+      return Math.max(insets.bottom, 0) + COMMUNITY_BOTTOM + extraBottomPadding;
+    }
+    return Math.max(insets.bottom, 8) + DOCK_HEIGHT + extraBottomPadding;
+  }, [isFullScreen, insets.bottom, extraBottomPadding]);
 
   if (scrollable) {
     return (
       <ScrollView
-        style={[styles.container, isDark && styles.containerDark, style]}
+        style={[styles.container, { backgroundColor: colors.background }, style]}
         contentContainerStyle={[
           styles.contentContainer,
           { paddingBottom: bottomPadding },
           contentContainerStyle,
         ]}
         onScroll={handleScrollEvent}
-        scrollEventThrottle={16}
+        scrollEventThrottle={scrollEventThrottle}
         refreshControl={refreshControl}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
       >
         {children}
       </ScrollView>
@@ -100,8 +155,7 @@ export const ScreenWrapper: React.FC<ScreenWrapperProps> = ({
     <View
       style={[
         styles.container,
-        isDark && styles.containerDark,
-        { paddingBottom: bottomPadding },
+        { backgroundColor: colors.background, paddingBottom: bottomPadding },
         style,
       ]}
     >
@@ -113,10 +167,6 @@ export const ScreenWrapper: React.FC<ScreenWrapperProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8faff',
-  },
-  containerDark: {
-    backgroundColor: '#000000',
   },
   contentContainer: {
     flexGrow: 1,

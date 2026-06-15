@@ -90,7 +90,6 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
   const [isLockedOut, setIsLockedOut] = useState(false);
   const [pinProgress] = useState(new Animated.Value(0));
 
-  // Security questions state
   const [showForgotPin, setShowForgotPin] = useState(false);
   const [securityQuestions, setSecurityQuestions] = useState<SecurityQuestion[]>([]);
   const [verifyAnswers, setVerifyAnswers] = useState(['', '', '']);
@@ -139,7 +138,6 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
   const handleBiometricAuthRef = useRef<(() => Promise<void>) | null>(null);
   const lastUnlockAttemptRef = useRef<number>(0);
 
-  // Load security questions on mount
   useEffect(() => {
     loadSecurityQuestions();
   }, []);
@@ -182,7 +180,6 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
         setShowForgotPin(false);
         toast('Verified!', 'Redirecting to PIN reset...', 'success');
 
-        // Navigate to SecurityCenter in reset mode
         setTimeout(() => {
           navigation.navigate('SecurityCenter', { 
             mode: 'reset', 
@@ -273,7 +270,6 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
       hasAutoPrompted.current = false;
       unlockInProgress.current = false;
       resetUnlockLock();
-      // Reset forgot PIN state when screen focuses
       setShowForgotPin(false);
       setSecurityVerified(false);
       setVerifyAnswers(['', '', '']);
@@ -535,7 +531,6 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     );
   };
 
-  // Render forgot PIN / security questions UI
   const renderForgotPin = () => {
     if (!showForgotPin) return null;
 
@@ -869,7 +864,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontVariant: ['tabular-nums'],
   },
-  // Forgot PIN styles
   forgotPinLink: {
     alignItems: 'center',
     marginTop: 20,

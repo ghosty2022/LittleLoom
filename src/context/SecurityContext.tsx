@@ -1,4 +1,4 @@
-// src/context/SecurityContext.tsx
+import { useSweetAlert } from '../../components/SweetAlert';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, AppStateStatus, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -134,7 +134,6 @@ const getPrimaryBiometricName = (types: LocalAuthentication.AuthenticationType[]
   return 'Biometric';
 };
 
-// 🔑 NEW: Props interface — auth state passed from parent instead of dynamic require
 interface SecurityProviderProps {
   children: React.ReactNode;
   isAuthenticated?: boolean;
@@ -328,7 +327,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
   };
 
   const setupPin = useCallback(async (pin: string): Promise<boolean> => {
-    if (pin.length < 4 || pin.length > 6) { Alert.alert('Invalid PIN', 'PIN must be 4-6 digits'); return false; }
+    if (pin.length < 4 || pin.length > 6) { sweetAlert.alert('Invalid PIN', 'PIN must be 4-6 digits', 'warning'); return false; }
     const hashedPin = await hashPin(pin);
     await secureStorage.setItem(SECURE_KEYS.PIN_HASH, hashedPin);
     if (isMounted.current) setState(prev => ({ ...prev, settings: { ...prev.settings, isPinEnabled: true } }));
@@ -343,7 +342,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
 
   const changePin = useCallback(async (oldPin: string, newPin: string): Promise<boolean> => {
     const isValid = await verifyPin(oldPin);
-    if (!isValid) { Alert.alert('Error', 'Current PIN is incorrect'); return false; }
+    if (!isValid) { sweetAlert.alert('Error', 'Current PIN is incorrect', 'warning'); return false; }
     return await setupPin(newPin);
   }, [verifyPin, setupPin]);
 
@@ -359,7 +358,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
 
   const lockApp = useCallback(async () => {
     const hasSecurity = state.settings.isBiometricEnabled || state.settings.isPinEnabled || state.settings.isAppLockEnabled;
-    if (!hasSecurity) { Alert.alert('No Security Enabled', 'Please enable PIN or Biometric lock first.'); return; }
+    if (!hasSecurity) { sweetAlert.alert('No Security Enabled', 'Please enable PIN or Biometric lock first.', 'warning'); return; }
     manualLockTimeRef.current = Date.now();
     await AsyncStorage.setItem(ASYNC_KEYS.MANUAL_LOCK_TIME, manualLockTimeRef.current.toString());
     await AsyncStorage.setItem(ASYNC_KEYS.SECURITY_LOCK, 'true');
@@ -503,7 +502,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
 
   const saveSecurityQuestions = useCallback(async (questions: { question: string; answer: string }[]): Promise<boolean> => {
     try {
-      if (questions.length !== 3) { Alert.alert('Error', 'Exactly 3 security questions required'); return false; }
+      if (questions.length !== 3) { sweetAlert.alert('Error', 'Exactly 3 security questions required', 'warning'); return false; }
       const hashedQuestions = await Promise.all(questions.map(async (q) => ({
         question: q.question,
         answerHash: await hashAnswer(q.answer),
@@ -514,7 +513,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
         settings: { ...prev.settings, hasSecurityQuestions: true },
       }));
       return true;
-    } catch { Alert.alert('Error', 'Failed to save security questions'); return false; }
+    } catch { sweetAlert.alert('Error', 'Failed to save security questions', 'warning'); return false; }
   }, []);
 
   const verifySecurityAnswers = useCallback(async (answers: string[]): Promise<boolean> => {

@@ -1,4 +1,3 @@
-// src/screens/community/PostDetailScreen.tsx
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
@@ -77,7 +76,6 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
     setIsLoading(false);
   }, [postId, getPostById]);
 
-  // Refresh post when actions happen
   const refreshPost = useCallback(() => {
     if (!postId) return;
     const updated = getPostById(postId);
@@ -197,9 +195,6 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
     }, 300);
   }, [post, navigation]);
 
-  // ============================================
-  // MODERN IMAGE GRID (matches CommunityScreen)
-  // ============================================
   const ImageGrid = ({ images }: { images: string[] }) => {
     if (!images || images.length === 0) return null;
 
@@ -227,9 +222,6 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
     );
   };
 
-  // ============================================
-  // ACTION BUTTON
-  // ============================================
   const ActionButton = ({
     icon,
     label,
@@ -259,9 +251,6 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
     </TouchableOpacity>
   );
 
-  // ============================================
-  // COMMENT CARD
-  // ============================================
   const CommentCard = ({ comment, index }: { comment: Comment; index: number }) => (
     <View style={styles.commentCard}>
       <View style={styles.commentTop}>
@@ -365,9 +354,6 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
     </View>
   );
 
-  // ============================================
-  // LOADING / ERROR STATES
-  // ============================================
   if (isLoading) {
     return (
       <View style={[styles.container, styles.centerContent]}>
@@ -727,9 +713,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
 
-  // ============================================
-  // HEADER
-  // ============================================
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -752,9 +735,6 @@ const styles = StyleSheet.create({
     color: CommunityColors.text.primary,
   },
 
-  // ============================================
-  // POST CARD
-  // ============================================
   postCard: {
     backgroundColor: '#fff',
     borderRadius: CommunityBorderRadius.xl,
@@ -864,9 +844,6 @@ const styles = StyleSheet.create({
     marginBottom: CommunitySpacing.md,
   },
 
-  // ============================================
-  // MODERN IMAGE GRID (matches CommunityScreen)
-  // ============================================
   imageGridWrapper: {
     marginBottom: CommunitySpacing.md,
     borderRadius: CommunityBorderRadius.lg,
@@ -912,9 +889,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
-  // ============================================
-  // HELPFUL BADGE
-  // ============================================
   helpfulWrap: {
     marginBottom: CommunitySpacing.sm,
   },
@@ -934,9 +908,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  // ============================================
-  // STATS BAR
-  // ============================================
   statsBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -965,9 +936,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#e0e0e5',
   },
 
-  // ============================================
-  // ACTION BAR
-  // ============================================
   actionBar: {
     flexDirection: 'row',
     justifyContent: 'space-around',
@@ -990,9 +958,6 @@ const styles = StyleSheet.create({
     color: CommunityColors.text.tertiary,
   },
 
-  // ============================================
-  // COMMENTS SECTION
-  // ============================================
   commentsSection: {
     marginTop: CommunitySpacing.sm,
     paddingHorizontal: CommunitySpacing.lg,
@@ -1044,9 +1009,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
-  // ============================================
-  // COMMENT CARD
-  // ============================================
   commentCard: {
     backgroundColor: '#fff',
     borderRadius: CommunityBorderRadius.lg,
@@ -1105,9 +1067,6 @@ const styles = StyleSheet.create({
     color: CommunityColors.text.tertiary,
   },
 
-  // ============================================
-  // REPLIES
-  // ============================================
   repliesContainer: {
     marginTop: 10,
     marginLeft: 46,
@@ -1160,9 +1119,6 @@ const styles = StyleSheet.create({
     color: CommunityColors.text.tertiary,
   },
 
-  // ============================================
-  // COMMENT INPUT
-  // ============================================
   commentInputWrap: {
     position: 'absolute',
     bottom: 0,
@@ -1228,9 +1184,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  // ============================================
-  // MODAL
-  // ============================================
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',

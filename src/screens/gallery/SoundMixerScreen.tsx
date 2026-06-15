@@ -328,7 +328,7 @@ export default function SoundMixerScreen({ navigation }: SoundMixerScreenProps) 
     paddingBottom: insets.bottom + (customLoaded && customSettings.compactView ? 100 : 140)
   }), [insets, customLoaded, customSettings.compactView]);
 
-  const showAlert = useCallback((type: 'success' | 'error' | 'info', title: string, message: string) => {
+  const sweetAlert = useCallback((type: 'success' | 'error' | 'info', title: string, message: string) => {
     setAlert({ visible: true, type, title, message });
     Haptics.notificationAsync(
       type === 'success' ? Haptics.NotificationFeedbackType.Success :
@@ -400,9 +400,9 @@ export default function SoundMixerScreen({ navigation }: SoundMixerScreenProps) 
     if (playlist.tracks.length > 0) {
       handlePlayTrack(playlist.tracks[0]);
     } else {
-      showAlert('info', 'Empty Playlist', 'This playlist has no songs yet.');
+      sweetAlert('info', 'Empty Playlist', 'This playlist has no songs yet.');
     }
-  }, [handlePlayTrack, showAlert]);
+  }, [handlePlayTrack, sweetAlert]);
 
   const handleImport = useCallback(async (source: 'device' | 'spotify' | 'apple') => {
     setShowImportModal(false);
@@ -411,7 +411,7 @@ export default function SoundMixerScreen({ navigation }: SoundMixerScreenProps) 
     try {
       if (source === 'device') {
         await importFromDevice();
-        showAlert('success', 'Import Successful', 'Music added to your library!');
+        sweetAlert('success', 'Import Successful', 'Music added to your library!');
       } else if (source === 'spotify') {
         const spotifyUrl = 'spotify://';
         const webUrl = 'https://open.spotify.com';
@@ -419,28 +419,28 @@ export default function SoundMixerScreen({ navigation }: SoundMixerScreenProps) 
         const canOpen = await Linking.canOpenURL(spotifyUrl);
         if (canOpen) {
           await Linking.openURL(spotifyUrl);
-          showAlert('info', 'Spotify Opened', 'Select a playlist to import from Spotify');
+          sweetAlert('info', 'Spotify Opened', 'Select a playlist to import from Spotify');
         } else {
           await Linking.openURL(webUrl);
-          showAlert('info', 'Spotify Web', 'Opening Spotify in browser...');
+          sweetAlert('info', 'Spotify Web', 'Opening Spotify in browser...');
         }
       } else if (source === 'apple') {
         const appleUrl = 'music://';
         const canOpen = await Linking.canOpenURL(appleUrl);
         if (canOpen) {
           await Linking.openURL(appleUrl);
-          showAlert('info', 'Apple Music Opened', 'Select music to import');
+          sweetAlert('info', 'Apple Music Opened', 'Select music to import');
         } else {
-          showAlert('error', 'Apple Music Not Found', 'Please install Apple Music app');
+          sweetAlert('error', 'Apple Music Not Found', 'Please install Apple Music app');
         }
       }
     } catch (error) {
       console.error('Import error:', error);
-      showAlert('error', 'Import Failed', 'Could not import music. Please try again.');
+      sweetAlert('error', 'Import Failed', 'Could not import music. Please try again.');
     } finally {
       setIsImporting(false);
     }
-  }, [importFromDevice, showAlert]);
+  }, [importFromDevice, sweetAlert]);
 
   const filteredTracks = useMemo(() => {
     let tracks = [...ENHANCED_TRACKS, ...importedTracks];

@@ -1,8 +1,3 @@
-// src/components/ErrorBoundary.tsx
-// FIXED: Added primitive fallback for when expo modules fail to load
-// FIXED: useErrorHandler now has safer error throwing pattern
-// FIXED: Added proper cleanup and memory leak prevention
-
 import React, { Component, ReactNode, ErrorInfo } from 'react';
 import {
   View,
@@ -14,7 +9,6 @@ import {
   Dimensions,
 } from 'react-native';
 
-// Safe imports with fallbacks — prevents crash if expo modules fail
 let LinearGradient: any = View;
 let Ionicons: any = null;
 let Animated: any = View;
@@ -43,7 +37,6 @@ try {
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
-// ==================== TYPES ====================
 
 interface Props {
   children: ReactNode;
@@ -58,7 +51,6 @@ interface State {
   showDetails: boolean;
 }
 
-// ==================== PRIMITIVE FALLBACK (zero dependencies) ====================
 
 const PrimitiveFallback: React.FC<{ onReset: () => void }> = ({ onReset }) => (
   <View style={[styles.container, { backgroundColor: '#667eea' }]}>
@@ -80,7 +72,6 @@ const PrimitiveFallback: React.FC<{ onReset: () => void }> = ({ onReset }) => (
   </View>
 );
 
-// ==================== MAIN ERROR BOUNDARY ====================
 
 export class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
@@ -116,7 +107,6 @@ export class ErrorBoundary extends Component<Props, State> {
         await Updates.reloadAsync();
       }
     } catch (e) {
-      // If reload fails, just reset the error state
       this.handleReset();
     }
   };
@@ -140,7 +130,6 @@ export class ErrorBoundary extends Component<Props, State> {
         return <>{this.props.fallback}</>;
       }
 
-      // If expo modules failed to load, show primitive fallback
       if (!Ionicons || !FadeIn) {
         return <PrimitiveFallback onReset={this.handleReset} />;
       }
@@ -249,14 +238,12 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 }
 
-// ==================== HOOK VERSION ====================
 
 export function useErrorHandler() {
   const [error, setError] = React.useState<Error | null>(null);
 
   React.useEffect(() => {
     if (error) {
-      // Use setTimeout to break synchronous execution and allow React to finish current render
       const timer = setTimeout(() => {
         throw error;
       }, 0);
@@ -269,7 +256,6 @@ export function useErrorHandler() {
   }, []);
 }
 
-// ==================== STYLES ====================
 
 const styles = StyleSheet.create({
   container: {

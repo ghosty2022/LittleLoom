@@ -1,4 +1,3 @@
-﻿
 export interface BiometricResult {
   success: boolean;
   error?: string;

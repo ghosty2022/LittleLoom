@@ -1,14 +1,9 @@
-// src/utils/imageUtils.ts
-// UNIFIED Image Utilities — single source of truth for all image operations
-// Used by: MediaContext, SafeAvatar, GalleryScreen, Profile screens, etc.
-
 import * as FileSystem from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
 import { Alert, Image } from 'react-native';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 
-// ==================== DIRECTORY CONSTANTS ====================
 
 const BASE_DIR = FileSystem.documentDirectory || '';
 export const CACHE_DIR = FileSystem.cacheDirectory + 'littleloom/';
@@ -23,7 +18,6 @@ export const DEFAULT_COMPRESSION = 0.8;
 export const MAX_IMAGE_DIMENSION = 2048;
 export const THUMBNAIL_SIZE = 300;
 
-// ==================== DIRECTORY MANAGEMENT ====================
 
 export async function ensureDirectory(dir: string): Promise<void> {
   const dirInfo = await FileSystem.getInfoAsync(dir);
@@ -43,7 +37,6 @@ export async function ensureAllImageDirs(): Promise<void> {
   ]);
 }
 
-// ==================== PATH HELPERS ====================
 
 export function getParentImagePath(parentId: string): string {
   return `${PARENT_IMAGES_DIR}${parentId}_avatar_${Date.now()}.jpg`;
@@ -69,7 +62,6 @@ export function getCachePath(filename: string): string {
   return `${CACHE_DIR}${filename}`;
 }
 
-// ==================== FILE OPERATIONS ====================
 
 export async function copyImage(sourceUri: string, destinationUri: string): Promise<boolean> {
   try {
@@ -128,7 +120,6 @@ export async function readDirectory(dir: string): Promise<string[]> {
   }
 }
 
-// ==================== IMAGE PICKING ====================
 
 export interface PickImageOptions {
   allowsEditing?: boolean;
@@ -142,7 +133,7 @@ export async function pickImage(options?: PickImageOptions): Promise<string | nu
   try {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission Required', 'Please allow access to photos to continue.');
+      sweetAlert.alert('Permission Required', 'Please allow access to photos to continue.', 'warning');
       return null;
     }
 
@@ -161,7 +152,7 @@ export async function pickImage(options?: PickImageOptions): Promise<string | nu
     return null;
   } catch (error) {
     console.error('Error picking image:', error);
-    Alert.alert('Error', 'Failed to pick image. Please try again.');
+    sweetAlert.alert('Error', 'Failed to pick image. Please try again.', 'warning');
     return null;
   }
 }
@@ -170,7 +161,7 @@ export async function pickMultipleImages(limit: number = 10): Promise<string[]> 
   try {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission Required', 'Please allow access to photos to continue.');
+      sweetAlert.alert('Permission Required', 'Please allow access to photos to continue.', 'warning');
       return [];
     }
 
@@ -195,7 +186,7 @@ export async function takePhoto(options?: PickImageOptions): Promise<string | nu
   try {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission Required', 'Please allow camera access to take photos.');
+      sweetAlert.alert('Permission Required', 'Please allow camera access to take photos.', 'warning');
       return null;
     }
 
@@ -211,12 +202,11 @@ export async function takePhoto(options?: PickImageOptions): Promise<string | nu
     return null;
   } catch (error) {
     console.error('Error taking photo:', error);
-    Alert.alert('Error', 'Failed to take photo. Please try again.');
+    sweetAlert.alert('Error', 'Failed to take photo. Please try again.', 'warning');
     return null;
   }
 }
 
-// ==================== IMAGE PROCESSING ====================
 
 export async function compressImage(uri: string, quality: number = DEFAULT_COMPRESSION): Promise<string> {
   try {
@@ -315,7 +305,6 @@ export async function processImageBatch(
   return results;
 }
 
-// ==================== CACHE MANAGEMENT ====================
 
 export async function cacheImage(uri: string, customFilename?: string): Promise<string> {
   try {
@@ -387,7 +376,6 @@ export async function isCacheFull(): Promise<boolean> {
   return size >= MAX_CACHE_SIZE;
 }
 
-// ==================== COMPLETE SAVE FLOWS ====================
 
 export interface SaveImageResult {
   success: boolean;
@@ -460,13 +448,12 @@ export async function saveGalleryImage(filename: string, sourceUri: string): Pro
   }
 }
 
-// ==================== MEDIA LIBRARY ====================
 
 export async function saveToPhotoLibrary(uri: string): Promise<boolean> {
   try {
     const { status } = await MediaLibrary.requestPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission Required', 'Please allow access to save photos to your library.');
+      sweetAlert.alert('Permission Required', 'Please allow access to save photos to your library.', 'warning');
       return false;
     }
 
@@ -478,7 +465,6 @@ export async function saveToPhotoLibrary(uri: string): Promise<boolean> {
   }
 }
 
-// ==================== VALIDATION ====================
 
 export function isValidImageUri(value: string | undefined | null): boolean {
   if (!value || typeof value !== 'string') return false;
@@ -520,10 +506,8 @@ export function isEmoji(value: string | undefined | null): boolean {
   );
 }
 
-// ==================== NAMESPACE EXPORT ====================
 
 export const ImageUtils = {
-  // Directories
   ensureDirectory,
   ensureAllImageDirs,
   CACHE_DIR,
@@ -533,7 +517,6 @@ export const ImageUtils = {
   MILESTONE_IMAGES_DIR,
   GALLERY_DIR,
 
-  // Paths
   getParentImagePath,
   getGuardianImagePath,
   getBabyImagePath,
@@ -541,42 +524,35 @@ export const ImageUtils = {
   getGalleryPath,
   getCachePath,
 
-  // File operations
   copyImage,
   deleteImage,
   imageExists,
   getFileSize,
   readDirectory,
 
-  // Picking
   pickImage,
   pickMultipleImages,
   takePhoto,
 
-  // Processing
   compressImage,
   resizeImage,
   createThumbnail,
   getImageDimensions,
   processImageBatch,
 
-  // Cache
   cacheImage,
   getCachedImage,
   clearImageCache,
   getCacheSize,
   isCacheFull,
 
-  // Save flows
   saveParentImage,
   saveGuardianImage,
   saveBabyImage,
   saveGalleryImage,
 
-  // Library
   saveToPhotoLibrary,
 
-  // Validation
   isValidImageUri,
   isEmoji,
 };

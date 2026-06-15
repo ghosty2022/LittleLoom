@@ -26,7 +26,7 @@ const SECTIONS = [
     title: '1. Acceptance of Terms',
     content: `By downloading, installing, or using LittleLoom ("the App"), you agree to be bound by these Terms of Service. If you do not agree to these terms, please do not use the App.
 
-These terms apply to all users, including parents, guardians, and any family members invited to use the App through family sharing features.`,
+These terms apply to all users, including parents, guardians, and any family members invited to use the App through Family Dashboard features.`,
   },
   {
     title: '2. Description of Service',
@@ -52,7 +52,7 @@ The App is intended for personal, non-commercial use by families and caregivers.
 You are responsible for all activity that occurs under your account. Notify us immediately of any unauthorized use.`,
   },
   {
-    title: '4. Family Sharing & Permissions',
+    title: '4. Family Dashboard & Permissions',
     content: `When you invite family members or guardians to access your baby's data:
 
 • You control what data each person can view and edit
@@ -115,7 +115,7 @@ Always consult qualified healthcare professionals for medical advice. LittleLoom
 • Indirect, incidental, special, or consequential damages
 • Loss of data, profits, or goodwill
 • Damages arising from your use or inability to use the App
-• Issues arising from family sharing disputes or unauthorized access by invited members
+• Issues arising from Family Dashboard disputes or unauthorized access by invited members
 • Any medical decisions made based on information tracked in the App
 
 Our total liability shall not exceed the amount you paid for the App (if any) in the twelve months preceding the claim.`,

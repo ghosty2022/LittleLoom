@@ -1,36 +1,31 @@
-
-// src/screens/baby/SwitchBabyScreen.tsx
-// FIXED: Proper post-setup navigation, no duplicate partner setup
-// FIXED: Consistent navigation pattern (replace for main flow)
-// FIXED: Proper baby switching with setup state awareness
-
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, Dimensions, Image, StatusBar } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, Dimensions, StatusBar } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInUp, FadeIn, Layout, useSharedValue, useAnimatedStyle, withSpring, withTiming } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import { useBaby } from '../../context/BabyContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useBaby, STORAGE_KEYS } from '../../context/BabyContext';
 import { useAuth } from '../../context/AuthContext';
 import { useFamily } from '../../context/FamilyContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { SafeBabyAvatar } from '../../components/SafeAvatar';
+import { LiquidDots } from '../../components/UniversalSpinner'; // <-- IMPORT ADDED
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
 import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
 
 const { width } = Dimensions.get('window');
 
-type SwitchBabyScreenProps = NativeStackScreenProps<RootStackParamList, 'SwitchBaby'>;
+type BabySelectorScreenProps = NativeStackScreenProps<RootStackParamList, 'SwitchBaby'>;
 
-const GENDER_OPTIONS = [
-  { value: 'boy', label: 'Boy', icon: 'male', color: '#667eea', gradient: ['#667eea', '#764ba2'] },
-  { value: 'girl', label: 'Girl', icon: 'female', color: '#fa709a', gradient: ['#fa709a', '#fee140'] },
-  { value: 'other', label: 'Other', icon: 'ellipse', color: '#11998e', gradient: ['#11998e', '#38ef7d'] },
-];
+const safeParse = <T,>(json: string | null, fallback: T): T => {
+  if (!json) return fallback;
+  try { return JSON.parse(json) as T; } catch { return fallback; }
+};
 
 const GlassmorphismCard: React.FC<{ children: React.ReactNode; style?: any; onPress?: () => void; intensity?: number; isDark?: boolean }> = ({ 
   children, style, onPress, intensity = 80, isDark = false 
@@ -52,7 +47,8 @@ const GlassmorphismCard: React.FC<{ children: React.ReactNode; style?: any; onPr
   );
 };
 
-export default function SwitchBabyScreen({ navigation }: SwitchBabyScreenProps) {
+export default function BabySelectorScreen({ navigation }: BabySelectorScreenProps) {
+  const sweetAlert = useSweetAlert();
   const { babies, currentBabyId, switchBaby, deleteBaby, loadBabies, isLoading: babyLoading } = useBaby();
   const { userProfile } = useAuth();
   const { parent2 } = useFamily();
@@ -63,6 +59,12 @@ export default function SwitchBabyScreen({ navigation }: SwitchBabyScreenProps) 
 
   const [isProcessing, setIsProcessing] = useState(false);
   const hasNavigated = useRef(false);
+  const isMounted = useRef(true);
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => { isMounted.current = false; };
+  }, []);
 
   const handleSwitchBaby = useCallback(async (babyId: string) => {
     if (babyId === currentBabyId) {
@@ -81,7 +83,7 @@ export default function SwitchBabyScreen({ navigation }: SwitchBabyScreenProps) 
         showSuccess('Switched', 'Baby profile updated');
 
         setTimeout(() => {
-          if (!hasNavigated.current) {
+          if (!hasNavigated.current && isMounted.current) {
             hasNavigated.current = true;
             navigation.replace('Main');
           }
@@ -98,7 +100,7 @@ export default function SwitchBabyScreen({ navigation }: SwitchBabyScreenProps) 
 
   const handleDeleteBaby = useCallback((babyId: string, babyName: string) => {
     if (babies.length <= 1) {
-      Alert.alert('Cannot Delete', 'You must have at least one baby profile');
+      sweetAlert.alert('Cannot Delete', 'You must have at least one baby profile', 'warning');
       return;
     }
 
@@ -120,11 +122,25 @@ export default function SwitchBabyScreen({ navigation }: SwitchBabyScreenProps) 
                 await loadBabies();
                 showSuccess('Deleted', 'Baby profile removed');
 
-                if (babies.length <= 1) {
-                  setTimeout(() => {
-                    navigation.replace('CreateBabyProfile');
-                  }, 500);
-                }
+                setTimeout(async () => {
+                  try {
+                    const babiesStr = await AsyncStorage.getItem(STORAGE_KEYS.BABIES);
+                    const remainingBabies = safeParse<BabyProfile[]>(babiesStr, []);
+
+                    if (remainingBabies.length === 0) {
+                      await AsyncStorage.multiRemove([
+                        STORAGE_KEYS.CURRENT_BABY,
+                        STORAGE_KEYS.HAS_SKIPPED_BABY
+                      ]);
+
+                      if (isMounted.current) {
+                        navigation.replace('BabyOptional');
+                      }
+                    }
+                  } catch (checkError) {
+                    console.error('Error checking remaining babies:', checkError);
+                  }
+                }, 300);
               } else {
                 showError('Error', 'Failed to delete profile');
               }
@@ -151,7 +167,15 @@ export default function SwitchBabyScreen({ navigation }: SwitchBabyScreenProps) 
         <LinearGradient colors={isDark ? ['#0a0a0a', '#1a1a2e'] : ['#f0f4ff', '#e0e7ff']} style={styles.gradient}>
           <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
           <View style={[styles.content, { paddingTop: insets.top, justifyContent: 'center', alignItems: 'center' }]}>
-            <ActivityIndicator size="large" color={themeColors.primary} />
+            <LiquidDots
+              colors={[
+                themeColors.primary,
+                themeColors.secondary || '#764ba2',
+                '#f093fb',
+                '#4facfe'
+              ]}
+              size={72}
+            />
             <Text style={[styles.loadingText, isDark && styles.textDark]}>Loading babies...</Text>
           </View>
         </LinearGradient>
@@ -218,7 +242,7 @@ export default function SwitchBabyScreen({ navigation }: SwitchBabyScreenProps) 
                       avatar={baby.avatar}
                       gender={baby.gender}
                       size={64}
-                      showBadge={isSelected}
+                      animated={!shouldReduceMotion}
                     />
 
                     <View style={styles.babyInfo}>

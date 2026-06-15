@@ -1,3 +1,4 @@
+import { useSweetAlert } from '../../components/SweetAlert';
 import React, { useState } from 'react';
 import {
   View,
@@ -33,7 +34,6 @@ interface CategoryItem {
   helpText?: string;
 }
 
-// ─── Extensive Category Map with Navigation Links ───
 const CATEGORIES: CategoryItem[] = [
   { id: 'bug', label: 'Bug Report', icon: 'bug-outline' },
   { id: 'feature', label: 'Feature Request', icon: 'bulb-outline' },
@@ -67,7 +67,7 @@ const CATEGORIES: CategoryItem[] = [
   },
   {
     id: 'family',
-    label: 'Family Sharing',
+    label: 'Family Dashboard',
     icon: 'people-outline',
     route: 'FamilySharing',
     helpText: 'Manage co-parents and guardians',
@@ -112,7 +112,7 @@ const CATEGORIES: CategoryItem[] = [
     id: 'growth',
     label: 'Growth Charts',
     icon: 'trending-up-outline',
-    route: 'GrowthChart',
+    route: 'Grow',
     helpText: 'Check height, weight, and milestone charts',
   },
   {
@@ -199,7 +199,8 @@ const SectionHeader: React.FC<{
   </View>
 );
 
-export default function ContactSupportScreen({ navigation }: Props) {
+export default function ContactSupportScreen
+ ({ navigation }: Props) {
   const { themeColors, darkMode, reduceMotion } = useCustomization();
   const insets = useSafeAreaInsets();
 
@@ -240,7 +241,7 @@ export default function ContactSupportScreen({ navigation }: Props) {
 
   const handleSend = async () => {
     if (!subject.trim() || !message.trim()) {
-      Alert.alert('Missing Info', 'Please fill in the subject and message.');
+      sweetAlert.alert('Missing Info', 'Please fill in the subject and message.', 'warning');
       return;
     }
 
@@ -548,7 +549,6 @@ const styles = StyleSheet.create({
   },
   headerSubtitleDark: { color: '#a0a0a0' },
 
-  // Section Header
   sectionWrapper: { marginBottom: 20 },
   sectionHeader: {
     flexDirection: 'row',
@@ -573,7 +573,6 @@ const styles = StyleSheet.create({
   },
   sectionTitleDark: { color: '#ffffff' },
 
-  // Category — Expanded Grid
   categoryContainer: {
     borderRadius: 24,
     overflow: 'hidden',
@@ -609,7 +608,6 @@ const styles = StyleSheet.create({
   categoryChipTextActive: { color: '#fff' },
   categoryChipTextDark: { color: '#888' },
 
-  // Form
   formContainer: {
     borderRadius: 24,
     overflow: 'hidden',
@@ -659,7 +657,6 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.05)',
   },
 
-  // Send Button
   sendButton: {
     borderRadius: 18,
     overflow: 'hidden',
@@ -678,7 +675,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  // Alternative Contacts
   linksContainer: {
     borderRadius: 24,
     overflow: 'hidden',

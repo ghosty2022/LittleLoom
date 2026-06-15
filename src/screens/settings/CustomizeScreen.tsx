@@ -1,13 +1,3 @@
-// src/screens/CustomizeScreen.tsx
-// FULLY SYNCED: Uses unified theme system from AppContext + useCustomization
-// FIXED: Theme mode sync now properly maps all appearance modes
-// FIXED: Imports DEFAULT_SETTINGS from useCustomization (single source of truth)
-// FIXED: Removed unused livePreview state
-// FIXED: Accent color now applied in preview
-// FIXED: Proper haptic error handling
-// FIXED: Back handler properly manages modal dismiss
-// FIXED: Hardware back button support added
-
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
@@ -62,7 +52,6 @@ const CARD_MARGIN = 16;
 const GAP = 10;
 const PILL_HEIGHT = 44;
 
-// ==================== THEME OPTIONS ====================
 const THEME_OPTIONS = [
   { id: 'purple', name: 'Lavender', emoji: '💜', desc: 'Dreamy' },
   { id: 'pink', name: 'Rose', emoji: '🌸', desc: 'Soft' },
@@ -105,7 +94,6 @@ const ACCENT_COLORS = [
   '#06b6d4', '#84cc16',
 ];
 
-// ==================== MODERN PILL SELECTOR ====================
 const PillSelector = <T extends string>({
   options,
   selected,
@@ -170,7 +158,6 @@ const PillSelector = <T extends string>({
   );
 };
 
-// ==================== MODERN COLOR DOT ====================
 const ColorDot = ({
   color,
   selected,
@@ -226,7 +213,6 @@ const ColorDot = ({
   );
 };
 
-// ==================== MODERN TOGGLE ROW ====================
 const ModernToggle = ({
   icon,
   title,
@@ -296,7 +282,6 @@ const ModernToggle = ({
   );
 };
 
-// ==================== MODERN SECTION HEADER ====================
 const SectionHeader = ({
   icon,
   color,
@@ -323,12 +308,11 @@ const SectionHeader = ({
   </View>
 );
 
-// ==================== MAIN COMPONENT ====================
 export default function CustomizeScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const systemColorScheme = useColorScheme();
   const { setThemeMode, setAppearance } = useTheme();
-  const { showAlert } = useSweetAlert();
+  const { sweetAlert } = useSweetAlert();
   const {
     settings,
     isLoaded,
@@ -353,17 +337,14 @@ export default function CustomizeScreen({ navigation }: Props) {
     return JSON.stringify(pending) !== JSON.stringify(settings);
   }, [pending, settings]);
 
-  // FIXED: Unified theme sync — maps all appearance modes correctly
   const applyImmediately = useCallback(async (newSettings: Partial<CustomizationSettings>) => {
     const updated = { ...pending, ...newSettings };
     setPending(updated);
 
-    // Sync with AppContext for global theme
     if (newSettings.appearance) {
       const appearance = newSettings.appearance;
       await setAppearance(appearance);
       
-      // Map appearance to themeMode for backward compatibility
       if (appearance === 'light' || appearance === 'pureWhite') {
         await setThemeMode('light');
       } else if (appearance === 'dark' || appearance === 'trueBlack') {
@@ -374,7 +355,6 @@ export default function CustomizeScreen({ navigation }: Props) {
     }
   }, [pending, setAppearance, setThemeMode]);
 
-  // FIXED: Safe haptic with error suppression
   const hapticLight = useCallback(() => {
     if (pending.hapticFeedback) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -437,7 +417,7 @@ export default function CustomizeScreen({ navigation }: Props) {
     try {
       await updateSettings(pending);
       hapticSuccess();
-      showAlert({
+      sweetAlert({
         title: 'Saved!',
         message: 'Your style is locked in ✨',
         type: 'success',
@@ -445,17 +425,17 @@ export default function CustomizeScreen({ navigation }: Props) {
         onConfirm: () => navigation.goBack(),
       });
     } catch (error) {
-      showAlert({
+      sweetAlert({
         title: 'Oops!',
         message: 'Could not save. Try again.',
         type: 'error',
         confirmText: 'Retry',
       });
     }
-  }, [pending, updateSettings, hapticSuccess, showAlert, navigation]);
+  }, [pending, updateSettings, hapticSuccess, sweetAlert, navigation]);
 
   const handleResetDefaults = useCallback(() => {
-    showAlert({
+    sweetAlert({
       title: 'Reset Everything?',
       message: 'All customizations will return to defaults.',
       type: 'warning',
@@ -470,11 +450,11 @@ export default function CustomizeScreen({ navigation }: Props) {
         hapticSuccess();
       },
     });
-  }, [reset, setAppearance, setThemeMode, hapticSuccess, showAlert]);
+  }, [reset, setAppearance, setThemeMode, hapticSuccess, sweetAlert]);
 
   const handleBack = useCallback(() => {
     if (hasChanges) {
-      showAlert({
+      sweetAlert({
         title: 'Unsaved Changes',
         message: 'Save before leaving?',
         type: 'question',
@@ -487,9 +467,8 @@ export default function CustomizeScreen({ navigation }: Props) {
     } else {
       navigation.goBack();
     }
-  }, [hasChanges, savePreferences, showAlert, navigation]);
+  }, [hasChanges, savePreferences, sweetAlert, navigation]);
 
-  // FIXED: Hardware back button support
   useEffect(() => {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
       handleBack();
@@ -498,7 +477,6 @@ export default function CustomizeScreen({ navigation }: Props) {
     return () => backHandler.remove();
   }, [handleBack]);
 
-  // FIXED: Use fullThemeColors for complete preview
   const previewColors = useMemo(() => {
     return getFullThemeColors(pending.theme, pending.appearance, systemColorScheme === 'dark');
   }, [pending.theme, pending.appearance, systemColorScheme]);
@@ -506,7 +484,6 @@ export default function CustomizeScreen({ navigation }: Props) {
   const currentTheme = THEME_MAP[pending.theme] || THEME_MAP.purple;
   const fontSizeMultiplier = getFontSizeMultiplier(pending.fontSize);
 
-  // FIXED: Accent color override applied
   const effectivePrimary = pending.accentColor || currentTheme.primary;
   const effectiveSecondary = pending.accentColor ? currentTheme.secondary : currentTheme.secondary;
 
@@ -1030,7 +1007,6 @@ export default function CustomizeScreen({ navigation }: Props) {
   );
 }
 
-// ==================== STYLES ====================
 const styles = StyleSheet.create({
   container: { flex: 1 },
   loadingContainer: {
@@ -1041,7 +1017,6 @@ const styles = StyleSheet.create({
   },
   loadingText: { fontSize: 16, fontWeight: '500' },
 
-  // Modern Header
   modernHeader: { marginBottom: 24 },
   headerTop: {
     flexDirection: 'row',
@@ -1059,7 +1034,6 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 28, fontWeight: '800', letterSpacing: -0.8 },
   headerSubtitle: { fontSize: 14, fontWeight: '500', marginTop: 2 },
 
-  // Section
   section: { marginBottom: 28 },
   sectionHeader: {
     flexDirection: 'row',
@@ -1077,7 +1051,6 @@ const styles = StyleSheet.create({
   sectionHeaderTitle: { fontSize: 18, fontWeight: '800', letterSpacing: -0.3 },
   sectionHeaderSubtitle: { fontSize: 13, fontWeight: '500', marginTop: 1 },
 
-  // Preview Card
   previewCard: {
     borderRadius: 28,
     padding: 4,
@@ -1099,7 +1072,6 @@ const styles = StyleSheet.create({
   },
   previewTagText: { fontSize: 12, fontWeight: '700' },
 
-  // Pill Selector
   pillRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1115,7 +1087,6 @@ const styles = StyleSheet.create({
   },
   pillText: { fontSize: 14, fontWeight: '700' },
 
-  // Theme Bubbles
   themeScroll: { gap: 10, paddingRight: 16 },
   themeBubble: {
     width: 80,
@@ -1148,7 +1119,6 @@ const styles = StyleSheet.create({
     borderColor: '#fff',
   },
 
-  // Dot Grid
   dotGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1157,7 +1127,6 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
 
-  // Avatar
   avatarScroll: { gap: 10, paddingRight: 16 },
   avatarBubble: {
     width: 56,
@@ -1180,7 +1149,6 @@ const styles = StyleSheet.create({
     borderColor: '#fff',
   },
 
-  // Modern Toggle
   modernToggle: {
     borderRadius: 18,
     borderWidth: 1,
@@ -1204,7 +1172,6 @@ const styles = StyleSheet.create({
   modernToggleSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
   toggleGrid: { gap: 10 },
 
-  // FAB
   fabContainer: {
     alignItems: 'center',
     marginTop: 16,

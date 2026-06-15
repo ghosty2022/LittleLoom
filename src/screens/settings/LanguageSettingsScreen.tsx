@@ -1,3 +1,4 @@
+import { useSweetAlert } from '../../components/SweetAlert';
 import React, { useState } from 'react';
 import {
   View,
@@ -61,6 +62,7 @@ const SectionHeader: React.FC<{
 );
 
 export default function LanguageSettingsScreen({ navigation }: Props) {
+  const sweetAlert = useSweetAlert();
   const { themeColors, darkMode, reduceMotion } = useCustomization();
   const insets = useSafeAreaInsets();
 
@@ -80,11 +82,7 @@ export default function LanguageSettingsScreen({ navigation }: Props) {
     handleHaptic();
     setSelected(code);
 
-    Alert.alert(
-      'Language Changed',
-      'App restart required to apply the new language. This feature will be fully implemented in a future update.',
-      [{ text: 'OK' }]
-    );
+    sweetAlert.alert('Language Changed', 'App restart required to apply the new language. This feature will be fully implemented in a future update.', 'info');
   };
 
   const selectedLanguage = LANGUAGES.find(l => l.code === selected);
@@ -237,7 +235,6 @@ const styles = StyleSheet.create({
   },
   headerSubtitleDark: { color: '#a0a0a0' },
 
-  // Section Header
   sectionWrapper: { marginBottom: 20 },
   sectionHeader: {
     flexDirection: 'row',
@@ -262,7 +259,6 @@ const styles = StyleSheet.create({
   },
   sectionTitleDark: { color: '#ffffff' },
 
-  // Current
   currentCard: {
     borderRadius: 24,
     overflow: 'hidden',
@@ -290,7 +286,6 @@ const styles = StyleSheet.create({
   },
   currentRegionDark: { color: '#888' },
 
-  // List
   listContainer: {
     borderRadius: 24,
     overflow: 'hidden',

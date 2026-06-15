@@ -10,20 +10,29 @@ import { useAuth } from './AuthContext';
 import { useBaby } from './BabyContext';
 import * as Crypto from 'expo-crypto';
 
+// ✅ Safe alert helper
+const showAlert = (title: string, message: string) => {
+  if (typeof Alert !== 'undefined') {
+    Alert.alert(title, message);
+  } else {
+    console.warn(`[FamilyChatContext] ${title}: ${message}`);
+  }
+};
+
 export type MessageType = 'text' | 'image' | 'voice' | 'system' | 'file';
 
 export interface FileMetadata {
   name: string;
   size: number;
-  type: string; // mime type
+  type: string;
   uri: string;
 }
 
 export interface FamilyMessage {
   id: string;
-  syncId: string;          // UUID for deduplication across devices
-  deviceId: string;        // Device that created the message
-  version: number;         // For conflict resolution
+  syncId: string;
+  deviceId: string;
+  version: number;
   chatId: string;
   senderId: string;
   senderName: string;
@@ -40,8 +49,8 @@ export interface FamilyMessage {
   readBy: string[];
   familyCode: string;
   reactions?: { emoji: string; userId: string; userName: string }[];
-  replyTo?: string; // ID of message being replied to
-  replyToPreview?: string; // Snippet of replied message content
+  replyTo?: string;
+  replyToPreview?: string;
   isEdited?: boolean;
   editedAt?: string;
   deliveryStatus: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
@@ -82,7 +91,7 @@ interface FamilyChatState {
   currentChatId: string | null;
   familyCode: string | null;
   currentUserTyping: boolean;
-  pendingSync: string[]; // syncIds waiting for backend sync
+  pendingSync: string[];
 }
 
 interface FamilyChatContextType extends FamilyChatState {
@@ -454,7 +463,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     replyToId?: string
   ): Promise<void> => {
     if (!state.familyCode || !userProfile) {
-      Alert.alert('Error', 'You must be logged in to send messages');
+      showAlert('Error', 'You must be logged in to send messages');
       return;
     }
     
@@ -623,7 +632,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       if (fromCamera) {
         const { status } = await ImagePicker.requestCameraPermissionsAsync();
         if (status !== 'granted') {
-          Alert.alert('Permission Required', 'Please allow camera access');
+          showAlert('Permission Required', 'Please allow camera access');
           return;
         }
         result = await ImagePicker.launchCameraAsync({
@@ -634,7 +643,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       } else {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (status !== 'granted') {
-          Alert.alert('Permission Required', 'Please allow access to photos');
+          showAlert('Permission Required', 'Please allow access to photos');
           return;
         }
         result = await ImagePicker.launchImageLibraryAsync({
@@ -656,7 +665,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to send image');
+      showAlert('Error', 'Failed to send image');
     }
   };
 
@@ -689,7 +698,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
       console.error('File pick error:', error);
-      Alert.alert('Error', 'Failed to send file');
+      showAlert('Error', 'Failed to send file');
     }
   };
 
@@ -898,7 +907,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     
     const chat = state.chats.find(c => c.id === chatId);
     if (!chat || chat.type === 'group') {
-      Alert.alert('Cannot Leave', 'You cannot leave the family group chat');
+      showAlert('Cannot Leave', 'You cannot leave the family group chat');
       return;
     }
     
@@ -983,7 +992,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       return true;
     } catch (error) {
-      Alert.alert('Error', 'Failed to join family');
+      showAlert('Error', 'Failed to join family');
       return false;
     }
   };

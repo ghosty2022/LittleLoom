@@ -12,18 +12,19 @@ import {
   Alert,
   ActivityIndicator,
   RefreshControl,
-  Pressable,
   Platform,
   InteractionManager,
   StatusBar,
+  ScrollView,
+  FlatList,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import { Ionicons, MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LineChart } from 'react-native-gifted-charts';
-import Animated, { FadeInUp, FadeInDown, FadeIn, Layout, useSharedValue, useAnimatedScrollHandler, withSpring, useAnimatedStyle, interpolate, Extrapolation, runOnJS } from 'react-native-reanimated';
+import Animated, { FadeInUp, FadeInDown, useSharedValue, useAnimatedScrollHandler, withSpring, useAnimatedStyle, runOnJS } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { format, differenceInDays, differenceInMonths, addMonths, subMonths, parseISO, isValid, isToday, isYesterday, addDays } from 'date-fns';
+import { format, differenceInDays, differenceInMonths, subMonths, parseISO, isValid, addDays } from 'date-fns';
 import * as Haptics from 'expo-haptics';
 import * as MediaLibrary from 'expo-media-library';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -31,28 +32,64 @@ import { useBaby, GrowthMeasurement, Milestone, BabyProfile } from '../../contex
 import { useFamily } from '../../context/FamilyContext';
 import { useMedia } from '../../context/MediaContext';
 import { useAuth } from '../../context/AuthContext';
-import { AutoHideScrollView, AutoHideFlatList, AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
 import { useCustomization } from '../../hooks/useCustomization';
-import { SafeAvatar, isImageUri, isEmoji } from '../../components/SafeAvatar';
+import { SafeAvatar } from '../../components/SafeAvatar';
+import { useWHOGrowthCalculator } from '../../hooks/useWHOGrowthCalculator';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const AnimatedScrollView = AutoHideAnimatedScrollView;
 
+/* ── Safe gender helper — handles 'other' by defaulting to 'boy' ── */
+const safeGender = (gender: string | undefined): 'boy' | 'girl' => {
+  return gender === 'girl' ? 'girl' : 'boy';
+};
+
+/* ── Safe date parsing ── */
+const safeParseDate = (dateString: string | undefined | null): Date | null => {
+  if (!dateString) return null;
+  try {
+    const parsed = parseISO(dateString);
+    if (isValid(parsed)) return parsed;
+    return null;
+  } catch {
+    return null;
+  }
+};
+
+const safeDifferenceInMonths = (dateLeft: Date | string | undefined, dateRight: Date | string | undefined): number => {
+  const left = safeParseDate(typeof dateLeft === 'string' ? dateLeft : undefined) || (dateLeft instanceof Date ? dateLeft : null);
+  const right = safeParseDate(typeof dateRight === 'string' ? dateRight : undefined) || (dateRight instanceof Date ? dateRight : null);
+  if (!left || !right) return 0;
+  return differenceInMonths(left, right);
+};
+
+const safeDifferenceInDays = (dateLeft: Date | string | undefined, dateRight: Date | string | undefined): number => {
+  const left = safeParseDate(typeof dateLeft === 'string' ? dateLeft : undefined) || (dateLeft instanceof Date ? dateLeft : null);
+  const right = safeParseDate(typeof dateRight === 'string' ? dateRight : undefined) || (dateRight instanceof Date ? dateRight : null);
+  if (!left || !right) return 0;
+  return differenceInDays(left, right);
+};
+
+const safeFormatDate = (date: Date | string | undefined | null, formatStr: string): string => {
+  const parsed = safeParseDate(typeof date === 'string' ? date : undefined) || (date instanceof Date ? date : null);
+  if (!parsed) return 'Unknown date';
+  try {
+    return format(parsed, formatStr);
+  } catch {
+    return 'Invalid date';
+  }
+};
+
+/* ── Simple image URI validator (replaces isImageUri from SafeAvatar) ── */
+const isValidImageUri = (uri: string | undefined): boolean => {
+  if (!uri || typeof uri !== 'string') return false;
+  return uri.startsWith('http://') || uri.startsWith('https://') || uri.startsWith('file://') || uri.startsWith('ph://') || uri.startsWith('assets-library://') || uri.startsWith('data:image');
+};
+
+/* ── Types ── */
 type ChartType = 'line' | 'area' | 'bar' | 'velocity' | 'comparison';
 type TimeRange = '3m' | '6m' | '1y' | '2y' | '5y' | 'all';
 type MetricType = 'height' | 'weight' | 'head' | 'bmi' | 'velocity';
 type PhotoSource = 'app' | 'device';
-
-interface PercentileData {
-  p3: number[];
-  p10: number[];
-  p25: number[];
-  p50: number[];
-  p75: number[];
-  p90: number[];
-  p97: number[];
-  labels: string[];
-}
 
 interface GrowthInsight {
   id: string;
@@ -110,112 +147,8 @@ interface PhotoFolder {
 
 const BLUR_INTENSITY = Platform.OS === 'ios' ? 80 : 60;
 
-const safeParseDate = (dateString: string | undefined | null): Date | null => {
-  if (!dateString) return null;
-  try {
-    const parsed = parseISO(dateString);
-    if (isValid(parsed)) return parsed;
-    return null;
-  } catch {
-    return null;
-  }
-};
-
-const safeDifferenceInMonths = (dateLeft: Date | string | undefined, dateRight: Date | string | undefined): number => {
-  const left = safeParseDate(typeof dateLeft === 'string' ? dateLeft : undefined) || (dateLeft instanceof Date ? dateLeft : null);
-  const right = safeParseDate(typeof dateRight === 'string' ? dateRight : undefined) || (dateRight instanceof Date ? dateRight : null);
-  if (!left || !right) return 0;
-  return differenceInMonths(left, right);
-};
-
-const safeDifferenceInDays = (dateLeft: Date | string | undefined, dateRight: Date | string | undefined): number => {
-  const left = safeParseDate(typeof dateLeft === 'string' ? dateLeft : undefined) || (dateLeft instanceof Date ? dateLeft : null);
-  const right = safeParseDate(typeof dateRight === 'string' ? dateRight : undefined) || (dateRight instanceof Date ? dateRight : null);
-  if (!left || !right) return 0;
-  return differenceInDays(left, right);
-};
-
-const safeFormatDate = (date: Date | string | undefined | null, formatStr: string): string => {
-  const parsed = safeParseDate(typeof date === 'string' ? date : undefined) || (date instanceof Date ? date : null);
-  if (!parsed) return 'Unknown date';
-  try {
-    return format(parsed, formatStr);
-  } catch {
-    return 'Invalid date';
-  }
-};
-
-const WHO_LMS_PARAMS: Record<string, Record<string, Record<number, { L: number; M: number; S: number }>>> = {
-  height: {
-    boy: {
-      0: { L: 1, M: 49.8842, S: 0.03790 },
-      1: { L: 1, M: 54.7244, S: 0.03558 },
-      3: { L: 1, M: 61.6054, S: 0.03273 },
-      6: { L: 1, M: 67.6026, S: 0.03063 },
-      9: { L: 1, M: 71.5045, S: 0.02951 },
-      12: { L: 1, M: 74.5350, S: 0.02874 },
-      18: { L: 1, M: 79.3076, S: 0.02784 },
-      24: { L: 1, M: 83.5488, S: 0.02726 },
-    },
-    girl: {
-      0: { L: 1, M: 49.1477, S: 0.03795 },
-      1: { L: 1, M: 53.8982, S: 0.03568 },
-      3: { L: 1, M: 60.7509, S: 0.03284 },
-      6: { L: 1, M: 66.5963, S: 0.03074 },
-      9: { L: 1, M: 70.4628, S: 0.02962 },
-      12: { L: 1, M: 73.4903, S: 0.02885 },
-      18: { L: 1, M: 78.2556, S: 0.02795 },
-      24: { L: 1, M: 82.5554, S: 0.02737 },
-    },
-  },
-  weight: {
-    boy: {
-      0: { L: -0.1600954, M: 3.5302031, S: 0.11218624 },
-      1: { L: -0.2013239, M: 4.3402931, S: 0.11488736 },
-      3: { L: -0.0638891, M: 6.1271573, S: 0.10954490 },
-      6: { L: -0.1450925, M: 7.7509601, S: 0.10686255 },
-      9: { L: -0.2162840, M: 8.9015212, S: 0.10526840 },
-      12: { L: -0.2665410, M: 9.7511429, S: 0.10424690 },
-      18: { L: -0.3042052, M: 11.1442610, S: 0.10304230 },
-      24: { L: -0.2853157, M: 12.1928210, S: 0.10241890 },
-    },
-    girl: {
-      0: { L: 0.0521267, M: 3.4002931, S: 0.11148950 },
-      1: { L: -0.0325635, M: 4.1720911, S: 0.11394920 },
-      3: { L: -0.0707665, M: 5.7915453, S: 0.10981410 },
-      6: { L: -0.1264159, M: 7.2082251, S: 0.10725950 },
-      9: { L: -0.1803270, M: 8.2876789, S: 0.10589980 },
-      12: { L: -0.2255660, M: 9.1350301, S: 0.10511540 },
-      18: { L: -0.2666570, M: 10.4000090, S: 0.10424690 },
-      24: { L: -0.2809460, M: 11.5123700, S: 0.10380630 },
-    },
-  },
-  head: {
-    boy: {
-      0: { L: 1, M: 34.4618, S: 0.03686 },
-      1: { L: 1, M: 37.2759, S: 0.03520 },
-      3: { L: 1, M: 40.2491, S: 0.03343 },
-      6: { L: 1, M: 42.9235, S: 0.03215 },
-      9: { L: 1, M: 44.9048, S: 0.03134 },
-      12: { L: 1, M: 46.5048, S: 0.03078 },
-      18: { L: 1, M: 48.6244, S: 0.03000 },
-      24: { L: 1, M: 49.4432, S: 0.02956 },
-    },
-    girl: {
-      0: { L: 1, M: 33.8787, S: 0.03720 },
-      1: { L: 1, M: 36.5463, S: 0.03555 },
-      3: { L: 1, M: 39.3311, S: 0.03380 },
-      6: { L: 1, M: 41.8810, S: 0.03253 },
-      9: { L: 1, M: 43.7979, S: 0.03173 },
-      12: { L: 1, M: 45.3660, S: 0.03118 },
-      18: { L: 1, M: 47.2232, S: 0.03040 },
-      24: { L: 1, M: 48.1878, S: 0.02996 },
-    },
-  },
-};
-
 const VACCINATION_SCHEDULE: VaccinationDose[] = [
-  { id: '1', vaccineName: 'Hepatitis B', doseNumber: 1, ageRange: 'Birth', dueDate: '0', status: 'completed' },
+  { id: '1', vaccineName: 'Hepatitis B', doseNumber: 1, ageRange: 'Birth', dueDate: '0', status: 'upcoming' },
   { id: '2', vaccineName: 'Hepatitis B', doseNumber: 2, ageRange: '1-2 months', dueDate: '30', status: 'upcoming' },
   { id: '3', vaccineName: 'DTaP', doseNumber: 1, ageRange: '2 months', dueDate: '60', status: 'upcoming' },
   { id: '4', vaccineName: 'IPV', doseNumber: 1, ageRange: '2 months', dueDate: '60', status: 'upcoming' },
@@ -227,142 +160,7 @@ const VACCINATION_SCHEDULE: VaccinationDose[] = [
   { id: '10', vaccineName: 'IPV', doseNumber: 2, ageRange: '4 months', dueDate: '120', status: 'upcoming' },
 ];
 
-const calculateZScore = (value: number, ageMonths: number, type: MetricType, gender: 'boy' | 'girl'): number => {
-  if (type === 'bmi' || type === 'velocity') return 0;
-  const clampedAge = Math.min(Math.max(ageMonths, 0), 24);
-  const availableAges = Object.keys(WHO_LMS_PARAMS[type]?.[gender] || {}).map(Number).sort((a, b) => a - b);
-  let closestAge = availableAges[0] || 0;
-  let minDiff = Math.abs(clampedAge - closestAge);
-  for (const age of availableAges) {
-    const diff = Math.abs(clampedAge - age);
-    if (diff < minDiff) {
-      minDiff = diff;
-      closestAge = age;
-    }
-  }
-  const params = WHO_LMS_PARAMS[type]?.[gender]?.[closestAge];
-  if (!params) return 0;
-  const { L, M, S } = params;
-  let z: number;
-  if (Math.abs(L) < 0.001) {
-    z = Math.log(value / M) / S;
-  } else {
-    z = (Math.pow(value / M, L) - 1) / (L * S);
-  }
-  return z;
-};
-
-const zScoreToPercentile = (z: number): number => {
-  const a1 = 0.254829592;
-  const a2 = -0.284496736;
-  const a3 = 1.421413741;
-  const a4 = -1.453152027;
-  const a5 = 1.061405429;
-  const p = 0.3275911;
-  const sign = z < 0 ? -1 : 1;
-  const x = Math.abs(z) / Math.sqrt(2);
-  const t = 1 / (1 + p * x);
-  const y = 1 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-x * x);
-  return Math.round(50 * (1 + sign * y));
-};
-
-const calculatePercentile = (value: number, ageMonths: number, type: MetricType, gender: 'boy' | 'girl'): number => {
-  if (type === 'bmi' || type === 'velocity') return 50;
-  const z = calculateZScore(value, ageMonths, type, gender);
-  return zScoreToPercentile(z);
-};
-
-const getGrowthStatus = (percentile: number): { label: string; color: string; icon: string } => {
-  if (percentile < 3) return { label: 'Severely Low', color: '#ef4444', icon: '⚠️' };
-  if (percentile < 10) return { label: 'Low', color: '#f97316', icon: '↓' };
-  if (percentile < 25) return { label: 'Below Average', color: '#f59e0b', icon: '↓' };
-  if (percentile < 75) return { label: 'Normal', color: '#10b981', icon: '✓' };
-  if (percentile < 90) return { label: 'Above Average', color: '#3b82f6', icon: '↑' };
-  if (percentile < 97) return { label: 'High', color: '#8b5cf6', icon: '↑' };
-  return { label: 'Severely High', color: '#ef4444', icon: '⚠️' };
-};
-
-const analyzeGrowthTrend = (measurements: GrowthMeasurement[], type: MetricType): GrowthInsight[] => {
-  const insights: GrowthInsight[] = [];
-  if (measurements.length < 2) return insights;
-  const sorted = [...measurements].sort((a, b) => {
-    const dateA = safeParseDate(a.date)?.getTime() || 0;
-    const dateB = safeParseDate(b.date)?.getTime() || 0;
-    return dateA - dateB;
-  });
-  const latest = sorted[sorted.length - 1];
-  const previous = sorted[sorted.length - 2];
-  const first = sorted[0];
-  if (latest.value < previous.value) {
-    const drop = ((previous.value - latest.value) / previous.value) * 100;
-    if (drop > 5) {
-      insights.push({
-        id: 'drop-alert',
-        type: 'concern',
-        title: 'Measurement Decrease Detected',
-        description: `Latest ${type} is ${drop.toFixed(1)}% lower than previous. Please verify measurement accuracy.`,
-        icon: '⚠️',
-        color: '#ef4444',
-        date: latest.date,
-        priority: 'high',
-        action: 'Double-check measurement technique',
-      });
-    }
-  }
-  const timeSpanMonths = safeDifferenceInMonths(latest.date, first.date);
-  if (timeSpanMonths > 0) {
-    const totalGrowth = latest.value - first.value;
-    const velocity = totalGrowth / timeSpanMonths;
-    let expectedVelocity = 0;
-    if (type === 'height') expectedVelocity = 1.5;
-    if (type === 'weight') expectedVelocity = 0.4;
-    if (expectedVelocity > 0) {
-      const ratio = velocity / expectedVelocity;
-      if (ratio < 0.7) {
-        insights.push({
-          id: 'slow-growth',
-          type: 'alert',
-          title: 'Slower Growth Detected',
-          description: `Growth velocity is ${(ratio * 100).toFixed(0)}% of expected. Consider discussing with pediatrician.`,
-          icon: '📉',
-          color: '#f59e0b',
-          date: latest.date,
-          priority: 'medium',
-        });
-      } else if (ratio > 1.3) {
-        insights.push({
-          id: 'fast-growth',
-          type: 'trend',
-          title: 'Growing Fast! 🚀',
-          description: `Growth velocity is ${(ratio * 100).toFixed(0)}% of expected. Excellent progress!`,
-          icon: '📈',
-          color: '#10b981',
-          date: latest.date,
-          priority: 'low',
-        });
-      }
-    }
-  }
-  if (sorted.length >= 3) {
-    const recent = sorted.slice(-3);
-    const avgGrowth = (recent[2].value - recent[0].value) / 2;
-    const predicted = latest.value + avgGrowth;
-    insights.push({
-      id: 'prediction',
-      type: 'prediction',
-      title: 'AI Prediction',
-      description: `Based on trends, next ${type} measurement may be around ${predicted.toFixed(1)}${latest.unit}`,
-      icon: '🔮',
-      color: '#8b5cf6',
-      date: new Date().toISOString(),
-      priority: 'low',
-    });
-  }
-  return insights;
-};
-
-// ==================== SUB-COMPONENTS ====================
-
+/* ── GlassCard Component ── */
 const GlassCard = memo(({ children, style }: { children: React.ReactNode; style?: any }) => (
   <View style={[styles.glassCard, style]}>
     <View style={styles.glassBorder} />
@@ -370,6 +168,7 @@ const GlassCard = memo(({ children, style }: { children: React.ReactNode; style?
   </View>
 ));
 
+/* ── MetricCard Component ── */
 interface MetricCardProps {
   title: string;
   value: string;
@@ -384,7 +183,7 @@ interface MetricCardProps {
 }
 
 const MetricCard = memo<MetricCardProps>(({ title, value, unit, change, changeType, icon, color, percentile, status, onPress }) => {
-  const { themeColors, shouldReduceMotion } = useCustomization();
+  const { themeColors } = useCustomization();
   const effectiveColor = color || themeColors.primary;
 
   return (
@@ -424,6 +223,75 @@ const MetricCard = memo<MetricCardProps>(({ title, value, unit, change, changeTy
   );
 });
 
+/* ── BlurredPhotoItem Component ── */
+interface BlurredPhotoItemProps {
+  photo: PhotoCorrelation;
+  onPress: () => void;
+  isExplicit?: boolean;
+}
+
+const BlurredPhotoItem = memo<BlurredPhotoItemProps>(({ photo, onPress, isExplicit = false }) => {
+  const [isBlurred, setIsBlurred] = useState(isExplicit);
+  const { themeColors } = useCustomization();
+
+  const imageSource = useMemo(() => {
+    if (isValidImageUri(photo.uri)) {
+      return { uri: photo.uri };
+    }
+    return undefined;
+  }, [photo.uri]);
+
+  return (
+    <TouchableOpacity
+      onPress={() => {
+        if (isBlurred) {
+          setIsBlurred(false);
+        } else {
+          onPress();
+        }
+      }}
+      style={styles.blurredPhotoItem}
+      activeOpacity={0.9}
+    >
+      {imageSource ? (
+        <Image source={imageSource} style={styles.blurredPhotoImage} resizeMode="cover" />
+      ) : (
+        <View style={[styles.blurredPhotoImage, { backgroundColor: '#e2e8f0', justifyContent: 'center', alignItems: 'center' }]}>
+          <Ionicons name="image-outline" size={32} color="#94a3b8" />
+        </View>
+      )}
+      {isBlurred && (
+        <BlurView intensity={95} style={styles.explicitBlur} tint="dark">
+          <Ionicons name="eye-off" size={32} color="#fff" />
+          <Text style={styles.explicitText}>Potentially Sensitive</Text>
+          <Text style={styles.explicitSubtext}>Tap to reveal</Text>
+        </BlurView>
+      )}
+      {photo.mediaType === 'video' && (
+        <View style={styles.videoIndicator}>
+          <Ionicons name="play-circle" size={28} color="#fff" />
+          {photo.duration && (
+            <Text style={styles.videoDuration}>
+              {Math.floor(photo.duration / 60)}:{(photo.duration % 60).toString().padStart(2, '0')}
+            </Text>
+          )}
+        </View>
+      )}
+      {photo.measurement && (
+        <View style={[
+          styles.correlationBadge,
+          {
+            backgroundColor: photo.measurement.type === 'height' ? '#667eea' :
+              photo.measurement.type === 'weight' ? '#fa709a' :
+                photo.measurement.type === 'head' ? '#11998e' : '#f59e0b'
+          }
+        ]} />
+      )}
+    </TouchableOpacity>
+  );
+});
+
+/* ── PhotoTimeline Component ── */
 interface PhotoTimelineProps {
   photos: PhotoCorrelation[];
   measurements: GrowthMeasurement[];
@@ -434,7 +302,7 @@ interface PhotoTimelineProps {
 }
 
 const PhotoTimeline = memo<PhotoTimelineProps>(({ photos, measurements, onPhotoPress, onAddPhoto, babyBirthDate, currentUserId }) => {
-  const { themeColors, shouldReduceMotion } = useCustomization();
+  const { themeColors } = useCustomization();
   const userPhotos = photos.filter(p => p.userId === currentUserId);
 
   return (
@@ -446,7 +314,7 @@ const PhotoTimeline = memo<PhotoTimelineProps>(({ photos, measurements, onPhotoP
           <Text style={[styles.addPhotoChipText, { color: themeColors.primary }]}>Add</Text>
         </TouchableOpacity>
       </View>
-      <AutoHideScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photoScroll}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photoScroll}>
         <TouchableOpacity onPress={onAddPhoto} style={styles.addPhotoButton}>
           <LinearGradient colors={themeColors.gradientColors || ['#667eea', '#764ba2']} style={styles.addPhotoButtonGradient}>
             <Ionicons name="camera" size={24} color="#fff" />
@@ -458,7 +326,6 @@ const PhotoTimeline = memo<PhotoTimelineProps>(({ photos, measurements, onPhotoP
             key={photo.id}
             photo={photo}
             onPress={() => onPhotoPress(photo)}
-            onLongPress={() => {}}
           />
         ))}
         {userPhotos.length === 0 && (
@@ -470,11 +337,12 @@ const PhotoTimeline = memo<PhotoTimelineProps>(({ photos, measurements, onPhotoP
             </LinearGradient>
           </View>
         )}
-      </AutoHideScrollView>
+      </ScrollView>
     </View>
   );
 });
 
+/* ── SiblingComparisonChart Component ── */
 interface SiblingComparisonChartProps {
   comparisons: SiblingComparison[];
   metric: MetricType;
@@ -512,21 +380,28 @@ const SiblingComparisonChart = memo<SiblingComparisonChartProps>(({ comparisons,
   );
 });
 
+/* ── VaccinationTracker Component ── */
 interface VaccinationTrackerProps {
   vaccinations: VaccinationDose[];
   birthDate: string;
   onComplete: (id: string) => void;
+  onViewAll: () => void;
 }
 
-const VaccinationTracker = memo<VaccinationTrackerProps>(({ vaccinations, birthDate, onComplete }) => {
+const VaccinationTracker = memo<VaccinationTrackerProps>(({ vaccinations, birthDate, onComplete, onViewAll }) => {
   const { themeColors } = useCustomization();
   const upcoming = vaccinations.filter(v => v.status !== 'completed').slice(0, 5);
+  const completed = vaccinations.filter(v => v.status === 'completed').length;
+  const total = vaccinations.length;
 
   return (
     <View style={styles.vaccinationContainer}>
       <View style={styles.vaccinationHeader}>
-        <Text style={styles.vaccinationTitle}>💉 Vaccinations</Text>
-        <TouchableOpacity style={styles.vaccinationMenu}>
+        <View>
+          <Text style={styles.vaccinationTitle}>💉 Vaccinations</Text>
+          <Text style={styles.vaccinationSubtitle}>{completed}/{total} completed</Text>
+        </View>
+        <TouchableOpacity style={styles.vaccinationMenu} onPress={onViewAll}>
           <Text style={[styles.vaccinationMenuText, { color: themeColors.primary }]}>View All</Text>
         </TouchableOpacity>
       </View>
@@ -558,6 +433,7 @@ const VaccinationTracker = memo<VaccinationTrackerProps>(({ vaccinations, birthD
   );
 });
 
+/* ── AddMeasurementModal Component ── */
 interface AddMeasurementModalProps {
   visible: boolean;
   onClose: () => void;
@@ -652,6 +528,7 @@ const AddMeasurementModal = memo<AddMeasurementModalProps>(({ visible, onClose, 
   );
 });
 
+/* ── DoctorReportModal Component ── */
 interface DoctorReportModalProps {
   visible: boolean;
   onClose: () => void;
@@ -715,6 +592,7 @@ const DoctorReportModal = memo<DoctorReportModalProps>(({ visible, onClose, baby
   );
 });
 
+/* ── PhotoViewerModal Component ── */
 interface PhotoViewerModalProps {
   visible: boolean;
   photo: PhotoCorrelation | null;
@@ -727,7 +605,7 @@ const PhotoViewerModal = memo<PhotoViewerModalProps>(({ visible, photo, onClose,
   const { themeColors } = useCustomization();
   if (!photo) return null;
 
-  const imageSource = isImageUri(photo.uri) ? { uri: photo.uri } : undefined;
+  const imageSource = isValidImageUri(photo.uri) ? { uri: photo.uri } : undefined;
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -778,6 +656,7 @@ const PhotoViewerModal = memo<PhotoViewerModalProps>(({ visible, photo, onClose,
   );
 });
 
+/* ── SweetAlert Component ── */
 interface SweetAlertProps {
   visible: boolean;
   type: 'success' | 'error' | 'warning' | 'info';
@@ -870,6 +749,7 @@ const SweetAlert = memo<SweetAlertProps>(({
   );
 });
 
+/* ── FolderSelectionModal Component ── */
 interface FolderSelectionModalProps {
   visible: boolean;
   onClose: () => void;
@@ -941,7 +821,7 @@ const FolderSelectionModal = memo<FolderSelectionModalProps>(({ visible, onClose
           {loading ? (
             <ActivityIndicator size="large" color="#667eea" style={styles.folderLoader} />
           ) : (
-            <AutoHideFlatList
+            <FlatList
               data={folders}
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => (
@@ -975,73 +855,9 @@ const FolderSelectionModal = memo<FolderSelectionModalProps>(({ visible, onClose
   );
 });
 
-interface BlurredPhotoItemProps {
-  photo: PhotoCorrelation;
-  onPress: () => void;
-  onLongPress?: () => void;
-  isExplicit?: boolean;
-}
-
-const BlurredPhotoItem = memo<BlurredPhotoItemProps>(({ photo, onPress, onLongPress, isExplicit = false }) => {
-  const [isBlurred, setIsBlurred] = useState(isExplicit);
-  const { themeColors } = useCustomization();
-
-  const imageSource = useMemo(() => {
-    if (photo.uri.startsWith('file://') || photo.uri.startsWith('http')) {
-      return { uri: photo.uri };
-    }
-    if (photo.uri.startsWith('ph://') || photo.uri.startsWith('assets-library://')) {
-      return { uri: photo.uri };
-    }
-    return { uri: photo.uri };
-  }, [photo.uri]);
-
-  return (
-    <TouchableOpacity
-      onPress={() => {
-        if (isBlurred) {
-          setIsBlurred(false);
-        } else {
-          onPress();
-        }
-      }}
-      onLongPress={onLongPress}
-      style={styles.blurredPhotoItem}
-      activeOpacity={0.9}
-    >
-      <Image source={imageSource} style={styles.blurredPhotoImage} resizeMode="cover" />
-      {isBlurred && (
-        <BlurView intensity={95} style={styles.explicitBlur} tint="dark">
-          <Ionicons name="eye-off" size={32} color="#fff" />
-          <Text style={styles.explicitText}>Potentially Sensitive</Text>
-          <Text style={styles.explicitSubtext}>Tap to reveal</Text>
-        </BlurView>
-      )}
-      {photo.mediaType === 'video' && (
-        <View style={styles.videoIndicator}>
-          <Ionicons name="play-circle" size={28} color="#fff" />
-          {photo.duration && (
-            <Text style={styles.videoDuration}>
-              {Math.floor(photo.duration / 60)}:{(photo.duration % 60).toString().padStart(2, '0')}
-            </Text>
-          )}
-        </View>
-      )}
-      {photo.measurement && (
-        <View style={[
-          styles.correlationBadge,
-          {
-            backgroundColor: photo.measurement.type === 'height' ? '#667eea' :
-              photo.measurement.type === 'weight' ? '#fa709a' :
-                photo.measurement.type === 'head' ? '#11998e' : '#f59e0b'
-          }
-        ]} />
-      )}
-    </TouchableOpacity>
-  );
-});
-
-// ==================== MAIN SCREEN ====================
+/* ═══════════════════════════════════════════════════════════════════════════
+   MAIN SCREEN
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 export default function GrowthDashboardScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
@@ -1058,6 +874,8 @@ export default function GrowthDashboardScreen({ navigation }: any) {
   const { userProfile } = useAuth();
   const { pickImage, takePhoto } = useMedia();
   const { themeColors, triggerHaptic, shouldReduceMotion } = useCustomization();
+
+  const { getPercentile, getStatus, getVelocity, getBMI, getPrediction } = useWHOGrowthCalculator();
 
   const [activeMetric, setActiveMetric] = useState<MetricType>('height');
   const [timeRange, setTimeRange] = useState<TimeRange>('6m');
@@ -1185,12 +1003,14 @@ export default function GrowthDashboardScreen({ navigation }: any) {
     return safeDifferenceInMonths(new Date(), currentBaby.birthDate);
   }, [currentBaby]);
 
+  /* ── Processed chart data using WHO hook for percentiles ── */
   const processedData = useMemo(() => {
     if (!currentBaby) return null;
     const ranges: Record<TimeRange, number> = {
       '3m': 90, '6m': 180, '1y': 365, '2y': 730, '5y': 1825, 'all': 3650,
     };
     const cutoff = subMonths(new Date(), ranges[timeRange] / 30);
+    
     let filtered = growthData
       .filter(g => {
         const gDate = safeParseDate(g.date);
@@ -1203,6 +1023,7 @@ export default function GrowthDashboardScreen({ navigation }: any) {
         if (!dateA || !dateB) return 0;
         return dateA.getTime() - dateB.getTime();
       });
+
     if (activeMetric === 'bmi') {
       const heightData = getGrowthData('height');
       const weightData = getGrowthData('weight');
@@ -1229,36 +1050,131 @@ export default function GrowthDashboardScreen({ navigation }: any) {
         }).filter((item): item is GrowthMeasurement => item !== null);
       }
     }
+
     const chartData = filtered.map((g, index) => ({
       value: Number(g.value) || 0,
       label: safeFormatDate(g.date, 'MMM d'),
       dataPointText: String(g.value),
       index,
     }));
+    
     return { data: chartData, rawData: filtered };
   }, [growthData, activeMetric, timeRange, currentBaby, getGrowthData]);
 
-  const aiInsights = useMemo(() => {
+  /* ── AI Insights using WHO hook exclusively ── */
+  const aiInsights = useMemo((): GrowthInsight[] => {
     if (!currentBaby) return [];
     const typeData = getGrowthData(activeMetric);
-    return analyzeGrowthTrend(typeData, activeMetric);
-  }, [growthData, activeMetric, currentBaby, getGrowthData]);
+    const insights: GrowthInsight[] = [];
+    
+    if (typeData.length < 2) return insights;
+    
+    const sorted = [...typeData].sort((a, b) => {
+      const dateA = safeParseDate(a.date)?.getTime() || 0;
+      const dateB = safeParseDate(b.date)?.getTime() || 0;
+      return dateA - dateB;
+    });
+    
+    const latest = sorted[sorted.length - 1];
+    const previous = sorted[sorted.length - 2];
+    const first = sorted[0];
+    
+    const latestAge = safeDifferenceInMonths(latest.date, currentBaby.birthDate);
+    const gender = safeGender(currentBaby.gender);
+    const latestPercentile = getPercentile(latest.value, latestAge, activeMetric as 'height' | 'weight' | 'head' | 'bmi', gender);
+    const status = getStatus(latestPercentile);
 
+    if (latest.value < previous.value) {
+      const drop = ((previous.value - latest.value) / previous.value) * 100;
+      if (drop > 5) {
+        insights.push({
+          id: 'drop-alert',
+          type: 'concern',
+          title: 'Measurement Decrease Detected',
+          description: `Latest ${activeMetric} is ${drop.toFixed(1)}% lower than previous. Please verify measurement accuracy.`,
+          icon: '⚠️',
+          color: '#ef4444',
+          date: latest.date,
+          priority: 'high',
+          action: 'Double-check measurement technique',
+        });
+      }
+    }
+
+    const timeSpanMonths = safeDifferenceInMonths(latest.date, first.date);
+    if (timeSpanMonths > 0) {
+      const totalGrowth = latest.value - first.value;
+      const velocity = totalGrowth / timeSpanMonths;
+      
+      const velocityData = typeData.map(m => ({ value: m.value, date: m.date }));
+      const velocityResult = getVelocity(velocityData, activeMetric as 'height' | 'weight' | 'head', gender);
+      
+      if (velocityResult) {
+        if (velocityResult.status === 'concerning') {
+          insights.push({
+            id: 'slow-growth',
+            type: 'alert',
+            title: 'Slower Growth Detected',
+            description: `Growth velocity is below expected range. Consider discussing with pediatrician.`,
+            icon: '📉',
+            color: '#f59e0b',
+            date: latest.date,
+            priority: 'medium',
+          });
+        } else if (velocityResult.status === 'accelerating') {
+          insights.push({
+            id: 'fast-growth',
+            type: 'trend',
+            title: 'Growing Fast! 🚀',
+            description: `Growth velocity is above expected range. Excellent progress!`,
+            icon: '📈',
+            color: '#10b981',
+            date: latest.date,
+            priority: 'low',
+          });
+        }
+      }
+    }
+
+    if (sorted.length >= 3) {
+      const prediction = getPrediction(latest.value, latestAge, activeMetric as 'height' | 'weight' | 'head', gender, 3);
+      insights.push({
+        id: 'prediction',
+        type: 'prediction',
+        title: 'AI Prediction',
+        description: `Based on WHO standards, next ${activeMetric} measurement may be around ${prediction.predicted}${latest.unit} (${prediction.confidence}% confidence)`,
+        icon: '🔮',
+        color: '#8b5cf6',
+        date: new Date().toISOString(),
+        priority: 'low',
+      });
+    }
+
+    return insights;
+  }, [growthData, activeMetric, currentBaby, getGrowthData, getPercentile, getStatus, getVelocity, getPrediction]);
+
+  /* ── Sibling Comparisons using WHO hook ── */
   const siblingComparisons = useMemo((): SiblingComparison[] => {
     if (!currentBaby || babies.length < 2) return [];
+    const gender = safeGender(currentBaby.gender);
+    
     return babies
       .filter(b => b.id !== currentBaby.id)
       .map((baby, index) => {
+        const babyGender = safeGender(baby.gender);
         const babyGrowth = getGrowthData(activeMetric).filter(g => g.babyId === baby.id);
         const currentBabyGrowth = getGrowthData(activeMetric).filter(g => g.babyId === currentBaby.id);
+        
         const avgPercentile = babyGrowth.reduce((sum, g) => {
           const age = safeDifferenceInMonths(g.date, baby.birthDate);
-          return sum + calculatePercentile(g.value, age, activeMetric, baby.gender as 'boy' | 'girl');
+          return sum + getPercentile(g.value, age, activeMetric as 'height' | 'weight' | 'head' | 'bmi', babyGender);
         }, 0) / (babyGrowth.length || 1);
+        
         const currentAvg = currentBabyGrowth.reduce((sum, g) => {
           const age = safeDifferenceInMonths(g.date, currentBaby.birthDate);
-          return sum + calculatePercentile(g.value, age, activeMetric, currentBaby.gender as 'boy' | 'girl');
+          return sum + getPercentile(g.value, age, activeMetric as 'height' | 'weight' | 'head' | 'bmi', gender);
         }, 0) / (currentBabyGrowth.length || 1);
+        
         return {
           babyId: baby.id,
           name: baby.name,
@@ -1267,17 +1183,20 @@ export default function GrowthDashboardScreen({ navigation }: any) {
           percentileDiff: Math.round(avgPercentile - currentAvg),
         };
       });
-  }, [babies, currentBaby, activeMetric, getGrowthData]);
+  }, [babies, currentBaby, activeMetric, getGrowthData, getPercentile]);
 
+  /* ── All Insights including milestones & vaccinations ── */
   const insights = useMemo((): GrowthInsight[] => {
     if (!currentBaby) return [];
     const items: GrowthInsight[] = [];
+    
     const recentMilestone = [...milestones].sort((a, b) => {
       const dateA = safeParseDate(a.achievedAt);
       const dateB = safeParseDate(b.achievedAt);
       if (!dateA || !dateB) return 0;
       return dateB.getTime() - dateA.getTime();
     })[0];
+    
     if (recentMilestone) {
       items.push({
         id: '1',
@@ -1290,7 +1209,9 @@ export default function GrowthDashboardScreen({ navigation }: any) {
         priority: 'high',
       });
     }
+    
     items.push(...aiInsights);
+    
     const upcomingVax = vaccinations.find(v => v.status === 'due' || v.status === 'overdue');
     if (upcomingVax) {
       items.push({
@@ -1304,21 +1225,27 @@ export default function GrowthDashboardScreen({ navigation }: any) {
         priority: 'high',
       });
     }
+    
     return items.slice(0, 6);
   }, [milestones, currentBaby, vaccinations, aiInsights]);
 
+  /* ── Stats using WHO hook exclusively ── */
   const stats = useMemo(() => {
     if (!currentBaby) return null;
+    const gender = safeGender(currentBaby.gender);
     const types: MetricType[] = ['height', 'weight', 'head'];
     const result: Record<string, any> = {};
+    
     types.forEach(type => {
       const data = getGrowthData(type);
       const latest = data[data.length - 1];
       const previous = data[data.length - 2];
+      
       if (latest) {
         const ageAtMeasurement = safeDifferenceInMonths(latest.date, currentBaby.birthDate);
-        const percentile = calculatePercentile(latest.value, ageAtMeasurement, type, currentBaby.gender as 'boy' | 'girl');
-        const status = getGrowthStatus(percentile);
+        const percentile = getPercentile(latest.value, ageAtMeasurement, type, gender);
+        const status = getStatus(percentile);
+        
         result[type] = {
           value: latest.value.toFixed(1),
           unit: latest.unit,
@@ -1328,8 +1255,9 @@ export default function GrowthDashboardScreen({ navigation }: any) {
         };
       }
     });
+    
     return result;
-  }, [growthData, currentBaby, getGrowthData]);
+  }, [growthData, currentBaby, getGrowthData, getPercentile, getStatus]);
 
   const handleAddMeasurement = useCallback(async (data: Partial<GrowthMeasurement>) => {
     if (!currentBaby) return;
@@ -1372,6 +1300,13 @@ export default function GrowthDashboardScreen({ navigation }: any) {
       message: 'Keep up with the schedule!',
     });
   }, [triggerHaptic]);
+
+  const handleViewAllVaccinations = useCallback(() => {
+    navigation.navigate('VaccinationSchedule', { 
+      babyId: currentBaby?.id,
+      birthDate: currentBaby?.birthDate 
+    });
+  }, [navigation, currentBaby]);
 
   const handleExportPDF = useCallback(() => {
     Alert.alert(
@@ -1504,11 +1439,30 @@ export default function GrowthDashboardScreen({ navigation }: any) {
     return data[data.length - 1]?.value;
   }, [activeMetric, getGrowthData]);
 
+  if (currentBaby === null && babies.length === 0) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <StatusBar barStyle="dark-content" />
+        <ActivityIndicator size="large" color="#667eea" />
+        <Text style={styles.noDataText}>Loading baby profiles...</Text>
+      </View>
+    );
+  }
+
   if (!currentBaby) {
     return (
       <View style={[styles.container, styles.centerContent]}>
         <StatusBar barStyle="dark-content" />
-        <Text style={styles.noDataText}>No baby profile selected</Text>
+        <LinearGradient colors={['#f8fafc', '#e0e7ff', '#ddd6fe']} style={StyleSheet.absoluteFill} />
+        <Ionicons name="person-add" size={64} color="#667eea" style={{ marginBottom: 16 }} />
+        <Text style={styles.noDataTitle}>No Baby Profile Selected</Text>
+        <Text style={styles.noDataText}>Create a baby profile to start tracking growth</Text>
+        <TouchableOpacity 
+          style={[styles.createProfileButton, { backgroundColor: themeColors.primary }]}
+          onPress={() => navigation.navigate('CreateBabyProfile')}
+        >
+          <Text style={styles.createProfileButtonText}>Create Baby Profile</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -1558,7 +1512,7 @@ export default function GrowthDashboardScreen({ navigation }: any) {
 
         {/* Baby Switcher */}
         {babies.length > 1 && (
-          <AutoHideScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.babySwitcher}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.babySwitcher}>
             {babies.map((baby) => (
               <TouchableOpacity
                 key={baby.id}
@@ -1569,19 +1523,20 @@ export default function GrowthDashboardScreen({ navigation }: any) {
                   avatar={baby.avatar}
                   size={28}
                   fallbackIcon="person"
-                  themeId={themeColors.primary === '#667eea' ? 'purple' : undefined}
-                  animated={!shouldReduceMotion}
+                  fallbackColor={themeColors.primary}
+                  fallbackBgColor={themeColors.primary + '20'}
+                  borderWidth={0}
                 />
                 <Text style={[styles.babyChipName, currentBaby.id === baby.id && styles.babyChipNameActive]}>
                   {baby.name}
                 </Text>
               </TouchableOpacity>
             ))}
-          </AutoHideScrollView>
+          </ScrollView>
         )}
       </Animated.View>
 
-      <AnimatedScrollView
+      <Animated.ScrollView
         onScroll={scrollHandler}
         scrollEventThrottle={16}
         contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + (babies.length > 1 ? 160 : 120) }]}
@@ -1652,7 +1607,7 @@ export default function GrowthDashboardScreen({ navigation }: any) {
         <GlassCard style={styles.controlsCard}>
           <View style={styles.controlRow}>
             <Text style={styles.controlLabel}>Metric</Text>
-            <AutoHideScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               {(['height', 'weight', 'head', 'bmi'] as MetricType[]).map((metric) => (
                 <TouchableOpacity
                   key={metric}
@@ -1664,7 +1619,7 @@ export default function GrowthDashboardScreen({ navigation }: any) {
                   </Text>
                 </TouchableOpacity>
               ))}
-            </AutoHideScrollView>
+            </ScrollView>
           </View>
 
           <View style={styles.controlRow}>
@@ -1674,7 +1629,7 @@ export default function GrowthDashboardScreen({ navigation }: any) {
                 <TouchableOpacity
                   key={range}
                   onPress={() => setTimeRange(range)}
-                                    style={[styles.timeChip, timeRange === range && styles.timeChipActive, { backgroundColor: timeRange === range ? themeColors.primary : 'rgba(100,116,139,0.08)' }]}
+                  style={[styles.timeChip, timeRange === range && styles.timeChipActive, { backgroundColor: timeRange === range ? themeColors.primary : 'rgba(100,116,139,0.08)' }]}
                 >
                   <Text style={[styles.timeChipText, timeRange === range && styles.timeChipTextActive]}>
                     {range}
@@ -1690,7 +1645,7 @@ export default function GrowthDashboardScreen({ navigation }: any) {
           <View style={styles.chartHeader}>
             <View>
               <Text style={styles.chartTitle}>{activeMetric.charAt(0).toUpperCase() + activeMetric.slice(1)} Over Time</Text>
-              <Text style={styles.chartSubtitle}>{processedData?.rawData.length || 0} measurements • AI-analyzed</Text>
+              <Text style={styles.chartSubtitle}>{processedData?.rawData.length || 0} measurements • WHO Standard</Text>
             </View>
           </View>
           
@@ -1783,6 +1738,7 @@ export default function GrowthDashboardScreen({ navigation }: any) {
             vaccinations={vaccinations} 
             birthDate={currentBaby.birthDate}
             onComplete={handleCompleteVaccination}
+            onViewAll={handleViewAllVaccinations}
           />
         </GlassCard>
 
@@ -1796,7 +1752,7 @@ export default function GrowthDashboardScreen({ navigation }: any) {
           </View>
           
           {insights.filter(i => !aiInsights.find(ai => ai.id === i.id)).map((insight, index) => (
-            <Animated.View key={insight.id} entering={FadeInUp.delay(index * 100).springify()}>
+                        <Animated.View key={insight.id} entering={FadeInUp.delay(index * 100).springify()}>
               <GlassCard style={[styles.insightCard, insight.priority === 'high' && styles.insightCardHigh]}>
                 <View style={[styles.insightIconBg, { backgroundColor: `${insight.color}15` }]}>
                   <Text style={styles.insightIcon}>{insight.icon}</Text>
@@ -1818,7 +1774,7 @@ export default function GrowthDashboardScreen({ navigation }: any) {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Recent Measurements</Text>
-            <TouchableOpacity onPress={() => navigation.navigate('GrowthHistory')}>
+            <TouchableOpacity onPress={() => navigation.navigate('Grow')}>
               <Text style={[styles.seeAll, { color: themeColors.primary }]}>History</Text>
             </TouchableOpacity>
           </View>
@@ -1887,7 +1843,7 @@ export default function GrowthDashboardScreen({ navigation }: any) {
         </View>
 
         <View style={styles.bottomSpacer} />
-      </AnimatedScrollView>
+      </Animated.ScrollView>
 
       {/* Modals */}
       <AddMeasurementModal
@@ -1926,14 +1882,32 @@ export default function GrowthDashboardScreen({ navigation }: any) {
   );
 }
 
-// ==================== STYLES ====================
+/* ═══════════════════════════════════════════════════════════════════════════
+   STYLES
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
   centerContent: { justifyContent: 'center', alignItems: 'center' },
-  noDataText: { fontSize: 16, color: '#64748b' },
+  noDataText: { fontSize: 16, color: '#64748b', textAlign: 'center', marginHorizontal: 32 },
+  noDataTitle: { fontSize: 24, fontWeight: '800', color: '#1e293b', marginBottom: 8, textAlign: 'center' },
+  createProfileButton: {
+    marginTop: 24,
+    paddingHorizontal: 32,
+    paddingVertical: 16,
+    borderRadius: 16,
+    shadowColor: '#667eea',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  createProfileButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
 
-  // GlassCard styles
   glassCard: {
     borderRadius: 24,
     overflow: 'hidden',
@@ -1956,7 +1930,6 @@ const styles = StyleSheet.create({
   },
   glassContent: { flex: 1 },
 
-  // Alert styles
   alertOverlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
@@ -2012,7 +1985,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
 
-  // Folder modal styles
   folderModalOverlay: {
     flex: 1,
     justifyContent: 'flex-end',
@@ -2099,7 +2071,6 @@ const styles = StyleSheet.create({
     color: '#64748b',
   },
 
-  // Blurred photo styles
   blurredPhotoItem: {
     width: 120,
     height: 160,
@@ -2127,7 +2098,6 @@ const styles = StyleSheet.create({
   explicitSubtext: {
     color: 'rgba(255,255,255,0.7)',
     fontSize: 12,
-    marginTop: 4,
   },
   videoIndicator: {
     position: 'absolute',
@@ -2154,7 +2124,6 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
 
-  // Header styles
   header: {
     position: 'absolute',
     top: 0,
@@ -2216,7 +2185,6 @@ const styles = StyleSheet.create({
 
   scrollContent: { paddingHorizontal: 20 },
 
-  // Stats grid
   statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -2292,7 +2260,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  // Photo timeline
   photoTimelineContainer: {
     marginBottom: 20,
   },
@@ -2367,7 +2334,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
 
-  // Controls
   controlsCard: {
     padding: 20,
     marginBottom: 20,
@@ -2414,7 +2380,6 @@ const styles = StyleSheet.create({
   },
   timeChipTextActive: { color: '#fff' },
 
-  // Chart
   chartCard: {
     padding: 20,
     marginBottom: 20,
@@ -2460,7 +2425,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  // Comparison
   comparisonCard: {
     padding: 20,
     marginBottom: 20,
@@ -2514,7 +2478,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  // Vaccination
   vaccinationCard: {
     padding: 20,
     marginBottom: 20,
@@ -2530,6 +2493,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '800',
     color: '#1e293b',
+  },
+  vaccinationSubtitle: {
+    fontSize: 13,
+    color: '#64748b',
+    marginTop: 2,
   },
   vaccinationMenu: {
     paddingHorizontal: 12,
@@ -2575,7 +2543,6 @@ const styles = StyleSheet.create({
   vaccineCompleteBtn: { padding: 4 },
   vaccineCompleted: { padding: 4 },
 
-  // Sections
   section: { marginBottom: 24 },
   sectionHeader: {
     flexDirection: 'row',
@@ -2596,7 +2563,6 @@ const styles = StyleSheet.create({
     color: '#667eea',
   },
 
-  // Insights
   insightCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2662,7 +2628,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // History
   historyCard: { padding: 8 },
   historyItem: {
     flexDirection: 'row',
@@ -2706,7 +2671,6 @@ const styles = StyleSheet.create({
   },
   emptyHistoryText: { fontSize: 14, color: '#94a3b8' },
 
-  // Quick actions
   quickActions: {
     flexDirection: 'row',
     gap: 12,
@@ -2734,7 +2698,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  // Modals
   modalOverlay: {
     flex: 1,
     justifyContent: 'center',
@@ -2822,7 +2785,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  // Report modal
   reportOverlay: {
     flex: 1,
     justifyContent: 'center',
@@ -2913,7 +2875,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  // Photo viewer modal
   photoModalContainer: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.9)',

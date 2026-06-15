@@ -2,21 +2,28 @@
   "expo": {
     "name": "LittleLoom",
     "slug": "LittleLoom",
-    "scheme": "com.tpm.littleloom",
+    "scheme": ["com.tpm.littleloom", "littleloom"],
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "backgroundColor": "#E6F4FE",
     "primaryColor": "#667eea",
     "owner": "ondieki",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#ffffff",
+      "dark": {
+        "image": "./assets/splash-icon.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#0f0f1e"
+      }
     },
     "assetBundlePatterns": [
-      "**/*"
+      "**/*",
+      "assets/**/*",
+      "node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/*.ttf"
     ],
     "ios": {
       "supportsTablet": true,
@@ -30,7 +37,8 @@
           "fetch",
           "remote-notification"
         ],
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIUserInterfaceStyle": "Automatic"
       }
     },
     "android": {
@@ -107,10 +115,28 @@
           }
         }
       ],
-      "expo-font",
+      [
+        "expo-font",
+        {
+          "fonts": [
+            "./assets/fonts/Inter-Regular.ttf",
+            "./assets/fonts/Inter-Medium.ttf",
+            "./assets/fonts/Inter-SemiBold.ttf",
+            "./assets/fonts/Inter-Bold.ttf"
+          ]
+        }
+      ],
       "expo-secure-store",
       "expo-localization",
-      "expo-asset",
+      [
+        "expo-asset",
+        {
+          "assets": [
+            "./assets/images",
+            "./assets/sounds"
+          ]
+        }
+      ],
       "expo-audio",
       "expo-video",
       "react-native-iap"

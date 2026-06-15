@@ -1,4 +1,4 @@
-﻿export const CommunityColors = {
+export const CommunityColors = {
   primary: '#FF6B6B',
   primaryLight: '#FF8E8E',
   primaryDark: '#EE5A5A',

@@ -1,13 +1,3 @@
-// src/components/SweetAlert.tsx
-// FULLY SYNCED: Respects useCustomization theme, AppContext colors, BabyContext data
-// FIXED: All Rules of Hooks violations eliminated
-// FIXED: Added public hideSweetAlert API
-// FIXED: Queue size limit to prevent memory leaks
-// FIXED: Modal touch handling improved
-// FIXED: Toast dismissal now properly handles both modal and toast
-// FIXED: All imports use @/ aliases, zero unused vars
-// UNIFIED SweetAlert System — Queue-based, mount-safe, zero race conditions
-
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import {
   View,
@@ -37,7 +27,6 @@ import * as Haptics from 'expo-haptics';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
-// ==================== TYPES ====================
 
 export type AlertType = 'success' | 'error' | 'warning' | 'info' | 'question';
 export type AlertStyle = 'toast' | 'modal';
@@ -65,7 +54,6 @@ export interface SweetAlertConfig {
   reduceMotion?: boolean;
 }
 
-// ==================== CONFIGURATION MAP ====================
 
 const ALERT_CONFIG: Record<AlertType, {
   colors: [string, string];
@@ -105,7 +93,6 @@ const ALERT_CONFIG: Record<AlertType, {
   },
 };
 
-// ==================== QUEUE-BASED EVENT EMITTER ====================
 
 type AlertListener = (config: SweetAlertConfig) => void;
 type HideListener = () => void;
@@ -139,7 +126,6 @@ const emitHide = () => {
   hideListeners.forEach(listener => listener());
 };
 
-// ==================== STANDALONE FUNCTIONS ====================
 
 export const showSweetAlert = (config: SweetAlertConfig) => {
   emitShow(config);
@@ -149,7 +135,6 @@ export const hideSweetAlert = () => {
   emitHide();
 };
 
-// ==================== LIQUID DOT COMPONENT ====================
 
 interface DotProps {
   index: number;
@@ -205,7 +190,6 @@ const LiquidDot: React.FC<DotProps> = React.memo(({ index, totalDots, progress, 
   );
 });
 
-// ==================== TOAST COMPONENT ====================
 
 interface ToastProps {
   config: SweetAlertConfig;
@@ -313,7 +297,6 @@ const SweetAlertToast: React.FC<ToastProps> = ({ config, isDark, onDismiss }) =>
   );
 };
 
-// ==================== MODAL COMPONENT ====================
 
 interface ModalProps {
   config: SweetAlertConfig;
@@ -427,7 +410,6 @@ const SweetAlertModal: React.FC<ModalProps> = ({ config, isDark, themeColors, on
   );
 };
 
-// ==================== PROVIDER COMPONENT ====================
 
 interface AlertQueueItem {
   id: string;
@@ -451,7 +433,7 @@ export const SweetAlertProvider: React.FC<SweetAlertProviderProps> = ({
   const [modalQueue, setModalQueue] = useState<AlertQueueItem[]>([]);
   const idCounter = useRef(0);
 
-  const showAlert = useCallback((config: SweetAlertConfig) => {
+  const sweetAlert = useCallback((config: SweetAlertConfig) => {
     const id = `alert_${++idCounter.current}`;
     const fullConfig = { ...config, reduceMotion: config.reduceMotion ?? reduceMotion };
 
@@ -470,7 +452,7 @@ export const SweetAlertProvider: React.FC<SweetAlertProviderProps> = ({
   useEffect(() => {
     isProviderMounted = true;
 
-    const handleShow: AlertListener = (config) => showAlert(config);
+    const handleShow: AlertListener = (config) => sweetAlert(config);
     const handleHide: HideListener = () => {
       setModalQueue([]);
       setToastQueue([]);
@@ -486,7 +468,7 @@ export const SweetAlertProvider: React.FC<SweetAlertProviderProps> = ({
       alertListeners.delete(handleShow);
       hideListeners.delete(handleHide);
     };
-  }, [showAlert]);
+  }, [sweetAlert]);
 
   const dismissToast = useCallback((id: string) => {
     setToastQueue(prev => prev.filter(item => item.id !== id));
@@ -524,10 +506,9 @@ export const SweetAlertProvider: React.FC<SweetAlertProviderProps> = ({
   );
 };
 
-// ==================== HOOK ====================
 
 export const useSweetAlert = () => {
-  const showAlert = useCallback((config: SweetAlertConfig) => {
+  const sweetAlert = useCallback((config: SweetAlertConfig) => {
     showSweetAlert(config);
   }, []);
 
@@ -549,6 +530,10 @@ export const useSweetAlert = () => {
 
   const warning = useCallback((title: string, message?: string) => {
     showSweetAlert({ title, message, type: 'warning', style: 'toast', position: 'top', autoDismiss: true, duration: 3500 });
+  }, []);
+
+  const info = useCallback((title: string, message?: string) => {
+    showSweetAlert({ title, message, type: 'info', style: 'toast', position: 'top', autoDismiss: true, duration: 3000 });
   }, []);
 
   const confirm = useCallback((
@@ -586,11 +571,10 @@ export const useSweetAlert = () => {
   }, []);
 
   return useMemo(() => ({
-    showAlert, hideAlert, toast, success, error, warning, confirm, alert
-  }), [showAlert, hideAlert, toast, success, error, warning, confirm, alert]);
+    sweetAlert, hideAlert, toast, success, error, warning, info, confirm, alert
+  }), [sweetAlert, hideAlert, toast, success, error, warning, info, confirm, alert]);
 };
 
-// ==================== STYLES ====================
 
 const styles = StyleSheet.create({
   toastContainer: {

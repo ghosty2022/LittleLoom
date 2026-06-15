@@ -1,12 +1,7 @@
-﻿// src/services/NotificationService.ts
-// FULLY SYNCED: Integrates with ActivityContext, BabyContext, AppContext
-// FIXED: Cross-platform compatibility, proper error handling
-// FIXED: All imports use @/ aliases, zero unused variables
-
+import React from 'react';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
-// Lazy imports to avoid circular dependencies
 const getCustomization = async () => {
   const { useCustomization } = await import('@/hooks/useCustomization');
   return useCustomization;
@@ -156,7 +151,6 @@ class NotificationService {
     }
   }
 
-  // Activity-specific reminders
   async scheduleActivityReminder(type: string, babyName: string, minutes: number, details?: string) {
     const titles: Record<string, string> = {
       feed: `🍼 Time to feed ${babyName}!`,
@@ -192,12 +186,10 @@ class NotificationService {
     return id;
   }
 
-  // Baby tracking reminders
   async scheduleReminder(type: 'feed' | 'sleep' | 'potty' | 'milestone', babyName: string, minutes: number) {
     return this.scheduleActivityReminder(type, babyName, minutes);
   }
 
-  // Achievement unlock
   async sendAchievementNotification(achievement: string, description: string) {
     return this.scheduleLocalNotification({
       title: `🏆 Achievement Unlocked!`,
@@ -206,7 +198,6 @@ class NotificationService {
     });
   }
 
-  // Chat message
   async sendChatNotification(senderName: string, message: string) {
     return this.scheduleLocalNotification({
       title: `💬 ${senderName}`,
@@ -215,7 +206,6 @@ class NotificationService {
     });
   }
 
-  // Safety alert
   async sendSafetyAlert(title: string, body: string) {
     return this.scheduleLocalNotification({
       title: `🛡️ ${title}`,
@@ -224,7 +214,6 @@ class NotificationService {
     });
   }
 
-  // Activity completion
   async sendActivityCompleteNotification(activityType: string, babyName: string) {
     const messages: Record<string, string> = {
       potty: `🎉 ${babyName} had a successful potty visit!`,
@@ -242,7 +231,6 @@ class NotificationService {
     });
   }
 
-  // Get all scheduled reminders
   getScheduledReminders(): Array<{ key: string; identifier: string }> {
     return Array.from(this.scheduledReminders.entries()).map(([key, identifier]) => ({
       key,
@@ -253,7 +241,6 @@ class NotificationService {
 
 export const notificationService = NotificationService.getInstance();
 
-// Hook for components - lazy loads customization to avoid circular deps
 export function useNotifications() {
   const [isEnabled, setIsEnabled] = React.useState(true);
 

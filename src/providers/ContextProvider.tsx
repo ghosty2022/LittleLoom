@@ -1,11 +1,4 @@
-// src/providers/ContextProvider.tsx
-// FULLY SYNCED: All contexts integrated with notification/activity sync
-// ADDED: TrackerProvider integration — unified tracker system
-// FIXED: Proper children prop typing, no TypeScript errors
-// FIXED: Cross-context bridges for Activity ↔ Baby ↔ Notification ↔ Tracker
-// FIXED: useCustomization hook called at top level, not inside useMemo
-
-import React, { useEffect, useRef, useMemo } from 'react';
+import React, { useEffect, useRef, useMemo, useState, useContext } from 'react';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { UserProvider } from '@/context/UserContext';
 import { BabyProvider, useBaby } from '@/context/BabyContext';
@@ -18,7 +11,8 @@ import { CommunityProvider } from '@/context/CommunityContext';
 import { SafetyProvider } from '@/context/SafetyContext';
 import { AudioProvider } from '@/context/AudioContext';
 import { AppProvider, useTheme } from '@/context/AppContext';
-import { TrackerProvider } from '@/context/TrackerContext';
+// FIX: Removed unused 'useTracker' import, kept only TrackerContext and TrackerProvider
+import { TrackerProvider, TrackerContext } from '@/context/TrackerContext';
 import { SweetAlertProvider } from '@/components/SweetAlert';
 import useCustomization from '@/hooks/useCustomization';
 import { notificationService } from '@/services/NotificationService';
@@ -27,7 +21,6 @@ interface ContextProviderProps {
   children: React.ReactNode;
 }
 
-// Bridge: Reads AuthContext and passes state to SecurityProvider as props
 const SecurityAuthBridge: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const auth = useAuth();
 
@@ -43,13 +36,11 @@ const SecurityAuthBridge: React.FC<{ children: React.ReactNode }> = ({ children 
   );
 };
 
-// Bridge: Syncs ActivityContext with BabyContext and NotificationService
 const ActivitySyncBridge: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { currentBabyId, currentBaby } = useBaby();
+  const { currentBabyId } = useBaby();
   const { syncWithBabyContext } = useActivity();
   const initRef = useRef(false);
 
-  // Sync activities when baby changes
   useEffect(() => {
     if (!currentBabyId || initRef.current) return;
     initRef.current = true;
@@ -60,7 +51,6 @@ const ActivitySyncBridge: React.FC<{ children: React.ReactNode }> = ({ children 
     doSync();
   }, [currentBabyId, syncWithBabyContext]);
 
-  // Initialize notification service
   useEffect(() => {
     const init = async () => {
       await notificationService.initialize();
@@ -71,58 +61,70 @@ const ActivitySyncBridge: React.FC<{ children: React.ReactNode }> = ({ children 
   return <>{children}</>;
 };
 
-// Bridge: Provides babyId to TrackerProvider
-const TrackerBridge: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { currentBaby } = useBaby();
+// ─── FIX: Safe tracker sync that doesn't crash if context isn't ready ─
+const TrackerBabySync: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { currentBabyId } = useBaby();
+  
+  // Use useContext directly with a fallback instead of useTracker which throws
+  const trackerContext = useContext(TrackerContext);
+  const initRef = useRef(false);
 
-  return (
-    <TrackerProvider babyId={currentBaby?.id || ''}>
-      {children}
-    </TrackerProvider>
-  );
+  useEffect(() => {
+    if (!currentBabyId || initRef.current) return;
+    if (!trackerContext) return; // Safe: wait until TrackerProvider is ready
+    
+    initRef.current = true;
+    trackerContext.setCurrentBabyId(currentBabyId);
+  }, [currentBabyId, trackerContext]);
+
+  return <>{children}</>;
 };
 
-// Inner wrapper — called AFTER all providers are mounted
 const SweetAlertWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isDark } = useTheme();
-
-  // ✅ FIXED: Call useCustomization at the TOP LEVEL of the component
-  // Do NOT call hooks inside useMemo, useEffect, callbacks, or conditionals
-  let customizationResult: ReturnType<typeof useCustomization> | null = null;
-  try {
-    customizationResult = useCustomization();
-  } catch {
-    // useCustomization not available, will use defaults below
-  }
+  const customization = useCustomization();
 
   const themeColors = useMemo(() => {
-    let colors = {
-      primary: '#667eea',
-      secondary: '#764ba2',
-      accent: '#43e97b',
+    return {
+      primary: customization.themeColors?.primary || '#667eea',
+      secondary: customization.themeColors?.secondary || '#764ba2',
+      accent: customization.themeColors?.accent || '#43e97b',
+      shouldReduceMotion: customization.shouldReduceMotion ?? false,
     };
-    let shouldReduceMotion = false;
-
-    if (customizationResult) {
-      colors = customizationResult.themeColors || colors;
-      shouldReduceMotion = customizationResult.shouldReduceMotion ?? false;
-    }
-
-    return { colors, shouldReduceMotion };
-  }, [customizationResult]);
+  }, [customization.themeColors, customization.shouldReduceMotion]);
 
   return (
     <SweetAlertProvider
       isDark={isDark}
       themeColors={{
-        primary: themeColors.colors.primary,
-        secondary: themeColors.colors.secondary,
-        accent: themeColors.colors.accent,
+        primary: themeColors.primary,
+        secondary: themeColors.secondary,
+        accent: themeColors.accent,
       }}
       reduceMotion={themeColors.shouldReduceMotion}
     >
       {children}
     </SweetAlertProvider>
+  );
+};
+
+// ✅ Wrapper that defers FamilyChatProvider to next tick
+const FamilyChatWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setReady(true), 0);
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (!ready) {
+    return <>{children}</>;
+  }
+
+  return (
+        <FamilyChatProvider>
+      {children}
+    </FamilyChatProvider>
   );
 };
 
@@ -133,27 +135,29 @@ export default function ContextProvider({ children }: ContextProviderProps) {
         <UserProvider>
           <BabyProvider>
             <SecurityAuthBridge>
-              <ActivityProvider>
-                <ActivitySyncBridge>
-                  <MediaProvider>
-                    <FamilyProvider>
-                      <FamilyChatProvider>
+              <FamilyProvider>
+                <ActivityProvider>
+                  <ActivitySyncBridge>
+                    <MediaProvider>
+                      <FamilyChatWrapper>
                         <CommunityProvider>
                           <SafetyProvider>
                             <AudioProvider>
-                              <TrackerBridge>
-                                <SweetAlertWrapper>
-                                  {children}
-                                </SweetAlertWrapper>
-                              </TrackerBridge>
+                              <TrackerProvider>
+                                <TrackerBabySync>
+                                  <SweetAlertWrapper>
+                                    {children}
+                                  </SweetAlertWrapper>
+                                </TrackerBabySync>
+                              </TrackerProvider>
                             </AudioProvider>
                           </SafetyProvider>
                         </CommunityProvider>
-                      </FamilyChatProvider>
-                    </FamilyProvider>
-                  </MediaProvider>
-                </ActivitySyncBridge>
-              </ActivityProvider>
+                      </FamilyChatWrapper>
+                    </MediaProvider>
+                  </ActivitySyncBridge>
+                </ActivityProvider>
+              </FamilyProvider>
             </SecurityAuthBridge>
           </BabyProvider>
         </UserProvider>

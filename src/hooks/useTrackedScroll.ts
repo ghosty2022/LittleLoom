@@ -1,26 +1,39 @@
-﻿import { useCallback, useRef } from 'react';
+import { useCallback, useRef } from 'react';
 import { NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
-import { useSafeApp } from '../hooks/useSafeContexts';
+import { useSafeApp } from './useSafeContexts';
 
 export const useTrackedScroll = (
-  userOnScroll?: (e: NativeSyntheticEvent<NativeScrollEvent>) => void
+  userOnScroll?: (e: NativeSyntheticEvent<NativeScrollEvent>) => void,
+  options?: {
+    hideThreshold?: number;
+    showThreshold?: number;
+    velocityThreshold?: number;
+  }
 ) => {
   const { handleScroll, isCommunityScreen } = useSafeApp();
   const lastY = useRef(0);
   const lastTime = useRef(Date.now());
   const lastProcessedY = useRef(0);
   const lastProcessedTime = useRef(Date.now());
+  const accumulatedDown = useRef(0);
+  const accumulatedUp = useRef(0);
+
+  const {
+    hideThreshold = 50,
+    showThreshold = 20,
+    velocityThreshold = 1.2,
+  } = options || {};
 
   const onScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const now = Date.now();
     const currentY = event.nativeEvent.contentOffset.y;
-    const isAtTop = currentY <= 5;
+    const isAtTop = currentY <= 2;
+    const { contentSize, layoutMeasurement } = event.nativeEvent;
+    const isAtBottom = currentY + layoutMeasurement.height >= contentSize.height - 2;
 
-    // Always update last known position for continuity
     lastY.current = currentY;
     lastTime.current = now;
 
-    // Skip nav handling on community screens
     if (isCommunityScreen) {
       if (typeof userOnScroll === 'function') {
         userOnScroll(event);
@@ -30,8 +43,7 @@ export const useTrackedScroll = (
 
     const deltaTime = now - lastProcessedTime.current;
 
-    // Throttle: only process for nav every ~16ms (60fps), but always process user callback
-    if (deltaTime < 16) {
+    if (deltaTime < 12) {
       if (typeof userOnScroll === 'function') {
         userOnScroll(event);
       }
@@ -41,17 +53,33 @@ export const useTrackedScroll = (
     const deltaY = currentY - lastProcessedY.current;
     const velocity = deltaTime > 0 ? Math.abs(deltaY / deltaTime) : 0;
 
-    // Only emit to nav handler if meaningful scroll occurred
-    if (Math.abs(deltaY) > 0.5 || isAtTop) {
-      handleScroll(currentY, velocity, isAtTop);
-      lastProcessedY.current = currentY;
-      lastProcessedTime.current = now;
+    if (deltaY > 0) {
+      accumulatedDown.current += deltaY;
+      accumulatedUp.current = 0;
+    } else if (deltaY < 0) {
+      accumulatedUp.current += Math.abs(deltaY);
+      accumulatedDown.current = 0;
     }
+
+    if (isAtTop || isAtBottom) {
+      handleScroll(currentY, velocity, true);
+      accumulatedDown.current = 0;
+      accumulatedUp.current = 0;
+    } else if (accumulatedDown.current > hideThreshold || (velocity > velocityThreshold && deltaY > 5)) {
+      handleScroll(currentY, velocity, false);
+      accumulatedDown.current = 0;
+    } else if (accumulatedUp.current > showThreshold || (velocity > velocityThreshold && deltaY < -3)) {
+      handleScroll(currentY, velocity, true);
+      accumulatedUp.current = 0;
+    }
+
+    lastProcessedY.current = currentY;
+    lastProcessedTime.current = now;
 
     if (typeof userOnScroll === 'function') {
       userOnScroll(event);
     }
-  }, [handleScroll, userOnScroll, isCommunityScreen]);
+  }, [handleScroll, userOnScroll, isCommunityScreen, hideThreshold, showThreshold, velocityThreshold]);
 
   return onScroll;
 };
