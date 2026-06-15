@@ -128,15 +128,7 @@
       ],
       "expo-secure-store",
       "expo-localization",
-      [
-        "expo-asset",
-        {
-          "assets": [
-            "./assets/images",
-            "./assets/sounds"
-          ]
-        }
-      ],
+      "expo-asset",
       "expo-audio",
       "expo-video",
       "react-native-iap"
