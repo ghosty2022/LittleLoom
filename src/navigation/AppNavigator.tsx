@@ -109,8 +109,8 @@ const CustomDarkTheme = {
 
 const MAIN_FLOW_SCREENS = new Set([
   'Main', 'Home', 'Track', 'Grow', 'Connect', 'More',
-  'CommunityMain', 'Topic', 'CreatePost', 'PostDetail', 'UserProfile', 'Chat', 'ChatList', 
-  'Notifications', 'EditCommunityProfile', 'Followers', 'Following', 'Report',
+  'CommunityMain', 'Topic', 'CreatePost', 'PostDetail', 'CommunityMemberProfile', 'Chat', 'ChatList', 
+  'Notifications', 'CommunityProfile', 'Followers', 'Following', 'Report',
   'Timeline', 'PottyTracker', 'FeedTracker', 'SleepTracker',
   'Profile', 'SwitchBaby', 'EditProfile', 'EditGuardian',
   'Gallery', 'FamilyChatList', 'FamilyChat',

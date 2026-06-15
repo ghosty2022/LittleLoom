@@ -1,3 +1,4 @@
+// src/navigation/CommunityNavigator.tsx
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, StyleSheet, Text } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -15,11 +16,11 @@ import CommunityScreen from '../screens/community/CommunityScreen';
 import TopicScreen from '../screens/community/TopicScreen';
 import CreatePostScreen from '../screens/community/CreatePostScreen';
 import PostDetailScreen from '../screens/community/PostDetailScreen';
-import UserProfileScreen from '../screens/community/UserProfileScreen';
+import CommunityMemberProfileScreen from '../screens/community/CommunityMemberProfileScreen';
 import ChatScreen from '../screens/community/ChatScreen';
 import ChatListScreen from '../screens/community/ChatListScreen';
 import NotificationsScreen from '../screens/community/NotificationsScreen';
-import EditCommunityProfileScreen from '../screens/community/EditCommunityProfileScreen';
+import CommunityProfileScreen from '../screens/community/CommunityProfileScreen';
 import FollowersScreen from '../screens/community/FollowersScreen';
 import FollowingScreen from '../screens/community/FollowingScreen';
 import ReportScreen from '../screens/community/ReportScreen';
@@ -34,7 +35,6 @@ const Stack = createNativeStackNavigator<CommunityStackParamList>();
 const COUNTRY_CACHE_KEY = '@littleloom_country_detected_v2';
 const COUNTRY_CACHE_TTL = 7 * 24 * 60 * 60 * 1000;
 
-// ─── ONBOARDING KEYS (should match CommunityContext if it has its own) ─
 const COMMUNITY_ONBOARDING_KEY = '@littleloom_community_onboarding_done';
 const COMMUNITY_TOPICS_KEY = '@littleloom_community_topics_selected';
 
@@ -135,7 +135,6 @@ const InlineLoadingView = React.memo(({ text }: { text: string }) => (
   </View>
 ));
 
-// ─── TYPES FOR NAVIGATOR STATE ──────────────────────────────────────────
 type CommunityPhase = 'loading' | 'onboarding' | 'splash' | 'main';
 
 const CommunityNavigator = React.memo(() => {
@@ -150,27 +149,23 @@ const CommunityNavigator = React.memo(() => {
     markShown: markSplashShown,
   } = useIntelligentSplash('community', shouldReduceMotion, settings.compactView);
 
-  // ─── FIX: Single phase state instead of disconnected booleans ─────────
   const [phase, setPhase] = useState<CommunityPhase>('loading');
   const [navigatorKey, setNavigatorKey] = useState(0);
   const initDone = useRef(false);
 
   const isContextReady = !isLoading && isInitialized && splashReady;
 
-  // ─── FIX: One-time init that determines the correct starting phase ───
   useEffect(() => {
     if (!isContextReady || initDone.current) return;
 
     const initialize = async () => {
       initDone.current = true;
 
-      // Check onboarding status from BOTH context AND storage for reliability
       const [completed, selectedTopics] = await Promise.all([
         checkOnboardingStatus(),
         getSelectedTopics(),
       ]);
 
-      // Also check storage directly as fallback
       const onboardingDone = await AsyncStorage.getItem(COMMUNITY_ONBOARDING_KEY);
       const topicsStored = await AsyncStorage.getItem(COMMUNITY_TOPICS_KEY);
       const hasTopics = selectedTopics.length > 0 || (topicsStored ? JSON.parse(topicsStored).length > 0 : false);
@@ -179,13 +174,10 @@ const CommunityNavigator = React.memo(() => {
       console.log('[CommunityNavigator] Init - onboardingDone:', isOnboardingDone, 'hasTopics:', hasTopics);
 
       if (!isOnboardingDone || !hasTopics) {
-        // User needs onboarding
         setPhase('onboarding');
       } else if (shouldShowSplash && !isDetectingCountry) {
-        // User is set up, show splash once
         setPhase('splash');
       } else {
-        // Go straight to main
         setPhase('main');
       }
     };
@@ -193,8 +185,6 @@ const CommunityNavigator = React.memo(() => {
     initialize();
   }, [isContextReady, checkOnboardingStatus, getSelectedTopics, shouldShowSplash, isDetectingCountry]);
 
-  // ─── FIX: After phase changes, increment navigator key to force remount
-  // ONLY when transitioning FROM loading TO a real phase
   useEffect(() => {
     if (phase !== 'loading') {
       setNavigatorKey(prev => prev + 1);
@@ -207,13 +197,11 @@ const CommunityNavigator = React.memo(() => {
   }, [markSplashShown]);
 
   const handleOnboardingComplete = useCallback(async () => {
-    // Persist onboarding completion immediately
     await AsyncStorage.setItem(COMMUNITY_ONBOARDING_KEY, 'true');
     setPhase('main');
     markSplashShown();
   }, [markSplashShown]);
 
-  // ─── LOADING STATE ────────────────────────────────────────────────────
   if (!isContextReady || phase === 'loading') {
     return (
       <CommunitySpinner
@@ -226,10 +214,6 @@ const CommunityNavigator = React.memo(() => {
       />
     );
   }
-
-  // ─── FIX: Use phase to determine which navigator to render ─────────────
-  // Each phase gets its own Stack.Navigator with the correct initial route
-  // This avoids the "initialRouteName doesn't update" problem entirely
 
   if (phase === 'onboarding') {
     return (
@@ -280,8 +264,7 @@ const CommunityNavigator = React.memo(() => {
     );
   }
 
-  // ─── MAIN PHASE: Full navigator with all routes ───────────────────────
-  // Splash and Onboarding are NOT defined here — they can't be navigated to accidentally
+  // MAIN PHASE: Full navigator with all routes
   return (
     <Stack.Navigator
       key={`community-main-${navigatorKey}`}
@@ -302,17 +285,35 @@ const CommunityNavigator = React.memo(() => {
       <Stack.Screen name="Topic" component={TopicScreen} />
       <Stack.Screen name="CreatePost" component={CreatePostScreen} options={{ animation: 'slide_from_bottom', gestureEnabled: false }} />
       <Stack.Screen name="PostDetail" component={PostDetailScreen} />
-      <Stack.Screen name="UserProfile" component={UserProfileScreen} />
-      <Stack.Screen name="Chat" component={ChatScreen} />
+      
+      {/* NEW: Community Member Profile (view other users) */}
+      <Stack.Screen name="CommunityMemberProfile" component={CommunityMemberProfileScreen} />
+      
       <Stack.Screen name="ChatList" component={ChatListScreen} />
+      <Stack.Screen name="Chat" component={ChatScreen} />
       <Stack.Screen name="Notifications" component={NotificationsScreen} />
-      <Stack.Screen name="EditCommunityProfile" component={EditCommunityProfileScreen} options={{ animation: 'slide_from_bottom', gestureEnabled: false }} />
+      
+      {/* NEW: Community Profile (self view/edit) */}
+      <Stack.Screen 
+        name="CommunityProfile" 
+        component={CommunityProfileScreen} 
+        options={{ animation: 'slide_from_bottom', gestureEnabled: false }} 
+      />
+      
+      <Stack.Screen name="TopicMembers" component={TopicMembersScreen} />
       <Stack.Screen name="Followers" component={FollowersScreen} />
       <Stack.Screen name="Following" component={FollowingScreen} />
+      <Stack.Screen name="SearchUsers" component={SearchUsersScreen} />
+      <Stack.Screen name="BlockedUsers" component={BlockedUsersScreen} />
       <Stack.Screen name="Report" component={ReportScreen} options={{ animation: 'slide_from_bottom', gestureEnabled: false }} />
     </Stack.Navigator>
   );
 });
+
+// Placeholder components for missing screens
+const TopicMembersScreen = () => <View><Text>Topic Members</Text></View>;
+const SearchUsersScreen = () => <View><Text>Search Users</Text></View>;
+const BlockedUsersScreen = () => <View><Text>Blocked Users</Text></View>;
 
 const getCountryNameFromCode = (code: string): string | null => {
   const countryMap: Record<string, string> = {

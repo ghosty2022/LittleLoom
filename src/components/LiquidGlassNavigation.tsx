@@ -102,8 +102,8 @@ const HIDDEN_TAB_ROUTES = new Set([
   'LanguageSettings', 'UnitSettings', 'SafetyCorner',
   'UniversalTracker', 'PottyTracker', 'FeedTracker', 'SleepTracker',
   'Profile', 'CreateBabyProfile', 'AddParent',
-  'CommunityMain', 'Topic', 'CreatePost', 'PostDetail', 'UserProfile', 'Chat', 'ChatList',
-  'Notifications', 'EditCommunityProfile', 'TopicMembers', 'Followers', 'Following', 'SearchUsers',
+  'CommunityMain', 'Topic', 'CreatePost', 'PostDetail', 'CommunityMemberProfile', 'Chat', 'ChatList',
+  'Notifications', 'CommunityProfile', 'TopicMembers', 'Followers', 'Following', 'SearchUsers',
   'BlockedUsers', 'Report',
   'CommunitySplash', 'CommunityOnboarding',
 ]);

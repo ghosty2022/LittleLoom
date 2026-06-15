@@ -134,7 +134,7 @@ const NAV_VISIBILITY_KEY = '@littleloom_nav_visible_v1';
 
 const COMMUNITY_ROUTES = new Set([
   'CommunityMain', 'Topic', 'CreatePost', 'PostDetail', 'Chat',
-  'UserProfile', 'Notifications', 'EditCommunityProfile', 'ChatList',
+  'CommunityMemberProfile', 'Notifications', 'CommunityProfile', 'ChatList',
   'TopicMembers', 'Followers', 'Following', 'SearchUsers', 'BlockedUsers', 'Report',
 ]);
 

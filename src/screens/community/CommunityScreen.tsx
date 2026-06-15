@@ -117,8 +117,8 @@ const LL = {
 const ROUTES = {
   CREATE_POST: 'CreatePost',
   POST_DETAIL: 'PostDetail',
-  USER_PROFILE: 'UserProfile',
-  EDIT_PROFILE: 'EditCommunityProfile',
+  USER_PROFILE: 'CommunityMemberProfile',
+  EDIT_PROFILE: 'CommunityProfile',
   NOTIFICATIONS: 'Notifications',
   MESSAGES: 'ChatList',
   TOPICS: 'Topic',

@@ -12,6 +12,7 @@ import {
   Platform,
   Image,
   StatusBar,
+  Modal,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -24,6 +25,7 @@ import Animated, {
   interpolate,
   Extrapolate,
   useAnimatedScrollHandler,
+  Layout,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { format, formatDistanceToNow } from 'date-fns';
@@ -34,37 +36,19 @@ import { useFamily } from '../../context/FamilyContext';
 import { UserRole } from '../../types/roles';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
-import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
+import { AutoHideScrollView, AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
+import { useCustomization } from '../../hooks/useCustomization';
 
 const { width } = Dimensions.get('window');
-const AnimatedScrollView = AutoHideScrollView;
+const AnimatedScrollView = AutoHideAnimatedScrollView;
 
 type FamilyCenterScreenProps = NativeStackScreenProps<RootStackParamList, 'Profile'>;
 
-const COLORS = {
-  primary: { light: '#667eea', dark: '#a3bffa' },
-  secondary: { light: '#fa709a', dark: '#fc5c7d' },
-  success: { light: '#43e97b', dark: '#51cf66' },
-  warning: { light: '#fee140', dark: '#ffd43b' },
-  danger: { light: '#ff4757', dark: '#ff6b6b' },
-  info: { light: '#4facfe', dark: '#74c0fc' },
-  purple: { light: '#9b59b6', dark: '#b08ad0' },
-  teal: { light: '#11998e', dark: '#20c997' },
-  orange: { light: '#fa8231', dark: '#ff922b' },
-  indigo: { light: '#5f27cd', dark: '#845ef7' },
-};
-
-const BLUR_INTENSITY = Platform.OS === 'ios' ? 80 : 60;
+// ─── Shared Utilities ─────────────────────────────────────────────────
 
 const isImageUri = (value: string | undefined | null): boolean => {
   if (!value || typeof value !== 'string') return false;
-  return (
-    value.startsWith('http') ||
-    value.startsWith('file://') ||
-    value.startsWith('data:') ||
-    value.startsWith('ph://') ||
-    value.startsWith('assets-library://')
-  );
+  return value.startsWith('http') || value.startsWith('file://') || value.startsWith('data:');
 };
 
 const isEmoji = (value: string | undefined | null): boolean => {
@@ -73,24 +57,7 @@ const isEmoji = (value: string | undefined | null): boolean => {
   return /\p{Emoji}/u.test(value);
 };
 
-interface FamilyMember {
-  id: string;
-  fullName: string;
-  role: UserRole;
-  relationship?: string;
-  email?: string;
-  addedAt?: string;
-  addedBy?: string;
-  canBeRemoved?: boolean;
-  permissions?: {
-    read: boolean;
-    write: boolean;
-    delete: boolean;
-    manageFamily: boolean;
-    manageSecurity: boolean;
-    exportData: boolean;
-  };
-}
+// ─── Shared Components (matching FamilySharingScreen) ─────────────────
 
 interface SafeAvatarProps {
   avatar?: string | null;
@@ -106,7 +73,7 @@ const SafeAvatar = memo<SafeAvatarProps>(
   ({
     avatar,
     gender = 'other',
-    size = 72,
+    size = 56,
     showEditButton = false,
     onEdit,
     fallbackIcon,
@@ -129,48 +96,34 @@ const SafeAvatar = memo<SafeAvatarProps>(
       fallbackColor ||
       (gender === 'boy' ? '#667eea' : gender === 'girl' ? '#fa709a' : '#11998e');
 
-    const imageSource = useMemo(() => {
-      if (!avatar) return null;
-      if (
-        avatar.startsWith('http') ||
-        avatar.startsWith('file://') ||
-        avatar.startsWith('ph://') ||
-        avatar.startsWith('assets-library://')
-      ) {
-        return { uri: avatar };
-      }
-      return null;
-    }, [avatar]);
-
     return (
       <View style={[styles.avatarWrapper, { width: size, height: size }]}>
         <LinearGradient
           colors={hasImage ? ['#f0f0f0', '#e0e0e0'] : gradientColors}
           style={[
             styles.avatarGradient,
-            { width: size, height: size, borderRadius: size * 0.33 },
+            { width: size, height: size, borderRadius: size / 2.8 },
           ]}
         >
-          {hasImage && imageSource ? (
+          {hasImage ? (
             <View
               style={{
                 width: size,
                 height: size,
-                borderRadius: size * 0.33,
+                borderRadius: size / 2.8,
                 overflow: 'hidden',
                 backgroundColor: '#f0f0f0',
               }}
             >
               <Image
-                source={imageSource}
+                source={{ uri: avatar! }}
                 style={{ width: size, height: size }}
                 resizeMode="cover"
+                onError={(e) => console.log('Avatar image error:', e.nativeEvent.error)}
               />
             </View>
           ) : hasEmoji ? (
-            <Text style={[styles.avatarEmoji, { fontSize: size * 0.5 }]}>
-              {avatar}
-            </Text>
+            <Text style={[styles.avatarEmoji, { fontSize: size * 0.5 }]}>{avatar}</Text>
           ) : (
             <Ionicons name={iconName as any} size={size * 0.4} color="#fff" />
           )}
@@ -203,7 +156,7 @@ interface GlassCardProps {
 }
 
 const GlassCard = memo<GlassCardProps>(
-  ({ children, style, onPress, intensity = BLUR_INTENSITY }) => {
+  ({ children, style, onPress, intensity = 60 }) => {
     const isDark = useColorScheme() === 'dark';
     const Wrapper = onPress ? TouchableOpacity : View;
 
@@ -221,8 +174,8 @@ const GlassCard = memo<GlassCardProps>(
         <LinearGradient
           colors={
             isDark
-              ? ['rgba(45,45,55,0.9)', 'rgba(25,25,35,0.7)']
-              : ['rgba(255,255,255,0.95)', 'rgba(250,250,255,0.8)']
+              ? ['rgba(40,40,45,0.6)', 'rgba(25,25,30,0.4)']
+              : ['rgba(255,255,255,0.8)', 'rgba(250,250,255,0.6)']
           }
           style={StyleSheet.absoluteFill}
         />
@@ -242,7 +195,7 @@ interface StatBadgeProps {
 
 const StatBadge = memo<StatBadgeProps>(({ icon, value, label, color }) => (
   <View style={styles.statBadge}>
-    <View style={[styles.statIconBg, { backgroundColor: `${color}20` }]}>
+    <View style={[styles.statIconBg, { backgroundColor: color + '15' }]}>
       <Text style={styles.statIcon}>{icon}</Text>
     </View>
     <Text style={[styles.statValue, { color }]}>{value}</Text>
@@ -251,7 +204,7 @@ const StatBadge = memo<StatBadgeProps>(({ icon, value, label, color }) => (
 ));
 
 interface FamilyAvatarStackProps {
-  members: FamilyMember[];
+  members: any[];
   maxDisplay?: number;
   onPress: () => void;
 }
@@ -278,25 +231,16 @@ const FamilyAvatarStack = memo<FamilyAvatarStackProps>(
               colors={roleColors[member.role] || roleColors[UserRole.VIEWER]}
               style={[
                 styles.stackAvatar,
-                {
-                  marginLeft: index > 0 ? -12 : 0,
-                  zIndex: maxDisplay - index,
-                },
+                { marginLeft: index > 0 ? -12 : 0, zIndex: maxDisplay - index },
               ]}
             >
               <Text style={styles.stackAvatarText}>
-                {member.fullName.charAt(0)}
+                {member.fullName?.charAt(0) || '?'}
               </Text>
             </LinearGradient>
           ))}
           {remaining > 0 && (
-            <View
-              style={[
-                styles.stackAvatar,
-                styles.stackAvatarMore,
-                { marginLeft: -12, zIndex: 0 },
-              ]}
-            >
+            <View style={[styles.stackAvatar, styles.stackAvatarMore, { marginLeft: -12, zIndex: 0 }]}>
               <Text style={styles.stackAvatarMoreText}>+{remaining}</Text>
             </View>
           )}
@@ -333,16 +277,11 @@ const ActivityItem = memo<ActivityItemProps>(({ activity, isDark }) => {
 
   return (
     <View style={styles.activityItem}>
-      <View
-        style={[styles.activityIcon, { backgroundColor: `${config.color}15` }]}
-      >
+      <View style={[styles.activityIcon, { backgroundColor: config.color + '15' }]}>
         <Text style={styles.activityEmoji}>{config.icon}</Text>
       </View>
       <View style={styles.activityContent}>
-        <Text
-          style={[styles.activityTitle, isDark && styles.textDark]}
-          numberOfLines={1}
-        >
+        <Text style={[styles.activityTitle, isDark && styles.textDark]} numberOfLines={1}>
           {activity.title}
         </Text>
         <Text style={styles.activityTime}>
@@ -360,17 +299,11 @@ interface MilestoneItemProps {
 
 const MilestoneItem = memo<MilestoneItemProps>(({ milestone, isDark }) => (
   <View style={styles.milestoneItem}>
-    <LinearGradient
-      colors={['#f59e0b', '#fbbf24']}
-      style={styles.milestoneIcon}
-    >
+    <LinearGradient colors={['#f59e0b', '#fbbf24']} style={styles.milestoneIcon}>
       <Text style={styles.milestoneEmoji}>🌟</Text>
     </LinearGradient>
     <View style={styles.milestoneContent}>
-      <Text
-        style={[styles.milestoneTitle, isDark && styles.textDark]}
-        numberOfLines={1}
-      >
+      <Text style={[styles.milestoneTitle, isDark && styles.textDark]} numberOfLines={1}>
         {milestone.title}
       </Text>
       <Text style={styles.milestoneCategory}>{milestone.category}</Text>
@@ -380,6 +313,55 @@ const MilestoneItem = memo<MilestoneItemProps>(({ milestone, isDark }) => (
     </View>
   </View>
 ));
+
+// ─── Action Modal (from FamilySharingScreen) ───────────────────────────
+
+interface ActionModalProps {
+  visible: boolean;
+  onClose: () => void;
+  title: string;
+  children: React.ReactNode;
+  isDark: boolean;
+  showCloseButton?: boolean;
+  primaryColor?: string;
+}
+
+const ActionModal: React.FC<ActionModalProps> = ({
+  visible,
+  onClose,
+  title,
+  children,
+  isDark,
+  showCloseButton = true,
+  primaryColor = '#667eea',
+}) => {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.modalOverlay}>
+        <BlurView intensity={80} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
+        <Animated.View entering={FadeInUp} style={[styles.modalContent, isDark && styles.modalContentDark]}>
+          <LinearGradient
+            colors={isDark ? ['rgba(30,30,35,0.95)', 'rgba(20,20,25,0.98)'] : ['rgba(255,255,255,0.95)', 'rgba(250,250,255,0.98)']}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={styles.modalHeader}>
+            <Text style={[styles.modalTitle, isDark && styles.textDark]}>{title}</Text>
+            {showCloseButton && (
+              <TouchableOpacity onPress={onClose} style={styles.modalCloseBtn}>
+                <Ionicons name="close" size={24} color={isDark ? '#fff' : '#1a1a1a'} />
+              </TouchableOpacity>
+            )}
+          </View>
+          <AutoHideScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalScrollContent}>
+            {children}
+          </AutoHideScrollView>
+        </Animated.View>
+      </View>
+    </Modal>
+  );
+};
+
+// ─── Main Screen ──────────────────────────────────────────────────────
 
 export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreenProps) {
   const isDark = useColorScheme() === 'dark';
@@ -401,24 +383,20 @@ export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreen
     loadBabies,
     getPottyStreak,
   } = useBaby();
+  const { members, parent1, parent2, guardians, loadFamily, removeMember } = useFamily();
+
   const {
-    members,
-    parent1,
-    parent2,
-    guardians,
-    loadFamily,
-    removeMember,
-  } = useFamily();
+    darkMode,
+    themeColors,
+    triggerHaptic,
+    shouldReduceMotion,
+  } = useCustomization();
 
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState<
-    'overview' | 'family' | 'growth'
-  >('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'family' | 'growth'>('overview');
+  const [showBabySelector, setShowBabySelector] = useState(false);
 
-  const effectiveUser = useMemo(
-    () => userProfile || profile,
-    [userProfile, profile]
-  );
+  const effectiveUser = useMemo(() => userProfile || profile, [userProfile, profile]);
   const hasUser = !!effectiveUser;
 
   const scrollHandler = useAnimatedScrollHandler({
@@ -427,10 +405,6 @@ export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreen
       scrollY.value = event.contentOffset.y;
     },
   });
-
-  const headerOpacity = useAnimatedStyle(() => ({
-    opacity: interpolate(scrollY.value, [0, 80], [1, 0], Extrapolate.CLAMP),
-  }));
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -443,7 +417,7 @@ export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreen
   const handleSwitchBaby = useCallback(
     (babyId: string) => {
       if (babyId === currentBabyId) return;
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      triggerHaptic('light');
       switchBaby(babyId);
     },
     [currentBabyId, switchBaby]
@@ -461,7 +435,7 @@ export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreen
             style: 'destructive',
             onPress: async () => {
               await deleteBaby(baby.id);
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              triggerHaptic('success');
             },
           },
         ]
@@ -471,7 +445,7 @@ export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreen
   );
 
   const handleRemoveMember = useCallback(
-    (member: FamilyMember) => {
+    (member: any) => {
       Alert.alert('Remove Member', `Remove ${member.fullName} from family?`, [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -485,11 +459,10 @@ export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreen
   );
 
   const handleMemberPress = useCallback(
-    (member: FamilyMember, isYou: boolean = false) => {
+    (member: any, isYou: boolean = false) => {
       navigation.navigate('EditGuardian', {
         guardianId: member.id,
-        mode:
-          isYou || member.role === UserRole.PARENT_2 ? 'parent2' : 'guardian',
+        mode: isYou || member.role === UserRole.PARENT_2 ? 'parent2' : 'guardian',
       });
     },
     [navigation]
@@ -553,12 +526,8 @@ export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreen
         addedBy: '',
         canBeRemoved: false,
         permissions: {
-          read: true,
-          write: true,
-          delete: true,
-          manageFamily: true,
-          manageSecurity: true,
-          exportData: true,
+          read: true, write: true, delete: true,
+          manageFamily: true, manageSecurity: true, exportData: true,
         },
       },
     ];
@@ -570,898 +539,575 @@ export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreen
   );
 
   const recentMilestones = useMemo(
-    () =>
-      milestones
-        .sort(
-          (a, b) =>
-            new Date(b.achievedAt).getTime() -
-            new Date(a.achievedAt).getTime()
-        )
-        .slice(0, 3),
+    () => milestones
+      .sort((a, b) => new Date(b.achievedAt).getTime() - new Date(a.achievedAt).getTime())
+      .slice(0, 3),
     [milestones]
   );
 
-  const babyStats = useMemo(
-    () => (currentBaby ? getBabyStats() : null),
-    [currentBaby, getBabyStats]
-  );
+  const babyStats = useMemo(() => (currentBaby ? getBabyStats() : null), [currentBaby, getBabyStats]);
 
-  const themeColors = useMemo(
-    () => ({
-      bg: isDark
-        ? ['#0a0a0a', '#1a1a2e', '#16213e']
-        : ['#f8fafc', '#e2e8f0', '#dbeafe'],
-      text: isDark ? '#ffffff' : '#1e293b',
-      muted: isDark ? '#94a3b8' : '#64748b',
-      cardBg: isDark
-        ? ['rgba(45,45,55,0.9)', 'rgba(25,25,35,0.7)']
-        : ['rgba(255,255,255,0.95)', 'rgba(250,250,255,0.8)'],
-    }),
-    [isDark]
-  );
+  // ─── Animated Header Styles ───────────────────────────────────────
 
-  const renderHeader = useMemo(
-    () => (
-      <Animated.View
-        style={[
-          styles.header,
-          headerOpacity,
-          { paddingTop: insets.top + 10 },
-        ]}
-      >
-        <View style={styles.headerContent}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={styles.headerBtn}
-          >
-            <Ionicons
-              name="arrow-back"
-              size={24}
-              color={isDark ? '#fff' : '#1a1a1a'}
-            />
-          </TouchableOpacity>
+  const headerAnimatedStyle = useAnimatedStyle(() => ({
+    backgroundColor: isDark
+      ? `rgba(10,10,10,${interpolate(scrollY.value, [0, 100], [0, 1], Extrapolate.CLAMP)})`
+      : `rgba(248,250,252,${interpolate(scrollY.value, [0, 100], [0, 1], Extrapolate.CLAMP)})`,
+  }));
 
-          <Text style={[styles.headerTitle, isDark && styles.textDark]}>
-            Family Center
-          </Text>
+  const blurAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, [0, 50], [0, 1], Extrapolate.CLAMP),
+  }));
 
-          <FamilyAvatarStack
-            members={displayMembers}
-            onPress={handleNavigateFamily}
-          />
-        </View>
+  // ─── Render Header ───────────────────────────────────────────────
+
+  const renderHeader = () => (
+    <Animated.View style={[styles.headerContainer, { paddingTop: insets.top }, headerAnimatedStyle]}>
+      <Animated.View style={[StyleSheet.absoluteFill, blurAnimatedStyle, { zIndex: -1 }]}>
+        <BlurView intensity={60} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
       </Animated.View>
-    ),
-    [
-      headerOpacity,
-      insets.top,
-      isDark,
-      displayMembers,
-      handleNavigateFamily,
-      navigation,
-    ]
-  );
 
-  const renderBabyChips = useMemo(
-    () => (
-      <View style={styles.babyChipsContainer}>
-        <AutoHideScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.babyChipsContent}
+      <View style={styles.headerTop}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={[styles.headerBtn, isDark && styles.headerBtnDark]}
         >
-          {babies.map((baby) => (
+          <Ionicons name="arrow-back" size={24} color={isDark ? '#fff' : '#1a1a1a'} />
+        </TouchableOpacity>
+
+        <View style={styles.headerTitleContainer}>
+          <Text style={[styles.headerTitle, isDark && styles.textDark]}>Family Center</Text>
+          {currentBaby && (
             <TouchableOpacity
-              key={baby.id}
-              onPress={() => handleSwitchBaby(baby.id)}
-              style={[
-                styles.babyChip,
-                currentBabyId === baby.id && styles.babyChipActive,
-              ]}
+              style={[styles.babySelector, { backgroundColor: themeColors.colors[0] }]}
+              onPress={() => setShowBabySelector(true)}
             >
-              <LinearGradient
-                colors={
-                  currentBabyId === baby.id
-                    ? ['#667eea', '#764ba2']
-                    : isDark
-                    ? ['rgba(60,60,70,0.8)', 'rgba(40,40,50,0.6)']
-                    : ['rgba(255,255,255,0.9)', 'rgba(245,245,250,0.7)']
-                }
-                style={styles.babyChipGradient}
-              >
-                <Text style={styles.babyChipEmoji}>
-                  {baby.avatar || '👶'}
-                </Text>
-                <Text
-                  style={[
-                    styles.babyChipName,
-                    currentBabyId === baby.id && styles.babyChipNameActive,
-                    isDark &&
-                      currentBabyId !== baby.id &&
-                      styles.textDark,
-                  ]}
-                >
-                  {baby.name}
-                </Text>
-              </LinearGradient>
-            </TouchableOpacity>
-          ))}
-
-          <TouchableOpacity
-            style={styles.addBabyChip}
-            onPress={handleNavigateCreateBaby}
-          >
-            <View
-              style={[
-                styles.addBabyChipInner,
-                isDark && {
-                  borderColor: '#475569',
-                  backgroundColor: 'rgba(60,60,70,0.5)',
-                },
-              ]}
-            >
-              <Ionicons name="add" size={20} color="#667eea" />
-              <Text style={[styles.addBabyText, isDark && styles.textDark]}>
-                Add
+              <Text style={[styles.babySelectorText, { color: themeColors.primary }]}>
+                {currentBaby.name} ▼
               </Text>
-            </View>
-          </TouchableOpacity>
-        </AutoHideScrollView>
-      </View>
-    ),
-    [babies, currentBabyId, isDark, handleSwitchBaby, handleNavigateCreateBaby]
-  );
+            </TouchableOpacity>
+          )}
+        </View>
 
-  const renderTabs = useMemo(
-    () => (
-      <View style={[styles.tabBar, { top: insets.top + 70 }]}>
-        <BlurView
-          intensity={90}
-          style={StyleSheet.absoluteFill}
-          tint={isDark ? 'dark' : 'light'}
-        />
-        <LinearGradient colors={themeColors.cardBg} style={StyleSheet.absoluteFill} />
-        <View style={styles.tabContainer}>
-          {[
-            { id: 'overview', icon: 'grid-outline', label: 'Overview' },
-            { id: 'family', icon: 'people-outline', label: 'Family' },
-            { id: 'growth', icon: 'trending-up-outline', label: 'Growth' },
-          ].map((tab) => {
-            const isActive = activeTab === tab.id;
-            return (
-              <TouchableOpacity
-                key={tab.id}
-                style={styles.tab}
-                onPress={() => {
-                  if (tab.id === 'family') {
-                    handleNavigateFamily();
-                    return;
-                  }
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  setActiveTab(tab.id as typeof activeTab);
-                }}
-              >
-                <View
-                  style={[
-                    styles.tabBg,
-                    isActive && {
-                      backgroundColor: isDark
-                        ? 'rgba(102,126,234,0.3)'
-                        : 'rgba(102,126,234,0.15)',
-                    },
-                  ]}
-                >
-                  <Ionicons
-                    name={tab.icon as any}
-                    size={18}
-                    color={
-                      isActive
-                        ? '#667eea'
-                        : isDark
-                        ? '#94a3b8'
-                        : '#64748b'
-                    }
-                  />
-                  <Text
-                    style={[
-                      styles.tabLabel,
-                      isActive && styles.tabLabelActive,
-                      isDark && !isActive && styles.textMuted,
-                    ]}
-                  >
-                    {tab.label}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            style={[styles.headerBtn, styles.headerBtnAccent, { backgroundColor: themeColors.primary }]}
+            onPress={handleNavigateFamily}
+          >
+            <Ionicons name="people" size={20} color="#fff" />
+          </TouchableOpacity>
         </View>
       </View>
-    ),
-    [insets.top, isDark, activeTab, themeColors, handleNavigateFamily]
-  );
 
-  const renderOverview = useMemo(
-    () => (
-      <Animated.View entering={FadeInUp} style={styles.tabPanel}>
-        {currentBaby && (
-          <GlassCard style={styles.heroCard}>
-            <View style={styles.heroHeader}>
-              <SafeAvatar
-                avatar={currentBaby.avatar}
-                gender={currentBaby.gender}
-                size={72}
-                showEditButton
-                onEdit={() => handleBabyEdit(currentBaby.id)}
-              />
+      {/* Quick Actions Row */}
+      <View style={styles.quickActionsRow}>
+        <TouchableOpacity style={styles.iconAction} onPress={handleNavigateTimeline}>
+          <Ionicons name="time" size={24} color="#10b981" />
+          <Text style={[styles.iconActionLabel, isDark && styles.textMuted]}>Activity</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.iconAction} onPress={handleNavigateAchievements}>
+          <Ionicons name="trophy" size={24} color="#f59e0b" />
+          <Text style={[styles.iconActionLabel, isDark && styles.textMuted]}>Milestones</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.iconAction} onPress={handleNavigateGrowthChart}>
+          <Ionicons name="trending-up" size={24} color={themeColors.primary} />
+          <Text style={[styles.iconActionLabel, isDark && styles.textMuted]}>Growth</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.iconAction} onPress={handleNavigateFamily}>
+          <Ionicons name="settings" size={24} color="#8b5cf6" />
+          <Text style={[styles.iconActionLabel, isDark && styles.textMuted]}>Settings</Text>
+        </TouchableOpacity>
+      </View>
 
-              <View style={styles.heroInfo}>
-                <Text
-                  style={[styles.heroName, isDark && styles.textDark]}
-                >
-                  {currentBaby.name}
-                </Text>
-                <Text style={styles.heroMeta}>
-                  {currentBaby.age} • {currentBaby.gender}
-                </Text>
-                <View style={styles.heroTags}>
-                  <View
-                    style={[
-                      styles.heroTag,
-                      { backgroundColor: '#fa709a20' },
-                    ]}
-                  >
-                    <Ionicons
-                      name="flame"
-                      size={12}
-                      color="#fa709a"
-                    />
-                    <Text
-                      style={[
-                        styles.heroTagText,
-                        { color: '#fa709a' },
-                      ]}
-                    >
-                      {getPottyStreak()}d streak
-                    </Text>
-                  </View>
-                </View>
-              </View>
-
-              <TouchableOpacity
-                style={styles.editBtn}
-                onPress={() => handleBabyEdit(currentBaby.id)}
-              >
-                <Ionicons
-                  name="create-outline"
-                  size={20}
-                  color="#667eea"
-                />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.statsRow}>
-              <StatBadge
-                icon="🌟"
-                value={currentBaby.milestones || 0}
-                label="Milestones"
-                color="#f59e0b"
-              />
-              <StatBadge
-                icon="📸"
-                value={currentBaby.photos || 0}
-                label="Photos"
-                color="#8b5cf6"
-              />
-              <StatBadge
-                icon="📏"
-                value={growthData.length}
-                label="Records"
-                color="#10b981"
-              />
-            </View>
-
-            {(currentBaby.weight || currentBaby.height) && (
-              <View style={styles.quickStats}>
-                {currentBaby.weight && (
-                  <View style={styles.quickStat}>
-                    <Ionicons
-                      name="scale-outline"
-                      size={16}
-                      color="#fa709a"
-                    />
-                    <Text
-                      style={[
-                        styles.quickStatValue,
-                        isDark && styles.textDark,
-                      ]}
-                    >
-                      {currentBaby.weight}
-                    </Text>
-                  </View>
-                )}
-                {currentBaby.height && (
-                  <View style={styles.quickStat}>
-                    <Ionicons
-                      name="resize-outline"
-                      size={16}
-                      color="#667eea"
-                    />
-                    <Text
-                      style={[
-                        styles.quickStatValue,
-                        isDark && styles.textDark,
-                      ]}
-                    >
-                      {currentBaby.height}
-                    </Text>
-                  </View>
-                )}
-              </View>
-            )}
-          </GlassCard>
-        )}
-
-        <GlassCard
-          style={styles.parentCard}
-          onPress={handleCurrentUserEdit}
-        >
-          <LinearGradient
-            colors={['#11998e20', '#38ef7d10']}
-            style={StyleSheet.absoluteFill}
-          />
-          <View style={styles.parentRow}>
-            <LinearGradient
-              colors={['#11998e', '#38ef7d']}
-              style={styles.parentAvatar}
-            >
-              <Text style={styles.parentAvatarText}>
-                {effectiveUser?.fullName?.charAt(0) || 'P'}
-              </Text>
-            </LinearGradient>
-            <View style={styles.parentInfo}>
-              <Text
-                style={[
-                  styles.parentName,
-                  isDark && styles.textDark,
-                ]}
-              >
-                {effectiveUser?.fullName || 'Parent'}
-              </Text>
-              <Text style={styles.parentRole}>Primary Parent</Text>
-            </View>
-            <Ionicons
-              name="chevron-forward"
-              size={20}
-              color={isDark ? '#667eea' : '#764ba2'}
-            />
-          </View>
-        </GlassCard>
-
-        {recentActivities.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text
-                style={[
-                  styles.sectionTitle,
-                  isDark && styles.textDark,
-                ]}
-              >
-                Recent Activity
-              </Text>
-              <TouchableOpacity onPress={handleNavigateTimeline}>
-                <Text style={styles.seeAll}>See All</Text>
-              </TouchableOpacity>
-            </View>
-            <GlassCard style={styles.activityCard}>
-              {recentActivities.slice(0, 3).map((activity) => (
-                <ActivityItem
-                  key={activity.id}
-                  activity={activity}
-                  isDark={isDark}
-                />
-              ))}
-            </GlassCard>
-          </View>
-        )}
-      </Animated.View>
-    ),
-    [
-      currentBaby,
-      isDark,
-      effectiveUser,
-      recentActivities,
-      growthData.length,
-      handleBabyEdit,
-      handleCurrentUserEdit,
-      handleNavigateTimeline,
-      getPottyStreak,
-    ]
-  );
-
-  const renderFamily = useMemo(
-    () => (
-      <Animated.View entering={FadeInUp} style={styles.tabPanel}>
-        <GlassCard style={styles.summaryCard}>
-          <View style={styles.summaryRow}>
-            <View style={styles.summaryItem}>
-              <Text
-                style={[
-                  styles.summaryValue,
-                  isDark && styles.textDark,
-                ]}
-              >
-                {members.length}
-              </Text>
-              <Text style={styles.summaryLabel}>Members</Text>
-            </View>
-            <View style={styles.summaryDivider} />
-            <View style={styles.summaryItem}>
-              <Text
-                style={[
-                  styles.summaryValue,
-                  isDark && styles.textDark,
-                ]}
-              >
-                {babies.length}
-              </Text>
-              <Text style={styles.summaryLabel}>Babies</Text>
-            </View>
-            <View style={styles.summaryDivider} />
-            <View style={styles.summaryItem}>
-              <Text
-                style={[
-                  styles.summaryValue,
-                  isDark && styles.textDark,
-                ]}
-              >
-                {activities.length}
-              </Text>
-              <Text style={styles.summaryLabel}>Activities</Text>
-            </View>
-          </View>
-        </GlassCard>
-
-        {parent1 && (
-          <View style={styles.memberSection}>
-            <Text
+      {/* Tab Navigation */}
+      <View style={[styles.tabContainer, isDark && styles.tabContainerDark]}>
+        {(['overview', 'family', 'growth'] as const).map((tab) => {
+          const isActive = activeTab === tab;
+          const tabConfig = {
+            overview: { icon: 'grid-outline', label: 'Overview' },
+            family: { icon: 'people-outline', label: 'Family' },
+            growth: { icon: 'trending-up-outline', label: 'Growth' },
+          };
+          return (
+            <TouchableOpacity
+              key={tab}
               style={[
-                styles.memberSectionTitle,
-                isDark && styles.textMuted,
+                styles.tab,
+                isActive && styles.tabActive,
+                isActive && { borderBottomColor: themeColors.primary, backgroundColor: themeColors.colors[0] },
               ]}
-            >
-              You
-            </Text>
-            <GlassCard onPress={() => handleMemberPress(parent1, true)}>
-              <View style={styles.memberRow}>
-                <LinearGradient
-                  colors={['#667eea', '#764ba2']}
-                  style={styles.memberAvatar}
-                >
-                  <Text style={styles.memberAvatarText}>
-                    {parent1.fullName.charAt(0)}
-                  </Text>
-                </LinearGradient>
-                <View style={styles.memberDetails}>
-                  <Text
-                    style={[
-                      styles.memberName,
-                      isDark && styles.textDark,
-                    ]}
-                  >
-                    {parent1.fullName}
-                  </Text>
-                  <View
-                    style={[
-                      styles.rolePill,
-                      { backgroundColor: '#667eea20' },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.rolePillText,
-                        { color: '#667eea' },
-                      ]}
-                    >
-                      Primary
-                    </Text>
-                  </View>
-                </View>
-                <Ionicons
-                  name="chevron-forward"
-                  size={20}
-                  color={isDark ? '#667eea' : '#764ba2'}
-                />
-              </View>
-            </GlassCard>
-          </View>
-        )}
-
-        {parent2 ? (
-          <View style={styles.memberSection}>
-            <Text
-              style={[
-                styles.memberSectionTitle,
-                isDark && styles.textMuted,
-              ]}
-            >
-              Co-Parent
-            </Text>
-            <GlassCard onPress={() => handleMemberPress(parent2, false)}>
-              <View style={styles.memberRow}>
-                <LinearGradient
-                  colors={['#fa709a', '#fee140']}
-                  style={styles.memberAvatar}
-                >
-                  <Text style={styles.memberAvatarText}>
-                    {parent2.fullName.charAt(0)}
-                  </Text>
-                </LinearGradient>
-                <View style={styles.memberDetails}>
-                  <Text
-                    style={[
-                      styles.memberName,
-                      isDark && styles.textDark,
-                    ]}
-                  >
-                    {parent2.fullName}
-                  </Text>
-                  <View
-                    style={[
-                      styles.rolePill,
-                      { backgroundColor: '#fa709a20' },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.rolePillText,
-                        { color: '#fa709a' },
-                      ]}
-                    >
-                      Co-Parent
-                    </Text>
-                  </View>
-                </View>
-                {parent2.canBeRemoved && (
-                  <TouchableOpacity
-                    onPress={() => handleRemoveMember(parent2)}
-                    style={styles.removeBtn}
-                  >
-                    <Ionicons
-                      name="close-circle"
-                      size={24}
-                      color="#ef4444"
-                    />
-                  </TouchableOpacity>
-                )}
-              </View>
-            </GlassCard>
-          </View>
-        ) : (
-          <TouchableOpacity
-            style={styles.addBtn}
-            onPress={handleNavigateParent2}
-          >
-            <LinearGradient
-              colors={['#fa709a', '#fee140']}
-              style={styles.addBtnGradient}
+              onPress={() => {
+                if (tab === 'family') {
+                  handleNavigateFamily();
+                  return;
+                }
+                triggerHaptic('light');
+                setActiveTab(tab);
+              }}
             >
               <Ionicons
-                name="person-add"
-                size={20}
-                color="#fff"
+                name={tabConfig[tab].icon as any}
+                size={18}
+                color={isActive ? themeColors.primary : isDark ? '#94a3b8' : '#64748b'}
               />
-              <Text style={styles.addBtnText}>Add Co-Parent</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-        )}
-
-        {guardians.length > 0 && (
-          <View style={styles.memberSection}>
-            <Text
-              style={[
-                styles.memberSectionTitle,
-                isDark && styles.textMuted,
-              ]}
-            >
-              Guardians
-            </Text>
-            {guardians.map((g) => (
-              <GlassCard
-                key={g.id}
-                style={styles.memberCard}
-                onPress={() => handleMemberPress(g, false)}
-              >
-                <View style={styles.memberRow}>
-                  <LinearGradient
-                    colors={['#11998e', '#38ef7d']}
-                    style={styles.memberAvatar}
-                  >
-                    <Text style={styles.memberAvatarText}>
-                      {g.fullName.charAt(0)}
-                    </Text>
-                  </LinearGradient>
-                  <View style={styles.memberDetails}>
-                    <Text
-                      style={[
-                        styles.memberName,
-                        isDark && styles.textDark,
-                      ]}
-                    >
-                      {g.fullName}
-                    </Text>
-                    <View
-                      style={[
-                        styles.rolePill,
-                        { backgroundColor: '#11998e20' },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.rolePillText,
-                          { color: '#11998e' },
-                        ]}
-                      >
-                        {g.relationship}
-                      </Text>
-                    </View>
-                  </View>
-                  <TouchableOpacity
-                    onPress={() => handleRemoveMember(g)}
-                    style={styles.removeBtn}
-                  >
-                    <Ionicons
-                      name="close-circle"
-                      size={24}
-                      color="#ef4444"
-                    />
-                  </TouchableOpacity>
-                </View>
-              </GlassCard>
-            ))}
-          </View>
-        )}
-
-        <TouchableOpacity
-          style={styles.addGuardianBtn}
-          onPress={handleNavigateAddGuardian}
-        >
-          <View
-            style={[
-              styles.addGuardianInner,
-              isDark && { borderColor: '#475569' },
-            ]}
-          >
-            <Ionicons
-              name="add-circle"
-              size={22}
-              color="#667eea"
-            />
-            <Text
-              style={[
-                styles.addGuardianText,
-                isDark && styles.textDark,
-              ]}
-            >
-              Add Guardian
-            </Text>
-          </View>
-        </TouchableOpacity>
-      </Animated.View>
-    ),
-    [
-      isDark,
-      members.length,
-      babies.length,
-      activities.length,
-      parent1,
-      parent2,
-      guardians,
-      handleMemberPress,
-      handleRemoveMember,
-      handleNavigateParent2,
-      handleNavigateAddGuardian,
-    ]
-  );
-
-  const renderGrowth = useMemo(
-    () => (
-      <Animated.View entering={FadeInUp} style={styles.tabPanel}>
-        <GlassCard style={styles.growthSummaryCard}>
-          <View style={styles.growthStatsRow}>
-            <View style={styles.growthStatItem}>
-              <LinearGradient
-                colors={['#667eea', '#764ba2']}
-                style={styles.growthStatIcon}
-              >
-                <Ionicons
-                  name="resize-outline"
-                  size={20}
-                  color="#fff"
-                />
-              </LinearGradient>
-              <View>
-                <Text
-                  style={[
-                    styles.growthStatValue,
-                    isDark && styles.textDark,
-                  ]}
-                >
-                  {
-                    growthData
-                      .filter((g) => g.type === 'height')
-                      .pop()?.value || '--'
-                  }
-                  {
-                    growthData
-                      .filter((g) => g.type === 'height')
-                      .pop()?.unit || ''
-                  }
-                </Text>
-                <Text style={styles.growthStatLabel}>Height</Text>
-              </View>
-            </View>
-            <View style={styles.growthStatItem}>
-              <LinearGradient
-                colors={['#fa709a', '#fee140']}
-                style={styles.growthStatIcon}
-              >
-                <Ionicons
-                  name="scale-outline"
-                  size={20}
-                  color="#fff"
-                />
-              </LinearGradient>
-              <View>
-                <Text
-                  style={[
-                    styles.growthStatValue,
-                    isDark && styles.textDark,
-                  ]}
-                >
-                  {
-                    growthData
-                      .filter((g) => g.type === 'weight')
-                      .pop()?.value || '--'
-                  }
-                  {
-                    growthData
-                      .filter((g) => g.type === 'weight')
-                      .pop()?.unit || ''
-                  }
-                </Text>
-                <Text style={styles.growthStatLabel}>Weight</Text>
-              </View>
-            </View>
-            <View style={styles.growthStatItem}>
-              <LinearGradient
-                colors={['#11998e', '#38ef7d']}
-                style={styles.growthStatIcon}
-              >
-                <Ionicons
-                  name="analytics-outline"
-                  size={20}
-                  color="#fff"
-                />
-              </LinearGradient>
-              <View>
-                <Text
-                  style={[
-                    styles.growthStatValue,
-                    isDark && styles.textDark,
-                  ]}
-                >
-                  {growthData.length}
-                </Text>
-                <Text style={styles.growthStatLabel}>Records</Text>
-              </View>
-            </View>
-          </View>
-        </GlassCard>
-
-        {recentMilestones.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
               <Text
                 style={[
-                  styles.sectionTitle,
-                  isDark && styles.textDark,
+                  styles.tabLabel,
+                  isActive && [styles.tabLabelActive, { color: themeColors.primary }],
+                  isDark && !isActive && styles.textMuted,
                 ]}
               >
-                Latest Milestones
+                {tabConfig[tab].label}
               </Text>
-              <TouchableOpacity onPress={handleNavigateAchievements}>
-                <Text style={styles.seeAll}>View All</Text>
-              </TouchableOpacity>
-            </View>
-            <GlassCard style={styles.milestonesCard}>
-              {recentMilestones.map((m) => (
-                <MilestoneItem
-                  key={m.id}
-                  milestone={m}
-                  isDark={isDark}
-                />
-              ))}
-            </GlassCard>
-          </View>
-        )}
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </Animated.View>
+  );
 
-        <TouchableOpacity
-          style={styles.fullChartBtn}
-          onPress={handleNavigateGrowthChart}
-        >
-          <LinearGradient
-            colors={['#667eea', '#764ba2']}
-            style={styles.fullChartGradient}
+  // ─── Render Baby Chips ────────────────────────────────────────────
+
+  const renderBabyChips = () => (
+    <View style={styles.babyChipsContainer}>
+      <AutoHideScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.babyChipsContent}>
+        {babies.map((baby) => (
+          <TouchableOpacity
+            key={baby.id}
+            onPress={() => handleSwitchBaby(baby.id)}
+            style={[styles.babyChip, currentBabyId === baby.id && styles.babyChipActive]}
           >
-            <Ionicons
-              name="trending-up"
-              size={20}
-              color="#fff"
+            <LinearGradient
+              colors={
+                currentBabyId === baby.id
+                  ? [themeColors.primary, themeColors.secondary]
+                  : isDark
+                  ? ['rgba(60,60,70,0.8)', 'rgba(40,40,50,0.6)']
+                  : ['rgba(255,255,255,0.9)', 'rgba(245,245,250,0.7)']
+              }
+              style={styles.babyChipGradient}
+            >
+              <Text style={styles.babyChipEmoji}>{baby.avatar || '👶'}</Text>
+              <Text
+                style={[
+                  styles.babyChipName,
+                  currentBabyId === baby.id && styles.babyChipNameActive,
+                  isDark && currentBabyId !== baby.id && styles.textDark,
+                ]}
+              >
+                {baby.name}
+              </Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        ))}
+
+        <TouchableOpacity style={styles.addBabyChip} onPress={handleNavigateCreateBaby}>
+          <View style={[styles.addBabyChipInner, isDark && { borderColor: '#475569', backgroundColor: 'rgba(60,60,70,0.5)' }]}>
+            <Ionicons name="add" size={20} color={themeColors.primary} />
+            <Text style={[styles.addBabyText, isDark && styles.textDark]}>Add</Text>
+          </View>
+        </TouchableOpacity>
+      </AutoHideScrollView>
+    </View>
+  );
+
+  // ─── Render Overview ──────────────────────────────────────────────
+
+  const renderOverview = () => (
+    <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp} style={styles.tabPanel}>
+      {/* Family Stats Summary */}
+      <View style={styles.familyStatsContainer}>
+        <LinearGradient
+          colors={[themeColors.colors[0], themeColors.colors[1]]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.familyStatsGradient}
+        >
+          <View style={styles.familyStatsRow}>
+            <View style={styles.familyStat}>
+              <Text style={[styles.familyStatValue, { color: themeColors.primary }]}>{members.length}</Text>
+              <Text style={[styles.familyStatLabel, isDark && styles.textMuted]}>Members</Text>
+            </View>
+            <View style={styles.familyStatDivider} />
+            <View style={styles.familyStat}>
+              <Text style={[styles.familyStatValue, { color: themeColors.primary }]}>{babies.length}</Text>
+              <Text style={[styles.familyStatLabel, isDark && styles.textMuted]}>Babies</Text>
+            </View>
+            <View style={styles.familyStatDivider} />
+            <View style={styles.familyStat}>
+              <Text style={[styles.familyStatValue, { color: themeColors.primary }]}>{activities.length}</Text>
+              <Text style={[styles.familyStatLabel, isDark && styles.textMuted]}>Activities</Text>
+            </View>
+            <View style={styles.familyStatDivider} />
+            <View style={styles.familyStat}>
+              <Text style={[styles.familyStatValue, { color: themeColors.primary }]}>{milestones.length}</Text>
+              <Text style={[styles.familyStatLabel, isDark && styles.textMuted]}>Milestones</Text>
+            </View>
+          </View>
+        </LinearGradient>
+      </View>
+
+      {currentBaby && (
+        <GlassCard style={styles.heroCard}>
+          <View style={styles.heroHeader}>
+            <SafeAvatar
+              avatar={currentBaby.avatar}
+              gender={currentBaby.gender}
+              size={72}
+              showEditButton
+              onEdit={() => handleBabyEdit(currentBaby.id)}
             />
-            <Text style={styles.fullChartText}>Full Growth Charts</Text>
-            <Ionicons
-              name="arrow-forward"
-              size={20}
-              color="#fff"
-            />
+            <View style={styles.heroInfo}>
+              <Text style={[styles.heroName, isDark && styles.textDark]}>{currentBaby.name}</Text>
+              <Text style={styles.heroMeta}>
+                {currentBaby.age} • {currentBaby.gender}
+              </Text>
+              <View style={styles.heroTags}>
+                <View style={[styles.heroTag, { backgroundColor: '#fa709a20' }]}>
+                  <Ionicons name="flame" size={12} color="#fa709a" />
+                  <Text style={[styles.heroTagText, { color: '#fa709a' }]}>{getPottyStreak()}d streak</Text>
+                </View>
+              </View>
+            </View>
+            <TouchableOpacity style={styles.editBtn} onPress={() => handleBabyEdit(currentBaby.id)}>
+              <Ionicons name="create-outline" size={20} color={themeColors.primary} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.statsRow}>
+            <StatBadge icon="🌟" value={currentBaby.milestones || 0} label="Milestones" color="#f59e0b" />
+            <StatBadge icon="📸" value={currentBaby.photos || 0} label="Photos" color="#8b5cf6" />
+            <StatBadge icon="📏" value={growthData.length} label="Records" color="#10b981" />
+          </View>
+
+          {(currentBaby.weight || currentBaby.height) && (
+            <View style={styles.quickStats}>
+              {currentBaby.weight && (
+                <View style={styles.quickStat}>
+                  <Ionicons name="scale-outline" size={16} color="#fa709a" />
+                  <Text style={[styles.quickStatValue, isDark && styles.textDark]}>{currentBaby.weight}</Text>
+                </View>
+              )}
+              {currentBaby.height && (
+                <View style={styles.quickStat}>
+                  <Ionicons name="resize-outline" size={16} color={themeColors.primary} />
+                  <Text style={[styles.quickStatValue, isDark && styles.textDark]}>{currentBaby.height}</Text>
+                </View>
+              )}
+            </View>
+          )}
+        </GlassCard>
+      )}
+
+      <GlassCard style={styles.parentCard} onPress={handleCurrentUserEdit}>
+        <LinearGradient colors={['#11998e20', '#38ef7d10']} style={StyleSheet.absoluteFill} />
+        <View style={styles.parentRow}>
+          <LinearGradient colors={['#11998e', '#38ef7d']} style={styles.parentAvatar}>
+            <Text style={styles.parentAvatarText}>{effectiveUser?.fullName?.charAt(0) || 'P'}</Text>
+          </LinearGradient>
+          <View style={styles.parentInfo}>
+            <Text style={[styles.parentName, isDark && styles.textDark]}>
+              {effectiveUser?.fullName || 'Parent'}
+            </Text>
+            <Text style={styles.parentRole}>Primary Parent</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={isDark ? '#667eea' : '#764ba2'} />
+        </View>
+      </GlassCard>
+
+      {recentActivities.length > 0 && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Recent Activity</Text>
+            <TouchableOpacity onPress={handleNavigateTimeline}>
+              <Text style={styles.seeAll}>See All</Text>
+            </TouchableOpacity>
+          </View>
+          <GlassCard style={styles.activityCard}>
+            {recentActivities.slice(0, 3).map((activity) => (
+              <ActivityItem key={activity.id} activity={activity} isDark={isDark} />
+            ))}
+          </GlassCard>
+        </View>
+      )}
+    </Animated.View>
+  );
+
+  // ─── Render Family ────────────────────────────────────────────────
+
+  const renderFamily = () => (
+    <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp} style={styles.tabPanel}>
+      {renderMemberSection('Primary Parent', members.filter((m) => m.role === UserRole.PARENT_1))}
+      {renderMemberSection('Co-Parent', members.filter((m) => m.role === UserRole.PARENT_2), 'No co-parent added yet')}
+      {renderMemberSection('Guardians', members.filter((m) => m.role === UserRole.GUARDIAN), 'No guardians added')}
+      {renderMemberSection('Viewers', members.filter((m) => m.role === UserRole.VIEWER), 'No viewers added')}
+
+      {/* Add Co-Parent Button */}
+      {!parent2 && (
+        <TouchableOpacity style={styles.addBtn} onPress={handleNavigateParent2}>
+          <LinearGradient colors={['#fa709a', '#fee140']} style={styles.addBtnGradient}>
+            <Ionicons name="person-add" size={20} color="#fff" />
+            <Text style={styles.addBtnText}>Add Co-Parent</Text>
           </LinearGradient>
         </TouchableOpacity>
-      </Animated.View>
-    ),
-    [
-      isDark,
-      growthData,
-      recentMilestones,
-      handleNavigateAchievements,
-      handleNavigateGrowthChart,
-    ]
+      )}
+
+      {/* Add Guardian Button */}
+      <TouchableOpacity style={styles.addGuardianBtn} onPress={handleNavigateAddGuardian}>
+        <View style={[styles.addGuardianInner, isDark && { borderColor: '#475569' }]}>
+          <Ionicons name="add-circle" size={22} color={themeColors.primary} />
+          <Text style={[styles.addGuardianText, isDark && styles.textDark]}>Add Guardian</Text>
+        </View>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+
+  const renderMemberSection = (title: string, data: any[], emptyText?: string) => (
+    <View style={styles.section}>
+      <View style={styles.sectionHeader}>
+        <Text style={[styles.sectionTitle, isDark && styles.textDark]}>{title}</Text>
+        <Text style={[styles.sectionCount, isDark && styles.textMuted]}>{data.length}</Text>
+      </View>
+
+      {data.length === 0 && emptyText ? (
+        <View style={[styles.emptyState, isDark && styles.emptyStateDark]}>
+          <Ionicons name="people-outline" size={32} color={isDark ? '#555' : '#ccc'} />
+          <Text style={[styles.emptyStateText, isDark && styles.textMuted]}>{emptyText}</Text>
+        </View>
+      ) : (
+        data.map((member, index) => (
+          <Animated.View
+            key={member.id}
+            entering={shouldReduceMotion ? undefined : FadeInUp.delay(index * 100)}
+            layout={shouldReduceMotion ? undefined : Layout.springify()}
+            style={styles.memberCardWrapper}
+          >
+            <GlassCard onPress={() => handleMemberPress(member, member.id === (userProfile?.id || profile?.id))}>
+              <View style={styles.memberRow}>
+                <LinearGradient
+                  colors={
+                    member.role === UserRole.PARENT_1
+                      ? ['#667eea', '#764ba2']
+                      : member.role === UserRole.PARENT_2
+                      ? ['#fa709a', '#fee140']
+                      : ['#11998e', '#38ef7d']
+                  }
+                  style={styles.memberAvatar}
+                >
+                  <Text style={styles.memberAvatarText}>{member.fullName?.charAt(0) || '?'}</Text>
+                </LinearGradient>
+                <View style={styles.memberDetails}>
+                  <Text style={[styles.memberName, isDark && styles.textDark]}>{member.fullName}</Text>
+                  <View
+                    style={[
+                      styles.rolePill,
+                      {
+                        backgroundColor:
+                          member.role === UserRole.PARENT_1
+                            ? '#667eea20'
+                            : member.role === UserRole.PARENT_2
+                            ? '#fa709a20'
+                            : '#11998e20',
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.rolePillText,
+                        {
+                          color:
+                            member.role === UserRole.PARENT_1
+                              ? '#667eea'
+                              : member.role === UserRole.PARENT_2
+                              ? '#fa709a'
+                              : '#11998e',
+                        },
+                      ]}
+                    >
+                      {member.role === UserRole.PARENT_1 ? 'Primary' : member.role === UserRole.PARENT_2 ? 'Co-Parent' : member.relationship}
+                    </Text>
+                  </View>
+                </View>
+                {member.canBeRemoved && (
+                  <TouchableOpacity onPress={() => handleRemoveMember(member)} style={styles.removeBtn}>
+                    <Ionicons name="close-circle" size={24} color="#ef4444" />
+                  </TouchableOpacity>
+                )}
+                <Ionicons name="chevron-forward" size={20} color={isDark ? '#667eea' : '#764ba2'} />
+              </View>
+            </GlassCard>
+          </Animated.View>
+        ))
+      )}
+    </View>
+  );
+
+  // ─── Render Growth ────────────────────────────────────────────────
+
+  const renderGrowth = () => (
+    <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp} style={styles.tabPanel}>
+      <GlassCard style={styles.growthSummaryCard}>
+        <View style={styles.growthStatsRow}>
+          <View style={styles.growthStatItem}>
+            <LinearGradient colors={['#667eea', '#764ba2']} style={styles.growthStatIcon}>
+              <Ionicons name="resize-outline" size={20} color="#fff" />
+            </LinearGradient>
+            <View>
+              <Text style={[styles.growthStatValue, isDark && styles.textDark]}>
+                {growthData.filter((g) => g.type === 'height').pop()?.value || '--'}
+                {growthData.filter((g) => g.type === 'height').pop()?.unit || ''}
+              </Text>
+              <Text style={styles.growthStatLabel}>Height</Text>
+            </View>
+          </View>
+          <View style={styles.growthStatItem}>
+            <LinearGradient colors={['#fa709a', '#fee140']} style={styles.growthStatIcon}>
+              <Ionicons name="scale-outline" size={20} color="#fff" />
+            </LinearGradient>
+            <View>
+              <Text style={[styles.growthStatValue, isDark && styles.textDark]}>
+                {growthData.filter((g) => g.type === 'weight').pop()?.value || '--'}
+                {growthData.filter((g) => g.type === 'weight').pop()?.unit || ''}
+              </Text>
+              <Text style={styles.growthStatLabel}>Weight</Text>
+            </View>
+          </View>
+          <View style={styles.growthStatItem}>
+            <LinearGradient colors={['#11998e', '#38ef7d']} style={styles.growthStatIcon}>
+              <Ionicons name="analytics-outline" size={20} color="#fff" />
+            </LinearGradient>
+            <View>
+              <Text style={[styles.growthStatValue, isDark && styles.textDark]}>{growthData.length}</Text>
+              <Text style={styles.growthStatLabel}>Records</Text>
+            </View>
+          </View>
+        </View>
+      </GlassCard>
+
+      {recentMilestones.length > 0 && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Latest Milestones</Text>
+            <TouchableOpacity onPress={handleNavigateAchievements}>
+              <Text style={styles.seeAll}>View All</Text>
+            </TouchableOpacity>
+          </View>
+          <GlassCard style={styles.milestonesCard}>
+            {recentMilestones.map((m) => (
+              <MilestoneItem key={m.id} milestone={m} isDark={isDark} />
+            ))}
+          </GlassCard>
+        </View>
+      )}
+
+      <TouchableOpacity style={styles.fullChartBtn} onPress={handleNavigateGrowthChart}>
+        <LinearGradient colors={[themeColors.primary, themeColors.secondary]} style={styles.fullChartGradient}>
+          <Ionicons name="trending-up" size={20} color="#fff" />
+          <Text style={styles.fullChartText}>Full Growth Charts</Text>
+          <Ionicons name="arrow-forward" size={20} color="#fff" />
+        </LinearGradient>
+      </TouchableOpacity>
+    </Animated.View>
   );
 
   return (
     <View style={[styles.container, { flex: 1 }]}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-      <LinearGradient colors={themeColors.bg as [string, string, ...string[]]} style={styles.bg} />
+      <LinearGradient
+        colors={isDark ? ['#0a0a0a', '#1a1a2e'] : ['#f8fafc', '#e2e8f0']}
+        style={StyleSheet.absoluteFill}
+      />
 
-      {renderHeader}
-      {renderTabs}
+      {renderHeader()}
 
-      <View style={[styles.babyChipsWrapper, { top: insets.top + 130 }]}>
-        {renderBabyChips}
+      <View style={[styles.babyChipsWrapper, { top: insets.top + 180 }]}>
+        {renderBabyChips()}
       </View>
 
       <AnimatedScrollView
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingTop: insets.top + 200 },
-        ]}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 250, paddingBottom: insets.bottom + 30 }]}
         refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor="#667eea"
-          />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={themeColors.primary} colors={[themeColors.primary]} />
         }
         showsVerticalScrollIndicator={false}
         onScroll={scrollHandler}
         scrollEventThrottle={16}
       >
-        {activeTab === 'overview' && renderOverview}
-        {activeTab === 'family' && renderFamily}
-        {activeTab === 'growth' && renderGrowth}
+        {activeTab === 'overview' && renderOverview()}
+        {activeTab === 'family' && renderFamily()}
+        {activeTab === 'growth' && renderGrowth()}
 
         <View style={styles.bottomSpacer} />
       </AnimatedScrollView>
+
+      {/* Baby Selector Modal */}
+      <ActionModal
+        visible={showBabySelector}
+        onClose={() => setShowBabySelector(false)}
+        title="Select Baby"
+        isDark={isDark}
+        primaryColor={themeColors.primary}
+      >
+        <View style={styles.babySelectorContent}>
+          {babies.map((baby) => (
+            <TouchableOpacity
+              key={baby.id}
+              style={[
+                styles.babyOption,
+                currentBaby?.id === baby.id && [
+                  styles.babyOptionActive,
+                  { borderColor: themeColors.primary, backgroundColor: themeColors.colors[0] },
+                ],
+                isDark && styles.babyOptionDark,
+              ]}
+              onPress={() => {
+                handleSwitchBaby(baby.id);
+                setShowBabySelector(false);
+              }}
+            >
+              <View
+                style={[
+                  styles.babyOptionIcon,
+                  { backgroundColor: currentBaby?.id === baby.id ? themeColors.primary : isDark ? '#333' : '#e2e8f0' },
+                ]}
+              >
+                <Text style={styles.babyOptionEmoji}>👶</Text>
+              </View>
+              <View style={styles.babyOptionInfo}>
+                <Text style={[styles.babyOptionName, isDark && styles.textDark]}>{baby.name}</Text>
+                <Text style={[styles.babyOptionMeta, isDark && styles.textMuted]}>
+                  {new Date(baby.dateOfBirth).toLocaleDateString()} • {baby.gender || 'Baby'}
+                </Text>
+              </View>
+              {currentBaby?.id === baby.id && <Ionicons name="checkmark" size={24} color={themeColors.primary} />}
+            </TouchableOpacity>
+          ))}
+
+          <TouchableOpacity
+            style={[styles.addBabyOption, isDark && styles.addBabyOptionDark]}
+            onPress={() => {
+              setShowBabySelector(false);
+              navigation.navigate('CreateBabyProfile');
+            }}
+          >
+            <View style={[styles.addBabyIcon, { backgroundColor: themeColors.colors[0] }]}>
+              <Ionicons name="add" size={24} color={themeColors.primary} />
+            </View>
+            <Text style={[styles.addBabyText, isDark && styles.textDark, { color: themeColors.primary }]}>Add New Baby</Text>
+          </TouchableOpacity>
+        </View>
+      </ActionModal>
     </View>
   );
 }
 
+// ─── Styles (Unified with FamilySharingScreen) ───────────────────────
+
 const styles = StyleSheet.create({
+  // ── Base ──────────────────────────────────────────────────────────
   container: {
     flex: 1,
-  },
-  bg: {
-    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#f8f9fa',
   },
   textDark: {
     color: '#ffffff',
@@ -1476,6 +1122,7 @@ const styles = StyleSheet.create({
     height: 40,
   },
 
+  // ── Avatar ────────────────────────────────────────────────────────
   avatarWrapper: {
     position: 'relative',
   },
@@ -1509,93 +1156,111 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  header: {
+  // ── Header ────────────────────────────────────────────────────────
+  headerContainer: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     zIndex: 100,
-    paddingHorizontal: 16,
+    backgroundColor: 'transparent',
+    borderBottomWidth: 1,
+    borderBottomColor: 'transparent',
   },
-  headerContent: {
+  headerTop: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingBottom: 12,
   },
   headerBtn: {
     width: 40,
     height: 40,
     borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(255,255,255,0.9)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  headerBtnDark: {
+    backgroundColor: 'rgba(30,30,35,0.9)',
+  },
+  headerBtnAccent: {
+    backgroundColor: '#667eea',
+  },
+  headerTitleContainer: {
+    alignItems: 'center',
   },
   headerTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#1e293b',
-    letterSpacing: -0.5,
-  },
-
-  avatarStackContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  avatarStack: {
-    flexDirection: 'row',
-  },
-  stackAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#fff',
-  },
-  stackAvatarText: {
-    color: '#fff',
-    fontSize: 14,
+    fontSize: 18,
     fontWeight: '700',
+    color: '#1a1a1a',
   },
-  stackAvatarMore: {
-    backgroundColor: '#64748b',
+  babySelector: {
+    marginTop: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    backgroundColor: 'rgba(102,126,234,0.1)',
+    borderRadius: 12,
   },
-  stackAvatarMoreText: {
-    color: '#fff',
+  babySelectorText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#667eea',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  quickActionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+  },
+  iconAction: {
+    alignItems: 'center',
+    padding: 8,
+  },
+  iconActionLabel: {
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: '600',
+    color: '#64748b',
+    marginTop: 4,
   },
 
-  tabBar: {
-    position: 'absolute',
-    left: 16,
-    right: 16,
-    zIndex: 99,
-    borderRadius: 16,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 8,
-  },
+  // ── Tabs ────────────────────────────────────────────────────────
   tabContainer: {
     flexDirection: 'row',
+    backgroundColor: 'rgba(255,255,255,0.8)',
+    marginHorizontal: 16,
+    borderRadius: 16,
     padding: 4,
-    gap: 4,
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8 },
+      android: { elevation: 2, backgroundColor: 'rgba(255,255,255,0.95)' },
+    }),
+  },
+  tabContainerDark: {
+    backgroundColor: 'rgba(30,30,35,0.8)',
+    ...Platform.select({
+      android: { backgroundColor: 'rgba(30,30,35,0.95)' },
+    }),
   },
   tab: {
     flex: 1,
-  },
-  tabBg: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 10,
     borderRadius: 12,
     gap: 6,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  tabActive: {
+    backgroundColor: 'rgba(102,126,234,0.1)',
+    borderBottomColor: '#667eea',
   },
   tabLabel: {
     fontSize: 13,
@@ -1603,10 +1268,10 @@ const styles = StyleSheet.create({
     color: '#64748b',
   },
   tabLabelActive: {
-    color: '#667eea',
     fontWeight: '700',
   },
 
+  // ── Baby Chips ──────────────────────────────────────────────────
   babyChipsWrapper: {
     position: 'absolute',
     left: 0,
@@ -1673,16 +1338,16 @@ const styles = StyleSheet.create({
     color: '#64748b',
   },
 
+  // ── Glass Card ──────────────────────────────────────────────────
   glassCard: {
     borderRadius: 20,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
-    shadowColor: '#667eea',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    elevation: 8,
+    borderColor: 'rgba(255,255,255,0.3)',
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8 },
+      android: { elevation: 3, backgroundColor: 'rgba(255,255,255,0.95)' },
+    }),
   },
   glassBorder: {
     position: 'absolute',
@@ -1696,11 +1361,46 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
+  // ── Tab Panel ───────────────────────────────────────────────────
   tabPanel: {
     marginTop: 16,
     gap: 16,
   },
 
+  // ── Family Stats Summary ───────────────────────────────────────
+  familyStatsContainer: {
+    marginBottom: 20,
+  },
+  familyStatsGradient: {
+    borderRadius: 20,
+    padding: 16,
+  },
+  familyStatsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+  },
+  familyStat: {
+    alignItems: 'center',
+  },
+  familyStatValue: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#667eea',
+  },
+  familyStatLabel: {
+    fontSize: 11,
+    color: '#64748b',
+    marginTop: 4,
+    fontWeight: '600',
+  },
+  familyStatDivider: {
+    width: 1,
+    height: 40,
+    backgroundColor: 'rgba(0,0,0,0.1)',
+  },
+
+  // ── Hero Card ───────────────────────────────────────────────────
   heroCard: {
     padding: 20,
   },
@@ -1751,6 +1451,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
+  // ── Stats Row ───────────────────────────────────────────────────
   statsRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
@@ -1784,6 +1485,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
 
+  // ── Quick Stats ─────────────────────────────────────────────────
   quickStats: {
     flexDirection: 'row',
     gap: 20,
@@ -1802,6 +1504,7 @@ const styles = StyleSheet.create({
     color: '#1e293b',
   },
 
+  // ── Parent Card ─────────────────────────────────────────────────
   parentCard: {
     padding: 16,
   },
@@ -1836,6 +1539,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
+  // ── Section ─────────────────────────────────────────────────────
   section: {
     marginTop: 8,
   },
@@ -1847,10 +1551,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   sectionTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#1e293b',
-    letterSpacing: -0.3,
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1a1a1a',
+  },
+  sectionCount: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#64748b',
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
   },
   seeAll: {
     fontSize: 14,
@@ -1858,6 +1570,7 @@ const styles = StyleSheet.create({
     color: '#667eea',
   },
 
+  // ── Activity ────────────────────────────────────────────────────
   activityCard: {
     padding: 16,
   },
@@ -1893,51 +1606,10 @@ const styles = StyleSheet.create({
     color: '#94a3b8',
   },
 
-  summaryCard: {
-    padding: 20,
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-  },
-  summaryItem: {
-    alignItems: 'center',
-  },
-  summaryValue: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#1e293b',
-    letterSpacing: -1,
-  },
-  summaryLabel: {
-    fontSize: 12,
-    color: '#64748b',
-    marginTop: 4,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  summaryDivider: {
-    width: 1,
-    height: 40,
-    backgroundColor: 'rgba(100,116,139,0.15)',
-  },
-
-  memberSection: {
-    marginTop: 8,
-  },
-  memberSectionTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#64748b',
-    marginBottom: 10,
-    marginLeft: 4,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  memberCard: {
-    marginBottom: 10,
+  // ── Member Section ──────────────────────────────────────────────
+  memberCardWrapper: {
+    marginBottom: 14,
+    borderRadius: 20,
   },
   memberRow: {
     flexDirection: 'row',
@@ -1980,8 +1652,10 @@ const styles = StyleSheet.create({
   },
   removeBtn: {
     padding: 4,
+    marginRight: 8,
   },
 
+  // ── Add Buttons ─────────────────────────────────────────────────
   addBtn: {
     marginTop: 8,
     borderRadius: 16,
@@ -2025,6 +1699,25 @@ const styles = StyleSheet.create({
     color: '#64748b',
   },
 
+  // ── Empty State ─────────────────────────────────────────────────
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+    backgroundColor: 'rgba(255,255,255,0.5)',
+    borderRadius: 16,
+  },
+  emptyStateDark: {
+    backgroundColor: 'rgba(30,30,35,0.5)',
+  },
+  emptyStateText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#64748b',
+    marginTop: 8,
+  },
+
+  // ── Growth ──────────────────────────────────────────────────────
   growthSummaryCard: {
     padding: 20,
   },
@@ -2119,5 +1812,146 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '700',
+  },
+
+  // ── Avatar Stack ────────────────────────────────────────────────
+  avatarStackContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  avatarStack: {
+    flexDirection: 'row',
+  },
+  stackAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  stackAvatarText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  stackAvatarMore: {
+    backgroundColor: '#64748b',
+  },
+  stackAvatarMoreText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+
+  // ── Modal ───────────────────────────────────────────────────────
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    padding: 20,
+  },
+  modalContent: {
+    width: '90%',
+    maxHeight: '80%',
+    borderRadius: 20,
+    overflow: 'hidden',
+    backgroundColor: '#fff',
+  },
+  modalContentDark: {
+    backgroundColor: '#1a1a2e',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  modalCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.05)',
+  },
+  modalScrollContent: {
+    padding: 16,
+  },
+
+  // ── Baby Selector Modal ─────────────────────────────────────────
+  babySelectorContent: {
+    padding: 16,
+  },
+  babyOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'transparent',
+    backgroundColor: 'rgba(0,0,0,0.02)',
+    marginBottom: 8,
+  },
+  babyOptionActive: {
+    borderWidth: 2,
+    backgroundColor: 'rgba(102,126,234,0.05)',
+  },
+  babyOptionDark: {
+    backgroundColor: 'rgba(255,255,255,0.03)',
+  },
+  babyOptionIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14,
+  },
+  babyOptionEmoji: {
+    fontSize: 24,
+  },
+  babyOptionInfo: {
+    flex: 1,
+  },
+  babyOptionName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1a1a1a',
+  },
+  babyOptionMeta: {
+    fontSize: 13,
+    color: '#94a3b8',
+    marginTop: 2,
+  },
+  addBabyOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: 'rgba(0,0,0,0.1)',
+    marginTop: 8,
+  },
+  addBabyOptionDark: {
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  addBabyIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14,
   },
 });

@@ -150,9 +150,9 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
   const navigateToUserProfile = useCallback((userId: string) => {
     triggerHaptic('light');
     if (userId === currentUser?.id) {
-      navigation.navigate('EditCommunityProfile');
+      navigation.navigate('CommunityProfile');
     } else {
-      navigation.navigate('UserProfile', { userId });
+      navigation.navigate('CommunityMemberProfile', { userId });
     }
   }, [navigation, currentUser, triggerHaptic]);
 

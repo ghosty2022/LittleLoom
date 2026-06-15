@@ -592,7 +592,7 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = React.memo(({
     navigation.navigate('Main', {
       screen: 'Connect',
       params: {
-        screen: 'EditCommunityProfile',
+        screen: 'CommunityProfile',
         params: { userId: userProfile?.id },
       },
     });

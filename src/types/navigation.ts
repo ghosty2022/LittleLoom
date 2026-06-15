@@ -73,7 +73,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission> = {
   },
 };
 
-export interface UserProfile {
+export interface CommunityMemberProfile {
   id: string;
   fullName: string;
   email: string;
@@ -92,7 +92,7 @@ export interface AuthState {
   isLoading: boolean;
   isAuthenticated: boolean;
   userToken: string | null;
-  userProfile: UserProfile | null;
+  userProfile: CommunityMemberProfile | null;
   onboardingComplete: boolean;
   isBiometricAvailable: boolean;
   isBiometricEnabled: boolean;
@@ -208,11 +208,17 @@ export type CommunityStackParamList = {
   Topic: { topicId: string };
   CreatePost: { topicId?: string };
   PostDetail: { postId: string };
-  UserProfile: { userId: string };
+  
+  // RENAMED: Was UserProfile - now for viewing OTHER community members
+  CommunityMemberProfile: { userId: string };
+  
   ChatList: undefined;
   Chat: { userId: string };
   Notifications: undefined;
-  EditCommunityProfile: { userId?: string };
+  
+  // RENAMED: Was EditCommunityProfile - now for viewing/editing SELF profile
+  CommunityProfile: { userId?: string } | undefined;
+  
   TopicMembers: { topicId: string };
   Followers: { userId: string };
   Following: { userId: string };
@@ -228,6 +234,10 @@ export type CommunityStackParamList = {
     targetUserId?: string;
     postId?: string;
   };
+  
+  // DEPRECATED ROUTES (keep for backward compatibility during migration)
+  // UserProfile: { userId: string }; // Use CommunityMemberProfile instead
+  // EditCommunityProfile: undefined; // Use CommunityProfile instead
 };
 
 export type MainTabParamList = {
@@ -275,6 +285,14 @@ export type TrackerRemindersNavigationProp = NativeStackScreenProps<RootStackPar
 export type TrackerRemindersRouteProp = RouteProp<RootStackParamList, 'TrackerReminders'>;
 
 export type CreateCustomTrackerNavigationProp = NativeStackScreenProps<RootStackParamList, 'CreateCustomTracker'>['navigation'];
+
+// NEW: Community Profile screen types
+export type CommunityProfileNavigationProp = NativeStackScreenProps<CommunityStackParamList, 'CommunityProfile'>['navigation'];
+export type CommunityProfileRouteProp = RouteProp<CommunityStackParamList, 'CommunityProfile'>;
+
+// NEW: Community Member Profile screen types
+export type CommunityMemberProfileNavigationProp = NativeStackScreenProps<CommunityStackParamList, 'CommunityMemberProfile'>['navigation'];
+export type CommunityMemberProfileRouteProp = RouteProp<CommunityStackParamList, 'CommunityMemberProfile'>;
 
 export type NavigationState = 
   | 'LOADING'

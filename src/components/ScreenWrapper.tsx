@@ -28,9 +28,9 @@ const DOCK_HEIGHT = 72; // Slightly reduced for tighter pill
 const COMMUNITY_BOTTOM = 0; // No extra padding — community screens are full-screen
 
 const FULL_SCREEN_ROUTES = new Set([
-  'CommunitySplash', 'CommunityOnboarding', 'CreatePost', 'EditCommunityProfile', 
+  'CommunitySplash', 'CommunityOnboarding', 'CreatePost', 'CommunityProfile', 
   'Report', 'PostDetail', 'Chat', 'ChatList', 'Notifications',
-  'Topic', 'UserProfile', 'Followers', 'Following', 'SearchUsers', 'BlockedUsers',
+  'Topic', 'CommunityMemberProfile', 'Followers', 'Following', 'SearchUsers', 'BlockedUsers',
   'TopicMembers',
 ]);
 

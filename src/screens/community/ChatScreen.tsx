@@ -13,6 +13,7 @@ import {
   ActivityIndicator,
   Modal,
   StatusBar,
+  Pressable,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -20,10 +21,16 @@ import { Ionicons } from '@expo/vector-icons';
 import Animated, {
   FadeInUp,
   FadeIn,
+  FadeOut,
   Layout,
   useAnimatedStyle,
   withSpring,
+  withTiming,
   useSharedValue,
+  interpolate,
+  Easing,
+  withRepeat,
+  withSequence,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
@@ -38,398 +45,233 @@ import {
   MessageType,
   FileMetadata,
 } from '../../context/CommunityContext';
+import { useApp } from '../../context/AppContext';
 import { useUser } from '../../context/UserContext';
 import { showErrorModal, showConfirmModal } from '../../utils/modal';
-import { useCustomization } from '../../hooks/useCustomization';
+import { useSweetAlert } from '../../components/SweetAlert';
+import { SafeAvatar } from '../../components/SafeAvatar';
 import {
   AutoHideScrollView,
   AutoHideFlatList,
 } from '../../components/AutoHideScrollWrappers';
-import {
-  CommunitySpacing,
-  CommunityBorderRadius,
-  CommunityShadows,
-} from '../../theme/CommunityTheme';
+
+// ═══════════════════════════════════════════════════════════
+// UNIFIED LITTLELOOM THEME — matches CommunityScreen exactly
+// ═══════════════════════════════════════════════════════════
+const LL = {
+  primary: '#7c6cf1',
+  primaryLight: '#a5b4fc',
+  primaryDark: '#6b5ce7',
+  primaryGhost: '#7c6cf118',
+  accent: '#f472b6',
+  accentSoft: '#fbcfe8',
+  success: '#34d399',
+  warning: '#fbbf24',
+  info: '#38bdf8',
+  error: '#ef4444',
+  white: '#ffffff',
+  gray50: '#f8f9ff',
+  gray100: '#f0f2ff',
+  gray200: '#e2e8f0',
+  gray300: '#cbd5e1',
+  gray400: '#94a3b8',
+  gray500: '#64748b',
+  gray600: '#475569',
+  gray700: '#334155',
+  gray800: '#1e293b',
+  gray900: '#0f172a',
+  darkBg: '#0b0f1f',
+  darkSurface: '#151b2e',
+  darkCard: '#1a2236',
+  darkBorder: 'rgba(255,255,255,0.06)',
+  space: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, '2xl': 24, '3xl': 32, '4xl': 40 },
+  radius: { sm: 8, md: 12, lg: 16, xl: 20, '2xl': 24, full: 999 },
+  text: {
+    xs: { size: 11, line: 14, weight: '500' },
+    sm: { size: 13, line: 18, weight: '600' },
+    base: { size: 15, line: 22, weight: '400' },
+    lg: { size: 16, line: 24, weight: '600' },
+    xl: { size: 18, line: 26, weight: '700' },
+    '2xl': { size: 22, line: 30, weight: '800' },
+  },
+  shadow: {
+    sm: { shadowColor: '#7c6cf1', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
+    md: { shadowColor: '#7c6cf1', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.08, shadowRadius: 16, elevation: 5 },
+    lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.12, shadowRadius: 32, elevation: 10 },
+  },
+};
+
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
 type ChatScreenProps = NativeStackScreenProps<CommunityStackParamList, 'Chat'>;
 
-const { width, height } = Dimensions.get('window');
-
-interface ChatTheme {
-  primary: string;
-  secondary: string;
-  accent: string;
-  background: {
-    gradient: [string, string, string];
-    card: string;
-    elevated: string;
-    main: string;
-  };
-  text: {
-    primary: string;
-    secondary: string;
-    tertiary: string;
-  };
-  error: string;
-  success: string;
-  info: string;
-  divider: string;
-  border: string;
-  overlay: {
-    background: string;
-    border: string;
-  };
-}
-
+// ═══════════════════════════════════════════════════════════
+// UTILITY FUNCTIONS
+// ═══════════════════════════════════════════════════════════
 const isImageUri = (value: string | undefined | null): boolean => {
   if (!value || typeof value !== 'string') return false;
-  return (
-    value.startsWith('http') ||
-    value.startsWith('file://') ||
-    value.startsWith('data:')
-  );
+  return value.startsWith('http') || value.startsWith('file://') || value.startsWith('data:');
 };
 
-const isEmoji = (value: string | undefined | null): boolean => {
-  if (!value || typeof value !== 'string') return false;
-  if (value.length > 4) return false;
-  for (const char of value) {
-    const code = char.codePointAt(0) || 0;
-    const isEmojiChar =
-      (code >= 0x1f600 && code <= 0x1f64f) ||
-      (code >= 0x1f300 && code <= 0x1f5ff) ||
-      (code >= 0x1f680 && code <= 0x1f6ff) ||
-      (code >= 0x1f1e0 && code <= 0x1f1ff) ||
-      (code >= 0x2600 && code <= 0x26ff) ||
-      (code >= 0x2700 && code <= 0x27bf) ||
-      (code >= 0x1f900 && code <= 0x1f9ff) ||
-      (code >= 0x1f018 && code <= 0x1f270) ||
-      code === 0x238c ||
-      code === 0x2b06 ||
-      code === 0x2b07 ||
-      code === 0x2b05 ||
-      code === 0x27a1 ||
-      (code >= 0x2194 && code <= 0x2199) ||
-      (code >= 0x21a9 && code <= 0x21aa) ||
-      (code >= 0x2934 && code <= 0x2935) ||
-      (code >= 0x25aa && code <= 0x25ab) ||
-      (code >= 0x25fb && code <= 0x25fe) ||
-      code === 0x25b6 ||
-      code === 0x25c0 ||
-      (code >= 0x1f200 && code <= 0x1f251) ||
-      code === 0x1f004 ||
-      code === 0x1f0cf ||
-      (code >= 0x1f170 && code <= 0x1f171) ||
-      (code >= 0x1f17e && code <= 0x1f17f) ||
-      code === 0x1f18e ||
-      code === 0x3030 ||
-      code === 0x2b50 ||
-      code === 0x2b55 ||
-      (code >= 0x23e9 && code <= 0x23ec) ||
-      code === 0x23f0 ||
-      code === 0x23f3 ||
-      (code >= 0x231a && code <= 0x231b) ||
-      (code >= 0x23f8 && code <= 0x23fa) ||
-      code === 0x24c2 ||
-      (code >= 0x1f3fb && code <= 0x1f3ff) ||
-      (code >= 0x1f3e0 && code <= 0x1f3f4) ||
-      (code >= 0x1f3f8 && code <= 0x1f43f) ||
-      code === 0x1f440 ||
-      (code >= 0x1f442 && code <= 0x1f4ff) ||
-      (code >= 0x1f500 && code <= 0x1f53d) ||
-      (code >= 0x1f54b && code <= 0x1f54e) ||
-      (code >= 0x1f550 && code <= 0x1f567) ||
-      (code >= 0x1f595 && code <= 0x1f596) ||
-      (code >= 0x1f5fb && code <= 0x1f64f) ||
-      (code >= 0x1f680 && code <= 0x1f6c5) ||
-      (code >= 0x1f6cb && code <= 0x1f6d2) ||
-      (code >= 0x1f6e0 && code <= 0x1f6e5) ||
-      code === 0x1f6e9 ||
-      (code >= 0x1f6eb && code <= 0x1f6ec) ||
-      code === 0x1f6f0 ||
-      (code >= 0x1f6f3 && code <= 0x1f6f8) ||
-      (code >= 0x1f910 && code <= 0x1f93a) ||
-      (code >= 0x1f93c && code <= 0x1f93e) ||
-      (code >= 0x1f940 && code <= 0x1f945) ||
-      (code >= 0x1f947 && code <= 0x1f94c) ||
-      (code >= 0x1f950 && code <= 0x1f96b) ||
-      (code >= 0x1f980 && code <= 0x1f997) ||
-      code === 0x1f9c0 ||
-      (code >= 0x1f9d0 && code <= 0x1f9e6);
-    if (!isEmojiChar) return false;
-  }
-  return true;
+const formatFileSize = (bytes: number) => {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 };
 
-const SafeAvatar: React.FC<{
-  avatar?: string | null;
-  size?: number;
-  fallbackEmoji?: string;
-  fallbackColor?: string;
-}> = ({ avatar, size = 44, fallbackEmoji = '👤', fallbackColor = '#667eea' }) => {
-  const hasImage = isImageUri(avatar);
-  const hasEmoji = isEmoji(avatar);
+const getFileIcon = (mimeType?: string) => {
+  if (!mimeType) return 'document';
+  if (mimeType.startsWith('image/')) return 'image';
+  if (mimeType.startsWith('video/')) return 'videocam';
+  if (mimeType.startsWith('audio/')) return 'musical-note';
+  if (mimeType.includes('pdf')) return 'document-text';
+  return 'document';
+};
+
+const formatTime = (timestamp: string) => {
+  const date = new Date(timestamp);
+  const now = new Date();
+  const diff = now.getTime() - date.getTime();
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  if (days === 0) return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  if (days === 1) return 'Yesterday';
+  if (days < 7) return date.toLocaleDateString([], { weekday: 'short' });
+  return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+};
+
+// ═══════════════════════════════════════════════════════════
+// TYPING DOTS ANIMATION COMPONENT
+// ═══════════════════════════════════════════════════════════
+const TypingDots = React.memo(({ isDark }: { isDark: boolean }) => {
+  const dot1 = useSharedValue(0);
+  const dot2 = useSharedValue(0);
+  const dot3 = useSharedValue(0);
+
+  useEffect(() => {
+    dot1.value = withRepeat(
+      withSequence(withTiming(1, { duration: 400 }), withTiming(0, { duration: 400 })),
+      -1,
+      true
+    );
+    dot2.value = withRepeat(
+      withSequence(withTiming(1, { duration: 400, easing: Easing.ease }), withTiming(0, { duration: 400, easing: Easing.ease })),
+      -1,
+      true
+    );
+    dot3.value = withRepeat(
+      withSequence(withTiming(1, { duration: 400, easing: Easing.ease }), withTiming(0, { duration: 400, easing: Easing.ease })),
+      -1,
+      true
+    );
+  }, []);
+
+  const s1 = useAnimatedStyle(() => ({ opacity: interpolate(dot1.value, [0, 1], [0.3, 1]) }));
+  const s2 = useAnimatedStyle(() => ({ opacity: interpolate(dot2.value, [0, 1], [0.3, 1]) }));
+  const s3 = useAnimatedStyle(() => ({ opacity: interpolate(dot3.value, [0, 1], [0.3, 1]) }));
+
+  const dotColor = isDark ? LL.gray400 : LL.gray500;
 
   return (
-    <View style={[styles.avatarWrapper, { width: size, height: size }]}>
-      <LinearGradient
-        colors={
-          hasImage
-            ? ['#f0f0f0', '#e0e0e0']
-            : [fallbackColor + '40', fallbackColor + '20']
-        }
-        style={[
-          styles.avatarGradient,
-          { width: size, height: size, borderRadius: size / 2 },
-        ]}
-      >
-        {hasImage ? (
-          <Image
-            source={{ uri: avatar! }}
-            style={{
-              width: size,
-              height: size,
-              borderRadius: size / 2,
-            }}
-            resizeMode="cover"
-            onError={(e) =>
-              console.log('Avatar image error:', e.nativeEvent.error)
-            }
-          />
-        ) : hasEmoji ? (
-          <Text style={[styles.avatarEmoji, { fontSize: size * 0.5 }]}>
-            {avatar}
-          </Text>
-        ) : (
-          <Text style={[styles.avatarEmoji, { fontSize: size * 0.5 }]}>
-            {fallbackEmoji}
-          </Text>
-        )}
-      </LinearGradient>
+    <View style={styles.typingDotsRow}>
+      <Animated.View style={[styles.typingDot, { backgroundColor: dotColor }, s1]} />
+      <Animated.View style={[styles.typingDot, { backgroundColor: dotColor }, s2]} />
+      <Animated.View style={[styles.typingDot, { backgroundColor: dotColor }, s3]} />
     </View>
   );
-};
+});
 
-const DeliveryStatus: React.FC<{ status: Message['deliveryStatus'] }> = ({
-  status,
-}) => {
+// ═══════════════════════════════════════════════════════════
+// DELIVERY STATUS COMPONENT
+// ═══════════════════════════════════════════════════════════
+const DeliveryStatus = React.memo(({ status }: { status: Message['deliveryStatus'] }) => {
   if (status === 'sending') {
-    return (
-      <ActivityIndicator
-        size={12}
-        color="rgba(255,255,255,0.7)"
-        style={{ marginLeft: 4 }}
-      />
-    );
+    return <ActivityIndicator size={12} color={LL.gray400} style={{ marginLeft: 4 }} />;
   }
   if (status === 'failed') {
-    return (
-      <Ionicons
-        name="alert-circle"
-        size={14}
-        color="#ff4757"
-        style={{ marginLeft: 4 }}
-      />
-    );
+    return <Ionicons name="alert-circle" size={14} color={LL.error} style={{ marginLeft: 4 }} />;
   }
   if (status === 'sent') {
-    return (
-      <Ionicons
-        name="checkmark"
-        size={14}
-        color="rgba(255,255,255,0.7)"
-        style={{ marginLeft: 4 }}
-      />
-    );
+    return <Ionicons name="checkmark" size={14} color={LL.gray400} style={{ marginLeft: 4 }} />;
   }
   if (status === 'delivered') {
-    return (
-      <Ionicons
-        name="checkmark-done"
-        size={14}
-        color="rgba(255,255,255,0.7)"
-        style={{ marginLeft: 4 }}
-      />
-    );
+    return <Ionicons name="checkmark-done" size={14} color={LL.gray400} style={{ marginLeft: 4 }} />;
   }
   if (status === 'read') {
-    return (
-      <Ionicons
-        name="checkmark-done"
-        size={14}
-        color="#34b7f1"
-        style={{ marginLeft: 4 }}
-      />
-    );
+    return <Ionicons name="checkmark-done" size={14} color={LL.info} style={{ marginLeft: 4 }} />;
   }
   return null;
-};
+});
 
-const FileBubble: React.FC<{
-  fileMeta?: FileMetadata;
-  isMe: boolean;
-  onPress: () => void;
-  primaryColor: string;
-  textPrimary: string;
-  textSecondary: string;
-}> = ({ fileMeta, isMe, onPress, primaryColor, textPrimary, textSecondary }) => {
-  if (!fileMeta) return null;
-
-  const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-  };
-
-  const getFileIcon = () => {
-    if (fileMeta.type.startsWith('image/')) return 'image';
-    if (fileMeta.type.startsWith('video/')) return 'videocam';
-    if (fileMeta.type.startsWith('audio/')) return 'musical-note';
-    if (fileMeta.type.includes('pdf')) return 'document-text';
-    return 'document';
-  };
-
-  return (
-    <TouchableOpacity
-      style={styles.fileBubble}
-      onPress={onPress}
-      activeOpacity={0.8}
-    >
-      <View
-        style={[
-          styles.fileIconContainer,
-          {
-            backgroundColor: isMe
-              ? 'rgba(255,255,255,0.2)'
-              : primaryColor + '20',
-          },
-        ]}
-      >
-        <Ionicons
-          name={getFileIcon() as any}
-          size={24}
-          color={isMe ? '#fff' : primaryColor}
-        />
-      </View>
-      <View style={styles.fileInfo}>
-        <Text
-          style={[
-            styles.fileName,
-            { color: isMe ? '#fff' : textPrimary },
-          ]}
-          numberOfLines={1}
-        >
-          {fileMeta.name}
-        </Text>
-        <Text
-          style={[
-            styles.fileSize,
-            { color: isMe ? 'rgba(255,255,255,0.7)' : textSecondary },
-          ]}
-        >
-          {formatFileSize(fileMeta.size)}
-        </Text>
-      </View>
-      <Ionicons
-        name="download-outline"
-        size={18}
-        color={isMe ? 'rgba(255,255,255,0.8)' : primaryColor}
-      />
-    </TouchableOpacity>
-  );
-};
-
-const ImagePreviewModal: React.FC<{
-  visible: boolean;
-  imageUrl: string;
-  onClose: () => void;
-  primaryColor: string;
-  hapticFeedback: boolean;
-  reduceMotion: boolean;
-}> = ({
+// ═══════════════════════════════════════════════════════════
+// IMAGE PREVIEW MODAL
+// ═══════════════════════════════════════════════════════════
+const ImagePreviewModal = React.memo(({
   visible,
   imageUrl,
   onClose,
-  primaryColor,
-  hapticFeedback,
-  reduceMotion,
+  isDark,
+}: {
+  visible: boolean;
+  imageUrl: string;
+  onClose: () => void;
+  isDark: boolean;
 }) => {
   const [loading, setLoading] = useState(true);
+  const scale = useSharedValue(0.9);
+  const opacity = useSharedValue(0);
+
+  useEffect(() => {
+    if (visible) {
+      scale.value = withSpring(1, { damping: 20 });
+      opacity.value = withTiming(1, { duration: 200 });
+    } else {
+      scale.value = withTiming(0.9, { duration: 200 });
+      opacity.value = withTiming(0, { duration: 200 });
+    }
+  }, [visible]);
+
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+    opacity: opacity.value,
+  }));
+
+  if (!visible) return null;
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      <TouchableOpacity
-        style={styles.imagePreviewOverlay}
-        onPress={onClose}
-        activeOpacity={1}
-      >
-        <BlurView intensity={95} style={StyleSheet.absoluteFill} tint="dark" />
-        <Animated.View
-          entering={reduceMotion ? undefined : FadeIn}
-          style={styles.imagePreviewContainer}
-        >
-          {loading && (
-            <ActivityIndicator
-              size="large"
-              color={primaryColor}
-              style={styles.imagePreviewLoader}
-            />
-          )}
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.imagePreviewOverlay} onPress={onClose}>
+        <BlurView intensity={95} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
+        <Animated.View style={[styles.imagePreviewContainer, animStyle]}>
+          {loading && <ActivityIndicator size="large" color={LL.primary} style={styles.imagePreviewLoader} />}
           <Image
             source={{ uri: imageUrl }}
             style={styles.imagePreviewImage}
             resizeMode="contain"
             onLoadStart={() => setLoading(true)}
             onLoadEnd={() => setLoading(false)}
-            onError={() => setLoading(false)}
           />
-          <TouchableOpacity
-            style={styles.imagePreviewClose}
-            onPress={() => {
-              if (hapticFeedback) {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              }
-              onClose();
-            }}
-          >
-            <BlurView intensity={80} style={styles.imagePreviewCloseBlur}>
-              <Ionicons name="close" size={24} color="#fff" />
-            </BlurView>
+          <TouchableOpacity style={styles.imagePreviewClose} onPress={onClose}>
+            <LinearGradient colors={[LL.gray800, LL.gray700]} style={styles.imagePreviewCloseGrad}>
+              <Ionicons name="close" size={20} color={LL.white} />
+            </LinearGradient>
           </TouchableOpacity>
         </Animated.View>
-      </TouchableOpacity>
+      </Pressable>
     </Modal>
   );
-};
+});
 
-const MessageBubble: React.FC<{
-  message: Message;
-  isMe: boolean;
-  user: any;
-  showAvatar: boolean;
-  theme: ChatTheme;
-  onReaction: (emoji: string) => void;
-  onReply: () => void;
-  onDelete: () => void;
-  onEdit: () => void;
-  onImagePress: (url: string) => void;
-  onFilePress: (meta?: FileMetadata) => void;
-  onResend: () => void;
-  hapticFeedback: boolean;
-  reduceMotion: boolean;
-}> = ({
+// ═══════════════════════════════════════════════════════════
+// MESSAGE BUBBLE COMPONENT
+// ═══════════════════════════════════════════════════════════
+const MessageBubble = React.memo(({
   message,
   isMe,
   user,
   showAvatar,
-  theme,
+  isDark,
   onReaction,
   onReply,
   onDelete,
@@ -437,8 +279,19 @@ const MessageBubble: React.FC<{
   onImagePress,
   onFilePress,
   onResend,
-  hapticFeedback,
-  reduceMotion,
+}: {
+  message: Message;
+  isMe: boolean;
+  user: any;
+  showAvatar: boolean;
+  isDark: boolean;
+  onReaction: (emoji: string) => void;
+  onReply: () => void;
+  onDelete: () => void;
+  onEdit: () => void;
+  onImagePress: (url: string) => void;
+  onFilePress: (meta?: FileMetadata) => void;
+  onResend: () => void;
 }) => {
   const [showActions, setShowActions] = useState(false);
   const [imageLoading, setImageLoading] = useState(true);
@@ -449,107 +302,44 @@ const MessageBubble: React.FC<{
   }));
 
   const handleLongPress = () => {
-    if (hapticFeedback) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    }
-    scale.value = withSpring(0.98, { damping: 20 });
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    scale.value = withSpring(0.96, { damping: 20 });
     setShowActions(true);
-    setTimeout(() => {
-      scale.value = withSpring(1);
-    }, 150);
+    setTimeout(() => { scale.value = withSpring(1); }, 150);
   };
 
-  const formatTime = (timestamp: string) => {
-    return new Date(timestamp).toLocaleTimeString([], {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
+  const bubbleBg = isMe ? LL.primary : (isDark ? LL.darkCard : LL.white);
+  const bubbleBorder = isMe ? undefined : (isDark ? LL.darkBorder : LL.gray200);
+  const textColor = isMe ? LL.white : (isDark ? LL.gray300 : LL.gray700);
+  const metaColor = isMe ? 'rgba(255,255,255,0.7)' : (isDark ? LL.gray500 : LL.gray400);
 
   return (
     <Animated.View
-      entering={reduceMotion ? undefined : isMe ? FadeInUp : FadeInUp}
-      layout={reduceMotion ? undefined : Layout.springify()}
-      style={[
-        styles.messageContainer,
-        isMe ? styles.myMessage : styles.theirMessage,
-      ]}
+      entering={FadeInUp.duration(300).springify()}
+      layout={Layout.springify()}
+      style={[styles.messageContainer, isMe ? styles.myMessage : styles.theirMessage]}
     >
       {!isMe && showAvatar && (
-        <TouchableOpacity
-          onPress={() =>
-            user && Alert.alert(user.displayName, `Handle: ${user.handle}`)
-          }
-          style={styles.avatarSmall}
-        >
-          <SafeAvatar
-            avatar={user?.avatar}
-            size={32}
-            fallbackEmoji="👤"
-            fallbackColor={theme.primary}
-          />
+        <TouchableOpacity onPress={() => user && Alert.alert(user.displayName, `Handle: ${user.handle}`)} style={styles.avatarSmall}>
+          <SafeAvatar avatar={user?.avatar} size={32} fallbackIcon="person" fallbackColor={LL.primary} fallbackBgColor={`${LL.primary}15`} />
         </TouchableOpacity>
       )}
 
       <View style={[!isMe && !showAvatar && { marginLeft: 44 }]}>
         <Animated.View style={animatedStyle}>
-          <TouchableOpacity
-            onLongPress={handleLongPress}
-            activeOpacity={0.9}
-            delayLongPress={200}
-          >
-            <View
-              style={[
-                styles.messageBubble,
-                isMe
-                  ? [styles.myBubble, { backgroundColor: theme.primary }]
-                  : [
-                      styles.theirBubble,
-                      {
-                        backgroundColor: theme.background.card,
-                        borderColor: theme.border,
-                      },
-                    ],
-              ]}
-            >
+          <TouchableOpacity onLongPress={handleLongPress} activeOpacity={0.9} delayLongPress={250}>
+            <View style={[
+              styles.messageBubble,
+              isMe ? styles.myBubble : styles.theirBubble,
+              { backgroundColor: bubbleBg },
+              bubbleBorder && { borderColor: bubbleBorder, borderWidth: 1 },
+            ]}>
               {/* Reply reference */}
               {message.replyTo && (
-                <View
-                  style={[
-                    styles.replyPreview,
-                    isMe
-                      ? [
-                          styles.replyPreviewMe,
-                          { backgroundColor: 'rgba(255,255,255,0.2)' },
-                        ]
-                      : [
-                          styles.replyPreviewThem,
-                          { backgroundColor: theme.primary + '15' },
-                        ],
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.replyLine,
-                      {
-                        backgroundColor: isMe
-                          ? 'rgba(255,255,255,0.5)'
-                          : theme.primary,
-                      },
-                    ]}
-                  />
+                <View style={[styles.replyPreview, { backgroundColor: isMe ? 'rgba(255,255,255,0.15)' : `${LL.primary}12` }]}>
+                  <View style={[styles.replyLine, { backgroundColor: isMe ? 'rgba(255,255,255,0.5)' : LL.primary }]} />
                   <View style={styles.replyContent}>
-                    <Text
-                      style={[
-                        styles.replyName,
-                        {
-                          color: isMe
-                            ? 'rgba(255,255,255,0.8)'
-                            : theme.primary,
-                        },
-                      ]}
-                      numberOfLines={1}
-                    >
+                    <Text style={[styles.replyName, { color: isMe ? 'rgba(255,255,255,0.85)' : LL.primary }]} numberOfLines={1}>
                       {message.replyToPreview || 'Replying to message...'}
                     </Text>
                   </View>
@@ -559,26 +349,18 @@ const MessageBubble: React.FC<{
               {/* Failed retry */}
               {message.deliveryStatus === 'failed' && isMe && (
                 <TouchableOpacity onPress={onResend} style={styles.resendButton}>
-                  <Ionicons name="refresh" size={16} color={theme.error} />
-                  <Text style={[styles.resendText, { color: theme.error }]}>
-                    Tap to retry
-                  </Text>
+                  <Ionicons name="refresh" size={14} color={LL.error} />
+                  <Text style={[styles.resendText, { color: LL.error }]}>Tap to retry</Text>
                 </TouchableOpacity>
               )}
 
               {/* Message content */}
               {message.type === 'image' && message.imageUrl ? (
-                <TouchableOpacity
-                  onPress={() => onImagePress(message.imageUrl)}
-                  activeOpacity={0.9}
-                >
+                <TouchableOpacity onPress={() => onImagePress(message.imageUrl!)} activeOpacity={0.9}>
                   <View style={styles.imageContainer}>
                     {imageLoading && (
-                      <View style={styles.imagePlaceholder}>
-                        <ActivityIndicator
-                          size="small"
-                          color={isMe ? '#fff' : theme.primary}
-                        />
+                      <View style={[styles.imagePlaceholder, { backgroundColor: isDark ? LL.darkSurface : LL.gray100 }]}>
+                        <ActivityIndicator size="small" color={LL.primary} />
                       </View>
                     )}
                     <Image
@@ -587,58 +369,28 @@ const MessageBubble: React.FC<{
                       resizeMode="cover"
                       onLoadStart={() => setImageLoading(true)}
                       onLoadEnd={() => setImageLoading(false)}
-                      onError={() => setImageLoading(false)}
                     />
                   </View>
                 </TouchableOpacity>
               ) : message.type === 'file' ? (
-                <FileBubble
-                  fileMeta={message.fileMetadata}
-                  isMe={isMe}
-                  onPress={() => onFilePress(message.fileMetadata)}
-                  primaryColor={theme.primary}
-                  textPrimary={theme.text.primary}
-                  textSecondary={theme.text.secondary}
-                />
+                <TouchableOpacity style={styles.fileBubble} onPress={() => onFilePress(message.fileMetadata)} activeOpacity={0.8}>
+                  <View style={[styles.fileIconContainer, { backgroundColor: isMe ? 'rgba(255,255,255,0.2)' : `${LL.primary}18` }]}>
+                    <Ionicons name={getFileIcon(message.fileMetadata?.type) as any} size={22} color={isMe ? LL.white : LL.primary} />
+                  </View>
+                  <View style={styles.fileInfo}>
+                    <Text style={[styles.fileName, { color: textColor }]} numberOfLines={1}>{message.fileMetadata?.name || 'File'}</Text>
+                    <Text style={[styles.fileSize, { color: metaColor }]}>{formatFileSize(message.fileMetadata?.size || 0)}</Text>
+                  </View>
+                  <Ionicons name="download-outline" size={18} color={isMe ? 'rgba(255,255,255,0.8)' : LL.primary} />
+                </TouchableOpacity>
               ) : (
-                <Text
-                  style={[
-                    styles.messageText,
-                    { color: isMe ? '#fff' : theme.text.primary },
-                  ]}
-                >
-                  {message.content}
-                </Text>
+                <Text style={[styles.messageText, { color: textColor }]}>{message.content}</Text>
               )}
 
               {/* Footer */}
               <View style={styles.messageFooter}>
-                <Text
-                  style={[
-                    styles.messageTime,
-                    {
-                      color: isMe
-                        ? 'rgba(255,255,255,0.7)'
-                        : theme.text.tertiary,
-                    },
-                  ]}
-                >
-                  {formatTime(message.timestamp)}
-                </Text>
-                {message.isEdited && (
-                  <Text
-                    style={[
-                      styles.editedLabel,
-                      {
-                        color: isMe
-                          ? 'rgba(255,255,255,0.6)'
-                          : theme.text.tertiary,
-                      },
-                    ]}
-                  >
-                    edited
-                  </Text>
-                )}
+                <Text style={[styles.messageTime, { color: metaColor }]}>{formatTime(message.timestamp)}</Text>
+                {message.isEdited && <Text style={[styles.editedLabel, { color: metaColor }]}>edited</Text>}
                 {isMe && <DeliveryStatus status={message.deliveryStatus} />}
               </View>
             </View>
@@ -646,136 +398,86 @@ const MessageBubble: React.FC<{
         </Animated.View>
       </View>
 
-      {/* Action Menu */}
-      <Modal
-        visible={showActions}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowActions(false)}
-      >
-        <TouchableOpacity
-          style={styles.actionOverlay}
-          onPress={() => setShowActions(false)}
-        >
-          <BlurView intensity={90} style={styles.actionMenu} tint="light">
-            <AutoHideScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={[styles.emojiRow, { borderBottomColor: theme.overlay.border }]}
-            >
+      {/* Action Menu Modal */}
+      <Modal visible={showActions} transparent animationType="fade" onRequestClose={() => setShowActions(false)}>
+        <Pressable style={styles.actionOverlay} onPress={() => setShowActions(false)}>
+          <Animated.View entering={FadeIn.duration(200)} style={[styles.actionMenu, { backgroundColor: isDark ? LL.darkCard : LL.white, borderColor: isDark ? LL.darkBorder : LL.gray200 }]}>
+            <AutoHideScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.emojiRow, { borderBottomColor: isDark ? LL.darkBorder : LL.gray200 }]}>
               {['❤️', '👍', '😂', '😮', '😢', '🎉'].map((emoji) => (
-                <TouchableOpacity
-                  key={emoji}
-                  style={styles.emojiButton}
-                  onPress={() => {
-                    onReaction(emoji);
-                    setShowActions(false);
-                  }}
-                >
+                <TouchableOpacity key={emoji} style={styles.emojiButton} onPress={() => { onReaction(emoji); setShowActions(false); }}>
                   <Text style={styles.emojiText}>{emoji}</Text>
                 </TouchableOpacity>
               ))}
             </AutoHideScrollView>
             <View style={styles.actionButtons}>
-              <TouchableOpacity
-                style={styles.actionItem}
-                onPress={() => {
-                  onReply();
-                  setShowActions(false);
-                }}
-              >
-                <Ionicons name="arrow-undo" size={20} color={theme.primary} />
-                <Text style={[styles.actionText, { color: theme.text.primary }]}>
-                  Reply
-                </Text>
+              <TouchableOpacity style={styles.actionItem} onPress={() => { onReply(); setShowActions(false); }}>
+                <Ionicons name="arrow-undo" size={20} color={LL.primary} />
+                <Text style={[styles.actionText, { color: isDark ? LL.white : LL.gray800 }]}>Reply</Text>
               </TouchableOpacity>
               {isMe && (
                 <>
-                  <TouchableOpacity
-                    style={styles.actionItem}
-                    onPress={() => {
-                      onEdit();
-                      setShowActions(false);
-                    }}
-                  >
-                    <Ionicons name="pencil" size={20} color={theme.accent} />
-                    <Text
-                      style={[styles.actionText, { color: theme.text.primary }]}
-                    >
-                      Edit
-                    </Text>
+                  <TouchableOpacity style={styles.actionItem} onPress={() => { onEdit(); setShowActions(false); }}>
+                    <Ionicons name="pencil" size={20} color={LL.accent} />
+                    <Text style={[styles.actionText, { color: isDark ? LL.white : LL.gray800 }]}>Edit</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.actionItem}
-                    onPress={() => {
-                      onDelete();
-                      setShowActions(false);
-                    }}
-                  >
-                    <Ionicons name="trash" size={20} color={theme.error} />
-                    <Text style={[styles.actionText, { color: theme.error }]}>
-                      Delete
-                    </Text>
+                  <TouchableOpacity style={styles.actionItem} onPress={() => { onDelete(); setShowActions(false); }}>
+                    <Ionicons name="trash" size={20} color={LL.error} />
+                    <Text style={[styles.actionText, { color: LL.error }]}>Delete</Text>
                   </TouchableOpacity>
                 </>
               )}
             </View>
-          </BlurView>
-        </TouchableOpacity>
+          </Animated.View>
+        </Pressable>
       </Modal>
     </Animated.View>
   );
-};
+});
 
-const ReplyPreviewBar: React.FC<{
+// ═══════════════════════════════════════════════════════════
+// REPLY PREVIEW BAR
+// ═══════════════════════════════════════════════════════════
+const ReplyPreviewBar = React.memo(({
+  replyTo,
+  onCancel,
+  isDark,
+}: {
   replyTo: { id: string; content: string; senderName: string } | null;
   onCancel: () => void;
-  theme: ChatTheme;
-  hapticFeedback: boolean;
-}> = ({ replyTo, onCancel, theme, hapticFeedback }) => {
+  isDark: boolean;
+}) => {
   if (!replyTo) return null;
 
   return (
-    <View
-      style={[
-        styles.replyBar,
-        {
-          backgroundColor: theme.background.elevated,
-          borderTopColor: theme.divider,
-        },
-      ]}
-    >
+    <View style={[styles.replyBar, { backgroundColor: isDark ? LL.darkSurface : LL.gray50, borderTopColor: isDark ? LL.darkBorder : LL.gray200 }]}>
       <View style={styles.replyBarContent}>
-        <View
-          style={[styles.replyBarLine, { backgroundColor: theme.primary }]}
-        />
+        <View style={[styles.replyBarLine, { backgroundColor: LL.primary }]} />
         <View style={styles.replyBarText}>
-          <Text style={[styles.replyBarName, { color: theme.primary }]}>
-            {replyTo.senderName}
-          </Text>
-          <Text
-            style={[styles.replyBarPreview, { color: theme.text.secondary }]}
-            numberOfLines={1}
-          >
-            {replyTo.content}
-          </Text>
+          <Text style={[styles.replyBarName, { color: LL.primary }]}>{replyTo.senderName}</Text>
+          <Text style={[styles.replyBarPreview, { color: isDark ? LL.gray400 : LL.gray500 }]} numberOfLines={1}>{replyTo.content}</Text>
         </View>
       </View>
-      <TouchableOpacity
-        onPress={() => {
-          if (hapticFeedback) {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          }
-          onCancel();
-        }}
-        style={styles.replyBarClose}
-      >
-        <Ionicons name="close" size={20} color={theme.text.tertiary} />
+      <TouchableOpacity onPress={onCancel} style={styles.replyBarClose}>
+        <Ionicons name="close" size={20} color={isDark ? LL.gray500 : LL.gray400} />
       </TouchableOpacity>
     </View>
   );
-};
+});
 
+// ═══════════════════════════════════════════════════════════
+// DATE SEPARATOR
+// ═══════════════════════════════════════════════════════════
+const DateSeparator = React.memo(({ date, isDark }: { date: string; isDark: boolean }) => (
+  <View style={styles.dateSeparator}>
+    <View style={[styles.dateLine, { backgroundColor: isDark ? LL.darkBorder : LL.gray200 }]} />
+    <Text style={[styles.dateText, { color: isDark ? LL.gray500 : LL.gray400 }]}>{date}</Text>
+    <View style={[styles.dateLine, { backgroundColor: isDark ? LL.darkBorder : LL.gray200 }]} />
+  </View>
+));
+
+// ═══════════════════════════════════════════════════════════
+// MAIN CHAT SCREEN
+// ═══════════════════════════════════════════════════════════
 export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   const { userId } = route.params;
   const {
@@ -793,50 +495,10 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     isUserBlocked,
     resendMessage,
   } = useCommunity();
+  const { isDark } = useApp();
   const { profile } = useUser();
-
-  const {
-    themeColors,
-    avatar,
-    darkMode,
-    hapticFeedback,
-    soundEffects,
-    reduceMotion,
-    compactView,
-  } = useCustomization();
-
+  const sweetAlert = useSweetAlert();
   const insets = useSafeAreaInsets();
-
-  const theme: ChatTheme = useMemo(() => {
-    const isDark = darkMode;
-    return {
-      primary: themeColors.primary,
-      secondary: themeColors.secondary,
-      accent: themeColors.accent,
-      background: {
-        gradient: themeColors.colors,
-        card: isDark ? '#1e1e2e' : '#ffffff',
-        elevated: isDark ? '#2a2a3c' : '#f8faff',
-        main: isDark ? '#0f0f1e' : '#f8faff',
-      },
-      text: {
-        primary: isDark ? '#ffffff' : '#1a1a1a',
-        secondary: isDark ? '#a0a0a0' : '#666666',
-        tertiary: isDark ? '#666666' : '#999999',
-      },
-      error: '#ff4757',
-      success: '#43e97b',
-      info: '#4facfe',
-      divider: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
-      border: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
-      overlay: {
-        background: isDark
-          ? 'rgba(30,30,46,0.95)'
-          : 'rgba(255,255,255,0.95)',
-        border: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
-      },
-    };
-  }, [themeColors, darkMode]);
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
@@ -844,17 +506,17 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [showOptions, setShowOptions] = useState(false);
   const [isBlocked, setIsBlocked] = useState(false);
-  const [replyingTo, setReplyingTo] = useState<{
-    id: string;
-    content: string;
-    senderName: string;
-  } | null>(null);
+  const [replyingTo, setReplyingTo] = useState<{ id: string; content: string; senderName: string } | null>(null);
   const [editingMessage, setEditingMessage] = useState<string | null>(null);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [pinnedMessage, setPinnedMessage] = useState<Message | null>(null);
 
   const flatListRef = useRef<AutoHideFlatList>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Initialize chat
   useEffect(() => {
     initializeChat();
     const interval = setInterval(() => refreshMessages(), 2000);
@@ -882,10 +544,13 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     setMessages(fresh);
   };
 
+  // ═══════════════════════════════════════════════════════════
+  // MESSAGE ACTIONS
+  // ═══════════════════════════════════════════════════════════
   const handleSend = useCallback(async () => {
     if (!inputText.trim() || isBlocked) return;
     if (!currentUser) {
-      showErrorModal({ message: 'Please sign in to send messages' });
+      sweetAlert.alert('Sign In Required', 'Please sign in to send messages', 'warning');
       return;
     }
 
@@ -896,142 +561,73 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
       await editMessage(userId, editingMessage, content);
       setEditingMessage(null);
     } else {
-      await sendMessage(
-        userId,
-        content,
-        'text',
-        undefined,
-        undefined,
-        replyingTo?.id
-      );
+      await sendMessage(userId, content, 'text', undefined, undefined, replyingTo?.id);
     }
 
     setReplyingTo(null);
     setTypingStatus(userId, false);
     refreshMessages();
-
-    setTimeout(
-      () => flatListRef.current?.scrollToEnd({ animated: true }),
-      100
-    );
-
-    if (hapticFeedback) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    }
-  }, [
-    inputText,
-    userId,
-    currentUser,
-    isBlocked,
-    editingMessage,
-    replyingTo,
-    sendMessage,
-    editMessage,
-    setTypingStatus,
-    hapticFeedback,
-  ]);
+    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }, [inputText, userId, currentUser, isBlocked, editingMessage, replyingTo, sendMessage, editMessage, setTypingStatus]);
 
   const handleInputChange = (text: string) => {
     setInputText(text);
     if (text.length > 0) {
       setTypingStatus(userId, true);
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-      typingTimeoutRef.current = setTimeout(
-        () => setTypingStatus(userId, false),
-        3000
-      );
+      typingTimeoutRef.current = setTimeout(() => setTypingStatus(userId, false), 3000);
     } else {
       setTypingStatus(userId, false);
     }
   };
 
+  // ═══════════════════════════════════════════════════════════
+  // MEDIA & FILE HANDLING
+  // ═══════════════════════════════════════════════════════════
   const handleImagePick = async (fromCamera: boolean = false) => {
-    if (isBlocked) {
-      showErrorModal({ message: 'Unblock user to send images' });
-      return;
-    }
-
+    if (isBlocked) { sweetAlert.alert('Blocked', 'Unblock user to send images', 'warning'); return; }
     try {
       let result;
       if (fromCamera) {
         const { status } = await ImagePicker.requestCameraPermissionsAsync();
-        if (status !== 'granted') {
-          showErrorModal({ message: 'Camera permission required' });
-          return;
-        }
-        result = await ImagePicker.launchCameraAsync({
-          allowsEditing: true,
-          aspect: [4, 3],
-          quality: 0.8,
-        });
+        if (status !== 'granted') { sweetAlert.alert('Permission Required', 'Camera access is needed', 'warning'); return; }
+        result = await ImagePicker.launchCameraAsync({ allowsEditing: true, aspect: [4, 3], quality: 0.8 });
       } else {
-        const { status } =
-          await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (status !== 'granted') {
-          showErrorModal({ message: 'Photo library permission required' });
-          return;
-        }
-        result = await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          allowsEditing: true,
-          aspect: [4, 3],
-          quality: 0.8,
-        });
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') { sweetAlert.alert('Permission Required', 'Photo library access is needed', 'warning'); return; }
+        result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [4, 3], quality: 0.8 });
       }
 
       if (!result.canceled && result.assets[0]) {
         const uri = result.assets[0].uri;
         const fileName = `chat_img_${Date.now()}.jpg`;
-        const permanentUri =
-          FileSystem.documentDirectory +
-          'community_chat_media/' +
-          fileName;
-        await FileSystem.makeDirectoryAsync(
-          FileSystem.documentDirectory + 'community_chat_media/',
-          { intermediates: true }
-        );
+        const dir = FileSystem.documentDirectory + 'community_chat_media/';
+        await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+        const permanentUri = dir + fileName;
         await FileSystem.copyAsync({ from: uri, to: permanentUri });
-
         await sendMessage(userId, '📷 Photo', 'image', permanentUri);
         refreshMessages();
-        if (hapticFeedback) {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        }
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
     } catch (error) {
       console.error('Image pick error:', error);
-      showErrorModal({ message: 'Failed to send image' });
+      sweetAlert.alert('Error', 'Failed to send image', 'error');
     }
   };
 
   const handleFilePick = async () => {
-    if (isBlocked) {
-      showErrorModal({ message: 'Unblock user to send files' });
-      return;
-    }
-
+    if (isBlocked) { sweetAlert.alert('Blocked', 'Unblock user to send files', 'warning'); return; }
     try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: '*/*',
-        copyToCacheDirectory: true,
-      });
-
+      const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
       if (result.canceled) return;
-
       const asset = result.assets[0];
       const fileInfo = await FileSystem.getInfoAsync(asset.uri);
-      const size =
-        fileInfo.exists && 'size' in fileInfo ? fileInfo.size : 0;
-
+      const size = fileInfo.exists && 'size' in fileInfo ? fileInfo.size : 0;
       const fileName = `chat_file_${Date.now()}_${asset.name}`;
-      const permanentUri =
-        FileSystem.documentDirectory +
-        'community_chat_files/' +
-        fileName;
-      await FileSystem.makeDirectoryAsync(
-        FileSystem.documentDirectory + 'community_chat_files/',
-        { intermediates: true }
-      );
+      const dir = FileSystem.documentDirectory + 'community_chat_files/';
+      await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+      const permanentUri = dir + fileName;
       await FileSystem.copyAsync({ from: asset.uri, to: permanentUri });
 
       const fileMeta: FileMetadata = {
@@ -1041,20 +637,12 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
         uri: permanentUri,
       };
 
-      await sendMessage(
-        userId,
-        `📎 ${asset.name}`,
-        'file',
-        permanentUri,
-        fileMeta
-      );
+      await sendMessage(userId, `📎 ${asset.name}`, 'file', permanentUri, fileMeta);
       refreshMessages();
-      if (hapticFeedback) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      }
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
       console.error('File pick error:', error);
-      showErrorModal({ message: 'Failed to send file' });
+      sweetAlert.alert('Error', 'Failed to send file', 'error');
     }
   };
 
@@ -1066,14 +654,24 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     ]);
   };
 
+  // ═══════════════════════════════════════════════════════════
+  // MESSAGE INTERACTIONS
+  // ═══════════════════════════════════════════════════════════
   const handleReaction = async (messageId: string, emoji: string) => {
-    if (hapticFeedback) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    // TODO: Implement reaction storage in CommunityContext
+    console.log('Reaction:', messageId, emoji);
   };
 
   const handleDelete = async (messageId: string) => {
-    refreshMessages();
+    showConfirmModal({
+      title: 'Delete Message',
+      message: 'Are you sure? This cannot be undone.',
+      onConfirm: () => {
+        // TODO: Implement delete in CommunityContext
+        refreshMessages();
+      },
+    });
   };
 
   const handleEdit = (message: Message) => {
@@ -1082,48 +680,29 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   };
 
   const handleReply = (message: Message) => {
-    if (hapticFeedback) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setReplyingTo({
       id: message.id,
-      content:
-        message.content ||
-        (message.type === 'image'
-          ? '📷 Photo'
-          : message.type === 'file'
-            ? '📎 File'
-            : '...'),
-      senderName:
-        message.senderId === currentUser?.id
-          ? 'You'
-          : user?.displayName || 'User',
+      content: message.content || (message.type === 'image' ? '📷 Photo' : message.type === 'file' ? '📎 File' : '...'),
+      senderName: message.senderId === currentUser?.id ? 'You' : user?.displayName || 'User',
     });
   };
 
   const handleImagePress = (url: string) => {
     setPreviewImageUrl(url);
-    if (hapticFeedback) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
   const handleFilePress = async (meta?: FileMetadata) => {
     if (!meta) return;
-    try {
-      Alert.alert(meta.name, `Size: ${meta.size} bytes\nType: ${meta.type}`, [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Share',
-          onPress: async () => {
-            const { Share } = await import('react-native');
-            Share.share({ url: meta.uri, title: meta.name });
-          },
-        },
-      ]);
-    } catch (error) {
-      console.error('File open error:', error);
-    }
+    Alert.alert(meta.name, `Size: ${formatFileSize(meta.size)}
+Type: ${meta.type}`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Share', onPress: async () => {
+        const { Share } = await import('react-native');
+        Share.share({ url: meta.uri, title: meta.name });
+      }},
+    ]);
   };
 
   const handleResend = async (messageId: string) => {
@@ -1131,6 +710,9 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     refreshMessages();
   };
 
+  // ═══════════════════════════════════════════════════════════
+  // USER ACTIONS
+  // ═══════════════════════════════════════════════════════════
   const handleBlock = () => {
     showConfirmModal({
       title: isBlocked ? 'Unblock User' : 'Block User',
@@ -1141,28 +723,49 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
         blockUser(userId);
         setIsBlocked(!isBlocked);
         setShowOptions(false);
+        sweetAlert.toast(isBlocked ? 'Unblocked' : 'Blocked', isBlocked ? 'User unblocked' : 'User blocked', isBlocked ? 'success' : 'warning');
       },
     });
   };
 
   const handleDeleteChat = () => {
     setShowOptions(false);
-    deleteChat(userId);
-    navigation.goBack();
-  };
-
-  const formatTime = (timestamp: string) => {
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-    if (days > 0) return `${days}d ago`;
-    return date.toLocaleTimeString([], {
-      hour: '2-digit',
-      minute: '2-digit',
+    showConfirmModal({
+      title: 'Delete Chat',
+      message: 'This will delete the entire conversation. This cannot be undone.',
+      onConfirm: () => {
+        deleteChat(userId);
+        navigation.goBack();
+        sweetAlert.toast('Deleted', 'Chat deleted', 'success');
+      },
     });
   };
 
+  const handleMuteToggle = () => {
+    // TODO: Implement mute in CommunityContext
+    sweetAlert.toast('Coming Soon', 'Mute feature will be available soon', 'info');
+    setShowOptions(false);
+  };
+
+  const handlePinMessage = (message: Message) => {
+    setPinnedMessage(pinnedMessage?.id === message.id ? null : message);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
+
+  // ═══════════════════════════════════════════════════════════
+  // SEARCH FUNCTIONALITY
+  // ═══════════════════════════════════════════════════════════
+  const filteredMessages = useMemo(() => {
+    if (!searchQuery.trim()) return messages;
+    const q = searchQuery.toLowerCase();
+    return messages.filter(m => m.content.toLowerCase().includes(q));
+  }, [messages, searchQuery]);
+
+  const searchResultCount = filteredMessages.length;
+
+  // ═══════════════════════════════════════════════════════════
+  // STATUS HELPERS
+  // ═══════════════════════════════════════════════════════════
   const getStatusText = () => {
     if (!user) return '';
     if (isBlocked) return 'Blocked';
@@ -1178,355 +781,253 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     return `Active ${Math.floor(hours / 24)}d ago`;
   };
 
-  const renderMessage = ({
-    item,
-    index,
-  }: {
-    item: Message;
-    index: number;
-  }) => {
+  const getMessageDate = (timestamp: string) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diff = now.getTime() - date.getTime();
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    if (days === 0) return 'Today';
+    if (days === 1) return 'Yesterday';
+    if (days < 7) return date.toLocaleDateString([], { weekday: 'long' });
+    return date.toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' });
+  };
+
+  // ═══════════════════════════════════════════════════════════
+  // RENDER MESSAGE
+  // ═══════════════════════════════════════════════════════════
+  const renderMessage = ({ item, index }: { item: Message; index: number }) => {
     const isMe = item.senderId === currentUser?.id;
-    const showAvatar =
-      !isMe &&
-      (index === 0 || messages[index - 1]?.senderId !== item.senderId);
+    const showAvatar = !isMe && (index === 0 || messages[index - 1]?.senderId !== item.senderId);
+    const showDate = index === 0 || getMessageDate(item.timestamp) !== getMessageDate(messages[index - 1]?.timestamp);
 
     return (
-      <MessageBubble
-        message={item}
-        isMe={isMe}
-        user={user}
-        showAvatar={showAvatar}
-        theme={theme}
-        onReaction={(emoji) => handleReaction(item.id, emoji)}
-        onReply={() => handleReply(item)}
-        onDelete={() => handleDelete(item.id)}
-        onEdit={() => handleEdit(item)}
-        onImagePress={handleImagePress}
-        onFilePress={handleFilePress}
-        onResend={() => handleResend(item.id)}
-        hapticFeedback={hapticFeedback}
-        reduceMotion={reduceMotion}
-      />
+      <>
+        {showDate && <DateSeparator date={getMessageDate(item.timestamp)} isDark={isDark} />}
+        <MessageBubble
+          message={item}
+          isMe={isMe}
+          user={user}
+          showAvatar={showAvatar}
+          isDark={isDark}
+          onReaction={(emoji) => handleReaction(item.id, emoji)}
+          onReply={() => handleReply(item)}
+          onDelete={() => handleDelete(item.id)}
+          onEdit={() => handleEdit(item)}
+          onImagePress={handleImagePress}
+          onFilePress={handleFilePress}
+          onResend={() => handleResend(item.id)}
+        />
+      </>
     );
   };
 
+  // ═══════════════════════════════════════════════════════════
+  // RENDER HEADER
+  // ═══════════════════════════════════════════════════════════
+  const renderHeader = () => (
+    <>
+      {/* Search Bar */}
+      {isSearching && (
+        <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)} style={[styles.searchBar, { backgroundColor: isDark ? LL.darkSurface : LL.white, borderBottomColor: isDark ? LL.darkBorder : LL.gray200 }]}>
+          <View style={[styles.searchInner, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : LL.gray100 }]}>
+            <Ionicons name="search" size={18} color={LL.gray400} />
+            <TextInput
+              style={[styles.searchInput, { color: isDark ? LL.white : LL.gray900 }]}
+              placeholder="Search messages..."
+              placeholderTextColor={LL.gray400}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoFocus
+              autoCapitalize="none"
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')}>
+                <Ionicons name="close-circle" size={18} color={LL.gray400} />
+              </TouchableOpacity>
+            )}
+          </View>
+          {searchQuery.length > 0 && (
+            <Text style={[styles.searchResultText, { color: isDark ? LL.gray500 : LL.gray400 }]}>
+              {searchResultCount} result{searchResultCount !== 1 ? 's' : ''}
+            </Text>
+          )}
+        </Animated.View>
+      )}
+
+      {/* Pinned Message */}
+      {pinnedMessage && (
+        <Animated.View entering={FadeIn.duration(300)} style={[styles.pinnedBar, { backgroundColor: isDark ? `${LL.primary}15` : `${LL.primary}08`, borderBottomColor: isDark ? LL.darkBorder : LL.gray200 }]}>
+          <Ionicons name="pin" size={16} color={LL.primary} />
+          <Text style={[styles.pinnedText, { color: isDark ? LL.gray300 : LL.gray600 }]} numberOfLines={1}>
+            {pinnedMessage.content || '📷 Photo'}
+          </Text>
+          <TouchableOpacity onPress={() => setPinnedMessage(null)}>
+            <Ionicons name="close" size={16} color={isDark ? LL.gray500 : LL.gray400} />
+          </TouchableOpacity>
+        </Animated.View>
+      )}
+    </>
+  );
+
+  // ═══════════════════════════════════════════════════════════
+  // LOADING / ERROR STATES
+  // ═══════════════════════════════════════════════════════════
   if (isLoading) {
     return (
-      <View style={[styles.container, styles.centered]}>
-        <LinearGradient
-          colors={theme.background.gradient}
-          style={StyleSheet.absoluteFill}
-        />
-        <ActivityIndicator size="large" color={theme.primary} />
+      <View style={[styles.container, { backgroundColor: isDark ? LL.darkBg : LL.gray50 }]}>
+        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color={LL.primary} />
+        </View>
       </View>
     );
   }
 
   if (!user) {
     return (
-      <View style={[styles.container, styles.centered]}>
-        <LinearGradient
-          colors={theme.background.gradient}
-          style={StyleSheet.absoluteFill}
-        />
-        <Text style={[styles.errorText, { color: theme.text.secondary }]}>
-          User not found
-        </Text>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={[styles.goBackButton, { backgroundColor: theme.primary }]}
-        >
-          <Text style={styles.goBackText}>Go Back</Text>
-        </TouchableOpacity>
+      <View style={[styles.container, { backgroundColor: isDark ? LL.darkBg : LL.gray50 }]}>
+        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+        <View style={styles.centered}>
+          <LinearGradient colors={isDark ? [`${LL.primary}20`, `${LL.primaryDark}20`] : [`${LL.primary}15`, `${LL.primaryDark}15`]} style={styles.emptyIconBg}>
+            <Ionicons name="person-outline" size={40} color={LL.primary} />
+          </LinearGradient>
+          <Text style={[styles.errorText, { color: isDark ? LL.gray400 : LL.gray500 }]}>User not found</Text>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.goBackButton}>
+            <LinearGradient colors={[LL.primary, LL.primaryDark]} style={styles.goBackGrad}>
+              <Text style={styles.goBackText}>Go Back</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
 
+  // ═══════════════════════════════════════════════════════════
+  // MAIN RENDER
+  // ═══════════════════════════════════════════════════════════
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle={darkMode ? 'light-content' : 'dark-content'} />
-      <LinearGradient
-        colors={theme.background.gradient}
-        style={StyleSheet.absoluteFill}
-      />
+    <View style={[styles.container, { backgroundColor: isDark ? LL.darkBg : LL.gray50 }]}>
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
       {/* Image Preview Modal */}
-      <ImagePreviewModal
-        visible={!!previewImageUrl}
-        imageUrl={previewImageUrl || ''}
-        onClose={() => setPreviewImageUrl(null)}
-        primaryColor={theme.primary}
-        hapticFeedback={hapticFeedback}
-        reduceMotion={reduceMotion}
-      />
+      <ImagePreviewModal visible={!!previewImageUrl} imageUrl={previewImageUrl || ''} onClose={() => setPreviewImageUrl(null)} isDark={isDark} />
 
-      {/* Header */}
-      <BlurView
-        intensity={95}
-        style={[styles.header, { paddingTop: insets.top + 10 }]}
-        tint={darkMode ? 'dark' : 'light'}
-      >
-        <LinearGradient
-          colors={
-            darkMode
-              ? ['rgba(15,15,30,0.95)', 'rgba(15,15,30,0.98)']
-              : ['rgba(255,255,255,0.95)', 'rgba(255,250,250,0.98)']
-          }
-          style={StyleSheet.absoluteFill}
-        />
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={styles.headerButton}
-        >
-          <Ionicons name="arrow-back" size={24} color={theme.text.primary} />
+      {/* ── Header ── */}
+      <View style={[styles.header, { paddingTop: insets.top + 10, backgroundColor: isDark ? LL.darkSurface : LL.white, borderBottomColor: isDark ? LL.darkBorder : LL.gray200 }]}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={[styles.headerBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : LL.gray100 }]}>
+          <Ionicons name="arrow-back" size={22} color={isDark ? LL.white : LL.gray800} />
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.userInfo}
-          onPress={() =>
-            navigation.navigate('UserProfile', { userId: user.id })
-          }
-        >
-          <View style={styles.avatarContainer}>
-            <SafeAvatar
-              avatar={user.avatar}
-              size={44}
-              fallbackEmoji={avatar || '👤'}
-              fallbackColor={theme.primary}
-            />
-            {!isBlocked && (
-              <View
-                style={[
-                  styles.userStatusDot,
-                  {
-                    backgroundColor:
-                      user.onlineStatus === 'online'
-                        ? theme.success
-                        : user.onlineStatus === 'away'
-                          ? theme.accent
-                          : theme.text.tertiary,
-                  },
-                ]}
-              />
+        <TouchableOpacity style={styles.userInfo} onPress={() => navigation.navigate('CommunityMemberProfile', { userId: user.id })}>
+          <View style={styles.avatarWrap}>
+            <SafeAvatar avatar={user.avatar} size={42} fallbackIcon="person" fallbackColor={LL.primary} fallbackBgColor={`${LL.primary}15`} borderWidth={user.onlineStatus === 'online' && !isBlocked ? 2 : 0} borderColor={LL.success} />
+            {!isBlocked && user.onlineStatus === 'online' && (
+              <View style={[styles.onlineDot, { borderColor: isDark ? LL.darkSurface : LL.white }]}>
+                <View style={[styles.onlineDotInner, { backgroundColor: LL.success }]} />
+              </View>
             )}
           </View>
           <View>
             <View style={styles.nameRow}>
-              <Text
-                style={[
-                  styles.userName,
-                  {
-                    color: isBlocked
-                      ? theme.text.tertiary
-                      : theme.text.primary,
-                  },
-                ]}
-              >
-                {user.displayName}
-              </Text>
+              <Text style={[styles.userName, { color: isBlocked ? (isDark ? LL.gray500 : LL.gray400) : (isDark ? LL.white : LL.gray900) }]}>{user.displayName}</Text>
               {user.isVerified && !isBlocked && (
-                <View
-                  style={[
-                    styles.verifiedBadge,
-                    { backgroundColor: theme.info },
-                  ]}
-                >
-                  <Ionicons name="checkmark" size={10} color="#fff" />
+                <View style={[styles.verifiedBadge, { backgroundColor: LL.primary }]}>
+                  <Ionicons name="checkmark" size={10} color={LL.white} />
                 </View>
               )}
             </View>
-            <Text
-              style={[
-                styles.userStatus,
-                isBlocked && { color: theme.error },
-                getTypingStatus(userId) && {
-                  color: theme.secondary,
-                  fontStyle: 'italic',
-                  fontWeight: '600',
-                },
-              ]}
-            >
+            <Text style={[
+              styles.userStatus,
+              { color: isBlocked ? LL.error : (isDark ? LL.gray500 : LL.gray400) },
+              getTypingStatus(userId) && { color: LL.primary, fontStyle: 'italic', fontWeight: '700' },
+            ]}>
               {getStatusText()}
             </Text>
           </View>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          onPress={() => setShowOptions(true)}
-          style={styles.headerButton}
-        >
-          <Ionicons
-            name="ellipsis-vertical"
-            size={24}
-            color={theme.text.primary}
-          />
-        </TouchableOpacity>
-      </BlurView>
+        <View style={styles.headerActions}>
+          <TouchableOpacity onPress={() => setIsSearching(s => !s)} style={[styles.headerBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : LL.gray100 }]}>
+            <Ionicons name={isSearching ? "close" : "search"} size={20} color={isDark ? LL.white : LL.gray800} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setShowOptions(true)} style={[styles.headerBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : LL.gray100 }]}>
+            <Ionicons name="ellipsis-vertical" size={20} color={isDark ? LL.white : LL.gray800} />
+          </TouchableOpacity>
+        </View>
+      </View>
 
-      {/* Messages */}
+      {/* ── Messages List ── */}
       <AutoHideFlatList
         ref={flatListRef}
-        data={messages}
+        data={filteredMessages}
         renderItem={renderMessage}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.messagesList}
         showsVerticalScrollIndicator={false}
-        onContentSizeChange={() =>
-          flatListRef.current?.scrollToEnd({ animated: false })
-        }
+        onContentSizeChange={() => !searchQuery && flatListRef.current?.scrollToEnd({ animated: false })}
+        ListHeaderComponent={renderHeader}
         ListEmptyComponent={
-          <View style={styles.emptyChat}>
-            <Ionicons
-              name="chatbubbles-outline"
-              size={64}
-              color={theme.text.tertiary}
-            />
-            <Text
-              style={[styles.emptyText, { color: theme.text.secondary }]}
-            >
-              No messages yet
-            </Text>
-            <Text
-              style={[styles.emptySubtext, { color: theme.text.tertiary }]}
-            >
-              Say hello to start the conversation!
-            </Text>
-          </View>
+          searchQuery ? (
+            <View style={styles.emptyChat}>
+              <Ionicons name="search-outline" size={48} color={isDark ? LL.gray600 : LL.gray300} />
+              <Text style={[styles.emptyText, { color: isDark ? LL.gray400 : LL.gray500 }]}>No messages found</Text>
+            </View>
+          ) : (
+            <View style={styles.emptyChat}>
+              <LinearGradient colors={isDark ? [`${LL.primary}20`, `${LL.primaryDark}20`] : [`${LL.primary}15`, `${LL.primaryDark}15`]} style={styles.emptyIconBg}>
+                <Ionicons name="chatbubbles-outline" size={40} color={LL.primary} />
+              </LinearGradient>
+              <Text style={[styles.emptyTitle, { color: isDark ? LL.white : LL.gray800 }]}>No messages yet</Text>
+              <Text style={[styles.emptySubtext, { color: isDark ? LL.gray400 : LL.gray500 }]}>Say hello to start the conversation!</Text>
+            </View>
+          )
         }
       />
 
-      {/* Typing Indicator */}
+      {/* ── Typing Indicator ── */}
       {getTypingStatus(userId) && !isBlocked && (
-        <Animated.View
-          entering={reduceMotion ? undefined : FadeIn}
-          style={styles.typingContainer}
-        >
-          <BlurView
-            intensity={80}
-            style={styles.typingBubble}
-            tint={darkMode ? 'dark' : 'light'}
-          >
-            <Text
-              style={[styles.typingText, { color: theme.text.secondary }]}
-            >
-              {user.displayName} is typing
-            </Text>
-            <ActivityIndicator
-              size="small"
-              color={theme.primary}
-              style={styles.typingDots}
-            />
-          </BlurView>
+        <Animated.View entering={FadeIn.duration(300)} style={styles.typingContainer}>
+          <View style={[styles.typingBubble, { backgroundColor: isDark ? LL.darkCard : LL.white, borderColor: isDark ? LL.darkBorder : LL.gray200, borderWidth: 1 }]}>
+            <Text style={[styles.typingLabel, { color: isDark ? LL.gray400 : LL.gray500 }]}>{user.displayName} is typing</Text>
+            <TypingDots isDark={isDark} />
+          </View>
         </Animated.View>
       )}
 
-      {/* Blocked Warning */}
+      {/* ── Blocked Warning ── */}
       {isBlocked && (
-        <View
-          style={[
-            styles.blockedBanner,
-            { backgroundColor: theme.error + '15' },
-          ]}
-        >
-          <Ionicons name="ban" size={20} color={theme.error} />
-          <Text style={[styles.blockedBannerText, { color: theme.error }]}>
-            You have blocked this user
-          </Text>
+        <View style={[styles.blockedBanner, { backgroundColor: `${LL.error}12` }]}>
+          <Ionicons name="ban" size={18} color={LL.error} />
+          <Text style={[styles.blockedBannerText, { color: LL.error }]}>You have blocked this user</Text>
           <TouchableOpacity onPress={handleBlock}>
-            <Text style={[styles.unblockText, { color: theme.primary }]}>
-              Unblock
-            </Text>
+            <Text style={[styles.unblockText, { color: LL.primary }]}>Unblock</Text>
           </TouchableOpacity>
         </View>
       )}
 
-      {/* Reply Preview */}
-      <ReplyPreviewBar
-        replyTo={replyingTo}
-        onCancel={() => setReplyingTo(null)}
-        theme={theme}
-        hapticFeedback={hapticFeedback}
-      />
+      {/* ── Reply Preview ── */}
+      <ReplyPreviewBar replyTo={replyingTo} onCancel={() => setReplyingTo(null)} isDark={isDark} />
 
-      {/* Input */}
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-      >
-        <BlurView
-          intensity={100}
-          style={styles.inputContainer}
-          tint={darkMode ? 'dark' : 'light'}
-        >
-          <LinearGradient
-            colors={
-              darkMode
-                ? ['rgba(15,15,30,0.98)', 'rgba(15,15,30,0.95)']
-                : ['rgba(255,255,255,0.98)', 'rgba(255,250,250,0.95)']
-            }
-            style={StyleSheet.absoluteFill}
-          />
-
-          <TouchableOpacity
-            style={[styles.attachButton, isBlocked && styles.disabledButton]}
-            onPress={showImageSourceAlert}
-            disabled={isBlocked}
-          >
-            <View
-              style={[
-                styles.attachButtonBg,
-                { backgroundColor: theme.primary + '15' },
-              ]}
-            >
-              <Ionicons
-                name="image-outline"
-                size={24}
-                color={isBlocked ? theme.text.tertiary : theme.primary}
-              />
+      {/* ── Input Area ── */}
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
+        <View style={[styles.inputContainer, { backgroundColor: isDark ? LL.darkSurface : LL.white, borderTopColor: isDark ? LL.darkBorder : LL.gray200 }]}>
+          <TouchableOpacity style={[styles.attachBtn, isBlocked && styles.disabledBtn]} onPress={showImageSourceAlert} disabled={isBlocked}>
+            <View style={[styles.attachBtnBg, { backgroundColor: isDark ? 'rgba(124,108,241,0.15)' : `${LL.primary}10` }]}>
+              <Ionicons name="image-outline" size={22} color={isBlocked ? (isDark ? LL.gray600 : LL.gray300) : LL.primary} />
             </View>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.attachButton, isBlocked && styles.disabledButton]}
-            onPress={handleFilePick}
-            disabled={isBlocked}
-          >
-            <View
-              style={[
-                styles.attachButtonBg,
-                { backgroundColor: theme.primary + '15' },
-              ]}
-            >
-              <Ionicons
-                name="document-attach-outline"
-                size={24}
-                color={isBlocked ? theme.text.tertiary : theme.primary}
-              />
+          <TouchableOpacity style={[styles.attachBtn, isBlocked && styles.disabledBtn]} onPress={handleFilePick} disabled={isBlocked}>
+            <View style={[styles.attachBtnBg, { backgroundColor: isDark ? 'rgba(124,108,241,0.15)' : `${LL.primary}10` }]}>
+              <Ionicons name="document-attach-outline" size={22} color={isBlocked ? (isDark ? LL.gray600 : LL.gray300) : LL.primary} />
             </View>
           </TouchableOpacity>
 
-          <View
-            style={[
-              styles.inputWrapper,
-              {
-                backgroundColor: theme.background.elevated,
-                borderColor: theme.border,
-              },
-              isBlocked && {
-                backgroundColor: theme.background.main,
-              },
-            ]}
-          >
+          <View style={[styles.inputWrap, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : LL.gray100, borderColor: isDark ? LL.darkBorder : LL.gray200 }]}>
             <TextInput
-              style={[styles.input, { color: theme.text.primary }]}
-              placeholder={
-                isBlocked
-                  ? 'Unblock to send messages...'
-                  : editingMessage
-                    ? 'Edit message...'
-                    : 'Type a message...'
-              }
-              placeholderTextColor={theme.text.tertiary}
+              style={[styles.input, { color: isDark ? LL.white : LL.gray900 }]}
+              placeholder={isBlocked ? 'Unblock to send...' : editingMessage ? 'Edit message...' : 'Type a message...'}
+              placeholderTextColor={isDark ? LL.gray500 : LL.gray400}
               value={inputText}
               onChangeText={handleInputChange}
               multiline
@@ -1536,189 +1037,98 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
           </View>
 
           <TouchableOpacity
-            style={[
-              styles.sendButton,
-              (inputText.length === 0 || isBlocked) &&
-                styles.sendButtonDisabled,
-            ]}
+            style={[styles.sendBtn, (!inputText.trim() || isBlocked) && styles.sendBtnDisabled]}
             onPress={handleSend}
-            disabled={inputText.length === 0 || isBlocked}
+            disabled={!inputText.trim() || isBlocked}
           >
             <LinearGradient
-              colors={
-                inputText.length > 0 && !isBlocked
-                  ? [themeColors.primary, themeColors.secondary]
-                  : ['transparent', 'transparent']
-              }
-              style={styles.sendButtonGradient}
+              colors={inputText.trim() && !isBlocked ? [LL.primary, LL.primaryDark] : [LL.gray200, LL.gray200]}
+              style={styles.sendBtnGrad}
             >
-              <Ionicons
-                name="send"
-                size={20}
-                color={
-                  inputText.length > 0 && !isBlocked
-                    ? '#fff'
-                    : theme.text.tertiary
-                }
-              />
+              <Ionicons name="arrow-up" size={18} color={inputText.trim() && !isBlocked ? LL.white : (isDark ? LL.gray600 : LL.gray400)} />
             </LinearGradient>
           </TouchableOpacity>
-        </BlurView>
+        </View>
       </KeyboardAvoidingView>
 
-      {/* Options Modal */}
-      <Modal
-        visible={showOptions}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowOptions(false)}
-      >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setShowOptions(false)}
-        >
-          <View
-            style={[
-              styles.optionsMenu,
-              {
-                backgroundColor: theme.background.card,
-                borderColor: theme.border,
-                borderWidth: 1,
-              },
-            ]}
-          >
+      {/* ── Options Modal ── */}
+      <Modal visible={showOptions} transparent animationType="fade" onRequestClose={() => setShowOptions(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setShowOptions(false)}>
+          <Animated.View entering={FadeIn.duration(200)} style={[styles.optionsMenu, { backgroundColor: isDark ? LL.darkCard : LL.white, borderColor: isDark ? LL.darkBorder : LL.gray200 }]}>
+            <TouchableOpacity style={styles.optionItem} onPress={handleMuteToggle}>
+              <Ionicons name="notifications-off-outline" size={22} color={isDark ? LL.gray300 : LL.gray600} />
+              <Text style={[styles.optionText, { color: isDark ? LL.white : LL.gray800 }]}>Mute Notifications</Text>
+            </TouchableOpacity>
             <TouchableOpacity style={styles.optionItem} onPress={handleBlock}>
-              <Ionicons
-                name={isBlocked ? 'checkmark-circle' : 'ban'}
-                size={24}
-                color={isBlocked ? theme.success : theme.error}
-              />
-              <Text
-                style={[
-                  styles.optionText,
-                  { color: isBlocked ? theme.success : theme.error },
-                ]}
-              >
-                {isBlocked ? 'Unblock User' : 'Block User'}
-              </Text>
+              <Ionicons name={isBlocked ? 'checkmark-circle' : 'ban'} size={22} color={isBlocked ? LL.success : LL.error} />
+              <Text style={[styles.optionText, { color: isBlocked ? LL.success : LL.error }]}>{isBlocked ? 'Unblock User' : 'Block User'}</Text>
             </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.optionItem}
-              onPress={handleDeleteChat}
-            >
-              <Ionicons name="trash" size={24} color={theme.error} />
-              <Text style={[styles.optionText, { color: theme.error }]}>
-                Delete Chat
-              </Text>
+            <TouchableOpacity style={styles.optionItem} onPress={handleDeleteChat}>
+              <Ionicons name="trash" size={22} color={LL.error} />
+              <Text style={[styles.optionText, { color: LL.error }]}>Delete Chat</Text>
             </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.optionItem, styles.optionItemLast]}
-              onPress={() =>
-                navigation.navigate('UserProfile', { userId: user.id })
-              }
-            >
-              <Ionicons name="person" size={24} color={theme.primary} />
-              <Text style={[styles.optionText, { color: theme.text.primary }]}>
-                View Profile
-              </Text>
+            <TouchableOpacity style={[styles.optionItem, styles.optionItemLast]} onPress={() => { setShowOptions(false); navigation.navigate('CommunityMemberProfile', { userId: user.id }); }}>
+              <Ionicons name="person" size={22} color={LL.primary} />
+              <Text style={[styles.optionText, { color: isDark ? LL.white : LL.gray800 }]}>View Profile</Text>
             </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
+          </Animated.View>
+        </Pressable>
       </Modal>
     </View>
   );
 }
 
+// ═══════════════════════════════════════════════════════════
+// STYLES
+// ═══════════════════════════════════════════════════════════
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  centered: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  errorText: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 16,
-  },
-  goBackButton: {
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 12,
-  },
-  goBackText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
+  container: { flex: 1 },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
-  avatarWrapper: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  avatarGradient: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  avatarEmoji: {
-    textAlign: 'center',
-  },
-
+  // Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingBottom: 12,
+    paddingHorizontal: LL.space.lg,
+    paddingBottom: LL.space.md,
+    borderBottomWidth: 1,
     zIndex: 10,
   },
-  headerButton: {
+  headerBtn: {
     width: 40,
     height: 40,
-    alignItems: 'center',
+    borderRadius: LL.radius.full,
     justifyContent: 'center',
-    borderRadius: 12,
+    alignItems: 'center',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: LL.space.sm,
   },
   userInfo: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    marginHorizontal: 12,
+    marginHorizontal: LL.space.md,
   },
-  avatarContainer: {
-    position: 'relative',
-    marginRight: 12,
-  },
-  userStatusDot: {
+  avatarWrap: { position: 'relative', marginRight: LL.space.md },
+  onlineDot: {
     position: 'absolute',
     bottom: 0,
     right: 0,
     width: 14,
     height: 14,
     borderRadius: 7,
-    borderWidth: 2,
-    borderColor: '#fff',
-  },
-  nameRow: {
-    flexDirection: 'row',
+    backgroundColor: LL.white,
+    justifyContent: 'center',
     alignItems: 'center',
-    gap: 6,
+    borderWidth: 2,
   },
-  userName: {
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  userStatus: {
-    fontSize: 13,
-    marginTop: 2,
-  },
+  onlineDotInner: { width: 8, height: 8, borderRadius: 4 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  userName: { fontSize: LL.text.base.size, fontWeight: '700' },
+  userStatus: { fontSize: LL.text.sm.size, marginTop: 2, fontWeight: '500' },
   verifiedBadge: {
     width: 16,
     height: 16,
@@ -1727,373 +1137,209 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  messagesList: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 16,
+  // Search
+  searchBar: {
+    paddingHorizontal: LL.space.lg,
+    paddingVertical: LL.space.md,
+    borderBottomWidth: 1,
   },
-  emptyChat: {
+  searchInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: LL.radius.full,
+    paddingHorizontal: LL.space.lg,
+    paddingVertical: LL.space.md,
+    gap: LL.space.sm,
+  },
+  searchInput: { flex: 1, fontSize: LL.text.base.size, paddingVertical: 2 },
+  searchResultText: { fontSize: LL.text.xs.size, marginTop: LL.space.sm, fontWeight: '600' },
+
+  // Pinned
+  pinnedBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: LL.space.lg,
+    paddingVertical: LL.space.sm,
+    gap: LL.space.sm,
+    borderBottomWidth: 1,
+  },
+  pinnedText: { flex: 1, fontSize: LL.text.sm.size, fontWeight: '600' },
+
+  // Messages List
+  messagesList: { paddingHorizontal: LL.space.lg, paddingTop: LL.space.sm, paddingBottom: LL.space.lg },
+
+  // Date Separator
+  dateSeparator: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 60,
+    marginVertical: LL.space.lg,
+    gap: LL.space.md,
   },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginTop: 16,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    marginTop: 8,
-  },
+  dateLine: { flex: 1, height: 1 },
+  dateText: { fontSize: LL.text.xs.size, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 },
 
-  messageContainer: {
-    marginBottom: 8,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-  },
-  myMessage: {
-    justifyContent: 'flex-end',
-  },
-  theirMessage: {
-    justifyContent: 'flex-start',
-  },
-  avatarSmall: {
-    marginRight: 8,
-  },
+  // Message Bubble
+  messageContainer: { marginBottom: LL.space.sm, flexDirection: 'row', alignItems: 'flex-end' },
+  myMessage: { justifyContent: 'flex-end' },
+  theirMessage: { justifyContent: 'flex-start' },
+  avatarSmall: { marginRight: LL.space.sm },
   messageBubble: {
-    maxWidth: width * 0.75,
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    maxWidth: SCREEN_W * 0.75,
+    borderRadius: LL.radius.xl,
+    paddingHorizontal: LL.space.lg,
+    paddingVertical: LL.space.md,
   },
-  myBubble: {
-    borderBottomRightRadius: 4,
-  },
-  theirBubble: {
-    borderBottomLeftRadius: 4,
-    borderWidth: 1,
-  },
-  messageText: {
-    fontSize: 15,
-    lineHeight: 22,
-  },
-  messageFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
-    gap: 6,
-  },
-  messageTime: {
-    fontSize: 11,
-  },
-  editedLabel: {
-    fontSize: 11,
-    fontStyle: 'italic',
-  },
+  myBubble: { borderBottomRightRadius: LL.space.sm },
+  theirBubble: { borderBottomLeftRadius: LL.space.sm },
+  messageText: { fontSize: LL.text.base.size, lineHeight: 22, fontWeight: '500' },
+  messageFooter: { flexDirection: 'row', alignItems: 'center', marginTop: LL.space.xs, gap: 6 },
+  messageTime: { fontSize: LL.text.xs.size, fontWeight: '500' },
+  editedLabel: { fontSize: LL.text.xs.size, fontStyle: 'italic', fontWeight: '500' },
 
-  imageContainer: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    width: width * 0.6,
-    height: width * 0.45,
-    backgroundColor: 'rgba(0,0,0,0.05)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  imagePlaceholder: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  messageImage: {
-    width: '100%',
-    height: '100%',
-  },
-
+  // Reply Preview inside bubble
   replyPreview: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 8,
-    borderRadius: 12,
-    marginBottom: 8,
+    padding: LL.space.sm,
+    borderRadius: LL.radius.md,
+    marginBottom: LL.space.sm,
   },
-  replyPreviewMe: {
-    backgroundColor: 'rgba(255,255,255,0.15)',
-  },
-  replyPreviewThem: {
-    backgroundColor: 'rgba(102,126,234,0.1)',
-  },
-  replyLine: {
-    width: 3,
-    height: '100%',
-    borderRadius: 2,
-    marginRight: 8,
-  },
-  replyContent: {
-    flex: 1,
-  },
-  replyName: {
-    fontSize: 12,
-    fontWeight: '700',
-    marginBottom: 2,
-  },
+  replyLine: { width: 3, height: '100%', borderRadius: 2, marginRight: LL.space.sm },
+  replyContent: { flex: 1 },
+  replyName: { fontSize: LL.text.xs.size, fontWeight: '700' },
 
-  resendButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-    gap: 6,
-  },
-  resendText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
+  // Resend
+  resendButton: { flexDirection: 'row', alignItems: 'center', marginBottom: LL.space.sm, gap: 6 },
+  resendText: { fontSize: LL.text.xs.size, fontWeight: '600' },
 
-  fileBubble: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 16,
-    gap: 12,
-  },
-  fileIconContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  fileInfo: {
-    flex: 1,
-  },
-  fileName: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  fileSize: {
-    fontSize: 12,
-    marginTop: 2,
-  },
-
-  actionOverlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.3)',
-  },
-  actionMenu: {
-    margin: 16,
-    borderRadius: 24,
-    padding: 16,
+  // Image
+  imageContainer: {
+    borderRadius: LL.radius.lg,
     overflow: 'hidden',
-  },
-  emojiRow: {
-    flexDirection: 'row',
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-  },
-  emojiButton: {
-    width: 48,
-    height: 48,
-    alignItems: 'center',
+    width: SCREEN_W * 0.55,
+    height: SCREEN_W * 0.4,
     justifyContent: 'center',
-  },
-  emojiText: {
-    fontSize: 28,
-  },
-  actionButtons: {
-    paddingTop: 12,
-  },
-  actionItem: {
-    flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
-    gap: 12,
   },
-  actionText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
+  imagePlaceholder: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center' },
+  messageImage: { width: '100%', height: '100%' },
 
+  // File
+  fileBubble: { flexDirection: 'row', alignItems: 'center', padding: LL.space.md, gap: LL.space.md },
+  fileIconContainer: { width: 44, height: 44, borderRadius: LL.radius.md, alignItems: 'center', justifyContent: 'center' },
+  fileInfo: { flex: 1 },
+  fileName: { fontSize: LL.text.sm.size, fontWeight: '600' },
+  fileSize: { fontSize: LL.text.xs.size, marginTop: 2, fontWeight: '500' },
+
+  // Action Menu
+  actionOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.3)' },
+  actionMenu: { margin: LL.space.lg, borderRadius: LL.radius['2xl'], padding: LL.space.lg, overflow: 'hidden', ...LL.shadow.lg },
+  emojiRow: { flexDirection: 'row', paddingBottom: LL.space.md, borderBottomWidth: 1 },
+  emojiButton: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
+  emojiText: { fontSize: 26 },
+  actionButtons: { paddingTop: LL.space.md },
+  actionItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: LL.space.md, gap: LL.space.md },
+  actionText: { fontSize: LL.text.base.size, fontWeight: '600' },
+
+  // Reply Bar
   replyBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingHorizontal: LL.space.lg,
+    paddingVertical: LL.space.md,
     borderTopWidth: 1,
   },
-  replyBarContent: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  replyBarLine: {
-    width: 3,
-    height: 36,
-    borderRadius: 2,
-    marginRight: 10,
-  },
-  replyBarText: {
-    flex: 1,
-  },
-  replyBarName: {
-    fontSize: 13,
-    fontWeight: '700',
-    marginBottom: 2,
-  },
-  replyBarPreview: {
-    fontSize: 13,
-  },
-  replyBarClose: {
-    width: 32,
-    height: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  replyBarContent: { flex: 1, flexDirection: 'row', alignItems: 'center' },
+  replyBarLine: { width: 3, height: 36, borderRadius: 2, marginRight: LL.space.md },
+  replyBarText: { flex: 1 },
+  replyBarName: { fontSize: LL.text.sm.size, fontWeight: '700', marginBottom: 2 },
+  replyBarPreview: { fontSize: LL.text.sm.size, fontWeight: '500' },
+  replyBarClose: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
 
-  typingContainer: {
-    paddingHorizontal: 16,
-    marginBottom: 8,
-  },
+  // Typing
+  typingContainer: { paddingHorizontal: LL.space.lg, marginBottom: LL.space.sm },
   typingBubble: {
     alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-    borderBottomLeftRadius: 4,
+    paddingHorizontal: LL.space.lg,
+    paddingVertical: LL.space.md,
+    borderRadius: LL.radius.xl,
+    borderBottomLeftRadius: LL.space.sm,
+    gap: LL.space.sm,
   },
-  typingText: {
-    fontSize: 13,
-    marginRight: 8,
-  },
-  typingDots: {
-    transform: [{ scale: 0.7 }],
-  },
+  typingLabel: { fontSize: LL.text.sm.size, fontWeight: '600' },
+  typingDotsRow: { flexDirection: 'row', gap: 4, alignItems: 'center' },
+  typingDot: { width: 6, height: 6, borderRadius: 3 },
 
+  // Blocked Banner
   blockedBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
-    gap: 8,
+    paddingVertical: LL.space.md,
+    gap: LL.space.sm,
   },
-  blockedBannerText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  unblockText: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
+  blockedBannerText: { fontSize: LL.text.sm.size, fontWeight: '700' },
+  unblockText: { fontSize: LL.text.sm.size, fontWeight: '800' },
 
+  // Input
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    paddingBottom: Platform.OS === 'ios' ? 24 : 10,
-    gap: 8,
+    paddingHorizontal: LL.space.md,
+    paddingVertical: LL.space.md,
+    paddingBottom: Platform.OS === 'ios' ? LL.space.xl : LL.space.md,
+    gap: LL.space.sm,
+    borderTopWidth: 1,
   },
-  attachButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  attachButtonBg: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  disabledButton: {
-    opacity: 0.4,
-  },
-  inputWrapper: {
+  attachBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  attachBtnBg: { width: 36, height: 36, borderRadius: LL.radius.md, alignItems: 'center', justifyContent: 'center' },
+  disabledBtn: { opacity: 0.4 },
+  inputWrap: {
     flex: 1,
-    borderRadius: 20,
+    borderRadius: LL.radius.full,
     borderWidth: 1,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingHorizontal: LL.space.lg,
+    paddingVertical: LL.space.sm,
     maxHeight: 100,
   },
-  input: {
-    fontSize: 15,
-    maxHeight: 80,
-  },
-  sendButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    overflow: 'hidden',
-  },
-  sendButtonDisabled: {
-    opacity: 0.4,
-  },
-  sendButtonGradient: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  input: { fontSize: LL.text.base.size, maxHeight: 80 },
+  sendBtn: { width: 40, height: 40, borderRadius: LL.radius.full, overflow: 'hidden' },
+  sendBtnDisabled: { opacity: 0.4 },
+  sendBtnGrad: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    justifyContent: 'flex-end',
-  },
-  optionsMenu: {
-    margin: 16,
-    borderRadius: 24,
-    padding: 8,
-  },
-  optionItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    gap: 12,
-  },
-  optionItemLast: {
-    borderBottomWidth: 0,
-  },
-  optionText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
+  // Modal / Options
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'flex-end' },
+  optionsMenu: { margin: LL.space.lg, borderRadius: LL.radius['2xl'], padding: LL.space.sm, overflow: 'hidden', ...LL.shadow.lg },
+  optionItem: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: LL.space.lg, paddingVertical: LL.space.md, gap: LL.space.md },
+  optionItemLast: { borderBottomWidth: 0 },
+  optionText: { fontSize: LL.text.base.size, fontWeight: '600' },
 
-  imagePreviewOverlay: {
-    flex: 1,
+  // Image Preview
+  imagePreviewOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  imagePreviewContainer: { width: SCREEN_W, height: SCREEN_H, justifyContent: 'center', alignItems: 'center' },
+  imagePreviewLoader: { position: 'absolute' },
+  imagePreviewImage: { width: SCREEN_W * 0.9, height: SCREEN_H * 0.7, borderRadius: LL.radius.lg },
+  imagePreviewClose: { position: 'absolute', top: 50, right: 20 },
+  imagePreviewCloseGrad: { width: 44, height: 44, borderRadius: LL.radius.full, alignItems: 'center', justifyContent: 'center' },
+
+  // Empty States
+  emptyChat: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
+  emptyIconBg: {
+    width: 80,
+    height: 80,
+    borderRadius: LL.radius['2xl'],
     justifyContent: 'center',
     alignItems: 'center',
+    marginBottom: LL.space.lg,
   },
-  imagePreviewContainer: {
-    width: width,
-    height: height,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  imagePreviewLoader: {
-    position: 'absolute',
-  },
-  imagePreviewImage: {
-    width: width * 0.9,
-    height: height * 0.7,
-    borderRadius: 16,
-  },
-  imagePreviewClose: {
-    position: 'absolute',
-    top: 50,
-    right: 20,
-  },
-  imagePreviewCloseBlur: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
+  emptyTitle: { fontSize: LL.text.xl.size, fontWeight: '800', marginBottom: LL.space.sm, textAlign: 'center' },
+  emptyText: { fontSize: LL.text.base.size, textAlign: 'center', fontWeight: '500' },
+  emptySubtext: { fontSize: LL.text.sm.size, marginTop: LL.space.sm, fontWeight: '500' },
+  errorText: { fontSize: LL.text.base.size, fontWeight: '600', marginBottom: LL.space.lg },
+  goBackButton: { borderRadius: LL.radius.full, overflow: 'hidden' },
+  goBackGrad: { paddingHorizontal: LL.space.xl, paddingVertical: LL.space.md },
+  goBackText: { color: LL.white, fontSize: LL.text.sm.size, fontWeight: '700' },
 });

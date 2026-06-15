@@ -1967,12 +1967,20 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.9)',
+    backgroundColor: 'rgba(255,255,255,0.95)',
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.08)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
   },
   headerBtnDark: {
-    backgroundColor: 'rgba(30,30,35,0.9)',
+    backgroundColor: 'rgba(40,40,50,0.95)',
+    borderColor: 'rgba(255,255,255,0.1)',
   },
   headerBtnAccent: {
     backgroundColor: '#667eea',
@@ -2956,7 +2964,8 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   inviteButtonDisabled: {
-    opacity: 0.5,
+    opacity: 0.7,
+    backgroundColor: 'rgba(100,116,139,0.15)',
   },
   inviteButtonGradient: {
     flexDirection: 'row',

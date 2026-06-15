@@ -1338,9 +1338,16 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(255,255,255,0.9)',
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.08)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   stickyHeaderCenter: {
     flexDirection: 'row',
@@ -1363,7 +1370,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   saveBtnDisabled: {
-    backgroundColor: 'rgba(100,116,139,0.2)',
+    backgroundColor: 'rgba(100,116,139,0.35)',
+    borderWidth: 1,
+    borderColor: 'rgba(100,116,139,0.2)',
   },
   saveBtnText: {
     fontSize: 14,
@@ -1371,7 +1380,7 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   saveBtnTextDisabled: {
-    color: '#94a3b8',
+    color: '#64748b',
   },
 
   // Profile Hero (scrolls with content, no absolute positioning)

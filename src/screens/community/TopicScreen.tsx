@@ -183,7 +183,7 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
   const navigateToUserProfile = useCallback(
     (userId: string) => {
       triggerHaptic('light');
-      navigation.navigate('UserProfile', { userId });
+      navigation.navigate('CommunityMemberProfile', { userId });
     },
     [navigation, triggerHaptic]
   );

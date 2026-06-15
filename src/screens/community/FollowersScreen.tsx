@@ -215,7 +215,7 @@ export default function FollowersScreen
     if (followerId === currentUser?.id) {
       navigation.goBack();
     } else {
-      navigation.push('UserProfile', { userId: followerId });
+      navigation.push('CommunityMemberProfile', { userId: followerId });
     }
   };
 

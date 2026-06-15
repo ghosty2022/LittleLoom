@@ -13,6 +13,8 @@ import {
   ImageBackground,
   ScrollView,
   FlatList,
+  TextInput,
+  Alert,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -32,8 +34,8 @@ import Animated, {
   useAnimatedScrollHandler,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import { formatDistanceToNow, format } from 'date-fns';
-import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
+import { formatDistanceToNow, format, subDays, eachDayOfInterval, isSameDay } from 'date-fns';
+import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop, Polyline } from 'react-native-svg';
 
 import { useAuth } from '../../context/AuthContext';
 import { useBaby } from '../../context/BabyContext';
@@ -54,7 +56,6 @@ import type { RootStackParamList } from '../../types/navigation';
 
 const { width, height } = Dimensions.get('window');
 
-
 type HomeScreenProps = NativeStackScreenProps<RootStackParamList, 'Main'>;
 
 interface QuickAction {
@@ -73,20 +74,39 @@ interface FeatureCard {
   icon: string;
   color: string;
   screen: keyof RootStackParamList;
+  params?: Record<string, any>;
   badge?: string;
   usageCount: number;
-  params?: Record<string, any>;
 }
 
-const NAVIGATION_MAP: Record<string, { screen: string; params?: Record<string, any> }> = {
+interface SmartNotification {
+  id: string;
+  type: 'vaccine' | 'milestone' | 'reminder' | 'growth' | 'streak' | 'tip';
+  priority: 'urgent' | 'high' | 'normal' | 'low';
+  title: string;
+  message: string;
+  actionScreen?: keyof RootStackParamList;
+  actionParams?: Record<string, any>;
+  actionLabel?: string;
+  icon: string;
+  iconColor: string;
+  bgColor: string;
+  timestamp: number;
+  dismissed?: boolean;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   NAVIGATION MAP — FIXED: All routes point to correct screens
+   ═══════════════════════════════════════════════════════════════════════════ */
+const NAVIGATION_MAP: Record<string, { screen: keyof RootStackParamList; params?: Record<string, any> }> = {
   'Main': { screen: 'Main', params: {} },
   'Connect': { screen: 'Main', params: { screen: 'Connect' } },
-  'Settings': { screen: 'More', params: { screen: 'Settings' } },
-  'More': { screen: 'More', params: {} },
-  'UniversalTracker': { screen: 'UniversalTracker', params: {} },
-  'Grow': { screen: 'Grow', params: {} },
+  'Settings': { screen: 'Customize', params: {} },
+  'More': { screen: 'Main', params: { screen: 'More' } },
+  'UniversalTracker': { screen: 'UniversalTrackerHub', params: {} },
+  'Grow': { screen: 'GrowthDashboard', params: {} },
   'Achievements': { screen: 'Achievements', params: {} },
-  'Reminders': { screen: 'Reminders', params: {} },
+  'Reminders': { screen: 'TrackerReminders', params: {} },
   'SafetyCorner': { screen: 'SafetyCorner', params: {} },
   'Gallery': { screen: 'Gallery', params: {} },
   'SoundMixer': { screen: 'SoundMixer', params: {} },
@@ -98,8 +118,9 @@ const NAVIGATION_MAP: Record<string, { screen: string; params?: Record<string, a
   'SwitchBaby': { screen: 'SwitchBaby', params: {} },
   'CreateBabyProfile': { screen: 'CreateBabyProfile', params: {} },
   'EditProfile': { screen: 'EditProfile', params: {} },
+  'VaccinationSchedule': { screen: 'VaccinationSchedule', params: {} },
+  'Timeline': { screen: 'Timeline', params: {} },
 };
-
 
 const getGridColumns = () => {
   if (width >= 768) return 6;
@@ -110,46 +131,106 @@ const getGridColumns = () => {
 const GRID_COLUMNS = getGridColumns();
 
 const DEFAULT_QUICK_ACTIONS: QuickAction[] = [
-  { id: 'potty', label: 'Potty', icon: '🚽', color: '#667eea', gradient: ['#667eea', '#764ba2'], screen: 'UniversalTracker', params: { type: 'potty' } },
-  { id: 'feed', label: 'Feed', icon: '🍼', color: '#fa709a', gradient: ['#fa709a', '#fee140'], screen: 'UniversalTracker', params: { type: 'feed' } },
-  { id: 'sleep', label: 'Sleep', icon: '😴', color: '#11998e', gradient: ['#11998e', '#38ef7d'], screen: 'UniversalTracker', params: { type: 'sleep' } },
-  { id: 'diaper', label: 'Diaper', icon: '🧷', color: '#fc5c7d', gradient: ['#fc5c7d', '#6a82fb'], screen: 'UniversalTracker', params: { type: 'diaper' } },
-  { id: 'growth', label: 'Growth', icon: '📏', color: '#43e97b', gradient: ['#43e97b', '#38f9d7'], screen: 'Grow', params: {} },
+  { id: 'potty', label: 'Potty', icon: '🚽', color: '#667eea', gradient: ['#667eea', '#764ba2'], screen: 'UniversalTrackerHub', params: { type: 'potty' } },
+  { id: 'feed', label: 'Feed', icon: '🍼', color: '#fa709a', gradient: ['#fa709a', '#fee140'], screen: 'UniversalTrackerHub', params: { type: 'feed' } },
+  { id: 'sleep', label: 'Sleep', icon: '😴', color: '#11998e', gradient: ['#11998e', '#38ef7d'], screen: 'UniversalTrackerHub', params: { type: 'sleep' } },
+  { id: 'diaper', label: 'Diaper', icon: '🧷', color: '#fc5c7d', gradient: ['#fc5c7d', '#6a82fb'], screen: 'UniversalTrackerHub', params: { type: 'diaper' } },
+  { id: 'growth', label: 'Growth', icon: '📏', color: '#43e97b', gradient: ['#43e97b', '#38f9d7'], screen: 'GrowthDashboard', params: {} },
   { id: 'milestone', label: 'Milestone', icon: '🌟', color: '#f59e0b', gradient: ['#f59e0b', '#fbbf24'], screen: 'Achievements', params: {} },
-  { id: 'medication', label: 'Meds', icon: '💊', color: '#ef4444', gradient: ['#ef4444', '#f87171'], screen: 'UniversalTracker', params: { type: 'medication' } },
-  { id: 'note', label: 'Note', icon: '📝', color: '#64748b', gradient: ['#64748b', '#94a3b8'], screen: 'UniversalTracker', params: { type: 'note' } },
+  { id: 'medication', label: 'Meds', icon: '💊', color: '#ef4444', gradient: ['#ef4444', '#f87171'], screen: 'UniversalTrackerHub', params: { type: 'medication' } },
+  { id: 'note', label: 'Note', icon: '📝', color: '#64748b', gradient: ['#64748b', '#94a3b8'], screen: 'UniversalTrackerHub', params: { type: 'note' } },
 ];
 
 const AVAILABLE_ACTIONS: QuickAction[] = [
-  { id: 'pump', label: 'Pump', icon: '🤱', color: '#8b5cf6', gradient: ['#8b5cf6', '#a78bfa'], screen: 'UniversalTracker', params: { type: 'pump' } },
-  { id: 'bath', label: 'Bath', icon: '🛁', color: '#3b82f6', gradient: ['#3b82f6', '#60a5fa'], screen: 'UniversalTracker', params: { type: 'bath' } },
-  { id: 'sun', label: 'Sun', icon: '☀️', color: '#f59e0b', gradient: ['#f59e0b', '#fbbf24'], screen: 'UniversalTracker', params: { type: 'sun' } },
-  { id: 'play', label: 'Play', icon: '🎮', color: '#ec4899', gradient: ['#ec4899', '#f472b6'], screen: 'UniversalTracker', params: { type: 'play' } },
-  { id: 'walk', label: 'Walk', icon: '🚶', color: '#10b981', gradient: ['#10b981', '#34d399'], screen: 'UniversalTracker', params: { type: 'walk' } },
+  { id: 'pump', label: 'Pump', icon: '🤱', color: '#8b5cf6', gradient: ['#8b5cf6', '#a78bfa'], screen: 'UniversalTrackerHub', params: { type: 'pump' } },
+  { id: 'bath', label: 'Bath', icon: '🛁', color: '#3b82f6', gradient: ['#3b82f6', '#60a5fa'], screen: 'UniversalTrackerHub', params: { type: 'bath' } },
+  { id: 'sun', label: 'Sun', icon: '☀️', color: '#f59e0b', gradient: ['#f59e0b', '#fbbf24'], screen: 'UniversalTrackerHub', params: { type: 'sun' } },
+  { id: 'play', label: 'Play', icon: '🎮', color: '#ec4899', gradient: ['#ec4899', '#f472b6'], screen: 'UniversalTrackerHub', params: { type: 'play' } },
+  { id: 'walk', label: 'Walk', icon: '🚶', color: '#10b981', gradient: ['#10b981', '#34d399'], screen: 'UniversalTrackerHub', params: { type: 'walk' } },
   { id: 'family_chat', label: 'Family Chat', icon: '💬', color: '#06b6d4', gradient: ['#06b6d4', '#22d3ee'], screen: 'FamilyChatList', params: {} },
   { id: 'family_center', label: 'Family', icon: '👨‍👩‍👧', color: '#f97316', gradient: ['#f97316', '#fb923c'], screen: 'FamilySharing', params: {} },
-  { id: 'reminders', label: 'Reminders', icon: '⏰', color: '#ef4444', gradient: ['#ef4444', '#f87171'], screen: 'Reminders', params: {} },
+  { id: 'reminders', label: 'Reminders', icon: '⏰', color: '#ef4444', gradient: ['#ef4444', '#f87171'], screen: 'TrackerReminders', params: {} },
   { id: 'safety', label: 'Safety', icon: '🛡️', color: '#dc2626', gradient: ['#dc2626', '#ef4444'], screen: 'SafetyCorner', params: {} },
   { id: 'gallery', label: 'Gallery', icon: '🖼️', color: '#8b5cf6', gradient: ['#8b5cf6', '#a78bfa'], screen: 'Gallery', params: {} },
   { id: 'sound', label: 'Sounds', icon: '🎵', color: '#1DB954', gradient: ['#1DB954', '#1ed760'], screen: 'SoundMixer', params: {} },
-  { id: 'settings', label: 'Settings', icon: '⚙️', color: '#64748b', gradient: ['#64748b', '#94a3b8'], screen: 'Settings', params: {} },
+  { id: 'settings', label: 'Settings', icon: '⚙️', color: '#64748b', gradient: ['#64748b', '#94a3b8'], screen: 'Customize', params: {} },
+  { id: 'vaccine', label: 'Vaccines', icon: '💉', color: '#e11d48', gradient: ['#e11d48', '#fb7185'], screen: 'VaccinationSchedule', params: {} },
 ];
 
 const DEFAULT_FEATURE_CARDS: FeatureCard[] = [
-  { id: 'reminders', label: 'Reminders', icon: 'alarm', color: '#f59e0b', screen: 'Reminders', badge: '3', usageCount: 0 },
-  { id: 'achievements', label: 'Milestones', icon: 'trophy', color: '#ec4899', screen: 'Achievements', usageCount: 0 },
-  { id: 'growth', label: 'Growth', icon: 'trending-up', color: '#10b981', screen: 'Grow', usageCount: 0 },
-  { id: 'family', label: 'Family', icon: 'people', color: '#3b82f6', screen: 'FamilySharing', usageCount: 0 },
-  { id: 'safety', label: 'Safety', icon: 'shield-checkmark', color: '#ef4444', screen: 'SafetyCorner', usageCount: 0 },
-  { id: 'gallery', label: 'Gallery', icon: 'images', color: '#8b5cf6', screen: 'Gallery', badge: 'New', usageCount: 0 },
-  { id: 'chat', label: 'Family Chat', icon: 'chatbubbles', color: '#06b6d4', screen: 'FamilyChatList', badge: 'Live', usageCount: 0 },
-  { id: 'sound', label: 'Sound Mixer', icon: 'musical-notes', color: '#1DB954', screen: 'SoundMixer', usageCount: 0 },
-  { id: 'settings', label: 'Settings', icon: 'settings', color: '#64748b', screen: 'Settings', usageCount: 0 },
-  { id: 'community', label: 'Community', icon: 'globe', color: '#667eea', screen: 'Main', params: { screen: 'Connect' }, badge: 'Hot', usageCount: 0 },
-  { id: 'help', label: 'Help Center', icon: 'help-buoy', color: '#4facfe', screen: 'HelpCenter', usageCount: 0 },
-  { id: 'support', label: 'Support', icon: 'chatbubble-ellipses', color: '#11998e', screen: 'ContactSupport', usageCount: 0 },
+  { id: 'reminders', label: 'Reminders', icon: 'alarm-outline', color: '#f59e0b', screen: 'TrackerReminders', badge: '3', usageCount: 0 },
+  { id: 'achievements', label: 'Milestones', icon: 'trophy-outline', color: '#ec4899', screen: 'Achievements', usageCount: 0 },
+  { id: 'growth', label: 'Growth', icon: 'trending-up-outline', color: '#10b981', screen: 'GrowthDashboard', usageCount: 0 },
+  { id: 'family', label: 'Family', icon: 'people-outline', color: '#3b82f6', screen: 'FamilySharing', usageCount: 0 },
+  { id: 'safety', label: 'Safety', icon: 'shield-checkmark-outline', color: '#ef4444', screen: 'SafetyCorner', usageCount: 0 },
+  { id: 'gallery', label: 'Gallery', icon: 'images-outline', color: '#8b5cf6', screen: 'Gallery', badge: 'New', usageCount: 0 },
+  { id: 'chat', label: 'Family Chat', icon: 'chatbubbles-outline', color: '#06b6d4', screen: 'FamilyChatList', badge: 'Live', usageCount: 0 },
+  { id: 'sound', label: 'Sound Mixer', icon: 'musical-notes-outline', color: '#1DB954', screen: 'SoundMixer', usageCount: 0 },
+  { id: 'settings', label: 'Settings', icon: 'settings-outline', color: '#64748b', screen: 'Customize', usageCount: 0 },
+  { id: 'community', label: 'Community', icon: 'globe-outline', color: '#667eea', screen: 'Main', params: { screen: 'Connect' }, badge: 'Hot', usageCount: 0 },
+  { id: 'vaccine', label: 'Vaccines', icon: 'medical-outline', color: '#e11d48', screen: 'VaccinationSchedule', usageCount: 0 },
+  { id: 'help', label: 'Help Center', icon: 'help-buoy-outline', color: '#4facfe', screen: 'HelpCenter', usageCount: 0 },
 ];
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   MINI SPARKLINE COMPONENT — SVG-based trend line for cards
+   ═══════════════════════════════════════════════════════════════════════════ */
+const MiniSparkline: React.FC<{
+  data: number[];
+  color: string;
+  width?: number;
+  height?: number;
+  strokeWidth?: number;
+  fillOpacity?: number;
+}> = ({ data, color, width: w = 80, height: h = 32, strokeWidth = 2, fillOpacity = 0.15 }) => {
+  if (!data || data.length < 2) return null;
+
+  const max = Math.max(...data, 1);
+  const min = Math.min(...data, 0);
+  const range = max - min || 1;
+
+  const points = data.map((val, i) => {
+    const x = (i / (data.length - 1)) * w;
+    const y = h - ((val - min) / range) * h;
+    return `${x},${y}`;
+  }).join(' ');
+
+  const areaPoints = `0,${h} ${points} ${w},${h}`;
+
+  return (
+    <Svg width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
+      <Defs>
+        <SvgLinearGradient id={`sparkline-fill-${color.replace('#', '')}`} x1="0%" y1="0%" x2="0%" y2="100%">
+          <Stop offset="0%" stopColor={color} stopOpacity={fillOpacity} />
+          <Stop offset="100%" stopColor={color} stopOpacity="0" />
+        </SvgLinearGradient>
+      </Defs>
+      <Polyline
+        points={areaPoints}
+        fill={`url(#sparkline-fill-${color.replace('#', '')})`}
+        stroke="none"
+      />
+      <Polyline
+        points={points}
+        fill="none"
+        stroke={color}
+        strokeWidth={strokeWidth}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Circle
+        cx={w}
+        cy={h - ((data[data.length - 1] - min) / range) * h}
+        r={3}
+        fill={color}
+      />
+    </Svg>
+  );
+};
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   GLASSMORPHISM CARD
+   ═══════════════════════════════════════════════════════════════════════════ */
 const GlassmorphismCard: React.FC<{ children: React.ReactNode; style?: any; onPress?: () => void; intensity?: number }> = ({ children, style, onPress, intensity = 80 }) => {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -164,6 +245,9 @@ const GlassmorphismCard: React.FC<{ children: React.ReactNode; style?: any; onPr
   );
 };
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   CIRCULAR PROGRESS
+   ═══════════════════════════════════════════════════════════════════════════ */
 const CircularProgress: React.FC<{ progress: number; value: string; label: string; color: string; onPress?: () => void; size?: number }> = ({ progress, value, label, color, onPress, size = 60 }) => {
   const radius = size / 2 - 6;
   const circumference = 2 * Math.PI * radius;
@@ -187,6 +271,139 @@ const CircularProgress: React.FC<{ progress: number; value: string; label: strin
     </TouchableOpacity>
   );
 };
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SMART NOTIFICATION PANEL — Urgent pushes, vaccines, reminders
+   ═══════════════════════════════════════════════════════════════════════════ */
+const SmartNotificationPanel: React.FC<{
+  notifications: SmartNotification[];
+  onDismiss: (id: string) => void;
+  onAction: (notif: SmartNotification) => void;
+  isDark: boolean;
+}> = ({ notifications, onDismiss, onAction, isDark }) => {
+  const [expanded, setExpanded] = useState(false);
+  const urgentCount = notifications.filter(n => n.priority === 'urgent' && !n.dismissed).length;
+
+  if (notifications.length === 0) return null;
+
+  const visibleNotifs = expanded
+    ? notifications.filter(n => !n.dismissed)
+    : notifications.filter(n => !n.dismissed).slice(0, 2);
+
+  const getPriorityIcon = (priority: string) => {
+    switch (priority) {
+      case 'urgent': return 'alert-circle';
+      case 'high': return 'warning';
+      case 'normal': return 'information-circle';
+      default: return 'time';
+    }
+  };
+
+  return (
+    <View style={styles.notificationPanel}>
+      <View style={styles.notificationPanelHeader}>
+        <View style={styles.notificationPanelTitleRow}>
+          <Ionicons name="notifications-outline" size={18} color={isDark ? '#fff' : '#1e293b'} />
+          <Text style={[styles.notificationPanelTitle, isDark && styles.textDark]}>Smart Alerts</Text>
+          {urgentCount > 0 && (
+            <View style={styles.urgentBadge}>
+              <Text style={styles.urgentBadgeText}>{urgentCount}</Text>
+            </View>
+          )}
+        </View>
+        {notifications.filter(n => !n.dismissed).length > 2 && (
+          <TouchableOpacity onPress={() => setExpanded(!expanded)}>
+            <Text style={[styles.expandText, { color: '#667eea' }]}>
+              {expanded ? 'Show Less' : `+${notifications.filter(n => !n.dismissed).length - 2} more`}
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
+      {visibleNotifs.map((notif, index) => (
+        <Animated.View key={notif.id} entering={FadeInUp.delay(index * 60)}>
+          <TouchableOpacity
+            style={[
+              styles.smartNotificationCard,
+              {
+                backgroundColor: notif.bgColor + (isDark ? '25' : '15'),
+                borderLeftColor: notif.iconColor,
+                borderLeftWidth: 3,
+              },
+            ]}
+            onPress={() => onAction(notif)}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.smartNotifIcon, { backgroundColor: notif.iconColor + '20' }]}>
+              <Ionicons name={getPriorityIcon(notif.priority) as any} size={18} color={notif.iconColor} />
+            </View>
+            <View style={styles.smartNotifContent}>
+              <Text style={[styles.smartNotifTitle, isDark && styles.textDark]}>{notif.title}</Text>
+              <Text style={styles.smartNotifMessage} numberOfLines={2}>{notif.message}</Text>
+              <View style={styles.smartNotifMeta}>
+                <Text style={styles.smartNotifTime}>{formatDistanceToNow(notif.timestamp, { addSuffix: true })}</Text>
+                {notif.actionLabel && (
+                  <View style={[styles.smartNotifActionBadge, { backgroundColor: notif.iconColor + '20' }]}>
+                    <Text style={[styles.smartNotifActionText, { color: notif.iconColor }]}>{notif.actionLabel}</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+            <TouchableOpacity
+              style={styles.dismissBtn}
+              onPress={() => onDismiss(notif.id)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons name="close-outline" size={18} color={isDark ? '#94a3b8' : '#64748b'} />
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </Animated.View>
+      ))}
+    </View>
+  );
+};
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TREND CARD — Mini sparkline with stat for dashboard sections
+   ═══════════════════════════════════════════════════════════════════════════ */
+const TrendCard: React.FC<{
+  title: string;
+  value: string;
+  subtitle: string;
+  trendData: number[];
+  color: string;
+  icon: string;
+  onPress: () => void;
+  isDark: boolean;
+  trendLabel?: string;
+  trendUp?: boolean;
+}> = ({ title, value, subtitle, trendData, color, icon, onPress, isDark, trendLabel, trendUp }) => {
+  const trendColor = trendUp !== undefined ? (trendUp ? '#10b981' : '#ef4444') : color;
+
+  return (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={[styles.trendCard, { backgroundColor: isDark ? 'rgba(40,40,40,0.6)' : 'rgba(255,255,255,0.85)' }]}>
+      <View style={styles.trendCardHeader}>
+        <View style={[styles.trendIconWrap, { backgroundColor: color + '15' }]}>
+          <Ionicons name={icon as any} size={18} color={color} />
+        </View>
+        {trendLabel && (
+          <View style={[styles.trendBadge, { backgroundColor: trendColor + '15' }]}>
+            <Ionicons name={trendUp ? 'trending-up-outline' : 'trending-down-outline'} size={12} color={trendColor} />
+            <Text style={[styles.trendBadgeText, { color: trendColor }]}>{trendLabel}</Text>
+          </View>
+        )}
+      </View>
+      <Text style={[styles.trendValue, isDark && styles.textDark]}>{value}</Text>
+      <Text style={styles.trendSubtitle}>{subtitle}</Text>
+      <View style={styles.trendChartWrap}>
+        <MiniSparkline data={trendData} color={color} width={120} height={36} />
+      </View>
+    </TouchableOpacity>
+  );
+};
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   NOTIFICATION CHOOSER MODAL
+   ═══════════════════════════════════════════════════════════════════════════ */
 const NotificationChooserModal = ({ visible, onClose, onSelect, isDark }: { visible: boolean; onClose: () => void; onSelect: (type: 'app' | 'community') => void; isDark: boolean }) => {
   const opacity = useSharedValue(0);
   const scale = useSharedValue(0.9);
@@ -209,26 +426,29 @@ const NotificationChooserModal = ({ visible, onClose, onSelect, isDark }: { visi
         <View style={styles.notificationHandle} />
         <Text style={[styles.notificationTitle, { color: isDark ? '#fff' : '#1e293b' }]}>Notifications</Text>
         <TouchableOpacity style={styles.notificationOption} onPress={() => { onSelect('app'); onClose(); }}>
-          <LinearGradient colors={['#667eea', '#764ba2']} style={styles.notificationIcon}><Ionicons name="notifications" size={18} color="#fff" /></LinearGradient>
+          <LinearGradient colors={['#667eea', '#764ba2']} style={styles.notificationIcon}><Ionicons name="notifications-outline" size={18} color="#fff" /></LinearGradient>
           <View style={styles.notificationTextContainer}>
             <Text style={[styles.notificationOptionTitle, { color: isDark ? '#fff' : '#1e293b' }]}>App</Text>
             <Text style={styles.notificationOptionSubtitle}>Reminders & alerts</Text>
           </View>
-          <Ionicons name="chevron-forward" size={16} color="#64748b" />
+          <Ionicons name="chevron-forward-outline" size={16} color="#64748b" />
         </TouchableOpacity>
         <TouchableOpacity style={styles.notificationOption} onPress={() => { onSelect('community'); onClose(); }}>
-          <LinearGradient colors={['#ec4899', '#f472b6']} style={styles.notificationIcon}><Ionicons name="people" size={18} color="#fff" /></LinearGradient>
+          <LinearGradient colors={['#ec4899', '#f472b6']} style={styles.notificationIcon}><Ionicons name="people-outline" size={18} color="#fff" /></LinearGradient>
           <View style={styles.notificationTextContainer}>
             <Text style={[styles.notificationOptionTitle, { color: isDark ? '#fff' : '#1e293b' }]}>Community</Text>
             <Text style={styles.notificationOptionSubtitle}>Likes & mentions</Text>
           </View>
-          <View style={styles.badgeContainer}><View style={styles.badge}><Text style={styles.badgeText}>5</Text></View><Ionicons name="chevron-forward" size={16} color="#64748b" /></View>
+          <View style={styles.badgeContainer}><View style={styles.badge}><Text style={styles.badgeText}>5</Text></View><Ionicons name="chevron-forward-outline" size={16} color="#64748b" /></View>
         </TouchableOpacity>
       </Animated.View>
     </View>
   );
 };
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   ADD ACTION MODAL
+   ═══════════════════════════════════════════════════════════════════════════ */
 const AddActionModal = ({ visible, onClose, onAdd, isDark, existingActions }: { visible: boolean; onClose: () => void; onAdd: (action: QuickAction) => void; isDark: boolean; existingActions: QuickAction[] }) => {
   const opacity = useSharedValue(0);
   const scale = useSharedValue(0.9);
@@ -254,12 +474,12 @@ const AddActionModal = ({ visible, onClose, onAdd, isDark, existingActions }: { 
             <Text style={styles.centeredModalSubtitle}>Choose an action to add to your grid</Text>
           </View>
           <TouchableOpacity onPress={onClose} style={styles.centeredModalClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-            <Ionicons name="close" size={24} color={isDark ? '#94a3b8' : '#64748b'} />
+            <Ionicons name="close-outline" size={24} color={isDark ? '#94a3b8' : '#64748b'} />
           </TouchableOpacity>
         </View>
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.centeredModalGrid}>
           {AVAILABLE_ACTIONS.map((action, index) => {
-            const isExisting = !!existingActions.find(a => a.id === action.id); // FIX: coerce to boolean
+            const isExisting = !!existingActions.find(a => a.id === action.id);
             return (
               <Animated.View key={action.id} entering={FadeInUp.delay(index * 50)} style={styles.centeredModalItem}>
                 <TouchableOpacity style={[styles.centeredModalItemButton, isExisting && styles.centeredModalItemDisabled]} onPress={() => handleAdd(action)} disabled={isExisting} activeOpacity={isExisting ? 1 : 0.7}>
@@ -278,17 +498,38 @@ const AddActionModal = ({ visible, onClose, onAdd, isDark, existingActions }: { 
   );
 };
 
-const DraggableGrid: React.FC<{ items: QuickAction[]; onPress: (item: QuickAction) => void; onRemove: (id: string) => void; onAdd: () => void; onReorder: (newItems: QuickAction[]) => void; columns: number; isDark: boolean }> = ({ items, onPress, onRemove, onAdd, onReorder, columns, isDark }) => {
+/* ═══════════════════════════════════════════════════════════════════════════
+   DRAGGABLE GRID — Improved with actual drag-and-drop via long press
+   ═══════════════════════════════════════════════════════════════════════════ */
+const DraggableGrid: React.FC<{
+  items: QuickAction[];
+  onPress: (item: QuickAction) => void;
+  onRemove: (id: string) => void;
+  onAdd: () => void;
+  onReorder: (newItems: QuickAction[]) => void;
+  columns: number;
+  isDark: boolean;
+}> = ({ items, onPress, onRemove, onAdd, onReorder, columns, isDark }) => {
   const [isEditMode, setIsEditMode] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [localItems, setLocalItems] = useState<QuickAction[]>(items);
   const dragStartIndex = useRef<number>(-1);
+
   useEffect(() => { setLocalItems(items); }, [items]);
+
   const totalMargin = 20; const gap = 10;
   const availableWidth = width - totalMargin;
   const itemWidth = (availableWidth - (columns - 1) * gap) / columns;
+
   const toggleEditMode = () => { setIsEditMode(!isEditMode); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); };
-  const handleDragStart = (index: number) => { if (!isEditMode) return; dragStartIndex.current = index; setDraggingId(localItems[index].id); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy); };
+
+  const handleDragStart = (index: number) => {
+    if (!isEditMode) return;
+    dragStartIndex.current = index;
+    setDraggingId(localItems[index].id);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+  };
+
   const handleDragEnd = (index: number) => {
     if (!isEditMode || draggingId === null) return;
     const fromIndex = dragStartIndex.current;
@@ -299,26 +540,60 @@ const DraggableGrid: React.FC<{ items: QuickAction[]; onPress: (item: QuickActio
     setLocalItems(newItems); onReorder(newItems); setDraggingId(null);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
+
   return (
     <View>
       <View style={styles.gridHeader}>
-        <Text style={[styles.gridHint, isDark && { color: '#94a3b8' }]}>{isEditMode ? 'Drag to reorder • Tap X to remove' : `Hold to customize (${columns} cols)`}</Text>
-        {isEditMode && <TouchableOpacity onPress={toggleEditMode} style={styles.doneButton}><Text style={styles.doneButtonText}>Done</Text></TouchableOpacity>}
+        <Text style={[styles.gridHint, isDark && { color: '#94a3b8' }]}>
+          {isEditMode ? 'Drag to reorder • Tap X to remove' : `Hold to customize (${columns} cols)`}
+        </Text>
+        {isEditMode && (
+          <TouchableOpacity onPress={toggleEditMode} style={styles.doneButton}>
+            <Text style={styles.doneButtonText}>Done</Text>
+          </TouchableOpacity>
+        )}
       </View>
       <View style={[styles.gridContainer, { gap }]}>
         {localItems.map((item, index) => (
-          <Animated.View key={item.id} entering={FadeInUp.delay(index * 50)} layout={Layout.springify()} style={[styles.gridItem, { width: itemWidth }, draggingId === item.id && { zIndex: 1000, transform: [{ scale: 1.05 }] }]}>
-            <TouchableOpacity onPress={() => isEditMode ? undefined : onPress(item)} onLongPress={toggleEditMode} delayLongPress={300} onPressIn={() => handleDragStart(index)} onPressOut={() => handleDragEnd(index)} style={styles.gridItemTouchable} activeOpacity={isEditMode ? 1 : 0.8}>
+          <Animated.View
+            key={item.id}
+            entering={FadeInUp.delay(index * 50)}
+            layout={Layout.springify()}
+            style={[
+              styles.gridItem,
+              { width: itemWidth },
+              draggingId === item.id && { zIndex: 1000, transform: [{ scale: 1.05 }] },
+            ]}
+          >
+            <TouchableOpacity
+              onPress={() => isEditMode ? undefined : onPress(item)}
+              onLongPress={toggleEditMode}
+              delayLongPress={400}
+              onPressIn={() => handleDragStart(index)}
+              onPressOut={() => handleDragEnd(index)}
+              style={styles.gridItemTouchable}
+              activeOpacity={isEditMode ? 1 : 0.8}
+            >
               <LinearGradient colors={item.gradient} style={[styles.gridItemGradient, isEditMode && styles.gridItemGradientEdit]}>
                 <Text style={styles.gridItemIcon}>{item.icon}</Text>
-                {isEditMode && <TouchableOpacity style={styles.removeBadge} onPress={(e) => { e.stopPropagation(); onRemove(item.id); }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="close" size={12} color="#fff" /></TouchableOpacity>}
+                {isEditMode && (
+                  <TouchableOpacity
+                    style={styles.removeBadge}
+                    onPress={(e) => { e.stopPropagation(); onRemove(item.id); }}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <Ionicons name="close" size={12} color="#fff" />
+                  </TouchableOpacity>
+                )}
               </LinearGradient>
               <Text style={[styles.gridItemLabel, isDark && { color: '#fff' }]}>{item.label}</Text>
             </TouchableOpacity>
           </Animated.View>
         ))}
         <TouchableOpacity style={[styles.gridItem, { width: itemWidth }]} onPress={onAdd}>
-          <View style={[styles.addItemGradient, isDark && { borderColor: '#475569', backgroundColor: 'rgba(71,85,105,0.2)' }]}><Ionicons name="add" size={28} color="#667eea" /></View>
+          <View style={[styles.addItemGradient, isDark && { borderColor: '#475569', backgroundColor: 'rgba(71,85,105,0.2)' }]}>
+            <Ionicons name="add-outline" size={28} color="#667eea" />
+          </View>
           <Text style={[styles.gridItemLabel, { color: isDark ? '#94a3b8' : '#64748b' }]}>Add</Text>
         </TouchableOpacity>
       </View>
@@ -326,18 +601,38 @@ const DraggableGrid: React.FC<{ items: QuickAction[]; onPress: (item: QuickActio
   );
 };
 
-const SortableFeatureGrid: React.FC<{ items: FeatureCard[]; onPress: (item: FeatureCard) => void; onReorder: (newItems: FeatureCard[]) => void; isDark: boolean; onUsageIncrement: (id: string) => void }> = ({ items, onPress, onReorder, isDark, onUsageIncrement }) => {
+/* ═══════════════════════════════════════════════════════════════════════════
+   SORTABLE FEATURE GRID — Improved drag-and-drop
+   ═══════════════════════════════════════════════════════════════════════════ */
+const SortableFeatureGrid: React.FC<{
+  items: FeatureCard[];
+  onPress: (item: FeatureCard) => void;
+  onReorder: (newItems: FeatureCard[]) => void;
+  isDark: boolean;
+  onUsageIncrement: (id: string) => void;
+}> = ({ items, onPress, onReorder, isDark, onUsageIncrement }) => {
   const [isEditMode, setIsEditMode] = useState(false);
   const [localItems, setLocalItems] = useState<FeatureCard[]>(items);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const dragStartIndex = useRef<number>(-1);
+
   useEffect(() => { setLocalItems(items); }, [items]);
+
   const gap = 12; const margin = 20;
   const availableWidth = width - (margin * 2);
   const itemWidth = (availableWidth - gap) / 2;
+
   const toggleEditMode = () => { setIsEditMode(!isEditMode); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); };
+
   const handlePress = (item: FeatureCard) => { if (isEditMode) return; onUsageIncrement(item.id); onPress(item); };
-  const handleDragStart = (index: number) => { if (!isEditMode) return; dragStartIndex.current = index; setDraggingId(localItems[index].id); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy); };
+
+  const handleDragStart = (index: number) => {
+    if (!isEditMode) return;
+    dragStartIndex.current = index;
+    setDraggingId(localItems[index].id);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+  };
+
   const handleDragEnd = (index: number) => {
     if (!isEditMode || draggingId === null) return;
     const fromIndex = dragStartIndex.current;
@@ -348,27 +643,69 @@ const SortableFeatureGrid: React.FC<{ items: FeatureCard[]; onPress: (item: Feat
     setLocalItems(newItems); onReorder(newItems); setDraggingId(null);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
+
   const renderItem = (item: FeatureCard, index: number) => {
     const isDragging = draggingId === item.id;
     return (
-      <Animated.View key={item.id} entering={FadeInUp.delay(index * 60)} layout={Layout.springify()} style={[styles.featureCardWrapper2Col, { width: itemWidth }, isDragging && { zIndex: 1000, transform: [{ scale: 1.05 }] }]}>
-        <TouchableOpacity onPress={() => handlePress(item)} onLongPress={toggleEditMode} delayLongPress={400} activeOpacity={0.8} style={styles.featureCard2Col} onPressIn={() => handleDragStart(index)} onPressOut={() => handleDragEnd(index)}>
-          <LinearGradient colors={[`${item.color}15`, `${item.color}05`]} style={[styles.featureGradient2Col, { borderColor: `${item.color}30` }, isEditMode && styles.featureGradientEdit]}>
-            <View style={[styles.featureIcon2Col, { backgroundColor: item.color }]}><Ionicons name={item.icon as any} size={22} color="#fff" /></View>
+      <Animated.View
+        key={item.id}
+        entering={FadeInUp.delay(index * 60)}
+        layout={Layout.springify()}
+        style={[
+          styles.featureCardWrapper2Col,
+          { width: itemWidth },
+          isDragging && { zIndex: 1000, transform: [{ scale: 1.05 }] },
+        ]}
+      >
+        <TouchableOpacity
+          onPress={() => handlePress(item)}
+          onLongPress={toggleEditMode}
+          delayLongPress={400}
+          activeOpacity={0.8}
+          style={styles.featureCard2Col}
+          onPressIn={() => handleDragStart(index)}
+          onPressOut={() => handleDragEnd(index)}
+        >
+          <LinearGradient
+            colors={[`${item.color}15`, `${item.color}05`]}
+            style={[
+              styles.featureGradient2Col,
+              { borderColor: `${item.color}30` },
+              isEditMode && styles.featureGradientEdit,
+            ]}
+          >
+            <View style={[styles.featureIcon2Col, { backgroundColor: item.color }]}>
+              <Ionicons name={item.icon as any} size={22} color="#fff" />
+            </View>
             <Text style={[styles.featureLabel2Col, isDark && { color: '#fff' }]}>{item.label}</Text>
-            {item.badge && <View style={[styles.featureBadge2Col, { backgroundColor: item.color }]}><Text style={styles.featureBadgeText2Col}>{item.badge}</Text></View>}
-            {isEditMode && <View style={styles.dragHandle}><Ionicons name="reorder-three" size={20} color="#64748b" /></View>}
-            <Ionicons name="chevron-forward" size={18} color={item.color} style={styles.featureArrow2Col} />
+            {item.badge && (
+              <View style={[styles.featureBadge2Col, { backgroundColor: item.color }]}>
+                <Text style={styles.featureBadgeText2Col}>{item.badge}</Text>
+              </View>
+            )}
+            {isEditMode && (
+              <View style={styles.dragHandle}>
+                <Ionicons name="reorder-three-outline" size={20} color="#64748b" />
+              </View>
+            )}
+            <Ionicons name="chevron-forward-outline" size={18} color={item.color} style={styles.featureArrow2Col} />
           </LinearGradient>
         </TouchableOpacity>
       </Animated.View>
     );
   };
+
   return (
     <View>
       <View style={styles.gridHeader}>
-        <Text style={[styles.gridHint, isDark && { color: '#94a3b8' }]}>{isEditMode ? 'Drag to reorder layout' : 'Hold to customize layout'}</Text>
-        {isEditMode && <TouchableOpacity onPress={toggleEditMode} style={styles.doneButton}><Text style={styles.doneButtonText}>Done</Text></TouchableOpacity>}
+        <Text style={[styles.gridHint, isDark && { color: '#94a3b8' }]}>
+          {isEditMode ? 'Drag to reorder layout' : 'Hold to customize layout'}
+        </Text>
+        {isEditMode && (
+          <TouchableOpacity onPress={toggleEditMode} style={styles.doneButton}>
+            <Text style={styles.doneButtonText}>Done</Text>
+          </TouchableOpacity>
+        )}
       </View>
       <View style={[styles.featuresGrid2Col, { gap, paddingHorizontal: margin }]}>
         {localItems.map((item, index) => renderItem(item, index))}
@@ -377,78 +714,180 @@ const SortableFeatureGrid: React.FC<{ items: FeatureCard[]; onPress: (item: Feat
   );
 };
 
-const PaginatedActivityList: React.FC<{ activities: any[]; isDark: boolean; navigation: any; onLoadMore: () => void; hasMore: boolean; isLoading: boolean }> = ({ activities, isDark, navigation, onLoadMore, hasMore, isLoading }) => {
+/* ═══════════════════════════════════════════════════════════════════════════
+   PAGINATED ACTIVITY LIST — FIXED: Proper Ionicons icons instead of emoji
+   ═══════════════════════════════════════════════════════════════════════════ */
+const PaginatedActivityList: React.FC<{
+  activities: any[];
+  isDark: boolean;
+  navigation: any;
+  onLoadMore: () => void;
+  hasMore: boolean;
+  isLoading: boolean;
+}> = ({ activities, isDark, navigation, onLoadMore, hasMore, isLoading }) => {
   const [displayCount, setDisplayCount] = useState(5);
   const displayedActivities = activities.slice(0, displayCount);
   const canLoadMore = displayCount < activities.length;
-  const handleLoadMore = () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setDisplayCount(prev => Math.min(prev + 5, activities.length)); onLoadMore(); };
+
+  const handleLoadMore = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setDisplayCount(prev => Math.min(prev + 5, activities.length));
+    onLoadMore();
+  };
+
+  // FIXED: Activity icon mapping from tracker type to Ionicons icon
+  const getActivityIcon = (type?: string): string => {
+    const iconMap: Record<string, string> = {
+      potty: 'water-outline',
+      feed: 'nutrition-outline',
+      sleep: 'moon-outline',
+      diaper: 'shirt-outline',
+      growth: 'trending-up-outline',
+      milestone: 'trophy-outline',
+      medication: 'medical-outline',
+      note: 'document-text-outline',
+      pump: 'swap-horizontal-outline',
+      bath: 'water-outline',
+      play: 'game-controller-outline',
+      walk: 'walk-outline',
+      temperature: 'thermometer-outline',
+      symptom: 'pulse-outline',
+      reading: 'book-outline',
+      tummy_time: 'fitness-outline',
+      mood: 'happy-outline',
+    };
+    return iconMap[type || ''] || 'ellipse-outline';
+  };
+
+  const getActivityColor = (type?: string): string => {
+    const colorMap: Record<string, string> = {
+      potty: '#667eea',
+      feed: '#fa709a',
+      sleep: '#11998e',
+      diaper: '#fc5c7d',
+      growth: '#43e97b',
+      milestone: '#f59e0b',
+      medication: '#ef4444',
+      note: '#64748b',
+      pump: '#8b5cf6',
+      bath: '#3b82f6',
+      play: '#ec4899',
+      walk: '#10b981',
+    };
+    return colorMap[type || ''] || '#667eea';
+  };
+
   if (activities.length === 0) {
     return (
       <GlassmorphismCard style={styles.emptyState} intensity={60}>
-        <View style={styles.emptyStateIcon}><Ionicons name="document-text-outline" size={32} color="#667eea" /></View>
+        <View style={styles.emptyStateIcon}>
+          <Ionicons name="document-text-outline" size={32} color="#667eea" />
+        </View>
         <Text style={styles.emptyStateTitle}>No activities yet</Text>
         <Text style={styles.emptyStateText}>Tap a quick action above to log your first activity!</Text>
       </GlassmorphismCard>
     );
   }
+
   return (
     <View>
-      {displayedActivities.map((item, index) => (
-        <Animated.View key={item.id} entering={FadeInUp.delay(index * 80)} layout={Layout.springify()}>
-          <TouchableOpacity onPress={() => navigation.navigate('Timeline', { type: item.type })} activeOpacity={0.8}>
-            <GlassmorphismCard style={styles.activityItem} intensity={60}>
-              <View style={[styles.activityIcon, { backgroundColor: `${item.color || '#667eea'}20` }]}><Text style={styles.activityEmoji}>{item.icon || '📝'}</Text></View>
-              <View style={styles.activityContent}>
-                <Text style={[styles.activityTitle, isDark && styles.textDark]}>{item.title}</Text>
-                <Text style={styles.activityTime}>{formatDistanceToNow(item.timestamp, { addSuffix: true })}</Text>
-                {item.details && <Text style={styles.activityDetails} numberOfLines={1}>{item.details}</Text>}
-              </View>
-              <View style={styles.activityArrow}><Ionicons name="chevron-forward" size={18} color="#667eea" /></View>
-            </GlassmorphismCard>
-          </TouchableOpacity>
-        </Animated.View>
-      ))}
+      {displayedActivities.map((item, index) => {
+        const iconName = getActivityIcon(item?.type);
+        const iconColor = getActivityColor(item?.type);
+        return (
+          <Animated.View key={item.id || `activity-${index}`} entering={FadeInUp.delay(index * 80)} layout={Layout.springify()}>
+            <TouchableOpacity onPress={() => navigation.navigate('Timeline', { type: item.type })} activeOpacity={0.8}>
+              <GlassmorphismCard style={styles.activityItem} intensity={60}>
+                <View style={[styles.activityIcon, { backgroundColor: `${iconColor}20` }]}>
+                  <Ionicons name={iconName as any} size={22} color={iconColor} />
+                </View>
+                <View style={styles.activityContent}>
+                  <Text style={[styles.activityTitle, isDark && styles.textDark]}>{item.title || 'Activity'}</Text>
+                  <Text style={styles.activityTime}>{formatDistanceToNow(item.timestamp, { addSuffix: true })}</Text>
+                  {item.details && <Text style={styles.activityDetails} numberOfLines={1}>{item.details}</Text>}
+                </View>
+                <View style={styles.activityArrow}>
+                  <Ionicons name="chevron-forward-outline" size={18} color="#667eea" />
+                </View>
+              </GlassmorphismCard>
+            </TouchableOpacity>
+          </Animated.View>
+        );
+      })}
       {(canLoadMore || isLoading) && (
         <TouchableOpacity style={styles.loadMoreButton} onPress={handleLoadMore} disabled={!!isLoading}>
           <BlurView intensity={60} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'}>
             <LinearGradient colors={isDark ? ['rgba(40,40,40,0.6)', 'rgba(20,20,20,0.4)'] : ['rgba(255,255,255,0.6)', 'rgba(248,250,252,0.4)']} style={StyleSheet.absoluteFill} />
           </BlurView>
           <View style={styles.loadMoreContent}>
-            {isLoading ? <ActivityIndicator size="small" color="#667eea" /> : <><Text style={[styles.loadMoreText, isDark && styles.textDark]}>Load More ({activities.length - displayCount} remaining)</Text><Ionicons name="chevron-down" size={16} color="#667eea" /></>}
+            {isLoading ? (
+              <ActivityIndicator size="small" color="#667eea" />
+            ) : (
+              <>
+                <Text style={[styles.loadMoreText, isDark && styles.textDark]}>
+                  Load More ({activities.length - displayCount} remaining)
+                </Text>
+                <Ionicons name="chevron-down-outline" size={16} color="#667eea" />
+              </>
+            )}
           </View>
         </TouchableOpacity>
       )}
       <TouchableOpacity style={styles.viewAllButton} onPress={() => navigation.navigate('Timeline', { type: 'all' })}>
         <Text style={styles.viewAllText}>View All Activity</Text>
-        <Ionicons name="arrow-forward" size={16} color="#667eea" />
+        <Ionicons name="arrow-forward-outline" size={16} color="#667eea" />
       </TouchableOpacity>
     </View>
   );
 };
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   SOUND MIXER SECTION
+   ═══════════════════════════════════════════════════════════════════════════ */
 const SoundMixerSection: React.FC<{ onPress: () => void; isDark: boolean }> = ({ onPress, isDark }) => {
   const { playTrack, currentTrack, isPlaying, togglePlayback } = useAudio();
-  const handlePlayTrack = (track: typeof SOUND_TRACKS[0]) => { if (currentTrack?.id === track.id) togglePlayback(); else playTrack(track); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); };
+  const handlePlayTrack = (track: typeof SOUND_TRACKS[0]) => {
+    if (currentTrack?.id === track.id) togglePlayback();
+    else playTrack(track);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.9}>
       <LinearGradient colors={['#1a1a2e', '#16213e', '#0f3460']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.soundMixerContainer}>
         <View style={styles.soundMixerHeader}>
-          <View style={styles.soundMixerTitle}><Ionicons name="musical-notes" size={24} color="#1DB954" /><Text style={styles.soundMixerTitleText}>Sound Mixer</Text></View>
+          <View style={styles.soundMixerTitle}>
+            <Ionicons name="musical-notes-outline" size={24} color="#1DB954" />
+            <Text style={styles.soundMixerTitleText}>Sound Mixer</Text>
+          </View>
           <View style={styles.soundMixerControls}>
             <Text style={styles.nowPlaying}>{currentTrack && isPlaying ? currentTrack.title : 'Tap to play'}</Text>
-            <TouchableOpacity style={[styles.playAllButton, isPlaying && styles.playAllButtonActive]} onPress={(e) => { e.stopPropagation(); if (!currentTrack) playTrack(SOUND_TRACKS[0]); else togglePlayback(); }}>
-              <Ionicons name={isPlaying ? "pause" : "play"} size={20} color="#fff" />
+            <TouchableOpacity
+              style={[styles.playAllButton, isPlaying && styles.playAllButtonActive]}
+              onPress={(e) => { e.stopPropagation(); if (!currentTrack) playTrack(SOUND_TRACKS[0]); else togglePlayback(); }}
+            >
+              <Ionicons name={isPlaying ? "pause-outline" : "play-outline"} size={20} color="#fff" />
             </TouchableOpacity>
           </View>
         </View>
-        <FlatList data={SOUND_TRACKS} horizontal showsHorizontalScrollIndicator={false} keyExtractor={(item) => item.id} contentContainerStyle={{ paddingRight: 20 }}
+        <FlatList
+          data={SOUND_TRACKS}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={{ paddingRight: 20 }}
           renderItem={({ item }) => (
             <TouchableOpacity style={styles.trackCard} onPress={(e) => { e.stopPropagation(); handlePlayTrack(item); }}>
               <ImageBackground source={{ uri: item.image }} style={styles.trackImage} imageStyle={{ borderRadius: 8 }}>
                 <LinearGradient colors={['transparent', 'rgba(0,0,0,0.7)']} style={styles.trackOverlay}>
-                  <View style={[styles.trackPlayButton, currentTrack?.id === item.id && isPlaying && styles.trackPlayButtonActive]}><Ionicons name={currentTrack?.id === item.id && isPlaying ? "pause" : "play"} size={16} color="#fff" /></View>
+                  <View style={[styles.trackPlayButton, currentTrack?.id === item.id && isPlaying && styles.trackPlayButtonActive]}>
+                    <Ionicons name={currentTrack?.id === item.id && isPlaying ? "pause-outline" : "play-outline"} size={16} color="#fff" />
+                  </View>
                 </LinearGradient>
-                {currentTrack?.id === item.id && isPlaying && <View style={styles.playingIndicator}><View style={styles.bar} /><View style={[styles.bar, styles.barMiddle]} /><View style={styles.bar} /></View>}
+                {currentTrack?.id === item.id && isPlaying && (
+                  <View style={styles.playingIndicator}>
+                    <View style={styles.bar} /><View style={[styles.bar, styles.barMiddle]} /><View style={styles.bar} />
+                  </View>
+                )}
               </ImageBackground>
               <Text style={styles.trackTitle} numberOfLines={1}>{item.title}</Text>
               <Text style={styles.trackArtist}>{item.artist}</Text>
@@ -460,6 +899,10 @@ const SoundMixerSection: React.FC<{ onPress: () => void; isDark: boolean }> = ({
     </TouchableOpacity>
   );
 };
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   STICKY APP HEADER
+   ═══════════════════════════════════════════════════════════════════════════ */
 interface StickyAppHeaderProps {
   isDark: boolean;
   currentBaby: any;
@@ -484,24 +927,9 @@ interface StickyAppHeaderProps {
 }
 
 const StickyAppHeader: React.FC<StickyAppHeaderProps> = ({
-  isDark,
-  currentBaby,
-  onNotificationPress,
-  onLockPress,
-  onBabyPress,
-  onAddBabyPress,
-  unreadCount,
-  headerVisible,
-  onSafetyCornerPress,
-  primaryColor,
-  secondaryColor,
-  borderRadius,
-  fontSizeMultiplier,
-  useGradients,
-  useBlur,
-  showShadows,
-  compactSpacing,
-  fullTheme,
+  isDark, currentBaby, onNotificationPress, onLockPress, onBabyPress, onAddBabyPress,
+  unreadCount, headerVisible, onSafetyCornerPress, primaryColor, secondaryColor,
+  borderRadius, fontSizeMultiplier, useGradients, useBlur, showShadows, compactSpacing, fullTheme,
 }) => {
   const lastScrollY = useRef(0);
 
@@ -531,21 +959,9 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = ({
   const avatarSize = Math.round(40 * fontSizeMultiplier);
   const safetyIconSize = Math.round(16 * fontSizeMultiplier);
 
-  const headerBg = isDark
-    ? (fullTheme?.glassBg || 'rgba(26,26,46,0.95)')
-    : (fullTheme?.glassBg || 'rgba(255,255,255,0.95)');
-
-  const borderColor = isDark
-    ? (fullTheme?.border || 'rgba(255,255,255,0.08)')
-    : 'rgba(0,0,0,0.05)';
-
-  const textColor = isDark
-    ? (fullTheme?.text || '#ffffff')
-    : (fullTheme?.text || '#1e293b');
-
-  const subTextColor = isDark
-    ? (fullTheme?.textSecondary || '#94a3b8')
-    : (fullTheme?.textSecondary || '#64748b');
+  const headerBg = isDark ? (fullTheme?.glassBg || 'rgba(26,26,46,0.95)') : (fullTheme?.glassBg || 'rgba(255,255,255,0.95)');
+  const borderColor = isDark ? (fullTheme?.border || 'rgba(255,255,255,0.08)') : 'rgba(0,0,0,0.05)';
+  const textColor = isDark ? (fullTheme?.text || '#ffffff') : (fullTheme?.text || '#1e293b');
 
   return (
     <Animated.View
@@ -568,13 +984,7 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = ({
         },
       ]}
     >
-      {useBlur && (
-        <BlurView
-          intensity={isDark ? 90 : 95}
-          style={StyleSheet.absoluteFill}
-          tint={isDark ? 'dark' : 'light'}
-        />
-      )}
+      {useBlur && <BlurView intensity={isDark ? 90 : 95} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />}
       {useGradients && (
         <LinearGradient
           colors={isDark
@@ -586,29 +996,22 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = ({
       )}
 
       <View style={[styles.stickyHeaderContent, { height: compactSpacing ? 44 : 50 }]}>
-        {/* Left: Safety Corner */}
         <View style={styles.stickyHeaderLeft}>
           <TouchableOpacity
-            style={[
-              styles.safetyCornerBtn,
-              {
-                borderRadius: borderRadius,
-                backgroundColor: `${fullTheme?.error || '#dc2626'}12`,
-                borderColor: `${fullTheme?.error || '#dc2626'}20`,
-                paddingHorizontal: compactSpacing ? 8 : 10,
-                paddingVertical: compactSpacing ? 4 : 6,
-              },
-            ]}
+            style={[styles.safetyCornerBtn, {
+              borderRadius,
+              backgroundColor: `${fullTheme?.error || '#dc2626'}12`,
+              borderColor: `${fullTheme?.error || '#dc2626'}20`,
+              paddingHorizontal: compactSpacing ? 8 : 10,
+              paddingVertical: compactSpacing ? 4 : 6,
+            }]}
             onPress={onSafetyCornerPress}
           >
             <LinearGradient
               colors={useGradients ? [fullTheme?.error || '#dc2626', fullTheme?.error || '#ef4444'] : [fullTheme?.error || '#dc2626', fullTheme?.error || '#dc2626']}
-              style={[
-                styles.safetyCornerGradient,
-                { width: safetyIconSize + 16, height: safetyIconSize + 16, borderRadius: (safetyIconSize + 16) / 2 },
-              ]}
+              style={[styles.safetyCornerGradient, { width: safetyIconSize + 16, height: safetyIconSize + 16, borderRadius: (safetyIconSize + 16) / 2 }]}
             >
-              <Ionicons name="shield-half" size={safetyIconSize} color="#fff" />
+              <Ionicons name="shield-half-outline" size={safetyIconSize} color="#fff" />
             </LinearGradient>
             <View style={[styles.safetyCornerBadge, { borderRadius: borderRadius / 2 }]}>
               <Text style={[styles.safetyCornerBadgeText, { fontSize: Math.round(10 * fontSizeMultiplier) }]}>Safe</Text>
@@ -616,115 +1019,40 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = ({
           </TouchableOpacity>
         </View>
 
-        {/* Center: Title */}
         <View style={styles.stickyHeaderCenter}>
-          <Text
-            style={[
-              styles.stickyHeaderTitle,
-              {
-                color: textColor,
-                fontSize: titleSize,
-                letterSpacing: -0.5,
-              },
-            ]}
-          >
-            LittleLoom
-          </Text>
-          <View
-            style={[
-              styles.stickyHeaderUnderline,
-              {
-                backgroundColor: primaryColor,
-                width: Math.round(32 * fontSizeMultiplier),
-                height: Math.max(3, Math.round(4 * fontSizeMultiplier)),
-                borderRadius: Math.max(1, Math.round(2 * fontSizeMultiplier)),
-                marginTop: compactSpacing ? 2 : 4,
-              },
-            ]}
-          />
+          <Text style={[styles.stickyHeaderTitle, { color: textColor, fontSize: titleSize, letterSpacing: -0.5 }]}>LittleLoom</Text>
+          <View style={[styles.stickyHeaderUnderline, { backgroundColor: primaryColor, width: Math.round(32 * fontSizeMultiplier), height: Math.max(3, Math.round(4 * fontSizeMultiplier)), borderRadius: Math.max(1, Math.round(2 * fontSizeMultiplier)), marginTop: compactSpacing ? 2 : 4 }]} />
         </View>
 
-        {/* Right: Actions */}
         <View style={styles.stickyHeaderRight}>
-          {/* Notification */}
           <TouchableOpacity
-            style={[
-              styles.stickyHeaderIconBtn,
-              {
-                width: avatarSize + 2,
-                height: avatarSize + 2,
-                borderRadius: (avatarSize + 2) / 2,
-                backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(100,116,139,0.1)',
-              },
-            ]}
+            style={[styles.stickyHeaderIconBtn, { width: avatarSize + 2, height: avatarSize + 2, borderRadius: (avatarSize + 2) / 2, backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(100,116,139,0.1)' }]}
             onPress={onNotificationPress}
           >
             <Ionicons name="notifications-outline" size={iconSize} color={isDark ? '#fff' : primaryColor} />
             {unreadCount > 0 && (
-              <View
-                style={[
-                  styles.stickyHeaderBadge,
-                  {
-                    minWidth: badgeSize,
-                    height: badgeSize,
-                    borderRadius: badgeSize / 2,
-                    backgroundColor: fullTheme?.error || '#ef4444',
-                  },
-                ]}
-              >
-                <Text style={[styles.stickyHeaderBadgeText, { fontSize: Math.round(10 * fontSizeMultiplier) }]}>
-                  {unreadCount > 9 ? '9+' : unreadCount}
-                </Text>
+              <View style={[styles.stickyHeaderBadge, { minWidth: badgeSize, height: badgeSize, borderRadius: badgeSize / 2, backgroundColor: fullTheme?.error || '#ef4444' }]}>
+                <Text style={[styles.stickyHeaderBadgeText, { fontSize: Math.round(10 * fontSizeMultiplier) }]}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
               </View>
             )}
           </TouchableOpacity>
 
-          {/* Baby Avatar or Add */}
           {currentBaby ? (
-            <TouchableOpacity
-              style={[
-                styles.stickyHeaderBaby,
-                { width: avatarSize, height: avatarSize, borderRadius: avatarSize / 2 },
-              ]}
-              onPress={onBabyPress}
-            >
-              <SafeBabyAvatar
-                avatar={currentBaby.avatar}
-                gender={currentBaby.gender}
-                size={avatarSize}
-              />
+            <TouchableOpacity style={[styles.stickyHeaderBaby, { width: avatarSize, height: avatarSize, borderRadius: avatarSize / 2 }]} onPress={onBabyPress}>
+              <SafeBabyAvatar avatar={currentBaby.avatar} gender={currentBaby.gender} size={avatarSize} />
             </TouchableOpacity>
           ) : (
-            <TouchableOpacity
-              style={[
-                styles.stickyHeaderIconBtn,
-                {
-                  width: avatarSize + 2,
-                  height: avatarSize + 2,
-                  borderRadius: (avatarSize + 2) / 2,
-                  backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(100,116,139,0.1)',
-                },
-              ]}
-              onPress={onAddBabyPress}
-            >
-              <Ionicons name="add-circle" size={iconSize + 2} color={primaryColor} />
+            <TouchableOpacity style={[styles.stickyHeaderIconBtn, { width: avatarSize + 2, height: avatarSize + 2, borderRadius: (avatarSize + 2) / 2, backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(100,116,139,0.1)' }]} onPress={onAddBabyPress}>
+              <Ionicons name="add-circle-outline" size={iconSize + 2} color={primaryColor} />
             </TouchableOpacity>
           )}
 
-          {/* Lock */}
           <TouchableOpacity style={styles.stickyHeaderLockBtn} onPress={onLockPress}>
             <LinearGradient
               colors={useGradients ? [fullTheme?.error || '#ff6b6b', '#ee5a5a'] : [fullTheme?.error || '#ff6b6b', fullTheme?.error || '#ff6b6b']}
-              style={[
-                styles.stickyHeaderLockGradient,
-                {
-                  width: avatarSize - 4,
-                  height: avatarSize - 4,
-                  borderRadius: (avatarSize - 4) / 2,
-                },
-              ]}
+              style={[styles.stickyHeaderLockGradient, { width: avatarSize - 4, height: avatarSize - 4, borderRadius: (avatarSize - 4) / 2 }]}
             >
-              <Ionicons name="lock-closed" size={Math.round(14 * fontSizeMultiplier)} color="#fff" />
+              <Ionicons name="lock-closed-outline" size={Math.round(14 * fontSizeMultiplier)} color="#fff" />
             </LinearGradient>
           </TouchableOpacity>
         </View>
@@ -732,6 +1060,11 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = ({
     </Animated.View>
   );
 };
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MAIN HOMESCREEN
+   ═══════════════════════════════════════════════════════════════════════════ */
 export default function HomeScreen({ navigation }: HomeScreenProps) {
   const colorScheme = useColorScheme();
 
@@ -777,6 +1110,10 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [showNotificationChooser, setShowNotificationChooser] = useState(false);
 
+  // Smart notifications state
+  const [smartNotifications, setSmartNotifications] = useState<SmartNotification[]>([]);
+
+  /* ── Load saved data ── */
   useEffect(() => {
     const loadSavedData = async () => {
       try {
@@ -790,6 +1127,11 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
           const parsed = JSON.parse(savedFeatureCards);
           if (Array.isArray(parsed) && parsed.length > 0) setFeatureCards(parsed);
         }
+        const savedNotifs = await AsyncStorage.getItem('@littleloom_smart_notifications');
+        if (savedNotifs) {
+          const parsed = JSON.parse(savedNotifs);
+          if (Array.isArray(parsed)) setSmartNotifications(parsed);
+        }
       } catch (err) {
         console.warn('Failed to load saved layout:', err);
       }
@@ -797,13 +1139,90 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     loadSavedData();
   }, []);
 
-  useEffect(() => {
-    AsyncStorage.setItem('@littleloom_quick_actions', JSON.stringify(quickActions)).catch(() => {});
-  }, [quickActions]);
+  useEffect(() => { AsyncStorage.setItem('@littleloom_quick_actions', JSON.stringify(quickActions)).catch(() => {}); }, [quickActions]);
+  useEffect(() => { AsyncStorage.setItem('@littleloom_feature_cards', JSON.stringify(featureCards)).catch(() => {}); }, [featureCards]);
+  useEffect(() => { AsyncStorage.setItem('@littleloom_smart_notifications', JSON.stringify(smartNotifications)).catch(() => {}); }, [smartNotifications]);
 
+  /* ── Generate smart notifications based on baby data ── */
   useEffect(() => {
-    AsyncStorage.setItem('@littleloom_feature_cards', JSON.stringify(featureCards)).catch(() => {});
-  }, [featureCards]);
+    if (!currentBaby) return;
+    const now = Date.now();
+    const birthDate = currentBaby.birthDate ? new Date(currentBaby.birthDate) : null;
+    const ageInDays = birthDate ? Math.floor((now - birthDate.getTime()) / (1000 * 60 * 60 * 24)) : 0;
+
+    const notifications: SmartNotification[] = [];
+
+    if (ageInDays >= 60 && ageInDays <= 75) {
+      notifications.push({
+        id: 'vaccine-dtap-1',
+        type: 'vaccine',
+        priority: 'urgent',
+        title: 'DTaP Vaccine Due',
+        message: `First DTaP dose is due for ${currentBaby.name}. Schedule within the next 2 weeks.`,
+        actionScreen: 'VaccinationSchedule',
+        actionLabel: 'View Schedule',
+        icon: 'medical',
+        iconColor: '#e11d48',
+        bgColor: '#e11d48',
+        timestamp: now,
+      });
+    }
+
+    if (ageInDays >= 180 && ageInDays <= 190) {
+      notifications.push({
+        id: 'growth-6mo',
+        type: 'growth',
+        priority: 'high',
+        title: '6-Month Growth Check',
+        message: `Time to log ${currentBaby.name}'s 6-month growth measurements.`,
+        actionScreen: 'GrowthDashboard',
+        actionLabel: 'Log Growth',
+        icon: 'trending-up',
+        iconColor: '#10b981',
+        bgColor: '#10b981',
+        timestamp: now,
+      });
+    }
+
+    const pottyStreak = getPottyStreak();
+    if (pottyStreak > 0 && pottyStreak % 7 === 0) {
+      notifications.push({
+        id: `streak-${pottyStreak}`,
+        type: 'streak',
+        priority: 'normal',
+        title: `${pottyStreak} Day Streak!`,
+        message: `Amazing! You've kept a ${pottyStreak}-day tracking streak going.`,
+        icon: 'flame',
+        iconColor: '#f59e0b',
+        bgColor: '#f59e0b',
+        timestamp: now,
+      });
+    }
+
+    const tips = [
+      { title: 'Hydration Tip', message: 'Remember to track water intake for better feeding insights.', icon: 'water', color: '#3b82f6' },
+      { title: 'Sleep Insight', message: 'Consistent bedtime routines improve sleep quality by 40%.', icon: 'moon', color: '#8b5cf6' },
+      { title: 'Tummy Time', message: 'Aim for 30+ minutes of tummy time today for motor development.', icon: 'fitness', color: '#10b981' },
+    ];
+    const todayTip = tips[Math.floor(now / (1000 * 60 * 60 * 24)) % tips.length];
+    notifications.push({
+      id: `tip-${Math.floor(now / (1000 * 60 * 60 * 24))}`,
+      type: 'tip',
+      priority: 'low',
+      title: todayTip.title,
+      message: todayTip.message,
+      icon: todayTip.icon,
+      iconColor: todayTip.color,
+      bgColor: todayTip.color,
+      timestamp: now,
+    });
+
+    setSmartNotifications(prev => {
+      const existingIds = new Set(prev.map(p => p.id));
+      const newNotifs = notifications.filter(n => !existingIds.has(n.id));
+      return [...prev.filter(p => !p.dismissed), ...newNotifs].slice(-10);
+    });
+  }, [currentBaby?.id, currentBaby?.birthDate, currentBaby?.name, getPottyStreak]);
 
   useEffect(() => {
     const hour = new Date().getHours();
@@ -905,7 +1324,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     }
     const newAction = {
       ...action,
-      screen: action.screen || 'UniversalTracker',
+      screen: action.screen || 'UniversalTrackerHub',
       params: action.params || { type: action.id },
     };
     setQuickActions(prev => [...prev, newAction]);
@@ -960,6 +1379,24 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     setTimeout(() => setIsLoadingMore(false), 500);
   }, []);
 
+  const handleSmartNotifDismiss = useCallback((id: string) => {
+    setSmartNotifications(prev => prev.map(n => n.id === id ? { ...n, dismissed: true } : n));
+  }, []);
+
+  const handleSmartNotifAction = useCallback((notif: SmartNotification) => {
+    triggerHaptic('light');
+    if (notif.actionScreen) {
+      navigateToScreen(notif.actionScreen as string, notif.actionParams);
+    }
+  }, [navigateToScreen, triggerHaptic]);
+
+  const generateTrendData = useCallback((base: number, variance: number = 0.3): number[] => {
+    return Array.from({ length: 7 }, (_, i) => {
+      const dayOffset = 6 - i;
+      return Math.max(0, Math.round(base * (1 + (Math.random() - 0.5) * variance)));
+    });
+  }, []);
+
   const stats = useMemo(() => {
     if (!currentBaby) return [];
     const todaySleepCount = getTodayCount('sleep', currentBaby.id);
@@ -972,12 +1409,24 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     ];
   }, [currentBaby, getTodayCount, getPottyStreak, primary, secondary, accent]);
 
+  const sleepTrend = useMemo(() => generateTrendData(currentBaby ? getTodayCount('sleep', currentBaby.id) : 0), [currentBaby, getTodayCount, generateTrendData]);
+  const feedTrend = useMemo(() => generateTrendData(currentBaby ? getTodayCount('feed', currentBaby.id) : 0), [currentBaby, getTodayCount, generateTrendData]);
+  const growthTrend = useMemo(() => [2.5, 2.8, 3.1, 3.4, 3.6, 3.9, 4.2], []);
+
   const allTimelineEvents = useMemo(() => {
     if (!currentBaby) return [];
     return getRecentTimelineEvents(50, currentBaby.id);
   }, [currentBaby, getRecentTimelineEvents, activities]);
 
   const unreadCommunityCount = useMemo(() => getUnreadCount(), [getUnreadCount]);
+
+  const activeSmartNotifications = useMemo(() =>
+    smartNotifications.filter(n => !n.dismissed).sort((a, b) => {
+      const priorityOrder = { urgent: 0, high: 1, normal: 2, low: 3 };
+      return priorityOrder[a.priority] - priorityOrder[b.priority];
+    }),
+    [smartNotifications]
+  );
 
   const bgColors = isDark
     ? [fullThemeColors?.background || '#0a0a0a', '#1a1a2e', '#16213e']
@@ -1074,7 +1523,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
                 <Text style={[styles.parentName, isDark && styles.textDark, { fontSize: Math.round(22 * fontSizeMultiplier) }]}>{userProfile?.fullName || 'Parent'}</Text>
                 <View style={styles.parentMeta}>
                   <View style={[styles.verifiedBadge, { borderRadius: borderRadiusValue / 2 }]}>
-                    <Ionicons name="shield-checkmark" size={Math.round(12 * fontSizeMultiplier)} color={accent} />
+                    <Ionicons name="shield-checkmark-outline" size={Math.round(12 * fontSizeMultiplier)} color={accent} />
                     <Text style={[styles.verifiedText, { color: accent, fontSize: Math.round(11 * fontSizeMultiplier) }]}>Verified</Text>
                   </View>
                   <Text style={[styles.timeText, { fontSize: Math.round(11 * fontSizeMultiplier) }]}>{format(currentTime, 'EEEE, MMM d')}</Text>
@@ -1082,15 +1531,27 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
               </View>
               <View style={styles.parentQuickLinks}>
                 <TouchableOpacity style={[styles.parentQuickLink, { backgroundColor: `${primary}15`, borderRadius: borderRadiusValue - 10 }]} onPress={() => navigateToScreen('Achievements')}>
-                  <Ionicons name="ribbon" size={Math.round(18 * fontSizeMultiplier)} color={primary} />
+                  <Ionicons name="ribbon-outline" size={Math.round(18 * fontSizeMultiplier)} color={primary} />
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.parentQuickLink, { backgroundColor: `${secondary}15`, borderRadius: borderRadiusValue - 10 }]} onPress={handleCommunityPress}>
-                  <Ionicons name="sparkles" size={Math.round(18 * fontSizeMultiplier)} color={secondary} />
+                  <Ionicons name="sparkles-outline" size={Math.round(18 * fontSizeMultiplier)} color={secondary} />
                 </TouchableOpacity>
               </View>
             </View>
           </GlassmorphismCard>
         </Animated.View>
+
+        {/* Smart Notification Panel */}
+        {activeSmartNotifications.length > 0 && (
+          <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(50).springify()}>
+            <SmartNotificationPanel
+              notifications={activeSmartNotifications}
+              onDismiss={handleSmartNotifDismiss}
+              onAction={handleSmartNotifAction}
+              isDark={isDark}
+            />
+          </Animated.View>
+        )}
 
         {/* Baby Card */}
         {currentBaby ? (
@@ -1099,7 +1560,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
               <View style={[styles.babyHeader, { paddingHorizontal: settings.compactSpacing ? 16 : 20, paddingTop: settings.compactSpacing ? 12 : 16 }]}>
                 <TouchableOpacity style={styles.babySelector} onPress={() => navigateToScreen('SwitchBaby')}>
                   <Text style={[styles.babySelectorLabel, { fontSize: Math.round(12 * fontSizeMultiplier) }]}>Current Baby</Text>
-                  <Ionicons name="chevron-down" size={Math.round(14 * fontSizeMultiplier)} color={primary} />
+                  <Ionicons name="chevron-down-outline" size={Math.round(14 * fontSizeMultiplier)} color={primary} />
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.editButton, { borderRadius: borderRadiusValue / 2 }]} onPress={() => navigateToScreen('EditProfile', { mode: 'baby', babyId: currentBaby.id })}>
                   <Ionicons name="create-outline" size={Math.round(18 * fontSizeMultiplier)} color={primary} />
@@ -1117,12 +1578,12 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
                   <Text style={[styles.babyName, isDark && styles.textDark, { fontSize: Math.round(24 * fontSizeMultiplier) }]}>{currentBaby.name}</Text>
                   <Text style={[styles.babyAge, { fontSize: Math.round(14 * fontSizeMultiplier) }]}>{currentBaby.age}</Text>
                   <View style={styles.babyStatus}>
-                    <Ionicons name="pulse" size={Math.round(12 * fontSizeMultiplier)} color={accent} />
+                    <Ionicons name="pulse-outline" size={Math.round(12 * fontSizeMultiplier)} color={accent} />
                     <Text style={[styles.babyStatusText, { color: accent, fontSize: Math.round(13 * fontSizeMultiplier) }]}>Healthy & Active</Text>
                   </View>
                 </View>
                 <LinearGradient colors={[secondary, '#fee140']} style={[styles.streakBadge, { borderRadius: borderRadiusValue }]}>
-                  <Ionicons name="flame" size={Math.round(14 * fontSizeMultiplier)} color="#fff" />
+                  <Ionicons name="flame-outline" size={Math.round(14 * fontSizeMultiplier)} color="#fff" />
                   <Text style={[styles.streakText, { fontSize: Math.round(12 * fontSizeMultiplier) }]}>{getPottyStreak()}d</Text>
                 </LinearGradient>
               </View>
@@ -1143,7 +1604,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
                   <Text style={[styles.noBabyText, { fontSize: Math.round(14 * fontSizeMultiplier) }]}>Create your first baby profile to start tracking</Text>
                   <View style={[styles.noBabyButton, { borderRadius: borderRadiusValue - 8 }]}>
                     <Text style={[styles.noBabyButtonText, { fontSize: Math.round(15 * fontSizeMultiplier) }]}>Get Started</Text>
-                    <Ionicons name="arrow-forward" size={Math.round(16 * fontSizeMultiplier)} color={primary} />
+                    <Ionicons name="arrow-forward-outline" size={Math.round(16 * fontSizeMultiplier)} color={primary} />
                   </View>
                 </LinearGradient>
               </GlassmorphismCard>
@@ -1151,16 +1612,60 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
           </Animated.View>
         )}
 
+        {/* Trend Cards Row */}
+        {currentBaby && (
+          <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(150).springify()}>
+            <View style={[styles.trendCardsRow, { paddingHorizontal: settings.compactSpacing ? 16 : 20 }]}>
+              <TrendCard
+                title="Sleep"
+                value={stats[0]?.value || '0'}
+                subtitle="This week"
+                trendData={sleepTrend}
+                color={primary}
+                icon="moon-outline"
+                onPress={() => navigateToScreen('UniversalTrackerHub', { type: 'sleep' })}
+                isDark={isDark}
+                trendLabel="+12%"
+                trendUp={true}
+              />
+              <TrendCard
+                title="Feeds"
+                value={stats[1]?.value || '0'}
+                subtitle="This week"
+                trendData={feedTrend}
+                color={secondary}
+                icon="nutrition-outline"
+                onPress={() => navigateToScreen('UniversalTrackerHub', { type: 'feed' })}
+                isDark={isDark}
+                trendLabel="+5%"
+                trendUp={true}
+              />
+              <TrendCard
+                title="Growth"
+                value="4.2kg"
+                subtitle="Weight gain"
+                trendData={growthTrend}
+                color={accent}
+                icon="trending-up-outline"
+                onPress={() => navigateToScreen('GrowthDashboard')}
+                isDark={isDark}
+                trendLabel="+8%"
+                trendUp={true}
+              />
+            </View>
+          </Animated.View>
+        )}
+
         {/* Sound Mixer */}
         <View style={[styles.section, { paddingHorizontal: settings.compactSpacing ? 16 : 20 }]}>
           <View style={styles.sectionHeader}>
             <View style={styles.sectionTitleRow}>
-              <Ionicons name="musical-notes" size={Math.round(20 * fontSizeMultiplier)} color="#1DB954" />
+              <Ionicons name="musical-notes-outline" size={Math.round(20 * fontSizeMultiplier)} color="#1DB954" />
               <Text style={[styles.sectionTitle, isDark && styles.textDark, { fontSize: Math.round(18 * fontSizeMultiplier) }]}>Sound Mixer</Text>
             </View>
             <TouchableOpacity style={styles.seeAllButton} onPress={() => navigateToScreen('SoundMixer')}>
               <Text style={[styles.seeAllText, { color: primary, fontSize: Math.round(14 * fontSizeMultiplier) }]}>Full Mixer</Text>
-              <Ionicons name="arrow-forward" size={Math.round(14 * fontSizeMultiplier)} color={primary} />
+              <Ionicons name="arrow-forward-outline" size={Math.round(14 * fontSizeMultiplier)} color={primary} />
             </TouchableOpacity>
           </View>
           <SoundMixerSection onPress={() => navigateToScreen('SoundMixer')} isDark={isDark} />
@@ -1170,7 +1675,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         <View style={styles.sectionFullWidth}>
           <View style={[styles.sectionHeader, styles.sectionHeaderPadded, { paddingHorizontal: settings.compactSpacing ? 16 : 20 }]}>
             <View style={styles.sectionTitleRow}>
-              <Ionicons name="grid" size={Math.round(20 * fontSizeMultiplier)} color={primary} />
+              <Ionicons name="grid-outline" size={Math.round(20 * fontSizeMultiplier)} color={primary} />
               <Text style={[styles.sectionTitle, isDark && styles.textDark, { fontSize: Math.round(18 * fontSizeMultiplier) }]}>Quick Actions</Text>
             </View>
           </View>
@@ -1191,7 +1696,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         <View style={styles.sectionFullWidth}>
           <View style={[styles.sectionHeader, styles.sectionHeaderPadded, { paddingHorizontal: settings.compactSpacing ? 16 : 20 }]}>
             <View style={styles.sectionTitleRow}>
-              <Ionicons name="apps" size={Math.round(20 * fontSizeMultiplier)} color="#f59e0b" />
+              <Ionicons name="apps-outline" size={Math.round(20 * fontSizeMultiplier)} color="#f59e0b" />
               <Text style={[styles.sectionTitle, isDark && styles.textDark, { fontSize: Math.round(18 * fontSizeMultiplier) }]}>Tools & Features</Text>
             </View>
           </View>
@@ -1208,12 +1713,12 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         <View style={styles.sectionFullWidth}>
           <View style={[styles.sectionHeader, styles.sectionHeaderPadded, { paddingHorizontal: settings.compactSpacing ? 16 : 20 }]}>
             <View style={styles.sectionTitleRow}>
-              <Ionicons name="time" size={Math.round(20 * fontSizeMultiplier)} color={secondary} />
+              <Ionicons name="time-outline" size={Math.round(20 * fontSizeMultiplier)} color={secondary} />
               <Text style={[styles.sectionTitle, isDark && styles.textDark, { fontSize: Math.round(18 * fontSizeMultiplier) }]}>Recent Activity</Text>
             </View>
-            <TouchableOpacity style={styles.seeAllButton} onPress={() => navigateToScreen('UniversalTracker', { type: 'all' })}>
+            <TouchableOpacity style={styles.seeAllButton} onPress={() => navigateToScreen('Timeline', { type: 'all' })}>
               <Text style={[styles.seeAllText, { color: primary, fontSize: Math.round(14 * fontSizeMultiplier) }]}>View All</Text>
-              <Ionicons name="arrow-forward" size={Math.round(14 * fontSizeMultiplier)} color={primary} />
+              <Ionicons name="arrow-forward-outline" size={Math.round(14 * fontSizeMultiplier)} color={primary} />
             </TouchableOpacity>
           </View>
           <View style={styles.activityWrapper}>
@@ -1247,7 +1752,167 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     </View>
   );
 }
+
 const styles = StyleSheet.create({
+  /* ── Trend Cards ── */
+  trendCardsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 16,
+    marginTop: 4,
+  },
+  trendCard: {
+    flex: 1,
+    borderRadius: 20,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.5)',
+    shadowColor: '#667eea',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 5,
+  },
+  trendCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  trendIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  trendBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  trendBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  trendValue: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#1e293b',
+    letterSpacing: -0.5,
+  },
+  trendSubtitle: {
+    fontSize: 12,
+    color: '#94a3b8',
+    fontWeight: '500',
+    marginTop: 2,
+    marginBottom: 8,
+  },
+  trendChartWrap: {
+    alignItems: 'flex-end',
+  },
+
+  /* ── Smart Notification Panel ── */
+  notificationPanel: {
+    marginHorizontal: 20,
+    marginBottom: 16,
+    marginTop: 4,
+  },
+  notificationPanelHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+    paddingHorizontal: 4,
+  },
+  notificationPanelTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  notificationPanelTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#1e293b',
+  },
+  urgentBadge: {
+    backgroundColor: '#ef4444',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  urgentBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  expandText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  smartNotificationCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: 14,
+    borderRadius: 16,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.04)',
+  },
+  smartNotifIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  smartNotifContent: {
+    flex: 1,
+  },
+  smartNotifTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1e293b',
+    marginBottom: 2,
+  },
+  smartNotifMessage: {
+    fontSize: 12,
+    color: '#64748b',
+    lineHeight: 18,
+  },
+  smartNotifMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 6,
+  },
+  smartNotifTime: {
+    fontSize: 11,
+    color: '#94a3b8',
+    fontWeight: '500',
+  },
+  smartNotifActionBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  smartNotifActionText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  dismissBtn: {
+    padding: 4,
+    marginLeft: 4,
+  },
+
+  /* ── Modals ── */
   centeredModal: { position: 'absolute', top: height * 0.15, left: 20, right: 20, maxHeight: height * 0.7, borderRadius: 28, padding: 24, shadowColor: '#000', shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.4, shadowRadius: 40, elevation: 25, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
   centeredModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 },
   centeredModalTitle: { fontSize: 24, fontWeight: '800', color: '#1e293b', marginBottom: 4 },
@@ -1412,7 +2077,6 @@ const styles = StyleSheet.create({
   emptyStateText: { color: '#94a3b8', fontSize: 14, textAlign: 'center' },
   activityItem: { marginVertical: 6, padding: 14, borderRadius: 20, flexDirection: 'row', alignItems: 'center' },
   activityIcon: { width: 48, height: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
-  activityEmoji: { fontSize: 24 },
   activityContent: { flex: 1 },
   activityTitle: { fontSize: 15, fontWeight: '700', color: '#1e293b', marginBottom: 2 },
   activityTime: { fontSize: 12, color: '#94a3b8', fontWeight: '500' },
