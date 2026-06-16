@@ -17,6 +17,7 @@ import { useSweetAlert } from '../../components/SweetAlert';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { UnifiedTrackerConfig, TrackerCategory } from '../../types/trackers';
 import { RootStackParamList } from '../../types/navigation';
+import {
   CATEGORY_CONFIG,
   TRACKER_PICKER_KEYS,
 } from './trackerConstants';

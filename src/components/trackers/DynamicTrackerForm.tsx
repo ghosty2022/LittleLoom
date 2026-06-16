@@ -18,17 +18,19 @@ import Animated, {
   FadeIn,
 } from 'react-native-reanimated';
 
+// ✅ FIXED — proper import statements
+import {
   UnifiedTrackerConfig,
   FieldConfig,
   FieldOption,
 } from '../../types/trackers';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
-  TrackerProgressiveState, 
+import {
+  TrackerProgressiveState,
   ProgressiveSuggestion,
   ProgressiveTrend,
 } from '../../hooks/useTrackerProgressive';
-
 const { width: SCREEN_W } = Dimensions.get('window');
 
 interface DynamicTrackerFormProps {
