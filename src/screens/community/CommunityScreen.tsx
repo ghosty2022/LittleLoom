@@ -1,6 +1,5 @@
 import {  ActivityIndicator, AlertAnimated, Button, Dimensions, FlatList, GestureHandlerRootView, Image, Modal, Platform, Pressable, RefreshControl, ScrollView, Share, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, useSafeAreaInsets, View } from 'react-native';;
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-
 import { BlurView } from 'expo-blur';
 import { Easing, FadeIn, FadeInUp, FadeOut, interpolate, interpolateColor, Layout, runOnJS, SlideInDown, SlideOutUp, useAnimatedReaction, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue, withRepeat } from 'react-native-reanimated';
 import { useCommunity } from '../../context/CommunityContext';
@@ -10,7 +9,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import * as Haptics from 'expo-haptics';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-
+import {
+  CommunityColors,
+  CommunityGradients,
+  CommunityShadows,
+  CommunityBorderRadius,
+} from '../../theme/CommunityTheme';
 import type { CommunityStackParamList } from '../../types/navigation';
 
 import { SafeAvatar } from '../../components/SafeAvatar';

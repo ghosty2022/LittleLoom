@@ -1,9 +1,21 @@
-import { StyleSheet, ActivityIndicator ,Alert ,Animated ,Button, Dimensions, Platform, ScrollView ,Text ,TouchableOpacity, View } from 'react-native';;
+import {
+  StyleSheet,
+  ActivityIndicator,
+  Alert,
+  Animated,
+  Button,
+  Dimensions,
+  Platform,
+  ScrollView,
+  StatusBar,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { FadeIn, FadeInDown, FadeInUp } from 'react-native-reanimated';
-import React, { useEffect, useState, useCallback } from 'react'
-
+import React, { useEffect, useState, useCallback } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -15,7 +27,12 @@ import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { useUser } from '../../context/UserContext';
 import { showAlert } from '@/utils/alert';
-
+import {
+  CommunityColors,
+  CommunityGradients,
+  CommunityShadows,
+  CommunityBorderRadius,
+} from '../../theme/CommunityTheme';
 const { width } = Dimensions.get('window');
 const ONBOARDING_KEY = '@littleloom_community_onboarding_v3';
 

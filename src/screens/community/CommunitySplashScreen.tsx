@@ -16,8 +16,12 @@ import { useAutoHideNav } from '../../hooks/useAutoHideNav';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useCommunity } from '../../context/CommunityContext';
 import { getSectionState, updateSectionState } from '../../hooks/useIntelligentSplash';
-import { CommunityColors, CommunityGradients } from '../../theme/CommunityTheme';
-
+import {
+  CommunityColors,
+  CommunityGradients,
+  CommunityShadows,
+  CommunityBorderRadius,
+} from '../../theme/CommunityTheme';
 const { width, height } = Dimensions.get('window');
 
 interface CommunitySplashScreenProps {
