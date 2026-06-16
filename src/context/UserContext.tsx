@@ -5,6 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 
 import { useAuth } from './AuthContext';
+import { UserRole, Permission, ROLE_PERMISSIONS } from '../types/roles';
 
 const SECURE_KEYS = {
   USER_PROFILE: 'littleloom_user_profile_secure',

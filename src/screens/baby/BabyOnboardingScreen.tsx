@@ -12,7 +12,7 @@ import { useAuth } from '../../context/AuthContext';
 import type { RootStackParamList } from '../../types/navigation';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
-import { SafeBabyAvatarSafeAvatar } from '../../components/SafeAvatar';;
+import { SafeBabyAvatar } from '../../components/SafeAvatar';;
 import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
 
 const { width } = Dimensions.get('window');

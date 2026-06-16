@@ -20,7 +20,7 @@ import { useCustomization } from '../../hooks/useCustomization';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
 import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
-import { SafeBabyAvatarSafeAvatar } from '../../components/SafeAvatar';;
+import { SafeBabyAvatar } from '../../components/SafeAvatar';;
 
 const { width } = Dimensions.get('window');
 

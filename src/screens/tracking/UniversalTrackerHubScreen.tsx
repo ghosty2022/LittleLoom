@@ -41,7 +41,7 @@ import { useCustomization } from '../../hooks/useCustomization';
 import { useTracker } from '../../context/TrackerContext';
 import { useBaby, type BabyProfile } from '../../context/BabyContext';
 import { useTrackerAchievements } from '../../hooks/useTrackerAchievements';
-import { SafeBabyAvatarSafeAvatar } from '../../components/SafeAvatar';;
+import { SafeBabyAvatar } from '../../components/SafeAvatar';;
 import { useSweetAlert } from '../../components/SweetAlert';
 import { TimelinePicker } from '../../components/trackers/TimelinePicker';
 

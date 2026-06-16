@@ -1,4 +1,4 @@
-import { StyleSheet, Button ,Dimensions, ScrollView, Switch ,Text ,TouchableOpacity, View } from 'react-native';;
+import { StyleSheet, Button, Dimensions, ScrollView, Switch, Text, TouchableOpacity, View, StatusBar } from 'react-native';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { BlurView } from 'expo-blur';
@@ -14,7 +14,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import type { RootStackParamList } from '../../types/navigation';
 
-import { SafeBabyAvatarSafeAvatar } from '../../components/SafeAvatar';;
+import { SafeBabyAvatar } from '../../components/SafeAvatar';
 import { STORAGE_KEYS, useBaby } from '../../context/BabyContext';
 import { useAuth } from '../../context/AuthContext';
 import { useCustomization } from '../../hooks/useCustomization';
@@ -22,7 +22,7 @@ import { useFamily } from '../../context/FamilyContext';
 import { useSweetAlert } from '../../components/SweetAlert';
 
 import { LiquidDots } from '../../components/UniversalSpinner'; // <-- IMPORT ADDED
-import { showAlertshowError } from '@/utils/alert';;
+import { showAlert } from '@/utils/alert';;
 
 const { width } = Dimensions.get('window');
 

@@ -18,7 +18,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useTracker } from '../../context/TrackerContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useTrackerAchievements, Achievement, AchievementCategory } from '../../hooks/useTrackerAchievements';
-import { SafeBabyAvatarSafeAvatar } from '../../components/SafeAvatar';;
+import { SafeBabyAvatar } from '../../components/SafeAvatar';;
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
 

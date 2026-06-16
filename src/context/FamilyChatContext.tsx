@@ -9,6 +9,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { useAuth } from './AuthContext';
 import { useBaby } from './BabyContext';
+import { useFamily } from './FamilyContext';
+import type { FamilyMember } from './FamilyContext';
 import { showAlert } from '@/utils/alert';
 
 export type MessageType = 'text' | 'image' | 'voice' | 'system' | 'file';
