@@ -33,7 +33,7 @@ import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrapp
 
 type EditGuardianScreenProps = NativeStackScreenProps<RootStackParamList, 'EditGuardian'>;
 
-const AnimatedScrollView = AutoHideAnimatedScrollView;
+const AnimatedScrollView = Animated.ScrollView;
 const { width, height } = Dimensions.get('window');
 
 // --- Constants ---

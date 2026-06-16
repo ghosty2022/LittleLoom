@@ -1,4 +1,4 @@
-import { StyleSheetActivityIndicator ,Alert ,Animated ,Button, Dimensions ,Image, LogBox ,Modal, RefreshControl, ScrollView ,Share ,Switch ,TextInput ,TouchableOpacity, useColorScheme, View } from 'react-native';;
+import { StyleSheet, ActivityIndicator ,Alert ,Animated ,Button, Dimensions ,Image, LogBox ,Modal, RefreshControl, ScrollView ,Share ,Switch ,TextInput ,TouchableOpacity, useColorScheme, View } from 'react-native';;
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { BlurView } from 'expo-blur';

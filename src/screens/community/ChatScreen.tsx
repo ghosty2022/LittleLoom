@@ -1,4 +1,4 @@
-import { StyleSheetActivityIndicator, Alert, Button, Dimensions, FlatList, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Share, TextInput, TouchableOpacity ,View } from 'react-native';;
+import { StyleSheet, ActivityIndicator, Alert, Button, Dimensions, FlatList, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Share, TextInput, TouchableOpacity ,View } from 'react-native';;
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BlurView } from 'expo-blur';
 import { Easing, FadeIn, FadeInUp, FadeOut, interpolate, Layout, useAnimatedStyle, useSharedValue, withRepeat, withSpring } from 'react-native-reanimated';

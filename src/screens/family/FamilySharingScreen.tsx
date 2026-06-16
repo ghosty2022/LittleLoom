@@ -1,4 +1,4 @@
-import { StyleSheetActivityIndicator ,Alert, Button, Dimensions ,Image ,Linking, Modal, Platform, RefreshControl, ScrollView, Settings ,Share, Switch ,TextInput ,TouchableOpacity ,View } from 'react-native';;
+import { StyleSheet, ActivityIndicator ,Alert, Button, Dimensions ,Image ,Linking, Modal, Platform, RefreshControl, ScrollView, Settings ,Share, Switch ,TextInput ,TouchableOpacity ,View } from 'react-native';;
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { BlurView } from 'expo-blur';
@@ -24,7 +24,7 @@ import { showAlert } from '@/utils/alert';
 
 type FamilySharingScreenProps = NativeStackScreenProps<RootStackParamList, 'FamilySharing'>;
 
-const AnimatedScrollView = AutoHideAnimatedScrollView;
+const AnimatedScrollView = Animated.ScrollView;
 const { width, height } = Dimensions.get('window');
 
 const isImageUri = (value: string | undefined | null): boolean => {

@@ -1,4 +1,4 @@
-import { StyleSheetActivityIndicator ,Alert ,Animated ,Button, Dimensions, Platform, ScrollView ,Text ,TouchableOpacity, View } from 'react-native';;
+import { StyleSheet, ActivityIndicator ,Alert ,Animated ,Button, Dimensions, Platform, ScrollView ,Text ,TouchableOpacity, View } from 'react-native';;
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { FadeIn, FadeInDown, FadeInUp } from 'react-native-reanimated';

@@ -23,7 +23,7 @@ import { showAlert } from '@/utils/alert';
 
 type Props = NativeStackScreenProps<CommunityStackParamList, 'CommunityMemberProfile'>;
 
-const AnimatedScrollView = AutoHideAnimatedScrollView;
+const AnimatedScrollView = Animated.ScrollView;
 const { width } = Dimensions.get('window');
 
 // ─── DESIGN TOKENS ───────────────────────────────────────────────────

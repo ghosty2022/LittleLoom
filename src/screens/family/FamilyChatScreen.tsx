@@ -1,4 +1,4 @@
-import { StyleSheetActivityIndicator, Alert ,Button, Dimensions, FlatList, Image ,KeyboardAvoidingView ,Modal ,Platform ,ScrollView ,Share ,Switch ,TextInput, TouchableOpacity, View } from 'react-native';;
+import { StyleSheet, ActivityIndicator, Alert ,Button, Dimensions, FlatList, Image ,KeyboardAvoidingView ,Modal ,Platform ,ScrollView ,Share ,Switch ,TextInput, TouchableOpacity, View } from 'react-native';;
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { AutoHideFlatList } from '../../components/AutoHideScrollWrappers';

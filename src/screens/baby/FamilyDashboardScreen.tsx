@@ -42,7 +42,7 @@ import Animated, {
   Layout,
 } from 'react-native-reanimated';
 
-const AnimatedScrollView = AutoHideAnimatedScrollView;
+const AnimatedScrollView = Animated.ScrollView;
 
 type FamilyCenterScreenProps = NativeStackScreenProps<RootStackParamList, 'Profile'>;
 
