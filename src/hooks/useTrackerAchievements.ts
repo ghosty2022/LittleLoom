@@ -12,6 +12,7 @@
  * Target: AchievementsScreen (replaces useActivity + BabyContext direct calls)
  */
 
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   differenceInHours,
   differenceInDays,
