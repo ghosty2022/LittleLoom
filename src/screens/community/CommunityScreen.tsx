@@ -1,11 +1,10 @@
-// BEFORE (broken)
 import {
   ActivityIndicator,
   Dimensions,
+  StyleSheet,
   FlatList,
   GestureHandlerRootView,
   useSafeAreaInsets,
-  StyleSheet, 
   Image,
   Modal,
   Platform,
