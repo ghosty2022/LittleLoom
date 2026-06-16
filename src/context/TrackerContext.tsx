@@ -23,8 +23,8 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { showAlert } from '../utils/alert';
-import { createCustomTracker, validateCustomTracker, DEFAULT_TRACKERS } from '@/config/trackers';
+import { Alert } from 'react-native';
+import { createCustomTracker, validateCustomTracker, DEFAULT_TRACKERS } from '@/config/defaultTrackers';
 
 /* ------------------------------------------------------------------ */
 /*  Legacy-compatible types                                            */
@@ -804,7 +804,7 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
 
     if (!validation.valid) {
 
-showAlert('Invalid Tracker', validation.errors.join('\n'));
+Alert.alert('Invalid Tracker', validation.errors.join('\n'));
       return null;
     }
 
@@ -939,7 +939,7 @@ showAlert('Invalid Tracker', validation.errors.join('\n'));
 
     if (missingFields.length > 0) {
 
-showAlert('Missing Information', `Please fill in: ${missingFields.join(', ')}`);
+Alert.alert('Missing Information', `Please fill in: ${missingFields.join(', ')}`);
       return null;
     }
 

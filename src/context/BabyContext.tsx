@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { showAlert } from '../utils/alert';
+import { Alert } from 'react-native';
 
 /* ------------------------------------------------------------------ */
 /*  Storage Keys                                                      */
@@ -610,11 +610,11 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const birthDate = new Date(data.birthDate);
     const now = new Date();
     if (birthDate > now) {
-      showAlert('Invalid Date', 'Birth date cannot be in the future');
+      Alert.alert('Invalid Date', 'Birth date cannot be in the future');
       return null;
     }
     if (isNaN(birthDate.getTime())) {
-      showAlert('Invalid Date', 'Please enter a valid birth date');
+      Alert.alert('Invalid Date', 'Please enter a valid birth date');
       return null;
     }
 
@@ -664,7 +664,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return newBaby.id;
     } catch (error) {
       console.error('Create baby error:', error);
-      showAlert('Error', 'Failed to create baby profile');
+      Alert.alert('Error', 'Failed to create baby profile');
       return null;
     }
   }, [calculateAge, clearSkipBaby, loadAllBabyData, state.currentBabyId]);
@@ -696,7 +696,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     } catch (error) {
       console.error('Update baby error:', error);
-      showAlert('Error', 'Failed to update baby profile');
+      Alert.alert('Error', 'Failed to update baby profile');
     }
   }, [calculateAge]);
 
@@ -757,7 +757,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return true;
     } catch (error) {
       console.error('Delete baby error:', error);
-      showAlert('Error', 'Failed to delete baby profile');
+      Alert.alert('Error', 'Failed to delete baby profile');
       return false;
     }
   }, [state.currentBabyId, loadAllBabyData]);
@@ -852,7 +852,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return true;
     } catch (error) {
       console.error('Add growth measurement error:', error);
-      showAlert('Error', 'Failed to save measurement');
+      Alert.alert('Error', 'Failed to save measurement');
       return false;
     }
   }, [state.currentBabyId, updateBaby]);
@@ -917,7 +917,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return true;
     } catch (error) {
       console.error('Add milestone error:', error);
-      showAlert('Error', 'Failed to save milestone');
+      Alert.alert('Error', 'Failed to save milestone');
       return false;
     }
   }, [state.currentBabyId, updateBaby]);
@@ -963,7 +963,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return true;
     } catch (error) {
       console.error('Add sleep log error:', error);
-      showAlert('Error', 'Failed to save sleep log');
+      Alert.alert('Error', 'Failed to save sleep log');
       return false;
     }
   }, [state.currentBabyId]);
@@ -1015,7 +1015,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const addFeedingLog = useCallback(async (log: Omit<FeedingLog, 'id' | 'createdAt'>): Promise<boolean> => {
     try {
       if (log.amount !== undefined && (isNaN(log.amount) || log.amount < 0)) {
-             showAlert('Invalid Amount', 'Please enter a valid positive amount');
+             Alert.alert('Invalid Amount', 'Please enter a valid positive amount');
         return false;
       }
 
@@ -1035,7 +1035,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return true;
     } catch (error) {
       console.error('Add feeding log error:', error);
-      showAlert('Error', 'Failed to save feeding log');
+      Alert.alert('Error', 'Failed to save feeding log');
       return false;
     }
   }, [state.currentBabyId]);
@@ -1101,7 +1101,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return true;
     } catch (error) {
       console.error('Add potty log error:', error);
-      showAlert('Error', 'Failed to save potty log');
+      Alert.alert('Error', 'Failed to save potty log');
       return false;
     }
   }, [state.currentBabyId, updateBaby, calculatePottyStreak]);
@@ -1132,7 +1132,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const addMedicationLog = useCallback(async (log: Omit<MedicationLog, 'id' | 'createdAt'>): Promise<boolean> => {
     try {
       if (!log.medicationName.trim()) {
-        showAlert('Missing Information', 'Please enter a medication name');
+        Alert.alert('Missing Information', 'Please enter a medication name');
         return false;
       }
 
@@ -1157,7 +1157,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return true;
     } catch (error) {
       console.error('Add medication log error:', error);
-      showAlert('Error', 'Failed to save medication log');
+      Alert.alert('Error', 'Failed to save medication log');
       return false;
     }
   }, [state.currentBabyId]);
