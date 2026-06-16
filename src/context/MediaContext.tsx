@@ -2,31 +2,6 @@ import React, { createContext, useCallback, useContext, useMemo, useState } from
 import { Alert } from 'react-native';
 import * as FileSystem from 'expo-file-system';
 
-import {
-  pickImage,
-  pickMultipleImages,
-  takePhoto,
-  compressImage,
-  resizeImage,
-  createThumbnail,
-  getImageDimensions,
-  cacheImage,
-  getCachedImage,
-  clearImageCache,
-  getCacheSize,
-  deleteImage,
-  saveToPhotoLibrary,
-  processImageBatch,
-  ensureDirectory,
-  CACHE_DIR,
-  imageExists,
-  getFileSize,
-  readDirectory,
-  isValidImageUri,
-  type PickImageOptions,
-  type SaveImageResult,
-} from '../utils/imageUtils';
-
 export type MediaType = 'avatar' | 'photo' | 'document' | 'milestone' | 'gallery';
 export type UploadStatus = 'idle' | 'uploading' | 'success' | 'error';
 

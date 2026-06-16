@@ -1,19 +1,21 @@
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { Alert, Share } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Haptics from 'expo-haptics';
-import * as ImagePicker from 'expo-image-picker';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState, useMemo } from 'react';
+
+import * as Crypto from 'expo-crypto';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
-import { useFamily, FamilyMember } from './FamilyContext';
+import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import { useAuth } from './AuthContext';
 import { useBaby } from './BabyContext';
-import * as Crypto from 'expo-crypto';
+import { showAlert } from '../utils/alert';
 
 // ✅ Safe alert helper
 const showAlert = (title: string, message: string) => {
   if (typeof Alert !== 'undefined') {
-    Alert.alert(title, message);
+
+showAlert(title, message);
   } else {
     console.warn(`[FamilyChatContext] ${title}: ${message}`);
   }
@@ -1035,40 +1037,73 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     await initializeFamilyChat();
   };
 
-  const value: FamilyChatContextType = {
-    ...state,
-    createFamilyGroup,
-    getOrCreateDirectChat,
-    getChatMessages,
-    sendMessage,
-    editMessage,
-    markChatRead,
-    deleteMessage,
-    clearChat,
-    resendMessage,
-    pickAndSendImage,
-    pickAndSendFile,
-    setTypingStatus,
-    isUserTyping,
-    getTypingUsers,
-    addReaction,
-    removeReaction,
-    muteChat,
-    pinChat,
-    leaveChat,
-    deleteChat,
-    setChatBackground,
-    generateFamilyCode,
-    getFamilyCode,
-    shareFamilyCode,
-    joinFamilyByCode,
-    getUnreadCount,
-    getChatById,
-    getMemberChatInfo,
-    syncFamilyData,
-    searchMessages,
-    getMessageById,
-  };
+const value = useMemo<FamilyChatContextType>(() => ({
+  ...state,
+  createFamilyGroup,
+  getOrCreateDirectChat,
+  getChatMessages,
+  sendMessage,
+  editMessage,
+  markChatRead,
+  deleteMessage,
+  clearChat,
+  resendMessage,
+  pickAndSendImage,
+  pickAndSendFile,
+  setTypingStatus,
+  isUserTyping,
+  getTypingUsers,
+  addReaction,
+  removeReaction,
+  muteChat,
+  pinChat,
+  leaveChat,
+  deleteChat,
+  setChatBackground,
+  generateFamilyCode,
+  getFamilyCode,
+  shareFamilyCode,
+  joinFamilyByCode,
+  getUnreadCount,
+  getChatById,
+  getMemberChatInfo,
+  syncFamilyData,
+  searchMessages,
+  getMessageById,
+}), [
+  state,
+  createFamilyGroup,
+  getOrCreateDirectChat,
+  getChatMessages,
+  sendMessage,
+  editMessage,
+  markChatRead,
+  deleteMessage,
+  clearChat,
+  resendMessage,
+  pickAndSendImage,
+  pickAndSendFile,
+  setTypingStatus,
+  isUserTyping,
+  getTypingUsers,
+  addReaction,
+  removeReaction,
+  muteChat,
+  pinChat,
+  leaveChat,
+  deleteChat,
+  setChatBackground,
+  generateFamilyCode,
+  getFamilyCode,
+  shareFamilyCode,
+  joinFamilyByCode,
+  getUnreadCount,
+  getChatById,
+  getMemberChatInfo,
+  syncFamilyData,
+  searchMessages,
+  getMessageById,
+]);
 
   return (
     <FamilyChatContext.Provider value={value}>

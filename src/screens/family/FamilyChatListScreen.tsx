@@ -1,20 +1,22 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, useColorScheme, RefreshControl, Alert, Share, Modal, TextInput, Dimensions, ActivityIndicator, Image, StatusBar, Platform } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
-import { Ionicons } from '@expo/vector-icons';
-import Animated, { FadeInUp, FadeInRight, FadeIn, SlideInRight, useSharedValue, withSpring, runOnJS } from 'react-native-reanimated';
+
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, { FadeInUp, FadeInRight, FadeIn, SlideInRight, useSharedValue, withSpring, runOnJS } from 'react-native-reanimated';
+
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import * as FileSystem from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+
 import type { RootStackParamList } from '../../types/navigation';
-import { useFamilyChat, FamilyChat, FamilyMessage } from '../../context/FamilyChatContext';
-import { useFamily, FamilyMember } from '../../context/FamilyContext';
+
+import { FamilyChat, FamilyMessage, useFamilyChat } from '../../context/FamilyChatContext';
+import { FamilyMember, useFamily } from '../../context/FamilyContext';
 import { useAuth } from '../../context/AuthContext';
 import { useCustomization } from '../../hooks/useCustomization';
-import { AutoHideScrollView, AutoHideFlatList } from '../../components/AutoHideScrollWrappers';
+import { showAlert } from '../../utils/alert';
 
 type FamilyChatListScreenProps = NativeStackScreenProps<
   RootStackParamList,
@@ -1035,7 +1037,7 @@ export default function FamilyChatListScreen({
   const handleDeleteChat = () => {
     if (!selectedChat) return;
 
-    Alert.alert(
+showAlert(
       'Delete Chat',
       `Are you sure you want to delete "${selectedChat.name}"? This cannot be undone.`,
       [
@@ -1762,7 +1764,8 @@ export default function FamilyChatListScreen({
               <TouchableOpacity
                 style={styles.groupPhotoContainer}
                 onPress={() => {
-                  Alert.alert(
+
+showAlert(
                     'Group Photo',
                     'Choose a photo for your group',
                     [

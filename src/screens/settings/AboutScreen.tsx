@@ -139,7 +139,6 @@ const TEAM = [
   { name: 'Refresh', role: ' By TPM Solutions' },
 ];
 
-
 const SectionHeader: React.FC<{
   icon: keyof typeof Ionicons.glyphMap;
   title: string;

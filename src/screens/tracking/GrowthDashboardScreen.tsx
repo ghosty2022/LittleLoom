@@ -2,26 +2,37 @@ import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from '
 import {
   View,
   Text,
-  Image,
-  StyleSheet,
   TouchableOpacity,
+  ScrollView,
+  StyleSheet,
   Dimensions,
   Modal,
   TextInput,
-  Share,
-  Alert,
-  ActivityIndicator,
   RefreshControl,
-  Platform,
-  InteractionManager,
+  Image,
   StatusBar,
-  ScrollView,
-  FlatList,
-  SectionList,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+
 import { BlurView } from 'expo-blur';
-import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
+import { differenceInDays, differenceInMonths, format, isValid, parseISO } from 'date-fns';
+import { FontAwesome5, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { GrowthIndex, useGrowthIntelligence } from '@/hooks/useGrowthIntelligence';
+import { LinearGradient } from 'expo-linear-gradient';
+import { SafeAvatar } from '@/components/SafeAvatar';
+import { useAuth } from '@/context/AuthContext';
+import { useCustomization } from '@/hooks/useCustomization';
+import { useFamily } from '@/context/FamilyContext';
+import { useMedia } from '@/context/MediaContext';
+import { useSweetAlert } from '@/components/SweetAlert';
+import { useTimelineCorrelations } from '@/hooks/useTimelineCorrelations';
+import { useTracker } from '@/context/TrackerContext';
+import { useTrackerAchievements } from '@/hooks/useTrackerAchievements';
+import { useTrackerProgressive } from '@/hooks/useTrackerProgressive';
+import { useUnifiedTrackerTheme } from '@/hooks/useUnifiedTrackerTheme';
+import { useWHOGrowthCalculator } from '@/hooks/useWHOGrowthCalculator';
+import * as Haptics from 'expo-haptics';
+import * as MediaLibrary from 'expo-media-library';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import Animated, {
   FadeInUp,
@@ -35,32 +46,16 @@ import Animated, {
   withSpring,
   runOnJS,
 } from 'react-native-reanimated';
+import { showAlert } from '../../utils/alert';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
-import * as Haptics from 'expo-haptics';
-import * as MediaLibrary from 'expo-media-library';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { format, parseISO, isValid, differenceInMonths, differenceInDays } from 'date-fns';
+import { useBaby } from '@/context/BabyContext';
+import type { GrowthMeasurement, BabyProfile } from '@/types';
 
 // ── CONTEXTS ──
-import { useBaby, GrowthMeasurement, Milestone, BabyProfile } from '@/context/BabyContext';
-import { useFamily } from '@/context/FamilyContext';
-import { useMedia } from '@/context/MediaContext';
-import { useAuth } from '@/context/AuthContext';
-import { useCustomization } from '@/hooks/useCustomization';
-import { useUnifiedTrackerTheme } from '@/hooks/useUnifiedTrackerTheme';
-import { useTracker } from '@/context/TrackerContext';
 
 // ── HOOKS ──
-import { useWHOGrowthCalculator } from '@/hooks/useWHOGrowthCalculator';
-import { useGrowthIntelligence, GrowthIndex } from '@/hooks/useGrowthIntelligence';
-import { useTimelineCorrelations } from '@/hooks/useTimelineCorrelations';
-import { useTrackerAchievements } from '@/hooks/useTrackerAchievements';
-import { useTrackerProgressive } from '@/hooks/useTrackerProgressive';
 
 // ── COMPONENTS ──
-import { SafeAvatar } from '@/components/SafeAvatar';
-import { useSweetAlert } from '@/components/SweetAlert';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -1044,7 +1039,8 @@ export default function GrowthDashboardScreen({ navigation }: any) {
   }, [currentBaby, addGrowthMeasurement, userProfile, triggerHaptic]);
 
   const handleAddPhoto = useCallback(async () => {
-    Alert.alert('Add Photo', 'Choose source:', [
+
+showAlert('Add Photo', 'Choose source:', [
       {
         text: '📷 Take Photo',
         onPress: async () => {
@@ -1065,7 +1061,8 @@ export default function GrowthDashboardScreen({ navigation }: any) {
         text: '🖼️ From Gallery',
         onPress: async () => {
           if (!hasMediaPermission) {
-            Alert.alert('Permission Required', 'Please allow photo access in settings');
+
+showAlert('Permission Required', 'Please allow photo access in settings');
             return;
           }
           const uri = await pickImage();

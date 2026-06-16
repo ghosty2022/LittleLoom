@@ -5,7 +5,6 @@ import Animated, { FadeInUp } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 
-import { useCustomization } from '@/hooks/useCustomization';
 import { useGrowthIntelligence, SubScore } from '@/hooks/useGrowthIntelligence';
 import { SafeAvatar } from '@/components/SafeAvatar';
 

@@ -1,29 +1,18 @@
-import { useSweetAlert } from '../../components/SweetAlert';
 import React, { useEffect, useState, useCallback } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Dimensions,
-  Alert,
-  StatusBar,
-  Platform,
-  ActivityIndicator,
-  ScrollView,
-} from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
+
 import Animated, { FadeInUp, FadeIn, FadeInDown } from 'react-native-reanimated';
+
+import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useAutoHideNav } from '../../hooks/useAutoHideNav';
-import { useCustomization } from '../../hooks/useCustomization';
-import { useCommunity } from '../../context/CommunityContext';
-import { useUser } from '../../context/UserContext';
+
 import { updateSectionState } from '../../hooks/useIntelligentSplash';
-import { CommunityColors, CommunityGradients, CommunityBorderRadius, CommunityShadows } from '../../theme/CommunityTheme';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAutoHideNav } from '../../hooks/useAutoHideNav';
+import { useCommunity } from '../../context/CommunityContext';
+import { useCustomization } from '../../hooks/useCustomization';
+import { useSweetAlert } from '../../components/SweetAlert';
+import { useUser } from '../../context/UserContext';
+import { showAlert } from '../../utils/alert';
 
 const { width } = Dimensions.get('window');
 const ONBOARDING_KEY = '@littleloom_community_onboarding_v3';
@@ -225,7 +214,8 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
   };
 
   const handleSkip = async () => {
-    Alert.alert(
+
+showAlert(
       'Skip Topic Selection?',
       'Selecting topics helps us show you relevant content. You can always change this later in your profile.',
       [

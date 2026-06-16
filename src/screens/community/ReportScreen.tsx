@@ -14,7 +14,6 @@ import { useCustomization } from '../../hooks/useCustomization';
 import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
 import { CommunityColors, CommunityGradients, CommunitySpacing, CommunityBorderRadius, CommunityShadows } from '../../theme/CommunityTheme';
 
-
 type ReportScreenProps = NativeStackScreenProps<CommunityStackParamList, 'Report'>;
 
 const { width } = Dimensions.get('window');

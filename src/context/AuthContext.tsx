@@ -801,7 +801,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) { return false; }
   }, [state.userProfile]);
 
-
   const updateCommunityProfile = useCallback(async (updates: { username?: string; handle?: string; bio?: string; avatar?: string; displayName?: string }): Promise<boolean> => {
     try {
       if (!state.userProfile) return false;

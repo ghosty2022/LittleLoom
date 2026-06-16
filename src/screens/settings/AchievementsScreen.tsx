@@ -17,7 +17,6 @@ import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 
-import { useBaby } from '../../context/BabyContext';
 import { useTracker } from '../../context/TrackerContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useTrackerAchievements, Achievement, AchievementCategory } from '../../hooks/useTrackerAchievements';

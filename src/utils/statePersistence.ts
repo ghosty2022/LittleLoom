@@ -19,7 +19,6 @@ const STORAGE_KEYS = {
   NAV_VISIBILITY: '@littleloom_nav_visible_v2',
 } as const;
 
-
 export interface PersistedNavigationState {
   state: object;
   routeName: string;
@@ -55,7 +54,6 @@ export interface SecurityPersistedState {
   lockTimestamp: number;
   lastAuthTime: number;
 }
-
 
 class StatePersistenceManager {
   private static instance: StatePersistenceManager;
@@ -495,10 +493,8 @@ class StatePersistenceManager {
   }
 }
 
-
 export const statePersistence = StatePersistenceManager.getInstance();
 export default statePersistence;
-
 
 export const saveNavigationState = (state: object, routeName: string, params?: Record<string, any>) => 
   statePersistence.saveNavigationState(state, routeName, params);

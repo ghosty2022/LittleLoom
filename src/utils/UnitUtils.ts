@@ -19,7 +19,6 @@ export const DEFAULT_UNITS: UnitPreferences = {
   useMetric: true,
 };
 
-
 const CONVERSIONS = {
   weight: {
     kg: { toBase: 1, label: 'kg', symbol: 'kg' },
@@ -44,7 +43,6 @@ const CONVERSIONS = {
     cup: { toBase: 236.588, label: 'cups', symbol: 'cup' },
   },
 };
-
 
 export function convertWeight(value: number, from: WeightUnit, to: WeightUnit): number {
   if (from === to) return value;
@@ -71,7 +69,6 @@ export function convertVolume(value: number, from: VolumeUnit, to: VolumeUnit): 
   return baseValue / CONVERSIONS.volume[to].toBase;
 }
 
-
 export function formatWeight(value: number, unit: WeightUnit, decimals: number = 2): string {
   return `${value.toFixed(decimals)} ${CONVERSIONS.weight[unit].label}`;
 }
@@ -92,7 +89,6 @@ export function formatTemperature(value: number, unit: TemperatureUnit, decimals
 export function formatVolume(value: number, unit: VolumeUnit, decimals: number = 0): string {
   return `${value.toFixed(decimals)} ${CONVERSIONS.volume[unit].label}`;
 }
-
 
 export function smartWeightDisplay(valueKg: number, locale: string = 'en'): string {
   const isMetric = !['US', 'LR', 'MM'].includes(locale); // US, Liberia, Myanmar use imperial
@@ -117,7 +113,6 @@ export function smartHeightDisplay(valueCm: number, locale: string = 'en'): stri
   return `${feet}'${inches}"`;
 }
 
-
 export function parseHeightInput(input: string): { value: number; unit: HeightUnit } | null {
   const trimmed = input.trim().toLowerCase();
   
@@ -137,7 +132,6 @@ export function parseHeightInput(input: string): { value: number; unit: HeightUn
   
   return null;
 }
-
 
 export function useUnitPreferences() {
   const [preferences, setPreferences] = React.useState<UnitPreferences>(DEFAULT_UNITS);
@@ -167,7 +161,6 @@ export function useUnitPreferences() {
     isMetric: preferences.useMetric,
   };
 }
-
 
 export const UnitUtils = {
   convertWeight,

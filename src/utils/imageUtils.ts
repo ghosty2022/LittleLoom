@@ -4,7 +4,6 @@ import * as MediaLibrary from 'expo-media-library';
 import { Alert, Image } from 'react-native';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 
-
 const BASE_DIR = FileSystem.documentDirectory || '';
 export const CACHE_DIR = FileSystem.cacheDirectory + 'littleloom/';
 export const PARENT_IMAGES_DIR = BASE_DIR + 'parent_images/';
@@ -17,7 +16,6 @@ export const MAX_CACHE_SIZE = 100 * 1024 * 1024; // 100MB
 export const DEFAULT_COMPRESSION = 0.8;
 export const MAX_IMAGE_DIMENSION = 2048;
 export const THUMBNAIL_SIZE = 300;
-
 
 export async function ensureDirectory(dir: string): Promise<void> {
   const dirInfo = await FileSystem.getInfoAsync(dir);
@@ -36,7 +34,6 @@ export async function ensureAllImageDirs(): Promise<void> {
     ensureDirectory(GALLERY_DIR),
   ]);
 }
-
 
 export function getParentImagePath(parentId: string): string {
   return `${PARENT_IMAGES_DIR}${parentId}_avatar_${Date.now()}.jpg`;
@@ -61,7 +58,6 @@ export function getGalleryPath(filename: string): string {
 export function getCachePath(filename: string): string {
   return `${CACHE_DIR}${filename}`;
 }
-
 
 export async function copyImage(sourceUri: string, destinationUri: string): Promise<boolean> {
   try {
@@ -119,7 +115,6 @@ export async function readDirectory(dir: string): Promise<string[]> {
     return [];
   }
 }
-
 
 export interface PickImageOptions {
   allowsEditing?: boolean;
@@ -206,7 +201,6 @@ export async function takePhoto(options?: PickImageOptions): Promise<string | nu
     return null;
   }
 }
-
 
 export async function compressImage(uri: string, quality: number = DEFAULT_COMPRESSION): Promise<string> {
   try {
@@ -305,7 +299,6 @@ export async function processImageBatch(
   return results;
 }
 
-
 export async function cacheImage(uri: string, customFilename?: string): Promise<string> {
   try {
     await ensureDirectory(CACHE_DIR);
@@ -375,7 +368,6 @@ export async function isCacheFull(): Promise<boolean> {
   const size = await getCacheSize();
   return size >= MAX_CACHE_SIZE;
 }
-
 
 export interface SaveImageResult {
   success: boolean;
@@ -448,7 +440,6 @@ export async function saveGalleryImage(filename: string, sourceUri: string): Pro
   }
 }
 
-
 export async function saveToPhotoLibrary(uri: string): Promise<boolean> {
   try {
     const { status } = await MediaLibrary.requestPermissionsAsync();
@@ -464,7 +455,6 @@ export async function saveToPhotoLibrary(uri: string): Promise<boolean> {
     return false;
   }
 }
-
 
 export function isValidImageUri(value: string | undefined | null): boolean {
   if (!value || typeof value !== 'string') return false;
@@ -505,7 +495,6 @@ export function isEmoji(value: string | undefined | null): boolean {
     code === 0x2763
   );
 }
-
 
 export const ImageUtils = {
   ensureDirectory,

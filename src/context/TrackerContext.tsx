@@ -1,3 +1,18 @@
+import { UnifiedTrackerConfig,
+  TrackerEntry,
+  TrackerCategory,
+  FieldConfig,
+  TRACKER_STORAGE_KEYS,
+  TrackerStreak,
+  TrackerInsight,
+  ReminderRule,
+  ProgressiveTrackerState, } from '@/types/trackers';
+import { useAuth } from '@/context/AuthContext';
+import { useCustomization } from '@/hooks/useCustomization';
+import { useFamily } from '@/context/FamilyContext';
+import { useSweetAlert } from '@/components/SweetAlert';
+import * as Haptics from 'expo-haptics';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import React, {
   createContext,
@@ -8,32 +23,9 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { Alert } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Haptics from 'expo-haptics';
+import { showAlert } from '../utils/alert';
+import { createCustomTracker, validateCustomTracker, DEFAULT_TRACKERS } from '@/config/trackers';
 
-import {
-  UnifiedTrackerConfig,
-  TrackerEntry,
-  TrackerCategory,
-  FieldConfig,
-  TRACKER_STORAGE_KEYS,
-  TrackerStreak,
-  TrackerInsight,
-  ReminderRule,
-  ProgressiveTrackerState,
-} from '@/types/trackers';
-
-import {
-  DEFAULT_TRACKERS,
-  createCustomTracker,
-  validateCustomTracker,
-} from '@/config/defaultTrackers';
-
-import { useAuth } from '@/context/AuthContext';
-import { useFamily } from '@/context/FamilyContext';
-import { useCustomization } from '@/hooks/useCustomization';
-import { useSweetAlert } from '@/components/SweetAlert';
 /* ------------------------------------------------------------------ */
 /*  Legacy-compatible types                                            */
 /* ------------------------------------------------------------------ */
@@ -811,7 +803,8 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     const validation = validateCustomTracker(newTracker);
 
     if (!validation.valid) {
-      Alert.alert('Invalid Tracker', validation.errors.join('\n'));
+
+showAlert('Invalid Tracker', validation.errors.join('\n'));
       return null;
     }
 
@@ -945,7 +938,8 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
       .map(f => f.label);
 
     if (missingFields.length > 0) {
-      Alert.alert('Missing Information', `Please fill in: ${missingFields.join(', ')}`);
+
+showAlert('Missing Information', `Please fill in: ${missingFields.join(', ')}`);
       return null;
     }
 

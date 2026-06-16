@@ -7,7 +7,6 @@ import * as Haptics from 'expo-haptics';
 
 const { width } = Dimensions.get('window');
 
-
 export type AvatarType = 'photo' | 'emoji' | 'illustration' | 'gradient' | 'letter';
 export type AvatarSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | 'profile';
 export type BabyGender = 'boy' | 'girl' | 'other';
@@ -29,7 +28,6 @@ const SIZE_MAP: Record<AvatarSize, number> = {
   xxl: 128,
   profile: 160,
 };
-
 
 export const BABY_EMOJIS = {
   faces: [
@@ -75,7 +73,6 @@ export const BABY_EMOJIS = {
 
 export const ALL_EMOJIS = Object.values(BABY_EMOJIS).flat();
 
-
 export const ILLUSTRATION_AVATARS = {
   baby: {
     boy: [
@@ -119,7 +116,6 @@ export const ILLUSTRATION_AVATARS = {
   },
 } as const;
 
-
 export const GRADIENT_PRESETS: Record<string, [string, string]> = {
   boy_blue: ['#667eea', '#764ba2'],
   boy_ocean: ['#11998e', '#38ef7d'],
@@ -145,7 +141,6 @@ export const GRADIENT_PRESETS: Record<string, [string, string]> = {
   cool_mint: ['#14b8a6', '#2dd4bf'],
 } as const;
 
-
 export const SKIN_TONES = [
   { color: '#F5D5C5', label: 'Fair', undertone: 'warm', id: 0 },
   { color: '#E8C4A0', label: 'Light', undertone: 'neutral', id: 1 },
@@ -160,7 +155,6 @@ export const SKIN_TONES = [
   { color: '#F4C2C2', label: 'Rose Fair', undertone: 'cool', id: 10 },
   { color: '#D2691E', label: 'Amber', undertone: 'golden', id: 11 },
 ] as const;
-
 
 export const GENDER_CONFIG = {
   boy: {
@@ -188,7 +182,6 @@ export const GENDER_CONFIG = {
     illustrations: ILLUSTRATION_AVATARS.baby.other,
   },
 } as const;
-
 
 const isImageUri = (value: string | undefined | null): boolean => {
   if (!value || typeof value !== 'string') return false;
@@ -228,7 +221,6 @@ const getInitials = (name: string): string => {
     .toUpperCase()
     .slice(0, 2);
 };
-
 
 interface LittleLoomAvatarProps {
   source?: string | null;  // Photo URI, emoji, or illustration URL
@@ -461,7 +453,6 @@ export const LittleLoomAvatar: React.FC<LittleLoomAvatarProps> = ({
   );
 };
 
-
 interface BabyAvatarProps {
   avatar?: string | null;
   name?: string;
@@ -542,7 +533,6 @@ export const BabyAvatar: React.FC<BabyAvatarProps> = ({
   );
 };
 
-
 interface AvatarGroupProps {
   avatars: Array<{
     id: string;
@@ -608,7 +598,6 @@ export const AvatarGroup: React.FC<AvatarGroupProps> = ({
     </View>
   );
 };
-
 
 interface AvatarPickerProps {
   visible: boolean;
@@ -770,7 +759,6 @@ export const AvatarPicker: React.FC<AvatarPickerProps> = ({
   );
 };
 
-
 interface SkinTonePickerProps {
   selected: number;
   onSelect: (tone: number) => void;
@@ -817,7 +805,6 @@ export const SkinTonePicker: React.FC<SkinTonePickerProps> = ({
     </View>
   );
 };
-
 
 const styles = StyleSheet.create({
   wrapper: {

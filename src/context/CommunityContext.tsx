@@ -1,9 +1,11 @@
-import { useSweetAlert } from '../../components/SweetAlert';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, AppState, AppStateStatus } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import * as Haptics from 'expo-haptics';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import { useAuth } from './AuthContext';
+import { useSweetAlert } from '../../components/SweetAlert';
+import { showAlert } from '../utils/alert';
 
 const STORAGE_KEYS = {
   POSTS: '@community_posts_v2',
@@ -1216,7 +1218,8 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, []);
 
   const deletePost = useCallback(async (postId: string) => {
-    Alert.alert(
+
+showAlert(
       'Delete Post',
       'Are you sure you want to delete this post? This action cannot be undone.',
       [

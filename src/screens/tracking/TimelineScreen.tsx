@@ -30,7 +30,6 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '@/types/navigation';
 
-import { useCustomization } from '@/hooks/useCustomization';
 import { useUnifiedTrackerTheme } from '@/hooks/useUnifiedTrackerTheme';
 import { AutoHideScrollView } from '@/components/AutoHideScrollWrappers';
 import { useTracker } from '@/context/TrackerContext';
@@ -40,14 +39,12 @@ import { SafeAvatar } from '@/components/SafeAvatar';
 import { useSweetAlert } from '@/components/SweetAlert';
 import { TimelinePicker } from '@/components/trackers/TimelinePicker';
 
-import { useTimelineCorrelations, TimelineCorrelation } from '@/hooks/useTimelineCorrelations';
 import { usePredictiveReminders, PredictiveReminder } from '@/hooks/usePredictiveReminders';
 import { useGrowthIntelligence } from '@/hooks/useGrowthIntelligence';
 import { useTrackerAchievements } from '@/hooks/useTrackerAchievements';
 import { useTrackerProgressive } from '@/hooks/useTrackerProgressive';
 
 const { width } = Dimensions.get('window');
-
 
 type TimelineScreenRouteProp = RouteProp<RootStackParamList, 'Timeline'>;
 type TimelineScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -58,7 +55,6 @@ interface SmartSection {
   priority: 'urgent' | 'high' | 'normal' | 'low';
   component: React.ReactNode;
 }
-
 
 const getDateTitle = (timestamp: number): string => {
   const date = new Date(timestamp);
@@ -118,14 +114,12 @@ const getRarityGradient = (rarity: string): [string, string] => {
   }
 };
 
-
 const safeArray = <T,>(arr: T[] | undefined | null): T[] => arr || [];
 const safeString = (s: string | undefined | null): string => s || '';
 const safeNumber = (n: number | undefined | null, fallback = 0): number => {
   if (n === undefined || n === null || Number.isNaN(n) || !Number.isFinite(n)) return fallback;
   return n;
 };
-
 
 /**
  * SmartInsightCard — Displays AI-generated insights with action buttons
@@ -576,7 +570,6 @@ const StreakBanner: React.FC<{
     </Animated.View>
   );
 };
-
 
 export default function EnhancedTimelineScreen() {
   const navigation = useNavigation<TimelineScreenNavigationProp>();
@@ -1326,8 +1319,6 @@ export default function EnhancedTimelineScreen() {
     </View>
   );
 }
-
-
 
 const styles = StyleSheet.create({
   container: { flex: 1 },

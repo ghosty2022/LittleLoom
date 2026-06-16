@@ -27,7 +27,6 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 
-import { useNavigationVisibility, useTheme } from '../context/AppContext';
 import { useCustomization } from '../hooks/useCustomization';
 import { HomeIcon, TrackIcon, GrowIcon, ConnectIcon, MoreIcon, AddLogIcon } from './TabIcons';
 
@@ -91,7 +90,6 @@ const TABS: TabItem[] = [
   },
 ];
 
-
 const TAB_VISIBLE_ROUTES = new Set(['Home', 'Track', 'Grow', 'Connect', 'More']);
 
 const HIDDEN_TAB_ROUTES = new Set([
@@ -112,7 +110,6 @@ const PILL_WIDTH = Math.min(SCREEN_WIDTH - 60, 340);
 const PILL_HEIGHT = 68;
 const BOTTOM_MARGIN = 10;
 const HIDDEN_TRANSLATE_Y = 160;
-
 
 interface TabButtonProps {
   tab: TabItem;
@@ -236,7 +233,6 @@ const TabButton: React.FC<TabButtonProps> = ({
   );
 };
 
-
 const OrbitingDots: React.FC<{ isDark: boolean }> = React.memo(({ isDark }) => {
   const rotation = useSharedValue(0);
 
@@ -289,7 +285,6 @@ const OrbitingDots: React.FC<{ isDark: boolean }> = React.memo(({ isDark }) => {
     </View>
   );
 });
-
 
 const FloatingParticles: React.FC<{ isDark: boolean }> = React.memo(({ isDark }) => {
   const particles = useMemo(() => [
@@ -357,7 +352,6 @@ const FloatingParticle: React.FC<{
   );
 });
 
-
 const ActiveColorWash: React.FC<{ activeIndex: number; isDark: boolean }> = React.memo(({ activeIndex, isDark }) => {
   const washOpacity = useSharedValue(0);
   const tabColors = ['rgba(102,126,234,', 'rgba(17,153,142,', 'rgba(250,112,154,', 'rgba(245,158,11,', 'rgba(100,116,139,'];
@@ -391,7 +385,6 @@ const ActiveColorWash: React.FC<{ activeIndex: number; isDark: boolean }> = Reac
     />
   );
 });
-
 
 const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({ state, descriptors, navigation }) => {
   const insets = useSafeAreaInsets();

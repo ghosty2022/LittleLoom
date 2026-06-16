@@ -1,23 +1,20 @@
 import React, { memo, useCallback, useMemo, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  useColorScheme,
-  Dimensions,
-  Alert,
-  RefreshControl,
-  InteractionManager,
-  Platform,
-  Image,
-  StatusBar,
-  Modal,
-} from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
+
+import { format, formatDistanceToNow } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
+import * as Haptics from 'expo-haptics';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+
+import type { RootStackParamList } from '../../types/navigation';
+
+import { AutoHideAnimatedScrollView, AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
+import { useAuth } from '../../context/AuthContext';
+import { useCustomization } from '../../hooks/useCustomization';
+import { useFamily } from '../../context/FamilyContext';
+import { useUser } from '../../context/UserContext';
+
+import { showAlert } from '../../utils/alert';
 import Animated, {
   FadeInUp,
   useSharedValue,
@@ -27,17 +24,6 @@ import Animated, {
   useAnimatedScrollHandler,
   Layout,
 } from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
-import { format, formatDistanceToNow } from 'date-fns';
-import { useAuth } from '../../context/AuthContext';
-import { useUser } from '../../context/UserContext';
-import { useBaby, ActivityEntry, Milestone } from '../../context/BabyContext';
-import { useFamily } from '../../context/FamilyContext';
-import { UserRole } from '../../types/roles';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { RootStackParamList } from '../../types/navigation';
-import { AutoHideScrollView, AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
-import { useCustomization } from '../../hooks/useCustomization';
 
 const { width } = Dimensions.get('window');
 const AnimatedScrollView = AutoHideAnimatedScrollView;
@@ -425,7 +411,8 @@ export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreen
 
   const handleDeleteBaby = useCallback(
     (baby: (typeof babies)[0]) => {
-      Alert.alert(
+
+showAlert(
         'Delete Profile',
         `Remove ${baby.name}'s profile permanently?`,
         [
@@ -446,7 +433,8 @@ export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreen
 
   const handleRemoveMember = useCallback(
     (member: any) => {
-      Alert.alert('Remove Member', `Remove ${member.fullName} from family?`, [
+
+showAlert('Remove Member', `Remove ${member.fullName} from family?`, [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Remove',

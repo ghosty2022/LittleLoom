@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState, useMemo } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 
@@ -526,33 +526,56 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
       .slice(0, 5);
   }, [entries]);
 
-  const value: ActivityContextType = {
-    entries,
-    isLoading,
-    error,
-    addEntry,
-    updateEntry,
-    deleteEntry,
-    getEntriesByType,
-    getEntriesByBaby,
-    getEntriesByDateRange,
-    getEntryById,
-    getRecentTimelineEvents,
-    addTimelineEvent,
-    getTodayCount,
-    getSuccessRate,
-    getStreak,
-    getDateTitle,
-    getRelativeTime,
-    formatDuration,
-    loadEntries,
-    syncEntries,
-    clearEntries,
-    scheduleActivityReminder,
-    cancelActivityReminder,
-    syncWithBabyContext,
-    getEntriesForNotification,
-  };
+const value = useMemo<ActivityContextType>(() => ({
+  entries,
+  isLoading,
+  error,
+  addEntry,
+  updateEntry,
+  deleteEntry,
+  getEntriesByType,
+  getEntriesByBaby,
+  getEntriesByDateRange,
+  getEntryById,
+  getRecentTimelineEvents,
+  addTimelineEvent,
+  getTodayCount,
+  getSuccessRate,
+  getStreak,
+  getDateTitle,
+  getRelativeTime,
+  formatDuration,
+  loadEntries,
+  syncEntries,
+  clearEntries,
+  scheduleActivityReminder,
+  cancelActivityReminder,
+  syncWithBabyContext,
+  getEntriesForNotification,
+}), [
+  entries,
+  isLoading,
+  error,
+  addEntry,
+  updateEntry,
+  deleteEntry,
+  getEntriesByType,
+  getEntriesByBaby,
+  getEntriesByDateRange,
+  getEntryById,
+  getRecentTimelineEvents,
+  addTimelineEvent,
+  getTodayCount,
+  getSuccessRate,
+  getStreak,
+  loadEntries,
+  syncEntries,
+  clearEntries,
+  scheduleActivityReminder,
+  cancelActivityReminder,
+  syncWithBabyContext,
+  getEntriesForNotification,
+]);
 
   return (
     <ActivityContext.Provider value={value}>

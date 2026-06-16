@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
+import { showAlert } from '../../utils/alert';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
   FadeIn,
@@ -705,7 +706,7 @@ export default function RemindersScreen({ navigation, route }: Props) {
   const requestNotificationPermissions = async () => {
     const { status } = await Notifications.requestPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert(
+      showAlert(
         'Notifications Required',
         'Please enable notifications in Settings to receive reminder alerts.',
         [{ text: 'OK', style: 'default' }]
@@ -1089,7 +1090,7 @@ export default function RemindersScreen({ navigation, route }: Props) {
     const reminder = reminders.find((r) => r.id === id);
     if (!reminder) return;
 
-    Alert.alert('Delete Reminder', `Remove "${reminder.title}"?`, [
+    showAlert('Delete Reminder', `Remove "${reminder.title}"?`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',

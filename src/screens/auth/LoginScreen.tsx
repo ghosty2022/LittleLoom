@@ -31,7 +31,6 @@ import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
-import { useAuth } from '../../context/AuthContext';
 import { useSecurity } from '../../context/SecurityContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
@@ -43,7 +42,6 @@ type LoginScreenProps = NativeStackScreenProps<RootStackParamList, 'Login'>;
 const { width, height } = Dimensions.get('window');
 
 WebBrowser.maybeCompleteAuthSession();
-
 
 const GOOGLE_CLIENT_ID = Platform.select({
   ios: 'YOUR_IOS_GOOGLE_CLIENT_ID.apps.googleusercontent.com',
@@ -57,7 +55,6 @@ const redirectUri = AuthSession.makeRedirectUri({
   scheme: 'littleloom',
   useProxy: Platform.OS !== 'web' 
 });
-
 
 interface SocialButtonProps {
   provider: 'google' | 'apple' | 'facebook';
@@ -119,12 +116,10 @@ const SocialButton = React.memo(({ provider, onPress, disabled, isDark }: Social
   );
 });
 
-
 const isValidEmail = (email: string): boolean => {
   const re = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;
   return re.test(email.trim().toLowerCase());
 };
-
 
 export default function LoginScreen({ navigation }: LoginScreenProps) {
   const [email, setEmail] = useState('');
@@ -295,7 +290,6 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     }
   };
 
-
   const handleSocialLogin = async (
     provider: 'google' | 'apple' | 'facebook',
     email: string,
@@ -333,8 +327,6 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     }
   };
 
-
-
   useEffect(() => {
     if (biometricCheckComplete.current || !isBiometricAvailable) return;
 
@@ -356,7 +348,6 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
 
     checkBiometricStatus();
   }, [isBiometricAvailable, hasBiometricLoginCredentials]);
-
 
   useEffect(() => {
     if (isAuthenticated || autoLoginAttempted.current || !biometricCheckComplete.current || !authInitialized) return;
@@ -387,7 +378,6 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     return unsubscribe;
   }, [navigation, resetUnlockLock]);
 
-
   const logoStyle = useAnimatedStyle(() => ({
     transform: [{ scale: logoScale.value }],
   }));
@@ -400,7 +390,6 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     transform: [{ scale: biometricScale.value }],
     opacity: biometricScale.value,
   }));
-
 
   const handleGoogleLogin = async () => {
     if (socialAuthInProgress.current) return;
@@ -603,7 +592,6 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
   };
 
   const isLoading = authLoading || isProcessing || !authInitialized;
-
 
   return (
     <View style={[styles.container, { backgroundColor: isDark ? '#0a0a0a' : '#f8faff' }]}>
@@ -834,7 +822,6 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     </View>
   );
 }
-
 
 const styles = StyleSheet.create({
   container: {

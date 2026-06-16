@@ -36,33 +36,33 @@ import { useSafeApp, useSafeBaby, useSafeAuth, useUnifiedTheme } from '../hooks/
 
 const { width, height } = Dimensions.get('window');
 
-const SleepTimerModal = ({ 
-  visible, 
-  onClose, 
-  onSetTimer, 
+const SleepTimerModal = ({
+  visible,
+  onClose,
+  onSetTimer,
   currentTimer,
-  isDark 
-}: { 
-  visible: boolean; 
-  onClose: () => void; 
+  isDark
+}: {
+  visible: boolean;
+  onClose: () => void;
   onSetTimer: (minutes: number) => void;
   currentTimer: { enabled: boolean; duration: number };
   isDark: boolean;
 }) => {
   const options = [15, 30, 45, 60, 90];
-  
+
   if (!visible) return null;
-  
+
   return (
     <View style={[StyleSheet.absoluteFill, { zIndex: 1000, justifyContent: 'center', alignItems: 'center' }]} pointerEvents="box-none">
       <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1}>
         <BlurView intensity={80} style={StyleSheet.absoluteFill} tint="dark" />
       </TouchableOpacity>
-      
+
       <Animated.View entering={FadeInUp} style={[styles.timerModal, { backgroundColor: isDark ? '#1a1a2e' : '#fff' }]}>
         <Text style={[styles.timerTitle, { color: isDark ? '#fff' : '#1e293b' }]}>Sleep Timer</Text>
         <Text style={styles.timerSubtitle}>Stop playing after...</Text>
-        
+
         {currentTimer.enabled && (
           <View style={styles.activeTimerBadge}>
             <Ionicons name="timer" size={16} color="#fff" />
@@ -72,11 +72,11 @@ const SleepTimerModal = ({
             </TouchableOpacity>
           </View>
         )}
-        
+
         <View style={styles.timerOptions}>
           {options.map((mins) => (
-            <TouchableOpacity 
-              key={mins} 
+            <TouchableOpacity
+              key={mins}
               style={[
                 styles.timerOption,
                 currentTimer.duration === mins && styles.timerOptionActive
@@ -102,9 +102,9 @@ const FloatingBall = () => {
   const { currentTrack, isPlaying, expandPlayer } = useAudio();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
-  
+
   const ballPosition = useSharedValue({ x: width - 80, y: height - 200 });
-  
+
   const panGestureHandler = useAnimatedGestureHandler<PanGestureHandlerGestureEvent, { startX: number; startY: number }>({
     onStart: (_, ctx) => {
       ctx.startX = ballPosition.value.x;
@@ -118,9 +118,9 @@ const FloatingBall = () => {
     },
     onEnd: () => {
       const snapX = ballPosition.value.x > width / 2 ? width - 80 : 20;
-      ballPosition.value = withSpring({ 
-        x: snapX, 
-        y: Math.max(100, Math.min(height - 150, ballPosition.value.y)) 
+      ballPosition.value = withSpring({
+        x: snapX,
+        y: Math.max(100, Math.min(height - 150, ballPosition.value.y))
       });
     },
   });
@@ -167,7 +167,7 @@ const MiniPlayer = () => {
   const isDark = colorScheme === 'dark';
 
   const slideAnim = useSharedValue(0);
-  
+
   const gestureHandler = useAnimatedGestureHandler<PanGestureHandlerGestureEvent>({
     onActive: (event) => {
       if (event.translationY > 0) slideAnim.value = event.translationY;
@@ -197,10 +197,10 @@ const MiniPlayer = () => {
               <View style={styles.miniProgressContainer}>
                 <View style={[styles.miniProgressBar, { width: `${progress}%`, backgroundColor: currentTrack.color }]} />
               </View>
-              
+
               <View style={styles.miniContent}>
                 <Image source={{ uri: currentTrack.image }} style={styles.miniArt} />
-                
+
                 <View style={styles.miniTextContainer}>
                   <Text style={[styles.miniTitle, isDark && styles.textDark]} numberOfLines={1}>
                     {currentTrack.title}
@@ -209,14 +209,14 @@ const MiniPlayer = () => {
                     {currentTrack.artist}
                   </Text>
                 </View>
-                
+
                 <View style={styles.miniControls}>
                   <TouchableOpacity onPress={(e) => { e.stopPropagation(); togglePlayback(); }} style={styles.miniPlayButton}>
                     <LinearGradient colors={[currentTrack.color, `${currentTrack.color}80`]} style={styles.miniPlayGradient}>
                       <Ionicons name={isPlaying ? "pause" : "play"} size={20} color="#fff" style={isPlaying ? {} : { marginLeft: 2 }} />
                     </LinearGradient>
                   </TouchableOpacity>
-                  
+
                   <TouchableOpacity onPress={(e) => { e.stopPropagation(); collapseToBall(); }} style={styles.collapseButton}>
                     <Ionicons name="chevron-down" size={20} color={isDark ? '#fff' : '#64748b'} />
                   </TouchableOpacity>
@@ -254,11 +254,11 @@ const FullPlayer = () => {
     sleepTimer,
     setSleepTimer,
   } = useAudio();
-  
-  const { currentBaby } = useBaby();
+
+  const { currentBaby } = useSafeBaby();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
-  
+
   const [showTimerModal, setShowTimerModal] = useState(false);
   const slideAnim = useSharedValue(0);
   const translateY = useSharedValue(0);
@@ -298,7 +298,7 @@ const FullPlayer = () => {
   const shareTrack = async (track: any) => {
     try {
       await Share.share({
-        message: `Listening to "${track.title}" by ${track.artist} on LittleLoom 🎵`,
+        message: `Listening to "${track.title}" by ${track.artist} on LittleLoom`,
       });
     } catch (e) {
       console.error('Share error:', e);
@@ -330,11 +330,11 @@ const FullPlayer = () => {
             <TouchableOpacity onPress={minimizePlayer} style={styles.headerButton}>
               <Ionicons name="chevron-down" size={28} color={isDark ? '#fff' : '#1e293b'} />
             </TouchableOpacity>
-            
+
             <Text style={[styles.nowPlayingText, isDark && styles.textDark]}>Now Playing</Text>
-            
-            <TouchableOpacity 
-              onPress={() => toggleFavorite(currentTrack.id)} 
+
+            <TouchableOpacity
+              onPress={() => toggleFavorite(currentTrack.id)}
               style={[styles.headerButton, favorite && styles.activeFavoriteButton]}
             >
               <Ionicons name={favorite ? "heart" : "heart-outline"} size={24} color={favorite ? '#ff6b6b' : (isDark ? '#fff' : '#1e293b')} />
@@ -421,7 +421,7 @@ const FullPlayer = () => {
               </Text>
               {sleepTimer.enabled && <View style={styles.timerDot} />}
             </TouchableOpacity>
-            
+
             <TouchableOpacity style={styles.softButton} onPress={() => shareTrack(currentTrack)}>
               <Ionicons name="share-outline" size={20} color={isDark ? '#fff' : '#64748b'} />
               <Text style={[styles.softButtonText, isDark && styles.textDark]}>Share</Text>
@@ -429,10 +429,10 @@ const FullPlayer = () => {
           </View>
 
           <Text style={[styles.swipeHintText, isDark && styles.textDark]}>
-            Swipe down to minimize • Swipe down fast to close
+            Swipe down to minimize &bull; Swipe down fast to close
           </Text>
 
-          <SleepTimerModal 
+          <SleepTimerModal
             visible={showTimerModal}
             onClose={() => setShowTimerModal(false)}
             onSetTimer={setSleepTimer}
@@ -462,7 +462,7 @@ export default GlobalAudioPlayer;
 
 const styles = StyleSheet.create({
   textDark: { color: '#ffffff' },
-  
+
   floatingBallContainer: { position: 'absolute', zIndex: 999 },
   ballBlur: { width: 64, height: 64, borderRadius: 32, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 10 },
   ballGradient: { flex: 1, justifyContent: 'center', alignItems: 'center' },

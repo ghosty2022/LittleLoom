@@ -1,46 +1,24 @@
-import { useSweetAlert } from '../../components/SweetAlert';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Image,
-  Dimensions,
-  useColorScheme,
-  Modal,
-  StatusBar,
-  Share,
-  Alert,
-  Animated as RNAnimated,
-  TextInput,
-  ActivityIndicator,
-  Switch,
-  Platform,
-  LogBox,
-  RefreshControl,
-} from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
-import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
-import * as MediaLibrary from 'expo-media-library';
-import * as ImageManipulator from 'expo-image-manipulator';
-import * as FileSystem from 'expo-file-system';
-import * as ImagePicker from 'expo-image-picker';
-import * as Crypto from 'expo-crypto';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useBaby } from '../../context/BabyContext';
-import { useSecurity } from '../../context/SecurityContext';
-import { useMedia } from '../../context/MediaContext';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { RootStackParamList } from '../../types/navigation';
-import { format, isToday, isYesterday, isThisWeek, isThisMonth, parseISO } from 'date-fns';
 
-import {
-  AutoHideScrollView,
-  AutoHideFlatList,
-} from '../../components/AutoHideScrollWrappers';
+import { format, isThisMonth, isThisWeek, isToday, isYesterday, parseISO } from 'date-fns';
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import * as Crypto from 'expo-crypto';
+import * as FileSystem from 'expo-file-system';
+import * as Haptics from 'expo-haptics';
+import * as ImageManipulator from 'expo-image-manipulator';
+import * as ImagePicker from 'expo-image-picker';
+import * as MediaLibrary from 'expo-media-library';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+
+import type { RootStackParamList } from '../../types/navigation';
+
+import { useBaby } from '../../context/BabyContext';
+import { useMedia } from '../../context/MediaContext';
+import { useSecurity } from '../../context/SecurityContext';
+import { useSweetAlert } from '../../components/SweetAlert';
+
 import Reanimated, {
   FadeIn,
   FadeInUp,
@@ -51,6 +29,8 @@ import Reanimated, {
   withSpring,
   useAnimatedStyle,
 } from 'react-native-reanimated';
+
+import { showAlert } from '../../utils/alert';
 
 const { width, height } = Dimensions.get('window');
 const COLUMN_COUNT = 3;
@@ -416,7 +396,8 @@ const VaultLockModal = ({
           isBiometricEnrolled);
 
       if (!hasSecurity) {
-        Alert.alert(
+
+showAlert(
           'Security Required',
           'Please set up PIN or Biometric authentication in Settings to use the Private Vault.',
           [
@@ -2075,7 +2056,8 @@ export default function GalleryScreen({
             isBiometricHardwareAvailable);
 
         if (!hasSecurity) {
-          Alert.alert(
+
+showAlert(
             'Security Required',
             'Please set up PIN or Biometric authentication in Settings to use the Private Vault.',
             [
@@ -2337,7 +2319,8 @@ export default function GalleryScreen({
           isBiometricHardwareAvailable);
 
       if (!hasSecurity) {
-        Alert.alert(
+
+showAlert(
           'Security Required',
           'Please set up PIN or Biometric authentication in Settings to use the Private Vault.',
           [

@@ -11,10 +11,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
-import { useCustomization, getThemeColorsById, AVATAR_OPTIONS } from '../hooks/useCustomization';
 import type { ThemeColors } from '../hooks/useCustomization';
 import { isValidImageUri, isEmoji } from '../utils/imageUtils';
-
 
 export type AvatarSource = string | number | undefined | null;
 
@@ -56,7 +54,6 @@ export interface SafeParentAvatarProps {
   animated?: boolean;
 }
 
-
 const DEFAULT_THEME_COLORS: ThemeColors = {
   primary: '#667eea',
   secondary: '#764ba2',
@@ -66,7 +63,6 @@ const DEFAULT_THEME_COLORS: ThemeColors = {
   darkText: '#4338ca',
   lightText: '#ffffff',
 };
-
 
 /**
  * Safely resolves an avatar source into a React Native Image source.
@@ -99,7 +95,6 @@ export const hasDisplayableImage = (avatar: AvatarSource, hasError: boolean): bo
   }
   return false;
 };
-
 
 /**
  * Safely gets theme colors with full fallback chain:
@@ -139,7 +134,6 @@ const useSafeReduceMotion = (): boolean => {
     return false;
   }
 };
-
 
 interface AvatarContentProps {
   avatar: AvatarSource;
@@ -217,7 +211,6 @@ const AvatarContent: React.FC<AvatarContentProps> = ({
     </View>
   );
 };
-
 
 export const SafeAvatar: React.FC<SafeAvatarProps> = ({
   avatar,
@@ -313,7 +306,6 @@ export const SafeAvatar: React.FC<SafeAvatarProps> = ({
   );
 };
 
-
 export const SafeBabyAvatar: React.FC<SafeBabyAvatarProps> = ({
   avatar,
   gender = 'other',
@@ -395,7 +387,6 @@ export const SafeBabyAvatar: React.FC<SafeBabyAvatarProps> = ({
     </Wrapper>
   );
 };
-
 
 export const SafeParentAvatar: React.FC<SafeParentAvatarProps> = ({
   avatar,
@@ -496,7 +487,6 @@ export const SafeParentAvatar: React.FC<SafeParentAvatarProps> = ({
     </Wrapper>
   );
 };
-
 
 const styles = StyleSheet.create({
   wrapper: {

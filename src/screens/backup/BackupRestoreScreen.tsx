@@ -1,16 +1,18 @@
-import { useSweetAlert } from '../../components/SweetAlert';
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, Dimensions, Modal, TextInput, Switch } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
-import { Ionicons } from '@expo/vector-icons';
+
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInUp, FadeIn, useSharedValue, useAnimatedStyle, withSpring, withSequence, withTiming } from 'react-native-reanimated';
-import { useCustomization } from '../../hooks/useCustomization';
-import { backupService, BackupPreview, RestoreResult, LocalBackupInfo, AutoBackupSettings } from '../../services/BackupService';
+
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+
 import type { RootStackParamList } from '../../types/navigation';
+
 import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
+import { useCustomization } from '../../hooks/useCustomization';
+import { useSweetAlert } from '../../components/SweetAlert';
+import { showAlert } from '../../utils/alert';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'BackupRestore'>;
 
@@ -46,7 +48,8 @@ const EncryptModal = ({
       return;
     }
     if (password !== confirmPassword) {
-      Alert.alert("Passwords Don't Match", 'Please make sure both passwords match');
+
+showAlert("Passwords Don't Match", 'Please make sure both passwords match');
       return;
     }
     onConfirm(password);
@@ -435,7 +438,8 @@ export default function BackupRestoreScreen({ navigation }: Props) {
         if (shared) {
           setLastBackup(new Date().toLocaleString());
           triggerHaptic('success');
-          Alert.alert(
+
+showAlert(
             '✅ Backup Created!',
             `Your ${encrypted ? 'encrypted ' : ''}backup (${result.metadata?.totalKeys} keys, ${result.metadata?.totalSize} bytes) is ready.\n\nSave it to cloud storage, email, or Files for safekeeping.`,
             [{ text: 'Great!' }]
@@ -449,7 +453,8 @@ export default function BackupRestoreScreen({ navigation }: Props) {
       }
     } catch (error) {
       triggerHaptic('error');
-      Alert.alert('Backup Failed', error instanceof Error ? error.message : 'Unknown error');
+
+showAlert('Backup Failed', error instanceof Error ? error.message : 'Unknown error');
     } finally {
       setIsCreating(false);
     }
@@ -483,7 +488,8 @@ export default function BackupRestoreScreen({ navigation }: Props) {
       await processRestore(picked.content);
     } catch (error) {
       triggerHaptic('error');
-      Alert.alert('Restore Failed', error instanceof Error ? error.message : 'Unknown error');
+
+showAlert('Restore Failed', error instanceof Error ? error.message : 'Unknown error');
       setIsRestoring(false);
     }
   };
@@ -497,12 +503,13 @@ export default function BackupRestoreScreen({ navigation }: Props) {
 
       if (!previewData.valid) {
         triggerHaptic('error');
-        Alert.alert('Invalid Backup', previewData.error || 'Could not read backup file');
+
+showAlert('Invalid Backup', previewData.error || 'Could not read backup file');
         setIsRestoring(false);
         return;
       }
 
-      Alert.alert(
+showAlert(
         'Restore Backup?',
         `Found backup from ${new Date(previewData.metadata!.exportedAt).toLocaleString()}\n\n` +
         `• Babies: ${previewData.babyCount}\n` +
@@ -521,7 +528,8 @@ export default function BackupRestoreScreen({ navigation }: Props) {
 
               if (result.success) {
                 triggerHaptic('success');
-                Alert.alert(
+
+showAlert(
                   '✅ Restore Complete!',
                   `Successfully restored ${result.restoredKeys.length} data entries.\n\nPlease restart the app for all changes to take effect.`,
                   [
@@ -535,7 +543,8 @@ export default function BackupRestoreScreen({ navigation }: Props) {
                 );
               } else {
                 triggerHaptic('error');
-                Alert.alert('Restore Failed', result.error || 'Could not restore backup');
+
+showAlert('Restore Failed', result.error || 'Could not restore backup');
               }
               setIsRestoring(false);
             }
@@ -544,7 +553,8 @@ export default function BackupRestoreScreen({ navigation }: Props) {
       );
     } catch (error) {
       triggerHaptic('error');
-      Alert.alert('Restore Failed', error instanceof Error ? error.message : 'Unknown error');
+
+showAlert('Restore Failed', error instanceof Error ? error.message : 'Unknown error');
       setIsRestoring(false);
     }
   };
@@ -568,7 +578,7 @@ export default function BackupRestoreScreen({ navigation }: Props) {
     const previewData = await backupService.previewBackup(content);
     setPreview(previewData);
 
-    Alert.alert(
+showAlert(
       backup.name,
       `Created: ${backup.dateFormatted}\nSize: ${backup.sizeFormatted}\nBabies: ${previewData.babyCount}\nEntries: ${previewData.entryCount}\n${backup.isEncrypted ? '🔒 Encrypted' : '🔓 Not Encrypted'}`,
       [
@@ -604,7 +614,8 @@ export default function BackupRestoreScreen({ navigation }: Props) {
   };
 
   const deleteLocalBackup = (backup: LocalBackupInfo) => {
-    Alert.alert(
+
+showAlert(
       'Delete Backup?',
       `Are you sure you want to delete "${backup.name}"? This cannot be undone.`,
       [
@@ -629,7 +640,8 @@ export default function BackupRestoreScreen({ navigation }: Props) {
     setAutoBackupSettings(settings);
     setShowAutoBackupModal(false);
     triggerHaptic('success');
-    Alert.alert('Settings Saved', `Auto backup ${settings.enabled ? 'enabled' : 'disabled'}`);
+
+showAlert('Settings Saved', `Auto backup ${settings.enabled ? 'enabled' : 'disabled'}`);
   };
 
   const runAutoBackupNow = async () => {
@@ -651,7 +663,8 @@ export default function BackupRestoreScreen({ navigation }: Props) {
       }
     } catch (error) {
       triggerHaptic('error');
-      Alert.alert('Auto Backup Failed', error instanceof Error ? error.message : 'Unknown error');
+
+showAlert('Auto Backup Failed', error instanceof Error ? error.message : 'Unknown error');
     } finally {
       setIsCreating(false);
     }
@@ -665,7 +678,8 @@ export default function BackupRestoreScreen({ navigation }: Props) {
     } else if (pendingAction === 'preview' && pendingContent) {
       const previewData = await backupService.previewBackup(pendingContent, password);
       setPreview(previewData);
-      Alert.alert(
+
+showAlert(
         'Backup Preview',
         `Valid: ${previewData.valid ? 'Yes' : 'No'}\nBabies: ${previewData.babyCount}\nEntries: ${previewData.entryCount}`
       );
@@ -912,7 +926,8 @@ export default function BackupRestoreScreen({ navigation }: Props) {
                     <TouchableOpacity
                       style={styles.clearAllButton}
                       onPress={() => {
-                        Alert.alert(
+
+showAlert(
                           'Clear All Backups?',
                           `Delete all ${localBackups.length} local backups? This cannot be undone.`,
                           [

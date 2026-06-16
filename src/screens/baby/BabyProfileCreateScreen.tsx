@@ -106,7 +106,6 @@ const isEmoji = (value: string | undefined | null): boolean => {
   return true;
 };
 
-
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
 /* ------------------------------------------------------------------ */
@@ -158,8 +157,6 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
   const imagePickerLock = useRef(false);
   const isMounted = useRef(true);
 
-
-
   /* ---- Refs ---- */
   const scrollViewRef = useRef<AutoHideScrollView>(null);
   const nameInputRef = useRef<TextInput>(null);
@@ -196,8 +193,6 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
       imagePickerLock.current = false;
     };
   }, []);
-
-
 
   /* ---- Date handling ---- */
   const onDateChange = useCallback(

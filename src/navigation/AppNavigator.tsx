@@ -1,4 +1,3 @@
-
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { 
   View, 
@@ -130,7 +129,6 @@ const SETUP_FLOW_SCREENS = new Set([
   'Parent2Optional', 'Parent2Setup', 'BabyOptional', 'CreateBabyProfile', 'AddParent',
 ]);
 
-
 function MainTabs() {
   const { isDark, colors } = useSafeApp();
 
@@ -156,7 +154,6 @@ function MainTabs() {
     </Tab.Navigator>
   );
 }
-
 
 function getNavigationState(
   authLoading: boolean,
@@ -204,15 +201,15 @@ function getNavigationState(
   return 'MAIN';
 }
 
-
 const AppLoadingScreen = React.memo(() => {
   const { colors } = useSafeApp();
 
   const loadingMessages = [
     'Getting everything ready...',
-    'Preparing your babys space...',
+    'Preparing your baby\'s space...',
+    'Loading your memories...',
+    'Setting up trackers...',
     'Almost there...',
-    'Setting things up...',
   ];
 
   const [messageIndex, setMessageIndex] = useState(0);
@@ -225,21 +222,25 @@ const AppLoadingScreen = React.memo(() => {
   }, []);
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors?.background || '#f8faff', justifyContent: 'center', alignItems: 'center' }}>
-      <UniversalSpinner 
-        visible={true}
-        text={loadingMessages[messageIndex]}
-        subtext="Just a moment"
-        size="medium"
-        overlay={false}
-        blur={false}
-        section="main"
-        variant="liquid"
-      />
+    <View style={{
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: colors?.background || '#f8faff',
+    }}>
+      <UniversalSpinner size={48} color={colors?.primary || '#667eea'} />
+      <Text style={{
+        marginTop: 24,
+        fontSize: 16,
+        color: colors?.text || '#1a1a1a',
+        fontWeight: '500',
+        textAlign: 'center',
+      }}>
+        {loadingMessages[messageIndex]}
+      </Text>
     </View>
   );
 });
-
 
 function NavigationContent({ 
   isDark: propIsDark, 
@@ -312,7 +313,6 @@ function NavigationContent({
     checkFirstOpen();
   }, []);
 
-
   useEffect(() => {
     if (isNavigating.current) return;
 
@@ -355,7 +355,6 @@ function NavigationContent({
     hasSeenOnboarding, isFirstOpen,
   ]);
 
-
   useEffect(() => {
     if (!authLoading && !isFirstOpen) {
       setInitialCheckDone(true);
@@ -366,7 +365,6 @@ function NavigationContent({
       return () => clearTimeout(timer);
     }
   }, [authLoading, isFirstOpen]);
-
 
   useEffect(() => {
     if (isAuthenticated && !authLoading) {
@@ -379,7 +377,6 @@ function NavigationContent({
       }
     }
   }, [isAuthenticated, authLoading, setupComplete, loadBabies]);
-
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', async (nextAppState) => {
@@ -435,7 +432,6 @@ function NavigationContent({
     return () => subscription.remove();
   }, [isAuthenticated, checkSecurityOnResume, loadBabies, setupComplete]);
 
-
   const handleStateChange = useCallback((state: any) => {
     if (!state) return;
     if (stateChangeTimeout.current) {
@@ -460,7 +456,6 @@ function NavigationContent({
       }
     };
   }, []);
-
 
   useEffect(() => {
     if (!navigationRef.current?.isReady() || !isNavContainerReady || isNavigating.current || !initialCheckDone) {
@@ -543,7 +538,6 @@ function NavigationContent({
     lastNavigationTime.current = now;
     navigationRef.current.navigate(route as never);
   }, []);
-
 
   if (authLoading || !initialCheckDone) {
     return <AppLoadingScreen />;
@@ -653,7 +647,6 @@ function NavigationContent({
     </NavigationContainer>
   );
 }
-
 
 export default function AppNavigator({
   isDark,

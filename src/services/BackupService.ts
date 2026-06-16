@@ -6,7 +6,6 @@ import { Platform, Alert } from 'react-native';
 import * as Crypto from 'expo-crypto';
 import * as Notifications from 'expo-notifications';
 
-
 export interface BackupMetadata {
   version: string;
   exportedAt: string;
@@ -66,7 +65,6 @@ export interface AutoBackupSettings {
   encryptBackups: boolean;
   encryptionPassword?: string;
 }
-
 
 const BACKUP_VERSION = '2.0.0';
 const BACKUP_FILE_PREFIX = 'littleloom_backup_';
@@ -174,7 +172,6 @@ const DYNAMIC_KEY_PATTERNS = [
   /^@littleloom_favorites_/,        // Favorites per baby
 ];
 
-
 /**
  * Derive a key from password using PBKDF2-like approach with expo-crypto
  */
@@ -227,7 +224,6 @@ async function decryptData(encryptedData: string, password: string): Promise<str
   }
 }
 
-
 const ensureBackupDir = async (): Promise<void> => {
   const dirInfo = await FileSystem.getInfoAsync(BACKUP_DIR);
   if (!dirInfo.exists) {
@@ -249,7 +245,6 @@ const generateBackupFileName = (encrypted: boolean = false): string => {
   const suffix = encrypted ? '_encrypted' : '';
   return `${BACKUP_FILE_PREFIX}${date}_${time}${suffix}.json`;
 };
-
 
 class BackupService {
   /**
@@ -666,7 +661,6 @@ class BackupService {
     }
   }
 
-
   /**
    * Get list of local backup files
    */
@@ -763,7 +757,6 @@ class BackupService {
       return null;
     }
   }
-
 
   /**
    * Get auto backup settings

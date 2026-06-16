@@ -17,7 +17,6 @@ import Animated, {
   interpolate,
 } from 'react-native-reanimated';
 
-import { UnifiedTrackerConfig, TrackerEntry, TrackerInsight, TrackerStreak } from '../../types/trackers';
 import { useTracker } from '../../context/TrackerContext';
 import { useTrackerProgressive } from '../../hooks/useTrackerProgressive';
 import { useCustomization } from '../../hooks/useCustomization';
@@ -26,7 +25,6 @@ import { DynamicTrackerForm } from './DynamicTrackerForm';
 import { SafeAvatar } from '../../components/SafeAvatar';
 
 const { width: SCREEN_W } = Dimensions.get('window');
-
 
 interface SmartTrackerScreenProps {
   tracker: UnifiedTrackerConfig;
@@ -134,7 +132,6 @@ export const SmartTrackerScreen: React.FC<SmartTrackerScreenProps> = ({ tracker,
     triggerHaptic('light');
     dismissInsight(insightId);
   };
-
 
   if (mode === 'dashboard') {
     return (
@@ -459,7 +456,6 @@ export const SmartTrackerScreen: React.FC<SmartTrackerScreenProps> = ({ tracker,
     );
   }
 
-
   if (mode === 'form') {
     return (
       <View style={{ flex: 1 }}>
@@ -497,7 +493,6 @@ export const SmartTrackerScreen: React.FC<SmartTrackerScreenProps> = ({ tracker,
       </View>
     );
   }
-
 
   if (mode === 'history') {
     const allEntries = [...todayEntries, ...yesterdayEntries, ...recentEntries]
@@ -569,7 +564,6 @@ export const SmartTrackerScreen: React.FC<SmartTrackerScreenProps> = ({ tracker,
       </View>
     );
   }
-
 
   if (mode === 'insights') {
     return (
@@ -668,7 +662,6 @@ export const SmartTrackerScreen: React.FC<SmartTrackerScreenProps> = ({ tracker,
 
   return null;
 };
-
 
 const styles = StyleSheet.create({
   container: { flex: 1 },

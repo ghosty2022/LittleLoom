@@ -1,21 +1,22 @@
-import { useSweetAlert } from '../../components/SweetAlert';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, Image, Platform, ActivityIndicator, Share, Dimensions, Switch, Modal, Linking, RefreshControl, StatusBar } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
-import { Ionicons } from '@expo/vector-icons';
+
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInUp, FadeInDown, FadeIn, useAnimatedStyle, useSharedValue, withSpring, useAnimatedScrollHandler, interpolate, Extrapolation, Layout } from 'react-native-reanimated';
+
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+
 import type { RootStackParamList } from '../../types/navigation';
-import { UserRole, ROLE_LABELS, ROLE_PERMISSIONS, Permission, FamilyMember } from '../../types/roles';
-import { useFamily } from '../../context/FamilyContext';
-import { useUser } from '../../context/UserContext';
-import { useBaby } from '../../context/BabyContext';
+
 import { useAuth } from '../../context/AuthContext';
+import { useBaby } from '../../context/BabyContext';
 import { useCustomization } from '../../hooks/useCustomization';
-import { AutoHideScrollView, AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
+import { useFamily } from '../../context/FamilyContext';
+import { useSweetAlert } from '../../components/SweetAlert';
+import { useUser } from '../../context/UserContext';
+import { showAlert } from '../../utils/alert';
 
 type FamilySharingScreenProps = NativeStackScreenProps<RootStackParamList, 'FamilySharing'>;
 
@@ -669,7 +670,7 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
       return;
     }
 
-    Alert.alert(
+showAlert(
       'Remove Family Member',
       `Are you sure you want to remove ${selectedMember.fullName}?\n\nThis will revoke their access to all family data. Their activity history will be preserved.`,
       [
@@ -708,7 +709,7 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
       return;
     }
 
-    Alert.alert(
+showAlert(
       'Change Role',
       `Change ${selectedMember.fullName} to ${ROLE_CONFIG[newRole].label}?\n\nThis will update their permissions immediately.`,
       [
@@ -1182,7 +1183,8 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
             onPress={() => openMemberDetails(member)}
             onLongPress={isPrimaryParent && member.role !== UserRole.PARENT_1 ? () => {
               setSelectedMember(member);
-              Alert.alert(
+
+showAlert(
                 'Quick Actions',
                 `${member.fullName}`,
                 [
@@ -1836,7 +1838,8 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
             style={[styles.settingsOption, isDark && styles.settingsOptionDark]}
             onPress={() => {
               setShowFamilySettings(false);
-              Alert.alert(
+
+showAlert(
                 'Export Family Data',
                 'Generate a comprehensive report of all family activities?',
                 [

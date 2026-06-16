@@ -37,7 +37,6 @@ try {
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
-
 interface Props {
   children: ReactNode;
   fallback?: ReactNode;
@@ -50,7 +49,6 @@ interface State {
   errorInfo: ErrorInfo | null;
   showDetails: boolean;
 }
-
 
 const PrimitiveFallback: React.FC<{ onReset: () => void }> = ({ onReset }) => (
   <View style={[styles.container, { backgroundColor: '#667eea' }]}>
@@ -71,7 +69,6 @@ const PrimitiveFallback: React.FC<{ onReset: () => void }> = ({ onReset }) => (
     </View>
   </View>
 );
-
 
 export class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
@@ -238,7 +235,6 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 }
 
-
 export function useErrorHandler() {
   const [error, setError] = React.useState<Error | null>(null);
 
@@ -255,7 +251,6 @@ export function useErrorHandler() {
     setError(err);
   }, []);
 }
-
 
 const styles = StyleSheet.create({
   container: {

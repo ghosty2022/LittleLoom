@@ -1,22 +1,23 @@
-// src/screens/community/CommunityMemberProfileScreen.tsx
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  useColorScheme,
-  ActivityIndicator,
-  Share,
-  Dimensions,
-  StatusBar,
-  Alert,
-} from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
+
 import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
+import * as Haptics from 'expo-haptics';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+
+import type { CommunityStackParamList } from '../../types/navigation';
+
+import { CommunityUser, Post, useCommunity } from '../../context/CommunityContext';
+import { SafeAvatar } from '../../components/SafeAvatar';
+import { UniversalSpinner } from '../../components/UniversalSpinner';
+import { useCustomization } from '../../hooks/useCustomization';
+import { useSweetAlert } from '../../components/SweetAlert';
+import { useUser } from '../../context/UserContext';
+import { showAlert } from '../../utils/alert';
+// src/screens/community/CommunityMemberProfileScreen.tsx
+
 import Animated, {
+
   FadeInUp,
   FadeIn,
   Layout,
@@ -26,17 +27,6 @@ import Animated, {
   Extrapolate,
   useAnimatedScrollHandler,
 } from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-
-import type { CommunityStackParamList } from '../../types/navigation';
-import { useCommunity, Post, CommunityUser } from '../../context/CommunityContext';
-import { useUser } from '../../context/UserContext';
-import { useCustomization } from '../../hooks/useCustomization';
-import { useSweetAlert } from '../../components/SweetAlert';
-import { SafeAvatar } from '../../components/SafeAvatar';
-import { UniversalSpinner } from '../../components/UniversalSpinner';
-import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
 
 type Props = NativeStackScreenProps<CommunityStackParamList, 'CommunityMemberProfile'>;
 
@@ -287,7 +277,8 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
       { text: 'Report User', onPress: () => navigation.navigate('Report', { type: 'user', targetId: userId, targetUserId: userId }), style: 'destructive' as const },
       { text: isBlocked ? 'Unblock' : 'Block', onPress: handleBlockToggle, style: 'destructive' as const },
     ];
-    Alert.alert(user.displayName || 'User', '', options);
+
+showAlert(user.displayName || 'User', '', options);
   };
 
   const handleShareProfile = async () => {

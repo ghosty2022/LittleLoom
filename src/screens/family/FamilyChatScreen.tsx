@@ -1,24 +1,22 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  TouchableOpacity, 
-  TextInput, 
-  KeyboardAvoidingView, 
-  Platform, 
-  Image, 
-  Dimensions, 
-  Alert, 
-  ActivityIndicator, 
-  Modal, 
-  Share, 
-  StatusBar 
-} from 'react-native';
+
+import { format, isSameWeek, isToday, isYesterday } from 'date-fns';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
+import * as FileSystem from 'expo-file-system';
+import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+
+import type { RootStackParamList } from '../../types/navigation';
+
+import { FamilyMessage, FileMetadata, MessageType, useFamilyChat } from '../../context/FamilyChatContext';
+import { useAuth } from '../../context/AuthContext';
+import { useCustomization } from '../../hooks/useCustomization';
+import { useFamily } from '../../context/FamilyContext';
+import { useMedia } from '../../context/MediaContext';
+
 import Ionicons from '@expo/vector-icons/Ionicons';  // FIXED: Default import
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import Animated, { 
   FadeInUp, 
   FadeIn, 
@@ -31,19 +29,9 @@ import Animated, {
   FadeInDown, 
   FadeInRight 
 } from 'react-native-reanimated';  // FIXED: Removed Layout
-import * as Haptics from 'expo-haptics';
-import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
+
 import { Audio } from 'expo-av';  // FIXED: Added missing Audio import
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { RootStackParamList } from '../../types/navigation';
-import { useFamilyChat, FamilyMessage, MessageType, FileMetadata } from '../../context/FamilyChatContext';
-import { useFamily } from '../../context/FamilyContext';
-import { useAuth } from '../../context/AuthContext';
-import { useMedia } from '../../context/MediaContext';
-import { format, isToday, isYesterday, isSameWeek } from 'date-fns';
-import { useCustomization } from '../../hooks/useCustomization';
-import { AutoHideScrollView, AutoHideFlatList } from '../../components/AutoHideScrollWrappers';
+import { showAlert } from '../../utils/alert';
 
 type FamilyChatScreenProps = NativeStackScreenProps<RootStackParamList, 'FamilyChat'>;
 
@@ -1090,7 +1078,7 @@ const MessageBubble: React.FC<{
       {!isMe && showAvatar && message.type !== 'system' && (
         <TouchableOpacity
           onPress={() =>
-            member && Alert.alert(member.fullName, `Role: ${member.role}`)
+            member && showAlert(member.fullName, `Role: ${member.role}`)
           }
           style={[
             styles.avatarSmall,
@@ -1806,7 +1794,8 @@ export default function FamilyChatScreen({
   };
 
   const showImageSourceAlert = () => {
-    Alert.alert('Send Photo', 'Choose a photo source', [
+
+showAlert('Send Photo', 'Choose a photo source', [
       { text: 'Cancel', style: 'cancel' },
       { text: '📷 Camera', onPress: () => handleImagePick(true) },
       { text: '🖼️ Gallery', onPress: () => handleImagePick(false) },
@@ -1820,7 +1809,8 @@ export default function FamilyChatScreen({
   };
 
   const handleDelete = async (messageId: string) => {
-    Alert.alert('Delete Message', 'Are you sure?', [
+
+showAlert('Delete Message', 'Are you sure?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
@@ -1870,7 +1860,8 @@ export default function FamilyChatScreen({
     if (!meta) return;
     try {
       const canOpen = await FileSystem.getContentUriAsync(meta.uri);
-      Alert.alert(
+
+showAlert(
         meta.name,
         `Size: ${meta.size} bytes\nType: ${meta.type}`,
         [
@@ -2224,7 +2215,8 @@ export default function FamilyChatScreen({
               },
             ]}
             onPress={() => {
-              Alert.alert('Chat Options', '', [
+
+showAlert('Chat Options', '', [
                 { text: 'Cancel', style: 'cancel' },
                 {
                   text: 'Clear Chat',

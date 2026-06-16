@@ -1,28 +1,25 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  TextInput,
-  Alert,
-  useColorScheme,
-  Dimensions,
-  Image,
-  ActivityIndicator,
-  RefreshControl,
-  StatusBar,
-  ScrollView,
-  Switch,
-  ActionSheetIOS,
-  Platform,
-} from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
+
+import { format } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
+import * as FileSystem from 'expo-file-system';
+import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+
+import type { RootStackParamList } from '../../types/navigation';
+
+import { FamilyMember, useFamily } from '../../context/FamilyContext';
+import { Milestone, useBaby } from '../../context/BabyContext';
+import { showConfirmModal, showErrorModal, showSuccessModal } from '../../utils/modal';
+import { useActivity } from '../../context/ActivityContext';
+import { useAuth } from '../../context/AuthContext';
+import { useUser } from '../../context/UserContext';
+import { showAlert } from '../../utils/alert';
 import Animated, {
+
   FadeInUp,
   Layout,
   useSharedValue,
@@ -34,19 +31,6 @@ import Animated, {
   withTiming,
   runOnJS,
 } from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
-import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
-import { format } from 'date-fns';
-import { useAuth } from '../../context/AuthContext';
-import { useUser } from '../../context/UserContext';
-import { useBaby, Milestone } from '../../context/BabyContext';
-import { useFamily, FamilyMember } from '../../context/FamilyContext';
-import { useActivity } from '../../context/ActivityContext';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { RootStackParamList } from '../../types/navigation';
-import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
-import { showSuccessModal, showErrorModal, showConfirmModal } from '../../utils/modal';
 
 const { width, height } = Dimensions.get('window');
 
@@ -385,7 +369,8 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
       );
     } else {
       // For Android, you could use a simple alert or a bottom sheet
-      Alert.alert(
+
+showAlert(
         'Change Photo',
         'Choose an option',
         [

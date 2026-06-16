@@ -20,13 +20,11 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
 
-import { useCustomization } from '../../hooks/useCustomization';
 import { useTracker } from '../../context/TrackerContext';
 
 const { width } = Dimensions.get('window');
 
 type CreateTrackerNavProp = NativeStackNavigationProp<RootStackParamList>;
-
 
 const EMOJI_CATEGORIES = [
   {
@@ -63,7 +61,6 @@ const COLORS = [
 ];
 
 const PRESET_UNITS = ['minutes', 'hours', 'oz', 'ml', 'grams', 'lbs', 'kg', 'cm', 'inches', 'steps', 'times', '°C', '°F'];
-
 
 const SectionHeader: React.FC<{ title: string; subtitle?: string; delay?: number; colors: any }> = ({
   title, subtitle, delay = 0, colors
@@ -147,7 +144,6 @@ const UnitChip: React.FC<{
     {isSelected && <Ionicons name="checkmark-circle" size={14} color={color} style={{ marginLeft: 4 }} />}
   </TouchableOpacity>
 );
-
 
 export default function CreateCustomTrackerScreen() {
   const navigation = useNavigation<CreateTrackerNavProp>();
@@ -655,7 +651,6 @@ export default function CreateCustomTrackerScreen() {
     </KeyboardAvoidingView>
   );
 }
-
 
 const styles = StyleSheet.create({
   container: { flex: 1 },

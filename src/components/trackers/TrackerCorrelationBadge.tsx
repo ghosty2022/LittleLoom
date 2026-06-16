@@ -4,8 +4,6 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 
-import { useCustomization } from '@/hooks/useCustomization';
-
 export interface TimelineCorrelation {
   id: string;
   type: 'feed_sleep_pattern' | 'growth_milestone_correlation' | 'health_alert' | 'activity_cluster';

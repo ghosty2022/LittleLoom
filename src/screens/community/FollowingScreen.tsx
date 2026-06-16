@@ -16,14 +16,12 @@ import Animated, { FadeInUp } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CommunityStackParamList } from '../../types/navigation';
 
-import { useCommunity, CommunityUser } from '../../context/CommunityContext';
 import { useUser } from '../../context/UserContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { InlineSpinner, CommunitySpinner } from '../../components/UniversalSpinner';
 
-import { AutoHideFlatList } from '../../components/AutoHideScrollWrappers';
 import { CommunityColors, CommunitySpacing, CommunityBorderRadius, CommunityShadows } from '../../theme/CommunityTheme';
 
 type FollowingScreenProps = NativeStackScreenProps<CommunityStackParamList, 'Following'>;

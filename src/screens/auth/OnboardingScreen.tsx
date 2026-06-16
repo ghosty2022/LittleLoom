@@ -93,7 +93,6 @@ const ONBOARDING_DATA: OnboardingSlide[] = [
   },
 ];
 
-
 const SlideItem = React.memo(({ 
   item, 
   index, 
@@ -174,7 +173,6 @@ const SlideItem = React.memo(({
     </View>
   );
 });
-
 
 export default function OnboardingScreen({ navigation }: { navigation: any }) {
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -449,7 +447,6 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
     </SafeAreaView>
   );
 }
-
 
 const styles = StyleSheet.create({
   container: { 

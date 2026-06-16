@@ -1,22 +1,25 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, Dimensions, StatusBar } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
-import { Ionicons } from '@expo/vector-icons';
+
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInUp, FadeIn, Layout, useSharedValue, useAnimatedStyle, withSpring, withTiming } from 'react-native-reanimated';
+
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useBaby, STORAGE_KEYS } from '../../context/BabyContext';
-import { useAuth } from '../../context/AuthContext';
-import { useFamily } from '../../context/FamilyContext';
-import { useCustomization } from '../../hooks/useCustomization';
-import { useSweetAlert } from '../../components/SweetAlert';
-import { SafeBabyAvatar } from '../../components/SafeAvatar';
-import { LiquidDots } from '../../components/UniversalSpinner'; // <-- IMPORT ADDED
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+
 import type { RootStackParamList } from '../../types/navigation';
-import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
+
+import { SafeBabyAvatar } from '../../components/SafeAvatar';
+import { STORAGE_KEYS, useBaby } from '../../context/BabyContext';
+import { useAuth } from '../../context/AuthContext';
+import { useCustomization } from '../../hooks/useCustomization';
+import { useFamily } from '../../context/FamilyContext';
+import { useSweetAlert } from '../../components/SweetAlert';
+
+import { LiquidDots } from '../../components/UniversalSpinner'; // <-- IMPORT ADDED
+import { showAlert } from '../../utils/alert';
 
 const { width } = Dimensions.get('window');
 
@@ -106,7 +109,7 @@ export default function BabySelectorScreen({ navigation }: BabySelectorScreenPro
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
 
-    Alert.alert(
+showAlert(
       'Delete Profile?',
       `Are you sure you want to delete ${babyName}'s profile? This cannot be undone.`,
       [

@@ -4,7 +4,6 @@ import { useBaby as useBabyOriginal } from '../context/BabyContext';
 import { useActivity as useActivityOriginal } from '../context/ActivityContext';
 import useCustomizationOriginal from './useCustomization';
 
-
 const DEFAULT_APP_COLORS = {
   background: '#f8faff',
   surface: '#ffffff',
@@ -69,7 +68,6 @@ const DEFAULT_CUSTOMIZATION = {
   triggerHaptic: async () => {},
 };
 
-
 export function useSafeApp() {
   try {
     const app = useThemeOriginal();
@@ -112,7 +110,6 @@ export function useSafeApp() {
     };
   }
 }
-
 
 export function useSafeAuth() {
   try {
@@ -168,7 +165,6 @@ export function useSafeAuth() {
     };
   }
 }
-
 
 export function useSafeBaby() {
   try {
@@ -228,7 +224,6 @@ export function useSafeBaby() {
   }
 }
 
-
 export function useSafeActivity() {
   try {
     return useActivityOriginal();
@@ -259,7 +254,6 @@ export function useSafeActivity() {
   }
 }
 
-
 export function useSafeCustomization() {
   try {
     return useCustomizationOriginal();
@@ -267,7 +261,6 @@ export function useSafeCustomization() {
     return DEFAULT_CUSTOMIZATION;
   }
 }
-
 
 export function useUnifiedTheme() {
   const app = useSafeApp();
@@ -302,7 +295,6 @@ export function useUnifiedTheme() {
     statusBar: isDark ? 'light' as const : 'dark' as const,
   };
 }
-
 
 export {
   useSafeApp,

@@ -18,21 +18,18 @@ import Animated, {
   FadeIn,
 } from 'react-native-reanimated';
 
-import {
   UnifiedTrackerConfig,
   FieldConfig,
   FieldOption,
 } from '../../types/trackers';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
-import { 
   TrackerProgressiveState, 
   ProgressiveSuggestion,
   ProgressiveTrend,
 } from '../../hooks/useTrackerProgressive';
 
 const { width: SCREEN_W } = Dimensions.get('window');
-
 
 interface DynamicTrackerFormProps {
   tracker: UnifiedTrackerConfig;
@@ -53,10 +50,8 @@ interface DynamicTrackerFormProps {
   quickMode?: boolean;
 }
 
-
 const MOOD_EMOJIS = ['😭', '😟', '😐', '🙂', '😄'];
 const TREND_ICONS = { up: 'trending-up-outline', down: 'trending-down-outline', same: 'remove-outline' };
-
 
 const StreakBadge: React.FC<{ streak: TrackerProgressiveState['streak']; color: string }> = ({ streak, color }) => {
   if (!streak || streak.currentStreak === 0) return null;
@@ -225,7 +220,6 @@ const YesterdayPreview: React.FC<{
     </Animated.View>
   );
 };
-
 
 interface SmartFieldProps {
   field: FieldConfig;
@@ -622,7 +616,6 @@ const SmartMoodField: React.FC<SmartFieldProps> = ({
   );
 };
 
-
 export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
   tracker,
   initialData = {},
@@ -657,7 +650,6 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     yesterdayEntries = [],
     todayEntries = [],
   } = progressiveState || {};
-
 
   const [data, setData] = useState<Record<string, unknown>>(() => {
     const merged = { ...prefillData, ...initialData };
@@ -706,7 +698,6 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
       return merged;
     });
   }, [prefillData, suggestions, initialData, appliedPrefill]);
-
 
   const isFieldVisible = useCallback((field: FieldConfig): boolean => {
     if (!field.showIf) return true;
@@ -788,7 +779,6 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     );
   }, [triggerHaptic]);
 
-
   const getFieldSuggestion = useCallback((fieldId: string): ProgressiveSuggestion | undefined => {
     return suggestions.find(s => s.fieldId === fieldId);
   }, [suggestions]);
@@ -800,7 +790,6 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
   const getFieldTrend = useCallback((fieldId: string): ProgressiveTrend | undefined => {
     return trends[fieldId];
   }, [trends]);
-
 
   const renderMultiselectField = useCallback((field: FieldConfig) => {
     const selected = (data[field.id] as string[]) || [];
@@ -1007,10 +996,8 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     }
   }, [data, errors, isFieldVisible, tracker, fullThemeColors, borderRadiusValue, fontSizeMultiplier, shouldReduceMotion, getFieldSuggestion, getYesterdayValue, getFieldTrend, timeContext, updateField, renderMultiselectField, renderToggleField, renderRatingField, renderTextareaField, renderSliderField, renderPhotoField, renderTemperatureField]);
 
-
   const visibleInsights = insights.filter(i => !dismissedInsights.has(i.id));
   const visibleCorrelations = correlations.filter(c => !dismissedCorrelations.has(c.id));
-
 
   if (quickMode) {
     return (
@@ -1040,7 +1027,6 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
       </View>
     );
   }
-
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
@@ -1201,7 +1187,6 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     </KeyboardAvoidingView>
   );
 };
-
 
 const styles = StyleSheet.create({
   container: { flex: 1 },

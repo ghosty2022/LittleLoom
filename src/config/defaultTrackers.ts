@@ -1779,7 +1779,6 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
   },
 ];
 
-
 /**
  * Creates a new custom tracker configuration
  * Parents and guardians can call this to build their own trackers

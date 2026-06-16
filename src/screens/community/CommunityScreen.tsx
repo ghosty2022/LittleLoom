@@ -1,32 +1,23 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  TextInput,
-  RefreshControl,
-  Dimensions,
-  Image,
-  StatusBar,
-  Share,
-  Platform,
-  Alert,
-  FlatList,
-  ViewToken,
-  Pressable,
-  ActivityIndicator,
-  Animated as RNAnimated,
-  KeyboardAvoidingView,
-  Modal,
-  ScrollView,
-} from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
-import { useSweetAlert } from '../../components/SweetAlert';
+
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useVideoPlayer, VideoView } from 'expo-video';
+import * as Haptics from 'expo-haptics';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+
+import type { CommunityStackParamList } from '../../types/navigation';
+
+import { SafeAvatar } from '../../components/SafeAvatar';
 import { useApp } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
+import { useAutoHideNav } from '../../hooks/useAutoHideNav';
+import { useCustomization } from '../../hooks/useCustomization';
+import { useSweetAlert } from '../../components/SweetAlert';
+import { useUser } from '../../context/UserContext';
+import { showAlert } from '../../utils/alert';
 import Animated, {
+
   FadeInUp,
   FadeIn,
   FadeOut,
@@ -47,17 +38,6 @@ import Animated, {
   runOnJS,
   Easing,
 } from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
-import { useVideoPlayer, VideoView } from 'expo-video';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { CommunityStackParamList } from '../../types/navigation';
-import { useCommunity, Post, Comment, PostMood, Poll } from '../../context/CommunityContext';
-import { useUser } from '../../context/UserContext';
-import { useAuth } from '../../context/AuthContext';
-import { useCustomization } from '../../hooks/useCustomization';
-import { SafeAvatar } from '../../components/SafeAvatar';
-import { useAutoHideNav } from '../../hooks/useAutoHideNav';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 // Import the LittleLoom logo
 const littleLoomLogo = require('../../../assets/logo.png');
@@ -843,7 +823,8 @@ const PostCard = React.memo(({
 
   const handleLongPress = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    Alert.alert('Thread Options', '', [
+
+showAlert('Thread Options', '', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Share', onPress: () => onShare(post) },
       {
@@ -1929,7 +1910,8 @@ export default function CommunityScreen({ navigation }: Props) {
       sweetAlert.alert('Sign In Required', 'Please sign in to share a story', 'warning');
       return;
     }
-    Alert.alert(
+
+showAlert(
       'Add to Your Story',
       'How would you like to share?',
       [
@@ -2059,7 +2041,8 @@ export default function CommunityScreen({ navigation }: Props) {
   }, []);
 
   const handleDelete = useCallback((postId: string) => {
-    Alert.alert('Unravel this thread?', 'This cannot be undone.', [
+
+showAlert('Unravel this thread?', 'This cannot be undone.', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: () => deletePost(postId) },
     ]);

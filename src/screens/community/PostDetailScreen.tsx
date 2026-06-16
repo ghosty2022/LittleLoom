@@ -1,33 +1,18 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  TextInput,
-  KeyboardAvoidingView,
-  Platform,
-  ActivityIndicator,
-  Dimensions,
-  Modal,
-  Image,
-  Pressable,
-  StatusBar,
-  Alert,
-  Share,
-} from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
-import { Ionicons } from '@expo/vector-icons';
+
 import Animated, { FadeInUp, FadeIn } from 'react-native-reanimated';
+
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+
 import type { CommunityStackParamList } from '../../types/navigation';
-import { useCommunity, Post, Comment } from '../../context/CommunityContext';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useCustomization } from '../../hooks/useCustomization';
+
+import { Comment, Post, useCommunity } from '../../context/CommunityContext';
+import { CommunityBorderRadius, CommunityColors, CommunityShadows, CommunitySpacing } from '../../theme/CommunityTheme';
 import { SafeAvatar } from '../../components/SafeAvatar';
-import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
-import { CommunityColors, CommunitySpacing, CommunityBorderRadius, CommunityShadows } from '../../theme/CommunityTheme';
+import { useCustomization } from '../../hooks/useCustomization';
+import { showAlert } from '../../utils/alert';
 
 type PostDetailScreenProps = NativeStackScreenProps<CommunityStackParamList, 'PostDetail'>;
 
@@ -158,7 +143,8 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
 
   const handleDelete = useCallback(() => {
     if (!post) return;
-    Alert.alert(
+
+showAlert(
       'Delete Post',
       'Are you sure you want to delete this post? This action cannot be undone.',
       [

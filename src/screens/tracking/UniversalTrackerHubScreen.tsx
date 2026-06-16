@@ -40,7 +40,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
-import {
   format,
   differenceInDays,
   differenceInMonths,
@@ -941,10 +940,6 @@ export default function UniversalTrackerHubScreen() {
     if (action) handleSubActionSelect(trackerId, action);
   }, [handleSubActionSelect]);
 
-
-
-
-
   const handleSwitchBaby = useCallback(() => {
     HAPTIC_LIGHT();
     if (babies.length > 1) {
@@ -1254,10 +1249,7 @@ export default function UniversalTrackerHubScreen() {
         )}
       </ScrollView>
 
-
-
       {/* Modals */}
-
 
       <TrackerActionModal
         visible={showActionModal}
@@ -1554,8 +1546,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   quickActionFullLabel: { fontSize: 12, fontWeight: '700' },
-
-
 
   // Modal
   modalOverlay: {

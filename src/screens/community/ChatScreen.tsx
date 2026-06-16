@@ -1,24 +1,22 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  TextInput,
-  KeyboardAvoidingView,
-  Platform,
-  Image,
-  Dimensions,
-  Alert,
-  ActivityIndicator,
-  Modal,
-  StatusBar,
-  Pressable,
-} from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
+
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
+import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+
+import type { CommunityStackParamList } from '../../types/navigation';
+
+import { showConfirmModal, showErrorModal } from '../../utils/modal';
+import { useApp } from '../../context/AppContext';
+import { useSweetAlert } from '../../components/SweetAlert';
+import { useUser } from '../../context/UserContext';
+import { showAlert } from '../../utils/alert';
 import Animated, {
+
   FadeInUp,
   FadeIn,
   FadeOut,
@@ -32,28 +30,6 @@ import Animated, {
   withRepeat,
   withSequence,
 } from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
-import * as ImagePicker from 'expo-image-picker';
-import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { CommunityStackParamList } from '../../types/navigation';
-import {
-  useCommunity,
-  Message,
-  MessageType,
-  FileMetadata,
-} from '../../context/CommunityContext';
-import { useApp } from '../../context/AppContext';
-import { useUser } from '../../context/UserContext';
-import { showErrorModal, showConfirmModal } from '../../utils/modal';
-import { useSweetAlert } from '../../components/SweetAlert';
-import { SafeAvatar } from '../../components/SafeAvatar';
-import {
-  AutoHideScrollView,
-  AutoHideFlatList,
-} from '../../components/AutoHideScrollWrappers';
 
 // ═══════════════════════════════════════════════════════════
 // UNIFIED LITTLELOOM THEME — matches CommunityScreen exactly
@@ -320,7 +296,7 @@ const MessageBubble = React.memo(({
       style={[styles.messageContainer, isMe ? styles.myMessage : styles.theirMessage]}
     >
       {!isMe && showAvatar && (
-        <TouchableOpacity onPress={() => user && Alert.alert(user.displayName, `Handle: ${user.handle}`)} style={styles.avatarSmall}>
+        <TouchableOpacity onPress={() => user && showAlert(user.displayName, `Handle: ${user.handle}`)} style={styles.avatarSmall}>
           <SafeAvatar avatar={user?.avatar} size={32} fallbackIcon="person" fallbackColor={LL.primary} fallbackBgColor={`${LL.primary}15`} />
         </TouchableOpacity>
       )}
@@ -647,7 +623,8 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   };
 
   const showImageSourceAlert = () => {
-    Alert.alert('Send Photo', 'Choose a photo source', [
+
+showAlert('Send Photo', 'Choose a photo source', [
       { text: 'Cancel', style: 'cancel' },
       { text: '📷 Camera', onPress: () => handleImagePick(true) },
       { text: '🖼️ Gallery', onPress: () => handleImagePick(false) },
@@ -695,7 +672,8 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
 
   const handleFilePress = async (meta?: FileMetadata) => {
     if (!meta) return;
-    Alert.alert(meta.name, `Size: ${formatFileSize(meta.size)}
+
+showAlert(meta.name, `Size: ${formatFileSize(meta.size)}
 Type: ${meta.type}`, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Share', onPress: async () => {

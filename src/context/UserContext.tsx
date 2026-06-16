@@ -4,7 +4,6 @@ import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 
-import { UserRole, Permission, ROLE_PERMISSIONS } from '../types/roles';
 import { useAuth } from './AuthContext';
 
 const SECURE_KEYS = {

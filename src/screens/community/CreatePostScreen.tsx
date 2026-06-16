@@ -24,13 +24,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CommunityStackParamList } from '../../types/navigation';
 
-import { useCommunity, Topic, PostMood, Poll } from '../../context/CommunityContext';
 import { useMedia } from '../../context/MediaContext';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { InlineSpinner, CommunitySpinner } from '../../components/UniversalSpinner';
 
-import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
 import { CommunityColors, CommunitySpacing, CommunityBorderRadius, CommunityShadows } from '../../theme/CommunityTheme';
 
 type CreatePostScreenProps = NativeStackScreenProps<CommunityStackParamList, 'CreatePost'>;

@@ -49,7 +49,6 @@ import Animated, {
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { MainTabParamList } from '../../types/navigation';
 
-import { useSafety } from '../../context/SafetyContext';
 import type { EmergencyContact, SafetyTopic, SafetyChecklist } from '../../context/SafetyContext';
 import { useBaby } from '../../context/BabyContext';
 import { useFamily } from '../../context/FamilyContext';

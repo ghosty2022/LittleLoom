@@ -6,7 +6,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import * as Localization from 'expo-localization';
 
-import { CommunityStackParamList } from '../types/navigation';
 import { useCommunity } from '../context/CommunityContext';
 import { useUser } from '../context/UserContext';
 import { useCustomization } from '../hooks/useCustomization';
@@ -27,8 +26,31 @@ import ReportScreen from '../screens/community/ReportScreen';
 import CommunitySplashScreen from '../screens/community/CommunitySplashScreen';
 import CommunityOnboardingScreen from '../screens/community/CommunityOnboardingScreen';
 
-import { InlineSpinner, CommunitySpinner } from '../components/UniversalSpinner';
 import { CommunityColors } from '../theme/CommunityTheme';
+
+// ─── MISSING IMPORTS ────────────────────────────────────────────────────
+import { UniversalSpinner } from '../components/UniversalSpinner';
+
+// ─── TYPE DEFINITIONS ───────────────────────────────────────────────────
+export type CommunityStackParamList = {
+  CommunityOnboarding: undefined;
+  CommunitySplash: undefined;
+  CommunityMain: undefined;
+  Topic: { topicId: string; topicName?: string };
+  CreatePost: { topicId?: string; draftId?: string } | undefined;
+  PostDetail: { postId: string };
+  CommunityMemberProfile: { userId: string };
+  ChatList: undefined;
+  Chat: { chatId: string; userId?: string; userName?: string };
+  Notifications: undefined;
+  CommunityProfile: undefined;
+  TopicMembers: { topicId: string };
+  Followers: { userId?: string };
+  Following: { userId?: string };
+  SearchUsers: undefined;
+  BlockedUsers: undefined;
+  Report: { targetId: string; targetType: 'post' | 'user' | 'comment'; targetName?: string };
+};
 
 const Stack = createNativeStackNavigator<CommunityStackParamList>();
 
@@ -126,10 +148,11 @@ const useAutomaticCountryDetection = () => {
   return isDetecting;
 };
 
+// ─── FIXED: Use UniversalSpinner instead of undefined InlineSpinner ─────
 const InlineLoadingView = React.memo(({ text }: { text: string }) => (
   <View style={styles.inlineLoadingContainer}>
     <View style={styles.inlineLoadingCard}>
-      <InlineSpinner size={32} color={CommunityColors.primary} />
+      <UniversalSpinner size={32} color={CommunityColors.primary} />
       <Text style={styles.inlineLoadingText}>{text}</Text>
     </View>
   </View>
@@ -202,15 +225,11 @@ const CommunityNavigator = React.memo(() => {
     markSplashShown();
   }, [markSplashShown]);
 
+  // ─── FIXED: Use InlineLoadingView instead of undefined CommunitySpinner ─
   if (!isContextReady || phase === 'loading') {
     return (
-      <CommunitySpinner
-        visible={true}
+      <InlineLoadingView
         text={isDetectingCountry ? "Detecting location..." : "Loading community..."}
-        subtext="Preparing your personalized experience"
-        size="medium"
-        overlay={true}
-        blur={true}
       />
     );
   }
@@ -285,21 +304,21 @@ const CommunityNavigator = React.memo(() => {
       <Stack.Screen name="Topic" component={TopicScreen} />
       <Stack.Screen name="CreatePost" component={CreatePostScreen} options={{ animation: 'slide_from_bottom', gestureEnabled: false }} />
       <Stack.Screen name="PostDetail" component={PostDetailScreen} />
-      
+
       {/* NEW: Community Member Profile (view other users) */}
       <Stack.Screen name="CommunityMemberProfile" component={CommunityMemberProfileScreen} />
-      
+
       <Stack.Screen name="ChatList" component={ChatListScreen} />
       <Stack.Screen name="Chat" component={ChatScreen} />
       <Stack.Screen name="Notifications" component={NotificationsScreen} />
-      
+
       {/* NEW: Community Profile (self view/edit) */}
       <Stack.Screen 
         name="CommunityProfile" 
         component={CommunityProfileScreen} 
         options={{ animation: 'slide_from_bottom', gestureEnabled: false }} 
       />
-      
+
       <Stack.Screen name="TopicMembers" component={TopicMembersScreen} />
       <Stack.Screen name="Followers" component={FollowersScreen} />
       <Stack.Screen name="Following" component={FollowingScreen} />

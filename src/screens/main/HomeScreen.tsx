@@ -37,15 +37,12 @@ import * as Haptics from 'expo-haptics';
 import { formatDistanceToNow, format, subDays, eachDayOfInterval, isSameDay } from 'date-fns';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop, Polyline } from 'react-native-svg';
 
-import { useAuth } from '../../context/AuthContext';
 import { useBaby } from '../../context/BabyContext';
 import { useActivity } from '../../context/ActivityContext';
 import { useSecurity } from '../../context/SecurityContext';
 import { useCommunity } from '../../context/CommunityContext';
 import { useAudio, SOUND_TRACKS } from '../../context/AudioContext';
 import { useMedia } from '../../context/MediaContext';
-
-import { useCustomization, getFullThemeColors, type FullThemeColors } from '../../hooks/useCustomization';
 
 import { SafeBabyAvatar, SafeParentAvatar } from '../../components/SafeAvatar';
 import { useSweetAlert } from '../../components/SweetAlert';
@@ -1060,7 +1057,6 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = ({
     </Animated.View>
   );
 };
-
 
 /* ═══════════════════════════════════════════════════════════════════════════
    MAIN HOMESCREEN

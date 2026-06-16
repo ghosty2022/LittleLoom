@@ -1,6 +1,5 @@
 import { ActivityType as LegacyActivityType } from '../context/BabyContext';
 
-
 export type TrackerCategory =
   | 'essential'
   | 'health'
@@ -80,7 +79,6 @@ export interface FieldConfig {
   };
 }
 
-
 export interface ReminderRule {
   id: string;
   trackerId: string;
@@ -126,7 +124,6 @@ export interface ReminderRule {
   createdAt: number;
   updatedAt: number;
 }
-
 
 export interface TrackerEntry {
   id: string;
@@ -182,7 +179,6 @@ export interface TrackerEntry {
   editedAt?: number;
   isDeleted?: boolean;
 }
-
 
 export interface UnifiedTrackerConfig {
   id: string;
@@ -240,7 +236,6 @@ export interface UnifiedTrackerConfig {
   }[];
 }
 
-
 export interface TrackerInsight {
   id: string;
   trackerId: string;
@@ -281,7 +276,6 @@ export interface TrackerStreak {
   goalProgress?: number;  // e.g., 5/7 days
 }
 
-
 export const TRACKER_STORAGE_KEYS = {
   CUSTOM_TRACKERS: '@littleloom_custom_trackers_v2',
   TRACKER_SETTINGS: '@littleloom_tracker_settings_v2',
@@ -296,7 +290,6 @@ export const TRACKER_STORAGE_KEYS = {
   HISTORY_PATTERNS: (babyId: string) => `@littleloom_patterns_${babyId}`,
   CHAINS: (babyId: string) => `@littleloom_chains_${babyId}`,
 } as const;
-
 
 export const DEFAULT_TRACKER_IDS = [
   'potty', 'diaper', 'feed', 'pumping', 'sleep', 'bath',
@@ -324,7 +317,6 @@ export type TrackerActivityType = LegacyActivityType | `custom_${string}`;
 
 export const isCustomTracker = (id: string): boolean =>
   id.startsWith('custom_') || !DEFAULT_TRACKER_IDS.includes(id as DefaultTrackerId);
-
 
 export interface ProgressiveTrackerState {
   todayEntries: TrackerEntry[];

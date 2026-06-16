@@ -33,11 +33,10 @@ import {
   AVATAR_OPTIONS,
   APPEARANCE_OPTIONS,
   DEFAULT_SETTINGS,
-  type CustomizationSettings,
-  type AppearanceMode,
   getFullThemeColors,
   getFontSizeMultiplier,
 } from '../../hooks/useCustomization';
+import type { CustomizationSettings, AppearanceMode } from '../../hooks/useCustomization';
 
 import { useSweetAlert } from '../../components/SweetAlert';
 import { SafeAvatar } from '../../components/SafeAvatar';

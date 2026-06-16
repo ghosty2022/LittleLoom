@@ -4,7 +4,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
-
 export type IconCategory = 
   | 'care' 
   | 'health' 
@@ -29,7 +28,6 @@ const SIZE_MAP: Record<IconSize, number> = {
   xl: 48,
   xxl: 64,
 };
-
 
 export const BABY_ICONS = {
   care: {
@@ -204,7 +202,6 @@ export const BABY_ICONS = {
   },
 } as const;
 
-
 export type BabyIconKey = {
   [K in keyof typeof BABY_ICONS]: keyof (typeof BABY_ICONS)[K];
 }[keyof typeof BABY_ICONS];
@@ -224,7 +221,6 @@ export const getIconByName = (name: string): { name: string; label: string; colo
   }
   return null;
 };
-
 
 interface LittleLoomIconProps {
   category: IconCategory;
@@ -315,7 +311,6 @@ export const LittleLoomIcon: React.FC<LittleLoomIconProps> = ({
   return content;
 };
 
-
 interface IconBadgeProps {
   category: IconCategory;
   name: string;
@@ -361,7 +356,6 @@ export const IconBadge: React.FC<IconBadgeProps> = ({
   );
 };
 
-
 export const getActivityIcon = (type: string): { category: IconCategory; name: string; color: string } => {
   const mappings: Record<string, { category: IconCategory; name: string }> = {
     potty: { category: 'care', name: 'potty' },
@@ -391,7 +385,6 @@ export const getActivityIcon = (type: string): { category: IconCategory; name: s
   return { category: 'daily', name: 'note', color: '#94a3b8' };
 };
 
-
 export const MOOD_ICONS = [
   { key: 'happy', emoji: '😊', label: 'Happy', color: '#f59e0b' },
   { key: 'excited', emoji: '🤩', label: 'Excited', color: '#ec4899' },
@@ -402,7 +395,6 @@ export const MOOD_ICONS = [
   { key: 'sick', emoji: '🤒', label: 'Sick', color: '#ef4444' },
   { key: 'scared', emoji: '😨', label: 'Scared', color: '#64748b' },
 ];
-
 
 const styles = StyleSheet.create({
   iconWrapper: {
@@ -458,4 +450,3 @@ const styles = StyleSheet.create({
 });
 
 export default BABY_ICONS;
-

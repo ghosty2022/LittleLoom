@@ -27,7 +27,6 @@ import * as Haptics from 'expo-haptics';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
-
 export type AlertType = 'success' | 'error' | 'warning' | 'info' | 'question';
 export type AlertStyle = 'toast' | 'modal';
 export type AlertPosition = 'top' | 'center';
@@ -53,7 +52,6 @@ export interface SweetAlertConfig {
   haptic?: boolean;
   reduceMotion?: boolean;
 }
-
 
 const ALERT_CONFIG: Record<AlertType, {
   colors: [string, string];
@@ -93,7 +91,6 @@ const ALERT_CONFIG: Record<AlertType, {
   },
 };
 
-
 type AlertListener = (config: SweetAlertConfig) => void;
 type HideListener = () => void;
 
@@ -126,7 +123,6 @@ const emitHide = () => {
   hideListeners.forEach(listener => listener());
 };
 
-
 export const showSweetAlert = (config: SweetAlertConfig) => {
   emitShow(config);
 };
@@ -134,7 +130,6 @@ export const showSweetAlert = (config: SweetAlertConfig) => {
 export const hideSweetAlert = () => {
   emitHide();
 };
-
 
 interface DotProps {
   index: number;
@@ -189,7 +184,6 @@ const LiquidDot: React.FC<DotProps> = React.memo(({ index, totalDots, progress, 
     />
   );
 });
-
 
 interface ToastProps {
   config: SweetAlertConfig;
@@ -296,7 +290,6 @@ const SweetAlertToast: React.FC<ToastProps> = ({ config, isDark, onDismiss }) =>
     </View>
   );
 };
-
 
 interface ModalProps {
   config: SweetAlertConfig;
@@ -410,7 +403,6 @@ const SweetAlertModal: React.FC<ModalProps> = ({ config, isDark, themeColors, on
   );
 };
 
-
 interface AlertQueueItem {
   id: string;
   config: SweetAlertConfig;
@@ -506,7 +498,6 @@ export const SweetAlertProvider: React.FC<SweetAlertProviderProps> = ({
   );
 };
 
-
 export const useSweetAlert = () => {
   const sweetAlert = useCallback((config: SweetAlertConfig) => {
     showSweetAlert(config);
@@ -574,7 +565,6 @@ export const useSweetAlert = () => {
     sweetAlert, hideAlert, toast, success, error, warning, info, confirm, alert
   }), [sweetAlert, hideAlert, toast, success, error, warning, info, confirm, alert]);
 };
-
 
 const styles = StyleSheet.create({
   toastContainer: {

@@ -1140,8 +1140,6 @@ export default function VaccinationScheduleScreen({ navigation, route }: any) {
    STYLES
    ═══════════════════════════════════════════════════════════════════════════ */
 
-import { StatusBar } from 'react-native';
-
 const styles = StyleSheet.create({
   container: { flex: 1 },
   centerContent: { justifyContent: 'center', alignItems: 'center' },

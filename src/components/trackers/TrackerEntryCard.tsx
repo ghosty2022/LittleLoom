@@ -2,7 +2,6 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-import { TrackerEntry, UnifiedTrackerConfig, FieldConfig } from '../../types/trackers';
 import { useTracker } from '../../context/TrackerContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { SafeAvatar, SafeBabyAvatar } from '../../components/SafeAvatar';

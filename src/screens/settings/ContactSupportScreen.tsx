@@ -1,27 +1,17 @@
-import { useSweetAlert } from '../../components/SweetAlert';
 import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  TextInput,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  StatusBar,
-  Linking,
-} from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import Animated, { FadeInUp } from 'react-native-reanimated';
+
+import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import { useCustomization } from '../../hooks/useCustomization';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+
 import type { RootStackParamList } from '../../types/navigation';
-import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
+
+import { useCustomization } from '../../hooks/useCustomization';
+import { useSweetAlert } from '../../components/SweetAlert';
+import { showAlert } from '../../utils/alert';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ContactSupport'>;
 
@@ -228,7 +218,8 @@ export default function ContactSupportScreen
     handleHaptic();
     setCategory(cat.id);
     if (cat.route) {
-      Alert.alert(
+
+showAlert(
         cat.label,
         cat.helpText || `Would you like to go to ${cat.label}?`,
         [
@@ -251,7 +242,8 @@ export default function ContactSupportScreen
     setTimeout(() => {
       setIsSending(false);
       handleHaptic('success');
-      Alert.alert(
+
+showAlert(
         'Message Sent!',
         "Thank you for reaching out. We'll get back to you within 24 hours.",
         [{ text: 'OK', onPress: () => navigation.goBack() }]

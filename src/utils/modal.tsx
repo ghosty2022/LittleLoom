@@ -18,7 +18,6 @@ import * as Haptics from 'expo-haptics';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-
 export type ModalType = 'info' | 'success' | 'warning' | 'error' | 'confirm' | 'custom';
 
 export interface ModalButton {
@@ -44,7 +43,6 @@ interface ModalContextType {
   hide: () => void;
   isVisible: boolean;
 }
-
 
 type ModalListener = (config: ModalConfig) => void;
 type HideListener = () => void;
@@ -74,7 +72,6 @@ const emitShow = (config: ModalConfig) => {
 const emitHide = () => {
   hideListeners.forEach(listener => listener());
 };
-
 
 export const showSuccessModal = (config: { title?: string; message: string }) => {
   emitShow({
@@ -132,7 +129,6 @@ export const hideModal = () => {
   emitHide();
 };
 
-
 const ModalContext = createContext<ModalContextType | null>(null);
 
 export const useModal = () => {
@@ -142,7 +138,6 @@ export const useModal = () => {
   }
   return context;
 };
-
 
 export const ModalProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isVisible, setIsVisible] = useState(false);
@@ -326,7 +321,6 @@ export const ModalProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   );
 };
 
-
 export const SweetAlert = {
   success: (title: string, message?: string, buttonText?: string) => {
     return {
@@ -383,7 +377,6 @@ export const SweetAlert = {
     };
   },
 };
-
 
 const styles = StyleSheet.create({
   overlay: {

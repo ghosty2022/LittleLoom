@@ -5,7 +5,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useBaby } from './BabyContext';
 import * as DocumentPicker from 'expo-document-picker';
 
-
 export const SOUND_TRACKS = [
   { id: '1', title: 'White Noise', artist: 'Sleep Aid', duration: '3:45', color: '#a1c4fd', image: 'https://images.unsplash.com/photo-1519834785169-98be25ec3f84?w=400&q=80', uri: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3' },
   { id: '2', title: 'Gentle Lullaby', artist: 'Baby Sleep', duration: '4:20', color: '#fbc2eb', image: 'https://images.unsplash.com/photo-1520454974749-611b7248ffc6?w=400&q=80', uri: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3' },
@@ -86,7 +85,6 @@ const FAVORITES_STORAGE_KEY = '@littleloom_favorites_';
 const IMPORTED_STORAGE_KEY = '@littleloom_imported_tracks';
 const SLEEP_TIMER_KEY = '@littleloom_sleep_timer';
 
-
 export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { currentBaby } = useBaby();
   
@@ -108,7 +106,6 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const isLoading = status?.isBuffering ?? false;
   
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-
 
   useEffect(() => { if (currentBaby?.id) loadFavorites(); }, [currentBaby?.id]);
   useEffect(() => { loadImportedTracks(); }, []);
@@ -165,7 +162,6 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       await AsyncStorage.setItem(FAVORITES_STORAGE_KEY + currentBaby.id, JSON.stringify(newFavorites));
     } catch (e) { console.error('Error saving favorites:', e); }
   };
-
 
   const playTrack = useCallback((track: AudioTrack) => {
     try {
@@ -244,7 +240,6 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, [isShuffled, currentTrack, importedTracks]);
 
-
   const expandPlayer = useCallback(() => setPlayerMode('full'), []);
   const minimizePlayer = useCallback(() => setPlayerMode('mini'), []);
   const collapseToBall = useCallback(() => setPlayerMode('ball'), []);
@@ -254,7 +249,6 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setPlayerMode('hidden');
     setCurrentTrack(null);
   }, [stop]);
-
 
   const toggleFavorite = useCallback(async (trackId: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -266,7 +260,6 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [favorites]);
 
   const isFavorite = useCallback((trackId: string) => favorites.includes(trackId), [favorites]);
-
 
   const addImportedTrack = useCallback(async (track: Omit<AudioTrack, 'id'>) => {
     const newTrack: AudioTrack = { ...track, id: `imported_${Date.now()}` };
@@ -315,7 +308,6 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, [addImportedTrack]);
 
-
   const setSleepTimer = useCallback(async (minutes: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     
@@ -330,7 +322,6 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       await AsyncStorage.setItem(SLEEP_TIMER_KEY, JSON.stringify(timerData));
     }
   }, []);
-
 
   const formatTime = useCallback((millis: number = 0) => {
     const totalSeconds = Math.floor(millis / 1000);

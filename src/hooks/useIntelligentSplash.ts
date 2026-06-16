@@ -38,7 +38,6 @@ export const DEFAULT_SPLASH_CONFIG: SplashConfig = {
   respectCompactView: true,
 };
 
-
 export async function loadSplashConfig(): Promise<SplashConfig> {
   try {
     const saved = await AsyncStorage.getItem(SPLASH_KEYS.SPLASH_FREQUENCY);
@@ -152,7 +151,6 @@ export async function markSplashShown(section: SplashSection): Promise<void> {
     console.warn('Failed to mark splash shown:', error);
   }
 }
-
 
 export interface UseIntelligentSplashReturn {
   isReady: boolean;

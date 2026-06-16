@@ -1,20 +1,25 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  Switch,
-  Dimensions,
-  ScrollView,
-  Platform,
-  StatusBar,
-  Alert,
-} from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
+
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
+import * as Haptics from 'expo-haptics';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+
+import type { FamilyMember } from '../../types/roles';
+import type { RootStackParamList } from '../../types/navigation';
+
+import { SafeAvatar, SafeBabyAvatar } from '../../components/SafeAvatar';
+import { useActivity } from '../../context/ActivityContext';
+import { useApp } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
+import { useBaby } from '../../context/BabyContext';
+import { useCustomization } from '../../hooks/useCustomization';
+import { useFamily } from '../../context/FamilyContext';
+import { useMedia } from '../../context/MediaContext';
+import { useSecurity } from '../../context/SecurityContext';
+import { useSweetAlert } from '../../components/SweetAlert';
+import { useUser } from '../../context/UserContext';
+
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -27,25 +32,8 @@ import Animated, {
   FadeIn,
   Layout,
 } from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
 
-import { useAuth } from '../../context/AuthContext';
-import { useSecurity } from '../../context/SecurityContext';
-import { useBaby } from '../../context/BabyContext';
-import { useUser } from '../../context/UserContext';
-import { useFamily } from '../../context/FamilyContext';
-import { useActivity } from '../../context/ActivityContext';
-import { useMedia } from '../../context/MediaContext';
-import { useCustomization } from '../../hooks/useCustomization';
-import { useSweetAlert } from '../../components/SweetAlert';
-import { useApp } from '../../context/AppContext';
-
-import { SafeAvatar, SafeBabyAvatar } from '../../components/SafeAvatar';
-import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
-
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { RootStackParamList } from '../../types/navigation';
-import type { FamilyMember } from '../../types/roles';
+import { showAlert } from '../../utils/alert';
 
 type SettingsScreenProps = NativeStackScreenProps<RootStackParamList, 'Main'>;
 
@@ -948,7 +936,8 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
     'OK',
     'Cancel'
   );
-    Alert.alert(
+
+showAlert(
       'Auto-Lock Timeout',
       'Select when to automatically lock the app',
       [

@@ -1,4 +1,10 @@
+import * as Haptics from 'expo-haptics';
+import * as Location from 'expo-location';
+import * as Notifications from 'expo-notifications';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import { useSweetAlert } from '../../components/SweetAlert';
+
 import React, {
   useCallback,
   useContext,
@@ -9,11 +15,8 @@ import React, {
   useRef,
   ReactNode,
 } from 'react';
-import { Alert, Linking, Platform, Vibration } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Location from 'expo-location';
-import * as Haptics from 'expo-haptics';
-import * as Notifications from 'expo-notifications';
+import { showAlert } from '../utils/alert';
+import { Linking, Vibration, Platform } from 'react-native';
 
 /* ═══════════════════════════════════════════════════════════════
    CONSTANTS
@@ -707,7 +710,7 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
       triggerHaptic('warning');
 
-      Alert.alert(
+showAlert(
         `Call ${label}?`,
         `Are you sure you want to call ${number}?`,
         [
@@ -758,7 +761,7 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     triggerHaptic('error');
     Vibration.vibrate([0, 500, 200, 500, 200, 500]);
 
-    Alert.alert(
+showAlert(
       'SOS EMERGENCY',
       'This will call Emergency Services and share your location with family contacts. Continue?',
       [
@@ -873,7 +876,8 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         }
       }
     } catch (error) {
-      Alert.alert('Find Hospitals', 'Open maps to search for hospitals?', [
+
+showAlert('Find Hospitals', 'Open maps to search for hospitals?', [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Open Maps',

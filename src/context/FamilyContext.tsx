@@ -1,13 +1,14 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import * as SecureStore from 'expo-secure-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { UserRole, Permission, ROLE_PERMISSIONS, FamilyMember } from '../types/roles';
-export { FamilyMember } from '../types/roles';
-
-import { useUser } from './UserContext';
 import { useBaby } from './BabyContext';
+import { UserRole, Permission, ROLE_PERMISSIONS, FamilyMember } from '../types/roles';
+import { useUser } from './UserContext';
+import { showAlert } from '../utils/alert';
+
+export { FamilyMember } from '../types/roles';
 
 const PARENT2_PROFILE_KEY = 'littleloom_parent2_profile_secure';
 
@@ -45,7 +46,8 @@ const generateId = (): string => {
 // ✅ Safe alert that doesn't depend on external hooks
 const showAlert = (title: string, message: string) => {
   if (typeof Alert !== 'undefined') {
-    Alert.alert(title, message);
+
+showAlert(title, message);
   } else {
     console.warn(`[FamilyContext] ${title}: ${message}`);
   }

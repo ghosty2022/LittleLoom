@@ -2,12 +2,6 @@ import React, { createContext, useContext, useCallback, useMemo, useState, useEf
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 
-import {
-  TrackerEntry,
-  UnifiedTrackerConfig,
-  TRACKER_STORAGE_KEYS,
-} from '../types/trackers';
-
 // FIX: Import directly from context sources
 import { useTracker } from './TrackerContext';
 import { useBaby, GrowthMeasurement } from './BabyContext';

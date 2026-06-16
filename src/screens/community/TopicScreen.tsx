@@ -1,34 +1,20 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Alert,
-  RefreshControl,
-  Dimensions,
-  StatusBar,
-  ActivityIndicator,
-} from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
-import { Ionicons } from '@expo/vector-icons';
+
 import Animated, { FadeInUp } from 'react-native-reanimated';
+
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+
 import type { CommunityStackParamList } from '../../types/navigation';
-import { useCommunity, Post, Topic } from '../../context/CommunityContext';
-import { useUser } from '../../context/UserContext';
+
+import { Post, Topic, useCommunity } from '../../context/CommunityContext';
+import { SafeAvatar } from '../../components/SafeAvatar';
+import { useAutoHideNav } from '../../hooks/useAutoHideNav';
 import { useReportRoute } from '../../hooks/useReportRoute';
 import { useSafeCustomization } from '../../hooks/useSafeContexts';
-import { SafeAvatar } from '../../components/SafeAvatar';
-import { AutoHideFlatList } from '../../components/AutoHideScrollWrappers';
-import { useAutoHideNav } from '../../hooks/useAutoHideNav';
-import {
-  CommunityColors,
-  CommunitySpacing,
-  CommunityBorderRadius,
-  CommunityShadows,
-} from '../../theme/CommunityTheme';
+import { useUser } from '../../context/UserContext';
+import { showAlert } from '../../utils/alert';
 
 type TopicScreenProps = NativeStackScreenProps<CommunityStackParamList, 'Topic'>;
 
@@ -122,7 +108,8 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
     if (!topic) return;
 
     if (topic.isJoined) {
-      Alert.alert(
+
+showAlert(
         'Leave Topic',
         `Are you sure you want to leave ${topic.name}?`,
         [
@@ -323,7 +310,8 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() =>
-              Alert.alert('Topic Options', '', [
+
+showAlert('Topic Options', '', [
                 { text: 'Cancel', style: 'cancel' },
                 { text: 'Share Topic', onPress: () => console.log('Share') },
                 {
@@ -368,7 +356,8 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
           <TouchableOpacity
             style={styles.sortButton}
             onPress={() =>
-              Alert.alert('Sort by', '', [
+
+showAlert('Sort by', '', [
                 { text: 'Cancel', style: 'cancel' },
                 { text: 'Trending', onPress: () => setSortBy('trending') },
                 { text: 'Newest', onPress: () => setSortBy('newest') },

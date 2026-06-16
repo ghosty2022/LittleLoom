@@ -15,7 +15,6 @@ import * as Haptics from 'expo-haptics';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CommunityStackParamList } from '../../types/navigation';
 
-import { useCommunity, Notification } from '../../context/CommunityContext';
 import { useApp } from '../../context/AppContext';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { useSweetAlert } from '../../components/SweetAlert';

@@ -1,28 +1,17 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  BackHandler,
-  ActivityIndicator,
-  Dimensions,
-  StatusBar,
-  Animated,
-  TextInput,
-  Alert,
-} from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import Ionicons from '@expo/vector-icons/Ionicons';
+
 import * as LocalAuthentication from 'expo-local-authentication';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useAuth } from '../../context/AuthContext';
-import { useSecurity } from '../../context/SecurityContext';
-import { useCustomization } from '../../hooks/useCustomization';
-import { useSweetAlert } from '../../components/SweetAlert';
-import type { RootStackParamList } from '../../types/navigation';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+
+import type { RootStackParamList } from '../../types/navigation';
+
+import { useAuth } from '../../context/AuthContext';
+import { useCustomization } from '../../hooks/useCustomization';
+import { useSecurity } from '../../context/SecurityContext';
+import { useSweetAlert } from '../../components/SweetAlert';
+import { showAlert } from '../../utils/alert';
 
 type SecurityLockScreenProps = NativeStackScreenProps<RootStackParamList, 'SecurityLock'>;
 
@@ -293,7 +282,8 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     triggerHaptic('error');
     showError('Too Many Attempts', 'For security purposes, you need to sign out and sign in again.');
     setTimeout(() => {
-      Alert.alert(
+
+showAlert(
         'Too Many Attempts',
         'For security purposes, you need to sign out and sign in again.',
         [
@@ -707,7 +697,8 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
             <TouchableOpacity
               style={styles.emergencyButton}
               onPress={() => {
-                Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+
+showAlert('Sign Out', 'Are you sure you want to sign out?', [
                   { text: 'Cancel', style: 'cancel' },
                   {
                     text: 'Sign Out',
