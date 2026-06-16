@@ -1,14 +1,26 @@
-import { StyleSheetAlert ,Animated ,Button, Dimensions, Image, InteractionManager, Modal, Platform, RefreshControl, ScrollView ,Settings, Text, TouchableOpacity, useColorScheme, View } from 'react-native';;
+import {
+  StyleSheet,
+  Button,
+  Image,
+  InteractionManager,
+  Modal,
+  Platform,
+  RefreshControl,
+  ScrollView,
+  Settings,
+  Text,
+  TouchableOpacity,
+  useColorScheme,
+  View,
+} from 'react-native';
 import React, { memo, useCallback, useMemo, useState } from 'react';
 
 import { useBaby } from '../../context/BabyContext';
 import { BlurView } from 'expo-blur';
-import { EmptyState } from '../../components/EmptyState';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { format, formatDistanceToNow } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as Haptics from 'expo-haptics';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import type { RootStackParamList } from '../../types/navigation';
@@ -30,7 +42,6 @@ import Animated, {
   Layout,
 } from 'react-native-reanimated';
 
-const { width } = Dimensions.get('window');
 const AnimatedScrollView = AutoHideAnimatedScrollView;
 
 type FamilyCenterScreenProps = NativeStackScreenProps<RootStackParamList, 'Profile'>;
