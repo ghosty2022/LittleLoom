@@ -1,14 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  Dimensions,
-  ActivityIndicator,
-  StatusBar,
-  Alert,
-} from 'react-native';
+import { showError } from '@/utils/alert';
+import { FadeIn, FadeInDown, FadeInUp } from 'react-native-reanimated';
+import { , ActivityIndicator, Alert, Animated, Button, Dimensions, ScrollView, Settings, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';;
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,7 +13,7 @@ import { useAuth } from '../../context/AuthContext';
 import type { RootStackParamList } from '../../types/navigation';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
-import { SafeBabyAvatar } from '../../components/SafeAvatar';
+import { SafeBabyAvatarSafeAvatar } from '../../components/SafeAvatar';;
 import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
 
 const { width } = Dimensions.get('window');

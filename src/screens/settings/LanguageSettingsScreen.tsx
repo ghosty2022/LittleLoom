@@ -1,13 +1,7 @@
 import { useSweetAlert } from '../../components/SweetAlert';
+import { FadeInUp } from 'react-native-reanimated';
 import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Alert,
-  StatusBar,
-} from 'react-native';
+import { , Alert, Animated, Button, ScrollView, Settings, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';;
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';

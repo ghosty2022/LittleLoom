@@ -416,21 +416,14 @@ $usagePatterns = @{
     'InputAccessoryView' = '(?<!\.)InputAccessoryView\b'
     'PermissionsAndroid' = '(?<!\.)PermissionsAndroid\b'
     'ToastAndroid' = '(?<!\.)ToastAndroid\b'
-    'ActionSheetIOS' = '(?<!\.)ActionSheetIOS\b'
-    'BackHandler' = '(?<!\.)BackHandler\b'
-    'Appearance' = '(?<!\.)Appearance\b'
-    'Clipboard' = '(?<!\.)Clipboard\b'
     'DevSettings' = '(?<!\.)DevSettings\b'
-    'InteractionManager' = '(?<!\.)InteractionManager\b'
     'LayoutAnimation' = '(?<!\.)LayoutAnimation\b'
-    'LogBox' = '(?<!\.)LogBox\b'
     'PanResponder' = '(?<!\.)PanResponder\b'
     'PixelRatio' = '(?<!\.)PixelRatio\b'
     'Settings' = '(?<!\.)Settings\b'
     'Systrace' = '(?<!\.)Systrace\b'
     'UIManager' = '(?<!\.)UIManager\b'
     'Vibration' = '(?<!\.)Vibration\b'
-    'Dimensions' = 'Dimensions\.'
 }
 
 function Get-UsedItems($content) {

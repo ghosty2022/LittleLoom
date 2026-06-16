@@ -1,14 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  TextInput,
-  RefreshControl,
-  Dimensions,
-  StatusBar,
-} from 'react-native';
+import { AutoHideFlatList } from '../../components/AutoHideFlatList';
+import { FadeIn, FadeInUp } from 'react-native-reanimated';
+import { useCommunity } from '../../context/CommunityContext';
+import { EmptyState } from '../../components/EmptyState';
+import { , Alert, Animated, Button, Dimensions, FlatList, RefreshControl, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';;
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';

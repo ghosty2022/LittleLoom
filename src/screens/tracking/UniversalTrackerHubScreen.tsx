@@ -7,20 +7,11 @@ import React, {
   useState,
   memo,
 } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  Dimensions,
-  StatusBar,
-  Modal,
-  ActivityIndicator,
-  Pressable,
-  type ViewStyle,
-} from 'react-native';
+import { , ActivityIndicator, Alert, Animated, Button, Dimensions, Modal, Pressable, ScrollView, Settings, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, type ViewStyle, View } from 'react-native';;
 import { LinearGradient } from 'expo-linear-gradient';
+import { FadeIn, FadeInDown, FadeInUp, SlideInRight, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
+import { EmptyState } from '../../components/EmptyState';
+import { showError } from '@/utils/alert';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics'; 
 import { Ionicons } from '@expo/vector-icons';
@@ -51,7 +42,7 @@ import { useCustomization } from '../../hooks/useCustomization';
 import { useTracker } from '../../context/TrackerContext';
 import { useBaby, type BabyProfile } from '../../context/BabyContext';
 import { useTrackerAchievements } from '../../hooks/useTrackerAchievements';
-import { SafeBabyAvatar } from '../../components/SafeAvatar';
+import { SafeBabyAvatarSafeAvatar } from '../../components/SafeAvatar';;
 import { useSweetAlert } from '../../components/SweetAlert';
 import { TimelinePicker } from '../../components/trackers/TimelinePicker';
 

@@ -1,14 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ActivityIndicator,
-  Easing,
-  Animated,
-  StatusBar,
-} from 'react-native';
+import { interpolate } from 'react-native-reanimated';
+import { showError } from '@/utils/alert';
+import { , ActivityIndicator, Alert, Animated, Button, Easing, ScrollView, Settings, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';;
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';

@@ -7,22 +7,9 @@ import React, {
   useState,
   memo,
 } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Modal,
-  Dimensions,
-  KeyboardAvoidingView,
-  Platform,
-  StatusBar,
-  ActivityIndicator,
-  Pressable,
-  type ViewStyle,
-  type TextStyle,
-} from 'react-native';
+import { , ActivityIndicator, Alert, Animated, Button, Dimensions, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, type TextStyle, type ViewStyle, View } from 'react-native';;
 import { LinearGradient } from 'expo-linear-gradient';
+import { FadeInDown, FadeInUp, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';

@@ -1,6 +1,11 @@
-import { StyleSheet } from 'react-native';
+import { StyleSheetActivityIndicator Alert Animated Button Dimensions FlatList Image Modal Platform RefreshControl ScrollView Switch Text TextInput TouchableOpacity View } from 'react-native';;
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { AutoHideFlatList } from '../../components/AutoHideFlatList';
+import { BlurView } from 'expo-blur';
+import { FadeIn, FadeInRight, FadeInUp, runOnJS, SlideInRight, useSharedValue, withSpring } from 'react-native-reanimated';
+import { EmptyState } from '../../components/EmptyState';
+import { AutoHideScrollView } from '../../components/AutoHideScrollView';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInUp, FadeInRight, FadeIn, SlideInRight, useSharedValue, withSpring, runOnJS } from 'react-native-reanimated';
 

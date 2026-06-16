@@ -1,4 +1,13 @@
-import { StyleSheet, Dimensions } from 'react-native';
+import {
+  StyleSheet,
+  Dimensions,
+  View,
+  Text,
+  TouchableOpacity,
+  ActivityIndicator,
+  RefreshControl,
+  StatusBar,
+} from 'react-native';
 import React, { useCallback, useEffect, useState } from 'react';
 
 import Animated, { FadeInUp } from 'react-native-reanimated';
@@ -17,9 +26,13 @@ import { useReportRoute } from '../../hooks/useReportRoute';
 import { useSafeCustomization } from '../../hooks/useSafeContexts';
 import { useUser } from '../../context/UserContext';
 import { showAlert } from '@/utils/alert';
-import AutoHideFlatList from '../../components/AutoHideFlatList';
-import { CommunityColors, CommunitySpacing, CommunityBorderRadius, CommunityShadows } from '../../constants/CommunityTheme';
-
+import { AutoHideFlatList } from '../../components/AutoHideScrollWrappers';
+import {
+  CommunityColors,
+  CommunitySpacing,
+  CommunityBorderRadius,
+  CommunityShadows,
+} from '../../theme/CommunityTheme';
 
 type TopicScreenProps = NativeStackScreenProps<CommunityStackParamList, 'Topic'>;
 
@@ -90,7 +103,19 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
         ...((communityProfile as any).bio && { bio: (communityProfile as any).bio }),
       });
     }
-  }, [communityProfile?.displayName, communityProfile?.handle, communityProfile?.avatar, (communityProfile as any)?.bio]);
+  }, [
+    communityProfile?.displayName,
+    communityProfile?.handle,
+    communityProfile?.avatar,
+    (communityProfile as any)?.bio,
+    currentUser?.id,
+    communityProfile,
+    syncUserProfileAcrossPosts,
+    currentUser?.displayName,
+    currentUser?.handle,
+    currentUser?.avatar,
+    currentUser?.bio,
+  ]);
 
   useEffect(() => {
     setIsLoading(true);
@@ -113,8 +138,7 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
     if (!topic) return;
 
     if (topic.isJoined) {
-
-showAlert(
+      showAlert(
         'Leave Topic',
         `Are you sure you want to leave ${topic.name}?`,
         [
@@ -315,8 +339,7 @@ showAlert(
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() =>
-
-showAlert('Topic Options', '', [
+              showAlert('Topic Options', '', [
                 { text: 'Cancel', style: 'cancel' },
                 { text: 'Share Topic', onPress: () => console.log('Share') },
                 {
@@ -361,8 +384,7 @@ showAlert('Topic Options', '', [
           <TouchableOpacity
             style={styles.sortButton}
             onPress={() =>
-
-showAlert('Sort by', '', [
+              showAlert('Sort by', '', [
                 { text: 'Cancel', style: 'cancel' },
                 { text: 'Trending', onPress: () => setSortBy('trending') },
                 { text: 'Newest', onPress: () => setSortBy('newest') },
@@ -386,7 +408,7 @@ showAlert('Sort by', '', [
           keyExtractor={(item) => item.id}
           contentContainerStyle={[
             styles.postsList,
-            { paddingBottom: NAV_PILL_TOTAL_HEIGHT + 20 }
+            { paddingBottom: NAV_PILL_TOTAL_HEIGHT + 20 },
           ]}
           showsVerticalScrollIndicator={false}
           refreshControl={
@@ -501,8 +523,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  postsList: { 
-    paddingHorizontal: CommunitySpacing.lg, 
+  postsList: {
+    paddingHorizontal: CommunitySpacing.lg,
   },
   postCard: {
     borderRadius: 20,

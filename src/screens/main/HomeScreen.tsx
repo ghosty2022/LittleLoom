@@ -1,21 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  StatusBar,
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  Dimensions,
-  Platform,
-  RefreshControl,
-  useColorScheme,
-  ActivityIndicator,
-  ImageBackground,
-  ScrollView,
-  FlatList,
-  TextInput,
-  Alert,
-} from 'react-native';
+import { FadeIn, FadeInDown, FadeInUp, interpolate, Layout, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
+import { useCustomization } from '../../hooks/useCustomization';
+import { EmptyState } from '../../components/EmptyState';
+import { useAuth } from '../../context/AuthContext';
+import { , ActivityIndicator, Alert, Animated, Button, Dimensions, FlatList, Image, ImageBackground, Modal, Platform, RefreshControl, ScrollView, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, useColorScheme, View } from 'react-native';;
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -44,7 +32,7 @@ import { useCommunity } from '../../context/CommunityContext';
 import { useAudio, SOUND_TRACKS } from '../../context/AudioContext';
 import { useMedia } from '../../context/MediaContext';
 
-import { SafeBabyAvatar, SafeParentAvatar } from '../../components/SafeAvatar';
+import { SafeAvatar, SafeBabyAvatar, SafeParentAvatar } from '../../components/SafeAvatar';;
 import { useSweetAlert } from '../../components/SweetAlert';
 import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
 

@@ -6,7 +6,6 @@ import {
   ViewStyle,
   NativeScrollEvent,
   NativeSyntheticEvent,
-  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigationVisibility, useTheme } from '../context/AppContext';
@@ -24,13 +23,25 @@ interface ScreenWrapperProps {
   extraBottomPadding?: number;
 }
 
-const DOCK_HEIGHT = 72; // Slightly reduced for tighter pill
-const COMMUNITY_BOTTOM = 0; // No extra padding — community screens are full-screen
+const DOCK_HEIGHT = 72;
+const COMMUNITY_BOTTOM = 0;
 
 const FULL_SCREEN_ROUTES = new Set([
-  'CommunitySplash', 'CommunityOnboarding', 'CreatePost', 'CommunityProfile', 
-  'Report', 'PostDetail', 'Chat', 'ChatList', 'Notifications',
-  'Topic', 'CommunityMemberProfile', 'Followers', 'Following', 'SearchUsers', 'BlockedUsers',
+  'CommunitySplash',
+  'CommunityOnboarding',
+  'CreatePost',
+  'CommunityProfile',
+  'Report',
+  'PostDetail',
+  'Chat',
+  'ChatList',
+  'Notifications',
+  'Topic',
+  'CommunityMemberProfile',
+  'Followers',
+  'Following',
+  'SearchUsers',
+  'BlockedUsers',
   'TopicMembers',
 ]);
 
@@ -46,10 +57,10 @@ export const ScreenWrapper: React.FC<ScreenWrapperProps> = ({
   extraBottomPadding = 0,
 }) => {
   const insets = useSafeAreaInsets();
-  const { isDark, colors } = useTheme();
-  const { handleScroll, isCommunityScreen, setCommunityScreen } = useNavigationVisibility();
+  const { colors } = useTheme();
+  const { handleScroll, isCommunityScreen } = useNavigationVisibility();
 
-  const routeName = useNavigationState(state => {
+  const routeName = useNavigationState((state) => {
     if (!state) return '';
     const route = state.routes[state.index];
     if (route.state) {
@@ -69,51 +80,60 @@ export const ScreenWrapper: React.FC<ScreenWrapperProps> = ({
   const isAtTopRef = useRef(true);
   const scrollDirectionRef = useRef<'up' | 'down'>('up');
   const accumulatedDeltaRef = useRef(0);
-  const hideThreshold = 60; // pixels to scroll before hiding
-  const showThreshold = 20; // pixels to scroll up before showing
+  const hideThreshold = 60;
+  const showThreshold = 20;
 
-  const handleScrollEvent = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-    const currentY = contentOffset.y;
-    const now = Date.now();
-    const deltaTime = now - lastTimeRef.current;
-    const deltaY = currentY - lastYRef.current;
-    const isAtTop = currentY <= 2;
-    const isAtBottom = currentY + layoutMeasurement.height >= contentSize.height - 2;
-    isAtTopRef.current = isAtTop;
+  const handleScrollEvent = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+      const currentY = contentOffset.y;
+      const now = Date.now();
+      const deltaTime = now - lastTimeRef.current;
+      const deltaY = currentY - lastYRef.current;
+      const isAtTop = currentY <= 2;
+      const isAtBottom = currentY + layoutMeasurement.height >= contentSize.height - 2;
+      isAtTopRef.current = isAtTop;
 
-    if (Math.abs(deltaY) > 0.5) {
-      scrollDirectionRef.current = deltaY > 0 ? 'down' : 'up';
-    }
-
-    if (scrollDirectionRef.current === 'down' && deltaY > 0) {
-      accumulatedDeltaRef.current += deltaY;
-    } else if (scrollDirectionRef.current === 'up' && deltaY < 0) {
-      accumulatedDeltaRef.current += Math.abs(deltaY);
-    } else {
-      accumulatedDeltaRef.current = Math.abs(deltaY);
-    }
-
-    const velocity = deltaTime > 0 ? Math.abs(deltaY / deltaTime) : 0;
-
-    if (!isFullScreen) {
-      if (isAtTop || isAtBottom) {
-        handleScroll(currentY, velocity, true);
-        accumulatedDeltaRef.current = 0;
-      } else if (scrollDirectionRef.current === 'down' && accumulatedDeltaRef.current > hideThreshold) {
-        handleScroll(currentY, velocity, false);
-        accumulatedDeltaRef.current = 0;
-      } else if (scrollDirectionRef.current === 'up' && accumulatedDeltaRef.current > showThreshold) {
-        handleScroll(currentY, velocity, true);
-        accumulatedDeltaRef.current = 0;
+      if (Math.abs(deltaY) > 0.5) {
+        scrollDirectionRef.current = deltaY > 0 ? 'down' : 'up';
       }
-    }
 
-    lastYRef.current = currentY;
-    lastTimeRef.current = now;
+      if (scrollDirectionRef.current === 'down' && deltaY > 0) {
+        accumulatedDeltaRef.current += deltaY;
+      } else if (scrollDirectionRef.current === 'up' && deltaY < 0) {
+        accumulatedDeltaRef.current += Math.abs(deltaY);
+      } else {
+        accumulatedDeltaRef.current = Math.abs(deltaY);
+      }
 
-    onScroll?.(event);
-  }, [handleScroll, isFullScreen, onScroll]);
+      const velocity = deltaTime > 0 ? Math.abs(deltaY / deltaTime) : 0;
+
+      if (!isFullScreen) {
+        if (isAtTop || isAtBottom) {
+          handleScroll(currentY, velocity, true);
+          accumulatedDeltaRef.current = 0;
+        } else if (
+          scrollDirectionRef.current === 'down' &&
+          accumulatedDeltaRef.current > hideThreshold
+        ) {
+          handleScroll(currentY, velocity, false);
+          accumulatedDeltaRef.current = 0;
+        } else if (
+          scrollDirectionRef.current === 'up' &&
+          accumulatedDeltaRef.current > showThreshold
+        ) {
+          handleScroll(currentY, velocity, true);
+          accumulatedDeltaRef.current = 0;
+        }
+      }
+
+      lastYRef.current = currentY;
+      lastTimeRef.current = now;
+
+      onScroll?.(event);
+    },
+    [handleScroll, isFullScreen, onScroll]
+  );
 
   useEffect(() => {
     lastYRef.current = 0;

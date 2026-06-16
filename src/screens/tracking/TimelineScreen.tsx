@@ -1,15 +1,9 @@
 
 import React, { useCallback, useMemo, useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Dimensions,
-  RefreshControl,
-  TextInput,
-  StatusBar,
-} from 'react-native';
+import { EmptyState } from '../../components/EmptyState';
+import { useCustomization } from '../../hooks/useCustomization';
+import { Extrapolation, FadeIn, FadeInDown, FadeInRight, FadeInUp, interpolate, Layout, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
+import { , Alert, Animated, Button, Dimensions, Modal, RefreshControl, ScrollView, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';;
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';

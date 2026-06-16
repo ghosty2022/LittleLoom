@@ -1,14 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Dimensions,
-  Switch,
-  Text,
-  TouchableOpacity,
-  View,
-  StatusBar,
-  StyleSheet,
-  ScrollView,
-} from 'react-native';
+import { FadeIn, FadeInUp, interpolate, Layout, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
+import { AutoHideScrollView } from '../../components/AutoHideScrollView';
+import { LoadingSpinner } from '../../components/LoadingSpinner';
+import { , Alert, Animated, Button, Dimensions, Image, Modal, ScrollView, Settings, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';;
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';

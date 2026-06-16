@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 
+import { FadeInUp } from 'react-native-reanimated';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 
 import { LinearGradient } from 'expo-linear-gradient';
@@ -14,18 +15,7 @@ import { BlurView } from 'expo-blur';
 import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
 import { showAlert } from '@/utils/alert';
 
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  TextInput,
-  StatusBar,
-  Platform,
-  KeyboardAvoidingView,
-  Linking,
-  StyleSheet,
-  useSafeAreaInsets,
-} from 'react-native';
+import { , Alert, Animated, Button, KeyboardAvoidingView, Linking, Platform, ScrollView, Settings, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, useSafeAreaInsets, View } from 'react-native';;
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ContactSupport'>;
 

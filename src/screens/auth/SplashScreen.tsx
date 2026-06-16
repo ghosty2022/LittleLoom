@@ -1,5 +1,6 @@
 
 import React, { useEffect, useRef, useCallback } from 'react';
+import { interpolate } from 'react-native-reanimated';
 import {
   View,
   Text,

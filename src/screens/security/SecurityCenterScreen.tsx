@@ -1,22 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  Dimensions,
-  StatusBar,
-  Animated,
-  TextInput,
-  Alert,
-  Switch,
-  Modal,
-  Pressable,
-  Platform,
-  KeyboardAvoidingView,
-  ActivityIndicator,
-} from 'react-native';
+import { showError } from '@/utils/alert';
+import { FadeInDown, FadeInUp, interpolate, Layout, SlideInRight, SlideOutLeft, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
+import { , ActivityIndicator, Alert, Animated, Dimensions, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Settings, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';;
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';

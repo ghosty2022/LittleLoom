@@ -1,17 +1,7 @@
 import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  Modal,
-  TextInput,
-  Alert,
-  Dimensions,
-  RefreshControl,
-  Platform,
-} from 'react-native';
+import { EmptyState } from '../../components/EmptyState';
+import { FadeInDown, FadeInUp, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import { , Alert, Animated, Button, Dimensions, Modal, Platform, RefreshControl, ScrollView, Settings, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';;
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';

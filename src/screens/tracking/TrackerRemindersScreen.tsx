@@ -1,19 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Switch,
-  Dimensions,
-  Platform,
-  Alert,
-  TextInput,
-  StatusBar,
-  SectionList,
-  ActivityIndicator,
-  Vibration,
-} from 'react-native';
+import { EmptyState } from '../../components/EmptyState';
+import { Extrapolation, FadeIn, FadeInDown, FadeInLeft, FadeInRight, FadeInUp, interpolate, Layout, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
+import { , ActivityIndicator, Alert, Animated, Button, Dimensions, Modal, Platform, ScrollView, SectionList, Settings, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, Vibration, View } from 'react-native';;
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { showAlert } from '@/utils/alert';

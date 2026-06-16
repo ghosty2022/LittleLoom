@@ -1,17 +1,6 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  ScrollView,
-  StyleSheet,
-  Dimensions,
-  Modal,
-  TextInput,
-  RefreshControl,
-  Image,
-  StatusBar,
-} from 'react-native';
+import { Extrapolation, FadeIn, FadeInDown, FadeInUp, interpolate, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
+import { , Alert, Animated, Button, Dimensions, Image, Modal, RefreshControl, ScrollView, Settings, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';;
 
 import { BlurView } from 'expo-blur';
 import { differenceInDays, differenceInMonths, format, isValid, parseISO } from 'date-fns';

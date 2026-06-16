@@ -1,25 +1,10 @@
-import {
-  ActivityIndicator,
-  Dimensions,
-  StyleSheet,
-  FlatList,
-  GestureHandlerRootView,
-  useSafeAreaInsets,
-  Image,
-  Modal,
-  Platform,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  Share,
-  StatusBar,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { , ActivityIndicator, Alert, Animated, Button, Dimensions, FlatList, GestureHandlerRootView, Image, Modal, Platform, Pressable, RefreshControl, ScrollView, Share, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, useSafeAreaInsets, View } from 'react-native';;
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { BlurView } from 'expo-blur';
+import { Easing, FadeIn, FadeInUp, FadeOut, interpolate, interpolateColor, Layout, runOnJS, SlideInDown, SlideOutUp, useAnimatedReaction, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue, withRepeat } from 'react-native-reanimated';
+import { useCommunity } from '../../context/CommunityContext';
+import { EmptyState } from '../../components/EmptyState';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useVideoPlayer, VideoView } from 'expo-video';

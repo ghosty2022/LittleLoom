@@ -1,6 +1,11 @@
-import { StyleSheet } from 'react-native';
+import { StyleSheetActivityIndicator Alert Button Dimensions FlatList Image KeyboardAvoidingView Modal Platform ScrollView Share Switch TextInput TouchableOpacity View } from 'react-native';;
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { AutoHideFlatList } from '../../components/AutoHideFlatList';
+import { BlurView } from 'expo-blur';
+import { FadeIn, FadeInDown, FadeInRight, FadeInUp, Layout, runOnJS, SlideInLeft, SlideInRight, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import { AutoHideScrollView } from '../../components/AutoHideScrollView';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { format, isSameWeek, isToday, isYesterday } from 'date-fns';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as FileSystem from 'expo-file-system';

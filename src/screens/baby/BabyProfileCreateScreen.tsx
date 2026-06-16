@@ -1,18 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  TextInput,
-  Platform,
-  KeyboardAvoidingView,
-  Dimensions,
-  StatusBar,
-  Pressable,
-  Modal,
-  ActivityIndicator,
-} from 'react-native';
+import { showError } from '@/utils/alert';
+import { FadeIn, FadeInUp } from 'react-native-reanimated';
+import { , ActivityIndicator, Alert, Animated, Button, Dimensions, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Settings, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';;
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -32,7 +21,7 @@ import { useCustomization } from '../../hooks/useCustomization';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
 import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
-import { SafeBabyAvatar } from '../../components/SafeAvatar';
+import { SafeBabyAvatarSafeAvatar } from '../../components/SafeAvatar';;
 
 const { width } = Dimensions.get('window');
 

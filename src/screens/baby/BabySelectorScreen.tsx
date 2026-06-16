@@ -1,6 +1,9 @@
-import { StyleSheet } from 'react-native';
+import { StyleSheetAlert Animated Button Dimensions ScrollView Switch Text TouchableOpacity View } from 'react-native';;
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { BlurView } from 'expo-blur';
+import { FadeIn, FadeInUp, Layout } from 'react-native-reanimated';
+import { AutoHideScrollView } from '../../components/AutoHideScrollView';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInUp, FadeIn, Layout, useSharedValue, useAnimatedStyle, withSpring, withTiming } from 'react-native-reanimated';
 
@@ -12,7 +15,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import type { RootStackParamList } from '../../types/navigation';
 
-import { SafeBabyAvatar } from '../../components/SafeAvatar';
+import { SafeBabyAvatarSafeAvatar } from '../../components/SafeAvatar';;
 import { STORAGE_KEYS, useBaby } from '../../context/BabyContext';
 import { useAuth } from '../../context/AuthContext';
 import { useCustomization } from '../../hooks/useCustomization';
@@ -20,7 +23,7 @@ import { useFamily } from '../../context/FamilyContext';
 import { useSweetAlert } from '../../components/SweetAlert';
 
 import { LiquidDots } from '../../components/UniversalSpinner'; // <-- IMPORT ADDED
-import { showAlert } from '@/utils/alert';
+import { showAlertshowError } from '@/utils/alert';;
 
 const { width } = Dimensions.get('window');
 
