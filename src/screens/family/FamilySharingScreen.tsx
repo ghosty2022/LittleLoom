@@ -1,4 +1,22 @@
-import { StyleSheet, ActivityIndicator ,Alert, Button, Dimensions ,Image ,Linking, Modal, Platform, RefreshControl, ScrollView, Settings ,Share, Switch ,TextInput ,TouchableOpacity ,View } from 'react-native';;
+import {
+  StyleSheet,
+  ActivityIndicator,
+  Alert,
+  Button,
+  Dimensions,
+  Image,
+  Linking,
+  Modal,
+  Platform,
+  RefreshControl,
+  ScrollView,
+  Share,
+  Switch,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { BlurView } from 'expo-blur';
@@ -13,6 +31,7 @@ import * as ImagePicker from 'expo-image-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import type { RootStackParamList } from '../../types/navigation';
+import { UserRole, FamilyMember, Permission, ROLE_LABELS, ROLE_PERMISSIONS } from '../../types/roles'; // <-- add this
 
 import { useAuth } from '../../context/AuthContext';
 import { useBaby } from '../../context/BabyContext';
@@ -21,7 +40,6 @@ import { useFamily } from '../../context/FamilyContext';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { useUser } from '../../context/UserContext';
 import { showAlert } from '@/utils/alert';
-
 type FamilySharingScreenProps = NativeStackScreenProps<RootStackParamList, 'FamilySharing'>;
 
 const AnimatedScrollView = Animated.ScrollView;
