@@ -250,7 +250,8 @@ foreach ($file in $files) {
             }
             if ($usageLines.Count -gt 0) {
                 $firstFew = $usageLines | Select-Object -First 3
-                Write-Host "   $item used on line(s): $($firstFew -join ', ')$($if($usageLines.Count -gt 3){'...'})" -ForegroundColor DarkGray
+                $ellipsis = if ($usageLines.Count -gt 3) { '...' } else { '' }
+                Write-Host "   $item used on line(s): $($firstFew -join ', ')$ellipsis" -ForegroundColor DarkGray
             }
         }
     }
