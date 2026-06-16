@@ -1,10 +1,11 @@
-import { StyleSheet } from 'react-native';
+import { StyleSheet, Dimensions } from 'react-native';
 import React, { useCallback, useEffect, useState } from 'react';
 
 import Animated, { FadeInUp } from 'react-native-reanimated';
 
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import type { CommunityStackParamList } from '../../types/navigation';
@@ -16,6 +17,9 @@ import { useReportRoute } from '../../hooks/useReportRoute';
 import { useSafeCustomization } from '../../hooks/useSafeContexts';
 import { useUser } from '../../context/UserContext';
 import { showAlert } from '@/utils/alert';
+import AutoHideFlatList from '../../components/AutoHideFlatList';
+import { CommunityColors, CommunitySpacing, CommunityBorderRadius, CommunityShadows } from '../../constants/CommunityTheme';
+
 
 type TopicScreenProps = NativeStackScreenProps<CommunityStackParamList, 'Topic'>;
 
