@@ -1,4 +1,4 @@
-import { StyleSheetActivityIndicator Alert Animated Button Dimensions Image LogBox Modal RefreshControl ScrollView Share Switch TextInput TouchableOpacity useColorScheme View } from 'react-native';;
+import { StyleSheetActivityIndicator ,Alert ,Animated ,Button, Dimensions ,Image, LogBox ,Modal, RefreshControl, ScrollView ,Share ,Switch ,TextInput ,TouchableOpacity, useColorScheme, View } from 'react-native';;
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { BlurView } from 'expo-blur';
@@ -22,17 +22,6 @@ import { useBaby } from '../../context/BabyContext';
 import { useMedia } from '../../context/MediaContext';
 import { useSecurity } from '../../context/SecurityContext';
 import { useSweetAlert } from '../../components/SweetAlert';
-
-import Reanimated, {
-  FadeIn,
-  FadeInUp,
-  FadeInDown,
-  Layout,
-  useSharedValue,
-  withTiming,
-  withSpring,
-  useAnimatedStyle,
-} from 'react-native-reanimated';
 
 import { showAlert } from '@/utils/alert';
 

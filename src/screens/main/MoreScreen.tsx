@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FadeIn, FadeInUp, interpolate, Layout, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import {  AlertAnimated, Button, Dimensions, Image, Modal, ScrollView, Settings, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';;

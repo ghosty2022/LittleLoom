@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FadeInDown, FadeInLeft, FadeInUp, interpolate, Layout, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { useBaby } from '../../context/BabyContext';
 import {  AlertAnimated, Button, Dimensions, FlatList, Modal, Platform, RefreshControl, ScrollView, Settings, Share, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';;
 import { LinearGradient } from 'expo-linear-gradient';

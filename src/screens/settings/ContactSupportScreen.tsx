@@ -1,13 +1,9 @@
 import React, { useState } from 'react';
-
-import { FadeInUp } from 'react-native-reanimated';
 import Animated, { FadeInUp } from 'react-native-reanimated';
-
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-
 import type { RootStackParamList } from '../../types/navigation';
 
 import { useCustomization } from '../../hooks/useCustomization';

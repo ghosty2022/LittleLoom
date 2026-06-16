@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { FadeIn, FadeInUp, Layout, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import {  ActivityIndicator, AlertAnimated, BackHandler, Button, Dimensions, Image, Pressable, ScrollView, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';;
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
   FadeInUp,
   FadeIn,
+  Layout,
   useSharedValue,
   useAnimatedStyle,
   withTiming,

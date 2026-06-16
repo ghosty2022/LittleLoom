@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FadeIn, FadeInDown, FadeInUp, interpolate, Layout, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { useCustomization } from '../../hooks/useCustomization';
 import { EmptyState } from '../../components/EmptyState';
 import { useAuth } from '../../context/AuthContext';

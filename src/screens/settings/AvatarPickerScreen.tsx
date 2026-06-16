@@ -1,5 +1,4 @@
 import { useSweetAlert } from '../../components/SweetAlert';
-import { FadeIn, FadeInDown, FadeInUp, FadeOut, FadeOutDown, interpolate, Layout, SlideInRight, SlideOutLeft, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AlertAnimated, Dimensions, Image, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';;
 import { LinearGradient } from 'expo-linear-gradient';
