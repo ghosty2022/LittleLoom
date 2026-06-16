@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert } from 'react-native';
 
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -6,9 +7,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useBaby } from './BabyContext';
 import { UserRole, Permission, ROLE_PERMISSIONS, FamilyMember } from '../types/roles';
 import { useUser } from './UserContext';
-import { showAlert } from '@/utils/alert';
 
-export { FamilyMember } from '../types/roles';
+export type { FamilyMember } from '../types/roles';
 
 const PARENT2_PROFILE_KEY = 'littleloom_parent2_profile_secure';
 
@@ -43,11 +43,10 @@ const generateId = (): string => {
   return `${timestamp}-${random}`;
 };
 
-// ✅ Safe alert that doesn't depend on external hooks
+// Safe alert that doesn't depend on external hooks
 const showAlert = (title: string, message: string) => {
-  if (typeof Alert !== 'undefined') {
-
-showAlert(title, message);
+  if (typeof Alert !== 'undefined' && Alert.alert) {
+    Alert.alert(title, message);
   } else {
     console.warn(`[FamilyContext] ${title}: ${message}`);
   }
@@ -56,7 +55,7 @@ showAlert(title, message);
 export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { profile, permissions: myPermissions, isLoading: userLoading } = useUser();
   const { currentBaby, updateBaby, babies, switchBaby } = useBaby();
-  
+
   const [state, setState] = useState<FamilyState>({
     isLoading: false,
     members: [],
@@ -86,7 +85,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       loadFamily();
       return;
     }
-    
+
     initRef.current = true;
     loadFamily();
   }, [currentBaby?.id, userLoading, profile?.id]);
@@ -94,12 +93,12 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const loadFamily = useCallback(async () => {
     if (!currentBaby) return;
     if (userLoading) return;
-    
+
     setState(prev => ({ ...prev, isLoading: true }));
-    
+
     try {
       const members: FamilyMember[] = [];
-      
+
       if (currentBaby.parent1Id && profile) {
         members.push({
           id: currentBaby.parent1Id,
@@ -199,7 +198,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     const canManage = myPermissions?.manageFamily ?? false;
-      
+
     if (!canManage) {
       showAlert('Error', 'You do not have permission to update family members');
       return false;
@@ -260,7 +259,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const updateGuardianProfile = useCallback(async (memberId: string, updates: Partial<FamilyMember>): Promise<boolean> => {
     const canManage = myPermissions?.manageFamily ?? false;
-      
+
     if (!canManage) {
       showAlert('Error', 'Permission denied');
       return false;
@@ -278,7 +277,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       await AsyncStorage.setItem(guardiansKey, JSON.stringify(updated));
       await loadFamily();
-      
+
       return true;
     } catch (error) {
       showAlert('Error', 'Failed to update guardian');
@@ -288,7 +287,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const inviteMember = useCallback(async (email: string, role: UserRole, relationship: string) => {
     const canManage = myPermissions?.manageFamily ?? false;
-      
+
     if (!canManage || !profile || !currentBaby) return false;
 
     if (!EMAIL_REGEX.test(email)) {
@@ -314,24 +313,24 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const guardiansKey = `littleloom_guardians_${currentBaby.id}`;
       const existing = await AsyncStorage.getItem(guardiansKey);
       const guardians: FamilyMember[] = existing ? JSON.parse(existing) : [];
-      
+
       const existingInvite = guardians.find(g => g.email.toLowerCase() === email.toLowerCase());
       if (existingInvite) {
         showAlert('Duplicate Invite', 'An invitation has already been sent to this email');
         return false;
       }
-      
+
       guardians.push(newMember);
 
       await AsyncStorage.setItem(guardiansKey, JSON.stringify(guardians));
-      
+
       const updatedGuardianIds = [...(currentBaby.guardianIds || []), newMember.id];
       await updateBaby(currentBaby.id, { guardianIds: updatedGuardianIds });
 
       await loadFamily();
-      
+
       showAlert('Invitation Sent', `An invitation has been sent to ${email}`);
-      
+
       return true;
     } catch (error) {
       showAlert('Error', 'Failed to send invitation');
@@ -341,7 +340,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const removeMember = useCallback(async (memberId: string) => {
     const canManage = myPermissions?.manageFamily ?? false;
-      
+
     if (!canManage || !currentBaby) return false;
 
     if (profile?.id === memberId) {
@@ -352,7 +351,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     try {
       const guardiansKey = `littleloom_guardians_${currentBaby.id}`;
       const existing = await AsyncStorage.getItem(guardiansKey);
-      
+
       if (existing) {
         const guardians: FamilyMember[] = JSON.parse(existing);
         const filtered = guardians.filter(g => g.id !== memberId);
@@ -384,7 +383,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const resendInvite = useCallback(async (memberId: string): Promise<boolean> => {
     const member = state.members.find(m => m.id === memberId);
     if (!member) return false;
-    
+
     showAlert('Invitation Resent', `A new invitation has been sent to ${member.email}`);
     return true;
   }, [state.members]);
