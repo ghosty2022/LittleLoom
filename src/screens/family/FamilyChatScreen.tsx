@@ -31,7 +31,7 @@ import Animated, {
 } from 'react-native-reanimated';  // FIXED: Removed Layout
 
 import { Audio } from 'expo-av';  // FIXED: Added missing Audio import
-import { showAlert } from '../../utils/alert';
+import { showAlert } from '@/utils/alert';
 
 type FamilyChatScreenProps = NativeStackScreenProps<RootStackParamList, 'FamilyChat'>;
 

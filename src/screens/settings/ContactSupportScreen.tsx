@@ -11,7 +11,7 @@ import type { RootStackParamList } from '../../types/navigation';
 
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
-import { showAlert } from '../../utils/alert';
+import { showAlert } from '@/utils/alert';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ContactSupport'>;
 

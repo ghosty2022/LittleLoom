@@ -14,7 +14,7 @@ import { showConfirmModal, showErrorModal } from '../../utils/modal';
 import { useApp } from '../../context/AppContext';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { useUser } from '../../context/UserContext';
-import { showAlert } from '../../utils/alert';
+import { showAlert } from '@/utils/alert';
 import Animated, {
 
   FadeInUp,

@@ -1,5 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
-
+import { Dimensions, Switch, Text, TouchableOpacity, View, StatusBar, StyleSheet, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInUp, FadeIn, useSharedValue, useAnimatedStyle, withSpring, withSequence, withTiming } from 'react-native-reanimated';
 
@@ -12,7 +11,7 @@ import type { RootStackParamList } from '../../types/navigation';
 import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
-import { showAlert } from '../../utils/alert';
+import { showAlert } from '@/utils/alert';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'BackupRestore'>;
 

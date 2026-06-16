@@ -17,7 +17,7 @@ import { showConfirmModal, showErrorModal, showSuccessModal } from '../../utils/
 import { useActivity } from '../../context/ActivityContext';
 import { useAuth } from '../../context/AuthContext';
 import { useUser } from '../../context/UserContext';
-import { showAlert } from '../../utils/alert';
+import { showAlert } from '@/utils/alert';
 import Animated, {
 
   FadeInUp,

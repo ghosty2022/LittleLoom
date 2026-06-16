@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import { showAlert } from '../../utils/alert';
+import { showAlert } from '@/utils/alert';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
   FadeIn,

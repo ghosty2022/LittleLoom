@@ -15,7 +15,7 @@ import { useAutoHideNav } from '../../hooks/useAutoHideNav';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { useUser } from '../../context/UserContext';
-import { showAlert } from '../../utils/alert';
+import { showAlert } from '@/utils/alert';
 import Animated, {
 
   FadeInUp,

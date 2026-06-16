@@ -46,7 +46,7 @@ import Animated, {
   withSpring,
   runOnJS,
 } from 'react-native-reanimated';
-import { showAlert } from '../../utils/alert';
+import { showAlert } from '@/utils/alert';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBaby } from '@/context/BabyContext';
 import type { GrowthMeasurement, BabyProfile } from '@/types';

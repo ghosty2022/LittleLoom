@@ -13,7 +13,7 @@ import { UniversalSpinner } from '../../components/UniversalSpinner';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { useUser } from '../../context/UserContext';
-import { showAlert } from '../../utils/alert';
+import { showAlert } from '@/utils/alert';
 // src/screens/community/CommunityMemberProfileScreen.tsx
 
 import Animated, {

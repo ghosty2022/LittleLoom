@@ -30,7 +30,7 @@ import Reanimated, {
   useAnimatedStyle,
 } from 'react-native-reanimated';
 
-import { showAlert } from '../../utils/alert';
+import { showAlert } from '@/utils/alert';
 
 const { width, height } = Dimensions.get('window');
 const COLUMN_COUNT = 3;

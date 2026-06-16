@@ -11,7 +11,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSecurity } from '../../context/SecurityContext';
 import { useSweetAlert } from '../../components/SweetAlert';
-import { showAlert } from '../../utils/alert';
+import { showAlert } from '@/utils/alert';
 
 type SecurityLockScreenProps = NativeStackScreenProps<RootStackParamList, 'SecurityLock'>;
 

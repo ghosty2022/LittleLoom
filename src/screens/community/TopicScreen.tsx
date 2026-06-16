@@ -14,7 +14,7 @@ import { useAutoHideNav } from '../../hooks/useAutoHideNav';
 import { useReportRoute } from '../../hooks/useReportRoute';
 import { useSafeCustomization } from '../../hooks/useSafeContexts';
 import { useUser } from '../../context/UserContext';
-import { showAlert } from '../../utils/alert';
+import { showAlert } from '@/utils/alert';
 
 type TopicScreenProps = NativeStackScreenProps<CommunityStackParamList, 'Topic'>;
 

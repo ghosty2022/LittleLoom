@@ -19,7 +19,7 @@ import { useFamily } from '../../context/FamilyContext';
 import { useSweetAlert } from '../../components/SweetAlert';
 
 import { LiquidDots } from '../../components/UniversalSpinner'; // <-- IMPORT ADDED
-import { showAlert } from '../../utils/alert';
+import { showAlert } from '@/utils/alert';
 
 const { width } = Dimensions.get('window');
 

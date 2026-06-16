@@ -16,7 +16,7 @@ import { FamilyChat, FamilyMessage, useFamilyChat } from '../../context/FamilyCh
 import { FamilyMember, useFamily } from '../../context/FamilyContext';
 import { useAuth } from '../../context/AuthContext';
 import { useCustomization } from '../../hooks/useCustomization';
-import { showAlert } from '../../utils/alert';
+import { showAlert } from '@/utils/alert';
 
 type FamilyChatListScreenProps = NativeStackScreenProps<
   RootStackParamList,

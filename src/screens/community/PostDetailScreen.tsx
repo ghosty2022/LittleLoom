@@ -12,7 +12,7 @@ import { Comment, Post, useCommunity } from '../../context/CommunityContext';
 import { CommunityBorderRadius, CommunityColors, CommunityShadows, CommunitySpacing } from '../../theme/CommunityTheme';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { useCustomization } from '../../hooks/useCustomization';
-import { showAlert } from '../../utils/alert';
+import { showAlert } from '@/utils/alert';
 
 type PostDetailScreenProps = NativeStackScreenProps<CommunityStackParamList, 'PostDetail'>;
 

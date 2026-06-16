@@ -14,7 +14,7 @@ import { useCustomization } from '../../hooks/useCustomization';
 import { useFamily } from '../../context/FamilyContext';
 import { useUser } from '../../context/UserContext';
 
-import { showAlert } from '../../utils/alert';
+import { showAlert } from '@/utils/alert';
 import Animated, {
   FadeInUp,
   useSharedValue,

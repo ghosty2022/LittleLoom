@@ -1,10 +1,20 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-
+import {
+  Dimensions,
+  Switch,
+  Text,
+  TouchableOpacity,
+  View,
+  StatusBar,
+  StyleSheet,
+  ScrollView,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-
+import { BlurView } from 'expo-blur';
 import type { FamilyMember } from '../../types/roles';
 import type { RootStackParamList } from '../../types/navigation';
 
@@ -33,7 +43,7 @@ import Animated, {
   Layout,
 } from 'react-native-reanimated';
 
-import { showAlert } from '../../utils/alert';
+import { showAlert } from '@/utils/alert';
 
 type SettingsScreenProps = NativeStackScreenProps<RootStackParamList, 'Main'>;
 
