@@ -10,7 +10,7 @@ export const useTrackedScroll = (
     velocityThreshold?: number;
   }
 ) => {
-  const { handleScroll, isCommunityScreen } = useSafeApp();
+  const safeApp = useSafeApp();
   const lastY = useRef(0);
   const lastTime = useRef(Date.now());
   const lastProcessedY = useRef(0);
@@ -24,6 +24,11 @@ export const useTrackedScroll = (
     velocityThreshold = 1.2,
   } = options || {};
 
+  // Guard: if useSafeApp returns invalid data, return a no-op function
+  const handleScroll = safeApp?.handleScroll;
+  const isCommunityScreen = safeApp?.isCommunityScreen ?? false;
+  const hasValidHandler = typeof handleScroll === 'function';
+
   const onScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const now = Date.now();
     const currentY = event.nativeEvent.contentOffset.y;
@@ -34,19 +39,23 @@ export const useTrackedScroll = (
     lastY.current = currentY;
     lastTime.current = now;
 
+    // Always call user's onScroll if it's a function
+    if (typeof userOnScroll === 'function') {
+      userOnScroll(event);
+    }
+
+    // If no valid app scroll handler, skip nav tracking
+    if (!hasValidHandler) {
+      return;
+    }
+
     if (isCommunityScreen) {
-      if (typeof userOnScroll === 'function') {
-        userOnScroll(event);
-      }
       return;
     }
 
     const deltaTime = now - lastProcessedTime.current;
 
     if (deltaTime < 12) {
-      if (typeof userOnScroll === 'function') {
-        userOnScroll(event);
-      }
       return;
     }
 
@@ -75,11 +84,7 @@ export const useTrackedScroll = (
 
     lastProcessedY.current = currentY;
     lastProcessedTime.current = now;
-
-    if (typeof userOnScroll === 'function') {
-      userOnScroll(event);
-    }
-  }, [handleScroll, userOnScroll, isCommunityScreen, hideThreshold, showThreshold, velocityThreshold]);
+  }, [handleScroll, userOnScroll, isCommunityScreen, hideThreshold, showThreshold, velocityThreshold, hasValidHandler]);
 
   return onScroll;
 };
