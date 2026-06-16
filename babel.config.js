@@ -1,4 +1,3 @@
-// babel.config.js
 module.exports = function (api) {
   api.cache(true);
 
@@ -6,10 +5,15 @@ module.exports = function (api) {
     presets: ['babel-preset-expo'],
     plugins: [
       'react-native-reanimated/plugin',
-      // Enable lazy imports
       '@babel/plugin-syntax-dynamic-import',
-      // Remove console logs in production (optional but recommended)
       ['transform-remove-console', { exclude: ['error', 'warn'] }],
+      ['module-resolver', {
+        root: ['./src'],
+        alias: {
+          '@': './src',
+        },
+        extensions: ['.ts', '.tsx', '.js', '.jsx', '.json'],
+      }],
     ],
   };
 };
