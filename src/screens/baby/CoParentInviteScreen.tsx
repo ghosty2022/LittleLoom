@@ -1,6 +1,5 @@
 import React, { useCallback } from 'react';
-import { FadeIn, FadeInUp } from 'react-native-reanimated';
-import { Animated, Button, Settings, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';;
+import { Button, Settings, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';;
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';

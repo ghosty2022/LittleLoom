@@ -1,8 +1,7 @@
-import { StyleSheetAlert Animated Button Dimensions ScrollView Switch Text TouchableOpacity View } from 'react-native';;
+import { StyleSheetAlert, Button ,Dimensions, ScrollView, Switch ,Text ,TouchableOpacity, View } from 'react-native';;
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { BlurView } from 'expo-blur';
-import { FadeIn, FadeInUp, Layout } from 'react-native-reanimated';
 import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInUp, FadeIn, Layout, useSharedValue, useAnimatedStyle, withSpring, withTiming } from 'react-native-reanimated';

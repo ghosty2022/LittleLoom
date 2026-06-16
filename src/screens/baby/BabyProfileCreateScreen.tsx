@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { showError } from '@/utils/alert';
-import { FadeIn, FadeInUp } from 'react-native-reanimated';
 import {  ActivityIndicator, AlertAnimated, Button, Dimensions, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Settings, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';;
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
