@@ -1,4 +1,24 @@
-import { StyleSheet } from 'react-native';
+// BEFORE (broken)
+import {
+  ActivityIndicator,
+  Dimensions,
+  FlatList,
+  GestureHandlerRootView,
+  useSafeAreaInsets,
+  StyleSheet, 
+  Image,
+  Modal,
+  Platform,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  Share,
+  StatusBar,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Ionicons } from '@expo/vector-icons';

@@ -11,7 +11,7 @@ import type { RootStackParamList } from '../../types/navigation';
 
 import { useCustomization } from '../../hooks/useCustomization';
 import { BlurView } from 'expo-blur';
-import AutoHideScrollView from '../../components/AutoHideScrollView';
+import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
 import { showAlert } from '@/utils/alert';
 
 import {
