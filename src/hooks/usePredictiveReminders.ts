@@ -1,9 +1,9 @@
-import { useMemo, useCallback } from 'react';
+import { useMemo } from 'react';
 import { differenceInHours, differenceInDays, differenceInMonths, addHours, addDays, format } from 'date-fns';
 
 // FIX: Import directly from BabyContext instead of deleted useBabyContext
 import { useBaby } from '@/context/BabyContext';
-import type { GrowthIndex } from './useGrowthIntelligence';
+import { useTracker } from './useTrackerContext';
 
 export interface PredictiveReminder {
   id: string;

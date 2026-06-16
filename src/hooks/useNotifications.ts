@@ -1,4 +1,4 @@
-import React from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
@@ -242,9 +242,9 @@ class NotificationService {
 export const notificationService = NotificationService.getInstance();
 
 export function useNotifications() {
-  const [isEnabled, setIsEnabled] = React.useState(true);
+  const [isEnabled, setIsEnabled] = useState(true);
 
-  React.useEffect(() => {
+  useEffect(() => {
     const checkSettings = async () => {
       try {
         const useCustomization = await getCustomization();
@@ -257,20 +257,20 @@ export function useNotifications() {
     checkSettings();
   }, []);
 
-  const schedule = React.useCallback(async (options: ScheduleOptions) => {
+  const schedule = useCallback(async (options: ScheduleOptions) => {
     if (!isEnabled) return null;
     return notificationService.scheduleLocalNotification(options);
   }, [isEnabled]);
 
-  const cancel = React.useCallback((id: string) => {
+  const cancel = useCallback((id: string) => {
     return notificationService.cancelNotification(id);
   }, []);
 
-  const cancelAll = React.useCallback(() => {
+  const cancelAll = useCallback(() => {
     return notificationService.cancelAllNotifications();
   }, []);
 
-  const scheduleActivity = React.useCallback((type: string, babyName: string, minutes: number, details?: string) => {
+  const scheduleActivity = useCallback((type: string, babyName: string, minutes: number, details?: string) => {
     if (!isEnabled) return Promise.resolve(null);
     return notificationService.scheduleActivityReminder(type, babyName, minutes, details);
   }, [isEnabled]);

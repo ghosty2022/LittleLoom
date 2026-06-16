@@ -1,13 +1,22 @@
-import { useCallback, useMemo } from 'react';
-import { differenceInMonths, differenceInDays, differenceInHours, subDays, subMonths } from 'date-fns';
+import {
+  useCallback,
+  useMemo,
+} from 'react';
+import {
+  differenceInMonths,
+  differenceInDays,
+  differenceInHours,
+  subDays,
+  subMonths,
+} from 'date-fns';
 
 // FIX: Import directly from context files, NOT from hook wrappers
 import { useTracker } from './useTrackerContext';
 import { useBaby } from '@/context/BabyContext';
 import { TrackerEntry } from '@/types/trackers';
-import { 
-  calculatePercentilePrecise, 
-  calculateZScore, 
+import {
+  calculatePercentilePrecise,
+  calculateZScore,
   zScoreToPercentile,
   getGrowthStatus,
   calculateGrowthVelocity,
@@ -15,7 +24,7 @@ import {
   predictGrowth,
   WHO_BOY_LMS,
   WHO_GIRL_LMS,
-  LMSParams
+  LMSParams,
 } from '@/hooks/useWHOGrowthCalculator';
 
 export interface SubScore {

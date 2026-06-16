@@ -26,6 +26,14 @@ import {
 // FIX: Import directly from context sources to avoid circular deps
 import { useTracker } from './useTrackerContext';
 import { useBaby } from '@/context/BabyContext';
+import {
+  TrackerEntry,
+  TrackerStreak,
+  TrackerInsight,
+  UnifiedTrackerConfig,
+  ReminderRule,
+  FieldConfig,
+} from '@/types/trackers';
 
 // FIX: Use safe dynamic requires to prevent circular dependency crashes
 const useGrowthIntelligenceSafe = () => {
@@ -54,15 +62,6 @@ const useTimelineCorrelationsSafe = () => {
     return { correlations: [], isLoading: false };
   }
 };
-
-import {
-  TrackerEntry,
-  TrackerStreak,
-  TrackerInsight,
-  UnifiedTrackerConfig,
-  ReminderRule,
-  FieldConfig,
-} from '@/types/trackers';
 
 /* ═══════════════════════════════════════════════════════════════
    TYPES
