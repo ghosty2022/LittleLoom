@@ -1,10 +1,10 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-
+import { AppState, AppStateStatus } from 'react-native'; // <-- add this line
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { useAuth } from './AuthContext';
-import { useSweetAlert } from '../../components/SweetAlert';
+import { useSweetAlert } from '../components/SweetAlert';
 import { showAlert } from '@/utils/alert';
 
 const STORAGE_KEYS = {
@@ -426,6 +426,7 @@ const validateTopicIds = (topicIds: string[]): string[] => {
 
 export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { userProfile, isAuthenticated, isLoading: authLoading } = useAuth();
+  const sweetAlert = useSweetAlert(); 
 
   const [state, setState] = useState<CommunityState>({
     posts: [],

@@ -1,4 +1,4 @@
-import { useSweetAlert } from '../../components/SweetAlert';
+import { useSweetAlert } from '../components/SweetAlert';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
