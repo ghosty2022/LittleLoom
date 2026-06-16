@@ -80,3 +80,6 @@ yarn-error.*
 *.tsbuildinfo
 
 # @end expo-cli
+# Auto-push script
+auto-git-push.ps1
+
