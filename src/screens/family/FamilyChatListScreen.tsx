@@ -5,7 +5,7 @@ import { AutoHideFlatList } from '../../components/AutoHideScrollWrappers';
 import { BlurView } from 'expo-blur';
 import { FadeIn, FadeInRight, FadeInUp, runOnJS, SlideInRight, useSharedValue, withSpring } from 'react-native-reanimated';
 import { EmptyState } from '../../components/EmptyState';
-import { AutoHideScrollView } from '../../components/AutoHideScrollView';
+import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInUp, FadeInRight, FadeIn, SlideInRight, useSharedValue, withSpring, runOnJS } from 'react-native-reanimated';
 

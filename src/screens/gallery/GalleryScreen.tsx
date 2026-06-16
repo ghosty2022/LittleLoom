@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { BlurView } from 'expo-blur';
 import { FadeIn, FadeInDown, FadeInUp, interpolate, Layout, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
-import { AutoHideScrollView } from '../../components/AutoHideScrollView';
+import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
 import { format, isThisMonth, isThisWeek, isToday, isYesterday, parseISO } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';

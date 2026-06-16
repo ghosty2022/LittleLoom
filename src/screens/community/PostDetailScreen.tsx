@@ -1,9 +1,8 @@
-import { StyleSheetActivityIndicator Alert Button Dimensions Image KeyboardAvoidingView Modal Platform ScrollView Share Text TextInput TouchableOpacity View } from 'react-native';;
+import { StyleSheetActivityIndicator, Alert ,Button, Dimensions, Image, KeyboardAvoidingView, Modal ,Platform, ScrollView ,Share, Text, TextInput, TouchableOpacity, View } from 'react-native';;
 import React, { useCallback, useEffect, useState } from 'react';
 
 import { BlurView } from 'expo-blur';
-import { FadeIn, FadeInUp } from 'react-native-reanimated';
-import { AutoHideScrollView } from '../../components/AutoHideScrollView';
+import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInUp, FadeIn } from 'react-native-reanimated';
 

@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { AutoHideFlatList } from '../../components/AutoHideScrollWrappers';
-import { FadeInUp } from 'react-native-reanimated';
 import { useCommunity } from '../../context/CommunityContext';
 import { EmptyState } from '../../components/EmptyState';
 import {  AlertAnimated, Button, Dimensions, FlatList, RefreshControl, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';;

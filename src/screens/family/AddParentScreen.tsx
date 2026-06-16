@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { FadeIn, FadeInDown, FadeInUp } from 'react-native-reanimated';
 import {  ActivityIndicator, AlertAnimated, Button, Dimensions, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, Settings, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';;
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';

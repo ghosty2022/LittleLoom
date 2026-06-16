@@ -6,17 +6,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, {
-  FadeInUp,
-  FadeInDown,
-  FadeIn,
-  Layout,
-  useSharedValue,
-  useAnimatedStyle,
-  interpolate,
-  Extrapolate,
-  useAnimatedScrollHandler,
-} from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';

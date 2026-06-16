@@ -1,10 +1,10 @@
-import { StyleSheetActivityIndicator Alert Button Dimensions FlatList Image KeyboardAvoidingView Modal Platform Pressable ScrollView Share TextInput TouchableOpacity View } from 'react-native';;
+import { StyleSheetActivityIndicator, Alert, Button, Dimensions, FlatList, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Share, TextInput, TouchableOpacity ,View } from 'react-native';;
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BlurView } from 'expo-blur';
 import { Easing, FadeIn, FadeInUp, FadeOut, interpolate, Layout, useAnimatedStyle, useSharedValue, withRepeat, withSpring } from 'react-native-reanimated';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { useCommunity } from '../../context/CommunityContext';
-import { AutoHideScrollView } from '../../components/AutoHideScrollView';
+import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
 import { AutoHideFlatList } from '../../components/AutoHideScrollWrappers';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';

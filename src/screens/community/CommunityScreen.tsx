@@ -22,26 +22,9 @@ import { useSweetAlert } from '../../components/SweetAlert';
 import { useUser } from '../../context/UserContext';
 import { showAlert } from '@/utils/alert';
 import Animated, {
-
-  FadeInUp,
-  FadeIn,
-  FadeOut,
-  useSharedValue,
-  useAnimatedStyle,
-  useAnimatedReaction,
   withSpring,
   withTiming,
   withSequence,
-  withRepeat,
-  interpolate,
-  interpolateColor,
-  Extrapolation,
-  SlideInDown,
-  SlideOutUp,
-  Layout,
-  useAnimatedScrollHandler,
-  runOnJS,
-  Easing,
 } from 'react-native-reanimated';
 
 // Import the LittleLoom logo

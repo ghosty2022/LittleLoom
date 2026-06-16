@@ -1,4 +1,4 @@
-import { StyleSheetAlert Animated Button Dimensions Image ScrollView Share Text TouchableOpacity useColorScheme View } from 'react-native';;
+import { StyleSheetAlert, Animated ,Button, Dimensions ,Image, ScrollView, Share ,Text ,TouchableOpacity ,useColorScheme ,View } from 'react-native';;
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { BlurView } from 'expo-blur';
@@ -20,17 +20,6 @@ import { useUser } from '../../context/UserContext';
 import { showAlert } from '@/utils/alert';
 // src/screens/community/CommunityMemberProfileScreen.tsx
 
-import Animated, {
-
-  FadeInUp,
-  FadeIn,
-  Layout,
-  useSharedValue,
-  useAnimatedStyle,
-  interpolate,
-  Extrapolate,
-  useAnimatedScrollHandler,
-} from 'react-native-reanimated';
 
 type Props = NativeStackScreenProps<CommunityStackParamList, 'CommunityMemberProfile'>;
 
