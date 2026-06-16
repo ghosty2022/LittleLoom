@@ -7,7 +7,7 @@ import React, {
   useState,
   memo,
 } from 'react';
-import { , ActivityIndicator, Alert, Animated, Button, Dimensions, Modal, Pressable, ScrollView, Settings, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, type ViewStyle, View } from 'react-native';;
+import {  ActivityIndicator, AlertAnimated, Button, Dimensions, Modal, Pressable, ScrollView, Settings, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, type ViewStyle, View } from 'react-native';;
 import { LinearGradient } from 'expo-linear-gradient';
 import { FadeIn, FadeInDown, FadeInUp, SlideInRight, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { EmptyState } from '../../components/EmptyState';

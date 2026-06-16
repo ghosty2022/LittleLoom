@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
 import { FadeInUp } from 'react-native-reanimated';
-import { , Animated, Button, ScrollView, Settings, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';;
+import {  Animated, Button, ScrollView, Settings, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';;
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, { FadeInUp } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { useCustomization } from '../../hooks/useCustomization';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';

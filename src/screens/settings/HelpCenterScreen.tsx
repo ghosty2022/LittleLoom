@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { FadeInUp } from 'react-native-reanimated';
-import { , Animated, Button, Dimensions, ScrollView, Settings, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';;
+import { Animated, Button, Dimensions, ScrollView, Settings, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';;
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import Ionicons from '@expo/vector-icons/Ionicons';

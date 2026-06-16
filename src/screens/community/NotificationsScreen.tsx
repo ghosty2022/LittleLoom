@@ -2,7 +2,7 @@ import React, { useCallback, useState } from 'react';
 import { EmptyState } from '../../components/EmptyState';
 import { FadeIn, FadeInUp, FadeOut, Layout } from 'react-native-reanimated';
 import { useCommunity } from '../../context/CommunityContext';
-import { , Alert, Animated, Button, FlatList, Pressable, RefreshControl, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';;
+import {  AlertAnimated, Button, FlatList, Pressable, RefreshControl, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';;
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInUp, FadeIn, FadeOut, Layout } from 'react-native-reanimated';

@@ -17,7 +17,7 @@ import { useReportRoute } from '../../hooks/useReportRoute';
 import { useSafeCustomization } from '../../hooks/useSafeContexts';
 import { useUser } from '../../context/UserContext';
 import { showAlert } from '@/utils/alert';
-import { AutoHideFlatList } from '../../components/AutoHideFlatList';
+import { AutoHideFlatList } from '../../components/AutoHideScrollWrappers';
 import { CommunityColors, CommunitySpacing, CommunityBorderRadius, CommunityShadows } from '../../constants/CommunityTheme';
 
 

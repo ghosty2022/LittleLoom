@@ -3,7 +3,7 @@ import { FadeIn, FadeInDown, FadeInUp, interpolate, Layout, useAnimatedScrollHan
 import { useCustomization } from '../../hooks/useCustomization';
 import { EmptyState } from '../../components/EmptyState';
 import { useAuth } from '../../context/AuthContext';
-import { , ActivityIndicator, Alert, Animated, Button, Dimensions, FlatList, Image, ImageBackground, Modal, Platform, RefreshControl, ScrollView, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, useColorScheme, View } from 'react-native';;
+import {  ActivityIndicator, AlertAnimated, Button, Dimensions, FlatList, Image, ImageBackground, Modal, Platform, RefreshControl, ScrollView, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, useColorScheme, View } from 'react-native';;
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';

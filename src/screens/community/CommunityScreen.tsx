@@ -1,4 +1,4 @@
-import { , ActivityIndicator, Alert, Animated, Button, Dimensions, FlatList, GestureHandlerRootView, Image, Modal, Platform, Pressable, RefreshControl, ScrollView, Share, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, useSafeAreaInsets, View } from 'react-native';;
+import {  ActivityIndicator, AlertAnimated, Button, Dimensions, FlatList, GestureHandlerRootView, Image, Modal, Platform, Pressable, RefreshControl, ScrollView, Share, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, useSafeAreaInsets, View } from 'react-native';;
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { BlurView } from 'expo-blur';

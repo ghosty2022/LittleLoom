@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FadeInDown, FadeInLeft, FadeInUp, interpolate, Layout, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { useBaby } from '../../context/BabyContext';
-import { , Alert, Animated, Button, Dimensions, FlatList, Modal, Platform, RefreshControl, ScrollView, Settings, Share, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';;
+import {  AlertAnimated, Button, Dimensions, FlatList, Modal, Platform, RefreshControl, ScrollView, Settings, Share, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';;
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';

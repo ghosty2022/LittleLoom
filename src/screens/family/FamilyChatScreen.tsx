@@ -1,7 +1,7 @@
 import { StyleSheetActivityIndicator Alert Button Dimensions FlatList Image KeyboardAvoidingView Modal Platform ScrollView Share Switch TextInput TouchableOpacity View } from 'react-native';;
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { AutoHideFlatList } from '../../components/AutoHideFlatList';
+import { AutoHideFlatList } from '../../components/AutoHideScrollWrappers';
 import { BlurView } from 'expo-blur';
 import { FadeIn, FadeInDown, FadeInRight, FadeInUp, Layout, runOnJS, SlideInLeft, SlideInRight, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { AutoHideScrollView } from '../../components/AutoHideScrollView';
