@@ -18,7 +18,6 @@ import Animated, {
   FadeIn,
 } from 'react-native-reanimated';
 
-// ✅ FIXED — proper import statements
 import {
   UnifiedTrackerConfig,
   FieldConfig,
@@ -27,10 +26,11 @@ import {
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import {
-  TrackerProgressiveState,
+  TrackerProgressiveState, 
   ProgressiveSuggestion,
   ProgressiveTrend,
 } from '../../hooks/useTrackerProgressive';
+
 const { width: SCREEN_W } = Dimensions.get('window');
 
 interface DynamicTrackerFormProps {
@@ -1018,7 +1018,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
           
           <TouchableOpacity
             style={[styles.quickSubmit, { backgroundColor: tracker.gradient[0], borderRadius: borderRadiusValue }]}
-                       onPress={handleSubmit}
+            onPress={handleSubmit}
             disabled={isSubmitting}
           >
             <Text style={styles.quickSubmitText}>
