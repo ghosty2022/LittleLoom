@@ -1,3 +1,4 @@
+import { StyleSheet } from 'react-native';
 import React, { useCallback, useEffect, useState } from 'react';
 
 import Animated, { FadeInUp, FadeIn } from 'react-native-reanimated';

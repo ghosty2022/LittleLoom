@@ -1,60 +1,66 @@
-# fix-stylesheet.ps1 - Finds and fixes missing StyleSheet imports
-$files = Get-ChildItem -Path "src\" -Recurse -Include *.ts,*.tsx
+# fix-stylesheet-v2.ps1 - Finds and fixes missing StyleSheet + react-native imports
+# Run from project root: .\fix-stylesheet-v2.ps1
+
+$files = Get-ChildItem -Path "src\" -Recurse -Include *.tsx
+
+$fixedCount = 0
+$skippedCount = 0
 
 foreach ($file in $files) {
     $content = Get-Content $file.FullName -Raw
-    $lines = Get-Content $file.FullName
-    
-    # Skip if no StyleSheet usage
-    if ($content -notmatch "StyleSheet") { continue }
-    
-    # Check if StyleSheet is imported from react-native
-    $hasImport = $false
-    $inRNImport = $false
-    $importStartLine = -1
-    $importEndLine = -1
-    
-    for ($i = 0; $i -lt $lines.Count; $i++) {
-        $line = $lines[$i]
-        
-        # Detect start of react-native import block
-        if ($line -match "import\s*.*from\s*['`"]react-native['`"]" -and $line -notmatch "StyleSheet") {
-            # Single line import without StyleSheet
-            $hasImport = $false
-            break
-        }
-        if ($line -match "import\s*\{") {
-            $inRNImport = $true
-            $importStartLine = $i
-        }
-        if ($inRNImport -and $line -match "from\s*['`"]react-native['`"]") {
-            $importEndLine = $i
-            if ($content -match "import\s*\{[^}]*StyleSheet[^}]*\}\s*from\s*['`"]react-native['`"]") {
-                $hasImport = $true
-            }
-            $inRNImport = $false
-            break
-        }
-        if ($inRNImport -and $line -match "\}\s*from\s*['`"]react-native['`"]") {
-            $importEndLine = $i
-            # Check the block for StyleSheet
-            $block = ($lines[$importStartLine..$importEndLine] -join "`n")
-            if ($block -match "StyleSheet") {
-                $hasImport = $true
-            }
-            $inRNImport = $false
-            break
-        }
+    $originalContent = $content
+
+    # Skip if no StyleSheet usage in file
+    if ($content -notmatch "StyleSheet\.create") {
+        continue
     }
-    
-    # Also check single-line import: import { ..., StyleSheet } from 'react-native'
-    if (-not $hasImport) {
-        if ($content -match "import\s*\{[^}]*StyleSheet[^}]*\}\s*from\s*['`"]react-native['`"]") {
-            $hasImport = $true
-        }
+
+    # Check if StyleSheet is already imported from react-native
+    $hasStyleSheetImport = $false
+
+    # Pattern 1: Single line: import { ..., StyleSheet } from 'react-native'
+    if ($content -match "import\s*\{[^}]*StyleSheet[^}]*\}\s*from\s*['`"]react-native['`"]") {
+        $hasStyleSheetImport = $true
     }
-    
-    if (-not $hasImport) {
-        Write-Host "❌ NEEDS FIX: $($file.FullName)" -ForegroundColor Red
+    # Pattern 2: Multi-line import block with StyleSheet
+    elseif ($content -match "import\s*\{[\s\S]*?StyleSheet[\s\S]*?\}\s*from\s*['`"]react-native['`"]") {
+        $hasStyleSheetImport = $true
     }
+
+    if ($hasStyleSheetImport) {
+        $skippedCount++
+        continue
+    }
+
+    Write-Host "🔧 FIXING: $($file.FullName)" -ForegroundColor Yellow
+
+    # Check if there's ANY react-native import
+    $hasRNImport = $content -match "from\s*['`"]react-native['`"]"
+
+    if ($hasRNImport) {
+        # Add StyleSheet to existing react-native import
+        # Handle multi-line imports
+        $content = $content -replace 
+            "(import\s*\{[\s\S]*?)(\}\s*from\s*['`"]react-native['`"])", 
+            "$1, StyleSheet$2"
+
+        # Handle single-line imports that the above might miss
+        $content = $content -replace 
+            "import\s*\{([^}]*)\}\s*from\s*['`"]react-native['`"]", 
+            "import {`$1, StyleSheet} from 'react-native'"
+    } else {
+        # No react-native import at all - add one before the first import
+        $rnImport = "import { StyleSheet } from 'react-native';`n"
+        $content = $rnImport + $content
+    }
+
+    # Write the fixed content back
+    Set-Content -Path $file.FullName -Value $content -NoNewline
+    $fixedCount++
+    Write-Host "   ✅ Fixed!" -ForegroundColor Green
 }
+
+Write-Host "`n📊 Summary:" -ForegroundColor Cyan
+Write-Host "   Fixed: $fixedCount files" -ForegroundColor Green
+Write-Host "   Already OK: $skippedCount files" -ForegroundColor Gray
+Write-Host "`n🎉 Done! Restart Metro with 'npx expo start --clear'"

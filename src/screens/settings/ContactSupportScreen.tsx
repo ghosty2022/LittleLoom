@@ -10,8 +10,22 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
 
 import { useCustomization } from '../../hooks/useCustomization';
-import { useSweetAlert } from '../../components/SweetAlert';
+import { BlurView } from 'expo-blur';
+import AutoHideScrollView from '../../components/AutoHideScrollView';
 import { showAlert } from '@/utils/alert';
+
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  TextInput,
+  StatusBar,
+  Platform,
+  KeyboardAvoidingView,
+  Linking,
+  StyleSheet,
+  useSafeAreaInsets,
+} from 'react-native';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ContactSupport'>;
 

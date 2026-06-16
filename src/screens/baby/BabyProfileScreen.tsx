@@ -1,3 +1,4 @@
+import { StyleSheet } from 'react-native';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { format } from 'date-fns';

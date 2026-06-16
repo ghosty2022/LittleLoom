@@ -1,3 +1,4 @@
+import { StyleSheet } from 'react-native';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { format, isSameWeek, isToday, isYesterday } from 'date-fns';

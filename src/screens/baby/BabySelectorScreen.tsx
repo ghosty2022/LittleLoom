@@ -1,3 +1,4 @@
+import { StyleSheet } from 'react-native';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';

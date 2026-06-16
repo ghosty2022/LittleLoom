@@ -1,3 +1,4 @@
+import { StyleSheet } from 'react-native';
 import React, { memo, useCallback, useMemo, useState } from 'react';
 
 import { format, formatDistanceToNow } from 'date-fns';

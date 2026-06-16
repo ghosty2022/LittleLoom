@@ -1,3 +1,4 @@
+import { StyleSheet } from 'react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import * as LocalAuthentication from 'expo-local-authentication';
