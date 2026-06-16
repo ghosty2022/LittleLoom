@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { showAlert } from '../utils/alert';
+import { showAlert } from '@/utils/alert';
 
 export interface SocialUser {
   id: string;

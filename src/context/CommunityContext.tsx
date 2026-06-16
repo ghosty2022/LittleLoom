@@ -5,7 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { useAuth } from './AuthContext';
 import { useSweetAlert } from '../../components/SweetAlert';
-import { showAlert } from '../utils/alert';
+import { showAlert } from '@/utils/alert';
 
 const STORAGE_KEYS = {
   POSTS: '@community_posts_v2',

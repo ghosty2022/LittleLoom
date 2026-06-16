@@ -37,6 +37,9 @@ module.exports = (async () => {
         'woff',
         'woff2',
       ],
+            alias: {
+        '@': path.resolve(__dirname, 'src'),
+      },
       // ─── FIX: Prevent Node 22 native ESM from intercepting expo-image ──
       // Force Metro to resolve .tsx source files in node_modules
       resolveRequest: (context, moduleName, platform) => {

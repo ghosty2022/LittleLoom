@@ -6,7 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useBaby } from './BabyContext';
 import { UserRole, Permission, ROLE_PERMISSIONS, FamilyMember } from '../types/roles';
 import { useUser } from './UserContext';
-import { showAlert } from '../utils/alert';
+import { showAlert } from '@/utils/alert';
 
 export { FamilyMember } from '../types/roles';
 

@@ -15,7 +15,7 @@ import React, {
   useRef,
   ReactNode,
 } from 'react';
-import { showAlert } from '../utils/alert';
+import { showAlert } from '@/utils/alert';
 import { Linking, Vibration, Platform } from 'react-native';
 
 /* ═══════════════════════════════════════════════════════════════

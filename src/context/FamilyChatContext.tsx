@@ -9,17 +9,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { useAuth } from './AuthContext';
 import { useBaby } from './BabyContext';
-import { showAlert } from '../utils/alert';
-
-// ✅ Safe alert helper
-const showAlert = (title: string, message: string) => {
-  if (typeof Alert !== 'undefined') {
-
-showAlert(title, message);
-  } else {
-    console.warn(`[FamilyChatContext] ${title}: ${message}`);
-  }
-};
+import { showAlert } from '@/utils/alert';
 
 export type MessageType = 'text' | 'image' | 'voice' | 'system' | 'file';
 
