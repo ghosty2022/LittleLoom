@@ -16,6 +16,7 @@ import Animated, {
   interpolate,
   Extrapolation,
   Layout,
+  useAnimatedScrollHandler,
 } from 'react-native-reanimated';
 import { format, isSameDay, differenceInHours } from 'date-fns';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -908,8 +909,11 @@ export default function EnhancedTimelineScreen() {
     navigation.navigate('AddEntry', { viewMode: true, eventId: entry?.id, trackerId: entry?.trackerId });
   }, [navigation]);
 
-  const handleScroll = useCallback((event: any) => {
-    scrollY.value = event.nativeEvent.contentOffset.y;
+  const handleScroll = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      'worklet';
+      scrollY.value = event.contentOffset.y;
+    },
   }, [scrollY]);
 
   const headerAnimatedStyle = useAnimatedStyle(() => {
