@@ -82,6 +82,8 @@ interface SmartNotification {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   THEME HELPERS
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 // Helper: generate full theme colors from theme settings
 const getFullThemeColors = (theme: string, appearance: string, isDarkMode: boolean) => {
@@ -97,6 +99,7 @@ const getFullThemeColors = (theme: string, appearance: string, isDarkMode: boole
   };
 };
 
+/* ═══════════════════════════════════════════════════════════════════════════
    NAVIGATION MAP — FIXED: All routes point to correct screens
    ═══════════════════════════════════════════════════════════════════════════ */
 const NAVIGATION_MAP: Record<string, { screen: keyof RootStackParamList; params?: Record<string, any> }> = {
@@ -1495,7 +1498,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         onBabyPress={() => navigateToScreen('SwitchBaby')}
         onAddBabyPress={() => navigateToScreen('CreateBabyProfile')}
         unreadCount={unreadCommunityCount}
-        // REMOVED: headerVisible prop — scroll tracking handled by scrollHandler
+        scrollY={scrollY}  // <-- ADDED: pass scrollY for header animation
         onSafetyCornerPress={handleSafetyCornerPress}
         primaryColor={primary}
         secondaryColor={secondary}

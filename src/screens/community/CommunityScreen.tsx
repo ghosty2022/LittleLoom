@@ -362,7 +362,7 @@ const StoryViewer = React.memo(({
         </View>
 
         {story.replies && story.replies.length > 0 && (
-          <ScrollView style={styles.storyReplies} showsVerticalScrollIndicator={false}>
+          <Animated.ScrollView style={styles.storyReplies} showsVerticalScrollIndicator={false}>
             {story.replies.map((reply) => (
               <View key={reply.id} style={styles.storyReplyItem}>
                 <SafeAvatar
@@ -379,7 +379,7 @@ const StoryViewer = React.memo(({
                 </View>
               </View>
             ))}
-          </ScrollView>
+          </Animated.ScrollView>
         )}
 
         <View style={styles.storyBottom}>
