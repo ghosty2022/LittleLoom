@@ -5,6 +5,7 @@ import { View,
   StyleSheet,
   Dimensions,
   StatusBar, Platform,
+  Animated,
  } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -571,3 +572,4 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.7)',
   },
 });
+
