@@ -41,7 +41,7 @@ import { useFamily } from '../../context/FamilyContext';
 import { useAuth } from '../../context/AuthContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
-import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
+import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
 import { SafeAvatar, SafeBabyAvatar, SafeParentAvatar } from '../../components/SafeAvatar';;
 import { UniversalSpinner } from '../../components/UniversalSpinner';
 
@@ -1122,7 +1122,7 @@ const TopicDetailModal = memo<TopicModalProps>(({
 
   return (
     <UnifiedBottomModal visible={visible} onClose={onClose} title="" maxHeight={SCREEN_H * 0.92}>
-      <AutoHideScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.topicScrollContent}>
+      <AutoHideAnimatedScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.topicScrollContent}>
         <View style={styles.modalHeader}>
           <View style={[styles.modalIconContainer, { backgroundColor: `${topic.color}15` }]}>
             <Ionicons name={topic.icon as keyof typeof Ionicons.glyphMap} size={28} color={topic.color} />
@@ -1184,7 +1184,7 @@ const TopicDetailModal = memo<TopicModalProps>(({
           <Ionicons name="share-outline" size={20} color={isDark ? '#fff' : colors.primary} />
           <Text style={[styles.shareText, isDark && { color: '#a0a0b0' }]}>Share Tips</Text>
         </TouchableOpacity>
-      </AutoHideScrollView>
+      </AutoHideAnimatedScrollView>
     </UnifiedBottomModal>
   );
 });
@@ -1344,7 +1344,7 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
 
       {/* Main Content */}
       <LinearGradient colors={isDark ? colors.bgDark : colors.bgLight} style={[styles.gradient, { paddingTop: insets.top }]}>
-        <AutoHideScrollView
+        <AutoHideAnimatedScrollView
           contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 100 }]}
           showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
@@ -1555,7 +1555,7 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
               This information is for educational purposes only. In case of emergency, always call 911 immediately.
             </Text>
           </BlurView>
-        </AutoHideScrollView>
+        </AutoHideAnimatedScrollView>
       </LinearGradient>
 
       {/* Modals */}
