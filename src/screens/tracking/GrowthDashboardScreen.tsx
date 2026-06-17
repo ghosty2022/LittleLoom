@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {  Alert, Button, Dimensions, Image, Modal, RefreshControl, ScrollView, Settings, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';;
+import {  Alert, Button, Dimensions, Image, Modal, RefreshControl, ScrollView, Settings, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { BlurView } from 'expo-blur';
 import { differenceInDays, differenceInMonths, format, isValid, parseISO } from 'date-fns';

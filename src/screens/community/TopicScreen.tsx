@@ -25,7 +25,6 @@ import { useAutoHideNav } from '../../hooks/useAutoHideNav';
 import { useReportRoute } from '../../hooks/useReportRoute';
 import { useSafeCustomization } from '../../hooks/useSafeContexts';
 import { useUser } from '../../context/UserContext';
-import { showAlert } from '@/utils/alert';
 import { AutoHideFlatList } from '../../components/AutoHideScrollWrappers';
 import {
   CommunityColors,
@@ -339,20 +338,19 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() =>
-              showAlert('Topic Options', '', [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Share Topic', onPress: () => console.log('Share') },
-                {
-                  text: 'Report',
-                  style: 'destructive',
-                  onPress: () =>
-                    navigation.navigate('Report', {
-                      type: 'topic',
-                      targetId: topic.id,
-                      targetUserId: 'system',
-                    }),
-                },
-              ])
+              sweetAlert.confirm(
+                'Topic Options',
+                'What would you like to do?',
+                () => navigation.navigate('Report', {
+                  type: 'topic',
+                  targetId: topic.id,
+                  targetUserId: 'system',
+                }),
+                undefined,
+                'Report',
+                'Cancel',
+                true
+              )
             }
           >
             <Ionicons name="ellipsis-horizontal" size={24} color={CommunityColors.text.primary} />
@@ -384,12 +382,14 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
           <TouchableOpacity
             style={styles.sortButton}
             onPress={() =>
-              showAlert('Sort by', '', [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Trending', onPress: () => setSortBy('trending') },
-                { text: 'Newest', onPress: () => setSortBy('newest') },
-                { text: 'Most Popular', onPress: () => setSortBy('popular') },
-              ])
+              sweetAlert.confirm(
+                'Sort by',
+                'Choose sorting option',
+                () => setSortBy('trending'),
+                undefined,
+                'Trending',
+                'Cancel'
+              )
             }
           >
             <Text style={styles.sortText}>

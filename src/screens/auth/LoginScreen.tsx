@@ -3,7 +3,7 @@ import { FadeIn, FadeInUp, useAnimatedStyle, useSharedValue, withSequence, withS
 import { useAuth } from '../../context/AuthContext';
 import { showError } from '@/utils/alert';
 import { AppleAuthentication } from 'expo-apple-authentication';
-import { ActivityIndicator, Alert, Button,withTiming, Dimensions, Keyboard, KeyboardAvoidingView, Platform, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';;
+import { ActivityIndicator, Alert, Button,withTiming, Dimensions, Keyboard, KeyboardAvoidingView, Platform, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';

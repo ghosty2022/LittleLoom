@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { EmptyState } from '../../components/EmptyState';
-import { Alert, Button, Dimensions, Image, Linking, Modal, Platform, ScrollView, Settings, Share, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';;
+import { Alert, Button, Dimensions, Image, Linking, Modal, Platform, ScrollView, Settings, Share, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';

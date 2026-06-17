@@ -1,4 +1,4 @@
-import { StyleSheet, ActivityIndicator, Alert, Button,StatusBar, Dimensions, FlatList, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Share, TextInput, TouchableOpacity ,View } from 'react-native';;
+import { StyleSheet, ActivityIndicator, Button,StatusBar, Dimensions, FlatList, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Share, TextInput, TouchableOpacity ,View } from 'react-native';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BlurView } from 'expo-blur';
 import { Easing, FadeIn, FadeInUp, FadeOut, interpolate, Layout, useAnimatedStyle, useSharedValue, withRepeat, withSpring } from 'react-native-reanimated';
@@ -17,7 +17,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import type { CommunityStackParamList } from '../../types/navigation';
 
-import { showConfirmModal, showErrorModal } from '../../utils/modal';
+import { showConfirmModal } from '../../utils/modal';
 import { useApp } from '../../context/AppContext';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { useUser } from '../../context/UserContext';
@@ -618,12 +618,14 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   };
 
   const showImageSourceAlert = () => {
-
-showAlert('Send Photo', 'Choose a photo source', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: '📷 Camera', onPress: () => handleImagePick(true) },
-      { text: '🖼️ Gallery', onPress: () => handleImagePick(false) },
-    ]);
+    sweetAlert.confirm(
+      'Send Photo',
+      'Choose a photo source',
+      () => handleImagePick(false),
+      () => {},
+      '🖼️ Gallery',
+      '📷 Camera'
+    );
   };
 
   // ═══════════════════════════════════════════════════════════

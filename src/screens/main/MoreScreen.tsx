@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
-import {  Alert, Button, Dimensions, Image, Modal, ScrollView, Settings, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';;
+import {  Alert, Button, Dimensions, Image, Modal, ScrollView, Settings, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';

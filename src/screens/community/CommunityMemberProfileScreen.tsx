@@ -1,4 +1,4 @@
-import { StyleSheet, Button, Dimensions ,Image, ScrollView, Share ,Text ,TouchableOpacity ,useColorScheme , StatusBar,View  } from 'react-native';;
+import { StyleSheet, Button, Dimensions ,Image, ScrollView, Share ,Text ,TouchableOpacity ,useColorScheme , StatusBar,View  } from 'react-native';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { BlurView } from 'expo-blur';
@@ -17,7 +17,6 @@ import { UniversalSpinner } from '../../components/UniversalSpinner';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { useUser } from '../../context/UserContext';
-import { showAlert } from '@/utils/alert';
 // src/screens/community/CommunityMemberProfileScreen.tsx
 
 
@@ -271,7 +270,14 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
       { text: isBlocked ? 'Unblock' : 'Block', onPress: handleBlockToggle, style: 'destructive' as const },
     ];
 
-showAlert(user.displayName || 'User', '', options);
+sweetAlert.confirm(
+      user.displayName || 'User',
+      'What would you like to do?',
+      () => handleShareProfile(),
+      undefined,
+      'Share Profile',
+      'Cancel'
+    );
   };
 
   const handleShareProfile = async () => {

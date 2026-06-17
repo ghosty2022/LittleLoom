@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Button, KeyboardAvoidingView, Platform, ScrollView, Settings, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';;
+import { ActivityIndicator, Alert, Button, KeyboardAvoidingView, Platform, ScrollView, Settings, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';

@@ -1,4 +1,4 @@
-import { StyleSheet,ActivityIndicator, Alert ,Button, Dimensions, Image, KeyboardAvoidingView, Modal , StatusBar,Platform, ScrollView ,Share, Text, TextInput, TouchableOpacity, View } from 'react-native';;
+import { StyleSheet,ActivityIndicator, Alert ,Button, Dimensions, Image, KeyboardAvoidingView, Modal , StatusBar,Platform, ScrollView ,Share, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import React, { useCallback, useEffect, useState } from 'react';
 
 import { BlurView } from 'expo-blur';
@@ -16,8 +16,6 @@ import { Comment, Post, useCommunity } from '../../context/CommunityContext';
 import { CommunityBorderRadius, CommunityColors, CommunityShadows, CommunitySpacing } from '../../theme/CommunityTheme';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { useCustomization } from '../../hooks/useCustomization';
-import { showAlert } from '@/utils/alert';
-
 type PostDetailScreenProps = NativeStackScreenProps<CommunityStackParamList, 'PostDetail'>;
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
