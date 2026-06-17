@@ -15,7 +15,6 @@ import React, {
   useRef,
   ReactNode,
 } from 'react';
-import { showAlert } from '@/utils/alert';
 import { Linking, Vibration, Platform } from 'react-native';
 
 /* ═══════════════════════════════════════════════════════════════
@@ -504,6 +503,7 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
   const locationSubscription = useRef<Location.LocationSubscription | null>(null);
   const isMounted = useRef(true);
+  const sweetAlert = useSweetAlert();
 
   /* ── Lifecycle ── */
   useEffect(() => {
@@ -704,21 +704,16 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const callEmergency = useCallback(
     async (number: string, label: string, type: EmergencyType = 'emergency') => {
       if (!number) {
-        sweetAlert.alert('No Number Set', 'Please configure your ${label} number first.', 'info');
+        sweetAlert.alert('No Number Set', 'Please configure your number first.');
         return;
       }
 
       triggerHaptic('warning');
 
-showAlert(
+sweetAlert.confirm(
         `Call ${label}?`,
         `Are you sure you want to call ${number}?`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Call',
-            style: 'destructive',
-            onPress: async () => {
+        async () => {
               try {
                 await Linking.openURL(`tel:${number.replace(/\\D/g, '')}`);
 
@@ -746,12 +741,13 @@ showAlert(
 
                 triggerHaptic('error');
               } catch (error) {
-                sweetAlert.alert('Error', 'Could not initiate call. Please dial manually.', 'warning');
+                sweetAlert.alert('Error', 'Could not initiate call. Please dial manually.');
               }
             },
-          },
-        ]
-      );
+            () => {},
+            'Call',
+            'Cancel'
+          );
     },
     [state.currentLocation, triggerHaptic]
   );
@@ -761,15 +757,10 @@ showAlert(
     triggerHaptic('error');
     Vibration.vibrate([0, 500, 200, 500, 200, 500]);
 
-showAlert(
+sweetAlert.confirm(
       'SOS EMERGENCY',
       'This will call Emergency Services and share your location with family contacts. Continue?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'SOS - CALL 911',
-          style: 'destructive',
-          onPress: async () => {
+      async () => {
             let location = state.currentLocation;
             if (!location) {
               location = await refreshLocation();
@@ -809,9 +800,10 @@ showAlert(
               }));
             }
           },
-        },
-      ]
-    );
+          () => {},
+          'SOS - CALL 911',
+          'Cancel'
+        );
   }, [state.currentLocation, state.emergencyContacts, refreshLocation, triggerHaptic]);
 
   /* ── Get address from coords ── */
@@ -837,7 +829,7 @@ showAlert(
     try {
       const hasPermission = await checkLocationAvailability();
       if (!hasPermission) {
-        sweetAlert.alert('Location Required', 'Please enable location to find nearby hospitals.', 'warning');
+        sweetAlert.alert('Location Required', 'Please enable location to find nearby hospitals.');
         return;
       }
 
@@ -877,13 +869,12 @@ showAlert(
       }
     } catch (error) {
 
-showAlert('Find Hospitals', 'Open maps to search for hospitals?', [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Open Maps',
-          onPress: () => Linking.openURL('https://maps.google.com/?q=hospital+near+me'),
-        },
-      ]);
+sweetAlert.confirm('Find Hospitals', 'Open maps to search for hospitals?',
+        () => Linking.openURL('https://maps.google.com/?q=hospital+near+me'),
+        () => {},
+        'Open Maps',
+        'Cancel'
+      );
     }
   }, [checkLocationAvailability, triggerHaptic]);
 
@@ -894,7 +885,7 @@ showAlert('Find Hospitals', 'Open maps to search for hospitals?', [
     try {
       const hasPermission = await checkLocationAvailability();
       if (!hasPermission) {
-        sweetAlert.alert('Location Required', 'Please enable location.', 'warning');
+        sweetAlert.alert('Location Required', 'Please enable location.');
         return;
       }
 
@@ -918,7 +909,7 @@ showAlert('Find Hospitals', 'Open maps to search for hospitals?', [
       try {
         const hasPermission = await checkLocationAvailability();
         if (!hasPermission) {
-          sweetAlert.alert('Location Required', 'Please enable location sharing.', 'warning');
+          sweetAlert.alert('Location Required', 'Please enable location sharing.');
           return;
         }
 
@@ -962,7 +953,7 @@ showAlert('Find Hospitals', 'Open maps to search for hospitals?', [
 
         triggerHaptic('success');
       } catch (error) {
-        sweetAlert.alert('Error', 'Could not share location.', 'warning');
+        sweetAlert.alert('Error', 'Could not share location.');
       }
     },
     [checkLocationAvailability, getCurrentAddress, triggerHaptic]

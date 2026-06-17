@@ -1,6 +1,5 @@
 import {
   StyleSheet,
-  Image,
   InteractionManager,
   Modal,
   Platform,
@@ -12,6 +11,7 @@ import {
   useColorScheme,
   View,
 } from 'react-native';
+// Remove the Image import from react-native since we'll use OptimizedImage
 import React, { memo, useCallback, useMemo, useState } from 'react';
 
 import { useBaby } from '../../context/BabyContext';
