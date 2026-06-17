@@ -1,3 +1,4 @@
+import React, { memo, useCallback, useMemo, useState } from 'react';
 import {
   StyleSheet,
   InteractionManager,
@@ -11,29 +12,11 @@ import {
   useColorScheme,
   View,
 } from 'react-native';
-import { OptimizedImage } from '../../components/OptimizedImage';
-// Remove the Image import from react-native since we'll use OptimizedImage
-import React, { memo, useCallback, useMemo, useState } from 'react';
-
-import { useBaby } from '../../context/BabyContext';
+import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { format, formatDistanceToNow } from 'date-fns';
-import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-
-import type { RootStackParamList } from '../../types/navigation';
-
-import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
-import { useAuth } from '../../context/AuthContext';
-import { useCustomization } from '../../hooks/useCustomization';
-import { useSweetAlert } from '../../components/SweetAlert';
-import { useFamily } from '../../context/FamilyContext';
-import { useUser } from '../../context/UserContext';
-import { UserRole } from '../../types/roles';
-import type { ActivityEntry, Milestone } from '../../types/baby';
-
 import Animated, {
   FadeInUp,
   useSharedValue,
@@ -43,6 +26,19 @@ import Animated, {
   useAnimatedScrollHandler,
   Layout,
 } from 'react-native-reanimated';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+
+import type { RootStackParamList } from '../../types/navigation';
+import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
+import { useAuth } from '../../context/AuthContext';
+import { useCustomization } from '../../hooks/useCustomization';
+import { useSweetAlert } from '../../components/SweetAlert';
+import { useFamily } from '../../context/FamilyContext';
+import { useUser } from '../../context/UserContext';
+import { UserRole } from '../../types/roles';
+import type { ActivityEntry, Milestone } from '../../types/baby';
+import { useBaby } from '../../context/BabyContext';
+import { OptimizedImage } from '../../components/OptimizedImage';
 
 const AnimatedScrollView = Animated.ScrollView;
 
