@@ -81,6 +81,21 @@ interface SmartNotification {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+
+// Helper: generate full theme colors from theme settings
+const getFullThemeColors = (theme: string, appearance: string, isDarkMode: boolean) => {
+  // Default fallback colors - customize as needed
+  return {
+    background: isDarkMode ? '#0a0a0a' : '#f8fafc',
+    surface: isDarkMode ? '#1a1a2e' : '#ffffff',
+    text: isDarkMode ? '#ffffff' : '#1e293b',
+    border: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
+    glassBg: isDarkMode ? 'rgba(26,26,46,0.95)' : 'rgba(255,255,255,0.95)',
+    shadow: '#000',
+    error: '#ef4444',
+  };
+};
+
    NAVIGATION MAP — FIXED: All routes point to correct screens
    ═══════════════════════════════════════════════════════════════════════════ */
 const NAVIGATION_MAP: Record<string, { screen: keyof RootStackParamList; params?: Record<string, any> }> = {
@@ -1244,6 +1259,10 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
       // NOTE: trackedScroll runs on JS thread via runOnJS if needed
     },
   });
+  const navigateToScreen = useCallback((screenName: string, params?: Record<string, any>) => {
+    const navConfig = NAVIGATION_MAP[screenName];
+    if (!navConfig) {
+      console.warn(`Navigation target "${screenName}" not found`);
       return;
     }
     if (navConfig.params?.screen) {
@@ -1255,6 +1274,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
       navigation.navigate(navConfig.screen as any, { ...navConfig.params, ...params });
     }
   }, [navigation]);
+
 
   const handleNotificationPress = useCallback(() => {
     triggerHaptic('light');
