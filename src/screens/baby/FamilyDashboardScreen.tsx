@@ -1044,7 +1044,7 @@ showAlert('Remove Member', `Remove ${member.fullName} from family?`, [
         {activeTab === 'growth' && renderGrowth()}
 
         <View style={styles.bottomSpacer} />
-      </Animated.ScrollView>
+      </AnimatedScrollView>
 
       {/* Baby Selector Modal */}
       <ActionModal

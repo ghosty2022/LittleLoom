@@ -876,7 +876,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
           {activeTab === 'permissions' && renderPermissionsTab()}
           {activeTab === 'danger' && renderDangerTab()}
         </View>
-      </Animated.ScrollView>
+      </AnimatedScrollView>
 
       {/* Modals */}
       <UniversalSpinner visible={isSaving} text="Saving changes..." size="medium" overlay={true} blur={true} section="main" />
