@@ -6,6 +6,7 @@ import {
   Platform,
   RefreshControl,
   ScrollView,
+  StatusBar,
   Text,
   TouchableOpacity,
   useColorScheme,
@@ -23,12 +24,14 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import type { RootStackParamList } from '../../types/navigation';
 
-import { AutoHideAnimatedScrollView, } from '../../components/AutoHideScrollWrappers';
+import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
 import { useAuth } from '../../context/AuthContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { useFamily } from '../../context/FamilyContext';
 import { useUser } from '../../context/UserContext';
+import { UserRole } from '../../types/roles';
+import type { ActivityEntry, Milestone } from '../../types/baby';
 
 import Animated, {
   FadeInUp,
@@ -383,7 +386,7 @@ export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreen
     loadBabies,
     getPottyStreak,
   } = useBaby();
-  const { members, parent1, parent2, guardians, loadFamily, removeMember } = useFamily();
+    const { members, parent1, parent2, guardians, loadFamily, removeMember } = useFamily();
   const sweetAlert = useSweetAlert();
 
   const {
@@ -401,9 +404,7 @@ export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreen
   const hasUser = !!effectiveUser;
 
   const scrollHandler = useAnimatedScrollHandler({
-    onScroll: (event) => {'worklet';
-      
-'worklet';
+    onScroll: (event) => {
       'worklet';
       scrollY.value = event.contentOffset.y;
     },
@@ -426,41 +427,37 @@ export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreen
     [currentBabyId, switchBaby]
   );
 
-  const handleDeleteBaby = useCallback(
+    const handleDeleteBaby = useCallback(
     (baby: (typeof babies)[0]) => {
-
-showAlert(
+      sweetAlert.confirm(
         'Delete Profile',
         `Remove ${baby.name}'s profile permanently?`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Delete',
-            style: 'destructive',
-            onPress: async () => {
-              await deleteBaby(baby.id);
-              triggerHaptic('success');
-            },
-          },
-        ]
+        async () => {
+          await deleteBaby(baby.id);
+          triggerHaptic('success');
+        },
+        undefined,
+        'Delete',
+        'Cancel',
+        true
       );
     },
-    [deleteBaby]
+    [deleteBaby, sweetAlert, triggerHaptic]
   );
 
-  const handleRemoveMember = useCallback(
+    const handleRemoveMember = useCallback(
     (member: any) => {
-
-showAlert('Remove Member', `Remove ${member.fullName} from family?`, [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: () => removeMember(member.id),
-        },
-      ]);
+      sweetAlert.confirm(
+        'Remove Member',
+        `Remove ${member.fullName} from family?`,
+        () => removeMember(member.id),
+        undefined,
+        'Remove',
+        'Cancel',
+        true
+      );
     },
-    [removeMember]
+    [removeMember, sweetAlert]
   );
 
   const handleMemberPress = useCallback(
