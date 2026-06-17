@@ -2,7 +2,7 @@ import { StyleSheet,ActionSheetIOS, ActivityIndicator, Alert ,Button, Dimensions
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { BlurView } from 'expo-blur';
-import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
+import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { format } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
@@ -1271,7 +1271,7 @@ showAlert(
 
       {renderStickyHeader()}
 
-      <AutoHideScrollView
+      <AutoHideAnimatedScrollView
         contentContainerStyle={[styles.scrollContent, { paddingTop: 0, paddingBottom: insets.bottom + 40 }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#667eea" />}
         showsVerticalScrollIndicator={false}
@@ -1287,7 +1287,7 @@ showAlert(
           {activeTab === 'health' && renderHealthForm()}
           {activeTab === 'danger' && renderDangerZone()}
         </View>
-         </AutoHideScrollView>
+         </AutoHideAnimatedScrollView>
 
       <EmojiPicker />
     </View>

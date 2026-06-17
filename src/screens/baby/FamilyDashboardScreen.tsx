@@ -25,7 +25,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import type { RootStackParamList } from '../../types/navigation';
 
-import { AutoHideAnimatedScrollView, AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
+import { AutoHideAnimatedScrollView, } from '../../components/AutoHideScrollWrappers';
 import { useAuth } from '../../context/AuthContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useFamily } from '../../context/FamilyContext';
@@ -354,9 +354,9 @@ const ActionModal: React.FC<ActionModalProps> = ({
               </TouchableOpacity>
             )}
           </View>
-          <AutoHideScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalScrollContent}>
+          <AutoHideAnimatedScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalScrollContent}>
             {children}
-          </AutoHideScrollView>
+          </AutoHideAnimatedScrollView>
         </Animated.View>
       </View>
     </Modal>
@@ -674,7 +674,7 @@ showAlert('Remove Member', `Remove ${member.fullName} from family?`, [
 
   const renderBabyChips = () => (
     <View style={styles.babyChipsContainer}>
-      <AutoHideScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.babyChipsContent}>
+      <AutoHideAnimatedScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.babyChipsContent}>
         {babies.map((baby) => (
           <TouchableOpacity
             key={baby.id}
@@ -711,7 +711,7 @@ showAlert('Remove Member', `Remove ${member.fullName} from family?`, [
             <Text style={[styles.addBabyText, isDark && styles.textDark]}>Add</Text>
           </View>
         </TouchableOpacity>
-      </AutoHideScrollView>
+      </AutoHideAnimatedScrollView>
     </View>
   );
 

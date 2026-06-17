@@ -43,7 +43,7 @@ import { useActivity } from '../../context/ActivityContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
-import { AutoHideScrollView, AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
+import { AutoHideAnimatedScrollView, AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
 
 const { width, height } = Dimensions.get('window');
 const AnimatedSectionList = Animated.createAnimatedComponent(SectionList);
@@ -1632,7 +1632,7 @@ export default function RemindersScreen({ navigation, route }: Props) {
                   </View>
                   <Text style={styles.smartCount}>{smartSuggestions.length} found</Text>
                 </View>
-                <AutoHideScrollView
+                <AutoHideAnimatedScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={styles.smartScroll}
@@ -1675,7 +1675,7 @@ export default function RemindersScreen({ navigation, route }: Props) {
                       </TouchableOpacity>
                     </Animated.View>
                   ))}
-                </AutoHideScrollView>
+                </AutoHideAnimatedScrollView>
               </View>
             )}
 
@@ -1813,7 +1813,7 @@ export default function RemindersScreen({ navigation, route }: Props) {
               </TouchableOpacity>
             </View>
 
-            <AutoHideScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalScroll}>
+            <AutoHideAnimatedScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalScroll}>
               {/* Title Input */}
               <Text style={[styles.inputLabel, isDark && styles.textDark]}>What to remind?</Text>
               <TextInput
@@ -2018,7 +2018,7 @@ export default function RemindersScreen({ navigation, route }: Props) {
                   <Text style={styles.deleteButtonText}>Delete Reminder</Text>
                 </TouchableOpacity>
               )}
-            </AutoHideScrollView>
+            </AutoHideAnimatedScrollView>
           </Animated.View>
         </View>
       )}
