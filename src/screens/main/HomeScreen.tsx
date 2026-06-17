@@ -20,6 +20,7 @@ import Animated, {
   Extrapolate,
   useAnimatedScrollHandler,
 } from 'react-native-reanimated';
+
 import * as Haptics from 'expo-haptics';
 import { formatDistanceToNow, format, subDays, eachDayOfInterval, isSameDay } from 'date-fns';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop, Polyline } from 'react-native-svg';
@@ -33,7 +34,7 @@ import { useMedia } from '../../context/MediaContext';
 
 import { SafeAvatar, SafeBabyAvatar, SafeParentAvatar } from '../../components/SafeAvatar';;
 import { useSweetAlert } from '../../components/SweetAlert';
-import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
+// REMOVED: AutoHideAnimatedScrollView import — using Animated.ScrollView directly
 import { useTrackedScroll } from '../../hooks/useTrackedScroll';  // <-- NEW: Nav bar scroll tracking
 
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -1088,7 +1089,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 
   const fullThemeColors = useMemo(() =>
     getFullThemeColors(settings.theme, settings.appearance, colorScheme === 'dark'),
-  // REMOVED: headerVisible shared value — now derived from scrollY in StickyAppHeader
+    [settings.theme, settings.appearance, colorScheme]
   );
 
   const scrollY = useSharedValue(0);
@@ -1508,7 +1509,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         fullTheme={fullThemeColors}
       />
 
-      <AutoHideAnimatedScrollView
+      <Animated.ScrollView
         contentContainerStyle={[styles.scrollContent, { paddingTop: scrollTopPadding }]}
         refreshControl={
           <RefreshControl
@@ -1750,7 +1751,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         </View>
 
         <View style={{ height: settings.compactSpacing ? 100 : 140 }} />
-      </AutoHideAnimatedScrollView>
+      </Animated.ScrollView>
 
       <AddActionModal
         visible={showAddModal}
