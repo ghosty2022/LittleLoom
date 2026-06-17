@@ -87,6 +87,14 @@ const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
 const AnimatedFlatList = Animated.createAnimatedComponent(FlatList);
 const AnimatedSectionList = Animated.createAnimatedComponent(SectionList);
 
+// ─── Helper: Detect animated event object ───────────────────────────────
+// useAnimatedScrollHandler returns an object, NOT a function
+const isAnimatedEventObject = (value: any): boolean => {
+  return value !== null && 
+    typeof value === 'object' && 
+    typeof value !== 'function';
+};
+
 // ─── AutoHideScrollView ─────────────────────────────────────────────────
 // FOR REGULAR SCROLL HANDLERS ONLY (function callbacks)
 // NEVER pass useAnimatedScrollHandler output here!
@@ -94,8 +102,17 @@ export const AutoHideScrollView = forwardRef<ScrollView, ScrollViewProps>(
   (props, ref) => {
     const { onScroll: userOnScroll, ...rest } = props;
     
-    // Only accept function handlers
-    const safeUserOnScroll = typeof userOnScroll === 'function' ? userOnScroll : undefined;
+    // CRITICAL FIX: If user passes an animated event object, we CANNOT use it
+    // on a regular ScrollView. We must either:
+    // 1. Ignore it (safest - prevents crash)
+    // 2. Or warn in development
+    const isAnimated = isAnimatedEventObject(userOnScroll);
+    
+    // Only accept function handlers. If it's an animated object, discard it.
+    const safeUserOnScroll = (!isAnimated && typeof userOnScroll === 'function') 
+      ? userOnScroll 
+      : undefined;
+    
     const onScroll = useSafeTrackedScroll(safeUserOnScroll);
 
     return (
@@ -123,11 +140,9 @@ export const AutoHideAnimatedScrollView = forwardRef<ScrollView, AnimatedScrollV
 
     // If it's an animated event object, pass directly to AnimatedScrollView
     // AnimatedScrollView knows how to handle reanimated event objects
-    const isAnimatedEvent = userOnScroll !== null && 
-      typeof userOnScroll === 'object' && 
-      typeof (userOnScroll as any).__worklet !== 'undefined';
+    const isAnimated = isAnimatedEventObject(userOnScroll);
 
-    if (isAnimatedEvent) {
+    if (isAnimated) {
       return (
         <AnimatedScrollView
           ref={ref}
@@ -138,7 +153,7 @@ export const AutoHideAnimatedScrollView = forwardRef<ScrollView, AnimatedScrollV
       );
     }
 
-    // Otherwise, wrap with tracking
+    // Otherwise, wrap with tracking (regular function handler)
     const trackedOnScroll = useSafeTrackedScroll(
       typeof userOnScroll === 'function' ? userOnScroll : undefined
     );
@@ -160,7 +175,11 @@ export const AutoHideFlatList = forwardRef<FlatList<any>, FlatListProps<any>>(
   (props, ref) => {
     const { onScroll: userOnScroll, ...rest } = props;
     
-    const safeUserOnScroll = typeof userOnScroll === 'function' ? userOnScroll : undefined;
+    const isAnimated = isAnimatedEventObject(userOnScroll);
+    const safeUserOnScroll = (!isAnimated && typeof userOnScroll === 'function') 
+      ? userOnScroll 
+      : undefined;
+    
     const onScroll = useSafeTrackedScroll(safeUserOnScroll);
 
     return (
@@ -184,11 +203,9 @@ export const AutoHideAnimatedFlatList = forwardRef<FlatList<any>, AnimatedFlatLi
   (props, ref) => {
     const { onScroll: userOnScroll, ...rest } = props;
 
-    const isAnimatedEvent = userOnScroll !== null && 
-      typeof userOnScroll === 'object' && 
-      typeof (userOnScroll as any).__worklet !== 'undefined';
+    const isAnimated = isAnimatedEventObject(userOnScroll);
 
-    if (isAnimatedEvent) {
+    if (isAnimated) {
       return (
         <AnimatedFlatList
           ref={ref}
@@ -220,7 +237,11 @@ export const AutoHideSectionList = forwardRef<SectionList<any>, SectionListProps
   (props, ref) => {
     const { onScroll: userOnScroll, ...rest } = props;
     
-    const safeUserOnScroll = typeof userOnScroll === 'function' ? userOnScroll : undefined;
+    const isAnimated = isAnimatedEventObject(userOnScroll);
+    const safeUserOnScroll = (!isAnimated && typeof userOnScroll === 'function') 
+      ? userOnScroll 
+      : undefined;
+    
     const onScroll = useSafeTrackedScroll(safeUserOnScroll);
 
     return (
@@ -244,11 +265,9 @@ export const AutoHideAnimatedSectionList = forwardRef<SectionList<any>, Animated
   (props, ref) => {
     const { onScroll: userOnScroll, ...rest } = props;
 
-    const isAnimatedEvent = userOnScroll !== null && 
-      typeof userOnScroll === 'object' && 
-      typeof (userOnScroll as any).__worklet !== 'undefined';
+    const isAnimated = isAnimatedEventObject(userOnScroll);
 
-    if (isAnimatedEvent) {
+    if (isAnimated) {
       return (
         <AnimatedSectionList
           ref={ref}
