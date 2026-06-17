@@ -582,10 +582,9 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
     setMemberStats(stats);
   }, [members, currentBaby]);
 
-  const scrollHandler = useAnimatedScrollHandler({
-    onScroll: (event) => {'worklet';
-      
-'worklet';
+ const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      'worklet';
       scrollY.value = event.contentOffset.y;
       headerBlurIntensity.value = interpolate(
         scrollY.value,
@@ -1287,7 +1286,7 @@ showAlert(
         }
       >
         {renderTabContent()}
-      </Animated.ScrollView>
+      </AnimatedScrollView>
 
       {/* Member Detail Modal */}
       <ActionModal

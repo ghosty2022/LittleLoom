@@ -912,7 +912,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
           {activeTab === 'achievements' && renderAchievementsTab()}
           {activeTab === 'settings' && renderSettingsTab()}
         </View>
-      </Animated.ScrollView>
+       </Animated.ScrollView>
 
       <UniversalSpinner visible={isSaving} text="Saving changes..." size="medium" overlay={true} blur={true} section="main" />
 

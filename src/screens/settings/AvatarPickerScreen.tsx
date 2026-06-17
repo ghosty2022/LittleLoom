@@ -635,9 +635,12 @@ export const AvatarPickerScreen: React.FC<AvatarPickerScreenProps> = ({
             { paddingBottom: insets.bottom + 100 },
           ]}
           showsVerticalScrollIndicator={false}
-          onScroll={(event) => {
-            scrollY.value = event.nativeEvent.contentOffset.y;
-          }}
+          onScroll={useAnimatedScrollHandler({
+            onScroll: (event) => {
+              'worklet';
+              scrollY.value = event.contentOffset.y;
+            },
+          })}
           scrollEventThrottle={16}
         >
           {activeTab === 'photo' && renderPhotoTab()}
@@ -645,7 +648,7 @@ export const AvatarPickerScreen: React.FC<AvatarPickerScreenProps> = ({
           {activeTab === 'illustration' && renderIllustrationTab()}
           {activeTab === 'gradient' && renderGradientTab()}
           {activeTab === 'letter' && renderLetterTab()}
-        </Animated.ScrollView>
+        </AnimatedScrollView>
 
         {/* Bottom Confirm Bar */}
         <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 16 }]}>
