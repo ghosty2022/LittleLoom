@@ -1,5 +1,4 @@
-
-# Save as FindExactErrors.ps1 and run: .\FindExactErrors.ps1
+# Save as FindExactErrors_Fixed.ps1 and run: .\FindExactErrors_Fixed.ps1
 $src = "./src"
 
 Write-Host "=== FINDING ALL onScroll={scrollHandler} PATTERNS ===" -ForegroundColor Cyan
@@ -17,6 +16,11 @@ foreach ($file in $filesWithHandler) {
     if ($content -match 'onScroll=\{scrollHandler\}') {
         Write-Host "`nPROBLEM FILE: $file" -ForegroundColor Red
 
+        # Check for aliases
+        $hasScrollAlias = $content -match 'const AnimatedScrollView\s*='
+        $hasFlatListAlias = $content -match 'const AnimatedFlatList\s*='
+        $hasSectionListAlias = $content -match 'const AnimatedSectionList\s*='
+
         $lines = $content -split "`n"
         for ($i = 0; $i -lt $lines.Count; $i++) {
             if ($lines[$i] -match 'onScroll=\{scrollHandler\}') {
@@ -24,25 +28,35 @@ foreach ($file in $filesWithHandler) {
                 Write-Host "   Line $lineNum : $($lines[$i].Trim())" -ForegroundColor Yellow
 
                 $componentLine = ""
-                for ($j = [Math]::Max(0, $i - 20); $j -lt $i; $j++) {
-                    if ($lines[$j] -match '<(ScrollView|FlatList|SectionList|AutoHideScrollView|AutoHideAnimatedScrollView|Animated\.ScrollView|Animated\.FlatList)') {
+                for ($j = [Math]::Max(0, $i - 25); $j -lt $i; $j++) {
+                    if ($lines[$j] -match '<(ScrollView|FlatList|SectionList|AutoHideScrollView|AutoHideAnimatedScrollView|Animated\.ScrollView|Animated\.FlatList|Animated\.SectionList|AnimatedScrollView|AnimatedFlatList|AnimatedSectionList)') {
                         $componentLine = $lines[$j].Trim()
                     }
                 }
                 if ($componentLine) {
                     if ($componentLine -match 'AutoHideScrollView' -and $componentLine -notmatch 'AutoHideAnimated') {
-                        Write-Host "   WRONG: AutoHideScrollView (should be AutoHideAnimatedScrollView)" -ForegroundColor Red
-                    } elseif ($componentLine -match 'ScrollView' -and $componentLine -notmatch 'Animated') {
-                        Write-Host "   WRONG: Regular ScrollView (should be Animated.ScrollView)" -ForegroundColor Red
-                    } elseif ($componentLine -match 'FlatList' -and $componentLine -notmatch 'Animated') {
-                        Write-Host "   WRONG: Regular FlatList (should be Animated.FlatList)" -ForegroundColor Red
-                    } elseif ($componentLine -match 'AutoHideAnimated') {
-                        Write-Host "   CORRECT: AutoHideAnimatedScrollView" -ForegroundColor Green
-                    } elseif ($componentLine -match 'Animated\.') {
-                        Write-Host "   CORRECT: Animated.ScrollView/FlatList" -ForegroundColor Green
-                    } else {
-                        Write-Host "   CHECK: $componentLine" -ForegroundColor Magenta
+                        Write-Host "   ❌ WRONG: AutoHideScrollView (should be AutoHideAnimatedScrollView)" -ForegroundColor Red
+                    } 
+                    elseif ($componentLine -match 'ScrollView' -and $componentLine -notmatch 'Animated' -and -not ($hasScrollAlias -and $componentLine -match 'AnimatedScrollView')) {
+                        Write-Host "   ❌ WRONG: Regular ScrollView (should be Animated.ScrollView)" -ForegroundColor Red
+                    } 
+                    elseif ($componentLine -match 'FlatList' -and $componentLine -notmatch 'Animated' -and -not ($hasFlatListAlias -and $componentLine -match 'AnimatedFlatList')) {
+                        Write-Host "   ❌ WRONG: Regular FlatList (should be Animated.FlatList)" -ForegroundColor Red
+                    } 
+                    elseif ($componentLine -match 'SectionList' -and $componentLine -notmatch 'Animated' -and -not ($hasSectionListAlias -and $componentLine -match 'AnimatedSectionList')) {
+                        Write-Host "   ❌ WRONG: Regular SectionList (should be Animated.SectionList)" -ForegroundColor Red
+                    } 
+                    elseif ($componentLine -match 'AutoHideAnimated') {
+                        Write-Host "   ✅ CORRECT: AutoHideAnimatedScrollView/FlatList/SectionList" -ForegroundColor Green
+                    } 
+                    elseif ($componentLine -match 'Animated') {
+                        Write-Host "   ✅ CORRECT: Animated.ScrollView/FlatList/SectionList (or alias)" -ForegroundColor Green
+                    } 
+                    else {
+                        Write-Host "   ⚠️ CHECK: $componentLine" -ForegroundColor Magenta
                     }
+                } else {
+                    Write-Host "   ⚠️ Could not detect component (may be aliased or wrapped)" -ForegroundColor Magenta
                 }
             }
         }
@@ -74,9 +88,9 @@ foreach ($file in $filesWithHandler) {
 
     if ($content -match 'AutoHideScrollView') {
         if (-not ($content -match 'AutoHideAnimatedScrollView')) {
-            Write-Host "`nIMPORTS AutoHideScrollView but NOT AutoHideAnimatedScrollView: $file" -ForegroundColor Red
+            Write-Host "`n❌ IMPORTS AutoHideScrollView but NOT AutoHideAnimatedScrollView: $file" -ForegroundColor Red
         } else {
-            Write-Host "Imports both wrappers: $file" -ForegroundColor Green
+            Write-Host "✅ Imports both wrappers: $file" -ForegroundColor Green
         }
     }
 }
