@@ -7,10 +7,9 @@ import React, {
   memo,
   useLayoutEffect,
 } from 'react';
-import {  ActivityIndicator, Alert, Button, Dimensions, Linking, Modal, Platform, ScrollView, Settings, Share, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, Vibration, View } from 'react-native';
+import {  ActivityIndicator, Alert, Dimensions, Linking, Modal, Platform, Share, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, Vibration, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { EmptyState } from '../../components/EmptyState';
-import { showError } from '@/utils/alert';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -42,8 +41,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
-import { SafeAvatar, SafeBabyAvatar, SafeParentAvatar } from '../../components/SafeAvatar';;
-import { UniversalSpinner } from '../../components/UniversalSpinner';
+import { SafeAvatar, SafeBabyAvatar, SafeParentAvatar } from '../../components/SafeAvatar';import { UniversalSpinner } from '../../components/UniversalSpinner';
 
 type SafetyCornerScreenProps = BottomTabScreenProps<MainTabParamList, 'SafetyCorner'>;
 

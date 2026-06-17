@@ -1,6 +1,6 @@
 
 import React, { useEffect, useRef, useCallback } from 'react';
-import { interpolate } from 'react-native-reanimated';
+import { Animated } from 'react-native';
 import { View,
   Text,
   StyleSheet, Dimensions,

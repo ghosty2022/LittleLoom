@@ -1,9 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FadeIn, FadeInUp, useAnimatedStyle, useSharedValue, withSequence, withSpring } from 'react-native-reanimated';
+import { FadeIn, FadeInUp, useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 import { useAuth } from '../../context/AuthContext';
-import { showError } from '@/utils/alert';
-import { AppleAuthentication } from 'expo-apple-authentication';
-import { ActivityIndicator, Alert, Button,withTiming, Dimensions, Keyboard, KeyboardAvoidingView, Platform, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator,withTiming, Dimensions, Keyboard, KeyboardAvoidingView, Platform, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
