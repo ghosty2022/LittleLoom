@@ -1,5 +1,23 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import {  ActivityIndicator, Dimensions, Image, Keyboard, Linking, Modal, Platform, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Dimensions,
+  Image,
+  Keyboard,
+  Linking,
+  Modal,
+  Platform,
+  ScrollView,
+  Share,           // ← ADD THIS
+  StatusBar,
+  StyleSheet,
+  Switch,          // ← ADD THIS
+  Text,
+  TextInput,
+  TouchableOpacity,
+  useColorScheme,  // ← ADD THIS
+  View,
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';

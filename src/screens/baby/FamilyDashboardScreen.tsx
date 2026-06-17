@@ -11,6 +11,7 @@ import {
   useColorScheme,
   View,
 } from 'react-native';
+import { OptimizedImage } from '../../components/OptimizedImage';
 // Remove the Image import from react-native since we'll use OptimizedImage
 import React, { memo, useCallback, useMemo, useState } from 'react';
 
@@ -82,7 +83,8 @@ const SafeAvatar = memo<SafeAvatarProps>(
     fallbackIcon,
     fallbackColor,
   }) => {
-    const hasImage = isImageUri(avatar);
+    const [imageError, setImageError] = useState(false);
+    const hasImage = isImageUri(avatar) && !imageError;
     const hasEmoji = isEmoji(avatar);
 
     const gradientColors =
@@ -99,6 +101,24 @@ const SafeAvatar = memo<SafeAvatarProps>(
       fallbackColor ||
       (gender === 'boy' ? '#667eea' : gender === 'girl' ? '#fa709a' : '#11998e');
 
+    // Normalize file URIs for better compatibility
+    const normalizedUri = useMemo(() => {
+      if (!avatar) return null;
+      // Handle Android file paths that may need normalization
+      if (avatar.startsWith('file://')) {
+        // On Android, sometimes the path needs to be decoded
+        if (Platform.OS === 'android') {
+          try {
+            // Remove any double slashes except for the protocol
+            return avatar.replace(/file:\/\//g, 'file://').replace('file://', 'file:///');
+          } catch {
+            return avatar;
+          }
+        }
+      }
+      return avatar;
+    }, [avatar]);
+
     return (
       <View style={[styles.avatarWrapper, { width: size, height: size }]}>
         <LinearGradient
@@ -108,7 +128,7 @@ const SafeAvatar = memo<SafeAvatarProps>(
             { width: size, height: size, borderRadius: size / 2.8 },
           ]}
         >
-          {hasImage ? (
+          {hasImage && normalizedUri ? (
             <View
               style={{
                 width: size,
@@ -118,11 +138,13 @@ const SafeAvatar = memo<SafeAvatarProps>(
                 backgroundColor: '#f0f0f0',
               }}
             >
-              <Image
-                source={{ uri: avatar! }}
+              <OptimizedImage
+                source={{ uri: normalizedUri }}
                 style={{ width: size, height: size }}
-                resizeMode="cover"
-                onError={(e) => console.log('Avatar image error:', e.nativeEvent.error)}
+                contentFit="cover"
+                cachePolicy="memory-disk"
+                onError={() => setImageError(true)}
+                transition={200}
               />
             </View>
           ) : hasEmoji ? (
