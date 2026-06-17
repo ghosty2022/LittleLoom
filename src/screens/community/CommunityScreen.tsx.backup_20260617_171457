@@ -29,6 +29,9 @@ import { useAutoHideNav } from '../../hooks/useAutoHideNav';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { useUser } from '../../context/UserContext';
+import { showAlert } from '@/utils/alert';
+
+
 // Import the LittleLoom logo
 const littleLoomLogo = require('../../../assets/logo.png');
 
@@ -814,14 +817,27 @@ const PostCard = React.memo(({
   const handleLongPress = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-sweetAlert.confirm(
-      'Thread Options',
-      'What would you like to do?',
-      () => onShare(post),
-      undefined,
-      'Share',
-      'Cancel'
-    )
+showAlert('Thread Options', '', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Share', onPress: () => onShare(post) },
+      {
+        text: post.isBookmarked ? 'Remove Bookmark' : 'Bookmark',
+        onPress: () => onBookmark(post.id),
+      },
+      ...(isAuthor
+        ? [{ text: 'Delete', style: 'destructive' as const, onPress: () => onDelete(post.id) }]
+        : [
+          {
+            text: post.author.isFollowing ? 'Unfollow' : 'Follow',
+            onPress: () => onFollowToggle(post.authorId),
+          },
+          {
+            text: 'Report',
+            style: 'destructive' as const,
+            onPress: () => onNavigate('Report', { type: 'post', targetId: post.id }),
+          },
+        ]),
+    ]);
   };
 
   return (
@@ -2019,15 +2035,10 @@ showAlert(
 
   const handleDelete = useCallback((postId: string) => {
 
-sweetAlert.confirm(
-      'Unravel this thread?',
-      'This cannot be undone.',
-      () => deletePost(postId),
-      undefined,
-      'Delete',
-      'Cancel',
-      true
-    )
+showAlert('Unravel this thread?', 'This cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => deletePost(postId) },
+    ]);
   }, [deletePost]);
 
   const handleCommentSubmit = useCallback(async (postId: string) => {

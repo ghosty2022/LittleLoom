@@ -47,7 +47,6 @@ export interface SweetAlertConfig {
   duration?: number;
   autoDismiss?: boolean;
   confirmColor?: string;
-  destructive?: boolean;
   cancelColor?: string;
   iconColor?: string;
   haptic?: boolean;
@@ -304,7 +303,7 @@ const SweetAlertModal: React.FC<ModalProps> = ({ config, isDark, themeColors, on
   const alertCfg = ALERT_CONFIG[type];
 
   const iconColor = config.iconColor || alertCfg.defaultColor;
-  const confirmColor = config.destructive ? '#ef4444' : (config.confirmColor || themeColors.primary);
+  const confirmColor = config.confirmColor || themeColors.primary;
 
   const bgColor = isDark ? '#1a1a2e' : '#ffffff';
   const textColor = isDark ? '#ffffff' : '#1a1a1a';
