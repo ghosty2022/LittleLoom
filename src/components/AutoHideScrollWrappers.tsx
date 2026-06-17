@@ -17,13 +17,6 @@ import Animated, {
 
 type ScrollHandler = (e: NativeSyntheticEvent<NativeScrollEvent>) => void;
 
-// ─── CORRECTED: Check if value is an animated event object ───────────────
-const isAnimatedEvent = (value: any): boolean => {
-  // Reanimated's useAnimatedScrollHandler returns a special object
-  // It has __isNative property. We check for that specifically.
-  return value && typeof value === 'object' && value.__isNative !== undefined;
-};
-
 // ─── Safe Scroll Hook ──────────────────────────────────────────────────
 const useSafeTrackedScroll = (
   userOnScroll?: ScrollHandler | unknown,
@@ -46,7 +39,6 @@ const useSafeTrackedScroll = (
   } = options || {};
 
   // CRITICAL FIX: Only use userOnScroll if it's actually a function
-  // If it's an animated event object, ignore it completely
   const safeUserHandler = typeof userOnScroll === 'function' ? (userOnScroll as ScrollHandler) : undefined;
 
   return useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -92,18 +84,25 @@ const useSafeTrackedScroll = (
   }, [safeUserHandler, hideThreshold, showThreshold, velocityThreshold]);
 };
 
+// ─── Animated ScrollView component ─────────────────────────────────────
+const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
+
 // ─── AutoHideScrollView ────────────────────────────────────────────────────
 export const AutoHideScrollView = forwardRef<ScrollView, ScrollViewProps>(
   (props, ref) => {
     const userOnScroll = props.onScroll;
     
-    // CRITICAL FIX: Check if it's a function, not an object
+    // CRITICAL FIX: Check if it's an animated event object
     const isAnimatedEvent = typeof userOnScroll === 'object' && userOnScroll !== null;
     
     if (isAnimatedEvent) {
-      console.warn(
-        '[AutoHideScrollView] Animated event object passed to regular ScrollView. ' +
-        'Use AutoHideAnimatedScrollView for animated scroll handlers.'
+      // Use Animated.ScrollView for animated events
+      return (
+        <AutoHideAnimatedScrollView
+          ref={ref as any}
+          {...(props as any)}
+          onScroll={userOnScroll as any}
+        />
       );
     }
 
@@ -123,8 +122,6 @@ export const AutoHideScrollView = forwardRef<ScrollView, ScrollViewProps>(
 
 // ─── AutoHideAnimatedScrollView ────────────────────────────────────────────
 // For ANIMATED ScrollView - properly handles animated events
-const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
-
 interface AnimatedScrollViewProps extends ScrollViewProps {
   onScroll?: ReturnType<typeof useAnimatedScrollHandler> | ScrollHandler;
 }
