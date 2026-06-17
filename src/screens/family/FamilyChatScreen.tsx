@@ -1,4 +1,4 @@
-import { StyleSheet, ActivityIndicator        , TouchableOpacity, View } from 'react-native';
+import { StyleSheet, ActivityIndicator        , TouchableOpacity, View , Dimensions, Modal, TextInput, Image, Platform, StatusBar, KeyboardAvoidingView, Text, Share} from 'react-native';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { AutoHideFlatList } from '../../components/AutoHideScrollWrappers';
@@ -1081,7 +1081,7 @@ const MessageBubble: React.FC<{
       {!isMe && showAvatar && message.type !== 'system' && (
         <TouchableOpacity
           onPress={() =>
-            member && showAlert(member.fullName, `Role: ${member.role}`)
+            member && showSweetAlert(member.fullName, `Role: ${member.role}`)
           }
           style={[
             styles.avatarSmall,
@@ -1798,7 +1798,7 @@ export default function FamilyChatScreen({
 
   const showImageSourceAlert = () => {
 
-showAlert('Send Photo', 'Choose a photo source', [
+showSweetAlert('Send Photo', 'Choose a photo source', [
       { text: 'Cancel', style: 'cancel' },
       { text: '📷 Camera', onPress: () => handleImagePick(true) },
       { text: '🖼️ Gallery', onPress: () => handleImagePick(false) },
@@ -1813,7 +1813,7 @@ showAlert('Send Photo', 'Choose a photo source', [
 
   const handleDelete = async (messageId: string) => {
 
-showAlert('Delete Message', 'Are you sure?', [
+showSweetAlert('Delete Message', 'Are you sure?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
@@ -1864,7 +1864,7 @@ showAlert('Delete Message', 'Are you sure?', [
     try {
       const canOpen = await FileSystem.getContentUriAsync(meta.uri);
 
-showAlert(
+showSweetAlert(
         meta.name,
         `Size: ${meta.size} bytes\nType: ${meta.type}`,
         [
@@ -2219,7 +2219,7 @@ showAlert(
             ]}
             onPress={() => {
 
-showAlert('Chat Options', '', [
+showSweetAlert('Chat Options', '', [
                 { text: 'Cancel', style: 'cancel' },
                 {
                   text: 'Clear Chat',

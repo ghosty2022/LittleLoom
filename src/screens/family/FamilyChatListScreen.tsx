@@ -1,4 +1,4 @@
-import { StyleSheet, ActivityIndicator    , RefreshControl  ,Text , TouchableOpacity, View } from 'react-native';
+import { StyleSheet, ActivityIndicator    , RefreshControl  ,Text , TouchableOpacity, View , Dimensions, Modal, TextInput, Image, Platform, StatusBar} from 'react-native';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { AutoHideFlatList } from '../../components/AutoHideScrollWrappers';
@@ -1040,7 +1040,7 @@ export default function FamilyChatListScreen({
   const handleDeleteChat = () => {
     if (!selectedChat) return;
 
-showAlert(
+showSweetAlert(
       'Delete Chat',
       `Are you sure you want to delete "${selectedChat.name}"? This cannot be undone.`,
       [
@@ -1768,7 +1768,7 @@ showAlert(
                 style={styles.groupPhotoContainer}
                 onPress={() => {
 
-showAlert(
+showSweetAlert(
                     'Group Photo',
                     'Choose a photo for your group',
                     [

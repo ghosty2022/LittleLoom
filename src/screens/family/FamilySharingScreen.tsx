@@ -1859,7 +1859,7 @@ showAlert(
             onPress={() => {
               setShowFamilySettings(false);
 
-showAlert(
+sweetAlert.confirm(
                 'Export Family Data',
                 'Generate a comprehensive report of all family activities?',
                 [
