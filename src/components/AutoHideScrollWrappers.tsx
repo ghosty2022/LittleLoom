@@ -1,3 +1,4 @@
+// src/components/AutoHideScrollWrappers.tsx
 import React, { useCallback, useRef, forwardRef } from 'react';
 import {
   ScrollView,
@@ -19,7 +20,7 @@ type ScrollHandler = (e: NativeSyntheticEvent<NativeScrollEvent>) => void;
 
 // ─── Safe Scroll Hook ──────────────────────────────────────────────────
 const useSafeTrackedScroll = (
-  userOnScroll?: ScrollHandler | unknown,
+  userOnScroll?: ScrollHandler,
   options?: {
     hideThreshold?: number;
     showThreshold?: number;
@@ -38,10 +39,6 @@ const useSafeTrackedScroll = (
     velocityThreshold = 1.2,
   } = options || {};
 
-  // CRITICAL FIX: Only use userOnScroll if it's actually a function
-  // Animated event objects from useAnimatedScrollHandler are objects, not functions
-  const safeUserHandler = typeof userOnScroll === 'function' ? (userOnScroll as ScrollHandler) : undefined;
-
   return useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const now = Date.now();
     const currentY = event.nativeEvent.contentOffset.y;
@@ -51,10 +48,9 @@ const useSafeTrackedScroll = (
 
     lastY.current = currentY;
 
-    // Call user's onScroll first - ONLY if it's a function
-    // NEVER call if it's an animated event object
-    if (safeUserHandler) {
-      safeUserHandler(event);
+    // Call user's function handler
+    if (userOnScroll) {
+      userOnScroll(event);
     }
 
     // Throttle nav tracking
@@ -83,40 +79,29 @@ const useSafeTrackedScroll = (
 
     lastProcessedY.current = currentY;
     lastProcessedTime.current = now;
-  }, [safeUserHandler, hideThreshold, showThreshold, velocityThreshold]);
+  }, [userOnScroll, hideThreshold, showThreshold, velocityThreshold]);
 };
 
-// ─── Animated ScrollView component ─────────────────────────────────────
+// ─── Animated component factories ────────────────────────────────────────
 const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
+const AnimatedFlatList = Animated.createAnimatedComponent(FlatList);
+const AnimatedSectionList = Animated.createAnimatedComponent(SectionList);
 
-// ─── AutoHideScrollView ────────────────────────────────────────────────────
+// ─── AutoHideScrollView ─────────────────────────────────────────────────
+// FOR REGULAR SCROLL HANDLERS ONLY (function callbacks)
+// NEVER pass useAnimatedScrollHandler output here!
 export const AutoHideScrollView = forwardRef<ScrollView, ScrollViewProps>(
   (props, ref) => {
-    const userOnScroll = props.onScroll;
+    const { onScroll: userOnScroll, ...rest } = props;
     
-    // CRITICAL FIX: Check if it's an animated event object from useAnimatedScrollHandler
-    // useAnimatedScrollHandler returns an object with __isNative: true or similar internal props
-    const isAnimatedEvent = typeof userOnScroll === 'object' && userOnScroll !== null && typeof userOnScroll !== 'function';
-
-    if (isAnimatedEvent) {
-      // For animated events, we MUST use Animated.ScrollView, not regular ScrollView
-      // The animated event object cannot be called as a function
-      return (
-        <AutoHideAnimatedScrollView
-          ref={ref as any}
-          {...(props as any)}
-          onScroll={userOnScroll as any}
-        />
-      );
-    }
-
+    // Only accept function handlers
     const safeUserOnScroll = typeof userOnScroll === 'function' ? userOnScroll : undefined;
     const onScroll = useSafeTrackedScroll(safeUserOnScroll);
 
     return (
       <ScrollView
         ref={ref}
-        {...props}
+        {...rest}
         onScroll={onScroll}
         scrollEventThrottle={props.scrollEventThrottle || 16}
       />
@@ -124,35 +109,36 @@ export const AutoHideScrollView = forwardRef<ScrollView, ScrollViewProps>(
   }
 );
 
-// ─── AutoHideAnimatedScrollView ────────────────────────────────────────────
-// For ANIMATED ScrollView - properly handles animated events
+// ─── AutoHideAnimatedScrollView ─────────────────────────────────────────
+// FOR ANIMATED EVENTS ONLY (useAnimatedScrollHandler output)
+// This uses Animated.ScrollView under the hood
 interface AnimatedScrollViewProps extends ScrollViewProps {
+  // Accept both animated event objects and regular functions
   onScroll?: ReturnType<typeof useAnimatedScrollHandler> | ScrollHandler;
 }
 
 export const AutoHideAnimatedScrollView = forwardRef<ScrollView, AnimatedScrollViewProps>(
   (props, ref) => {
-    const userOnScroll = props.onScroll;
+    const { onScroll: userOnScroll, ...rest } = props;
 
-    // Check if this is an animated event object (from useAnimatedScrollHandler)
-    // useAnimatedScrollHandler returns an object, NOT a function
-    const isAnimatedEvent = typeof userOnScroll === 'object' && userOnScroll !== null && typeof userOnScroll !== 'function';
+    // If it's an animated event object, pass directly to AnimatedScrollView
+    // AnimatedScrollView knows how to handle reanimated event objects
+    const isAnimatedEvent = userOnScroll !== null && 
+      typeof userOnScroll === 'object' && 
+      typeof (userOnScroll as any).__worklet !== 'undefined';
 
-    // CRITICAL: For animated events, pass the original object directly to AnimatedScrollView.
-    // NEVER try to wrap an animated event object with useSafeTrackedScroll.
-    // For regular functions, wrap with tracking.
     if (isAnimatedEvent) {
       return (
         <AnimatedScrollView
           ref={ref}
-          {...props}
+          {...rest}
           onScroll={userOnScroll as any}
           scrollEventThrottle={props.scrollEventThrottle || 16}
         />
       );
     }
 
-    // Only wrap with tracking if it's a regular function
+    // Otherwise, wrap with tracking
     const trackedOnScroll = useSafeTrackedScroll(
       typeof userOnScroll === 'function' ? userOnScroll : undefined
     );
@@ -160,7 +146,127 @@ export const AutoHideAnimatedScrollView = forwardRef<ScrollView, AnimatedScrollV
     return (
       <AnimatedScrollView
         ref={ref}
-        {...props}
+        {...rest}
+        onScroll={trackedOnScroll as any}
+        scrollEventThrottle={props.scrollEventThrottle || 16}
+      />
+    );
+  }
+);
+
+// ─── AutoHideFlatList ───────────────────────────────────────────────────
+// FOR REGULAR SCROLL HANDLERS ONLY
+export const AutoHideFlatList = forwardRef<FlatList<any>, FlatListProps<any>>(
+  (props, ref) => {
+    const { onScroll: userOnScroll, ...rest } = props;
+    
+    const safeUserOnScroll = typeof userOnScroll === 'function' ? userOnScroll : undefined;
+    const onScroll = useSafeTrackedScroll(safeUserOnScroll);
+
+    return (
+      <FlatList
+        ref={ref}
+        {...rest}
+        onScroll={onScroll}
+        scrollEventThrottle={props.scrollEventThrottle || 16}
+      />
+    );
+  }
+);
+
+// ─── AutoHideAnimatedFlatList ───────────────────────────────────────────
+// FOR ANIMATED EVENTS ONLY
+interface AnimatedFlatListProps extends FlatListProps<any> {
+  onScroll?: ReturnType<typeof useAnimatedScrollHandler> | ScrollHandler;
+}
+
+export const AutoHideAnimatedFlatList = forwardRef<FlatList<any>, AnimatedFlatListProps>(
+  (props, ref) => {
+    const { onScroll: userOnScroll, ...rest } = props;
+
+    const isAnimatedEvent = userOnScroll !== null && 
+      typeof userOnScroll === 'object' && 
+      typeof (userOnScroll as any).__worklet !== 'undefined';
+
+    if (isAnimatedEvent) {
+      return (
+        <AnimatedFlatList
+          ref={ref}
+          {...rest}
+          onScroll={userOnScroll as any}
+          scrollEventThrottle={props.scrollEventThrottle || 16}
+        />
+      );
+    }
+
+    const trackedOnScroll = useSafeTrackedScroll(
+      typeof userOnScroll === 'function' ? userOnScroll : undefined
+    );
+
+    return (
+      <AnimatedFlatList
+        ref={ref}
+        {...rest}
+        onScroll={trackedOnScroll as any}
+        scrollEventThrottle={props.scrollEventThrottle || 16}
+      />
+    );
+  }
+);
+
+// ─── AutoHideSectionList ────────────────────────────────────────────────
+// FOR REGULAR SCROLL HANDLERS ONLY
+export const AutoHideSectionList = forwardRef<SectionList<any>, SectionListProps<any>>(
+  (props, ref) => {
+    const { onScroll: userOnScroll, ...rest } = props;
+    
+    const safeUserOnScroll = typeof userOnScroll === 'function' ? userOnScroll : undefined;
+    const onScroll = useSafeTrackedScroll(safeUserOnScroll);
+
+    return (
+      <SectionList
+        ref={ref}
+        {...rest}
+        onScroll={onScroll}
+        scrollEventThrottle={props.scrollEventThrottle || 16}
+      />
+    );
+  }
+);
+
+// ─── AutoHideAnimatedSectionList ────────────────────────────────────────
+// FOR ANIMATED EVENTS ONLY
+interface AnimatedSectionListProps extends SectionListProps<any> {
+  onScroll?: ReturnType<typeof useAnimatedScrollHandler> | ScrollHandler;
+}
+
+export const AutoHideAnimatedSectionList = forwardRef<SectionList<any>, AnimatedSectionListProps>(
+  (props, ref) => {
+    const { onScroll: userOnScroll, ...rest } = props;
+
+    const isAnimatedEvent = userOnScroll !== null && 
+      typeof userOnScroll === 'object' && 
+      typeof (userOnScroll as any).__worklet !== 'undefined';
+
+    if (isAnimatedEvent) {
+      return (
+        <AnimatedSectionList
+          ref={ref}
+          {...rest}
+          onScroll={userOnScroll as any}
+          scrollEventThrottle={props.scrollEventThrottle || 16}
+        />
+      );
+    }
+
+    const trackedOnScroll = useSafeTrackedScroll(
+      typeof userOnScroll === 'function' ? userOnScroll : undefined
+    );
+
+    return (
+      <AnimatedSectionList
+        ref={ref}
+        {...rest}
         onScroll={trackedOnScroll as any}
         scrollEventThrottle={props.scrollEventThrottle || 16}
       />
