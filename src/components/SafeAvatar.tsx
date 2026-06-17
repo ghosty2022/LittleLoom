@@ -98,28 +98,28 @@ export const hasDisplayableImage = (avatar: AvatarSource, hasError: boolean): bo
 
 /**
  * Safely gets theme colors with full fallback chain:
- * 1. themeId parameter
+ * 1. themeId parameter (treated as primary color hint)
  * 2. useCustomization hook
  * 3. Default colors
- * 
- * This hook ALWAYS calls useCustomization unconditionally (React Rules of Hooks),
- * but safely handles missing context.
  */
 const useSafeThemeColors = (themeId?: string): ThemeColors => {
-  let customization: ReturnType<typeof useCustomization> | null = null;
-  let hookError = false;
-
-  try {
-    customization = useCustomization();
-  } catch {
-    hookError = true;
+  // Always call hook unconditionally at top level
+  const customization = useCustomization();
+  
+  // If themeId looks like a hex color, build a theme around it
+  if (themeId && themeId.startsWith('#')) {
+    return {
+      primary: themeId,
+      secondary: customization?.themeColors?.secondary || '#764ba2',
+      accent: customization?.themeColors?.accent || '#fa709a',
+      colors: customization?.themeColors?.colors || ['#e0e7ff', '#d1d5ff', '#c7b8ff'],
+      spinnerColor: themeId,
+      darkText: customization?.themeColors?.darkText || '#4338ca',
+      lightText: customization?.themeColors?.lightText || '#ffffff',
+    };
   }
 
-  if (themeId) {
-    return getThemeColorsById(themeId);
-  }
-
-  if (!hookError && customization?.themeColors) {
+  if (customization?.themeColors) {
     return customization.themeColors;
   }
 
@@ -127,12 +127,8 @@ const useSafeThemeColors = (themeId?: string): ThemeColors => {
 };
 
 const useSafeReduceMotion = (): boolean => {
-  try {
-    const customization = useCustomization();
-    return customization?.shouldReduceMotion ?? false;
-  } catch {
-    return false;
-  }
+  const customization = useCustomization();
+  return customization?.shouldReduceMotion ?? false;
 };
 
 interface AvatarContentProps {

@@ -555,7 +555,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
           <Ionicons name="arrow-back" size={24} color={isDark ? '#fff' : '#1a1a1a'} />
         </TouchableOpacity>
         <View style={styles.stickyHeaderCenter}>
-          <SafeAvatar avatar={formData.avatar || member?.avatar} size={32} fallbackIcon={roleConfig?.icon as any || 'person'} fallbackColor={roleConfig?.color || '#667eea'} />
+          <SafeAvatar avatar={formData.avatar || member?.avatar} size={32} fallbackIcon={roleConfig?.icon as any || 'person'} fallbackColor={roleConfig?.color || '#667eea'} animated={false} />
           <Text style={[styles.stickyHeaderTitle, isDark && styles.textDark]} numberOfLines={1}>{member?.fullName || 'Family Member'}</Text>
         </View>
         <TouchableOpacity onPress={() => isEditing ? handleSave() : setIsEditing(true)} style={[styles.saveBtn, (!canEdit || isSaving) && styles.saveBtnDisabled]} disabled={!canEdit || isSaving} activeOpacity={0.8}>
@@ -572,7 +572,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
         <View style={styles.profileHeroContent}>
           <View style={styles.avatarSection}>
             <TouchableOpacity activeOpacity={0.9} onPress={() => canEdit && setShowImagePicker(true)} disabled={!canEdit}>
-              <SafeAvatar avatar={formData.avatar || member.avatar} size={100} fallbackIcon={roleConfig.icon as any} fallbackColor={roleConfig.color} fallbackBgColor={`${roleConfig.color}20`} borderColor={roleConfig.color} borderWidth={3} showEditBadge={canEdit} onPress={() => canEdit && setShowImagePicker(true)} themeId={themeColors.primary} animated={!shouldReduceMotion} />
+              <SafeAvatar avatar={formData.avatar || member.avatar} size={100} fallbackIcon={roleConfig.icon as any} fallbackColor={roleConfig.color} fallbackBgColor={`${roleConfig.color}20`} borderColor={roleConfig.color} borderWidth={3} showEditBadge={canEdit} onPress={() => canEdit && setShowImagePicker(true)} animated={!shouldReduceMotion} />
             </TouchableOpacity>
           </View>
           <View style={styles.profileInfo}>
