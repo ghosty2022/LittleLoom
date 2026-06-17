@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { AutoHideFlatList } from '../../components/AutoHideScrollWrappers';
 import { useCommunity } from '../../context/CommunityContext';
 import { EmptyState } from '../../components/EmptyState';
-import {  AlertAnimated, Button, Dimensions, FlatList, RefreshControl, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';;
+import {  Alert, Button, Dimensions, FlatList, RefreshControl, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';;
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';

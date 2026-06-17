@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { EmptyState } from '../../components/EmptyState';
-import {  ActivityIndicator, AlertAnimated, Button, Dimensions, Modal, Platform, ScrollView, SectionList, Settings, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, Vibration, View } from 'react-native';;
+import {  ActivityIndicator, Alert, Button, Dimensions, Modal, Platform, ScrollView, SectionList, Settings, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, Vibration, View } from 'react-native';;
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { showAlert } from '@/utils/alert';

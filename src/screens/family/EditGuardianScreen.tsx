@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import {  ActivityIndicator, AlertAnimated, Button, Dimensions, Image, Keyboard, Linking, Modal, Platform, ScrollView, Share, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, useColorScheme, View } from 'react-native';;
+import {  ActivityIndicator, Alert, Button, Dimensions, Image, Keyboard, Linking, Modal, Platform, ScrollView, Share, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, useColorScheme, View } from 'react-native';;
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -876,7 +876,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
           {activeTab === 'permissions' && renderPermissionsTab()}
           {activeTab === 'danger' && renderDangerTab()}
         </View>
-      </AnimatedScrollView>
+      </Animated.ScrollView>
 
       {/* Modals */}
       <UniversalSpinner visible={isSaving} text="Saving changes..." size="medium" overlay={true} blur={true} section="main" />

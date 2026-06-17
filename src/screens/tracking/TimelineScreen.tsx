@@ -2,7 +2,7 @@
 import React, { useCallback, useMemo, useState, useEffect } from 'react';
 import { EmptyState } from '../../components/EmptyState';
 import { useCustomization } from '../../hooks/useCustomization';
-import {  AlertAnimated, Button, Dimensions, Modal, RefreshControl, ScrollView, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';;
+import {  Alert, Button, Dimensions, Modal, RefreshControl, ScrollView, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';;
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -909,10 +909,9 @@ export default function EnhancedTimelineScreen() {
     navigation.navigate('AddEntry', { viewMode: true, eventId: entry?.id, trackerId: entry?.trackerId });
   }, [navigation]);
 
-  const handleScroll = useAnimatedScrollHandler({
+    const handleScroll = useAnimatedScrollHandler({
     onScroll: (event) => {
-     'worklet';
-       'worklet';
+      'worklet';
       scrollY.value = event.contentOffset.y;
     },
   }, [scrollY]);

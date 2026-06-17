@@ -1287,7 +1287,7 @@ showAlert(
         }
       >
         {renderTabContent()}
-      </AnimatedScrollView>
+      </Animated.ScrollView>
 
       {/* Member Detail Modal */}
       <ActionModal

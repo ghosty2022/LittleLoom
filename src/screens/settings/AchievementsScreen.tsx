@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useBaby } from '../../context/BabyContext';
-import {  AlertAnimated, Button, Dimensions, FlatList, Modal, Platform, RefreshControl, ScrollView, Settings, Share, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';;
+import {  Alert, Button, Dimensions, FlatList, Modal, Platform, RefreshControl, ScrollView, Settings, Share, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';;
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';

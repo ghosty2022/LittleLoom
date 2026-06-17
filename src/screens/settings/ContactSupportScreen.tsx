@@ -11,7 +11,7 @@ import { BlurView } from 'expo-blur';
 import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
 import { showAlert } from '@/utils/alert';
 
-import {  AlertAnimated, Button, KeyboardAvoidingView, Linking, Platform, ScrollView, Settings, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, useSafeAreaInsets, View } from 'react-native';;
+import {  Alert, Button, KeyboardAvoidingView, Linking, Platform, ScrollView, Settings, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, useSafeAreaInsets, View } from 'react-native';;
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ContactSupport'>;
 

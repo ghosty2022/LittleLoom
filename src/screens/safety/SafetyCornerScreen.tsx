@@ -7,7 +7,7 @@ import React, {
   memo,
   useLayoutEffect,
 } from 'react';
-import {  ActivityIndicator, AlertAnimated, Button, Dimensions, Linking, Modal, Platform, ScrollView, Settings, Share, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, Vibration, View } from 'react-native';;
+import {  ActivityIndicator, Alert, Button, Dimensions, Linking, Modal, Platform, ScrollView, Settings, Share, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, Vibration, View } from 'react-native';;
 import { LinearGradient } from 'expo-linear-gradient';
 import { EmptyState } from '../../components/EmptyState';
 import { showError } from '@/utils/alert';

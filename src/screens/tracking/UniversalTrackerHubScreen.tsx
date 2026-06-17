@@ -7,7 +7,7 @@ import React, {
   useState,
   memo,
 } from 'react';
-import {  ActivityIndicator, AlertAnimated, Button, Dimensions, Modal, Pressable, ScrollView, Settings, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, type ViewStyle, View } from 'react-native';;
+import {  ActivityIndicator, Alert, Button, Dimensions, Modal, Pressable, ScrollView, Settings, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, type ViewStyle, View } from 'react-native';;
 import { LinearGradient } from 'expo-linear-gradient';
 import { EmptyState } from '../../components/EmptyState';
 import { showError } from '@/utils/alert';

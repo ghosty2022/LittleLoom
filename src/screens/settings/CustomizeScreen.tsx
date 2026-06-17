@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import {  ActivityIndicator, AlertAnimated, BackHandler, Button, Dimensions, Image, Pressable, ScrollView, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';;
+import {  ActivityIndicator, Alert, BackHandler, Button, Dimensions, Image, Pressable, ScrollView, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';;
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {

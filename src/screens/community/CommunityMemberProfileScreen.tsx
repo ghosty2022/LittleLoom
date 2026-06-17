@@ -632,7 +632,7 @@ showAlert(user.displayName || 'User', '', options);
           {activeTab === 'about' && renderAboutTab()}
           {activeTab === 'achievements' && renderAchievementsTab()}
         </View>
-      </AnimatedScrollView>
+      </Animated.ScrollView>
     </View>
   );
 }

@@ -1,6 +1,6 @@
 import { useSweetAlert } from '../../components/SweetAlert';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AlertAnimated, Dimensions, Image, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';;
+import { ActivityIndicator, Alert, Dimensions, Image, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';;
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -645,7 +645,7 @@ export const AvatarPickerScreen: React.FC<AvatarPickerScreenProps> = ({
           {activeTab === 'illustration' && renderIllustrationTab()}
           {activeTab === 'gradient' && renderGradientTab()}
           {activeTab === 'letter' && renderLetterTab()}
-        </AnimatedScrollView>
+        </Animated.ScrollView>
 
         {/* Bottom Confirm Bar */}
         <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 16 }]}>
