@@ -84,9 +84,9 @@ const useSafeTrackedScroll = (
 };
 
 // ─── Animated component factories ────────────────────────────────────────
-const AnimatedScrollView = createAnimatedComponent(ScrollView);
-const AnimatedFlatList = createAnimatedComponent(FlatList);
-const AnimatedSectionList = createAnimatedComponent(SectionList);
+const ReanimatedScrollView = createAnimatedComponent(ScrollView);
+const ReanimatedFlatList = createAnimatedComponent(FlatList);
+const ReanimatedSectionList = createAnimatedComponent(SectionList);
 
 // ─── Helper: Detect animated event object ───────────────────────────────
 // CRITICAL: useAnimatedScrollHandler returns an OBJECT, not a function.
