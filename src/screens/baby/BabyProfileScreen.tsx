@@ -1,4 +1,4 @@
-import { StyleSheet,ActionSheetIOS, ActivityIndicator , Dimensions ,Image, Modal ,RefreshControl, ScrollView, Switch, TextInput, TouchableOpacity ,useColorScheme, View } from 'react-native';
+import { StyleSheet,ActionSheetIOS, ActivityIndicator , Dimensions ,Image, Modal ,RefreshControl, ScrollView, Switch, TextInput, TouchableOpacity ,useColorScheme, View, Platform, StatusBar, Text } from 'react-native';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { BlurView } from 'expo-blur';
@@ -196,7 +196,6 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
   } = useBaby();
   const { entries: allActivities, getEntriesByBaby } = useActivity();
   const { members, loadFamily, parent2, guardians } = useFamily();
-  const sweetAlert = useSweetAlert();
 
   const isBabyMode = mode === 'baby';
   const currentBabyData = useMemo(() => {
@@ -372,16 +371,13 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
         }
       );
     } else {
-      // For Android, you could use a simple alert or a bottom sheet
-
-sweetAlert.confirm(
-        'Change Photo',
-        'Choose an option',
-        () => handlePickImage(),
-        undefined,
-        'Gallery',
-        'Cancel'
-      );
+      // For Android, use showConfirmModal instead of sweetAlert.confirm
+      showConfirmModal({
+        title: 'Change Photo',
+        message: 'Choose an option',
+        onConfirm: () => handlePickImage(),
+        onCancel: () => {},
+      });
     }
   };
 
@@ -1624,7 +1620,7 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(100,116,139,0.08)',
+        backgroundColor: 'rgba(100,116,139,0.08)',
     borderRadius: 18,
     paddingHorizontal: 18,
     height: 56,
