@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { interpolate } from 'react-native-reanimated';
+// import { interpolate } from 'react-native-reanimated';
 import { View,
   Text,
   StyleSheet,

@@ -84,9 +84,9 @@ const useSafeTrackedScroll = (
 };
 
 // ─── Animated component factories ────────────────────────────────────────
-const ReanimatedScrollView = createAnimatedComponent(ScrollView);
-const ReanimatedFlatList = createAnimatedComponent(FlatList);
-const ReanimatedSectionList = createAnimatedComponent(SectionList);
+// Removed: Reanimated v3 has built-in Reanimated.ScrollView
+// Removed: Reanimated v3 has built-in Reanimated.FlatList
+// Removed: Reanimated v3 has built-in Reanimated.SectionList
 
 // ─── Helper: Detect animated event object ───────────────────────────────
 // CRITICAL: useAnimatedScrollHandler returns an OBJECT, not a function.
@@ -182,7 +182,7 @@ export const AutoHideAnimatedScrollView = forwardRef<ScrollView, AnimatedScrollV
     );
 
     return (
-      <ReanimatedScrollView
+      <Reanimated.ScrollView
         ref={ref}
         {...rest}
         onScroll={trackedOnScroll as any}
@@ -252,7 +252,7 @@ export const AutoHideAnimatedFlatList = forwardRef<FlatList<any>, AnimatedFlatLi
     );
 
     return (
-      <ReanimatedFlatList
+      <Reanimated.FlatList
         ref={ref}
         {...rest}
         onScroll={trackedOnScroll as any}
@@ -322,7 +322,7 @@ export const AutoHideAnimatedSectionList = forwardRef<SectionList<any>, Animated
     );
 
     return (
-      <ReanimatedSectionList
+      <Reanimated.SectionList
         ref={ref}
         {...rest}
         onScroll={trackedOnScroll as any}
