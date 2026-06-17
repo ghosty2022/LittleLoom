@@ -7,7 +7,7 @@ import React, {
   useState,
   memo,
 } from 'react';
-import {  ActivityIndicator, Alert, Button, Dimensions, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, type TextStyle, type ViewStyle, View } from 'react-native';
+import { Alert, Dimensions, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, type TextStyle, type ViewStyle, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { FadeInDown, FadeInUp, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';

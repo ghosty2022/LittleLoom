@@ -36,6 +36,7 @@ import Animated, {
   Layout,
 } from 'react-native-reanimated';
 
+import { showAlert } from '@/utils/alert';
 
 type SettingsScreenProps = NativeStackScreenProps<RootStackParamList, 'Main'>;
 
@@ -939,13 +940,16 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
     'Cancel'
   );
 
-sweetAlert.confirm(
+showAlert(
       'Auto-Lock Timeout',
       'Select when to automatically lock the app',
-      () => {},
-      undefined,
-      'OK',
-      'Cancel'
+      [
+        ...options.map((opt) => ({
+          text: opt.label,
+          onPress: () => updateAutoLockTimeout(opt.value),
+        })),
+        { text: 'Cancel', style: 'cancel' },
+      ]
     );
   }, [updateAutoLockTimeout, sweetAlert]);
 

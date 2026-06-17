@@ -1,9 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { EmptyState } from '../../components/EmptyState';
-import {  ActivityIndicator, Alert, Button, Dimensions, Modal, Platform, ScrollView, SectionList, Settings, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, Vibration, View } from 'react-native';
+import {  ActivityIndicator, Dimensions, Modal, Platform, SectionList, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, Vibration, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import { showAlert } from '@/utils/alert';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
   FadeIn,
@@ -41,6 +40,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useBaby } from '../../context/BabyContext';
 import { useActivity } from '../../context/ActivityContext';
 import { useCustomization } from '../../hooks/useCustomization';
+import { useSweetAlert } from '../../components/SweetAlert';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
 import {AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
@@ -552,6 +552,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Reminders'>;
 
 export default function RemindersScreen({ navigation, route }: Props) {
   const { darkMode: isDark, themeColors, triggerHaptic, reduceMotion } = useCustomization();
+  const sweetAlert = useSweetAlert();
   const { currentBaby, babies, loadBabies } = useBaby();
   const { entries: activities } = useActivity();
 
@@ -694,10 +695,9 @@ export default function RemindersScreen({ navigation, route }: Props) {
   const requestNotificationPermissions = async () => {
     const { status } = await Notifications.requestPermissionsAsync();
     if (status !== 'granted') {
-      showAlert(
+      sweetAlert.error(
         'Notifications Required',
-        'Please enable notifications in Settings to receive reminder alerts.',
-        [{ text: 'OK', style: 'default' }]
+        'Please enable notifications in Settings to receive reminder alerts.'
       );
     }
   };

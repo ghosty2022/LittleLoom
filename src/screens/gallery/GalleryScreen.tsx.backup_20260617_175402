@@ -1,9 +1,8 @@
-import { StyleSheet, ActivityIndicator, Dimensions, Image, LogBox, Modal, RefreshControl, ScrollView, Share, Switch, TextInput, TouchableOpacity, useColorScheme, View } from 'react-native';
+import { StyleSheet, ActivityIndicator, Alert, Button, Dimensions, Image, LogBox, Modal, RefreshControl, ScrollView, Share, Switch, TextInput, TouchableOpacity, useColorScheme, View } from 'react-native';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { BlurView } from 'expo-blur';
-import Animated, { Extrapolate, FadeIn, FadeInDown, FadeInUp, interpolate, Layout, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
-import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
+import Animated, { Extrapolate, FadeIn, FadeInDown, FadeInUp, interpolate, Layout, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
 import { format, isThisMonth, isThisWeek, isToday, isYesterday, parseISO } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -23,6 +22,7 @@ import { useMedia } from '../../context/MediaContext';
 import { useSecurity } from '../../context/SecurityContext';
 import { useSweetAlert } from '../../components/SweetAlert';
 
+import { showAlert } from '@/utils/alert';
 
 const { width, height } = Dimensions.get('window');
 const COLUMN_COUNT = 3;
@@ -190,7 +190,7 @@ const SweetAlert = ({
       ]}
       pointerEvents="box-none"
     >
-      <Animated.View
+      <Reanimated.View
         style={[
           style,
           styles.alertContainer,
@@ -214,7 +214,7 @@ const SweetAlert = ({
           </Text>
           <Text style={styles.alertMessage}>{message}</Text>
         </View>
-      </Animated.View>
+      </Reanimated.View>
     </View>
   );
 };
@@ -283,7 +283,7 @@ const ConfirmModal = ({
         onPress={onCancel}
         style={StyleSheet.absoluteFill}
       >
-        <Animated.View
+        <Reanimated.View
           style={[
             StyleSheet.absoluteFill,
             { backgroundColor: 'rgba(0,0,0,0.6)' },
@@ -295,10 +295,10 @@ const ConfirmModal = ({
             style={StyleSheet.absoluteFill}
             tint="dark"
           />
-        </Animated.View>
+        </Reanimated.View>
       </TouchableOpacity>
 
-      <Animated.View
+      <Reanimated.View
         style={[
           styles.confirmModal,
           modalStyle,
@@ -348,7 +348,7 @@ const ConfirmModal = ({
             </LinearGradient>
           </TouchableOpacity>
         </View>
-      </Animated.View>
+      </Reanimated.View>
     </View>
   );
 };
@@ -1097,7 +1097,7 @@ const BatchSelectBar = ({
   if (selectedCount === 0) return null;
 
   return (
-    <Animated.View
+    <Reanimated.View
       entering={FadeInUp}
       exiting={FadeInDown}
       style={[
@@ -1148,7 +1148,7 @@ const BatchSelectBar = ({
           <Ionicons name="trash-outline" size={24} color="#ef4444" />
         </TouchableOpacity>
       </View>
-    </Animated.View>
+    </Reanimated.View>
   );
 };
 
@@ -1177,7 +1177,7 @@ const SmartAlbumsSection = ({
         style={styles.albumsScroll}
       >
         {albums.map((album, index) => (
-          <Animated.View
+          <Reanimated.View
             key={album.id}
             entering={FadeInUp.delay(index * 100)}
           >
@@ -1208,7 +1208,7 @@ const SmartAlbumsSection = ({
                 {album.title}
               </Text>
             </TouchableOpacity>
-          </Animated.View>
+          </Reanimated.View>
         ))}
       </AutoHideAnimatedScrollView>
     </View>
@@ -1236,7 +1236,7 @@ const FolderGrid = ({
       </Text>
       <View style={styles.folderGrid}>
         {folders.map((folder, index) => (
-          <Animated.View
+          <Reanimated.View
             key={folder.id}
             entering={FadeInUp.delay(index * 50)}
             style={styles.folderWrapper}
@@ -1273,7 +1273,7 @@ const FolderGrid = ({
                 {folder.description || `${folder.count} items`}
               </Text>
             </TouchableOpacity>
-          </Animated.View>
+          </Reanimated.View>
         ))}
       </View>
     </View>
@@ -2051,13 +2051,17 @@ export default function GalleryScreen({
 
         if (!hasSecurity) {
 
-sweetAlert.confirm(
+showAlert(
             'Security Required',
             'Please set up PIN or Biometric authentication in Settings to use the Private Vault.',
-            () => navigation.navigate('Main', { screen: 'Settings' }),
-            undefined,
-            'Go to Settings',
-            'Cancel'
+            [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Go to Settings',
+                onPress: () =>
+                  navigation.navigate('Main', { screen: 'Settings' }),
+              },
+            ]
           );
           return;
         }
@@ -2310,14 +2314,18 @@ sweetAlert.confirm(
 
       if (!hasSecurity) {
 
-sweetAlert.confirm(
-            'Security Required',
-            'Please set up PIN or Biometric authentication in Settings to use the Private Vault.',
-            () => navigation.navigate('Main', { screen: 'Settings' }),
-            undefined,
-            'Go to Settings',
-            'Cancel'
-          );
+showAlert(
+          'Security Required',
+          'Please set up PIN or Biometric authentication in Settings to use the Private Vault.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Go to Settings',
+              onPress: () =>
+                navigation.navigate('Main', { screen: 'Settings' }),
+            },
+          ]
+        );
         return;
       }
 
@@ -2369,7 +2377,7 @@ sweetAlert.confirm(
       const isAutoImported = item.source === 'auto_import';
 
       return (
-        <Animated.View
+        <Reanimated.View
           entering={FadeInUp.delay(index * 30)}
           layout={Layout.springify()}
         >
@@ -2487,7 +2495,7 @@ sweetAlert.confirm(
               </View>
             )}
           </TouchableOpacity>
-        </Animated.View>
+        </Reanimated.View>
       );
     },
     [
@@ -2576,7 +2584,7 @@ sweetAlert.confirm(
             </View>
           </View>
 
-          <Animated.View
+          <Reanimated.View
             entering={FadeIn}
             style={styles.modalImageContainer}
           >
@@ -2585,9 +2593,9 @@ sweetAlert.confirm(
               style={styles.modalImage}
               resizeMode="contain"
             />
-          </Animated.View>
+          </Reanimated.View>
 
-          <Animated.View
+          <Reanimated.View
             entering={FadeInDown.delay(200)}
             style={styles.modalInfoPanel}
           >
@@ -2848,7 +2856,7 @@ sweetAlert.confirm(
                 </View>
               </View>
             </BlurView>
-          </Animated.View>
+          </Reanimated.View>
         </View>
       </Modal>
     );

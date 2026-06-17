@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {  Alert, Button, Dimensions, Image, Modal, RefreshControl, ScrollView, Settings, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {  Alert, Dimensions, Image, Modal, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { BlurView } from 'expo-blur';
 import { differenceInDays, differenceInMonths, format, isValid, parseISO } from 'date-fns';
@@ -34,7 +34,6 @@ import Animated, {
   withSpring,
   runOnJS,
 } from 'react-native-reanimated';
-import { showAlert } from '@/utils/alert';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBaby } from '@/context/BabyContext';
 import type { GrowthMeasurement, BabyProfile } from '@/types';
@@ -668,6 +667,7 @@ export default function GrowthDashboardScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const theme = useUnifiedTrackerTheme();
   const { triggerHaptic } = useCustomization();
+  const sweetAlert = useSweetAlert();
 
   // ── Contexts ──
   const {
@@ -1053,7 +1053,7 @@ showAlert('Add Photo', 'Choose source:', [
         onPress: async () => {
           if (!hasMediaPermission) {
 
-showAlert('Permission Required', 'Please allow photo access in settings');
+sweetAlert.error('Permission Required', 'Please allow photo access in settings');
             return;
           }
           const uri = await pickImage();
