@@ -7,7 +7,7 @@ import React, {
   memo,
   useLayoutEffect,
 } from 'react';
-import {  ActivityIndicator, Alert, Dimensions, Linking, Modal, Platform, Share, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, Vibration, View } from 'react-native';
+import { ActivityIndicator, Alert, Dimensions, Linking, Modal, Platform, ScrollView, Share, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, Vibration, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { EmptyState } from '../../components/EmptyState';
 import { BlurView } from 'expo-blur';
@@ -34,7 +34,7 @@ import Animated, {
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { MainTabParamList } from '../../types/navigation';
 
-import type { EmergencyContact, SafetyTopic, SafetyChecklist } from '../../context/SafetyContext';
+import { useSafety, type EmergencyContact, type SafetyTopic, type SafetyChecklist } from '../../context/SafetyContext';
 import { useBaby } from '../../context/BabyContext';
 import { useFamily } from '../../context/FamilyContext';
 import { useAuth } from '../../context/AuthContext';
