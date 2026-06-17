@@ -15,6 +15,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import { useNavigationVisibility, useTheme } from '../context/AppContext';
+
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -388,14 +390,9 @@ const ActiveColorWash: React.FC<{ activeIndex: number; isDark: boolean }> = Reac
 
 const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({ state, descriptors, navigation }) => {
   const insets = useSafeAreaInsets();
-  const {
-    isNavVisible,
-    isCommunityScreen,
-  } = useNavigationVisibility();
-
-  const { isDark, colors } = useTheme();
-  const customization = useCustomization();
-
+const { isNavVisible, isCommunityScreen } = useNavigationVisibility();
+const { isDark, colors } = useTheme();
+const customization = useCustomization();
   const activeIndex = state.index;
   const activeRouteName = state.routes[activeIndex]?.name;
 
