@@ -1,9 +1,8 @@
-import { StyleSheet, ActivityIndicator ,Alert ,Animated ,Button, Dimensions ,Image, LogBox ,Modal, RefreshControl, ScrollView ,Share ,Switch ,TextInput ,TouchableOpacity, useColorScheme, View } from 'react-native';;
+import { StyleSheet, ActivityIndicator, Alert, Button, Dimensions, Image, LogBox, Modal, RefreshControl, ScrollView, Share, Switch, TextInput, TouchableOpacity, useColorScheme, View } from 'react-native';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { BlurView } from 'expo-blur';
-import { FadeIn, FadeInDown, FadeInUp, interpolate, Layout, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
-import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
+import Animated, { Extrapolate, FadeIn, FadeInDown, FadeInUp, interpolate, Layout, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
 import { format, isThisMonth, isThisWeek, isToday, isYesterday, parseISO } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -1515,30 +1514,22 @@ const FloatingCameraButton = ({
 }: {
   onPress: () => void;
   isVisible: boolean;
-  scrollY: RNAnimated.Value;
+  scrollY: Animated.SharedValue<number>;
 }) => {
-  const translateY = scrollY.interpolate({
-    inputRange: [0, 200],
-    outputRange: [0, 100],
-    extrapolate: 'clamp',
-  });
-
-  const opacity = scrollY.interpolate({
-    inputRange: [0, 100],
-    outputRange: [1, 0],
-    extrapolate: 'clamp',
-  });
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ 
+      translateY: interpolate(scrollY.value, [0, 200], [0, 100], Extrapolate.CLAMP) 
+    }],
+    opacity: interpolate(scrollY.value, [0, 100], [1, 0], Extrapolate.CLAMP),
+  }));
 
   if (!isVisible) return null;
 
   return (
-    <RNAnimated.View
+    <Animated.View
       style={[
         styles.floatingCameraContainer,
-        {
-          transform: [{ translateY }],
-          opacity,
-        },
+        animatedStyle,
       ]}
     >
       <TouchableOpacity
@@ -1552,8 +1543,8 @@ const FloatingCameraButton = ({
         >
           <Ionicons name="camera" size={28} color="#fff" />
         </LinearGradient>
-      </TouchableOpacity>
-    </RNAnimated.View>
+            </TouchableOpacity>
+    </Animated.View>
   );
 };
 
@@ -1625,7 +1616,15 @@ export default function GalleryScreen({
   });
 
   const [refreshing, setRefreshing] = useState(false);
-  const scrollY = useRef(new RNAnimated.Value(0)).current;
+  const scrollY = useSharedValue(0);
+
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      'worklet';
+      scrollY.value = event.contentOffset.y;
+    },
+  });
+
   const scanAbortController = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -2932,13 +2931,10 @@ showAlert(
       <AutoHideAnimatedScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
-        onScroll={RNAnimated.event(
-          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-          { useNativeDriver: true }
-        )}
-        
+        onScroll={scrollHandler}
         scrollEventThrottle={16}
-        refreshControl={
+  refreshControl={...}
+>
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}

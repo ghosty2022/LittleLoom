@@ -1,4 +1,4 @@
-# Save as FindExactErrors_Fixed.ps1 and run: .\FindExactErrors_Fixed.ps1
+# Save as FindExactErrors_v2.ps1 and run: .\FindExactErrors_v2.ps1
 $src = "./src"
 
 Write-Host "=== FINDING ALL onScroll={scrollHandler} PATTERNS ===" -ForegroundColor Cyan
@@ -14,9 +14,8 @@ foreach ($file in $filesWithHandler) {
     $content = Get-Content $path.FullName -Raw
 
     if ($content -match 'onScroll=\{scrollHandler\}') {
-        Write-Host "`nPROBLEM FILE: $file" -ForegroundColor Red
+        Write-Host "`nFILE: $file" -ForegroundColor Cyan
 
-        # Check for aliases
         $hasScrollAlias = $content -match 'const AnimatedScrollView\s*='
         $hasFlatListAlias = $content -match 'const AnimatedFlatList\s*='
         $hasSectionListAlias = $content -match 'const AnimatedSectionList\s*='
@@ -28,7 +27,7 @@ foreach ($file in $filesWithHandler) {
                 Write-Host "   Line $lineNum : $($lines[$i].Trim())" -ForegroundColor Yellow
 
                 $componentLine = ""
-                for ($j = [Math]::Max(0, $i - 25); $j -lt $i; $j++) {
+                for ($j = [Math]::Max(0, $i - 30); $j -lt $i; $j++) {
                     if ($lines[$j] -match '<(ScrollView|FlatList|SectionList|AutoHideScrollView|AutoHideAnimatedScrollView|Animated\.ScrollView|Animated\.FlatList|Animated\.SectionList|AnimatedScrollView|AnimatedFlatList|AnimatedSectionList)') {
                         $componentLine = $lines[$j].Trim()
                     }
@@ -56,42 +55,46 @@ foreach ($file in $filesWithHandler) {
                         Write-Host "   ⚠️ CHECK: $componentLine" -ForegroundColor Magenta
                     }
                 } else {
-                    Write-Host "   ⚠️ Could not detect component (may be aliased or wrapped)" -ForegroundColor Magenta
+                    Write-Host "   ⚠️ Could not detect component" -ForegroundColor Magenta
                 }
             }
         }
     }
 }
 
-Write-Host "`n=== FINDING Animated.event ON REGULAR SCROLLVIEWS ===" -ForegroundColor Cyan
+Write-Host "`n=== FINDING RNAnimated.event / Animated.event ON SCROLL COMPONENTS ===" -ForegroundColor Cyan
 
 Get-ChildItem -Path $src -Recurse -Include "*.tsx" | ForEach-Object {
     $content = Get-Content $_.FullName -Raw
     if ($content -match 'onScroll=\{(RN)?Animated\.event') {
-        Write-Host "`nANIMATED.EVENT FILE: $($_.Name)" -ForegroundColor Red
+        Write-Host "`n❌ ANIMATED.EVENT FOUND: $($_.Name)" -ForegroundColor Red
         $lines = $content -split "`n"
         for ($i = 0; $i -lt $lines.Count; $i++) {
             if ($lines[$i] -match 'onScroll=\{(RN)?Animated\.event') {
                 Write-Host "   Line $($i+1): $($lines[$i].Trim())" -ForegroundColor Yellow
+                for ($j = [Math]::Max(0, $i - 20); $j -lt $i; $j++) {
+                    if ($lines[$j] -match '<(AutoHide)?(Animated)?(ScrollView|FlatList|SectionList)') {
+                        $comp = $lines[$j].Trim()
+                        Write-Host "   Component: $comp" -ForegroundColor Magenta
+                        if ($comp -match 'AutoHideAnimated|Animated\.(ScrollView|FlatList|SectionList)') {
+                            Write-Host "   ❌ CRITICAL: RN Animated.event on REANIMATED component!" -ForegroundColor Red
+                            Write-Host "   FIX: Convert to useAnimatedScrollHandler + useSharedValue" -ForegroundColor Cyan
+                        }
+                        break
+                    }
+                }
             }
         }
     }
 }
 
-Write-Host "`n=== CHECKING IMPORTS ===" -ForegroundColor Cyan
+Write-Host "`n=== CHECKING FOR RN Animated.Value SCROLL USAGE ===" -ForegroundColor Cyan
 
-foreach ($file in $filesWithHandler) {
-    $path = Get-ChildItem -Path $src -Recurse -Include $file | Select-Object -First 1
-    if (-not $path) { continue }
-
-    $content = Get-Content $path.FullName -Raw
-
-    if ($content -match 'AutoHideScrollView') {
-        if (-not ($content -match 'AutoHideAnimatedScrollView')) {
-            Write-Host "`n❌ IMPORTS AutoHideScrollView but NOT AutoHideAnimatedScrollView: $file" -ForegroundColor Red
-        } else {
-            Write-Host "✅ Imports both wrappers: $file" -ForegroundColor Green
-        }
+Get-ChildItem -Path $src -Recurse -Include "*.tsx" | ForEach-Object {
+    $content = Get-Content $_.FullName -Raw
+    if ($content -match 'useAnimatedScrollHandler' -and $content -match 'RNAnimated\.Value') {
+        Write-Host "`n⚠️ $($_.Name) uses BOTH useAnimatedScrollHandler AND RNAnimated.Value" -ForegroundColor Yellow
+        Write-Host "   This often causes crashes. Convert RNAnimated.Value to useSharedValue." -ForegroundColor DarkYellow
     }
 }
 
