@@ -24,8 +24,8 @@ import type { RootStackParamList } from '../../types/navigation';
 
 const { width, height } = Dimensions.get('window');
 const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
-const AnimatedFlatList = Animated.createAnimatedComponent(FlatList);
-
+// Use Animated.FlatList directly from reanimated instead of createAnimatedComponent
+// const AnimatedFlatList = Animated.createAnimatedComponent(FlatList);
 /* ═══════════════════════════════════════════════════════════════
    TYPES
    ═══════════════════════════════════════════════════════════════ */
@@ -660,7 +660,7 @@ export default function AchievementsScreen({ navigation, route }: Props) {
         </View>
       </Animated.View>
 
-      <AnimatedFlatList
+      <Animated.FlatList
         contentContainerStyle={styles.scrollContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         onScroll={scrollHandler}

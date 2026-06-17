@@ -7,13 +7,14 @@ type ScrollHandler = (e: NativeSyntheticEvent<NativeScrollEvent>) => void;
 type AnimatedScrollHandler = ReturnType<typeof Animated.useAnimatedScrollHandler>;
 
 export const useTrackedScroll = (
-  userOnScroll?: ScrollHandler | AnimatedScrollHandler,
+  userOnScroll?: ((e: NativeSyntheticEvent<NativeScrollEvent>) => void) | unknown,
   options?: {
     hideThreshold?: number;
     showThreshold?: number;
     velocityThreshold?: number;
   }
 ) => {
+
   const safeApp = useSafeApp();
   const lastY = useRef(0);
   const lastTime = useRef(Date.now());
@@ -48,7 +49,8 @@ export const useTrackedScroll = (
     lastY.current = currentY;
     lastTime.current = now;
 
-    // If it's a regular function, call it
+      // useAnimatedScrollHandler returns an object, not a function
+    // Calling an object as a function causes: TypeError: _this.props.onScroll is not a function
     if (typeof userOnScroll === 'function') {
       userOnScroll(event);
     }

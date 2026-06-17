@@ -34,8 +34,8 @@ import { useMedia } from '../../context/MediaContext';
 
 import { SafeAvatar, SafeBabyAvatar, SafeParentAvatar } from '../../components/SafeAvatar';;
 import { useSweetAlert } from '../../components/SweetAlert';
-// REMOVED: AutoHideAnimatedScrollView import — using Animated.ScrollView directly
-import { useTrackedScroll } from '../../hooks/useTrackedScroll';  // <-- NEW: Nav bar scroll tracking
+// REMOVED: useTrackedScroll — causes conflicts with useAnimatedScrollHandler
+// Animated scroll handler returns an object, not a function
 
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
@@ -1248,19 +1248,13 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   }, [loadBabies, loadActivities]);
 
 
-  // NEW: useTrackedScroll for bottom nav bar hide/show behavior
-  const trackedScroll = useTrackedScroll(undefined, {
-    hideThreshold: 50,
-    showThreshold: 20,
-    velocityThreshold: 1.2,
-  });
-
-  // Combined scroll handler: updates scrollY (worklet) + calls trackedScroll (JS)
+  // Scroll handler for header animation only
+  // NOTE: useTrackedScroll is NOT used here because useAnimatedScrollHandler
+  // returns an animated event object, not a function, causing TypeError
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
       'worklet';
       scrollY.value = event.contentOffset.y;
-      // NOTE: trackedScroll runs on JS thread via runOnJS if needed
     },
   });
   const navigateToScreen = useCallback((screenName: string, params?: Record<string, any>) => {
@@ -1525,7 +1519,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         showsVerticalScrollIndicator={false}
         onScroll={scrollHandler}
         scrollEventThrottle={16}
-        // REMOVED: headerVisible prop — scroll tracking handled by scrollHandler
+        // scrollY drives header animation via StickyAppHeader
       >
         {/* Parent Card */}
         <Animated.View entering={shouldReduceMotion ? undefined : FadeInDown.springify()}>

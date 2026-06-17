@@ -135,23 +135,33 @@ export const AutoHideAnimatedScrollView = forwardRef<ScrollView, AnimatedScrollV
     const userOnScroll = props.onScroll;
 
     // Check if this is an animated event object (from useAnimatedScrollHandler)
-    const isAnimatedEvent = typeof userOnScroll === 'object' && userOnScroll !== null;
+    // useAnimatedScrollHandler returns an object, NOT a function
+    const isAnimatedEvent = typeof userOnScroll === 'object' && userOnScroll !== null && typeof userOnScroll !== 'function';
 
-    // If it's a plain function, wrap it with tracking
-    // If it's an animated event, pass it through directly
+    // CRITICAL: For animated events, pass the original object directly to AnimatedScrollView.
+    // NEVER try to wrap an animated event object with useSafeTrackedScroll.
+    // For regular functions, wrap with tracking.
+    if (isAnimatedEvent) {
+      return (
+        <AnimatedScrollView
+          ref={ref}
+          {...props}
+          onScroll={userOnScroll as any}
+          scrollEventThrottle={props.scrollEventThrottle || 16}
+        />
+      );
+    }
+
+    // Only wrap with tracking if it's a regular function
     const trackedOnScroll = useSafeTrackedScroll(
       typeof userOnScroll === 'function' ? userOnScroll : undefined
     );
-
-    // CRITICAL: For animated events, pass the original object directly.
-    // For functions, use the tracked wrapper.
-    const finalOnScroll = isAnimatedEvent ? userOnScroll : trackedOnScroll;
 
     return (
       <AnimatedScrollView
         ref={ref}
         {...props}
-        onScroll={finalOnScroll as any}
+        onScroll={trackedOnScroll as any}
         scrollEventThrottle={props.scrollEventThrottle || 16}
       />
     );
