@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Settings, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -296,7 +296,7 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordScree
         </AutoHideAnimatedScrollView>
       </KeyboardAvoidingView>
 
-      <SweetAlert {...} isDark={isDark} />
+      <SweetAlert {...alert} isDark={isDark} />
     </View>
   );
 }
