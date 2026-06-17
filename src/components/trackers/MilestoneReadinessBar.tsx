@@ -5,7 +5,7 @@ import Animated, { FadeInUp } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 
-import { MilestoneReadiness } from '@/hooks/useGrowthIntelligence';
+import { MilestoneReadiness } from '../../hooks/';
 
 interface MilestoneReadinessBarProps {
   readiness: MilestoneReadiness;

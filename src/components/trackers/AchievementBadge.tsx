@@ -4,7 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 
-import { Achievement } from '@/hooks/useTrackerAchievements';
+import { Achievement } from '../../hooks/';
 
 interface AchievementBadgeProps {
   achievement: Achievement;

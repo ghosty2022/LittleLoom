@@ -5,8 +5,8 @@ import Animated, { FadeInUp } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 
-import { useGrowthIntelligence, SubScore } from '@/hooks/useGrowthIntelligence';
-import { SafeAvatar } from '@/components/SafeAvatar';
+import { useGrowthIntelligence, SubScore } from '../../hooks/';
+import { SafeAvatar } from '../../components/';
 
 interface SubScoreBarProps {
   score: SubScore;
