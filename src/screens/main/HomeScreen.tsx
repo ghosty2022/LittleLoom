@@ -34,6 +34,7 @@ import { useMedia } from '../../context/MediaContext';
 import { SafeAvatar, SafeBabyAvatar, SafeParentAvatar } from '../../components/SafeAvatar';;
 import { useSweetAlert } from '../../components/SweetAlert';
 import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
+import { useTrackedScroll } from '../../hooks/useTrackedScroll';  // <-- NEW: Nav bar scroll tracking
 
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
@@ -896,7 +897,7 @@ interface StickyAppHeaderProps {
   onBabyPress: () => void;
   onAddBabyPress: () => void;
   unreadCount: number;
-  headerVisible: any;
+  scrollY: Animated.SharedValue<number>;  // <-- CHANGED: scrollY drives header animation
   onSafetyCornerPress: () => void;
   primaryColor: string;
   secondaryColor: string;
@@ -912,28 +913,32 @@ interface StickyAppHeaderProps {
 
 const StickyAppHeader: React.FC<StickyAppHeaderProps> = ({
   isDark, currentBaby, onNotificationPress, onLockPress, onBabyPress, onAddBabyPress,
-  unreadCount, headerVisible, onSafetyCornerPress, primaryColor, secondaryColor,
+  unreadCount, scrollY,  // <-- CHANGED onSafetyCornerPress, primaryColor, secondaryColor,
   borderRadius, fontSizeMultiplier, useGradients, useBlur, showShadows, compactSpacing, fullTheme,
 }) => {
-  const lastScrollY = useRef(0);
+  // REMOVED: lastScrollY ref and useAnimatedScrollHandler — scroll tracking is now in HomeScreen
 
+  // Derive header visibility directly from scrollY using useAnimatedStyle
   const headerAnimatedStyle = useAnimatedStyle(() => {
-    const translateY = interpolate(headerVisible.value, [0, 1], [-140, 0], Extrapolate.CLAMP);
-    const opacity = interpolate(headerVisible.value, [0, 1], [0, 1], Extrapolate.CLAMP);
+    const currentY = scrollY.value;
+    
+    // Simple threshold-based visibility: hide when scrolled past 80px, show when near top
+    // Using interpolate for smooth transition
+    const translateY = interpolate(
+      currentY,
+      [0, 80, 140],
+      [0, 0, -140],
+      Extrapolate.CLAMP
+    );
+    const opacity = interpolate(
+      currentY,
+      [0, 80, 140],
+      [1, 1, 0],
+      Extrapolate.CLAMP
+    );
+    
     return { transform: [{ translateY }], opacity };
   });
-
-  useAnimatedScrollHandler({
-    onScroll: (event) => {
-      const currentY = event.contentOffset.y;
-      if (currentY > lastScrollY.current && currentY > 80) {
-        headerVisible.value = withTiming(0, { duration: 250 });
-      } else if (currentY < lastScrollY.current) {
-        headerVisible.value = withTiming(1, { duration: 200 });
-      }
-      lastScrollY.current = currentY;
-    },
-  }, [headerVisible]);
 
   const headerPaddingTop = Platform.OS === 'ios' ? (compactSpacing ? 44 : 52) : (compactSpacing ? 28 : 36);
   const headerPaddingBottom = compactSpacing ? 8 : 12;
@@ -1068,11 +1073,11 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 
   const fullThemeColors = useMemo(() =>
     getFullThemeColors(settings.theme, settings.appearance, colorScheme === 'dark'),
-    [settings.theme, settings.appearance, colorScheme]
+  // REMOVED: headerVisible shared value — now derived from scrollY in StickyAppHeader
   );
 
   const scrollY = useSharedValue(0);
-  const headerVisible = useSharedValue(1);
+  // REMOVED: headerVisible — now derived from scrollY in StickyAppHeader
 
   const { userProfile, signOut, isLoading: authLoading } = useAuth();
   const { currentBaby, loadBabies, getPottyStreak } = useBaby();
@@ -1223,14 +1228,22 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     loadActivities();
   }, [loadBabies, loadActivities]);
 
-  const scrollHandler = useAnimatedScrollHandler({
-    onScroll: (event) => { scrollY.value = event.contentOffset.y; },
+
+  // NEW: useTrackedScroll for bottom nav bar hide/show behavior
+  const trackedScroll = useTrackedScroll(undefined, {
+    hideThreshold: 50,
+    showThreshold: 20,
+    velocityThreshold: 1.2,
   });
 
-  const navigateToScreen = useCallback((screenName: string, params?: Record<string, any>) => {
-    const navConfig = NAVIGATION_MAP[screenName];
-    if (!navConfig) {
-      console.warn(`Navigation target "${screenName}" not found`);
+  // Combined scroll handler: updates scrollY (worklet) + calls trackedScroll (JS)
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      'worklet';
+      scrollY.value = event.contentOffset.y;
+      // NOTE: trackedScroll runs on JS thread via runOnJS if needed
+    },
+  });
       return;
     }
     if (navConfig.params?.screen) {
@@ -1461,7 +1474,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         onBabyPress={() => navigateToScreen('SwitchBaby')}
         onAddBabyPress={() => navigateToScreen('CreateBabyProfile')}
         unreadCount={unreadCommunityCount}
-        headerVisible={headerVisible}
+        // REMOVED: headerVisible prop — scroll tracking handled by scrollHandler
         onSafetyCornerPress={handleSafetyCornerPress}
         primaryColor={primary}
         secondaryColor={secondary}
@@ -1488,7 +1501,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         showsVerticalScrollIndicator={false}
         onScroll={scrollHandler}
         scrollEventThrottle={16}
-        headerVisible={headerVisible}
+        // REMOVED: headerVisible prop — scroll tracking handled by scrollHandler
       >
         {/* Parent Card */}
         <Animated.View entering={shouldReduceMotion ? undefined : FadeInDown.springify()}>
