@@ -36,9 +36,9 @@ import { useSweetAlert } from '../../components/SweetAlert';
 import { useFamily } from '../../context/FamilyContext';
 import { useUser } from '../../context/UserContext';
 import { UserRole } from '../../types/roles';
-import type { ActivityEntry, Milestone } from '../../types/baby';
+import type { ActivityEntry, Milestone } from '../../context/BabyContext';
 import { useBaby } from '../../context/BabyContext';
-import { OptimizedImage } from '../../components/OptimizedImage';
+import OptimizedImage from '../../components/OptimizedImage';
 
 const AnimatedScrollView = Animated.ScrollView;
 
