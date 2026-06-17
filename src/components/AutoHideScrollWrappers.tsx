@@ -11,10 +11,10 @@ import {
   NativeSyntheticEvent,
   View,
 } from 'react-native';
-import { Animated as ReanimatedAnimated } from 'react-native-reanimated';
-import Animated, {
+import Reanimated, {
   useAnimatedScrollHandler,
   AnimatedProps,
+  createAnimatedComponent,
 } from 'react-native-reanimated';
 
 type ScrollHandler = (e: NativeSyntheticEvent<NativeScrollEvent>) => void;
@@ -84,9 +84,9 @@ const useSafeTrackedScroll = (
 };
 
 // ─── Animated component factories ────────────────────────────────────────
-const AnimatedScrollView = ReanimatedAnimated.createAnimatedComponent(ScrollView);
-const AnimatedFlatList = ReanimatedAnimated.createAnimatedComponent(FlatList);
-const AnimatedSectionList = ReanimatedAnimated.createAnimatedComponent(SectionList);
+const AnimatedScrollView = createAnimatedComponent(ScrollView);
+const AnimatedFlatList = createAnimatedComponent(FlatList);
+const AnimatedSectionList = createAnimatedComponent(SectionList);
 
 // ─── Helper: Detect animated event object ───────────────────────────────
 // CRITICAL: useAnimatedScrollHandler returns an OBJECT, not a function.
@@ -167,7 +167,7 @@ export const AutoHideAnimatedScrollView = forwardRef<ScrollView, AnimatedScrollV
 
     if (isAnimated) {
       return (
-        <AnimatedScrollView
+        <Reanimated.ScrollView
           ref={ref}
           {...rest}
           onScroll={userOnScroll as any}
@@ -238,7 +238,7 @@ export const AutoHideAnimatedFlatList = forwardRef<FlatList<any>, AnimatedFlatLi
 
     if (isAnimated) {
       return (
-        <AnimatedFlatList
+        <Reanimated.FlatList
           ref={ref}
           {...rest}
           onScroll={userOnScroll as any}
@@ -308,7 +308,7 @@ export const AutoHideAnimatedSectionList = forwardRef<SectionList<any>, Animated
 
     if (isAnimated) {
       return (
-        <AnimatedSectionList
+        <Reanimated.SectionList
           ref={ref}
           {...rest}
           onScroll={userOnScroll as any}

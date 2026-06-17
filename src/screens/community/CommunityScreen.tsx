@@ -1,7 +1,12 @@
 import {  ActivityIndicator, AlertAnimated, Button, Dimensions, FlatList, GestureHandlerRootView, Image, Modal, Platform, Pressable, RefreshControl, Share, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, useSafeAreaInsets, View } from 'react-native';;
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BlurView } from 'expo-blur';
-import { Easing, FadeIn, FadeInUp, FadeOut, interpolate, interpolateColor, Layout, runOnJS, SlideInDown, SlideOutUp, useAnimatedReaction, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue, withRepeat } from 'react-native-reanimated';
+import Animated, {
+  Easing, FadeIn, FadeInUp, FadeOut, interpolate, interpolateColor, Layout, runOnJS, SlideInDown, SlideOutUp, useAnimatedReaction, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue, withRepeat,
+  withSpring,
+  withTiming,
+  withSequence,
+} from 'react-native-reanimated';
 import { useCommunity } from '../../context/CommunityContext';
 import { EmptyState } from '../../components/EmptyState';
 import { Ionicons } from '@expo/vector-icons';
@@ -25,12 +30,7 @@ import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { useUser } from '../../context/UserContext';
 import { showAlert } from '@/utils/alert';
-import Animated, {
-  withSpring,
-  withTiming,
-  withSequence,
-  ScrollView,
-} from 'react-native-reanimated';
+
 
 // Import the LittleLoom logo
 const littleLoomLogo = require('../../../assets/logo.png');
