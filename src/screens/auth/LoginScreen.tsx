@@ -17,7 +17,7 @@ import { useSecurity } from '../../context/SecurityContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import type { RootStackParamList } from '../../types/navigation';
-import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
+import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
 import { UniversalSpinner } from '../../components/UniversalSpinner';
 
 type LoginScreenProps = NativeStackScreenProps<RootStackParamList, 'Login'>;
@@ -599,7 +599,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
       >
-        <AutoHideScrollView
+        <AutoHideAnimatedScrollView
           contentContainerStyle={[
             styles.scrollContent,
             { paddingTop: insets.top + 40, paddingBottom: insets.bottom + 40 },
@@ -799,7 +799,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
               <Text style={styles.footerLink}>Create Account</Text>
             </TouchableOpacity>
           </Animated.View>
-        </AutoHideScrollView>
+        </AutoHideAnimatedScrollView>
       </KeyboardAvoidingView>
     </View>
   );

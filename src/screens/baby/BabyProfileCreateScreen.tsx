@@ -19,7 +19,7 @@ import { useBaby } from '../../context/BabyContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
-import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
+import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
 import { SafeBabyAvatar } from '../../components/SafeAvatar';;
 
 const { width } = Dimensions.get('window');
@@ -146,7 +146,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
   const isMounted = useRef(true);
 
   /* ---- Refs ---- */
-  const scrollViewRef = useRef<AutoHideScrollView>(null);
+  const scrollViewRef = useRef<AutoHideAnimatedScrollView>(null);
   const nameInputRef = useRef<TextInput>(null);
 
   /* ---- Derived / Memoized ---- */
@@ -848,7 +848,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
         <StatusBar barStyle={statusBarStyle} translucent backgroundColor="transparent" />
 
         <KeyboardAvoidingView behavior={kbBehavior} enabled={kbEnabled} style={{ flex: 1 }}>
-          <AutoHideScrollView
+          <AutoHideAnimatedScrollView
             ref={scrollViewRef}
             contentContainerStyle={[
               styles.scrollContent,
@@ -924,7 +924,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
             {currentStep === 1 ? renderStep1() : renderStep2()}
 
             <View style={{ height: 40 }} />
-          </AutoHideScrollView>
+          </AutoHideAnimatedScrollView>
 
           {/* Bottom Actions */}
           <View style={[styles.bottomContainer, { paddingBottom: insets.bottom + 20 }]}>

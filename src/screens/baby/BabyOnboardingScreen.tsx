@@ -13,7 +13,7 @@ import type { RootStackParamList } from '../../types/navigation';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { SafeBabyAvatar } from '../../components/SafeAvatar';;
-import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
+import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
 
 const { width } = Dimensions.get('window');
 const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpacity);
@@ -169,7 +169,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
       <LinearGradient colors={isDark ? ['#0a0a0a', '#1a1a2e'] : ['#f0f4ff', '#e0e7ff']} style={styles.gradient}>
         <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
-        <AutoHideScrollView
+        <AutoHideAnimatedScrollView
           contentContainerStyle={[styles.content, { paddingTop: insets.top + 40, paddingBottom: insets.bottom + 40 }]}
           showsVerticalScrollIndicator={false}
         >
@@ -255,7 +255,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
               </Text>
             </TouchableOpacity>
           </Animated.View>
-        </AutoHideScrollView>
+        </AutoHideAnimatedScrollView>
       </LinearGradient>
     </View>
   );

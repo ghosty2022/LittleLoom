@@ -4,7 +4,7 @@ import { BlurView } from 'expo-blur';
 import { Easing, FadeIn, FadeInUp, FadeOut, interpolate, Layout, useAnimatedStyle, useSharedValue, withRepeat, withSpring } from 'react-native-reanimated';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { useCommunity } from '../../context/CommunityContext';
-import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
+import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
 import { AutoHideFlatList } from '../../components/AutoHideScrollWrappers';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -373,13 +373,13 @@ const MessageBubble = React.memo(({
       <Modal visible={showActions} transparent animationType="fade" onRequestClose={() => setShowActions(false)}>
         <Pressable style={styles.actionOverlay} onPress={() => setShowActions(false)}>
           <Animated.View entering={FadeIn.duration(200)} style={[styles.actionMenu, { backgroundColor: isDark ? LL.darkCard : LL.white, borderColor: isDark ? LL.darkBorder : LL.gray200 }]}>
-            <AutoHideScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.emojiRow, { borderBottomColor: isDark ? LL.darkBorder : LL.gray200 }]}>
+            <AutoHideAnimatedScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.emojiRow, { borderBottomColor: isDark ? LL.darkBorder : LL.gray200 }]}>
               {['❤️', '👍', '😂', '😮', '😢', '🎉'].map((emoji) => (
                 <TouchableOpacity key={emoji} style={styles.emojiButton} onPress={() => { onReaction(emoji); setShowActions(false); }}>
                   <Text style={styles.emojiText}>{emoji}</Text>
                 </TouchableOpacity>
               ))}
-            </AutoHideScrollView>
+            </AutoHideAnimatedScrollView>
             <View style={styles.actionButtons}>
               <TouchableOpacity style={styles.actionItem} onPress={() => { onReply(); setShowActions(false); }}>
                 <Ionicons name="arrow-undo" size={20} color={LL.primary} />

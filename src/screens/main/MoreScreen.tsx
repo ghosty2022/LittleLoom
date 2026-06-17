@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
+import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import {  AlertAnimated, Button, Dimensions, Image, Modal, ScrollView, Settings, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';;
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -1357,7 +1357,7 @@ showAlert(
   return (
     <LinearGradient colors={bgColors} style={styles.container}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-      <AutoHideScrollView
+      <AutoHideAnimatedScrollView
         contentContainerStyle={[
           styles.content,
           {
@@ -1453,7 +1453,7 @@ showAlert(
         </Animated.View>
 
         <View style={{ height: 30 }} />
-      </AutoHideScrollView>
+      </AutoHideAnimatedScrollView>
 
       {/* Baby Selection Modal */}
       <BabySelectionModal

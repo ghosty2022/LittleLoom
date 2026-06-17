@@ -14,7 +14,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import type { RootStackParamList } from '../../types/navigation';
-import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
+import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
 import { UniversalSpinner } from '../../components/UniversalSpinner';
 
 type SignUpScreenProps = NativeStackScreenProps<RootStackParamList, 'SignUp'>;
@@ -340,7 +340,7 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
       >
-        <AutoHideScrollView
+        <AutoHideAnimatedScrollView
           contentContainerStyle={[
             styles.scrollContent,
             { paddingTop: insets.top + 30, paddingBottom: insets.bottom + 40 },
@@ -553,7 +553,7 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
               <Text style={styles.footerLink}>Sign In</Text>
             </TouchableOpacity>
           </Animated.View>
-        </AutoHideScrollView>
+        </AutoHideAnimatedScrollView>
       </KeyboardAvoidingView>
     </View>
   );

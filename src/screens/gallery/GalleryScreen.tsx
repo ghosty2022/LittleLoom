@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { BlurView } from 'expo-blur';
 import { FadeIn, FadeInDown, FadeInUp, interpolate, Layout, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
-import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
+import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
 import { format, isThisMonth, isThisWeek, isToday, isYesterday, parseISO } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -936,7 +936,7 @@ const PhotoEditorModal = ({
           )}
         </View>
 
-        <AutoHideScrollView
+        <AutoHideAnimatedScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           style={styles.filtersContainer}
@@ -981,7 +981,7 @@ const PhotoEditorModal = ({
               </Text>
             </TouchableOpacity>
           ))}
-        </AutoHideScrollView>
+        </AutoHideAnimatedScrollView>
 
         <View style={styles.adjustmentsContainer}>
           <View style={styles.adjustmentRow}>
@@ -1172,7 +1172,7 @@ const SmartAlbumsSection = ({
       >
         Smart Albums
       </Text>
-      <AutoHideScrollView
+      <AutoHideAnimatedScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         style={styles.albumsScroll}
@@ -1211,7 +1211,7 @@ const SmartAlbumsSection = ({
             </TouchableOpacity>
           </Reanimated.View>
         ))}
-      </AutoHideScrollView>
+      </AutoHideAnimatedScrollView>
     </View>
   );
 };
@@ -1333,7 +1333,7 @@ const SearchFilterBar = ({
         )}
       </View>
 
-      <AutoHideScrollView
+      <AutoHideAnimatedScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         style={styles.filterScroll}
@@ -1358,7 +1358,7 @@ const SearchFilterBar = ({
             </Text>
           </TouchableOpacity>
         ))}
-      </AutoHideScrollView>
+      </AutoHideAnimatedScrollView>
     </View>
   );
 };
@@ -2929,7 +2929,7 @@ showAlert(
         scrollY={scrollY}
       />
 
-      <AutoHideScrollView
+      <AutoHideAnimatedScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         onScroll={RNAnimated.event(
@@ -3216,7 +3216,7 @@ showAlert(
         )}
 
         <View style={{ height: 100 }} />
-      </AutoHideScrollView>
+      </AutoHideAnimatedScrollView>
 
       {renderPhotoModal()}
 

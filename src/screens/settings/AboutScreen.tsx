@@ -10,7 +10,7 @@ import { useCustomization } from '../../hooks/useCustomization';
 import { useApp } from '../../context/AppContext';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
-import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
+import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
 import { SafeAvatar } from '../../components/SafeAvatar';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'About'>;
@@ -352,7 +352,7 @@ export default function AboutScreen({ navigation }: Props) {
   return (
     <LinearGradient colors={bgColors} style={styles.container}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-      <AutoHideScrollView
+      <AutoHideAnimatedScrollView
         contentContainerStyle={[
           styles.content,
           { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 40 },
@@ -548,7 +548,7 @@ export default function AboutScreen({ navigation }: Props) {
             </Text>
           </View>
         </Animated.View>
-      </AutoHideScrollView>
+      </AutoHideAnimatedScrollView>
     </LinearGradient>
   );
 }

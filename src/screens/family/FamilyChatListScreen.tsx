@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AutoHideFlatList } from '../../components/AutoHideScrollWrappers';
 import { BlurView } from 'expo-blur';
 import { EmptyState } from '../../components/EmptyState';
-import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
+import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInUp, FadeInRight, FadeIn, SlideInRight, useSharedValue, withSpring, runOnJS } from 'react-native-reanimated';
 
@@ -1221,7 +1221,7 @@ showAlert(
         </TouchableOpacity>
       </View>
 
-      <AutoHideScrollView
+      <AutoHideAnimatedScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.membersScroll}
@@ -1266,7 +1266,7 @@ showAlert(
           </Text>
           <Text style={styles.memberRole}>New Member</Text>
         </TouchableOpacity>
-      </AutoHideScrollView>
+      </AutoHideAnimatedScrollView>
 
       <View style={styles.statsContainer}>
         <View
@@ -1851,7 +1851,7 @@ showAlert(
               Select Members
             </Text>
 
-            <AutoHideScrollView style={styles.memberSelectList}>
+            <AutoHideAnimatedScrollView style={styles.memberSelectList}>
               {otherMembers.map((member) => (
                 <TouchableOpacity
                   key={member.id}
@@ -1924,7 +1924,7 @@ showAlert(
                   )}
                 </TouchableOpacity>
               ))}
-            </AutoHideScrollView>
+            </AutoHideAnimatedScrollView>
 
             <TouchableOpacity
               style={[

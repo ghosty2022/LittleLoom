@@ -10,7 +10,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useFamily } from '../../context/FamilyContext';
 import type { RootStackParamList } from '../../types/navigation';
 import { useCustomization } from '../../hooks/useCustomization';
-import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
+import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
 import { SafeAvatar } from '../../components/SafeAvatar';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Parent2Setup'>;
@@ -176,7 +176,7 @@ export default function CoParentSetupScreen({ navigation }: Props) {
         <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.container}>
-          <AutoHideScrollView
+          <AutoHideAnimatedScrollView
             contentContainerStyle={[
               styles.scrollContent,
               { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 20 },
@@ -293,7 +293,7 @@ export default function CoParentSetupScreen({ navigation }: Props) {
                 </TouchableOpacity>
               </BlurView>
             </AnimatedReanimated.View>
-          </AutoHideScrollView>
+          </AutoHideAnimatedScrollView>
         </KeyboardAvoidingView>
       </LinearGradient>
 

@@ -11,7 +11,7 @@ import { useUser } from '../../context/UserContext';
 import { showSuccessModal, showErrorModal } from '../../utils/modal';
 import { useReportRoute } from '../../hooks/useReportRoute';
 import { useCustomization } from '../../hooks/useCustomization';
-import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
+import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
 import { CommunityColors, CommunityGradients, CommunitySpacing, CommunityBorderRadius, CommunityShadows } from '../../theme/CommunityTheme';
 
 type ReportScreenProps = NativeStackScreenProps<CommunityStackParamList, 'Report'>;
@@ -415,14 +415,14 @@ export default function ReportScreen({ navigation, route }: ReportScreenProps) {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
       >
-        <AutoHideScrollView 
+        <AutoHideAnimatedScrollView 
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
         >
           {currentStep === 'category' && renderCategoryStep()}
           {currentStep === 'details' && renderDetailsStep()}
           {currentStep === 'confirm' && renderConfirmStep()}
-        </AutoHideScrollView>
+        </AutoHideAnimatedScrollView>
       </KeyboardAvoidingView>
     </View>
   );

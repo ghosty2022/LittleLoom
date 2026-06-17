@@ -9,7 +9,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
 import { useFamily } from '../../context/FamilyContext';
 import { useCustomization } from '../../hooks/useCustomization';
-import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
+import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
 import { SweetAlert } from '../../components/SweetAlert';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { saveParentImage } from '../../utils/imageUtils';
@@ -478,7 +478,7 @@ export default function AddParentScreen({ navigation }: AddParentScreenProps) {
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.keyboardView}
         >
-          <AutoHideScrollView
+          <AutoHideAnimatedScrollView
             contentContainerStyle={[
               styles.scrollContent,
               { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 40 },
@@ -696,7 +696,7 @@ export default function AddParentScreen({ navigation }: AddParentScreenProps) {
                 </Text>
               </View>
             </Animated.View>
-          </AutoHideScrollView>
+          </AutoHideAnimatedScrollView>
         </KeyboardAvoidingView>
       </LinearGradient>
 

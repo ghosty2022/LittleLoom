@@ -9,7 +9,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useSecurity } from '../../context/SecurityContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import type { RootStackParamList } from '../../types/navigation';
-import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
+import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type ForgotPasswordScreenProps = NativeStackScreenProps<RootStackParamList, 'ForgotPassword'>;
@@ -135,7 +135,7 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordScree
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
       >
-        <AutoHideScrollView
+        <AutoHideAnimatedScrollView
           contentContainerStyle={[
             styles.scrollContent,
             { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 40 },
@@ -293,7 +293,7 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordScree
               </BlurView>
             </Animated.View>
           )}
-        </AutoHideScrollView>
+        </AutoHideAnimatedScrollView>
       </KeyboardAvoidingView>
 
       <SweetAlert {...alert} isDark={isDark} />

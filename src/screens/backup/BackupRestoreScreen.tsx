@@ -8,7 +8,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import type { RootStackParamList } from '../../types/navigation';
 
-import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
+import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { showAlert } from '@/utils/alert';
@@ -225,7 +225,7 @@ const AutoBackupModal = ({ visible, onClose, onSave, settings, isDark, primaryCo
       <View style={styles.modalOverlay}>
         <BlurView intensity={isDark ? 60 : 90} style={styles.modalBlur} tint={isDark ? 'dark' : 'light'}>
           <View style={[styles.modalContent, isDark && styles.modalContentDark, { maxHeight: '80%' }]}>
-            <AutoHideScrollView showsVerticalScrollIndicator={false}>
+            <AutoHideAnimatedScrollView showsVerticalScrollIndicator={false}>
               <View style={styles.modalHeader}>
                 <Ionicons name="time-outline" size={32} color={primaryColor} />
                 <Text style={[styles.modalTitle, isDark && styles.textLight]}>Auto Backup</Text>
@@ -358,7 +358,7 @@ const AutoBackupModal = ({ visible, onClose, onSave, settings, isDark, primaryCo
                   </LinearGradient>
                 </TouchableOpacity>
               </View>
-            </AutoHideScrollView>
+            </AutoHideAnimatedScrollView>
           </View>
         </BlurView>
       </View>
@@ -808,7 +808,7 @@ showAlert(
       colors={isDark ? ['#0f0f1e', '#1a1a2e'] : ['#f8faff', '#f0f4ff']}
       style={styles.container}
     >
-      <AutoHideScrollView
+      <AutoHideAnimatedScrollView
         contentContainerStyle={[
           styles.content,
           { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 40 }
@@ -1020,7 +1020,7 @@ showAlert(
         <Text style={[styles.note, isDark && styles.noteDark]}>
           💡 Tip: Back up regularly and store files in cloud storage for maximum safety. Encrypted backups require your password to restore.
         </Text>
-      </AutoHideScrollView>
+      </AutoHideAnimatedScrollView>
 
       {/* Modals */}
       <EncryptModal

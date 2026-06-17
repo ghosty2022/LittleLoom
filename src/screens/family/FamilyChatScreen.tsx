@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { AutoHideFlatList } from '../../components/AutoHideScrollWrappers';
 import { BlurView } from 'expo-blur';
-import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
+import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { format, isSameWeek, isToday, isYesterday } from 'date-fns';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -562,7 +562,7 @@ const MessageInfoModal: React.FC<{
             </TouchableOpacity>
           </View>
 
-          <AutoHideScrollView
+          <AutoHideAnimatedScrollView
             showsVerticalScrollIndicator={false}
             style={styles.messageInfoContent}
           >
@@ -731,7 +731,7 @@ const MessageInfoModal: React.FC<{
                 </View>
               </View>
             )}
-          </AutoHideScrollView>
+          </AutoHideAnimatedScrollView>
         </Animated.View>
       </TouchableOpacity>
     </Modal>
@@ -1344,7 +1344,7 @@ const MessageBubble: React.FC<{
             ]}
             tint={theme.background.main === '#0f0f1e' ? 'dark' : 'light'}
           >
-            <AutoHideScrollView
+            <AutoHideAnimatedScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
               style={[
@@ -1369,7 +1369,7 @@ const MessageBubble: React.FC<{
                   <Text style={styles.emojiText}>{emoji}</Text>
                 </TouchableOpacity>
               ))}
-            </AutoHideScrollView>
+            </AutoHideAnimatedScrollView>
 
             <View style={styles.actionButtons}>
               <TouchableOpacity
@@ -2262,7 +2262,7 @@ showAlert('Chat Options', '', [
             style={StyleSheet.absoluteFill}
             tint={darkMode ? 'dark' : 'light'}
           />
-          <AutoHideScrollView
+          <AutoHideAnimatedScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.userBubblesScroll}
@@ -2282,7 +2282,7 @@ showAlert('Chat Options', '', [
                 />
               </Animated.View>
             ))}
-          </AutoHideScrollView>
+          </AutoHideAnimatedScrollView>
         </Animated.View>
       )}
 
@@ -2328,7 +2328,7 @@ showAlert('Chat Options', '', [
       >
         {/* Quick Replies */}
         {!inputText && !replyingTo && (
-          <AutoHideScrollView
+          <AutoHideAnimatedScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.quickReplies}
@@ -2358,7 +2358,7 @@ showAlert('Chat Options', '', [
                 </Text>
               </TouchableOpacity>
             ))}
-          </AutoHideScrollView>
+          </AutoHideAnimatedScrollView>
         )}
 
         <BlurView

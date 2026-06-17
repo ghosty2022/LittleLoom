@@ -13,7 +13,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import type { RootStackParamList } from '../../types/navigation';
-import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
+import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
 
 type BiometricSetupScreenProps = NativeStackScreenProps<RootStackParamList, 'BiometricSetup'>;
 
@@ -353,7 +353,7 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
           </TouchableOpacity>
         </View>
 
-        <AutoHideScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+        <AutoHideAnimatedScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
           <View style={styles.mainContent}>
             {selectedType && (
               <View style={styles.iconWrapper}>
@@ -449,7 +449,7 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
               </View>
             )}
           </View>
-        </AutoHideScrollView>
+        </AutoHideAnimatedScrollView>
 
         {/* Action Buttons */}
         <View style={styles.buttonContainer}>

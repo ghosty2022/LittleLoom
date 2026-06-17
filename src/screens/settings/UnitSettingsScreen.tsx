@@ -9,7 +9,7 @@ import * as Haptics from 'expo-haptics';
 import { useCustomization } from '../../hooks/useCustomization';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
-import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
+import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'UnitSettings'>;
 
@@ -111,7 +111,7 @@ export default function UnitSettingsScreen({ navigation }: Props) {
   return (
     <LinearGradient colors={bgColors} style={styles.container}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-      <AutoHideScrollView
+      <AutoHideAnimatedScrollView
         contentContainerStyle={[
           styles.content,
           { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 40 }
@@ -247,7 +247,7 @@ export default function UnitSettingsScreen({ navigation }: Props) {
         <Text style={[styles.note, isDark && styles.noteDark]}>
           Existing entries will not be converted. New entries will use the selected units.
         </Text>
-      </AutoHideScrollView>
+      </AutoHideAnimatedScrollView>
     </LinearGradient>
   );
 }

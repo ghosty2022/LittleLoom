@@ -2,7 +2,7 @@ import { StyleSheet,ActivityIndicator, Alert ,Button, Dimensions, Image, Keyboar
 import React, { useCallback, useEffect, useState } from 'react';
 
 import { BlurView } from 'expo-blur';
-import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
+import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInUp, FadeIn } from 'react-native-reanimated';
 
@@ -424,7 +424,7 @@ showAlert(
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
       >
-        <AutoHideScrollView
+        <AutoHideAnimatedScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
         >
@@ -600,7 +600,7 @@ showAlert(
               ))
             )}
           </View>
-        </AutoHideScrollView>
+        </AutoHideAnimatedScrollView>
 
         {/* Comment Input */}
         <View style={[styles.commentInputWrap, { paddingBottom: insets.bottom + 12 }]}>

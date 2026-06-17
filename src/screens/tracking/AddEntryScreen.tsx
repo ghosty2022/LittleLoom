@@ -34,7 +34,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useUnifiedTrackerTheme } from '../../hooks/useUnifiedTrackerTheme';
-import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
+import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
 import { useTracker } from '../../context/TrackerContext';
 import { UnifiedTrackerConfig } from '../../types/trackers';
 import { SafeAvatar } from '../../components/SafeAvatar';
@@ -1108,7 +1108,7 @@ export default function AddEntryScreen() {
         style={styles.keyboardView}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
-        <AutoHideScrollView
+        <AutoHideAnimatedScrollView
           contentContainerStyle={[styles.content, { paddingTop: insets.top + 20 }]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
@@ -1427,7 +1427,7 @@ export default function AddEntryScreen() {
           </View>
 
           <View style={styles.bottomPadding} />
-        </AutoHideScrollView>
+        </AutoHideAnimatedScrollView>
       </KeyboardAvoidingView>
 
       {/* Modals */}

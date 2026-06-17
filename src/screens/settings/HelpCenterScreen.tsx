@@ -9,7 +9,7 @@ import * as Haptics from 'expo-haptics';
 import { useCustomization } from '../../hooks/useCustomization';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
-import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
+import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'HelpCenter'>;
 
@@ -174,7 +174,7 @@ export default function HelpCenterScreen({ navigation }: Props) {
   return (
     <LinearGradient colors={bgColors} style={styles.container}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-      <AutoHideScrollView
+      <AutoHideAnimatedScrollView
         contentContainerStyle={[
           styles.content,
           { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 40 },
@@ -238,7 +238,7 @@ export default function HelpCenterScreen({ navigation }: Props) {
             style={styles.sectionWrapper}
           >
             <SectionHeader icon="bulb-outline" title="Quick Tips" color="#f59e0b" isDark={isDark} />
-            <AutoHideScrollView
+            <AutoHideAnimatedScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.tipsScroll}
@@ -262,7 +262,7 @@ export default function HelpCenterScreen({ navigation }: Props) {
                   </View>
                 </TouchableOpacity>
               ))}
-            </AutoHideScrollView>
+            </AutoHideAnimatedScrollView>
           </Animated.View>
         )}
 
@@ -354,7 +354,7 @@ export default function HelpCenterScreen({ navigation }: Props) {
             </TouchableOpacity>
           </BlurView>
         </Animated.View>
-      </AutoHideScrollView>
+      </AutoHideAnimatedScrollView>
     </LinearGradient>
   );
 }

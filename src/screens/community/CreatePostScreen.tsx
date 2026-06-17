@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
+import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
 import { useCommunity } from '../../context/CommunityContext';
 import {  AlertAnimated, Button, Dimensions, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';;
 import { LinearGradient } from 'expo-linear-gradient';
@@ -531,7 +531,7 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
           </TouchableOpacity>
         </View>
 
-        <AutoHideScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        <AutoHideAnimatedScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
           {/* Author Card - with SafeAvatar */}
           <Animated.View entering={FadeInUp.duration(400)}>
@@ -724,7 +724,7 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
             </View>
 
             {filteredTopics.length > 0 ? (
-              <AutoHideScrollView 
+              <AutoHideAnimatedScrollView 
                 horizontal 
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.topicsStrip}
@@ -756,7 +756,7 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
                     )}
                   </TouchableOpacity>
                 ))}
-              </AutoHideScrollView>
+              </AutoHideAnimatedScrollView>
             ) : (
               <TouchableOpacity 
                 style={styles.noTopicsBanner}
@@ -839,7 +839,7 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
               </View>
             </LinearGradient>
           </Animated.View>
-        </AutoHideScrollView>
+        </AutoHideAnimatedScrollView>
       </KeyboardAvoidingView>
 
       {/* Country Picker Modal */}

@@ -8,7 +8,7 @@ import type { RootStackParamList } from '../../types/navigation';
 
 import { useCustomization } from '../../hooks/useCustomization';
 import { BlurView } from 'expo-blur';
-import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
+import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
 import { showAlert } from '@/utils/alert';
 
 import {  AlertAnimated, Button, KeyboardAvoidingView, Linking, Platform, ScrollView, Settings, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, useSafeAreaInsets, View } from 'react-native';;
@@ -312,7 +312,7 @@ showAlert(
     >
       <LinearGradient colors={bgColors} style={styles.container}>
         <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-        <AutoHideScrollView
+        <AutoHideAnimatedScrollView
           contentContainerStyle={[
             styles.content,
             { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 40 },
@@ -507,7 +507,7 @@ showAlert(
               ))}
             </BlurView>
           </Animated.View>
-        </AutoHideScrollView>
+        </AutoHideAnimatedScrollView>
       </LinearGradient>
     </KeyboardAvoidingView>
   );

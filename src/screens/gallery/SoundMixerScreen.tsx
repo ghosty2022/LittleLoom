@@ -12,7 +12,7 @@ import type { RootStackParamList } from '../../types/navigation';
 import { useAudio, AudioTrack, SOUND_TRACKS } from '../../context/AudioContext';
 import { useBaby } from '../../context/BabyContext';
 import { useCustomization } from '../../hooks/useCustomization';
-import { AutoHideScrollView } from '../../components/AutoHideScrollWrappers';
+import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
 
 type SoundMixerScreenProps = NativeStackScreenProps<RootStackParamList, 'SoundMixer'>;
 const { width } = Dimensions.get('window');
@@ -470,7 +470,7 @@ export default function SoundMixerScreen({ navigation }: SoundMixerScreenProps) 
         style={StyleSheet.absoluteFill}
       />
 
-      <AutoHideScrollView
+      <AutoHideAnimatedScrollView
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={scrollContentPadding}
@@ -529,14 +529,14 @@ export default function SoundMixerScreen({ navigation }: SoundMixerScreenProps) 
         {/* Moods */}
         <View style={styles.moodSection}>
           <Text style={styles.sectionTitle}>How is baby feeling?</Text>
-          <AutoHideScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.moodScroll}>
+          <AutoHideAnimatedScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.moodScroll}>
             {moods.map((mood) => (
               <TouchableOpacity key={mood.id} style={[styles.moodChip, { backgroundColor: 'rgba(255,255,255,0.05)' }]}>
                 <Text style={styles.moodEmoji}>{mood.emoji}</Text>
                 <Text style={styles.moodLabel}>{mood.label}</Text>
               </TouchableOpacity>
             ))}
-          </AutoHideScrollView>
+          </AutoHideAnimatedScrollView>
         </View>
 
         {/* Playlists */}
@@ -562,7 +562,7 @@ export default function SoundMixerScreen({ navigation }: SoundMixerScreenProps) 
 
         {/* Tabs */}
         <View style={styles.tabsContainer}>
-          <AutoHideScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <AutoHideAnimatedScrollView horizontal showsHorizontalScrollIndicator={false}>
             {['all', 'favorites', 'imported'].map((tab) => (
               <TouchableOpacity
                 key={tab}
@@ -580,7 +580,7 @@ export default function SoundMixerScreen({ navigation }: SoundMixerScreenProps) 
                 </Text>
               </TouchableOpacity>
             ))}
-          </AutoHideScrollView>
+          </AutoHideAnimatedScrollView>
         </View>
 
         {/* Track List */}
@@ -607,7 +607,7 @@ export default function SoundMixerScreen({ navigation }: SoundMixerScreenProps) 
         </View>
 
         <View style={{ height: 100 }} />
-      </AutoHideScrollView>
+      </AutoHideAnimatedScrollView>
 
       <ImportMusicModal
         visible={showImportModal}
