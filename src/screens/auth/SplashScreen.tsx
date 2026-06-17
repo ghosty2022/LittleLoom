@@ -1,14 +1,11 @@
 
 import React, { useEffect, useRef, useCallback } from 'react';
 import { interpolate } from 'react-native-reanimated';
-import {
-  View,
+import { View,
   Text,
-  StyleSheet,
-  Animated,
-  Dimensions,
+  StyleSheet, Dimensions,
   Image,
-} from 'react-native';
+ } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';

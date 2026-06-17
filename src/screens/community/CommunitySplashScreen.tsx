@@ -1,14 +1,11 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { interpolate } from 'react-native-reanimated';
-import {
-  View,
+import { View,
   Text,
   StyleSheet,
   Dimensions,
-  StatusBar,
-  Animated,
-  Platform,
-} from 'react-native';
+  StatusBar, Platform,
+ } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
