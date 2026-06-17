@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useMemo } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -11,10 +11,23 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
-import type { ThemeColors } from '../hooks/useCustomization';
 import { isValidImageUri, isEmoji } from '../utils/imageUtils';
 
 export type AvatarSource = string | number | undefined | null;
+
+export interface ThemeColorSet {
+  primary: string;
+  secondary: string;
+  accent: string;
+  spinnerColor: string;
+}
+
+const DEFAULT_THEME_COLORS: ThemeColorSet = {
+  primary: '#667eea',
+  secondary: '#764ba2',
+  accent: '#fa709a',
+  spinnerColor: '#667eea',
+};
 
 export interface SafeAvatarProps {
   avatar?: AvatarSource;
@@ -27,9 +40,12 @@ export interface SafeAvatarProps {
   showEditBadge?: boolean;
   onPress?: () => void;
   style?: any;
-  themeId?: string;
   animated?: boolean;
-  borderRadius?: number; // Optional override
+  borderRadius?: number;
+  /** Pass theme colors directly, or they'll default to purple theme */
+  themeColors?: ThemeColorSet;
+  /** Override reduce motion setting */
+  reduceMotion?: boolean;
 }
 
 export interface SafeBabyAvatarProps {
@@ -39,8 +55,9 @@ export interface SafeBabyAvatarProps {
   showBadge?: boolean;
   onPress?: () => void;
   style?: any;
-  themeId?: string;
   animated?: boolean;
+  themeColors?: ThemeColorSet;
+  reduceMotion?: boolean;
 }
 
 export interface SafeParentAvatarProps {
@@ -50,19 +67,10 @@ export interface SafeParentAvatarProps {
   showBadge?: boolean;
   onPress?: () => void;
   style?: any;
-  themeId?: string;
   animated?: boolean;
+  themeColors?: ThemeColorSet;
+  reduceMotion?: boolean;
 }
-
-const DEFAULT_THEME_COLORS: ThemeColors = {
-  primary: '#667eea',
-  secondary: '#764ba2',
-  accent: '#fa709a',
-  colors: ['#e0e7ff', '#d1d5ff', '#c7b8ff'],
-  spinnerColor: '#667eea',
-  darkText: '#4338ca',
-  lightText: '#ffffff',
-};
 
 /**
  * Safely resolves an avatar source into a React Native Image source.
@@ -74,7 +82,6 @@ export const resolveAvatarSource = (avatar: AvatarSource): ImageSourcePropType |
     return avatar;
   }
   if (typeof avatar === 'string' && avatar.length > 0) {
-    // Ensure file:// URIs are properly formatted
     if (avatar.startsWith('file://')) {
       return { uri: avatar };
     }
@@ -85,50 +92,14 @@ export const resolveAvatarSource = (avatar: AvatarSource): ImageSourcePropType |
 
 /**
  * Checks if the avatar has a displayable image (not emoji, not null).
- * Supports: http/https, file://, data:, asset:, content://, ph://, static require
  */
 export const hasDisplayableImage = (avatar: AvatarSource, hasError: boolean): boolean => {
   if (avatar == null || hasError) return false;
-  if (typeof avatar === 'number') return true; // Static require is always valid
+  if (typeof avatar === 'number') return true;
   if (typeof avatar === 'string') {
     return isValidImageUri(avatar) && !isEmoji(avatar);
   }
   return false;
-};
-
-/**
- * Safely gets theme colors with full fallback chain:
- * 1. themeId parameter (treated as primary color hint)
- * 2. useCustomization hook
- * 3. Default colors
- */
-const useSafeThemeColors = (themeId?: string): ThemeColors => {
-  // Always call hook unconditionally at top level
-  const customization = useCustomization();
-  
-  // If themeId looks like a hex color, build a theme around it
-  if (themeId && themeId.startsWith('#')) {
-    return {
-      primary: themeId,
-      secondary: customization?.themeColors?.secondary || '#764ba2',
-      accent: customization?.themeColors?.accent || '#fa709a',
-      colors: customization?.themeColors?.colors || ['#e0e7ff', '#d1d5ff', '#c7b8ff'],
-      spinnerColor: themeId,
-      darkText: customization?.themeColors?.darkText || '#4338ca',
-      lightText: customization?.themeColors?.lightText || '#ffffff',
-    };
-  }
-
-  if (customization?.themeColors) {
-    return customization.themeColors;
-  }
-
-  return DEFAULT_THEME_COLORS;
-};
-
-const useSafeReduceMotion = (): boolean => {
-  const customization = useCustomization();
-  return customization?.shouldReduceMotion ?? false;
 };
 
 interface AvatarContentProps {
@@ -138,7 +109,7 @@ interface AvatarContentProps {
   isLoading: boolean;
   onError: () => void;
   onLoad: () => void;
-  themeColors: ThemeColors;
+  themeColors: ThemeColorSet;
   fallbackIcon: keyof typeof Ionicons.glyphMap;
   borderRadius: number;
 }
@@ -219,17 +190,18 @@ export const SafeAvatar: React.FC<SafeAvatarProps> = ({
   showEditBadge = false,
   onPress,
   style,
-  themeId,
   animated = true,
   borderRadius: borderRadiusProp,
+  themeColors: propThemeColors,
+  reduceMotion,
 }) => {
   const [hasError, setHasError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  const themeColors = useSafeThemeColors(themeId);
-  const shouldReduceMotion = useSafeReduceMotion();
+  const themeColors = propThemeColors || DEFAULT_THEME_COLORS;
+  const shouldReduceMotion = reduceMotion ?? false;
 
-  const effectiveFallbackColor = fallbackColor || themeColors?.primary || '#667eea';
+  const effectiveFallbackColor = fallbackColor || themeColors.primary;
   const effectiveFallbackBgColor = fallbackBgColor || `${effectiveFallbackColor}20`;
   const effectiveBorderRadius = borderRadiusProp ?? size / 3;
 
@@ -309,21 +281,19 @@ export const SafeBabyAvatar: React.FC<SafeBabyAvatarProps> = ({
   showBadge = false,
   onPress,
   style,
-  themeId,
   animated = true,
+  themeColors: propThemeColors,
+  reduceMotion,
 }) => {
   const [hasError, setHasError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  const themeColors = useSafeThemeColors(themeId);
-  const shouldReduceMotion = useSafeReduceMotion();
+  const themeColors = propThemeColors || DEFAULT_THEME_COLORS;
+  const shouldReduceMotion = reduceMotion ?? false;
 
   const genderColors: Record<string, string[]> = {
-    boy: [
-      themeColors?.primary || '#667eea',
-      themeColors?.secondary || '#764ba2',
-    ],
-    girl: [themeColors?.accent || '#fa709a', '#fee140'],
+    boy: [themeColors.primary, themeColors.secondary],
+    girl: [themeColors.accent, '#fee140'],
     other: ['#11998e', '#38ef7d'],
   };
   const gradientColors = genderColors[gender] || genderColors.other;
@@ -391,23 +361,21 @@ export const SafeParentAvatar: React.FC<SafeParentAvatarProps> = ({
   showBadge = false,
   onPress,
   style,
-  themeId,
   animated = true,
+  themeColors: propThemeColors,
+  reduceMotion,
 }) => {
   const [hasError, setHasError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  const themeColors = useSafeThemeColors(themeId);
-  const shouldReduceMotion = useSafeReduceMotion();
+  const themeColors = propThemeColors || DEFAULT_THEME_COLORS;
+  const shouldReduceMotion = reduceMotion ?? false;
 
   const hasImage = hasDisplayableImage(avatar, hasError);
   const hasEmojiValue = avatar != null && typeof avatar === 'string' && isEmoji(avatar);
   const initial = name?.charAt(0)?.toUpperCase() || 'P';
 
-  const parentColors = [
-    themeColors?.primary || '#667eea',
-    themeColors?.secondary || '#764ba2',
-  ];
+  const parentColors = [themeColors.primary, themeColors.secondary];
 
   const Wrapper = onPress ? TouchableOpacity : View;
   const borderRadius = size / 2;
