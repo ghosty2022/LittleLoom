@@ -24,6 +24,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSecurity } from '../../context/SecurityContext';
 import { useSweetAlert } from '../../components/SweetAlert';
+import { showAlert } from '@/utils/alert';
 
 type SecurityLockScreenProps = NativeStackScreenProps<RootStackParamList, 'SecurityLock'>;
 
@@ -99,7 +100,8 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
 
   const { signOut, userProfile } = useAuth();
   const {
-    unlockApp: securitySettings,
+    unlockApp,
+    settings: securitySettings,
     isBiometricHardwareAvailable,
     isBiometricEnrolled,
     getAvailableAuthMethods,
@@ -294,14 +296,17 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     showError('Too Many Attempts', 'For security purposes, you need to sign out and sign in again.');
     setTimeout(() => {
 
-sweetAlert.confirm(
-          'Too Many Attempts',
-          'For security purposes, you need to sign out and sign in again.',
-          () => signOut(),
-          undefined,
-          'Sign Out',
-          'Cancel'
-        );
+showAlert(
+        'Too Many Attempts',
+        'For security purposes, you need to sign out and sign in again.',
+        [
+          {
+            text: 'Sign Out',
+            onPress: () => signOut(),
+            style: 'destructive',
+          },
+        ]
+      );
     }, 500);
   }, [signOut, triggerHaptic, showError]);
 
@@ -706,14 +711,14 @@ sweetAlert.confirm(
               style={styles.emergencyButton}
               onPress={() => {
 
-sweetAlert.confirm(
-                'Sign Out',
-                'Are you sure you want to sign out?',
-                () => signOut(),
-                undefined,
-                'Sign Out',
-                'Cancel'
-              );
+showAlert('Sign Out', 'Are you sure you want to sign out?', [
+                  { text: 'Cancel', style: 'cancel' },
+                  {
+                    text: 'Sign Out',
+                    style: 'destructive',
+                    onPress: () => signOut(),
+                  },
+                ]);
               }}
             >
               <Text style={[styles.emergencyText, { color: colors.error }]}>Sign Out</Text>
