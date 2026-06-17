@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useBaby } from '../../context/BabyContext';
-import {  Alert, Button, Dimensions, FlatList, Modal, Platform, RefreshControl, ScrollView, Settings, Share, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import {  Alert, Dimensions, FlatList, Modal, Platform, RefreshControl, ScrollView, Share, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,7 +18,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useTracker } from '../../context/TrackerContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useTrackerAchievements, Achievement, AchievementCategory } from '../../hooks/useTrackerAchievements';
-import { SafeBabyAvatar } from '../../components/SafeAvatar';;
+import { SafeBabyAvatar } from '../../components/SafeAvatar';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
 

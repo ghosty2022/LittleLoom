@@ -1,6 +1,6 @@
 import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { EmptyState } from '../../components/EmptyState';
-import {  Alert, Dimensions, Modal, Platform, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {  Alert, Button, Dimensions, Modal, Platform, RefreshControl, ScrollView, Settings, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -12,7 +12,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useBaby, BabyProfile } from '../../context/BabyContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { SafeAvatar } from '../../components/SafeAvatar';
-import { useSweetAlert } from '../../components/SweetAlert';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const BLUR_INTENSITY = Platform.OS === 'ios' ? 80 : 60;
@@ -316,9 +315,38 @@ const GlassCard = memo(({ children, style }: { children: React.ReactNode; style?
 ));
 
 /* ── SweetAlert Component ── */
+interface SweetAlertProps {
+  visible: boolean;
+  type: 'success' | 'error' | 'warning' | 'info';
+  title: string;
+  message: string;
+  onClose: () => void;
+  duration?: number;
+}
 
+const SweetAlert = memo<SweetAlertProps>(({
+  visible,
+  type,
+  title,
+  message,
+  onClose,
+  duration = 3000,
+}) => {
+  const scale = useSharedValue(0);
+  const opacity = useSharedValue(0);
 
+  const colors = {
+    success: { bg: '#10b981', icon: 'checkmark-circle' as const },
+    error: { bg: '#ef4444', icon: 'close-circle' as const },
+    warning: { bg: '#f59e0b', icon: 'warning' as const },
+    info: { bg: '#3b82f6', icon: 'information-circle' as const },
+  };
 
+  const theme = colors[type];
+
+  useEffect(() => {
+    if (visible) {
+      scale.value = withSpring(1, { damping: 15 });
       opacity.value = withSpring(1);
       const timer = setTimeout(() => {
         scale.value = withSpring(0);
@@ -857,7 +885,13 @@ export default function VaccinationScheduleScreen({ navigation, route }: any) {
       <StatusBar barStyle="dark-content" />
       <LinearGradient colors={['#f8fafc', '#e0e7ff', '#ddd6fe']} style={StyleSheet.absoluteFill} />
 
-      
+      <SweetAlert
+        visible={alert.visible}
+        type={alert.type}
+        title={alert.title}
+        message={alert.message}
+        onClose={() => setAlert(prev => ({ ...prev, visible: false }))}
+      />
 
       {/* Header */}
       <Animated.View

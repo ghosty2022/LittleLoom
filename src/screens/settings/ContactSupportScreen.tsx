@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useSweetAlert } from '../../components/SweetAlert';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
@@ -9,9 +10,8 @@ import type { RootStackParamList } from '../../types/navigation';
 import { useCustomization } from '../../hooks/useCustomization';
 import { BlurView } from 'expo-blur';
 import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
-import { showAlert } from '@/utils/alert';
 
-import {  Alert, Button, KeyboardAvoidingView, Linking, Platform, ScrollView, Settings, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, useSafeAreaInsets, View } from 'react-native';
+import {  Alert, KeyboardAvoidingView, Linking, Platform, ScrollView, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, useSafeAreaInsets, View } from 'react-native';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ContactSupport'>;
 
@@ -191,7 +191,8 @@ const SectionHeader: React.FC<{
 
 export default function ContactSupportScreen
  ({ navigation }: Props) {
-  const { themeColors, darkMode, reduceMotion } = useCustomization();
+  
+  const { sweetAlert } = useSweetAlert();
   const insets = useSafeAreaInsets();
 
   const isDark = darkMode;
