@@ -905,6 +905,20 @@ const SoundMixerSection: React.FC<{ onPress: () => void; isDark: boolean }> = ({
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   THEME TYPES
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+interface FullThemeColors {
+  background?: string;
+  surface?: string;
+  text?: string;
+  border?: string;
+  glassBg?: string;
+  shadow?: string;
+  error?: string;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    STICKY APP HEADER
    ═══════════════════════════════════════════════════════════════════════════ */
 interface StickyAppHeaderProps {
@@ -929,13 +943,29 @@ interface StickyAppHeaderProps {
   compactSpacing: boolean;
   fullTheme: FullThemeColors;
 }
-
+// ✅ FIXED — all props properly destructured
 const StickyAppHeader: React.FC<StickyAppHeaderProps> = ({
-  isDark, currentBaby, onNotificationPress, onLockPress, onBabyPress, onAddBabyPress,
-  unreadCount, scrollY,  // <-- CHANGED onSafetyCornerPress, primaryColor, secondaryColor,
-  borderRadius, fontSizeMultiplier, useGradients, useBlur, showShadows, compactSpacing, fullTheme,
+  isDark,
+  currentBaby,
+  onNotificationPress,
+  onLockPress,
+  onProfilePress,
+  onBabyPress,
+  onAddBabyPress,
+  unreadCount,
+  scrollY,
+  onSafetyCornerPress,  // <-- FIXED: now properly destructured
+  primaryColor,
+  secondaryColor,
+  accentColor,
+  borderRadius,
+  fontSizeMultiplier,
+  useGradients,
+  useBlur,
+  showShadows,
+  compactSpacing,
+  fullTheme,
 }) => {
-  // REMOVED: lastScrollY ref and useAnimatedScrollHandler — scroll tracking is now in HomeScreen
 
   // Derive header visibility directly from scrollY using useAnimatedStyle
   const headerAnimatedStyle = useAnimatedStyle(() => {
