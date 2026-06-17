@@ -43,7 +43,7 @@ import { useActivity } from '../../context/ActivityContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
-import { AutoHideAnimatedScrollView, AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
+import {AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
 
 const { width, height } = Dimensions.get('window');
 const AnimatedSectionList = Animated.createAnimatedComponent(SectionList);
