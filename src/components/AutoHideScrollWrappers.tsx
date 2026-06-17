@@ -39,6 +39,7 @@ const useSafeTrackedScroll = (
   } = options || {};
 
   // CRITICAL FIX: Only use userOnScroll if it's actually a function
+  // Animated event objects from useAnimatedScrollHandler are objects, not functions
   const safeUserHandler = typeof userOnScroll === 'function' ? (userOnScroll as ScrollHandler) : undefined;
 
   return useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -51,6 +52,7 @@ const useSafeTrackedScroll = (
     lastY.current = currentY;
 
     // Call user's onScroll first - ONLY if it's a function
+    // NEVER call if it's an animated event object
     if (safeUserHandler) {
       safeUserHandler(event);
     }
@@ -92,11 +94,13 @@ export const AutoHideScrollView = forwardRef<ScrollView, ScrollViewProps>(
   (props, ref) => {
     const userOnScroll = props.onScroll;
     
-    // CRITICAL FIX: Check if it's an animated event object
-    const isAnimatedEvent = typeof userOnScroll === 'object' && userOnScroll !== null;
-    
+    // CRITICAL FIX: Check if it's an animated event object from useAnimatedScrollHandler
+    // useAnimatedScrollHandler returns an object with __isNative: true or similar internal props
+    const isAnimatedEvent = typeof userOnScroll === 'object' && userOnScroll !== null && typeof userOnScroll !== 'function';
+
     if (isAnimatedEvent) {
-      // Use Animated.ScrollView for animated events
+      // For animated events, we MUST use Animated.ScrollView, not regular ScrollView
+      // The animated event object cannot be called as a function
       return (
         <AutoHideAnimatedScrollView
           ref={ref as any}

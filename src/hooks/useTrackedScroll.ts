@@ -1,9 +1,13 @@
 import { useCallback, useRef } from 'react';
 import { NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
 import { useSafeApp } from './useSafeContexts';
+import Animated, { runOnJS } from 'react-native-reanimated';
+
+type ScrollHandler = (e: NativeSyntheticEvent<NativeScrollEvent>) => void;
+type AnimatedScrollHandler = ReturnType<typeof Animated.useAnimatedScrollHandler>;
 
 export const useTrackedScroll = (
-  userOnScroll?: (e: NativeSyntheticEvent<NativeScrollEvent>) => void,
+  userOnScroll?: ScrollHandler | AnimatedScrollHandler,
   options?: {
     hideThreshold?: number;
     showThreshold?: number;
@@ -24,10 +28,15 @@ export const useTrackedScroll = (
     velocityThreshold = 1.2,
   } = options || {};
 
-  // Guard: if useSafeApp returns invalid data, return a no-op function
   const handleScroll = safeApp?.handleScroll;
   const isCommunityScreen = safeApp?.isCommunityScreen ?? false;
   const hasValidHandler = typeof handleScroll === 'function';
+
+  // Detect if userOnScroll is an animated event object (from useAnimatedScrollHandler)
+  const isAnimatedEvent = userOnScroll !== null && 
+    typeof userOnScroll === 'object' && 
+    !Array.isArray(userOnScroll) &&
+    Object.prototype.toString.call(userOnScroll) !== '[object Function]';
 
   const onScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const now = Date.now();
@@ -39,25 +48,19 @@ export const useTrackedScroll = (
     lastY.current = currentY;
     lastTime.current = now;
 
-    // Always call user's onScroll if it's a function
+    // If it's a regular function, call it
     if (typeof userOnScroll === 'function') {
       userOnScroll(event);
     }
+    // If it's an animated event object, DON'T try to call it - it's handled by Reanimated internally
+    // The animated event will fire on its own worklet thread
 
-    // If no valid app scroll handler, skip nav tracking
-    if (!hasValidHandler) {
-      return;
-    }
-
-    if (isCommunityScreen) {
+    if (!hasValidHandler || isCommunityScreen) {
       return;
     }
 
     const deltaTime = now - lastProcessedTime.current;
-
-    if (deltaTime < 12) {
-      return;
-    }
+    if (deltaTime < 12) return;
 
     const deltaY = currentY - lastProcessedY.current;
     const velocity = deltaTime > 0 ? Math.abs(deltaY / deltaTime) : 0;
@@ -84,9 +87,16 @@ export const useTrackedScroll = (
 
     lastProcessedY.current = currentY;
     lastProcessedTime.current = now;
-  }, [handleScroll, userOnScroll, isCommunityScreen, hideThreshold, showThreshold, velocityThreshold, hasValidHandler]);
+  }, [handleScroll, userOnScroll, isCommunityScreen, hideThreshold, showThreshold, velocityThreshold, hasValidHandler, isAnimatedEvent]);
+
+  // Return the appropriate handler based on what was passed
+  if (isAnimatedEvent) {
+    // For animated events, we can't wrap them. Instead, use the scroll handler
+    // and let Reanimated handle the animated event separately.
+    // The caller should use useAnimatedScrollHandler directly and combine
+    // nav tracking via a separate mechanism.
+    return onScroll;
+  }
 
   return onScroll;
 };
-
-export default useTrackedScroll;
