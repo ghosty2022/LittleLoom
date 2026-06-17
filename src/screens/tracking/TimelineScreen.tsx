@@ -1,4 +1,3 @@
-
 import React, { useCallback, useMemo, useState, useEffect } from 'react';
 import { EmptyState } from '../../components/EmptyState';
 import { useCustomization } from '../../hooks/useCustomization';
@@ -37,7 +36,8 @@ import { usePredictiveReminders, PredictiveReminder } from '@/hooks/usePredictiv
 import { useGrowthIntelligence } from '@/hooks/useGrowthIntelligence';
 import { useTrackerAchievements } from '@/hooks/useTrackerAchievements';
 import { useTrackerProgressive } from '@/hooks/useTrackerProgressive';
-
+import { useTimelineCorrelations } from '@/hooks/useTimelineCorrelations';          // ← ADD THIS
+import { TimelineCorrelation } from '@/components/trackers/TrackerCorrelationBadge'; // ← ADD THIS
 const { width } = Dimensions.get('window');
 
 type TimelineScreenRouteProp = RouteProp<RootStackParamList, 'Timeline'>;
