@@ -1,101 +1,217 @@
-# Save as: FindRealAnimatedConflicts.ps1
-# Run: .\FindRealAnimatedConflicts.ps1
+# ============================================================================
+# LittleLoom - Fix Family Screens + VaccinationScheduleScreen
+# Removes dead imports, removes @/utils/alert, fixes syntax
+# ============================================================================
 
-$srcPath = "src"
-$results = @()
-$totalFiles = 0
+$ErrorActionPreference = "Stop"
+$scriptDir = $PSScriptRoot
+if (-not $scriptDir) { $scriptDir = Get-Location }
 
-Write-Host ""
-Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "  REAL ANIMATED CONFLICT DETECTOR"
-Write-Host "  (Read-only scan, no files modified)"
-Write-Host "========================================" -ForegroundColor Cyan
-Write-Host ""
+# --- Configuration ---
+$FilesToFix = @(
+    "src/screens/family/AddParentScreen.tsx",
+    "src/screens/family/EditGuardianScreen.tsx",
+    "src/screens/family/FamilyChatListScreen.tsx",
+    "src/screens/family/FamilyChatScreen.tsx",
+    "src/screens/family/FamilySharingScreen.tsx",
+    "src/screens/tracking/VaccinationScheduleScreen.tsx"
+)
 
-# Get all .tsx files
-$files = Get-ChildItem -Path $srcPath -Recurse -Filter "*.tsx" -File
+# Map file paths to actual names for reporting
+$FileMap = @{
+    "src/screens/family/AddParentScreen.tsx" = "AddParentScreen.tsx"
+    "src/screens/family/EditGuardianScreen.tsx" = "EditGuardianScreen.tsx"
+    "src/screens/family/FamilyChatListScreen.tsx" = "FamilyChatListScreen.tsx"
+    "src/screens/family/FamilyChatScreen.tsx" = "FamilyChatScreen.tsx"
+    "src/screens/family/FamilySharingScreen.tsx" = "FamilySharingScreen.tsx"
+    "src/screens/tracking/VaccinationScheduleScreen.tsx" = "VaccinationScheduleScreen.tsx"
+}
 
-foreach ($file in $files) {
-    $totalFiles++
-    $content = Get-Content $file.FullName -Raw -ErrorAction SilentlyContinue
-    if (-not $content) { continue }
-
-    # Check for React Native Animated import (the problematic one)
-    $hasRNAnimated = $content -match "import\s*\{[^}]*\bAnimated\b[^}]*\}\s*from\s*['""]react-native['""]"
-    
-    # Check for Reanimated import (this is fine by itself)
-    $hasReanimated = $content -match "from\s*['""]react-native-reanimated['""]"
-
-    # REAL CONFLICT: Both RN Animated AND Reanimated imported
-    if ($hasRNAnimated -and $hasReanimated) {
-        # Extract the exact RN import line for reporting
-        $rnImportLine = ($content -split "`n") | Where-Object { 
-            $_ -match "import\s*\{[^}]*\bAnimated\b[^}]*\}\s*from\s*['""]react-native['""]" 
-        } | Select-Object -First 1
-
-        $results += [PSCustomObject]@{
-            File = $file.FullName.Replace((Get-Location).Path + "\", "")
-            RN_Animated_Line = $rnImportLine.Trim()
-            Has_Reanimated = $true
-            Severity = "REAL CONFLICT"
-        }
-    }
-    # SOLO RN Animated (not necessarily bad, just flag for review)
-    elseif ($hasRNAnimated) {
-        $rnImportLine = ($content -split "`n") | Where-Object { 
-            $_ -match "import\s*\{[^}]*\bAnimated\b[^}]*\}\s*from\s*['""]react-native['""]" 
-        } | Select-Object -First 1
-
-        $results += [PSCustomObject]@{
-            File = $file.FullName.Replace((Get-Location).Path + "\", "")
-            RN_Animated_Line = $rnImportLine.Trim()
-            Has_Reanimated = $false
-            Severity = "SOLO RN Animated (review if unused)"
-        }
+# --- Verify files exist ---
+$missingFiles = @()
+foreach ($file in $FilesToFix) {
+    $fullPath = Join-Path $scriptDir $file
+    if (-not (Test-Path $fullPath)) {
+        $missingFiles += $file
     }
 }
 
-# ─── REPORT ───
+if ($missingFiles.Count -gt 0) {
+    Write-Host "ERROR: The following files were not found:" -ForegroundColor Red
+    foreach ($f in $missingFiles) {
+        Write-Host "  - $f" -ForegroundColor Red
+    }
+    Write-Host "`nMake sure you're running this from your project root (LittleLoom folder)" -ForegroundColor Yellow
+    exit 1
+}
 
-Write-Host "Files Scanned: $totalFiles" -ForegroundColor Gray
-Write-Host ""
+# --- Backup all files ---
+$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+Write-Host "Creating backups..." -ForegroundColor Cyan
 
-if ($results.Count -eq 0) {
-    Write-Host "✅ NO REAL CONFLICTS FOUND!" -ForegroundColor Green
-    Write-Host ""
-    Write-Host "All 22 warnings from your other script are FALSE POSITIVES." -ForegroundColor Green
-    Write-Host "Those files only import from 'react-native-reanimated' (which is correct)." -ForegroundColor Green
-    Write-Host ""
-    Write-Host "You can safely ignore the [MIXED_ANIMATED] warnings." -ForegroundColor DarkGray
-} else {
-    $conflicts = $results | Where-Object { $_.Severity -eq "REAL CONFLICT" }
-    $solo = $results | Where-Object { $_.Severity -ne "REAL CONFLICT" }
+foreach ($file in $FilesToFix) {
+    $fullPath = Join-Path $scriptDir $file
+    $backupPath = "$fullPath.backup_$timestamp"
+    Copy-Item $fullPath $backupPath -Force
+    Write-Host "  -> Backed up: $file" -ForegroundColor Gray
+}
 
-    if ($conflicts.Count -gt 0) {
-        Write-Host "🔴 REAL CONFLICTS FOUND: $($conflicts.Count)" -ForegroundColor Red
-        Write-Host "   These files import Animated from BOTH 'react-native' AND 'react-native-reanimated'" -ForegroundColor Red
-        Write-Host ""
-        
-        foreach ($c in $conflicts) {
-            Write-Host "  File: $($c.File)" -ForegroundColor Yellow
-            Write-Host "  Line: $($c.RN_Animated_Line)" -ForegroundColor DarkGray
-            Write-Host "  Fix:  Change to -> import { Animated as RNAnimated } from 'react-native'" -ForegroundColor Cyan
-            Write-Host ""
+# ============================================================================
+# HELPER: Fix a single file
+# ============================================================================
+function Fix-File {
+    param(
+        [string]$RelativePath,
+        [string[]]$RemoveFromRNImport = @(),
+        [switch]$RemoveShowAlertImport,
+        [switch]$FixDoubleSemicolon
+    )
+
+    $fullPath = Join-Path $scriptDir $RelativePath
+    $content = Get-Content $fullPath -Raw
+    $originalContent = $content
+    $changesMade = 0
+    $fileName = $FileMap[$RelativePath]
+
+    Write-Host "`n[Fixing] $fileName" -ForegroundColor Cyan
+
+    # 1. Remove items from react-native import
+    foreach ($item in $RemoveFromRNImport) {
+        # Pattern: item in middle (preceded by comma, followed by comma or space)
+        $pattern1 = ",\s*$item\b"
+        if ($content -match $pattern1) {
+            $content = $content -replace $pattern1, ""
+            Write-Host "  -> Removed '$item' from react-native import (middle)" -ForegroundColor Green
+            $changesMade++
+            continue
+        }
+        # Pattern: item at start of import block
+        $pattern2 = "{\s*$item,\s*"
+        if ($content -match $pattern2) {
+            $content = $content -replace $pattern2, "{ "
+            Write-Host "  -> Removed '$item' from start of react-native import" -ForegroundColor Green
+            $changesMade++
+            continue
+        }
+        # Pattern: item at end of import block (before })
+        $pattern3 = "\b$item\s*}"
+        if ($content -match $pattern3) {
+            $content = $content -replace $pattern3, "}"
+            Write-Host "  -> Removed '$item' from end of react-native import" -ForegroundColor Green
+            $changesMade++
+            continue
+        }
+        # Pattern: item alone in import block
+        $pattern4 = "{\s*$item\s*}"
+        if ($content -match $pattern4) {
+            # Remove the entire import line
+            $linePattern = "import\s*\{\s*$item\s*\}\s*from\s*['`"]react-native['`"];\s*\r?\n"
+            $content = $content -replace $linePattern, ""
+            Write-Host "  -> Removed entire react-native import line (only had $item)" -ForegroundColor Green
+            $changesMade++
         }
     }
 
-    if ($solo.Count -gt 0) {
-        Write-Host "🟡 SOLO RN Animated imports: $($solo.Count)" -ForegroundColor DarkYellow
-        Write-Host "   These import RN Animated but NOT Reanimated. Only fix if they're actually using Reanimated features." -ForegroundColor DarkYellow
-        Write-Host ""
-        
-        foreach ($s in $solo) {
-            Write-Host "  File: $($s.File)" -ForegroundColor Gray
-            Write-Host "  Line: $($s.RN_Animated_Line)" -ForegroundColor DarkGray
-            Write-Host ""
+    # 2. Remove showAlert import from @/utils/alert
+    if ($RemoveShowAlertImport) {
+        $showAlertPattern = "import\s*\{\s*showAlert\s*\}\s*from\s*['`"]@/utils/alert['`"];\s*\r?\n"
+        if ($content -match $showAlertPattern) {
+            $content = $content -replace $showAlertPattern, ""
+            Write-Host "  -> Removed showAlert import from @/utils/alert" -ForegroundColor Green
+            $changesMade++
         }
+    }
+
+    # 3. Fix double semicolons
+    if ($FixDoubleSemicolon) {
+        $doubleSemiPattern = ";;\s*`n"
+        if ($content -match $doubleSemiPattern) {
+            $content = $content -replace ";;(\s*`n)", ";$1"
+            Write-Host "  -> Fixed double semicolon" -ForegroundColor Green
+            $changesMade++
+        }
+        if ($content -match ";;") {
+            $content = $content -replace ";;", ";"
+            Write-Host "  -> Fixed inline double semicolons" -ForegroundColor Green
+            $changesMade++
+        }
+    }
+
+    # Save if changes were made
+    if ($changesMade -gt 0) {
+        Set-Content $fullPath $content -NoNewline -Encoding UTF8
+        Write-Host "  -> Saved ($changesMade changes)" -ForegroundColor Green
+    } else {
+        Write-Host "  -> No changes needed" -ForegroundColor Yellow
     }
 }
 
-Write-Host "========================================" -ForegroundColor Cyan
+# ============================================================================
+# FIX 1: AddParentScreen.tsx
+# Dead imports: Alert, Button, Settings, StatusBar
+# Uses SweetAlert component (not showAlert from utils)
+# ============================================================================
+Fix-File -RelativePath "src/screens/family/AddParentScreen.tsx" `
+    -RemoveFromRNImport @("Alert", "Button", "Settings", "StatusBar")
+
+# ============================================================================
+# FIX 2: EditGuardianScreen.tsx
+# Dead imports: Alert, Button, Share, Switch, useColorScheme
+# Uses useSweetAlert hook (not showAlert from utils)
+# ============================================================================
+Fix-File -RelativePath "src/screens/family/EditGuardianScreen.tsx" `
+    -RemoveFromRNImport @("Alert", "Button", "Share", "Switch", "useColorScheme")
+
+# ============================================================================
+# FIX 3: FamilyChatListScreen.tsx
+# Dead imports: Alert, Button, Dimensions, FlatList, Image, Modal, Platform, ScrollView, Switch, TextInput
+# Has showAlert import from @/utils/alert (also has its own SweetAlertChatList component)
+# ============================================================================
+Fix-File -RelativePath "src/screens/family/FamilyChatListScreen.tsx" `
+    -RemoveFromRNImport @("Alert", "Button", "Dimensions", "FlatList", "Image", "Modal", "Platform", "ScrollView", "Switch", "TextInput") `
+    -RemoveShowAlertImport
+
+# ============================================================================
+# FIX 4: FamilyChatScreen.tsx
+# Dead imports: Alert, Button, Dimensions, FlatList, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, Share, Switch, TextInput
+# Has showAlert import from @/utils/alert (also has its own SweetAlertChat component)
+# ============================================================================
+Fix-File -RelativePath "src/screens/family/FamilyChatScreen.tsx" `
+    -RemoveFromRNImport @("Alert", "Button", "Dimensions", "FlatList", "Image", "KeyboardAvoidingView", "Modal", "Platform", "ScrollView", "Share", "Switch", "TextInput") `
+    -RemoveShowAlertImport
+
+# ============================================================================
+# FIX 5: FamilySharingScreen.tsx
+# Dead imports: Alert, Button, Dimensions, Image, Modal, Platform, RefreshControl, ScrollView, Share, Switch, TextInput
+# Has showAlert import from @/utils/alert (also has useSweetAlert hook)
+# ============================================================================
+Fix-File -RelativePath "src/screens/family/FamilySharingScreen.tsx" `
+    -RemoveFromRNImport @("Alert", "Button", "Dimensions", "Image", "Modal", "Platform", "RefreshControl", "ScrollView", "Share", "Switch", "TextInput") `
+    -RemoveShowAlertImport
+
+# ============================================================================
+# FIX 6: VaccinationScheduleScreen.tsx
+# Dead imports: Alert, Button, Settings
+# Uses SweetAlert component (not showAlert from utils)
+# ============================================================================
+Fix-File -RelativePath "src/screens/tracking/VaccinationScheduleScreen.tsx" `
+    -RemoveFromRNImport @("Alert", "Button", "Settings")
+
+# ============================================================================
+# SUMMARY
+# ============================================================================
+Write-Host "`n========================================" -ForegroundColor Green
+Write-Host "  All family + vaccination fixes applied!" -ForegroundColor Green
+Write-Host "========================================" -ForegroundColor Green
 Write-Host ""
+Write-Host "Files modified:" -ForegroundColor Cyan
+foreach ($file in $FilesToFix) {
+    Write-Host "  ✓ $file" -ForegroundColor White
+}
+Write-Host ""
+Write-Host "Backups created with suffix: .backup_$timestamp" -ForegroundColor Yellow
+Write-Host ""
+Write-Host "Next steps:" -ForegroundColor Cyan
+Write-Host "  1. Review changes in your IDE" -ForegroundColor White
+Write-Host "  2. Run: npx tsc --noEmit (check TS errors)" -ForegroundColor White
+Write-Host "  3. Test the app" -ForegroundColor White

@@ -1,4 +1,4 @@
-import { StyleSheet, ActivityIndicator, Alert ,Button, Dimensions, FlatList, Image ,KeyboardAvoidingView ,Modal ,Platform ,ScrollView ,Share ,Switch ,TextInput, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, ActivityIndicator        , TouchableOpacity, View } from 'react-native';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { AutoHideFlatList } from '../../components/AutoHideScrollWrappers';
@@ -36,8 +36,6 @@ import Animated, {
 } from 'react-native-reanimated';  // FIXED: Removed Layout
 
 import { Audio } from 'expo-av';  // FIXED: Added missing Audio import
-import { showAlert } from '@/utils/alert';
-
 type FamilyChatScreenProps = NativeStackScreenProps<RootStackParamList, 'FamilyChat'>;
 
 const { width, height } = Dimensions.get('window');

@@ -1,21 +1,19 @@
 import {
   StyleSheet,
   ActivityIndicator,
-  Alert,
-  Button,
-  Dimensions,
-  Image,
   Linking,
-  Modal,
-  Platform,
-  RefreshControl,
-  ScrollView,
-  Share,
-  Switch,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
+  Dimensions,        // <-- ADD THIS
+  Modal,
+  Image,
+  TextInput,
+  Switch,
+  RefreshControl,
+  StatusBar,
+  Platform,
+  Share,
 } from 'react-native';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
@@ -39,7 +37,6 @@ import { useCustomization } from '../../hooks/useCustomization';
 import { useFamily } from '../../context/FamilyContext';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { useUser } from '../../context/UserContext';
-import { showAlert } from '@/utils/alert';
 type FamilySharingScreenProps = NativeStackScreenProps<RootStackParamList, 'FamilySharing'>;
 
 const AnimatedScrollView = Animated.ScrollView;

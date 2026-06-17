@@ -1,4 +1,4 @@
-import { StyleSheet, ActivityIndicator, Alert, Button, Dimensions ,FlatList ,Image ,Modal ,Platform, RefreshControl ,ScrollView, Switch ,Text ,TextInput, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, ActivityIndicator    , RefreshControl  ,Text , TouchableOpacity, View } from 'react-native';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { AutoHideFlatList } from '../../components/AutoHideScrollWrappers';
@@ -21,8 +21,6 @@ import { FamilyChat, FamilyMessage, useFamilyChat } from '../../context/FamilyCh
 import { FamilyMember, useFamily } from '../../context/FamilyContext';
 import { useAuth } from '../../context/AuthContext';
 import { useCustomization } from '../../hooks/useCustomization';
-import { showAlert } from '@/utils/alert';
-
 type FamilyChatListScreenProps = NativeStackScreenProps<
   RootStackParamList,
   'FamilyChatList'
