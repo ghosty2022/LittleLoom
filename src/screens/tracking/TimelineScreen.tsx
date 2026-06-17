@@ -911,7 +911,8 @@ export default function EnhancedTimelineScreen() {
 
   const handleScroll = useAnimatedScrollHandler({
     onScroll: (event) => {
-      'worklet';
+     'worklet';
+       'worklet';
       scrollY.value = event.contentOffset.y;
     },
   }, [scrollY]);

@@ -2083,7 +2083,9 @@ showAlert('Unravel this thread?', 'This cannot be undone.', [
   const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 45 }).current;
 
   const scrollHandler = useAnimatedScrollHandler({
-    onScroll: (event) => {
+    onScroll: (event) => {'worklet';
+      
+'worklet';
       'worklet';
       scrollY.value = event.contentOffset.y;
     },

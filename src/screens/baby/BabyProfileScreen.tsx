@@ -541,6 +541,7 @@ showAlert(
   // --- Scroll Handler ---
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
+      'worklet';
       scrollY.value = event.contentOffset.y;
     },
   });

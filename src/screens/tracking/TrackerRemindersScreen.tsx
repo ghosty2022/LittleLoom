@@ -597,6 +597,7 @@ export default function RemindersScreen({ navigation, route }: Props) {
   /* ---- Scroll handler ---- */
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
+      'worklet';
       scrollY.value = event.contentOffset.y;
       headerOpacity.value = interpolate(
         event.contentOffset.y,

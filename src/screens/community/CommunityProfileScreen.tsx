@@ -377,7 +377,9 @@ export default function CommunityProfileScreen({ navigation }: Props) {
 
   // ─── Scroll Handler ─────────────────────────────────────────────────
   const scrollHandler = useAnimatedScrollHandler({
-    onScroll: (event) => { scrollY.value = event.contentOffset.y; },
+    onScroll: (event) => {'worklet';
+      
+'worklet'; scrollY.value = event.contentOffset.y; },
   });
 
   // ─── Emoji Picker ───────────────────────────────────────────────────

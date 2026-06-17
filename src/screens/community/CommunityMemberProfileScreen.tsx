@@ -309,7 +309,8 @@ showAlert(user.displayName || 'User', '', options);
 
   // ─── Scroll Handler ─────────────────────────────────────────────────
   const scrollHandler = useAnimatedScrollHandler({
-    onScroll: (event) => { scrollY.value = event.contentOffset.y; },
+    onScroll: (event) => { 'worklet';
+      scrollY.value = event.contentOffset.y; },
   });
 
   // ─── RENDER SECTIONS ────────────────────────────────────────────────

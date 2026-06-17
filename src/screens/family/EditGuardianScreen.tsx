@@ -498,7 +498,8 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
   const hasChanges = useMemo(() => formData.fullName !== originalData.fullName || formData.email !== originalData.email || formData.phoneNumber !== originalData.phoneNumber || formData.relationship !== originalData.relationship || formData.avatar !== originalData.avatar || formData.notificationsEnabled !== originalData.notificationsEnabled, [formData, originalData]);
 
   // --- Scroll Handler ---
-  const scrollHandler = useAnimatedScrollHandler({ onScroll: (event) => { scrollY.value = event.contentOffset.y; } });
+  const scrollHandler = useAnimatedScrollHandler({ onScroll: (event) => { 'worklet';
+      scrollY.value = event.contentOffset.y; } });
 
   // --- Emoji Picker ---
   const EmojiPicker = () => {

@@ -11,6 +11,7 @@ import {
   NativeSyntheticEvent,
   View,
 } from 'react-native';
+import { Animated as ReanimatedAnimated } from 'react-native-reanimated';
 import Animated, {
   useAnimatedScrollHandler,
   AnimatedProps,
@@ -83,9 +84,9 @@ const useSafeTrackedScroll = (
 };
 
 // ─── Animated component factories ────────────────────────────────────────
-const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
-const AnimatedFlatList = Animated.createAnimatedComponent(FlatList);
-const AnimatedSectionList = Animated.createAnimatedComponent(SectionList);
+const AnimatedScrollView = ReanimatedAnimated.createAnimatedComponent(ScrollView);
+const AnimatedFlatList = ReanimatedAnimated.createAnimatedComponent(FlatList);
+const AnimatedSectionList = ReanimatedAnimated.createAnimatedComponent(SectionList);
 
 // ─── Helper: Detect animated event object ───────────────────────────────
 // CRITICAL: useAnimatedScrollHandler returns an OBJECT, not a function.

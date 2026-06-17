@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Extrapolation, interpolate, Layout, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
-import { Animated, BackHandler, Button, Dimensions, FlatList, Platform, SafeAreaView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';;
+import { Animated as RNAnimated, BackHandler, Button, Dimensions, FlatList, Platform, SafeAreaView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';;
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -94,6 +94,7 @@ const SlideItem = React.memo(({
   ];
 
   const animatedStyle = useAnimatedStyle(() => {
+    'worklet';
     const scale = interpolate(
       scrollX.value,
       inputRange,
@@ -215,6 +216,8 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
 
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
+     'worklet';
+       'worklet';
       scrollX.value = event.contentOffset.x;
     },
   });

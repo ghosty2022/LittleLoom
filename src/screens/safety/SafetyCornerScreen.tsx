@@ -1248,7 +1248,8 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
 
   const scrollY = useSharedValue(0);
   const scrollHandler = useAnimatedScrollHandler({
-    onScroll: (event) => { scrollY.value = event.contentOffset.y; },
+    onScroll: (event) => { 'worklet';
+      scrollY.value = event.contentOffset.y; },
   });
 
   const headerOpacity = useAnimatedStyle(() => ({

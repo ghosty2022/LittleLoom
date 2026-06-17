@@ -583,7 +583,9 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
   }, [members, currentBaby]);
 
   const scrollHandler = useAnimatedScrollHandler({
-    onScroll: (event) => {
+    onScroll: (event) => {'worklet';
+      
+'worklet';
       scrollY.value = event.contentOffset.y;
       headerBlurIntensity.value = interpolate(
         scrollY.value,

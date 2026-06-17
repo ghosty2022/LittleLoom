@@ -402,7 +402,9 @@ export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreen
   const hasUser = !!effectiveUser;
 
   const scrollHandler = useAnimatedScrollHandler({
-    onScroll: (event) => {
+    onScroll: (event) => {'worklet';
+      
+'worklet';
       'worklet';
       scrollY.value = event.contentOffset.y;
     },

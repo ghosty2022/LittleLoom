@@ -1283,7 +1283,8 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   // returns an animated event object, not a function, causing TypeError
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
-      'worklet';
+     'worklet';
+       'worklet';
       scrollY.value = event.contentOffset.y;
     },
   });

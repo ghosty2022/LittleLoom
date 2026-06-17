@@ -1619,7 +1619,9 @@ export default function GalleryScreen({
   const scrollY = useSharedValue(0);
 
   const scrollHandler = useAnimatedScrollHandler({
-    onScroll: (event) => {
+    onScroll: (event) => {'worklet';
+      
+'worklet';
       'worklet';
       scrollY.value = event.contentOffset.y;
     },
