@@ -15,8 +15,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { useNavigationVisibility, useTheme } from '../context/AppContext';
-
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -30,6 +28,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { useCustomization } from '../hooks/useCustomization';
+import { useNavigationVisibility, useTheme } from '../context/AppContext';  // ← ADD THIS LINE
 import { HomeIcon, TrackIcon, GrowIcon, ConnectIcon, MoreIcon, AddLogIcon } from './TabIcons';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');

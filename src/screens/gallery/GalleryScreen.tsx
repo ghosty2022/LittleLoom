@@ -2936,6 +2936,7 @@ showAlert(
           [{ nativeEvent: { contentOffset: { y: scrollY } } }],
           { useNativeDriver: true }
         )}
+        
         scrollEventThrottle={16}
         refreshControl={
           <RefreshControl
