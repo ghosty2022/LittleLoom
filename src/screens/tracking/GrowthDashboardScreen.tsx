@@ -705,7 +705,10 @@ export default function GrowthDashboardScreen({ navigation }: any) {
 
   const scrollY = useSharedValue(0);
   const scrollHandler = useAnimatedScrollHandler({
-    onScroll: (e) => { scrollY.value = e.contentOffset.y; },
+    onScroll: (e) => {
+      'worklet';
+      scrollY.value = e.contentOffset.y;
+    },
   });
 
   const headerOpacity = useAnimatedStyle(() => ({

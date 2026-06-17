@@ -23,7 +23,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
 
 const { width, height } = Dimensions.get('window');
-const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
+
 // Use Animated.FlatList directly from reanimated instead of createAnimatedComponent
 // const AnimatedFlatList = Animated.createAnimatedComponent(FlatList);
 /* ═══════════════════════════════════════════════════════════════
@@ -510,7 +510,12 @@ export default function AchievementsScreen({ navigation, route }: Props) {
   }, [navigation, baby?.id]);
 
   /* ---- Scroll handler ---- */
-  const scrollHandler = useAnimatedScrollHandler({ onScroll: (e) => { scrollY.value = e.contentOffset.y; } });
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (e) => {
+      'worklet';
+      scrollY.value = e.contentOffset.y;
+    },
+  });
   const headerStyle = useAnimatedStyle(() => ({
     opacity: interpolate(scrollY.value, [0, 100], [0.95, 1], Extrapolate.CLAMP),
   }));

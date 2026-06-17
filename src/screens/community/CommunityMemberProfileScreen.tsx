@@ -23,7 +23,7 @@ import { showAlert } from '@/utils/alert';
 
 type Props = NativeStackScreenProps<CommunityStackParamList, 'CommunityMemberProfile'>;
 
-const AnimatedScrollView = Animated.ScrollView;
+
 const { width } = Dimensions.get('window');
 
 // ─── DESIGN TOKENS ───────────────────────────────────────────────────
@@ -309,8 +309,10 @@ showAlert(user.displayName || 'User', '', options);
 
   // ─── Scroll Handler ─────────────────────────────────────────────────
   const scrollHandler = useAnimatedScrollHandler({
-    onScroll: (event) => { 'worklet';
-      scrollY.value = event.contentOffset.y; },
+    onScroll: (event) => {
+      'worklet';
+      scrollY.value = event.contentOffset.y;
+    },
   });
 
   // ─── RENDER SECTIONS ────────────────────────────────────────────────
@@ -617,7 +619,7 @@ showAlert(user.displayName || 'User', '', options);
       <StatusBar barStyle={isDark ? 'light' : 'dark'} />
       <LinearGradient colors={isDark ? ['#0a0a0a', '#1a1a2e', '#16213e'] : ['#f8fafc', '#e2e8f0', '#dbeafe']} style={styles.bg} />
       {renderStickyHeader()}
-      <AnimatedScrollView
+      <Animated.ScrollView
         contentContainerStyle={[styles.scrollContent, { paddingTop: 0, paddingBottom: insets.bottom + 40 }]}
         showsVerticalScrollIndicator={false}
         onScroll={scrollHandler}

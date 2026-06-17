@@ -22,7 +22,7 @@ import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrapp
 
 type Props = NativeStackScreenProps<CommunityStackParamList, 'CommunityProfile'>;
 
-const AnimatedScrollView = Animated.ScrollView;
+
 const { width, height } = Dimensions.get('window');
 
 // ─── DESIGN TOKENS (Unified with Guardian/Baby screens) ──────────────
@@ -377,11 +377,12 @@ export default function CommunityProfileScreen({ navigation }: Props) {
 
   // ─── Scroll Handler ─────────────────────────────────────────────────
   const scrollHandler = useAnimatedScrollHandler({
-    onScroll: (event) => {'worklet';
-      
-'worklet'; scrollY.value = event.contentOffset.y; },
+    onScroll: (event) => {
+      'worklet';
+      scrollY.value = event.contentOffset.y;
+    },
   });
-
+  
   // ─── Emoji Picker ───────────────────────────────────────────────────
   const EmojiPicker = () => {
     if (!showEmojiPicker) return null;
@@ -897,7 +898,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
       <StatusBar barStyle={isDark ? 'light' : 'dark'} />
       <LinearGradient colors={isDark ? ['#0a0a0a', '#1a1a2e', '#16213e'] : ['#f8fafc', '#e2e8f0', '#dbeafe']} style={styles.bg} />
       {renderStickyHeader()}
-      <AnimatedScrollView
+      <Animated.ScrollView
         contentContainerStyle={[styles.scrollContent, { paddingTop: 0, paddingBottom: insets.bottom + 40 }]}
         showsVerticalScrollIndicator={false}
         onScroll={scrollHandler}
