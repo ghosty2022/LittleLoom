@@ -88,31 +88,49 @@ const AnimatedFlatList = Animated.createAnimatedComponent(FlatList);
 const AnimatedSectionList = Animated.createAnimatedComponent(SectionList);
 
 // ─── Helper: Detect animated event object ───────────────────────────────
-// useAnimatedScrollHandler returns an object, NOT a function
+// CRITICAL: useAnimatedScrollHandler returns an OBJECT, not a function.
+// Animated.event() also returns an object.
+// These objects must ONLY go to Animated.* components.
 const isAnimatedEventObject = (value: any): boolean => {
-  return value !== null && 
-    typeof value === 'object' && 
-    typeof value !== 'function';
+  if (value === null || value === undefined) return false;
+  if (typeof value === 'function') return false;
+  if (typeof value !== 'object') return false;
+
+  // Reanimated event objects have these properties
+  const hasWorklet = typeof value.__worklet !== 'undefined';
+  const hasEventName = typeof value.eventName !== 'undefined';
+
+  // Animated.event objects have __isNative or _listeners
+  const isAnimatedEvent = value.__isNative === true ||
+    (value._listeners && Array.isArray(value._listeners));
+
+  return hasWorklet || hasEventName || isAnimatedEvent ||
+    // Fallback: if it looks like an object with numeric keys (event mapping)
+    Object.keys(value).some(k => !isNaN(Number(k)));
 };
 
 // ─── AutoHideScrollView ─────────────────────────────────────────────────
-// FOR REGULAR SCROLL HANDLERS ONLY (function callbacks)
-// NEVER pass useAnimatedScrollHandler output here!
+// ⚠️  FOR REGULAR SCROLL HANDLERS ONLY (function callbacks)
+// ⚠️  NEVER pass useAnimatedScrollHandler output here!
+// ⚠️  If you do, the animated handler will be SILENTLY IGNORED to prevent crashes.
 export const AutoHideScrollView = forwardRef<ScrollView, ScrollViewProps>(
   (props, ref) => {
     const { onScroll: userOnScroll, ...rest } = props;
-    
-    // CRITICAL FIX: If user passes an animated event object, we CANNOT use it
-    // on a regular ScrollView. We must either:
-    // 1. Ignore it (safest - prevents crash)
-    // 2. Or warn in development
+
     const isAnimated = isAnimatedEventObject(userOnScroll);
-    
-    // Only accept function handlers. If it's an animated object, discard it.
-    const safeUserOnScroll = (!isAnimated && typeof userOnScroll === 'function') 
-      ? userOnScroll 
+
+    if (isAnimated && __DEV__) {
+      console.warn(
+        `[LittleLoom] AutoHideScrollView received an animated event object for onScroll. ` +
+        `This will be ignored. Use AutoHideAnimatedScrollView instead for animated scroll handlers. `
+      );
+    }
+
+    // Only accept function handlers. Animated objects are discarded.
+    const safeUserOnScroll = (!isAnimated && typeof userOnScroll === 'function')
+      ? userOnScroll
       : undefined;
-    
+
     const onScroll = useSafeTrackedScroll(safeUserOnScroll);
 
     return (
@@ -127,10 +145,9 @@ export const AutoHideScrollView = forwardRef<ScrollView, ScrollViewProps>(
 );
 
 // ─── AutoHideAnimatedScrollView ─────────────────────────────────────────
-// FOR ANIMATED EVENTS ONLY (useAnimatedScrollHandler output)
-// This uses Animated.ScrollView under the hood
+// ✅ FOR ANIMATED EVENTS ONLY (useAnimatedScrollHandler output)
+// ✅ This uses Animated.ScrollView under the hood
 interface AnimatedScrollViewProps extends ScrollViewProps {
-  // Accept both animated event objects and regular functions
   onScroll?: ReturnType<typeof useAnimatedScrollHandler> | ScrollHandler;
 }
 
@@ -138,8 +155,6 @@ export const AutoHideAnimatedScrollView = forwardRef<ScrollView, AnimatedScrollV
   (props, ref) => {
     const { onScroll: userOnScroll, ...rest } = props;
 
-    // If it's an animated event object, pass directly to AnimatedScrollView
-    // AnimatedScrollView knows how to handle reanimated event objects
     const isAnimated = isAnimatedEventObject(userOnScroll);
 
     if (isAnimated) {
@@ -153,7 +168,7 @@ export const AutoHideAnimatedScrollView = forwardRef<ScrollView, AnimatedScrollV
       );
     }
 
-    // Otherwise, wrap with tracking (regular function handler)
+    // Regular function handler - wrap with tracking
     const trackedOnScroll = useSafeTrackedScroll(
       typeof userOnScroll === 'function' ? userOnScroll : undefined
     );
@@ -170,16 +185,24 @@ export const AutoHideAnimatedScrollView = forwardRef<ScrollView, AnimatedScrollV
 );
 
 // ─── AutoHideFlatList ───────────────────────────────────────────────────
-// FOR REGULAR SCROLL HANDLERS ONLY
+// ⚠️  FOR REGULAR SCROLL HANDLERS ONLY
 export const AutoHideFlatList = forwardRef<FlatList<any>, FlatListProps<any>>(
   (props, ref) => {
     const { onScroll: userOnScroll, ...rest } = props;
-    
+
     const isAnimated = isAnimatedEventObject(userOnScroll);
-    const safeUserOnScroll = (!isAnimated && typeof userOnScroll === 'function') 
-      ? userOnScroll 
+
+    if (isAnimated && __DEV__) {
+      console.warn(
+        `[LittleLoom] AutoHideFlatList received an animated event object for onScroll. ` +
+        `This will be ignored. Use AutoHideAnimatedFlatList instead.`
+      );
+    }
+
+    const safeUserOnScroll = (!isAnimated && typeof userOnScroll === 'function')
+      ? userOnScroll
       : undefined;
-    
+
     const onScroll = useSafeTrackedScroll(safeUserOnScroll);
 
     return (
@@ -194,7 +217,7 @@ export const AutoHideFlatList = forwardRef<FlatList<any>, FlatListProps<any>>(
 );
 
 // ─── AutoHideAnimatedFlatList ───────────────────────────────────────────
-// FOR ANIMATED EVENTS ONLY
+// ✅ FOR ANIMATED EVENTS ONLY
 interface AnimatedFlatListProps extends FlatListProps<any> {
   onScroll?: ReturnType<typeof useAnimatedScrollHandler> | ScrollHandler;
 }
@@ -232,16 +255,24 @@ export const AutoHideAnimatedFlatList = forwardRef<FlatList<any>, AnimatedFlatLi
 );
 
 // ─── AutoHideSectionList ────────────────────────────────────────────────
-// FOR REGULAR SCROLL HANDLERS ONLY
+// ⚠️  FOR REGULAR SCROLL HANDLERS ONLY
 export const AutoHideSectionList = forwardRef<SectionList<any>, SectionListProps<any>>(
   (props, ref) => {
     const { onScroll: userOnScroll, ...rest } = props;
-    
+
     const isAnimated = isAnimatedEventObject(userOnScroll);
-    const safeUserOnScroll = (!isAnimated && typeof userOnScroll === 'function') 
-      ? userOnScroll 
+
+    if (isAnimated && __DEV__) {
+      console.warn(
+        `[LittleLoom] AutoHideSectionList received an animated event object for onScroll. ` +
+        `This will be ignored. Use AutoHideAnimatedSectionList instead.`
+      );
+    }
+
+    const safeUserOnScroll = (!isAnimated && typeof userOnScroll === 'function')
+      ? userOnScroll
       : undefined;
-    
+
     const onScroll = useSafeTrackedScroll(safeUserOnScroll);
 
     return (
@@ -256,7 +287,7 @@ export const AutoHideSectionList = forwardRef<SectionList<any>, SectionListProps
 );
 
 // ─── AutoHideAnimatedSectionList ────────────────────────────────────────
-// FOR ANIMATED EVENTS ONLY
+// ✅ FOR ANIMATED EVENTS ONLY
 interface AnimatedSectionListProps extends SectionListProps<any> {
   onScroll?: ReturnType<typeof useAnimatedScrollHandler> | ScrollHandler;
 }
