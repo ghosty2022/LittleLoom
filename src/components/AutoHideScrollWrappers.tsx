@@ -154,7 +154,7 @@ export const AutoHideScrollView = forwardRef<ScrollView, ScrollViewProps>(
 
 // ─── AutoHideAnimatedScrollView ─────────────────────────────────────────
 // ✅ FOR ANIMATED EVENTS ONLY (useAnimatedScrollHandler output)
-// ✅ This uses Animated.ScrollView under the hood
+// ✅ This uses Reanimated.ScrollView under the hood
 interface AnimatedScrollViewProps extends ScrollViewProps {
   onScroll?: ReturnType<typeof useAnimatedScrollHandler> | ScrollHandler;
 }
@@ -182,7 +182,7 @@ export const AutoHideAnimatedScrollView = forwardRef<ScrollView, AnimatedScrollV
     );
 
     return (
-      <AnimatedScrollView
+      <ReanimatedScrollView
         ref={ref}
         {...rest}
         onScroll={trackedOnScroll as any}
@@ -252,7 +252,7 @@ export const AutoHideAnimatedFlatList = forwardRef<FlatList<any>, AnimatedFlatLi
     );
 
     return (
-      <AnimatedFlatList
+      <ReanimatedFlatList
         ref={ref}
         {...rest}
         onScroll={trackedOnScroll as any}
@@ -322,7 +322,7 @@ export const AutoHideAnimatedSectionList = forwardRef<SectionList<any>, Animated
     );
 
     return (
-      <AnimatedSectionList
+      <ReanimatedSectionList
         ref={ref}
         {...rest}
         onScroll={trackedOnScroll as any}
