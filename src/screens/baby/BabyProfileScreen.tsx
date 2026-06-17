@@ -1,4 +1,4 @@
-import { StyleSheet,ActionSheetIOS, ActivityIndicator, Alert ,Button, Dimensions ,Image, Modal ,RefreshControl, ScrollView, Settings, Switch, TextInput, TouchableOpacity ,useColorScheme, View } from 'react-native';
+import { StyleSheet,ActionSheetIOS, ActivityIndicator , Dimensions ,Image, Modal ,RefreshControl, ScrollView, Switch, TextInput, TouchableOpacity ,useColorScheme, View } from 'react-native';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { BlurView } from 'expo-blur';
@@ -21,7 +21,6 @@ import { showConfirmModal, showErrorModal, showSuccessModal } from '../../utils/
 import { useActivity } from '../../context/ActivityContext';
 import { useAuth } from '../../context/AuthContext';
 import { useUser } from '../../context/UserContext';
-import { showAlert } from '@/utils/alert';
 import Animated, {
 
   FadeInUp,
@@ -197,6 +196,7 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
   } = useBaby();
   const { entries: allActivities, getEntriesByBaby } = useActivity();
   const { members, loadFamily, parent2, guardians } = useFamily();
+  const sweetAlert = useSweetAlert();
 
   const isBabyMode = mode === 'baby';
   const currentBabyData = useMemo(() => {
@@ -374,15 +374,13 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     } else {
       // For Android, you could use a simple alert or a bottom sheet
 
-showAlert(
+sweetAlert.confirm(
         'Change Photo',
         'Choose an option',
-        [
-          { text: 'Camera', onPress: handleTakePhoto },
-          { text: 'Gallery', onPress: handlePickImage },
-          { text: 'Emoji', onPress: () => setShowEmojiPicker(true) },
-          { text: 'Cancel', style: 'cancel' },
-        ]
+        () => handlePickImage(),
+        undefined,
+        'Gallery',
+        'Cancel'
       );
     }
   };

@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { showError } from '@/utils/alert';
-import {  ActivityIndicator, Alert, Button, Dimensions, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Settings, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {  ActivityIndicator, Dimensions, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -20,9 +19,7 @@ import { useCustomization } from '../../hooks/useCustomization';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
 import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
-import { SafeBabyAvatar } from '../../components/SafeAvatar';;
-
-const { width } = Dimensions.get('window');
+import { SafeBabyAvatar } from '../../components/SafeAvatar';const { width } = Dimensions.get('window');
 
 const BABY_IMAGES_DIR = FileSystem.documentDirectory + 'baby_images/';
 

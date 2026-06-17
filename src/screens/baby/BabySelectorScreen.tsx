@@ -1,4 +1,4 @@
-import { StyleSheet, Button, Dimensions, ScrollView, Switch, Text, TouchableOpacity, View, StatusBar } from 'react-native';
+import { StyleSheet, Dimensions, ScrollView, Switch, Text, TouchableOpacity, View, StatusBar } from 'react-native';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { BlurView } from 'expo-blur';

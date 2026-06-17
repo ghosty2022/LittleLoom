@@ -1,13 +1,11 @@
 import {
   StyleSheet,
-  Button,
   Image,
   InteractionManager,
   Modal,
   Platform,
   RefreshControl,
   ScrollView,
-  Settings,
   Text,
   TouchableOpacity,
   useColorScheme,
@@ -28,10 +26,10 @@ import type { RootStackParamList } from '../../types/navigation';
 import { AutoHideAnimatedScrollView, } from '../../components/AutoHideScrollWrappers';
 import { useAuth } from '../../context/AuthContext';
 import { useCustomization } from '../../hooks/useCustomization';
+import { useSweetAlert } from '../../components/SweetAlert';
 import { useFamily } from '../../context/FamilyContext';
 import { useUser } from '../../context/UserContext';
 
-import { showAlert } from '@/utils/alert';
 import Animated, {
   FadeInUp,
   useSharedValue,
@@ -386,6 +384,7 @@ export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreen
     getPottyStreak,
   } = useBaby();
   const { members, parent1, parent2, guardians, loadFamily, removeMember } = useFamily();
+  const sweetAlert = useSweetAlert();
 
   const {
     darkMode,

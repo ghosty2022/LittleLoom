@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { showError } from '@/utils/alert';
-import {  ActivityIndicator, Alert, Button, Dimensions, ScrollView, Settings, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import {  ActivityIndicator, Dimensions, ScrollView, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,8 +11,7 @@ import { useAuth } from '../../context/AuthContext';
 import type { RootStackParamList } from '../../types/navigation';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
-import { SafeBabyAvatar } from '../../components/SafeAvatar';;
-import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
+import { SafeBabyAvatar } from '../../components/SafeAvatar';import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
 
 const { width } = Dimensions.get('window');
 const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpacity);
