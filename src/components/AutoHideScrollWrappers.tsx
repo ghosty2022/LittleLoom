@@ -96,17 +96,24 @@ const isAnimatedEventObject = (value: any): boolean => {
   if (typeof value === 'function') return false;
   if (typeof value !== 'object') return false;
 
-  // Reanimated event objects have these properties
-  const hasWorklet = typeof value.__worklet !== 'undefined';
-  const hasEventName = typeof value.eventName !== 'undefined';
+  // Reanimated v2/v3 event objects
+  const keys = Object.keys(value);
+  const hasWorklet = keys.includes('__worklet') || value.worklet === true;
+  const hasEventName = keys.includes('eventName') || keys.includes('eventNames');
+  
+  // Reanimated v3 specific
+  const isReanimatedHandler = 
+    keys.includes('__reanimatedWorkletInit') ||
+    typeof value.__reanimatedEventHandler === 'object';
 
-  // Animated.event objects have __isNative or _listeners
+  // RN Animated.event objects
   const isAnimatedEvent = value.__isNative === true ||
-    (value._listeners && Array.isArray(value._listeners));
+    (Array.isArray(value._listeners) && value._listeners.length > 0);
 
-  return hasWorklet || hasEventName || isAnimatedEvent ||
-    // Fallback: if it looks like an object with numeric keys (event mapping)
-    Object.keys(value).some(k => !isNaN(Number(k)));
+  // Fallback: numeric keys indicate event mapping object
+  const hasNumericKeys = keys.some(k => /^\d+$/.test(k));
+
+  return hasWorklet || hasEventName || isReanimatedHandler || isAnimatedEvent || hasNumericKeys;
 };
 
 // ─── AutoHideScrollView ─────────────────────────────────────────────────
