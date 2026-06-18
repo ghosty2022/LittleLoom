@@ -1643,8 +1643,8 @@ export default function EnhancedTimelineScreen() {
                           borderColor: selectedFilter === filter.id ? filter.color : theme.surface.border,
                         },
                       ]}
-                      activeOpacity={0.8}
-                                          <Ionicons name={filter.icon as any} size={16} color={selectedFilter === filter.id ? '#fff' : filter.color} />
+                      activeOpacity={0.8}>
+                      <Ionicons name={filter.icon as any} size={16} color={selectedFilter === filter.id ? '#fff' : filter.color} />
                       <Text style={[styles.filterText, selectedFilter === filter.id && { color: '#fff', fontWeight: '700' }]}>
                         {filter.label}
                       </Text>
