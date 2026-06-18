@@ -1,6 +1,5 @@
-import { useSweetAlert } from '../components/SweetAlert';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, AppStateStatus, Alert } from 'react-native';
+import { AppState, AppStateStatus } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import * as LocalAuthentication from 'expo-local-authentication';
@@ -9,7 +8,6 @@ import * as Crypto from 'expo-crypto';
 const SECURE_KEYS = {
   PIN_HASH: 'littleloom_pin_hash',
 } as const;
-
 
 const ASYNC_KEYS = {
   BIOMETRIC_ENABLED: 'littleloom_biometric_enabled',
@@ -31,6 +29,9 @@ const secureStorage = {
       await SecureStore.setItemAsync(key, value, { keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK });
       return true;
     } catch { return false; }
+  },
+  async deleteItem(key: string): Promise<boolean> {
+    try { await SecureStore.deleteItemAsync(key); return true; } catch { return false; }
   },
 };
 
@@ -135,20 +136,25 @@ const getPrimaryBiometricName = (types: LocalAuthentication.AuthenticationType[]
   return 'Biometric';
 };
 
+// ─── Hashing Utilities (top-level, no hook dependency) ─────────────────
+const hashPin = async (pin: string): Promise<string> => {
+  return await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, pin + 'littleloom_salt_v1');
+};
+
+const hashAnswer = async (answer: string): Promise<string> => {
+  return await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, answer.toLowerCase().trim() + 'littleloom_sq_salt');
+};
+
 interface SecurityProviderProps {
   children: React.ReactNode;
   isAuthenticated?: boolean;
   setupComplete?: boolean;
-  setSetupCompleteCallback?: (callback: (() => Promise<void>) | null) => void;
-  isAppActive?: () => boolean;
 }
 
 export const SecurityProvider: React.FC<SecurityProviderProps> = ({ 
   children,
   isAuthenticated = false,
   setupComplete = false,
-  setSetupCompleteCallback,
-  isAppActive = () => true,
 }) => {
   const [state, setState] = useState<SecurityState>({
     isLoading: true,
@@ -175,15 +181,9 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
   useEffect(() => { return () => { isMounted.current = false; }; }, []);
 
   useEffect(() => {
-    if (setSetupCompleteCallback) {
-      setSetupCompleteCallback(forceUnlock);
-    }
-    return () => { if (setSetupCompleteCallback) setSetupCompleteCallback(null); };
-  }, [setSetupCompleteCallback]);
-
-  useEffect(() => {
     const initSecurity = async () => {
       try {
+        await new Promise(resolve => setTimeout(resolve, 100));
         const [
           biometricEnabled, pinHash, appLockEnabled, autoLockTimeout,
           securityLocked, securityQuestionsStr,
@@ -237,7 +237,6 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
   useEffect(() => {
     const subscription = AppState.addEventListener('change', async (nextAppState) => {
       const previousState = appState.current;
-
       if (nextAppState.match(/inactive|background/) && previousState === 'active') {
         backgroundTimeRef.current = Date.now();
         lastActiveRef.current = Date.now();
@@ -319,16 +318,8 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     }
   }, [authenticateWithBiometric]);
 
-  const hashPin = async (pin: string): Promise<string> => {
-    return await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, pin + 'littleloom_salt_v1');
-  };
-
-  const hashAnswer = async (answer: string): Promise<string> => {
-    return await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, answer.toLowerCase().trim() + 'littleloom_sq_salt');
-  };
-
   const setupPin = useCallback(async (pin: string): Promise<boolean> => {
-    if (pin.length < 4 || pin.length > 6) { sweetAlert.alert('Invalid PIN', 'PIN must be 4-6 digits', 'warning'); return false; }
+    if (pin.length < 4 || pin.length > 6) { console.warn('Invalid PIN: must be 4-6 digits'); return false; }
     const hashedPin = await hashPin(pin);
     await secureStorage.setItem(SECURE_KEYS.PIN_HASH, hashedPin);
     if (isMounted.current) setState(prev => ({ ...prev, settings: { ...prev.settings, isPinEnabled: true } }));
@@ -343,7 +334,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
 
   const changePin = useCallback(async (oldPin: string, newPin: string): Promise<boolean> => {
     const isValid = await verifyPin(oldPin);
-    if (!isValid) { sweetAlert.alert('Error', 'Current PIN is incorrect', 'warning'); return false; }
+    if (!isValid) { console.warn('Current PIN is incorrect'); return false; }
     return await setupPin(newPin);
   }, [verifyPin, setupPin]);
 
@@ -359,7 +350,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
 
   const lockApp = useCallback(async () => {
     const hasSecurity = state.settings.isBiometricEnabled || state.settings.isPinEnabled || state.settings.isAppLockEnabled;
-    if (!hasSecurity) { sweetAlert.alert('No Security Enabled', 'Please enable PIN or Biometric lock first.', 'warning'); return; }
+    if (!hasSecurity) { console.warn('No security enabled'); return; }
     manualLockTimeRef.current = Date.now();
     await AsyncStorage.setItem(ASYNC_KEYS.MANUAL_LOCK_TIME, manualLockTimeRef.current.toString());
     await AsyncStorage.setItem(ASYNC_KEYS.SECURITY_LOCK, 'true');
@@ -420,7 +411,6 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     if (checkedThisCycleRef.current) { console.log('🔓 Already checked this cycle'); return; }
 
     securityCheckLockRef.current = true;
-
     try {
       const [appLockEnabled, lastActiveStr, biometricEnabled, pinEnabled, isLocked] = await Promise.all([
         AsyncStorage.getItem(ASYNC_KEYS.APP_LOCK_ENABLED),
@@ -503,7 +493,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
 
   const saveSecurityQuestions = useCallback(async (questions: { question: string; answer: string }[]): Promise<boolean> => {
     try {
-      if (questions.length !== 3) { sweetAlert.alert('Error', 'Exactly 3 security questions required', 'warning'); return false; }
+      if (questions.length !== 3) { console.warn('Exactly 3 security questions required'); return false; }
       const hashedQuestions = await Promise.all(questions.map(async (q) => ({
         question: q.question,
         answerHash: await hashAnswer(q.answer),
@@ -514,7 +504,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
         settings: { ...prev.settings, hasSecurityQuestions: true },
       }));
       return true;
-    } catch { sweetAlert.alert('Error', 'Failed to save security questions', 'warning'); return false; }
+    } catch { console.warn('Failed to save security questions'); return false; }
   }, []);
 
   const verifySecurityAnswers = useCallback(async (answers: string[]): Promise<boolean> => {
