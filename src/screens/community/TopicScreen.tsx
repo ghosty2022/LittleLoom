@@ -137,21 +137,34 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
     if (!topic) return;
 
     if (topic.isJoined) {
-// TODO: Auto-fixed showAlert -> sweetAlert.confirm. VERIFY CALLBACK LOGIC!
-sweetAlert.confirm(
-  'Leave Topic',
-  '',
-  () => {
-    // TODO: Add confirm action here
-    console.log('Confirmed: Leave Topic');
-  },
-  () => {
-    // Cancel action
-  },
-  'Leave',
-  'Cancel',
-  true
-)
+      showAlert(
+        'Leave Topic',
+        `Are you sure you want to leave ${topic.name}?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Leave',
+            style: 'destructive',
+            onPress: async () => {
+              await leaveTopic(topic.id);
+              setTopic((prev) =>
+                prev
+                  ? { ...prev, isJoined: false, members: Math.max(0, prev.members - 1) }
+                  : undefined
+              );
+              triggerHaptic('success');
+            },
+          },
+        ]
+      );
+    } else {
+      await joinTopic(topic.id);
+      setTopic((prev) =>
+        prev ? { ...prev, isJoined: true, members: prev.members + 1 } : undefined
+      );
+      triggerHaptic('success');
+    }
+  }, [topic, joinTopic, leaveTopic, triggerHaptic]);
 
   const handlePostLike = useCallback(
     async (post: Post) => {

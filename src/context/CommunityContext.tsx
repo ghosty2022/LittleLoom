@@ -1220,21 +1220,28 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const deletePost = useCallback(async (postId: string) => {
 
-// TODO: Auto-fixed showAlert -> sweetAlert.confirm. VERIFY CALLBACK LOGIC!
-sweetAlert.confirm(
-  'Delete Post',
-  'Are you sure you want to delete this post? This action cannot be undone.',
-  () => {
-    // TODO: Add confirm action here
-    console.log('Confirmed: Delete Post');
-  },
-  () => {
-    // Cancel action
-  },
-  'Delete',
-  'Cancel',
-  true
-)
+showAlert(
+      'Delete Post',
+      'Are you sure you want to delete this post? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            setState(prev => {
+              const updatedPosts = prev.posts.filter(post => post.id !== postId);
+              AsyncStorage.setItem(STORAGE_KEYS.POSTS, JSON.stringify(updatedPosts)).catch(console.error);
+              queuePersist('popularPosts');
+              return { ...prev, posts: updatedPosts };
+            });
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            console.log('Post deleted successfully');
+          },
+        },
+      ]
+    );
+  }, []);
 
   const getPostById = useCallback((postId: string) => {
     return stateRef.current.posts.find(post => post.id === postId);

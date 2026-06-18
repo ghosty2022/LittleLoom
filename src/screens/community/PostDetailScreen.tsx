@@ -146,21 +146,23 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
   const handleDelete = useCallback(() => {
     if (!post) return;
 
-// TODO: Auto-fixed showAlert -> sweetAlert.confirm. VERIFY CALLBACK LOGIC!
-sweetAlert.confirm(
-  'Delete Post',
-  'Are you sure you want to delete this post? This action cannot be undone.',
-  () => {
-    // TODO: Add confirm action here
-    console.log('Confirmed: Delete Post');
-  },
-  () => {
-    // Cancel action
-  },
-  'Delete',
-  'Cancel',
-  true
-)
+showAlert(
+      'Delete Post',
+      'Are you sure you want to delete this post? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            deletePost(post.id);
+            navigation.goBack();
+          },
+        },
+      ]
+    );
+    setShowMoreMenu(false);
+  }, [post, deletePost, navigation]);
 
   const handleBlock = useCallback(() => {
     if (!post) return;

@@ -1,4 +1,4 @@
-import React, { useRef, useCallback, useEffect, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   StyleSheet,
@@ -24,25 +24,13 @@ interface ScreenWrapperProps {
 }
 
 const DOCK_HEIGHT = 72;
-const COMMUNITY_BOTTOM = 0;
 
+// ─── FIX #1: Module-level Set, not recreated per render ───────────────
 const FULL_SCREEN_ROUTES = new Set([
-  'CommunitySplash',
-  'CommunityOnboarding',
-  'CreatePost',
-  'CommunityProfile',
-  'Report',
-  'PostDetail',
-  'Chat',
-  'ChatList',
-  'Notifications',
-  'Topic',
-  'CommunityMemberProfile',
-  'Followers',
-  'Following',
-  'SearchUsers',
-  'BlockedUsers',
-  'TopicMembers',
+  'CommunitySplash', 'CommunityOnboarding', 'CreatePost', 'CommunityProfile',
+  'Report', 'PostDetail', 'Chat', 'ChatList', 'Notifications', 'Topic',
+  'CommunityMemberProfile', 'Followers', 'Following', 'SearchUsers',
+  'BlockedUsers', 'TopicMembers',
 ]);
 
 export const ScreenWrapper: React.FC<ScreenWrapperProps> = ({
@@ -60,95 +48,89 @@ export const ScreenWrapper: React.FC<ScreenWrapperProps> = ({
   const { colors } = useTheme();
   const { handleScroll, isCommunityScreen } = useNavigationVisibility();
 
+  // ─── FIX #2: Single navigation state read, no nested traversal ─────
   const routeName = useNavigationState((state) => {
     if (!state) return '';
     const route = state.routes[state.index];
     if (route.state) {
       const nested = route.state as any;
-      const nestedRoute = nested.routes?.[nested.index ?? 0];
-      return nestedRoute?.name || route.name;
+      return nested.routes?.[nested.index ?? 0]?.name || route.name;
     }
     return route.name;
   });
 
-  const isFullScreen = useMemo(() => {
-    return forceHideTabBar || FULL_SCREEN_ROUTES.has(routeName) || isCommunityScreen;
-  }, [forceHideTabBar, routeName, isCommunityScreen]);
+  // ─── FIX #3: Direct boolean, no useMemo overhead for simple check ────
+  const isFullScreen = forceHideTabBar || FULL_SCREEN_ROUTES.has(routeName) || isCommunityScreen;
 
-  const lastYRef = useRef(0);
-  const lastTimeRef = useRef(Date.now());
-  const isAtTopRef = useRef(true);
-  const scrollDirectionRef = useRef<'up' | 'down'>('up');
-  const accumulatedDeltaRef = useRef(0);
-  const hideThreshold = 60;
-  const showThreshold = 20;
+  // ─── FIX #4: Single ref object instead of 5 separate refs ────────────
+  const scrollRef = useRef({
+    lastY: 0,
+    lastTime: Date.now(),
+    accumulated: 0,
+    direction: 'up' as 'up' | 'down',
+  });
+
+  // ─── FIX #5: Reset refs when route changes (was useEffect + useEffect) ─
+  useEffect(() => {
+    const s = scrollRef.current;
+    s.lastY = 0;
+    s.lastTime = Date.now();
+    s.accumulated = 0;
+    s.direction = 'up';
+  }, [isFullScreen, routeName]);
 
   const handleScrollEvent = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
       const currentY = contentOffset.y;
       const now = Date.now();
-      const deltaTime = now - lastTimeRef.current;
-      const deltaY = currentY - lastYRef.current;
+      const deltaY = currentY - scrollRef.current.lastY;
       const isAtTop = currentY <= 2;
       const isAtBottom = currentY + layoutMeasurement.height >= contentSize.height - 2;
-      isAtTopRef.current = isAtTop;
 
+      // Update direction
       if (Math.abs(deltaY) > 0.5) {
-        scrollDirectionRef.current = deltaY > 0 ? 'down' : 'up';
+        scrollRef.current.direction = deltaY > 0 ? 'down' : 'up';
       }
 
-      if (scrollDirectionRef.current === 'down' && deltaY > 0) {
-        accumulatedDeltaRef.current += deltaY;
-      } else if (scrollDirectionRef.current === 'up' && deltaY < 0) {
-        accumulatedDeltaRef.current += Math.abs(deltaY);
+      // Accumulate delta in current direction
+      const s = scrollRef.current;
+      if (s.direction === 'down' && deltaY > 0) {
+        s.accumulated += deltaY;
+      } else if (s.direction === 'up' && deltaY < 0) {
+        s.accumulated += Math.abs(deltaY);
       } else {
-        accumulatedDeltaRef.current = Math.abs(deltaY);
+        s.accumulated = Math.abs(deltaY);
       }
 
+      const deltaTime = now - s.lastTime;
       const velocity = deltaTime > 0 ? Math.abs(deltaY / deltaTime) : 0;
 
       if (!isFullScreen) {
         if (isAtTop || isAtBottom) {
           handleScroll(currentY, velocity, true);
-          accumulatedDeltaRef.current = 0;
-        } else if (
-          scrollDirectionRef.current === 'down' &&
-          accumulatedDeltaRef.current > hideThreshold
-        ) {
+          s.accumulated = 0;
+        } else if (s.direction === 'down' && s.accumulated > 60) {
           handleScroll(currentY, velocity, false);
-          accumulatedDeltaRef.current = 0;
-        } else if (
-          scrollDirectionRef.current === 'up' &&
-          accumulatedDeltaRef.current > showThreshold
-        ) {
+          s.accumulated = 0;
+        } else if (s.direction === 'up' && s.accumulated > 20) {
           handleScroll(currentY, velocity, true);
-          accumulatedDeltaRef.current = 0;
+          s.accumulated = 0;
         }
       }
 
-      lastYRef.current = currentY;
-      lastTimeRef.current = now;
+      s.lastY = currentY;
+      s.lastTime = now;
 
       onScroll?.(event);
     },
     [handleScroll, isFullScreen, onScroll]
   );
 
-  useEffect(() => {
-    lastYRef.current = 0;
-    lastTimeRef.current = Date.now();
-    isAtTopRef.current = true;
-    accumulatedDeltaRef.current = 0;
-    scrollDirectionRef.current = 'up';
-  }, [isFullScreen, routeName]);
-
-  const bottomPadding = useMemo(() => {
-    if (isFullScreen) {
-      return Math.max(insets.bottom, 0) + COMMUNITY_BOTTOM + extraBottomPadding;
-    }
-    return Math.max(insets.bottom, 8) + DOCK_HEIGHT + extraBottomPadding;
-  }, [isFullScreen, insets.bottom, extraBottomPadding]);
+  // ─── FIX #6: Direct computation, no useMemo for simple math ──────────
+  const bottomPadding = isFullScreen
+    ? Math.max(insets.bottom, 0) + extraBottomPadding
+    : Math.max(insets.bottom, 8) + DOCK_HEIGHT + extraBottomPadding;
 
   if (scrollable) {
     return (
@@ -184,13 +166,4 @@ export const ScreenWrapper: React.FC<ScreenWrapperProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  contentContainer: {
-    flexGrow: 1,
-  },
-});
-
-export default ScreenWrapper;
+const styles = StyleSheet.create

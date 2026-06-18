@@ -457,7 +457,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     replyToId?: string
   ): Promise<void> => {
     if (!state.familyCode || !userProfile) {
-      sweetAlert.alert('Error', 'You must be logged in to send messages', 'info');
+      showAlert('Error', 'You must be logged in to send messages');
       return;
     }
     
@@ -625,7 +625,8 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       
       if (fromCamera) {
         const { status } = await ImagePicker.requestCameraPermissionsAsync();
-        if (status !== 'granted'sweetAlert.alert('Permission Required', 'Please allow camera access', 'info')camera access');
+        if (status !== 'granted') {
+          showAlert('Permission Required', 'Please allow camera access');
           return;
         }
         result = await ImagePicker.launchCameraAsync({
@@ -635,7 +636,8 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         });
       } else {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (statusweetAlert.alert('Permission Required', 'Please allow access to photos', 'info')lease allow access to photos');
+        if (status !== 'granted') {
+          showAlert('Permission Required', 'Please allow access to photos');
           return;
         }
         result = await ImagePicker.launchImageLibraryAsync({
@@ -654,7 +656,10 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         await FileSystem.copyAsync({ from: uri, to: permanentUri });
         
         await sendMessage(chatId, '📷 Photo', 'image', permanentUri);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.SuccsweetAlert.alert('Error', 'Failed to send image', 'info')   showAlert('Error', 'Failed to send image');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    } catch (error) {
+      showAlert('Error', 'Failed to send image');
     }
   };
 
@@ -685,7 +690,8 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       
       await sendMessage(chatId, `📎 ${asset.name}`, 'file', permanentUri, fileMeta);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (errorsweetAlert.alert('Error', 'Failed to send file', 'info'):', error);
+    } catch (error) {
+      console.error('File pick error:', error);
       showAlert('Error', 'Failed to send file');
     }
   };
@@ -893,7 +899,8 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const leaveChat = async (chatId: string): Promise<void> => {
     if (!state.familyCode || !userProfile) return;
     
-    const chat = state.chats.finsweetAlert.alert('Cannot Leave', 'You cannot leave the family group chat', 'info')
+    const chat = state.chats.find(c => c.id === chatId);
+    if (!chat || chat.type === 'group') {
       showAlert('Cannot Leave', 'You cannot leave the family group chat');
       return;
     }
@@ -976,7 +983,8 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         setState(prev => ({ ...prev, chats }));
       }
       
-      Haptics.notificationAsync(HapsweetAlert.alert('Error', 'Failed to join family', 'info')    return true;
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      return true;
     } catch (error) {
       showAlert('Error', 'Failed to join family');
       return false;

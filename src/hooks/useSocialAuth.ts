@@ -40,62 +40,29 @@ export const useSocialAuth = () => {
       const message = error?.message || 'Google sign-in failed';
       setState(prev => ({ ...prev, isLoading: false, error: message }));
 
-// TODO: Auto-fixed showAlert -> sweetAlert.confirm. VERIFY CALLBACK LOGIC!
-sweetAlert.confirm(
-  'Sign In Error',
-  '',
-  () => {
-    // TODO: Add confirm action here
-    console.log('Confirmed: Sign In Error');
-  },
-  () => {
-    // Cancel action
-  },
-  'Confirm',
-  'Cancel',
-  false
-)
+showAlert('Sign In Error', message);
+      return null;
+    }
+  }, []);
 
   const signInWithApple = useCallback(async (): Promise<SocialUser | null> => {
     setState(prev => ({ ...prev, isLoading: true, error: null }));
     try {
       const mockUser: SocialUser = {
-// TODO: Auto-fixed showAlert -> sweetAlert.confirm. VERIFY CALLBACK LOGIC!
-sweetAlert.confirm(
-  'Sign In Error',
-  '',
-  () => {
-    // TODO: Add confirm action here
-    console.log('Confirmed: Sign In Error');
-  },
-  () => {
-    // Cancel action
-  },
-  'Confirm',
-  'Cancel',
-  false
-)
+        id: `apple_${Date.now()}`,
+        fullName: 'Apple User',
+        email: 'user@icloud.com',
+        provider: 'apple',
       };
       setState({ isLoading: false, isAuthenticated: true, socialUser: mockUser, error: null });
       return mockUser;
     } catch (error: any) {
       const message = error?.message || 'Apple sign-in failed';
       setState(prev => ({ ...prev, isLoading: false, error: message }));
-// TODO: Auto-fixed showAlert -> sweetAlert.confirm. VERIFY CALLBACK LOGIC!
-sweetAlert.confirm(
-  'Sign In Error',
-  '',
-  () => {
-    // TODO: Add confirm action here
-    console.log('Confirmed: Sign In Error');
-  },
-  () => {
-    // Cancel action
-  },
-  'Confirm',
-  'Cancel',
-  false
-)
+
+showAlert('Sign In Error', message);
+      return null;
+    }
   }, []);
 
   const signInWithFacebook = useCallback(async (): Promise<SocialUser | null> => {

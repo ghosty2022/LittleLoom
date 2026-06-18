@@ -291,21 +291,10 @@ const MessageBubble = React.memo(({
       style={[styles.messageContainer, isMe ? styles.myMessage : styles.theirMessage]}
     >
       {!isMe && showAvatar && (
-// TODO: Auto-fixed showAlert -> sweetAlert.confirm. VERIFY CALLBACK LOGIC!
-sweetAlert.confirm(
-  'Confirm',
-  '',
-  () => {
-    // TODO: Add confirm action here
-    console.log('Confirmed: Confirm');
-  },
-  () => {
-    // Cancel action
-  },
-  'Confirm',
-  'Cancel',
-  false
-)
+        <TouchableOpacity onPress={() => user && showAlert(user.displayName, `Handle: ${user.handle}`)} style={styles.avatarSmall}>
+          <SafeAvatar avatar={user?.avatar} size={32} fallbackIcon="person" fallbackColor={LL.primary} fallbackBgColor={`${LL.primary}15`} />
+        </TouchableOpacity>
+      )}
 
       <View style={[!isMe && !showAvatar && { marginLeft: 44 }]}>
         <Animated.View style={animatedStyle}>

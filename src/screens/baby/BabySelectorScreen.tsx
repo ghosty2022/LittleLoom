@@ -112,21 +112,52 @@ export default function BabySelectorScreen({ navigation }: BabySelectorScreenPro
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
 
-// TODO: Auto-fixed showAlert -> sweetAlert.confirm. VERIFY CALLBACK LOGIC!
-sweetAlert.confirm(
-  'Delete Profile?',
-  '',
-  () => {
-    // TODO: Add confirm action here
-    console.log('Confirmed: Delete Profile?');
-  },
-  () => {
-    // Cancel action
-  },
-  'Delete',
-  'Cancel',
-  true
-)
+showAlert(
+      'Delete Profile?',
+      `Are you sure you want to delete ${babyName}'s profile? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const success = await deleteBaby(babyId);
+
+              if (success) {
+                await loadBabies();
+                showSuccess('Deleted', 'Baby profile removed');
+
+                setTimeout(async () => {
+                  try {
+                    const babiesStr = await AsyncStorage.getItem(STORAGE_KEYS.BABIES);
+                    const remainingBabies = safeParse<BabyProfile[]>(babiesStr, []);
+
+                    if (remainingBabies.length === 0) {
+                      await AsyncStorage.multiRemove([
+                        STORAGE_KEYS.CURRENT_BABY,
+                        STORAGE_KEYS.HAS_SKIPPED_BABY
+                      ]);
+
+                      if (isMounted.current) {
+                        navigation.replace('BabyOptional');
+                      }
+                    }
+                  } catch (checkError) {
+                    console.error('Error checking remaining babies:', checkError);
+                  }
+                }, 300);
+              } else {
+                showError('Error', 'Failed to delete profile');
+              }
+            } catch (error) {
+              showError('Error', 'Failed to delete profile');
+            }
+          }
+        },
+      ]
+    );
+  }, [babies.length, deleteBaby, loadBabies, navigation, showError, showSuccess]);
 
   const handleAddBaby = useCallback(() => {
     navigation.navigate('CreateBabyProfile');
