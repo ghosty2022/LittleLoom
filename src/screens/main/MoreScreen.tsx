@@ -828,6 +828,7 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
   } = useBaby();
   const {
     settings: securitySettings,
+    isBiometricEnabled,
     toggleBiometric,
     toggleAppLock,
     isBiometricHardwareAvailable,
