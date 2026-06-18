@@ -17,7 +17,6 @@ import {
   TextInput, 
   TouchableOpacity, 
   View,
-  ViewToken,  // ← ADD THIS
 } from 'react-native';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BlurView } from 'expo-blur';
@@ -60,14 +59,6 @@ type ViewToken = {
   section?: any;
 };
 
-// -- FIXED: ViewToken is not exported from react-native --
-type ViewToken = {
-  item: any;
-  key: string;
-  index: number | null;
-  isViewable: boolean;
-  section?: any;
-};
 
 // Import the LittleLoom logo
 const littleLoomLogo = require('../../../assets/logo.png');
@@ -659,6 +650,33 @@ const SmartVideoPlayer = React.memo(({ uri, isVisible }: { uri: string; isVisibl
     p.preservesPitch = false;
   });
 
+  useEffect(() => {
+    if (isVisible) {
+      player.play();
+    } else {
+      player.pause();
+      player.currentTime = 0;
+    }
+  }, [isVisible, player]);
+
+  return (
+    <View style={styles.videoBox}>
+      <VideoView
+        player={player}
+        style={styles.videoView}
+        contentFit="cover"
+        nativeControls={false}
+        allowsFullscreen
+      />
+      {!isVisible && (
+        <View style={styles.videoPausedOverlay}>
+          <View style={styles.playButton}>
+            <Ionicons name="play" size={20} color={LL.white} />
+          </View>
+        </View>
+      )}
+    </View>
+  );
 });
 
 const ReactionBar = React.memo(({
@@ -785,6 +803,7 @@ const PostCard = React.memo(({
   currentUser,
   canInteract,
   isDark,
+  sweetAlert,
 }: {
   post: Post;
   index: number;
@@ -811,6 +830,7 @@ const PostCard = React.memo(({
   currentUser: any;
   canInteract: boolean;
   isDark: boolean;
+  sweetAlert: any;
 }) => {
   const topicColor = topics.find(t => t.id === post.topicId)?.color || LL.primary;
   const hasMedia = post.images && post.images.length > 0;
@@ -2090,6 +2110,7 @@ sweetAlert.confirm(
       currentUser={currentUser}
       canInteract={canInteract}
       isDark={isDark}
+      sweetAlert={sweetAlert}
     />
   ), [visiblePostIds, expandedPostId, commentInputs, replyingTo, topics, currentUser, canInteract, isDark, handleLike, handleRepost, handleBookmark, handleShare, handleDelete, handleFollowToggle, handleCommentSubmit, likeComment, voteHelpful, handleVotePoll, navigation]);
 
@@ -2143,7 +2164,6 @@ sweetAlert.confirm(
             onSelectUser={handleSearchSelectUser}
             isDark={isDark}
             sweetAlert={sweetAlert}
-            sweetAlert={sweetAlert}
           />
         </Animated.View>
       )}
@@ -2154,7 +2174,6 @@ sweetAlert.confirm(
         onViewMoment={handleViewStory}
         isDark={isDark}
         sweetAlert={sweetAlert}
-        sweetAlert={sweetAlert}
       />
 
       <CommunityPulse count={activeWeavers} isDark={isDark} />
@@ -2163,7 +2182,6 @@ sweetAlert.confirm(
         prompt={dailyPrompt}
         onRespond={handlePromptRespond}
         isDark={isDark}
-        sweetAlert={sweetAlert}
         sweetAlert={sweetAlert}
       />
 
