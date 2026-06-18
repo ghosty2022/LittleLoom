@@ -641,62 +641,6 @@ const SmartVideoPlayer = React.memo(({ uri, isVisible }: { uri: string; isVisibl
     p.preservesPitch = false;
   });
 
-  useEffect(() => {
-    if (isVisible) {
-      player.play();
-    } else {
-      player.pause();
-      player.currentTime = 0;
-    }
-  }, [isVisible, player]);
-
-  return (
-    <View style={styles.videoBox}>
-      <VideoView
-        player={player}
-        style={styles.videoView}
-        contentFit="cover"
-        nativeControls={false}
-        allowsFullscreen
-      />
-      {!isVisible && (
-        <View style={styles.videoPausedOverlay}>
-          <View style={styles.playButton}>
-            <Ionicons name="play" size={20} color={LL.white} />
-          </View>
-        </View>
-      )}
-    </View>
-  );
-});
-
-  useEffect(() => {
-    if (isVisible) {
-      player.play();
-    } else {
-      player.pause();
-      player.currentTime = 0;
-    }
-  }, [isVisible, player]);
-
-  return (
-    <View style={styles.videoBox}>
-      <VideoView
-        player={player}
-        style={styles.videoView}
-        contentFit="cover"
-        nativeControls={false}
-        allowsFullscreen
-      />
-      {!isVisible && (
-        <View style={styles.videoPausedOverlay}>
-          <View style={styles.playButton}>
-            <Ionicons name="play" size={20} color={LL.white} />
-          </View>
-        </View>
-      )}
-    </View>
-  );
 });
 
 const ReactionBar = React.memo(({
