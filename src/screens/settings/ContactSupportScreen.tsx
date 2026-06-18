@@ -10,8 +10,9 @@ import type { RootStackParamList } from '../../types/navigation';
 import { useCustomization } from '../../hooks/useCustomization';
 import { BlurView } from 'expo-blur';
 import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import {  Alert, KeyboardAvoidingView, Linking, Platform, ScrollView, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, useSafeAreaInsets, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Linking, Platform, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ContactSupport'>;
 
@@ -189,13 +190,16 @@ const SectionHeader: React.FC<{
   </View>
 );
 
-export default function ContactSupportScreen
- ({ navigation }: Props) {
-  
+export default function ContactSupportScreen({ navigation }: Props) {
   const { sweetAlert } = useSweetAlert();
   const insets = useSafeAreaInsets();
 
-  const isDark = darkMode;
+  const {
+    darkMode: isDark,
+    themeColors,
+    reduceMotion,
+  } = useCustomization();
+
   const primary = themeColors?.primary || '#667eea';
   const secondary = themeColors?.secondary || '#fa709a';
 
@@ -219,20 +223,19 @@ export default function ContactSupportScreen
     handleHaptic();
     setCategory(cat.id);
     if (cat.route) {
-
-sweetAlert.confirm(
-      'Alert',
-      '',
-      () => {
-        // TODO: Confirm action
-      },
-      () => {
-        // Cancel action
-      },
-      'Go There',
-      'Stay Here',
-      false
-    );
+      sweetAlert.confirm(
+        'Alert',
+        '',
+        () => {
+          // TODO: Confirm action
+        },
+        () => {
+          // Cancel action
+        },
+        'Go There',
+        'Stay Here',
+        false
+      );
     }
   };
 
@@ -249,19 +252,19 @@ sweetAlert.confirm(
       setIsSending(false);
       handleHaptic('success');
 
-sweetAlert.confirm(
-      'Message Sent!',
-      '',
-      () => {
-        // TODO: Confirm action
-      },
-      () => {
-        // Cancel action
-      },
-      'OK',
-      'OK',
-      false
-    );
+      sweetAlert.confirm(
+        'Message Sent!',
+        '',
+        () => {
+          // TODO: Confirm action
+        },
+        () => {
+          // Cancel action
+        },
+        'OK',
+        'OK',
+        false
+      );
     }, 1500);
   };
 
@@ -360,7 +363,7 @@ sweetAlert.confirm(
             </Text>
           </Animated.View>
 
-          {/* Category Selection — Extensive with Navigation */}
+          {/* Category Selection */}
           <Animated.View
             entering={reduceMotion ? undefined : FadeInUp.delay(200)}
             style={styles.sectionWrapper}
@@ -479,7 +482,7 @@ sweetAlert.confirm(
             </TouchableOpacity>
           </Animated.View>
 
-          {/* Alternative Contact — With Help Center & Privacy Policy */}
+          {/* Alternative Contact */}
           <Animated.View
             entering={reduceMotion ? undefined : FadeInUp.delay(500)}
             style={styles.sectionWrapper}
