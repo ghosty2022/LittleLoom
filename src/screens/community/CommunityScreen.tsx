@@ -4,7 +4,6 @@ import {
   Button, 
   Dimensions, 
   FlatList, 
-  GestureHandlerRootView, 
   Image, 
   Modal, 
   Platform, 
@@ -21,6 +20,7 @@ import {
 } from 'react-native';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BlurView } from 'expo-blur';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, {
   Easing, FadeIn, FadeInUp, FadeOut, interpolate, interpolateColor, Layout, runOnJS, SlideInDown, SlideOutUp, useAnimatedReaction, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue, withRepeat,
   withSpring,
