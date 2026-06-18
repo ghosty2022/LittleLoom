@@ -223,7 +223,7 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
       }
       
       if (navigation && navigation.replace) {
-        navigation.replace('CommunityMain');
+        navigation.navigate('CommunityMain' as never);
       }
     } catch (error) {
       console.error('Error saving topics:', error);
@@ -254,7 +254,7 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
           }
           
           if (navigation && navigation.replace) {
-            navigation.replace('CommunityMain');
+            navigation.navigate('CommunityMain' as never);
           }
         } catch (error) {
           console.error('Error skipping onboarding:', error);
