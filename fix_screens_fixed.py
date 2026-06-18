@@ -759,43 +759,63 @@ def apply_all_fixes(files_content: dict) -> dict:
     
     return fixed
 
-
 # ============ MAIN SCRIPT ============
 
 if __name__ == "__main__":
-    # Read all input files
     import os
+    import sys
+    import argparse
     
-    base_path = "/mnt/agents/upload"
+    parser = argparse.ArgumentParser(description="LittleLoom Screen Fixer")
+    parser.add_argument("--input", "-i", default=".", help="Input directory with .tsx files")
+    parser.add_argument("--output", "-o", default="./fixed", help="Output directory")
+    args = parser.parse_args()
+    
+    base_path = os.path.abspath(args.input)
+    output_dir = os.path.abspath(args.output)
+    
+    print(f"Scanning: {base_path}")
+    print(f"Output: {output_dir}")
+    
+    if not os.path.exists(base_path):
+        print(f"ERROR: Path not found: {base_path}")
+        sys.exit(1)
+    
+    # Recursively find all .tsx files
     files = {}
-    for f in os.listdir(base_path):
-        path = os.path.join(base_path, f)
-        if os.path.isfile(path):
-            with open(path, 'r', encoding='utf-8', errors='ignore') as file:
-                files[f] = file.read()
+    for root, dirs, filenames in os.walk(base_path):
+        for fname in filenames:
+            if fname.endswith('.tsx'):
+                path = os.path.join(root, fname)
+                with open(path, 'r', encoding='utf-8', errors='ignore') as file:
+                    files[fname] = file.read()
     
-    # Map to proper names
+    print(f"Found {len(files)} .tsx files")
+    
+    # Map to screen names
     file_map = {}
-    for fname, content in files.items():
-        if 'export default function' in content:
-            idx = content.find('export default function')
-            end = content.find('(', idx)
-            func_name = content[idx:end].replace('export default function', '').strip()
-            file_map[func_name] = (fname, content)
+    for fname, file_content in files.items():
+        if 'export default function' in file_content:
+            idx = file_content.find('export default function')
+            end = file_content.find('(', idx)
+            func_name = file_content[idx:end].replace('export default function', '').strip()
+            file_map[func_name] = (fname, file_content)
+            print(f"  Found: {func_name}")
     
-    # Extract just the content
     screen_contents = {k: v[1] for k, v in file_map.items()}
-    
-    # Apply fixes
     fixed_contents = apply_all_fixes(screen_contents)
     
-    # Write output
-    output_dir = "/mnt/agents/upload/fixed"
     os.makedirs(output_dir, exist_ok=True)
     
+    written = 0
     for key, content in fixed_contents.items():
         if key in FILE_MAP:
-            output_path = os.path.join(output_dir, os.path.basename(FILE_MAP[key]))
-            with open(output_path, 'w', encoding='utf-8') as f:
+            rel_path = FILE_MAP[key].replace('src/', '')
+            out_path = os.path.join(output_dir, rel_path)
+            os.makedirs(os.path.dirname(out_path), exist_ok=True)
+            with open(out_path, 'w', encoding='utf-8') as f:
                 f.write(content)
-            print(f"Written: {output_path}")
+            print(f"Written: {out_path}")
+            written += 1
+    
+    print(f"\nDone! Fixed {written} files.")
