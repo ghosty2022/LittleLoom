@@ -725,7 +725,7 @@ const ActivitySuggestions = memo(({ baby, growthIndex, theme, onPress }: { baby:
         duration: '5-10 min',
         frequency: '3x daily',
         benefit: 'Strengthens neck & shoulders',
-        emoji: tummy',
+        emoji: '👶',
         color: '#10b981',
       });
     }
@@ -1178,9 +1178,9 @@ export default function GrowthDashboardScreen({ navigation }: any) {
 
   // ── State ──
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
-  const [activeMetric, setActiveMetric] = useState<<MetricType>('height');
-  const [timeRange, setTimeRange] = useState<<TimeRange>('6m');
-  const [chartMode, setChartMode] = useState<<ChartMode>('trend');
+  const [activeMetric, setActiveMetric] = useState<MetricType>('height');
+  const [timeRange, setTimeRange] = useState<TimeRange>('6m');
+  const [chartMode, setChartMode] = useState<ChartMode>('trend');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showBabySwitcher, setShowBabySwitcher] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -1206,7 +1206,7 @@ export default function GrowthDashboardScreen({ navigation }: any) {
   // ── Chart Data ──
   const chartData = useMemo(() => {
     if (!currentBaby) return [];
-    const ranges: Record<<TimeRange, number> = { '1m': 30, '3m': 90, '6m': 180, '1y': 365, 'all': 3650 };
+    const ranges: Record<TimeRange, number> = { '1m': 30, '3m': 90, '6m': 180, '1y': 365, 'all': 3650 };
     const cutoff = new Date(Date.now() - ranges[timeRange] * 24 * 60 * 60 * 1000);
 
     let data = getGrowthData(activeMetric)
