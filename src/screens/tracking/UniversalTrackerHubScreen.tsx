@@ -329,7 +329,7 @@ const getBabyAge = (birthDate?: string | Date) => {
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const GlassCard = React.memo(({ children, style, onPress, active = false }: { children: React.ReactNode; style?: any; onPress?: () => void; active?: boolean }) => {
-  const { isDark, colors } = useNavigationContext();
+  const { isDark, colors } = useApp();
   const Wrapper = onPress ? TouchableOpacity : View;
   return (
     <Wrapper onPress={onPress} activeOpacity={onPress ? 0.85 : 1} style={[
