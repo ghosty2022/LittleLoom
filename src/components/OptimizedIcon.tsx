@@ -17,7 +17,8 @@ interface OptimizedIconProps {
   style?: TextStyle;
 }
 
-const ICON_COMPONENTS: Record<IconSet, any> = {
+// ─── FIX #1: Module-level lookup table, no object allocation per render ─
+const ICON_COMPONENTS: Record<IconSet, React.ComponentType<any>> = {
   Ionicons,
   MaterialIcons,
   MaterialCommunityIcons,
@@ -26,16 +27,10 @@ const ICON_COMPONENTS: Record<IconSet, any> = {
   AntDesign,
 };
 
-/**
- * OptimizedIcon — uses preloaded fonts for instant display
- * 
- * All icon fonts are preloaded in App.tsx during splash screen.
- * This component just renders them — no loading delay.
- * 
- * Usage:
- * <OptimizedIcon set="Ionicons" name="home" size={24} color="#667eea" />
- * <OptimizedIcon set="MaterialIcons" name="arrow-back" size={24} color="#000" />
- */
+// ─── FIX #2: Pre-computed fallback, no warn in production ──────────────
+const FALLBACK_ICON = Ionicons;
+const FALLBACK_NAME = 'help-circle-outline';
+
 const OptimizedIcon = memo<OptimizedIconProps>(({
   set = 'Ionicons',
   name,
@@ -46,8 +41,9 @@ const OptimizedIcon = memo<OptimizedIconProps>(({
   const IconComponent = ICON_COMPONENTS[set];
 
   if (!IconComponent) {
-    console.warn(`Icon set "${set}" not found, falling back to Ionicons`);
-    return <Ionicons name="help-circle-outline" size={size} color={color} style={style} />;
+    // Only warn in dev, not production
+    if (__DEV__) console.warn(`Icon set "${set}" not found, falling back to Ionicons`);
+    return <FALLBACK_ICON name={FALLBACK_NAME} size={size} color={color} style={style} />;
   }
 
   return (
