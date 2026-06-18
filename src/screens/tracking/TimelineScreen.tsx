@@ -41,8 +41,8 @@ import { TimelineCorrelation } from '@/components/trackers/TrackerCorrelationBad
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
-type TimelineScreenRouteProp = RouteProp<<RootStackParamList, 'Timeline'>;
-type TimelineScreenNavigationProp = NativeStackNavigationProp<<RootStackParamList>;
+type TimelineScreenRouteProp = RouteProp<RootStackParamList, 'Timeline'>;
+type TimelineScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 type TimelineTab = 'timeline' | 'insights' | 'growth' | 'achievements' | 'analytics';
 
@@ -634,7 +634,7 @@ const UpcomingEventsTimeline = ({ reminders, theme, onPress }: { reminders: Pred
    EXISTING COMPONENTS (Preserved with styling updates)
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const SmartInsightCard: React.FC<<{
+const SmartInsightCard: React.FC<{
   insight: any;
   theme: any;
   onAction: (trackerId: string) => void;
@@ -704,7 +704,7 @@ const SmartInsightCard: React.FC<<{
   );
 };
 
-const SmartCorrelationCard: React.FC<<{
+const SmartCorrelationCard: React.FC<{
   correlation: TimelineCorrelation;
   theme: any;
   onNavigate: (trackerId: string) => void;
@@ -771,7 +771,7 @@ const SmartCorrelationCard: React.FC<<{
   );
 };
 
-const SmartReminderCard: React.FC<<{
+const SmartReminderCard: React.FC<{
   reminder: PredictiveReminder;
   theme: any;
   onApply: (reminder: PredictiveReminder) => void;
@@ -867,7 +867,7 @@ const SmartReminderCard: React.FC<<{
   );
 };
 
-const GrowthScoreCard: React.FC<<{
+const GrowthScoreCard: React.FC<{
   growthIndex: any;
   theme: any;
   onPress: () => void;
@@ -971,7 +971,7 @@ const GrowthScoreCard: React.FC<<{
   );
 };
 
-const AchievementToast: React.FC<<{
+const AchievementToast: React.FC<{
   achievements: any[];
   theme: any;
   onDismiss: () => void;
@@ -1004,7 +1004,7 @@ const AchievementToast: React.FC<<{
   );
 };
 
-const StreakBanner: React.FC<<{
+const StreakBanner: React.FC<{
   streak: any;
   theme: any;
   onAction: () => void;
@@ -1106,8 +1106,8 @@ export default function EnhancedTimelineScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
   const [showTimelinePicker, setShowTimelinePicker] = useState(false);
-  const [dismissedInsights, setDismissedInsights] = useState<<Set<string>>(new Set());
-  const [dismissedReminders, setDismissedReminders] = useState<<Set<string>>(new Set());
+  const [dismissedInsights, setDismissedInsights] = useState<Set<string>>(new Set());
+  const [dismissedReminders, setDismissedReminders] = useState<Set<string>>(new Set());
   const [showAchievementToast, setShowAchievementToast] = useState(false);
 
   useEffect(() => {
