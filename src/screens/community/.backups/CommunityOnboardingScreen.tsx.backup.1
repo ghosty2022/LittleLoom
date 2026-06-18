@@ -232,38 +232,42 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
   };
 
   const handleSkip = async () => {
-    sweetAlert.confirm(
+
+showAlert(
       'Skip Topic Selection?',
       'Selecting topics helps us show you relevant content. You can always change this later in your profile.',
-      async () => {
-        try {
-          const data = { 
-            completed: true, 
-            selectedTopics: [],
-            timestamp: new Date().toISOString(),
-            skipped: true
-          };
-          await AsyncStorage.setItem(ONBOARDING_KEY, JSON.stringify(data));
-          await AsyncStorage.setItem('@community_selected_topics_v2', JSON.stringify([]));
-          if (updateCommunityTopics) await updateCommunityTopics([]);
-          if (updateUserTopics) await updateUserTopics([]);
-          await updateSectionState('community', { onboardingComplete: true, topicSelected: false });
-          
-          if (onComplete) {
-            onComplete();
+      [
+        { text: 'Select Topics', style: 'cancel' },
+        { 
+          text: 'Skip Anyway', 
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const data = { 
+                completed: true, 
+                selectedTopics: [],
+                timestamp: new Date().toISOString(),
+                skipped: true
+              };
+              await AsyncStorage.setItem(ONBOARDING_KEY, JSON.stringify(data));
+              await AsyncStorage.setItem('@community_selected_topics_v2', JSON.stringify([]));
+              if (updateCommunityTopics) await updateCommunityTopics([]);
+              if (updateUserTopics) await updateUserTopics([]);
+              await updateSectionState('community', { onboardingComplete: true, topicSelected: false });
+              
+              if (onComplete) {
+                onComplete();
+              }
+              
+              if (navigation && navigation.replace) {
+                navigation.replace('CommunityMain');
+              }
+            } catch (error) {
+              console.error('Error skipping onboarding:', error);
+            }
           }
-          
-          if (navigation && navigation.replace) {
-            navigation.replace('CommunityMain');
-          }
-        } catch (error) {
-          console.error('Error skipping onboarding:', error);
-        }
-      },
-      undefined,
-      'Skip Anyway',
-      'Select Topics',
-      true
+        },
+      ]
     );
   };
 
