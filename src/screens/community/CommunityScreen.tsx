@@ -51,16 +51,6 @@ import { useSweetAlert } from '../../components/SweetAlert';
 import { useUser } from '../../context/UserContext';
 import { VideoView, useVideoPlayer } from 'expo-video';
 
-// -- FIXED: ViewToken is not exported from react-native --
-type ViewToken = {
-  item: any;
-  key: string;
-  index: number | null;
-  isViewable: boolean;
-  section?: any;
-};
-
-
 // Import the LittleLoom logo
 const littleLoomLogo = require('../../../assets/logo.png');
 

@@ -166,4 +166,11 @@ export const ScreenWrapper: React.FC<ScreenWrapperProps> = ({
   );
 };
 
-const styles = StyleSheet.create
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  contentContainer: {
+    flexGrow: 1,
+  },
+});
