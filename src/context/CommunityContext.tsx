@@ -1219,23 +1219,19 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, []);
 
   const deletePost = useCallback(async (postId: string) => {
-    sweetAlert.confirm(
+
+sweetAlert.confirm(
       'Delete Post',
       'Are you sure you want to delete this post? This action cannot be undone.',
-      async () => {
-        // Actually delete the post
-        setState(prev => {
-          const updatedPosts = prev.posts.filter(p => p.id !== postId);
-          AsyncStorage.setItem(STORAGE_KEYS.POSTS, JSON.stringify(updatedPosts)).catch(console.error);
-          return { ...prev, posts: updatedPosts };
-        });
+      () => {
+        // TODO: Confirm action
       },
       () => {
-        // Cancel action - do nothing
+        // Cancel action
       },
-      'Delete',
+      'OK',
       'Cancel',
-      true
+      false
     );
   }, []);
 
