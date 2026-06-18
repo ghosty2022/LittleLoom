@@ -2141,8 +2141,7 @@ const styles = StyleSheet.create({
     color: '#667eea',
     fontWeight: '700',
   },
-
-,
+  
   tabContainerDark: {
     backgroundColor: 'rgba(30,30,35,0.8)',
     ...Platform.select({
