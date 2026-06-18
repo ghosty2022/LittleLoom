@@ -17,6 +17,7 @@ import {
   TextInput, 
   TouchableOpacity, 
   View,
+  ViewToken,  // ← ADD THIS
 } from 'react-native';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BlurView } from 'expo-blur';
@@ -677,6 +678,7 @@ const SmartVideoPlayer = React.memo(({ uri, isVisible }: { uri: string; isVisibl
       )}
     </View>
   );
+
 });
 
 const ReactionBar = React.memo(({
@@ -803,7 +805,6 @@ const PostCard = React.memo(({
   currentUser,
   canInteract,
   isDark,
-  sweetAlert,
 }: {
   post: Post;
   index: number;
@@ -830,8 +831,8 @@ const PostCard = React.memo(({
   currentUser: any;
   canInteract: boolean;
   isDark: boolean;
-  sweetAlert: any;
 }) => {
+  const sweetAlert = useSweetAlert();
   const topicColor = topics.find(t => t.id === post.topicId)?.color || LL.primary;
   const hasMedia = post.images && post.images.length > 0;
   const hasVideo = post.images?.some((img: string) =>
@@ -2110,7 +2111,6 @@ sweetAlert.confirm(
       currentUser={currentUser}
       canInteract={canInteract}
       isDark={isDark}
-      sweetAlert={sweetAlert}
     />
   ), [visiblePostIds, expandedPostId, commentInputs, replyingTo, topics, currentUser, canInteract, isDark, handleLike, handleRepost, handleBookmark, handleShare, handleDelete, handleFollowToggle, handleCommentSubmit, likeComment, voteHelpful, handleVotePoll, navigation]);
 
@@ -2163,7 +2163,6 @@ sweetAlert.confirm(
             onSelectTopic={handleSearchSelectTopic}
             onSelectUser={handleSearchSelectUser}
             isDark={isDark}
-            sweetAlert={sweetAlert}
           />
         </Animated.View>
       )}
@@ -2173,7 +2172,6 @@ sweetAlert.confirm(
         onAddMoment={handleAddStory}
         onViewMoment={handleViewStory}
         isDark={isDark}
-        sweetAlert={sweetAlert}
       />
 
       <CommunityPulse count={activeWeavers} isDark={isDark} />
@@ -2182,7 +2180,6 @@ sweetAlert.confirm(
         prompt={dailyPrompt}
         onRespond={handlePromptRespond}
         isDark={isDark}
-        sweetAlert={sweetAlert}
       />
 
       <View style={[
