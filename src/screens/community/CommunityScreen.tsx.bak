@@ -60,15 +60,6 @@ type ViewToken = {
   section?: any;
 };
 
-// -- FIXED: ViewToken is not exported from react-native --
-type ViewToken = {
-  item: any;
-  key: string;
-  index: number | null;
-  isViewable: boolean;
-  section?: any;
-};
-
 // Import the LittleLoom logo
 const littleLoomLogo = require('../../../assets/logo.png');
 
