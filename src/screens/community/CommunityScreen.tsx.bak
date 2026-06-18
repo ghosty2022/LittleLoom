@@ -32,6 +32,7 @@ import { useCommunity } from '../../context/CommunityContext';
 import { EmptyState } from '../../components/EmptyState';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import * as Haptics from 'expo-haptics';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
@@ -42,15 +43,13 @@ import {
 } from '../../theme/CommunityTheme';
 import type { CommunityStackParamList } from '../../types/navigation';
 import type { Post, PostMood, Poll } from '../../context/CommunityContext';  // ← ADD THIS
-import SafeAvatar from '../../components/SafeAvatar';
+import { SafeAvatar } from '../../components/SafeAvatar';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { useAutoHideNav } from '../../hooks/useAutoHideNav';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { useUser } from '../../context/UserContext';
-import { VideoView, useVideoPlayer } from 'expo-video';
-
 // Import the LittleLoom logo
 const littleLoomLogo = require('../../../assets/logo.png');
 
@@ -633,42 +632,12 @@ const PollWidget = React.memo(({
   );
 });
 
-// -- FIXED: Proper expo-video v2.0.6 implementation --
 const SmartVideoPlayer = React.memo(({ uri, isVisible }: { uri: string; isVisible: boolean }) => {
   const player = useVideoPlayer(uri, (p) => {
     p.loop = true;
     p.muted = true;
     p.preservesPitch = false;
   });
-
-  useEffect(() => {
-    if (isVisible) {
-      player.play();
-    } else {
-      player.pause();
-      player.currentTime = 0;
-    }
-  }, [isVisible, player]);
-
-  return (
-    <View style={styles.videoBox}>
-      <VideoView
-        player={player}
-        style={styles.videoView}
-        contentFit="cover"
-        nativeControls={false}
-        allowsFullscreen
-      />
-      {!isVisible && (
-        <View style={styles.videoPausedOverlay}>
-          <View style={styles.playButton}>
-            <Ionicons name="play" size={20} color={LL.white} />
-          </View>
-        </View>
-      )}
-    </View>
-  );
-});
 
   useEffect(() => {
     if (isVisible) {
@@ -2042,7 +2011,7 @@ sweetAlert.confirm(
       'Cancel',
       true
     )
-  }, [deletePost, sweetAlert]);
+  }, [deletePost]);
 
   const handleCommentSubmit = useCallback(async (postId: string) => {
     if (!canInteract) {
@@ -2180,7 +2149,6 @@ sweetAlert.confirm(
             onSelectTopic={handleSearchSelectTopic}
             onSelectUser={handleSearchSelectUser}
             isDark={isDark}
-            sweetAlert={sweetAlert}
           />
         </Animated.View>
       )}
@@ -2190,7 +2158,6 @@ sweetAlert.confirm(
         onAddMoment={handleAddStory}
         onViewMoment={handleViewStory}
         isDark={isDark}
-        sweetAlert={sweetAlert}
       />
 
       <CommunityPulse count={activeWeavers} isDark={isDark} />
@@ -2199,7 +2166,6 @@ sweetAlert.confirm(
         prompt={dailyPrompt}
         onRespond={handlePromptRespond}
         isDark={isDark}
-        sweetAlert={sweetAlert}
       />
 
       <View style={[
