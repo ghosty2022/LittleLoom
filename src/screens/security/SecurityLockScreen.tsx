@@ -1,7 +1,6 @@
-import {
+import Animated,{
   StyleSheet,
   ActivityIndicator,
-  Animated,
   Dimensions,
   StatusBar,
   Text,
