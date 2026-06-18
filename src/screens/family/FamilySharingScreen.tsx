@@ -67,12 +67,12 @@ const DESIGN = {
     pillRadius: 12,
     activeBg: 'rgba(102,126,234,0.12)',
     inactiveBg: 'transparent',
-    gap: DESIGN.spacing.sm,
+    gap: 8,  // DESIGN.spacing.sm
     padding: 4,
   },
   card: {
     radius: 20,
-    padding: DESIGN.card.padding,
+    padding: 16,  // fixed: was DESIGN.card.padding (self-reference)
     borderColorLight: 'rgba(255,255,255,0.4)',
     borderColorDark: 'rgba(255,255,255,0.08)',
     bgLight: ['rgba(255,255,255,0.95)', 'rgba(250,250,255,0.8)'],
@@ -2089,7 +2089,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     height: '100%',
     borderRadius: DESIGN.tab.pillRadius,
-    gap: DESIGN.spacing.sm,
+    gap: 8,  // DESIGN.spacing.sm
   },
   tabBgActive: {
     backgroundColor: DESIGN.tab.activeBg,
@@ -2119,29 +2119,6 @@ const styles = StyleSheet.create({
   },
 
   // Legacy aliases for compatibility
-  tabContainer: {
-    paddingHorizontal: DESIGN.spacing.lg,
-    marginBottom: DESIGN.spacing.lg,
-  },
-  tabContainerDark: {},
-  tab: {
-    flex: 1,
-    height: DESIGN.tab.height,
-  },
-  tabActive: {
-    backgroundColor: DESIGN.tab.activeBg,
-    borderRadius: DESIGN.tab.pillRadius,
-  },
-  tabText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#64748b',
-  },
-  tabTextActive: {
-    color: '#667eea',
-    fontWeight: '700',
-  },
-  
   tabContainerDark: {
     backgroundColor: 'rgba(30,30,35,0.8)',
     ...Platform.select({
@@ -2149,27 +2126,6 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(30,30,35,0.95)',
       },
     }),
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 10,
-    alignItems: 'center',
-    borderRadius: 12,
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
-  },
-  tabActive: {
-    backgroundColor: 'rgba(102,126,234,0.1)',
-    borderBottomColor: '#667eea',
-  },
-  tabText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#64748b',
-  },
-  tabTextActive: {
-    color: '#667eea',
-    fontWeight: '700',
   },
   tabContent: {
     paddingTop: 16,
@@ -2189,7 +2145,7 @@ const styles = StyleSheet.create({
   },
   familyStatsGradient: {
     borderRadius: DESIGN.card.radius,
-    padding: DESIGN.card.padding,
+    padding: 16,  // fixed: was DESIGN.card.padding (self-reference)
   },
   familyStatsRow: {
     flexDirection: 'row',
@@ -2241,7 +2197,7 @@ const styles = StyleSheet.create({
   recentActivityCard: {
     backgroundColor: 'rgba(255,255,255,0.8)',
     borderRadius: DESIGN.card.radius,
-    padding: DESIGN.card.padding,
+    padding: 16,  // fixed: was DESIGN.card.padding (self-reference)
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -2296,7 +2252,7 @@ const styles = StyleSheet.create({
   memberCardContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: DESIGN.card.padding,
+    padding: 16,  // fixed: was DESIGN.card.padding (self-reference)
   },
   memberAvatarContainer: {
     width: 56,
@@ -2417,7 +2373,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     paddingHorizontal: DESIGN.spacing.lg,
     paddingBottom: 12,
-    gap: DESIGN.spacing.sm,
+    gap: 8,  // DESIGN.spacing.sm
   },
   permissionPill: {
     paddingHorizontal: 8,
@@ -2638,7 +2594,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.8)',
     borderRadius: 16,
-    padding: DESIGN.card.padding,
+    padding: 16,  // fixed: was DESIGN.card.padding (self-reference)
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -2746,7 +2702,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: DESIGN.card.padding,
+    padding: 16,  // fixed: was DESIGN.card.padding (self-reference)
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(0,0,0,0.05)',
   },
@@ -2763,7 +2719,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.05)',
   },
   modalScrollContent: {
-    padding: DESIGN.card.padding,
+    padding: 16,  // fixed: was DESIGN.card.padding (self-reference)
   },
   activityLogItem: {
     flexDirection: 'row',
@@ -2810,7 +2766,7 @@ const styles = StyleSheet.create({
     fontSize: 28,
   },
   memberDetailContent: {
-    padding: DESIGN.card.padding,
+    padding: 16,  // fixed: was DESIGN.card.padding (self-reference)
   },
   memberDetailHeader: {
     alignItems: 'center',
@@ -2957,7 +2913,7 @@ const styles = StyleSheet.create({
     color: '#ff4757',
   },
   editForm: {
-    padding: DESIGN.card.padding,
+    padding: 16,  // fixed: was DESIGN.card.padding (self-reference)
   },
   editAvatarContainer: {
     alignSelf: 'center',
@@ -3048,7 +3004,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   inviteForm: {
-    padding: DESIGN.card.padding,
+    padding: 16,  // fixed: was DESIGN.card.padding (self-reference)
   },
   inviteDescription: {
     fontSize: 14,
@@ -3122,7 +3078,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   roleChangeContent: {
-    padding: DESIGN.card.padding,
+    padding: 16,  // fixed: was DESIGN.card.padding (self-reference)
   },
   roleChangeDescription: {
     fontSize: 14,
@@ -3171,17 +3127,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     marginTop: 6,
-    gap: DESIGN.spacing.sm,
+    gap: 8,  // DESIGN.spacing.sm
   },
   roleChangePerm: {
     fontSize: 11,
     fontWeight: '600',
   },
   analyticsContent: {
-    padding: DESIGN.card.padding,
+    padding: 16,  // fixed: was DESIGN.card.padding (self-reference)
   },
   babySelectorContent: {
-    padding: DESIGN.card.padding,
+    padding: 16,  // fixed: was DESIGN.card.padding (self-reference)
   },
   babyOption: {
     flexDirection: 'row',
@@ -3251,7 +3207,7 @@ const styles = StyleSheet.create({
     color: '#667eea',
   },
   settingsContent: {
-    padding: DESIGN.card.padding,
+    padding: 16,  // fixed: was DESIGN.card.padding (self-reference)
   },
   settingsDescription: {
     fontSize: 14,
