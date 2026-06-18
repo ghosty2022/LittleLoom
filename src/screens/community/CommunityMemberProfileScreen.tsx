@@ -182,12 +182,15 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
   const isOwnProfile = currentUser?.id === userId;
 
   // Animated header
-  const stickyHeaderOpacity = useAnimatedStyle(() => ({
-    opacity: interpolate(scrollY.value, [80, 140], [0, 1], Extrapolate.CLAMP),
-  }));
-  const stickyHeaderTranslate = useAnimatedStyle(() => ({
-    transform: [{ translateY: interpolate(scrollY.value, [80, 140], [-10, 0], Extrapolate.CLAMP) }],
-  }));
+// Line ~200 (stickyHeaderOpacity)
+const stickyHeaderOpacity = useAnimatedStyle(() => ({
+  opacity: interpolate(scrollY.value, [80, 140], [0, 1], 'clamp'),  // ← changed
+}));
+
+// Line ~203 (stickyHeaderTranslate)
+const stickyHeaderTranslate = useAnimatedStyle(() => ({
+  transform: [{ translateY: interpolate(scrollY.value, [80, 140], [-10, 0], 'clamp') }],  // ← changed
+}));
 
   const bannerGradient = useMemo(() => {
     if (!user) return ['#667eea', '#764ba2'] as [string, string];
