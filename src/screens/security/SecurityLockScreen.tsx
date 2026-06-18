@@ -1,4 +1,6 @@
-import Animated,{
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  Animated,
   StyleSheet,
   ActivityIndicator,
   Dimensions,
@@ -8,7 +10,6 @@ import Animated,{
   TouchableOpacity,
   View,
 } from 'react-native';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import * as LocalAuthentication from 'expo-local-authentication';
 import AsyncStorage from '@react-native-async-storage/async-storage';

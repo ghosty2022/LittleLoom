@@ -32,7 +32,6 @@ import { useCommunity } from '../../context/CommunityContext';
 import { EmptyState } from '../../components/EmptyState';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useVideoPlayer, VideoView } from 'expo-video';
 import * as Haptics from 'expo-haptics';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
@@ -43,7 +42,7 @@ import {
 } from '../../theme/CommunityTheme';
 import type { CommunityStackParamList } from '../../types/navigation';
 import type { Post, PostMood, Poll } from '../../context/CommunityContext';  // ← ADD THIS
-import { SafeAvatar } from '../../components/SafeAvatar';
+import SafeAvatar from '../../components/SafeAvatar';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { useAutoHideNav } from '../../hooks/useAutoHideNav';
@@ -184,11 +183,13 @@ const MomentsBar = React.memo(({
   onAddMoment,
   onViewMoment,
   isDark,
+  sweetAlert,
 }: {
   moments: StoryItem[];
   onAddMoment: () => void;
   onViewMoment: (story: StoryItem) => void;
   isDark: boolean;
+  sweetAlert: any;
 }) => {
   return (
     <View style={[
@@ -268,6 +269,7 @@ const StoryViewer = React.memo(({
   onReact,
   currentUser,
   isDark,
+  sweetAlert,
 }: {
   visible: boolean;
   story: StoryItem | null;
@@ -462,6 +464,7 @@ const DailyWeavePrompt = React.memo(({
   prompt,
   onRespond,
   isDark,
+  sweetAlert,
 }: {
   prompt: { question: string; emoji: string; color: string };
   onRespond: () => void;
@@ -567,6 +570,7 @@ const PollWidget = React.memo(({
   postId,
   onVote,
   isDark,
+  sweetAlert,
 }: {
   poll: Poll;
   postId: string;
@@ -632,12 +636,21 @@ const PollWidget = React.memo(({
   );
 });
 
+// -- FIXED: Replaced expo-video player with placeholder --
+// TODO: Update for expo-video v2.0.6
+// New API: import { VideoView, useVideoPlayer } from 'expo-video'
+// const player = useVideoPlayer(videoSource, player => { player.loop = true; });
+// <VideoView player={player} style={{ width: '100%', height: '100%' }} />
 const SmartVideoPlayer = React.memo(({ uri, isVisible }: { uri: string; isVisible: boolean }) => {
-  const player = useVideoPlayer(uri, (p) => {
-    p.loop = true;
-    p.muted = true;
-    p.preservesPitch = false;
-  });
+  return (
+    <View style={[styles.videoBox, { justifyContent: 'center', alignItems: 'center' }]}>
+      <Ionicons name="videocam" size={40} color={LL.gray400} />
+      <Text style={{ color: LL.gray400, marginTop: 8, fontSize: 13, fontWeight: '600' }}>
+        Video playback
+      </Text>
+    </View>
+  );
+});
 
   useEffect(() => {
     if (isVisible) {
@@ -792,6 +805,7 @@ const PostCard = React.memo(({
   currentUser,
   canInteract,
   isDark,
+  sweetAlert,
 }: {
   post: Post;
   index: number;
@@ -1229,6 +1243,7 @@ const GlassHeader = React.memo(({
   onMessagePress,
   canInteract,
   isDark,
+  sweetAlert,
 }: {
   scrollY: Animated.SharedValue<number>;
   currentUser: any;
@@ -1577,6 +1592,7 @@ const SearchResults = React.memo(({
   onSelectTopic,
   onSelectUser,
   isDark,
+  sweetAlert,
 }: {
   query: string;
   posts: Post[];
@@ -2097,6 +2113,7 @@ sweetAlert.confirm(
       currentUser={currentUser}
       canInteract={canInteract}
       isDark={isDark}
+      sweetAlert={sweetAlert}
     />
   ), [visiblePostIds, expandedPostId, commentInputs, replyingTo, topics, currentUser, canInteract, isDark, handleLike, handleRepost, handleBookmark, handleShare, handleDelete, handleFollowToggle, handleCommentSubmit, likeComment, voteHelpful, handleVotePoll, navigation]);
 

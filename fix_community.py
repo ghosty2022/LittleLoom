@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""
+r"""
 LittleLoom CommunityScreen Auto-Fix Script
 ==========================================
 Fixes the crash preventing entry into CommunityScreen:
@@ -9,7 +9,7 @@ Fixes the crash preventing entry into CommunityScreen:
   4. Missing Text import for placeholder
 
 Usage:
-  python fix_community.py --src-dir C:\Users\ondie\Desktop\LittleLoom\src
+  python fix_community.py --src-dir C:/Users/ondie/Desktop/LittleLoom/src
   python fix_community.py --src-dir ./src --dry-run
 """
 
@@ -42,7 +42,7 @@ def fix_community_screen(filepath: Path, dry_run: bool = False):
     # =====================================================================
     # FIX 1: Remove ViewToken from react-native import, add local type
     # =====================================================================
-    # ViewToken is NOT exported from 'react-native'. It's from @react-native/virtualized-lists
+    # ViewToken is NOT exported from 'react-native'. It is from @react-native/virtualized-lists
     # or we can define it locally.
 
     # Pattern 1: ViewToken on its own line in the import block
@@ -55,7 +55,7 @@ def fix_community_screen(filepath: Path, dry_run: bool = False):
         )
 
         # Add local type definition before first interface
-        viewtoken_type = """// ─── FIXED: ViewToken is not exported from react-native ───
+        viewtoken_type = """// -- FIXED: ViewToken is not exported from react-native --
 type ViewToken = {
   item: any;
   key: string;
@@ -81,7 +81,7 @@ type ViewToken = {
     # expo-video ~2.0.6 has a completely different API than the old expo-av style.
     # The current code uses useVideoPlayer(uri, callback) which is the OLD API.
     # New API: const player = useVideoPlayer(videoSource, player => { ... })
-    # We'll replace with a placeholder to prevent crashes.
+    # We will replace with a placeholder to prevent crashes.
 
     expo_video_import = re.search(
         r"import\s*\{[^}]*?\}\s*from\s*['\"]expo-video['\"];\s*\n",
@@ -100,7 +100,7 @@ type ViewToken = {
         re.DOTALL
     )
     if old_smart_video:
-        new_smart_video = """// ─── FIXED: Replaced expo-video player with placeholder ───
+        new_smart_video = """// -- FIXED: Replaced expo-video player with placeholder --
 // TODO: Update for expo-video v2.0.6
 // New API: import { VideoView, useVideoPlayer } from 'expo-video'
 // const player = useVideoPlayer(videoSource, player => { player.loop = true; });
@@ -170,7 +170,7 @@ const SmartVideoPlayer = React.memo(({ uri, isVisible }: { uri: string; isVisibl
     # =====================================================================
     # FIX 6: Ensure Text is imported from react-native
     # =====================================================================
-    # Our placeholder uses <Text> but we need to make sure it's imported
+    # Our placeholder uses <Text> but we need to make sure it is imported
     rn_import = re.search(r"from 'react-native';", content)
     if rn_import:
         import_block = content[:rn_import.end()]
@@ -204,13 +204,13 @@ const SmartVideoPlayer = React.memo(({ uri, isVisible }: { uri: string; isVisibl
         if dry_run:
             print(f"  [DRY RUN] Would apply {len(changes)} changes:")
             for c in changes:
-                print(f"    • {c}")
+                print(f"    * {c}")
             print(f"  [DRY RUN] File NOT modified")
         else:
             filepath.write_text(content, encoding="utf-8")
             print(f"  [SAVED] {len(changes)} changes applied:")
             for c in changes:
-                print(f"    ✓ {c}")
+                print(f"    OK {c}")
         return True
     else:
         print(f"  [NO CHANGES NEEDED] File appears correct")
@@ -285,7 +285,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python fix_community.py --src-dir C:\Users\ondie\Desktop\LittleLoom\src
+  python fix_community.py --src-dir C:/Users/ondie/Desktop/LittleLoom/src
   python fix_community.py --src-dir ./src --dry-run
   python fix_community.py --src-dir /home/user/projects/LittleLoom/src
         """
