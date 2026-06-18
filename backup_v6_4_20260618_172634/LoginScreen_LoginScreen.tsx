@@ -97,7 +97,7 @@ const SocialButton = React.memo(({ provider, onPress, disabled, isDark }: Social
 });
 
 const isValidEmail = (email: string): boolean => {
-  const re = /^[^\s@]+@[^\s@]+\\.[^\s@]+$/;
+  const re = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;
   return re.test(email.trim().toLowerCase());
 };
 

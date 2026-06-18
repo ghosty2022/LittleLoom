@@ -113,7 +113,6 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     getAvailableAuthMethods,
     resetUnlockLock,
   } = useSecurity();
-  const biometricEnabled = isBiometricEnabled ?? false;
   
   // Fallback for older SecurityContext versions
   const effectiveBiometricEnabled = isBiometricEnabled ?? false;
