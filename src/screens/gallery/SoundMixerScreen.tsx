@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Dimensions,
   Image,
@@ -165,7 +165,7 @@ const SectionHeader = React.memo(({ title, subtitle, action, actionLabel }: { ti
       </TouchableOpacity>
     )}
   </View>
-);
+));
 
 /* ═══════════════════════════════════════════════════════════════════════════
    NEW FEATURE 1: Smart Sleep Intelligence Card
