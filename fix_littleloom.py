@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-LittleLoom - Complete showAlert Fix Script (v2)
-Fixes ALL remaining showAlert calls across the entire codebase.
+LittleLoom - FINAL showAlert Fix Script (v3)
+Handles ALL showAlert patterns including multi-line with button arrays.
 """
 
 import os
@@ -10,38 +10,6 @@ import shutil
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.resolve()
-
-# Files that had corrupted replacements from the bad PowerShell script
-CORRUPTION_FIXES = {
-    "src/context/FamilyContext.tsx": {
-        "find": "} catch (esweetAlert.alert('Error', 'Failed to update guardian', 'info')date guardian');",
-        "replace": "} catch (error) {\n      sweetAlert.alert('Error', 'Failed to update guardian', 'error');"
-    }
-}
-
-# Files that need showAlert replaced with sweetAlert (have useSweetAlert imported)
-SWEETALERT_FILES = [
-    "src/context/CommunityContext.tsx",
-    "src/context/FamilyChatContext.tsx", 
-    "src/context/FamilyContext.tsx",
-    "src/screens/baby/BabySelectorScreen.tsx",
-    "src/screens/backup/BackupRestoreScreen.tsx",
-    "src/screens/community/ChatScreen.tsx",
-    "src/screens/community/CommunityScreen.tsx",
-    "src/screens/community/PostDetailScreen.tsx",
-    "src/screens/community/TopicScreen.tsx",
-    "src/screens/family/FamilySharingScreen.tsx",
-    "src/screens/gallery/GalleryScreen.tsx",
-    "src/screens/settings/ContactSupportScreen.tsx",
-    "src/screens/tracking/GrowthDashboardScreen.tsx",
-    "src/screens/tracking/TrackerRemindersScreen.tsx",
-    "src/hooks/useSocialAuth.ts",
-]
-
-# Files that should use Alert.alert instead (don't have sweetAlert)
-ALERT_FILES = [
-    "src/utils/alert.ts",
-]
 
 
 def backup_file(filepath: Path):
@@ -57,127 +25,103 @@ def backup_file(filepath: Path):
         counter += 1
 
 
-def fix_corruption(filepath: Path):
-    """Fix corrupted replacements from bad PowerShell script."""
-    content = filepath.read_text(encoding='utf-8')
-    original = content
-    
-    # Fix the specific FamilyContext corruption
-    if 'catch (esweetAlert' in content:
-        content = content.replace(
-            "} catch (esweetAlert.alert('Error', 'Failed to update guardian', 'info')date guardian');",
-            "} catch (error) {\n      sweetAlert.alert('Error', 'Failed to update guardian', 'error');"
-        )
-    
-    # Fix any other esweetAlert patterns
-    content = re.sub(r'} catch \(esweetAlert[^)]*\)[^;]*;', 
-                     r'} catch (error) {\n      sweetAlert.alert(\'Error\', \'An error occurred\', \'error\');', 
-                     content)
-    
-    if content != original:
-        backup_file(filepath)
-        filepath.write_text(content, encoding='utf-8')
-        print(f"  ✅ Fixed corruption in: {filepath.name}")
-        return True
-    return False
-
-
-def replace_showalert_in_file(filepath: Path, use_sweetalert: bool):
-    """Replace all showAlert calls in a file."""
-    content = filepath.read_text(encoding='utf-8')
-    original = content
-    replacements = 0
-    
-    # Pattern 1: showAlert('title', 'message') -> sweetAlert.alert('title', 'message', 'info')
-    # or Alert.alert('title', 'message')
-    pattern1 = r'(?<!sweetAlert\.)showAlert\s*\(\s*([\'"])([^\'"]+)\1\s*,\s*([\'"])([^\'"]*)\3\s*\)'
-    
-    def replace_simple(match):
-        nonlocal replacements
-        title = match.group(2)
-        message = match.group(4)
-        replacements += 1
-        if use_sweetalert:
-            return f"sweetAlert.alert('{title}', '{message}', 'info')"
-        else:
-            return f"Alert.alert('{title}', '{message}')"
-    
-    content = re.sub(pattern1, replace_simple, content)
-    
-    # Pattern 2: showAlert with button arrays (multi-line)
-    # Find showAlert( ... [ ... ] ... )
-    pattern2 = r'(?<!sweetAlert\.)showAlert\s*\('
-    
-    # More complex: find showAlert calls that span multiple lines with arrays
-    # Use a simpler approach: find and replace known patterns
-    
-    # Pattern 3: showAlert in catch blocks that got corrupted
-    # catch (e) { showAlert(...) } -> catch (e) { sweetAlert.alert(...) }
-    
-    # Check if file has useSweetAlert imported
-    has_sweetalert_import = 'useSweetAlert' in content or 'sweetAlert' in content
-    has_alert_import = 'Alert' in content
-    
-    if content != original:
-        backup_file(filepath)
-        filepath.write_text(content, encoding='utf-8')
-        print(f"  ✅ Fixed {replacements} showAlert calls in: {filepath.name}")
-        return replacements
-    return 0
-
-
-def fix_file_comprehensive(filepath: Path):
-    """Comprehensive fix for a single file."""
-    if not filepath.exists():
-        print(f"  ❌ File not found: {filepath}")
-        return 0
-    
-    content = filepath.read_text(encoding='utf-8')
-    original = content
-    replacements = 0
-    
-    # Fix 1: Simple showAlert('title', 'message') calls
-    simple_pattern = r'(?<!sweetAlert\.)showAlert\s*\(\s*([\'"])([^\'"]+)\1\s*,\s*([\'"])([^\'"]*)\3\s*\)'
-    simple_matches = list(re.finditer(simple_pattern, content))
-    for match in simple_matches:
-        title = match.group(2)
-        message = match.group(4)
-        old = match.group(0)
-        new = f"sweetAlert.alert('{title}', '{message}', 'info')"
-        content = content.replace(old, new, 1)
-        replacements += 1
-    
-    # Fix 2: showAlert with array arguments (Alert.alert style with buttons)
-    # These are trickier - we need to find the full call
-    # Look for showAlert( ... [ ... { text: ... } ... ] ... )
-    
-    # Find all showAlert occurrences
-    for match in re.finditer(r'(?<!sweetAlert\.)showAlert\s*\(', content):
-        start = match.start()
-        # Find the matching closing paren
+def find_showalert_calls(content):
+    """
+    Find ALL showAlert calls including multi-line ones.
+    Returns list of (start_pos, end_pos, full_call_text).
+    """
+    results = []
+    i = 0
+    while i < len(content):
+        # Find showAlert( that's not preceded by sweetAlert.
+        match = re.search(r'(?<!sweetAlert\.)showAlert\s*\(', content[i:])
+        if not match:
+            break
+        
+        start = i + match.start()
+        paren_start = i + match.end() - 1  # Position of the opening (
+        
+        # Track brackets to find matching )
         paren_depth = 1
-        i = match.end()
-        while i < len(content) and paren_depth > 0:
-            if content[i] == '(':
-                paren_depth += 1
-            elif content[i] == ')':
-                paren_depth -= 1
-            i += 1
+        bracket_depth = 0
+        brace_depth = 0
+        in_string = False
+        string_char = None
+        
+        pos = paren_start + 1
+        while pos < len(content) and paren_depth > 0:
+            char = content[pos]
+            
+            # Handle strings
+            if not in_string and char in '"\'':
+                in_string = True
+                string_char = char
+            elif in_string and char == string_char:
+                # Check for escape
+                if content[pos-1] != '\\':
+                    in_string = False
+                    string_char = None
+            elif not in_string:
+                if char == '(': paren_depth += 1
+                elif char == ')': paren_depth -= 1
+                elif char == '[': bracket_depth += 1
+                elif char == ']': bracket_depth -= 1
+                elif char == '{': brace_depth += 1
+                elif char == '}': brace_depth -= 1
+            
+            pos += 1
         
         if paren_depth == 0:
-            full_call = content[start:i]
-            # Extract title and message
-            title_match = re.search(r'showAlert\s*\(\s*([\'"])([^\'"]+)\1', full_call)
-            msg_match = re.search(r',\s*([\'"])([^\'"]*)\1', full_call)
-            
-            if title_match and msg_match:
-                title = title_match.group(2)
-                message = msg_match.group(2)
-                
-                # Check if it has button array
-                if '[' in full_call and ']' in full_call:
-                    # This is an Alert.alert with buttons - convert to sweetAlert.confirm
-                    new_call = f"""sweetAlert.confirm(
+            full_call = content[start:pos]
+            results.append((start, pos, full_call))
+        
+        i = pos
+    
+    return results
+
+
+def extract_showalert_info(full_call):
+    """Extract title, message, and button info from a showAlert call."""
+    # Extract first quoted string (title)
+    title_match = re.search(r'showAlert\s*\(\s*([\'"])([^\'"]+)\1', full_call)
+    title = title_match.group(2) if title_match else "Alert"
+    
+    # Extract second quoted string (message)
+    msg_match = re.search(r'showAlert\s*\(\s*[\'"][^\'"]+[\'"]\s*,\s*([\'"])([^\'"]*)\1', full_call)
+    message = msg_match.group(2) if msg_match else ""
+    
+    # Check if it has a button array
+    has_buttons = '[' in full_call and 'text:' in full_call
+    
+    # Extract button texts
+    button_texts = re.findall(r'text\s*:\s*([\'"])([^\'"]+)\1', full_call)
+    button_texts = [b[1] for b in button_texts]
+    
+    # Check for destructive style
+    has_destructive = "destructive" in full_call
+    
+    return {
+        'title': title,
+        'message': message,
+        'has_buttons': has_buttons,
+        'button_texts': button_texts,
+        'has_destructive': has_destructive,
+        'full_call': full_call
+    }
+
+
+def build_replacement(info, use_sweetalert=True):
+    """Build the replacement code for a showAlert call."""
+    title = info['title'].replace("'", "\\'")
+    message = info['message'].replace("'", "\\'")
+    
+    if info['has_buttons'] and use_sweetalert:
+        # Multi-button: use sweetAlert.confirm
+        confirm_text = info['button_texts'][-1] if info['button_texts'] else "OK"
+        cancel_text = info['button_texts'][0] if info['button_texts'] else "Cancel"
+        destructive = "true" if info['has_destructive'] else "false"
+        
+        return f"""sweetAlert.confirm(
       '{title}',
       '{message}',
       () => {{
@@ -186,15 +130,48 @@ def fix_file_comprehensive(filepath: Path):
       () => {{
         // Cancel action
       }},
-      'OK',
-      'Cancel',
-      false
+      '{confirm_text}',
+      '{cancel_text}',
+      {destructive}
     )"""
-                else:
-                    new_call = f"sweetAlert.alert('{title}', '{message}', 'info')"
-                
-                content = content[:start] + new_call + content[i:]
-                replacements += 1
+    
+    elif use_sweetalert:
+        # Simple alert
+        return f"sweetAlert.alert('{title}', '{message}', 'info')"
+    
+    else:
+        # Use React Native Alert
+        if info['has_buttons']:
+            return f"Alert.alert('{title}', '{message}')"  # Simplified
+        else:
+            return f"Alert.alert('{title}', '{message}')"
+
+
+def fix_file(filepath: Path):
+    """Fix ALL showAlert calls in a file."""
+    if not filepath.exists():
+        return 0
+    
+    content = filepath.read_text(encoding='utf-8')
+    original = content
+    
+    # Check if file has useSweetAlert imported
+    has_sweetalert = 'useSweetAlert' in content or 'import.*SweetAlert' in content
+    
+    # Find all showAlert calls
+    calls = find_showalert_calls(content)
+    
+    if not calls:
+        return 0
+    
+    # Replace from end to start to preserve positions
+    replacements = 0
+    for start, end, full_call in reversed(calls):
+        info = extract_showalert_info(full_call)
+        replacement = build_replacement(info, use_sweetalert=has_sweetalert)
+        
+        content = content[:start] + replacement + content[end:]
+        replacements += 1
     
     if content != original:
         backup_file(filepath)
@@ -202,19 +179,11 @@ def fix_file_comprehensive(filepath: Path):
         print(f"  ✅ Fixed {replacements} showAlert calls in: {filepath.name}")
         return replacements
     
-    # Check for remaining showAlert calls
-    remaining = list(re.finditer(r'(?<!sweetAlert\.)showAlert\s*\(', content))
-    if remaining:
-        print(f"  ⚠️  {len(remaining)} showAlert calls remain in: {filepath.name}")
-        for r in remaining:
-            line_num = content[:r.start()].count('\n') + 1
-            print(f"      Line {line_num}")
-    
     return 0
 
 
-def scan_all_files():
-    """Scan all source files for showAlert issues."""
+def scan_for_remaining():
+    """Final scan for any remaining showAlert calls."""
     src_dir = PROJECT_ROOT / "src"
     issues = []
     
@@ -222,13 +191,16 @@ def scan_all_files():
         if filepath.is_file() and filepath.suffix in ['.tsx', '.ts', '.jsx', '.js']:
             if '.backup' in str(filepath):
                 continue
-                
+            
             content = filepath.read_text(encoding='utf-8')
             relative = filepath.relative_to(PROJECT_ROOT)
             
-            # Find standalone showAlert calls
-            for match in re.finditer(r'(?<!sweetAlert\.)showAlert\s*\(', content):
-                line_num = content[:match.start()].count('\n') + 1
+            calls = find_showalert_calls(content)
+            for start, end, full_call in calls:
+                line_num = content[:start].count('\n') + 1
+                # Skip if it's in utils/alert.ts (the definition file)
+                if 'utils/alert' in str(relative):
+                    continue
                 issues.append(f"{relative}:{line_num}")
     
     return issues
@@ -236,52 +208,30 @@ def scan_all_files():
 
 def main():
     print("=" * 70)
-    print("  LittleLoom Complete showAlert Fix (v2)")
+    print("  LittleLoom FINAL showAlert Fix (v3)")
     print("=" * 70)
     
     total_fixes = 0
     
-    # Step 1: Fix corruptions from bad PowerShell script
-    print("\n🔧 Step 1: Fixing corruptions from previous bad script...")
-    for rel_path, fix_info in CORRUPTION_FIXES.items():
-        filepath = PROJECT_ROOT / rel_path
-        if filepath.exists():
-            content = filepath.read_text(encoding='utf-8')
-            if fix_info['find'] in content:
-                new_content = content.replace(fix_info['find'], fix_info['replace'])
-                backup_file(filepath)
-                filepath.write_text(new_content, encoding='utf-8')
-                print(f"  ✅ Fixed corruption in: {rel_path}")
-                total_fixes += 1
+    # Fix all files in src/
+    print("\n🔧 Fixing ALL showAlert calls in src/...")
+    src_dir = PROJECT_ROOT / "src"
     
-    # Step 2: Fix all known files with comprehensive replacement
-    print("\n🔧 Step 2: Fixing showAlert calls in known files...")
-    for rel_path in SWEETALERT_FILES:
-        filepath = PROJECT_ROOT / rel_path
-        if filepath.exists():
-            count = fix_file_comprehensive(filepath)
+    for filepath in src_dir.rglob("*"):
+        if filepath.is_file() and filepath.suffix in ['.tsx', '.ts', '.jsx', '.js']:
+            if '.backup' in str(filepath):
+                continue
+            count = fix_file(filepath)
             total_fixes += count
     
-    # Step 3: Fix Alert.files
-    print("\n🔧 Step 3: Fixing files that should use Alert.alert...")
-    for rel_path in ALERT_FILES:
-        filepath = PROJECT_ROOT / rel_path
-        if filepath.exists():
-            content = filepath.read_text(encoding='utf-8')
-            # These files define showAlert, so we shouldn't replace the definition
-            # Just check for any standalone calls that shouldn't be there
-            pass  # Skip for now
-    
-    # Step 4: Scan for any remaining issues
-    print("\n🔍 Step 4: Scanning for remaining issues...")
-    remaining = scan_all_files()
+    # Final scan
+    print("\n🔍 Final scan for remaining issues...")
+    remaining = scan_for_remaining()
     
     if remaining:
-        print(f"  ⚠️  Found {len(remaining)} remaining showAlert calls:")
-        for issue in remaining[:20]:  # Show first 20
+        print(f"  ⚠️  {len(remaining)} remaining showAlert calls:")
+        for issue in remaining:
             print(f"    • {issue}")
-        if len(remaining) > 20:
-            print(f"    ... and {len(remaining) - 20} more")
     else:
         print("  ✅ No remaining showAlert calls found!")
     

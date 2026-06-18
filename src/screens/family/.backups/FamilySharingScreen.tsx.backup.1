@@ -690,18 +690,26 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
       return;
     }
 
-sweetAlert.confirm(
+showAlert(
       'Remove Family Member',
-      '',
-      () => {
-        // TODO: Confirm action
-      },
-      () => {
-        // Cancel action
-      },
-      'Remove',
-      'Cancel',
-      true
+      `Are you sure you want to remove ${selectedMember.fullName}?\n\nThis will revoke their access to all family data. Their activity history will be preserved.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            triggerHaptic('error');
+            const success = await removeMember(selectedMember.id);
+            if (success) {
+              triggerHaptic('success');
+              setShowMemberModal(false);
+              setSelectedMember(null);
+              loadFamily();
+            }
+          },
+        },
+      ]
     );
   };
 
@@ -721,18 +729,29 @@ sweetAlert.confirm(
       return;
     }
 
-sweetAlert.confirm(
+showAlert(
       'Change Role',
-      '',
-      () => {
-        // TODO: Confirm action
-      },
-      () => {
-        // Cancel action
-      },
-      'Change',
-      'Cancel',
-      false
+      `Change ${selectedMember.fullName} to ${ROLE_CONFIG[newRole].label}?\n\nThis will update their permissions immediately.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Change',
+          onPress: async () => {
+            triggerHaptic('medium');
+
+            const success = await updateGuardianProfile(selectedMember.id, {
+              role: newRole,
+              permissions: ROLE_PERMISSIONS[newRole],
+            });
+
+            if (success) {
+              triggerHaptic('success');
+              setShowRoleModal(false);
+              loadFamily();
+            }
+          },
+        },
+      ]
     );
   };
 
@@ -1185,19 +1204,27 @@ sweetAlert.confirm(
             onLongPress={isPrimaryParent && member.role !== UserRole.PARENT_1 ? () => {
               setSelectedMember(member);
 
-sweetAlert.confirm(
-      'Quick Actions',
-      '',
-      () => {
-        // TODO: Confirm action
-      },
-      () => {
-        // Cancel action
-      },
-      'Cancel',
-      'Edit',
-      true
-    );
+showAlert(
+                'Quick Actions',
+                `${member.fullName}`,
+                [
+                  { text: 'Edit', onPress: () => openMemberDetails(member) },
+                  { text: 'Change Role', onPress: () => {
+                    setSelectedMember(member);
+                    setShowRoleModal(true);
+                  }},
+                  { text: 'Family Chat', onPress: () => handleFamilyChatPress(member) },
+                  member.role !== UserRole.PARENT_1 && {
+                    text: 'Remove',
+                    style: 'destructive',
+                    onPress: () => {
+                      setSelectedMember(member);
+                      handleRemoveMember();
+                    }
+                  },
+                  { text: 'Cancel', style: 'cancel' }
+                ].filter(Boolean) as any
+              );
             } : undefined}
             index={index}
             isDark={isDark}

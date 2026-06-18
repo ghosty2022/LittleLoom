@@ -137,7 +137,26 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
     if (!topic) return;
 
     if (topic.isJoined) {
-      Alert.alert('Leave Topic', '');
+      showAlert(
+        'Leave Topic',
+        `Are you sure you want to leave ${topic.name}?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Leave',
+            style: 'destructive',
+            onPress: async () => {
+              await leaveTopic(topic.id);
+              setTopic((prev) =>
+                prev
+                  ? { ...prev, isJoined: false, members: Math.max(0, prev.members - 1) }
+                  : undefined
+              );
+              triggerHaptic('success');
+            },
+          },
+        ]
+      );
     } else {
       await joinTopic(topic.id);
       setTopic((prev) =>

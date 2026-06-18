@@ -78,7 +78,18 @@ export const showConfirm = (
   onConfirm: () => void,
   onCancel?: () => void
 ): void => {
-  Alert.alert('Alert', '');
+  showAlert(title, message, [
+    {
+      text: 'Cancel',
+      style: 'cancel',
+      onPress: onCancel,
+    },
+    {
+      text: 'OK',
+      style: 'default',
+      onPress: onConfirm,
+    },
+  ]);
 };
 
 /**
@@ -95,7 +106,18 @@ export const showDestructiveConfirm = (
   onDelete: () => void,
   onCancel?: () => void
 ): void => {
-  Alert.alert('Alert', '');
+  showAlert(title, message, [
+    {
+      text: 'Cancel',
+      style: 'cancel',
+      onPress: onCancel,
+    },
+    {
+      text: 'Delete',
+      style: 'destructive',
+      onPress: onDelete,
+    },
+  ]);
 };
 
 /**
@@ -105,7 +127,7 @@ export const showDestructiveConfirm = (
  * @param title - Optional custom title (defaults to "Error")
  */
 export const showError = (message: string, title: string = 'Error'): void => {
-  Alert.alert('Alert', '');
+  showAlert(title, message, [{ text: 'OK', style: 'default' }]);
 };
 
 /**
@@ -115,7 +137,7 @@ export const showError = (message: string, title: string = 'Error'): void => {
  * @param title - Optional custom title (defaults to "Success")
  */
 export const showSuccess = (message: string, title: string = 'Success'): void => {
-  Alert.alert('Alert', '');
+  showAlert(title, message, [{ text: 'OK', style: 'default' }]);
 };
 
 /**
@@ -125,7 +147,7 @@ export const showSuccess = (message: string, title: string = 'Success'): void =>
  * @param title - Optional custom title (defaults to "Warning")
  */
 export const showWarning = (message: string, title: string = 'Warning'): void => {
-  Alert.alert('Alert', '');
+  showAlert(title, message, [{ text: 'OK', style: 'default' }]);
 };
 
 export default showAlert;

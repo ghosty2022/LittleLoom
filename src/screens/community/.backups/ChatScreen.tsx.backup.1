@@ -291,7 +291,7 @@ const MessageBubble = React.memo(({
       style={[styles.messageContainer, isMe ? styles.myMessage : styles.theirMessage]}
     >
       {!isMe && showAvatar && (
-        <TouchableOpacity onPress={() => user && sweetAlert.alert('Alert', '', 'info')} style={styles.avatarSmall}>
+        <TouchableOpacity onPress={() => user && showAlert(user.displayName, `Handle: ${user.handle}`)} style={styles.avatarSmall}>
           <SafeAvatar avatar={user?.avatar} size={32} fallbackIcon="person" fallbackColor={LL.primary} fallbackBgColor={`${LL.primary}15`} />
         </TouchableOpacity>
       )}
@@ -670,19 +670,14 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   const handleFilePress = async (meta?: FileMetadata) => {
     if (!meta) return;
 
-sweetAlert.confirm(
-      'Alert',
-      '',
-      () => {
-        // TODO: Confirm action
-      },
-      () => {
-        // Cancel action
-      },
-      'Share',
-      'Cancel',
-      false
-    );
+showAlert(meta.name, `Size: ${formatFileSize(meta.size)}
+Type: ${meta.type}`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Share', onPress: async () => {
+        const { Share } = await import('react-native');
+        Share.share({ url: meta.uri, title: meta.name });
+      }},
+    ]);
   };
 
   const handleResend = async (messageId: string) => {

@@ -40,7 +40,7 @@ export const useSocialAuth = () => {
       const message = error?.message || 'Google sign-in failed';
       setState(prev => ({ ...prev, isLoading: false, error: message }));
 
-Alert.alert('Sign In Error', '');
+showAlert('Sign In Error', message);
       return null;
     }
   }, []);
@@ -60,7 +60,7 @@ Alert.alert('Sign In Error', '');
       const message = error?.message || 'Apple sign-in failed';
       setState(prev => ({ ...prev, isLoading: false, error: message }));
 
-Alert.alert('Sign In Error', '');
+showAlert('Sign In Error', message);
       return null;
     }
   }, []);
@@ -81,7 +81,7 @@ Alert.alert('Sign In Error', '');
       const message = error?.message || 'Facebook sign-in failed';
       setState(prev => ({ ...prev, isLoading: false, error: message }));
 
-Alert.alert('Sign In Error', '');
+showAlert('Sign In Error', message);
       return null;
     }
   }, []);

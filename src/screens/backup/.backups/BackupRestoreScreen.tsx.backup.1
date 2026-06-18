@@ -48,7 +48,7 @@ const EncryptModal = ({
     }
     if (password !== confirmPassword) {
 
-sweetAlert.alert('Alert', '', 'info');
+showAlert("Passwords Don't Match", 'Please make sure both passwords match');
       return;
     }
     onConfirm(password);
@@ -438,19 +438,11 @@ export default function BackupRestoreScreen({ navigation }: Props) {
           setLastBackup(new Date().toLocaleString());
           triggerHaptic('success');
 
-sweetAlert.confirm(
-      '✅ Backup Created!',
-      '',
-      () => {
-        // TODO: Confirm action
-      },
-      () => {
-        // Cancel action
-      },
-      'Great!',
-      'Great!',
-      false
-    );
+showAlert(
+            '✅ Backup Created!',
+            `Your ${encrypted ? 'encrypted ' : ''}backup (${result.metadata?.totalKeys} keys, ${result.metadata?.totalSize} bytes) is ready.\n\nSave it to cloud storage, email, or Files for safekeeping.`,
+            [{ text: 'Great!' }]
+          );
         }
 
         await backupService.cleanupBackupFile(result.filePath);
@@ -461,7 +453,7 @@ sweetAlert.confirm(
     } catch (error) {
       triggerHaptic('error');
 
-sweetAlert.alert('Backup Failed', '', 'info');
+showAlert('Backup Failed', error instanceof Error ? error.message : 'Unknown error');
     } finally {
       setIsCreating(false);
     }
@@ -496,7 +488,7 @@ sweetAlert.alert('Backup Failed', '', 'info');
     } catch (error) {
       triggerHaptic('error');
 
-sweetAlert.alert('Restore Failed', '', 'info');
+showAlert('Restore Failed', error instanceof Error ? error.message : 'Unknown error');
       setIsRestoring(false);
     }
   };
@@ -511,28 +503,57 @@ sweetAlert.alert('Restore Failed', '', 'info');
       if (!previewData.valid) {
         triggerHaptic('error');
 
-sweetAlert.alert('Invalid Backup', '', 'info');
+showAlert('Invalid Backup', previewData.error || 'Could not read backup file');
         setIsRestoring(false);
         return;
       }
 
-sweetAlert.confirm(
-      'Restore Backup?',
-      '',
-      () => {
-        // TODO: Confirm action
-      },
-      () => {
-        // Cancel action
-      },
-      'Restart App',
-      'Cancel',
-      true
-    );
+showAlert(
+        'Restore Backup?',
+        `Found backup from ${new Date(previewData.metadata!.exportedAt).toLocaleString()}\n\n` +
+        `• Babies: ${previewData.babyCount}\n` +
+        `• Entries: ${previewData.entryCount}\n` +
+        `• Size: ${previewData.size}\n` +
+        `• Version: ${previewData.version}\n` +
+        `${previewData.warnings.length > 0 ? '⚠️ ' + previewData.warnings.join('\n') + '\n\n' : ''}` +
+        'This will REPLACE all current data. Are you sure?',
+        [
+          { text: 'Cancel', style: 'cancel', onPress: () => setIsRestoring(false) },
+          {
+            text: 'Restore',
+            style: 'destructive',
+            onPress: async () => {
+              const result = await backupService.restoreBackup(content, password);
+
+              if (result.success) {
+                triggerHaptic('success');
+
+showAlert(
+                  '✅ Restore Complete!',
+                  `Successfully restored ${result.restoredKeys.length} data entries.\n\nPlease restart the app for all changes to take effect.`,
+                  [
+                    {
+                      text: 'Restart App',
+                      onPress: () => {
+                        navigation.navigate('Splash');
+                      }
+                    }
+                  ]
+                );
+              } else {
+                triggerHaptic('error');
+
+showAlert('Restore Failed', result.error || 'Could not restore backup');
+              }
+              setIsRestoring(false);
+            }
+          }
+        ]
+      );
     } catch (error) {
       triggerHaptic('error');
 
-sweetAlert.alert('Restore Failed', '', 'info');
+showAlert('Restore Failed', error instanceof Error ? error.message : 'Unknown error');
       setIsRestoring(false);
     }
   };
@@ -556,18 +577,31 @@ sweetAlert.alert('Restore Failed', '', 'info');
     const previewData = await backupService.previewBackup(content);
     setPreview(previewData);
 
-sweetAlert.confirm(
-      'Alert',
-      '',
-      () => {
-        // TODO: Confirm action
-      },
-      () => {
-        // Cancel action
-      },
-      'Delete',
-      'Cancel',
-      true
+showAlert(
+      backup.name,
+      `Created: ${backup.dateFormatted}\nSize: ${backup.sizeFormatted}\nBabies: ${previewData.babyCount}\nEntries: ${previewData.entryCount}\n${backup.isEncrypted ? '🔒 Encrypted' : '🔓 Not Encrypted'}`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Share', onPress: () => shareLocalBackup(backup) },
+        {
+          text: 'Restore',
+          style: 'destructive',
+          onPress: () => {
+            setPendingContent(content);
+            if (backup.isEncrypted) {
+              setPendingAction('restore');
+              setShowPasswordModal(true);
+            } else {
+              processRestore(content);
+            }
+          }
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => deleteLocalBackup(backup),
+        },
+      ]
     );
   };
 
@@ -580,18 +614,23 @@ sweetAlert.confirm(
 
   const deleteLocalBackup = (backup: LocalBackupInfo) => {
 
-sweetAlert.confirm(
+showAlert(
       'Delete Backup?',
-      '',
-      () => {
-        // TODO: Confirm action
-      },
-      () => {
-        // Cancel action
-      },
-      'Delete',
-      'Cancel',
-      true
+      `Are you sure you want to delete "${backup.name}"? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            const success = await backupService.deleteLocalBackup(backup.path);
+            if (success) {
+              triggerHaptic('success');
+              await loadLocalBackups();
+            }
+          }
+        }
+      ]
     );
   };
 
@@ -601,7 +640,7 @@ sweetAlert.confirm(
     setShowAutoBackupModal(false);
     triggerHaptic('success');
 
-sweetAlert.alert('Settings Saved', '', 'info');
+showAlert('Settings Saved', `Auto backup ${settings.enabled ? 'enabled' : 'disabled'}`);
   };
 
   const runAutoBackupNow = async () => {
@@ -624,7 +663,7 @@ sweetAlert.alert('Settings Saved', '', 'info');
     } catch (error) {
       triggerHaptic('error');
 
-sweetAlert.alert('Auto Backup Failed', '', 'info');
+showAlert('Auto Backup Failed', error instanceof Error ? error.message : 'Unknown error');
     } finally {
       setIsCreating(false);
     }
@@ -639,7 +678,10 @@ sweetAlert.alert('Auto Backup Failed', '', 'info');
       const previewData = await backupService.previewBackup(pendingContent, password);
       setPreview(previewData);
 
-sweetAlert.alert('Backup Preview', '', 'info');
+showAlert(
+        'Backup Preview',
+        `Valid: ${previewData.valid ? 'Yes' : 'No'}\nBabies: ${previewData.babyCount}\nEntries: ${previewData.entryCount}`
+      );
     }
     setPendingAction(null);
     setPendingContent(null);
@@ -884,19 +926,24 @@ sweetAlert.alert('Backup Preview', '', 'info');
                       style={styles.clearAllButton}
                       onPress={() => {
 
-sweetAlert.confirm(
-      'Clear All Backups?',
-      '',
-      () => {
-        // TODO: Confirm action
-      },
-      () => {
-        // Cancel action
-      },
-      'Delete All',
-      'Cancel',
-      true
-    );
+showAlert(
+                          'Clear All Backups?',
+                          `Delete all ${localBackups.length} local backups? This cannot be undone.`,
+                          [
+                            { text: 'Cancel', style: 'cancel' },
+                            {
+                              text: 'Delete All',
+                              style: 'destructive',
+                              onPress: async () => {
+                                for (const backup of localBackups) {
+                                  await backupService.deleteLocalBackup(backup.path);
+                                }
+                                await loadLocalBackups();
+                                triggerHaptic('success');
+                              }
+                            }
+                          ]
+                        );
                       }}
                     >
                       <Text style={styles.clearAllText}>Clear All Local Backups</Text>

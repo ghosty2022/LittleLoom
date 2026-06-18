@@ -220,19 +220,14 @@ export default function ContactSupportScreen
     setCategory(cat.id);
     if (cat.route) {
 
-sweetAlert.confirm(
-      'Alert',
-      '',
-      () => {
-        // TODO: Confirm action
-      },
-      () => {
-        // Cancel action
-      },
-      'Go There',
-      'Stay Here',
-      false
-    );
+showAlert(
+        cat.label,
+        cat.helpText || `Would you like to go to ${cat.label}?`,
+        [
+          { text: 'Stay Here', style: 'cancel' },
+          { text: 'Go There', onPress: () => navigation.navigate(cat.route as any, cat.params) },
+        ]
+      );
     }
   };
 
@@ -249,19 +244,11 @@ sweetAlert.confirm(
       setIsSending(false);
       handleHaptic('success');
 
-sweetAlert.confirm(
-      'Message Sent!',
-      '',
-      () => {
-        // TODO: Confirm action
-      },
-      () => {
-        // Cancel action
-      },
-      'OK',
-      'OK',
-      false
-    );
+showAlert(
+        'Message Sent!',
+        "Thank you for reaching out. We'll get back to you within 24 hours.",
+        [{ text: 'OK', onPress: () => navigation.goBack() }]
+      );
     }, 1500);
   };
 
