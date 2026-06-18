@@ -105,7 +105,7 @@ export const AvatarPickerScreen: React.FC<AvatarPickerScreenProps> = ({
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
-        sweetAlert.alert('Permission Required', 'Please allow camera access to take photos.', 'warning');
+        showAlert('Permission Required', 'Please allow camera access to take photos.', 'warning');
         return;
       }
 
@@ -134,7 +134,7 @@ export const AvatarPickerScreen: React.FC<AvatarPickerScreenProps> = ({
       }
     } catch (error) {
       console.error('Camera error:', error);
-      sweetAlert.alert('Error', 'Failed to take photo. Please try again.', 'warning');
+      showAlert('Error', 'Failed to take photo. Please try again.', 'warning');
       setIsUploading(false);
     }
   };
@@ -143,12 +143,12 @@ export const AvatarPickerScreen: React.FC<AvatarPickerScreenProps> = ({
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        sweetAlert.alert('Permission Required', 'Please allow photo library access.', 'warning');
+        showAlert('Permission Required', 'Please allow photo library access.', 'warning');
         return;
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.85,
@@ -173,7 +173,7 @@ export const AvatarPickerScreen: React.FC<AvatarPickerScreenProps> = ({
       }
     } catch (error) {
       console.error('Gallery error:', error);
-      sweetAlert.alert('Error', 'Failed to pick photo. Please try again.', 'warning');
+      showAlert('Error', 'Failed to pick photo. Please try again.', 'warning');
       setIsUploading(false);
     }
   };

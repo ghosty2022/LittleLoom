@@ -55,7 +55,7 @@ const SectionHeader: React.FC<{
 );
 
 export default function LanguageSettingsScreen({ navigation }: Props) {
-  const sweetAlert = useSweetAlert();
+  const { alert: showAlert } = useSweetAlert();
   const { themeColors, darkMode, reduceMotion } = useCustomization();
   const insets = useSafeAreaInsets();
 
@@ -75,7 +75,7 @@ export default function LanguageSettingsScreen({ navigation }: Props) {
     handleHaptic();
     setSelected(code);
 
-    sweetAlert.alert('Language Changed', 'App restart required to apply the new language. This feature will be fully implemented in a future update.', 'info');
+    showAlert('Language Changed', 'App restart required to apply the new language. This feature will be fully implemented in a future update.', 'info');
   };
 
   const selectedLanguage = LANGUAGES.find(l => l.code === selected);
