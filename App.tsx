@@ -143,15 +143,6 @@ const CustomSplashScreen = React.memo(() => {
   );
 });
 
-const ErrorFallback = React.memo(() => (
-  <View style={styles.errorContainer}>
-    <LinearGradient colors={['#667eea', '#764ba2']} style={StyleSheet.absoluteFill} />
-    <Text style={styles.errorEmoji}>😔</Text>
-    <Text style={styles.errorTitle}>Something went wrong</Text>
-    <Text style={styles.errorSubtitle}>Please restart the app</Text>
-  </View>
-));
-
 interface InnerAppProps {
   initialState: object | undefined;
   onStateChange: (state: object | undefined) => void;
@@ -279,17 +270,13 @@ export default function App(): JSX.Element | null {
   }, []);
 
   // ─── Render ─────────────────────────────────────────────────────────
-  if (initError) {
-    return <ErrorFallback />;
-  }
-
   if (!ready) {
     return <CustomSplashScreen />;
   }
 
   return (
     <React.Suspense fallback={<CustomSplashScreen />}>
-      <ErrorBoundary fallback={<ErrorFallback />}>
+      <ErrorBoundary>
         <GestureHandlerRootView style={styles.root}>
           <SafeAreaProvider>
             <AppProvider>
@@ -342,24 +329,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     letterSpacing: 1,
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  errorEmoji: {
-    fontSize: 64,
-    marginBottom: 16,
-  },
-  errorTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#fff',
-    marginBottom: 8,
-  },
-  errorSubtitle: {
-    fontSize: 16,
-    color: 'rgba(255,255,255,0.8)',
   },
 });
