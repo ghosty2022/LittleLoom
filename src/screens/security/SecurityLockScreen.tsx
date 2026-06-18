@@ -99,12 +99,13 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
 
   const { signOut, userProfile } = useAuth();
   const {
-    unlockApp: securitySettings,
-    isBiometricHardwareAvailable,
-    isBiometricEnrolled,
-    getAvailableAuthMethods,
-    resetUnlockLock,
-  } = useSecurity();
+  unlockApp,
+  isBiometricEnabled,
+  isBiometricHardwareAvailable,
+  isBiometricEnrolled,
+  getAvailableAuthMethods,
+  resetUnlockLock,
+} = useSecurity();
 
   const { darkMode: isDark, themeColors, triggerHaptic } = useCustomization();
   const { toast, error: showError } = useSweetAlert();
