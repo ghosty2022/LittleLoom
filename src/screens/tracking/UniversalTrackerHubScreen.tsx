@@ -62,7 +62,7 @@ import { useBaby, type BabyProfile } from '../../context/BabyContext';
 import { useTrackerAchievements } from '../../hooks/useTrackerAchievements';
 import { SafeBabyAvatar } from '../../components/SafeAvatar';
 import { useSweetAlert } from '../../components/SweetAlert';
-import { useNavigationContext } from '../../context/AppContext';
+import { useApp } from '../../context/AppContext';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
