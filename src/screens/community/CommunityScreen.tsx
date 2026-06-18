@@ -1,4 +1,24 @@
-import {  ActivityIndicator, Alert, Button, Dimensions, FlatList, GestureHandlerRootView, Image, Modal, Platform, Pressable, RefreshControl, Share, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { 
+  ActivityIndicator, 
+  Alert, 
+  Button, 
+  Dimensions, 
+  FlatList, 
+  GestureHandlerRootView, 
+  Image, 
+  Modal, 
+  Platform, 
+  Pressable, 
+  RefreshControl, 
+  Share, 
+  StatusBar, 
+  StyleSheet, 
+  Text, 
+  TextInput, 
+  TouchableOpacity, 
+  View,
+  ViewToken,  // ← ADD THIS
+} from 'react-native';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BlurView } from 'expo-blur';
 import Animated, {
@@ -22,7 +42,8 @@ import {
   CommunityBorderRadius,
 } from '../../theme/CommunityTheme';
 import type { CommunityStackParamList } from '../../types/navigation';
-
+import { useCommunity } from '../../context/CommunityContext';
+import type { Post, PostMood, Poll } from '../../context/CommunityContext';  // ← ADD THIS
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
