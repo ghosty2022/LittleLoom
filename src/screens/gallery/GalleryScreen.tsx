@@ -2,7 +2,7 @@ import { StyleSheet, ActivityIndicator, Dimensions, Image, LogBox, Modal, Refres
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { BlurView } from 'expo-blur';
-import Animated, { Extrapolate, FadeIn, FadeInDown, FadeInUp, interpolate, Layout, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
+import Animated, { Extrapolate, FadeIn, FadeInDown, FadeInUp, interpolate,StatusBar, Layout, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
 import { format, isThisMonth, isThisWeek, isToday, isYesterday, parseISO } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
