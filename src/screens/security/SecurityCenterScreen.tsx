@@ -392,11 +392,11 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
   const handleToggleBiometric = async () => {
     setBiometricLoading(true);
     try {
-      const result = await toggleBiometric(!securitySettings.isBiometricEnabled);
+      const result = await toggleBiometric(!isBiometricEnabled);
       if (result) {
         showSuccess(
-          securitySettings.isBiometricEnabled ? 'Biometric Off' : 'Biometric On',
-          securitySettings.isBiometricEnabled ? 'Biometric unlock disabled' : 'Biometric unlock enabled'
+          isBiometricEnabled ? 'Biometric Off' : 'Biometric On',
+          isBiometricEnabled ? 'Biometric unlock disabled' : 'Biometric unlock enabled'
         );
       } else {
         showError('Failed', 'Could not change biometric setting');
@@ -415,7 +415,7 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
   const getSecurityScore = () => {
     let score = 0;
     if (securitySettings.isPinEnabled) score += 25;
-    if (securitySettings.isBiometricEnabled) score += 25;
+    if (isBiometricEnabled) score += 25;
     if (securitySettings.hasSecurityQuestions) score += 25;
     if (securitySettings.isAppLockEnabled) score += 25;
     return score;
@@ -490,14 +490,14 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
             ? 'Not available on this device'
             : !isBiometricEnrolled
             ? 'Not enrolled on device'
-            : securitySettings.isBiometricEnabled
+            : isBiometricEnabled
             ? 'Biometric unlock active'
             : 'Tap to enable'
         }
         status={
           !isBiometricHardwareAvailable || !isBiometricEnrolled
             ? 'neutral'
-            : securitySettings.isBiometricEnabled
+            : isBiometricEnabled
             ? 'active'
             : 'warning'
         }
@@ -686,7 +686,7 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
             <TouchableOpacity
               style={[styles.pinActionBtn, { backgroundColor: '#ef4444' }]}
               onPress={() => {
-                if (securitySettings.isBiometricEnabled) {
+                if (isBiometricEnabled) {
                   setPinMode('deactivate');
                   setPinStep('input');
                   resetPinState();
@@ -866,15 +866,15 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
               Enable {bioName} Unlock
             </Text>
             <Switch
-              value={securitySettings.isBiometricEnabled}
+              value={isBiometricEnabled}
               onValueChange={handleToggleBiometric}
               disabled={biometricLoading}
               trackColor={{ false: '#d1d5db', true: themeColors.primary + '80' }}
-              thumbColor={securitySettings.isBiometricEnabled ? themeColors.primary : '#f9fafb'}
+              thumbColor={isBiometricEnabled ? themeColors.primary : '#f9fafb'}
             />
           </View>
 
-          {securitySettings.isBiometricEnabled && securitySettings.isPinEnabled && (
+          {isBiometricEnabled && securitySettings.isPinEnabled && (
             <AnimatedRe.View entering={FadeInUp.duration(400)} style={styles.bioPriorityBox}>
               <Ionicons name="information-circle-outline" size={18} color={themeColors.primary} />
               <Text style={[styles.bioPriorityText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
@@ -883,7 +883,7 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
             </AnimatedRe.View>
           )}
 
-          {securitySettings.isBiometricEnabled && !securitySettings.isPinEnabled && (
+          {isBiometricEnabled && !securitySettings.isPinEnabled && (
             <AnimatedRe.View entering={FadeInUp.duration(400)} style={[styles.bioPriorityBox, { backgroundColor: '#fef3c7' }]}>
               <Ionicons name="warning-outline" size={18} color="#f59e0b" />
               <Text style={[styles.bioPriorityText, { color: '#92400e' }]}>

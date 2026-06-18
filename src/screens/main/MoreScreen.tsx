@@ -994,7 +994,7 @@ sweetAlert.confirm(
         <SectionHeader
           icon="shield-checkmark"
           title="Security & Privacy"
-          subtitle={securitySettings.isBiometricEnabled ? `${biometricTypeName} enabled` : 'Protect your data'}
+          subtitle={isBiometricEnabled ? `${biometricTypeName} enabled` : 'Protect your data'}
           color={primary}
           isDark={isDark}
           isExpanded={isExpanded}
@@ -1007,10 +1007,10 @@ sweetAlert.confirm(
             tint={isDark ? 'dark' : 'light'}
           >
             <MenuItem
-              icon={securitySettings.isBiometricEnabled ? 'finger-print' : 'finger-print-outline'}
+              icon={isBiometricEnabled ? 'finger-print' : 'finger-print-outline'}
               title={`${biometricTypeName} Unlock`}
-              subtitle={securitySettings.isBiometricEnabled ? 'Enabled' : hasBiometric ? 'Disabled' : 'Not Available'}
-              isEnabled={securitySettings.isBiometricEnabled}
+              subtitle={isBiometricEnabled ? 'Enabled' : hasBiometric ? 'Disabled' : 'Not Available'}
+              isEnabled={isBiometricEnabled}
               onToggle={handleBiometricToggle}
               color={primary}
               isDark={isDark}

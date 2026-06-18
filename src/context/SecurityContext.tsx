@@ -10,6 +10,7 @@ const SECURE_KEYS = {
   PIN_HASH: 'littleloom_pin_hash',
 } as const;
 
+
 const ASYNC_KEYS = {
   BIOMETRIC_ENABLED: 'littleloom_biometric_enabled',
   APP_LOCK_ENABLED: 'littleloom_app_lock_enabled',

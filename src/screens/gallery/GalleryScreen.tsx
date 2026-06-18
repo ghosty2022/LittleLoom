@@ -383,7 +383,7 @@ const VaultLockModal = ({
     if (visible) {
       const hasSecurity =
         securitySettings.isPinEnabled ||
-        (securitySettings.isBiometricEnabled &&
+        (isBiometricEnabled &&
           isBiometricHardwareAvailable &&
           isBiometricEnrolled);
 
@@ -403,7 +403,7 @@ sweetAlert.confirm(
       false
     );
       } else if (
-        securitySettings.isBiometricEnabled &&
+        isBiometricEnabled &&
         isBiometricHardwareAvailable &&
         isBiometricEnrolled
       ) {
@@ -2041,7 +2041,7 @@ export default function GalleryScreen({
       if (!vaultEnabled) {
         const hasSecurity =
           securitySettings.isPinEnabled ||
-          (securitySettings.isBiometricEnabled &&
+          (isBiometricEnabled &&
             isBiometricHardwareAvailable);
 
         if (!hasSecurity) {
@@ -2300,7 +2300,7 @@ sweetAlert.confirm(
     if (!vaultEnabled) {
       const hasSecurity =
         securitySettings.isPinEnabled ||
-        (securitySettings.isBiometricEnabled &&
+        (isBiometricEnabled &&
           isBiometricHardwareAvailable);
 
       if (!hasSecurity) {
