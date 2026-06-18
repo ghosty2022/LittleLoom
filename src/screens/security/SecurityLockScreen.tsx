@@ -94,21 +94,20 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
   const [showForgotPin, setShowForgotPin] = useState(false);
   const [securityQuestions, setSecurityQuestions] = useState<SecurityQuestion[]>([]);
   const [verifyAnswers, setVerifyAnswers] = useState(['', '', '']);
-  const [securityVerified, setSecurityVerified] = useState(false);
   const [hasSecurityQuestions, setHasSecurityQuestions] = useState(false);
 
   const { signOut, userProfile } = useAuth();
   const {
-  unlockApp,
-  isBiometricEnabled,
-  isBiometricHardwareAvailable,
-  isBiometricEnrolled,
-  getAvailableAuthMethods,
-  resetUnlockLock,
-} = useSecurity();
+    unlockApp,
+    isBiometricEnabled,
+    isBiometricHardwareAvailable,
+    isBiometricEnrolled,
+    getAvailableAuthMethods,
+    resetUnlockLock,
+  } = useSecurity();
 
   const { darkMode: isDark, themeColors, triggerHaptic } = useCustomization();
-  const { toast, error: showError } = useSweetAlert();
+  const { toast, error: showError, confirm } = useSweetAlert();
   const insets = useSafeAreaInsets();
 
   const availableMethods = getAvailableAuthMethods();
@@ -177,7 +176,6 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
 
       if (allCorrect.every(Boolean)) {
         triggerHaptic('success');
-        setSecurityVerified(true);
         setShowForgotPin(false);
         toast('Verified!', 'Redirecting to PIN reset...', 'success');
 
@@ -272,7 +270,6 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
       unlockInProgress.current = false;
       resetUnlockLock();
       setShowForgotPin(false);
-      setSecurityVerified(false);
       setVerifyAnswers(['', '', '']);
     });
     return unsubscribe;
@@ -294,17 +291,16 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     triggerHaptic('error');
     showError('Too Many Attempts', 'For security purposes, you need to sign out and sign in again.');
     setTimeout(() => {
-
-sweetAlert.confirm(
-          'Too Many Attempts',
-          'For security purposes, you need to sign out and sign in again.',
-          () => signOut(),
-          undefined,
-          'Sign Out',
-          'Cancel'
-        );
+      confirm(
+        'Too Many Attempts',
+        'For security purposes, you need to sign out and sign in again.',
+        () => signOut(),
+        undefined,
+        'Sign Out',
+        'Cancel'
+      );
     }, 500);
-  }, [signOut, triggerHaptic, showError]);
+  }, [signOut, triggerHaptic, showError, confirm]);
 
   const handlePinComplete = useCallback(
     async (completedPin: string) => {
@@ -706,15 +702,14 @@ sweetAlert.confirm(
             <TouchableOpacity
               style={styles.emergencyButton}
               onPress={() => {
-
-sweetAlert.confirm(
-                'Sign Out',
-                'Are you sure you want to sign out?',
-                () => signOut(),
-                undefined,
-                'Sign Out',
-                'Cancel'
-              );
+                confirm(
+                  'Sign Out',
+                  'Are you sure you want to sign out?',
+                  () => signOut(),
+                  undefined,
+                  'Sign Out',
+                  'Cancel'
+                );
               }}
             >
               <Text style={[styles.emergencyText, { color: colors.error }]}>Sign Out</Text>
