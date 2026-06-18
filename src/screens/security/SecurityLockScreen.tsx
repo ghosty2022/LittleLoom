@@ -235,7 +235,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
   }, []);
 
   useEffect(() => {
-    if (!securitySettings.isBiometricEnabled) return;
+    if (!isBiometricEnabled) return;
     if (!isBiometricHardwareAvailable || !isBiometricEnrolled) return;
     if (isLockedOut) return;
     if (hasAutoPrompted.current) return;
@@ -260,7 +260,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
       }
     };
   }, [
-    securitySettings.isBiometricEnabled,
+    isBiometricEnabled,
     isBiometricHardwareAvailable,
     isBiometricEnrolled,
     isLockedOut,
@@ -374,7 +374,7 @@ sweetAlert.confirm(
 
   const handleBiometricAuth = useCallback(async () => {
     if (!isBiometricHardwareAvailable || !isBiometricEnrolled) return;
-    if (!securitySettings.isBiometricEnabled) return;
+    if (!isBiometricEnabled) return;
     if (isLockedOut || isLoading || unlockInProgress.current) return;
 
     const now = Date.now();
@@ -411,7 +411,7 @@ sweetAlert.confirm(
   }, [
     isBiometricHardwareAvailable,
     isBiometricEnrolled,
-    securitySettings.isBiometricEnabled,
+    isBiometricEnabled,
     isLockedOut,
     unlockApp,
     resetUnlockLock,
