@@ -44,6 +44,47 @@ import type { GrowthMeasurement, BabyProfile } from '@/types';
 
 // ── COMPONENTS ──
 
+// ─── SHARED DESIGN TOKENS ───────────────────────────────────────────
+const DESIGN = {
+  radius: {
+    xs: 6,
+    sm: 10,
+    md: 14,
+    lg: 18,
+    xl: 22,
+    full: 999,
+  },
+  spacing: {
+    xs: 4,
+    sm: 8,
+    md: 12,
+    lg: 16,
+    xl: 20,
+    xxl: 24,
+  },
+  shadow: {
+    sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 3, elevation: 2 },
+    md: { shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 4 },
+    lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.12, shadowRadius: 16, elevation: 8 },
+  },
+  tab: {
+    height: 44,
+    pillRadius: 12,
+    activeBg: 'rgba(102,126,234,0.12)',
+    inactiveBg: 'transparent',
+    gap: 6,
+    padding: 4,
+  },
+  card: {
+    radius: 20,
+    padding: 16,
+    borderColorLight: 'rgba(255,255,255,0.4)',
+    borderColorDark: 'rgba(255,255,255,0.08)',
+    bgLight: ['rgba(255,255,255,0.95)', 'rgba(250,250,255,0.8)'],
+    bgDark: ['rgba(45,45,55,0.9)', 'rgba(25,25,35,0.7)'],
+  }
+};
+
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1067,7 +1108,7 @@ sweetAlert.confirm(
         <Ionicons name="person-add" size={64} color={theme.primary} style={{ marginBottom: 16 }} />
         <Text style={[styles.noDataTitle, { color: theme.text.primary }]}>No Baby Profile</Text>
         <Text style={[styles.noDataText, { color: theme.text.secondary }]}>Create a profile to start tracking growth</Text>
-        <TouchableOpacity style={[styles.createBtn, { backgroundColor: theme.primary }]} onPress={() => navigation.navigate('CreateBabyProfile')}>
+        <TouchableOpacity style={[styles.createBtn, { backgroundColor: theme.primary }]} onPress={() => navigation.navigate('CreateBabyProfile' as never)}>
           <Text style={styles.createBtnText}>Create Profile</Text>
         </TouchableOpacity>
       </View>
@@ -1128,7 +1169,7 @@ sweetAlert.confirm(
         {/* ── GROWTH SCORE CARD ── */}
         {growthIndex && (
           <Animated.View entering={FadeInUp.delay(100).springify()}>
-            <GlassCard onPress={() => navigation.navigate('GrowthIntelligence')}>
+            <GlassCard onPress={() => navigation.navigate('GrowthIntelligence' as never)}>
               <View style={styles.scoreCard}>
                 <View style={styles.scoreLeft}>
                   <ScoreRing value={growthIndex.compositeIndex || 0} size={80} stroke={6} color={theme.primary} />
@@ -1502,7 +1543,7 @@ const styles = StyleSheet.create({
 
   // Stats grid
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginHorizontal: 16, marginBottom: 16 },
-  metricCardWrapper: { width: (SCREEN_W - 42) / 2 },
+  metricCardWrapper: { width: (SCREEN_W - 56) / 2, marginBottom: DESIGN.spacing.md },
   metricCard: { padding: 14 },
   metricHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
   metricIconBg: { width: 38, height: 38, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
@@ -1520,17 +1561,16 @@ const styles = StyleSheet.create({
 
   // Glass card
   glassCard: {
-    borderRadius: 20,
+    borderRadius: DESIGN.card.radius,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.12)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.08,
-    shadowRadius: 24,
-    elevation: 8,
-    marginHorizontal: 16,
-    marginBottom: 12,
+    ...DESIGN.shadow.lg,
+    marginHorizontal: DESIGN.spacing.lg,
+    marginBottom: DESIGN.spacing.lg,
+  },
+  glassCardDark: {
+    borderColor: DESIGN.card.borderColorDark,
   },
   glassBorder: {
     position: 'absolute',
@@ -1570,7 +1610,7 @@ const styles = StyleSheet.create({
   timeChipText: { fontSize: 12, fontWeight: '600' },
 
   // Chart
-  chartCard: { padding: 16, marginBottom: 16 },
+  chartCard: { padding: DESIGN.card.padding, marginBottom: DESIGN.spacing.lg, borderRadius: DESIGN.card.radius },
   chartHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 },
   chartTitle: { fontSize: 17, fontWeight: '800', letterSpacing: -0.3 },
   chartSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
@@ -1582,7 +1622,7 @@ const styles = StyleSheet.create({
   addDataBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
 
   // Sections
-  section: { marginBottom: 20 },
+  section: { marginBottom: DESIGN.spacing.xl },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginHorizontal: 20, marginBottom: 10 },
   sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   sectionTitle: { fontSize: 18, fontWeight: '800', letterSpacing: -0.3 },
@@ -1635,7 +1675,7 @@ const styles = StyleSheet.create({
   emptyHistoryText: { fontSize: 14, fontWeight: '500' },
 
   // Quick actions
-  quickActions: { flexDirection: 'row', gap: 10, marginHorizontal: 16, marginBottom: 20 },
+  quickActions: { flexDirection: 'row', gap: DESIGN.spacing.md, marginHorizontal: DESIGN.spacing.lg, marginBottom: DESIGN.spacing.xl },
   quickAction: { flex: 1, borderRadius: 16, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 12, elevation: 6 },
   quickActionGradient: { paddingVertical: 16, alignItems: 'center', gap: 6 },
   quickActionIcon: { fontSize: 22 },
@@ -1643,7 +1683,7 @@ const styles = StyleSheet.create({
 
   // Modals
   modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
-  modalContent: { width: '100%', maxWidth: 400, borderRadius: 24, padding: 24, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.25, shadowRadius: 40, elevation: 20 },
+  modalContent: { width: '100%', maxWidth: 400, borderRadius: DESIGN.radius.xl, padding: DESIGN.spacing.xxl, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.25, shadowRadius: 40, elevation: 20 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   modalTitle: { fontSize: 20, fontWeight: '800', letterSpacing: -0.3 },
   modalSubtitle: { fontSize: 13, fontWeight: '500', marginTop: 2 },

@@ -23,6 +23,47 @@ import { useUser } from '../../context/UserContext';
 type Props = NativeStackScreenProps<CommunityStackParamList, 'CommunityMemberProfile'>;
 
 
+// ─── SHARED DESIGN TOKENS ───────────────────────────────────────────
+const DESIGN = {
+  radius: {
+    xs: 6,
+    sm: 10,
+    md: 14,
+    lg: 18,
+    xl: 22,
+    full: 999,
+  },
+  spacing: {
+    xs: 4,
+    sm: 8,
+    md: 12,
+    lg: 16,
+    xl: 20,
+    xxl: 24,
+  },
+  shadow: {
+    sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 3, elevation: 2 },
+    md: { shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 4 },
+    lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.12, shadowRadius: 16, elevation: 8 },
+  },
+  tab: {
+    height: 44,
+    pillRadius: 12,
+    activeBg: 'rgba(102,126,234,0.12)',
+    inactiveBg: 'transparent',
+    gap: 6,
+    padding: 4,
+  },
+  card: {
+    radius: 20,
+    padding: 16,
+    borderColorLight: 'rgba(255,255,255,0.4)',
+    borderColorDark: 'rgba(255,255,255,0.08)',
+    bgLight: ['rgba(255,255,255,0.95)', 'rgba(250,250,255,0.8)'],
+    bgDark: ['rgba(45,45,55,0.9)', 'rgba(25,25,35,0.7)'],
+  }
+};
+
 const { width } = Dimensions.get('window');
 
 // ─── DESIGN TOKENS ───────────────────────────────────────────────────
@@ -261,7 +302,7 @@ const stickyHeaderTranslate = useAnimatedStyle(() => ({
   const handleMessage = () => {
     if (!user || isBlocked) return;
     triggerHaptic('light');
-    navigation.navigate('Chat', { userId });
+    navigation.navigate('Chat' as never, { userId });
   };
 
   const handleMoreOptions = () => {
@@ -269,7 +310,7 @@ const stickyHeaderTranslate = useAnimatedStyle(() => ({
     const options = [
       { text: 'Cancel', style: 'cancel' as const },
       { text: 'Share Profile', onPress: handleShareProfile },
-      { text: 'Report User', onPress: () => navigation.navigate('Report', { type: 'user', targetId: userId, targetUserId: userId }), style: 'destructive' as const },
+      { text: 'Report User', onPress: () => navigation.navigate('Report' as never, { type: 'user', targetId: userId, targetUserId: userId }), style: 'destructive' as const },
       { text: isBlocked ? 'Unblock' : 'Block', onPress: handleBlockToggle, style: 'destructive' as const },
     ];
 
@@ -494,7 +535,7 @@ sweetAlert.confirm(
               post={post}
               index={index}
               isDark={isDark}
-              onPress={() => navigation.navigate('PostDetail', { postId: post.id })}
+              onPress={() => navigation.navigate('PostDetail' as never, { postId: post.id })}
             />
           ))}
         </View>
@@ -657,61 +698,133 @@ const styles = StyleSheet.create({
 
   // Sticky Header
   stickyHeader: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 12, elevation: 10 },
-  stickyHeaderContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 12 },
-  headerBtn: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' },
+  stickyHeaderContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: DESIGN.spacing.lg, paddingBottom: 12 },
+  headerBtn: { width: 40, height: 40, borderRadius: DESIGN.radius.md, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' },
   stickyHeaderCenter: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   stickyHeaderTitle: { fontSize: 17, fontWeight: '800', color: '#1e293b', letterSpacing: -0.3, maxWidth: 180 },
 
   // Profile Hero with Banner
-  profileHero: { paddingHorizontal: 20, paddingBottom: 20 },
-  banner: { height: 120, borderRadius: 20, marginBottom: -50, marginHorizontal: -20, marginTop: -20 },
+  profileHero: { paddingHorizontal: DESIGN.spacing.xl, paddingBottom: 20 },
+  banner: { height: 120, borderRadius: DESIGN.radius.xl, marginBottom: -50, marginHorizontal: -20, marginTop: -20 },
   profileHeroContent: { position: 'relative', zIndex: 2 },
   avatarSection: { alignItems: 'center', marginBottom: 12 },
   avatarWrapper: { position: 'relative' },
-  onlineIndicator: { position: 'absolute', bottom: 4, right: 4, width: 24, height: 24, borderRadius: 12, backgroundColor: '#fff', borderWidth: 3, borderColor: '#fff', justifyContent: 'center', alignItems: 'center' },
+  onlineIndicator: { position: 'absolute', bottom: 4, right: 4, width: 24, height: 24, borderRadius: DESIGN.radius.md, backgroundColor: '#fff', borderWidth: 3, borderColor: '#fff', justifyContent: 'center', alignItems: 'center' },
   onlineDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#10b981' },
   profileInfo: { alignItems: 'center' },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   profileName: { fontSize: 24, fontWeight: '800', color: '#1e293b', letterSpacing: -0.5, textAlign: 'center' },
   verifiedBadge: { width: 20, height: 20, borderRadius: 10, backgroundColor: '#667eea', justifyContent: 'center', alignItems: 'center' },
   profileHandle: { fontSize: 14, color: '#64748b', marginTop: 4, fontWeight: '600' },
-  profileBio: { fontSize: 14, color: '#475569', textAlign: 'center', marginTop: 8, paddingHorizontal: 20, lineHeight: 20, fontWeight: '500' },
+  profileBio: { fontSize: 14, color: '#475569', textAlign: 'center', marginTop: 8, paddingHorizontal: DESIGN.spacing.xl, lineHeight: 20, fontWeight: '500' },
   locationRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8 },
   locationText: { fontSize: 13, color: '#94a3b8', fontWeight: '500' },
 
   // Stats
   statsRow: { flexDirection: 'row', justifyContent: 'space-around', width: '100%', marginTop: 16, paddingHorizontal: 8 },
   statBadge: { alignItems: 'center', gap: 6 },
-  statIconBg: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  statIconBg: { width: 44, height: 44, borderRadius: DESIGN.radius.md, alignItems: 'center', justifyContent: 'center' },
   statIcon: { fontSize: 22 },
   statValue: { fontSize: 20, fontWeight: '800' },
   statLabel: { fontSize: 11, color: '#64748b', fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
 
   // Action Buttons
-  actionButtons: { flexDirection: 'row', gap: 12, marginTop: 20, width: '100%', paddingHorizontal: 20 },
-  followBtn: { flex: 1, backgroundColor: '#667eea', borderRadius: 14, paddingVertical: 12, alignItems: 'center', justifyContent: 'center' },
+  actionButtons: { flexDirection: 'row', gap: DESIGN.spacing.lg, marginTop: 20, width: '100%', paddingHorizontal: 20 },
+  followBtn: { flex: 1, backgroundColor: '#667eea', borderRadius: DESIGN.radius.md, paddingVertical: 12, alignItems: 'center', justifyContent: 'center' },
   followingBtn: { backgroundColor: '#f1f5f9', borderWidth: 1, borderColor: '#e2e8f0' },
   blockedBtn: { backgroundColor: '#fef2f2', borderWidth: 1, borderColor: '#fecaca' },
   followBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
   followingBtnText: { color: '#64748b' },
   blockedBtnText: { color: '#ef4444' },
-  messageBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: 'rgba(102,126,234,0.1)', borderRadius: 14, paddingVertical: 12, borderWidth: 1, borderColor: 'rgba(102,126,234,0.2)' },
+  messageBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: 'rgba(102,126,234,0.1)', borderRadius: DESIGN.radius.md, paddingVertical: 12, borderWidth: 1, borderColor: 'rgba(102,126,234,0.2)' },
   messageBtnDisabled: { opacity: 0.5 },
   messageBtnText: { fontSize: 15, fontWeight: '700', color: '#667eea' },
 
   // Tab Bar
-  tabBarContainer: { paddingHorizontal: 16, marginBottom: 16 },
-  tabBar: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.8)', borderRadius: 16, padding: 4, gap: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 4 },
-  tabBarDark: { backgroundColor: 'rgba(30,30,40,0.8)' },
-  tab: { flex: 1 },
-  tabBg: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, borderRadius: 12, gap: 6 },
-  tabLabel: { fontSize: 12, fontWeight: '600', color: '#64748b' },
-  tabLabelActive: { color: '#667eea', fontWeight: '700' },
+  
+  // === UNIFIED TAB BAR ===
+  tabBarContainer: {
+    paddingHorizontal: DESIGN.spacing.lg,
+    marginBottom: DESIGN.spacing.lg,
+  },
+  tabBar: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255,255,255,0.75)',
+    borderRadius: DESIGN.radius.lg,
+    padding: DESIGN.tab.padding,
+    gap: DESIGN.tab.gap,
+    ...DESIGN.shadow.md,
+  },
+  tabBarDark: {
+    backgroundColor: 'rgba(30,30,40,0.75)',
+  },
+  tab: {
+    flex: 1,
+    height: DESIGN.tab.height,
+  },
+  tabBg: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: '100%',
+    borderRadius: DESIGN.tab.pillRadius,
+    gap: 6,
+  },
+  tabBgActive: {
+    backgroundColor: DESIGN.tab.activeBg,
+  },
+  tabBgDangerActive: {
+    backgroundColor: 'rgba(239,68,68,0.12)',
+  },
+  tabLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#64748b',
+    letterSpacing: -0.2,
+  },
+  tabLabelActive: {
+    color: '#667eea',
+    fontWeight: '700',
+  },
+  tabLabelDangerActive: {
+    color: '#ef4444',
+    fontWeight: '700',
+  },
+  tabIconActive: {
+    color: '#667eea',
+  },
+  tabIconDangerActive: {
+    color: '#ef4444',
+  },
+
 
   // GlassCard
-  glassCard: { borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)', shadowColor: '#667eea', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.12, shadowRadius: 16, elevation: 8 },
-  glassBorder: { position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.6)' },
-  glassContent: { flex: 1 },
+  
+  // === UNIFIED GLASS CARD ===
+  glassCard: {
+    borderRadius: DESIGN.card.radius,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: DESIGN.card.borderColorLight,
+    ...DESIGN.shadow.lg,
+    marginHorizontal: DESIGN.spacing.lg,
+    marginBottom: DESIGN.spacing.lg,
+  },
+  glassCardDark: {
+    borderColor: DESIGN.card.borderColorDark,
+  },
+  glassBorder: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.5)',
+  },
+  glassContent: {
+    padding: DESIGN.card.padding,
+  },
+
 
   // Posts
   tabPanel: { paddingBottom: 20 },
@@ -722,12 +835,12 @@ const styles = StyleSheet.create({
   badgeText: { fontSize: 12, fontWeight: '700' },
   postsList: { gap: 10 },
   postCard: { padding: 16 },
-  postHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  postHeader: { flexDirection: 'row', alignItems: 'center', gap: DESIGN.spacing.md, marginBottom: 10 },
   topicDot: { width: 8, height: 8, borderRadius: 4 },
   topicText: { fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5, flex: 1 },
   postTime: { fontSize: 12, color: '#94a3b8', fontWeight: '500' },
   postContent: { fontSize: 15, fontWeight: '600', color: '#1e293b', lineHeight: 22, marginBottom: 12 },
-  postImageContainer: { borderRadius: 16, overflow: 'hidden', marginBottom: 12 },
+  postImageContainer: { borderRadius: DESIGN.radius.lg, overflow: 'hidden', marginBottom: 12 },
   postImage: { width: '100%', height: 180, borderRadius: 16 },
   postFooter: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   postStat: { flexDirection: 'row', alignItems: 'center', gap: 4 },
@@ -735,29 +848,29 @@ const styles = StyleSheet.create({
 
   // Empty State
   emptyCard: { padding: 40, alignItems: 'center', justifyContent: 'center' },
-  emptyStateIcon: { width: 64, height: 64, borderRadius: 24, backgroundColor: 'rgba(102,126,234,0.1)', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  emptyStateIcon: { width: 64, height: 64, borderRadius: DESIGN.radius.xl, backgroundColor: 'rgba(102,126,234,0.1)', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
   emptyStateSmall: { padding: 32, alignItems: 'center' },
   emptyStateTitle: { fontSize: 16, fontWeight: '700', color: '#1e293b', textAlign: 'center', marginBottom: 8 },
   emptyText: { fontSize: 14, color: '#94a3b8', textAlign: 'center', fontWeight: '500', lineHeight: 20 },
 
   // About Tab
   formCard: { padding: 0, marginBottom: 16 },
-  sectionLabel: { fontSize: 20, fontWeight: '800', color: '#1e293b', letterSpacing: -0.3, paddingHorizontal: 20, paddingTop: 20, marginBottom: 16 },
+  sectionLabel: { fontSize: 20, fontWeight: '800', color: '#1e293b', letterSpacing: -0.3, paddingHorizontal: DESIGN.spacing.xl, paddingTop: 20, marginBottom: 16 },
   infoItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 20 },
-  infoIcon: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  infoIcon: { width: 40, height: 40, borderRadius: DESIGN.radius.md, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
   infoContent: { flex: 1 },
   infoLabel: { fontSize: 12, fontWeight: '500', marginBottom: 2, color: '#64748b' },
   infoValue: { fontSize: 15, fontWeight: '600', color: '#1e293b' },
   infoDivider: { height: 1, marginHorizontal: 20 },
 
   // Topics
-  topicsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 20, paddingBottom: 20 },
+  topicsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: DESIGN.spacing.md, paddingHorizontal: DESIGN.spacing.xl, paddingBottom: 20 },
   topicChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
   topicChipText: { fontSize: 13, fontWeight: '700' },
 
   // Achievements
   achievementsCard: { padding: 20, gap: 12 },
-  achievementBadge: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 14, borderRadius: 16 },
+  achievementBadge: { flexDirection: 'row', alignItems: 'center', gap: DESIGN.spacing.lg, padding: 14, borderRadius: 16 },
   achievementEmoji: { fontSize: 28 },
   achievementInfo: { flex: 1 },
   achievementName: { fontSize: 16, fontWeight: '700' },

@@ -51,6 +51,47 @@ import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrapp
 
 type EditGuardianScreenProps = NativeStackScreenProps<RootStackParamList, 'EditGuardian'>;
 
+// ─── SHARED DESIGN TOKENS ───────────────────────────────────────────
+const DESIGN = {
+  radius: {
+    xs: 6,
+    sm: 10,
+    md: 14,
+    lg: 18,
+    xl: 22,
+    full: 999,
+  },
+  spacing: {
+    xs: 4,
+    sm: 8,
+    md: 12,
+    lg: 16,
+    xl: 20,
+    xxl: 24,
+  },
+  shadow: {
+    sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 3, elevation: 2 },
+    md: { shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 4 },
+    lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.12, shadowRadius: 16, elevation: 8 },
+  },
+  tab: {
+    height: 44,
+    pillRadius: 12,
+    activeBg: 'rgba(102,126,234,0.12)',
+    inactiveBg: 'transparent',
+    gap: 6,
+    padding: 4,
+  },
+  card: {
+    radius: 20,
+    padding: 16,
+    borderColorLight: 'rgba(255,255,255,0.4)',
+    borderColorDark: 'rgba(255,255,255,0.08)',
+    bgLight: ['rgba(255,255,255,0.95)', 'rgba(250,250,255,0.8)'],
+    bgDark: ['rgba(45,45,55,0.9)', 'rgba(25,25,35,0.7)'],
+  }
+};
+
 const AnimatedScrollView = Animated.ScrollView;
 const { width, height } = Dimensions.get('window');
 
@@ -735,7 +776,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
       {!isEditing && (
         <View style={styles.quickActionsRow}>
           {!isCurrentUser && (
-            <TouchableOpacity style={styles.quickActionBtn} onPress={() => navigation.navigate('FamilyChat', { memberId: member?.id, memberName: member?.fullName, memberAvatar: member?.avatar, memberRole: member?.role })}>
+            <TouchableOpacity style={styles.quickActionBtn} onPress={() => navigation.navigate('FamilyChat' as never, { memberId: member?.id, memberName: member?.fullName, memberAvatar: member?.avatar, memberRole: member?.role })}>
               <LinearGradient colors={roleConfig?.gradient || dynamicGradient} style={styles.quickActionGradient}><Ionicons name="chatbubble" size={20} color="#fff" /><Text style={styles.quickActionText}>Message</Text></LinearGradient>
             </TouchableOpacity>
           )}
@@ -963,40 +1004,40 @@ const styles = StyleSheet.create({
 
   // Sticky Header
   stickyHeader: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 12, elevation: 10 },
-  stickyHeaderContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 12 },
-  headerBtn: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' },
+  stickyHeaderContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: DESIGN.spacing.lg, paddingBottom: 12 },
+  headerBtn: { width: 40, height: 40, borderRadius: DESIGN.radius.md, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' },
   stickyHeaderCenter: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   stickyHeaderTitle: { fontSize: 17, fontWeight: '800', color: '#1e293b', letterSpacing: -0.3, maxWidth: 180 },
-  saveBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12, backgroundColor: '#667eea', minWidth: 60, alignItems: 'center' },
+  saveBtn: { paddingHorizontal: DESIGN.spacing.lg, paddingVertical: 8, borderRadius: DESIGN.radius.md, backgroundColor: '#667eea', minWidth: 60, alignItems: 'center' },
   saveBtnDisabled: { backgroundColor: 'rgba(100,116,139,0.2)' },
   saveBtnText: { fontSize: 14, fontWeight: '800', color: '#fff' },
   saveBtnTextDisabled: { color: '#94a3b8' },
 
   // Profile Hero
-  profileHero: { paddingHorizontal: 20, paddingBottom: 20 },
+  profileHero: { paddingHorizontal: DESIGN.spacing.xl, paddingBottom: 20 },
   profileHeroContent: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   avatarSection: { position: 'relative' },
   profileInfo: { flex: 1 },
   profileName: { fontSize: 24, fontWeight: '800', color: '#1e293b', letterSpacing: -0.5 },
   profileMeta: { fontSize: 14, color: '#64748b', marginTop: 2, fontWeight: '500' },
-  profileTags: { flexDirection: 'row', marginTop: 8, gap: 8, flexWrap: 'wrap' },
+  profileTags: { flexDirection: 'row', marginTop: 8, gap: DESIGN.spacing.md, flexWrap: 'wrap' },
   profileTag: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, gap: 4 },
   profileTagText: { fontSize: 12, fontWeight: '700' },
   editingDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#f59e0b' },
-  editToggleBtn: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(102,126,234,0.1)', alignItems: 'center', justifyContent: 'center' },
+  editToggleBtn: { width: 40, height: 40, borderRadius: DESIGN.radius.md, backgroundColor: 'rgba(102,126,234,0.1)', alignItems: 'center', justifyContent: 'center' },
 
   // Tab Bar
-  tabBarContainer: { paddingHorizontal: 16, marginBottom: 16 },
-  tabBar: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.8)', borderRadius: 16, padding: 4, gap: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 4 },
+  tabBarContainer: { paddingHorizontal: DESIGN.spacing.lg, marginBottom: 16 },
+  tabBar: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.8)', borderRadius: DESIGN.radius.lg, padding: 4, gap: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 4 },
   tabBarDark: { backgroundColor: 'rgba(30,30,40,0.8)' },
   tab: { flex: 1 },
-  tabBg: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, borderRadius: 12, gap: 6 },
+  tabBg: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, borderRadius: DESIGN.radius.md, gap: 6 },
   tabLabel: { fontSize: 12, fontWeight: '600', color: '#64748b' },
   tabLabelActive: { color: '#667eea', fontWeight: '700' },
   tabLabelDanger: { color: '#ef4444', fontWeight: '700' },
 
   // GlassCard
-  glassCard: { borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)', shadowColor: '#667eea', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.12, shadowRadius: 16, elevation: 8 },
+  glassCard: { borderRadius: DESIGN.radius.xl, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)', shadowColor: '#667eea', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.12, shadowRadius: 16, elevation: 8 },
   glassBorder: { position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.6)' },
   glassContent: { flex: 1 },
 
@@ -1004,22 +1045,22 @@ const styles = StyleSheet.create({
   statsCard: { padding: 0, marginBottom: 16 },
   statsRow: { flexDirection: 'row', justifyContent: 'space-around', paddingVertical: 16 },
   statBadge: { alignItems: 'center', gap: 6 },
-  statIconBg: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  statIconBg: { width: 44, height: 44, borderRadius: DESIGN.radius.md, alignItems: 'center', justifyContent: 'center' },
   statIcon: { fontSize: 22 },
   statValue: { fontSize: 20, fontWeight: '800' },
   statLabel: { fontSize: 11, color: '#64748b', fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
 
   // Form Card
   formCard: { padding: 0, marginBottom: 16 },
-  sectionHeaderWithEdit: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 20, marginBottom: 16 },
+  sectionHeaderWithEdit: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: DESIGN.spacing.xl, paddingTop: 20, marginBottom: 16 },
   sectionLabel: { fontSize: 20, fontWeight: '800', color: '#1e293b', letterSpacing: -0.3 },
-  editIconBtn: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(102,126,234,0.1)', alignItems: 'center', justifyContent: 'center' },
+  editIconBtn: { width: 40, height: 40, borderRadius: DESIGN.radius.md, backgroundColor: 'rgba(102,126,234,0.1)', alignItems: 'center', justifyContent: 'center' },
   editingBadge: { backgroundColor: '#f59e0b', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
   editingBadgeText: { color: '#fff', fontSize: 12, fontWeight: '700' },
 
-  inputGroup: { marginBottom: 20, paddingHorizontal: 20 },
+  inputGroup: { marginBottom: DESIGN.spacing.xl, paddingHorizontal: 20 },
   inputLabel: { fontSize: 13, fontWeight: '700', color: '#64748b', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
-  inputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(100,116,139,0.08)', borderRadius: 18, paddingHorizontal: 18, height: 56, borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)' },
+  inputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(100,116,139,0.08)', borderRadius: DESIGN.radius.lg, paddingHorizontal: 18, height: 56, borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)' },
   inputContainerDark: { backgroundColor: 'rgba(30,30,40,0.5)', borderColor: 'rgba(255,255,255,0.06)' },
   inputDisabled: { opacity: 0.6 },
   inputIcon: { marginRight: 14 },
@@ -1031,7 +1072,7 @@ const styles = StyleSheet.create({
    ownedBadgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
 
   // Preferences
-  preferenceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16 },
+  preferenceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: DESIGN.spacing.xl, paddingVertical: 16 },
   preferenceInfo: { flexDirection: 'row', alignItems: 'center', gap: 14, flex: 1 },
   preferenceText: { gap: 2 },
   preferenceTitle: { fontSize: 16, fontWeight: '700', color: '#1e293b' },
@@ -1039,7 +1080,7 @@ const styles = StyleSheet.create({
 
   // Info Items
   infoItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 20 },
-  infoIcon: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  infoIcon: { width: 40, height: 40, borderRadius: DESIGN.radius.md, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
   infoContent: { flex: 1 },
   infoLabel: { fontSize: 12, fontWeight: '500', marginBottom: 2, color: '#64748b' },
 infoValue: { fontSize: 15, fontWeight: '600', color: '#1e293b' },
@@ -1049,8 +1090,8 @@ infoValue: { fontSize: 15, fontWeight: '600', color: '#1e293b' },
   statusDot: { width: 8, height: 8, borderRadius: 4 },
 
   // Quick Actions
-  quickActionsRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
-  quickActionBtn: { flex: 1, borderRadius: 16, overflow: 'hidden' },
+  quickActionsRow: { flexDirection: 'row', gap: DESIGN.spacing.md, marginBottom: 20 },
+  quickActionBtn: { flex: 1, borderRadius: DESIGN.radius.lg, overflow: 'hidden' },
   quickActionGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, gap: 8 },
   quickActionText: { fontSize: 14, fontWeight: '700', color: '#fff' },
 
@@ -1061,12 +1102,12 @@ infoValue: { fontSize: 15, fontWeight: '600', color: '#1e293b' },
   badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
   badgeText: { fontSize: 12, fontWeight: '700' },
   emptyCard: { padding: 40, alignItems: 'center', justifyContent: 'center' },
-  emptyStateIcon: { width: 64, height: 64, borderRadius: 24, backgroundColor: 'rgba(102,126,234,0.1)', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  emptyStateIcon: { width: 64, height: 64, borderRadius: DESIGN.radius.xl, backgroundColor: 'rgba(102,126,234,0.1)', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
   emptyStateTitle: { fontSize: 16, fontWeight: '700', color: '#1e293b', textAlign: 'center', marginBottom: 8 },
   emptyText: { fontSize: 14, color: '#64748b', textAlign: 'center', lineHeight: 20 },
   activitiesList: { gap: 10 },
   activityItemCard: { flexDirection: 'row', alignItems: 'center', padding: 14 },
-  activityIcon: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  activityIcon: { width: 44, height: 44, borderRadius: DESIGN.radius.md, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
   activityEmoji: { fontSize: 20 },
   activityContent: { flex: 1 },
   activityTitle: { fontSize: 15, fontWeight: '700', color: '#1e293b' },
@@ -1078,13 +1119,13 @@ infoValue: { fontSize: 15, fontWeight: '600', color: '#1e293b' },
   // Permissions
   permissionsCard: { padding: 20 },
   permissionGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  permissionChip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, borderWidth: 1, gap: 6 },
+  permissionChip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderRadius: DESIGN.radius.md, borderWidth: 1, gap: 6 },
   permissionChipText: { fontSize: 13, fontWeight: '600' },
-  permissionNote: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 16, padding: 12, borderRadius: 12, backgroundColor: 'rgba(102,126,234,0.08)' },
+  permissionNote: { flexDirection: 'row', alignItems: 'center', gap: DESIGN.spacing.md, marginTop: 16, padding: 12, borderRadius: DESIGN.radius.md, backgroundColor: 'rgba(102,126,234,0.08)' },
   permissionNoteText: { fontSize: 13, color: '#64748b', flex: 1, lineHeight: 18 },
-  statsGrid: { flexDirection: 'row', gap: 10, marginBottom: 16 },
-  statCard: { flex: 1, borderRadius: 16, padding: 16, alignItems: 'center', justifyContent: 'center' },
-  managePermissionsBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderRadius: 16, marginTop: 8 },
+  statsGrid: { flexDirection: 'row', gap: DESIGN.spacing.md, marginBottom: 16 },
+  statCard: { flex: 1, borderRadius: DESIGN.radius.lg, padding: 16, alignItems: 'center', justifyContent: 'center' },
+  managePermissionsBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderRadius: DESIGN.radius.lg, marginTop: 8 },
   managePermissionsText: { fontSize: 15, fontWeight: '700', flex: 1, marginLeft: 12 },
 
   // Activity Breakdown
@@ -1102,13 +1143,13 @@ infoValue: { fontSize: 15, fontWeight: '600', color: '#1e293b' },
   // Danger Zone
   dangerCard: { padding: 24, alignItems: 'center' },
   dangerIconContainer: { marginBottom: 16 },
-  dangerIcon: { width: 64, height: 64, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  dangerIcon: { width: 64, height: 64, borderRadius: DESIGN.radius.xl, alignItems: 'center', justifyContent: 'center' },
   dangerTitle: { fontSize: 20, fontWeight: '800', color: '#ef4444', marginBottom: 8 },
   dangerDescription: { fontSize: 14, color: '#64748b', textAlign: 'center', lineHeight: 20, marginBottom: 20 },
   dangerStats: { flexDirection: 'row', gap: 20, marginBottom: 24 },
   dangerStat: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   dangerStatText: { fontSize: 13, color: '#94a3b8', fontWeight: '500' },
-  deleteButton: { width: '100%', borderRadius: 16, overflow: 'hidden' },
+  deleteButton: { width: '100%', borderRadius: DESIGN.radius.lg, overflow: 'hidden' },
   deleteGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 16, gap: 8 },
   deleteButtonText: { fontSize: 16, fontWeight: '800', color: '#fff' },
   dangerNote: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 16, paddingHorizontal: 20 },
@@ -1116,22 +1157,22 @@ infoValue: { fontSize: 15, fontWeight: '600', color: '#1e293b' },
 
   // Image Picker
   imagePickerOptions: { padding: 8 },
-  imagePickerOption: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, marginBottom: 8 },
-  imagePickerIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
+  imagePickerOption: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: DESIGN.radius.lg, marginBottom: 8 },
+  imagePickerIcon: { width: 48, height: 48, borderRadius: DESIGN.radius.md, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
   imagePickerLabel: { fontSize: 16, fontWeight: '600', color: '#1e293b', flex: 1 },
 
   // Contact Modal
   contactOptions: { padding: 8 },
-  contactOption: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, marginBottom: 8 },
-  contactIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
+  contactOption: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: DESIGN.radius.lg, marginBottom: 8 },
+  contactIcon: { width: 48, height: 48, borderRadius: DESIGN.radius.md, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
   contactInfo: { flex: 1 },
   contactLabel: { fontSize: 16, fontWeight: '700', color: '#1e293b', marginBottom: 2 },
   contactValue: { fontSize: 13, color: '#64748b', fontWeight: '500' },
 
   // Role Modal
   roleOptions: { padding: 8 },
-  roleOption: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, marginBottom: 8, borderWidth: 1, borderColor: 'transparent' },
-  roleOptionIcon: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
+  roleOption: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: DESIGN.radius.lg, marginBottom: 8, borderWidth: 1, borderColor: 'transparent' },
+  roleOptionIcon: { width: 44, height: 44, borderRadius: DESIGN.radius.md, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
   roleOptionInfo: { flex: 1 },
   roleOptionTitle: { fontSize: 16, fontWeight: '700', color: '#1e293b', marginBottom: 2 },
   roleOptionDesc: { fontSize: 13, color: '#64748b', fontWeight: '500' },
@@ -1142,17 +1183,17 @@ infoValue: { fontSize: 15, fontWeight: '600', color: '#1e293b' },
   emojiPickerSheetDark: { backgroundColor: '#1e1e2e' },
   emojiPickerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   emojiPickerTitle: { fontSize: 18, fontWeight: '800', color: '#1e293b' },
-  emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' },
-  emojiButton: { width: 52, height: 52, borderRadius: 16, backgroundColor: 'rgba(100,116,139,0.08)', alignItems: 'center', justifyContent: 'center' },
+  emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: DESIGN.spacing.md, justifyContent: 'center' },
+  emojiButton: { width: 52, height: 52, borderRadius: DESIGN.radius.lg, backgroundColor: 'rgba(100,116,139,0.08)', alignItems: 'center', justifyContent: 'center' },
   emojiButtonText: { fontSize: 28 },
 
   // Modal
   modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, backgroundColor: 'rgba(0,0,0,0.4)' },
-  modalContent: { width: '100%', maxWidth: 400, borderRadius: 24, overflow: 'hidden', padding: 24 },
+  modalContent: { width: '100%', maxWidth: 400, borderRadius: DESIGN.radius.xl, overflow: 'hidden', padding: 24 },
   modalContentDark: { backgroundColor: '#1e1e2e' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   modalTitle: { fontSize: 20, fontWeight: '800', color: '#1e293b' },
-  modalCloseBtn: { width: 36, height: 36, borderRadius: 12, backgroundColor: 'rgba(100,116,139,0.1)', alignItems: 'center', justifyContent: 'center' },
+  modalCloseBtn: { width: 36, height: 36, borderRadius: DESIGN.radius.md, backgroundColor: 'rgba(100,116,139,0.1)', alignItems: 'center', justifyContent: 'center' },
 
   // Retry
   retryButton: { marginTop: 20, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 14 },

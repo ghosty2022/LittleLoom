@@ -39,6 +39,47 @@ import { useSweetAlert } from '../../components/SweetAlert';
 import { useUser } from '../../context/UserContext';
 type FamilySharingScreenProps = NativeStackScreenProps<RootStackParamList, 'FamilySharing'>;
 
+// ─── SHARED DESIGN TOKENS ───────────────────────────────────────────
+const DESIGN = {
+  radius: {
+    xs: 6,
+    sm: 10,
+    md: 14,
+    lg: 18,
+    xl: 22,
+    full: 999,
+  },
+  spacing: {
+    xs: 4,
+    sm: 8,
+    md: 12,
+    lg: 16,
+    xl: 20,
+    xxl: 24,
+  },
+  shadow: {
+    sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 3, elevation: 2 },
+    md: { shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 4 },
+    lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.12, shadowRadius: 16, elevation: 8 },
+  },
+  tab: {
+    height: 44,
+    pillRadius: 12,
+    activeBg: 'rgba(102,126,234,0.12)',
+    inactiveBg: 'transparent',
+    gap: DESIGN.spacing.sm,
+    padding: 4,
+  },
+  card: {
+    radius: 20,
+    padding: DESIGN.card.padding,
+    borderColorLight: 'rgba(255,255,255,0.4)',
+    borderColorDark: 'rgba(255,255,255,0.08)',
+    bgLight: ['rgba(255,255,255,0.95)', 'rgba(250,250,255,0.8)'],
+    bgDark: ['rgba(45,45,55,0.9)', 'rgba(25,25,35,0.7)'],
+  }
+};
+
 const AnimatedScrollView = Animated.ScrollView;
 const { width, height } = Dimensions.get('window');
 
@@ -828,7 +869,7 @@ sweetAlert.confirm(
 
   const handleFamilyChatPress = (member: FamilyMember) => {
     if (!currentBaby) return;
-    navigation.navigate('FamilyChat', {
+    navigation.navigate('FamilyChat' as never, {
       memberId: member.id,
       memberName: member.fullName,
       memberAvatar: member.avatar,
@@ -893,7 +934,7 @@ sweetAlert.confirm(
       <View style={styles.quickActionsRow}>
         <TouchableOpacity
           style={styles.iconAction}
-          onPress={() => navigation.navigate('FamilyChatList')}
+          onPress={() => navigation.navigate('FamilyChatList' as never)}
         >
           <Ionicons name="chatbubbles" size={24} color="#ec4899" />
           <Text style={[styles.iconActionLabel, isDark && styles.textMuted]}>Chat</Text>
@@ -1786,7 +1827,7 @@ sweetAlert.confirm(
             style={[styles.addBabyOption, isDark && styles.addBabyOptionDark]}
             onPress={() => {
               setShowBabySelector(false);
-              navigation.navigate('CreateBabyProfile');
+              navigation.navigate('CreateBabyProfile' as never);
             }}
           >
             <View style={[styles.addBabyIcon, { backgroundColor: themeColors.colors[0] }]}>
@@ -1814,7 +1855,7 @@ sweetAlert.confirm(
             style={[styles.settingsOption, isDark && styles.settingsOptionDark]}
             onPress={() => {
               setShowFamilySettings(false);
-              navigation.navigate('TrackerReminders');
+              navigation.navigate('TrackerReminders' as never);
             }}
           >
             <Ionicons name="notifications-outline" size={24} color="#f59e0b" />
@@ -1940,7 +1981,7 @@ const styles = StyleSheet.create({
     opacity: 0.5
   },
   scrollContent: {
-    paddingHorizontal: 16,
+    paddingHorizontal: DESIGN.spacing.lg,
   },
   headerContainer: {
     position: 'absolute',
@@ -1956,7 +1997,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
+    paddingHorizontal: DESIGN.spacing.lg,
     paddingBottom: 12,
   },
   headerBtn: {
@@ -1976,7 +2017,7 @@ const styles = StyleSheet.create({
   },
   headerBtnDark: {
     backgroundColor: 'rgba(40,40,50,0.95)',
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: DESIGN.card.borderColorDark,
   },
   headerBtnAccent: {
     backgroundColor: '#667eea',
@@ -2008,7 +2049,7 @@ const styles = StyleSheet.create({
   quickActionsRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    paddingHorizontal: 16,
+    paddingHorizontal: DESIGN.spacing.lg,
     paddingBottom: 12,
   },
   iconAction: {
@@ -2021,25 +2062,87 @@ const styles = StyleSheet.create({
     color: '#64748b',
     marginTop: 4,
   },
-  tabContainer: {
-    flexDirection: 'row',
-    backgroundColor: 'rgba(255,255,255,0.8)',
-    marginHorizontal: 16,
-    borderRadius: 16,
-    padding: 4,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.08,
-        shadowRadius: 8
-      },
-      android: {
-        elevation: 2,
-        backgroundColor: 'rgba(255,255,255,0.95)',
-      },
-    }),
+  
+  // === UNIFIED TAB BAR ===
+  tabBarContainer: {
+    paddingHorizontal: DESIGN.spacing.lg,
+    marginBottom: DESIGN.spacing.lg,
   },
+  tabBar: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255,255,255,0.75)',
+    borderRadius: DESIGN.radius.lg,
+    padding: DESIGN.tab.padding,
+    gap: DESIGN.tab.gap,
+    ...DESIGN.shadow.md,
+  },
+  tabBarDark: {
+    backgroundColor: 'rgba(30,30,40,0.75)',
+  },
+  tab: {
+    flex: 1,
+    height: DESIGN.tab.height,
+  },
+  tabBg: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: '100%',
+    borderRadius: DESIGN.tab.pillRadius,
+    gap: DESIGN.spacing.sm,
+  },
+  tabBgActive: {
+    backgroundColor: DESIGN.tab.activeBg,
+  },
+  tabBgDangerActive: {
+    backgroundColor: 'rgba(239,68,68,0.12)',
+  },
+  tabLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#64748b',
+    letterSpacing: -0.2,
+  },
+  tabLabelActive: {
+    color: '#667eea',
+    fontWeight: '700',
+  },
+  tabLabelDangerActive: {
+    color: '#ef4444',
+    fontWeight: '700',
+  },
+  tabIconActive: {
+    color: '#667eea',
+  },
+  tabIconDangerActive: {
+    color: '#ef4444',
+  },
+
+  // Legacy aliases for compatibility
+  tabContainer: {
+    paddingHorizontal: DESIGN.spacing.lg,
+    marginBottom: DESIGN.spacing.lg,
+  },
+  tabContainerDark: {},
+  tab: {
+    flex: 1,
+    height: DESIGN.tab.height,
+  },
+  tabActive: {
+    backgroundColor: DESIGN.tab.activeBg,
+    borderRadius: DESIGN.tab.pillRadius,
+  },
+  tabText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  tabTextActive: {
+    color: '#667eea',
+    fontWeight: '700',
+  },
+
+,
   tabContainerDark: {
     backgroundColor: 'rgba(30,30,35,0.8)',
     ...Platform.select({
@@ -2073,8 +2176,8 @@ const styles = StyleSheet.create({
     paddingTop: 16,
   },
   memberCardWrapper: {
-    marginBottom: 14,
-    borderRadius: 20,
+    marginBottom: DESIGN.spacing.lg,
+    borderRadius: DESIGN.card.radius,
   },
   memberCardTouchable: {
     width: '100%',
@@ -2086,8 +2189,8 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   familyStatsGradient: {
-    borderRadius: 20,
-    padding: 16,
+    borderRadius: DESIGN.card.radius,
+    padding: DESIGN.card.padding,
   },
   familyStatsRow: {
     flexDirection: 'row',
@@ -2120,7 +2223,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 14,
+    marginBottom: DESIGN.spacing.lg,
   },
   sectionTitle: {
     fontSize: 18,
@@ -2138,8 +2241,8 @@ const styles = StyleSheet.create({
   },
   recentActivityCard: {
     backgroundColor: 'rgba(255,255,255,0.8)',
-    borderRadius: 20,
-    padding: 16,
+    borderRadius: DESIGN.card.radius,
+    padding: DESIGN.card.padding,
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -2162,10 +2265,10 @@ const styles = StyleSheet.create({
     }),
   },
   memberCard: {
-    borderRadius: 20,
+    borderRadius: DESIGN.card.radius,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
+    borderColor: DESIGN.card.borderColorLight,
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -2180,7 +2283,7 @@ const styles = StyleSheet.create({
     }),
   },
   memberCardDark: {
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: DESIGN.card.borderColorDark,
     ...Platform.select({
       android: {
         backgroundColor: 'rgba(30,30,35,0.95)',
@@ -2194,12 +2297,12 @@ const styles = StyleSheet.create({
   memberCardContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
+    padding: DESIGN.card.padding,
   },
   memberAvatarContainer: {
     width: 56,
     height: 56,
-    borderRadius: 20,
+    borderRadius: DESIGN.card.radius,
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
@@ -2298,7 +2401,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginLeft: 8,
-    gap: 8,
+    gap: DESIGN.spacing.md,
   },
   memberActionBtn: {
     width: 36,
@@ -2313,9 +2416,9 @@ const styles = StyleSheet.create({
   permissionPills: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    paddingHorizontal: 16,
+    paddingHorizontal: DESIGN.spacing.lg,
     paddingBottom: 12,
-    gap: 6,
+    gap: DESIGN.spacing.sm,
   },
   permissionPill: {
     paddingHorizontal: 8,
@@ -2358,7 +2461,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
+    marginBottom: DESIGN.spacing.sm,
   },
   quickActionLabel: {
     fontSize: 12,
@@ -2371,7 +2474,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.8)',
     borderRadius: 16,
     padding: 14,
-    marginBottom: 10,
+    marginBottom: DESIGN.spacing.md,
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -2422,7 +2525,7 @@ const styles = StyleSheet.create({
   },
   pendingActions: {
     flexDirection: 'row',
-    gap: 8,
+    gap: DESIGN.spacing.md,
   },
   pendingAction: {
     width: 36,
@@ -2445,7 +2548,7 @@ const styles = StyleSheet.create({
   roleLimitsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: DESIGN.spacing.md,
   },
   roleLimitItem: {
     flex: 1,
@@ -2507,7 +2610,7 @@ const styles = StyleSheet.create({
   },
   addFirstMemberBtn: {
     marginTop: 12,
-    paddingHorizontal: 16,
+    paddingHorizontal: DESIGN.spacing.lg,
     paddingVertical: 8,
     borderRadius: 10,
   },
@@ -2528,7 +2631,7 @@ const styles = StyleSheet.create({
   distributionGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: DESIGN.spacing.md,
   },
   distributionItem: {
     flex: 1,
@@ -2536,7 +2639,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.8)',
     borderRadius: 16,
-    padding: 16,
+    padding: DESIGN.card.padding,
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -2576,7 +2679,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.8)',
     borderRadius: 12,
     padding: 14,
-    marginBottom: 8,
+    marginBottom: DESIGN.spacing.sm,
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -2633,7 +2736,7 @@ const styles = StyleSheet.create({
   modalContent: {
     width: '90%',
     maxHeight: '80%',
-    borderRadius: 20,
+    borderRadius: DESIGN.card.radius,
     overflow: 'hidden',
     backgroundColor: '#fff',
   },
@@ -2644,7 +2747,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
+    padding: DESIGN.card.padding,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(0,0,0,0.05)',
   },
@@ -2661,7 +2764,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.05)',
   },
   modalScrollContent: {
-    padding: 16,
+    padding: DESIGN.card.padding,
   },
   activityLogItem: {
     flexDirection: 'row',
@@ -2669,7 +2772,7 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 12,
     backgroundColor: 'rgba(255,255,255,0.5)',
-    marginBottom: 8,
+    marginBottom: DESIGN.spacing.sm,
   },
   activityLogItemDark: {
     backgroundColor: 'rgba(30,30,35,0.5)',
@@ -2696,7 +2799,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   avatarWrapper: {
-    borderRadius: 20,
+    borderRadius: DESIGN.card.radius,
     overflow: 'hidden',
   },
   avatarGradient: {
@@ -2708,7 +2811,7 @@ const styles = StyleSheet.create({
     fontSize: 28,
   },
   memberDetailContent: {
-    padding: 16,
+    padding: DESIGN.card.padding,
   },
   memberDetailHeader: {
     alignItems: 'center',
@@ -2722,7 +2825,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 14,
     paddingVertical: 6,
-    borderRadius: 20,
+    borderRadius: DESIGN.card.radius,
   },
   memberDetailRoleText: {
     color: '#fff',
@@ -2737,7 +2840,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#1a1a1a',
-    marginBottom: 10,
+    marginBottom: DESIGN.spacing.md,
   },
   detailRow: {
     flexDirection: 'row',
@@ -2758,7 +2861,7 @@ const styles = StyleSheet.create({
   },
   statsGrid: {
     flexDirection: 'row',
-    gap: 8,
+    gap: DESIGN.spacing.md,
   },
   statBox: {
     flex: 1,
@@ -2782,13 +2885,13 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   permissionsList: {
-    gap: 8,
+    gap: DESIGN.spacing.md,
   },
   permissionItem: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 8,
-    gap: 8,
+    gap: DESIGN.spacing.md,
   },
   permissionItemDark: {
     borderBottomColor: 'rgba(255,255,255,0.05)',
@@ -2799,7 +2902,7 @@ const styles = StyleSheet.create({
     color: '#1a1a1a',
   },
   detailActions: {
-    gap: 10,
+    gap: DESIGN.spacing.md,
     marginTop: 10,
   },
   detailActionBtn: {
@@ -2810,8 +2913,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    gap: 8,
+    paddingVertical: DESIGN.spacing.md,
+    gap: DESIGN.spacing.md,
   },
   detailActionText: {
     color: '#fff',
@@ -2822,8 +2925,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    gap: 8,
+    paddingVertical: DESIGN.spacing.md,
+    gap: DESIGN.spacing.md,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.1)',
@@ -2831,7 +2934,7 @@ const styles = StyleSheet.create({
   },
   detailActionSecondaryDark: {
     backgroundColor: 'rgba(30,30,35,0.5)',
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: DESIGN.card.borderColorDark,
   },
   detailActionSecondaryText: {
     fontSize: 15,
@@ -2842,8 +2945,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    gap: 8,
+    paddingVertical: DESIGN.spacing.md,
+    gap: DESIGN.spacing.md,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#ff4757',
@@ -2855,7 +2958,7 @@ const styles = StyleSheet.create({
     color: '#ff4757',
   },
   editForm: {
-    padding: 16,
+    padding: DESIGN.card.padding,
   },
   editAvatarContainer: {
     alignSelf: 'center',
@@ -2892,7 +2995,7 @@ const styles = StyleSheet.create({
   },
   formInput: {
     fontSize: 16,
-    paddingVertical: 12,
+    paddingVertical: DESIGN.spacing.md,
     paddingHorizontal: 14,
     borderRadius: 12,
     backgroundColor: 'rgba(0,0,0,0.03)',
@@ -2906,7 +3009,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 12,
+    paddingVertical: DESIGN.spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(0,0,0,0.05)',
   },
@@ -2937,7 +3040,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   saveButtonGradient: {
-    paddingVertical: 14,
+    paddingVertical: DESIGN.spacing.lg,
     alignItems: 'center',
   },
   saveButtonText: {
@@ -2946,7 +3049,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   inviteForm: {
-    padding: 16,
+    padding: DESIGN.card.padding,
   },
   inviteDescription: {
     fontSize: 14,
@@ -2967,7 +3070,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 14,
+    paddingVertical: DESIGN.spacing.lg,
   },
   inviteButtonText: {
     color: '#fff',
@@ -2975,7 +3078,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   roleSelection: {
-    gap: 10,
+    gap: DESIGN.spacing.md,
     marginTop: 8,
   },
   roleOption: {
@@ -3020,7 +3123,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   roleChangeContent: {
-    padding: 16,
+    padding: DESIGN.card.padding,
   },
   roleChangeDescription: {
     fontSize: 14,
@@ -3036,7 +3139,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'transparent',
     backgroundColor: 'rgba(0,0,0,0.02)',
-    marginBottom: 8,
+    marginBottom: DESIGN.spacing.sm,
   },
   roleChangeOptionDark: {
     backgroundColor: 'rgba(255,255,255,0.03)',
@@ -3069,17 +3172,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     marginTop: 6,
-    gap: 6,
+    gap: DESIGN.spacing.sm,
   },
   roleChangePerm: {
     fontSize: 11,
     fontWeight: '600',
   },
   analyticsContent: {
-    padding: 16,
+    padding: DESIGN.card.padding,
   },
   babySelectorContent: {
-    padding: 16,
+    padding: DESIGN.card.padding,
   },
   babyOption: {
     flexDirection: 'row',
@@ -3089,7 +3192,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'transparent',
     backgroundColor: 'rgba(0,0,0,0.02)',
-    marginBottom: 8,
+    marginBottom: DESIGN.spacing.sm,
   },
   babyOptionActive: {
     borderWidth: 2,
@@ -3133,7 +3236,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   addBabyOptionDark: {
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: DESIGN.card.borderColorDark,
   },
   addBabyIcon: {
     width: 48,
@@ -3149,7 +3252,7 @@ const styles = StyleSheet.create({
     color: '#667eea',
   },
   settingsContent: {
-    padding: 16,
+    padding: DESIGN.card.padding,
   },
   settingsDescription: {
     fontSize: 14,
@@ -3163,7 +3266,7 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 12,
     backgroundColor: 'rgba(0,0,0,0.02)',
-    marginBottom: 8,
+    marginBottom: DESIGN.spacing.sm,
   },
   settingsOptionDark: {
     backgroundColor: 'rgba(255,255,255,0.03)',
