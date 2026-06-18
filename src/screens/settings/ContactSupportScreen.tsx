@@ -191,7 +191,7 @@ const SectionHeader: React.FC<{
 );
 
 export default function ContactSupportScreen({ navigation }: Props) {
-  const { sweetAlert } = useSweetAlert();
+  const sweetAlert = useSweetAlert();
   const insets = useSafeAreaInsets();
 
   const {

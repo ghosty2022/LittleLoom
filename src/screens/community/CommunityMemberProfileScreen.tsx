@@ -2,7 +2,7 @@ import { StyleSheet, Button, Dimensions ,Image, ScrollView, Share ,Text ,Touchab
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { BlurView } from 'expo-blur';
-import { FadeIn, FadeInUp, interpolate, Layout, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
+import Animated,{ FadeIn, FadeInUp, interpolate, Layout, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';

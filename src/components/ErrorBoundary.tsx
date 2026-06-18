@@ -7,6 +7,8 @@ import {
   ScrollView,
   Platform,
   Dimensions,
+  BackHandler,
+  NativeModules,
 } from 'react-native';
 
 let LinearGradient: any = View;
@@ -48,6 +50,7 @@ interface State {
   error: Error | null;
   errorInfo: ErrorInfo | null;
   showDetails: boolean;
+  isReloading: boolean;
 }
 
 const PrimitiveFallback: React.FC<{ onReset: () => void }> = ({ onReset }) => (
@@ -78,6 +81,7 @@ export class ErrorBoundary extends Component<Props, State> {
       error: null,
       errorInfo: null,
       showDetails: false,
+      isReloading: false,
     };
   }
 
@@ -99,11 +103,29 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   handleReload = async () => {
+    this.setState({ isReloading: true });
     try {
+      // Try expo-updates first
       if (Updates?.reloadAsync) {
         await Updates.reloadAsync();
+        return;
+      }
+      // Fallback: try to use DevSettings reload if in dev mode
+      if (__DEV__ && NativeModules?.DevSettings?.reload) {
+        NativeModules.DevSettings.reload();
+        return;
+      }
+      // Last resort: force exit on Android, or show message on iOS
+      if (Platform.OS === 'android' && NativeModules?.BackHandler) {
+        BackHandler.exitApp();
+      } else {
+        // If we can't reload, at least clear the error and let user know
+        this.setState({ isReloading: false });
+        this.handleReset();
       }
     } catch (e) {
+      console.error('Reload failed:', e);
+      this.setState({ isReloading: false });
       this.handleReset();
     }
   };
@@ -114,6 +136,7 @@ export class ErrorBoundary extends Component<Props, State> {
       error: null,
       errorInfo: null,
       showDetails: false,
+      isReloading: false,
     });
   };
 
@@ -131,7 +154,7 @@ export class ErrorBoundary extends Component<Props, State> {
         return <PrimitiveFallback onReset={this.handleReset} />;
       }
 
-      const { error, errorInfo, showDetails } = this.state;
+      const { error, errorInfo, showDetails, isReloading } = this.state;
       const isDev = __DEV__;
 
       const AnimatedView = FadeIn ? Animated.View : View;
@@ -156,12 +179,13 @@ export class ErrorBoundary extends Component<Props, State> {
               Something went wrong loading LittleLoom.
             </Text>
 
-            {isDev && error && (
+            {/* Error details - always show error message, not just in dev */}
+            {error && (
               <View style={styles.errorCard}>
                 <Text style={styles.errorTitle}>Error:</Text>
                 <Text style={styles.errorMessage}>{error.message}</Text>
 
-                {errorInfo && (
+                {isDev && errorInfo && (
                   <>
                     <TouchableOpacity
                       style={styles.detailsButton}
@@ -199,6 +223,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 style={styles.primaryButton}
                 onPress={this.handleReset}
                 activeOpacity={0.8}
+                disabled={isReloading}
               >
                 <LinearGradient
                   colors={['#fff', '#f0f0f0']}
@@ -212,20 +237,25 @@ export class ErrorBoundary extends Component<Props, State> {
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.secondaryButton}
+                style={[styles.secondaryButton, isReloading && styles.secondaryButtonDisabled]}
                 onPress={this.handleReload}
                 activeOpacity={0.8}
+                disabled={isReloading}
               >
-                <Ionicons name="reload" size={20} color="#fff" />
-                <Text style={styles.secondaryButtonText}>Reload App</Text>
+                {isReloading ? (
+                  <Text style={styles.secondaryButtonText}>Reloading...</Text>
+                ) : (
+                  <>
+                    <Ionicons name="reload" size={20} color="#fff" />
+                    <Text style={styles.secondaryButtonText}>Reload App</Text>
+                  </>
+                )}
               </TouchableOpacity>
             </View>
 
-            {!isDev && (
-              <Text style={styles.prodHint}>
-                If this keeps happening, please restart the app.
-              </Text>
-            )}
+            <Text style={styles.hintText}>
+              Tap "Reload App" to restart fresh, or "Try Again" to recover.
+            </Text>
           </AnimatedView>
         </View>
       );
@@ -379,16 +409,20 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.5)',
     gap: 8,
   },
+  secondaryButtonDisabled: {
+    opacity: 0.6,
+  },
   secondaryButtonText: {
     fontSize: 16,
     fontWeight: '700',
     color: '#fff',
   },
-  prodHint: {
+  hintText: {
     fontSize: 13,
     color: 'rgba(255,255,255,0.7)',
     marginTop: 20,
     textAlign: 'center',
+    paddingHorizontal: 20,
   },
 });
 
