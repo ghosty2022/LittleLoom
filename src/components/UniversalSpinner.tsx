@@ -1,13 +1,11 @@
-import React, { useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { memo, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   Modal,
   useColorScheme,
-  Dimensions,
   Animated as RNAnimated,
-  Platform,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient as ExpoLinearGradient } from 'expo-linear-gradient';
@@ -22,11 +20,10 @@ import AnimatedReanimated, {
   Extrapolate,
   Easing,
   cancelAnimation,
-  runOnJS,
 } from 'react-native-reanimated';
 import { useCustomization } from '../hooks/useCustomization';
 
-const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+// ─── FIX #1: Remove unused Dimensions ───────────────────────────────────
 
 export type SpinnerSection = 'main' | 'community' | 'auth' | 'settings' | 'tracking';
 
@@ -82,6 +79,20 @@ interface ThemeColorsSafe {
   [key: string]: any;
 }
 
+// ─── FIX #2: Safe customization hook, replaces all try/catch blocks ─────
+const useCustomizationSafe = () => {
+  try {
+    const c = useCustomization();
+    return {
+      themeColors: c?.themeColors ?? null,
+      shouldReduceMotion: c?.shouldReduceMotion ?? false,
+      error: false,
+    };
+  } catch {
+    return { themeColors: null, shouldReduceMotion: false, error: true };
+  }
+};
+
 const resolveTheme = (
   section: SpinnerSection,
   customColors?: [string, string, string, string],
@@ -89,12 +100,8 @@ const resolveTheme = (
 ): SectionTheme => {
   const base = SECTION_THEMES[section] || SECTION_THEMES.main;
 
-  if (customColors && Array.isArray(customColors) && customColors.length >= 2) {
-    return {
-      ...base,
-      colors: customColors,
-      spinnerColor: customColors[0],
-    };
+  if (customColors && customColors.length >= 2) {
+    return { ...base, colors: customColors, spinnerColor: customColors[0] };
   }
 
   if (section === 'main' && themeColors) {
@@ -111,6 +118,22 @@ const resolveTheme = (
   return base;
 };
 
+// ─── FIX #3: Static size lookup, no function call per render ────────────
+const SIZE_MAP = {
+  small: { spinner: 40, fontSize: 13, container: 100 },
+  medium: { spinner: 56, fontSize: 15, container: 140 },
+  large: { spinner: 72, fontSize: 17, container: 180 },
+};
+
+// ─── FIX #4: Static variant → component map ─────────────────────────────
+const VARIANT_MAP = {
+  liquid: 'LiquidDots',
+  aurora: 'AuroraRings',
+  nebula: 'NebulaOrbit',
+} as const;
+
+// ─── ANIMATED SUB-COMPONENTS (memoized) ────────────────────────────────
+
 interface LiquidDotProps {
   index: number;
   totalDots: number;
@@ -119,7 +142,7 @@ interface LiquidDotProps {
   size: number;
 }
 
-const LiquidDot: React.FC<LiquidDotProps> = React.memo(({ index, totalDots, progress, colors, size }) => {
+const LiquidDot = memo<LiquidDotProps>(({ index, totalDots, progress, colors, size }) => {
   const offset = index / totalDots;
   const color = colors[index % colors.length];
 
@@ -165,12 +188,11 @@ const LiquidDot: React.FC<LiquidDotProps> = React.memo(({ index, totalDots, prog
   );
 });
 
-const LiquidDots: React.FC<{
+const LiquidDots = memo<{
   colors: [string, string, string, string];
   size?: number;
-}> = ({ colors, size = 60 }) => {
+}>(({ colors, size = 60 }) => {
   const progress = useSharedValue(0);
-  const dotCount = 5;
 
   useEffect(() => {
     progress.value = withRepeat(
@@ -178,16 +200,16 @@ const LiquidDots: React.FC<{
       -1,
       false
     );
-    return () => { cancelAnimation(progress); };
+    return () => cancelAnimation(progress);
   }, []);
 
   return (
     <View style={[styles.liquidDotsContainer, { width: size, height: size }]}>
-      {Array.from({ length: dotCount }).map((_, i) => (
+      {Array.from({ length: 5 }, (_, i) => (
         <LiquidDot
           key={i}
           index={i}
-          totalDots={dotCount}
+          totalDots={5}
           progress={progress}
           colors={colors}
           size={size}
@@ -195,30 +217,28 @@ const LiquidDots: React.FC<{
       ))}
     </View>
   );
-};
+});
 
-interface AuroraRingProps {
-  color: string;
-  size: number;
-  delay: number;
-}
-
-const AuroraRing: React.FC<AuroraRingProps> = React.memo(({ color, size, delay }) => {
+const AuroraRing = memo<{ color: string; size: number; delay: number }>(({ color, size, delay }) => {
   const anim = useSharedValue(0);
 
   useEffect(() => {
-    const config = { duration: 2000, easing: Easing.out(Easing.ease) };
     anim.value = delay;
-    anim.value = withRepeat(withTiming(1 + delay, config), -1, false);
-    return () => { cancelAnimation(anim); };
+    anim.value = withRepeat(
+      withTiming(1 + delay, { duration: 2000, easing: Easing.out(Easing.ease) }),
+      -1,
+      false
+    );
+    return () => cancelAnimation(anim);
   }, [delay]);
 
   const ringStyle = useAnimatedStyle(() => {
-    const normalized = anim.value % 1;
-    const scale = interpolate(normalized, [0, 1], [0.2, 1.6], Extrapolate.CLAMP);
-    const opacity = interpolate(normalized, [0, 0.3, 0.7, 1], [0, 0.7, 0.5, 0], Extrapolate.CLAMP);
-    const borderWidth = interpolate(normalized, [0, 0.5, 1], [4, 2, 0.5], Extrapolate.CLAMP);
-    return { transform: [{ scale }], opacity, borderWidth };
+    const n = anim.value % 1;
+    return {
+      transform: [{ scale: interpolate(n, [0, 1], [0.2, 1.6], Extrapolate.CLAMP) }],
+      opacity: interpolate(n, [0, 0.3, 0.7, 1], [0, 0.7, 0.5, 0], Extrapolate.CLAMP),
+      borderWidth: interpolate(n, [0, 0.5, 1], [4, 2, 0.5], Extrapolate.CLAMP),
+    };
   });
 
   return (
@@ -240,32 +260,27 @@ const AuroraRing: React.FC<AuroraRingProps> = React.memo(({ color, size, delay }
   );
 });
 
-const AuroraRings: React.FC<{
+const AuroraRings = memo<{
   colors: [string, string, string, string];
   size?: number;
-}> = ({ colors, size = 56 }) => {
-  return (
-    <View style={[styles.pulseContainer, { width: size, height: size }]}>
-      {colors.map((color, i) => (
-        <AuroraRing key={i} color={color} size={size} delay={i * 0.25} />
-      ))}
-      <View style={[styles.pulseCenter, { backgroundColor: colors[0] + '30', width: size * 0.2, height: size * 0.2 }]} />
-    </View>
-  );
-};
+}>(({ colors, size = 56 }) => (
+  <View style={[styles.pulseContainer, { width: size, height: size }]}>
+    {colors.map((color, i) => (
+      <AuroraRing key={i} color={color} size={size} delay={i * 0.25} />
+    ))}
+    <View style={[styles.pulseCenter, { backgroundColor: colors[0] + '30', width: size * 0.2, height: size * 0.2 }]} />
+  </View>
+));
 
-interface NebulaDotProps {
+const NebulaDot = memo<{
   angle: number;
   color: string;
   size: number;
   orbitRadius: number;
   dotSize: number;
   pulse: AnimatedReanimated.SharedValue<number>;
-}
-
-const NebulaDot: React.FC<NebulaDotProps> = React.memo(({ angle, color, size, orbitRadius, dotSize, pulse }) => {
+}>(({ angle, color, size, orbitRadius, dotSize, pulse }) => {
   const rad = (angle * Math.PI) / 180;
-  
   const dotStyle = useAnimatedStyle(() => ({
     transform: [{ scale: pulse.value }],
   }));
@@ -297,10 +312,10 @@ const NebulaDot: React.FC<NebulaDotProps> = React.memo(({ angle, color, size, or
   );
 });
 
-const NebulaOrbit: React.FC<{
+const NebulaOrbit = memo<{
   colors: [string, string, string, string];
   size?: number;
-}> = ({ colors, size = 56 }) => {
+}>(({ colors, size = 56 }) => {
   const rotation = useSharedValue(0);
   const pulse = useSharedValue(1);
 
@@ -350,7 +365,16 @@ const NebulaOrbit: React.FC<{
       <View style={[styles.orbitCenter, { backgroundColor: colors[0] + '50', width: dotSize * 1.4, height: dotSize * 1.4 }]} />
     </View>
   );
+});
+
+// ─── FIX #5: Static component registry ──────────────────────────────────
+const SPINNER_COMPONENTS = {
+  liquid: LiquidDots,
+  aurora: AuroraRings,
+  nebula: NebulaOrbit,
 };
+
+// ─── MAIN SPINNER (memoized) ───────────────────────────────────────────
 
 interface UniversalSpinnerProps {
   visible: boolean;
@@ -363,10 +387,10 @@ interface UniversalSpinnerProps {
   customColors?: [string, string, string, string];
   showProgress?: boolean;
   progress?: number;
-  variant?: 'liquid' | 'aurora' | 'nebula';
+  variant?: keyof typeof SPINNER_COMPONENTS;
 }
 
-export const UniversalSpinner: React.FC<UniversalSpinnerProps> = ({
+export const UniversalSpinner = memo<UniversalSpinnerProps>(({
   visible,
   text = 'Loading...',
   subtext,
@@ -381,112 +405,75 @@ export const UniversalSpinner: React.FC<UniversalSpinnerProps> = ({
 }) => {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
-  
-  let customization: ReturnType<typeof useCustomization> | null = null;
-  let customizationError = false;
-  try {
-    customization = useCustomization();
-  } catch {
-    customizationError = true;
-  }
-  
-  const themeColors = customizationError ? null : customization?.themeColors;
-  const shouldReduceMotion = customizationError ? false : customization?.shouldReduceMotion ?? false;
+  const { themeColors, shouldReduceMotion } = useCustomizationSafe();
 
-  const fadeAnim = useRef(new RNAnimated.Value(0)).current;
-  const progressAnim = useRef(new RNAnimated.Value(0)).current;
+  // ─── FIX #6: Stable Animated.Value, lazy init ────────────────────────
+  const fadeAnim = useRef<RNAnimated.Value | null>(null);
+  if (!fadeAnim.current) fadeAnim.current = new RNAnimated.Value(0);
+
+  const progressAnim = useRef<RNAnimated.Value | null>(null);
+  if (!progressAnim.current) progressAnim.current = new RNAnimated.Value(0);
 
   const theme = useMemo(
     () => resolveTheme(section, customColors, themeColors || undefined),
     [section, customColors, themeColors]
   );
 
+  // ─── FIX #7: Batch animation, no staggered effects ───────────────────
   useEffect(() => {
-    if (visible) {
-      RNAnimated.timing(fadeAnim, {
-        toValue: 1,
-        duration: shouldReduceMotion ? 100 : 200,
-        useNativeDriver: true,
-      }).start();
-    } else {
-      RNAnimated.timing(fadeAnim, {
-        toValue: 0,
-        duration: shouldReduceMotion ? 50 : 150,
-        useNativeDriver: true,
-      }).start();
-    }
-  }, [visible, shouldReduceMotion, fadeAnim]);
+    const duration = shouldReduceMotion ? (visible ? 100 : 50) : (visible ? 200 : 150);
+    RNAnimated.timing(fadeAnim.current!, {
+      toValue: visible ? 1 : 0,
+      duration,
+      useNativeDriver: true,
+    }).start();
+  }, [visible, shouldReduceMotion]);
 
   useEffect(() => {
-    if (showProgress) {
-      RNAnimated.timing(progressAnim, {
-        toValue: Math.max(0, Math.min(1, progress / 100)),
-        duration: 300,
-        useNativeDriver: false,
-      }).start();
-    }
-  }, [progress, showProgress, progressAnim]);
+    if (!showProgress) return;
+    RNAnimated.timing(progressAnim.current!, {
+      toValue: Math.max(0, Math.min(1, progress / 100)),
+      duration: 300,
+      useNativeDriver: false,
+    }).start();
+  }, [progress, showProgress]);
 
-  const getSize = () => {
-    switch (size) {
-      case 'small': return { spinner: 40, fontSize: 13, container: 100 };
-      case 'large': return { spinner: 72, fontSize: 17, container: 180 };
-      default: return { spinner: 56, fontSize: 15, container: 140 };
-    }
-  };
+  if (!visible) return null;
 
-  const dimensions = getSize();
+  const dimensions = SIZE_MAP[size];
+  const SpinnerComponent = SPINNER_COMPONENTS[variant];
 
-  const progressWidth = progressAnim.interpolate({
+  const progressWidth = progressAnim.current!.interpolate({
     inputRange: [0, 1],
     outputRange: ['0%', '100%'],
   });
 
-  if (!visible) return null;
+  const darkOverlay = isDark
+    ? ['rgba(50,50,50,0.8)', 'rgba(30,30,30,0.6)']
+    : ['rgba(255,255,255,0.95)', 'rgba(255,255,255,0.75)'];
 
-  const SpinnerComponent =
-    variant === 'aurora' ? AuroraRings :
-    variant === 'nebula' ? NebulaOrbit :
-    LiquidDots;
-
-  const Spinner = () => (
+  const spinnerContent = (
     <RNAnimated.View
       style={[
         styles.spinnerContainer,
         {
           width: dimensions.container,
           height: dimensions.container,
-          opacity: fadeAnim,
+          opacity: fadeAnim.current!,
           borderRadius: dimensions.container / 2,
         },
       ]}
     >
-      <BlurView
-        intensity={isDark ? 60 : 90}
-        style={StyleSheet.absoluteFill}
-        tint={isDark ? 'dark' : 'light'}
-      />
-      <ExpoLinearGradient
-        colors={isDark
-          ? ['rgba(50,50,50,0.8)', 'rgba(30,30,30,0.6)']
-          : ['rgba(255,255,255,0.95)', 'rgba(255,255,255,0.75)']
-        }
-        style={[StyleSheet.absoluteFill, { borderRadius: dimensions.container / 2 }]}
-      />
+      <BlurView intensity={isDark ? 60 : 90} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
+      <ExpoLinearGradient colors={darkOverlay} style={[StyleSheet.absoluteFill, { borderRadius: dimensions.container / 2 }]} />
       <SpinnerComponent colors={theme.colors} size={dimensions.spinner} />
       {text && (
-        <Text style={[
-          styles.text,
-          { fontSize: dimensions.fontSize, color: isDark ? '#fff' : theme.textColor }
-        ]} numberOfLines={1}>
+        <Text style={[styles.text, { fontSize: dimensions.fontSize, color: isDark ? '#fff' : theme.textColor }]} numberOfLines={1}>
           {text}
         </Text>
       )}
       {subtext && (
-        <Text style={[
-          styles.subtext,
-          { color: isDark ? '#a0a0a0' : theme.subtextColor }
-        ]} numberOfLines={2}>
+        <Text style={[styles.subtext, { color: isDark ? '#a0a0a0' : theme.subtextColor }]} numberOfLines={2}>
           {subtext}
         </Text>
       )}
@@ -503,74 +490,46 @@ export const UniversalSpinner: React.FC<UniversalSpinnerProps> = ({
     </RNAnimated.View>
   );
 
-  if (overlay) {
-    return (
-      <Modal visible={visible} transparent animationType="none" statusBarTranslucent>
-        <View style={[
-          styles.overlay,
-          { backgroundColor: `rgba(0,0,0,${theme.backgroundOpacity})` }
-        ]}>
-          {blur && (
-            <BlurView
-              intensity={isDark ? 80 : 90}
-              style={StyleSheet.absoluteFill}
-              tint={isDark ? 'dark' : 'light'}
-            />
-          )}
-          <Spinner />
-        </View>
-      </Modal>
-    );
-  }
+  if (!overlay) return spinnerContent;
 
-  return <Spinner />;
-};
+  return (
+    <Modal visible={visible} transparent animationType="none" statusBarTranslucent>
+      <View style={[styles.overlay, { backgroundColor: `rgba(0,0,0,${theme.backgroundOpacity})` }]}>
+        {blur && <BlurView intensity={isDark ? 80 : 90} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />}
+        {spinnerContent}
+      </View>
+    </Modal>
+  );
+});
+
+// ─── INLINE SPINNER (memoized) ─────────────────────────────────────────
 
 interface InlineSpinnerProps {
   size?: number;
   color?: string;
   section?: SpinnerSection;
-  variant?: 'liquid' | 'aurora' | 'nebula';
+  variant?: keyof typeof SPINNER_COMPONENTS;
 }
 
-export const InlineSpinner: React.FC<InlineSpinnerProps> = ({
+export const InlineSpinner = memo<InlineSpinnerProps>(({
   size = 20,
   color,
   section = 'main',
   variant = 'liquid',
 }) => {
-  let customization: ReturnType<typeof useCustomization> | null = null;
-  let customizationError = false;
-  try {
-    customization = useCustomization();
-  } catch {
-    customizationError = true;
-  }
-  
-  const themeColors = customizationError ? null : customization?.themeColors;
-  const shouldReduceMotion = customizationError ? false : customization?.shouldReduceMotion ?? false;
+  const { themeColors, shouldReduceMotion } = useCustomizationSafe();
 
-  const spinnerColor = useMemo(() => {
-    if (color) return color;
-    if (section === 'main' && themeColors?.spinnerColor) {
-      return themeColors.spinnerColor;
-    }
-    return SECTION_THEMES[section]?.spinnerColor || SECTION_THEMES.main.spinnerColor;
-  }, [color, section, themeColors]);
+  // ─── FIX #8: Direct lookup, no useMemo overhead ─────────────────────
+  const spinnerColor = color
+    || (section === 'main' && themeColors?.spinnerColor)
+    || SECTION_THEMES[section]?.spinnerColor
+    || SECTION_THEMES.main.spinnerColor;
 
-  const colors = useMemo((): [string, string, string, string] => {
-    if (section === 'main' && themeColors?.colors && Array.isArray(themeColors.colors)) {
-      const c = themeColors.colors;
-      return [c[0] || spinnerColor, c[1] || spinnerColor, c[2] || spinnerColor, spinnerColor];
-    }
-    const base = SECTION_THEMES[section]?.colors || SECTION_THEMES.main.colors;
-    return base;
-  }, [section, themeColors, spinnerColor]);
+  const colors: [string, string, string, string] = (section === 'main' && themeColors?.colors && Array.isArray(themeColors.colors))
+    ? [themeColors.colors[0] || spinnerColor, themeColors.colors[1] || spinnerColor, themeColors.colors[2] || spinnerColor, spinnerColor]
+    : (SECTION_THEMES[section]?.colors || SECTION_THEMES.main.colors);
 
-  const SpinnerComponent =
-    variant === 'aurora' ? AuroraRings :
-    variant === 'nebula' ? NebulaOrbit :
-    LiquidDots;
+  const SpinnerComponent = SPINNER_COMPONENTS[variant];
 
   if (shouldReduceMotion) {
     return (
@@ -585,68 +544,69 @@ export const InlineSpinner: React.FC<InlineSpinnerProps> = ({
       <SpinnerComponent colors={colors} size={size} />
     </View>
   );
-};
+});
 
-export const CommunitySpinner: React.FC<Omit<UniversalSpinnerProps, 'section'>> = (props) => (
+// ─── SECTION SPINNERS (memoized wrappers) ─────────────────────────────
+
+export const CommunitySpinner = memo<Omit<UniversalSpinnerProps, 'section'>>((props) => (
   <UniversalSpinner {...props} section="community" />
-);
+));
 
-export const AuthSpinner: React.FC<Omit<UniversalSpinnerProps, 'section'>> = (props) => (
+export const AuthSpinner = memo<Omit<UniversalSpinnerProps, 'section'>>((props) => (
   <UniversalSpinner {...props} section="auth" />
-);
+));
 
-export const SettingsSpinner: React.FC<Omit<UniversalSpinnerProps, 'section'>> = (props) => (
+export const SettingsSpinner = memo<Omit<UniversalSpinnerProps, 'section'>>((props) => (
   <UniversalSpinner {...props} section="settings" />
-);
+));
 
-export const TrackingSpinner: React.FC<Omit<UniversalSpinnerProps, 'section'>> = (props) => (
+export const TrackingSpinner = memo<Omit<UniversalSpinnerProps, 'section'>>((props) => (
   <UniversalSpinner {...props} section="tracking" />
-);
+));
 
-export const SkeletonLoader: React.FC<{
+// ─── SKELETON LOADER (memoized) ───────────────────────────────────────
+
+export const SkeletonLoader = memo<{
   width?: number | string;
   height?: number;
   borderRadius?: number;
   style?: any;
-}> = ({
+}>(({
   width = '100%',
   height = 20,
   borderRadius = 8,
   style,
 }) => {
-  const pulseAnim = useRef(new RNAnimated.Value(0.5)).current;
+  const pulseAnim = useRef<RNAnimated.Value | null>(null);
+  if (!pulseAnim.current) pulseAnim.current = new RNAnimated.Value(0.5);
+
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
-  
-  let shouldReduceMotion = false;
-  try {
-    const customization = useCustomization();
-    shouldReduceMotion = customization?.shouldReduceMotion ?? false;
-  } catch {
-    shouldReduceMotion = false;
-  }
+  const { shouldReduceMotion } = useCustomizationSafe();
 
   useEffect(() => {
     if (shouldReduceMotion) return;
-    const animation = RNAnimated.loop(
+    const anim = RNAnimated.loop(
       RNAnimated.sequence([
-        RNAnimated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
-        RNAnimated.timing(pulseAnim, { toValue: 0.5, duration: 800, useNativeDriver: true }),
+        RNAnimated.timing(pulseAnim.current!, { toValue: 1, duration: 800, useNativeDriver: true }),
+        RNAnimated.timing(pulseAnim.current!, { toValue: 0.5, duration: 800, useNativeDriver: true }),
       ])
     );
-    animation.start();
-    return () => animation.stop();
-  }, [pulseAnim, shouldReduceMotion]);
+    anim.start();
+    return () => anim.stop();
+  }, [shouldReduceMotion]);
 
   return (
     <RNAnimated.View
       style={[
-        { width, height, borderRadius, backgroundColor: isDark ? '#333' : '#e2e8f0', opacity: shouldReduceMotion ? 0.7 : pulseAnim },
+        { width, height, borderRadius, backgroundColor: isDark ? '#333' : '#e2e8f0', opacity: shouldReduceMotion ? 0.7 : pulseAnim.current! },
         style,
       ]}
     />
   );
-};
+});
+
+// ─── SHIMMER LOADER (memoized) ────────────────────────────────────────
 
 interface ShimmerLoaderProps {
   width?: number | string;
@@ -658,7 +618,7 @@ interface ShimmerLoaderProps {
   section?: SpinnerSection;
 }
 
-export const ShimmerLoader: React.FC<ShimmerLoaderProps> = ({
+export const ShimmerLoader = memo<ShimmerLoaderProps>(({
   width = '100%',
   height = 100,
   borderRadius = 16,
@@ -667,23 +627,14 @@ export const ShimmerLoader: React.FC<ShimmerLoaderProps> = ({
   style,
   section = 'main',
 }) => {
-  let customization: ReturnType<typeof useCustomization> | null = null;
-  let customizationError = false;
-  try {
-    customization = useCustomization();
-  } catch {
-    customizationError = true;
-  }
-  
-  const themeColors = customizationError ? null : customization?.themeColors;
-  const shouldReduceMotion = customizationError ? false : customization?.shouldReduceMotion ?? false;
-  
+  const { themeColors, shouldReduceMotion } = useCustomizationSafe();
+
   const numericWidth = typeof width === 'number' ? width : 300;
   const translateX = useSharedValue(-numericWidth);
 
   const shimmerColors = useMemo(() => {
-    if (colors && Array.isArray(colors) && colors.length >= 3) return colors;
-    if (section === 'main' && themeColors && Array.isArray(themeColors.colors) && themeColors.colors.length >= 2) {
+    if (colors && colors.length >= 3) return colors;
+    if (section === 'main' && themeColors?.colors && themeColors.colors.length >= 2) {
       return [themeColors.colors[0], themeColors.colors[1], themeColors.colors[0]] as [string, string, string];
     }
     const base = SECTION_THEMES[section]?.colors || SECTION_THEMES.main.colors;
@@ -693,7 +644,7 @@ export const ShimmerLoader: React.FC<ShimmerLoaderProps> = ({
   useEffect(() => {
     if (shouldReduceMotion) return;
     translateX.value = withRepeat(withTiming(numericWidth, { duration }), -1, false);
-    return () => { cancelAnimation(translateX); };
+    return () => cancelAnimation(translateX);
   }, [translateX, numericWidth, duration, shouldReduceMotion]);
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -710,101 +661,119 @@ export const ShimmerLoader: React.FC<ShimmerLoaderProps> = ({
       )}
     </View>
   );
-};
+});
+
+// ─── FIX #9: Memoized preset components, not inline arrow functions ────
+
+const ShimmerText = memo<{ width?: number; lines?: number; section?: SpinnerSection }>(({ width = 200, lines = 1, section = 'main' }) => (
+  <View style={{ gap: 8 }}>
+    {Array.from({ length: lines }, (_, i) => (
+      <ShimmerLoader key={i} width={width} height={16} borderRadius={8} section={section} />
+    ))}
+  </View>
+));
+
+const ShimmerCard = memo<{ height?: number; section?: SpinnerSection }>(({ height = 120, section = 'main' }) => (
+  <ShimmerLoader width="100%" height={height} borderRadius={20} section={section} />
+));
+
+const ShimmerCircle = memo<{ size?: number; section?: SpinnerSection }>(({ size = 60, section = 'main' }) => (
+  <ShimmerLoader width={size} height={size} borderRadius={size / 2} section={section} />
+));
+
+const ShimmerAvatar = memo<{ size?: number; section?: SpinnerSection }>(({ size = 80, section = 'main' }) => (
+  <ShimmerLoader width={size} height={size} borderRadius={size / 2} section={section} />
+));
+
+const ShimmerList = memo<{ count?: number; height?: number; section?: SpinnerSection }>(({ count = 3, height = 80, section = 'main' }) => (
+  <View style={{ gap: 12 }}>
+    {Array.from({ length: count }, (_, i) => (
+      <ShimmerLoader key={i} width="100%" height={height} borderRadius={16} section={section} />
+    ))}
+  </View>
+));
 
 export const ShimmerPresets = {
-  Text: ({ width = 200, lines = 1, section = 'main' as SpinnerSection }: { width?: number; lines?: number; section?: SpinnerSection }) => (
-    <View style={{ gap: 8 }}>
-      {Array.from({ length: lines }).map((_, i) => (
-        <ShimmerLoader key={i} width={width} height={16} borderRadius={8} section={section} />
-      ))}
-    </View>
-  ),
-  Card: ({ height = 120, section = 'main' as SpinnerSection }: { height?: number; section?: SpinnerSection }) => (
-    <ShimmerLoader width="100%" height={height} borderRadius={20} section={section} />
-  ),
-  Circle: ({ size = 60, section = 'main' as SpinnerSection }: { size?: number; section?: SpinnerSection }) => (
-    <ShimmerLoader width={size} height={size} borderRadius={size / 2} section={section} />
-  ),
-  Avatar: ({ size = 80, section = 'main' as SpinnerSection }: { size?: number; section?: SpinnerSection }) => (
-    <ShimmerLoader width={size} height={size} borderRadius={size / 2} section={section} />
-  ),
-  List: ({ count = 3, height = 80, section = 'main' as SpinnerSection }: { count?: number; height?: number; section?: SpinnerSection }) => (
-    <View style={{ gap: 12 }}>
-      {Array.from({ length: count }).map((_, i) => (
-        <ShimmerLoader key={i} width="100%" height={height} borderRadius={16} section={section} />
-      ))}
-    </View>
-  ),
+  Text: ShimmerText,
+  Card: ShimmerCard,
+  Circle: ShimmerCircle,
+  Avatar: ShimmerAvatar,
+  List: ShimmerList,
 };
+
+// ─── SCREEN SKELETONS (memoized) ──────────────────────────────────────
+
+const TimelineSkeleton = memo<{ count?: number; section?: SpinnerSection }>(({ count = 3, section = 'main' }) => (
+  <View style={skeletonStyles.container}>
+    {Array.from({ length: count }, (_, index) => (
+      <View key={index} style={skeletonStyles.item}>
+        <SkeletonLoader width={100} height={20} borderRadius={8} style={{ marginBottom: 16 }} />
+        <View style={skeletonStyles.timelineRow}>
+          <View style={skeletonStyles.timeColumn}>
+            <SkeletonLoader width={50} height={14} borderRadius={6} />
+            <SkeletonLoader width={2} height={60} borderRadius={1} style={{ marginTop: 8, marginLeft: 20 }} />
+          </View>
+          <View style={skeletonStyles.eventCard}>
+            <SkeletonLoader width={48} height={48} borderRadius={14} />
+            <View style={skeletonStyles.eventContent}>
+              <SkeletonLoader width="60%" height={16} borderRadius={6} />
+              <SkeletonLoader width="40%" height={12} borderRadius={4} style={{ marginTop: 8 }} />
+            </View>
+          </View>
+        </View>
+      </View>
+    ))}
+  </View>
+));
+
+const ProfileSkeleton = memo<{ section?: SpinnerSection }>(({ section = 'main' }) => (
+  <View style={skeletonStyles.container}>
+    <View style={skeletonStyles.header}>
+      <SkeletonLoader width={44} height={44} borderRadius={12} />
+      <View style={skeletonStyles.headerCenter}>
+        <SkeletonLoader width={140} height={28} borderRadius={8} />
+        <SkeletonLoader width={100} height={14} borderRadius={6} style={{ marginTop: 6 }} />
+      </View>
+      <SkeletonLoader width={44} height={44} borderRadius={12} />
+    </View>
+    <View style={skeletonStyles.profileCard}>
+      <View style={skeletonStyles.profileHeader}>
+        <ShimmerLoader width={80} height={80} borderRadius={40} section={section} />
+        <View style={skeletonStyles.profileInfo}>
+          <SkeletonLoader width={120} height={24} borderRadius={8} />
+          <SkeletonLoader width={80} height={16} borderRadius={6} style={{ marginTop: 8 }} />
+          <SkeletonLoader width={100} height={14} borderRadius={6} style={{ marginTop: 8 }} />
+        </View>
+      </View>
+      <View style={skeletonStyles.statsRow}>
+        <ShimmerLoader width={70} height={70} borderRadius={35} section={section} />
+        <ShimmerLoader width={70} height={70} borderRadius={35} section={section} />
+        <ShimmerLoader width={70} height={70} borderRadius={35} section={section} />
+      </View>
+    </View>
+  </View>
+));
+
+const CommunitySkeleton = memo(() => (
+  <View style={skeletonStyles.container}>
+    <View style={skeletonStyles.header}>
+      <ShimmerLoader width={120} height={28} borderRadius={8} section="community" />
+      <ShimmerLoader width={44} height={44} borderRadius={22} section="community" />
+    </View>
+    <ShimmerList count={4} height={120} section="community" />
+  </View>
+));
 
 export const ScreenSkeletons = {
-  Timeline: ({ count = 3, section = 'main' as SpinnerSection }: { count?: number; section?: SpinnerSection }) => (
-    <View style={skeletonStyles.container}>
-      {Array.from({ length: count }).map((_, index) => (
-        <View key={index} style={skeletonStyles.item}>
-          <SkeletonLoader width={100} height={20} borderRadius={8} style={{ marginBottom: 16 }} />
-          <View style={skeletonStyles.timelineRow}>
-            <View style={skeletonStyles.timeColumn}>
-              <SkeletonLoader width={50} height={14} borderRadius={6} />
-              <SkeletonLoader width={2} height={60} borderRadius={1} style={{ marginTop: 8, marginLeft: 20 }} />
-            </View>
-            <View style={skeletonStyles.eventCard}>
-              <SkeletonLoader width={48} height={48} borderRadius={14} />
-              <View style={skeletonStyles.eventContent}>
-                <SkeletonLoader width="60%" height={16} borderRadius={6} />
-                <SkeletonLoader width="40%" height={12} borderRadius={4} style={{ marginTop: 8 }} />
-              </View>
-            </View>
-          </View>
-        </View>
-      ))}
-    </View>
-  ),
-  Profile: ({ section = 'main' as SpinnerSection }: { section?: SpinnerSection }) => (
-    <View style={skeletonStyles.container}>
-      <View style={skeletonStyles.header}>
-        <SkeletonLoader width={44} height={44} borderRadius={12} />
-        <View style={skeletonStyles.headerCenter}>
-          <SkeletonLoader width={140} height={28} borderRadius={8} />
-          <SkeletonLoader width={100} height={14} borderRadius={6} style={{ marginTop: 6 }} />
-        </View>
-        <SkeletonLoader width={44} height={44} borderRadius={12} />
-      </View>
-      <View style={skeletonStyles.profileCard}>
-        <View style={skeletonStyles.profileHeader}>
-          <ShimmerLoader width={80} height={80} borderRadius={40} section={section} />
-          <View style={skeletonStyles.profileInfo}>
-            <SkeletonLoader width={120} height={24} borderRadius={8} />
-            <SkeletonLoader width={80} height={16} borderRadius={6} style={{ marginTop: 8 }} />
-            <SkeletonLoader width={100} height={14} borderRadius={6} style={{ marginTop: 8 }} />
-          </View>
-        </View>
-        <View style={skeletonStyles.statsRow}>
-          <ShimmerLoader width={70} height={70} borderRadius={35} section={section} />
-          <ShimmerLoader width={70} height={70} borderRadius={35} section={section} />
-          <ShimmerLoader width={70} height={70} borderRadius={35} section={section} />
-        </View>
-      </View>
-    </View>
-  ),
-  Community: () => (
-    <View style={skeletonStyles.container}>
-      <View style={skeletonStyles.header}>
-        <ShimmerLoader width={120} height={28} borderRadius={8} section="community" />
-        <ShimmerLoader width={44} height={44} borderRadius={22} section="community" />
-      </View>
-      <ShimmerPresets.List count={4} height={120} section="community" />
-    </View>
-  ),
+  Timeline: TimelineSkeleton,
+  Profile: ProfileSkeleton,
+  Community: CommunitySkeleton,
 };
 
+// ─── STYLES ───────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+  overlay: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   spinnerContainer: {
     justifyContent: 'center',
     alignItems: 'center',
@@ -816,69 +785,20 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
     elevation: 20,
   },
-  text: {
-    marginTop: 16,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  subtext: {
-    marginTop: 6,
-    fontSize: 13,
-    textAlign: 'center',
-    paddingHorizontal: 12,
-  },
-  progressContainer: {
-    marginTop: 12,
-    width: '80%',
-    alignItems: 'center',
-  },
-  progressBar: {
-    width: '100%',
-    height: 4,
-    backgroundColor: 'rgba(0,0,0,0.1)',
-    borderRadius: 2,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 2,
-  },
-  progressText: {
-    marginTop: 4,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  shimmerContainer: {
-    overflow: 'hidden',
-  },
-  liquidDotsContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  liquidDot: {
-    position: 'absolute',
-    borderRadius: 999,
-  },
-  pulseContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  pulseRing: {
-    position: 'absolute',
-    borderRadius: 999,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  pulseCenter: {
-    borderRadius: 999,
-  },
-  orbitCenter: {
-    position: 'absolute',
-    borderRadius: 999,
-  },
-  staticDot: {
-    borderRadius: 999,
-  },
+  text: { marginTop: 16, fontWeight: '700', textAlign: 'center' },
+  subtext: { marginTop: 6, fontSize: 13, textAlign: 'center', paddingHorizontal: 12 },
+  progressContainer: { marginTop: 12, width: '80%', alignItems: 'center' },
+  progressBar: { width: '100%', height: 4, backgroundColor: 'rgba(0,0,0,0.1)', borderRadius: 2, overflow: 'hidden' },
+  progressFill: { height: '100%', borderRadius: 2 },
+  progressText: { marginTop: 4, fontSize: 12, fontWeight: '600' },
+  shimmerContainer: { overflow: 'hidden' },
+  liquidDotsContainer: { justifyContent: 'center', alignItems: 'center' },
+  liquidDot: { position: 'absolute', borderRadius: 999 },
+  pulseContainer: { justifyContent: 'center', alignItems: 'center' },
+  pulseRing: { position: 'absolute', borderRadius: 999, borderWidth: 2, borderColor: 'transparent' },
+  pulseCenter: { borderRadius: 999 },
+  orbitCenter: { position: 'absolute', borderRadius: 999 },
+  staticDot: { borderRadius: 999 },
 });
 
 const skeletonStyles = StyleSheet.create({
@@ -893,16 +813,9 @@ const skeletonStyles = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.8)',
   },
   eventContent: { flex: 1, marginLeft: 14 },
-  header: {
-    flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'space-between', marginBottom: 20,
-  },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 },
   headerCenter: { alignItems: 'center' },
-  profileCard: {
-    backgroundColor: 'rgba(255,255,255,0.5)',
-    borderRadius: 28, padding: 24,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.8)',
-  },
+  profileCard: { backgroundColor: 'rgba(255,255,255,0.5)', borderRadius: 28, padding: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,0.8)' },
   profileHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 24 },
   profileInfo: { marginLeft: 16, flex: 1 },
   statsRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 24 },

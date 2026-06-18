@@ -1078,19 +1078,21 @@ export default function RemindersScreen({ navigation, route }: Props) {
     const reminder = reminders.find((r) => r.id === id);
     if (!reminder) return;
 
-    sweetAlert.confirm(
-      'Delete Reminder',
-      'Deleted',
-      () => {
-        // TODO: Confirm action
+    showAlert('Delete Reminder', `Remove "${reminder.title}"?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          await cancelNotification(reminder.notificationId);
+          const updated = reminders.filter((r) => r.id !== id);
+          setReminders(updated);
+          await saveReminders(updated);
+          showToast('info', 'Deleted', `${reminder.title} removed`);
+          triggerHaptic('light');
+        },
       },
-      () => {
-        // Cancel action
-      },
-      'OK',
-      'Cancel',
-      false
-    );
+    ]);
   };
 
   const resetForm = () => {

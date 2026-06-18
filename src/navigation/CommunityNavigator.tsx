@@ -1,3 +1,4 @@
+// src/navigation/CommunityNavigator.tsx
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, StyleSheet, Text } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -24,9 +25,13 @@ import FollowingScreen from '../screens/community/FollowingScreen';
 import ReportScreen from '../screens/community/ReportScreen';
 import CommunitySplashScreen from '../screens/community/CommunitySplashScreen';
 import CommunityOnboardingScreen from '../screens/community/CommunityOnboardingScreen';
+
 import { CommunityColors } from '../theme/CommunityTheme';
+
+// ─── MISSING IMPORTS ────────────────────────────────────────────────────
 import { UniversalSpinner } from '../components/UniversalSpinner';
 
+// ─── TYPE DEFINITIONS ───────────────────────────────────────────────────
 export type CommunityStackParamList = {
   CommunityOnboarding: undefined;
   CommunitySplash: undefined;
@@ -51,127 +56,99 @@ const Stack = createNativeStackNavigator<CommunityStackParamList>();
 
 const COUNTRY_CACHE_KEY = '@littleloom_country_detected_v2';
 const COUNTRY_CACHE_TTL = 7 * 24 * 60 * 60 * 1000;
+
 const COMMUNITY_ONBOARDING_KEY = '@littleloom_community_onboarding_done';
 const COMMUNITY_TOPICS_KEY = '@littleloom_community_topics_selected';
 
-// ─── FIX #1: Module-level constants, not recreated per render ─────────
-const COUNTRY_MAP: Record<string, string> = {
-  US: 'United States', GB: 'United Kingdom', CA: 'Canada', AU: 'Australia',
-  DE: 'Germany', FR: 'France', JP: 'Japan', IN: 'India', BR: 'Brazil',
-  MX: 'Mexico', NG: 'Nigeria', ZA: 'South Africa', GH: 'Ghana',
-  UG: 'Uganda', TZ: 'Tanzania', RW: 'Rwanda', ET: 'Ethiopia', EG: 'Egypt',
-  MA: 'Morocco', CN: 'China', RU: 'Russia', ES: 'Spain', IT: 'Italy',
-  NL: 'Netherlands', SE: 'Sweden', NO: 'Norway', DK: 'Denmark', FI: 'Finland',
-  PL: 'Poland', UA: 'Ukraine', TR: 'Turkey', SA: 'Saudi Arabia', AE: 'United Arab Emirates',
-  IL: 'Israel', KR: 'South Korea', TH: 'Thailand', VN: 'Vietnam', ID: 'Indonesia',
-  MY: 'Malaysia', PH: 'Philippines', SG: 'Singapore', NZ: 'New Zealand', IE: 'Ireland',
-  PT: 'Portugal', GR: 'Greece', AT: 'Austria', CH: 'Switzerland', BE: 'Belgium',
-  CZ: 'Czech Republic', HU: 'Hungary', RO: 'Romania', BG: 'Bulgaria', HR: 'Croatia',
-  KE: 'Kenya', BD: 'Bangladesh', PK: 'Pakistan', AR: 'Argentina', CO: 'Colombia',
-  CL: 'Chile', PE: 'Peru', UY: 'Uruguay',
-};
-
-const TIMEZONE_MAP: Record<string, string> = {
-  'Africa/Nairobi': 'Kenya', 'Africa/Lagos': 'Nigeria', 'Africa/Johannesburg': 'South Africa',
-  'Africa/Cairo': 'Egypt', 'Africa/Accra': 'Ghana', 'Africa/Kigali': 'Rwanda',
-  'Africa/Dar_es_Salaam': 'Tanzania', 'Africa/Kampala': 'Uganda', 'Africa/Addis_Ababa': 'Ethiopia',
-  'Africa/Casablanca': 'Morocco', 'Europe/London': 'United Kingdom', 'Europe/Paris': 'France',
-  'Europe/Berlin': 'Germany', 'Europe/Madrid': 'Spain', 'Europe/Rome': 'Italy',
-  'Europe/Amsterdam': 'Netherlands', 'Europe/Brussels': 'Belgium', 'Europe/Vienna': 'Austria',
-  'Europe/Zurich': 'Switzerland', 'Europe/Stockholm': 'Sweden', 'Europe/Oslo': 'Norway',
-  'Europe/Copenhagen': 'Denmark', 'Europe/Helsinki': 'Finland', 'Europe/Warsaw': 'Poland',
-  'Europe/Moscow': 'Russia', 'Europe/Istanbul': 'Turkey', 'Europe/Kiev': 'Ukraine',
-  'America/New_York': 'United States', 'America/Chicago': 'United States', 'America/Denver': 'United States',
-  'America/Los_Angeles': 'United States', 'America/Toronto': 'Canada', 'America/Vancouver': 'Canada',
-  'America/Mexico_City': 'Mexico', 'America/Sao_Paulo': 'Brazil', 'America/Buenos_Aires': 'Argentina',
-  'America/Santiago': 'Chile', 'America/Bogota': 'Colombia', 'America/Lima': 'Peru',
-  'America/Caracas': 'Venezuela', 'Asia/Tokyo': 'Japan', 'Asia/Seoul': 'South Korea',
-  'Asia/Shanghai': 'China', 'Asia/Beijing': 'China', 'Asia/Hong_Kong': 'Hong Kong',
-  'Asia/Singapore': 'Singapore', 'Asia/Bangkok': 'Thailand', 'Asia/Jakarta': 'Indonesia',
-  'Asia/Kuala_Lumpur': 'Malaysia', 'Asia/Manila': 'Philippines', 'Asia/Mumbai': 'India',
-  'Asia/Delhi': 'India', 'Asia/Dubai': 'United Arab Emirates', 'Asia/Tel_Aviv': 'Israel',
-  'Asia/Riyadh': 'Saudi Arabia', 'Asia/Tehran': 'Iran', 'Asia/Karachi': 'Pakistan',
-  'Asia/Dhaka': 'Bangladesh', 'Asia/Ho_Chi_Minh': 'Vietnam', 'Pacific/Auckland': 'New Zealand',
-  'Pacific/Sydney': 'Australia', 'Pacific/Melbourne': 'Australia', 'Pacific/Perth': 'Australia',
-  'Pacific/Brisbane': 'Australia', 'Atlantic/Reykjavik': 'Iceland',
-};
-
-const getCountryFromCode = (code: string) => COUNTRY_MAP[code.toUpperCase()] || null;
-const getCountryFromTz = (tz: string) => TIMEZONE_MAP[tz] || null;
-
-// ─── FIX #2: No artificial delays, parallel detection ─────────────────
-const useCountryDetection = () => {
+const useAutomaticCountryDetection = () => {
   const { currentUser, updateUserLocation } = useCommunity();
   const [isDetecting, setIsDetecting] = useState(false);
-  const done = useRef(false);
+  const detectionRan = useRef(false);
 
   useEffect(() => {
-    if (done.current || !currentUser || (currentUser.country && currentUser.country !== 'Unknown')) {
-      done.current = true;
-      return;
-    }
+    if (detectionRan.current) return;
+    if (!currentUser) return;
+    if (currentUser.country && currentUser.country !== 'Unknown') return;
 
-    const detect = async () => {
-      // Check cache first
+    const detectCountry = async () => {
       try {
         const cached = await AsyncStorage.getItem(COUNTRY_CACHE_KEY);
         if (cached) {
           const { country, timestamp } = JSON.parse(cached);
           if (Date.now() - timestamp < COUNTRY_CACHE_TTL) {
             await updateUserLocation(country);
-            done.current = true;
+            detectionRan.current = true;
             return;
           }
         }
-      } catch { /* ignore */ }
+      } catch (e) { /* ignore cache errors */ }
 
       setIsDetecting(true);
 
-      // Try region/timezone immediately (no setTimeout)
-      const region = Localization.region;
-      let country = region ? getCountryFromCode(region) : null;
-      if (!country) country = getCountryFromTz(Localization.timezone);
-
-      if (country) {
-        await saveAndUpdate(country);
-        return;
-      }
-
-      // Fallback: location permission (no nested setTimeout)
       try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status === 'granted') {
-          const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Low });
-          const geo = await Location.reverseGeocodeAsync({
-            latitude: loc.coords.latitude,
-            longitude: loc.coords.longitude,
-          });
-          if (geo[0]?.country) {
-            await saveAndUpdate(geo[0].country);
+        const regionCode = Localization.region;
+        if (regionCode) {
+          const countryName = getCountryNameFromCode(regionCode);
+          if (countryName) {
+            await saveAndUpdate(countryName);
             return;
           }
         }
-      } catch (e) {
-        console.log('Location detection failed:', e);
-      }
 
-      setIsDetecting(false);
-      done.current = true;
+        const timezone = Localization.timezone;
+        const countryFromTimezone = getCountryFromTimezone(timezone);
+        if (countryFromTimezone) {
+          await saveAndUpdate(countryFromTimezone);
+          return;
+        }
+
+        setTimeout(async () => {
+          try {
+            const { status } = await Location.requestForegroundPermissionsAsync();
+            if (status === 'granted') {
+              const location = await Location.getCurrentPositionAsync({ 
+                accuracy: Location.Accuracy.Low 
+              });
+              const reverseGeocode = await Location.reverseGeocodeAsync({
+                latitude: location.coords.latitude,
+                longitude: location.coords.longitude,
+              });
+              if (reverseGeocode.length > 0 && reverseGeocode[0].country) {
+                await saveAndUpdate(reverseGeocode[0].country);
+                return;
+              }
+            }
+          } catch (locError) {
+            console.log('Location detection failed:', locError);
+          }
+          setIsDetecting(false);
+          detectionRan.current = true;
+        }, 500);
+      } catch (error) {
+        console.log('Country detection error:', error);
+        setIsDetecting(false);
+        detectionRan.current = true;
+      }
     };
 
     const saveAndUpdate = async (country: string) => {
-      await AsyncStorage.setItem(COUNTRY_CACHE_KEY, JSON.stringify({ country, timestamp: Date.now() }));
+      await AsyncStorage.setItem(COUNTRY_CACHE_KEY, JSON.stringify({ 
+        country, 
+        timestamp: Date.now() 
+      }));
       await updateUserLocation(country);
       setIsDetecting(false);
-      done.current = true;
+      detectionRan.current = true;
     };
 
-    detect();
+    const timer = setTimeout(detectCountry, 100);
+    return () => clearTimeout(timer);
   }, [currentUser, updateUserLocation]);
 
   return isDetecting;
 };
 
+// ─── FIXED: Use UniversalSpinner instead of undefined InlineSpinner ─────
 const InlineLoadingView = React.memo(({ text }: { text: string }) => (
   <View style={styles.inlineLoadingContainer}>
     <View style={styles.inlineLoadingCard}>
@@ -187,7 +164,7 @@ const CommunityNavigator = React.memo(() => {
   const { isLoading, currentUser, checkOnboardingStatus, getSelectedTopics, isInitialized } = useCommunity();
   const { profile: userProfile } = useUser();
   const { settings, shouldReduceMotion } = useCustomization();
-  const isDetectingCountry = useCountryDetection();
+  const isDetectingCountry = useAutomaticCountryDetection();
 
   const {
     isReady: splashReady,
@@ -196,26 +173,28 @@ const CommunityNavigator = React.memo(() => {
   } = useIntelligentSplash('community', shouldReduceMotion, settings.compactView);
 
   const [phase, setPhase] = useState<CommunityPhase>('loading');
+  const [navigatorKey, setNavigatorKey] = useState(0);
   const initDone = useRef(false);
 
-  const isReady = !isLoading && isInitialized && splashReady;
+  const isContextReady = !isLoading && isInitialized && splashReady;
 
-  // ─── FIX #3: Single init effect, parallel checks, no navigatorKey ─────
   useEffect(() => {
-    if (!isReady || initDone.current) return;
-
-    initDone.current = true;
+    if (!isContextReady || initDone.current) return;
 
     const initialize = async () => {
-      const [completed, selectedTopics, onboardingDone, topicsStored] = await Promise.all([
+      initDone.current = true;
+
+      const [completed, selectedTopics] = await Promise.all([
         checkOnboardingStatus(),
         getSelectedTopics(),
-        AsyncStorage.getItem(COMMUNITY_ONBOARDING_KEY),
-        AsyncStorage.getItem(COMMUNITY_TOPICS_KEY),
       ]);
 
+      const onboardingDone = await AsyncStorage.getItem(COMMUNITY_ONBOARDING_KEY);
+      const topicsStored = await AsyncStorage.getItem(COMMUNITY_TOPICS_KEY);
       const hasTopics = selectedTopics.length > 0 || (topicsStored ? JSON.parse(topicsStored).length > 0 : false);
       const isOnboardingDone = completed || onboardingDone === 'true';
+
+      console.log('[CommunityNavigator] Init - onboardingDone:', isOnboardingDone, 'hasTopics:', hasTopics);
 
       if (!isOnboardingDone || !hasTopics) {
         setPhase('onboarding');
@@ -227,7 +206,13 @@ const CommunityNavigator = React.memo(() => {
     };
 
     initialize();
-  }, [isReady, checkOnboardingStatus, getSelectedTopics, shouldShowSplash, isDetectingCountry]);
+  }, [isContextReady, checkOnboardingStatus, getSelectedTopics, shouldShowSplash, isDetectingCountry]);
+
+  useEffect(() => {
+    if (phase !== 'loading') {
+      setNavigatorKey(prev => prev + 1);
+    }
+  }, [phase]);
 
   const handleSplashComplete = useCallback(async () => {
     await markSplashShown();
@@ -240,22 +225,34 @@ const CommunityNavigator = React.memo(() => {
     markSplashShown();
   }, [markSplashShown]);
 
-  if (!isReady || phase === 'loading') {
-    return <InlineLoadingView text={isDetectingCountry ? 'Detecting location...' : 'Loading community...'} />;
+  // ─── FIXED: Use InlineLoadingView instead of undefined CommunitySpinner ─
+  if (!isContextReady || phase === 'loading') {
+    return (
+      <InlineLoadingView
+        text={isDetectingCountry ? "Detecting location..." : "Loading community..."}
+      />
+    );
   }
-
-  const screenOptions = {
-    headerShown: false,
-    animation: 'slide_from_right' as const,
-    gestureEnabled: true,
-    contentStyle: { backgroundColor: CommunityColors.background.main },
-  };
 
   if (phase === 'onboarding') {
     return (
-      <Stack.Navigator initialRouteName="CommunityOnboarding" screenOptions={{ ...screenOptions, gestureEnabled: false }}>
+      <Stack.Navigator
+        key="community-onboarding"
+        initialRouteName="CommunityOnboarding"
+        screenOptions={{
+          headerShown: false,
+          animation: 'slide_from_right',
+          gestureEnabled: false,
+          contentStyle: { backgroundColor: CommunityColors.background.main },
+        }}
+      >
         <Stack.Screen name="CommunityOnboarding">
-          {(props) => <CommunityOnboardingScreen {...props} onComplete={handleOnboardingComplete} />}
+          {(props) => (
+            <CommunityOnboardingScreen
+              {...props}
+              onComplete={handleOnboardingComplete}
+            />
+          )}
         </Stack.Screen>
       </Stack.Navigator>
     );
@@ -263,7 +260,16 @@ const CommunityNavigator = React.memo(() => {
 
   if (phase === 'splash') {
     return (
-      <Stack.Navigator initialRouteName="CommunitySplash" screenOptions={{ ...screenOptions, animation: 'fade' as const, gestureEnabled: false }}>
+      <Stack.Navigator
+        key="community-splash"
+        initialRouteName="CommunitySplash"
+        screenOptions={{
+          headerShown: false,
+          animation: 'fade',
+          gestureEnabled: false,
+          contentStyle: { backgroundColor: CommunityColors.background.main },
+        }}
+      >
         <Stack.Screen name="CommunitySplash">
           {(props) => (
             <CommunitySplashScreen
@@ -277,18 +283,42 @@ const CommunityNavigator = React.memo(() => {
     );
   }
 
-  // ─── FIX #4: No navigatorKey remount, stable Stack.Navigator ──────────
+  // MAIN PHASE: Full navigator with all routes
   return (
-    <Stack.Navigator initialRouteName="CommunityMain" screenOptions={screenOptions}>
-      <Stack.Screen name="CommunityMain" component={CommunityScreen} options={{ animation: 'fade' }} />
+    <Stack.Navigator
+      key={`community-main-${navigatorKey}`}
+      initialRouteName="CommunityMain"
+      screenOptions={{
+        headerShown: false,
+        animation: 'slide_from_right',
+        gestureEnabled: true,
+        contentStyle: { backgroundColor: CommunityColors.background.main },
+      }}
+    >
+      <Stack.Screen 
+        name="CommunityMain" 
+        component={CommunityScreen} 
+        options={{ animation: 'fade' }} 
+      />
+
       <Stack.Screen name="Topic" component={TopicScreen} />
       <Stack.Screen name="CreatePost" component={CreatePostScreen} options={{ animation: 'slide_from_bottom', gestureEnabled: false }} />
       <Stack.Screen name="PostDetail" component={PostDetailScreen} />
+
+      {/* NEW: Community Member Profile (view other users) */}
       <Stack.Screen name="CommunityMemberProfile" component={CommunityMemberProfileScreen} />
+
       <Stack.Screen name="ChatList" component={ChatListScreen} />
       <Stack.Screen name="Chat" component={ChatScreen} />
       <Stack.Screen name="Notifications" component={NotificationsScreen} />
-      <Stack.Screen name="CommunityProfile" component={CommunityProfileScreen} options={{ animation: 'slide_from_bottom', gestureEnabled: false }} />
+
+      {/* NEW: Community Profile (self view/edit) */}
+      <Stack.Screen 
+        name="CommunityProfile" 
+        component={CommunityProfileScreen} 
+        options={{ animation: 'slide_from_bottom', gestureEnabled: false }} 
+      />
+
       <Stack.Screen name="TopicMembers" component={TopicMembersScreen} />
       <Stack.Screen name="Followers" component={FollowersScreen} />
       <Stack.Screen name="Following" component={FollowingScreen} />
@@ -299,20 +329,81 @@ const CommunityNavigator = React.memo(() => {
   );
 });
 
-// ─── FIX #5: Lazy-loaded placeholder screens ────────────────────────────
-const TopicMembersScreen = React.lazy(() => import('../screens/community/TopicMembersScreen').catch(() => ({ default: () => <View><Text>Topic Members</Text></View> })));
-const SearchUsersScreen = React.lazy(() => import('../screens/community/SearchUsersScreen').catch(() => ({ default: () => <View><Text>Search Users</Text></View> })));
-const BlockedUsersScreen = React.lazy(() => import('../screens/community/BlockedUsersScreen').catch(() => ({ default: () => <View><Text>Blocked Users</Text></View> })));
+// Placeholder components for missing screens
+const TopicMembersScreen = () => <View><Text>Topic Members</Text></View>;
+const SearchUsersScreen = () => <View><Text>Search Users</Text></View>;
+const BlockedUsersScreen = () => <View><Text>Blocked Users</Text></View>;
+
+const getCountryNameFromCode = (code: string): string | null => {
+  const countryMap: Record<string, string> = {
+    'US': 'United States', 'GB': 'United Kingdom', 'CA': 'Canada', 'AU': 'Australia',
+    'DE': 'Germany', 'FR': 'France', 'JP': 'Japan', 'IN': 'India', 'BR': 'Brazil',
+    'MX': 'Mexico', 'NG': 'Nigeria', 'ZA': 'South Africa', 'GH': 'Ghana',
+    'UG': 'Uganda', 'TZ': 'Tanzania', 'RW': 'Rwanda', 'ET': 'Ethiopia', 'EG': 'Egypt',
+    'MA': 'Morocco', 'CN': 'China', 'RU': 'Russia', 'ES': 'Spain', 'IT': 'Italy',
+    'NL': 'Netherlands', 'SE': 'Sweden', 'NO': 'Norway', 'DK': 'Denmark', 'FI': 'Finland',
+    'PL': 'Poland', 'UA': 'Ukraine', 'TR': 'Turkey', 'SA': 'Saudi Arabia', 'AE': 'United Arab Emirates',
+    'IL': 'Israel', 'KR': 'South Korea', 'TH': 'Thailand', 'VN': 'Vietnam', 'ID': 'Indonesia',
+    'MY': 'Malaysia', 'PH': 'Philippines', 'SG': 'Singapore', 'NZ': 'New Zealand', 'IE': 'Ireland',
+    'PT': 'Portugal', 'GR': 'Greece', 'AT': 'Austria', 'CH': 'Switzerland', 'BE': 'Belgium',
+    'CZ': 'Czech Republic', 'HU': 'Hungary', 'RO': 'Romania', 'BG': 'Bulgaria', 'HR': 'Croatia',
+    'KE': 'Kenya', 'BD': 'Bangladesh', 'PK': 'Pakistan', 'AR': 'Argentina', 'CO': 'Colombia',
+    'CL': 'Chile', 'PE': 'Peru', 'UY': 'Uruguay',
+  };
+  return countryMap[code.toUpperCase()] || null;
+};
+
+const getCountryFromTimezone = (timezone: string): string | null => {
+  const timezoneMap: Record<string, string> = {
+    'Africa/Nairobi': 'Kenya', 'Africa/Lagos': 'Nigeria', 'Africa/Johannesburg': 'South Africa',
+    'Africa/Cairo': 'Egypt', 'Africa/Accra': 'Ghana', 'Africa/Kigali': 'Rwanda',
+    'Africa/Dar_es_Salaam': 'Tanzania', 'Africa/Kampala': 'Uganda', 'Africa/Addis_Ababa': 'Ethiopia',
+    'Africa/Casablanca': 'Morocco', 'Europe/London': 'United Kingdom', 'Europe/Paris': 'France',
+    'Europe/Berlin': 'Germany', 'Europe/Madrid': 'Spain', 'Europe/Rome': 'Italy',
+    'Europe/Amsterdam': 'Netherlands', 'Europe/Brussels': 'Belgium', 'Europe/Vienna': 'Austria',
+    'Europe/Zurich': 'Switzerland', 'Europe/Stockholm': 'Sweden', 'Europe/Oslo': 'Norway',
+    'Europe/Copenhagen': 'Denmark', 'Europe/Helsinki': 'Finland', 'Europe/Warsaw': 'Poland',
+    'Europe/Moscow': 'Russia', 'Europe/Istanbul': 'Turkey', 'Europe/Kiev': 'Ukraine',
+    'America/New_York': 'United States', 'America/Chicago': 'United States', 'America/Denver': 'United States',
+    'America/Los_Angeles': 'United States', 'America/Toronto': 'Canada', 'America/Vancouver': 'Canada',
+    'America/Mexico_City': 'Mexico', 'America/Sao_Paulo': 'Brazil', 'America/Buenos_Aires': 'Argentina',
+    'America/Santiago': 'Chile', 'America/Bogota': 'Colombia', 'America/Lima': 'Peru',
+    'America/Caracas': 'Venezuela', 'Asia/Tokyo': 'Japan', 'Asia/Seoul': 'South Korea',
+    'Asia/Shanghai': 'China', 'Asia/Beijing': 'China', 'Asia/Hong_Kong': 'Hong Kong',
+    'Asia/Singapore': 'Singapore', 'Asia/Bangkok': 'Thailand', 'Asia/Jakarta': 'Indonesia',
+    'Asia/Kuala_Lumpur': 'Malaysia', 'Asia/Manila': 'Philippines', 'Asia/Mumbai': 'India',
+    'Asia/Delhi': 'India', 'Asia/Dubai': 'United Arab Emirates', 'Asia/Tel_Aviv': 'Israel',
+    'Asia/Riyadh': 'Saudi Arabia', 'Asia/Tehran': 'Iran', 'Asia/Karachi': 'Pakistan',
+    'Asia/Dhaka': 'Bangladesh', 'Asia/Ho_Chi_Minh': 'Vietnam', 'Pacific/Auckland': 'New Zealand',
+    'Pacific/Sydney': 'Australia', 'Pacific/Melbourne': 'Australia', 'Pacific/Perth': 'Australia',
+    'Pacific/Brisbane': 'Australia', 'Atlantic/Reykjavik': 'Iceland',
+  };
+  return timezoneMap[timezone] || null;
+};
 
 const styles = StyleSheet.create({
-  inlineLoadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  inlineLoadingCard: {
-    alignItems: 'center', padding: 32, borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15, shadowRadius: 16, elevation: 8,
+  inlineLoadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  inlineLoadingText: { marginTop: 16, fontSize: 15, fontWeight: '600', color: '#1a1a1a' },
+  inlineLoadingCard: {
+    alignItems: 'center',
+    padding: 32,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  inlineLoadingText: {
+    marginTop: 16,
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1a1a1a',
+  },
 });
 
 export default CommunityNavigator;

@@ -389,19 +389,24 @@ const VaultLockModal = ({
 
       if (!hasSecurity) {
 
-sweetAlert.confirm(
-      'Security Required',
-      'Please set up PIN or Biometric authentication in Settings to use the Private Vault.',
-      () => {
-        // TODO: Confirm action
-      },
-      () => {
-        // Cancel action
-      },
-      'OK',
-      'Cancel',
-      false
-    );
+showAlert(
+          'Security Required',
+          'Please set up PIN or Biometric authentication in Settings to use the Private Vault.',
+          [
+            {
+              text: 'Cancel',
+              style: 'cancel',
+              onPress: onCancel,
+            },
+            {
+              text: 'Go to Settings',
+              onPress: () => {
+                onCancel();
+                navigation.navigate('Main', { screen: 'Settings' });
+              },
+            },
+          ]
+        );
       } else if (
         securitySettings.isBiometricEnabled &&
         isBiometricHardwareAvailable &&
