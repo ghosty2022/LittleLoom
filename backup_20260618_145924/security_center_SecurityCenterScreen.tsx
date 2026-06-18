@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {  ActivityIndicator, Dimensions, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -112,9 +112,6 @@ const SectionHeader: React.FC<{ title: string; isDark: boolean }> = ({ title, is
 export default function SecurityCenterScreen({ navigation, route }: SecurityCenterScreenProps) {
   const {
     settings: securitySettings,
-    isBiometricEnabled,
-    isBiometricHardwareAvailable,
-    isBiometricEnrolled,
     setupPin,
     verifyPin,
     changePin,
@@ -127,6 +124,8 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     clearSecurityQuestions,
     hasSecurityQuestions,
     authenticateWithBiometric,
+    isBiometricHardwareAvailable,
+    isBiometricEnrolled,
     availableBiometricTypes,
     getBiometricTypeName,
     clearSecurityState,
@@ -413,23 +412,23 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     showSuccess('Updated', `Auto-lock set to ${minutes} minute${minutes > 1 ? 's' : ''}`);
   };
 
-  const getSecurityScore = useCallback(() => {
+  const getSecurityScore = () => {
     let score = 0;
     if (securitySettings.isPinEnabled) score += 25;
     if (isBiometricEnabled) score += 25;
     if (securitySettings.hasSecurityQuestions) score += 25;
     if (securitySettings.isAppLockEnabled) score += 25;
     return score;
-  }, [securitySettings.isPinEnabled, isBiometricEnabled, securitySettings.hasSecurityQuestions, securitySettings.isAppLockEnabled]);
+  };
 
-  const getScoreLabel = useCallback((score: number) => {
+  const getScoreLabel = (score: number) => {
     if (score >= 80) return { text: 'Excellent', color: '#10b981' };
     if (score >= 50) return { text: 'Good', color: '#f59e0b' };
     return { text: 'Weak', color: '#ef4444' };
-  }, []);
+  };
 
-  const score = useMemo(() => getSecurityScore(), [getSecurityScore]);
-  const scoreLabel = useMemo(() => getScoreLabel(score), [score, getScoreLabel]);
+  const score = getSecurityScore();
+  const scoreLabel = getScoreLabel(score);
 
   const renderDashboard = () => (
     <AnimatedRe.View entering={FadeInUp.duration(500)} style={styles.section}>

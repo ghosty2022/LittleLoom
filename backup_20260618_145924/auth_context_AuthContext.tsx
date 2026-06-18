@@ -325,7 +325,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           ]);
           
           const baseName = userProfile.fullName || 'Parent';
-          const baseHandle = `@${baseName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
+          const baseHandle = `@${baseName.toLowerCase().replace(/\\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
           
           userProfile = {
             ...userProfile,
@@ -500,7 +500,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const performSignInInternal = useCallback(async (email: string, password: string, isBiometric: boolean = false): Promise<boolean> => {
     try {
       if (!email || !password) {
-        if (__DEV__) console.warn('[Auth] Sign in failed: missing credentials');
+        console.warn('[Auth] Sign in failed: missing email or password');
         return false;
       }
 
@@ -520,7 +520,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       ]);
       
       const baseName = email.split('@')[0];
-      const baseHandle = `@${baseName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
+      const baseHandle = `@${baseName.toLowerCase().replace(/\\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
       
       const userProfile: UserProfile = {
         id: userId,
@@ -544,7 +544,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       ]);
       
       if (!tokenStored || !profileStored) {
-        if (__DEV__) console.warn('[Auth] Failed to save login data to secure storage');
+        console.warn('[Auth] Failed to save login data to secure storage');
         return false;
       }
 
@@ -601,7 +601,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       ]);
       
       const baseName = socialUser.fullName;
-      const baseHandle = `@${baseName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
+      const baseHandle = `@${baseName.toLowerCase().replace(/\\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
       
       const userProfile: UserProfile = {
         id: socialUser.id,
@@ -658,7 +658,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const token = `auth_token_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       
-      const handle = `@${fullName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
+      const handle = `@${fullName.toLowerCase().replace(/\\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
       
       const userProfile: UserProfile = {
         id: userId,

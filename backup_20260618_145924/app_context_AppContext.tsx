@@ -176,8 +176,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // ─── FIX #3: Sync with customization ONLY when it changes ─────────────
   useEffect(() => {
-    if (!customization?.isLoaded || !_themeLoaded) return;
-    const customApp = customization.settings?.appearance;
+    if (!customization.isLoaded || !_themeLoaded) return;
+    const customApp = customization.settings.appearance;
     if (customApp && customApp !== _cachedAppearance) {
       _cachedAppearance = customApp;
       setAppearanceState(customApp);
@@ -203,7 +203,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const setAppearance = useCallback(async (newAppearance: AppearanceMode) => {
     setAppearanceState(newAppearance);
     _cachedAppearance = newAppearance;
-    customization?.updateSettings?.({ appearance: newAppearance });
+    customization.updateSettings({ appearance: newAppearance });
     await AsyncStorage.setItem(APPEARANCE_STORAGE_KEY, newAppearance).catch(() => {});
   }, [customization]);
 

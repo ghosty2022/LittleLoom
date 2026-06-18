@@ -60,28 +60,20 @@ const BiometricIcon = ({
   size = 80,
   color,
   isDark,
-  isScanning = false,
 }: {
   type: BiometricTypeInfo;
   size?: number;
   color: string;
   isDark: boolean;
-  isScanning?: boolean;
 }) => {
-  const iconName = isScanning && type.iconFilled ? type.iconFilled : type.icon;
   return (
     <View style={[styles.biometricIconContainer, { width: size, height: size }]}>
       <LinearGradient
         colors={isDark ? [`${color}33`, `${color}0d`] : [`${color}26`, `${color}05`]}
         style={[styles.biometricIconBg, { width: size, height: size }]}
       >
-        <Ionicons name={iconName as any} size={size * 0.5} color={color} />
+        <Ionicons name={type.icon as any} size={size * 0.5} color={color} />
       </LinearGradient>
-      {isScanning && (
-        <View style={styles.scanningRing}>
-          <View style={[styles.scanningDot, { borderColor: color }]} />
-        </View>
-      )}
     </View>
   );
 };
@@ -113,9 +105,6 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     getAvailableAuthMethods,
     resetUnlockLock,
   } = useSecurity();
-  
-  // Fallback for older SecurityContext versions
-  const effectiveBiometricEnabled = isBiometricEnabled ?? false;
 
   const { darkMode: isDark, themeColors, triggerHaptic } = useCustomization();
   const { toast, error: showError, confirm } = useSweetAlert();
@@ -244,7 +233,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
   }, []);
 
   useEffect(() => {
-    if (!effectiveBiometricEnabled) return;
+    if (!isBiometricEnabled) return;
     if (!isBiometricHardwareAvailable || !isBiometricEnrolled) return;
     if (isLockedOut) return;
     if (hasAutoPrompted.current) return;
@@ -381,7 +370,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
 
   const handleBiometricAuth = useCallback(async () => {
     if (!isBiometricHardwareAvailable || !isBiometricEnrolled) return;
-    if (!effectiveBiometricEnabled) return;
+    if (!isBiometricEnabled) return;
     if (isLockedOut || isLoading || unlockInProgress.current) return;
 
     const now = Date.now();
@@ -977,17 +966,5 @@ const styles = StyleSheet.create({
   emergencyText: {
     fontSize: 15,
     fontWeight: '600',
-  },
-  scanningRing: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  scanningDot: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 50,
-    borderWidth: 2,
-    borderStyle: 'dashed',
   },
 });

@@ -39,11 +39,8 @@ export interface BiometricTypeConfig {
   type: LocalAuthentication.AuthenticationType;
   name: string;
   icon: string;
-  iconFilled?: string;
-  label: string;
   description: string;
   color: string;
-  gradient?: string[];
 }
 
 export interface SecurityQuestion {
@@ -115,44 +112,16 @@ const defaultSettings: SecuritySettings = {
 const getBiometricConfigs = (types: LocalAuthentication.AuthenticationType[]): BiometricTypeConfig[] => {
   const configs: BiometricTypeConfig[] = [];
   if (!types || !Array.isArray(types)) return configs;
-  // Sort by priority: Face > Fingerprint > Iris for consistent ordering
   types.forEach(type => {
     switch (type) {
       case LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION:
-        configs.push({ 
-          type, 
-          name: 'Face ID', 
-          icon: 'scan-outline',
-          iconFilled: 'scan',
-          label: 'Face Recognition',
-          description: 'Use your face to securely unlock LittleLoom', 
-          color: '#667eea',
-          gradient: ['#667eea', '#764ba2']
-        });
+        configs.push({ type, name: 'Face ID', icon: 'scan-outline', description: 'Use your face to unlock', color: '#667eea' });
         break;
       case LocalAuthentication.AuthenticationType.FINGERPRINT:
-        configs.push({ 
-          type, 
-          name: 'Fingerprint', 
-          icon: 'finger-print-outline',
-          iconFilled: 'finger-print',
-          label: 'Touch ID',
-          description: 'Use your fingerprint to securely unlock LittleLoom', 
-          color: '#10b981',
-          gradient: ['#11998e', '#38ef7d']
-        });
+        configs.push({ type, name: 'Fingerprint', icon: 'finger-print', description: 'Use your fingerprint to unlock', color: '#43e97b' });
         break;
       case LocalAuthentication.AuthenticationType.IRIS:
-        configs.push({ 
-          type, 
-          name: 'Iris Scan', 
-          icon: 'eye-outline',
-          iconFilled: 'eye',
-          label: 'Iris Recognition',
-          description: 'Use your eyes to securely unlock LittleLoom', 
-          color: '#f59e0b',
-          gradient: ['#f59e0b', '#fbbf24']
-        });
+        configs.push({ type, name: 'Iris Scan', icon: 'eye', description: 'Use your eyes to unlock', color: '#ffa502' });
         break;
     }
   });
@@ -599,14 +568,6 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
   }, []);
 
   const value = React.useMemo(() => ({
-    // Direct boolean exports for convenience
-    isBiometricEnabled: state.settings.isBiometricEnabled,
-    isPinEnabled: state.settings.isPinEnabled,
-    isAppLockEnabled: state.settings.isAppLockEnabled,
-    autoLockTimeout: state.settings.autoLockTimeout,
-    hasSecurityQuestions: state.settings.hasSecurityQuestions,
-    biometricTypeName: state.settings.biometricTypeName,
-    // Spread state last so explicit exports take precedence
     ...state,
     checkBiometricCapabilities,
     authenticateWithBiometric,
