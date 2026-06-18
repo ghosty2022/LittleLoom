@@ -401,7 +401,7 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
                       ]}
                     >
                       <Ionicons
-                        name={(config.iconFilled || config.icon) as any}
+                        name={config.icon as any}
                         size={28}
                         color={
                           selectedType?.type === config.type

@@ -850,7 +850,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!state.userProfile) return null;
       return {
         username: state.userProfile.communityUsername || state.userProfile.fullName,
-        handle: state.userProfile.communityHandle || `@${state.userProfile.fullName.toLowerCase().replace(/\s+/g, '_')}`,
+        handle: state.userProfile.communityHandle || `@${state.userProfile.fullName.toLowerCase().replace(/\\s+/g, '_')}`,
         bio: state.userProfile.communityBio || '',
         avatar: state.userProfile.communityAvatar || state.userProfile.avatar || '👤',
         displayName: state.userProfile.communityDisplayName || state.userProfile.fullName,

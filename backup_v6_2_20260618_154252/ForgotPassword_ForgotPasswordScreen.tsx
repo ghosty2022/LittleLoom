@@ -14,10 +14,43 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type ForgotPasswordScreenProps = NativeStackScreenProps<RootStackParamList, 'ForgotPassword'>;
 
+interface AlertState {
+  visible: boolean;
+  type: 'success' | 'error' | 'info' | 'warning';
+  title: string;
+  message: string;
+}
+
+const SweetAlert = ({ visible, type, title, message, isDark }: AlertState & { isDark: boolean }) => {
+  if (!visible) return null;
+
+  const config = {
+    success: { colors: ['#11998e', '#38ef7d'], icon: 'checkmark-circle' },
+    error: { colors: ['#ef4444', '#f87171'], icon: 'alert-circle' },
+    info: { colors: ['#3b82f6', '#60a5fa'], icon: 'information-circle' },
+    warning: { colors: ['#f59e0b', '#fbbf24'], icon: 'warning' },
+  }[type];
+
+  return (
+    <View style={[StyleSheet.absoluteFill, { zIndex: 9999, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 100, pointerEvents: 'none' }]}>
+      <Animated.View entering={FadeInDown} style={[styles.alertContainer, { backgroundColor: isDark ? '#1a1a2e' : '#fff' }]}>
+        <LinearGradient colors={config.colors} style={styles.alertIconBg}>
+          <Ionicons name={config.icon as any} size={28} color="#fff" />
+        </LinearGradient>
+        <View style={styles.alertTextContainer}>
+          <Text style={[styles.alertTitle, { color: isDark ? '#fff' : '#1e293b' }]}>{title}</Text>
+          <Text style={styles.alertMessage}>{message}</Text>
+        </View>
+      </Animated.View>
+    </View>
+  );
+};
+
 export default function ForgotPasswordScreen({ navigation }: ForgotPasswordScreenProps) {
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [sent, setSent] = useState(false);
+  const [alert, setAlert] = useState<AlertState>({ visible: false, type: 'success', title: '', message: '' });
   const [hasPin, setHasPin] = useState(false);
   const [hasSecurityQuestions, setHasSecurityQuestions] = useState(false);
 
@@ -49,9 +82,14 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordScree
     checkSecurityStatus();
   }, [securitySettings.isPinEnabled]);
 
+  const showToast = (type: AlertState['type'], title: string, message: string) => {
+    setAlert({ visible: true, type, title, message });
+    setTimeout(() => setAlert(prev => ({ ...prev, visible: false })), 3000);
+  };
+
   const handleReset = async () => {
     if (!email) {
-      showError('Missing Email', 'Please enter your email address');
+      showToast('error', 'Missing Email', 'Please enter your email address');
       triggerHaptic('error');
       return;
     }
@@ -62,17 +100,17 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordScree
     setTimeout(() => {
       setIsLoading(false);
       setSent(true);
-      showSuccess('Email Sent!', 'Check your inbox for reset instructions');
+      showToast('success', 'Email Sent!', 'Check your inbox for reset instructions');
     }, 1500);
   };
 
   const handlePinReset = () => {
     if (!hasPin) {
-      toast('No PIN Set', 'You have not set up a PIN yet');
+      showToast('info', 'No PIN Set', 'You have not set up a PIN yet');
       return;
     }
     if (!hasSecurityQuestions) {
-      toast('No Recovery Set', 'Security questions not configured. Set them up first.');
+      showToast('warning', 'No Recovery Set', 'Security questions not configured. Set them up first.');
       return;
     }
 
@@ -257,7 +295,9 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordScree
           )}
         </AutoHideAnimatedScrollView>
       </KeyboardAvoidingView>
-</View>
+
+      <SweetAlert {...alert} isDark={isDark} />
+    </View>
   );
 }
 
