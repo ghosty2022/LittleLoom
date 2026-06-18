@@ -42,7 +42,6 @@ import {
   CommunityBorderRadius,
 } from '../../theme/CommunityTheme';
 import type { CommunityStackParamList } from '../../types/navigation';
-import { useCommunity } from '../../context/CommunityContext';
 import type { Post, PostMood, Poll } from '../../context/CommunityContext';  // ← ADD THIS
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { useApp } from '../../context/AppContext';
