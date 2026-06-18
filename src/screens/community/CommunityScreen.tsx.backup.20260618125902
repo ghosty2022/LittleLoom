@@ -1889,21 +1889,58 @@ export default function CommunityScreen({ navigation }: Props) {
       return;
     }
 
-// TODO: Auto-fixed showAlert -> sweetAlert.confirm. VERIFY CALLBACK LOGIC!
-sweetAlert.confirm(
-  'Add to Your Story',
-  'How would you like to share?',
-  () => {
-    // TODO: Add confirm action here
-    console.log('Confirmed: Add to Your Story');
-  },
-  () => {
-    // Cancel action
-  },
-  'Take Photo',
-  'Cancel',
-  false
-)
+showAlert(
+      'Add to Your Story',
+      'How would you like to share?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Text Story', 
+          onPress: () => {
+            const newStory: StoryItem = {
+              id: `story_${Date.now()}`,
+              userId: currentUser?.id || 'self',
+              userName: 'You',
+              userAvatar: currentUser?.avatar,
+              isUser: true,
+              hasStory: true,
+              isViewed: false,
+              content: 'Just shared a new moment! 🌟',
+              timestamp: new Date().toISOString(),
+            };
+            setUserStories(prev => [newStory, ...prev]);
+            setMoments(prev => prev.map(m => 
+              m.isUser ? { ...m, hasStory: true } : m
+            ));
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          }
+        },
+        { 
+          text: 'Take Photo', 
+          onPress: () => {
+            const newStory: StoryItem = {
+              id: `story_${Date.now()}`,
+              userId: currentUser?.id || 'self',
+              userName: 'You',
+              userAvatar: currentUser?.avatar,
+              isUser: true,
+              hasStory: true,
+              isViewed: false,
+              content: 'New photo story! 📸',
+              mediaUri: 'https://images.unsplash.com/photo-1519689680058-324335c77eba?w=800&q=80',
+              mediaType: 'image',
+              timestamp: new Date().toISOString(),
+            };
+            setUserStories(prev => [newStory, ...prev]);
+            setMoments(prev => prev.map(m => 
+              m.isUser ? { ...m, hasStory: true } : m
+            ));
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          }
+        },
+      ]
+    );
+  }, [canInteract, currentUser?.id, currentUser?.avatar, sweetAlert]);
 
   const handleStoryReply = useCallback((storyId: string, content: string) => {
     console.log('Story reply:', storyId, content);

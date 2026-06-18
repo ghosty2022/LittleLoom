@@ -193,27 +193,75 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     updates: Partial<Omit<FamilyMember, 'id' | 'userId' | 'role' | 'permissions' | 'addedAt' | 'addedBy' | 'canBeRemoved'>>
   ): Promise<boolean> => {
     if (!currentBaby?.parent2Id) {
-// TODO: Auto-fixed showAlert -> sweetAlert.confirm. VERIFY CALLBACK LOGIC!
-sweetAlert.confirm(
-  'Error',
-  'No Parent 2 found',
-  () => {
-    // TODO: Add confirm action here
-    console.log('Confirmed: Error');
-  },
-  () => {
-    // Cancel action
-  },
-  'Confirm',
-  'Cancel',
-  false
-)
+      showAlert('Error', 'No Parent 2 found');
+      return false;
+    }
+
+    const canManage = myPermissions?.manageFamily ?? false;
+
+    if (!canManage) {
+      showAlert('Error', 'You do not have permission to update family members');
+      return false;
+    }
+
+    try {
+      const existingStr = await SecureStore.getItemAsync(PARENT2_PROFILE_KEY);
+      const existing = existingStr ? JSON.parse(existingStr) : {};
+
+      const updated = {
+        ...existing,
+        ...updates,
+        id: currentBaby.parent2Id,
+        updatedAt: new Date().toISOString(),
+      };
+
+      await SecureStore.setItemAsync(PARENT2_PROFILE_KEY, JSON.stringify(updated), {
+        keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
+      });
+
+      if (updates.fullName || updates.email) {
+        await updateBaby(currentBaby.id, {
+          parent2Id: currentBaby.parent2Id,
+        });
+      }
+
+      setState(prev => ({
+        ...prev,
+        parent2: prev.parent2 ? {
+          ...prev.parent2,
+          fullName: updates.fullName || prev.parent2.fullName,
+          email: updates.email || prev.parent2.email,
+          avatar: updates.avatar || prev.parent2.avatar,
+          phoneNumber: updates.phoneNumber || prev.parent2.phoneNumber,
+          lastActive: new Date().toISOString(),
+        } : null,
+        members: prev.members.map(m => 
+          m.role === UserRole.PARENT_2 
+            ? { 
+                ...m, 
+                fullName: updates.fullName || m.fullName,
+                email: updates.email || m.email,
+                avatar: updates.avatar || m.avatar,
+                phoneNumber: updates.phoneNumber || m.phoneNumber,
+                lastActive: new Date().toISOString(),
+              }
+            : m
+        ),
+      }));
+
+      return true;
+    } catch (error) {
+      console.error('Error updating parent2 profile:', error);
+      showAlert('Error', 'Failed to update Parent 2 profile');
+      return false;
+    }
+  }, [currentBaby, myPermissions, updateBaby]);
 
   const updateGuardianProfile = useCallback(async (memberId: string, updates: Partial<FamilyMember>): Promise<boolean> => {
     const canManage = myPermissions?.manageFamily ?? false;
 
     if (!canManage) {
-      sweetAlert.alert('Error', 'Permission denied', 'info');
+      showAlert('Error', 'Permission denied');
       return false;
     }
 
@@ -231,7 +279,8 @@ sweetAlert.confirm(
       await loadFamily();
 
       return true;
-    } catch (esweetAlert.alert('Error', 'Failed to update guardian', 'info')date guardian');
+    } catch (error) {
+      showAlert('Error', 'Failed to update guardian');
       return false;
     }
   }, [currentBaby, myPermissions, loadFamily]);
@@ -241,7 +290,8 @@ sweetAlert.confirm(
 
     if (!canManage || !profile || !currentBaby) return false;
 
-    if (!EMAIsweetAlert.alert('Invalid Email', 'Please enter a valid email address', 'info') enter a valid email address');
+    if (!EMAIL_REGEX.test(email)) {
+      showAlert('Invalid Email', 'Please enter a valid email address');
       return false;
     }
 
@@ -259,19 +309,31 @@ sweetAlert.confirm(
         canBeRemoved: true,
         notificationsEnabled: true,
       };
-// TODO: Auto-fixed showAlert -> sweetAlert.confirm. VERIFY CALLBACK LOGIC!
-sweetAlert.confirm(
-  'Error',
-  'Permission denied',
-  () => {
-    // TODO: Add confirm action here
-    console.log('Confirmed: Error');
-  },
-  () => {
-    // Cancel action
-  },
-  'Confirm',
-  'CansweetAlert.alert('Error', 'Failed to send invitation', 'info')owAlert('Error', 'Failed to send invitation');
+
+      const guardiansKey = `littleloom_guardians_${currentBaby.id}`;
+      const existing = await AsyncStorage.getItem(guardiansKey);
+      const guardians: FamilyMember[] = existing ? JSON.parse(existing) : [];
+
+      const existingInvite = guardians.find(g => g.email.toLowerCase() === email.toLowerCase());
+      if (existingInvite) {
+        showAlert('Duplicate Invite', 'An invitation has already been sent to this email');
+        return false;
+      }
+
+      guardians.push(newMember);
+
+      await AsyncStorage.setItem(guardiansKey, JSON.stringify(guardians));
+
+      const updatedGuardianIds = [...(currentBaby.guardianIds || []), newMember.id];
+      await updateBaby(currentBaby.id, { guardianIds: updatedGuardianIds });
+
+      await loadFamily();
+
+      showAlert('Invitation Sent', `An invitation has been sent to ${email}`);
+
+      return true;
+    } catch (error) {
+      showAlert('Error', 'Failed to send invitation');
       return false;
     }
   }, [myPermissions, profile, currentBaby, updateBaby, loadFamily]);
@@ -279,24 +341,58 @@ sweetAlert.confirm(
   const removeMember = useCallback(async (memberId: string) => {
     const canManage = myPermissions?.manageFamily ?? false;
 
-    if (!canManage || !currentBaby) sweetAlert.alert('Error', 'You cannot remove yourself from the family', 'info')Alert('Error', 'You cannot remove yourself from the family');
+    if (!canManage || !currentBaby) return false;
+
+    if (profile?.id === memberId) {
+      showAlert('Error', 'You cannot remove yourself from the family');
       return false;
     }
-// TODO: Auto-fixed showAlert -> sweetAlert.confirm. VERIFY CALLBACK LOGIC!
-sweetAlert.confirm(
-  'Invalid Email',
-  'Please enter a valid email address',
-  () => {
-    // TODO: Add confirm action here
-    console.log('Confirmed: Invalid Email');
-  },
-  () => {
-    // Cancel action
-  },
-  'Confirm',
-  'Cancel',
-  false
-)
+
+    try {
+      const guardiansKey = `littleloom_guardians_${currentBaby.id}`;
+      const existing = await AsyncStorage.getItem(guardiansKey);
+
+      if (existing) {
+        const guardians: FamilyMember[] = JSON.parse(existing);
+        const filtered = guardians.filter(g => g.id !== memberId);
+        await AsyncStorage.setItem(guardiansKey, JSON.stringify(filtered));
+      }
+
+      const updatedGuardianIds = (currentBaby.guardianIds || []).filter(id => id !== memberId);
+      await updateBaby(currentBaby.id, { guardianIds: updatedGuardianIds });
+
+      if (state.parent2?.id === memberId) {
+        await SecureStore.deleteItemAsync(PARENT2_PROFILE_KEY);
+        await updateBaby(currentBaby.id, { parent2Id: undefined });
+      }
+
+      setState(prev => ({
+        ...prev,
+        members: prev.members.filter(m => m.id !== memberId),
+        guardians: prev.guardians.filter(m => m.id !== memberId),
+        parent2: prev.parent2?.id === memberId ? null : prev.parent2,
+      }));
+
+      return true;
+    } catch (error) {
+      showAlert('Error', 'Failed to remove member');
+      return false;
+    }
+  }, [myPermissions, currentBaby, updateBaby, state.parent2, profile]);
+
+  const resendInvite = useCallback(async (memberId: string): Promise<boolean> => {
+    const member = state.members.find(m => m.id === memberId);
+    if (!member) return false;
+
+    showAlert('Invitation Resent', `A new invitation has been sent to ${member.email}`);
+    return true;
+  }, [state.members]);
+
+  const cancelInvite = useCallback(async (memberId: string): Promise<boolean> => {
+    return removeMember(memberId);
+  }, [removeMember]);
+
+  const refreshMemberStatus = useCallback(async (memberId: string) => {
     await loadFamily();
   }, [loadFamily]);
 
@@ -333,33 +429,3 @@ export const useFamily = () => {
 };
 
 export default FamilyProvider;
-// TODO: Auto-fixed showAlert -> sweetAlert.confirm. VERIFY CALLBACK LOGIC!
-sweetAlert.confirm(
-  'Error',
-  'You cannot remove yourself from the family',
-  () => {
-    // TODO: Add confirm action here
-    console.log('Confirmed: Error');
-  },
-  () => {
-    // Cancel action
-  },
-  'Confirm',
-  'Cancel',
-  false
-)
-// TODO: Auto-fixed showAlert -> sweetAlert.confirm. VERIFY CALLBACK LOGIC!
-sweetAlert.confirm(
-  'Invitation Resent',
-  '',
-  () => {
-    // TODO: Add confirm action here
-    console.log('Confirmed: Invitation Resent');
-  },
-  () => {
-    // Cancel action
-  },
-  'Confirm',
-  'Cancel',
-  false
-)

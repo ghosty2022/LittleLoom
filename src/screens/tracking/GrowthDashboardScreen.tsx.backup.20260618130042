@@ -1031,21 +1031,47 @@ export default function GrowthDashboardScreen({ navigation }: any) {
 
   const handleAddPhoto = useCallback(async () => {
 
-// TODO: Auto-fixed showAlert -> sweetAlert.confirm. VERIFY CALLBACK LOGIC!
-sweetAlert.confirm(
-  'Add Photo',
-  'Choose source:',
-  () => {
-    // TODO: Add confirm action here
-    console.log('Confirmed: Add Photo');
-  },
-  () => {
-    // Cancel action
-  },
-  'Cancel',
-  '📷 Take Photo',
-  false
-)
+showAlert('Add Photo', 'Choose source:', [
+      {
+        text: '📷 Take Photo',
+        onPress: async () => {
+          const uri = await takePhoto();
+          if (uri) {
+            setDevicePhotos(prev => [{
+              id: `device-${Date.now()}`,
+              uri,
+              date: new Date().toISOString(),
+              ageMonths,
+              source: 'device',
+            }, ...prev]);
+            triggerHaptic('success');
+          }
+        }
+      },
+      {
+        text: '🖼️ From Gallery',
+        onPress: async () => {
+          if (!hasMediaPermission) {
+
+sweetAlert.error('Permission Required', 'Please allow photo access in settings');
+            return;
+          }
+          const uri = await pickImage();
+          if (uri) {
+            setDevicePhotos(prev => [{
+              id: `device-${Date.now()}`,
+              uri,
+              date: new Date().toISOString(),
+              ageMonths,
+              source: 'device',
+            }, ...prev]);
+            triggerHaptic('success');
+          }
+        }
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  }, [takePhoto, pickImage, hasMediaPermission, ageMonths, triggerHaptic]);
 
   const handleInsightPress = useCallback((insight: InsightItem) => {
     triggerHaptic('light');

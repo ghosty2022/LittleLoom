@@ -389,21 +389,42 @@ const VaultLockModal = ({
 
       if (!hasSecurity) {
 
-// TODO: Auto-fixed showAlert -> sweetAlert.confirm. VERIFY CALLBACK LOGIC!
-sweetAlert.confirm(
-  'Security Required',
-  'Please set up PIN or Biometric authentication in Settings to use the Private Vault.',
-  () => {
-    // TODO: Add confirm action here
-    console.log('Confirmed: Security Required');
-  },
-  () => {
-    // Cancel action
-  },
-  'Go to Settings',
-  'Cancel',
-  false
-)
+showAlert(
+          'Security Required',
+          'Please set up PIN or Biometric authentication in Settings to use the Private Vault.',
+          [
+            {
+              text: 'Cancel',
+              style: 'cancel',
+              onPress: onCancel,
+            },
+            {
+              text: 'Go to Settings',
+              onPress: () => {
+                onCancel();
+                navigation.navigate('Main', { screen: 'Settings' });
+              },
+            },
+          ]
+        );
+      } else if (
+        securitySettings.isBiometricEnabled &&
+        isBiometricHardwareAvailable &&
+        isBiometricEnrolled
+      ) {
+        attemptBiometric();
+      } else {
+        setShowPinEntry(true);
+      }
+    }
+  }, [
+    visible,
+    securitySettings,
+    isBiometricHardwareAvailable,
+    isBiometricEnrolled,
+    onCancel,
+    navigation,
+  ]);
 
   const attemptBiometric = async () => {
     const result = await authenticateWithBiometric('Access Private Vault');
