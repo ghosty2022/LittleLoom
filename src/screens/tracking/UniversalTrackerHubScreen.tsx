@@ -62,7 +62,7 @@ import { useBaby, type BabyProfile } from '../../context/BabyContext';
 import { useTrackerAchievements } from '../../hooks/useTrackerAchievements';
 import { SafeBabyAvatar } from '../../components/SafeAvatar';
 import { useSweetAlert } from '../../components/SweetAlert';
-import { useNavigationContext } from '../../context/NavigationContext';
+import { useApp } from '../../context/AppContext';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -329,7 +329,7 @@ const getBabyAge = (birthDate?: string | Date) => {
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const GlassCard = React.memo(({ children, style, onPress, active = false }: { children: React.ReactNode; style?: any; onPress?: () => void; active?: boolean }) => {
-  const { isDark, colors } = useNavigationContext();
+  const { isDark, colors } = useApp();
   const Wrapper = onPress ? TouchableOpacity : View;
   return (
     <Wrapper onPress={onPress} activeOpacity={onPress ? 0.85 : 1} style={[
