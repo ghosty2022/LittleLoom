@@ -1,4 +1,7 @@
 // AddEntryScreen.tsx
+// COMPLETE REDESIGN — Inspired by Growth Dashboard glass-morphism, smart sections, and horizontal flows
+// 6 NEW INTELLIGENT FEATURES added
+
 import React, {
   useCallback,
   useEffect,
@@ -7,17 +10,34 @@ import React, {
   useState,
   memo,
 } from 'react';
-import { Alert, Dimensions, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, type TextStyle, type ViewStyle, View } from 'react-native';
+import {
+  Alert,
+  Dimensions,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+  UIManager,
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { FadeInDown, FadeInUp, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
+import {
+  FadeInDown,
+  FadeInUp,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
-import Animated, {
-  interpolate,
-  Extrapolation,
-  runOnJS,
-} from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import {
   format,
@@ -26,6 +46,7 @@ import {
   subDays,
   startOfDay,
   endOfDay,
+  differenceInMinutes,
 } from 'date-fns';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -49,6 +70,24 @@ import type {
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DESIGN TOKENS — Shared with Growth Dashboard
+// ═══════════════════════════════════════════════════════════════
+
+const DESIGN = {
+  radius: { xs: 8, sm: 12, md: 16, lg: 20, xl: 24, full: 999 },
+  spacing: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32 },
+  shadow: {
+    sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 2 },
+    md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 4 },
+    lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 24, elevation: 8 },
+  },
+};
+
 // ═══════════════════════════════════════════════════════════════
 // TYPES
 // ═══════════════════════════════════════════════════════════════
@@ -65,6 +104,32 @@ interface YesterdayEntry {
   title?: string;
 }
 
+interface QuickTemplate {
+  id: string;
+  label: string;
+  icon: string;
+  data: Record<string, unknown>;
+  color: string;
+}
+
+interface SmartSuggestion {
+  id: string;
+  fieldId: string;
+  label: string;
+  value: unknown;
+  confidence: number;
+  reason: string;
+}
+
+interface ContextInsight {
+  id: string;
+  type: 'pattern' | 'anomaly' | 'tip' | 'trend';
+  message: string;
+  emoji: string;
+  color: string;
+  priority: 'high' | 'medium' | 'low';
+}
+
 // ═══════════════════════════════════════════════════════════════
 // CONSTANTS
 // ═══════════════════════════════════════════════════════════════
@@ -76,11 +141,10 @@ const HAPTIC_MEDIUM = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medi
 const HAPTIC_SUCCESS = () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
 // ═══════════════════════════════════════════════════════════════
-// UTILITY FUNCTIONS (Stable references)
+// UTILITY FUNCTIONS
 // ═══════════════════════════════════════════════════════════════
 
 const formatFieldValue = (key: string, value: unknown): string | null => {
-  'worklet';
   if (value === undefined || value === null || value === '') return null;
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
   if (Array.isArray(value)) return value.length === 0 ? null : value.join(', ');
@@ -99,7 +163,627 @@ const shouldFilterField = (k: string) =>
   ['id', 'timestamp', 'babyId', 'type', 'title', 'icon', 'photoUris'].includes(k);
 
 // ═══════════════════════════════════════════════════════════════
-// MEMOIZED SUB-COMPONENTS
+// SHARED GLASS CARD COMPONENT (matches Growth Dashboard)
+// ═══════════════════════════════════════════════════════════════
+
+const GlassCard = memo(({ children, style, onPress, active = false }: { children: React.ReactNode; style?: any; onPress?: () => void; active?: boolean }) => {
+  const theme = useUnifiedTrackerTheme();
+  const Wrapper = onPress ? TouchableOpacity : View;
+  return (
+    <Wrapper onPress={onPress} activeOpacity={onPress ? 0.85 : 1} style={[
+      glassStyles.glassCard,
+      active && { borderColor: theme.primary, borderWidth: 2 },
+      style
+    ]}>
+      <LinearGradient
+        colors={theme.isDark 
+          ? ['rgba(45,45,60,0.85)', 'rgba(35,35,50,0.65)'] 
+          : ['rgba(255,255,255,0.92)', 'rgba(250,250,255,0.75)']}
+        style={StyleSheet.absoluteFill}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      />
+      <View style={[glassStyles.glassBorder, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.5)' }]} />
+      <View style={glassStyles.glassContent}>{children}</View>
+    </Wrapper>
+  );
+});
+
+const glassStyles = StyleSheet.create({
+  glassCard: {
+    borderRadius: DESIGN.radius.lg,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    ...DESIGN.shadow.md,
+  },
+  glassBorder: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 1,
+  },
+  glassContent: { flex: 1 },
+});
+
+// ═══════════════════════════════════════════════════════════════
+// NEW FEATURE 1: SMART CONTEXT HEADER
+// ═══════════════════════════════════════════════════════════════
+
+const SmartContextHeader = memo(({
+  tracker,
+  currentBaby,
+  lastEntryTime,
+  entriesToday,
+  colors,
+  borderRadiusValue,
+  fontSizeMultiplier,
+}: any) => {
+  const now = new Date();
+  const hour = now.getHours();
+  const timeLabel = hour < 12 ? 'Morning' : hour < 17 ? 'Afternoon' : 'Evening';
+  const timeIcon = hour < 12 ? 'sunny-outline' : hour < 17 ? 'partly-sunny-outline' : 'moon-outline';
+
+  const timeSinceLast = lastEntryTime ? differenceInMinutes(now, lastEntryTime) : null;
+  const timeSinceText = timeSinceLast !== null
+    ? timeSinceLast < 60 ? `${timeSinceLast}m ago`
+    : timeSinceLast < 1440 ? `${Math.floor(timeSinceLast / 60)}h ago`
+    : `${Math.floor(timeSinceLast / 1440)}d ago`
+    : 'No recent entries';
+
+  return (
+    <Animated.View entering={FadeInUp.springify()}>
+      <GlassCard>
+        <View style={contextStyles.container}>
+          <View style={contextStyles.topRow}>
+            <View style={[contextStyles.timeBadge, { backgroundColor: `${tracker.gradient[0]}15` }]}>
+              <Ionicons name={timeIcon as any} size={16} color={tracker.gradient[0]} />
+              <Text style={[contextStyles.timeBadgeText, { color: tracker.gradient[0] }]}>
+                {timeLabel}
+              </Text>
+            </View>
+            <View style={[contextStyles.countBadge, { backgroundColor: colors.glassBg }]}>
+              <Text style={[contextStyles.countText, { color: colors.textSecondary }]}>
+                {entriesToday} today
+              </Text>
+            </View>
+          </View>
+
+          <View style={contextStyles.middleRow}>
+            <SafeAvatar
+              avatar={currentBaby?.avatar}
+              size={48}
+              fallbackIcon="person"
+              borderColor={tracker.gradient[0]}
+              borderWidth={2}
+              animated={false}
+            />
+            <View style={contextStyles.infoColumn}>
+              <Text style={[contextStyles.babyName, { color: colors.text, fontSize: 18 * fontSizeMultiplier }]}>
+                {currentBaby?.name || 'Baby'}
+              </Text>
+              <Text style={[contextStyles.trackerLabel, { color: colors.textSecondary }]}>
+                {tracker.emoji} {tracker.name}
+              </Text>
+            </View>
+            {lastEntryTime && (
+              <View style={contextStyles.lastEntryBox}>
+                <Ionicons name="time-outline" size={14} color={colors.textMuted || colors.textSecondary} />
+                <Text style={[contextStyles.lastEntryText, { color: colors.textMuted || colors.textSecondary }]}>
+                  {timeSinceText}
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </GlassCard>
+    </Animated.View>
+  );
+});
+
+const contextStyles = StyleSheet.create({
+  container: { padding: DESIGN.spacing.lg },
+  topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: DESIGN.spacing.md },
+  timeBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: DESIGN.radius.sm },
+  timeBadgeText: { fontSize: 13, fontWeight: '700' },
+  countBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: DESIGN.radius.sm },
+  countText: { fontSize: 12, fontWeight: '600' },
+  middleRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  infoColumn: { flex: 1 },
+  babyName: { fontWeight: '800', letterSpacing: -0.3 },
+  trackerLabel: { fontSize: 13, fontWeight: '600', marginTop: 2 },
+  lastEntryBox: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  lastEntryText: { fontSize: 12, fontWeight: '500' },
+});
+
+// ═══════════════════════════════════════════════════════════════
+// NEW FEATURE 2: QUICK TEMPLATE STRIP
+// ═══════════════════════════════════════════════════════════════
+
+const QuickTemplateStrip = memo(({
+  templates,
+  tracker,
+  onSelect,
+  colors,
+  borderRadiusValue,
+}: any) => {
+  if (!templates || templates.length === 0) return null;
+
+  return (
+    <Animated.View entering={FadeInUp.delay(100).springify()}>
+      <View style={templateStyles.header}>
+        <Text style={[templateStyles.headerTitle, { color: colors.text }]}>Quick Templates</Text>
+        <Text style={[templateStyles.headerSubtitle, { color: colors.textSecondary }]}>Tap to prefill</Text>
+      </View>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={templateStyles.scrollContent}
+      >
+        {templates.map((tmpl: QuickTemplate) => (
+          <TouchableOpacity
+            key={tmpl.id}
+            onPress={() => { HAPTIC_LIGHT(); onSelect(tmpl); }}
+            style={[templateStyles.chip, {
+              backgroundColor: `${tmpl.color}12`,
+              borderColor: `${tmpl.color}30`,
+              borderWidth: 1,
+              borderRadius: borderRadiusValue,
+            }]}
+            activeOpacity={0.8}
+          >
+            <Text style={templateStyles.chipIcon}>{tmpl.icon}</Text>
+            <Text style={[templateStyles.chipLabel, { color: colors.text }]}>{tmpl.label}</Text>
+            <Ionicons name="flash-outline" size={12} color={tmpl.color} />
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    </Animated.View>
+  );
+});
+
+const templateStyles = StyleSheet.create({
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginHorizontal: DESIGN.spacing.lg, marginBottom: DESIGN.spacing.sm, marginTop: DESIGN.spacing.lg },
+  headerTitle: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3 },
+  headerSubtitle: { fontSize: 12, fontWeight: '500' },
+  scrollContent: { paddingHorizontal: DESIGN.spacing.lg, gap: 10, paddingBottom: 4 },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 10, marginRight: 8 },
+  chipIcon: { fontSize: 18 },
+  chipLabel: { fontSize: 13, fontWeight: '700' },
+});
+
+// ═══════════════════════════════════════════════════════════════
+// NEW FEATURE 3: SMART SUGGESTION CHIPS
+// ═══════════════════════════════════════════════════════════════
+
+const SmartSuggestionChips = memo(({
+  suggestions,
+  appliedSuggestions,
+  onApply,
+  onDismiss,
+  theme,
+  colors,
+  borderRadiusValue,
+}: any) => {
+  const visible = suggestions.filter((s: SmartSuggestion) => !appliedSuggestions.has(s.id) && s.confidence >= 60);
+  if (visible.length === 0) return null;
+
+  return (
+    <Animated.View entering={FadeInUp.delay(150).springify()}>
+      <View style={suggestionStyles.header}>
+        <Ionicons name="sparkles" size={16} color={theme.primary} />
+        <Text style={[suggestionStyles.headerTitle, { color: colors.text }]}>Smart Suggestions</Text>
+      </View>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={suggestionStyles.scrollContent}
+      >
+        {visible.map((s: SmartSuggestion) => (
+          <TouchableOpacity
+            key={s.id}
+            onPress={() => { HAPTIC_LIGHT(); onApply(s); }}
+            style={[suggestionStyles.chip, {
+              backgroundColor: s.confidence >= 90 ? `${theme.primary}15` : `${theme.primary}08`,
+              borderColor: s.confidence >= 90 ? `${theme.primary}40` : `${theme.primary}20`,
+              borderWidth: 1,
+              borderRadius: borderRadiusValue,
+            }]}
+            activeOpacity={0.8}
+          >
+            <View style={[suggestionStyles.confidenceDot, { backgroundColor: s.confidence >= 90 ? '#10b981' : s.confidence >= 75 ? '#f59e0b' : '#ef4444' }]} />
+            <Text style={[suggestionStyles.chipLabel, { color: colors.text }]}>{s.label}</Text>
+            <Text style={[suggestionStyles.chipValue, { color: colors.textSecondary }]}>{String(s.value)}</Text>
+            <TouchableOpacity onPress={(e) => { e.stopPropagation(); onDismiss(s.id); }} style={suggestionStyles.dismissBtn}>
+              <Ionicons name="close" size={14} color={colors.textMuted || colors.textSecondary} />
+            </TouchableOpacity>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    </Animated.View>
+  );
+});
+
+const suggestionStyles = StyleSheet.create({
+  header: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: DESIGN.spacing.lg, marginBottom: DESIGN.spacing.sm, marginTop: DESIGN.spacing.lg },
+  headerTitle: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3 },
+  scrollContent: { paddingHorizontal: DESIGN.spacing.lg, gap: 10, paddingBottom: 4 },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, marginRight: 8 },
+  confidenceDot: { width: 6, height: 6, borderRadius: 3 },
+  chipLabel: { fontSize: 12, fontWeight: '700' },
+  chipValue: { fontSize: 12, fontWeight: '600' },
+  dismissBtn: { marginLeft: 4, padding: 2 },
+});
+
+// ═══════════════════════════════════════════════════════════════
+// NEW FEATURE 4: TIME WHEEL SELECTOR
+// ═══════════════════════════════════════════════════════════════
+
+const TimeWheelSelector = memo(({
+  date,
+  onDateChange,
+  onTimeChange,
+  trackerColor,
+  colors,
+  borderRadiusValue,
+  fontSizeMultiplier,
+}: any) => {
+  const timeBlocks = useMemo(() => {
+    const blocks: { label: string; time: string; period: string; isSuggested: boolean }[] = [];
+    for (let h = 6; h <= 22; h += 2) {
+      const d = new Date(date);
+      d.setHours(h, 0, 0, 0);
+      const label = h < 12 ? 'Morning' : h < 17 ? 'Afternoon' : 'Evening';
+      const isSuggested = Math.abs(d.getHours() - date.getHours()) <= 1;
+      blocks.push({ label, time: format(d, 'h:mm a'), period: h < 12 ? 'AM' : 'PM', isSuggested });
+    }
+    return blocks;
+  }, [date]);
+
+  const isTodayDate = isToday(date);
+  const isYesterdayDate = isYesterday(date);
+
+  return (
+    <Animated.View entering={FadeInUp.delay(200).springify()}>
+      <View style={timeWheelStyles.header}>
+        <Text style={[timeWheelStyles.headerTitle, { color: colors.text }]}>When</Text>
+        <View style={timeWheelStyles.dateRow}>
+          <TouchableOpacity
+            onPress={onDateChange}
+            style={[timeWheelStyles.dateChip, { backgroundColor: colors.glassBg, borderRadius: borderRadiusValue }]}
+          >
+            <Ionicons name="calendar-outline" size={16} color={trackerColor} />
+            <Text style={[timeWheelStyles.dateChipText, { color: colors.text }]}>
+              {isTodayDate ? 'Today' : isYesterdayDate ? 'Yesterday' : format(date, 'EEE, MMM d')}
+            </Text>
+            <Ionicons name="chevron-forward" size={14} color={colors.textSecondary} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={onDateChange}
+            style={[timeWheelStyles.timeChip, { backgroundColor: `${trackerColor}12`, borderRadius: borderRadiusValue }]}
+          >
+            <Ionicons name="time-outline" size={16} color={trackerColor} />
+            <Text style={[timeWheelStyles.timeChipText, { color: trackerColor, fontWeight: '800' }]}>
+              {format(date, 'h:mm a')}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={timeWheelStyles.scrollContent}
+      >
+        {timeBlocks.map((block, i) => (
+          <TouchableOpacity
+            key={i}
+            onPress={() => {
+              HAPTIC_LIGHT();
+              const newDate = new Date(date);
+              const hourPart = parseInt(block.time.split(':')[0]);
+              const isPM = block.period === 'PM' && hourPart !== 12;
+              const isAM = block.period === 'AM' && hourPart === 12;
+              const h = isPM ? hourPart + 12 : isAM ? 0 : hourPart;
+              newDate.setHours(h, 0, 0, 0);
+              onTimeChange(newDate);
+            }}
+            style={[timeWheelStyles.block, {
+              backgroundColor: block.isSuggested ? `${trackerColor}15` : colors.glassBg,
+              borderColor: block.isSuggested ? `${trackerColor}40` : `${colors.border}60`,
+              borderWidth: 1,
+              borderRadius: borderRadiusValue,
+            }]}
+          >
+            <Text style={[timeWheelStyles.blockLabel, { color: colors.textSecondary, fontSize: 11 * fontSizeMultiplier }]}>{block.label}</Text>
+            <Text style={[timeWheelStyles.blockTime, { color: block.isSuggested ? trackerColor : colors.text, fontSize: 14 * fontSizeMultiplier }]}>{block.time}</Text>
+            {block.isSuggested && (
+              <View style={[timeWheelStyles.suggestedBadge, { backgroundColor: trackerColor }]}>
+                <Text style={timeWheelStyles.suggestedText}>Now</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    </Animated.View>
+  );
+});
+
+const timeWheelStyles = StyleSheet.create({
+  header: { marginHorizontal: DESIGN.spacing.lg, marginBottom: DESIGN.spacing.sm, marginTop: DESIGN.spacing.lg },
+  headerTitle: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3, marginBottom: DESIGN.spacing.sm },
+  dateRow: { flexDirection: 'row', gap: 10, marginBottom: DESIGN.spacing.md },
+  dateChip: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 10, flex: 1 },
+  dateChipText: { fontSize: 14, fontWeight: '700', flex: 1 },
+  timeChip: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 10 },
+  timeChipText: { fontSize: 14, fontWeight: '800' },
+  scrollContent: { paddingHorizontal: DESIGN.spacing.lg, gap: 10, paddingBottom: 4 },
+  block: { width: 80, height: 80, alignItems: 'center', justifyContent: 'center', marginRight: 8, gap: 4 },
+  blockLabel: { fontWeight: '600' },
+  blockTime: { fontWeight: '800' },
+  suggestedBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4, marginTop: 2 },
+  suggestedText: { color: '#fff', fontSize: 10, fontWeight: '800' },
+});
+
+// ═══════════════════════════════════════════════════════════════
+// NEW FEATURE 5: CONTEXT INSIGHTS STRIP
+// ═══════════════════════════════════════════════════════════════
+
+const ContextInsightsStrip = memo(({
+  insights,
+  onAction,
+  colors,
+  borderRadiusValue,
+}: any) => {
+  if (!insights || insights.length === 0) return null;
+
+  return (
+    <Animated.View entering={FadeInUp.delay(250).springify()}>
+      <View style={insightStripStyles.header}>
+        <Ionicons name="analytics-outline" size={16} color={colors.textSecondary} />
+        <Text style={[insightStripStyles.headerTitle, { color: colors.text }]}>Context Insights</Text>
+      </View>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={insightStripStyles.scrollContent}
+      >
+        {insights.map((insight: ContextInsight) => (
+          <TouchableOpacity
+            key={insight.id}
+            onPress={() => onAction(insight)}
+            style={[insightStripStyles.card, {
+              backgroundColor: `${insight.color}08`,
+              borderLeftWidth: 3,
+              borderLeftColor: insight.color,
+              borderRadius: borderRadiusValue,
+            }]}
+            activeOpacity={0.85}
+          >
+            <Text style={insightStripStyles.cardEmoji}>{insight.emoji}</Text>
+            <Text style={[insightStripStyles.cardMessage, { color: colors.text }]} numberOfLines={2}>{insight.message}</Text>
+            <View style={[insightStripStyles.priorityBadge, { backgroundColor: `${insight.color}15` }]}>
+              <Text style={[insightStripStyles.priorityText, { color: insight.color }]}>{insight.priority}</Text>
+            </View>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    </Animated.View>
+  );
+});
+
+const insightStripStyles = StyleSheet.create({
+  header: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: DESIGN.spacing.lg, marginBottom: DESIGN.spacing.sm, marginTop: DESIGN.spacing.lg },
+  headerTitle: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3 },
+  scrollContent: { paddingHorizontal: DESIGN.spacing.lg, gap: 10, paddingBottom: 4 },
+  card: { width: 200, padding: 14, marginRight: 8, gap: 6 },
+  cardEmoji: { fontSize: 22 },
+  cardMessage: { fontSize: 12, fontWeight: '600', lineHeight: 17 },
+  priorityBadge: { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  priorityText: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
+});
+
+// ═══════════════════════════════════════════════════════════════
+// NEW FEATURE 6: STREAK & GOAL PROGRESS RING
+// ═══════════════════════════════════════════════════════════════
+
+const StreakGoalRing = memo(({
+  streak,
+  isAtRisk,
+  hoursUntilBreak,
+  streakMessage,
+  entriesToday,
+  dailyGoal,
+  trackerColor,
+  colors,
+  borderRadiusValue,
+  onLogNow,
+}: any) => {
+  if (!streak || streak.currentStreak === 0) return null;
+
+  const progress = Math.min(entriesToday / (dailyGoal || 3), 1);
+
+  return (
+    <Animated.View entering={FadeInUp.delay(300).springify()}>
+      <GlassCard>
+        <View style={ringStyles.container}>
+          <View style={ringStyles.ringWrap}>
+            <View style={[ringStyles.ringOuter, { borderColor: `${trackerColor}20` }]}>
+              <View style={[ringStyles.ringInner, {
+                borderColor: isAtRisk ? '#FF6B6B' : trackerColor,
+                borderTopColor: 'transparent',
+                transform: [{ rotate: `${-90 + (progress * 360)}deg` }],
+              }]} />
+              <View style={ringStyles.ringCenter}>
+                <Text style={[ringStyles.ringValue, { color: isAtRisk ? '#FF6B6B' : trackerColor }]}>
+                  {entriesToday}
+                </Text>
+                <Text style={[ringStyles.ringLabel, { color: colors.textSecondary }]}>of {dailyGoal || 3}</Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={ringStyles.infoColumn}>
+            <View style={ringStyles.streakRow}>
+              <Ionicons name={isAtRisk ? 'flame-outline' : 'flame'} size={22} color={isAtRisk ? '#FF6B6B' : trackerColor} />
+              <Text style={[ringStyles.streakText, { color: isAtRisk ? '#FF6B6B' : trackerColor }]}>
+                {streak.currentStreak} day{streak.currentStreak !== 1 ? 's' : ''}
+              </Text>
+            </View>
+            <Text style={[ringStyles.message, { color: colors.textSecondary }]} numberOfLines={2}>
+              {streakMessage}
+            </Text>
+            {isAtRisk && (
+              <TouchableOpacity
+                style={[ringStyles.actionBtn, { backgroundColor: '#FF6B6B', borderRadius: borderRadiusValue }]}
+                onPress={onLogNow}
+                activeOpacity={0.85}
+              >
+                <Text style={ringStyles.actionText}>Log Now</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      </GlassCard>
+    </Animated.View>
+  );
+});
+
+const ringStyles = StyleSheet.create({
+  container: { flexDirection: 'row', alignItems: 'center', padding: DESIGN.spacing.lg, gap: 16 },
+  ringWrap: { alignItems: 'center', justifyContent: 'center' },
+  ringOuter: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    borderWidth: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ringInner: {
+    position: 'absolute',
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    borderWidth: 4,
+  },
+  ringCenter: { alignItems: 'center' },
+  ringValue: { fontSize: 22, fontWeight: '800' },
+  ringLabel: { fontSize: 11, fontWeight: '600' },
+  infoColumn: { flex: 1, gap: 4 },
+  streakRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  streakText: { fontSize: 18, fontWeight: '800' },
+  message: { fontSize: 12, fontWeight: '500', lineHeight: 17 },
+  actionBtn: { alignSelf: 'flex-start', paddingHorizontal: 14, paddingVertical: 8, marginTop: 4 },
+  actionText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+});
+
+// ═══════════════════════════════════════════════════════════════
+// REDESIGNED YESTERDAY ENTRIES — Horizontal strip
+// ═══════════════════════════════════════════════════════════════
+
+const YesterdayStrip = memo(({
+  entries,
+  tracker,
+  onCopyEntry,
+  onViewAll,
+  colors,
+  borderRadiusValue,
+  fontSizeMultiplier,
+}: any) => {
+  if (!entries || entries.length === 0) return null;
+
+  return (
+    <Animated.View entering={FadeInUp.delay(350).springify()}>
+      <View style={yesterdayStyles.header}>
+        <View style={yesterdayStyles.headerLeft}>
+          <Ionicons name="calendar-outline" size={18} color={tracker.gradient[0]} />
+          <Text style={[yesterdayStyles.headerTitle, { color: colors.text }]}>Yesterday</Text>
+          <View style={[yesterdayStyles.countBadge, { backgroundColor: `${tracker.gradient[0]}15` }]}>
+            <Text style={[yesterdayStyles.countText, { color: tracker.gradient[0] }]}>{entries.length}</Text>
+          </View>
+        </View>
+        <TouchableOpacity onPress={onViewAll}>
+          <Text style={[yesterdayStyles.viewAll, { color: tracker.gradient[0] }]}>View All</Text>
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={yesterdayStyles.scrollContent}
+      >
+        {entries.map((entry: YesterdayEntry) => {
+          const fields = getEntryFields(entry);
+          const entryDate = new Date(entry.timestamp);
+
+          return (
+            <TouchableOpacity
+              key={entry.id}
+              onPress={() => { HAPTIC_MEDIUM(); onCopyEntry(entry); }}
+              style={[yesterdayStyles.card, {
+                backgroundColor: colors.glassBg,
+                borderColor: colors.border,
+                borderWidth: 1,
+                borderRadius: borderRadiusValue,
+              }]}
+              activeOpacity={0.85}
+            >
+              <View style={yesterdayStyles.cardHeader}>
+                <View style={[yesterdayStyles.timeBadge, { backgroundColor: `${tracker.gradient[0]}15` }]}>
+                  <Ionicons name="time-outline" size={12} color={tracker.gradient[0]} />
+                  <Text style={[yesterdayStyles.timeText, { color: tracker.gradient[0] }]}>
+                    {format(entryDate, 'h:mm a')}
+                  </Text>
+                </View>
+                <Ionicons name="copy-outline" size={16} color={colors.textSecondary} />
+              </View>
+
+              {fields.slice(0, 2).map(([key, value]) => (
+                <View key={key} style={yesterdayStyles.fieldRow}>
+                  <Text style={[yesterdayStyles.fieldLabel, { color: colors.textSecondary }]}>
+                    {key.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase())}
+                  </Text>
+                  <Text style={[yesterdayStyles.fieldValue, { color: colors.text }]} numberOfLines={1}>
+                    {formatFieldValue(key, value)}
+                  </Text>
+                </View>
+              ))}
+
+              {fields.length > 2 && (
+                <Text style={[yesterdayStyles.moreText, { color: colors.textMuted || colors.textSecondary }]}>
+                  +{fields.length - 2} more
+                </Text>
+              )}
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+    </Animated.View>
+  );
+});
+
+const yesterdayStyles = StyleSheet.create({
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginHorizontal: DESIGN.spacing.lg, marginBottom: DESIGN.spacing.sm, marginTop: DESIGN.spacing.lg },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerTitle: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3 },
+  countBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  countText: { fontSize: 12, fontWeight: '800' },
+  viewAll: { fontSize: 13, fontWeight: '700' },
+  scrollContent: { paddingHorizontal: DESIGN.spacing.lg, gap: 10, paddingBottom: 4 },
+  card: { width: 160, padding: 14, marginRight: 8 },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  timeBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  timeText: { fontSize: 11, fontWeight: '700' },
+  fieldRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
+  fieldLabel: { fontSize: 11, fontWeight: '500', flex: 1 },
+  fieldValue: { fontSize: 11, fontWeight: '700', maxWidth: 80 },
+  moreText: { fontSize: 10, fontWeight: '600', marginTop: 4 },
+});
+
+// ═══════════════════════════════════════════════════════════════
+// REDESIGNED CONFIRM MODAL
 // ═══════════════════════════════════════════════════════════════
 
 interface ConfirmModalProps {
@@ -153,95 +837,95 @@ const ConfirmModal = memo<ConfirmModalProps>(({
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
       <Pressable
-        style={[styles.modalOverlay, { backgroundColor: `rgba(0,0,0,${MODAL_BACKDROP_OPACITY})` }]}
+        style={[modalStyles.modalOverlay, { backgroundColor: `rgba(0,0,0,${MODAL_BACKDROP_OPACITY})` }]}
         onPress={onClose}
       >
         <Animated.View
-          style={[styles.modalContent, animStyle, { borderRadius: borderRadiusValue * 2 }]}
+          style={[modalStyles.modalContent, animStyle, { borderRadius: borderRadiusValue * 2 }]}
           onStartShouldSetResponder={() => true}
           onTouchEnd={(e) => e.stopPropagation()}
         >
           <LinearGradient
             colors={[fullThemeColors.surface, fullThemeColors.background]}
-            style={[styles.modalGradient, { borderRadius: borderRadiusValue * 2 }]}
+            style={[modalStyles.modalGradient, { borderRadius: borderRadiusValue * 2 }]}
           >
-            <View style={styles.modalHeader}>
-              <View style={[styles.modalIconContainer, { backgroundColor: `${tracker.gradient[0]}20`, borderRadius: borderRadiusValue }]}>
-                <Text style={styles.modalIcon}>{tracker.emoji}</Text>
+            <View style={modalStyles.modalHeader}>
+              <View style={[modalStyles.modalIconContainer, { backgroundColor: `${tracker.gradient[0]}20`, borderRadius: borderRadiusValue }]}>
+                <Text style={modalStyles.modalIcon}>{tracker.emoji}</Text>
               </View>
-              <Text style={[styles.modalTitle, { color: fullThemeColors.text, fontSize: 22 * fontSizeMultiplier }]}>
+              <Text style={[modalStyles.modalTitle, { color: fullThemeColors.text, fontSize: 22 * fontSizeMultiplier }]}>
                 Confirm {tracker.name}
               </Text>
-              <View style={styles.modalBabyRow}>
+              <View style={modalStyles.modalBabyRow}>
                 <SafeAvatar avatar={babyAvatar} size={28} fallbackIcon="person" borderWidth={0} animated={false} />
-                <Text style={[styles.modalSubtitle, { color: fullThemeColors.textSecondary }]}>
+                <Text style={[modalStyles.modalSubtitle, { color: fullThemeColors.textSecondary }]}>
                   For {babyName}
                 </Text>
               </View>
             </View>
 
-            <Animated.ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-              <View style={[styles.previewCard, {
+            <Animated.ScrollView style={modalStyles.modalBody} showsVerticalScrollIndicator={false}>
+              <View style={[modalStyles.previewCard, {
                 backgroundColor: fullThemeColors.glassBg,
                 borderColor: fullThemeColors.border,
                 borderRadius: borderRadiusValue,
               }]}>
-                <Text style={[styles.previewTime, { color: fullThemeColors.textSecondary }]}>
-                  {format(date, 'MMM d, yyyy • h:mm a')}
+                <Text style={[modalStyles.previewTime, { color: fullThemeColors.textSecondary }]}>
+                  {format(date, 'MMM d, yyyy \u2022 h:mm a')}
                 </Text>
                 {(data.photoUris as string[])?.length > 0 && (
-                  <View style={[styles.previewPhotoContainer, { borderRadius: borderRadiusValue }]} />
+                  <View style={[modalStyles.previewPhotoContainer, { borderRadius: borderRadiusValue }]} />
                 )}
-                <Text style={[styles.previewTitle, { color: fullThemeColors.text, fontSize: 18 * fontSizeMultiplier }]}>
+                <Text style={[modalStyles.previewTitle, { color: fullThemeColors.text, fontSize: 18 * fontSizeMultiplier }]}>
                   {tracker.emoji} {tracker.name}
                 </Text>
-                {notes && <Text style={[styles.previewDetails, { color: fullThemeColors.textSecondary }]}>{notes}</Text>}
+                {notes && <Text style={[modalStyles.previewDetails, { color: fullThemeColors.textSecondary }]}>{notes}</Text>}
                 {preview.length > 0 && (
-                  <View style={styles.previewFields}>
+                  <View style={modalStyles.previewFields}>
                     {preview.map(([k, v]) => (
-                      <View key={k} style={styles.previewField}>
-                        <Text style={[styles.previewFieldLabel, { color: fullThemeColors.textSecondary }]}>
+                      <View key={k} style={modalStyles.previewField}>
+                        <Text style={[modalStyles.previewFieldLabel, { color: fullThemeColors.textSecondary }]}>
                           {k.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase())}
                         </Text>
-                        <Text style={[styles.previewFieldValue, { color: fullThemeColors.text }]}>{formatFieldValue(k, v)}</Text>
+                        <Text style={[modalStyles.previewFieldValue, { color: fullThemeColors.text }]}>{formatFieldValue(k, v)}</Text>
                       </View>
                     ))}
                   </View>
                 )}
                 {tags.length > 0 && (
-                  <View style={styles.previewNotes}>
+                  <View style={modalStyles.previewNotes}>
                     <Ionicons name="pricetag-outline" size={16} color={fullThemeColors.textSecondary} />
-                    <Text style={[styles.previewNotesText, { color: fullThemeColors.textSecondary }]}>{tags.join(', ')}</Text>
+                    <Text style={[modalStyles.previewNotesText, { color: fullThemeColors.textSecondary }]}>{tags.join(', ')}</Text>
                   </View>
                 )}
               </View>
             </Animated.ScrollView>
 
-            <View style={styles.modalActions}>
+            <View style={modalStyles.modalActions}>
               <TouchableOpacity
                 onPress={onClose}
-                style={[styles.cancelButton, { borderRadius: borderRadiusValue }]}
+                style={[modalStyles.cancelButton, { borderRadius: borderRadiusValue }]}
                 activeOpacity={0.8}
                 accessibilityRole="button"
                 accessibilityLabel="Edit entry"
               >
-                <Text style={[styles.cancelButtonText, { color: fullThemeColors.textSecondary }]}>Edit</Text>
+                <Text style={[modalStyles.cancelButtonText, { color: fullThemeColors.textSecondary }]}>Edit</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleConfirm}
-                style={[styles.confirmButton, { borderRadius: borderRadiusValue }]}
+                style={[modalStyles.confirmButton, { borderRadius: borderRadiusValue }]}
                 activeOpacity={0.85}
                 accessibilityRole="button"
                 accessibilityLabel="Save entry"
               >
                 <LinearGradient
                   colors={tracker.gradient}
-                  style={styles.confirmGradient}
+                  style={modalStyles.confirmGradient}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
                 >
                   <Ionicons name="checkmark-circle" size={20} color="#fff" />
-                  <Text style={styles.confirmButtonText}>Save Entry</Text>
+                  <Text style={modalStyles.confirmButtonText}>Save Entry</Text>
                 </LinearGradient>
               </TouchableOpacity>
             </View>
@@ -253,7 +937,39 @@ const ConfirmModal = memo<ConfirmModalProps>(({
 });
 ConfirmModal.displayName = 'ConfirmModal';
 
-// ─── Yesterday Entries Modal ─────────────────────────────────────
+const modalStyles = StyleSheet.create({
+  modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
+  modalContent: { width: '100%', maxHeight: '80%', overflow: 'hidden', elevation: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.25, shadowRadius: 30 },
+  modalGradient: { padding: 24 },
+  modalHeader: { alignItems: 'center', marginBottom: 20 },
+  modalIconContainer: { width: 64, height: 64, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+  modalIcon: { fontSize: 32 },
+  modalTitle: { fontWeight: '800', marginBottom: 4 },
+  modalBabyRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  modalSubtitle: { fontSize: 14, fontWeight: '500' },
+  modalBody: { maxHeight: 300 },
+  previewCard: { padding: 20, borderWidth: StyleSheet.hairlineWidth },
+  previewTime: { fontSize: 13, fontWeight: '600', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+  previewPhotoContainer: { overflow: 'hidden', marginBottom: 12, height: 120 },
+  previewTitle: { fontWeight: '800', marginBottom: 8 },
+  previewDetails: { fontSize: 14, marginBottom: 12, lineHeight: 20 },
+  previewFields: { gap: 8, marginTop: 8 },
+  previewField: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(0,0,0,0.05)' },
+  previewFieldLabel: { fontSize: 13, fontWeight: '500' },
+  previewFieldValue: { fontSize: 13, fontWeight: '600' },
+  previewNotes: { flexDirection: 'row', gap: 8, marginTop: 12, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(0,0,0,0.05)' },
+  previewNotesText: { flex: 1, fontSize: 14, fontStyle: 'italic', lineHeight: 20 },
+  modalActions: { flexDirection: 'row', gap: 12, marginTop: 20 },
+  cancelButton: { flex: 1, paddingVertical: 16, alignItems: 'center' },
+  cancelButtonText: { fontSize: 16, fontWeight: '700' },
+  confirmButton: { flex: 2, overflow: 'hidden' },
+  confirmGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 16 },
+  confirmButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+});
+
+// ═══════════════════════════════════════════════════════════════
+// YESTERDAY ENTRIES MODAL (full view)
+// ═══════════════════════════════════════════════════════════════
 
 interface YesterdayEntriesModalProps {
   visible: boolean;
@@ -296,47 +1012,47 @@ const YesterdayEntriesModal = memo<YesterdayEntriesModalProps>(({
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
       <Pressable
-        style={[styles.yesterdayModalOverlay, { backgroundColor: `rgba(0,0,0,${MODAL_BACKDROP_OPACITY})` }]}
+        style={[yesterdayModalStyles.overlay, { backgroundColor: `rgba(0,0,0,${MODAL_BACKDROP_OPACITY})` }]}
         onPress={onClose}
       >
         <Animated.View
-          style={[styles.yesterdayModalContent, animStyle, { borderRadius: borderRadiusValue * 2 }]}
+          style={[yesterdayModalStyles.content, animStyle, { borderRadius: borderRadiusValue * 2 }]}
           onStartShouldSetResponder={() => true}
           onTouchEnd={(e) => e.stopPropagation()}
         >
           <LinearGradient
             colors={[colors.surface, colors.background]}
-            style={[styles.yesterdayModalGradient, { borderRadius: borderRadiusValue * 2 }]}
+            style={[yesterdayModalStyles.gradient, { borderRadius: borderRadiusValue * 2 }]}
           >
-            <View style={styles.yesterdayModalHeader}>
-              <View style={[styles.yesterdayModalIconContainer, {
+            <View style={yesterdayModalStyles.header}>
+              <View style={[yesterdayModalStyles.iconContainer, {
                 backgroundColor: `${tracker.gradient[0]}20`,
                 borderRadius: borderRadiusValue,
               }]}>
                 <Ionicons name="calendar-outline" size={28} color={tracker.gradient[0]} />
               </View>
-              <Text style={[styles.yesterdayModalTitle, { color: colors.text, fontSize: 20 * fontSizeMultiplier }]}>
+              <Text style={[yesterdayModalStyles.title, { color: colors.text, fontSize: 20 * fontSizeMultiplier }]}>
                 Yesterday's {tracker.name}
               </Text>
-              <Text style={[styles.yesterdayModalSubtitle, { color: colors.textSecondary }]}>
+              <Text style={[yesterdayModalStyles.subtitle, { color: colors.textSecondary }]}>
                 {entries.length} record{entries.length !== 1 ? 's' : ''} from yesterday
               </Text>
               <TouchableOpacity
                 onPress={onClose}
-                style={[styles.yesterdayCloseBtn, { borderRadius: borderRadiusValue }]}
+                style={[yesterdayModalStyles.closeBtn, { borderRadius: borderRadiusValue }]}
                 accessibilityRole="button"
                 accessibilityLabel="Close modal"
               >
-                <BlurView intensity={40} style={[styles.yesterdayCloseBlur, { borderRadius: borderRadiusValue }]} tint="dark">
+                <BlurView intensity={40} style={[yesterdayModalStyles.closeBlur, { borderRadius: borderRadiusValue }]} tint="dark">
                   <Ionicons name="close" size={22} color={colors.text} />
                 </BlurView>
               </TouchableOpacity>
             </View>
 
             <Animated.ScrollView
-              style={styles.yesterdayScrollView}
+              style={yesterdayModalStyles.scrollView}
               showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.yesterdayScrollContent}
+              contentContainerStyle={yesterdayModalStyles.scrollContent}
             >
               {entries.map((entry, index) => {
                 const fields = getEntryFields(entry);
@@ -346,35 +1062,35 @@ const YesterdayEntriesModal = memo<YesterdayEntriesModalProps>(({
                   <Animated.View
                     key={entry.id}
                     entering={FadeInUp.delay(index * 80).springify()}
-                    style={[styles.yesterdayEntryCard, {
+                    style={[yesterdayModalStyles.entryCard, {
                       backgroundColor: colors.glassBg,
                       borderColor: colors.border,
                       borderRadius: borderRadiusValue,
                       borderWidth: 1,
                     }]}
                   >
-                    <View style={styles.yesterdayEntryHeader}>
-                      <View style={[styles.yesterdayTimeBadge, { backgroundColor: `${tracker.gradient[0]}15` }]}>
+                    <View style={yesterdayModalStyles.entryHeader}>
+                      <View style={[yesterdayModalStyles.timeBadge, { backgroundColor: `${tracker.gradient[0]}15` }]}>
                         <Ionicons name="time-outline" size={14} color={tracker.gradient[0]} />
-                        <Text style={[styles.yesterdayTimeText, { color: tracker.gradient[0] }]}>
+                        <Text style={[yesterdayModalStyles.timeText, { color: tracker.gradient[0] }]}>
                           {format(entryDate, 'h:mm a')}
                         </Text>
                       </View>
                       {entry.title && (
-                        <Text style={[styles.yesterdayEntryTitle, { color: colors.text }]} numberOfLines={1}>
+                        <Text style={[yesterdayModalStyles.entryTitle, { color: colors.text }]} numberOfLines={1}>
                           {entry.title}
                         </Text>
                       )}
                     </View>
 
                     {fields.length > 0 && (
-                      <View style={styles.yesterdayFieldsContainer}>
+                      <View style={yesterdayModalStyles.fieldsContainer}>
                         {fields.map(([key, value]) => (
-                          <View key={key} style={styles.yesterdayFieldRow}>
-                            <Text style={[styles.yesterdayFieldLabel, { color: colors.textSecondary }]}>
+                          <View key={key} style={yesterdayModalStyles.fieldRow}>
+                            <Text style={[yesterdayModalStyles.fieldLabel, { color: colors.textSecondary }]}>
                               {key.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase())}
                             </Text>
-                            <Text style={[styles.yesterdayFieldValue, { color: colors.text }]}>
+                            <Text style={[yesterdayModalStyles.fieldValue, { color: colors.text }]}>
                               {formatFieldValue(key, value)}
                             </Text>
                           </View>
@@ -383,26 +1099,26 @@ const YesterdayEntriesModal = memo<YesterdayEntriesModalProps>(({
                     )}
 
                     {entry.notes && (
-                      <View style={[styles.yesterdayNotesContainer, { borderTopColor: `${colors.border}40` }]}>
+                      <View style={[yesterdayModalStyles.notesContainer, { borderTopColor: `${colors.border}40` }]}>
                         <Ionicons name="document-text-outline" size={14} color={colors.textSecondary} />
-                        <Text style={[styles.yesterdayNotesText, { color: colors.textSecondary }]}>
+                        <Text style={[yesterdayModalStyles.notesText, { color: colors.textSecondary }]}>
                           {entry.notes}
                         </Text>
                       </View>
                     )}
 
                     {entry.tags && entry.tags.length > 0 && (
-                      <View style={styles.yesterdayTagsContainer}>
+                      <View style={yesterdayModalStyles.tagsContainer}>
                         {entry.tags.map((tag, idx) => (
-                          <View key={idx} style={[styles.yesterdayTag, { backgroundColor: `${tracker.gradient[0]}15` }]}>
-                            <Text style={[styles.yesterdayTagText, { color: tracker.gradient[0] }]}>{tag}</Text>
+                          <View key={idx} style={[yesterdayModalStyles.tag, { backgroundColor: `${tracker.gradient[0]}15` }]}>
+                            <Text style={[yesterdayModalStyles.tagText, { color: tracker.gradient[0] }]}>{tag}</Text>
                           </View>
                         ))}
                       </View>
                     )}
 
                     <TouchableOpacity
-                      style={[styles.yesterdayCopyBtn, {
+                      style={[yesterdayModalStyles.copyBtn, {
                         backgroundColor: tracker.gradient[0],
                         borderRadius: borderRadiusValue,
                       }]}
@@ -412,16 +1128,16 @@ const YesterdayEntriesModal = memo<YesterdayEntriesModalProps>(({
                       accessibilityLabel={`Copy ${tracker.name} entry from ${format(entryDate, 'h:mm a')}`}
                     >
                       <Ionicons name="copy-outline" size={16} color="#fff" />
-                      <Text style={styles.yesterdayCopyBtnText}>Copy to Today</Text>
+                      <Text style={yesterdayModalStyles.copyBtnText}>Copy to Today</Text>
                     </TouchableOpacity>
                   </Animated.View>
                 );
               })}
             </Animated.ScrollView>
 
-            <View style={styles.yesterdayModalFooter}>
+            <View style={yesterdayModalStyles.footer}>
               <TouchableOpacity
-                style={[styles.yesterdayDoneBtn, {
+                style={[yesterdayModalStyles.doneBtn, {
                   borderRadius: borderRadiusValue,
                   borderColor: colors.border,
                 }]}
@@ -429,7 +1145,7 @@ const YesterdayEntriesModal = memo<YesterdayEntriesModalProps>(({
                 activeOpacity={0.8}
                 accessibilityRole="button"
               >
-                <Text style={[styles.yesterdayDoneBtnText, { color: colors.text }]}>Close</Text>
+                <Text style={[yesterdayModalStyles.doneBtnText, { color: colors.text }]}>Close</Text>
               </TouchableOpacity>
             </View>
           </LinearGradient>
@@ -440,204 +1156,42 @@ const YesterdayEntriesModal = memo<YesterdayEntriesModalProps>(({
 });
 YesterdayEntriesModal.displayName = 'YesterdayEntriesModal';
 
-// ─── Streak Banner ───────────────────────────────────────────────
-
-interface StreakBannerProps {
-  currentStreak: number;
-  isAtRisk: boolean;
-  hoursUntilBreak: number;
-  streakMessage: string;
-  trackerColor: string;
-  colors: Record<string, string>;
-  borderRadiusValue: number;
-  onLogNow: () => void;
-}
-
-const StreakBanner = memo<StreakBannerProps>(({
-  currentStreak, isAtRisk, streakMessage, trackerColor, colors, borderRadiusValue, onLogNow,
-}) => {
-  if (currentStreak === 0) return null;
-
-  return (
-    <Animated.View entering={FadeInUp.springify()} style={[styles.streakBanner, {
-      backgroundColor: isAtRisk ? 'rgba(255,107,107,0.08)' : `${trackerColor}12`,
-      borderColor: isAtRisk ? 'rgba(255,107,107,0.2)' : `${trackerColor}30`,
-      borderRadius: borderRadiusValue,
-      borderWidth: 1,
-    }]}>
-      <View style={styles.streakIconContainer}>
-        <Ionicons
-          name={isAtRisk ? 'flame-outline' : 'flame'}
-          size={24}
-          color={isAtRisk ? '#FF6B6B' : trackerColor}
-        />
-      </View>
-      <View style={styles.streakTextContainer}>
-        <Text style={[styles.streakCount, { color: isAtRisk ? '#FF6B6B' : trackerColor }]}>
-          {currentStreak} day{currentStreak !== 1 ? 's' : ''}
-        </Text>
-        <Text style={[styles.streakMessage, { color: colors.textSecondary }]} numberOfLines={1}>
-          {streakMessage}
-        </Text>
-      </View>
-      {isAtRisk && (
-        <TouchableOpacity
-          style={[styles.streakActionBtn, { backgroundColor: '#FF6B6B' }]}
-          onPress={onLogNow}
-          activeOpacity={0.85}
-          accessibilityRole="button"
-          accessibilityLabel="Log now to save streak"
-        >
-          <Text style={styles.streakActionText}>Log Now</Text>
-        </TouchableOpacity>
-      )}
-    </Animated.View>
-  );
+const yesterdayModalStyles = StyleSheet.create({
+  overlay: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
+  content: { width: '100%', maxHeight: '85%', overflow: 'hidden', elevation: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.25, shadowRadius: 30 },
+  gradient: { padding: 0 },
+  header: { alignItems: 'center', padding: 24, paddingBottom: 16, position: 'relative' },
+  iconContainer: { width: 56, height: 56, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+  title: { fontWeight: '800', marginBottom: 4 },
+  subtitle: { fontSize: 14, fontWeight: '500' },
+  closeBtn: { position: 'absolute', top: 16, right: 16, overflow: 'hidden' },
+  closeBlur: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  scrollView: { maxHeight: 400 },
+  scrollContent: { paddingHorizontal: 20, paddingBottom: 8, gap: 12 },
+  entryCard: { padding: 16, marginBottom: 4 },
+  entryHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
+  timeBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
+  timeText: { fontSize: 13, fontWeight: '700' },
+  entryTitle: { fontSize: 15, fontWeight: '700', flex: 1 },
+  fieldsContainer: { gap: 8, marginBottom: 12 },
+  fieldRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(0,0,0,0.04)' },
+  fieldLabel: { fontSize: 13, fontWeight: '500', flex: 1 },
+  fieldValue: { fontSize: 13, fontWeight: '600', flex: 1, textAlign: 'right' },
+  notesContainer: { flexDirection: 'row', gap: 8, paddingTop: 10, marginBottom: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(0,0,0,0.06)' },
+  notesText: { flex: 1, fontSize: 13, fontStyle: 'italic', lineHeight: 18 },
+  tagsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
+  tag: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },
+  tagText: { fontSize: 12, fontWeight: '600' },
+  copyBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, marginTop: 4 },
+  copyBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  footer: { padding: 20, paddingTop: 12 },
+  doneBtn: { paddingVertical: 14, alignItems: 'center', borderWidth: StyleSheet.hairlineWidth },
+  doneBtnText: { fontSize: 16, fontWeight: '700' },
 });
-StreakBanner.displayName = 'StreakBanner';
 
-// ─── Time Context Chip ───────────────────────────────────────────
-
-interface TimeContextChipProps {
-  timeContext: { timeOfDay: string; usualTimes: string[]; nextSuggestedTime?: string } | undefined;
-  trackerColor: string;
-  colors: Record<string, string>;
-  borderRadiusValue: number;
-}
-
-const TimeContextChip = memo<TimeContextChipProps>(({
-  timeContext, trackerColor, colors, borderRadiusValue,
-}) => {
-  if (!timeContext || timeContext.usualTimes.length === 0) return null;
-
-  return (
-    <View style={[styles.timeContextChip, {
-      backgroundColor: `${trackerColor}10`,
-      borderRadius: borderRadiusValue,
-    }]}>
-      <Ionicons name="time-outline" size={14} color={trackerColor} />
-      <Text style={[styles.timeContextText, { color: colors.textSecondary }]} numberOfLines={1}>
-        {timeContext.timeOfDay} • Usually {timeContext.usualTimes[0]}
-        {timeContext.nextSuggestedTime && ` • Next: ${timeContext.nextSuggestedTime}`}
-      </Text>
-    </View>
-  );
-});
-TimeContextChip.displayName = 'TimeContextChip';
-
-// ─── Correlation Alert ───────────────────────────────────────────
-
-interface CorrelationAlertProps {
-  correlation: ProgressiveCorrelation;
-  trackerColor: string;
-  colors: Record<string, string>;
-  borderRadiusValue: number;
-  onAction: () => void;
-  onDismiss: () => void;
-}
-
-const CorrelationAlert = memo<CorrelationAlertProps>(({
-  correlation, trackerColor, colors, borderRadiusValue, onAction, onDismiss,
-}) => (
-  <Animated.View entering={FadeInUp.springify()} style={[styles.correlationAlert, {
-    backgroundColor: `${trackerColor}08`,
-    borderRadius: borderRadiusValue,
-    borderLeftWidth: 3,
-    borderLeftColor: trackerColor,
-  }]}>
-    <View style={styles.correlationIconContainer}>
-      <Text style={styles.correlationEmoji}>{correlation.emoji}</Text>
-    </View>
-    <View style={styles.correlationTextContainer}>
-      <Text style={[styles.correlationMessage, { color: colors.text }]} numberOfLines={2}>
-        {correlation.message}
-      </Text>
-      <Text style={[styles.correlationMeta, { color: colors.textSecondary }]}>
-        {correlation.trackerEmoji} {correlation.trackerName} • {correlation.confidence}% match
-      </Text>
-    </View>
-    <View style={styles.correlationActions}>
-      {correlation.action !== 'none' && (
-        <TouchableOpacity
-          style={[styles.correlationActionBtn, { backgroundColor: trackerColor }]}
-          onPress={onAction}
-          activeOpacity={0.85}
-          accessibilityRole="button"
-        >
-          <Text style={styles.correlationActionText}>
-            {correlation.action === 'log_now' ? 'Log' : correlation.action === 'prefill' ? 'Apply' : 'View'}
-          </Text>
-        </TouchableOpacity>
-      )}
-      <TouchableOpacity
-        onPress={onDismiss}
-        style={styles.correlationDismiss}
-        accessibilityRole="button"
-        accessibilityLabel="Dismiss correlation"
-      >
-        <Ionicons name="close" size={18} color={colors.textSecondary} />
-      </TouchableOpacity>
-    </View>
-  </Animated.View>
-));
-CorrelationAlert.displayName = 'CorrelationAlert';
-
-// ─── Reminder Pill ───────────────────────────────────────────────
-
-interface ReminderPillProps {
-  reminder: ProgressiveReminder;
-  trackerColor: string;
-  colors: Record<string, string>;
-  borderRadiusValue: number;
-  onAction: (action: string) => void;
-}
-
-const ReminderPill = memo<ReminderPillProps>(({
-  reminder, trackerColor, colors, borderRadiusValue, onAction,
-}) => {
-  const isUrgent = reminder.priority === 'urgent' || reminder.priority === 'high';
-
-  return (
-    <View style={[styles.reminderPill, {
-      backgroundColor: isUrgent ? 'rgba(255,107,107,0.08)' : `${trackerColor}08`,
-      borderRadius: borderRadiusValue,
-      borderLeftWidth: 3,
-      borderLeftColor: isUrgent ? '#FF6B6B' : trackerColor,
-    }]}>
-      <Text style={styles.reminderEmoji}>{reminder.emoji}</Text>
-      <View style={styles.reminderTextContainer}>
-        <Text style={[styles.reminderTitle, { color: colors.text }]} numberOfLines={1}>
-          {reminder.title}
-        </Text>
-        <Text style={[styles.reminderBody, { color: colors.textSecondary }]} numberOfLines={1}>
-          {reminder.body}
-        </Text>
-      </View>
-      {reminder.actionButtons?.map(btn => (
-        <TouchableOpacity
-          key={btn.id}
-          style={[styles.reminderActionBtn, {
-            backgroundColor: btn.action === 'log_now' ? trackerColor : colors.surface,
-            borderRadius: borderRadiusValue / 2,
-          }]}
-          onPress={() => onAction(btn.action)}
-          activeOpacity={0.85}
-          accessibilityRole="button"
-        >
-          <Text style={[
-            styles.reminderActionText,
-            { color: btn.action === 'log_now' ? '#fff' : colors.text }
-          ]}>
-            {btn.label}
-          </Text>
-        </TouchableOpacity>
-      ))}
-    </View>
-  );
-});
-ReminderPill.displayName = 'ReminderPill';
-
-// ─── Date Picker Modal ───────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+// DATE PICKER MODAL
+// ═══════════════════════════════════════════════════════════════
 
 interface DatePickerModalProps {
   visible: boolean;
@@ -655,20 +1209,20 @@ const DatePickerModal = memo<DatePickerModalProps>(({
 }) => (
   <Modal transparent animationType="slide" visible={visible} statusBarTranslucent>
     <Pressable
-      style={[styles.pickerModalOverlay, { backgroundColor: `rgba(0,0,0,${MODAL_BACKDROP_OPACITY})` }]}
+      style={[pickerStyles.overlay, { backgroundColor: `rgba(0,0,0,${MODAL_BACKDROP_OPACITY})` }]}
       onPress={onClose}
     >
       <View
-        style={[styles.pickerModalContent, {
+        style={[pickerStyles.content, {
           backgroundColor: fullThemeColors.surface,
           borderRadius: borderRadiusValue * 2,
         }]}
         onStartShouldSetResponder={() => true}
         onTouchEnd={(e) => e.stopPropagation()}
       >
-        <View style={[styles.pickerHeader, { borderBottomColor: fullThemeColors.border }]}>
+        <View style={[pickerStyles.header, { borderBottomColor: fullThemeColors.border }]}>
           <TouchableOpacity onPress={onClose} accessibilityRole="button">
-            <Text style={[styles.pickerDoneButton, { color: themeColors.primary }]}>Done</Text>
+            <Text style={[pickerStyles.doneButton, { color: themeColors.primary }]}>Done</Text>
           </TouchableOpacity>
         </View>
         <DateTimePicker
@@ -684,8 +1238,15 @@ const DatePickerModal = memo<DatePickerModalProps>(({
 ));
 DatePickerModal.displayName = 'DatePickerModal';
 
+const pickerStyles = StyleSheet.create({
+  overlay: { flex: 1, justifyContent: 'flex-end' },
+  content: { paddingBottom: Platform.OS === 'ios' ? 40 : 20 },
+  header: { alignItems: 'flex-end', padding: 16, borderBottomWidth: StyleSheet.hairlineWidth },
+  doneButton: { fontSize: 16, fontWeight: '600' },
+});
+
 // ═══════════════════════════════════════════════════════════════
-// MAIN SCREEN
+// MAIN SCREEN — COMPLETE REDESIGN
 // ═══════════════════════════════════════════════════════════════
 
 export default function AddEntryScreen() {
@@ -742,6 +1303,7 @@ export default function AddEntryScreen() {
   const [dismissedCorrelations, setDismissedCorrelations] = useState<Set<string>>(new Set());
   const [dismissedReminders, setDismissedReminders] = useState<Set<string>>(new Set());
   const [appliedCorrelationPrefill, setAppliedCorrelationPrefill] = useState<Record<string, unknown> | null>(null);
+  const [appliedSuggestions, setAppliedSuggestions] = useState<Set<string>>(new Set());
 
   // Form state
   const [pendingData, setPendingData] = useState<Record<string, unknown>>(() => {
@@ -787,16 +1349,151 @@ export default function AddEntryScreen() {
 
   const hasYesterdayEntries = yesterdayEntries.length > 0;
 
+  // ─── NEW: Compute today's entries count ─────────────────────────
+  const entriesToday = useMemo(() => {
+    if (!tracker) return 0;
+    const todayStart = startOfDay(new Date()).getTime();
+    const todayEnd = endOfDay(new Date()).getTime();
+    return getEntries(tracker.id).filter(e => {
+      const t = e.timestamp;
+      return t >= todayStart && t <= todayEnd;
+    }).length;
+  }, [tracker, getEntries]);
+
+  // ─── NEW: Last entry time ───────────────────────────────────────
+  const lastEntryTime = useMemo(() => {
+    if (!tracker) return null;
+    const entries = getEntries(tracker.id).sort((a, b) => b.timestamp - a.timestamp);
+    return entries.length > 0 ? new Date(entries[0].timestamp) : null;
+  }, [tracker, getEntries]);
+
+  // ─── NEW: Quick templates ───────────────────────────────────────
+  const quickTemplates = useMemo((): QuickTemplate[] => {
+    if (!tracker) return [];
+    const base: QuickTemplate[] = [];
+    switch (tracker.id) {
+      case 'feed':
+        base.push(
+          { id: 'breast-left', label: 'Breast Left', icon: '\uD83E\uDD31', data: { feedType: 'Breast', side: 'Left' }, color: '#ec4899' },
+          { id: 'breast-right', label: 'Breast Right', icon: '\uD83E\uDD31', data: { feedType: 'Breast', side: 'Right' }, color: '#ec4899' },
+          { id: 'bottle-4oz', label: 'Bottle 4oz', icon: '\uD83C\uDF7C', data: { feedType: 'Bottle', amount: '4 oz' }, color: '#6366f1' },
+          { id: 'bottle-6oz', label: 'Bottle 6oz', icon: '\uD83C\uDF7C', data: { feedType: 'Bottle', amount: '6 oz' }, color: '#6366f1' },
+        );
+        break;
+      case 'sleep':
+        base.push(
+          { id: 'nap-30', label: 'Short Nap', icon: '\uD83D\uDE34', data: { sleepType: 'Nap', duration: '30 min' }, color: '#8b5cf6' },
+          { id: 'nap-60', label: 'Long Nap', icon: '\uD83D\uDE34', data: { sleepType: 'Nap', duration: '1 hr' }, color: '#8b5cf6' },
+          { id: 'night-sleep', label: 'Night Sleep', icon: '\uD83C\uDF19', data: { sleepType: 'Night', duration: '8 hr' }, color: '#5F27CD' },
+        );
+        break;
+      case 'diaper':
+        base.push(
+          { id: 'wet', label: 'Wet', icon: '\uD83D\uDCA7', data: { type: 'Wet' }, color: '#06b6d4' },
+          { id: 'dirty', label: 'Dirty', icon: '\uD83D\uDCA9', data: { type: 'Dirty' }, color: '#f59e0b' },
+          { id: 'both', label: 'Both', icon: '\uD83D\uDCA7\uD83D\uDCA9', data: { type: 'Both' }, color: '#ef4444' },
+        );
+        break;
+      case 'potty':
+        base.push(
+          { id: 'pee', label: 'Pee', icon: '\uD83D\uDCA7', data: { type: 'Pee', successful: true }, color: '#06b6d4' },
+          { id: 'poop', label: 'Poop', icon: '\uD83D\uDCA9', data: { type: 'Poop', successful: true }, color: '#f59e0b' },
+        );
+        break;
+    }
+    return base;
+  }, [tracker]);
+
+  // ─── NEW: Smart suggestions with confidence ─────────────────────
+  const smartSuggestions = useMemo((): SmartSuggestion[] => {
+    if (!tracker) return [];
+    const items: SmartSuggestion[] = [];
+
+    suggestions.forEach((s, i) => {
+      items.push({
+        id: `sugg-${i}`,
+        fieldId: s.fieldId,
+        label: s.fieldId.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()),
+        value: s.value,
+        confidence: s.confidence || 75,
+        reason: s.reason || 'Based on your patterns',
+      });
+    });
+
+    // Add pattern-based suggestions
+    if (tracker.id === 'feed' && !pendingData.feedType) {
+      const hour = new Date().getHours();
+      if (hour >= 6 && hour <= 10) {
+        items.push({ id: 'pattern-morning', fieldId: 'feedType', label: 'Feed Type', value: 'Breast', confidence: 82, reason: 'Morning pattern' });
+      } else if (hour >= 18 && hour <= 22) {
+        items.push({ id: 'pattern-evening', fieldId: 'feedType', label: 'Feed Type', value: 'Bottle', confidence: 78, reason: 'Evening pattern' });
+      }
+    }
+
+    return items;
+  }, [tracker, suggestions, pendingData]);
+
+  // ─── NEW: Context insights ──────────────────────────────────────
+  const contextInsights = useMemo((): ContextInsight[] => {
+    if (!tracker) return [];
+    const items: ContextInsight[] = [];
+
+    if (entriesToday === 0) {
+      items.push({
+        id: 'first-entry',
+        type: 'tip',
+        message: `First ${tracker.name.toLowerCase()} of the day. Great time to log!`,
+        emoji: '\u2728',
+        color: '#10b981',
+        priority: 'low',
+      });
+    }
+
+    if (isAtRisk && streak?.currentStreak > 0) {
+      items.push({
+        id: 'streak-risk',
+        type: 'anomaly',
+        message: `Streak at risk! Log within ${hoursUntilBreak}h to keep ${streak.currentStreak} days.`,
+        emoji: '\uD83D\uDD25',
+        color: '#ef4444',
+        priority: 'high',
+      });
+    }
+
+    if (timeContext?.nextSuggestedTime) {
+      items.push({
+        id: 'next-suggested',
+        type: 'pattern',
+        message: `Usually logged around ${timeContext.nextSuggestedTime}`,
+        emoji: '\u23F0',
+        color: '#6366f1',
+        priority: 'medium',
+      });
+    }
+
+    const todayCount = entriesToday;
+    if (todayCount >= 3 && tracker.id === 'feed') {
+      items.push({
+        id: 'feeding-count',
+        type: 'trend',
+        message: `${todayCount} feeds today \u2014 on track for healthy intake`,
+        emoji: '\uD83D\uDCC8',
+        color: '#10b981',
+        priority: 'low',
+      });
+    }
+
+    return items;
+  }, [tracker, entriesToday, isAtRisk, streak, hoursUntilBreak, timeContext]);
+
   // ─── Effects ─────────────────────────────────────────────────────
 
-  // Refresh progressive data when tracker changes
   useEffect(() => {
     if (selectedTrackerId) {
       refreshProgressive();
     }
   }, [selectedTrackerId, refreshProgressive]);
 
-  // Load yesterday's entries
   useEffect(() => {
     if (!tracker || editEntryId) return;
 
@@ -822,7 +1519,6 @@ export default function AddEntryScreen() {
     setYesterdayEntries(filtered);
   }, [tracker, getEntries, editEntryId]);
 
-  // Apply prefill data and suggestions
   useEffect(() => {
     if (!tracker) return;
 
@@ -856,7 +1552,6 @@ export default function AddEntryScreen() {
     });
   }, [prefillData, suggestions, appliedCorrelationPrefill, tracker]);
 
-  // Load edit data
   useEffect(() => {
     if (!editEntryId || !tracker) return;
 
@@ -872,7 +1567,7 @@ export default function AddEntryScreen() {
     }
   }, [editEntryId, tracker, getEntries]);
 
-  // ─── Callbacks (Stable) ────────────────────────────────────────
+  // ─── Callbacks ─────────────────────────────────────────────────
 
   const handleCopyYesterdayEntry = useCallback((entry: YesterdayEntry) => {
     HAPTIC_SUCCESS();
@@ -950,14 +1645,14 @@ export default function AddEntryScreen() {
     if (!tracker) return 'Entry';
     const d = data;
     switch (tracker.id) {
-      case 'potty': return `${d.type || 'Potty'} ${d.successful ? '✓' : ''}`;
+      case 'potty': return `${d.type || 'Potty'} ${d.successful ? '\u2713' : ''}`;
       case 'feed': return `${d.feedType || 'Feed'}${d.amount ? ` (${d.amount})` : ''}`;
-      case 'sleep': return `${d.sleepType || 'Sleep'}${d.duration ? ` • ${d.duration}` : ''}`;
+      case 'sleep': return `${d.sleepType || 'Sleep'}${d.duration ? ` \u2022 ${d.duration}` : ''}`;
       case 'growth': return `${d.measurementType || 'Measurement'}: ${d.value || ''}${d.unit || ''}`;
       case 'medication': return `${d.name || 'Medicine'} ${d.dosage || ''}`;
-      case 'milestone': return `🌟 ${d.title || 'New Milestone'}`;
+      case 'milestone': return `\uD83C\uDF1F ${d.title || 'New Milestone'}`;
       case 'diaper': return `${d.type || 'Diaper'} Change`;
-      case 'temperature': return `🌡️ ${d.value || ''}${d.unit === 'fahrenheit' ? '°F' : '°C'}`;
+      case 'temperature': return `\uD83C\uDF21\uFE0F ${d.value || ''}${d.unit === 'fahrenheit' ? '\u00B0F' : '\u00B0C'}`;
       case 'note': return (d.title as string) || 'Note';
       default: return `${tracker.emoji} ${tracker.name}`;
     }
@@ -1002,6 +1697,7 @@ export default function AddEntryScreen() {
     setDismissedCorrelations(new Set());
     setDismissedReminders(new Set());
     setAppliedCorrelationPrefill(null);
+    setAppliedSuggestions(new Set());
     setShowYesterdayModal(false);
     setYesterdayEntries([]);
   }, []);
@@ -1014,16 +1710,36 @@ export default function AddEntryScreen() {
     }
   }, [selectedTrackerId, navigation]);
 
+  // ─── NEW: Template selection ────────────────────────────────────
+  const handleTemplateSelect = useCallback((tmpl: QuickTemplate) => {
+    HAPTIC_MEDIUM();
+    setPendingData(prev => ({ ...prev, ...tmpl.data }));
+    success('Template Applied', `${tmpl.label} prefill loaded.`);
+  }, [success]);
+
+  // ─── NEW: Smart suggestion apply ────────────────────────────────
+  const handleApplySuggestion = useCallback((suggestion: SmartSuggestion) => {
+    HAPTIC_LIGHT();
+    setPendingData(prev => ({ ...prev, [suggestion.fieldId]: suggestion.value }));
+    setAppliedSuggestions(prev => {
+      const next = new Set(prev);
+      next.add(suggestion.id);
+      return next;
+    });
+  }, []);
+
+  const handleDismissSuggestion = useCallback((id: string) => {
+    setAppliedSuggestions(prev => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+  }, []);
+
   const handleCorrelationAction = useCallback((correlation: ProgressiveCorrelation) => {
     HAPTIC_LIGHT();
     if (correlation.prefillData) {
       setAppliedCorrelationPrefill(correlation.prefillData);
-    }
-  }, []);
-
-  const handleReminderAction = useCallback((action: string) => {
-    if (action === 'log_now') {
-      // Scroll to form or trigger form focus
     }
   }, []);
 
@@ -1041,6 +1757,13 @@ export default function AddEntryScreen() {
       next.add(id);
       return next;
     });
+  }, []);
+
+  const handleInsightAction = useCallback((insight: ContextInsight) => {
+    HAPTIC_LIGHT();
+    if (insight.type === 'anomaly' && insight.id === 'streak-risk') {
+      // Scroll to form or trigger save
+    }
   }, []);
 
   // ─── Render ──────────────────────────────────────────────────────
@@ -1081,8 +1804,8 @@ export default function AddEntryScreen() {
   }
 
   const gradientColors: [string, string, string] = [
-    tracker.gradient[0] + '15',
-    tracker.gradient[1] + '10',
+    tracker.gradient[0] + '08',
+    tracker.gradient[1] + '04',
     fullThemeColors.background,
   ];
 
@@ -1114,87 +1837,129 @@ export default function AddEntryScreen() {
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
         >
-          {/* Header */}
+          {/* ── TOP NAV ROW ── */}
           <Animated.View
             entering={shouldReduceMotion ? undefined : FadeInDown.springify()}
-            style={styles.header}
+            style={styles.headerRow}
           >
             <TouchableOpacity
               onPress={() => navigation.goBack()}
-              style={[styles.closeButton, { borderRadius: borderRadiusValue }]}
+              style={[styles.iconBtn, { borderRadius: borderRadiusValue }]}
               activeOpacity={0.8}
-              accessibilityRole="button"
-              accessibilityLabel="Go back"
             >
               <BlurView
                 intensity={isDark ? 40 : 80}
-                style={[styles.closeBlur, { borderRadius: borderRadiusValue }]}
+                style={[styles.iconBlur, { borderRadius: borderRadiusValue }]}
                 tint={isDark ? 'dark' : 'light'}
               >
-                <Ionicons name="close" size={24} color={fullThemeColors.text} />
+                <Ionicons name="arrow-back" size={22} color={fullThemeColors.text} />
               </BlurView>
             </TouchableOpacity>
 
-            <View style={styles.headerCenter}>
-              <SafeAvatar
-                avatar={currentBaby?.avatar}
-                size={40}
-                fallbackIcon="person"
-                borderColor={tracker.gradient[0]}
-                borderWidth={2}
-                animated={false}
-              />
-              <Text style={[styles.headerTitle, {
-                color: fullThemeColors.text,
-                fontSize: 20 * fontSizeMultiplier,
-              }]}>
-                {editEntryId ? 'Edit' : 'Add'} {tracker.name}
-              </Text>
-              <Text style={[styles.headerSubtitle, { color: fullThemeColors.textSecondary }]}>
-                {currentBaby?.name || 'Baby'}
-              </Text>
-            </View>
-
-            <View style={styles.headerRight}>
-              <TouchableOpacity
-                style={[styles.changeBtn, { borderRadius: borderRadiusValue }]}
-                onPress={() => { HAPTIC_LIGHT(); setShowPicker(true); }}
-                activeOpacity={0.8}
-                accessibilityRole="button"
-                accessibilityLabel="Change tracker"
+            <TouchableOpacity
+              style={[styles.trackerChip, { borderRadius: borderRadiusValue }]}
+              onPress={() => { HAPTIC_LIGHT(); setShowPicker(true); }}
+              activeOpacity={0.8}
+            >
+              <BlurView
+                intensity={isDark ? 40 : 80}
+                style={[styles.trackerChipBlur, { borderRadius: borderRadiusValue }]}
+                tint={isDark ? 'dark' : 'light'}
               >
-                <BlurView
-                  intensity={isDark ? 40 : 80}
-                  style={[styles.changeBlur, { borderRadius: borderRadiusValue }]}
-                  tint={isDark ? 'dark' : 'light'}
-                >
-                  <Ionicons name="swap-horizontal" size={20} color={fullThemeColors.text} />
-                </BlurView>
-              </TouchableOpacity>
-            </View>
+                <Text style={styles.trackerChipEmoji}>{tracker.emoji}</Text>
+                <Text style={[styles.trackerChipText, { color: fullThemeColors.text }]}>
+                  {editEntryId ? 'Edit' : 'Add'} {tracker.name}
+                </Text>
+                <Ionicons name="chevron-down" size={16} color={fullThemeColors.textSecondary} />
+              </BlurView>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.iconBtn, { borderRadius: borderRadiusValue }]}
+              onPress={() => { HAPTIC_LIGHT(); setShowPicker(true); }}
+              activeOpacity={0.8}
+            >
+              <BlurView
+                intensity={isDark ? 40 : 80}
+                style={[styles.iconBlur, { borderRadius: borderRadiusValue }]}
+                tint={isDark ? 'dark' : 'light'}
+              >
+                <Ionicons name="swap-horizontal" size={20} color={fullThemeColors.text} />
+              </BlurView>
+            </TouchableOpacity>
           </Animated.View>
 
-          {/* Progressive Intelligence Section */}
-          {streak && streak.currentStreak > 0 && (
-            <StreakBanner
-              currentStreak={streak.currentStreak}
-              isAtRisk={isAtRisk}
-              hoursUntilBreak={hoursUntilBreak}
-              streakMessage={streakMessage}
-              trackerColor={tracker.gradient[0]}
+          {/* ── NEW FEATURE 1: SMART CONTEXT HEADER ── */}
+          <View style={styles.sectionMargin}>
+            <SmartContextHeader
+              tracker={tracker}
+              currentBaby={currentBaby}
+              lastEntryTime={lastEntryTime}
+              entriesToday={entriesToday}
               colors={fullThemeColors}
               borderRadiusValue={borderRadiusValue}
-              onLogNow={() => {/* Scroll to form */}}
+              fontSizeMultiplier={fontSizeMultiplier}
             />
+          </View>
+
+          {/* ── NEW FEATURE 6: STREAK & GOAL RING ── */}
+          {streak && streak.currentStreak > 0 && (
+            <View style={styles.sectionMargin}>
+              <StreakGoalRing
+                streak={streak}
+                isAtRisk={isAtRisk}
+                hoursUntilBreak={hoursUntilBreak}
+                streakMessage={streakMessage}
+                entriesToday={entriesToday}
+                dailyGoal={3}
+                trackerColor={tracker.gradient[0]}
+                colors={fullThemeColors}
+                borderRadiusValue={borderRadiusValue}
+                onLogNow={() => {/* Scroll to form */}}
+              />
+            </View>
           )}
 
-          <TimeContextChip
-            timeContext={timeContext}
-            trackerColor={tracker.gradient[0]}
+          {/* ── NEW FEATURE 2: QUICK TEMPLATE STRIP ── */}
+          <QuickTemplateStrip
+            templates={quickTemplates}
+            tracker={tracker}
+            onSelect={handleTemplateSelect}
             colors={fullThemeColors}
             borderRadiusValue={borderRadiusValue}
           />
 
+          {/* ── NEW FEATURE 3: SMART SUGGESTION CHIPS ── */}
+          <SmartSuggestionChips
+            suggestions={smartSuggestions}
+            appliedSuggestions={appliedSuggestions}
+            onApply={handleApplySuggestion}
+            onDismiss={handleDismissSuggestion}
+            theme={theme}
+            colors={fullThemeColors}
+            borderRadiusValue={borderRadiusValue}
+          />
+
+          {/* ── NEW FEATURE 4: TIME WHEEL SELECTOR ── */}
+          <TimeWheelSelector
+            date={date}
+            onDateChange={handleDatePress}
+            onTimeChange={(newDate: Date) => setDate(newDate)}
+            trackerColor={tracker.gradient[0]}
+            colors={fullThemeColors}
+            borderRadiusValue={borderRadiusValue}
+            fontSizeMultiplier={fontSizeMultiplier}
+          />
+
+          {/* ── NEW FEATURE 5: CONTEXT INSIGHTS STRIP ── */}
+          <ContextInsightsStrip
+            insights={contextInsights}
+            onAction={handleInsightAction}
+            colors={fullThemeColors}
+            borderRadiusValue={borderRadiusValue}
+          />
+
+          {/* ── Urgent Reminders Banner ── */}
           {hasUrgentReminders && visibleReminders.some(r => r.priority === 'urgent' || r.priority === 'high') && (
             <Animated.View
               entering={FadeInUp.springify()}
@@ -1210,85 +1975,119 @@ export default function AddEntryScreen() {
             </Animated.View>
           )}
 
+          {/* ── Reminders ── */}
           {visibleReminders.length > 0 && (
             <View style={styles.remindersSection}>
               {visibleReminders.slice(0, 2).map(reminder => (
-                <ReminderPill
-                  key={reminder.id}
-                  reminder={reminder}
-                  trackerColor={tracker.gradient[0]}
-                  colors={fullThemeColors}
-                  borderRadiusValue={borderRadiusValue}
-                  onAction={handleReminderAction}
-                />
+                <View key={reminder.id} style={[styles.reminderPill, {
+                  backgroundColor: (reminder.priority === 'urgent' || reminder.priority === 'high') ? 'rgba(255,107,107,0.08)' : `${tracker.gradient[0]}08`,
+                  borderRadius: borderRadiusValue,
+                  borderLeftWidth: 3,
+                  borderLeftColor: (reminder.priority === 'urgent' || reminder.priority === 'high') ? '#FF6B6B' : tracker.gradient[0],
+                }]}>
+                  <Text style={styles.reminderEmoji}>{reminder.emoji}</Text>
+                  <View style={styles.reminderTextContainer}>
+                    <Text style={[styles.reminderTitle, { color: fullThemeColors.text }]} numberOfLines={1}>
+                      {reminder.title}
+                    </Text>
+                    <Text style={[styles.reminderBody, { color: fullThemeColors.textSecondary }]} numberOfLines={1}>
+                      {reminder.body}
+                    </Text>
+                  </View>
+                  {reminder.actionButtons?.map(btn => (
+                    <TouchableOpacity
+                      key={btn.id}
+                      style={[styles.reminderActionBtn, {
+                        backgroundColor: btn.action === 'log_now' ? tracker.gradient[0] : fullThemeColors.surface,
+                        borderRadius: borderRadiusValue / 2,
+                      }]}
+                      onPress={() => {}}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={[styles.reminderActionText, { color: btn.action === 'log_now' ? '#fff' : fullThemeColors.text }]}>
+                        {btn.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                  <TouchableOpacity onPress={() => handleDismissReminder(reminder.id)} style={styles.correlationDismiss}>
+                    <Ionicons name="close" size={18} color={fullThemeColors.textSecondary} />
+                  </TouchableOpacity>
+                </View>
               ))}
             </View>
           )}
 
+          {/* ── Correlations ── */}
           {visibleCorrelations.length > 0 && (
             <View style={styles.correlationsSection}>
               {visibleCorrelations.slice(0, 2).map(correlation => (
-                <CorrelationAlert
+                <Animated.View
                   key={correlation.id}
-                  correlation={correlation}
-                  trackerColor={tracker.gradient[0]}
-                  colors={fullThemeColors}
-                  borderRadiusValue={borderRadiusValue}
-                  onAction={() => handleCorrelationAction(correlation)}
-                  onDismiss={() => handleDismissCorrelation(correlation.id)}
-                />
+                  entering={FadeInUp.springify()}
+                  style={[styles.correlationAlert, {
+                    backgroundColor: `${tracker.gradient[0]}08`,
+                    borderRadius: borderRadiusValue,
+                    borderLeftWidth: 3,
+                    borderLeftColor: tracker.gradient[0],
+                  }]}
+                >
+                  <View style={styles.correlationIconContainer}>
+                    <Text style={styles.correlationEmoji}>{correlation.emoji}</Text>
+                  </View>
+                  <View style={styles.correlationTextContainer}>
+                    <Text style={[styles.correlationMessage, { color: fullThemeColors.text }]} numberOfLines={2}>
+                      {correlation.message}
+                    </Text>
+                    <Text style={[styles.correlationMeta, { color: fullThemeColors.textSecondary }]}>
+                      {correlation.trackerEmoji} {correlation.trackerName} \u2022 {correlation.confidence}% match
+                    </Text>
+                  </View>
+                  <View style={styles.correlationActions}>
+                    {correlation.action !== 'none' && (
+                      <TouchableOpacity
+                        style={[styles.correlationActionBtn, { backgroundColor: tracker.gradient[0] }]}
+                        onPress={() => handleCorrelationAction(correlation)}
+                        activeOpacity={0.85}
+                      >
+                        <Text style={styles.correlationActionText}>
+                          {correlation.action === 'log_now' ? 'Log' : correlation.action === 'prefill' ? 'Apply' : 'View'}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                    <TouchableOpacity
+                      onPress={() => handleDismissCorrelation(correlation.id)}
+                      style={styles.correlationDismiss}
+                    >
+                      <Ionicons name="close" size={18} color={fullThemeColors.textSecondary} />
+                    </TouchableOpacity>
+                  </View>
+                </Animated.View>
               ))}
             </View>
           )}
 
-          {/* Yesterday's Entries Banner */}
-          {hasYesterdayEntries && !editEntryId && (
-            <Animated.View
-              entering={FadeInUp.springify()}
-              style={[styles.yesterdayBanner, {
-                backgroundColor: `${tracker.gradient[0]}10`,
-                borderColor: `${tracker.gradient[0]}30`,
-                borderRadius: borderRadiusValue,
-                borderWidth: 1,
-              }]}
-            >
-              <View style={styles.yesterdayBannerIconContainer}>
-                <Ionicons name="calendar-outline" size={22} color={tracker.gradient[0]} />
-              </View>
-              <View style={styles.yesterdayBannerTextContainer}>
-                <Text style={[styles.yesterdayBannerTitle, { color: tracker.gradient[0] }]}>
-                  Yesterday's Records
-                </Text>
-                <Text style={[styles.yesterdayBannerSubtitle, { color: fullThemeColors.textSecondary }]}>
-                  {yesterdayEntries.length} {tracker.name.toLowerCase()} entr{yesterdayEntries.length !== 1 ? 'ies' : 'y'} recorded
-                </Text>
-              </View>
-              <TouchableOpacity
-                style={[styles.yesterdayBannerBtn, {
-                  backgroundColor: tracker.gradient[0],
-                  borderRadius: borderRadiusValue,
-                }]}
-                onPress={() => { HAPTIC_LIGHT(); setShowYesterdayModal(true); }}
-                activeOpacity={0.85}
-                accessibilityRole="button"
-              >
-                <Text style={styles.yesterdayBannerBtnText}>View</Text>
-              </TouchableOpacity>
-            </Animated.View>
-          )}
+          {/* ── REDESIGNED: Yesterday Entries Horizontal Strip ── */}
+          <YesterdayStrip
+            entries={yesterdayEntries}
+            tracker={tracker}
+            onCopyEntry={handleCopyYesterdayEntry}
+            onViewAll={() => setShowYesterdayModal(true)}
+            colors={fullThemeColors}
+            borderRadiusValue={borderRadiusValue}
+            fontSizeMultiplier={fontSizeMultiplier}
+          />
 
-          {/* Recent entries */}
+          {/* ── Recent entries ── */}
           {recentEntries.length > 0 && !editEntryId && (
             <Animated.View
               entering={shouldReduceMotion ? undefined : FadeInUp.delay(50).springify()}
               style={styles.recentSection}
             >
-              <Text style={[styles.recentTitle, {
-                color: fullThemeColors.textSecondary,
-                fontSize: 13 * fontSizeMultiplier,
-              }]}>
-                Recent {tracker.name}
-              </Text>
+              <View style={styles.sectionHeader}>
+                <Text style={[styles.sectionTitle, { color: fullThemeColors.textSecondary, fontSize: 13 * fontSizeMultiplier }]}>
+                  Recent {tracker.name}
+                </Text>
+              </View>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 {recentEntries.map(entry => (
                   <View key={entry.id} style={[styles.recentCard, {
@@ -1306,97 +2105,7 @@ export default function AddEntryScreen() {
             </Animated.View>
           )}
 
-          {/* Date/Time Section */}
-          <Animated.View
-            entering={shouldReduceMotion ? undefined : FadeInUp.delay(100).springify()}
-            style={styles.timeSection}
-          >
-            <Text style={[styles.sectionLabel, {
-              color: fullThemeColors.text,
-              fontSize: 16 * fontSizeMultiplier,
-            }]}>
-              When
-            </Text>
-            <View style={styles.timeButtonsContainer}>
-              <TouchableOpacity
-                style={[styles.timeButton, {
-                  backgroundColor: fullThemeColors.glassBg,
-                  borderColor: fullThemeColors.border,
-                  borderRadius: borderRadiusValue,
-                }]}
-                onPress={handleDatePress}
-                activeOpacity={0.8}
-                accessibilityRole="button"
-                accessibilityLabel="Select date"
-              >
-                <View style={[styles.timeIconContainer, { backgroundColor: `${tracker.gradient[0]}15` }]}>
-                  <Ionicons name="calendar-outline" size={22} color={tracker.gradient[0]} />
-                </View>
-                <View style={styles.timeTextContainer}>
-                  <Text style={[styles.timeMainText, {
-                    color: fullThemeColors.text,
-                    fontSize: 15 * fontSizeMultiplier,
-                  }]}>
-                    {isToday(date) ? 'Today' : isYesterday(date) ? 'Yesterday' : format(date, 'EEE, MMM d')}
-                  </Text>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color={fullThemeColors.textSecondary} />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.timeButton, {
-                  backgroundColor: fullThemeColors.glassBg,
-                  borderColor: fullThemeColors.border,
-                  borderRadius: borderRadiusValue,
-                }]}
-                onPress={handleTimePress}
-                activeOpacity={0.8}
-                accessibilityRole="button"
-                accessibilityLabel="Select time"
-              >
-                <View style={[styles.timeIconContainer, { backgroundColor: `${tracker.gradient[0]}15` }]}>
-                  <Ionicons name="time-outline" size={22} color={tracker.gradient[0]} />
-                </View>
-                <View style={styles.timeTextContainer}>
-                  <Text style={[styles.timeMainText, {
-                    color: fullThemeColors.text,
-                    fontSize: 15 * fontSizeMultiplier,
-                  }]}>
-                    {format(date, 'h:mm a')}
-                  </Text>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color={fullThemeColors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-
-            {/* iOS Pickers */}
-            {Platform.OS === 'ios' && (
-              <>
-                <DatePickerModal
-                  visible={showDatePicker}
-                  date={date}
-                  mode="date"
-                  onChange={onDateChange}
-                  onClose={() => setShowDatePicker(false)}
-                  themeColors={themeColors}
-                  fullThemeColors={fullThemeColors}
-                  borderRadiusValue={borderRadiusValue}
-                />
-                <DatePickerModal
-                  visible={showTimePicker}
-                  date={date}
-                  mode="time"
-                  onChange={onDateChange}
-                  onClose={() => setShowTimePicker(false)}
-                  themeColors={themeColors}
-                  fullThemeColors={fullThemeColors}
-                  borderRadiusValue={borderRadiusValue}
-                />
-              </>
-            )}
-          </Animated.View>
-
-          {/* Errors */}
+          {/* ── Errors ── */}
           {errors.length > 0 && (
             <Animated.View
               entering={shouldReduceMotion ? undefined : FadeInDown.springify()}
@@ -1415,7 +2124,7 @@ export default function AddEntryScreen() {
             </Animated.View>
           )}
 
-          {/* Form */}
+          {/* ── Form ── */}
           <View style={styles.formWrapper}>
             <DynamicTrackerForm
               tracker={tracker}
@@ -1430,7 +2139,7 @@ export default function AddEntryScreen() {
         </AutoHideAnimatedScrollView>
       </KeyboardAvoidingView>
 
-      {/* Modals */}
+      {/* ── Modals ── */}
       <ConfirmModal
         visible={showConfirm}
         onClose={() => setShowConfirm(false)}
@@ -1454,94 +2163,87 @@ export default function AddEntryScreen() {
         borderRadiusValue={borderRadiusValue}
         fontSizeMultiplier={fontSizeMultiplier}
       />
+
+      {/* iOS Pickers */}
+      {Platform.OS === 'ios' && (
+        <>
+          <DatePickerModal
+            visible={showDatePicker}
+            date={date}
+            mode="date"
+            onChange={onDateChange}
+            onClose={() => setShowDatePicker(false)}
+            themeColors={themeColors}
+            fullThemeColors={fullThemeColors}
+            borderRadiusValue={borderRadiusValue}
+          />
+          <DatePickerModal
+            visible={showTimePicker}
+            date={date}
+            mode="time"
+            onChange={onDateChange}
+            onClose={() => setShowTimePicker(false)}
+            themeColors={themeColors}
+            fullThemeColors={fullThemeColors}
+            borderRadiusValue={borderRadiusValue}
+          />
+        </>
+      )}
     </LinearGradient>
   );
 }
 
 // ═══════════════════════════════════════════════════════════════
-// STYLES
+// STYLES — Redesigned with Growth Dashboard patterns
 // ═══════════════════════════════════════════════════════════════
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
   keyboardView: { flex: 1 },
-  content: { paddingHorizontal: 20, paddingBottom: 40 },
+  content: { paddingHorizontal: 0, paddingBottom: 40 },
+  sectionMargin: { marginHorizontal: DESIGN.spacing.lg, marginBottom: DESIGN.spacing.lg },
 
-  // Header
-  header: {
+  // ── Top Nav Row ──
+  headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 24,
+    marginBottom: 20,
+    paddingHorizontal: 20,
     paddingTop: 8,
   },
-  closeButton: { overflow: 'hidden' },
-  closeBlur: {
+  iconBtn: { overflow: 'hidden' },
+  iconBlur: {
     width: 44,
     height: 44,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerCenter: { alignItems: 'center', gap: 6 },
-  headerTitle: { fontWeight: '800', letterSpacing: -0.5 },
-  headerSubtitle: { fontSize: 13, fontWeight: '500' },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  changeBtn: { overflow: 'hidden' },
-  changeBlur: {
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  // Streak Banner
-  streakBanner: {
+  trackerChip: { overflow: 'hidden', flex: 1, marginHorizontal: 12 },
+  trackerChipBlur: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 14,
-    marginBottom: 16,
-    gap: 12,
-  },
-  streakIconContainer: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
     justifyContent: 'center',
-  },
-  streakTextContainer: { flex: 1 },
-  streakCount: { fontSize: 16, fontWeight: '700' },
-  streakMessage: { fontSize: 12, marginTop: 2 },
-  streakActionBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 10,
-  },
-  streakActionText: { color: '#fff', fontWeight: '600', fontSize: 13 },
-
-  // Time Context
-  timeContextChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    marginBottom: 16,
-    alignSelf: 'flex-start',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
-  timeContextText: { fontSize: 12, fontWeight: '500' },
+  trackerChipEmoji: { fontSize: 18 },
+  trackerChipText: { fontSize: 15, fontWeight: '800', letterSpacing: -0.3 },
 
-  // Urgent Banner
+  // ── Urgent Banner ──
   urgentBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     padding: 12,
     marginBottom: 16,
+    marginHorizontal: 16,
   },
   urgentText: { fontSize: 13, fontWeight: '600' },
 
-  // Reminders
-  remindersSection: { gap: 10, marginBottom: 16 },
+  // ── Reminders ──
+  remindersSection: { gap: 10, marginBottom: 16, marginHorizontal: 16 },
   reminderPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1558,8 +2260,8 @@ const styles = StyleSheet.create({
   },
   reminderActionText: { fontSize: 12, fontWeight: '600' },
 
-  // Correlations
-  correlationsSection: { gap: 10, marginBottom: 16 },
+  // ── Correlations ──
+  correlationsSection: { gap: 10, marginBottom: 16, marginHorizontal: 16 },
   correlationAlert: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1585,156 +2287,11 @@ const styles = StyleSheet.create({
   correlationActionText: { color: '#fff', fontSize: 12, fontWeight: '600' },
   correlationDismiss: { padding: 4 },
 
-  // Yesterday Banner
-  yesterdayBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 14,
-    marginBottom: 16,
-    gap: 12,
-  },
-  yesterdayBannerIconContainer: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  yesterdayBannerTextContainer: { flex: 1 },
-  yesterdayBannerTitle: { fontSize: 15, fontWeight: '700' },
-  yesterdayBannerSubtitle: { fontSize: 12, marginTop: 2 },
-  yesterdayBannerBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  yesterdayBannerBtnText: { color: '#fff', fontWeight: '600', fontSize: 13 },
-
-  // Yesterday Modal
-  yesterdayModalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  yesterdayModalContent: {
-    width: '100%',
-    maxHeight: '85%',
-    overflow: 'hidden',
-    elevation: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.25,
-    shadowRadius: 30,
-  },
-  yesterdayModalGradient: { padding: 0 },
-  yesterdayModalHeader: {
-    alignItems: 'center',
-    padding: 24,
-    paddingBottom: 16,
-    position: 'relative',
-  },
-  yesterdayModalIconContainer: {
-    width: 56,
-    height: 56,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  yesterdayModalTitle: { fontWeight: '800', marginBottom: 4 },
-  yesterdayModalSubtitle: { fontSize: 14, fontWeight: '500' },
-  yesterdayCloseBtn: {
-    position: 'absolute',
-    top: 16,
-    right: 16,
-    overflow: 'hidden',
-  },
-  yesterdayCloseBlur: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  yesterdayScrollView: { maxHeight: 400 },
-  yesterdayScrollContent: {
-    paddingHorizontal: 20,
-    paddingBottom: 8,
-    gap: 12,
-  },
-  yesterdayEntryCard: { padding: 16, marginBottom: 4 },
-  yesterdayEntryHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 12,
-  },
-  yesterdayTimeBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-  },
-  yesterdayTimeText: { fontSize: 13, fontWeight: '700' },
-  yesterdayEntryTitle: { fontSize: 15, fontWeight: '700', flex: 1 },
-  yesterdayFieldsContainer: { gap: 8, marginBottom: 12 },
-  yesterdayFieldRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 6,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(0,0,0,0.04)',
-  },
-  yesterdayFieldLabel: { fontSize: 13, fontWeight: '500', flex: 1 },
-  yesterdayFieldValue: { fontSize: 13, fontWeight: '600', flex: 1, textAlign: 'right' },
-  yesterdayNotesContainer: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingTop: 10,
-    marginBottom: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(0,0,0,0.06)',
-  },
-  yesterdayNotesText: {
-    flex: 1,
-    fontSize: 13,
-    fontStyle: 'italic',
-    lineHeight: 18,
-  },
-  yesterdayTagsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginBottom: 12,
-  },
-  yesterdayTag: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  yesterdayTagText: { fontSize: 12, fontWeight: '600' },
-  yesterdayCopyBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 12,
-    marginTop: 4,
-  },
-  yesterdayCopyBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
-  yesterdayModalFooter: { padding: 20, paddingTop: 12 },
-  yesterdayDoneBtn: {
-    paddingVertical: 14,
-    alignItems: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  yesterdayDoneBtnText: { fontSize: 16, fontWeight: '700' },
-
-  // Recent
-  recentSection: { marginBottom: 20 },
-  recentTitle: {
+  // ── Recent ──
+  recentSection: { marginBottom: 20, marginHorizontal: 16 },
+  sectionHeader: { marginBottom: 10 },
+  sectionTitle: {
     fontWeight: '600',
-    marginBottom: 10,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
@@ -1749,48 +2306,13 @@ const styles = StyleSheet.create({
   recentEmoji: { fontSize: 28 },
   recentTime: { fontSize: 12, marginTop: 4, fontWeight: '600' },
 
-  // Time Section
-  timeSection: { marginBottom: 24 },
-  sectionLabel: { fontWeight: '700', letterSpacing: -0.3, marginBottom: 12 },
-  timeButtonsContainer: { flexDirection: 'row', gap: 12 },
-  timeButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 14,
-    borderWidth: StyleSheet.hairlineWidth,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  timeIconContainer: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  timeTextContainer: { flex: 1 },
-  timeMainText: { fontWeight: '700' },
-
-  // Pickers
-  pickerModalOverlay: { flex: 1, justifyContent: 'flex-end' },
-  pickerModalContent: { paddingBottom: Platform.OS === 'ios' ? 40 : 20 },
-  pickerHeader: {
-    alignItems: 'flex-end',
-    padding: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  pickerDoneButton: { fontSize: 16, fontWeight: '600' },
-
-  // Errors
+  // ── Errors ──
   errorsContainer: {
     borderRadius: 12,
     padding: 12,
     marginBottom: 16,
     borderLeftWidth: 4,
+    marginHorizontal: 16,
   },
   errorRow: {
     flexDirection: 'row',
@@ -1800,86 +2322,7 @@ const styles = StyleSheet.create({
   },
   errorText: { fontSize: 13, fontWeight: '500' },
 
-  // Form
-  formWrapper: { marginTop: 8 },
+  // ── Form ──
+  formWrapper: { marginTop: 8, paddingHorizontal: 16 },
   bottomPadding: { height: 100 },
-
-  // Confirm Modal
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  modalContent: {
-    width: '100%',
-    maxHeight: '80%',
-    overflow: 'hidden',
-    elevation: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.25,
-    shadowRadius: 30,
-  },
-  modalGradient: { padding: 24 },
-  modalHeader: { alignItems: 'center', marginBottom: 20 },
-  modalIconContainer: {
-    width: 64,
-    height: 64,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  modalIcon: { fontSize: 32 },
-  modalTitle: { fontWeight: '800', marginBottom: 4 },
-  modalBabyRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  modalSubtitle: { fontSize: 14, fontWeight: '500' },
-  modalBody: { maxHeight: 300 },
-  previewCard: { padding: 20, borderWidth: StyleSheet.hairlineWidth },
-  previewTime: {
-    fontSize: 13,
-    fontWeight: '600',
-    marginBottom: 8,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  previewPhotoContainer: { overflow: 'hidden', marginBottom: 12, height: 120 },
-  previewTitle: { fontWeight: '800', marginBottom: 8 },
-  previewDetails: { fontSize: 14, marginBottom: 12, lineHeight: 20 },
-  previewFields: { gap: 8, marginTop: 8 },
-  previewField: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 6,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(0,0,0,0.05)',
-  },
-  previewFieldLabel: { fontSize: 13, fontWeight: '500' },
-  previewFieldValue: { fontSize: 13, fontWeight: '600' },
-  previewNotes: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(0,0,0,0.05)',
-  },
-  previewNotesText: {
-    flex: 1,
-    fontSize: 14,
-    fontStyle: 'italic',
-    lineHeight: 20,
-  },
-  modalActions: { flexDirection: 'row', gap: 12, marginTop: 20 },
-  cancelButton: { flex: 1, paddingVertical: 16, alignItems: 'center' },
-  cancelButtonText: { fontSize: 16, fontWeight: '700' },
-  confirmButton: { flex: 2, overflow: 'hidden' },
-  confirmGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 16,
-  },
-  confirmButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 });
