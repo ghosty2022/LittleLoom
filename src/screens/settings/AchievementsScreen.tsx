@@ -582,9 +582,8 @@ const AchievementCard = React.memo(({
 
   return (
     <Animated.View
-      entering={shouldReduceMotion ? undefined : FadeInUp.delay(index * 40).springify()}
-      layout={shouldReduceMotion ? undefined : Layout.springify()}
-    >
+  entering={shouldReduceMotion ? undefined : FadeInUp.delay(index * 40).springify()}
+>
       <TouchableOpacity onPress={() => onPress(achievement)} activeOpacity={0.9}>
         <View style={[
           styles.achievementCard,
