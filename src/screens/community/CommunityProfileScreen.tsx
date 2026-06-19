@@ -149,7 +149,7 @@ const SectionHeader = React.memo(({ title, subtitle, action, actionLabel }: {
       </TouchableOpacity>
     )}
   </View>
-);
+));
 
 const TabBar = React.memo(({ tabs, activeTab, onChange }: {
   tabs: { key: ProfileTab; label: string; icon: string }[];
