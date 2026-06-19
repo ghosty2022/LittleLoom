@@ -1,53 +1,19 @@
 // AddEntryScreen.tsx
-// COMPLETE REDESIGN — Inspired by Growth Dashboard glass-morphism, smart sections, and horizontal flows
-// 6 NEW INTELLIGENT FEATURES added
+// FIXED: Hook order violation resolved — useTrackerProgressive moved to inner component
 
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  memo,
-} from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react';
 import {
-  Alert,
-  Dimensions,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-  UIManager,
+  Dimensions, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView,
+  StatusBar, StyleSheet, Text, TouchableOpacity, View, UIManager,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import {
-  FadeInDown,
-  FadeInUp,
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-  withTiming,
-} from 'react-native-reanimated';
+import { FadeInDown, FadeInUp, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import Animated from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import {
-  format,
-  isToday,
-  isYesterday,
-  subDays,
-  startOfDay,
-  endOfDay,
-  differenceInMinutes,
-} from 'date-fns';
+import { format, isToday, isYesterday, subDays, startOfDay, endOfDay, differenceInMinutes } from 'date-fns';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -63,20 +29,13 @@ import { useSweetAlert } from '../../components/SweetAlert';
 import { TimelinePicker } from '../../components/trackers/TimelinePicker';
 import { DynamicTrackerForm } from '../../components/trackers/DynamicTrackerForm';
 import { useTrackerProgressive } from '../../hooks/useTrackerProgressive';
-import type {
-  ProgressiveCorrelation,
-  ProgressiveReminder,
-} from '../../hooks/useTrackerProgressive';
+import type { ProgressiveCorrelation, ProgressiveReminder } from '../../hooks/useTrackerProgressive';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
-
-// ═══════════════════════════════════════════════════════════════
-// DESIGN TOKENS — Shared with Growth Dashboard
-// ═══════════════════════════════════════════════════════════════
 
 const DESIGN = {
   radius: { xs: 8, sm: 12, md: 16, lg: 20, xl: 24, full: 999 },
@@ -87,10 +46,6 @@ const DESIGN = {
     lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 24, elevation: 8 },
   },
 };
-
-// ═══════════════════════════════════════════════════════════════
-// TYPES
-// ═══════════════════════════════════════════════════════════════
 
 type AddEntryRouteProp = RouteProp<RootStackParamList, 'AddEntry'>;
 type AddEntryNavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -130,19 +85,11 @@ interface ContextInsight {
   priority: 'high' | 'medium' | 'low';
 }
 
-// ═══════════════════════════════════════════════════════════════
-// CONSTANTS
-// ═══════════════════════════════════════════════════════════════
-
 const SPRING_CONFIG = { damping: 15, stiffness: 300 };
 const MODAL_BACKDROP_OPACITY = 0.5;
 const HAPTIC_LIGHT = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 const HAPTIC_MEDIUM = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 const HAPTIC_SUCCESS = () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-
-// ═══════════════════════════════════════════════════════════════
-// UTILITY FUNCTIONS
-// ═══════════════════════════════════════════════════════════════
 
 const formatFieldValue = (key: string, value: unknown): string | null => {
   if (value === undefined || value === null || value === '') return null;
@@ -162,9 +109,7 @@ const getEntryFields = (entry: YesterdayEntry) => {
 const shouldFilterField = (k: string) =>
   ['id', 'timestamp', 'babyId', 'type', 'title', 'icon', 'photoUris'].includes(k);
 
-// ═══════════════════════════════════════════════════════════════
-// SHARED GLASS CARD COMPONENT (matches Growth Dashboard)
-// ═══════════════════════════════════════════════════════════════
+// ─── GlassCard ────────────────────────────────────────────────
 
 const GlassCard = memo(({ children, style, onPress, active = false }: { children: React.ReactNode; style?: any; onPress?: () => void; active?: boolean }) => {
   const theme = useUnifiedTrackerTheme();
@@ -176,8 +121,8 @@ const GlassCard = memo(({ children, style, onPress, active = false }: { children
       style
     ]}>
       <LinearGradient
-        colors={theme.isDark 
-          ? ['rgba(45,45,60,0.85)', 'rgba(35,35,50,0.65)'] 
+        colors={theme.isDark
+          ? ['rgba(45,45,60,0.85)', 'rgba(35,35,50,0.65)']
           : ['rgba(255,255,255,0.92)', 'rgba(250,250,255,0.75)']}
         style={StyleSheet.absoluteFill}
         start={{ x: 0, y: 0 }}
@@ -207,18 +152,10 @@ const glassStyles = StyleSheet.create({
   glassContent: { flex: 1 },
 });
 
-// ═══════════════════════════════════════════════════════════════
-// NEW FEATURE 1: SMART CONTEXT HEADER
-// ═══════════════════════════════════════════════════════════════
+// ─── SmartContextHeader ─────────────────────────────────────────
 
 const SmartContextHeader = memo(({
-  tracker,
-  currentBaby,
-  lastEntryTime,
-  entriesToday,
-  colors,
-  borderRadiusValue,
-  fontSizeMultiplier,
+  tracker, currentBaby, lastEntryTime, entriesToday, colors, borderRadiusValue, fontSizeMultiplier,
 }: any) => {
   const now = new Date();
   const hour = now.getHours();
@@ -239,40 +176,22 @@ const SmartContextHeader = memo(({
           <View style={contextStyles.topRow}>
             <View style={[contextStyles.timeBadge, { backgroundColor: `${tracker.gradient[0]}15` }]}>
               <Ionicons name={timeIcon as any} size={16} color={tracker.gradient[0]} />
-              <Text style={[contextStyles.timeBadgeText, { color: tracker.gradient[0] }]}>
-                {timeLabel}
-              </Text>
+              <Text style={[contextStyles.timeBadgeText, { color: tracker.gradient[0] }]}>{timeLabel}</Text>
             </View>
             <View style={[contextStyles.countBadge, { backgroundColor: colors.glassBg }]}>
-              <Text style={[contextStyles.countText, { color: colors.textSecondary }]}>
-                {entriesToday} today
-              </Text>
+              <Text style={[contextStyles.countText, { color: colors.textSecondary }]}>{entriesToday} today</Text>
             </View>
           </View>
-
           <View style={contextStyles.middleRow}>
-            <SafeAvatar
-              avatar={currentBaby?.avatar}
-              size={48}
-              fallbackIcon="person"
-              borderColor={tracker.gradient[0]}
-              borderWidth={2}
-              animated={false}
-            />
+            <SafeAvatar avatar={currentBaby?.avatar} size={48} fallbackIcon="person" borderColor={tracker.gradient[0]} borderWidth={2} animated={false} />
             <View style={contextStyles.infoColumn}>
-              <Text style={[contextStyles.babyName, { color: colors.text, fontSize: 18 * fontSizeMultiplier }]}>
-                {currentBaby?.name || 'Baby'}
-              </Text>
-              <Text style={[contextStyles.trackerLabel, { color: colors.textSecondary }]}>
-                {tracker.emoji} {tracker.name}
-              </Text>
+              <Text style={[contextStyles.babyName, { color: colors.text, fontSize: 18 * fontSizeMultiplier }]}>{currentBaby?.name || 'Baby'}</Text>
+              <Text style={[contextStyles.trackerLabel, { color: colors.textSecondary }]}>{tracker.emoji} {tracker.name}</Text>
             </View>
             {lastEntryTime && (
               <View style={contextStyles.lastEntryBox}>
                 <Ionicons name="time-outline" size={14} color={colors.textMuted || colors.textSecondary} />
-                <Text style={[contextStyles.lastEntryText, { color: colors.textMuted || colors.textSecondary }]}>
-                  {timeSinceText}
-                </Text>
+                <Text style={[contextStyles.lastEntryText, { color: colors.textMuted || colors.textSecondary }]}>{timeSinceText}</Text>
               </View>
             )}
           </View>
@@ -297,42 +216,21 @@ const contextStyles = StyleSheet.create({
   lastEntryText: { fontSize: 12, fontWeight: '500' },
 });
 
-// ═══════════════════════════════════════════════════════════════
-// NEW FEATURE 2: QUICK TEMPLATE STRIP
-// ═══════════════════════════════════════════════════════════════
+// ─── QuickTemplateStrip ─────────────────────────────────────────
 
-const QuickTemplateStrip = memo(({
-  templates,
-  tracker,
-  onSelect,
-  colors,
-  borderRadiusValue,
-}: any) => {
+const QuickTemplateStrip = memo(({ templates, tracker, onSelect, colors, borderRadiusValue }: any) => {
   if (!templates || templates.length === 0) return null;
-
   return (
     <Animated.View entering={FadeInUp.delay(100).springify()}>
       <View style={templateStyles.header}>
         <Text style={[templateStyles.headerTitle, { color: colors.text }]}>Quick Templates</Text>
         <Text style={[templateStyles.headerSubtitle, { color: colors.textSecondary }]}>Tap to prefill</Text>
       </View>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={templateStyles.scrollContent}
-      >
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={templateStyles.scrollContent}>
         {templates.map((tmpl: QuickTemplate) => (
-          <TouchableOpacity
-            key={tmpl.id}
-            onPress={() => { HAPTIC_LIGHT(); onSelect(tmpl); }}
-            style={[templateStyles.chip, {
-              backgroundColor: `${tmpl.color}12`,
-              borderColor: `${tmpl.color}30`,
-              borderWidth: 1,
-              borderRadius: borderRadiusValue,
-            }]}
-            activeOpacity={0.8}
-          >
+          <TouchableOpacity key={tmpl.id} onPress={() => { HAPTIC_LIGHT(); onSelect(tmpl); }}
+            style={[templateStyles.chip, { backgroundColor: `${tmpl.color}12`, borderColor: `${tmpl.color}30`, borderWidth: 1, borderRadius: borderRadiusValue }]}
+            activeOpacity={0.8}>
             <Text style={templateStyles.chipIcon}>{tmpl.icon}</Text>
             <Text style={[templateStyles.chipLabel, { color: colors.text }]}>{tmpl.label}</Text>
             <Ionicons name="flash-outline" size={12} color={tmpl.color} />
@@ -353,45 +251,22 @@ const templateStyles = StyleSheet.create({
   chipLabel: { fontSize: 13, fontWeight: '700' },
 });
 
-// ═══════════════════════════════════════════════════════════════
-// NEW FEATURE 3: SMART SUGGESTION CHIPS
-// ═══════════════════════════════════════════════════════════════
+// ─── SmartSuggestionChips ───────────────────────────────────────
 
-const SmartSuggestionChips = memo(({
-  suggestions,
-  appliedSuggestions,
-  onApply,
-  onDismiss,
-  theme,
-  colors,
-  borderRadiusValue,
-}: any) => {
+const SmartSuggestionChips = memo(({ suggestions, appliedSuggestions, onApply, onDismiss, theme, colors, borderRadiusValue }: any) => {
   const visible = suggestions.filter((s: SmartSuggestion) => !appliedSuggestions.has(s.id) && s.confidence >= 60);
   if (visible.length === 0) return null;
-
   return (
     <Animated.View entering={FadeInUp.delay(150).springify()}>
       <View style={suggestionStyles.header}>
         <Ionicons name="sparkles" size={16} color={theme.primary} />
         <Text style={[suggestionStyles.headerTitle, { color: colors.text }]}>Smart Suggestions</Text>
       </View>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={suggestionStyles.scrollContent}
-      >
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={suggestionStyles.scrollContent}>
         {visible.map((s: SmartSuggestion) => (
-          <TouchableOpacity
-            key={s.id}
-            onPress={() => { HAPTIC_LIGHT(); onApply(s); }}
-            style={[suggestionStyles.chip, {
-              backgroundColor: s.confidence >= 90 ? `${theme.primary}15` : `${theme.primary}08`,
-              borderColor: s.confidence >= 90 ? `${theme.primary}40` : `${theme.primary}20`,
-              borderWidth: 1,
-              borderRadius: borderRadiusValue,
-            }]}
-            activeOpacity={0.8}
-          >
+          <TouchableOpacity key={s.id} onPress={() => { HAPTIC_LIGHT(); onApply(s); }}
+            style={[suggestionStyles.chip, { backgroundColor: s.confidence >= 90 ? `${theme.primary}15` : `${theme.primary}08`, borderColor: s.confidence >= 90 ? `${theme.primary}40` : `${theme.primary}20`, borderWidth: 1, borderRadius: borderRadiusValue }]}
+            activeOpacity={0.8}>
             <View style={[suggestionStyles.confidenceDot, { backgroundColor: s.confidence >= 90 ? '#10b981' : s.confidence >= 75 ? '#f59e0b' : '#ef4444' }]} />
             <Text style={[suggestionStyles.chipLabel, { color: colors.text }]}>{s.label}</Text>
             <Text style={[suggestionStyles.chipValue, { color: colors.textSecondary }]}>{String(s.value)}</Text>
@@ -416,19 +291,9 @@ const suggestionStyles = StyleSheet.create({
   dismissBtn: { marginLeft: 4, padding: 2 },
 });
 
-// ═══════════════════════════════════════════════════════════════
-// NEW FEATURE 4: TIME WHEEL SELECTOR
-// ═══════════════════════════════════════════════════════════════
+// ─── TimeWheelSelector ──────────────────────────────────────────
 
-const TimeWheelSelector = memo(({
-  date,
-  onDateChange,
-  onTimeChange,
-  trackerColor,
-  colors,
-  borderRadiusValue,
-  fontSizeMultiplier,
-}: any) => {
+const TimeWheelSelector = memo(({ date, onDateChange, onTimeChange, trackerColor, colors, borderRadiusValue, fontSizeMultiplier }: any) => {
   const timeBlocks = useMemo(() => {
     const blocks: { label: string; time: string; period: string; isSuggested: boolean }[] = [];
     for (let h = 6; h <= 22; h += 2) {
@@ -449,53 +314,31 @@ const TimeWheelSelector = memo(({
       <View style={timeWheelStyles.header}>
         <Text style={[timeWheelStyles.headerTitle, { color: colors.text }]}>When</Text>
         <View style={timeWheelStyles.dateRow}>
-          <TouchableOpacity
-            onPress={onDateChange}
-            style={[timeWheelStyles.dateChip, { backgroundColor: colors.glassBg, borderRadius: borderRadiusValue }]}
-          >
+          <TouchableOpacity onPress={onDateChange} style={[timeWheelStyles.dateChip, { backgroundColor: colors.glassBg, borderRadius: borderRadiusValue }]}>
             <Ionicons name="calendar-outline" size={16} color={trackerColor} />
             <Text style={[timeWheelStyles.dateChipText, { color: colors.text }]}>
               {isTodayDate ? 'Today' : isYesterdayDate ? 'Yesterday' : format(date, 'EEE, MMM d')}
             </Text>
             <Ionicons name="chevron-forward" size={14} color={colors.textSecondary} />
           </TouchableOpacity>
-          <TouchableOpacity
-            onPress={onDateChange}
-            style={[timeWheelStyles.timeChip, { backgroundColor: `${trackerColor}12`, borderRadius: borderRadiusValue }]}
-          >
+          <TouchableOpacity onPress={onDateChange} style={[timeWheelStyles.timeChip, { backgroundColor: `${trackerColor}12`, borderRadius: borderRadiusValue }]}>
             <Ionicons name="time-outline" size={16} color={trackerColor} />
-            <Text style={[timeWheelStyles.timeChipText, { color: trackerColor, fontWeight: '800' }]}>
-              {format(date, 'h:mm a')}
-            </Text>
+            <Text style={[timeWheelStyles.timeChipText, { color: trackerColor, fontWeight: '800' }]}>{format(date, 'h:mm a')}</Text>
           </TouchableOpacity>
         </View>
       </View>
-
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={timeWheelStyles.scrollContent}
-      >
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={timeWheelStyles.scrollContent}>
         {timeBlocks.map((block, i) => (
-          <TouchableOpacity
-            key={i}
-            onPress={() => {
-              HAPTIC_LIGHT();
-              const newDate = new Date(date);
-              const hourPart = parseInt(block.time.split(':')[0]);
-              const isPM = block.period === 'PM' && hourPart !== 12;
-              const isAM = block.period === 'AM' && hourPart === 12;
-              const h = isPM ? hourPart + 12 : isAM ? 0 : hourPart;
-              newDate.setHours(h, 0, 0, 0);
-              onTimeChange(newDate);
-            }}
-            style={[timeWheelStyles.block, {
-              backgroundColor: block.isSuggested ? `${trackerColor}15` : colors.glassBg,
-              borderColor: block.isSuggested ? `${trackerColor}40` : `${colors.border}60`,
-              borderWidth: 1,
-              borderRadius: borderRadiusValue,
-            }]}
-          >
+          <TouchableOpacity key={i} onPress={() => {
+            HAPTIC_LIGHT();
+            const newDate = new Date(date);
+            const hourPart = parseInt(block.time.split(':')[0]);
+            const isPM = block.period === 'PM' && hourPart !== 12;
+            const isAM = block.period === 'AM' && hourPart === 12;
+            const h = isPM ? hourPart + 12 : isAM ? 0 : hourPart;
+            newDate.setHours(h, 0, 0, 0);
+            onTimeChange(newDate);
+          }} style={[timeWheelStyles.block, { backgroundColor: block.isSuggested ? `${trackerColor}15` : colors.glassBg, borderColor: block.isSuggested ? `${trackerColor}40` : `${colors.border}60`, borderWidth: 1, borderRadius: borderRadiusValue }]}>
             <Text style={[timeWheelStyles.blockLabel, { color: colors.textSecondary, fontSize: 11 * fontSizeMultiplier }]}>{block.label}</Text>
             <Text style={[timeWheelStyles.blockTime, { color: block.isSuggested ? trackerColor : colors.text, fontSize: 14 * fontSizeMultiplier }]}>{block.time}</Text>
             {block.isSuggested && (
@@ -526,41 +369,21 @@ const timeWheelStyles = StyleSheet.create({
   suggestedText: { color: '#fff', fontSize: 10, fontWeight: '800' },
 });
 
-// ═══════════════════════════════════════════════════════════════
-// NEW FEATURE 5: CONTEXT INSIGHTS STRIP
-// ═══════════════════════════════════════════════════════════════
+// ─── ContextInsightsStrip ───────────────────────────────────────
 
-const ContextInsightsStrip = memo(({
-  insights,
-  onAction,
-  colors,
-  borderRadiusValue,
-}: any) => {
+const ContextInsightsStrip = memo(({ insights, onAction, colors, borderRadiusValue }: any) => {
   if (!insights || insights.length === 0) return null;
-
   return (
     <Animated.View entering={FadeInUp.delay(250).springify()}>
       <View style={insightStripStyles.header}>
         <Ionicons name="analytics-outline" size={16} color={colors.textSecondary} />
         <Text style={[insightStripStyles.headerTitle, { color: colors.text }]}>Context Insights</Text>
       </View>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={insightStripStyles.scrollContent}
-      >
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={insightStripStyles.scrollContent}>
         {insights.map((insight: ContextInsight) => (
-          <TouchableOpacity
-            key={insight.id}
-            onPress={() => onAction(insight)}
-            style={[insightStripStyles.card, {
-              backgroundColor: `${insight.color}08`,
-              borderLeftWidth: 3,
-              borderLeftColor: insight.color,
-              borderRadius: borderRadiusValue,
-            }]}
-            activeOpacity={0.85}
-          >
+          <TouchableOpacity key={insight.id} onPress={() => onAction(insight)}
+            style={[insightStripStyles.card, { backgroundColor: `${insight.color}08`, borderLeftWidth: 3, borderLeftColor: insight.color, borderRadius: borderRadiusValue }]}
+            activeOpacity={0.85}>
             <Text style={insightStripStyles.cardEmoji}>{insight.emoji}</Text>
             <Text style={[insightStripStyles.cardMessage, { color: colors.text }]} numberOfLines={2}>{insight.message}</Text>
             <View style={[insightStripStyles.priorityBadge, { backgroundColor: `${insight.color}15` }]}>
@@ -584,62 +407,32 @@ const insightStripStyles = StyleSheet.create({
   priorityText: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
 });
 
-// ═══════════════════════════════════════════════════════════════
-// NEW FEATURE 6: STREAK & GOAL PROGRESS RING
-// ═══════════════════════════════════════════════════════════════
+// ─── StreakGoalRing ─────────────────────────────────────────────
 
-const StreakGoalRing = memo(({
-  streak,
-  isAtRisk,
-  hoursUntilBreak,
-  streakMessage,
-  entriesToday,
-  dailyGoal,
-  trackerColor,
-  colors,
-  borderRadiusValue,
-  onLogNow,
-}: any) => {
+const StreakGoalRing = memo(({ streak, isAtRisk, hoursUntilBreak, streakMessage, entriesToday, dailyGoal, trackerColor, colors, borderRadiusValue, onLogNow }: any) => {
   if (!streak || streak.currentStreak === 0) return null;
-
   const progress = Math.min(entriesToday / (dailyGoal || 3), 1);
-
   return (
     <Animated.View entering={FadeInUp.delay(300).springify()}>
       <GlassCard>
         <View style={ringStyles.container}>
           <View style={ringStyles.ringWrap}>
             <View style={[ringStyles.ringOuter, { borderColor: `${trackerColor}20` }]}>
-              <View style={[ringStyles.ringInner, {
-                borderColor: isAtRisk ? '#FF6B6B' : trackerColor,
-                borderTopColor: 'transparent',
-                transform: [{ rotate: `${-90 + (progress * 360)}deg` }],
-              }]} />
+              <View style={[ringStyles.ringInner, { borderColor: isAtRisk ? '#FF6B6B' : trackerColor, borderTopColor: 'transparent', transform: [{ rotate: `${-90 + (progress * 360)}deg` }] }]} />
               <View style={ringStyles.ringCenter}>
-                <Text style={[ringStyles.ringValue, { color: isAtRisk ? '#FF6B6B' : trackerColor }]}>
-                  {entriesToday}
-                </Text>
+                <Text style={[ringStyles.ringValue, { color: isAtRisk ? '#FF6B6B' : trackerColor }]}>{entriesToday}</Text>
                 <Text style={[ringStyles.ringLabel, { color: colors.textSecondary }]}>of {dailyGoal || 3}</Text>
               </View>
             </View>
           </View>
-
           <View style={ringStyles.infoColumn}>
             <View style={ringStyles.streakRow}>
               <Ionicons name={isAtRisk ? 'flame-outline' : 'flame'} size={22} color={isAtRisk ? '#FF6B6B' : trackerColor} />
-              <Text style={[ringStyles.streakText, { color: isAtRisk ? '#FF6B6B' : trackerColor }]}>
-                {streak.currentStreak} day{streak.currentStreak !== 1 ? 's' : ''}
-              </Text>
+              <Text style={[ringStyles.streakText, { color: isAtRisk ? '#FF6B6B' : trackerColor }]}>{streak.currentStreak} day{streak.currentStreak !== 1 ? 's' : ''}</Text>
             </View>
-            <Text style={[ringStyles.message, { color: colors.textSecondary }]} numberOfLines={2}>
-              {streakMessage}
-            </Text>
+            <Text style={[ringStyles.message, { color: colors.textSecondary }]} numberOfLines={2}>{streakMessage}</Text>
             {isAtRisk && (
-              <TouchableOpacity
-                style={[ringStyles.actionBtn, { backgroundColor: '#FF6B6B', borderRadius: borderRadiusValue }]}
-                onPress={onLogNow}
-                activeOpacity={0.85}
-              >
+              <TouchableOpacity style={[ringStyles.actionBtn, { backgroundColor: '#FF6B6B', borderRadius: borderRadiusValue }]} onPress={onLogNow} activeOpacity={0.85}>
                 <Text style={ringStyles.actionText}>Log Now</Text>
               </TouchableOpacity>
             )}
@@ -653,21 +446,8 @@ const StreakGoalRing = memo(({
 const ringStyles = StyleSheet.create({
   container: { flexDirection: 'row', alignItems: 'center', padding: DESIGN.spacing.lg, gap: 16 },
   ringWrap: { alignItems: 'center', justifyContent: 'center' },
-  ringOuter: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    borderWidth: 4,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  ringInner: {
-    position: 'absolute',
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    borderWidth: 4,
-  },
+  ringOuter: { width: 72, height: 72, borderRadius: 36, borderWidth: 4, alignItems: 'center', justifyContent: 'center' },
+  ringInner: { position: 'absolute', width: 72, height: 72, borderRadius: 36, borderWidth: 4 },
   ringCenter: { alignItems: 'center' },
   ringValue: { fontSize: 22, fontWeight: '800' },
   ringLabel: { fontSize: 11, fontWeight: '600' },
@@ -679,21 +459,10 @@ const ringStyles = StyleSheet.create({
   actionText: { color: '#fff', fontSize: 13, fontWeight: '700' },
 });
 
-// ═══════════════════════════════════════════════════════════════
-// REDESIGNED YESTERDAY ENTRIES — Horizontal strip
-// ═══════════════════════════════════════════════════════════════
+// ─── YesterdayStrip ─────────────────────────────────────────────
 
-const YesterdayStrip = memo(({
-  entries,
-  tracker,
-  onCopyEntry,
-  onViewAll,
-  colors,
-  borderRadiusValue,
-  fontSizeMultiplier,
-}: any) => {
+const YesterdayStrip = memo(({ entries, tracker, onCopyEntry, onViewAll, colors, borderRadiusValue, fontSizeMultiplier }: any) => {
   if (!entries || entries.length === 0) return null;
-
   return (
     <Animated.View entering={FadeInUp.delay(350).springify()}>
       <View style={yesterdayStyles.header}>
@@ -708,53 +477,28 @@ const YesterdayStrip = memo(({
           <Text style={[yesterdayStyles.viewAll, { color: tracker.gradient[0] }]}>View All</Text>
         </TouchableOpacity>
       </View>
-
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={yesterdayStyles.scrollContent}
-      >
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={yesterdayStyles.scrollContent}>
         {entries.map((entry: YesterdayEntry) => {
           const fields = getEntryFields(entry);
           const entryDate = new Date(entry.timestamp);
-
           return (
-            <TouchableOpacity
-              key={entry.id}
-              onPress={() => { HAPTIC_MEDIUM(); onCopyEntry(entry); }}
-              style={[yesterdayStyles.card, {
-                backgroundColor: colors.glassBg,
-                borderColor: colors.border,
-                borderWidth: 1,
-                borderRadius: borderRadiusValue,
-              }]}
-              activeOpacity={0.85}
-            >
+            <TouchableOpacity key={entry.id} onPress={() => { HAPTIC_MEDIUM(); onCopyEntry(entry); }}
+              style={[yesterdayStyles.card, { backgroundColor: colors.glassBg, borderColor: colors.border, borderWidth: 1, borderRadius: borderRadiusValue }]} activeOpacity={0.85}>
               <View style={yesterdayStyles.cardHeader}>
                 <View style={[yesterdayStyles.timeBadge, { backgroundColor: `${tracker.gradient[0]}15` }]}>
                   <Ionicons name="time-outline" size={12} color={tracker.gradient[0]} />
-                  <Text style={[yesterdayStyles.timeText, { color: tracker.gradient[0] }]}>
-                    {format(entryDate, 'h:mm a')}
-                  </Text>
+                  <Text style={[yesterdayStyles.timeText, { color: tracker.gradient[0] }]}>{format(entryDate, 'h:mm a')}</Text>
                 </View>
                 <Ionicons name="copy-outline" size={16} color={colors.textSecondary} />
               </View>
-
               {fields.slice(0, 2).map(([key, value]) => (
                 <View key={key} style={yesterdayStyles.fieldRow}>
-                  <Text style={[yesterdayStyles.fieldLabel, { color: colors.textSecondary }]}>
-                    {key.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase())}
-                  </Text>
-                  <Text style={[yesterdayStyles.fieldValue, { color: colors.text }]} numberOfLines={1}>
-                    {formatFieldValue(key, value)}
-                  </Text>
+                  <Text style={[yesterdayStyles.fieldLabel, { color: colors.textSecondary }]}>{key.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase())}</Text>
+                  <Text style={[yesterdayStyles.fieldValue, { color: colors.text }]} numberOfLines={1}>{formatFieldValue(key, value)}</Text>
                 </View>
               ))}
-
               {fields.length > 2 && (
-                <Text style={[yesterdayStyles.moreText, { color: colors.textMuted || colors.textSecondary }]}>
-                  +{fields.length - 2} more
-                </Text>
+                <Text style={[yesterdayStyles.moreText, { color: colors.textMuted || colors.textSecondary }]}>+{fields.length - 2} more</Text>
               )}
             </TouchableOpacity>
           );
@@ -782,9 +526,7 @@ const yesterdayStyles = StyleSheet.create({
   moreText: { fontSize: 10, fontWeight: '600', marginTop: 4 },
 });
 
-// ═══════════════════════════════════════════════════════════════
-// REDESIGNED CONFIRM MODAL
-// ═══════════════════════════════════════════════════════════════
+// ─── ConfirmModal ─────────────────────────────────────────────
 
 interface ConfirmModalProps {
   visible: boolean;
@@ -836,57 +578,33 @@ const ConfirmModal = memo<ConfirmModalProps>(({
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
-      <Pressable
-        style={[modalStyles.modalOverlay, { backgroundColor: `rgba(0,0,0,${MODAL_BACKDROP_OPACITY})` }]}
-        onPress={onClose}
-      >
-        <Animated.View
-          style={[modalStyles.modalContent, animStyle, { borderRadius: borderRadiusValue * 2 }]}
-          onStartShouldSetResponder={() => true}
-          onTouchEnd={(e) => e.stopPropagation()}
-        >
-          <LinearGradient
-            colors={[fullThemeColors.surface, fullThemeColors.background]}
-            style={[modalStyles.modalGradient, { borderRadius: borderRadiusValue * 2 }]}
-          >
+      <Pressable style={[modalStyles.modalOverlay, { backgroundColor: `rgba(0,0,0,${MODAL_BACKDROP_OPACITY})` }]} onPress={onClose}>
+        <Animated.View style={[modalStyles.modalContent, animStyle, { borderRadius: borderRadiusValue * 2 }]}
+          onStartShouldSetResponder={() => true} onTouchEnd={(e) => e.stopPropagation()}>
+          <LinearGradient colors={[fullThemeColors.surface, fullThemeColors.background]} style={[modalStyles.modalGradient, { borderRadius: borderRadiusValue * 2 }]}>
             <View style={modalStyles.modalHeader}>
               <View style={[modalStyles.modalIconContainer, { backgroundColor: `${tracker.gradient[0]}20`, borderRadius: borderRadiusValue }]}>
                 <Text style={modalStyles.modalIcon}>{tracker.emoji}</Text>
               </View>
-              <Text style={[modalStyles.modalTitle, { color: fullThemeColors.text, fontSize: 22 * fontSizeMultiplier }]}>
-                Confirm {tracker.name}
-              </Text>
+              <Text style={[modalStyles.modalTitle, { color: fullThemeColors.text, fontSize: 22 * fontSizeMultiplier }]}>Confirm {tracker.name}</Text>
               <View style={modalStyles.modalBabyRow}>
                 <SafeAvatar avatar={babyAvatar} size={28} fallbackIcon="person" borderWidth={0} animated={false} />
-                <Text style={[modalStyles.modalSubtitle, { color: fullThemeColors.textSecondary }]}>
-                  For {babyName}
-                </Text>
+                <Text style={[modalStyles.modalSubtitle, { color: fullThemeColors.textSecondary }]}>For {babyName}</Text>
               </View>
             </View>
-
             <Animated.ScrollView style={modalStyles.modalBody} showsVerticalScrollIndicator={false}>
-              <View style={[modalStyles.previewCard, {
-                backgroundColor: fullThemeColors.glassBg,
-                borderColor: fullThemeColors.border,
-                borderRadius: borderRadiusValue,
-              }]}>
-                <Text style={[modalStyles.previewTime, { color: fullThemeColors.textSecondary }]}>
-                  {format(date, 'MMM d, yyyy \u2022 h:mm a')}
-                </Text>
+              <View style={[modalStyles.previewCard, { backgroundColor: fullThemeColors.glassBg, borderColor: fullThemeColors.border, borderRadius: borderRadiusValue }]}>
+                <Text style={[modalStyles.previewTime, { color: fullThemeColors.textSecondary }]}>{format(date, 'MMM d, yyyy \u2022 h:mm a')}</Text>
                 {(data.photoUris as string[])?.length > 0 && (
                   <View style={[modalStyles.previewPhotoContainer, { borderRadius: borderRadiusValue }]} />
                 )}
-                <Text style={[modalStyles.previewTitle, { color: fullThemeColors.text, fontSize: 18 * fontSizeMultiplier }]}>
-                  {tracker.emoji} {tracker.name}
-                </Text>
+                <Text style={[modalStyles.previewTitle, { color: fullThemeColors.text, fontSize: 18 * fontSizeMultiplier }]}>{tracker.emoji} {tracker.name}</Text>
                 {notes && <Text style={[modalStyles.previewDetails, { color: fullThemeColors.textSecondary }]}>{notes}</Text>}
                 {preview.length > 0 && (
                   <View style={modalStyles.previewFields}>
                     {preview.map(([k, v]) => (
                       <View key={k} style={modalStyles.previewField}>
-                        <Text style={[modalStyles.previewFieldLabel, { color: fullThemeColors.textSecondary }]}>
-                          {k.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase())}
-                        </Text>
+                        <Text style={[modalStyles.previewFieldLabel, { color: fullThemeColors.textSecondary }]}>{k.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase())}</Text>
                         <Text style={[modalStyles.previewFieldValue, { color: fullThemeColors.text }]}>{formatFieldValue(k, v)}</Text>
                       </View>
                     ))}
@@ -900,30 +618,12 @@ const ConfirmModal = memo<ConfirmModalProps>(({
                 )}
               </View>
             </Animated.ScrollView>
-
             <View style={modalStyles.modalActions}>
-              <TouchableOpacity
-                onPress={onClose}
-                style={[modalStyles.cancelButton, { borderRadius: borderRadiusValue }]}
-                activeOpacity={0.8}
-                accessibilityRole="button"
-                accessibilityLabel="Edit entry"
-              >
+              <TouchableOpacity onPress={onClose} style={[modalStyles.cancelButton, { borderRadius: borderRadiusValue }]} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="Edit entry">
                 <Text style={[modalStyles.cancelButtonText, { color: fullThemeColors.textSecondary }]}>Edit</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handleConfirm}
-                style={[modalStyles.confirmButton, { borderRadius: borderRadiusValue }]}
-                activeOpacity={0.85}
-                accessibilityRole="button"
-                accessibilityLabel="Save entry"
-              >
-                <LinearGradient
-                  colors={tracker.gradient}
-                  style={modalStyles.confirmGradient}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                >
+              <TouchableOpacity onPress={handleConfirm} style={[modalStyles.confirmButton, { borderRadius: borderRadiusValue }]} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Save entry">
+                <LinearGradient colors={tracker.gradient} style={modalStyles.confirmGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
                   <Ionicons name="checkmark-circle" size={20} color="#fff" />
                   <Text style={modalStyles.confirmButtonText}>Save Entry</Text>
                 </LinearGradient>
@@ -967,9 +667,7 @@ const modalStyles = StyleSheet.create({
   confirmButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 });
 
-// ═══════════════════════════════════════════════════════════════
-// YESTERDAY ENTRIES MODAL (full view)
-// ═══════════════════════════════════════════════════════════════
+// ─── YesterdayEntriesModal ──────────────────────────────────────
 
 interface YesterdayEntriesModalProps {
   visible: boolean;
@@ -1011,102 +709,54 @@ const YesterdayEntriesModal = memo<YesterdayEntriesModalProps>(({
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
-      <Pressable
-        style={[yesterdayModalStyles.overlay, { backgroundColor: `rgba(0,0,0,${MODAL_BACKDROP_OPACITY})` }]}
-        onPress={onClose}
-      >
-        <Animated.View
-          style={[yesterdayModalStyles.content, animStyle, { borderRadius: borderRadiusValue * 2 }]}
-          onStartShouldSetResponder={() => true}
-          onTouchEnd={(e) => e.stopPropagation()}
-        >
-          <LinearGradient
-            colors={[colors.surface, colors.background]}
-            style={[yesterdayModalStyles.gradient, { borderRadius: borderRadiusValue * 2 }]}
-          >
+      <Pressable style={[yesterdayModalStyles.overlay, { backgroundColor: `rgba(0,0,0,${MODAL_BACKDROP_OPACITY})` }]} onPress={onClose}>
+        <Animated.View style={[yesterdayModalStyles.content, animStyle, { borderRadius: borderRadiusValue * 2 }]}
+          onStartShouldSetResponder={() => true} onTouchEnd={(e) => e.stopPropagation()}>
+          <LinearGradient colors={[colors.surface, colors.background]} style={[yesterdayModalStyles.gradient, { borderRadius: borderRadiusValue * 2 }]}>
             <View style={yesterdayModalStyles.header}>
-              <View style={[yesterdayModalStyles.iconContainer, {
-                backgroundColor: `${tracker.gradient[0]}20`,
-                borderRadius: borderRadiusValue,
-              }]}>
+              <View style={[yesterdayModalStyles.iconContainer, { backgroundColor: `${tracker.gradient[0]}20`, borderRadius: borderRadiusValue }]}>
                 <Ionicons name="calendar-outline" size={28} color={tracker.gradient[0]} />
               </View>
-              <Text style={[yesterdayModalStyles.title, { color: colors.text, fontSize: 20 * fontSizeMultiplier }]}>
-                Yesterday's {tracker.name}
-              </Text>
-              <Text style={[yesterdayModalStyles.subtitle, { color: colors.textSecondary }]}>
-                {entries.length} record{entries.length !== 1 ? 's' : ''} from yesterday
-              </Text>
-              <TouchableOpacity
-                onPress={onClose}
-                style={[yesterdayModalStyles.closeBtn, { borderRadius: borderRadiusValue }]}
-                accessibilityRole="button"
-                accessibilityLabel="Close modal"
-              >
+              <Text style={[yesterdayModalStyles.title, { color: colors.text, fontSize: 20 * fontSizeMultiplier }]}>Yesterday's {tracker.name}</Text>
+              <Text style={[yesterdayModalStyles.subtitle, { color: colors.textSecondary }]}>{entries.length} record{entries.length !== 1 ? 's' : ''} from yesterday</Text>
+              <TouchableOpacity onPress={onClose} style={[yesterdayModalStyles.closeBtn, { borderRadius: borderRadiusValue }]} accessibilityRole="button" accessibilityLabel="Close modal">
                 <BlurView intensity={40} style={[yesterdayModalStyles.closeBlur, { borderRadius: borderRadiusValue }]} tint="dark">
                   <Ionicons name="close" size={22} color={colors.text} />
                 </BlurView>
               </TouchableOpacity>
             </View>
-
-            <Animated.ScrollView
-              style={yesterdayModalStyles.scrollView}
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={yesterdayModalStyles.scrollContent}
-            >
+            <Animated.ScrollView style={yesterdayModalStyles.scrollView} showsVerticalScrollIndicator={false} contentContainerStyle={yesterdayModalStyles.scrollContent}>
               {entries.map((entry, index) => {
                 const fields = getEntryFields(entry);
                 const entryDate = new Date(entry.timestamp);
-
                 return (
-                  <Animated.View
-                    key={entry.id}
-                    entering={FadeInUp.delay(index * 80).springify()}
-                    style={[yesterdayModalStyles.entryCard, {
-                      backgroundColor: colors.glassBg,
-                      borderColor: colors.border,
-                      borderRadius: borderRadiusValue,
-                      borderWidth: 1,
-                    }]}
-                  >
+                  <Animated.View key={entry.id} entering={FadeInUp.delay(index * 80).springify()}
+                    style={[yesterdayModalStyles.entryCard, { backgroundColor: colors.glassBg, borderColor: colors.border, borderRadius: borderRadiusValue, borderWidth: 1 }]}>
                     <View style={yesterdayModalStyles.entryHeader}>
                       <View style={[yesterdayModalStyles.timeBadge, { backgroundColor: `${tracker.gradient[0]}15` }]}>
                         <Ionicons name="time-outline" size={14} color={tracker.gradient[0]} />
-                        <Text style={[yesterdayModalStyles.timeText, { color: tracker.gradient[0] }]}>
-                          {format(entryDate, 'h:mm a')}
-                        </Text>
+                        <Text style={[yesterdayModalStyles.timeText, { color: tracker.gradient[0] }]}>{format(entryDate, 'h:mm a')}</Text>
                       </View>
                       {entry.title && (
-                        <Text style={[yesterdayModalStyles.entryTitle, { color: colors.text }]} numberOfLines={1}>
-                          {entry.title}
-                        </Text>
+                        <Text style={[yesterdayModalStyles.entryTitle, { color: colors.text }]} numberOfLines={1}>{entry.title}</Text>
                       )}
                     </View>
-
                     {fields.length > 0 && (
                       <View style={yesterdayModalStyles.fieldsContainer}>
                         {fields.map(([key, value]) => (
                           <View key={key} style={yesterdayModalStyles.fieldRow}>
-                            <Text style={[yesterdayModalStyles.fieldLabel, { color: colors.textSecondary }]}>
-                              {key.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase())}
-                            </Text>
-                            <Text style={[yesterdayModalStyles.fieldValue, { color: colors.text }]}>
-                              {formatFieldValue(key, value)}
-                            </Text>
+                            <Text style={[yesterdayModalStyles.fieldLabel, { color: colors.textSecondary }]}>{key.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase())}</Text>
+                            <Text style={[yesterdayModalStyles.fieldValue, { color: colors.text }]}>{formatFieldValue(key, value)}</Text>
                           </View>
                         ))}
                       </View>
                     )}
-
                     {entry.notes && (
                       <View style={[yesterdayModalStyles.notesContainer, { borderTopColor: `${colors.border}40` }]}>
                         <Ionicons name="document-text-outline" size={14} color={colors.textSecondary} />
-                        <Text style={[yesterdayModalStyles.notesText, { color: colors.textSecondary }]}>
-                          {entry.notes}
-                        </Text>
+                        <Text style={[yesterdayModalStyles.notesText, { color: colors.textSecondary }]}>{entry.notes}</Text>
                       </View>
                     )}
-
                     {entry.tags && entry.tags.length > 0 && (
                       <View style={yesterdayModalStyles.tagsContainer}>
                         {entry.tags.map((tag, idx) => (
@@ -1116,17 +766,9 @@ const YesterdayEntriesModal = memo<YesterdayEntriesModalProps>(({
                         ))}
                       </View>
                     )}
-
-                    <TouchableOpacity
-                      style={[yesterdayModalStyles.copyBtn, {
-                        backgroundColor: tracker.gradient[0],
-                        borderRadius: borderRadiusValue,
-                      }]}
-                      onPress={() => handleCopy(entry)}
-                      activeOpacity={0.85}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Copy ${tracker.name} entry from ${format(entryDate, 'h:mm a')}`}
-                    >
+                    <TouchableOpacity style={[yesterdayModalStyles.copyBtn, { backgroundColor: tracker.gradient[0], borderRadius: borderRadiusValue }]}
+                      onPress={() => handleCopy(entry)} activeOpacity={0.85} accessibilityRole="button"
+                      accessibilityLabel={`Copy ${tracker.name} entry from ${format(entryDate, 'h:mm a')}`}>
                       <Ionicons name="copy-outline" size={16} color="#fff" />
                       <Text style={yesterdayModalStyles.copyBtnText}>Copy to Today</Text>
                     </TouchableOpacity>
@@ -1134,17 +776,8 @@ const YesterdayEntriesModal = memo<YesterdayEntriesModalProps>(({
                 );
               })}
             </Animated.ScrollView>
-
             <View style={yesterdayModalStyles.footer}>
-              <TouchableOpacity
-                style={[yesterdayModalStyles.doneBtn, {
-                  borderRadius: borderRadiusValue,
-                  borderColor: colors.border,
-                }]}
-                onPress={onClose}
-                activeOpacity={0.8}
-                accessibilityRole="button"
-              >
+              <TouchableOpacity style={[yesterdayModalStyles.doneBtn, { borderRadius: borderRadiusValue, borderColor: colors.border }]} onPress={onClose} activeOpacity={0.8} accessibilityRole="button">
                 <Text style={[yesterdayModalStyles.doneBtnText, { color: colors.text }]}>Close</Text>
               </TouchableOpacity>
             </View>
@@ -1189,9 +822,7 @@ const yesterdayModalStyles = StyleSheet.create({
   doneBtnText: { fontSize: 16, fontWeight: '700' },
 });
 
-// ═══════════════════════════════════════════════════════════════
-// DATE PICKER MODAL
-// ═══════════════════════════════════════════════════════════════
+// ─── DatePickerModal ──────────────────────────────────────────
 
 interface DatePickerModalProps {
   visible: boolean;
@@ -1208,30 +839,15 @@ const DatePickerModal = memo<DatePickerModalProps>(({
   visible, date, mode, onChange, onClose, themeColors, fullThemeColors, borderRadiusValue,
 }) => (
   <Modal transparent animationType="slide" visible={visible} statusBarTranslucent>
-    <Pressable
-      style={[pickerStyles.overlay, { backgroundColor: `rgba(0,0,0,${MODAL_BACKDROP_OPACITY})` }]}
-      onPress={onClose}
-    >
-      <View
-        style={[pickerStyles.content, {
-          backgroundColor: fullThemeColors.surface,
-          borderRadius: borderRadiusValue * 2,
-        }]}
-        onStartShouldSetResponder={() => true}
-        onTouchEnd={(e) => e.stopPropagation()}
-      >
+    <Pressable style={[pickerStyles.overlay, { backgroundColor: `rgba(0,0,0,${MODAL_BACKDROP_OPACITY})` }]} onPress={onClose}>
+      <View style={[pickerStyles.content, { backgroundColor: fullThemeColors.surface, borderRadius: borderRadiusValue * 2 }]}
+        onStartShouldSetResponder={() => true} onTouchEnd={(e) => e.stopPropagation()}>
         <View style={[pickerStyles.header, { borderBottomColor: fullThemeColors.border }]}>
           <TouchableOpacity onPress={onClose} accessibilityRole="button">
             <Text style={[pickerStyles.doneButton, { color: themeColors.primary }]}>Done</Text>
           </TouchableOpacity>
         </View>
-        <DateTimePicker
-          value={date}
-          mode={mode}
-          display="spinner"
-          onChange={onChange}
-          textColor={fullThemeColors.text}
-        />
+        <DateTimePicker value={date} mode={mode} display="spinner" onChange={onChange} textColor={fullThemeColors.text} />
       </View>
     </Pressable>
   </Modal>
@@ -1246,15 +862,44 @@ const pickerStyles = StyleSheet.create({
 });
 
 // ═══════════════════════════════════════════════════════════════
-// MAIN SCREEN — COMPLETE REDESIGN
+// TRACKER CONTENT — All progressive hooks called HERE only
+// This component only renders when tracker is guaranteed to exist
 // ═══════════════════════════════════════════════════════════════
 
-export default function AddEntryScreen() {
-  const navigation = useNavigation<AddEntryNavigationProp>();
-  const route = useRoute<AddEntryRouteProp>();
-  const insets = useSafeAreaInsets();
+function TrackerContent({
+  tracker,
+  selectedTrackerId,
+  date,
+  setDate,
+  pendingData,
+  setPendingData,
+  pendingOptions,
+  setPendingOptions,
+  showConfirm,
+  setShowConfirm,
+  showYesterdayModal,
+  setShowYesterdayModal,
+  yesterdayEntries,
+  setYesterdayEntries,
+  errors,
+  setErrors,
+  dismissedCorrelations,
+  setDismissedCorrelations,
+  dismissedReminders,
+  setDismissedReminders,
+  appliedCorrelationPrefill,
+  setAppliedCorrelationPrefill,
+  appliedSuggestions,
+  setAppliedSuggestions,
+  editEntryId,
+  route,
+  navigation,
+  showPicker,
+  setShowPicker,
+  handleTrackerSelect,
+  handlePickerClose,
+}: any) {
   const theme = useUnifiedTrackerTheme();
-
   const {
     fullThemeColors,
     themeColors,
@@ -1265,22 +910,13 @@ export default function AddEntryScreen() {
     shouldReduceMotion,
   } = useCustomization();
   const { success, error } = useSweetAlert();
-  const { getTracker, addEntry, getEntries, currentBaby } = useTracker();
+  const { getEntries, currentBaby, addEntry } = useTracker();
+  const insets = useSafeAreaInsets();
 
-  // ─── State ─────────────────────────────────────────────────────
-  const [selectedTrackerId, setSelectedTrackerId] = useState<string | null>(
-    route.params?.trackerId || null
-  );
-  const [showPicker, setShowPicker] = useState(!route.params?.trackerId);
-  const [date, setDate] = useState(new Date());
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showTimePicker, setShowTimePicker] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [showYesterdayModal, setShowYesterdayModal] = useState(false);
-  const [yesterdayEntries, setYesterdayEntries] = useState<YesterdayEntry[]>([]);
-  const [errors, setErrors] = useState<string[]>([]);
-
-  // Progressive intelligence
+  // ═══════════════════════════════════════════════════════════════
+  // CRITICAL FIX: useTrackerProgressive is called HERE, not in wrapper
+  // This component only mounts when selectedTrackerId is valid
+  // ═══════════════════════════════════════════════════════════════
   const progressive = useTrackerProgressive(selectedTrackerId || '');
 
   const {
@@ -1300,74 +936,37 @@ export default function AddEntryScreen() {
     refresh: refreshProgressive,
   } = progressive;
 
-  const [dismissedCorrelations, setDismissedCorrelations] = useState<Set<string>>(new Set());
-  const [dismissedReminders, setDismissedReminders] = useState<Set<string>>(new Set());
-  const [appliedCorrelationPrefill, setAppliedCorrelationPrefill] = useState<Record<string, unknown> | null>(null);
-  const [appliedSuggestions, setAppliedSuggestions] = useState<Set<string>>(new Set());
-
-  // Form state
-  const [pendingData, setPendingData] = useState<Record<string, unknown>>(() => {
-    const preset = route.params?.presetData;
-    return { ...progressive.prefillData, ...preset };
-  });
-
-  const [pendingOptions, setPendingOptions] = useState<{
-    notes?: string;
-    tags?: string[];
-    photoUris?: string[];
-  }>({});
-
-  // Refs for stable callbacks
-  const dateRef = useRef(date);
-  dateRef.current = date;
-
-  // ─── Derived State (Memoized) ──────────────────────────────────
-  const tracker = useMemo(() =>
-    selectedTrackerId ? getTracker(selectedTrackerId) : undefined,
-    [selectedTrackerId, getTracker]
-  );
-
-  const editEntryId = useMemo(() =>
-    route.params?.editMode ? route.params?.eventId : undefined,
-    [route.params?.editMode, route.params?.eventId]
-  );
-
-  const recentEntries = useMemo(() =>
-    tracker ? getEntries(tracker.id, 3) : [],
-    [tracker, getEntries]
-  );
+  // ─── Derived State ─────────────────────────────────────────────
+  const recentEntries = useMemo(() => tracker ? getEntries(tracker.id, 3) : [], [tracker, getEntries]);
 
   const visibleCorrelations = useMemo(() =>
-    correlations.filter(c => !dismissedCorrelations.has(c.id)),
+    correlations.filter((c: any) => !dismissedCorrelations.has(c.id)),
     [correlations, dismissedCorrelations]
   );
 
   const visibleReminders = useMemo(() =>
-    activeReminders.filter(r => !dismissedReminders.has(r.id)),
+    activeReminders.filter((r: any) => !dismissedReminders.has(r.id)),
     [activeReminders, dismissedReminders]
   );
 
   const hasYesterdayEntries = yesterdayEntries.length > 0;
 
-  // ─── NEW: Compute today's entries count ─────────────────────────
   const entriesToday = useMemo(() => {
     if (!tracker) return 0;
     const todayStart = startOfDay(new Date()).getTime();
     const todayEnd = endOfDay(new Date()).getTime();
-    return getEntries(tracker.id).filter(e => {
+    return getEntries(tracker.id).filter((e: any) => {
       const t = e.timestamp;
       return t >= todayStart && t <= todayEnd;
     }).length;
   }, [tracker, getEntries]);
 
-  // ─── NEW: Last entry time ───────────────────────────────────────
   const lastEntryTime = useMemo(() => {
     if (!tracker) return null;
-    const entries = getEntries(tracker.id).sort((a, b) => b.timestamp - a.timestamp);
+    const entries = getEntries(tracker.id).sort((a: any, b: any) => b.timestamp - a.timestamp);
     return entries.length > 0 ? new Date(entries[0].timestamp) : null;
   }, [tracker, getEntries]);
 
-  // ─── NEW: Quick templates ───────────────────────────────────────
   const quickTemplates = useMemo((): QuickTemplate[] => {
     if (!tracker) return [];
     const base: QuickTemplate[] = [];
@@ -1404,12 +1003,10 @@ export default function AddEntryScreen() {
     return base;
   }, [tracker]);
 
-  // ─── NEW: Smart suggestions with confidence ─────────────────────
   const smartSuggestions = useMemo((): SmartSuggestion[] => {
     if (!tracker) return [];
     const items: SmartSuggestion[] = [];
-
-    suggestions.forEach((s, i) => {
+    suggestions.forEach((s: any, i: number) => {
       items.push({
         id: `sugg-${i}`,
         fieldId: s.fieldId,
@@ -1419,8 +1016,6 @@ export default function AddEntryScreen() {
         reason: s.reason || 'Based on your patterns',
       });
     });
-
-    // Add pattern-based suggestions
     if (tracker.id === 'feed' && !pendingData.feedType) {
       const hour = new Date().getHours();
       if (hour >= 6 && hour <= 10) {
@@ -1429,64 +1024,28 @@ export default function AddEntryScreen() {
         items.push({ id: 'pattern-evening', fieldId: 'feedType', label: 'Feed Type', value: 'Bottle', confidence: 78, reason: 'Evening pattern' });
       }
     }
-
     return items;
   }, [tracker, suggestions, pendingData]);
 
-  // ─── NEW: Context insights ──────────────────────────────────────
   const contextInsights = useMemo((): ContextInsight[] => {
     if (!tracker) return [];
     const items: ContextInsight[] = [];
-
     if (entriesToday === 0) {
-      items.push({
-        id: 'first-entry',
-        type: 'tip',
-        message: `First ${tracker.name.toLowerCase()} of the day. Great time to log!`,
-        emoji: '\u2728',
-        color: '#10b981',
-        priority: 'low',
-      });
+      items.push({ id: 'first-entry', type: 'tip', message: `First ${tracker.name.toLowerCase()} of the day. Great time to log!`, emoji: '\u2728', color: '#10b981', priority: 'low' });
     }
-
     if (isAtRisk && streak?.currentStreak > 0) {
-      items.push({
-        id: 'streak-risk',
-        type: 'anomaly',
-        message: `Streak at risk! Log within ${hoursUntilBreak}h to keep ${streak.currentStreak} days.`,
-        emoji: '\uD83D\uDD25',
-        color: '#ef4444',
-        priority: 'high',
-      });
+      items.push({ id: 'streak-risk', type: 'anomaly', message: `Streak at risk! Log within ${hoursUntilBreak}h to keep ${streak.currentStreak} days.`, emoji: '\uD83D\uDD25', color: '#ef4444', priority: 'high' });
     }
-
     if (timeContext?.nextSuggestedTime) {
-      items.push({
-        id: 'next-suggested',
-        type: 'pattern',
-        message: `Usually logged around ${timeContext.nextSuggestedTime}`,
-        emoji: '\u23F0',
-        color: '#6366f1',
-        priority: 'medium',
-      });
+      items.push({ id: 'next-suggested', type: 'pattern', message: `Usually logged around ${timeContext.nextSuggestedTime}`, emoji: '\u23F0', color: '#6366f1', priority: 'medium' });
     }
-
-    const todayCount = entriesToday;
-    if (todayCount >= 3 && tracker.id === 'feed') {
-      items.push({
-        id: 'feeding-count',
-        type: 'trend',
-        message: `${todayCount} feeds today \u2014 on track for healthy intake`,
-        emoji: '\uD83D\uDCC8',
-        color: '#10b981',
-        priority: 'low',
-      });
+    if (entriesToday >= 3 && tracker.id === 'feed') {
+      items.push({ id: 'feeding-count', type: 'trend', message: `${entriesToday} feeds today \u2014 on track for healthy intake`, emoji: '\uD83D\uDCC8', color: '#10b981', priority: 'low' });
     }
-
     return items;
   }, [tracker, entriesToday, isAtRisk, streak, hoursUntilBreak, timeContext]);
 
-  // ─── Effects ─────────────────────────────────────────────────────
+  // ─── Effects ───────────────────────────────────────────────────
 
   useEffect(() => {
     if (selectedTrackerId) {
@@ -1496,18 +1055,16 @@ export default function AddEntryScreen() {
 
   useEffect(() => {
     if (!tracker || editEntryId) return;
-
     const yesterday = subDays(new Date(), 1);
     const yesterdayStart = startOfDay(yesterday).getTime();
     const yesterdayEnd = endOfDay(yesterday).getTime();
-
     const filtered = getEntries(tracker.id)
-      .filter(entry => {
+      .filter((entry: any) => {
         const entryTime = entry.timestamp;
         return entryTime >= yesterdayStart && entryTime <= yesterdayEnd;
       })
-      .sort((a, b) => b.timestamp - a.timestamp)
-      .map(entry => ({
+      .sort((a: any, b: any) => b.timestamp - a.timestamp)
+      .map((entry: any) => ({
         id: entry.id,
         timestamp: entry.timestamp,
         data: entry.data || {},
@@ -1515,47 +1072,40 @@ export default function AddEntryScreen() {
         tags: entry.tags,
         title: entry.title,
       }));
-
     setYesterdayEntries(filtered);
-  }, [tracker, getEntries, editEntryId]);
+  }, [tracker, getEntries, editEntryId, setYesterdayEntries]);
 
   useEffect(() => {
     if (!tracker) return;
-
-    setPendingData(prev => {
+    setPendingData((prev: any) => {
       const newData = { ...prev };
       let hasChanges = false;
-
       Object.entries(prefillData).forEach(([key, value]) => {
         if (newData[key] === undefined && value !== undefined && value !== '') {
           newData[key] = value;
           hasChanges = true;
         }
       });
-
-      suggestions.forEach(s => {
+      suggestions.forEach((s: any) => {
         if (newData[s.fieldId] === undefined && s.confidence >= 80) {
           newData[s.fieldId] = s.value;
           hasChanges = true;
         }
       });
-
       if (appliedCorrelationPrefill) {
         Object.entries(appliedCorrelationPrefill).forEach(([key, value]) => {
           newData[key] = value;
           hasChanges = true;
         });
-        setAppliedCorrelationPrefill(null);
+        // Note: setAppliedCorrelationPrefill(null) should be handled by parent
       }
-
       return hasChanges ? newData : prev;
     });
-  }, [prefillData, suggestions, appliedCorrelationPrefill, tracker]);
+  }, [prefillData, suggestions, appliedCorrelationPrefill, tracker, setPendingData]);
 
   useEffect(() => {
     if (!editEntryId || !tracker) return;
-
-    const entry = getEntries(tracker.id).find(e => e.id === editEntryId);
+    const entry = getEntries(tracker.id).find((e: any) => e.id === editEntryId);
     if (entry) {
       setDate(new Date(entry.timestamp));
       setPendingData(entry.data || {});
@@ -1565,9 +1115,12 @@ export default function AddEntryScreen() {
         photoUris: entry.photoUris,
       });
     }
-  }, [editEntryId, tracker, getEntries]);
+  }, [editEntryId, tracker, getEntries, setDate, setPendingData, setPendingOptions]);
 
-  // ─── Callbacks ─────────────────────────────────────────────────
+  // ─── Callbacks ────────────────────────────────────────────────
+
+  const dateRef = useRef(date);
+  dateRef.current = date;
 
   const handleCopyYesterdayEntry = useCallback((entry: YesterdayEntry) => {
     HAPTIC_SUCCESS();
@@ -1575,17 +1128,15 @@ export default function AddEntryScreen() {
     const now = new Date();
     setDate(now);
     setPendingData(copiedData);
-
     if (entry.notes || entry.tags) {
-      setPendingOptions(prev => ({
+      setPendingOptions((prev: any) => ({
         ...prev,
         notes: entry.notes || prev.notes,
         tags: entry.tags || prev.tags,
       }));
     }
-
     success('Copied!', `Yesterday's ${tracker?.name || 'entry'} data loaded. Time set to now.`);
-  }, [success, tracker?.name]);
+  }, [success, tracker?.name, setDate, setPendingData, setPendingOptions]);
 
   const showAndroidPicker = useCallback((mode: 'date' | 'time') => {
     try {
@@ -1613,7 +1164,7 @@ export default function AddEntryScreen() {
     } catch {
       error('Error', 'Could not open date picker.');
     }
-  }, [error]);
+  }, [error, setDate]);
 
   const handleDatePress = useCallback(() => {
     HAPTIC_LIGHT();
@@ -1622,7 +1173,7 @@ export default function AddEntryScreen() {
     } else {
       setShowDatePicker(true);
     }
-  }, [showAndroidPicker]);
+  }, [showAndroidPicker, setShowDatePicker]);
 
   const handleTimePress = useCallback(() => {
     HAPTIC_LIGHT();
@@ -1631,7 +1182,7 @@ export default function AddEntryScreen() {
     } else {
       setShowTimePicker(true);
     }
-  }, [showAndroidPicker]);
+  }, [showAndroidPicker, setShowTimePicker]);
 
   const onDateChange = useCallback((_: any, selectedDate?: Date) => {
     if (Platform.OS === 'android') {
@@ -1639,7 +1190,7 @@ export default function AddEntryScreen() {
       setShowTimePicker(false);
     }
     if (selectedDate) setDate(selectedDate);
-  }, []);
+  }, [setDate, setShowDatePicker, setShowTimePicker]);
 
   const buildTitle = useCallback((data: Record<string, unknown>): string => {
     if (!tracker) return 'Entry';
@@ -1658,16 +1209,11 @@ export default function AddEntryScreen() {
     }
   }, [tracker]);
 
-  const handleFormSubmit = useCallback((data: Record<string, unknown>, options: {
-    title?: string;
-    notes?: string;
-    photoUris?: string[];
-    tags?: string[];
-  }) => {
+  const handleFormSubmit = useCallback((data: Record<string, unknown>, options: { title?: string; notes?: string; photoUris?: string[]; tags?: string[] }) => {
     setPendingData(data);
     setPendingOptions(options);
     setShowConfirm(true);
-  }, []);
+  }, [setPendingData, setPendingOptions, setShowConfirm]);
 
   const confirmSave = useCallback(async () => {
     if (!tracker) return;
@@ -1687,8 +1233,344 @@ export default function AddEntryScreen() {
     } catch {
       error('Error', 'Failed to save entry. Please try again.');
     }
-  }, [tracker, pendingData, pendingOptions, addEntry, triggerHaptic, success, error, navigation, buildTitle]);
+  }, [tracker, pendingData, pendingOptions, addEntry, triggerHaptic, success, error, navigation, buildTitle, setShowConfirm]);
 
+  const handleTemplateSelect = useCallback((tmpl: QuickTemplate) => {
+    HAPTIC_MEDIUM();
+    setPendingData((prev: any) => ({ ...prev, ...tmpl.data }));
+    success('Template Applied', `${tmpl.label} prefill loaded.`);
+  }, [success, setPendingData]);
+
+  const handleApplySuggestion = useCallback((suggestion: SmartSuggestion) => {
+    HAPTIC_LIGHT();
+    setPendingData((prev: any) => ({ ...prev, [suggestion.fieldId]: suggestion.value }));
+    setAppliedSuggestions((prev: Set<string>) => {
+      const next = new Set(prev);
+      next.add(suggestion.id);
+      return next;
+    });
+  }, [setPendingData, setAppliedSuggestions]);
+
+  const handleDismissSuggestion = useCallback((id: string) => {
+    setAppliedSuggestions((prev: Set<string>) => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+  }, [setAppliedSuggestions]);
+
+  const handleCorrelationAction = useCallback((correlation: ProgressiveCorrelation) => {
+    HAPTIC_LIGHT();
+    if (correlation.prefillData) {
+      setAppliedCorrelationPrefill(correlation.prefillData);
+    }
+  }, [setAppliedCorrelationPrefill]);
+
+  const handleDismissCorrelation = useCallback((id: string) => {
+    setDismissedCorrelations((prev: Set<string>) => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+  }, [setDismissedCorrelations]);
+
+  const handleDismissReminder = useCallback((id: string) => {
+    setDismissedReminders((prev: Set<string>) => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+  }, [setDismissedReminders]);
+
+  const handleInsightAction = useCallback((insight: ContextInsight) => {
+    HAPTIC_LIGHT();
+    if (insight.type === 'anomaly' && insight.id === 'streak-risk') {
+      // Scroll to form or trigger save
+    }
+  }, []);
+
+  // ─── Picker state (local to this component) ────────────────────
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+
+  const progressiveState = useMemo(() => ({
+    prefillData,
+    suggestions,
+    streak,
+    insights,
+    correlations,
+    activeReminders,
+    templates,
+    trends,
+    timeContext,
+    yesterdayEntries: [],
+    todayEntries: [],
+  }), [prefillData, suggestions, streak, insights, correlations, activeReminders, templates, trends, timeContext]);
+
+  const gradientColors: [string, string, string] = [
+    tracker.gradient[0] + '08',
+    tracker.gradient[1] + '04',
+    fullThemeColors.background,
+  ];
+
+  return (
+    <LinearGradient colors={gradientColors} style={styles.container}>
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.keyboardView} keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}>
+        <AutoHideAnimatedScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + 20 }]} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+
+          {/* Top Nav Row */}
+          <Animated.View entering={shouldReduceMotion ? undefined : FadeInDown.springify()} style={styles.headerRow}>
+            <TouchableOpacity onPress={() => navigation.goBack()} style={[styles.iconBtn, { borderRadius: borderRadiusValue }]} activeOpacity={0.8}>
+              <BlurView intensity={isDark ? 40 : 80} style={[styles.iconBlur, { borderRadius: borderRadiusValue }]} tint={isDark ? 'dark' : 'light'}>
+                <Ionicons name="arrow-back" size={22} color={fullThemeColors.text} />
+              </BlurView>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.trackerChip, { borderRadius: borderRadiusValue }]} onPress={() => { HAPTIC_LIGHT(); setShowPicker(true); }} activeOpacity={0.8}>
+              <BlurView intensity={isDark ? 40 : 80} style={[styles.trackerChipBlur, { borderRadius: borderRadiusValue }]} tint={isDark ? 'dark' : 'light'}>
+                <Text style={styles.trackerChipEmoji}>{tracker.emoji}</Text>
+                <Text style={[styles.trackerChipText, { color: fullThemeColors.text }]}>{editEntryId ? 'Edit' : 'Add'} {tracker.name}</Text>
+                <Ionicons name="chevron-down" size={16} color={fullThemeColors.textSecondary} />
+              </BlurView>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.iconBtn, { borderRadius: borderRadiusValue }]} onPress={() => { HAPTIC_LIGHT(); setShowPicker(true); }} activeOpacity={0.8}>
+              <BlurView intensity={isDark ? 40 : 80} style={[styles.iconBlur, { borderRadius: borderRadiusValue }]} tint={isDark ? 'dark' : 'light'}>
+                <Ionicons name="swap-horizontal" size={20} color={fullThemeColors.text} />
+              </BlurView>
+            </TouchableOpacity>
+          </Animated.View>
+
+          {/* Smart Context Header */}
+          <View style={styles.sectionMargin}>
+            <SmartContextHeader tracker={tracker} currentBaby={currentBaby} lastEntryTime={lastEntryTime} entriesToday={entriesToday}
+              colors={fullThemeColors} borderRadiusValue={borderRadiusValue} fontSizeMultiplier={fontSizeMultiplier} />
+          </View>
+
+          {/* Streak & Goal Ring */}
+          {streak && streak.currentStreak > 0 && (
+            <View style={styles.sectionMargin}>
+              <StreakGoalRing streak={streak} isAtRisk={isAtRisk} hoursUntilBreak={hoursUntilBreak} streakMessage={streakMessage}
+                entriesToday={entriesToday} dailyGoal={3} trackerColor={tracker.gradient[0]} colors={fullThemeColors}
+                borderRadiusValue={borderRadiusValue} onLogNow={() => {}} />
+            </View>
+          )}
+
+          {/* Quick Template Strip */}
+          <QuickTemplateStrip templates={quickTemplates} tracker={tracker} onSelect={handleTemplateSelect}
+            colors={fullThemeColors} borderRadiusValue={borderRadiusValue} />
+
+          {/* Smart Suggestion Chips */}
+          <SmartSuggestionChips suggestions={smartSuggestions} appliedSuggestions={appliedSuggestions}
+            onApply={handleApplySuggestion} onDismiss={handleDismissSuggestion} theme={theme}
+            colors={fullThemeColors} borderRadiusValue={borderRadiusValue} />
+
+          {/* Time Wheel Selector */}
+          <TimeWheelSelector date={date} onDateChange={handleDatePress} onTimeChange={(newDate: Date) => setDate(newDate)}
+            trackerColor={tracker.gradient[0]} colors={fullThemeColors} borderRadiusValue={borderRadiusValue} fontSizeMultiplier={fontSizeMultiplier} />
+
+          {/* Context Insights Strip */}
+          <ContextInsightsStrip insights={contextInsights} onAction={handleInsightAction}
+            colors={fullThemeColors} borderRadiusValue={borderRadiusValue} />
+
+          {/* Urgent Reminders Banner */}
+          {hasUrgentReminders && visibleReminders.some((r: any) => r.priority === 'urgent' || r.priority === 'high') && (
+            <Animated.View entering={FadeInUp.springify()} style={[styles.urgentBanner, { backgroundColor: 'rgba(255,107,107,0.08)', borderRadius: borderRadiusValue }]}>
+              <Ionicons name="alert-circle" size={20} color="#FF6B6B" />
+              <Text style={[styles.urgentText, { color: '#FF6B6B' }]}>
+                {visibleReminders.filter((r: any) => r.priority === 'urgent' || r.priority === 'high').length} urgent reminder(s)
+              </Text>
+            </Animated.View>
+          )}
+
+          {/* Reminders */}
+          {visibleReminders.length > 0 && (
+            <View style={styles.remindersSection}>
+              {visibleReminders.slice(0, 2).map((reminder: any) => (
+                <View key={reminder.id} style={[styles.reminderPill, {
+                  backgroundColor: (reminder.priority === 'urgent' || reminder.priority === 'high') ? 'rgba(255,107,107,0.08)' : `${tracker.gradient[0]}08`,
+                  borderRadius: borderRadiusValue,
+                  borderLeftWidth: 3,
+                  borderLeftColor: (reminder.priority === 'urgent' || reminder.priority === 'high') ? '#FF6B6B' : tracker.gradient[0],
+                }]}>
+                  <Text style={styles.reminderEmoji}>{reminder.emoji}</Text>
+                  <View style={styles.reminderTextContainer}>
+                    <Text style={[styles.reminderTitle, { color: fullThemeColors.text }]} numberOfLines={1}>{reminder.title}</Text>
+                    <Text style={[styles.reminderBody, { color: fullThemeColors.textSecondary }]} numberOfLines={1}>{reminder.body}</Text>
+                  </View>
+                  {reminder.actionButtons?.map((btn: any) => (
+                    <TouchableOpacity key={btn.id} style={[styles.reminderActionBtn, {
+                      backgroundColor: btn.action === 'log_now' ? tracker.gradient[0] : fullThemeColors.surface,
+                      borderRadius: borderRadiusValue / 2,
+                    }]} onPress={() => {}} activeOpacity={0.85}>
+                      <Text style={[styles.reminderActionText, { color: btn.action === 'log_now' ? '#fff' : fullThemeColors.text }]}>{btn.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                  <TouchableOpacity onPress={() => handleDismissReminder(reminder.id)} style={styles.correlationDismiss}>
+                    <Ionicons name="close" size={18} color={fullThemeColors.textSecondary} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {/* Correlations */}
+          {visibleCorrelations.length > 0 && (
+            <View style={styles.correlationsSection}>
+              {visibleCorrelations.slice(0, 2).map((correlation: any) => (
+                <Animated.View key={correlation.id} entering={FadeInUp.springify()} style={[styles.correlationAlert, {
+                  backgroundColor: `${tracker.gradient[0]}08`,
+                  borderRadius: borderRadiusValue,
+                  borderLeftWidth: 3,
+                  borderLeftColor: tracker.gradient[0],
+                }]}>
+                  <View style={styles.correlationIconContainer}>
+                    <Text style={styles.correlationEmoji}>{correlation.emoji}</Text>
+                  </View>
+                  <View style={styles.correlationTextContainer}>
+                    <Text style={[styles.correlationMessage, { color: fullThemeColors.text }]} numberOfLines={2}>{correlation.message}</Text>
+                    <Text style={[styles.correlationMeta, { color: fullThemeColors.textSecondary }]}>
+                      {correlation.trackerEmoji} {correlation.trackerName} \u2022 {correlation.confidence}% match
+                    </Text>
+                  </View>
+                  <View style={styles.correlationActions}>
+                    {correlation.action !== 'none' && (
+                      <TouchableOpacity style={[styles.correlationActionBtn, { backgroundColor: tracker.gradient[0] }]} onPress={() => handleCorrelationAction(correlation)} activeOpacity={0.85}>
+                        <Text style={styles.correlationActionText}>
+                          {correlation.action === 'log_now' ? 'Log' : correlation.action === 'prefill' ? 'Apply' : 'View'}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                    <TouchableOpacity onPress={() => handleDismissCorrelation(correlation.id)} style={styles.correlationDismiss}>
+                      <Ionicons name="close" size={18} color={fullThemeColors.textSecondary} />
+                    </TouchableOpacity>
+                  </View>
+                </Animated.View>
+              ))}
+            </View>
+          )}
+
+          {/* Yesterday Entries Strip */}
+          <YesterdayStrip entries={yesterdayEntries} tracker={tracker} onCopyEntry={handleCopyYesterdayEntry}
+            onViewAll={() => setShowYesterdayModal(true)} colors={fullThemeColors}
+            borderRadiusValue={borderRadiusValue} fontSizeMultiplier={fontSizeMultiplier} />
+
+          {/* Recent entries */}
+          {recentEntries.length > 0 && !editEntryId && (
+            <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(50).springify()} style={styles.recentSection}>
+              <View style={styles.sectionHeader}>
+                <Text style={[styles.sectionTitle, { color: fullThemeColors.textSecondary, fontSize: 13 * fontSizeMultiplier }]}>Recent {tracker.name}</Text>
+              </View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                {recentEntries.map((entry: any) => (
+                  <View key={entry.id} style={[styles.recentCard, { backgroundColor: fullThemeColors.glassBg, borderColor: fullThemeColors.border, borderRadius: borderRadiusValue }]}>
+                    <Text style={styles.recentEmoji}>{tracker.emoji}</Text>
+                    <Text style={[styles.recentTime, { color: fullThemeColors.textSecondary }]}>{format(new Date(entry.timestamp), 'h:mm a')}</Text>
+                  </View>
+                ))}
+              </ScrollView>
+            </Animated.View>
+          )}
+
+          {/* Errors */}
+          {errors.length > 0 && (
+            <Animated.View entering={shouldReduceMotion ? undefined : FadeInDown.springify()} style={[styles.errorsContainer, {
+              backgroundColor: `${fullThemeColors.error}15`,
+              borderLeftColor: fullThemeColors.error,
+              borderRadius: borderRadiusValue,
+            }]}>
+              {errors.map((err: string, idx: number) => (
+                <View key={idx} style={styles.errorRow}>
+                  <Ionicons name="alert-circle" size={16} color={fullThemeColors.error} />
+                  <Text style={[styles.errorText, { color: fullThemeColors.error }]}>{err}</Text>
+                </View>
+              ))}
+            </Animated.View>
+          )}
+
+          {/* Form */}
+          <View style={styles.formWrapper}>
+            <DynamicTrackerForm tracker={tracker} initialData={pendingData} progressiveState={progressiveState}
+              onSubmit={handleFormSubmit} onCancel={() => navigation.goBack()} />
+          </View>
+
+          <View style={styles.bottomPadding} />
+        </AutoHideAnimatedScrollView>
+      </KeyboardAvoidingView>
+
+      {/* Modals */}
+      <ConfirmModal visible={showConfirm} onClose={() => setShowConfirm(false)} onConfirm={confirmSave}
+        data={{ ...pendingData, photoUris: pendingOptions.photoUris }} tracker={tracker}
+        babyName={currentBaby?.name || 'Baby'} babyAvatar={currentBaby?.avatar} date={date}
+        notes={pendingOptions.notes} tags={pendingOptions.tags || []} />
+
+      <YesterdayEntriesModal visible={showYesterdayModal} onClose={() => setShowYesterdayModal(false)}
+        entries={yesterdayEntries} tracker={tracker} onCopyEntry={handleCopyYesterdayEntry}
+        colors={fullThemeColors} borderRadiusValue={borderRadiusValue} fontSizeMultiplier={fontSizeMultiplier} />
+
+      {/* iOS Pickers */}
+      {Platform.OS === 'ios' && (
+        <>
+          <DatePickerModal visible={showDatePicker} date={date} mode="date" onChange={onDateChange}
+            onClose={() => setShowDatePicker(false)} themeColors={themeColors} fullThemeColors={fullThemeColors} borderRadiusValue={borderRadiusValue} />
+          <DatePickerModal visible={showTimePicker} date={date} mode="time" onChange={onDateChange}
+            onClose={() => setShowTimePicker(false)} themeColors={themeColors} fullThemeColors={fullThemeColors} borderRadiusValue={borderRadiusValue} />
+        </>
+      )}
+    </LinearGradient>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MAIN SCREEN — WRAPPER COMPONENT
+// All state lives here. No conditional hooks. No useTrackerProgressive.
+// ═══════════════════════════════════════════════════════════════
+
+export default function AddEntryScreen() {
+  const navigation = useNavigation<AddEntryNavigationProp>();
+  const route = useRoute<AddEntryRouteProp>();
+
+  const { fullThemeColors, isDark } = useCustomization();
+  const { getTracker, currentBaby } = useTracker();
+
+  // ─── State (all unconditional) ────────────────────────────────
+  const [selectedTrackerId, setSelectedTrackerId] = useState<string | null>(
+    route.params?.trackerId || null
+  );
+  const [showPicker, setShowPicker] = useState(!route.params?.trackerId);
+  const [date, setDate] = useState(new Date());
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [showYesterdayModal, setShowYesterdayModal] = useState(false);
+  const [yesterdayEntries, setYesterdayEntries] = useState<YesterdayEntry[]>([]);
+  const [errors, setErrors] = useState<string[]>([]);
+  const [dismissedCorrelations, setDismissedCorrelations] = useState<Set<string>>(new Set());
+  const [dismissedReminders, setDismissedReminders] = useState<Set<string>>(new Set());
+  const [appliedCorrelationPrefill, setAppliedCorrelationPrefill] = useState<Record<string, unknown> | null>(null);
+  const [appliedSuggestions, setAppliedSuggestions] = useState<Set<string>>(new Set());
+
+  // Form state
+  const [pendingData, setPendingData] = useState<Record<string, unknown>>(() => {
+    const preset = route.params?.presetData;
+    return { ...preset };
+  });
+
+  const [pendingOptions, setPendingOptions] = useState<{
+    notes?: string;
+    tags?: string[];
+    photoUris?: string[];
+  }>({});
+
+  // ─── Derived (no hooks inside) ──────────────────────────────────
+  const tracker = useMemo(() =>
+    selectedTrackerId ? getTracker(selectedTrackerId) : undefined,
+    [selectedTrackerId, getTracker]
+  );
+
+  const editEntryId = useMemo(() =>
+    route.params?.editMode ? route.params?.eventId : undefined,
+    [route.params?.editMode, route.params?.eventId]
+  );
+
+  // ─── Callbacks ─────────────────────────────────────────────────
   const handleTrackerSelect = useCallback((trackerId: string) => {
     setSelectedTrackerId(trackerId);
     setShowPicker(false);
@@ -1710,64 +1592,7 @@ export default function AddEntryScreen() {
     }
   }, [selectedTrackerId, navigation]);
 
-  // ─── NEW: Template selection ────────────────────────────────────
-  const handleTemplateSelect = useCallback((tmpl: QuickTemplate) => {
-    HAPTIC_MEDIUM();
-    setPendingData(prev => ({ ...prev, ...tmpl.data }));
-    success('Template Applied', `${tmpl.label} prefill loaded.`);
-  }, [success]);
-
-  // ─── NEW: Smart suggestion apply ────────────────────────────────
-  const handleApplySuggestion = useCallback((suggestion: SmartSuggestion) => {
-    HAPTIC_LIGHT();
-    setPendingData(prev => ({ ...prev, [suggestion.fieldId]: suggestion.value }));
-    setAppliedSuggestions(prev => {
-      const next = new Set(prev);
-      next.add(suggestion.id);
-      return next;
-    });
-  }, []);
-
-  const handleDismissSuggestion = useCallback((id: string) => {
-    setAppliedSuggestions(prev => {
-      const next = new Set(prev);
-      next.add(id);
-      return next;
-    });
-  }, []);
-
-  const handleCorrelationAction = useCallback((correlation: ProgressiveCorrelation) => {
-    HAPTIC_LIGHT();
-    if (correlation.prefillData) {
-      setAppliedCorrelationPrefill(correlation.prefillData);
-    }
-  }, []);
-
-  const handleDismissCorrelation = useCallback((id: string) => {
-    setDismissedCorrelations(prev => {
-      const next = new Set(prev);
-      next.add(id);
-      return next;
-    });
-  }, []);
-
-  const handleDismissReminder = useCallback((id: string) => {
-    setDismissedReminders(prev => {
-      const next = new Set(prev);
-      next.add(id);
-      return next;
-    });
-  }, []);
-
-  const handleInsightAction = useCallback((insight: ContextInsight) => {
-    HAPTIC_LIGHT();
-    if (insight.type === 'anomaly' && insight.id === 'streak-risk') {
-      // Scroll to form or trigger save
-    }
-  }, []);
-
-  // ─── Render ──────────────────────────────────────────────────────
-
+  // ─── Render: Picker State ──────────────────────────────────────
   if (showPicker) {
     return (
       <View style={[styles.container, { backgroundColor: fullThemeColors.background }]}>
@@ -1783,418 +1608,57 @@ export default function AddEntryScreen() {
     );
   }
 
+  // ─── Render: No Tracker Found ──────────────────────────────────
   if (!tracker) {
     return (
-      <View style={[styles.container, {
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: fullThemeColors.background,
-      }]}>
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center', backgroundColor: fullThemeColors.background }]}>
         <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
         <Ionicons name="alert-circle-outline" size={48} color={fullThemeColors.textSecondary} />
-        <Text style={[styles.errorText, {
-          color: fullThemeColors.textSecondary,
-          fontSize: 18 * fontSizeMultiplier,
-          marginTop: 12,
-        }]}>
-          Tracker not found
-        </Text>
+        <Text style={[styles.errorText, { color: fullThemeColors.textSecondary, fontSize: 18 }]}>Tracker not found</Text>
       </View>
     );
   }
 
-  const gradientColors: [string, string, string] = [
-    tracker.gradient[0] + '08',
-    tracker.gradient[1] + '04',
-    fullThemeColors.background,
-  ];
-
-  const progressiveState = useMemo(() => ({
-    prefillData,
-    suggestions,
-    streak,
-    insights,
-    correlations,
-    activeReminders,
-    templates,
-    trends,
-    timeContext,
-    yesterdayEntries: [],
-    todayEntries: [],
-  }), [prefillData, suggestions, streak, insights, correlations, activeReminders, templates, trends, timeContext]);
-
+  // ─── Render: Full Tracker Content ──────────────────────────────
   return (
-    <LinearGradient colors={gradientColors} style={styles.container}>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardView}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-      >
-        <AutoHideAnimatedScrollView
-          contentContainerStyle={[styles.content, { paddingTop: insets.top + 20 }]}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-        >
-          {/* ── TOP NAV ROW ── */}
-          <Animated.View
-            entering={shouldReduceMotion ? undefined : FadeInDown.springify()}
-            style={styles.headerRow}
-          >
-            <TouchableOpacity
-              onPress={() => navigation.goBack()}
-              style={[styles.iconBtn, { borderRadius: borderRadiusValue }]}
-              activeOpacity={0.8}
-            >
-              <BlurView
-                intensity={isDark ? 40 : 80}
-                style={[styles.iconBlur, { borderRadius: borderRadiusValue }]}
-                tint={isDark ? 'dark' : 'light'}
-              >
-                <Ionicons name="arrow-back" size={22} color={fullThemeColors.text} />
-              </BlurView>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.trackerChip, { borderRadius: borderRadiusValue }]}
-              onPress={() => { HAPTIC_LIGHT(); setShowPicker(true); }}
-              activeOpacity={0.8}
-            >
-              <BlurView
-                intensity={isDark ? 40 : 80}
-                style={[styles.trackerChipBlur, { borderRadius: borderRadiusValue }]}
-                tint={isDark ? 'dark' : 'light'}
-              >
-                <Text style={styles.trackerChipEmoji}>{tracker.emoji}</Text>
-                <Text style={[styles.trackerChipText, { color: fullThemeColors.text }]}>
-                  {editEntryId ? 'Edit' : 'Add'} {tracker.name}
-                </Text>
-                <Ionicons name="chevron-down" size={16} color={fullThemeColors.textSecondary} />
-              </BlurView>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.iconBtn, { borderRadius: borderRadiusValue }]}
-              onPress={() => { HAPTIC_LIGHT(); setShowPicker(true); }}
-              activeOpacity={0.8}
-            >
-              <BlurView
-                intensity={isDark ? 40 : 80}
-                style={[styles.iconBlur, { borderRadius: borderRadiusValue }]}
-                tint={isDark ? 'dark' : 'light'}
-              >
-                <Ionicons name="swap-horizontal" size={20} color={fullThemeColors.text} />
-              </BlurView>
-            </TouchableOpacity>
-          </Animated.View>
-
-          {/* ── NEW FEATURE 1: SMART CONTEXT HEADER ── */}
-          <View style={styles.sectionMargin}>
-            <SmartContextHeader
-              tracker={tracker}
-              currentBaby={currentBaby}
-              lastEntryTime={lastEntryTime}
-              entriesToday={entriesToday}
-              colors={fullThemeColors}
-              borderRadiusValue={borderRadiusValue}
-              fontSizeMultiplier={fontSizeMultiplier}
-            />
-          </View>
-
-          {/* ── NEW FEATURE 6: STREAK & GOAL RING ── */}
-          {streak && streak.currentStreak > 0 && (
-            <View style={styles.sectionMargin}>
-              <StreakGoalRing
-                streak={streak}
-                isAtRisk={isAtRisk}
-                hoursUntilBreak={hoursUntilBreak}
-                streakMessage={streakMessage}
-                entriesToday={entriesToday}
-                dailyGoal={3}
-                trackerColor={tracker.gradient[0]}
-                colors={fullThemeColors}
-                borderRadiusValue={borderRadiusValue}
-                onLogNow={() => {/* Scroll to form */}}
-              />
-            </View>
-          )}
-
-          {/* ── NEW FEATURE 2: QUICK TEMPLATE STRIP ── */}
-          <QuickTemplateStrip
-            templates={quickTemplates}
-            tracker={tracker}
-            onSelect={handleTemplateSelect}
-            colors={fullThemeColors}
-            borderRadiusValue={borderRadiusValue}
-          />
-
-          {/* ── NEW FEATURE 3: SMART SUGGESTION CHIPS ── */}
-          <SmartSuggestionChips
-            suggestions={smartSuggestions}
-            appliedSuggestions={appliedSuggestions}
-            onApply={handleApplySuggestion}
-            onDismiss={handleDismissSuggestion}
-            theme={theme}
-            colors={fullThemeColors}
-            borderRadiusValue={borderRadiusValue}
-          />
-
-          {/* ── NEW FEATURE 4: TIME WHEEL SELECTOR ── */}
-          <TimeWheelSelector
-            date={date}
-            onDateChange={handleDatePress}
-            onTimeChange={(newDate: Date) => setDate(newDate)}
-            trackerColor={tracker.gradient[0]}
-            colors={fullThemeColors}
-            borderRadiusValue={borderRadiusValue}
-            fontSizeMultiplier={fontSizeMultiplier}
-          />
-
-          {/* ── NEW FEATURE 5: CONTEXT INSIGHTS STRIP ── */}
-          <ContextInsightsStrip
-            insights={contextInsights}
-            onAction={handleInsightAction}
-            colors={fullThemeColors}
-            borderRadiusValue={borderRadiusValue}
-          />
-
-          {/* ── Urgent Reminders Banner ── */}
-          {hasUrgentReminders && visibleReminders.some(r => r.priority === 'urgent' || r.priority === 'high') && (
-            <Animated.View
-              entering={FadeInUp.springify()}
-              style={[styles.urgentBanner, {
-                backgroundColor: 'rgba(255,107,107,0.08)',
-                borderRadius: borderRadiusValue,
-              }]}
-            >
-              <Ionicons name="alert-circle" size={20} color="#FF6B6B" />
-              <Text style={[styles.urgentText, { color: '#FF6B6B' }]}>
-                {visibleReminders.filter(r => r.priority === 'urgent' || r.priority === 'high').length} urgent reminder(s)
-              </Text>
-            </Animated.View>
-          )}
-
-          {/* ── Reminders ── */}
-          {visibleReminders.length > 0 && (
-            <View style={styles.remindersSection}>
-              {visibleReminders.slice(0, 2).map(reminder => (
-                <View key={reminder.id} style={[styles.reminderPill, {
-                  backgroundColor: (reminder.priority === 'urgent' || reminder.priority === 'high') ? 'rgba(255,107,107,0.08)' : `${tracker.gradient[0]}08`,
-                  borderRadius: borderRadiusValue,
-                  borderLeftWidth: 3,
-                  borderLeftColor: (reminder.priority === 'urgent' || reminder.priority === 'high') ? '#FF6B6B' : tracker.gradient[0],
-                }]}>
-                  <Text style={styles.reminderEmoji}>{reminder.emoji}</Text>
-                  <View style={styles.reminderTextContainer}>
-                    <Text style={[styles.reminderTitle, { color: fullThemeColors.text }]} numberOfLines={1}>
-                      {reminder.title}
-                    </Text>
-                    <Text style={[styles.reminderBody, { color: fullThemeColors.textSecondary }]} numberOfLines={1}>
-                      {reminder.body}
-                    </Text>
-                  </View>
-                  {reminder.actionButtons?.map(btn => (
-                    <TouchableOpacity
-                      key={btn.id}
-                      style={[styles.reminderActionBtn, {
-                        backgroundColor: btn.action === 'log_now' ? tracker.gradient[0] : fullThemeColors.surface,
-                        borderRadius: borderRadiusValue / 2,
-                      }]}
-                      onPress={() => {}}
-                      activeOpacity={0.85}
-                    >
-                      <Text style={[styles.reminderActionText, { color: btn.action === 'log_now' ? '#fff' : fullThemeColors.text }]}>
-                        {btn.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                  <TouchableOpacity onPress={() => handleDismissReminder(reminder.id)} style={styles.correlationDismiss}>
-                    <Ionicons name="close" size={18} color={fullThemeColors.textSecondary} />
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </View>
-          )}
-
-          {/* ── Correlations ── */}
-          {visibleCorrelations.length > 0 && (
-            <View style={styles.correlationsSection}>
-              {visibleCorrelations.slice(0, 2).map(correlation => (
-                <Animated.View
-                  key={correlation.id}
-                  entering={FadeInUp.springify()}
-                  style={[styles.correlationAlert, {
-                    backgroundColor: `${tracker.gradient[0]}08`,
-                    borderRadius: borderRadiusValue,
-                    borderLeftWidth: 3,
-                    borderLeftColor: tracker.gradient[0],
-                  }]}
-                >
-                  <View style={styles.correlationIconContainer}>
-                    <Text style={styles.correlationEmoji}>{correlation.emoji}</Text>
-                  </View>
-                  <View style={styles.correlationTextContainer}>
-                    <Text style={[styles.correlationMessage, { color: fullThemeColors.text }]} numberOfLines={2}>
-                      {correlation.message}
-                    </Text>
-                    <Text style={[styles.correlationMeta, { color: fullThemeColors.textSecondary }]}>
-                      {correlation.trackerEmoji} {correlation.trackerName} \u2022 {correlation.confidence}% match
-                    </Text>
-                  </View>
-                  <View style={styles.correlationActions}>
-                    {correlation.action !== 'none' && (
-                      <TouchableOpacity
-                        style={[styles.correlationActionBtn, { backgroundColor: tracker.gradient[0] }]}
-                        onPress={() => handleCorrelationAction(correlation)}
-                        activeOpacity={0.85}
-                      >
-                        <Text style={styles.correlationActionText}>
-                          {correlation.action === 'log_now' ? 'Log' : correlation.action === 'prefill' ? 'Apply' : 'View'}
-                        </Text>
-                      </TouchableOpacity>
-                    )}
-                    <TouchableOpacity
-                      onPress={() => handleDismissCorrelation(correlation.id)}
-                      style={styles.correlationDismiss}
-                    >
-                      <Ionicons name="close" size={18} color={fullThemeColors.textSecondary} />
-                    </TouchableOpacity>
-                  </View>
-                </Animated.View>
-              ))}
-            </View>
-          )}
-
-          {/* ── REDESIGNED: Yesterday Entries Horizontal Strip ── */}
-          <YesterdayStrip
-            entries={yesterdayEntries}
-            tracker={tracker}
-            onCopyEntry={handleCopyYesterdayEntry}
-            onViewAll={() => setShowYesterdayModal(true)}
-            colors={fullThemeColors}
-            borderRadiusValue={borderRadiusValue}
-            fontSizeMultiplier={fontSizeMultiplier}
-          />
-
-          {/* ── Recent entries ── */}
-          {recentEntries.length > 0 && !editEntryId && (
-            <Animated.View
-              entering={shouldReduceMotion ? undefined : FadeInUp.delay(50).springify()}
-              style={styles.recentSection}
-            >
-              <View style={styles.sectionHeader}>
-                <Text style={[styles.sectionTitle, { color: fullThemeColors.textSecondary, fontSize: 13 * fontSizeMultiplier }]}>
-                  Recent {tracker.name}
-                </Text>
-              </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                {recentEntries.map(entry => (
-                  <View key={entry.id} style={[styles.recentCard, {
-                    backgroundColor: fullThemeColors.glassBg,
-                    borderColor: fullThemeColors.border,
-                    borderRadius: borderRadiusValue,
-                  }]}>
-                    <Text style={styles.recentEmoji}>{tracker.emoji}</Text>
-                    <Text style={[styles.recentTime, { color: fullThemeColors.textSecondary }]}>
-                      {format(new Date(entry.timestamp), 'h:mm a')}
-                    </Text>
-                  </View>
-                ))}
-              </ScrollView>
-            </Animated.View>
-          )}
-
-          {/* ── Errors ── */}
-          {errors.length > 0 && (
-            <Animated.View
-              entering={shouldReduceMotion ? undefined : FadeInDown.springify()}
-              style={[styles.errorsContainer, {
-                backgroundColor: `${fullThemeColors.error}15`,
-                borderLeftColor: fullThemeColors.error,
-                borderRadius: borderRadiusValue,
-              }]}
-            >
-              {errors.map((err, idx) => (
-                <View key={idx} style={styles.errorRow}>
-                  <Ionicons name="alert-circle" size={16} color={fullThemeColors.error} />
-                  <Text style={[styles.errorText, { color: fullThemeColors.error }]}>{err}</Text>
-                </View>
-              ))}
-            </Animated.View>
-          )}
-
-          {/* ── Form ── */}
-          <View style={styles.formWrapper}>
-            <DynamicTrackerForm
-              tracker={tracker}
-              initialData={pendingData}
-              progressiveState={progressiveState}
-              onSubmit={handleFormSubmit}
-              onCancel={() => navigation.goBack()}
-            />
-          </View>
-
-          <View style={styles.bottomPadding} />
-        </AutoHideAnimatedScrollView>
-      </KeyboardAvoidingView>
-
-      {/* ── Modals ── */}
-      <ConfirmModal
-        visible={showConfirm}
-        onClose={() => setShowConfirm(false)}
-        onConfirm={confirmSave}
-        data={{ ...pendingData, photoUris: pendingOptions.photoUris }}
-        tracker={tracker}
-        babyName={currentBaby?.name || 'Baby'}
-        babyAvatar={currentBaby?.avatar}
-        date={date}
-        notes={pendingOptions.notes}
-        tags={pendingOptions.tags || []}
-      />
-
-      <YesterdayEntriesModal
-        visible={showYesterdayModal}
-        onClose={() => setShowYesterdayModal(false)}
-        entries={yesterdayEntries}
-        tracker={tracker}
-        onCopyEntry={handleCopyYesterdayEntry}
-        colors={fullThemeColors}
-        borderRadiusValue={borderRadiusValue}
-        fontSizeMultiplier={fontSizeMultiplier}
-      />
-
-      {/* iOS Pickers */}
-      {Platform.OS === 'ios' && (
-        <>
-          <DatePickerModal
-            visible={showDatePicker}
-            date={date}
-            mode="date"
-            onChange={onDateChange}
-            onClose={() => setShowDatePicker(false)}
-            themeColors={themeColors}
-            fullThemeColors={fullThemeColors}
-            borderRadiusValue={borderRadiusValue}
-          />
-          <DatePickerModal
-            visible={showTimePicker}
-            date={date}
-            mode="time"
-            onChange={onDateChange}
-            onClose={() => setShowTimePicker(false)}
-            themeColors={themeColors}
-            fullThemeColors={fullThemeColors}
-            borderRadiusValue={borderRadiusValue}
-          />
-        </>
-      )}
-    </LinearGradient>
+    <TrackerContent
+      tracker={tracker}
+      selectedTrackerId={selectedTrackerId}
+      date={date}
+      setDate={setDate}
+      pendingData={pendingData}
+      setPendingData={setPendingData}
+      pendingOptions={pendingOptions}
+      setPendingOptions={setPendingOptions}
+      showConfirm={showConfirm}
+      setShowConfirm={setShowConfirm}
+      showYesterdayModal={showYesterdayModal}
+      setShowYesterdayModal={setShowYesterdayModal}
+      yesterdayEntries={yesterdayEntries}
+      setYesterdayEntries={setYesterdayEntries}
+      errors={errors}
+      setErrors={setErrors}
+      dismissedCorrelations={dismissedCorrelations}
+      setDismissedCorrelations={setDismissedCorrelations}
+      dismissedReminders={dismissedReminders}
+      setDismissedReminders={setDismissedReminders}
+      appliedCorrelationPrefill={appliedCorrelationPrefill}
+      setAppliedCorrelationPrefill={setAppliedCorrelationPrefill}
+      appliedSuggestions={appliedSuggestions}
+      setAppliedSuggestions={setAppliedSuggestions}
+      editEntryId={editEntryId}
+      route={route}
+      navigation={navigation}
+      showPicker={showPicker}
+      setShowPicker={setShowPicker}
+      handleTrackerSelect={handleTrackerSelect}
+      handlePickerClose={handlePickerClose}
+    />
   );
 }
 
 // ═══════════════════════════════════════════════════════════════
-// STYLES — Redesigned with Growth Dashboard patterns
+// STYLES
 // ═══════════════════════════════════════════════════════════════
 
 const styles = StyleSheet.create({
@@ -2203,7 +1667,6 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: 0, paddingBottom: 40 },
   sectionMargin: { marginHorizontal: DESIGN.spacing.lg, marginBottom: DESIGN.spacing.lg },
 
-  // ── Top Nav Row ──
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2231,7 +1694,6 @@ const styles = StyleSheet.create({
   trackerChipEmoji: { fontSize: 18 },
   trackerChipText: { fontSize: 15, fontWeight: '800', letterSpacing: -0.3 },
 
-  // ── Urgent Banner ──
   urgentBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2242,7 +1704,6 @@ const styles = StyleSheet.create({
   },
   urgentText: { fontSize: 13, fontWeight: '600' },
 
-  // ── Reminders ──
   remindersSection: { gap: 10, marginBottom: 16, marginHorizontal: 16 },
   reminderPill: {
     flexDirection: 'row',
@@ -2260,7 +1721,6 @@ const styles = StyleSheet.create({
   },
   reminderActionText: { fontSize: 12, fontWeight: '600' },
 
-  // ── Correlations ──
   correlationsSection: { gap: 10, marginBottom: 16, marginHorizontal: 16 },
   correlationAlert: {
     flexDirection: 'row',
@@ -2287,7 +1747,6 @@ const styles = StyleSheet.create({
   correlationActionText: { color: '#fff', fontSize: 12, fontWeight: '600' },
   correlationDismiss: { padding: 4 },
 
-  // ── Recent ──
   recentSection: { marginBottom: 20, marginHorizontal: 16 },
   sectionHeader: { marginBottom: 10 },
   sectionTitle: {
@@ -2306,7 +1765,6 @@ const styles = StyleSheet.create({
   recentEmoji: { fontSize: 28 },
   recentTime: { fontSize: 12, marginTop: 4, fontWeight: '600' },
 
-  // ── Errors ──
   errorsContainer: {
     borderRadius: 12,
     padding: 12,
@@ -2322,7 +1780,6 @@ const styles = StyleSheet.create({
   },
   errorText: { fontSize: 13, fontWeight: '500' },
 
-  // ── Form ──
   formWrapper: { marginTop: 8, paddingHorizontal: 16 },
   bottomPadding: { height: 100 },
 });
