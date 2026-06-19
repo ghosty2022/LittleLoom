@@ -1,4 +1,17 @@
-import { Dimensions, Switch, Text, TouchableOpacity, View, StatusBar, StyleSheet, ScrollView } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  Dimensions,
+  Switch,
+  Text,
+  TouchableOpacity,
+  View,
+  StatusBar,
+  StyleSheet,
+  ScrollView,
+  Modal,           // also used but not imported
+  TextInput,       // also used but not imported
+  ActivityIndicator, // also used but not imported
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInUp, FadeIn, useSharedValue, useAnimatedStyle, withSpring, withSequence, withTiming } from 'react-native-reanimated';
 
