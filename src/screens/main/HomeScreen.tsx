@@ -51,7 +51,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import * as Haptics from 'expo-haptics';
-import { formatDistanceToNow, format, subDays, eachDayOfInterval, isSameDay, differenceInHours, differenceInDays } from 'date-fns';
+import { formatDistanceToNow, format, subDays, eachDayOfInterval, isSameDay, differenceInHours, differenceInDays, differenceInMonths } from 'date-fns';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop, Polyline, Path } from 'react-native-svg';
 
 import { SafeAvatar, SafeBabyAvatar, SafeParentAvatar } from '../../components/SafeAvatar';
@@ -65,17 +65,18 @@ const SCREEN_W = width;
 const SCREEN_H = height;
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   DESIGN SYSTEM - Cohesive, modern tokens
+   DESIGN SYSTEM — Ultra-Refined, Cohesive Tokens (GrowthDashboard DNA)
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const DESIGN = {
-  radius: { xs: 8, sm: 12, md: 16, lg: 20, xl: 24, full: 999 },
-  spacing: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32 },
+  radius: { xs: 10, sm: 14, md: 18, lg: 22, xl: 28, full: 999 },
+  spacing: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32, xxxxl: 40 },
   shadow: {
-    sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 2 },
-    md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 4 },
-    lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 24, elevation: 8 },
-    glow: { shadowColor: '#667eea', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 16, elevation: 6 },
+    xs: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.02, shadowRadius: 2, elevation: 1 },
+    sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 6, elevation: 2 },
+    md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 16, elevation: 4 },
+    lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.1, shadowRadius: 32, elevation: 8 },
+    glow: { shadowColor: '#667eea', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 20, elevation: 6 },
   },
 };
 
@@ -161,22 +162,30 @@ interface DailySummary {
   lastSleepTime: Date | null;
 }
 
+interface VaccinationReminder {
+  id: string;
+  vaccineName: string;
+  dueDate: Date;
+  status: 'upcoming' | 'overdue' | 'completed';
+  doseNumber: number;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    THEME HELPERS
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const getFullThemeColors = (theme: string, appearance: string, isDarkMode: boolean) => {
   return {
-    background: isDarkMode ? '#0a0a0f' : '#f0f4f8',
-    surface: isDarkMode ? '#141420' : '#ffffff',
-    surfaceElevated: isDarkMode ? '#1c1c2e' : '#ffffff',
-    surfaceGlass: isDarkMode ? 'rgba(28,28,46,0.85)' : 'rgba(255,255,255,0.92)',
-    text: isDarkMode ? '#f0f0f5' : '#1a1a2e',
-    textSecondary: isDarkMode ? '#a0a0b8' : '#64748b',
-    textMuted: isDarkMode ? '#6b6b8a' : '#94a3b8',
-    border: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+    background: isDarkMode ? '#08080f' : '#f4f6fa',
+    surface: isDarkMode ? '#12121e' : '#ffffff',
+    surfaceElevated: isDarkMode ? '#1a1a2a' : '#ffffff',
+    surfaceGlass: isDarkMode ? 'rgba(26,26,42,0.88)' : 'rgba(255,255,255,0.94)',
+    text: isDarkMode ? '#f0f0f7' : '#111827',
+    textSecondary: isDarkMode ? '#9ca3af' : '#6b7280',
+    textMuted: isDarkMode ? '#6b7280' : '#9ca3af',
+    border: isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)',
     borderLight: isDarkMode ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
-    glassBg: isDarkMode ? 'rgba(28,28,46,0.95)' : 'rgba(255,255,255,0.95)',
+    glassBg: isDarkMode ? 'rgba(26,26,42,0.96)' : 'rgba(255,255,255,0.96)',
     shadow: '#000',
     error: '#ef4444',
     success: '#10b981',
@@ -186,30 +195,26 @@ const getFullThemeColors = (theme: string, appearance: string, isDarkMode: boole
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   DATA - Refined Quick Actions with Categories
+   DATA — Refined Quick Actions with Categories
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const QUICK_ACTIONS: QuickAction[] = [
-  // Daily Care
-  { id: 'feed', label: 'Feed', icon: '\ud83c\udf7c', iconName: 'nutrition-outline', color: '#fa709a', gradient: ['#fa709a', '#fee140'], screen: 'UniversalTrackerHub', params: { type: 'feed' }, category: 'daily' },
-  { id: 'sleep', label: 'Sleep', icon: '\ud83d\ude34', iconName: 'moon-outline', color: '#11998e', gradient: ['#11998e', '#38ef7d'], screen: 'UniversalTrackerHub', params: { type: 'sleep' }, category: 'daily' },
-  { id: 'diaper', label: 'Diaper', icon: '\ud83e\uddf7', iconName: 'shirt-outline', color: '#fc5c7d', gradient: ['#fc5c7d', '#6a82fb'], screen: 'UniversalTrackerHub', params: { type: 'diaper' }, category: 'daily' },
-  { id: 'potty', label: 'Potty', icon: '\ud83d\udebd', iconName: 'water-outline', color: '#667eea', gradient: ['#667eea', '#764ba2'], screen: 'UniversalTrackerHub', params: { type: 'potty' }, category: 'daily' },
-  // Health
-  { id: 'growth', label: 'Growth', icon: '\ud83d\udccf', iconName: 'trending-up-outline', color: '#43e97b', gradient: ['#43e97b', '#38f9d7'], screen: 'GrowthDashboard', params: {}, category: 'health' },
-  { id: 'medication', label: 'Meds', icon: '\ud83d\udc8a', iconName: 'medical-outline', color: '#ef4444', gradient: ['#ef4444', '#f87171'], screen: 'UniversalTrackerHub', params: { type: 'medication' }, category: 'health' },
-  { id: 'vaccine', label: 'Vaccines', icon: '\ud83d\udc89', iconName: 'medical-outline', color: '#e11d48', gradient: ['#e11d48', '#fb7185'], screen: 'VaccinationSchedule', params: {}, category: 'health' },
-  { id: 'temperature', label: 'Temp', icon: '\ud83c\udf21\ufe0f', iconName: 'thermometer-outline', color: '#f97316', gradient: ['#f97316', '#fb923c'], screen: 'UniversalTrackerHub', params: { type: 'temperature' }, category: 'health' },
-  // Family
-  { id: 'milestone', label: 'Milestone', icon: '\ud83c\udf1f', iconName: 'trophy-outline', color: '#f59e0b', gradient: ['#f59e0b', '#fbbf24'], screen: 'Achievements', params: {}, category: 'family' },
-  { id: 'gallery', label: 'Gallery', icon: '\ud83d\uddbc\ufe0f', iconName: 'images-outline', color: '#8b5cf6', gradient: ['#8b5cf6', '#a78bfa'], screen: 'Gallery', params: {}, category: 'family' },
-  { id: 'family_chat', label: 'Chat', icon: '\ud83d\udcac', iconName: 'chatbubbles-outline', color: '#06b6d4', gradient: ['#06b6d4', '#22d3ee'], screen: 'FamilyChatList', params: {}, category: 'family' },
-  { id: 'note', label: 'Note', icon: '\ud83d\udcdd', iconName: 'document-text-outline', color: '#64748b', gradient: ['#64748b', '#94a3b8'], screen: 'UniversalTrackerHub', params: { type: 'note' }, category: 'family' },
-  // Tools
-  { id: 'reminders', label: 'Reminders', icon: '\u23f0', iconName: 'alarm-outline', color: '#ef4444', gradient: ['#ef4444', '#f87171'], screen: 'TrackerReminders', params: {}, category: 'tools' },
-  { id: 'sound', label: 'Sounds', icon: '\ud83c\udfb5', iconName: 'musical-notes-outline', color: '#1DB954', gradient: ['#1DB954', '#1ed760'], screen: 'SoundMixer', params: {}, category: 'tools' },
-  { id: 'safety', label: 'Safety', icon: '\ud83d\udee1\ufe0f', iconName: 'shield-checkmark-outline', color: '#dc2626', gradient: ['#dc2626', '#ef4444'], screen: 'SafetyCorner', params: {}, category: 'tools' },
-  { id: 'settings', label: 'Settings', icon: '\u2699\ufe0f', iconName: 'settings-outline', color: '#64748b', gradient: ['#64748b', '#94a3b8'], screen: 'Customize', params: {}, category: 'tools' },
+  { id: 'feed', label: 'Feed', icon: '🍼', iconName: 'nutrition-outline', color: '#fa709a', gradient: ['#fa709a', '#fee140'], screen: 'UniversalTrackerHub', params: { type: 'feed' }, category: 'daily' },
+  { id: 'sleep', label: 'Sleep', icon: '😴', iconName: 'moon-outline', color: '#11998e', gradient: ['#11998e', '#38ef7d'], screen: 'UniversalTrackerHub', params: { type: 'sleep' }, category: 'daily' },
+  { id: 'diaper', label: 'Diaper', icon: '🧷', iconName: 'shirt-outline', color: '#fc5c7d', gradient: ['#fc5c7d', '#6a82fb'], screen: 'UniversalTrackerHub', params: { type: 'diaper' }, category: 'daily' },
+  { id: 'potty', label: 'Potty', icon: '🚽', iconName: 'water-outline', color: '#667eea', gradient: ['#667eea', '#764ba2'], screen: 'UniversalTrackerHub', params: { type: 'potty' }, category: 'daily' },
+  { id: 'growth', label: 'Growth', icon: '📏', iconName: 'trending-up-outline', color: '#43e97b', gradient: ['#43e97b', '#38f9d7'], screen: 'GrowthDashboard', params: {}, category: 'health' },
+  { id: 'medication', label: 'Meds', icon: '💊', iconName: 'medical-outline', color: '#ef4444', gradient: ['#ef4444', '#f87171'], screen: 'UniversalTrackerHub', params: { type: 'medication' }, category: 'health' },
+  { id: 'vaccine', label: 'Vaccines', icon: '💉', iconName: 'medical-outline', color: '#e11d48', gradient: ['#e11d48', '#fb7185'], screen: 'VaccinationSchedule', params: {}, category: 'health' },
+  { id: 'temperature', label: 'Temp', icon: '🌡️', iconName: 'thermometer-outline', color: '#f97316', gradient: ['#f97316', '#fb923c'], screen: 'UniversalTrackerHub', params: { type: 'temperature' }, category: 'health' },
+  { id: 'milestone', label: 'Milestone', icon: '🌟', iconName: 'trophy-outline', color: '#f59e0b', gradient: ['#f59e0b', '#fbbf24'], screen: 'Achievements', params: {}, category: 'family' },
+  { id: 'gallery', label: 'Gallery', icon: '🖼️', iconName: 'images-outline', color: '#8b5cf6', gradient: ['#8b5cf6', '#a78bfa'], screen: 'Gallery', params: {}, category: 'family' },
+  { id: 'family_chat', label: 'Chat', icon: '💬', iconName: 'chatbubbles-outline', color: '#06b6d4', gradient: ['#06b6d4', '#22d3ee'], screen: 'FamilyChatList', params: {}, category: 'family' },
+  { id: 'note', label: 'Note', icon: '📝', iconName: 'document-text-outline', color: '#64748b', gradient: ['#64748b', '#94a3b8'], screen: 'UniversalTrackerHub', params: { type: 'note' }, category: 'family' },
+  { id: 'reminders', label: 'Reminders', icon: '⏰', iconName: 'alarm-outline', color: '#ef4444', gradient: ['#ef4444', '#f87171'], screen: 'TrackerReminders', params: {}, category: 'tools' },
+  { id: 'sound', label: 'Sounds', icon: '🎵', iconName: 'musical-notes-outline', color: '#1DB954', gradient: ['#1DB954', '#1ed760'], screen: 'SoundMixer', params: {}, category: 'tools' },
+  { id: 'safety', label: 'Safety', icon: '🛡️', iconName: 'shield-checkmark-outline', color: '#dc2626', gradient: ['#dc2626', '#ef4444'], screen: 'SafetyCorner', params: {}, category: 'tools' },
+  { id: 'settings', label: 'Settings', icon: '⚙️', iconName: 'settings-outline', color: '#64748b', gradient: ['#64748b', '#94a3b8'], screen: 'Customize', params: {}, category: 'tools' },
 ];
 
 const FEATURE_CARDS: FeatureCard[] = [
@@ -225,10 +230,8 @@ const FEATURE_CARDS: FeatureCard[] = [
   { id: 'help', label: 'Help Center', icon: 'help-buoy-outline', color: '#4facfe', screen: 'HelpCenter', description: 'Guides & support', badge: undefined, badgeColor: undefined },
 ];
 
-
 /* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 1: AI DAILY SUMMARY WIDGET
-   Shows today's key metrics in a sleek horizontal scroll
+   NEW FEATURE 1: AI DAILY SUMMARY WIDGET — Redesigned as Sleek Horizontal Strip
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const DailySummaryWidget: React.FC<{
@@ -281,7 +284,9 @@ const DailySummaryWidget: React.FC<{
       <View style={styles.dailySummaryContainer}>
         <View style={styles.dailySummaryHeader}>
           <View style={styles.dailySummaryTitleRow}>
-            <Ionicons name="today-outline" size={18} color={theme.primary} />
+            <View style={[styles.dailySummaryIconWrap, { backgroundColor: `${theme.primary}15` }]}>
+              <Ionicons name="today-outline" size={16} color={theme.primary} />
+            </View>
             <Text style={[styles.dailySummaryTitle, { color: theme.text }]}>Today's Summary</Text>
           </View>
           <Text style={[styles.dailySummaryDate, { color: theme.textMuted }]}>
@@ -289,14 +294,7 @@ const DailySummaryWidget: React.FC<{
           </Text>
         </View>
 
-        <ScrollView 
-          horizontal 
-          showsHorizontalScrollIndicator={false} 
-          contentContainerStyle={styles.dailySummaryScroll}
-          decelerationRate="fast"
-          snapToInterval={140}
-          snapToAlignment="start"
-        >
+        <View style={styles.dailySummaryGrid}>
           {items.map((item) => (
             <TouchableOpacity
               key={item.id}
@@ -310,24 +308,20 @@ const DailySummaryWidget: React.FC<{
                 end={{ x: 1, y: 1 }}
                 style={styles.dailySummaryGradient}
               >
-                <View style={styles.dailySummaryIconWrap}>
-                  <Ionicons name={item.icon as any} size={20} color="#fff" />
-                </View>
+                <Ionicons name={item.icon as any} size={18} color="#fff" style={{ opacity: 0.9 }} />
                 <Text style={styles.dailySummaryValue}>{item.value}</Text>
                 <Text style={styles.dailySummaryLabel}>{item.label}</Text>
-                <Text style={styles.dailySummarySublabel} numberOfLines={1}>{item.sublabel}</Text>
               </LinearGradient>
             </TouchableOpacity>
           ))}
-        </ScrollView>
+        </View>
       </View>
     </Animated.View>
   );
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 2: SMART CONTEXT CARD
-   Context-aware recommendations based on time of day
+   NEW FEATURE 2: SMART CONTEXT CARD — Redesigned as Compact Pill
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const SmartContextCard: React.FC<{
@@ -397,25 +391,25 @@ const SmartContextCard: React.FC<{
     <Animated.View entering={FadeInUp.delay(100).springify()}>
       <TouchableOpacity onPress={onPress} activeOpacity={0.9}>
         <LinearGradient
-          colors={isDark ? ['rgba(45,45,60,0.8)', 'rgba(35,35,50,0.6)'] : context.bgGradient}
+          colors={isDark ? ['rgba(45,45,60,0.7)', 'rgba(35,35,50,0.5)'] : context.bgGradient}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={[styles.contextCard, { borderColor: isDark ? 'rgba(255,255,255,0.08)' : `${context.color}30` }]}
+          style={[styles.contextCard, { borderColor: isDark ? 'rgba(255,255,255,0.06)' : `${context.color}25` }]}
         >
           <View style={styles.contextLeft}>
-            <View style={[styles.contextIconBg, { backgroundColor: `${context.color}20` }]}>
-              <Ionicons name={context.icon as any} size={24} color={context.color} />
+            <View style={[styles.contextIconBg, { backgroundColor: `${context.color}18` }]}>
+              <Ionicons name={context.icon as any} size={22} color={context.color} />
             </View>
             <View style={styles.contextText}>
               <Text style={[styles.contextTitle, { color: theme.text }]}>{context.title}</Text>
-              <Text style={[styles.contextMessage, { color: theme.textSecondary }]} numberOfLines={2}>
+              <Text style={[styles.contextMessage, { color: theme.textSecondary }]} numberOfLines={1}>
                 {context.message}
               </Text>
             </View>
           </View>
-          <View style={[styles.contextActionBadge, { backgroundColor: `${context.color}15` }]}>
+          <View style={[styles.contextActionBadge, { backgroundColor: `${context.color}12` }]}>
             <Text style={[styles.contextActionText, { color: context.color }]}>{context.actionLabel}</Text>
-            <Ionicons name="arrow-forward" size={14} color={context.color} />
+            <Ionicons name="arrow-forward" size={12} color={context.color} />
           </View>
         </LinearGradient>
       </TouchableOpacity>
@@ -424,8 +418,7 @@ const SmartContextCard: React.FC<{
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 3: NEXT BEST ACTION - AI-POWERED SUGGESTION
-   Predicts what the parent should do next based on patterns
+   NEW FEATURE 3: NEXT BEST ACTION — Redesigned as Floating Action Banner
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const NextBestAction: React.FC<{
@@ -477,7 +470,7 @@ const NextBestAction: React.FC<{
       return {
         id: 'sleep-now',
         title: 'Sleep Window Opening',
-        subtitle: `Awake for ${hoursSinceSleep}h - watch for cues`,
+        subtitle: `Awake for ${hoursSinceSleep}h — watch for cues`,
         icon: 'moon-outline',
         color: '#11998e',
         gradient: ['#11998e', '#38ef7d'] as [string, string],
@@ -517,14 +510,14 @@ const NextBestAction: React.FC<{
         >
           <View style={styles.nextActionContent}>
             <View style={styles.nextActionIconWrap}>
-              <Ionicons name={suggestion.icon as any} size={28} color="#fff" />
+              <Ionicons name={suggestion.icon as any} size={24} color="#fff" />
             </View>
             <View style={styles.nextActionText}>
               <Text style={styles.nextActionTitle}>{suggestion.title}</Text>
               <Text style={styles.nextActionSubtitle}>{suggestion.subtitle}</Text>
             </View>
             <View style={styles.nextActionArrow}>
-              <Ionicons name="chevron-forward" size={24} color="rgba(255,255,255,0.8)" />
+              <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.8)" />
             </View>
           </View>
 
@@ -543,8 +536,7 @@ const NextBestAction: React.FC<{
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 4: WEEKLY PATTERN INSIGHT
-   Shows weekly trends with mini visualizations
+   NEW FEATURE 4: WEEKLY PATTERN INSIGHT — Redesigned as Clean Bar Chart
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const WeeklyPatternInsight: React.FC<{
@@ -580,13 +572,17 @@ const WeeklyPatternInsight: React.FC<{
 
   return (
     <Animated.View entering={FadeInUp.delay(200).springify()}>
-      <View style={styles.patternContainer}>
+      <View style={[styles.patternContainer, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.6)', borderColor: theme.border }]}>
         <View style={styles.patternHeader}>
           <View style={styles.patternTitleRow}>
-            <Ionicons name="analytics-outline" size={18} color={theme.primary} />
-            <Text style={[styles.patternTitle, { color: theme.text }]}>Weekly Pattern</Text>
+            <View style={[styles.patternIconWrap, { backgroundColor: `${theme.primary}12` }]}>
+              <Ionicons name="analytics-outline" size={16} color={theme.primary} />
+            </View>
+            <View>
+              <Text style={[styles.patternTitle, { color: theme.text }]}>Weekly Pattern</Text>
+              <Text style={[styles.patternSubtitle, { color: theme.textMuted }]}>Activity over last 7 days</Text>
+            </View>
           </View>
-          <Text style={[styles.patternSubtitle, { color: theme.textMuted }]}>Last 7 days</Text>
         </View>
 
         <View style={styles.patternBars}>
@@ -597,7 +593,7 @@ const WeeklyPatternInsight: React.FC<{
             return (
               <View key={day.day} style={styles.patternDay}>
                 <View style={styles.patternBarContainer}>
-                  <View style={[styles.patternBar, { height: `${barHeight}%`, backgroundColor: isToday ? theme.primary : `${theme.primary}40` }]} />
+                  <View style={[styles.patternBar, { height: `${Math.max(barHeight, 8)}%`, backgroundColor: isToday ? theme.primary : `${theme.primary}35` }]} />
                 </View>
                 <Text style={[styles.patternDayLabel, { color: isToday ? theme.primary : theme.textMuted, fontWeight: isToday ? '700' : '500' }]}>
                   {day.day}
@@ -615,8 +611,7 @@ const WeeklyPatternInsight: React.FC<{
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 5: SMART CATEGORY TABS FOR QUICK ACTIONS
-   Organized by category with smooth horizontal tabs
+   NEW FEATURE 5: CATEGORIZED QUICK ACTIONS — Redesigned as Smooth Grid
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const CATEGORY_TABS = [
@@ -642,14 +637,8 @@ const CategorizedQuickActions: React.FC<{
     return actions.filter(a => a.category === activeCategory);
   }, [actions, activeCategory]);
 
-  const getGridColumns = () => {
-    if (width >= 768) return 4;
-    if (width >= 414) return 4;
-    return 4;
-  };
-
-  const columns = getGridColumns();
-  const gap = 12;
+  const columns = width >= 768 ? 4 : 4;
+  const gap = 10;
   const margin = 20;
   const availableWidth = width - (margin * 2);
   const itemWidth = (availableWidth - (columns - 1) * gap) / columns;
@@ -676,12 +665,12 @@ const CategorizedQuickActions: React.FC<{
               style={[
                 styles.categoryTab,
                 isActive && { backgroundColor: theme.primary },
-                !isActive && { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
+                !isActive && { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' },
               ]}
             >
               <Ionicons 
                 name={tab.icon as any} 
-                size={14} 
+                size={13} 
                 color={isActive ? '#fff' : theme.textSecondary} 
               />
               <Text style={[
@@ -693,7 +682,7 @@ const CategorizedQuickActions: React.FC<{
               </Text>
               <View style={[
                 styles.categoryTabBadge,
-                isActive ? { backgroundColor: 'rgba(255,255,255,0.3)' } : { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)' },
+                isActive ? { backgroundColor: 'rgba(255,255,255,0.25)' } : { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' },
               ]}>
                 <Text style={[
                   styles.categoryTabBadgeText,
@@ -712,7 +701,7 @@ const CategorizedQuickActions: React.FC<{
         {filteredActions.map((action, index) => (
           <Animated.View
             key={action.id}
-            entering={FadeInUp.delay(index * 40).springify()}
+            entering={FadeInUp.delay(index * 30).springify()}
             layout={Layout.springify()}
             style={[styles.categorizedGridItem, { width: itemWidth }]}
           >
@@ -727,7 +716,7 @@ const CategorizedQuickActions: React.FC<{
                 end={{ x: 1, y: 1 }}
                 style={styles.categorizedGridGradient}
               >
-                <Ionicons name={action.iconName as any} size={24} color="#fff" />
+                <Ionicons name={action.iconName as any} size={22} color="#fff" />
               </LinearGradient>
               <Text style={[styles.categorizedGridLabel, { color: theme.text }]}>{action.label}</Text>
             </TouchableOpacity>
@@ -739,157 +728,166 @@ const CategorizedQuickActions: React.FC<{
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 6: EMERGENCY QUICK ACCESS BAR
-   Always-visible safety shortcuts
+   NEW FEATURE 6: VACCINATION REMINDERS SECTION
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const EmergencyQuickBar: React.FC<{
+const VaccinationReminders: React.FC<{
+  reminders: VaccinationReminder[];
   isDark: boolean;
   theme: any;
-  onSafetyPress: () => void;
-  onSOSPress: () => void;
-  onCallPediatrician: () => void;
-}> = React.memo(({ isDark, theme, onSafetyPress, onSOSPress, onCallPediatrician }) => {
-  const [expanded, setExpanded] = useState(false);
+  onPress: () => void;
+}> = React.memo(({ reminders, isDark, theme, onPress }) => {
+  const activeReminders = reminders.filter(r => r.status !== 'completed').slice(0, 3);
+  if (activeReminders.length === 0) return null;
 
   return (
-    <Animated.View entering={FadeInUp.delay(300).springify()}>
-      <View style={[styles.emergencyBar, { backgroundColor: isDark ? 'rgba(220,38,38,0.15)' : 'rgba(220,38,38,0.08)' }]}>
-        <TouchableOpacity
-          onPress={() => setExpanded(!expanded)}
-          style={styles.emergencyBarHeader}
-        >
-          <View style={styles.emergencyBarLeft}>
-            <View style={styles.emergencyIconBg}>
-              <Ionicons name="shield-half-outline" size={18} color="#dc2626" />
+    <Animated.View entering={FadeInUp.delay(120).springify()}>
+      <View style={[styles.vaccineContainer, { borderColor: theme.border }]}>
+        <View style={styles.vaccineHeader}>
+          <View style={styles.vaccineTitleRow}>
+            <View style={[styles.vaccineIconWrap, { backgroundColor: '#e11d4815' }]}>
+              <Ionicons name="medical-outline" size={16} color="#e11d48" />
             </View>
-            <Text style={[styles.emergencyBarTitle, { color: '#dc2626' }]}>Safety Hub</Text>
+            <View>
+              <Text style={[styles.vaccineTitle, { color: theme.text }]}>Vaccination Schedule</Text>
+              <Text style={[styles.vaccineSubtitle, { color: theme.textMuted }]}>
+                {activeReminders.length} upcoming
+              </Text>
+            </View>
           </View>
-          <Ionicons 
-            name={expanded ? "chevron-up-outline" : "chevron-down-outline"} 
-            size={18} 
-            color="#dc2626" 
-          />
-        </TouchableOpacity>
+          <TouchableOpacity onPress={onPress} style={[styles.vaccineSeeAll, { backgroundColor: `${theme.primary}10` }]}>
+            <Text style={[styles.vaccineSeeAllText, { color: theme.primary }]}>View All</Text>
+            <Ionicons name="chevron-forward" size={12} color={theme.primary} />
+          </TouchableOpacity>
+        </View>
 
-        {expanded && (
-          <View style={styles.emergencyActions}>
-            <TouchableOpacity onPress={onSafetyPress} style={styles.emergencyAction}>
-              <LinearGradient colors={['#dc2626', '#ef4444']} style={styles.emergencyActionGradient}>
-                <Ionicons name="shield-checkmark-outline" size={20} color="#fff" />
-                <Text style={styles.emergencyActionText}>Safety Tips</Text>
-              </LinearGradient>
-            </TouchableOpacity>
+        <View style={styles.vaccineList}>
+          {activeReminders.map((reminder, i) => {
+            const isOverdue = reminder.status === 'overdue';
+            const daysUntil = differenceInDays(reminder.dueDate, new Date());
 
-            <TouchableOpacity onPress={onSOSPress} style={styles.emergencyAction}>
-              <LinearGradient colors={['#ef4444', '#f87171']} style={styles.emergencyActionGradient}>
-                <Ionicons name="alert-circle-outline" size={20} color="#fff" />
-                <Text style={styles.emergencyActionText}>Emergency Info</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-
-            <TouchableOpacity onPress={onCallPediatrician} style={styles.emergencyAction}>
-              <LinearGradient colors={['#f97316', '#fb923c']} style={styles.emergencyActionGradient}>
-                <Ionicons name="call-outline" size={20} color="#fff" />
-                <Text style={styles.emergencyActionText}>Call Doctor</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
-        )}
+            return (
+              <View key={reminder.id} style={[styles.vaccineRow, i < activeReminders.length - 1 && { borderBottomWidth: 1, borderBottomColor: theme.border }]}>
+                <View style={[styles.vaccineDot, { backgroundColor: isOverdue ? '#ef4444' : '#f59e0b' }]} />
+                <View style={styles.vaccineInfo}>
+                  <Text style={[styles.vaccineName, { color: theme.text }]} numberOfLines={1}>
+                    {reminder.vaccineName}
+                  </Text>
+                  <Text style={[styles.vaccineDose, { color: theme.textMuted }]}>
+                    Dose {reminder.doseNumber}
+                  </Text>
+                </View>
+                <View style={[styles.vaccineBadge, { backgroundColor: isOverdue ? '#ef444415' : '#f59e0b15' }]}>
+                  <Text style={[styles.vaccineBadgeText, { color: isOverdue ? '#ef4444' : '#f59e0b' }]}>
+                    {isOverdue ? 'Overdue' : daysUntil <= 0 ? 'Today' : `${daysUntil}d`}
+                  </Text>
+                </View>
+              </View>
+            );
+          })}
+        </View>
       </View>
     </Animated.View>
   );
 });
 
-
 /* ═══════════════════════════════════════════════════════════════════════════
-   REFINED GLASS CARD
+   NEW FEATURE 7: AI INSIGHTS CARD — GrowthDashboard Style Intelligence
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const GlassCard: React.FC<{ children: React.ReactNode; style?: any; onPress?: () => void; intensity?: number }> = 
-  React.memo(({ children, style, onPress, intensity = 80 }) => {
-    const colorScheme = useColorScheme();
-    const isDark = colorScheme === 'dark';
-    const Wrapper = onPress ? TouchableOpacity : View;
-
-    return (
-      <Wrapper onPress={onPress} activeOpacity={0.8} style={[styles.glassCard, style]}>
-        <BlurView intensity={intensity} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
-        <LinearGradient 
-          colors={isDark ? ['rgba(45,45,60,0.8)', 'rgba(35,35,50,0.6)'] : ['rgba(255,255,255,0.95)', 'rgba(250,250,255,0.75)']} 
-          style={StyleSheet.absoluteFill} 
-          start={{ x: 0, y: 0 }} 
-          end={{ x: 1, y: 1 }} 
-        />
-        <View style={[styles.glassBorder, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.5)' }]} />
-        <View style={styles.glassContent}>{children}</View>
-      </Wrapper>
-    );
-  });
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   REFINED FEATURE CARDS - Horizontal scroll with rich info
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const FeatureCardsRow: React.FC<{
-  items: FeatureCard[];
-  onPress: (item: FeatureCard) => void;
+const AIInsightsCard: React.FC<{
   isDark: boolean;
   theme: any;
-}> = React.memo(({ items, onPress, isDark, theme }) => {
+  currentBaby: any;
+  activities: any[];
+  onPress: () => void;
+}> = React.memo(({ isDark, theme, currentBaby, activities, onPress }) => {
+  const insights = useMemo(() => {
+    if (!currentBaby) return [];
+
+    const ageMonths = currentBaby.birthDate ? differenceInMonths(new Date(), new Date(currentBaby.birthDate)) : 0;
+    const todayCount = activities.filter((a: any) => isSameDay(new Date(a.timestamp), new Date())).length;
+    const avgDaily = activities.length > 0 ? Math.round(activities.length / 7) : 0;
+
+    const items = [];
+
+    if (todayCount > avgDaily * 1.5) {
+      items.push({
+        id: 'active-day',
+        icon: 'flame-outline',
+        color: '#f59e0b',
+        title: 'Super Active Day',
+        message: `${todayCount} activities logged today — above average!`,
+      });
+    }
+
+    if (ageMonths < 3) {
+      items.push({
+        id: 'newborn-tip',
+        icon: 'bulb-outline',
+        color: '#3b82f6',
+        title: 'Newborn Tip',
+        message: 'Feed every 2-3 hours. Watch for hunger cues like rooting.',
+      });
+    } else if (ageMonths >= 6 && ageMonths < 9) {
+      items.push({
+        id: 'solids-tip',
+        icon: 'restaurant-outline',
+        color: '#10b981',
+        title: 'Starting Solids?',
+        message: 'Introduce single-ingredient purees. Watch for allergies.',
+      });
+    }
+
+    const sleepCount = activities.filter((a: any) => a.type === 'sleep' && isSameDay(new Date(a.timestamp), new Date())).length;
+    if (sleepCount === 0 && new Date().getHours() > 14) {
+      items.push({
+        id: 'nap-reminder',
+        icon: 'moon-outline',
+        color: '#6366f1',
+        title: 'Nap Check',
+        message: 'No naps logged today. Most babies need 2-3 naps.',
+      });
+    }
+
+    return items.slice(0, 2);
+  }, [currentBaby, activities]);
+
+  if (insights.length === 0) return null;
+
   return (
-    <Animated.View entering={FadeInUp.delay(150).springify()}>
-      <ScrollView 
-        horizontal 
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.featureCardsScroll}
-        decelerationRate="fast"
-      >
-        {items.map((item) => (
-          <TouchableOpacity
-            key={item.id}
-            onPress={() => onPress(item)}
-            activeOpacity={0.85}
-            style={styles.featureCardTouchable}
-          >
-            <LinearGradient
-              colors={[`${item.color}12`, `${item.color}04`]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={[styles.featureCard, { borderColor: `${item.color}25` }]}
-            >
-              <View style={styles.featureCardTop}>
-                <View style={[styles.featureCardIcon, { backgroundColor: item.color }]}>
-                  <Ionicons name={item.icon as any} size={20} color="#fff" />
-                </View>
-                {item.badge && (
-                  <View style={[styles.featureCardBadge, { backgroundColor: item.badgeColor || item.color }]}>
-                    <Text style={styles.featureCardBadgeText}>{item.badge}</Text>
-                  </View>
-                )}
-              </View>
-
-              <Text style={[styles.featureCardLabel, { color: theme.text }]} numberOfLines={1}>
-                {item.label}
-              </Text>
-              <Text style={[styles.featureCardDesc, { color: theme.textSecondary }]} numberOfLines={2}>
-                {item.description}
-              </Text>
-
-              <View style={styles.featureCardArrow}>
-                <Text style={[styles.featureCardArrowText, { color: item.color }]}>Open</Text>
-                <Ionicons name="arrow-forward" size={14} color={item.color} />
-              </View>
-            </LinearGradient>
+    <Animated.View entering={FadeInUp.delay(140).springify()}>
+      <View style={[styles.aiInsightsContainer, { borderColor: theme.border }]}>
+        <View style={styles.aiInsightsHeader}>
+          <View style={styles.aiInsightsTitleRow}>
+            <View style={[styles.aiInsightsIconWrap, { backgroundColor: `${theme.primary}12` }]}>
+              <Ionicons name="sparkles" size={16} color={theme.primary} />
+            </View>
+            <Text style={[styles.aiInsightsTitle, { color: theme.text }]}>AI Insights</Text>
+          </View>
+          <TouchableOpacity onPress={onPress}>
+            <Text style={[styles.aiInsightsSeeAll, { color: theme.primary }]}>See All</Text>
           </TouchableOpacity>
+        </View>
+
+        {insights.map((insight) => (
+          <View key={insight.id} style={[styles.aiInsightRow, { backgroundColor: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)' }]}>
+            <View style={[styles.aiInsightIconBg, { backgroundColor: `${insight.color}12` }]}>
+              <Ionicons name={insight.icon as any} size={18} color={insight.color} />
+            </View>
+            <View style={styles.aiInsightContent}>
+              <Text style={[styles.aiInsightTitle, { color: theme.text }]}>{insight.title}</Text>
+              <Text style={[styles.aiInsightMessage, { color: theme.textSecondary }]} numberOfLines={2}>{insight.message}</Text>
+            </View>
+          </View>
         ))}
-      </ScrollView>
+      </View>
     </Animated.View>
   );
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   REFINED SMART NOTIFICATION PANEL
+   NEW FEATURE 8: SMART NOTIFICATIONS — Redesigned as Clean List
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const SmartNotificationPanel: React.FC<{
@@ -922,7 +920,9 @@ const SmartNotificationPanel: React.FC<{
       <View style={styles.notificationPanel}>
         <View style={styles.notificationPanelHeader}>
           <View style={styles.notificationPanelTitleRow}>
-            <Ionicons name="notifications-outline" size={18} color={theme.primary} />
+            <View style={[styles.notificationPanelIconWrap, { backgroundColor: `${theme.primary}12` }]}>
+              <Ionicons name="notifications-outline" size={16} color={theme.primary} />
+            </View>
             <Text style={[styles.notificationPanelTitle, { color: theme.text }]}>Smart Alerts</Text>
             {urgentCount > 0 && (
               <View style={styles.urgentBadge}>
@@ -931,34 +931,37 @@ const SmartNotificationPanel: React.FC<{
             )}
           </View>
           {notifications.filter(n => !n.dismissed).length > 2 && (
-            <TouchableOpacity onPress={() => setExpanded(!expanded)}>
+            <TouchableOpacity onPress={() => setExpanded(!expanded)} style={styles.expandBtn}>
               <Text style={[styles.expandText, { color: theme.primary }]}>
-                {expanded ? 'Show Less' : `+${notifications.filter(n => !n.dismissed).length - 2} more`}
+                {expanded ? 'Show Less' : `+${notifications.filter(n => !n.dismissed).length - 2}`}
               </Text>
             </TouchableOpacity>
           )}
         </View>
 
         {visibleNotifs.map((notif, index) => (
-          <Animated.View key={notif.id} entering={FadeInUp.delay(index * 60)}>
+          <Animated.View key={notif.id} entering={FadeInUp.delay(index * 40)}>
             <TouchableOpacity
               style={[
                 styles.smartNotificationCard,
                 {
-                  backgroundColor: notif.bgColor + (isDark ? '18' : '10'),
+                  backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.7)',
                   borderLeftColor: notif.iconColor,
+                  borderLeftWidth: 3,
+                  borderColor: theme.border,
+                  borderWidth: 1,
                   borderLeftWidth: 3,
                 },
               ]}
               onPress={() => onAction(notif)}
               activeOpacity={0.8}
             >
-              <View style={[styles.smartNotifIcon, { backgroundColor: notif.iconColor + '15' }]}>
-                <Ionicons name={getPriorityIcon(notif.priority) as any} size={18} color={notif.iconColor} />
+              <View style={[styles.smartNotifIcon, { backgroundColor: `${notif.iconColor}12` }]}>
+                <Ionicons name={getPriorityIcon(notif.priority) as any} size={16} color={notif.iconColor} />
               </View>
               <View style={styles.smartNotifContent}>
-                <Text style={[styles.smartNotifTitle, { color: theme.text }]}>{notif.title}</Text>
-                <Text style={[styles.smartNotifMessage, { color: theme.textSecondary }]} numberOfLines={2}>
+                <Text style={[styles.smartNotifTitle, { color: theme.text }]} numberOfLines={1}>{notif.title}</Text>
+                <Text style={[styles.smartNotifMessage, { color: theme.textSecondary }]} numberOfLines={1}>
                   {notif.message}
                 </Text>
                 <View style={styles.smartNotifMeta}>
@@ -966,7 +969,7 @@ const SmartNotificationPanel: React.FC<{
                     {formatDistanceToNow(notif.timestamp, { addSuffix: true })}
                   </Text>
                   {notif.actionLabel && (
-                    <View style={[styles.smartNotifActionBadge, { backgroundColor: notif.iconColor + '12' }]}>
+                    <View style={[styles.smartNotifActionBadge, { backgroundColor: `${notif.iconColor}10` }]}>
                       <Text style={[styles.smartNotifActionText, { color: notif.iconColor }]}>{notif.actionLabel}</Text>
                     </View>
                   )}
@@ -977,7 +980,7 @@ const SmartNotificationPanel: React.FC<{
                 onPress={() => onDismiss(notif.id)}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
-                <Ionicons name="close-outline" size={18} color={theme.textMuted} />
+                <Ionicons name="close-outline" size={16} color={theme.textMuted} />
               </TouchableOpacity>
             </TouchableOpacity>
           </Animated.View>
@@ -988,7 +991,93 @@ const SmartNotificationPanel: React.FC<{
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   REFINED RECENT ACTIVITY LIST
+   REFINED GLASS CARD — GrowthDashboard Style
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const GlassCard: React.FC<{ children: React.ReactNode; style?: any; onPress?: () => void; intensity?: number }> = 
+  React.memo(({ children, style, onPress, intensity = 80 }) => {
+    const colorScheme = useColorScheme();
+    const isDark = colorScheme === 'dark';
+    const Wrapper = onPress ? TouchableOpacity : View;
+
+    return (
+      <Wrapper onPress={onPress} activeOpacity={0.8} style={[styles.glassCard, style]}>
+        <BlurView intensity={intensity} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
+        <LinearGradient 
+          colors={isDark ? ['rgba(45,45,60,0.7)', 'rgba(35,35,50,0.5)'] : ['rgba(255,255,255,0.92)', 'rgba(250,250,255,0.72)']} 
+          style={StyleSheet.absoluteFill} 
+          start={{ x: 0, y: 0 }} 
+          end={{ x: 1, y: 1 }} 
+        />
+        <View style={[styles.glassBorder, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.5)' }]} />
+        <View style={styles.glassContent}>{children}</View>
+      </Wrapper>
+    );
+  });
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   REFINED FEATURE CARDS — Horizontal Scroll, Clean
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const FeatureCardsRow: React.FC<{
+  items: FeatureCard[];
+  onPress: (item: FeatureCard) => void;
+  isDark: boolean;
+  theme: any;
+}> = React.memo(({ items, onPress, isDark, theme }) => {
+  return (
+    <Animated.View entering={FadeInUp.delay(150).springify()}>
+      <ScrollView 
+        horizontal 
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.featureCardsScroll}
+        decelerationRate="fast"
+      >
+        {items.map((item) => (
+          <TouchableOpacity
+            key={item.id}
+            onPress={() => onPress(item)}
+            activeOpacity={0.85}
+            style={styles.featureCardTouchable}
+          >
+            <LinearGradient
+              colors={[`${item.color}08`, `${item.color}02`]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={[styles.featureCard, { borderColor: `${item.color}18`, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.7)' }]}
+            >
+              <View style={styles.featureCardTop}>
+                <View style={[styles.featureCardIcon, { backgroundColor: item.color }]}>
+                  <Ionicons name={item.icon as any} size={18} color="#fff" />
+                </View>
+                {item.badge && (
+                  <View style={[styles.featureCardBadge, { backgroundColor: item.badgeColor || item.color }]}>
+                    <Text style={styles.featureCardBadgeText}>{item.badge}</Text>
+                  </View>
+                )}
+              </View>
+
+              <Text style={[styles.featureCardLabel, { color: theme.text }]} numberOfLines={1}>
+                {item.label}
+              </Text>
+              <Text style={[styles.featureCardDesc, { color: theme.textSecondary }]} numberOfLines={2}>
+                {item.description}
+              </Text>
+
+              <View style={styles.featureCardArrow}>
+                <Text style={[styles.featureCardArrowText, { color: item.color }]}>Open</Text>
+                <Ionicons name="arrow-forward" size={12} color={item.color} />
+              </View>
+            </LinearGradient>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    </Animated.View>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   REFINED RECENT ACTIVITY LIST — Clean, Compact
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const RecentActivityList: React.FC<{
@@ -1043,7 +1132,7 @@ const RecentActivityList: React.FC<{
     return (
       <GlassCard style={styles.emptyStateCard} intensity={60}>
         <View style={styles.emptyStateIcon}>
-          <Ionicons name="document-text-outline" size={32} color={theme.primary} />
+          <Ionicons name="document-text-outline" size={28} color={theme.primary} />
         </View>
         <Text style={[styles.emptyStateTitle, { color: theme.text }]}>No activities yet</Text>
         <Text style={[styles.emptyStateText, { color: theme.textSecondary }]}>
@@ -1061,15 +1150,15 @@ const RecentActivityList: React.FC<{
         return (
           <Animated.View 
             key={item.id || `activity-${index}`} 
-            entering={FadeInUp.delay(index * 60).springify()}
+            entering={FadeInUp.delay(index * 40).springify()}
           >
             <TouchableOpacity onPress={() => onActivityPress(item)} activeOpacity={0.8}>
-              <GlassCard style={styles.activityItem} intensity={60}>
-                <View style={[styles.activityIcon, { backgroundColor: `${iconColor}15` }]}>
-                  <Ionicons name={iconName as any} size={20} color={iconColor} />
+              <View style={[styles.activityItem, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.6)', borderColor: theme.border }]}>
+                <View style={[styles.activityIcon, { backgroundColor: `${iconColor}12` }]}>
+                  <Ionicons name={iconName as any} size={18} color={iconColor} />
                 </View>
                 <View style={styles.activityContent}>
-                  <Text style={[styles.activityTitle, { color: theme.text }]}>
+                  <Text style={[styles.activityTitle, { color: theme.text }]} numberOfLines={1}>
                     {item.title || 'Activity'}
                   </Text>
                   <Text style={[styles.activityTime, { color: theme.textMuted }]}>
@@ -1081,10 +1170,10 @@ const RecentActivityList: React.FC<{
                     </Text>
                   )}
                 </View>
-                <View style={[styles.activityArrow, { backgroundColor: `${iconColor}10` }]}>
-                  <Ionicons name="chevron-forward" size={16} color={iconColor} />
+                <View style={[styles.activityArrow, { backgroundColor: `${iconColor}08` }]}>
+                  <Ionicons name="chevron-forward" size={14} color={iconColor} />
                 </View>
-              </GlassCard>
+              </View>
             </TouchableOpacity>
           </Animated.View>
         );
@@ -1093,22 +1182,22 @@ const RecentActivityList: React.FC<{
       {displayCount < activities.length && (
         <TouchableOpacity style={styles.loadMoreButton} onPress={() => setDisplayCount(prev => prev + 5)}>
           <Text style={[styles.loadMoreText, { color: theme.primary }]}>
-            Load More ({activities.length - displayCount} remaining)
+            Load More ({activities.length - displayCount})
           </Text>
-          <Ionicons name="chevron-down" size={16} color={theme.primary} />
+          <Ionicons name="chevron-down" size={14} color={theme.primary} />
         </TouchableOpacity>
       )}
 
       <TouchableOpacity style={styles.viewAllButton} onPress={onViewAll}>
         <Text style={[styles.viewAllText, { color: theme.primary }]}>View All Activity</Text>
-        <Ionicons name="arrow-forward" size={16} color={theme.primary} />
+        <Ionicons name="arrow-forward" size={14} color={theme.primary} />
       </TouchableOpacity>
     </View>
   );
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   REFINED SOUND MIXER SECTION
+   REFINED SOUND MIXER SECTION — Compact, Embedded
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const SoundMixerSection: React.FC<{ onPress: () => void; isDark: boolean; theme: any }> = 
@@ -1124,15 +1213,15 @@ const SoundMixerSection: React.FC<{ onPress: () => void; isDark: boolean; theme:
     return (
       <TouchableOpacity onPress={onPress} activeOpacity={0.9}>
         <LinearGradient 
-          colors={isDark ? ['#1a1a2e', '#16213e', '#0f3460'] : ['#f0f4f8', '#e2e8f0', '#dbeafe']} 
+          colors={isDark ? ['rgba(30,30,50,0.6)', 'rgba(25,25,45,0.4)'] : ['#f0f4f8', '#e8ecf1']} 
           start={{ x: 0, y: 0 }} 
           end={{ x: 1, y: 1 }} 
-          style={styles.soundMixerContainer}
+          style={[styles.soundMixerContainer, { borderColor: theme.border }]}
         >
           <View style={styles.soundMixerHeader}>
             <View style={styles.soundMixerTitle}>
-              <View style={[styles.soundMixerIconBg, { backgroundColor: '#1DB95420' }]}>
-                <Ionicons name="musical-notes-outline" size={20} color="#1DB954" />
+              <View style={[styles.soundMixerIconBg, { backgroundColor: '#1DB95418' }]}>
+                <Ionicons name="musical-notes-outline" size={18} color="#1DB954" />
               </View>
               <View>
                 <Text style={[styles.soundMixerTitleText, { color: theme.text }]}>Sound Mixer</Text>
@@ -1149,7 +1238,7 @@ const SoundMixerSection: React.FC<{ onPress: () => void; isDark: boolean; theme:
                 else togglePlayback(); 
               }}
             >
-              <Ionicons name={isPlaying ? "pause" : "play"} size={18} color="#fff" />
+              <Ionicons name={isPlaying ? "pause" : "play"} size={16} color="#fff" />
             </TouchableOpacity>
           </View>
 
@@ -1167,7 +1256,7 @@ const SoundMixerSection: React.FC<{ onPress: () => void; isDark: boolean; theme:
                 <View style={[styles.trackImage, { backgroundColor: isDark ? '#1e1e3f' : '#e2e8f0' }]}>
                   <LinearGradient colors={['transparent', 'rgba(0,0,0,0.6)']} style={styles.trackOverlay}>
                     <View style={[styles.trackPlayButton, currentTrack?.id === item.id && isPlaying && styles.trackPlayButtonActive]}>
-                      <Ionicons name={currentTrack?.id === item.id && isPlaying ? "pause" : "play"} size={14} color="#fff" />
+                      <Ionicons name={currentTrack?.id === item.id && isPlaying ? "pause" : "play"} size={12} color="#fff" />
                     </View>
                   </LinearGradient>
                   {currentTrack?.id === item.id && isPlaying && (
@@ -1187,7 +1276,7 @@ const SoundMixerSection: React.FC<{ onPress: () => void; isDark: boolean; theme:
   });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   REFINED STICKY HEADER
+   REFINED STICKY HEADER — GrowthDashboard Style
    ═══════════════════════════════════════════════════════════════════════════ */
 
 interface StickyAppHeaderProps {
@@ -1232,14 +1321,14 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
 
   const headerPaddingTop = Platform.OS === 'ios' ? (compactSpacing ? 44 : 52) : (compactSpacing ? 28 : 36);
   const headerPaddingBottom = compactSpacing ? 8 : 12;
-  const iconSize = Math.round(22 * fontSizeMultiplier);
-  const titleSize = Math.round(20 * fontSizeMultiplier);
-  const badgeSize = Math.round(18 * fontSizeMultiplier);
-  const avatarSize = Math.round(40 * fontSizeMultiplier);
+  const iconSize = Math.round(20 * fontSizeMultiplier);
+  const titleSize = Math.round(18 * fontSizeMultiplier);
+  const badgeSize = Math.round(16 * fontSizeMultiplier);
+  const avatarSize = Math.round(36 * fontSizeMultiplier);
 
-  const headerBg = isDark ? (fullTheme?.glassBg || 'rgba(28,28,46,0.95)') : (fullTheme?.glassBg || 'rgba(255,255,255,0.95)');
-  const borderColor = isDark ? (fullTheme?.border || 'rgba(255,255,255,0.08)') : 'rgba(0,0,0,0.05)';
-  const textColor = isDark ? (fullTheme?.text || '#f0f0f5') : (fullTheme?.text || '#1a1a2e');
+  const headerBg = isDark ? (fullTheme?.glassBg || 'rgba(26,26,42,0.96)') : (fullTheme?.glassBg || 'rgba(255,255,255,0.96)');
+  const borderColor = isDark ? (fullTheme?.border || 'rgba(255,255,255,0.06)') : 'rgba(0,0,0,0.04)';
+  const textColor = isDark ? (fullTheme?.text || '#f0f0f7') : (fullTheme?.text || '#111827');
 
   return (
     <Animated.View
@@ -1257,18 +1346,18 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
     >
       <BlurView intensity={isDark ? 90 : 95} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
 
-      <View style={[styles.stickyHeaderContent, { height: compactSpacing ? 44 : 50 }]}>
+      <View style={[styles.stickyHeaderContent, { height: compactSpacing ? 40 : 48 }]}>
         {/* Left: Safety */}
         <View style={styles.stickyHeaderLeft}>
           <TouchableOpacity
-            style={[styles.safetyCornerBtn, { borderRadius: 12 }]}
+            style={[styles.safetyCornerBtn, { borderRadius: 10 }]}
             onPress={onSafetyCornerPress}
           >
             <LinearGradient
               colors={['#dc2626', '#ef4444']}
-              style={[styles.safetyCornerGradient, { width: 36, height: 36, borderRadius: 10 }]}
+              style={[styles.safetyCornerGradient, { width: 34, height: 34, borderRadius: 10 }]}
             >
-              <Ionicons name="shield-half-outline" size={18} color="#fff" />
+              <Ionicons name="shield-half-outline" size={16} color="#fff" />
             </LinearGradient>
           </TouchableOpacity>
         </View>
@@ -1276,7 +1365,7 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
         {/* Center: Title */}
         <View style={styles.stickyHeaderCenter}>
           <Text style={[styles.stickyHeaderTitle, { color: textColor, fontSize: titleSize }]}>LittleLoom</Text>
-          <View style={[styles.stickyHeaderUnderline, { backgroundColor: primaryColor, width: Math.round(32 * fontSizeMultiplier), height: Math.max(3, Math.round(4 * fontSizeMultiplier)), borderRadius: Math.max(1, Math.round(2 * fontSizeMultiplier)), marginTop: compactSpacing ? 2 : 4 }]} />
+          <View style={[styles.stickyHeaderUnderline, { backgroundColor: primaryColor, width: Math.round(28 * fontSizeMultiplier), height: Math.max(3, Math.round(3 * fontSizeMultiplier)), borderRadius: Math.max(1, Math.round(2 * fontSizeMultiplier)), marginTop: compactSpacing ? 2 : 3 }]} />
         </View>
 
         {/* Right: Actions */}
@@ -1326,7 +1415,7 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   SECTION HEADER COMPONENT
+   SECTION HEADER COMPONENT — Clean, Minimal
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const SectionHeader: React.FC<{
@@ -1339,7 +1428,7 @@ const SectionHeader: React.FC<{
 }> = React.memo(({ title, subtitle, action, actionLabel, icon, theme }) => (
   <View style={styles.sectionHeader}>
     <View style={styles.sectionHeaderLeft}>
-      {icon && <Ionicons name={icon as any} size={18} color={theme.primary} style={{ marginRight: 8 }} />}
+      {icon && <Ionicons name={icon as any} size={16} color={theme.primary} style={{ marginRight: 8 }} />}
       <View>
         <Text style={[styles.sectionHeaderTitle, { color: theme.text }]}>{title}</Text>
         {subtitle && <Text style={[styles.sectionHeaderSubtitle, { color: theme.textMuted }]}>{subtitle}</Text>}
@@ -1348,15 +1437,14 @@ const SectionHeader: React.FC<{
     {action && (
       <TouchableOpacity onPress={action} style={styles.sectionHeaderAction}>
         <Text style={[styles.sectionHeaderActionText, { color: theme.primary }]}>{actionLabel || 'See All'}</Text>
-        <Ionicons name="chevron-forward" size={14} color={theme.primary} />
+        <Ionicons name="chevron-forward" size={12} color={theme.primary} />
       </TouchableOpacity>
     )}
   </View>
 ));
 
-
 /* ═══════════════════════════════════════════════════════════════════════════
-   MAIN HOMESCREEN - REDESIGNED
+   MAIN HOMESCREEN — COMPLETELY REDESIGNED
    ═══════════════════════════════════════════════════════════════════════════ */
 
 export default function HomeScreen({ navigation }: HomeScreenProps) {
@@ -1675,13 +1763,32 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     [smartNotifications]
   );
 
+  // Vaccination reminders
+  const vaccinationReminders = useMemo((): VaccinationReminder[] => {
+    if (!currentBaby?.birthDate) return [];
+    const ageDays = differenceInDays(new Date(), new Date(currentBaby.birthDate));
+    const reminders: VaccinationReminder[] = [];
+
+    if (ageDays >= 42 && ageDays <= 60) {
+      reminders.push({ id: 'dtap-1', vaccineName: 'DTaP (1st dose)', dueDate: new Date(Date.now() + (60 - ageDays) * 86400000), status: ageDays > 60 ? 'overdue' : 'upcoming', doseNumber: 1 });
+    }
+    if (ageDays >= 60 && ageDays <= 90) {
+      reminders.push({ id: 'ipv-1', vaccineName: 'IPV (1st dose)', dueDate: new Date(Date.now() + (90 - ageDays) * 86400000), status: ageDays > 90 ? 'overdue' : 'upcoming', doseNumber: 1 });
+    }
+    if (ageDays >= 180 && ageDays <= 210) {
+      reminders.push({ id: 'dtap-2', vaccineName: 'DTaP (2nd dose)', dueDate: new Date(Date.now() + (210 - ageDays) * 86400000), status: ageDays > 210 ? 'overdue' : 'upcoming', doseNumber: 2 });
+    }
+
+    return reminders;
+  }, [currentBaby]);
+
   const bgColors = isDark
-    ? [theme.background, '#141420', '#1c1c2e']
-    : [theme.background, '#e8ecf1', '#dbeafe'];
+    ? [theme.background, '#0c0c18', '#12121e']
+    : [theme.background, '#eef0f5', '#e4e8f0'];
 
   const scrollTopPadding = Platform.OS === 'ios'
-    ? (settings.compactSpacing ? 120 : 140)
-    : (settings.compactSpacing ? 110 : 125);
+    ? (settings.compactSpacing ? 110 : 130)
+    : (settings.compactSpacing ? 100 : 115);
 
   if (authLoading) {
     return (
@@ -1748,47 +1855,47 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         scrollEventThrottle={16}
       >
         {/* ═══════════════════════════════════════════════════════════════════
-            GREETING & PARENT CARD
+            GREETING & PARENT CARD — Compact, Elegant
            ═══════════════════════════════════════════════════════════════════ */}
         <Animated.View entering={shouldReduceMotion ? undefined : FadeInDown.springify()}>
           <GlassCard style={[styles.parentCard, { borderRadius: borderRadiusValue, marginHorizontal: settings.compactSpacing ? 16 : 20 }]} intensity={90}>
-            <View style={[styles.parentHeader, { padding: settings.compactSpacing ? 16 : 20 }]}>
+            <View style={[styles.parentHeader, { padding: settings.compactSpacing ? 14 : 18 }]}>
               <SafeParentAvatar
                 avatar={userProfile?.avatar}
                 name={userProfile?.fullName || 'Parent'}
-                size={Math.round(60 * fontSizeMultiplier)}
+                size={Math.round(52 * fontSizeMultiplier)}
                 onPress={() => navigateToScreen('Profile')}
                 showEditBadge={true}
               />
               <View style={styles.parentInfo}>
-                <Text style={[styles.greetingText, { color: theme.textMuted, fontSize: Math.round(13 * fontSizeMultiplier) }]}>
+                <Text style={[styles.greetingText, { color: theme.textMuted, fontSize: Math.round(12 * fontSizeMultiplier) }]}>
                   {greeting}
                 </Text>
-                <Text style={[styles.parentName, { color: theme.text, fontSize: Math.round(20 * fontSizeMultiplier) }]}>
+                <Text style={[styles.parentName, { color: theme.text, fontSize: Math.round(18 * fontSizeMultiplier) }]}>
                   {userProfile?.fullName || 'Parent'}
                 </Text>
                 <View style={styles.parentMeta}>
                   <View style={[styles.verifiedBadge, { borderRadius: borderRadiusValue / 2 }]}>
-                    <Ionicons name="shield-checkmark-outline" size={Math.round(12 * fontSizeMultiplier)} color={accent} />
-                    <Text style={[styles.verifiedText, { color: accent, fontSize: Math.round(11 * fontSizeMultiplier) }]}>Verified</Text>
+                    <Ionicons name="shield-checkmark-outline" size={Math.round(11 * fontSizeMultiplier)} color={accent} />
+                    <Text style={[styles.verifiedText, { color: accent, fontSize: Math.round(10 * fontSizeMultiplier) }]}>Verified</Text>
                   </View>
-                  <Text style={[styles.timeText, { color: theme.textMuted, fontSize: Math.round(11 * fontSizeMultiplier) }]}>
+                  <Text style={[styles.timeText, { color: theme.textMuted, fontSize: Math.round(10 * fontSizeMultiplier) }]}>
                     {format(currentTime, 'EEEE, MMM d')}
                   </Text>
                 </View>
               </View>
               <View style={styles.parentQuickLinks}>
                 <TouchableOpacity 
-                  style={[styles.parentQuickLink, { backgroundColor: `${primary}15`, borderRadius: borderRadiusValue - 10 }]} 
+                  style={[styles.parentQuickLink, { backgroundColor: `${primary}12`, borderRadius: borderRadiusValue - 10 }]} 
                   onPress={() => navigateToScreen('Achievements')}
                 >
-                  <Ionicons name="ribbon-outline" size={Math.round(18 * fontSizeMultiplier)} color={primary} />
+                  <Ionicons name="ribbon-outline" size={Math.round(16 * fontSizeMultiplier)} color={primary} />
                 </TouchableOpacity>
                 <TouchableOpacity 
-                  style={[styles.parentQuickLink, { backgroundColor: `${secondary}15`, borderRadius: borderRadiusValue - 10 }]} 
+                  style={[styles.parentQuickLink, { backgroundColor: `${secondary}12`, borderRadius: borderRadiusValue - 10 }]} 
                   onPress={() => navigateToScreen('Connect')}
                 >
-                  <Ionicons name="sparkles-outline" size={Math.round(18 * fontSizeMultiplier)} color={secondary} />
+                  <Ionicons name="sparkles-outline" size={Math.round(16 * fontSizeMultiplier)} color={secondary} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -1796,67 +1903,67 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         </Animated.View>
 
         {/* ═══════════════════════════════════════════════════════════════════
-            BABY CARD
+            BABY CARD — Sleek, Modern
            ═══════════════════════════════════════════════════════════════════ */}
         {currentBaby ? (
-          <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(50).springify()}>
+          <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(40).springify()}>
             <GlassCard style={[styles.babyCard, { borderRadius: borderRadiusValue, marginHorizontal: settings.compactSpacing ? 16 : 20 }]} intensity={95}>
-              <View style={[styles.babyHeader, { paddingHorizontal: settings.compactSpacing ? 16 : 20, paddingTop: settings.compactSpacing ? 12 : 16 }]}>
+              <View style={[styles.babyHeader, { paddingHorizontal: settings.compactSpacing ? 14 : 18, paddingTop: settings.compactSpacing ? 10 : 14 }]}>
                 <TouchableOpacity style={styles.babySelector} onPress={() => navigateToScreen('SwitchBaby')}>
-                  <Text style={[styles.babySelectorLabel, { color: theme.textMuted, fontSize: Math.round(12 * fontSizeMultiplier) }]}>
+                  <Text style={[styles.babySelectorLabel, { color: theme.textMuted, fontSize: Math.round(11 * fontSizeMultiplier) }]}>
                     Current Baby
                   </Text>
-                  <Ionicons name="chevron-down-outline" size={Math.round(14 * fontSizeMultiplier)} color={primary} />
+                  <Ionicons name="chevron-down-outline" size={Math.round(13 * fontSizeMultiplier)} color={primary} />
                 </TouchableOpacity>
                 <TouchableOpacity 
-                  style={[styles.editButton, { borderRadius: borderRadiusValue / 2, backgroundColor: `${primary}10` }]} 
+                  style={[styles.editButton, { borderRadius: borderRadiusValue / 2, backgroundColor: `${primary}08` }]} 
                   onPress={() => navigateToScreen('EditProfile', { mode: 'baby', babyId: currentBaby.id })}
                 >
-                  <Ionicons name="create-outline" size={Math.round(18 * fontSizeMultiplier)} color={primary} />
+                  <Ionicons name="create-outline" size={Math.round(16 * fontSizeMultiplier)} color={primary} />
                 </TouchableOpacity>
               </View>
-              <View style={[styles.babyMainInfo, { padding: settings.compactSpacing ? 16 : 20 }]}>
+              <View style={[styles.babyMainInfo, { padding: settings.compactSpacing ? 14 : 18 }]}>
                 <SafeBabyAvatar
                   avatar={currentBaby.avatar}
                   gender={currentBaby.gender}
-                  size={Math.round(72 * fontSizeMultiplier)}
+                  size={Math.round(64 * fontSizeMultiplier)}
                   onPress={() => navigateToScreen('EditProfile', { mode: 'baby', babyId: currentBaby.id })}
                   showBadge={true}
                 />
                 <View style={styles.babyDetails}>
-                  <Text style={[styles.babyName, { color: theme.text, fontSize: Math.round(22 * fontSizeMultiplier) }]}>
+                  <Text style={[styles.babyName, { color: theme.text, fontSize: Math.round(20 * fontSizeMultiplier) }]}>
                     {currentBaby.name}
                   </Text>
-                  <Text style={[styles.babyAge, { color: theme.textSecondary, fontSize: Math.round(14 * fontSizeMultiplier) }]}>
+                  <Text style={[styles.babyAge, { color: theme.textSecondary, fontSize: Math.round(13 * fontSizeMultiplier) }]}>
                     {currentBaby.age}
                   </Text>
                   <View style={styles.babyStatus}>
-                    <Ionicons name="pulse-outline" size={Math.round(12 * fontSizeMultiplier)} color={accent} />
-                    <Text style={[styles.babyStatusText, { color: accent, fontSize: Math.round(13 * fontSizeMultiplier) }]}>
+                    <Ionicons name="pulse-outline" size={Math.round(11 * fontSizeMultiplier)} color={accent} />
+                    <Text style={[styles.babyStatusText, { color: accent, fontSize: Math.round(12 * fontSizeMultiplier) }]}>
                       Healthy & Active
                     </Text>
                   </View>
                 </View>
                 <LinearGradient colors={[secondary, '#fee140']} style={[styles.streakBadge, { borderRadius: borderRadiusValue }]}>
-                  <Ionicons name="flame-outline" size={Math.round(14 * fontSizeMultiplier)} color="#fff" />
-                  <Text style={[styles.streakText, { fontSize: Math.round(12 * fontSizeMultiplier) }]}>{getPottyStreak()}d</Text>
+                  <Ionicons name="flame-outline" size={Math.round(13 * fontSizeMultiplier)} color="#fff" />
+                  <Text style={[styles.streakText, { fontSize: Math.round(11 * fontSizeMultiplier) }]}>{getPottyStreak()}d</Text>
                 </LinearGradient>
               </View>
             </GlassCard>
           </Animated.View>
         ) : (
-          <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(50).springify()}>
+          <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(40).springify()}>
             <TouchableOpacity onPress={() => navigateToScreen('CreateBabyProfile')}>
               <GlassCard style={[styles.noBabyCard, { borderRadius: borderRadiusValue, marginHorizontal: settings.compactSpacing ? 16 : 20 }]} intensity={90}>
                 <LinearGradient colors={[primary, '#764ba2']} style={[styles.noBabyGradient, { borderRadius: borderRadiusValue }]}>
-                  <Text style={[styles.noBabyEmoji, { fontSize: Math.round(48 * fontSizeMultiplier) }]}>\ud83d\udc76</Text>
-                  <Text style={[styles.noBabyTitle, { fontSize: Math.round(20 * fontSizeMultiplier) }]}>Welcome to LittleLoom!</Text>
-                  <Text style={[styles.noBabyText, { fontSize: Math.round(14 * fontSizeMultiplier) }]}>
+                  <Text style={[styles.noBabyEmoji, { fontSize: Math.round(44 * fontSizeMultiplier) }]}>👶</Text>
+                  <Text style={[styles.noBabyTitle, { fontSize: Math.round(18 * fontSizeMultiplier) }]}>Welcome to LittleLoom!</Text>
+                  <Text style={[styles.noBabyText, { fontSize: Math.round(13 * fontSizeMultiplier) }]}>
                     Create your first baby profile to start tracking
                   </Text>
                   <View style={[styles.noBabyButton, { borderRadius: borderRadiusValue - 8 }]}>
-                    <Text style={[styles.noBabyButtonText, { fontSize: Math.round(15 * fontSizeMultiplier) }]}>Get Started</Text>
-                    <Ionicons name="arrow-forward-outline" size={Math.round(16 * fontSizeMultiplier)} color={primary} />
+                    <Text style={[styles.noBabyButtonText, { fontSize: Math.round(14 * fontSizeMultiplier) }]}>Get Started</Text>
+                    <Ionicons name="arrow-forward-outline" size={Math.round(15 * fontSizeMultiplier)} color={primary} />
                   </View>
                 </LinearGradient>
               </GlassCard>
@@ -1865,22 +1972,24 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         )}
 
         {/* ═══════════════════════════════════════════════════════════════════
-            NEW FEATURE 1: DAILY SUMMARY WIDGET
+            NEW FEATURE 1: DAILY SUMMARY WIDGET — Redesigned
            ═══════════════════════════════════════════════════════════════════ */}
         {currentBaby && (
-          <DailySummaryWidget
-            summary={dailySummary}
-            isDark={isDark}
-            theme={theme}
-            onPress={handleDailySummaryPress}
-          />
+          <View style={{ marginHorizontal: settings.compactSpacing ? 16 : 20, marginBottom: 14 }}>
+            <DailySummaryWidget
+              summary={dailySummary}
+              isDark={isDark}
+              theme={theme}
+              onPress={handleDailySummaryPress}
+            />
+          </View>
         )}
 
         {/* ═══════════════════════════════════════════════════════════════════
-            NEW FEATURE 2: SMART CONTEXT CARD
+            NEW FEATURE 2: SMART CONTEXT CARD — Redesigned
            ═══════════════════════════════════════════════════════════════════ */}
         {currentBaby && (
-          <View style={{ marginHorizontal: settings.compactSpacing ? 16 : 20, marginBottom: 16 }}>
+          <View style={{ marginHorizontal: settings.compactSpacing ? 16 : 20, marginBottom: 14 }}>
             <SmartContextCard
               isDark={isDark}
               theme={theme}
@@ -1891,10 +2000,10 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         )}
 
         {/* ═══════════════════════════════════════════════════════════════════
-            NEW FEATURE 3: NEXT BEST ACTION
+            NEW FEATURE 3: NEXT BEST ACTION — Redesigned
            ═══════════════════════════════════════════════════════════════════ */}
         {currentBaby && (
-          <View style={{ marginHorizontal: settings.compactSpacing ? 16 : 20, marginBottom: 16 }}>
+          <View style={{ marginHorizontal: settings.compactSpacing ? 16 : 20, marginBottom: 14 }}>
             <NextBestAction
               isDark={isDark}
               theme={theme}
@@ -1906,10 +2015,39 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         )}
 
         {/* ═══════════════════════════════════════════════════════════════════
-            SMART NOTIFICATIONS
+            NEW FEATURE 6: VACCINATION REMINDERS
+           ═══════════════════════════════════════════════════════════════════ */}
+        {currentBaby && vaccinationReminders.length > 0 && (
+          <View style={{ marginHorizontal: settings.compactSpacing ? 16 : 20, marginBottom: 14 }}>
+            <VaccinationReminders
+              reminders={vaccinationReminders}
+              isDark={isDark}
+              theme={theme}
+              onPress={() => navigateToScreen('VaccinationSchedule')}
+            />
+          </View>
+        )}
+
+        {/* ═══════════════════════════════════════════════════════════════════
+            NEW FEATURE 7: AI INSIGHTS CARD
+           ═══════════════════════════════════════════════════════════════════ */}
+        {currentBaby && (
+          <View style={{ marginHorizontal: settings.compactSpacing ? 16 : 20, marginBottom: 14 }}>
+            <AIInsightsCard
+              isDark={isDark}
+              theme={theme}
+              currentBaby={currentBaby}
+              activities={allTimelineEvents}
+              onPress={() => navigateToScreen('GrowthDashboard')}
+            />
+          </View>
+        )}
+
+        {/* ═══════════════════════════════════════════════════════════════════
+            SMART NOTIFICATIONS — Redesigned
            ═══════════════════════════════════════════════════════════════════ */}
         {activeSmartNotifications.length > 0 && (
-          <View style={{ marginHorizontal: settings.compactSpacing ? 16 : 20 }}>
+          <View style={{ marginHorizontal: settings.compactSpacing ? 16 : 20, marginBottom: 14 }}>
             <SmartNotificationPanel
               notifications={activeSmartNotifications}
               onDismiss={handleSmartNotifDismiss}
@@ -1921,13 +2059,13 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         )}
 
         {/* ═══════════════════════════════════════════════════════════════════
-            NEW FEATURE 5: CATEGORIZED QUICK ACTIONS
+            NEW FEATURE 5: CATEGORIZED QUICK ACTIONS — Redesigned
            ═══════════════════════════════════════════════════════════════════ */}
         <View style={styles.sectionFullWidth}>
           <View style={[styles.sectionHeader, { paddingHorizontal: settings.compactSpacing ? 16 : 20 }]}>
             <View style={styles.sectionTitleRow}>
-              <Ionicons name="grid-outline" size={Math.round(20 * fontSizeMultiplier)} color={primary} />
-              <Text style={[styles.sectionTitle, { color: theme.text, fontSize: Math.round(18 * fontSizeMultiplier) }]}>
+              <Ionicons name="grid-outline" size={Math.round(18 * fontSizeMultiplier)} color={primary} />
+              <Text style={[styles.sectionTitle, { color: theme.text, fontSize: Math.round(16 * fontSizeMultiplier) }]}>
                 Quick Actions
               </Text>
             </View>
@@ -1941,13 +2079,13 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         </View>
 
         {/* ═══════════════════════════════════════════════════════════════════
-            FEATURE CARDS - Horizontal Scroll
+            FEATURE CARDS — Horizontal Scroll, Clean
            ═══════════════════════════════════════════════════════════════════ */}
         <View style={styles.sectionFullWidth}>
-          <View style={[styles.sectionHeader, { paddingHorizontal: settings.compactSpacing ? 16 : 20, marginBottom: 12 }]}>
+          <View style={[styles.sectionHeader, { paddingHorizontal: settings.compactSpacing ? 16 : 20, marginBottom: 10 }]}>
             <View style={styles.sectionTitleRow}>
-              <Ionicons name="apps-outline" size={Math.round(20 * fontSizeMultiplier)} color="#f59e0b" />
-              <Text style={[styles.sectionTitle, { color: theme.text, fontSize: Math.round(18 * fontSizeMultiplier) }]}>
+              <Ionicons name="apps-outline" size={Math.round(18 * fontSizeMultiplier)} color="#f59e0b" />
+              <Text style={[styles.sectionTitle, { color: theme.text, fontSize: Math.round(16 * fontSizeMultiplier) }]}>
                 Tools & Features
               </Text>
             </View>
@@ -1961,10 +2099,10 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         </View>
 
         {/* ═══════════════════════════════════════════════════════════════════
-            NEW FEATURE 4: WEEKLY PATTERN INSIGHT
+            NEW FEATURE 4: WEEKLY PATTERN INSIGHT — Redesigned
            ═══════════════════════════════════════════════════════════════════ */}
         {currentBaby && activities.length > 0 && (
-          <View style={{ marginHorizontal: settings.compactSpacing ? 16 : 20, marginBottom: 16 }}>
+          <View style={{ marginHorizontal: settings.compactSpacing ? 16 : 20, marginBottom: 14 }}>
             <WeeklyPatternInsight
               isDark={isDark}
               theme={theme}
@@ -1974,7 +2112,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         )}
 
         {/* ═══════════════════════════════════════════════════════════════════
-            SOUND MIXER
+            SOUND MIXER — Compact, Embedded
            ═══════════════════════════════════════════════════════════════════ */}
         <View style={[styles.section, { paddingHorizontal: settings.compactSpacing ? 16 : 20 }]}>
           <SectionHeader
@@ -1989,38 +2127,19 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         </View>
 
         {/* ═══════════════════════════════════════════════════════════════════
-            NEW FEATURE 6: EMERGENCY QUICK ACCESS
-           ═══════════════════════════════════════════════════════════════════ */}
-        <View style={{ marginHorizontal: settings.compactSpacing ? 16 : 20, marginBottom: 16 }}>
-          <EmergencyQuickBar
-            isDark={isDark}
-            theme={theme}
-            onSafetyPress={() => navigateToScreen('SafetyCorner')}
-            onSOSPress={() => {
-              // Open emergency info modal or screen
-              navigateToScreen('SafetyCorner');
-            }}
-            onCallPediatrician={() => {
-              // This would trigger a phone call in a real app
-              toast('Calling...', 'Dialing pediatrician', 'info');
-            }}
-          />
-        </View>
-
-        {/* ═══════════════════════════════════════════════════════════════════
-            RECENT ACTIVITY
+            RECENT ACTIVITY — Clean, Compact
            ═══════════════════════════════════════════════════════════════════ */}
         <View style={styles.sectionFullWidth}>
           <View style={[styles.sectionHeader, { paddingHorizontal: settings.compactSpacing ? 16 : 20 }]}>
             <View style={styles.sectionTitleRow}>
-              <Ionicons name="time-outline" size={Math.round(20 * fontSizeMultiplier)} color={secondary} />
-              <Text style={[styles.sectionTitle, { color: theme.text, fontSize: Math.round(18 * fontSizeMultiplier) }]}>
+              <Ionicons name="time-outline" size={Math.round(18 * fontSizeMultiplier)} color={secondary} />
+              <Text style={[styles.sectionTitle, { color: theme.text, fontSize: Math.round(16 * fontSizeMultiplier) }]}>
                 Recent Activity
               </Text>
             </View>
             <TouchableOpacity style={styles.seeAllButton} onPress={() => navigateToScreen('Timeline', { type: 'all' })}>
-              <Text style={[styles.seeAllText, { color: primary, fontSize: Math.round(14 * fontSizeMultiplier) }]}>View All</Text>
-              <Ionicons name="arrow-forward-outline" size={Math.round(14 * fontSizeMultiplier)} color={primary} />
+              <Text style={[styles.seeAllText, { color: primary, fontSize: Math.round(13 * fontSizeMultiplier) }]}>View All</Text>
+              <Ionicons name="arrow-forward-outline" size={Math.round(13 * fontSizeMultiplier)} color={primary} />
             </TouchableOpacity>
           </View>
           <View style={{ paddingHorizontal: 20 }}>
@@ -2034,29 +2153,28 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
           </View>
         </View>
 
-        <View style={{ height: settings.compactSpacing ? 100 : 140 }} />
+        <View style={{ height: settings.compactSpacing ? 80 : 120 }} />
       </Animated.ScrollView>
     </View>
   );
 }
 
-
 /* ═══════════════════════════════════════════════════════════════════════════
-   STYLES - Completely Redesigned
+   STYLES — Completely Redesigned, Smooth, Cohesive
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const styles = StyleSheet.create({
   /* ── Base ── */
   container: { flex: 1 },
   backgroundGradient: { ...StyleSheet.absoluteFillObject },
-  scrollContent: { paddingBottom: 30 },
+  scrollContent: { paddingBottom: 24 },
 
   /* ── Loading States ── */
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   loadingGradient: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center' },
   loadingText: { fontWeight: '800', color: '#fff', marginBottom: 20 },
   loadingDots: { flexDirection: 'row', gap: 8 },
-  dot: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#fff' },
+  dot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#fff' },
   dot1: { opacity: 0.4 },
   dot2: { opacity: 0.7 },
   dot3: { opacity: 1 },
@@ -2066,9 +2184,9 @@ const styles = StyleSheet.create({
   stickyHeaderContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   stickyHeaderLeft: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
   stickyHeaderCenter: { flex: 2, alignItems: 'center', justifyContent: 'center' },
-  stickyHeaderTitle: { fontWeight: '900', letterSpacing: -0.5 },
+  stickyHeaderTitle: { fontWeight: '900', letterSpacing: -0.3 },
   stickyHeaderUnderline: { alignSelf: 'center' },
-  stickyHeaderRight: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 10 },
+  stickyHeaderRight: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 8 },
   stickyHeaderIconBtn: { alignItems: 'center', justifyContent: 'center', position: 'relative' },
   stickyHeaderBadge: { position: 'absolute', top: 0, right: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ef4444', borderWidth: 2, borderColor: 'white' },
   stickyHeaderBadgeText: { color: 'white', fontWeight: 'bold' },
@@ -2079,213 +2197,237 @@ const styles = StyleSheet.create({
   safetyCornerGradient: { alignItems: 'center', justifyContent: 'center' },
 
   /* ── Glass Card ── */
-  glassCard: { overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', borderRadius: 20, ...DESIGN.shadow.md },
+  glassCard: { overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', borderRadius: 20, ...DESIGN.shadow.md },
   glassBorder: { position: 'absolute', top: 0, left: 0, right: 0, height: 1 },
   glassContent: { flex: 1 },
 
   /* ── Parent Card ── */
-  parentCard: { marginBottom: 16, marginTop: 20 },
+  parentCard: { marginBottom: 12, marginTop: 16 },
   parentHeader: { flexDirection: 'row', alignItems: 'center' },
-  parentInfo: { flex: 1, marginLeft: 16 },
-  greetingText: { fontWeight: '500', marginBottom: 2 },
+  parentInfo: { flex: 1, marginLeft: 14 },
+  greetingText: { fontWeight: '500', marginBottom: 1 },
   parentName: { fontWeight: '800', letterSpacing: -0.5 },
-  parentMeta: { flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 12 },
-  verifiedBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(67,233,123,0.1)', paddingHorizontal: 8, paddingVertical: 4, gap: 4 },
+  parentMeta: { flexDirection: 'row', alignItems: 'center', marginTop: 5, gap: 10 },
+  verifiedBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(67,233,123,0.08)', paddingHorizontal: 8, paddingVertical: 3, gap: 3 },
   verifiedText: { fontWeight: '600' },
   timeText: { fontWeight: '500' },
-  parentQuickLinks: { flexDirection: 'row', gap: 8 },
-  parentQuickLink: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  parentQuickLinks: { flexDirection: 'row', gap: 6 },
+  parentQuickLink: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
 
   /* ── Baby Card ── */
-  babyCard: { marginBottom: 20 },
+  babyCard: { marginBottom: 14 },
   babyHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   babySelector: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   babySelectorLabel: { fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
-  editButton: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  editButton: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
   babyMainInfo: { flexDirection: 'row', alignItems: 'center', position: 'relative' },
-  babyDetails: { flex: 1, marginLeft: 16 },
+  babyDetails: { flex: 1, marginLeft: 14 },
   babyName: { fontWeight: '800', letterSpacing: -0.5 },
-  babyAge: { marginTop: 2, fontWeight: '500' },
-  babyStatus: { flexDirection: 'row', alignItems: 'center', marginTop: 8, gap: 6 },
+  babyAge: { marginTop: 1, fontWeight: '500' },
+  babyStatus: { flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 5 },
   babyStatusText: { fontWeight: '600' },
-  streakBadge: { position: 'absolute', top: 20, right: 20, paddingHorizontal: 12, paddingVertical: 6, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  streakBadge: { position: 'absolute', top: 16, right: 16, paddingHorizontal: 10, paddingVertical: 5, flexDirection: 'row', alignItems: 'center', gap: 3 },
   streakText: { color: '#fff', fontWeight: '700' },
 
   /* ── No Baby Card ── */
-  noBabyCard: { marginBottom: 20, overflow: 'hidden', marginTop: 20 },
-  noBabyGradient: { padding: 32, alignItems: 'center' },
-  noBabyEmoji: { marginBottom: 16 },
-  noBabyTitle: { fontWeight: '800', color: '#fff', marginBottom: 8 },
-  noBabyText: { color: 'rgba(255,255,255,0.9)', textAlign: 'center', marginBottom: 20 },
-  noBabyButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', paddingVertical: 14, paddingHorizontal: 24, gap: 8 },
+  noBabyCard: { marginBottom: 14, overflow: 'hidden', marginTop: 16 },
+  noBabyGradient: { padding: 28, alignItems: 'center' },
+  noBabyEmoji: { marginBottom: 12 },
+  noBabyTitle: { fontWeight: '800', color: '#fff', marginBottom: 6 },
+  noBabyText: { color: 'rgba(255,255,255,0.9)', textAlign: 'center', marginBottom: 16 },
+  noBabyButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', paddingVertical: 12, paddingHorizontal: 20, gap: 6 },
   noBabyButtonText: { color: '#667eea', fontWeight: '700' },
 
   /* ═══════════════════════════════════════════════════════════════════
-     NEW FEATURE 1: DAILY SUMMARY WIDGET STYLES
+     NEW FEATURE 1: DAILY SUMMARY WIDGET STYLES — Redesigned Grid
      ═══════════════════════════════════════════════════════════════════ */
-  dailySummaryContainer: { marginHorizontal: 20, marginBottom: 16 },
-  dailySummaryHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, paddingHorizontal: 4 },
+  dailySummaryContainer: { marginBottom: 0 },
+  dailySummaryHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, paddingHorizontal: 2 },
   dailySummaryTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  dailySummaryTitle: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3 },
-  dailySummaryDate: { fontSize: 13, fontWeight: '500' },
-  dailySummaryScroll: { gap: 10, paddingRight: 20 },
-  dailySummaryItem: { width: 130, borderRadius: 20, overflow: 'hidden' },
-  dailySummaryGradient: { padding: 14, alignItems: 'center', aspectRatio: 0.85 },
-  dailySummaryIconWrap: { width: 36, height: 36, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
-  dailySummaryValue: { fontSize: 24, fontWeight: '800', color: '#fff', letterSpacing: -0.5 },
-  dailySummaryLabel: { fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,0.9)', marginTop: 4 },
-  dailySummarySublabel: { fontSize: 10, fontWeight: '500', color: 'rgba(255,255,255,0.7)', marginTop: 2 },
+  dailySummaryIconWrap: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  dailySummaryTitle: { fontSize: 15, fontWeight: '800', letterSpacing: -0.3 },
+  dailySummaryDate: { fontSize: 12, fontWeight: '500' },
+  dailySummaryGrid: { flexDirection: 'row', gap: 8 },
+  dailySummaryItem: { flex: 1, borderRadius: 16, overflow: 'hidden', aspectRatio: 0.85 },
+  dailySummaryGradient: { padding: 12, alignItems: 'center', justifyContent: 'center', flex: 1 },
+  dailySummaryValue: { fontSize: 22, fontWeight: '800', color: '#fff', letterSpacing: -0.5, marginTop: 6 },
+  dailySummaryLabel: { fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.85)', marginTop: 3 },
 
   /* ═══════════════════════════════════════════════════════════════════
-     NEW FEATURE 2: SMART CONTEXT CARD STYLES
+     NEW FEATURE 2: SMART CONTEXT CARD STYLES — Compact Pill
      ═══════════════════════════════════════════════════════════════════ */
-  contextCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderRadius: 20, borderWidth: 1 },
-  contextLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
-  contextIconBg: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  contextCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, borderRadius: 18, borderWidth: 1 },
+  contextLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+  contextIconBg: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   contextText: { flex: 1 },
-  contextTitle: { fontSize: 15, fontWeight: '800', letterSpacing: -0.3 },
-  contextMessage: { fontSize: 13, fontWeight: '500', marginTop: 2, lineHeight: 18 },
-  contextActionBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
-  contextActionText: { fontSize: 12, fontWeight: '700' },
+  contextTitle: { fontSize: 14, fontWeight: '800', letterSpacing: -0.3 },
+  contextMessage: { fontSize: 12, fontWeight: '500', marginTop: 1 },
+  contextActionBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10 },
+  contextActionText: { fontSize: 11, fontWeight: '700' },
 
   /* ═══════════════════════════════════════════════════════════════════
-     NEW FEATURE 3: NEXT BEST ACTION STYLES
+     NEW FEATURE 3: NEXT BEST ACTION STYLES — Floating Banner
      ═══════════════════════════════════════════════════════════════════ */
-  nextActionContainer: { borderRadius: 20, overflow: 'hidden' },
-  nextActionGradient: { padding: 18 },
-  nextActionContent: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  nextActionIconWrap: { width: 52, height: 52, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
+  nextActionContainer: { borderRadius: 18, overflow: 'hidden' },
+  nextActionGradient: { padding: 16 },
+  nextActionContent: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  nextActionIconWrap: { width: 44, height: 44, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' },
   nextActionText: { flex: 1 },
-  nextActionTitle: { fontSize: 18, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
-  nextActionSubtitle: { fontSize: 13, fontWeight: '500', color: 'rgba(255,255,255,0.85)', marginTop: 2 },
-  nextActionArrow: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
-  nextActionUrgency: { position: 'absolute', top: 12, right: 12 },
-  urgencyPill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
-  urgencyDot: { width: 6, height: 6, borderRadius: 3 },
+  nextActionTitle: { fontSize: 16, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
+  nextActionSubtitle: { fontSize: 12, fontWeight: '500', color: 'rgba(255,255,255,0.85)', marginTop: 1 },
+  nextActionArrow: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center' },
+  nextActionUrgency: { position: 'absolute', top: 10, right: 10 },
+  urgencyPill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,255,255,0.15)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  urgencyDot: { width: 5, height: 5, borderRadius: 3 },
   urgencyText: { fontSize: 10, fontWeight: '700', color: '#fff' },
 
   /* ═══════════════════════════════════════════════════════════════════
-     NEW FEATURE 4: WEEKLY PATTERN STYLES
+     NEW FEATURE 4: WEEKLY PATTERN STYLES — Clean Bar Chart
      ═══════════════════════════════════════════════════════════════════ */
-  patternContainer: { backgroundColor: 'rgba(255,255,255,0.5)', borderRadius: 20, padding: 16, borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)' },
-  patternHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  patternContainer: { borderRadius: 18, padding: 14, borderWidth: 1 },
+  patternHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   patternTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  patternTitle: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3 },
-  patternSubtitle: { fontSize: 13, fontWeight: '500' },
-  patternBars: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', height: 100, gap: 8 },
-  patternDay: { flex: 1, alignItems: 'center', gap: 6 },
-  patternBarContainer: { width: '100%', height: 70, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.03)', borderRadius: 8, overflow: 'hidden' },
-  patternBar: { width: '100%', borderRadius: 8, minHeight: 4 },
-  patternDayLabel: { fontSize: 11, fontWeight: '600' },
-  patternDayCount: { fontSize: 10, fontWeight: '700' },
+  patternIconWrap: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  patternTitle: { fontSize: 15, fontWeight: '800', letterSpacing: -0.3 },
+  patternSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 1 },
+  patternBars: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', height: 90, gap: 6 },
+  patternDay: { flex: 1, alignItems: 'center', gap: 4 },
+  patternBarContainer: { width: '100%', height: 60, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.02)', borderRadius: 6, overflow: 'hidden' },
+  patternBar: { width: '100%', borderRadius: 6, minHeight: 3 },
+  patternDayLabel: { fontSize: 10, fontWeight: '600' },
+  patternDayCount: { fontSize: 9, fontWeight: '700' },
 
   /* ═══════════════════════════════════════════════════════════════════
-     NEW FEATURE 5: CATEGORIZED QUICK ACTIONS STYLES
+     NEW FEATURE 5: CATEGORIZED QUICK ACTIONS STYLES — Smooth Grid
      ═══════════════════════════════════════════════════════════════════ */
-  categoryTabsScroll: { paddingHorizontal: 20, gap: 8, paddingBottom: 12 },
-  categoryTab: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12 },
-  categoryTabText: { fontSize: 13, fontWeight: '600' },
-  categoryTabBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, minWidth: 20, alignItems: 'center' },
-  categoryTabBadgeText: { fontSize: 10, fontWeight: '700' },
-  categorizedGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start', width: '100%', paddingBottom: 8 },
-  categorizedGridItem: { alignItems: 'center', marginBottom: 12 },
+  categoryTabsScroll: { paddingHorizontal: 20, gap: 6, paddingBottom: 10 },
+  categoryTab: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 },
+  categoryTabText: { fontSize: 12, fontWeight: '600' },
+  categoryTabBadge: { paddingHorizontal: 5, paddingVertical: 1, borderRadius: 5, minWidth: 18, alignItems: 'center' },
+  categoryTabBadgeText: { fontSize: 9, fontWeight: '700' },
+  categorizedGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start', width: '100%', paddingBottom: 6 },
+  categorizedGridItem: { alignItems: 'center', marginBottom: 10 },
   categorizedGridTouchable: { alignItems: 'center', width: '100%' },
-  categorizedGridGradient: { width: '100%', aspectRatio: 1, borderRadius: 18, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.12, shadowRadius: 6, elevation: 3 },
-  categorizedGridLabel: { fontSize: 11, fontWeight: '600', marginTop: 8, textAlign: 'center' },
+  categorizedGridGradient: { width: '100%', aspectRatio: 1, borderRadius: 16, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.1, shadowRadius: 6, elevation: 3 },
+  categorizedGridLabel: { fontSize: 10, fontWeight: '600', marginTop: 6, textAlign: 'center' },
 
   /* ═══════════════════════════════════════════════════════════════════
-     NEW FEATURE 6: EMERGENCY QUICK ACCESS STYLES
+     NEW FEATURE 6: VACCINATION REMINDERS STYLES
      ═══════════════════════════════════════════════════════════════════ */
-  emergencyBar: { borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(220,38,38,0.15)' },
-  emergencyBarHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14 },
-  emergencyBarLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  emergencyIconBg: { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(220,38,38,0.1)', alignItems: 'center', justifyContent: 'center' },
-  emergencyBarTitle: { fontSize: 15, fontWeight: '800' },
-  emergencyActions: { flexDirection: 'row', gap: 10, paddingHorizontal: 14, paddingBottom: 14 },
-  emergencyAction: { flex: 1, borderRadius: 14, overflow: 'hidden' },
-  emergencyActionGradient: { paddingVertical: 12, alignItems: 'center', gap: 6 },
-  emergencyActionText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  vaccineContainer: { borderRadius: 18, padding: 14, borderWidth: 1, backgroundColor: 'rgba(255,255,255,0.03)' },
+  vaccineHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  vaccineTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  vaccineIconWrap: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  vaccineTitle: { fontSize: 15, fontWeight: '800', letterSpacing: -0.3 },
+  vaccineSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 1 },
+  vaccineSeeAll: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  vaccineSeeAllText: { fontSize: 11, fontWeight: '700' },
+  vaccineList: { gap: 0 },
+  vaccineRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, gap: 10 },
+  vaccineDot: { width: 8, height: 8, borderRadius: 4 },
+  vaccineInfo: { flex: 1 },
+  vaccineName: { fontSize: 13, fontWeight: '700' },
+  vaccineDose: { fontSize: 11, fontWeight: '500', marginTop: 1 },
+  vaccineBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  vaccineBadgeText: { fontSize: 10, fontWeight: '700' },
+
+  /* ═══════════════════════════════════════════════════════════════════
+     NEW FEATURE 7: AI INSIGHTS STYLES
+     ═══════════════════════════════════════════════════════════════════ */
+  aiInsightsContainer: { borderRadius: 18, padding: 14, borderWidth: 1 },
+  aiInsightsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  aiInsightsTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  aiInsightsIconWrap: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  aiInsightsTitle: { fontSize: 15, fontWeight: '800', letterSpacing: -0.3 },
+  aiInsightsSeeAll: { fontSize: 12, fontWeight: '700' },
+  aiInsightRow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, borderRadius: 12, marginBottom: 6 },
+  aiInsightIconBg: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  aiInsightContent: { flex: 1 },
+  aiInsightTitle: { fontSize: 13, fontWeight: '700' },
+  aiInsightMessage: { fontSize: 11, fontWeight: '500', marginTop: 1, lineHeight: 16 },
 
   /* ── Feature Cards Row ── */
-  featureCardsScroll: { paddingHorizontal: 20, gap: 12, paddingBottom: 4 },
-  featureCardTouchable: { width: 160 },
-  featureCard: { borderRadius: 20, padding: 16, borderWidth: 1, ...DESIGN.shadow.sm },
-  featureCardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
-  featureCardIcon: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  featureCardBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10, minWidth: 28, alignItems: 'center' },
-  featureCardBadgeText: { color: '#fff', fontSize: 10, fontWeight: 'bold' },
-  featureCardLabel: { fontSize: 15, fontWeight: '700', marginBottom: 4, letterSpacing: -0.3 },
-  featureCardDesc: { fontSize: 12, fontWeight: '500', lineHeight: 17, marginBottom: 10 },
-  featureCardArrow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  featureCardArrowText: { fontSize: 12, fontWeight: '700' },
+  featureCardsScroll: { paddingHorizontal: 20, gap: 10, paddingBottom: 4 },
+  featureCardTouchable: { width: 150 },
+  featureCard: { borderRadius: 18, padding: 14, borderWidth: 1, ...DESIGN.shadow.sm },
+  featureCardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
+  featureCardIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  featureCardBadge: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8, minWidth: 26, alignItems: 'center' },
+  featureCardBadgeText: { color: '#fff', fontSize: 9, fontWeight: 'bold' },
+  featureCardLabel: { fontSize: 14, fontWeight: '700', marginBottom: 3, letterSpacing: -0.3 },
+  featureCardDesc: { fontSize: 11, fontWeight: '500', lineHeight: 16, marginBottom: 8 },
+  featureCardArrow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  featureCardArrowText: { fontSize: 11, fontWeight: '700' },
 
   /* ── Smart Notifications ── */
-  notificationPanel: { marginBottom: 16, marginTop: 4 },
-  notificationPanelHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, paddingHorizontal: 4 },
+  notificationPanel: { marginBottom: 0, marginTop: 0 },
+  notificationPanelHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, paddingHorizontal: 2 },
   notificationPanelTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  notificationPanelTitle: { fontSize: 16, fontWeight: '800' },
-  urgentBadge: { backgroundColor: '#ef4444', borderRadius: 10, minWidth: 20, height: 20, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
-  urgentBadgeText: { color: '#fff', fontSize: 11, fontWeight: 'bold' },
-  expandText: { fontSize: 13, fontWeight: '600' },
-  smartNotificationCard: { flexDirection: 'row', alignItems: 'flex-start', padding: 14, borderRadius: 16, marginBottom: 8, borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)' },
-  smartNotifIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  notificationPanelIconWrap: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  notificationPanelTitle: { fontSize: 15, fontWeight: '800' },
+  urgentBadge: { backgroundColor: '#ef4444', borderRadius: 8, minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
+  urgentBadgeText: { color: '#fff', fontSize: 10, fontWeight: 'bold' },
+  expandBtn: { paddingHorizontal: 6, paddingVertical: 2 },
+  expandText: { fontSize: 12, fontWeight: '600' },
+  smartNotificationCard: { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 14, marginBottom: 6 },
+  smartNotifIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
   smartNotifContent: { flex: 1 },
-  smartNotifTitle: { fontSize: 14, fontWeight: '700', marginBottom: 2 },
-  smartNotifMessage: { fontSize: 12, lineHeight: 18 },
-  smartNotifMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
-  smartNotifTime: { fontSize: 11, fontWeight: '500' },
-  smartNotifActionBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
-  smartNotifActionText: { fontSize: 11, fontWeight: '700' },
-  dismissBtn: { padding: 4, marginLeft: 4 },
+  smartNotifTitle: { fontSize: 13, fontWeight: '700', marginBottom: 1 },
+  smartNotifMessage: { fontSize: 11, lineHeight: 16 },
+  smartNotifMeta: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
+  smartNotifTime: { fontSize: 10, fontWeight: '500' },
+  smartNotifActionBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  smartNotifActionText: { fontSize: 10, fontWeight: '700' },
+  dismissBtn: { padding: 3, marginLeft: 3 },
 
   /* ── Sound Mixer ── */
-  soundMixerContainer: { borderRadius: 24, padding: 16, marginBottom: 8, marginHorizontal: 20 },
-  soundMixerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  soundMixerTitle: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  soundMixerIconBg: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  soundMixerTitleText: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3 },
-  soundMixerSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
-  playAllButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#1DB954', alignItems: 'center', justifyContent: 'center' },
+  soundMixerContainer: { borderRadius: 22, padding: 14, marginBottom: 6, marginHorizontal: 20, borderWidth: 1 },
+  soundMixerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
+  soundMixerTitle: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  soundMixerIconBg: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  soundMixerTitleText: { fontSize: 15, fontWeight: '800', letterSpacing: -0.3 },
+  soundMixerSubtitle: { fontSize: 11, fontWeight: '500', marginTop: 1 },
+  playAllButton: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#1DB954', alignItems: 'center', justifyContent: 'center' },
   playAllButtonActive: { backgroundColor: '#f59e0b' },
-  trackCard: { width: 110, marginRight: 12 },
-  trackImage: { width: 110, height: 110, borderRadius: 12, marginBottom: 8, overflow: 'hidden' },
-  trackOverlay: { flex: 1, justifyContent: 'flex-end', padding: 8 },
-  trackPlayButton: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#1DB954', alignItems: 'center', justifyContent: 'center', alignSelf: 'flex-end' },
+  trackCard: { width: 100, marginRight: 10 },
+  trackImage: { width: 100, height: 100, borderRadius: 10, marginBottom: 6, overflow: 'hidden' },
+  trackOverlay: { flex: 1, justifyContent: 'flex-end', padding: 6 },
+  trackPlayButton: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#1DB954', alignItems: 'center', justifyContent: 'center', alignSelf: 'flex-end' },
   trackPlayButtonActive: { backgroundColor: '#f59e0b' },
-  trackTitle: { fontSize: 13, fontWeight: '600', marginBottom: 2 },
-  trackArtist: { fontSize: 11, fontWeight: '500' },
-  playingIndicator: { position: 'absolute', top: 8, left: 8, flexDirection: 'row', alignItems: 'flex-end', gap: 2, backgroundColor: 'rgba(0,0,0,0.5)', padding: 6, borderRadius: 8 },
-  bar: { width: 3, height: 12, backgroundColor: '#1DB954', borderRadius: 1 },
-  barMiddle: { height: 18 },
+  trackTitle: { fontSize: 12, fontWeight: '600', marginBottom: 1 },
+  trackArtist: { fontSize: 10, fontWeight: '500' },
+  playingIndicator: { position: 'absolute', top: 6, left: 6, flexDirection: 'row', alignItems: 'flex-end', gap: 2, backgroundColor: 'rgba(0,0,0,0.5)', padding: 5, borderRadius: 6 },
+  bar: { width: 2.5, height: 10, backgroundColor: '#1DB954', borderRadius: 1 },
+  barMiddle: { height: 16 },
 
   /* ── Activity List ── */
-  activityItem: { marginVertical: 6, padding: 14, borderRadius: 20, flexDirection: 'row', alignItems: 'center' },
-  activityIcon: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
+  activityItem: { marginVertical: 4, padding: 12, borderRadius: 16, flexDirection: 'row', alignItems: 'center', borderWidth: 1 },
+  activityIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
   activityContent: { flex: 1 },
-  activityTitle: { fontSize: 15, fontWeight: '700', marginBottom: 2 },
-  activityTime: { fontSize: 12, fontWeight: '500' },
-  activityDetails: { fontSize: 12, marginTop: 2 },
-  activityArrow: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  emptyStateCard: { padding: 32, alignItems: 'center', borderRadius: 24 },
-  emptyStateIcon: { width: 64, height: 64, borderRadius: 32, backgroundColor: 'rgba(102,126,234,0.1)', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
-  emptyStateTitle: { fontSize: 18, fontWeight: '700', marginBottom: 8 },
-  emptyStateText: { fontSize: 14, textAlign: 'center' },
-  loadMoreButton: { marginTop: 16, borderRadius: 16, paddingVertical: 14, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, backgroundColor: 'rgba(102,126,234,0.08)' },
-  loadMoreText: { fontSize: 14, fontWeight: '600' },
-  viewAllButton: { marginTop: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12 },
-  viewAllText: { fontSize: 14, fontWeight: '700' },
+  activityTitle: { fontSize: 14, fontWeight: '700', marginBottom: 1 },
+  activityTime: { fontSize: 11, fontWeight: '500' },
+  activityDetails: { fontSize: 11, marginTop: 1 },
+  activityArrow: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  emptyStateCard: { padding: 28, alignItems: 'center', borderRadius: 22 },
+  emptyStateIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(102,126,234,0.08)', alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+  emptyStateTitle: { fontSize: 16, fontWeight: '700', marginBottom: 6 },
+  emptyStateText: { fontSize: 13, textAlign: 'center' },
+  loadMoreButton: { marginTop: 14, borderRadius: 14, paddingVertical: 12, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6, backgroundColor: 'rgba(102,126,234,0.06)' },
+  loadMoreText: { fontSize: 13, fontWeight: '600' },
+  viewAllButton: { marginTop: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10 },
+  viewAllText: { fontSize: 13, fontWeight: '700' },
 
   /* ── Section Headers ── */
-  section: { marginTop: 8 },
-  sectionFullWidth: { marginTop: 8, width: '100%' },
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, marginTop: 24 },
+  section: { marginTop: 6 },
+  sectionFullWidth: { marginTop: 6, width: '100%' },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, marginTop: 20 },
   sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   sectionTitle: { fontWeight: '800', letterSpacing: -0.3 },
-  seeAllButton: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  seeAllButton: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   seeAllText: { fontWeight: '600' },
   sectionHeaderLeft: { flexDirection: 'row', alignItems: 'center' },
-  sectionHeaderTitle: { fontSize: 18, fontWeight: '800', letterSpacing: -0.3 },
-  sectionHeaderSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
+  sectionHeaderTitle: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3 },
+  sectionHeaderSubtitle: { fontSize: 11, fontWeight: '500', marginTop: 1 },
   sectionHeaderAction: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  sectionHeaderActionText: { fontSize: 13, fontWeight: '700' },
+  sectionHeaderActionText: { fontSize: 12, fontWeight: '700' },
 });
