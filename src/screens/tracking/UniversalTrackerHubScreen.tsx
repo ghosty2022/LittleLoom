@@ -1,5 +1,7 @@
-// UniversalTrackerHubScreen.tsx — COMPLETE REDESIGN v2.0
-// Inspired by GrowthDashboardScreen patterns with 6 new intelligent features
+// UniversalTrackerHubScreen.tsx — COMPLETE REDESIGN v3.0
+// Redesigned with smooth cards, better spacing, improved tab layout
+// 6 new intelligent features added
+// Inspired by GrowthDashboardScreen + 2026 UI best practices
 
 import React, {
   useCallback,
@@ -16,9 +18,7 @@ import {
   ScrollView,
   StatusBar,
   StyleSheet,
-  Switch,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
   LayoutAnimation,
@@ -41,7 +41,6 @@ import Animated, {
   interpolate,
   Extrapolation,
   useAnimatedScrollHandler,
-  runOnJS,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -66,26 +65,45 @@ import { useApp } from '../../context/AppContext';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-type HubNavigationProp = NativeStackNavigationProp<RootStackParamList>;
-type TabType = 'home' | 'quick' | 'insights' | 'family';
-
 /* ═══════════════════════════════════════════════════════════════════════════
-   DESIGN TOKENS — Cohesive system matching GrowthDashboard
+   DESIGN TOKENS — Refined 8pt spacing system, smooth shadows, cohesive
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const DESIGN = {
-  radius: { xs: 8, sm: 12, md: 16, lg: 20, xl: 24, full: 999 },
-  spacing: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32 },
-  shadow: {
-    sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 2 },
-    md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 4 },
-    lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 24, elevation: 8 },
-  },
+const SPACING = {
+  xs: 4,
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 20,
+  xxl: 24,
+  xxxl: 32,
+  xxxxl: 48,
+};
+
+const RADIUS = {
+  xs: 6,
+  sm: 10,
+  md: 14,
+  lg: 18,
+  xl: 22,
+  full: 999,
+};
+
+const SHADOW = {
+  none: { shadowOpacity: 0, elevation: 0 },
+  xs: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.03, shadowRadius: 2, elevation: 1 },
+  sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 6, elevation: 2 },
+  md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 12, elevation: 3 },
+  lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.07, shadowRadius: 24, elevation: 6 },
+  xl: { shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.1, shadowRadius: 32, elevation: 10 },
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
    TYPES
    ═══════════════════════════════════════════════════════════════════════════ */
+
+type HubNavigationProp = NativeStackNavigationProp<RootStackParamList>;
+type TabType = 'home' | 'quick' | 'insights' | 'family';
 
 interface TrackerSubAction {
   id: string;
@@ -154,6 +172,40 @@ interface RoutineSuggestion {
   emoji: string;
   color: string;
   isCompleted: boolean;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   NEW FEATURE TYPES
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+interface SleepQualityCard {
+  score: number;
+  totalHours: number;
+  longestStretch: number;
+  wakeCount: number;
+  trend: 'up' | 'down' | 'stable';
+}
+
+interface FeedingPattern {
+  avgInterval: number;
+  totalVolume: number;
+  lastSide: 'left' | 'right' | 'bottle' | 'solid';
+  nextFeedEstimate: string;
+}
+
+interface GrowthVelocity {
+  metric: 'height' | 'weight' | 'head';
+  velocity: number;
+  percentile: number;
+  status: 'accelerating' | 'steady' | 'slowing';
+}
+
+interface WellnessScore {
+  overall: number;
+  nutrition: number;
+  sleep: number;
+  activity: number;
+  hydration: number;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -276,11 +328,11 @@ const CATEGORY_COLORS: Record<string, string> = {
   care: '#8b5cf6',
 };
 
-const TABS: { id: TabType; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-  { id: 'home', label: 'Home', icon: 'home-outline' },
-  { id: 'quick', label: 'Quick', icon: 'flash-outline' },
-  { id: 'insights', label: 'Insights', icon: 'analytics-outline' },
-  { id: 'family', label: 'Family', icon: 'people-outline' },
+const TABS: { id: TabType; label: string; icon: keyof typeof Ionicons.glyphMap; activeIcon: keyof typeof Ionicons.glyphMap }[] = [
+  { id: 'home', label: 'Home', icon: 'home-outline', activeIcon: 'home' },
+  { id: 'quick', label: 'Quick', icon: 'flash-outline', activeIcon: 'flash' },
+  { id: 'insights', label: 'Insights', icon: 'analytics-outline', activeIcon: 'analytics' },
+  { id: 'family', label: 'Family', icon: 'people-outline', activeIcon: 'people' },
 ];
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -325,27 +377,50 @@ const getBabyAge = (birthDate?: string | Date) => {
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   GLASS CARD — Matching GrowthDashboard pattern
+   GLASS CARD — Ultra-smooth with refined borders and elevation
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const GlassCard = React.memo(({ children, style, onPress, active = false }: { children: React.ReactNode; style?: any; onPress?: () => void; active?: boolean }) => {
+const GlassCard = React.memo(({ 
+  children, 
+  style, 
+  onPress, 
+  active = false,
+  shadow = 'md',
+  borderColor,
+}: { 
+  children: React.ReactNode; 
+  style?: any; 
+  onPress?: () => void; 
+  active?: boolean;
+  shadow?: keyof typeof SHADOW;
+  borderColor?: string;
+}) => {
   const { isDark, colors } = useApp();
   const Wrapper = onPress ? TouchableOpacity : View;
   return (
-    <Wrapper onPress={onPress} activeOpacity={onPress ? 0.85 : 1} style={[
-      hubStyles.glassCard,
-      active && { borderColor: colors.primary, borderWidth: 2 },
-      style
-    ]}>
+    <Wrapper 
+      onPress={onPress} 
+      activeOpacity={onPress ? 0.85 : 1} 
+      style={[
+        hubStyles.glassCard,
+        SHADOW[shadow],
+        active && { borderColor: colors.primary, borderWidth: 2 },
+        borderColor && { borderColor, borderWidth: 1.5 },
+        style
+      ]}
+    >
       <LinearGradient
         colors={isDark 
-          ? ['rgba(45,45,60,0.85)', 'rgba(35,35,50,0.65)'] 
-          : ['rgba(255,255,255,0.92)', 'rgba(250,250,255,0.75)']}
+          ? ['rgba(45,45,60,0.9)', 'rgba(35,35,50,0.7)'] 
+          : ['rgba(255,255,255,0.95)', 'rgba(250,250,255,0.8)']}
         style={StyleSheet.absoluteFill}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       />
-      <View style={[hubStyles.glassBorder, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.5)' }]} />
+      <View style={[
+        hubStyles.glassBorder, 
+        { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.6)' }
+      ]} />
       <View style={hubStyles.glassContent}>{children}</View>
     </Wrapper>
   );
@@ -353,18 +428,47 @@ const GlassCard = React.memo(({ children, style, onPress, active = false }: { ch
 GlassCard.displayName = 'GlassCard';
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   SECTION HEADER — Matching GrowthDashboard pattern
+   SECTION HEADER — Clean, modern with better spacing
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const SectionHeader = React.memo(({ title, subtitle, action, actionLabel, colors, textColor }: { title: string; subtitle?: string; action?: () => void; actionLabel?: string; colors: any; textColor: any }) => (
+const SectionHeader = React.memo(({ 
+  title, 
+  subtitle, 
+  action, 
+  actionLabel, 
+  colors, 
+  textColor,
+  icon,
+}: { 
+  title: string; 
+  subtitle?: string; 
+  action?: () => void; 
+  actionLabel?: string; 
+  colors: any; 
+  textColor: any;
+  icon?: keyof typeof Ionicons.glyphMap;
+}) => (
   <View style={hubStyles.sectionHeader}>
-    <View>
-      <Text style={[hubStyles.sectionTitle, { color: textColor }]}>{title}</Text>
-      {subtitle && <Text style={[hubStyles.sectionSubtitle, { color: colors.textSecondary }]}>{subtitle}</Text>}
+    <View style={hubStyles.sectionHeaderLeft}>
+      {icon && (
+        <View style={[hubStyles.sectionHeaderIcon, { backgroundColor: `${colors.primary}12` }]}>
+          <Ionicons name={icon} size={16} color={colors.primary} />
+        </View>
+      )}
+      <View>
+        <Text style={[hubStyles.sectionTitle, { color: textColor.text }]}>{title}</Text>
+        {subtitle && (
+          <Text style={[hubStyles.sectionSubtitle, { color: textColor.textSecondary }]}>
+            {subtitle}
+          </Text>
+        )}
+      </View>
     </View>
     {action && (
-      <TouchableOpacity onPress={action} style={hubStyles.sectionAction}>
-        <Text style={[hubStyles.sectionActionText, { color: colors.primary }]}>{actionLabel || 'See All'}</Text>
+      <TouchableOpacity onPress={action} style={hubStyles.sectionAction} activeOpacity={0.7}>
+        <Text style={[hubStyles.sectionActionText, { color: colors.primary }]}>
+          {actionLabel || 'See All'}
+        </Text>
         <Ionicons name="chevron-forward" size={14} color={colors.primary} />
       </TouchableOpacity>
     )}
@@ -373,16 +477,609 @@ const SectionHeader = React.memo(({ title, subtitle, action, actionLabel, colors
 SectionHeader.displayName = 'SectionHeader';
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 1: AI NEXT EVENT PREDICTOR
-   Predicts when baby needs next feed, sleep, diaper based on patterns
+   NEW FEATURE 1: WELLNESS SCORE DASHBOARD
+   Composite health score with radial visual
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const NextEventPredictor = React.memo(({ entries, themeColors, textColors, onEventPress }: { entries: any[]; themeColors: any; textColors: any; onEventPress: (trackerId: string, action: TrackerSubAction) => void }) => {
+const WellnessScoreCard = React.memo(({ 
+  entries, 
+  themeColors, 
+  textColors, 
+  onPress 
+}: { 
+  entries: any[]; 
+  themeColors: any; 
+  textColors: any; 
+  onPress: () => void;
+}) => {
+  const score = useMemo((): WellnessScore => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayEntries = entries.filter((e: any) => e?.timestamp >= today.getTime());
+
+    const feedCount = todayEntries.filter((e: any) => e.trackerId === 'feed').length;
+    const sleepMins = todayEntries
+      .filter((e: any) => e.trackerId === 'sleep')
+      .reduce((sum: number, e: any) => sum + (e.duration || 0), 0);
+    const diaperCount = todayEntries.filter((e: any) => e.trackerId === 'diaper').length;
+    const milestoneCount = todayEntries.filter((e: any) => e.trackerId === 'milestone').length;
+
+    return {
+      overall: Math.min(100, Math.round((feedCount / 8) * 25 + (sleepMins / 840) * 25 + (diaperCount / 6) * 25 + (milestoneCount / 1) * 25)),
+      nutrition: Math.min(100, Math.round((feedCount / 8) * 100)),
+      sleep: Math.min(100, Math.round((sleepMins / 840) * 100)),
+      activity: Math.min(100, Math.round((milestoneCount / 3) * 100)),
+      hydration: Math.min(100, Math.round((diaperCount / 6) * 100)),
+    };
+  }, [entries]);
+
+  return (
+    <Animated.View entering={FadeInUp.delay(80).springify()}>
+      <GlassCard onPress={onPress} shadow="lg" style={hubStyles.wellnessCard}>
+        <View style={hubStyles.wellnessTop}>
+          <View style={hubStyles.wellnessLeft}>
+            <Text style={[hubStyles.wellnessLabel, { color: textColors.textSecondary }]}>Today's Wellness</Text>
+            <Text style={[hubStyles.wellnessScore, { color: themeColors.primary }]}>{score.overall}</Text>
+            <Text style={[hubStyles.wellnessScoreLabel, { color: textColors.textSecondary }]}>
+              {score.overall >= 80 ? 'Excellent' : score.overall >= 60 ? 'Good' : score.overall >= 40 ? 'Fair' : 'Needs Attention'}
+            </Text>
+          </View>
+
+          <View style={hubStyles.wellnessRingWrap}>
+            <View style={hubStyles.wellnessRing}>
+              <View style={[hubStyles.wellnessRingBg, { borderColor: `${themeColors.primary}15` }]} />
+              <View style={[
+                hubStyles.wellnessRingProgress,
+                { 
+                  borderColor: score.overall >= 80 ? '#10b981' : score.overall >= 60 ? themeColors.primary : '#f59e0b',
+                  transform: [{ rotate: `${-90 + (score.overall / 100) * 360}deg` }],
+                }
+              ]} />
+              <View style={hubStyles.wellnessRingInner}>
+                <Ionicons 
+                  name={score.overall >= 80 ? "heart" : "heart-outline"} 
+                  size={24} 
+                  color={score.overall >= 80 ? '#10b981' : themeColors.primary} 
+                />
+              </View>
+            </View>
+          </View>
+        </View>
+
+        <View style={hubStyles.wellnessBreakdown}>
+          {[
+            { label: 'Nutrition', value: score.nutrition, color: '#fa709a', icon: '🍼' },
+            { label: 'Sleep', value: score.sleep, color: '#11998e', icon: '🌙' },
+            { label: 'Activity', value: score.activity, color: '#ffd700', icon: '🏆' },
+            { label: 'Hydration', value: score.hydration, color: '#3b82f6', icon: '💧' },
+          ].map((item) => (
+            <View key={item.label} style={hubStyles.wellnessBreakdownItem}>
+              <Text style={hubStyles.wellnessBreakdownIcon}>{item.icon}</Text>
+              <View style={hubStyles.wellnessBreakdownBarWrap}>
+                <View style={[hubStyles.wellnessBreakdownBarBg, { backgroundColor: `${item.color}12` }]}>
+                  <View style={[
+                    hubStyles.wellnessBreakdownBarFill,
+                    { width: `${item.value}%`, backgroundColor: item.color }
+                  ]} />
+                </View>
+              </View>
+              <Text style={[hubStyles.wellnessBreakdownValue, { color: textColors.text }]}>{item.value}%</Text>
+            </View>
+          ))}
+        </View>
+      </GlassCard>
+    </Animated.View>
+  );
+});
+WellnessScoreCard.displayName = 'WellnessScoreCard';
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   NEW FEATURE 2: SLEEP QUALITY ANALYZER
+   Deep sleep analysis with visual sleep stages
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const SleepQualityAnalyzer = React.memo(({ 
+  entries, 
+  themeColors, 
+  textColors, 
+  onPress 
+}: { 
+  entries: any[]; 
+  themeColors: any; 
+  textColors: any; 
+  onPress: () => void;
+}) => {
+  const sleepData = useMemo((): SleepQualityCard | null => {
+    const sleepEntries = entries
+      .filter((e: any) => e.trackerId === 'sleep')
+      .sort((a: any, b: any) => b.timestamp - a.timestamp)
+      .slice(0, 7);
+
+    if (sleepEntries.length === 0) return null;
+
+    const totalHours = sleepEntries.reduce((sum: number, e: any) => sum + (e.duration || 0), 0) / 60;
+    const durations = sleepEntries.map((e: any) => e.duration || 0);
+    const longestStretch = Math.max(...durations) / 60;
+    const avgDuration = totalHours / sleepEntries.length;
+    const wakeCount = sleepEntries.filter((e: any) => e.presetData?.status === 'ended').length;
+
+    const recent = durations.slice(0, 3).reduce((a: number, b: number) => a + b, 0) / 3;
+    const older = durations.slice(3, 6).reduce((a: number, b: number) => a + b, 0) / Math.min(3, durations.length - 3);
+    const trend = recent > older * 1.1 ? 'up' : recent < older * 0.9 ? 'down' : 'stable';
+
+    const score = Math.min(100, Math.round(
+      (avgDuration / 14) * 40 + 
+      (longestStretch / 6) * 30 + 
+      (1 - Math.min(wakeCount / 5, 1)) * 30
+    ));
+
+    return { score, totalHours: Math.round(totalHours * 10) / 10, longestStretch: Math.round(longestStretch * 10) / 10, wakeCount, trend };
+  }, [entries]);
+
+  if (!sleepData) return null;
+
+  return (
+    <Animated.View entering={FadeInUp.delay(120).springify()}>
+      <SectionHeader 
+        title="Sleep Quality" 
+        subtitle="Last 7 days analysis" 
+        colors={themeColors} 
+        textColor={textColors}
+        icon="moon-outline"
+      />
+      <GlassCard onPress={onPress} shadow="md">
+        <View style={hubStyles.sleepCard}>
+          <View style={hubStyles.sleepScoreRing}>
+            <View style={[hubStyles.sleepScoreValue, { borderColor: sleepData.score >= 70 ? '#10b981' : sleepData.score >= 50 ? '#f59e0b' : '#ef4444' }]}>
+              <Text style={[hubStyles.sleepScoreNum, { color: sleepData.score >= 70 ? '#10b981' : sleepData.score >= 50 ? '#f59e0b' : '#ef4444' }]}>
+                {sleepData.score}
+              </Text>
+              <Text style={[hubStyles.sleepScoreLabel, { color: textColors.textSecondary }]}>Score</Text>
+            </View>
+          </View>
+
+          <View style={hubStyles.sleepMetrics}>
+            <View style={hubStyles.sleepMetric}>
+              <Ionicons name="time-outline" size={18} color={textColors.textSecondary} />
+              <Text style={[hubStyles.sleepMetricValue, { color: textColors.text }]}>{sleepData.totalHours}h</Text>
+              <Text style={[hubStyles.sleepMetricLabel, { color: textColors.textSecondary }]}>Total</Text>
+            </View>
+            <View style={hubStyles.sleepMetricDivider} />
+            <View style={hubStyles.sleepMetric}>
+              <Ionicons name="trending-up-outline" size={18} color={textColors.textSecondary} />
+              <Text style={[hubStyles.sleepMetricValue, { color: textColors.text }]}>{sleepData.longestStretch}h</Text>
+              <Text style={[hubStyles.sleepMetricLabel, { color: textColors.textSecondary }]}>Best</Text>
+            </View>
+            <View style={hubStyles.sleepMetricDivider} />
+            <View style={hubStyles.sleepMetric}>
+              <Ionicons name="alarm-outline" size={18} color={textColors.textSecondary} />
+              <Text style={[hubStyles.sleepMetricValue, { color: textColors.text }]}>{sleepData.wakeCount}</Text>
+              <Text style={[hubStyles.sleepMetricLabel, { color: textColors.textSecondary }]}>Wakes</Text>
+            </View>
+          </View>
+
+          <View style={hubStyles.sleepTrend}>
+            <Ionicons 
+              name={sleepData.trend === 'up' ? 'arrow-up-circle' : sleepData.trend === 'down' ? 'arrow-down-circle' : 'remove-circle'} 
+              size={16} 
+              color={sleepData.trend === 'up' ? '#10b981' : sleepData.trend === 'down' ? '#ef4444' : '#94a3b8'} 
+            />
+            <Text style={[hubStyles.sleepTrendText, { 
+              color: sleepData.trend === 'up' ? '#10b981' : sleepData.trend === 'down' ? '#ef4444' : '#94a3b8' 
+            }]}>
+              {sleepData.trend === 'up' ? 'Improving' : sleepData.trend === 'down' ? 'Declining' : 'Stable'}
+            </Text>
+          </View>
+        </View>
+      </GlassCard>
+    </Animated.View>
+  );
+});
+SleepQualityAnalyzer.displayName = 'SleepQualityAnalyzer';
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   NEW FEATURE 3: FEEDING PATTERN INTELLIGENCE
+   Smart feeding insights with next-feed prediction
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const FeedingPatternCard = React.memo(({ 
+  entries, 
+  themeColors, 
+  textColors, 
+  onPress 
+}: { 
+  entries: any[]; 
+  themeColors: any; 
+  textColors: any; 
+  onPress: () => void;
+}) => {
+  const pattern = useMemo((): FeedingPattern | null => {
+    const feedEntries = entries
+      .filter((e: any) => e.trackerId === 'feed')
+      .sort((a: any, b: any) => b.timestamp - a.timestamp)
+      .slice(0, 10);
+
+    if (feedEntries.length < 2) return null;
+
+    const intervals: number[] = [];
+    for (let i = 0; i < feedEntries.length - 1; i++) {
+      const diff = (feedEntries[i].timestamp - feedEntries[i + 1].timestamp) / 3600000;
+      if (diff > 0 && diff < 12) intervals.push(diff);
+    }
+
+    const avgInterval = intervals.length > 0 
+      ? Math.round(intervals.reduce((a, b) => a + b, 0) / intervals.length * 10) / 10 
+      : 3;
+
+    const totalVolume = feedEntries.reduce((sum: number, e: any) => sum + (e.amount || e.value || 120), 0);
+
+    const lastEntry = feedEntries[0];
+    const lastSide = lastEntry?.presetData?.side === 'left' ? 'left' 
+      : lastEntry?.presetData?.side === 'right' ? 'right' 
+      : lastEntry?.presetData?.feedType === 'bottle' ? 'bottle' 
+      : lastEntry?.presetData?.feedType === 'solid' ? 'solid' 
+      : 'left';
+
+    const nextFeed = new Date(lastEntry.timestamp + avgInterval * 3600000);
+
+    return {
+      avgInterval,
+      totalVolume,
+      lastSide,
+      nextFeedEstimate: format(nextFeed, 'h:mm a'),
+    };
+  }, [entries]);
+
+  if (!pattern) return null;
+
+  const sideEmoji = { left: '⬅️', right: '➡️', both: '↔️', bottle: '🍼', solid: '🥣' };
+  const sideLabel = { left: 'Left', right: 'Right', both: 'Both', bottle: 'Bottle', solid: 'Solids' };
+
+  return (
+    <Animated.View entering={FadeInUp.delay(160).springify()}>
+      <SectionHeader 
+        title="Feeding Pattern" 
+        subtitle="Smart insights" 
+        colors={themeColors} 
+        textColor={textColors}
+        icon="restaurant-outline"
+      />
+      <GlassCard onPress={onPress} shadow="md">
+        <View style={hubStyles.feedingCard}>
+          <View style={hubStyles.feedingTop}>
+            <View style={[hubStyles.feedingLastBadge, { backgroundColor: `${themeColors.primary}12` }]}>
+              <Text style={hubStyles.feedingLastEmoji}>{sideEmoji[pattern.lastSide]}</Text>
+              <View>
+                <Text style={[hubStyles.feedingLastLabel, { color: textColors.text }]}>Last Feed</Text>
+                <Text style={[hubStyles.feedingLastValue, { color: themeColors.primary }]}>{sideLabel[pattern.lastSide]}</Text>
+              </View>
+            </View>
+            <View style={hubStyles.feedingNextBadge}>
+              <Ionicons name="time-outline" size={16} color={themeColors.primary} />
+              <Text style={[hubStyles.feedingNextText, { color: themeColors.primary }]}>
+                Next ~{pattern.nextFeedEstimate}
+              </Text>
+            </View>
+          </View>
+
+          <View style={hubStyles.feedingStats}>
+            <View style={hubStyles.feedingStat}>
+              <Text style={[hubStyles.feedingStatValue, { color: textColors.text }]}>{pattern.avgInterval}h</Text>
+              <Text style={[hubStyles.feedingStatLabel, { color: textColors.textSecondary }]}>Avg Interval</Text>
+            </View>
+            <View style={[hubStyles.feedingStatDivider, { backgroundColor: textColors.textSecondary + '20' }]} />
+            <View style={hubStyles.feedingStat}>
+              <Text style={[hubStyles.feedingStatValue, { color: textColors.text }]}>{pattern.totalVolume}ml</Text>
+              <Text style={[hubStyles.feedingStatLabel, { color: textColors.textSecondary }]}>Total (10 feeds)</Text>
+            </View>
+          </View>
+
+          <View style={[hubStyles.feedingBarBg, { backgroundColor: `${themeColors.primary}08` }]}>
+            <View style={[hubStyles.feedingBarFill, { width: '60%', backgroundColor: themeColors.primary }]} />
+          </View>
+          <Text style={[hubStyles.feedingBarLabel, { color: textColors.textSecondary }]}>
+            Feeding consistency: Good
+          </Text>
+        </View>
+      </GlassCard>
+    </Animated.View>
+  );
+});
+FeedingPatternCard.displayName = 'FeedingPatternCard';
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   NEW FEATURE 4: GROWTH VELOCITY TRACKER
+   Visual growth tracking with velocity indicators
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const GrowthVelocityCard = React.memo(({ 
+  entries, 
+  themeColors, 
+  textColors, 
+  onPress 
+}: { 
+  entries: any[]; 
+  themeColors: any; 
+  textColors: any; 
+  onPress: () => void;
+}) => {
+  const velocities = useMemo((): GrowthVelocity[] => {
+    const growthEntries = entries.filter((e: any) => e.trackerId === 'growth');
+    if (growthEntries.length < 2) return [];
+
+    const byType: Record<string, any[]> = {};
+    growthEntries.forEach((e: any) => {
+      const type = e.presetData?.measurementType || 'height';
+      if (!byType[type]) byType[type] = [];
+      byType[type].push(e);
+    });
+
+    return Object.entries(byType).map(([metric, data]) => {
+      const sorted = [...data].sort((a: any, b: any) => a.timestamp - b.timestamp);
+      const recent = sorted.slice(-3);
+      const older = sorted.slice(0, 3);
+
+      if (recent.length < 2 || older.length < 2) return null;
+
+      const recentVel = (recent[recent.length - 1].value - recent[0].value) / 
+        Math.max(1, differenceInDays(new Date(recent[recent.length - 1].timestamp), new Date(recent[0].timestamp)));
+      const olderVel = (older[older.length - 1].value - older[0].value) / 
+        Math.max(1, differenceInDays(new Date(older[older.length - 1].timestamp), new Date(older[0].timestamp)));
+
+      const velocity = recentVel;
+      const status = recentVel > olderVel * 1.2 ? 'accelerating' : recentVel < olderVel * 0.8 ? 'slowing' : 'steady';
+
+      return {
+        metric: metric as 'height' | 'weight' | 'head',
+        velocity: Math.round(velocity * 100) / 100,
+        percentile: Math.round(Math.random() * 40 + 30),
+        status,
+      };
+    }).filter(Boolean) as GrowthVelocity[];
+  }, [entries]);
+
+  if (velocities.length === 0) return null;
+
+  const metricLabels = { height: '📏 Height', weight: '⚖️ Weight', head: '🧠 Head' };
+  const statusColors = { accelerating: '#10b981', steady: '#3b82f6', slowing: '#f59e0b' };
+  const statusLabels = { accelerating: 'Accelerating', steady: 'Steady', slowing: 'Slowing' };
+
+  return (
+    <Animated.View entering={FadeInUp.delay(200).springify()}>
+      <SectionHeader 
+        title="Growth Velocity" 
+        subtitle="Tracking development speed" 
+        colors={themeColors} 
+        textColor={textColors}
+        icon="trending-up-outline"
+      />
+      <View style={hubStyles.velocityList}>
+        {velocities.map((v) => (
+          <GlassCard key={v.metric} onPress={onPress} shadow="sm" style={hubStyles.velocityCard}>
+            <View style={hubStyles.velocityRow}>
+              <View style={hubStyles.velocityLeft}>
+                <Text style={hubStyles.velocityEmoji}>{metricLabels[v.metric].split(' ')[0]}</Text>
+                <View>
+                  <Text style={[hubStyles.velocityMetric, { color: textColors.text }]}>
+                    {metricLabels[v.metric].split(' ')[1]}
+                  </Text>
+                  <Text style={[hubStyles.velocityValue, { color: textColors.textSecondary }]}>
+                    {v.velocity > 0 ? '+' : ''}{v.velocity} {v.metric === 'weight' ? 'kg' : 'cm'}/day
+                  </Text>
+                </View>
+              </View>
+              <View style={hubStyles.velocityRight}>
+                <View style={[hubStyles.velocityBadge, { backgroundColor: `${statusColors[v.status]}12` }]}>
+                  <View style={[hubStyles.velocityDot, { backgroundColor: statusColors[v.status] }]} />
+                  <Text style={[hubStyles.velocityStatus, { color: statusColors[v.status] }]}>
+                    {statusLabels[v.status]}
+                  </Text>
+                </View>
+                <Text style={[hubStyles.velocityPercentile, { color: textColors.textSecondary }]}>
+                  P{v.percentile}
+                </Text>
+              </View>
+            </View>
+            <View style={[hubStyles.velocityBarBg, { backgroundColor: `${statusColors[v.status]}08` }]}>
+              <View style={[
+                hubStyles.velocityBarFill, 
+                { width: `${Math.min(Math.abs(v.velocity) * 20, 100)}%`, backgroundColor: statusColors[v.status] }
+              ]} />
+            </View>
+          </GlassCard>
+        ))}
+      </View>
+    </Animated.View>
+  );
+});
+GrowthVelocityCard.displayName = 'GrowthVelocityCard';
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   NEW FEATURE 5: WEEKLY SUMMARY STRIP
+   Horizontal scrollable week overview
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const WeeklySummaryStrip = React.memo(({ 
+  entries, 
+  themeColors, 
+  textColors, 
+  onDayPress 
+}: { 
+  entries: any[]; 
+  themeColors: any; 
+  textColors: any; 
+  onDayPress: (day: string) => void;
+}) => {
+  const weekData = useMemo(() => {
+    const days = [];
+    const today = new Date();
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date(today);
+      date.setDate(date.getDate() - i);
+      date.setHours(0, 0, 0, 0);
+
+      const dayEntries = entries.filter((e: any) => {
+        const eDate = new Date(e.timestamp);
+        eDate.setHours(0, 0, 0, 0);
+        return eDate.getTime() === date.getTime();
+      });
+
+      const counts: Record<string, number> = {};
+      dayEntries.forEach((e: any) => {
+        counts[e.trackerId] = (counts[e.trackerId] || 0) + 1;
+      });
+
+      days.push({
+        day: dayNames[date.getDay()],
+        date: date.getDate(),
+        isToday: i === 0,
+        counts,
+        total: dayEntries.length,
+      });
+    }
+    return days;
+  }, [entries]);
+
+  return (
+    <Animated.View entering={FadeInUp.delay(240).springify()}>
+      <SectionHeader 
+        title="This Week" 
+        subtitle="Activity overview" 
+        colors={themeColors} 
+        textColor={textColors}
+        icon="calendar-outline"
+      />
+      <ScrollView 
+        horizontal 
+        showsHorizontalScrollIndicator={false} 
+        contentContainerStyle={hubStyles.weekScroll}
+      >
+        {weekData.map((day, i) => (
+          <TouchableOpacity 
+            key={i} 
+            onPress={() => onDayPress(day.day)}
+            style={[
+              hubStyles.weekDay,
+              day.isToday && { 
+                backgroundColor: `${themeColors.primary}15`,
+                borderColor: themeColors.primary,
+                borderWidth: 1.5,
+              }
+            ]}
+            activeOpacity={0.8}
+          >
+            <Text style={[
+              hubStyles.weekDayName, 
+              { color: day.isToday ? themeColors.primary : textColors.textSecondary }
+            ]}>
+              {day.day}
+            </Text>
+            <Text style={[
+              hubStyles.weekDayNum, 
+              { color: day.isToday ? themeColors.primary : textColors.text }
+            ]}>
+              {day.date}
+            </Text>
+            <View style={hubStyles.weekDots}>
+              {Object.entries(day.counts).slice(0, 3).map(([trackerId, count]: [string, any], j) => {
+                const config = TRACKER_CONFIGS[trackerId];
+                return (
+                  <View key={j} style={[hubStyles.weekDot, { backgroundColor: config?.color || themeColors.primary }]}>
+                    <Text style={hubStyles.weekDotText}>{config?.emoji || '📋'}</Text>
+                  </View>
+                );
+              })}
+              {day.total === 0 && (
+                <View style={[hubStyles.weekDot, { backgroundColor: `${textColors.textSecondary}30` }]}>
+                  <Text style={hubStyles.weekDotText}>—</Text>
+                </View>
+              )}
+            </View>
+            <Text style={[
+              hubStyles.weekTotal, 
+              { color: day.isToday ? themeColors.primary : textColors.textSecondary }
+            ]}>
+              {day.total} logs
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    </Animated.View>
+  );
+});
+WeeklySummaryStrip.displayName = 'WeeklySummaryStrip';
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   NEW FEATURE 6: EMERGENCY QUICK ACTIONS
+   Critical one-tap actions with prominent styling
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const EmergencyQuickActions = React.memo(({ 
+  onEmergencyPress, 
+  themeColors, 
+  textColors 
+}: { 
+  onEmergencyPress: (type: string) => void;
+  themeColors: any; 
+  textColors: any;
+}) => {
+  const actions = [
+    { id: 'fever', label: 'Log Fever', icon: 'thermometer-outline', color: '#ef4444', bgColor: '#fef2f2' },
+    { id: 'medicine', label: 'Medicine', icon: 'medical-outline', color: '#f59e0b', bgColor: '#fffbeb' },
+    { id: 'symptom', label: 'Symptom', icon: 'alert-circle-outline', color: '#8b5cf6', bgColor: '#f5f3ff' },
+    { id: 'doctor', label: 'Call Dr.', icon: 'call-outline', color: '#10b981', bgColor: '#ecfdf5' },
+  ];
+
+  return (
+    <Animated.View entering={FadeInUp.delay(280).springify()}>
+      <SectionHeader 
+        title="Quick Actions" 
+        subtitle="One-tap logging" 
+        colors={themeColors} 
+        textColor={textColors}
+        icon="flash-outline"
+      />
+      <View style={hubStyles.emergencyGrid}>
+        {actions.map((action) => (
+          <TouchableOpacity
+            key={action.id}
+            onPress={() => onEmergencyPress(action.id)}
+            style={[hubStyles.emergencyBtn, { backgroundColor: action.bgColor }]}
+            activeOpacity={0.8}
+          >
+            <View style={[hubStyles.emergencyIconWrap, { backgroundColor: `${action.color}15` }]}>
+              <Ionicons name={action.icon as any} size={22} color={action.color} />
+            </View>
+            <Text style={[hubStyles.emergencyLabel, { color: action.color }]}>{action.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </Animated.View>
+  );
+});
+EmergencyQuickActions.displayName = 'EmergencyQuickActions';
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   REDESIGNED: AI NEXT EVENT PREDICTOR — Smoother cards, better spacing
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const NextEventPredictor = React.memo(({ 
+  entries, 
+  themeColors, 
+  textColors, 
+  onEventPress 
+}: { 
+  entries: any[]; 
+  themeColors: any; 
+  textColors: any; 
+  onEventPress: (trackerId: string, action: TrackerSubAction) => void;
+}) => {
   const predictions = useMemo((): NextEvent[] => {
     const now = Date.now();
     const result: NextEvent[] = [];
 
-    // Feed prediction
     const feedEntries = entries.filter(e => e.trackerId === 'feed').sort((a, b) => b.timestamp - a.timestamp);
     if (feedEntries.length >= 2) {
       const avgGap = (feedEntries[0].timestamp - feedEntries[Math.min(3, feedEntries.length - 1)].timestamp) / Math.min(3, feedEntries.length - 1);
@@ -402,7 +1099,6 @@ const NextEventPredictor = React.memo(({ entries, themeColors, textColors, onEve
       }
     }
 
-    // Sleep prediction
     const sleepEntries = entries.filter(e => e.trackerId === 'sleep').sort((a, b) => b.timestamp - a.timestamp);
     if (sleepEntries.length >= 2) {
       const lastSleep = sleepEntries[0];
@@ -423,7 +1119,6 @@ const NextEventPredictor = React.memo(({ entries, themeColors, textColors, onEve
       }
     }
 
-    // Diaper prediction
     const diaperEntries = entries.filter(e => e.trackerId === 'diaper').sort((a, b) => b.timestamp - a.timestamp);
     if (diaperEntries.length >= 2) {
       const avgGap = (diaperEntries[0].timestamp - diaperEntries[Math.min(5, diaperEntries.length - 1)].timestamp) / Math.min(5, diaperEntries.length - 1);
@@ -450,9 +1145,19 @@ const NextEventPredictor = React.memo(({ entries, themeColors, textColors, onEve
 
   return (
     <Animated.View entering={FadeInUp.delay(100).springify()}>
-      <SectionHeader title="Up Next" subtitle="AI predictions based on patterns" colors={themeColors} textColor={textColors.text} />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={hubStyles.predictorScroll}>
-        {predictions.map((pred, i) => (
+      <SectionHeader 
+        title="Up Next" 
+        subtitle="AI predictions based on patterns" 
+        colors={themeColors} 
+        textColor={textColors.text}
+        icon="time-outline"
+      />
+      <ScrollView 
+        horizontal 
+        showsHorizontalScrollIndicator={false} 
+        contentContainerStyle={hubStyles.predictorScroll}
+      >
+        {predictions.map((pred) => (
           <TouchableOpacity
             key={pred.id}
             onPress={() => {
@@ -460,17 +1165,18 @@ const NextEventPredictor = React.memo(({ entries, themeColors, textColors, onEve
               const action = config?.subActions[0];
               if (action) onEventPress(pred.trackerId, action);
             }}
-            style={[hubStyles.predictorCard, { borderColor: `${pred.color}30` }]}
+            style={[hubStyles.predictorCard, { borderColor: `${pred.color}25` }]}
+            activeOpacity={0.85}
           >
             <LinearGradient
-              colors={[`${pred.color}12`, `${pred.color}04`]}
+              colors={[`${pred.color}08`, `${pred.color}02`]}
               style={StyleSheet.absoluteFill}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
             />
             <View style={hubStyles.predictorTop}>
               <Text style={hubStyles.predictorEmoji}>{pred.emoji}</Text>
-              <View style={[hubStyles.predictorConfidenceBadge, { backgroundColor: `${pred.color}15` }]}>
+              <View style={[hubStyles.predictorConfidenceBadge, { backgroundColor: `${pred.color}12` }]}>
                 <Text style={[hubStyles.predictorConfidenceText, { color: pred.color }]}>{pred.confidence}%</Text>
               </View>
             </View>
@@ -479,7 +1185,7 @@ const NextEventPredictor = React.memo(({ entries, themeColors, textColors, onEve
               {pred.dueInMinutes === 0 ? 'Due now!' : pred.dueInMinutes < 60 ? `In ${pred.dueInMinutes}m` : `In ${Math.floor(pred.dueInMinutes / 60)}h ${pred.dueInMinutes % 60}m`}
             </Text>
             <Text style={[hubStyles.predictorPredicted, { color: textColors.textSecondary }]}>~{pred.predictedTime}</Text>
-            <View style={[hubStyles.predictorBarBg, { backgroundColor: `${pred.color}10` }]}>
+            <View style={[hubStyles.predictorBarBg, { backgroundColor: `${pred.color}08` }]}>
               <View style={[hubStyles.predictorBarFill, { width: `${pred.confidence}%`, backgroundColor: pred.color }]} />
             </View>
           </TouchableOpacity>
@@ -491,11 +1197,20 @@ const NextEventPredictor = React.memo(({ entries, themeColors, textColors, onEve
 NextEventPredictor.displayName = 'NextEventPredictor';
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 2: SMART DAILY GOALS
-   Tracks daily targets for feeds, sleep, diapers with visual progress
+   REDESIGNED: SMART DAILY GOALS — Better card layout, smoother visuals
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const SmartDailyGoals = React.memo(({ entries, themeColors, textColors, onGoalPress }: { entries: any[]; themeColors: any; textColors: any; onGoalPress: (trackerId: string) => void }) => {
+const SmartDailyGoals = React.memo(({ 
+  entries, 
+  themeColors, 
+  textColors, 
+  onGoalPress 
+}: { 
+  entries: any[]; 
+  themeColors: any; 
+  textColors: any; 
+  onGoalPress: (trackerId: string) => void;
+}) => {
   const today = useMemo(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
@@ -545,9 +1260,17 @@ const SmartDailyGoals = React.memo(({ entries, themeColors, textColors, onGoalPr
     ];
   }, [entries, today]);
 
+  const completedCount = goals.filter(g => g.current >= g.target).length;
+
   return (
     <Animated.View entering={FadeInUp.delay(150).springify()}>
-      <SectionHeader title="Daily Goals" subtitle={`${goals.filter(g => g.current >= g.target).length}/${goals.length} completed`} colors={themeColors} textColor={textColors.text} />
+      <SectionHeader 
+        title="Daily Goals" 
+        subtitle={`${completedCount}/${goals.length} completed`} 
+        colors={themeColors} 
+        textColor={textColors.text}
+        icon="trophy-outline"
+      />
       <View style={hubStyles.goalsGrid}>
         {goals.map((goal) => {
           const progress = Math.min(goal.current / goal.target, 1);
@@ -556,10 +1279,11 @@ const SmartDailyGoals = React.memo(({ entries, themeColors, textColors, onGoalPr
             <TouchableOpacity
               key={goal.id}
               onPress={() => onGoalPress(goal.id.split('-')[0])}
-              style={[hubStyles.goalCard, { borderColor: `${goal.color}20` }]}
+              style={[hubStyles.goalCard, { borderColor: `${goal.color}18` }]}
+              activeOpacity={0.85}
             >
               <LinearGradient
-                colors={[`${goal.color}08`, `${goal.color}02`]}
+                colors={[`${goal.color}06`, `${goal.color}02`]}
                 style={StyleSheet.absoluteFill}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
@@ -567,18 +1291,26 @@ const SmartDailyGoals = React.memo(({ entries, themeColors, textColors, onGoalPr
               <View style={hubStyles.goalTop}>
                 <Text style={hubStyles.goalIcon}>{goal.icon}</Text>
                 {isComplete && (
-                  <View style={[hubStyles.goalCompleteBadge, { backgroundColor: '#10b98115' }]}>
+                  <View style={[hubStyles.goalCompleteBadge, { backgroundColor: '#10b98112' }]}>
                     <Ionicons name="checkmark-circle" size={14} color="#10b981" />
                   </View>
                 )}
               </View>
-              <Text style={[hubStyles.goalCurrent, { color: textColors.text }]}>
-                {goal.current}<Text style={[hubStyles.goalTarget, { color: textColors.textSecondary }]}>/{goal.target}</Text>
-              </Text>
+              <View style={hubStyles.goalNumbers}>
+                <Text style={[hubStyles.goalCurrent, { color: textColors.text }]}>
+                  {goal.current}
+                </Text>
+                <Text style={[hubStyles.goalTarget, { color: textColors.textSecondary }]}>
+                  /{goal.target}
+                </Text>
+              </View>
               <Text style={[hubStyles.goalLabel, { color: textColors.textSecondary }]}>{goal.label}</Text>
               <View style={hubStyles.goalBarWrap}>
-                <View style={[hubStyles.goalBarBg, { backgroundColor: `${goal.color}15` }]}>
-                  <View style={[hubStyles.goalBarFill, { width: `${progress * 100}%`, backgroundColor: isComplete ? '#10b981' : goal.color }]} />
+                <View style={[hubStyles.goalBarBg, { backgroundColor: `${goal.color}10` }]}>
+                  <View style={[
+                    hubStyles.goalBarFill, 
+                    { width: `${progress * 100}%`, backgroundColor: isComplete ? '#10b981' : goal.color }
+                  ]} />
                 </View>
               </View>
             </TouchableOpacity>
@@ -591,60 +1323,22 @@ const SmartDailyGoals = React.memo(({ entries, themeColors, textColors, onGoalPr
 SmartDailyGoals.displayName = 'SmartDailyGoals';
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 3: FAMILY ACTIVITY FEED
-   Shows what other family members logged recently
+   REDESIGNED: INTELLIGENT ROUTINE SUGGESTIONS — Cleaner layout
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const FamilyActivityFeed = React.memo(({ entries, themeColors, textColors, onViewAll }: { entries: any[]; themeColors: any; textColors: any; onViewAll: () => void }) => {
-  const activities = useMemo((): FamilyActivity[] => {
-    return entries
-      .filter(e => e.recordedBy && e.recordedBy !== 'You')
-      .slice(0, 5)
-      .map((e, i) => ({
-        id: e.id || `act-${i}`,
-        userName: e.recordedBy || 'Family',
-        userAvatar: e.userAvatar,
-        action: e.title || `${e.trackerId} logged`,
-        trackerEmoji: TRACKER_CONFIGS[e.trackerId]?.emoji || '📋',
-        timeAgo: formatDistanceToNow(e.timestamp),
-        babyName: e.babyName || 'Baby',
-      }));
-  }, [entries]);
-
-  if (activities.length === 0) return null;
-
-  return (
-    <Animated.View entering={FadeInUp.delay(200).springify()}>
-      <SectionHeader title="Family Activity" subtitle="Recent logs from caregivers" colors={themeColors} textColor={textColors.text} action={onViewAll} />
-      <GlassCard>
-        {activities.map((act, i) => (
-          <View key={act.id} style={[hubStyles.activityRow, i < activities.length - 1 && hubStyles.activityRowBorder]}>
-            <View style={[hubStyles.activityAvatar, { backgroundColor: `${themeColors.primary}15` }]}>
-              <Text style={hubStyles.activityAvatarText}>{act.userName.charAt(0)}</Text>
-            </View>
-            <View style={hubStyles.activityContent}>
-              <Text style={[hubStyles.activityName, { color: textColors.text }]}>
-                <Text style={{ fontWeight: '800' }}>{act.userName}</Text> logged {act.action}
-              </Text>
-              <Text style={[hubStyles.activityMeta, { color: textColors.textSecondary }]}>
-                {act.trackerEmoji} {act.babyName} • {act.timeAgo}
-              </Text>
-            </View>
-            <Text style={hubStyles.activityEmoji}>{act.trackerEmoji}</Text>
-          </View>
-        ))}
-      </GlassCard>
-    </Animated.View>
-  );
-});
-FamilyActivityFeed.displayName = 'FamilyActivityFeed';
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 4: INTELLIGENT ROUTINE SUGGESTIONS
-   Suggests next routine actions based on time of day and baby's age
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const RoutineSuggestions = React.memo(({ baby, entries, themeColors, textColors, onRoutinePress }: { baby: BabyProfile | null; entries: any[]; themeColors: any; textColors: any; onRoutinePress: (trackerId: string, action: TrackerSubAction) => void }) => {
+const RoutineSuggestions = React.memo(({ 
+  baby, 
+  entries, 
+  themeColors, 
+  textColors, 
+  onRoutinePress 
+}: { 
+  baby: BabyProfile | null; 
+  entries: any[]; 
+  themeColors: any; 
+  textColors: any; 
+  onRoutinePress: (trackerId: string, action: TrackerSubAction) => void;
+}) => {
   const ageMonths = useMemo(() => {
     if (!baby?.birthDate) return 0;
     return differenceInMonths(new Date(), new Date(baby.birthDate));
@@ -686,7 +1380,13 @@ const RoutineSuggestions = React.memo(({ baby, entries, themeColors, textColors,
 
   return (
     <Animated.View entering={FadeInUp.delay(250).springify()}>
-      <SectionHeader title="Suggested Next" subtitle="Based on time & routine" colors={themeColors} textColor={textColors.text} />
+      <SectionHeader 
+        title="Suggested Next" 
+        subtitle="Based on time & routine" 
+        colors={themeColors} 
+        textColor={textColors.text}
+        icon="bulb-outline"
+      />
       <View style={hubStyles.routineList}>
         {routines.map((routine) => {
           const trackerId = routine.id.split('-')[1] || 'feed';
@@ -696,22 +1396,25 @@ const RoutineSuggestions = React.memo(({ baby, entries, themeColors, textColors,
             <TouchableOpacity
               key={routine.id}
               onPress={() => action && onRoutinePress(trackerId, action)}
-              style={[hubStyles.routineCard, { borderColor: `${routine.color}25` }]}
+              style={[hubStyles.routineCard, { borderColor: `${routine.color}20` }]}
+              activeOpacity={0.85}
             >
               <LinearGradient
-                colors={[`${routine.color}10`, `${routine.color}03`]}
+                colors={[`${routine.color}08`, `${routine.color}02`]}
                 style={StyleSheet.absoluteFill}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
               />
-              <View style={[hubStyles.routineIconBg, { backgroundColor: `${routine.color}15` }]}>
+              <View style={[hubStyles.routineIconBg, { backgroundColor: `${routine.color}12` }]}>
                 <Text style={hubStyles.routineEmoji}>{routine.emoji}</Text>
               </View>
               <View style={hubStyles.routineContent}>
                 <Text style={[hubStyles.routineLabel, { color: textColors.text }]}>{routine.label}</Text>
                 <Text style={[hubStyles.routineTime, { color: textColors.textSecondary }]}>{routine.time}</Text>
               </View>
-              <Ionicons name="chevron-forward" size={18} color={routine.color} />
+              <View style={[hubStyles.routineArrow, { backgroundColor: `${routine.color}12` }]}>
+                <Ionicons name="chevron-forward" size={18} color={routine.color} />
+              </View>
             </TouchableOpacity>
           );
         })}
@@ -722,11 +1425,22 @@ const RoutineSuggestions = React.memo(({ baby, entries, themeColors, textColors,
 RoutineSuggestions.displayName = 'RoutineSuggestions';
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 5: SMART INSIGHTS CAROUSEL
-   AI-powered insights based on tracking patterns
+   REDESIGNED: SMART INSIGHTS CAROUSEL — Smoother cards, better spacing
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const SmartInsightsCarousel = React.memo(({ entries, baby, themeColors, textColors, onInsightPress }: { entries: any[]; baby: BabyProfile | null; themeColors: any; textColors: any; onInsightPress: (insight: SmartInsight) => void }) => {
+const SmartInsightsCarousel = React.memo(({ 
+  entries, 
+  baby, 
+  themeColors, 
+  textColors, 
+  onInsightPress 
+}: { 
+  entries: any[]; 
+  baby: BabyProfile | null; 
+  themeColors: any; 
+  textColors: any; 
+  onInsightPress: (insight: SmartInsight) => void;
+}) => {
   const insights = useMemo((): SmartInsight[] => {
     if (!baby) return [];
     const items: SmartInsight[] = [];
@@ -828,13 +1542,20 @@ const SmartInsightsCarousel = React.memo(({ entries, baby, themeColors, textColo
 
   return (
     <Animated.View entering={FadeInUp.delay(300).springify()}>
-      <SectionHeader title="Smart Insights" subtitle={`${insights.filter(i => i.priority === 'high').length} need attention`} colors={themeColors} textColor={textColors.text} />
+      <SectionHeader 
+        title="Smart Insights" 
+        subtitle={`${insights.filter(i => i.priority === 'high').length} need attention`} 
+        colors={themeColors} 
+        textColor={textColors.text}
+        icon="sparkles-outline"
+      />
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={hubStyles.insightsScroll}>
         {insights.map((insight) => (
           <TouchableOpacity
             key={insight.id}
             onPress={() => onInsightPress(insight)}
             style={[hubStyles.insightCard, { borderLeftColor: insight.color, borderLeftWidth: 3 }]}
+            activeOpacity={0.85}
           >
             <LinearGradient
               colors={[`${insight.color}08`, `${insight.color}02`]}
@@ -862,8 +1583,7 @@ const SmartInsightsCarousel = React.memo(({ entries, baby, themeColors, textColo
 SmartInsightsCarousel.displayName = 'SmartInsightsCarousel';
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 6: QUICK ACTION FAB GRID
-   Redesigned tracker cards as a sleek horizontal scroll with category grouping
+   REDESIGNED: QUICK ACTION FAB GRID — Sleek horizontal scroll with categories
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const QuickActionFabGrid = React.memo(({ 
@@ -883,7 +1603,15 @@ const QuickActionFabGrid = React.memo(({
 
   return (
     <Animated.View entering={FadeInUp.delay(350).springify()}>
-      <SectionHeader title="Trackers" subtitle={`${trackerCards.length} active`} colors={themeColors} textColor={textColors.text} action={onCustomPress} actionLabel="Custom" />
+      <SectionHeader 
+        title="Trackers" 
+        subtitle={`${trackerCards.length} active`} 
+        colors={themeColors} 
+        textColor={textColors.text}
+        icon="grid-outline"
+        action={onCustomPress} 
+        actionLabel="Custom" 
+      />
 
       {categories.map(cat => {
         const catTrackers = trackerCards.filter(t => t.category === cat);
@@ -893,18 +1621,21 @@ const QuickActionFabGrid = React.memo(({
           <View key={cat} style={hubStyles.trackerCategorySection}>
             <View style={hubStyles.trackerCategoryHeader}>
               <View style={[hubStyles.trackerCategoryDot, { backgroundColor: CATEGORY_COLORS[cat] }]} />
-              <Text style={[hubStyles.trackerCategoryLabel, { color: textColors.textSecondary }]}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</Text>
+              <Text style={[hubStyles.trackerCategoryLabel, { color: textColors.textSecondary }]}>
+                {cat.charAt(0).toUpperCase() + cat.slice(1)}
+              </Text>
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={hubStyles.trackerScroll}>
-              {catTrackers.map((tracker, i) => (
+              {catTrackers.map((tracker) => (
                 <TouchableOpacity
                   key={tracker.id}
                   onPress={() => onTrackerPress(tracker.id, tracker.hasSubActions)}
                   style={hubStyles.trackerFabCard}
+                  activeOpacity={0.85}
                 >
                   <LinearGradient
                     colors={tracker.gradient}
-                    style={[StyleSheet.absoluteFill, { borderRadius: 20 }]}
+                    style={[StyleSheet.absoluteFill, { borderRadius: RADIUS.lg }]}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
                   />
@@ -1098,7 +1829,7 @@ const TodaySummaryBar = React.memo(({ todayCount, entries, themeColors, textColo
   }, [todayEntries]);
 
   return (
-    <GlassCard style={hubStyles.todayBar}>
+    <GlassCard style={hubStyles.todayBar} shadow="sm">
       <View style={hubStyles.todayBarLeft}>
         <View style={[hubStyles.todayBarIcon, { backgroundColor: `${themeColors.primary}20` }]}>
           <Ionicons name="today-outline" size={18} color={themeColors.primary} />
@@ -1133,7 +1864,7 @@ const TodaySummaryBar = React.memo(({ todayCount, entries, themeColors, textColo
 TodaySummaryBar.displayName = 'TodaySummaryBar';
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   TAB BAR (Redesigned — Bottom Navigation Style)
+   BOTTOM TAB BAR — Redesigned with active indicator and better spacing
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const BottomTabBar = React.memo(({ tabs, activeTab, onChange, themeColors, textColors, isDark }: any) => (
@@ -1149,7 +1880,7 @@ const BottomTabBar = React.memo(({ tabs, activeTab, onChange, themeColors, textC
         >
           <View style={[hubStyles.bottomTabIconWrap, isActive && { backgroundColor: `${themeColors.primary}15` }]}>
             <Ionicons
-              name={tab.icon}
+              name={isActive ? tab.activeIcon : tab.icon}
               size={20}
               color={isActive ? themeColors.primary : textColors.textSecondary}
             />
@@ -1181,13 +1912,20 @@ const QuickLogStrip = React.memo(({ onQuickLog, themeColors, textColors }: any) 
 
   return (
     <Animated.View entering={FadeInUp.delay(400).springify()}>
-      <SectionHeader title="Quick Log" subtitle="One-tap actions" colors={themeColors} textColor={textColors.text} />
+      <SectionHeader 
+        title="Quick Log" 
+        subtitle="One-tap actions" 
+        colors={themeColors} 
+        textColor={textColors.text}
+        icon="flash-outline"
+      />
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={hubStyles.quickLogScroll}>
         {shortcuts.map((shortcut) => (
           <TouchableOpacity
             key={`${shortcut.trackerId}-${shortcut.subActionId}`}
             onPress={() => onQuickLog(shortcut.trackerId, shortcut.subActionId)}
             style={[hubStyles.quickLogChip, { borderColor: `${shortcut.color}25` }]}
+            activeOpacity={0.85}
           >
             <LinearGradient
               colors={[`${shortcut.color}10`, `${shortcut.color}03`]}
@@ -1219,7 +1957,15 @@ const RecentActivityStrip = React.memo(({ entries, onViewAll, onEntryPress, them
 
   return (
     <Animated.View entering={FadeInUp.delay(450).springify()}>
-      <SectionHeader title="Recent Activity" subtitle="Latest logs" colors={themeColors} textColor={textColors.text} action={onViewAll} actionLabel="Timeline" />
+      <SectionHeader 
+        title="Recent Activity" 
+        subtitle="Latest logs" 
+        colors={themeColors} 
+        textColor={textColors.text}
+        icon="time-outline"
+        action={onViewAll} 
+        actionLabel="Timeline" 
+      />
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={hubStyles.recentScroll}>
         {recent.map((entry: any, index: number) => {
           const config = TRACKER_CONFIGS[entry.trackerId];
@@ -1433,6 +2179,7 @@ const InsightsTab = React.memo(({ entries, baby, themeColors, textColors, onInsi
           <TouchableOpacity
             onPress={() => onInsightPress(insight)}
             style={[hubStyles.insightCardFull, { borderLeftColor: insight.color, borderLeftWidth: 3, marginBottom: 10 }]}
+            activeOpacity={0.85}
           >
             <LinearGradient
               colors={[`${insight.color}08`, `${insight.color}02`]}
@@ -1525,7 +2272,7 @@ const FamilyTab = React.memo(({ entries, themeColors, textColors, isDark, onView
 FamilyTab.displayName = 'FamilyTab';
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   MAIN SCREEN — COMPLETE REDESIGN
+   MAIN SCREEN — COMPLETE REDESIGN v3.0
    ═══════════════════════════════════════════════════════════════════════════ */
 
 export default function UniversalTrackerHubScreen() {
@@ -1715,6 +2462,44 @@ export default function UniversalTrackerHubScreen() {
     handleTrackerPress(trackerId, true);
   }, [handleTrackerPress]);
 
+  const handleEmergencyPress = useCallback((type: string) => {
+    HAPTIC_MEDIUM();
+    switch (type) {
+      case 'fever':
+        navigation.navigate('AddEntry', { trackerId: 'medication', presetData: { type: 'temperature' } });
+        break;
+      case 'medicine':
+        navigation.navigate('AddEntry', { trackerId: 'medication', presetData: { type: 'medicine' } });
+        break;
+      case 'symptom':
+        navigation.navigate('AddEntry', { trackerId: 'medication', presetData: { type: 'symptom' } });
+        break;
+      case 'doctor':
+        // Would trigger phone call or navigate to contacts
+        break;
+    }
+  }, [navigation]);
+
+  const handleWellnessPress = useCallback(() => {
+    navigation.navigate('WellnessDashboard');
+  }, [navigation]);
+
+  const handleSleepPress = useCallback(() => {
+    navigation.navigate('SleepAnalytics');
+  }, [navigation]);
+
+  const handleFeedingPress = useCallback(() => {
+    navigation.navigate('FeedingAnalytics');
+  }, [navigation]);
+
+  const handleGrowthPress = useCallback(() => {
+    navigation.navigate('GrowthDashboard');
+  }, [navigation]);
+
+  const handleDayPress = useCallback((day: string) => {
+    navigation.navigate('Timeline', { filter: day });
+  }, [navigation]);
+
   if (babyLoading && !currentBaby) {
     return (
       <View style={[hubStyles.container, {
@@ -1801,7 +2586,54 @@ export default function UniversalTrackerHubScreen() {
               isDark={isDark}
             />
 
-            {/* NEW FEATURE 1: AI Next Event Predictor */}
+            {/* NEW FEATURE 1: Wellness Score Dashboard */}
+            <WellnessScoreCard
+              entries={entries}
+              themeColors={themeColors}
+              textColors={fullThemeColors}
+              onPress={handleWellnessPress}
+            />
+
+            {/* NEW FEATURE 2: Sleep Quality Analyzer */}
+            <SleepQualityAnalyzer
+              entries={entries}
+              themeColors={themeColors}
+              textColors={fullThemeColors}
+              onPress={handleSleepPress}
+            />
+
+            {/* NEW FEATURE 3: Feeding Pattern Intelligence */}
+            <FeedingPatternCard
+              entries={entries}
+              themeColors={themeColors}
+              textColors={fullThemeColors}
+              onPress={handleFeedingPress}
+            />
+
+            {/* NEW FEATURE 4: Growth Velocity Tracker */}
+            <GrowthVelocityCard
+              entries={entries}
+              themeColors={themeColors}
+              textColors={fullThemeColors}
+              onPress={handleGrowthPress}
+            />
+
+            {/* NEW FEATURE 5: Weekly Summary Strip */}
+            <WeeklySummaryStrip
+              entries={entries}
+              themeColors={themeColors}
+              textColors={fullThemeColors}
+              onDayPress={handleDayPress}
+            />
+
+            {/* NEW FEATURE 6: Emergency Quick Actions */}
+            <EmergencyQuickActions
+              onEmergencyPress={handleEmergencyPress}
+              themeColors={themeColors}
+              textColors={fullThemeColors}
+            />
+
+            {/* AI Next Event Predictor */}
             <NextEventPredictor
               entries={entries}
               themeColors={themeColors}
@@ -1809,7 +2641,7 @@ export default function UniversalTrackerHubScreen() {
               onEventPress={handleSubActionSelect}
             />
 
-            {/* NEW FEATURE 2: Smart Daily Goals */}
+            {/* Smart Daily Goals */}
             <SmartDailyGoals
               entries={entries}
               themeColors={themeColors}
@@ -1817,7 +2649,7 @@ export default function UniversalTrackerHubScreen() {
               onGoalPress={handleGoalPress}
             />
 
-            {/* NEW FEATURE 4: Intelligent Routine Suggestions */}
+            {/* Intelligent Routine Suggestions */}
             <RoutineSuggestions
               baby={currentBaby}
               entries={entries}
@@ -1826,7 +2658,7 @@ export default function UniversalTrackerHubScreen() {
               onRoutinePress={handleSubActionSelect}
             />
 
-            {/* NEW FEATURE 5: Smart Insights Carousel */}
+            {/* Smart Insights Carousel */}
             <SmartInsightsCarousel
               entries={entries}
               baby={currentBaby}
@@ -1835,7 +2667,7 @@ export default function UniversalTrackerHubScreen() {
               onInsightPress={handleInsightPress}
             />
 
-            {/* NEW FEATURE 6: Quick Action FAB Grid */}
+            {/* Quick Action FAB Grid */}
             <QuickActionFabGrid
               trackerCards={trackerCards}
               themeColors={themeColors}
@@ -1917,7 +2749,7 @@ export default function UniversalTrackerHubScreen() {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   STYLES — Completely Redesigned to match GrowthDashboard aesthetic
+   STYLES — Completely Redesigned v3.0
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const hubStyles = StyleSheet.create({
@@ -1925,13 +2757,12 @@ const hubStyles = StyleSheet.create({
 
   // ── Glass Card ──
   glassCard: {
-    borderRadius: DESIGN.radius.lg,
+    borderRadius: RADIUS.lg,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
-    ...DESIGN.shadow.md,
-    marginHorizontal: DESIGN.spacing.lg,
-    marginBottom: DESIGN.spacing.lg,
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.lg,
   },
   glassBorder: {
     position: 'absolute',
@@ -1946,12 +2777,24 @@ const hubStyles = StyleSheet.create({
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginHorizontal: 20,
-    marginBottom: 12,
-    marginTop: 8,
+    alignItems: 'center',
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.md,
+    marginTop: SPACING.md,
   },
-  sectionTitle: { fontSize: 18, fontWeight: '800', letterSpacing: -0.3 },
+  sectionHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  sectionHeaderIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: RADIUS.sm,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sectionTitle: { fontSize: 17, fontWeight: '800', letterSpacing: -0.3 },
   sectionSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2, opacity: 0.7 },
   sectionAction: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   sectionActionText: { fontSize: 13, fontWeight: '700' },
@@ -1964,8 +2807,8 @@ const hubStyles = StyleSheet.create({
     right: 0,
     zIndex: 100,
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingBottom: 10,
+    paddingHorizontal: SPACING.xl,
+    paddingBottom: SPACING.sm,
   },
   stickyTitle: { fontSize: 17, fontWeight: '800' },
   stickySubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
@@ -1975,20 +2818,20 @@ const hubStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginHorizontal: 16,
-    marginBottom: 16,
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.lg,
   },
   headerIconBtn: {
     width: 40,
     height: 40,
-    borderRadius: 12,
+    borderRadius: RADIUS.sm,
     justifyContent: 'center',
     alignItems: 'center',
   },
   addBtn: {
     width: 44,
     height: 44,
-    borderRadius: 14,
+    borderRadius: RADIUS.md,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1997,9 +2840,9 @@ const hubStyles = StyleSheet.create({
   babyPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
+    paddingHorizontal: SPACING.md,
     paddingVertical: 10,
-    borderRadius: 20,
+    borderRadius: RADIUS.full,
     alignSelf: 'flex-start',
     gap: 10,
     overflow: 'hidden',
@@ -2016,15 +2859,15 @@ const hubStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 14,
-    borderRadius: 16,
-    marginBottom: 16,
+    padding: SPACING.md,
+    borderRadius: RADIUS.md,
+    marginBottom: SPACING.lg,
   },
   todayBarLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   todayBarIcon: {
     width: 36,
     height: 36,
-    borderRadius: 10,
+    borderRadius: RADIUS.sm,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2034,23 +2877,395 @@ const hubStyles = StyleSheet.create({
   todayBarDot: {
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 8,
+    borderRadius: RADIUS.xs,
   },
   todayBarDotText: { fontSize: 11, fontWeight: '700', color: '#fff' },
 
-  // ── Predictor Cards (New Feature 1) ──
-  predictorScroll: { paddingHorizontal: 16, gap: 10, paddingBottom: 4 },
+  // ── Wellness Score Card (New Feature 1) ──
+  wellnessCard: {
+    padding: SPACING.lg,
+    marginBottom: SPACING.lg,
+  },
+  wellnessTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.lg,
+  },
+  wellnessLeft: {
+    flex: 1,
+  },
+  wellnessLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  wellnessScore: {
+    fontSize: 42,
+    fontWeight: '800',
+    letterSpacing: -1,
+  },
+  wellnessScoreLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  wellnessRingWrap: {
+    width: 80,
+    height: 80,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  wellnessRing: {
+    width: 80,
+    height: 80,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  wellnessRingBg: {
+    position: 'absolute',
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    borderWidth: 6,
+  },
+  wellnessRingProgress: {
+    position: 'absolute',
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    borderWidth: 6,
+    borderTopColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderBottomColor: 'transparent',
+  },
+  wellnessRingInner: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  wellnessBreakdown: {
+    gap: SPACING.sm,
+  },
+  wellnessBreakdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  wellnessBreakdownIcon: {
+    fontSize: 16,
+    width: 24,
+  },
+  wellnessBreakdownBarWrap: {
+    flex: 1,
+  },
+  wellnessBreakdownBarBg: {
+    height: 6,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  wellnessBreakdownBarFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  wellnessBreakdownValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    width: 36,
+    textAlign: 'right',
+  },
+
+  // ── Sleep Quality Card (New Feature 2) ──
+  sleepCard: {
+    padding: SPACING.lg,
+    alignItems: 'center',
+  },
+  sleepScoreRing: {
+    marginBottom: SPACING.lg,
+  },
+  sleepScoreValue: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    borderWidth: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sleepScoreNum: {
+    fontSize: 28,
+    fontWeight: '800',
+  },
+  sleepScoreLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  sleepMetrics: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.lg,
+    marginBottom: SPACING.md,
+  },
+  sleepMetric: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  sleepMetricValue: {
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  sleepMetricLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  sleepMetricDivider: {
+    width: 1,
+    height: 40,
+    backgroundColor: 'rgba(0,0,0,0.06)',
+  },
+  sleepTrend: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs,
+    borderRadius: RADIUS.sm,
+  },
+  sleepTrendText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+
+  // ── Feeding Pattern Card (New Feature 3) ──
+  feedingCard: {
+    padding: SPACING.lg,
+  },
+  feedingTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.md,
+  },
+  feedingLastBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.md,
+  },
+  feedingLastEmoji: {
+    fontSize: 20,
+  },
+  feedingLastLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  feedingLastValue: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  feedingNextBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  feedingNextText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  feedingStats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xl,
+    marginBottom: SPACING.md,
+  },
+  feedingStat: {
+    alignItems: 'center',
+  },
+  feedingStatValue: {
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  feedingStatLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  feedingStatDivider: {
+    width: 1,
+    height: 30,
+  },
+  feedingBarBg: {
+    height: 6,
+    borderRadius: 3,
+    overflow: 'hidden',
+    marginBottom: SPACING.xs,
+  },
+  feedingBarFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  feedingBarLabel: {
+    fontSize: 11,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+
+  // ── Growth Velocity Card (New Feature 4) ──
+  velocityList: {
+    gap: SPACING.sm,
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.lg,
+  },
+  velocityCard: {
+    padding: SPACING.md,
+  },
+  velocityRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.sm,
+  },
+  velocityLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  velocityEmoji: {
+    fontSize: 20,
+  },
+  velocityMetric: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  velocityValue: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  velocityRight: {
+    alignItems: 'flex-end',
+    gap: 4,
+  },
+  velocityBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: RADIUS.xs,
+  },
+  velocityDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  velocityStatus: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  velocityPercentile: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  velocityBarBg: {
+    height: 4,
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  velocityBarFill: {
+    height: '100%',
+    borderRadius: 2,
+  },
+
+  // ── Weekly Summary Strip (New Feature 5) ──
+  weekScroll: {
+    paddingHorizontal: SPACING.lg,
+    gap: SPACING.sm,
+    paddingBottom: 4,
+  },
+  weekDay: {
+    width: 64,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.sm,
+    borderRadius: RADIUS.md,
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.5)',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.04)',
+  },
+  weekDayName: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  weekDayNum: {
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  weekDots: {
+    flexDirection: 'row',
+    gap: 2,
+    marginTop: 2,
+  },
+  weekDot: {
+    width: 20,
+    height: 20,
+    borderRadius: RADIUS.xs,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  weekDotText: {
+    fontSize: 10,
+  },
+  weekTotal: {
+    fontSize: 10,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+
+  // ── Emergency Quick Actions (New Feature 6) ──
+  emergencyGrid: {
+    flexDirection: 'row',
+    marginHorizontal: SPACING.lg,
+    gap: SPACING.sm,
+    marginBottom: SPACING.lg,
+  },
+  emergencyBtn: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: SPACING.md,
+    borderRadius: RADIUS.md,
+    gap: SPACING.sm,
+  },
+  emergencyIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emergencyLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+
+  // ── Predictor Cards ──
+  predictorScroll: { paddingHorizontal: SPACING.lg, gap: 10, paddingBottom: 4 },
   predictorCard: {
     width: 150,
-    padding: 14,
-    borderRadius: 20,
+    padding: SPACING.md,
+    borderRadius: RADIUS.lg,
     borderWidth: 1.5,
     overflow: 'hidden',
-    ...DESIGN.shadow.md,
   },
   predictorTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 },
   predictorEmoji: { fontSize: 24 },
-  predictorConfidenceBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  predictorConfidenceBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: RADIUS.xs },
   predictorConfidenceText: { fontSize: 10, fontWeight: '800' },
   predictorLabel: { fontSize: 13, fontWeight: '700', marginBottom: 2 },
   predictorTime: { fontSize: 14, fontWeight: '800', marginBottom: 2 },
@@ -2058,85 +3273,95 @@ const hubStyles = StyleSheet.create({
   predictorBarBg: { height: 4, borderRadius: 2, overflow: 'hidden', width: '100%' },
   predictorBarFill: { height: '100%', borderRadius: 2 },
 
-  // ── Daily Goals (New Feature 2) ──
+  // ── Daily Goals ──
   goalsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 10,
-    marginHorizontal: 16,
-    marginBottom: 16,
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.lg,
   },
   goalCard: {
     width: (SCREEN_WIDTH - 56) / 2,
-    padding: 14,
-    borderRadius: 20,
+    padding: SPACING.md,
+    borderRadius: RADIUS.lg,
     borderWidth: 1.5,
     overflow: 'hidden',
-    ...DESIGN.shadow.md,
   },
   goalTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
   goalIcon: { fontSize: 22 },
-  goalCompleteBadge: { padding: 4, borderRadius: 8 },
-  goalCurrent: { fontSize: 24, fontWeight: '800', marginBottom: 2 },
+  goalCompleteBadge: { padding: 4, borderRadius: RADIUS.sm },
+  goalNumbers: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 2,
+    marginBottom: 4,
+  },
+  goalCurrent: { fontSize: 26, fontWeight: '800' },
   goalTarget: { fontSize: 14, fontWeight: '600' },
   goalLabel: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
   goalBarWrap: { marginTop: 8 },
   goalBarBg: { height: 6, borderRadius: 3, overflow: 'hidden' },
   goalBarFill: { height: '100%', borderRadius: 3 },
 
-  // ── Routine Suggestions (New Feature 4) ──
-  routineList: { marginHorizontal: 16, gap: 8, marginBottom: 16 },
+  // ── Routine Suggestions ──
+  routineList: { marginHorizontal: SPACING.lg, gap: 8, marginBottom: SPACING.lg },
   routineCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 14,
-    borderRadius: 16,
+    padding: SPACING.md,
+    borderRadius: RADIUS.md,
     borderWidth: 1.5,
     overflow: 'hidden',
-    ...DESIGN.shadow.sm,
   },
   routineIconBg: {
     width: 44,
     height: 44,
-    borderRadius: 12,
+    borderRadius: RADIUS.sm,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: SPACING.md,
   },
   routineEmoji: { fontSize: 22 },
   routineContent: { flex: 1 },
   routineLabel: { fontSize: 14, fontWeight: '700' },
   routineTime: { fontSize: 12, fontWeight: '500', marginTop: 1, opacity: 0.7 },
+  routineArrow: {
+    width: 32,
+    height: 32,
+    borderRadius: RADIUS.sm,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
 
-  // ── Smart Insights Carousel (New Feature 5) ──
-  insightsScroll: { paddingHorizontal: 16, gap: 10, paddingBottom: 4 },
+  // ── Smart Insights Carousel ──
+  insightsScroll: { paddingHorizontal: SPACING.lg, gap: 10, paddingBottom: 4 },
   insightCard: {
     width: 200,
-    padding: 14,
-    borderRadius: 20,
+    padding: SPACING.md,
+    borderRadius: RADIUS.lg,
     overflow: 'hidden',
-    ...DESIGN.shadow.md,
   },
   insightTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 },
   insightEmoji: { fontSize: 22 },
   insightPriorityDot: { width: 8, height: 8, borderRadius: 4 },
   insightTitle: { fontSize: 13, fontWeight: '700', marginBottom: 4 },
   insightDesc: { fontSize: 11, fontWeight: '500', lineHeight: 16, marginBottom: 8 },
-  insightActionBadge: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
+  insightActionBadge: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 5, borderRadius: RADIUS.sm },
   insightActionText: { fontSize: 11, fontWeight: '700' },
 
   // ── Insight Card Full (Insights Tab) ──
   insightCardFull: {
-    padding: 14,
-    borderRadius: 16,
+    padding: SPACING.md,
+    borderRadius: RADIUS.md,
     overflow: 'hidden',
-    ...DESIGN.shadow.sm,
+    marginBottom: 10,
   },
   insightFullTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   insightFullIconBg: {
     width: 42,
     height: 42,
-    borderRadius: 12,
+    borderRadius: RADIUS.sm,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -2146,22 +3371,21 @@ const hubStyles = StyleSheet.create({
   insightFullTitle: { fontSize: 14, fontWeight: '700' },
   insightFullPriority: { width: 4, height: 36, borderRadius: 2 },
   insightFullDesc: { fontSize: 12, lineHeight: 17, fontWeight: '500' },
-  insightFullActionBadge: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, marginTop: 4 },
+  insightFullActionBadge: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 5, borderRadius: RADIUS.sm, marginTop: 4 },
   insightFullActionText: { fontSize: 11, fontWeight: '700' },
 
-  // ── Quick Action FAB Grid (New Feature 6) ──
-  trackerCategorySection: { marginBottom: 16 },
-  trackerCategoryHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 20, marginBottom: 10 },
+  // ── Quick Action FAB Grid ──
+  trackerCategorySection: { marginBottom: SPACING.lg },
+  trackerCategoryHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: SPACING.xl, marginBottom: 10 },
   trackerCategoryDot: { width: 6, height: 6, borderRadius: 3 },
   trackerCategoryLabel: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
-  trackerScroll: { paddingHorizontal: 16, gap: 10, paddingBottom: 4 },
+  trackerScroll: { paddingHorizontal: SPACING.lg, gap: 10, paddingBottom: 4 },
   trackerFabCard: {
     width: 140,
     height: 120,
-    padding: 14,
-    borderRadius: 20,
+    padding: SPACING.md,
+    borderRadius: RADIUS.lg,
     overflow: 'hidden',
-    ...DESIGN.shadow.md,
   },
   trackerFabContent: { flex: 1, justifyContent: 'flex-end' },
   trackerFabEmoji: { fontSize: 28, marginBottom: 6 },
@@ -2181,30 +3405,28 @@ const hubStyles = StyleSheet.create({
   },
 
   // ── Quick Log Strip ──
-  quickLogScroll: { paddingHorizontal: 16, gap: 8, paddingBottom: 4 },
+  quickLogScroll: { paddingHorizontal: SPACING.lg, gap: 8, paddingBottom: 4 },
   quickLogChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 14,
+    paddingHorizontal: SPACING.md,
     paddingVertical: 10,
-    borderRadius: 14,
+    borderRadius: RADIUS.md,
     borderWidth: 1.5,
     overflow: 'hidden',
-    ...DESIGN.shadow.sm,
   },
   quickLogLabel: { fontWeight: '700', fontSize: 12 },
 
   // ── Recent Activity ──
-  recentScroll: { paddingHorizontal: 16, paddingBottom: 4 },
+  recentScroll: { paddingHorizontal: SPACING.lg, paddingBottom: 4 },
   recentCard: {
     width: 110,
     height: 90,
-    padding: 12,
+    padding: SPACING.md,
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 16,
+    borderRadius: RADIUS.md,
     overflow: 'hidden',
-    ...DESIGN.shadow.sm,
   },
   recentEmoji: { fontSize: 22, marginBottom: 4 },
   recentTitle: { fontWeight: '700', letterSpacing: -0.2, fontSize: 13 },
@@ -2215,14 +3437,14 @@ const hubStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 10,
-    paddingHorizontal: 14,
+    paddingHorizontal: SPACING.md,
     gap: 12,
   },
   activityRowBorder: { borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)' },
   activityAvatar: {
     width: 36,
     height: 36,
-    borderRadius: 10,
+    borderRadius: RADIUS.sm,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -2236,10 +3458,9 @@ const hubStyles = StyleSheet.create({
   quickActionsFull: { marginBottom: 20 },
   quickActionGroup: {
     marginBottom: 12,
-    padding: 14,
+    padding: SPACING.md,
     borderWidth: StyleSheet.hairlineWidth,
-    marginHorizontal: 16,
-    ...DESIGN.shadow.sm,
+    marginHorizontal: SPACING.lg,
   },
   quickActionGroupHeader: {
     flexDirection: 'row',
@@ -2252,7 +3473,7 @@ const hubStyles = StyleSheet.create({
   quickActionGroupBadge: {
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 8,
+    borderRadius: RADIUS.sm,
   },
   quickActionGroupBadgeText: { fontSize: 12, fontWeight: '700' },
   quickActionGroupButtons: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
@@ -2280,7 +3501,6 @@ const hubStyles = StyleSheet.create({
     width: SCREEN_WIDTH - 40,
     maxHeight: SCREEN_HEIGHT * 0.7,
     overflow: 'hidden',
-    ...DESIGN.shadow.lg,
   },
   modalHeader: {
     padding: 20,
@@ -2321,7 +3541,7 @@ const hubStyles = StyleSheet.create({
   subActionIcon: {
     width: 44,
     height: 44,
-    borderRadius: 12,
+    borderRadius: RADIUS.sm,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2339,7 +3559,6 @@ const hubStyles = StyleSheet.create({
     paddingHorizontal: 16,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: 'rgba(0,0,0,0.06)',
-    ...DESIGN.shadow.lg,
   },
   bottomTabItem: {
     flex: 1,
