@@ -1,5 +1,7 @@
-import { useEffect } from 'react';
-import { useNavigationVisibility } from '../context/AppContext';
+// src/hooks/useAutoHideNav.ts
+import { useEffect, useRef } from 'react';
+import { useNavigationState } from '@react-navigation/native';
+import { useSmartNavVisibility } from './useSmartNavVisibility';
 
 export interface AutoHideNavOptions {
   /** Hide the nav bar when this screen is focused (default: false) */
@@ -10,38 +12,52 @@ export interface AutoHideNavOptions {
   isCommunityScreen?: boolean;
   /** Route name to set for community detection (optional) */
   routeName?: string | null;
+  /** Custom smart nav config */
+  navConfig?: Parameters<typeof useSmartNavVisibility>[0];
 }
 
+/**
+ * 2026: useAutoHideNav — Now uses the Smart Visibility Engine
+ * 
+ * This hook provides declarative control over navigation visibility
+ * while respecting the new velocity-based scroll system.
+ */
 export const useAutoHideNav = (options: AutoHideNavOptions = {}) => {
-  const { showNav, forceShowNav, forceHideNav, setCommunityRoute } = useNavigationVisibility();
-
   const {
     hideOnFocus = false,
     showOnBlur = true,
     isCommunityScreen = false,
     routeName = null,
+    navConfig,
   } = options;
 
+  // Get smart nav instance (shared across the app via context or singleton)
+  const smartNav = useSmartNavVisibility(navConfig);
+  const hasControlled = useRef(false);
+
   useEffect(() => {
-    if (routeName !== undefined) {
-      setCommunityRoute(routeName);
-    }
+    // Take control of nav visibility
+    hasControlled.current = true;
 
     if (isCommunityScreen || hideOnFocus) {
-      forceHideNav();
+      smartNav.forceHide();
     } else {
-      forceShowNav();
+      smartNav.forceShow();
     }
 
     return () => {
-      if (routeName !== undefined) {
-        setCommunityRoute(null);
-      }
-      if (showOnBlur) {
-        showNav();
+      if (hasControlled.current && showOnBlur) {
+        smartNav.forceShow();
+        hasControlled.current = false;
       }
     };
-  }, [showNav, forceShowNav, forceHideNav, setCommunityRoute, hideOnFocus, showOnBlur, isCommunityScreen, routeName]);
+  }, [smartNav, hideOnFocus, showOnBlur, isCommunityScreen, routeName]);
+
+  return {
+    smartNav,
+    forceHide: smartNav.forceHide,
+    forceShow: smartNav.forceShow,
+  };
 };
 
 export default useAutoHideNav;

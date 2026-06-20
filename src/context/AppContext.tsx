@@ -1,5 +1,6 @@
+// src/context/AppContext.ts
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { useColorScheme, AppState, AppStateStatus } from 'react-native';
+import { useColorScheme, AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCustomization, AppearanceMode } from '../hooks/useCustomization';
 
@@ -73,33 +74,12 @@ export interface AppContextType {
   toggleTheme: () => void;
   setDarkMode: (isDark: boolean) => void;
   themeReady: boolean;
-  isNavVisible: boolean;
-  showNav: () => void;
-  hideNav: () => void;
-  forceShowNav: () => void;
-  forceHideNav: () => void;
   isCommunityScreen: boolean;
-  setCommunityRoute: (routeName: string | null) => void;
   setCommunityScreen: (isCommunity: boolean) => void;
-  handleScroll: (offsetY: number, velocity: number, isAtTop: boolean) => void;
 }
 
 const THEME_STORAGE_KEY = '@littleloom_theme_v2';
 const APPEARANCE_STORAGE_KEY = '@littleloom_appearance_v1';
-const NAV_VISIBILITY_KEY = '@littleloom_nav_visible_v1';
-
-const COMMUNITY_ROUTES = new Set([
-  'CommunityMain', 'Topic', 'CreatePost', 'PostDetail', 'Chat',
-  'CommunityMemberProfile', 'Notifications', 'CommunityProfile', 'ChatList',
-  'TopicMembers', 'Followers', 'Following', 'SearchUsers', 'BlockedUsers', 'Report',
-]);
-
-const SCROLL_CONFIG = {
-  HIDE_THRESHOLD: 50,
-  SHOW_THRESHOLD: 15,
-  VELOCITY_THRESHOLD: 0.25,
-  SCROLL_END_DELAY: 120,
-};
 
 // ─── STATIC CACHE: Survives re-renders, read once ─────────────────────
 let _cachedAppearance: AppearanceMode | null = null;
@@ -111,35 +91,28 @@ const AppContext = createContext<AppContextType>({
   isTrueBlack: false, isPureWhite: false, colors: LIGHT_COLORS,
   setThemeMode: async () => {}, setAppearance: async () => {},
   toggleTheme: () => {}, setDarkMode: () => {}, themeReady: false,
-  isNavVisible: true, showNav: () => {}, hideNav: () => {},
-  forceShowNav: () => {}, forceHideNav: () => {},
-  isCommunityScreen: false, setCommunityRoute: () => {},
-  setCommunityScreen: () => {}, handleScroll: () => {},
+  isCommunityScreen: false, setCommunityScreen: () => {},
 });
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const systemColorScheme = useColorScheme();
   const customization = useCustomization();
 
-  // ─── FIX #1: Single state for theme, no isThemeLoaded flag ───────────
-  // Use cached values immediately, update async in background
   const [themeMode, setThemeModeState] = useState<ThemeMode>(_cachedThemeMode ?? 'system');
   const [appearance, setAppearanceState] = useState<AppearanceMode>(_cachedAppearance ?? 'system');
   const [themeReady, setThemeReady] = useState(_themeLoaded);
-  const [isNavVisible, setIsNavVisible] = useState(true);
   const [isCommunityScreen, setIsCommunityScreen] = useState(false);
 
-  // ─── FIX #2: Single effect loads theme ONCE, parallel with customization ─
+  // ─── Load theme once on mount ──────────────────────────────────────
   useEffect(() => {
-    if (_themeLoaded) return; // Already loaded
+    if (_themeLoaded) return;
 
     let mounted = true;
     const load = async () => {
       try {
-        const [savedTheme, savedAppearance, savedNavVis] = await Promise.all([
+        const [savedTheme, savedAppearance] = await Promise.all([
           AsyncStorage.getItem(THEME_STORAGE_KEY),
           AsyncStorage.getItem(APPEARANCE_STORAGE_KEY),
-          AsyncStorage.getItem(NAV_VISIBILITY_KEY),
         ]);
 
         if (!mounted) return;
@@ -161,8 +134,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setAppearanceState(finalAppearance);
         setThemeModeState(finalThemeMode);
         setThemeReady(true);
-
-        if (savedNavVis !== null) setIsNavVisible(savedNavVis === 'true');
       } catch (e) {
         console.warn('Theme load failed:', e);
         _themeLoaded = true;
@@ -172,9 +143,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     load();
     return () => { mounted = false; };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
-  // ─── FIX #3: Sync with customization ONLY when it changes ─────────────
+  // ─── Sync with customization when it changes ───────────────────────
   useEffect(() => {
     if (!customization?.isLoaded || !_themeLoaded) return;
     const customApp = customization.settings?.appearance;
@@ -239,7 +210,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     ]).catch(() => {});
   }, [customization]);
 
-  // ─── FIX #4: Direct computation, no effectiveAppearance useMemo ─────
   const isDark = useMemo(() => {
     if (appearance === 'system') return systemColorScheme === 'dark';
     if (appearance === 'trueBlack') return true;
@@ -256,97 +226,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return isDark ? DARK_COLORS : LIGHT_COLORS;
   }, [isDark, isTrueBlack, isPureWhite]);
 
-  // ─── NAV VISIBILITY: Simplified, no scrollStateRef on every render ────
-  const scrollRef = useRef({
-    accDown: 0, accUp: 0, hidden: false, lastY: 0, timer: null as ReturnType<typeof setTimeout> | null,
-  });
-
-  const showNav = useCallback(() => {
-    if (isCommunityScreen) return;
-    setIsNavVisible(true);
-    const s = scrollRef.current;
-    s.hidden = false; s.accDown = 0; s.accUp = 0;
-    AsyncStorage.setItem(NAV_VISIBILITY_KEY, 'true').catch(() => {});
-  }, [isCommunityScreen]);
-
-  const hideNav = useCallback(() => {
-    setIsNavVisible(false);
-    scrollRef.current.hidden = true;
-    AsyncStorage.setItem(NAV_VISIBILITY_KEY, 'false').catch(() => {});
-  }, []);
-
-  const forceShowNav = useCallback(() => {
-    if (isCommunityScreen) return;
-    setIsNavVisible(true);
-    scrollRef.current.hidden = false;
-    AsyncStorage.setItem(NAV_VISIBILITY_KEY, 'true').catch(() => {});
-  }, [isCommunityScreen]);
-
-  const forceHideNav = useCallback(() => hideNav(), [hideNav]);
-
-  // ─── FIX #5: Unified community setter ─────────────────────────────────
-  const setCommunityRoute = useCallback((routeName: string | null) => {
-    const isComm = routeName ? COMMUNITY_ROUTES.has(routeName) : false;
-    setIsCommunityScreen(isComm);
-    setIsNavVisible(!isComm && !scrollRef.current.hidden);
-  }, []);
-
   const setCommunityScreen = useCallback((isComm: boolean) => {
     setIsCommunityScreen(isComm);
-    setIsNavVisible(!isComm && !scrollRef.current.hidden);
   }, []);
 
-  const handleScroll = useCallback((offsetY: number, velocity: number, isAtTop: boolean) => {
-    if (isCommunityScreen) return;
-    const s = scrollRef.current;
-    if (s.timer) { clearTimeout(s.timer); s.timer = null; }
-
-    const delta = offsetY - s.lastY;
-    s.lastY = offsetY;
-
-    if (isAtTop) { if (s.hidden) showNav(); return; }
-
-    if (delta > 0 && velocity > SCROLL_CONFIG.VELOCITY_THRESHOLD) {
-      s.accDown += Math.abs(delta); s.accUp = 0;
-      if (!s.hidden && s.accDown > SCROLL_CONFIG.HIDE_THRESHOLD) hideNav();
-    }
-    if (delta < 0 && velocity > SCROLL_CONFIG.VELOCITY_THRESHOLD) {
-      s.accUp += Math.abs(delta); s.accDown = 0;
-      if (s.hidden && s.accUp > SCROLL_CONFIG.SHOW_THRESHOLD) showNav();
-    }
-
-    s.timer = setTimeout(() => { s.accDown = 0; s.accUp = 0; s.lastY = 0; s.timer = null; }, SCROLL_CONFIG.SCROLL_END_DELAY);
-  }, [isCommunityScreen, showNav, hideNav]);
-
-  // ─── FIX #6: Stable AppState listener, no re-attachment ────────────────
-  useEffect(() => {
-    const sub = AppState.addEventListener('change', (next) => {
-      const wasBg = AppState.currentState === 'background' || AppState.currentState === 'inactive';
-      if (wasBg && next === 'active' && !isCommunityScreen) {
-        showNav();
-      }
-    });
-    return () => sub.remove();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Cleanup scroll timer
-  useEffect(() => () => {
-    const t = scrollRef.current.timer;
-    if (t) clearTimeout(t);
-  }, []);
-
-  // ─── FIX #7: Minimal value object, stable references ────────────────────
+  // ─── Stable value object ───────────────────────────────────────────
   const value = useMemo(() => ({
     themeMode, appearance, isDark, isTrueBlack, isPureWhite, colors,
     setThemeMode, setAppearance, toggleTheme, setDarkMode, themeReady,
-    isNavVisible, showNav, hideNav, forceShowNav, forceHideNav,
-    isCommunityScreen, setCommunityRoute, setCommunityScreen, handleScroll,
+    isCommunityScreen, setCommunityScreen,
   }), [
     themeMode, appearance, isDark, isTrueBlack, isPureWhite, colors, themeReady,
-    isNavVisible, isCommunityScreen,
-    setThemeMode, setAppearance, toggleTheme, setDarkMode,
-    showNav, hideNav, forceShowNav, forceHideNav,
-    setCommunityRoute, setCommunityScreen, handleScroll,
+    isCommunityScreen,
+    setThemeMode, setAppearance, toggleTheme, setDarkMode, setCommunityScreen,
   ]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
@@ -361,11 +253,6 @@ export const useApp = () => {
 export const useTheme = () => {
   const { themeMode, appearance, isDark, isTrueBlack, isPureWhite, colors, setThemeMode, setAppearance, toggleTheme, setDarkMode, themeReady } = useApp();
   return { themeMode, appearance, isDark, isTrueBlack, isPureWhite, colors, setThemeMode, setAppearance, toggleTheme, setDarkMode, themeReady };
-};
-
-export const useNavigationVisibility = () => {
-  const { isNavVisible, showNav, hideNav, forceShowNav, forceHideNav, isCommunityScreen, setCommunityRoute, setCommunityScreen } = useApp();
-  return { isNavVisible, showNav, hideNav, forceShowNav, forceHideNav, isCommunityScreen, setCommunityRoute, setCommunityScreen };
 };
 
 export default AppContext;
