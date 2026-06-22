@@ -1,5 +1,20 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import {  ActivityIndicator, Dimensions, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View , StatusBar} from 'react-native';
+import {
+  ActivityIndicator,
+  Dimensions,
+  Image,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+  StatusBar,
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,11 +30,44 @@ import { SafeAvatar } from '../../components/SafeAvatar';
 import { saveParentImage } from '../../utils/imageUtils';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const { width } = Dimensions.get('window');
+const { width: SCREEN_W } = Dimensions.get('window');
 
-/* ------------------------------------------------------------------ */
-/*  Reusable Components                                               */
-/* ------------------------------------------------------------------ */
+/* ═══════════════════════════════════════════════════════════════════════════
+   DESIGN TOKENS — Unified with FamilySharingScreen
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const DESIGN = {
+  radius: { xs: 8, sm: 12, md: 16, lg: 20, xl: 24, full: 999 },
+  spacing: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32 },
+  shadow: {
+    sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 2 },
+    md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 4 },
+    lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 24, elevation: 8 },
+  },
+};
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   GlassCard — Unified component from FamilySharingScreen
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const GlassCard = React.memo(({ children, style, onPress, active = false, delay = 0 }: {
+  children: React.ReactNode; style?: any; onPress?: () => void; active?: boolean; delay?: number;
+}) => {
+  const Wrapper = onPress ? TouchableOpacity : View;
+  return (
+    <Animated.View entering={FadeInUp.delay(delay).springify()} style={[styles.glassCard, active && { borderColor: '#6366f1', borderWidth: 2 }, style]}>
+      <Wrapper onPress={onPress} activeOpacity={onPress ? 0.85 : 1} style={{ flex: 1 }}>
+        <LinearGradient colors={['rgba(45,45,60,0.85)', 'rgba(35,35,50,0.65)']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+        <View style={styles.glassBorder} />
+        <View style={styles.glassContent}>{children}</View>
+      </Wrapper>
+    </Animated.View>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ConfirmModal — Unified glassmorphism style
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 interface ConfirmModalProps {
   visible: boolean;
@@ -88,9 +136,9 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
   );
 };
 
-/* ------------------------------------------------------------------ */
-/*  Avatar Selection Component                                        */
-/* ------------------------------------------------------------------ */
+/* ═══════════════════════════════════════════════════════════════════════════
+   Avatar Selection Component
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 const AVATAR_OPTIONS = [
   { id: 'parent1', emoji: '👨', label: 'Dad' },
@@ -114,7 +162,6 @@ const AvatarPicker: React.FC<AvatarPickerProps> = ({ selected, onSelect, isDark,
     <View style={styles.avatarSection}>
       <Text style={[styles.sectionLabel, isDark && styles.textDark]}>Choose Avatar</Text>
       
-      {/* Show selected avatar preview with image pick option */}
       <View style={styles.avatarPreviewRow}>
         <SafeAvatar
           avatar={selected}
@@ -155,9 +202,9 @@ const AvatarPicker: React.FC<AvatarPickerProps> = ({ selected, onSelect, isDark,
   );
 };
 
-/* ------------------------------------------------------------------ */
-/*  Theme Preview Component                                           */
-/* ------------------------------------------------------------------ */
+/* ═══════════════════════════════════════════════════════════════════════════
+   Theme Preview Component
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 const THEME_PREVIEWS = [
   { id: 'purple', name: 'Dreamy Purple', primary: '#667eea', secondary: '#764ba2', gradient: ['#667eea', '#764ba2'] as const },
@@ -204,9 +251,9 @@ const ThemePicker: React.FC<ThemePickerProps> = ({ selected, onSelect, isDark })
   );
 };
 
-/* ------------------------------------------------------------------ */
-/*  Main Screen                                                       */
-/* ------------------------------------------------------------------ */
+/* ═══════════════════════════════════════════════════════════════════════════
+   Main Screen
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 type AddParentScreenProps = NativeStackScreenProps<RootStackParamList, 'AddParent'>;
 
@@ -264,10 +311,10 @@ export default function AddParentScreen({ navigation }: AddParentScreenProps) {
         return typeof value === 'string' && value.trim().length < 2 ? 'Name must be at least 2 characters' : '';
       case 'email':
         if (typeof value !== 'string' || !value.trim()) return 'Email is required';
-        return /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(value) ? '' : 'Please enter a valid email';
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? '' : 'Please enter a valid email';
       case 'phoneNumber':
         if (typeof value !== 'string' || !value.trim()) return '';
-        return /^[\\+]?[(]?[0-9]{3}[)]?[-\\s.]?[0-9]{3}[-\\s.]?[0-9]{4,6}$/.test(value.replace(/\\s/g, ''))
+        return /^[\+]?[(]?[0-9]{3}[)]?[-\s.]?[0-9]{3}[-\s.]?[0-9]{4,6}$/.test(value.replace(/\s/g, ''))
           ? ''
           : 'Invalid phone number';
       default:
@@ -722,15 +769,20 @@ export default function AddParentScreen({ navigation }: AddParentScreenProps) {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Styles                                                            */
-/* ------------------------------------------------------------------ */
+/* ═══════════════════════════════════════════════════════════════════════════
+   Styles — Unified with FamilySharingScreen design system
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
   gradient: { flex: 1 },
   keyboardView: { flex: 1 },
   scrollContent: { paddingHorizontal: 24 },
+
+  /* ---- Glass Card ---- */
+  glassCard: { borderRadius: DESIGN.radius.lg, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', ...DESIGN.shadow.md, marginHorizontal: DESIGN.spacing.lg, marginBottom: DESIGN.spacing.lg },
+  glassBorder: { position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.06)' },
+  glassContent: { flex: 1 },
 
   /* ---- Alerts ---- */
   confirmModal: {
@@ -825,7 +877,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   themeCard: {
-    width: (width - 72) / 3,
+    width: (SCREEN_W - 72) / 3,
     alignItems: 'center',
     padding: 8,
     borderRadius: 16,
