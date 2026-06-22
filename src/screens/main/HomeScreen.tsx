@@ -1887,7 +1887,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
               <View style={styles.parentQuickLinks}>
                 <TouchableOpacity 
                   style={[styles.parentQuickLink, { backgroundColor: `${primary}12`, borderRadius: borderRadiusValue - 10 }]} 
-                  onPress={() => navigateToScreen('Achievements')}
+                  onPress={() => navigateToScreen('AchievementsScreen')}
                 >
                   <Ionicons name="ribbon-outline" size={Math.round(16 * fontSizeMultiplier)} color={primary} />
                 </TouchableOpacity>
