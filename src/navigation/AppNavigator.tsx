@@ -1,6 +1,6 @@
 // src/navigation/AppNavigator.tsx
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { View, Text, AppState, TouchableOpacity, StatusBar } from 'react-native';
+import { View, Text, AppState, TouchableOpacity } from 'react-native';
 import {
   NavigationContainer, DefaultTheme, DarkTheme, NavigationContainerRef,
   getFocusedRouteNameFromRoute,
@@ -10,8 +10,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 
 import OnboardingScreen from '../screens/auth/OnboardingScreen';
 import LoginScreen from '../screens/auth/LoginScreen';
@@ -57,16 +56,7 @@ import UniversalTrackerHubScreen from '../screens/tracking/UniversalTrackerHubSc
 import CreateCustomTrackerScreen from '../screens/tracking/CreateCustomTrackerScreen';
 import VaccinationScheduleScreen from '../screens/tracking/VaccinationScheduleScreen';
 
-// Safe import with fallback for LiquidGlassNavigation
-let LiquidGlassNavigation: React.FC<any>;
-try {
-  const lgModule = require('../components/LiquidGlassNavigation');
-  LiquidGlassNavigation = lgModule.default || lgModule.LiquidGlassNavigation || lgModule;
-} catch (e) {
-  console.warn('Failed to load LiquidGlassNavigation, using fallback tab bar', e);
-  LiquidGlassNavigation = ({ state, descriptors, navigation }: any) => null;
-}
-
+import LiquidGlassNavigation from '../components/LiquidGlassNavigation';
 import { UniversalSpinner } from '../components/UniversalSpinner';
 import { useSecurity } from '../context/SecurityContext';
 import { useSafeApp, useSafeBaby, useSafeAuth } from '../hooks/useSafeContexts';
@@ -158,27 +148,21 @@ const getScreenOptions = (colors: any, isDark: boolean) => ({
 /* ═══════════════════════════════════════════════════════════════════════════
    MAIN TABS — Route-based tab bar visibility (NO scroll hiding)
    
-   Uses getFocusedRouteNameFromRoute to detect nested routes and hide
-   the tab bar properly for all sub-screens.
+   ONLY Home tab shows the tab bar persistently.
+   All other tabs and nested screens hide it immediately.
    ═══════════════════════════════════════════════════════════════════════════ */
 
-// Routes where the tab bar should be completely hidden
-const HIDDEN_TAB_BAR_ROUTES = new Set([
-  'Track', 'Grow', 'Connect', 'More',
-  'CommunityMain', 'Topic', 'CreatePost', 'PostDetail', 'CommunityMemberProfile',
-  'Chat', 'ChatList', 'Notifications', 'CommunityProfile',
-  'TopicMembers', 'Followers', 'Following', 'SearchUsers', 'BlockedUsers', 'Report',
-  'CommunitySplash', 'CommunityOnboarding',
-]);
+// ONLY Home shows the tab bar. Everything else hides it.
+const VISIBLE_TAB_BAR_ROUTES = new Set(['Home']);
 
 function getTabBarVisibility(route: any): 'flex' | 'none' {
   const routeName = getFocusedRouteNameFromRoute(route) ?? '';
   
-  if (routeName === 'Home') return 'flex';
-  if (HIDDEN_TAB_BAR_ROUTES.has(routeName)) return 'none';
+  // Only Home tab shows the tab bar
+  if (VISIBLE_TAB_BAR_ROUTES.has(routeName)) return 'flex';
   
-  // Default: show for safety (Home and unknown routes)
-  return 'flex';
+  // Everything else (Track, Grow, Connect, More, all nested screens) hides it
+  return 'none';
 }
 
 function MainTabs() {
@@ -186,13 +170,7 @@ function MainTabs() {
 
   return (
     <Tab.Navigator
-      tabBar={(props) => {
-        if (typeof LiquidGlassNavigation !== 'function') {
-          console.error('LiquidGlassNavigation is not a valid component:', typeof LiquidGlassNavigation, LiquidGlassNavigation);
-          return null;
-        }
-        return <LiquidGlassNavigation {...props} />;
-      }}
+      tabBar={(props) => <LiquidGlassNavigation {...props} />}
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarStyle: { 
@@ -454,9 +432,6 @@ function NavigationContent({
 
   if (authLoading || !initialCheckDone) return <AppLoadingScreen />;
 
-  const screenOptions = getScreenOptions(colors, isDark);
-  const primaryColor = colors?.primary || '#667eea';
-
   return (
     <NavigationContainer
       ref={navRef}
@@ -465,11 +440,7 @@ function NavigationContent({
       onStateChange={handleStateChange}
       onReady={() => setIsNavReady(true)}
     >
-      <StatusBar
-        barStyle={isDark ? 'light-content' : 'dark-content'}
-        backgroundColor="transparent"
-        translucent
-      />
+      <StatusBar style={isDark ? 'light' : 'dark'} />
       <Stack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right', contentStyle: { backgroundColor: colors?.background || '#f8faff' } }}>
         {/* AUTH FLOW */}
         <Stack.Screen name="Onboarding" component={OnboardingScreen} options={{ animation: 'fade' }} />
@@ -546,11 +517,9 @@ function NavigationContent({
 export default function AppNavigator({ isDark, initialState, onStateChange }: {
   isDark?: boolean; initialState?: any; onStateChange?: (state: any) => void;
 }) {
+  // REMOVED: SafeAreaProvider and GestureHandlerRootView wrapping
+  // These are already provided by App.tsx
   return (
-    <SafeAreaProvider>
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <NavigationContent isDark={isDark} initialState={initialState} onStateChange={onStateChange} />
-      </GestureHandlerRootView>
-    </SafeAreaProvider>
+    <NavigationContent isDark={isDark} initialState={initialState} onStateChange={onStateChange} />
   );
 }

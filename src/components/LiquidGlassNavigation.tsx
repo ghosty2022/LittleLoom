@@ -1,5 +1,5 @@
 // src/components/LiquidGlassNavigation.tsx
-import React, { useCallback, useEffect, useMemo } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import {
   View,
   StyleSheet,
@@ -344,7 +344,7 @@ const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({ state, descriptors
       ]}
       pointerEvents="box-none"
     >
-      {/* ─── ADD LOG FAB (only on Track tab) ──────────────────── */}
+      {/* ─── ADD LOG FAB (only on Track tab when visible) ─────── */}
       {activeRouteName === 'Track' && isVisible && (
         <TouchableOpacity 
           style={styles.addLogFab} 
