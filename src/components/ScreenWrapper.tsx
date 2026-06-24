@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigationState } from '@react-navigation/native';
-import Animated, { useSharedValue } from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
 import { useSmartNavVisibility, SmartNavState } from '../hooks/useSmartNavVisibility';
 import { useTheme } from '../context/AppContext';
 
@@ -30,19 +30,11 @@ interface ScreenWrapperProps {
 const DOCK_HEIGHT = 72;
 const SAFE_BOTTOM = 8;
 
-// Routes where nav is completely hidden
+// ONLY truly full-screen routes hide the nav completely.
+// All other routes (including community screens) should show the tab bar.
 const HIDDEN_ROUTES = new Set([
-  'CommunitySplash', 'CommunityOnboarding', 'CreatePost', 'CommunityProfile',
-  'Report', 'PostDetail', 'Chat', 'ChatList', 'Notifications', 'Topic',
-  'CommunityMemberProfile', 'Followers', 'Following', 'SearchUsers',
-  'BlockedUsers', 'TopicMembers', 'SecurityLock', 'BiometricSetup',
-  'AddEntry', 'SwitchBaby', 'EditProfile', 'EditGuardian', 'Gallery',
-  'FamilyChatList', 'FamilyChat', 'AddLog', 'Achievements', 'Reminders',
-  'FamilySharing', 'SoundMixer', 'Customize', 'SecurityCenter',
-  'BackupRestore', 'HelpCenter', 'ContactSupport', 'PrivacyPolicy',
-  'TermsOfService', 'About', 'LanguageSettings', 'UnitSettings', 'SafetyCorner',
-  'UniversalTracker', 'PottyTracker', 'FeedTracker', 'SleepTracker',
-  'Profile', 'CreateBabyProfile', 'AddParent',
+  'SecurityLock', 'BiometricSetup',
+  'CommunitySplash', 'CommunityOnboarding',
 ]);
 
 // Main tabs where nav always stays visible
@@ -62,7 +54,7 @@ export const ScreenWrapper: React.FC<ScreenWrapperProps> = ({
 }) => {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
-  
+
   const routeName = useNavigationState((state) => {
     if (!state) return '';
     const route = state.routes[state.index];
@@ -95,9 +87,9 @@ export const ScreenWrapper: React.FC<ScreenWrapperProps> = ({
     } else if (isAlwaysVisible || !enableNavHiding) {
       smartNav.forceShow();
     } else {
+      // Normal scroll-driven behavior: reset to allow scroll hiding
       smartNav.reset();
     }
-    return () => { smartNav.forceShow(); };
   }, [routeName, isHidden, isAlwaysVisible, enableNavHiding, smartNav]);
 
   const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -142,11 +134,10 @@ export const ScreenWrapper: React.FC<ScreenWrapperProps> = ({
   );
 };
 
-// For screens using Reanimated scroll handlers
 export const AnimatedScreenWrapper: React.FC<ScreenWrapperProps> = (props) => {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
-  
+
   const routeName = useNavigationState((state) => {
     if (!state) return '';
     const route = state.routes[state.index];
@@ -175,7 +166,7 @@ export const AnimatedScreenWrapper: React.FC<ScreenWrapperProps> = (props) => {
   useEffect(() => {
     if (isHidden) smartNav.forceHide();
     else if (isAlwaysVisible) smartNav.forceShow();
-    return () => { smartNav.forceShow(); };
+    else smartNav.reset();
   }, [routeName, isHidden, isAlwaysVisible, smartNav]);
 
   const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {

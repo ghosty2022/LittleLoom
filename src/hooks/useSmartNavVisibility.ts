@@ -33,6 +33,7 @@ let _metrics = {
   timer: null as ReturnType<typeof setTimeout> | null,
   isAtTop: false,
   isAtBottom: false,
+  forced: false,
 };
 
 const _emit = (state: SmartNavState) => {
@@ -41,7 +42,7 @@ const _emit = (state: SmartNavState) => {
 };
 
 const _setNavState = (newState: 'hidden' | 'visible', immediate = false, enableHaptics = true) => {
-  if (_stateMachine === newState) return;
+  if (_stateMachine === newState && !_metrics.forced) return;
 
   if (_metrics.timer) {
     clearTimeout(_metrics.timer);
@@ -50,6 +51,7 @@ const _setNavState = (newState: 'hidden' | 'visible', immediate = false, enableH
 
   if (immediate) {
     _stateMachine = newState;
+    _metrics.forced = false;
     if (enableHaptics && newState === 'visible') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
@@ -66,6 +68,7 @@ const _setNavState = (newState: 'hidden' | 'visible', immediate = false, enableH
   _metrics.timer = setTimeout(() => {
     _metrics.timer = null;
     _stateMachine = newState;
+    _metrics.forced = false;
 
     if (enableHaptics) {
       const hapticStyle = newState === 'visible'
@@ -92,9 +95,9 @@ export const useSmartNavVisibility = (config: SmartNavConfig = {}) => {
     enableHaptics = true,
   } = config;
 
-  const subscribedRef = useRef(false);
-
   const onScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (_metrics.forced) return;
+
     const now = Date.now();
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
     const currentY = contentOffset.y;
@@ -164,6 +167,7 @@ export const useSmartNavVisibility = (config: SmartNavConfig = {}) => {
     _metrics.accumulatedUp = 0;
     _metrics.confidence = 0;
     _metrics.direction = 'none';
+    _metrics.forced = false;
     if (_metrics.timer) {
       clearTimeout(_metrics.timer);
       _metrics.timer = null;
@@ -173,23 +177,24 @@ export const useSmartNavVisibility = (config: SmartNavConfig = {}) => {
 
   const forceHide = useCallback(() => {
     reset();
+    _metrics.forced = true;
     _setNavState('hidden', true, enableHaptics);
   }, [reset, enableHaptics]);
 
   const forceShow = useCallback(() => {
     reset();
+    _metrics.forced = true;
     _setNavState('visible', true, enableHaptics);
   }, [reset, enableHaptics]);
 
   const subscribe = useCallback((callback: (state: SmartNavState) => void) => {
     _listeners.add(callback);
-    callback(_state); // Immediately emit current state
+    callback(_state);
     return () => { _listeners.delete(callback); };
   }, []);
 
   const getCurrentState = useCallback(() => _state, []);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (_metrics.timer) {

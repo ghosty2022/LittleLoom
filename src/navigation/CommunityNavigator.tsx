@@ -9,7 +9,6 @@ import { useCommunity } from '../context/CommunityContext';
 import { useUser } from '../context/UserContext';
 import { useCustomization } from '../hooks/useCustomization';
 import { useIntelligentSplash } from '../hooks/useIntelligentSplash';
-import { useSmartNavVisibility } from '../hooks/useSmartNavVisibility';
 
 import CommunityScreen from '../screens/community/CommunityScreen';
 import TopicScreen from '../screens/community/TopicScreen';
@@ -37,7 +36,6 @@ const COUNTRY_CACHE_TTL = 7 * 24 * 60 * 60 * 1000;
 const COMMUNITY_ONBOARDING_KEY = '@littleloom_community_onboarding_done';
 const COMMUNITY_TOPICS_KEY = '@littleloom_community_topics_selected';
 
-// Module-level country maps (not recreated per call)
 const COUNTRY_MAP: Record<string, string> = {
   US: 'United States', GB: 'United Kingdom', CA: 'Canada', AU: 'Australia',
   DE: 'Germany', FR: 'France', JP: 'Japan', IN: 'India', BR: 'Brazil',
@@ -82,7 +80,6 @@ const TIMEZONE_MAP: Record<string, string> = {
 const getCountryFromCode = (code: string) => COUNTRY_MAP[code.toUpperCase()] || null;
 const getCountryFromTz = (tz: string) => TIMEZONE_MAP[tz] || null;
 
-// Automatic country detection hook
 const useAutomaticCountryDetection = () => {
   const { currentUser, updateUserLocation } = useCommunity();
   const [isDetecting, setIsDetecting] = useState(false);
@@ -97,7 +94,6 @@ const useAutomaticCountryDetection = () => {
     let mounted = true;
 
     const detect = async () => {
-      // Check cache first
       try {
         const cached = await AsyncStorage.getItem(COUNTRY_CACHE_KEY);
         if (cached) {
@@ -113,7 +109,6 @@ const useAutomaticCountryDetection = () => {
       if (!mounted) return;
       setIsDetecting(true);
 
-      // Try region/timezone immediately
       const region = Localization.region;
       let country = region ? getCountryFromCode(region) : null;
       if (!country) country = getCountryFromTz(Localization.timezone);
@@ -123,7 +118,6 @@ const useAutomaticCountryDetection = () => {
         return;
       }
 
-      // Fallback: location permission
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status === 'granted') {
@@ -163,7 +157,6 @@ const useAutomaticCountryDetection = () => {
   return isDetecting;
 };
 
-// Inline loading view
 const InlineLoadingView = React.memo(({ text }: { text: string }) => (
   <View style={styles.inlineLoadingContainer}>
     <View style={styles.inlineLoadingCard}>
@@ -175,7 +168,6 @@ const InlineLoadingView = React.memo(({ text }: { text: string }) => (
 
 type CommunityPhase = 'loading' | 'onboarding' | 'splash' | 'main';
 
-// Static screen options
 const ONBOARDING_SCREEN_OPTIONS = {
   headerShown: false,
   animation: 'slide_from_right' as const,
@@ -197,7 +189,6 @@ const MAIN_SCREEN_OPTIONS = {
   contentStyle: { backgroundColor: CommunityColors.background.main },
 };
 
-// Placeholder screens
 const TopicMembersScreen = () => (
   <View style={styles.placeholderContainer}>
     <Text style={styles.placeholderText}>Topic Members</Text>
@@ -221,7 +212,6 @@ const CommunityNavigator = React.memo(() => {
   const { profile: userProfile } = useUser();
   const { settings, shouldReduceMotion } = useCustomization();
   const isDetectingCountry = useAutomaticCountryDetection();
-  const smartNav = useSmartNavVisibility();
 
   const {
     isReady: splashReady,
@@ -234,13 +224,9 @@ const CommunityNavigator = React.memo(() => {
 
   const isReady = !isLoading && isInitialized && splashReady;
 
-  // Force hide main tab bar when in community screens
-  useEffect(() => {
-    smartNav.forceHide();
-    return () => {
-      smartNav.forceShow();
-    };
-  }, [smartNav]);
+  // REMOVED: smartNav.forceHide() / forceShow() calls.
+  // The LiquidGlassNavigation now detects community nested routes itself
+  // via the tab bar's state inspection. No need to interfere here.
 
   // Initialize phase
   useEffect(() => {
@@ -335,7 +321,6 @@ const CommunityNavigator = React.memo(() => {
     );
   }
 
-  // Main community stack
   return (
     <>
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />

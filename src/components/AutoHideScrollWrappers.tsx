@@ -41,11 +41,6 @@ export const AutoHideScrollView = forwardRef<ScrollView, ScrollViewProps & { ena
 // ─── AutoHideAnimatedScrollView ──────────────────────────────────────
 export const AutoHideAnimatedScrollView = forwardRef<ScrollView, ScrollViewProps & { enableNavHiding?: boolean }>(
   ({ onScroll, enableNavHiding = true, ...props }, ref) => {
-    const smartNav = useSmartNavVisibility();
-    
-    // For animated scroll handlers, we need to wrap differently
-    // The user passes useAnimatedScrollHandler output — we can't intercept it
-    // So we use a native driver approach or require manual integration
     return (
       <Reanimated.ScrollView
         ref={ref}
