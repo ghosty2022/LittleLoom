@@ -16,7 +16,7 @@ import {
   TextInput, 
   TouchableOpacity, 
   View,
-  ViewToken,  // ← ADD THIS
+  ViewToken,
 } from 'react-native';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BlurView } from 'expo-blur';
@@ -41,11 +41,12 @@ import {
   CommunityBorderRadius,
 } from '../../theme/CommunityTheme';
 import type { CommunityStackParamList } from '../../types/navigation';
-import type { Post, PostMood, Poll } from '../../context/CommunityContext';  // ← ADD THIS
+import type { Post, PostMood, Poll } from '../../context/CommunityContext';
 import SafeAvatar from '../../components/SafeAvatar';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
-import { useAutoHideNav } from '../../hooks/useAutoHideNav';
+// REMOVED: import { useAutoHideNav } from '../../hooks/useAutoHideNav';
+import { useSmartNavVisibility } from '../../hooks/useSmartNavVisibility'; // ADDED
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { useUser } from '../../context/UserContext';
@@ -839,7 +840,7 @@ const PostCard = React.memo(({
   const handleLongPress = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-sweetAlert.confirm(
+    sweetAlert.confirm(
       'Thread Options',
       'What would you like to do?',
       () => onShare(post),
@@ -1708,7 +1709,18 @@ const SearchResults = React.memo(({
 
 export default function CommunityScreen({ navigation }: Props) {
   const sweetAlert = useSweetAlert();
-  useAutoHideNav({ isCommunityScreen: true });
+  
+  // ==== REPLACED useAutoHideNav WITH useSmartNavVisibility ====
+  const smartNav = useSmartNavVisibility();
+  
+  // Force hide tab bar when community screen mounts
+  useEffect(() => {
+    smartNav.forceHide();
+    return () => {
+      smartNav.forceShow();
+    };
+  }, [smartNav]);
+  // ============================================================
 
   const {
     posts, topics, currentUser, likePost, unlikePost, repostPost, unrepostPost,
@@ -1913,7 +1925,7 @@ export default function CommunityScreen({ navigation }: Props) {
       return;
     }
 
-sweetAlert.confirm(
+    sweetAlert.confirm(
       'Add to Your Story',
       'How would you like to share?',
       () => {
@@ -1926,7 +1938,7 @@ sweetAlert.confirm(
       'Cancel',
       false
     );
-  }, [canInteract, currentUser?.id, currentUser?.avatar, sweetAlert]);
+  }, [canInteract, sweetAlert]);
 
   const handleStoryReply = useCallback((storyId: string, content: string) => {
     console.log('Story reply:', storyId, content);
@@ -1946,7 +1958,7 @@ sweetAlert.confirm(
   const handleSearchSelectPost = useCallback((post: Post) => {
     setShowSearch(false);
     setSearchQuery('');
-    navigation.navigate(ROUTES.POST_DETAIL, { postId: post.id });
+    navigation.navigate(ROUTES.POST_DETAIL as any, { postId: post.id });
   }, [navigation]);
 
   const handleSearchSelectTopic = useCallback((topic: any) => {
@@ -1959,9 +1971,9 @@ sweetAlert.confirm(
     setShowSearch(false);
     setSearchQuery('');
     if (user.id === currentUser?.id) {
-      navigation.navigate(ROUTES.EDIT_PROFILE);
+      navigation.navigate(ROUTES.EDIT_PROFILE as any);
     } else {
-      navigation.navigate(ROUTES.USER_PROFILE, { userId: user.id });
+      navigation.navigate(ROUTES.USER_PROFILE as any, { userId: user.id });
     }
   }, [currentUser?.id, navigation]);
 
@@ -2005,8 +2017,7 @@ sweetAlert.confirm(
   }, []);
 
   const handleDelete = useCallback((postId: string) => {
-
-sweetAlert.confirm(
+    sweetAlert.confirm(
       'Unravel this thread?',
       'This cannot be undone.',
       () => deletePost(postId),
@@ -2313,7 +2324,6 @@ sweetAlert.confirm(
           onClose={() => setShowNotificationChooser(false)}
           onSelect={(type) => {
             if (type === 'app') {
-              // Navigate to TrackerReminders for app notifications
               navigation.navigate(ROUTES.TRACKER_REMINDERS as any);
             } else {
               navigation.navigate(ROUTES.NOTIFICATIONS as any, { filter: 'community' });

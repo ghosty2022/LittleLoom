@@ -52,7 +52,6 @@ import Animated, {
 
 import * as Haptics from 'expo-haptics';
 import { formatDistanceToNow, format, subDays, eachDayOfInterval, isSameDay, differenceInHours, differenceInDays, differenceInMonths } from 'date-fns';
-import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop, Polyline, Path } from 'react-native-svg';
 
 import { SafeAvatar, SafeBabyAvatar, SafeParentAvatar } from '../../components/SafeAvatar';
 import { useSweetAlert } from '../../components/SweetAlert';
@@ -229,6 +228,59 @@ const FEATURE_CARDS: FeatureCard[] = [
   { id: 'vaccine', label: 'Vaccines', icon: 'medical-outline', color: '#e11d48', screen: 'VaccinationSchedule', description: 'Schedule & records', badge: '1 Due', badgeColor: '#e11d48' },
   { id: 'help', label: 'Help Center', icon: 'help-buoy-outline', color: '#4facfe', screen: 'HelpCenter', description: 'Guides & support', badge: undefined, badgeColor: undefined },
 ];
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   REFINED GLASS CARD — GrowthDashboard Style (NO BLUR — solid gradients)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const GlassCard: React.FC<{ children: React.ReactNode; style?: any; onPress?: () => void; intensity?: number }> = 
+  React.memo(({ children, style, onPress }) => {
+    const colorScheme = useColorScheme();
+    const isDark = colorScheme === 'dark';
+    const Wrapper = onPress ? TouchableOpacity : View;
+
+    return (
+      <Wrapper onPress={onPress} activeOpacity={0.85} style={[styles.glassCard, style]}>
+        <LinearGradient 
+          colors={isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.85)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.92)']} 
+          style={StyleSheet.absoluteFill} 
+          start={{ x: 0, y: 0 }} 
+          end={{ x: 1, y: 1 }} 
+        />
+        <View style={[styles.glassBorder, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.6)' }]} />
+        <View style={styles.glassContent}>{children}</View>
+      </Wrapper>
+    );
+  });
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SECTION HEADER COMPONENT — Clean, Minimal (GrowthDashboard Style)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const SectionHeader: React.FC<{
+  title: string;
+  subtitle?: string;
+  action?: () => void;
+  actionLabel?: string;
+  icon?: string;
+  theme: any;
+}> = React.memo(({ title, subtitle, action, actionLabel, icon, theme }) => (
+  <View style={styles.sectionHeader}>
+    <View style={styles.sectionHeaderLeft}>
+      {icon && <Ionicons name={icon as any} size={18} color={theme.primary} style={{ marginRight: 10 }} />}
+      <View>
+        <Text style={[styles.sectionHeaderTitle, { color: theme.text }]}>{title}</Text>
+        {subtitle && <Text style={[styles.sectionHeaderSubtitle, { color: theme.textMuted }]}>{subtitle}</Text>}
+      </View>
+    </View>
+    {action && (
+      <TouchableOpacity onPress={action} style={styles.sectionHeaderAction}>
+        <Text style={[styles.sectionHeaderActionText, { color: theme.primary }]}>{actionLabel || 'See All'}</Text>
+        <Ionicons name="chevron-forward" size={14} color={theme.primary} />
+      </TouchableOpacity>
+    )}
+  </View>
+));
 
 /* ═══════════════════════════════════════════════════════════════════════════
    NEW FEATURE 1: AI DAILY SUMMARY WIDGET — Redesigned as Sleek Horizontal Strip
@@ -991,32 +1043,7 @@ const SmartNotificationPanel: React.FC<{
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   REFINED GLASS CARD — GrowthDashboard Style
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const GlassCard: React.FC<{ children: React.ReactNode; style?: any; onPress?: () => void; intensity?: number }> = 
-  React.memo(({ children, style, onPress, intensity = 80 }) => {
-    const colorScheme = useColorScheme();
-    const isDark = colorScheme === 'dark';
-    const Wrapper = onPress ? TouchableOpacity : View;
-
-    return (
-      <Wrapper onPress={onPress} activeOpacity={0.8} style={[styles.glassCard, style]}>
-        <BlurView intensity={intensity} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
-        <LinearGradient 
-          colors={isDark ? ['rgba(45,45,60,0.7)', 'rgba(35,35,50,0.5)'] : ['rgba(255,255,255,0.92)', 'rgba(250,250,255,0.72)']} 
-          style={StyleSheet.absoluteFill} 
-          start={{ x: 0, y: 0 }} 
-          end={{ x: 1, y: 1 }} 
-        />
-        <View style={[styles.glassBorder, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.5)' }]} />
-        <View style={styles.glassContent}>{children}</View>
-      </Wrapper>
-    );
-  });
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   REFINED FEATURE CARDS — Horizontal Scroll, Clean
+   REFINED FEATURE CARDS — Horizontal Scroll, Clean SOLID cards (NO BLUR)
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const FeatureCardsRow: React.FC<{
@@ -1040,12 +1067,14 @@ const FeatureCardsRow: React.FC<{
             activeOpacity={0.85}
             style={styles.featureCardTouchable}
           >
-            <LinearGradient
-              colors={[`${item.color}08`, `${item.color}02`]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={[styles.featureCard, { borderColor: `${item.color}18`, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.7)' }]}
-            >
+            <View style={[
+              styles.featureCard, 
+              { 
+                borderColor: `${item.color}20`,
+                backgroundColor: isDark ? 'rgba(45,45,60,0.6)' : '#ffffff',
+                ...DESIGN.shadow.sm
+              }
+            ]}>
               <View style={styles.featureCardTop}>
                 <View style={[styles.featureCardIcon, { backgroundColor: item.color }]}>
                   <Ionicons name={item.icon as any} size={18} color="#fff" />
@@ -1068,7 +1097,7 @@ const FeatureCardsRow: React.FC<{
                 <Text style={[styles.featureCardArrowText, { color: item.color }]}>Open</Text>
                 <Ionicons name="arrow-forward" size={12} color={item.color} />
               </View>
-            </LinearGradient>
+            </View>
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -1077,7 +1106,7 @@ const FeatureCardsRow: React.FC<{
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   REFINED RECENT ACTIVITY LIST — Clean, Compact
+   REFINED RECENT ACTIVITY LIST — Clean, Compact (GrowthDashboard Style)
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const RecentActivityList: React.FC<{
@@ -1130,7 +1159,7 @@ const RecentActivityList: React.FC<{
 
   if (activities.length === 0) {
     return (
-      <GlassCard style={styles.emptyStateCard} intensity={60}>
+      <GlassCard style={styles.emptyStateCard}>
         <View style={styles.emptyStateIcon}>
           <Ionicons name="document-text-outline" size={28} color={theme.primary} />
         </View>
@@ -1212,12 +1241,7 @@ const SoundMixerSection: React.FC<{ onPress: () => void; isDark: boolean; theme:
 
     return (
       <TouchableOpacity onPress={onPress} activeOpacity={0.9}>
-        <LinearGradient 
-          colors={isDark ? ['rgba(30,30,50,0.6)', 'rgba(25,25,45,0.4)'] : ['#f0f4f8', '#e8ecf1']} 
-          start={{ x: 0, y: 0 }} 
-          end={{ x: 1, y: 1 }} 
-          style={[styles.soundMixerContainer, { borderColor: theme.border }]}
-        >
+        <View style={[styles.soundMixerContainer, { borderColor: theme.border, backgroundColor: isDark ? 'rgba(45,45,60,0.6)' : '#ffffff' }]}>
           <View style={styles.soundMixerHeader}>
             <View style={styles.soundMixerTitle}>
               <View style={[styles.soundMixerIconBg, { backgroundColor: '#1DB95418' }]}>
@@ -1270,13 +1294,13 @@ const SoundMixerSection: React.FC<{ onPress: () => void; isDark: boolean; theme:
               </TouchableOpacity>
             )}
           />
-        </LinearGradient>
+        </View>
       </TouchableOpacity>
     );
   });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   REFINED STICKY HEADER — GrowthDashboard Style
+   REFINED STICKY HEADER — GrowthDashboard Style with scroll animation
    ═══════════════════════════════════════════════════════════════════════════ */
 
 interface StickyAppHeaderProps {
@@ -1415,36 +1439,7 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   SECTION HEADER COMPONENT — Clean, Minimal
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const SectionHeader: React.FC<{
-  title: string;
-  subtitle?: string;
-  action?: () => void;
-  actionLabel?: string;
-  icon?: string;
-  theme: any;
-}> = React.memo(({ title, subtitle, action, actionLabel, icon, theme }) => (
-  <View style={styles.sectionHeader}>
-    <View style={styles.sectionHeaderLeft}>
-      {icon && <Ionicons name={icon as any} size={16} color={theme.primary} style={{ marginRight: 8 }} />}
-      <View>
-        <Text style={[styles.sectionHeaderTitle, { color: theme.text }]}>{title}</Text>
-        {subtitle && <Text style={[styles.sectionHeaderSubtitle, { color: theme.textMuted }]}>{subtitle}</Text>}
-      </View>
-    </View>
-    {action && (
-      <TouchableOpacity onPress={action} style={styles.sectionHeaderAction}>
-        <Text style={[styles.sectionHeaderActionText, { color: theme.primary }]}>{actionLabel || 'See All'}</Text>
-        <Ionicons name="chevron-forward" size={12} color={theme.primary} />
-      </TouchableOpacity>
-    )}
-  </View>
-));
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   MAIN HOMESCREEN — COMPLETELY REDESIGNED
+   MAIN HOMESCREEN — COMPLETELY REDESIGNED with GrowthDashboard patterns
    ═══════════════════════════════════════════════════════════════════════════ */
 
 export default function HomeScreen({ navigation }: HomeScreenProps) {
@@ -1610,7 +1605,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     loadActivities();
   }, [loadBabies, loadActivities]);
 
-  // Scroll handler for header animation only
+  // Scroll handler for header animation (GrowthDashboard pattern)
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
       'worklet';
@@ -1858,7 +1853,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
             GREETING & PARENT CARD — Compact, Elegant
            ═══════════════════════════════════════════════════════════════════ */}
         <Animated.View entering={shouldReduceMotion ? undefined : FadeInDown.springify()}>
-          <GlassCard style={[styles.parentCard, { borderRadius: borderRadiusValue, marginHorizontal: settings.compactSpacing ? 16 : 20 }]} intensity={90}>
+          <GlassCard style={[styles.parentCard, { borderRadius: borderRadiusValue, marginHorizontal: settings.compactSpacing ? 16 : 20 }]}>
             <View style={[styles.parentHeader, { padding: settings.compactSpacing ? 14 : 18 }]}>
               <SafeParentAvatar
                 avatar={userProfile?.avatar}
@@ -1907,7 +1902,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
            ═══════════════════════════════════════════════════════════════════ */}
         {currentBaby ? (
           <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(40).springify()}>
-            <GlassCard style={[styles.babyCard, { borderRadius: borderRadiusValue, marginHorizontal: settings.compactSpacing ? 16 : 20 }]} intensity={95}>
+            <GlassCard style={[styles.babyCard, { borderRadius: borderRadiusValue, marginHorizontal: settings.compactSpacing ? 16 : 20 }]}>
               <View style={[styles.babyHeader, { paddingHorizontal: settings.compactSpacing ? 14 : 18, paddingTop: settings.compactSpacing ? 10 : 14 }]}>
                 <TouchableOpacity style={styles.babySelector} onPress={() => navigateToScreen('SwitchBaby')}>
                   <Text style={[styles.babySelectorLabel, { color: theme.textMuted, fontSize: Math.round(11 * fontSizeMultiplier) }]}>
@@ -1954,7 +1949,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         ) : (
           <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(40).springify()}>
             <TouchableOpacity onPress={() => navigateToScreen('CreateBabyProfile')}>
-              <GlassCard style={[styles.noBabyCard, { borderRadius: borderRadiusValue, marginHorizontal: settings.compactSpacing ? 16 : 20 }]} intensity={90}>
+              <GlassCard style={[styles.noBabyCard, { borderRadius: borderRadiusValue, marginHorizontal: settings.compactSpacing ? 16 : 20 }]}>
                 <LinearGradient colors={[primary, '#764ba2']} style={[styles.noBabyGradient, { borderRadius: borderRadiusValue }]}>
                   <Text style={[styles.noBabyEmoji, { fontSize: Math.round(44 * fontSizeMultiplier) }]}>👶</Text>
                   <Text style={[styles.noBabyTitle, { fontSize: Math.round(18 * fontSizeMultiplier) }]}>Welcome to LittleLoom!</Text>
@@ -2079,7 +2074,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         </View>
 
         {/* ═══════════════════════════════════════════════════════════════════
-            FEATURE CARDS — Horizontal Scroll, Clean
+            FEATURE CARDS — Horizontal Scroll, Clean SOLID cards (NO BLUR)
            ═══════════════════════════════════════════════════════════════════ */}
         <View style={styles.sectionFullWidth}>
           <View style={[styles.sectionHeader, { paddingHorizontal: settings.compactSpacing ? 16 : 20, marginBottom: 10 }]}>
@@ -2127,7 +2122,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         </View>
 
         {/* ═══════════════════════════════════════════════════════════════════
-            RECENT ACTIVITY — Clean, Compact
+            RECENT ACTIVITY — Clean, Compact (GrowthDashboard Style)
            ═══════════════════════════════════════════════════════════════════ */}
         <View style={styles.sectionFullWidth}>
           <View style={[styles.sectionHeader, { paddingHorizontal: settings.compactSpacing ? 16 : 20 }]}>
@@ -2160,7 +2155,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   STYLES — Completely Redesigned, Smooth, Cohesive
+   STYLES — Completely Redesigned, Smooth, Cohesive (NO BLUR CARDS)
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const styles = StyleSheet.create({
@@ -2196,7 +2191,7 @@ const styles = StyleSheet.create({
   safetyCornerBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1 },
   safetyCornerGradient: { alignItems: 'center', justifyContent: 'center' },
 
-  /* ── Glass Card ── */
+  /* ── Glass Card (NO BLUR — solid gradients) ── */
   glassCard: { overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', borderRadius: 20, ...DESIGN.shadow.md },
   glassBorder: { position: 'absolute', top: 0, left: 0, right: 0, height: 1 },
   glassContent: { flex: 1 },
@@ -2346,10 +2341,10 @@ const styles = StyleSheet.create({
   aiInsightTitle: { fontSize: 13, fontWeight: '700' },
   aiInsightMessage: { fontSize: 11, fontWeight: '500', marginTop: 1, lineHeight: 16 },
 
-  /* ── Feature Cards Row ── */
+  /* ── Feature Cards Row (SOLID — NO BLUR) ── */
   featureCardsScroll: { paddingHorizontal: 20, gap: 10, paddingBottom: 4 },
   featureCardTouchable: { width: 150 },
-  featureCard: { borderRadius: 18, padding: 14, borderWidth: 1, ...DESIGN.shadow.sm },
+  featureCard: { borderRadius: 18, padding: 14, borderWidth: 1 },
   featureCardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
   featureCardIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   featureCardBadge: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8, minWidth: 26, alignItems: 'center' },

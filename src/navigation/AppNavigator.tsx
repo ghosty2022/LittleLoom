@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { View, Text, AppState } from 'react-native';
+import { View, Text, AppState, TouchableOpacity } from 'react-native';
 import {
   NavigationContainer, DefaultTheme, DarkTheme, NavigationContainerRef,
 } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 
 import OnboardingScreen from '../screens/auth/OnboardingScreen';
 import LoginScreen from '../screens/auth/LoginScreen';
@@ -89,6 +91,44 @@ const MAIN_FLOW_SCREENS = new Set([
 
 const AUTH_FLOW_SCREENS = new Set(['Onboarding', 'Login', 'SignUp', 'ForgotPassword']);
 const SETUP_FLOW_SCREENS = new Set(['Parent2Optional', 'Parent2Setup', 'BabyOptional', 'CreateBabyProfile', 'AddParent']);
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   HEADER RIGHT COMPONENTS — Contextual actions for every screen
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+function HeaderRightWrapper({ children, theme }: { children: React.ReactNode; theme: any }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginRight: 8 }}>
+      {children}
+    </View>
+  );
+}
+
+function HeaderIconButton({ icon, onPress, color = '#667eea', size = 22 }: { icon: any; onPress: () => void; color?: string; size?: number }) {
+  return (
+    <TouchableOpacity 
+      onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPress(); }}
+      style={{ width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' }}
+      activeOpacity={0.7}
+    >
+      <Ionicons name={icon} size={size} color={color} />
+    </TouchableOpacity>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SCREEN OPTIONS MAP — Every screen gets proper right navigation
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const getScreenOptions = (colors: any, isDark: boolean) => ({
+  headerShown: true,
+  headerStyle: { backgroundColor: isDark ? '#0a0a0a' : '#ffffff' },
+  headerTintColor: colors?.primary || '#667eea',
+  headerTitleStyle: { fontWeight: '800', fontSize: 17, letterSpacing: -0.3 },
+  headerShadowVisible: false,
+  headerBackTitleVisible: false,
+  animation: 'slide_from_right' as const,
+});
 
 function MainTabs() {
   const { isDark, colors } = useSafeApp();
@@ -346,6 +386,9 @@ function NavigationContent({
 
   if (authLoading || !initialCheckDone) return <AppLoadingScreen />;
 
+  const screenOptions = getScreenOptions(colors, isDark);
+  const primaryColor = colors?.primary || '#667eea';
+
   return (
     <NavigationContainer
       ref={navRef}
@@ -355,12 +398,15 @@ function NavigationContent({
       onReady={() => setIsNavReady(true)}
     >
       <Stack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right', contentStyle: { backgroundColor: colors?.background || '#f8faff' } }}>
+        {/* ─── AUTH FLOW ─── */}
         <Stack.Screen name="Onboarding" component={OnboardingScreen} options={{ animation: 'fade' }} />
         <Stack.Group screenOptions={{ animation: 'slide_from_bottom' }}>
           <Stack.Screen name="Login" component={LoginScreen} />
           <Stack.Screen name="SignUp" component={SignUpScreen} />
           <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
         </Stack.Group>
+
+        {/* ─── SETUP FLOW ─── */}
         <Stack.Group screenOptions={{ animation: 'slide_from_right' }}>
           <Stack.Screen name="Parent2Optional" component={CoParentInviteScreen} options={{ gestureEnabled: false }} />
           <Stack.Screen name="Parent2Setup" component={CoParentSetupScreen} options={{ gestureEnabled: false }} />
@@ -368,44 +414,344 @@ function NavigationContent({
           <Stack.Screen name="CreateBabyProfile" component={BabyProfileCreateScreen} options={{ gestureEnabled: false }} />
           <Stack.Screen name="AddParent" component={CoParentSetupScreen as any} />
         </Stack.Group>
+
+        {/* ─── MAIN TAB (no header) ─── */}
         <Stack.Screen name="Main" component={MainTabs} options={{ animation: 'fade', gestureEnabled: false }} />
-        <Stack.Screen name="Timeline" component={TimelineScreen} />
-        <Stack.Screen name="PottyTracker" component={TimelineScreen} />
-        <Stack.Screen name="FeedTracker" component={TimelineScreen} />
-        <Stack.Screen name="SleepTracker" component={TimelineScreen} />
-        <Stack.Screen name="Profile" component={FamilyDashboardScreen} />
-        <Stack.Screen name="SwitchBaby" component={BabySelectorScreen} options={{ animation: 'slide_from_bottom', presentation: 'modal' }} />
-        <Stack.Screen name="EditProfile" component={BabyProfileScreen} options={{ animation: 'slide_from_right' }} />
-        <Stack.Screen name="EditGuardian" component={EditGuardianScreen} options={{ animation: 'slide_from_right' }} />
-        <Stack.Screen name="Gallery" component={GalleryScreen} />
-        <Stack.Screen name="FamilyChatList" component={FamilyChatListScreen} />
-        <Stack.Screen name="FamilyChat" component={FamilyChatScreen} />
-        <Stack.Screen name="BackupRestore" component={BackupRestoreScreen} options={{ animation: 'slide_from_right' }} />
-        <Stack.Screen name="HelpCenter" component={HelpCenterScreen} options={{ animation: 'slide_from_right' }} />
-        <Stack.Screen name="ContactSupport" component={ContactSupportScreen} options={{ animation: 'slide_from_right' }} />
-        <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} options={{ animation: 'slide_from_right' }} />
-        <Stack.Screen name="TermsOfService" component={TermsOfServiceScreen} options={{ animation: 'slide_from_right' }} />
-        <Stack.Screen name="About" component={AboutScreen} options={{ animation: 'slide_from_right' }} />
-        <Stack.Screen name="LanguageSettings" component={LanguageSettingsScreen} options={{ animation: 'slide_from_right' }} />
-        <Stack.Screen name="UnitSettings" component={UnitSettingsScreen} options={{ animation: 'slide_from_right' }} />
-        <Stack.Screen name="SafetyCorner" component={SafetyCornerScreen} options={{ animation: 'slide_from_right' }} />
-        <Stack.Screen name="VaccinationSchedule" component={VaccinationScheduleScreen} options={{ animation: 'slide_from_right' }} />
+
+        {/* ═══════════════════════════════════════════════════════════════════
+            MAIN SCREENS — With proper headerRight navigation
+           ═══════════════════════════════════════════════════════════════════ */}
+
+        {/* Timeline & Trackers */}
+        <Stack.Screen 
+          name="Timeline" 
+          component={TimelineScreen} 
+          options={({ navigation }) => ({
+            ...screenOptions,
+            title: 'Activity Timeline',
+            headerRight: () => (
+              <HeaderRightWrapper>
+                <HeaderIconButton icon="filter-outline" onPress={() => {}} color={primaryColor} />
+                <HeaderIconButton icon="add-circle-outline" onPress={() => navigation.navigate('AddEntry' as never)} color={primaryColor} />
+              </HeaderRightWrapper>
+            ),
+          })}
+        />
+        <Stack.Screen name="PottyTracker" component={TimelineScreen} options={{ title: 'Potty Tracker' }} />
+        <Stack.Screen name="FeedTracker" component={TimelineScreen} options={{ title: 'Feed Tracker' }} />
+        <Stack.Screen name="SleepTracker" component={TimelineScreen} options={{ title: 'Sleep Tracker' }} />
+
+        {/* Profile & Family */}
+        <Stack.Screen 
+          name="Profile" 
+          component={FamilyDashboardScreen}
+          options={({ navigation }) => ({
+            ...screenOptions,
+            title: 'Family Dashboard',
+            headerRight: () => (
+              <HeaderRightWrapper>
+                <HeaderIconButton icon="share-outline" onPress={() => navigation.navigate('FamilySharing' as never)} color={primaryColor} />
+                <HeaderIconButton icon="settings-outline" onPress={() => navigation.navigate('Customize' as never)} color={primaryColor} />
+              </HeaderRightWrapper>
+            ),
+          })}
+        />
+        <Stack.Screen 
+          name="SwitchBaby" 
+          component={BabySelectorScreen} 
+          options={({ navigation }) => ({
+            ...screenOptions,
+            title: 'Select Baby',
+            presentation: 'modal',
+            headerRight: () => (
+              <HeaderRightWrapper>
+                <HeaderIconButton icon="add-circle-outline" onPress={() => navigation.navigate('CreateBabyProfile' as never)} color={primaryColor} />
+              </HeaderRightWrapper>
+            ),
+          })}
+        />
+        <Stack.Screen 
+          name="EditProfile" 
+          component={BabyProfileScreen}
+          options={({ navigation }) => ({
+            ...screenOptions,
+            title: 'Edit Profile',
+            headerRight: () => (
+              <HeaderRightWrapper>
+                <HeaderIconButton icon="save-outline" onPress={() => {}} color={primaryColor} />
+              </HeaderRightWrapper>
+            ),
+          })}
+        />
+        <Stack.Screen 
+          name="EditGuardian" 
+          component={EditGuardianScreen}
+          options={({ navigation }) => ({
+            ...screenOptions,
+            title: 'Edit Guardian',
+            headerRight: () => (
+              <HeaderRightWrapper>
+                <HeaderIconButton icon="trash-outline" onPress={() => {}} color="#ef4444" />
+              </HeaderRightWrapper>
+            ),
+          })}
+        />
+
+        {/* Gallery & Media */}
+        <Stack.Screen 
+          name="Gallery" 
+          component={GalleryScreen}
+          options={({ navigation }) => ({
+            ...screenOptions,
+            title: 'Memories',
+            headerRight: () => (
+              <HeaderRightWrapper>
+                <HeaderIconButton icon="camera-outline" onPress={() => {}} color={primaryColor} />
+                <HeaderIconButton icon="ellipsis-horizontal-outline" onPress={() => {}} color={primaryColor} />
+              </HeaderRightWrapper>
+            ),
+          })}
+        />
+
+        {/* Family Chat */}
+        <Stack.Screen 
+          name="FamilyChatList" 
+          component={FamilyChatListScreen}
+          options={({ navigation }) => ({
+            ...screenOptions,
+            title: 'Family Chat',
+            headerRight: () => (
+              <HeaderRightWrapper>
+                <HeaderIconButton icon="create-outline" onPress={() => navigation.navigate('FamilyChat' as never)} color={primaryColor} />
+              </HeaderRightWrapper>
+            ),
+          })}
+        />
+        <Stack.Screen 
+          name="FamilyChat" 
+          component={FamilyChatScreen}
+          options={({ navigation, route }) => ({
+            ...screenOptions,
+            title: (route.params as any)?.memberName || 'Chat',
+            headerRight: () => (
+              <HeaderRightWrapper>
+                <HeaderIconButton icon="call-outline" onPress={() => {}} color={primaryColor} />
+                <HeaderIconButton icon="videocam-outline" onPress={() => {}} color={primaryColor} />
+                <HeaderIconButton icon="information-circle-outline" onPress={() => {}} color={primaryColor} />
+              </HeaderRightWrapper>
+            ),
+          })}
+        />
+
+        {/* Settings & Support */}
+        <Stack.Screen 
+          name="BackupRestore" 
+          component={BackupRestoreScreen}
+          options={({ navigation }) => ({
+            ...screenOptions,
+            title: 'Backup & Restore',
+            headerRight: () => (
+              <HeaderRightWrapper>
+                <HeaderIconButton icon="cloud-upload-outline" onPress={() => {}} color={primaryColor} />
+              </HeaderRightWrapper>
+            ),
+          })}
+        />
+        <Stack.Screen name="HelpCenter" component={HelpCenterScreen} options={{ ...screenOptions, title: 'Help Center' }} />
+        <Stack.Screen 
+          name="ContactSupport" 
+          component={ContactSupportScreen}
+          options={({ navigation }) => ({
+            ...screenOptions,
+            title: 'Contact Support',
+            headerRight: () => (
+              <HeaderRightWrapper>
+                <HeaderIconButton icon="send-outline" onPress={() => {}} color={primaryColor} />
+              </HeaderRightWrapper>
+            ),
+          })}
+        />
+        <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} options={{ ...screenOptions, title: 'Privacy Policy' }} />
+        <Stack.Screen name="TermsOfService" component={TermsOfServiceScreen} options={{ ...screenOptions, title: 'Terms of Service' }} />
+        <Stack.Screen name="About" component={AboutScreen} options={{ ...screenOptions, title: 'About' }} />
+        <Stack.Screen name="LanguageSettings" component={LanguageSettingsScreen} options={{ ...screenOptions, title: 'Language' }} />
+        <Stack.Screen name="UnitSettings" component={UnitSettingsScreen} options={{ ...screenOptions, title: 'Units' }} />
+
+        {/* Safety & Health */}
+        <Stack.Screen 
+          name="SafetyCorner" 
+          component={SafetyCornerScreen}
+          options={({ navigation }) => ({
+            ...screenOptions,
+            title: 'Safety Corner',
+            headerRight: () => (
+              <HeaderRightWrapper>
+                <HeaderIconButton icon="share-outline" onPress={() => {}} color={primaryColor} />
+                <HeaderIconButton icon="call-outline" onPress={() => {}} color="#ef4444" />
+              </HeaderRightWrapper>
+            ),
+          })}
+        />
+        <Stack.Screen 
+          name="VaccinationSchedule" 
+          component={VaccinationScheduleScreen}
+          options={({ navigation }) => ({
+            ...screenOptions,
+            title: 'Vaccinations',
+            headerRight: () => (
+              <HeaderRightWrapper>
+                <HeaderIconButton icon="add-circle-outline" onPress={() => {}} color={primaryColor} />
+                <HeaderIconButton icon="share-outline" onPress={() => {}} color={primaryColor} />
+              </HeaderRightWrapper>
+            ),
+          })}
+        />
+
+        {/* Modals with bottom slide */}
         <Stack.Group screenOptions={{ presentation: 'modal', animation: 'slide_from_bottom' }}>
-          <Stack.Screen name="AddEntry" component={AddEntryScreen} />
-          <Stack.Screen name="Achievements" component={AchievementsScreen} />
-          <Stack.Screen name="GrowthDashboard" component={GrowthDashboardScreen} />
-          <Stack.Screen name="TrackerReminders" component={TrackerRemindersScreen} />
-          <Stack.Screen name="FamilySharing" component={FamilySharingScreen} />
-          <Stack.Screen name="SoundMixer" component={SoundMixerScreen} />
-          <Stack.Screen name="Customize" component={CustomizeScreen} />
+          <Stack.Screen 
+            name="AddEntry" 
+            component={AddEntryScreen}
+            options={({ navigation }) => ({
+              ...screenOptions,
+              title: 'Add Entry',
+              headerRight: () => (
+                <HeaderRightWrapper>
+                  <HeaderIconButton icon="close-outline" onPress={() => navigation.goBack()} color={primaryColor} />
+                </HeaderRightWrapper>
+              ),
+            })}
+          />
+          <Stack.Screen 
+            name="Achievements" 
+            component={AchievementsScreen}
+            options={({ navigation }) => ({
+              ...screenOptions,
+              title: 'Achievements',
+              headerRight: () => (
+                <HeaderRightWrapper>
+                  <HeaderIconButton icon="share-outline" onPress={() => {}} color={primaryColor} />
+                </HeaderRightWrapper>
+              ),
+            })}
+          />
+          <Stack.Screen 
+            name="GrowthDashboard" 
+            component={GrowthDashboardScreen}
+            options={({ navigation }) => ({
+              ...screenOptions,
+              title: 'Growth Dashboard',
+              headerRight: () => (
+                <HeaderRightWrapper>
+                  <HeaderIconButton icon="add-circle-outline" onPress={() => {}} color={primaryColor} />
+                  <HeaderIconButton icon="ellipsis-horizontal-outline" onPress={() => {}} color={primaryColor} />
+                </HeaderRightWrapper>
+              ),
+            })}
+          />
+          <Stack.Screen name="TrackerReminders" component={TrackerRemindersScreen} options={{ ...screenOptions, title: 'Reminders' }} />
+          <Stack.Screen 
+            name="FamilySharing" 
+            component={FamilySharingScreen}
+            options={({ navigation }) => ({
+              ...screenOptions,
+              title: 'Family Sharing',
+              headerRight: () => (
+                <HeaderRightWrapper>
+                  <HeaderIconButton icon="person-add-outline" onPress={() => {}} color={primaryColor} />
+                  <HeaderIconButton icon="qr-code-outline" onPress={() => {}} color={primaryColor} />
+                </HeaderRightWrapper>
+              ),
+            })}
+          />
+          <Stack.Screen 
+            name="SoundMixer" 
+            component={SoundMixerScreen}
+            options={({ navigation }) => ({
+              ...screenOptions,
+              title: 'Sound Mixer',
+              headerRight: () => (
+                <HeaderRightWrapper>
+                  <HeaderIconButton icon="timer-outline" onPress={() => {}} color={primaryColor} />
+                  <HeaderIconButton icon="save-outline" onPress={() => {}} color={primaryColor} />
+                </HeaderRightWrapper>
+              ),
+            })}
+          />
+          <Stack.Screen 
+            name="Customize" 
+            component={CustomizeScreen}
+            options={({ navigation }) => ({
+              ...screenOptions,
+              title: 'Settings',
+              headerRight: () => (
+                <HeaderRightWrapper>
+                  <HeaderIconButton icon="checkmark-circle-outline" onPress={() => navigation.goBack()} color={primaryColor} />
+                </HeaderRightWrapper>
+              ),
+            })}
+          />
         </Stack.Group>
+
+        {/* Full screen modals */}
         <Stack.Group screenOptions={{ presentation: 'fullScreenModal', animation: 'fade' }}>
-          <Stack.Screen name="SecurityLock" component={SecurityLockScreen} />
-          <Stack.Screen name="BiometricSetup" component={BiometricSetupScreen} />
-          <Stack.Screen name="SecurityCenter" component={SecurityCenterScreen} />
+          <Stack.Screen name="SecurityLock" component={SecurityLockScreen} options={{ headerShown: false }} />
+          <Stack.Screen 
+            name="BiometricSetup" 
+            component={BiometricSetupScreen}
+            options={({ navigation }) => ({
+              ...screenOptions,
+              title: 'Biometric Setup',
+              headerRight: () => (
+                <HeaderRightWrapper>
+                  <HeaderIconButton icon="close-outline" onPress={() => navigation.goBack()} color={primaryColor} />
+                </HeaderRightWrapper>
+              ),
+            })}
+          />
+          <Stack.Screen 
+            name="SecurityCenter" 
+            component={SecurityCenterScreen}
+            options={({ navigation }) => ({
+              ...screenOptions,
+              title: 'Security Center',
+              headerRight: () => (
+                <HeaderRightWrapper>
+                  <HeaderIconButton icon="shield-checkmark-outline" onPress={() => {}} color={primaryColor} />
+                </HeaderRightWrapper>
+              ),
+            })}
+          />
         </Stack.Group>
-        <Stack.Screen name="UniversalTrackerHub" component={UniversalTrackerHubScreen} />
-        <Stack.Screen name="CreateCustomTracker" component={CreateCustomTrackerScreen} />
+
+        {/* Trackers */}
+        <Stack.Screen 
+          name="UniversalTrackerHub" 
+          component={UniversalTrackerHubScreen}
+          options={({ navigation }) => ({
+            ...screenOptions,
+            title: 'Trackers',
+            headerRight: () => (
+              <HeaderRightWrapper>
+                <HeaderIconButton icon="add-circle-outline" onPress={() => navigation.navigate('CreateCustomTracker' as never)} color={primaryColor} />
+                <HeaderIconButton icon="search-outline" onPress={() => {}} color={primaryColor} />
+              </HeaderRightWrapper>
+            ),
+          })}
+        />
+        <Stack.Screen 
+          name="CreateCustomTracker" 
+          component={CreateCustomTrackerScreen}
+          options={({ navigation }) => ({
+            ...screenOptions,
+            title: 'Custom Tracker',
+            headerRight: () => (
+              <HeaderRightWrapper>
+                <HeaderIconButton icon="checkmark-outline" onPress={() => navigation.goBack()} color={primaryColor} />
+              </HeaderRightWrapper>
+            ),
+          })}
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );
