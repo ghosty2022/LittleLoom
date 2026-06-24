@@ -31,7 +31,6 @@ const DOCK_HEIGHT = 72;
 const SAFE_BOTTOM = 8;
 
 // ONLY truly full-screen routes hide the nav completely.
-// All other routes (including community screens) should show the tab bar.
 const HIDDEN_ROUTES = new Set([
   'SecurityLock', 'BiometricSetup',
   'CommunitySplash', 'CommunityOnboarding',
@@ -80,14 +79,12 @@ export const ScreenWrapper: React.FC<ScreenWrapperProps> = ({
     return unsub;
   }, [smartNav]);
 
-  // Route-based nav control
   useEffect(() => {
     if (isHidden) {
       smartNav.forceHide();
     } else if (isAlwaysVisible || !enableNavHiding) {
       smartNav.forceShow();
     } else {
-      // Normal scroll-driven behavior: reset to allow scroll hiding
       smartNav.reset();
     }
   }, [routeName, isHidden, isAlwaysVisible, enableNavHiding, smartNav]);

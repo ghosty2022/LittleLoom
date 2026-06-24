@@ -224,11 +224,6 @@ const CommunityNavigator = React.memo(() => {
 
   const isReady = !isLoading && isInitialized && splashReady;
 
-  // REMOVED: smartNav.forceHide() / forceShow() calls.
-  // The LiquidGlassNavigation now detects community nested routes itself
-  // via the tab bar's state inspection. No need to interfere here.
-
-  // Initialize phase
   useEffect(() => {
     if (!isReady || initDone.current) return;
 

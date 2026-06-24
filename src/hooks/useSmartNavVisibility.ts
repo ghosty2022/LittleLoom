@@ -173,6 +173,7 @@ export const useSmartNavVisibility = (config: SmartNavConfig = {}) => {
       _metrics.timer = null;
     }
     _stateMachine = 'visible';
+    _emit({ isVisible: true, isFullyHidden: false, progress: 1 });
   }, []);
 
   const forceHide = useCallback(() => {

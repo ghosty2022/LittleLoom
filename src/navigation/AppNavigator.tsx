@@ -53,13 +53,22 @@ import SecurityCenterScreen from '../screens/security/SecurityCenterScreen';
 import UniversalTrackerHubScreen from '../screens/tracking/UniversalTrackerHubScreen';
 import CreateCustomTrackerScreen from '../screens/tracking/CreateCustomTrackerScreen';
 import VaccinationScheduleScreen from '../screens/tracking/VaccinationScheduleScreen';
-import LiquidGlassNavigation from '../components/LiquidGlassNavigation';
+
+// Safe import with fallback for LiquidGlassNavigation
+let LiquidGlassNavigation: React.FC<any>;
+try {
+  const lgModule = require('../components/LiquidGlassNavigation');
+  LiquidGlassNavigation = lgModule.default || lgModule.LiquidGlassNavigation || lgModule;
+} catch (e) {
+  console.warn('Failed to load LiquidGlassNavigation, using fallback tab bar', e);
+  LiquidGlassNavigation = ({ state, descriptors, navigation }: any) => null;
+}
+
 import { UniversalSpinner } from '../components/UniversalSpinner';
 import { useSecurity } from '../context/SecurityContext';
 import { useSafeApp, useSafeBaby, useSafeAuth } from '../hooks/useSafeContexts';
 import { statePersistence } from '../utils/statePersistence';
 import { RootStackParamList, MainTabParamList, NavigationState } from '../types/navigation';
-import { useSmartNavVisibility } from '../hooks/useSmartNavVisibility';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -96,7 +105,7 @@ const AUTH_FLOW_SCREENS = new Set(['Onboarding', 'Login', 'SignUp', 'ForgotPassw
 const SETUP_FLOW_SCREENS = new Set(['Parent2Optional', 'Parent2Setup', 'BabyOptional', 'CreateBabyProfile', 'AddParent']);
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   HEADER RIGHT COMPONENTS — For screens that explicitly want headers
+   HEADER COMPONENTS — For screens that explicitly want headers
    ═══════════════════════════════════════════════════════════════════════════ */
 
 function HeaderRightWrapper({ children }: { children: React.ReactNode }) {
@@ -134,7 +143,7 @@ function HeaderIconButton({
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const getScreenOptions = (colors: any, isDark: boolean) => ({
-  headerShown: false, // DEFAULT: no header
+  headerShown: false,
   headerStyle: { backgroundColor: isDark ? '#0a0a0a' : '#ffffff' },
   headerTintColor: colors?.primary || '#667eea',
   headerTitleStyle: { fontWeight: '800', fontSize: 17, letterSpacing: -0.3 },
@@ -152,7 +161,13 @@ function MainTabs() {
 
   return (
     <Tab.Navigator
-      tabBar={(props) => <LiquidGlassNavigation {...props} />}
+      tabBar={(props) => {
+        if (typeof LiquidGlassNavigation !== 'function') {
+          console.error('LiquidGlassNavigation is not a valid component:', typeof LiquidGlassNavigation, LiquidGlassNavigation);
+          return null;
+        }
+        return <LiquidGlassNavigation {...props} />;
+      }}
       screenOptions={{
         headerShown: false,
         tabBarStyle: { backgroundColor: colors?.navBackground || '#ffffff', borderTopWidth: 0, elevation: 0, shadowOpacity: 0 },
@@ -266,7 +281,6 @@ function NavigationContent({
     [secSettings?.isPinEnabled, secSettings?.isBiometricEnabled]
   );
 
-  // Onboarding check
   useEffect(() => {
     AsyncStorage.getItem(ONBOARDING_COMPLETE_KEY).then(v => {
       const complete = v === 'true';
@@ -276,7 +290,6 @@ function NavigationContent({
     }).catch(() => setIsFirstOpen(false));
   }, []);
 
-  // Compute nav state
   useEffect(() => {
     if (authLoading || isFirstOpen === undefined) return;
 
@@ -305,7 +318,6 @@ function NavigationContent({
   }, [authLoading, isAuthenticated, isSecurityLocked, securityOn, setupComplete,
       hasParent2, hasBaby, babies?.length, hasSkippedBaby, hasSeenOnboarding, isFirstOpen]);
 
-  // Load babies
   useEffect(() => {
     if (isAuthenticated && !authLoading && !babiesLoaded.current) {
       babiesLoaded.current = true;
@@ -313,7 +325,6 @@ function NavigationContent({
     }
   }, [isAuthenticated, authLoading, loadBabies]);
 
-  // AppState listener for security
   useEffect(() => {
     const sub = AppState.addEventListener('change', async (next) => {
       const current = AppState.currentState;
@@ -345,9 +356,8 @@ function NavigationContent({
       }
     });
     return () => sub.remove();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Debounced state change
   const handleStateChange = useCallback((state: any) => {
     if (!state) return;
     if (stateTimer.current) clearTimeout(stateTimer.current);
@@ -366,7 +376,6 @@ function NavigationContent({
     if (stateTimer.current) clearTimeout(stateTimer.current);
   }, []);
 
-  // Navigation enforcement
   useEffect(() => {
     if (!navRef.current?.isReady() || !isNavReady || isNavigating.current || !initialCheckDone) return;
 
@@ -417,14 +426,6 @@ function NavigationContent({
   const screenOptions = getScreenOptions(colors, isDark);
   const primaryColor = colors?.primary || '#667eea';
 
-  // Helper: screens WITH headers (opt-in only)
-  const withHeader = (title: string, headerRight?: React.ReactNode) => ({
-    ...screenOptions,
-    headerShown: true as const,
-    title,
-    ...(headerRight ? { headerRight: () => headerRight } : {}),
-  });
-
   return (
     <NavigationContainer
       ref={navRef}
@@ -459,11 +460,7 @@ function NavigationContent({
         {/* MAIN TAB (no header) */}
         <Stack.Screen name="Main" component={MainTabs} options={{ animation: 'fade', gestureEnabled: false }} />
 
-        {/* ═══════════════════════════════════════════════════════════════
-            MAIN SCREENS — NO HEADERS by default. Add withHeader() only
-            if a specific screen truly needs a native header.
-           ═══════════════════════════════════════════════════════════════ */}
-
+        {/* MAIN SCREENS — NO HEADERS by default */}
         <Stack.Screen name="Timeline" component={TimelineScreen} />
         <Stack.Screen name="PottyTracker" component={TimelineScreen} />
         <Stack.Screen name="FeedTracker" component={TimelineScreen} />
@@ -513,10 +510,6 @@ function NavigationContent({
     </NavigationContainer>
   );
 }
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   EXPORT
-   ═══════════════════════════════════════════════════════════════════════════ */
 
 export default function AppNavigator({ isDark, initialState, onStateChange }: {
   isDark?: boolean; initialState?: any; onStateChange?: (state: any) => void;
