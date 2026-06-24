@@ -1,6 +1,5 @@
-// src/navigation/CommunityNavigator.tsx
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, StyleSheet, Text } from 'react-native';
+import { View, StyleSheet, Text, StatusBar } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
@@ -10,6 +9,7 @@ import { useCommunity } from '../context/CommunityContext';
 import { useUser } from '../context/UserContext';
 import { useCustomization } from '../hooks/useCustomization';
 import { useIntelligentSplash } from '../hooks/useIntelligentSplash';
+import { useSmartNavVisibility } from '../hooks/useSmartNavVisibility';
 
 import CommunityScreen from '../screens/community/CommunityScreen';
 import TopicScreen from '../screens/community/TopicScreen';
@@ -28,27 +28,7 @@ import CommunityOnboardingScreen from '../screens/community/CommunityOnboardingS
 
 import { CommunityColors } from '../theme/CommunityTheme';
 import { InlineSpinner } from '../components/UniversalSpinner';
-
-// ─── TYPE DEFINITIONS (unchanged) ──────────────────────────────────────
-export type CommunityStackParamList = {
-  CommunityOnboarding: undefined;
-  CommunitySplash: undefined;
-  CommunityMain: undefined;
-  Topic: { topicId: string; topicName?: string };
-  CreatePost: { topicId?: string; draftId?: string } | undefined;
-  PostDetail: { postId: string };
-  CommunityMemberProfile: { userId: string };
-  ChatList: undefined;
-  Chat: { chatId: string; userId?: string; userName?: string };
-  Notifications: undefined;
-  CommunityProfile: undefined;
-  TopicMembers: { topicId: string };
-  Followers: { userId?: string };
-  Following: { userId?: string };
-  SearchUsers: undefined;
-  BlockedUsers: undefined;
-  Report: { targetId: string; targetType: 'post' | 'user' | 'comment'; targetName?: string };
-};
+import type { CommunityStackParamList } from '../types/navigation';
 
 const Stack = createNativeStackNavigator<CommunityStackParamList>();
 
@@ -57,7 +37,7 @@ const COUNTRY_CACHE_TTL = 7 * 24 * 60 * 60 * 1000;
 const COMMUNITY_ONBOARDING_KEY = '@littleloom_community_onboarding_done';
 const COMMUNITY_TOPICS_KEY = '@littleloom_community_topics_selected';
 
-// ─── FIX #1: Module-level country maps (not recreated per call) ───────
+// Module-level country maps (not recreated per call)
 const COUNTRY_MAP: Record<string, string> = {
   US: 'United States', GB: 'United Kingdom', CA: 'Canada', AU: 'Australia',
   DE: 'Germany', FR: 'France', JP: 'Japan', IN: 'India', BR: 'Brazil',
@@ -102,7 +82,7 @@ const TIMEZONE_MAP: Record<string, string> = {
 const getCountryFromCode = (code: string) => COUNTRY_MAP[code.toUpperCase()] || null;
 const getCountryFromTz = (tz: string) => TIMEZONE_MAP[tz] || null;
 
-// ─── FIX #2: No artificial delays, parallel detection ─────────────────
+// Automatic country detection hook
 const useAutomaticCountryDetection = () => {
   const { currentUser, updateUserLocation } = useCommunity();
   const [isDetecting, setIsDetecting] = useState(false);
@@ -133,7 +113,7 @@ const useAutomaticCountryDetection = () => {
       if (!mounted) return;
       setIsDetecting(true);
 
-      // Try region/timezone immediately (no setTimeout)
+      // Try region/timezone immediately
       const region = Localization.region;
       let country = region ? getCountryFromCode(region) : null;
       if (!country) country = getCountryFromTz(Localization.timezone);
@@ -143,7 +123,7 @@ const useAutomaticCountryDetection = () => {
         return;
       }
 
-      // Fallback: location permission (no nested setTimeout)
+      // Fallback: location permission
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status === 'granted') {
@@ -183,7 +163,7 @@ const useAutomaticCountryDetection = () => {
   return isDetecting;
 };
 
-// ─── FIX #3: Use InlineSpinner (fast) instead of UniversalSpinner (heavy) ─
+// Inline loading view
 const InlineLoadingView = React.memo(({ text }: { text: string }) => (
   <View style={styles.inlineLoadingContainer}>
     <View style={styles.inlineLoadingCard}>
@@ -195,7 +175,7 @@ const InlineLoadingView = React.memo(({ text }: { text: string }) => (
 
 type CommunityPhase = 'loading' | 'onboarding' | 'splash' | 'main';
 
-// ─── FIX #4: Static screen options (not recreated per render) ──────────
+// Static screen options
 const ONBOARDING_SCREEN_OPTIONS = {
   headerShown: false,
   animation: 'slide_from_right' as const,
@@ -217,16 +197,31 @@ const MAIN_SCREEN_OPTIONS = {
   contentStyle: { backgroundColor: CommunityColors.background.main },
 };
 
-// ─── FIX #5: Module-level placeholder screens ───────────────────────────
-const TopicMembersScreen = () => <View><Text>Topic Members</Text></View>;
-const SearchUsersScreen = () => <View><Text>Search Users</Text></View>;
-const BlockedUsersScreen = () => <View><Text>Blocked Users</Text></View>;
+// Placeholder screens
+const TopicMembersScreen = () => (
+  <View style={styles.placeholderContainer}>
+    <Text style={styles.placeholderText}>Topic Members</Text>
+  </View>
+);
+
+const SearchUsersScreen = () => (
+  <View style={styles.placeholderContainer}>
+    <Text style={styles.placeholderText}>Search Users</Text>
+  </View>
+);
+
+const BlockedUsersScreen = () => (
+  <View style={styles.placeholderContainer}>
+    <Text style={styles.placeholderText}>Blocked Users</Text>
+  </View>
+);
 
 const CommunityNavigator = React.memo(() => {
   const { isLoading, currentUser, checkOnboardingStatus, getSelectedTopics, isInitialized } = useCommunity();
   const { profile: userProfile } = useUser();
   const { settings, shouldReduceMotion } = useCustomization();
   const isDetectingCountry = useAutomaticCountryDetection();
+  const smartNav = useSmartNavVisibility();
 
   const {
     isReady: splashReady,
@@ -239,7 +234,15 @@ const CommunityNavigator = React.memo(() => {
 
   const isReady = !isLoading && isInitialized && splashReady;
 
-  // ─── FIX #6: Single init effect, ALL parallel, no navigatorKey ───────
+  // Force hide main tab bar when in community screens
+  useEffect(() => {
+    smartNav.forceHide();
+    return () => {
+      smartNav.forceShow();
+    };
+  }, [smartNav]);
+
+  // Initialize phase
   useEffect(() => {
     if (!isReady || initDone.current) return;
 
@@ -247,7 +250,6 @@ const CommunityNavigator = React.memo(() => {
     initDone.current = true;
 
     const initialize = async () => {
-      // ALL async checks in parallel
       const [completed, selectedTopics, onboardingDone, topicsStored] = await Promise.all([
         checkOnboardingStatus(),
         getSelectedTopics(),
@@ -333,36 +335,39 @@ const CommunityNavigator = React.memo(() => {
     );
   }
 
-  // ─── FIX #7: No navigatorKey, stable Stack.Navigator ──────────────────
+  // Main community stack
   return (
-    <Stack.Navigator
-      initialRouteName="CommunityMain"
-      screenOptions={MAIN_SCREEN_OPTIONS}
-    >
-      <Stack.Screen
-        name="CommunityMain"
-        component={CommunityScreen}
-        options={{ animation: 'fade' }}
-      />
-      <Stack.Screen name="Topic" component={TopicScreen} />
-      <Stack.Screen name="CreatePost" component={CreatePostScreen} options={{ animation: 'slide_from_bottom', gestureEnabled: false }} />
-      <Stack.Screen name="PostDetail" component={PostDetailScreen} />
-      <Stack.Screen name="CommunityMemberProfile" component={CommunityMemberProfileScreen} />
-      <Stack.Screen name="ChatList" component={ChatListScreen} />
-      <Stack.Screen name="Chat" component={ChatScreen} />
-      <Stack.Screen name="Notifications" component={NotificationsScreen} />
-      <Stack.Screen
-        name="CommunityProfile"
-        component={CommunityProfileScreen}
-        options={{ animation: 'slide_from_bottom', gestureEnabled: false }}
-      />
-      <Stack.Screen name="TopicMembers" component={TopicMembersScreen} />
-      <Stack.Screen name="Followers" component={FollowersScreen} />
-      <Stack.Screen name="Following" component={FollowingScreen} />
-      <Stack.Screen name="SearchUsers" component={SearchUsersScreen} />
-      <Stack.Screen name="BlockedUsers" component={BlockedUsersScreen} />
-      <Stack.Screen name="Report" component={ReportScreen} options={{ animation: 'slide_from_bottom', gestureEnabled: false }} />
-    </Stack.Navigator>
+    <>
+      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+      <Stack.Navigator
+        initialRouteName="CommunityMain"
+        screenOptions={MAIN_SCREEN_OPTIONS}
+      >
+        <Stack.Screen
+          name="CommunityMain"
+          component={CommunityScreen}
+          options={{ animation: 'fade' }}
+        />
+        <Stack.Screen name="Topic" component={TopicScreen} />
+        <Stack.Screen name="CreatePost" component={CreatePostScreen} options={{ animation: 'slide_from_bottom', gestureEnabled: false }} />
+        <Stack.Screen name="PostDetail" component={PostDetailScreen} />
+        <Stack.Screen name="CommunityMemberProfile" component={CommunityMemberProfileScreen} />
+        <Stack.Screen name="ChatList" component={ChatListScreen} />
+        <Stack.Screen name="Chat" component={ChatScreen} />
+        <Stack.Screen name="Notifications" component={NotificationsScreen} />
+        <Stack.Screen
+          name="CommunityProfile"
+          component={CommunityProfileScreen}
+          options={{ animation: 'slide_from_bottom', gestureEnabled: false }}
+        />
+        <Stack.Screen name="TopicMembers" component={TopicMembersScreen} />
+        <Stack.Screen name="Followers" component={FollowersScreen} />
+        <Stack.Screen name="Following" component={FollowingScreen} />
+        <Stack.Screen name="SearchUsers" component={SearchUsersScreen} />
+        <Stack.Screen name="BlockedUsers" component={BlockedUsersScreen} />
+        <Stack.Screen name="Report" component={ReportScreen} options={{ animation: 'slide_from_bottom', gestureEnabled: false }} />
+      </Stack.Navigator>
+    </>
   );
 });
 
@@ -388,6 +393,17 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: '#1a1a1a',
+  },
+  placeholderContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: CommunityColors.background.main,
+  },
+  placeholderText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: CommunityColors.text.primary,
   },
 });
 

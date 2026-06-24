@@ -80,17 +80,28 @@ const DESIGN = {
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   NAVIGATION MAP
+   NAVIGATION MAP — FIXED: Keys match actual screen names used in code
    ═══════════════════════════════════════════════════════════════════════════ */
 const NAVIGATION_MAP: Record<string, { screen: keyof RootStackParamList; params?: Record<string, any> }> = {
+  // Tab roots
   'Main': { screen: 'Main', params: {} },
   'Connect': { screen: 'Main', params: { screen: 'Connect' } },
-  'Settings': { screen: 'Customize', params: {} },
   'More': { screen: 'Main', params: { screen: 'More' } },
-  'UniversalTracker': { screen: 'UniversalTrackerHub', params: {} },
-  'Grow': { screen: 'GrowthDashboard', params: {} },
+  
+  // Auth & Setup
+  'Onboarding': { screen: 'Onboarding', params: {} },
+  'Login': { screen: 'Login', params: {} },
+  'SignUp': { screen: 'SignUp', params: {} },
+  'ForgotPassword': { screen: 'ForgotPassword', params: {} },
+  'CreateBabyProfile': { screen: 'CreateBabyProfile', params: {} },
+  'SwitchBaby': { screen: 'SwitchBaby', params: {} },
+  
+  // Main screens — FIXED: Keys now match actual screen names
+  'UniversalTrackerHub': { screen: 'UniversalTrackerHub', params: {} },
+  'Timeline': { screen: 'Timeline', params: {} },
+  'GrowthDashboard': { screen: 'GrowthDashboard', params: {} },
   'Achievements': { screen: 'Achievements', params: {} },
-  'Reminders': { screen: 'TrackerReminders', params: {} },
+  'TrackerReminders': { screen: 'TrackerReminders', params: {} },
   'SafetyCorner': { screen: 'SafetyCorner', params: {} },
   'Gallery': { screen: 'Gallery', params: {} },
   'SoundMixer': { screen: 'SoundMixer', params: {} },
@@ -99,14 +110,16 @@ const NAVIGATION_MAP: Record<string, { screen: keyof RootStackParamList; params?
   'HelpCenter': { screen: 'HelpCenter', params: {} },
   'ContactSupport': { screen: 'ContactSupport', params: {} },
   'Profile': { screen: 'Profile', params: {} },
-  'SwitchBaby': { screen: 'SwitchBaby', params: {} },
-  'CreateBabyProfile': { screen: 'CreateBabyProfile', params: {} },
   'EditProfile': { screen: 'EditProfile', params: {} },
   'VaccinationSchedule': { screen: 'VaccinationSchedule', params: {} },
-  'Timeline': { screen: 'Timeline', params: {} },
-  'GrowthDashboard': { screen: 'GrowthDashboard', params: {} },
+  'Customize': { screen: 'Customize', params: {} },
+  
+  // Legacy aliases (keep for backward compatibility)
+  'Settings': { screen: 'Customize', params: {} },
+  'UniversalTracker': { screen: 'UniversalTrackerHub', params: {} },
+  'Reminders': { screen: 'TrackerReminders', params: {} },
+  'Grow': { screen: 'GrowthDashboard', params: {} },
 };
-
 /* ═══════════════════════════════════════════════════════════════════════════
    TYPES
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -1613,21 +1626,39 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     },
   });
 
-  const navigateToScreen = useCallback((screenName: string, params?: Record<string, any>) => {
-    const navConfig = NAVIGATION_MAP[screenName];
-    if (!navConfig) {
-      console.warn(`Navigation target "${screenName}" not found`);
-      return;
-    }
-    if (navConfig.params?.screen) {
-      navigation.navigate(navConfig.screen as any, {
-        screen: navConfig.params.screen,
-        params: { ...navConfig.params.params, ...params },
-      });
-    } else {
-      navigation.navigate(navConfig.screen as any, { ...navConfig.params, ...params });
-    }
-  }, [navigation]);
+const navigateToScreen = useCallback((screenName: string, params?: Record<string, any>) => {
+  // Direct screen names that exist in RootStackParamList
+  const directScreens = new Set([
+    'UniversalTrackerHub', 'Timeline', 'GrowthDashboard', 'Achievements',
+    'TrackerReminders', 'SafetyCorner', 'Gallery', 'SoundMixer',
+    'FamilySharing', 'FamilyChatList', 'HelpCenter', 'ContactSupport',
+    'Profile', 'SwitchBaby', 'CreateBabyProfile', 'EditProfile',
+    'VaccinationSchedule', 'Customize', 'Main', 'Onboarding',
+    'Login', 'SignUp', 'ForgotPassword', 'AddEntry'
+  ]);
+  
+  // If it's a direct screen name, navigate directly (most common case)
+  if (directScreens.has(screenName)) {
+    navigation.navigate(screenName as any, params || {});
+    return;
+  }
+  
+  // Otherwise look up in NAVIGATION_MAP for aliases
+  const navConfig = NAVIGATION_MAP[screenName];
+  if (!navConfig) {
+    console.warn(`Navigation target "${screenName}" not found`);
+    return;
+  }
+  
+  if (navConfig.params?.screen) {
+    navigation.navigate(navConfig.screen as any, {
+      screen: navConfig.params.screen,
+      params: { ...navConfig.params.params, ...params },
+    });
+  } else {
+    navigation.navigate(navConfig.screen as any, { ...navConfig.params, ...params });
+  }
+}, [navigation]);
 
   const handleNotificationPress = useCallback(() => {
     triggerHaptic('light');

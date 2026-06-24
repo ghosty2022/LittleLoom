@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { View, Text, AppState, TouchableOpacity } from 'react-native';
+import { View, Text, AppState, TouchableOpacity, StatusBar } from 'react-native';
 import {
   NavigationContainer, DefaultTheme, DarkTheme, NavigationContainerRef,
 } from '@react-navigation/native';
@@ -8,6 +8,8 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import OnboardingScreen from '../screens/auth/OnboardingScreen';
 import LoginScreen from '../screens/auth/LoginScreen';
@@ -57,6 +59,7 @@ import { useSecurity } from '../context/SecurityContext';
 import { useSafeApp, useSafeBaby, useSafeAuth } from '../hooks/useSafeContexts';
 import { statePersistence } from '../utils/statePersistence';
 import { RootStackParamList, MainTabParamList, NavigationState } from '../types/navigation';
+import { useSmartNavVisibility } from '../hooks/useSmartNavVisibility';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -96,7 +99,7 @@ const SETUP_FLOW_SCREENS = new Set(['Parent2Optional', 'Parent2Setup', 'BabyOpti
    HEADER RIGHT COMPONENTS — Contextual actions for every screen
    ═══════════════════════════════════════════════════════════════════════════ */
 
-function HeaderRightWrapper({ children, theme }: { children: React.ReactNode; theme: any }) {
+function HeaderRightWrapper({ children }: { children: React.ReactNode }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginRight: 8 }}>
       {children}
@@ -104,7 +107,17 @@ function HeaderRightWrapper({ children, theme }: { children: React.ReactNode; th
   );
 }
 
-function HeaderIconButton({ icon, onPress, color = '#667eea', size = 22 }: { icon: any; onPress: () => void; color?: string; size?: number }) {
+function HeaderIconButton({ 
+  icon, 
+  onPress, 
+  color = '#667eea', 
+  size = 22 
+}: { 
+  icon: keyof typeof Ionicons.glyphMap; 
+  onPress: () => void; 
+  color?: string; 
+  size?: number;
+}) {
   return (
     <TouchableOpacity 
       onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPress(); }}
@@ -130,26 +143,35 @@ const getScreenOptions = (colors: any, isDark: boolean) => ({
   animation: 'slide_from_right' as const,
 });
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   MAIN TABS — With Liquid Glass Navigation
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 function MainTabs() {
+  const { isDark, colors } = useSafeApp();
+  
   return (
     <Tab.Navigator
       tabBar={(props) => <LiquidGlassNavigation {...props} />}
       screenOptions={{
         headerShown: false,
-        // Remove tabBarStyle — LiquidGlass handles everything
-        // Add safe area padding for content
+        tabBarStyle: { backgroundColor: colors?.navBackground || '#ffffff', borderTopWidth: 0, elevation: 0, shadowOpacity: 0 },
+        sceneStyle: { backgroundColor: colors?.background || '#f8faff' },
       }}
     >
-      <Tab.Screen name="Home" component={HomeScreen as any} />
-      <Tab.Screen name="Track" component={TrackScreen as any} />
-      <Tab.Screen name="Grow" component={GrowthDashboardScreen as any} />
-      <Tab.Screen name="Connect" component={CommunityNavigator as any} />
-      <Tab.Screen name="More" component={MoreScreen as any} />
+      <Tab.Screen name="Home" component={HomeScreen} />
+      <Tab.Screen name="Track" component={TrackScreen} />
+      <Tab.Screen name="Grow" component={GrowthDashboardScreen} />
+      <Tab.Screen name="Connect" component={CommunityNavigator} />
+      <Tab.Screen name="More" component={MoreScreen} />
     </Tab.Navigator>
   );
 }
 
-// ─── FIX #1: Pure function, no hook overhead ──────────────────────────
+/* ═══════════════════════════════════════════════════════════════════════════
+   NAV STATE COMPUTATION — Pure function, no hooks
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 function getNavState(
   authLoading: boolean,
   isAuth: boolean,
@@ -179,7 +201,10 @@ function getNavState(
   return 'MAIN';
 }
 
-// ─── FIX #2: Static loading screen, no rotating messages ────────────────
+/* ═══════════════════════════════════════════════════════════════════════════
+   LOADING SCREEN — Static, no rotating messages
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 const AppLoadingScreen = React.memo(() => {
   const { colors } = useSafeApp();
   return (
@@ -191,6 +216,10 @@ const AppLoadingScreen = React.memo(() => {
     </View>
   );
 });
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   NAVIGATION CONTENT — Main navigator logic
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 function NavigationContent({
   isDark: propIsDark,
@@ -215,6 +244,7 @@ function NavigationContent({
 
   const { babies, loadBabies, hasSkippedBaby } = useSafeBaby();
   const { isSecurityLocked, checkSecurityOnResume, settings: secSettings } = useSecurity();
+  const smartNav = useSmartNavVisibility();
 
   const [navState, setNavState] = useState<NavigationState>('LOADING');
   const [initialCheckDone, setInitialCheckDone] = useState(false);
@@ -237,7 +267,7 @@ function NavigationContent({
     [secSettings?.isPinEnabled, secSettings?.isBiometricEnabled]
   );
 
-  // ─── FIX #3: Single effect for onboarding check, no setTimeout ────────
+  // Onboarding check
   useEffect(() => {
     AsyncStorage.getItem(ONBOARDING_COMPLETE_KEY).then(v => {
       const complete = v === 'true';
@@ -247,7 +277,7 @@ function NavigationContent({
     }).catch(() => setIsFirstOpen(false));
   }, []);
 
-  // ─── FIX #4: Compute nav state directly, single effect ─────────────────
+  // Compute nav state
   useEffect(() => {
     if (authLoading || isFirstOpen === undefined) return;
 
@@ -276,7 +306,7 @@ function NavigationContent({
   }, [authLoading, isAuthenticated, isSecurityLocked, securityOn, setupComplete,
       hasParent2, hasBaby, babies?.length, hasSkippedBaby, hasSeenOnboarding, isFirstOpen]);
 
-  // ─── FIX #5: Load babies immediately, no InteractionManager delay ──────
+  // Load babies
   useEffect(() => {
     if (isAuthenticated && !authLoading && !babiesLoaded.current) {
       babiesLoaded.current = true;
@@ -284,7 +314,7 @@ function NavigationContent({
     }
   }, [isAuthenticated, authLoading, loadBabies]);
 
-  // ─── FIX #6: Stable AppState listener, single attachment ──────────────
+  // AppState listener for security
   useEffect(() => {
     const sub = AppState.addEventListener('change', async (next) => {
       const current = AppState.currentState;
@@ -318,7 +348,7 @@ function NavigationContent({
     return () => sub.remove();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ─── FIX #7: Debounced state change, cleanup on effect change ────────
+  // Debounced state change
   const handleStateChange = useCallback((state: any) => {
     if (!state) return;
     if (stateTimer.current) clearTimeout(stateTimer.current);
@@ -337,7 +367,7 @@ function NavigationContent({
     if (stateTimer.current) clearTimeout(stateTimer.current);
   }, []);
 
-  // ─── FIX #8: Single nav enforcement effect, minimal deps ────────────
+  // Navigation enforcement
   useEffect(() => {
     if (!navRef.current?.isReady() || !isNavReady || isNavigating.current || !initialCheckDone) return;
 
@@ -396,6 +426,11 @@ function NavigationContent({
       onStateChange={handleStateChange}
       onReady={() => setIsNavReady(true)}
     >
+      <StatusBar
+        barStyle={isDark ? 'light-content' : 'dark-content'}
+        backgroundColor="transparent"
+        translucent
+      />
       <Stack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right', contentStyle: { backgroundColor: colors?.background || '#f8faff' } }}>
         {/* ─── AUTH FLOW ─── */}
         <Stack.Screen name="Onboarding" component={OnboardingScreen} options={{ animation: 'fade' }} />
@@ -411,7 +446,7 @@ function NavigationContent({
           <Stack.Screen name="Parent2Setup" component={CoParentSetupScreen} options={{ gestureEnabled: false }} />
           <Stack.Screen name="BabyOptional" component={BabyOnboardingScreen} options={{ gestureEnabled: false }} />
           <Stack.Screen name="CreateBabyProfile" component={BabyProfileCreateScreen} options={{ gestureEnabled: false }} />
-          <Stack.Screen name="AddParent" component={CoParentSetupScreen as any} />
+          <Stack.Screen name="AddParent" component={CoParentSetupScreen} />
         </Stack.Group>
 
         {/* ─── MAIN TAB (no header) ─── */}
@@ -431,7 +466,7 @@ function NavigationContent({
             headerRight: () => (
               <HeaderRightWrapper>
                 <HeaderIconButton icon="filter-outline" onPress={() => {}} color={primaryColor} />
-                <HeaderIconButton icon="add-circle-outline" onPress={() => navigation.navigate('AddEntry' as never)} color={primaryColor} />
+                <HeaderIconButton icon="add-circle-outline" onPress={() => navigation.navigate('AddEntry')} color={primaryColor} />
               </HeaderRightWrapper>
             ),
           })}
@@ -449,8 +484,8 @@ function NavigationContent({
             title: 'Family Dashboard',
             headerRight: () => (
               <HeaderRightWrapper>
-                <HeaderIconButton icon="share-outline" onPress={() => navigation.navigate('FamilySharing' as never)} color={primaryColor} />
-                <HeaderIconButton icon="settings-outline" onPress={() => navigation.navigate('Customize' as never)} color={primaryColor} />
+                <HeaderIconButton icon="share-outline" onPress={() => navigation.navigate('FamilySharing')} color={primaryColor} />
+                <HeaderIconButton icon="settings-outline" onPress={() => navigation.navigate('Customize')} color={primaryColor} />
               </HeaderRightWrapper>
             ),
           })}
@@ -464,7 +499,7 @@ function NavigationContent({
             presentation: 'modal',
             headerRight: () => (
               <HeaderRightWrapper>
-                <HeaderIconButton icon="add-circle-outline" onPress={() => navigation.navigate('CreateBabyProfile' as never)} color={primaryColor} />
+                <HeaderIconButton icon="add-circle-outline" onPress={() => navigation.navigate('CreateBabyProfile')} color={primaryColor} />
               </HeaderRightWrapper>
             ),
           })}
@@ -521,7 +556,7 @@ function NavigationContent({
             title: 'Family Chat',
             headerRight: () => (
               <HeaderRightWrapper>
-                <HeaderIconButton icon="create-outline" onPress={() => navigation.navigate('FamilyChat' as never)} color={primaryColor} />
+                <HeaderIconButton icon="create-outline" onPress={() => navigation.navigate('FamilyChat')} color={primaryColor} />
               </HeaderRightWrapper>
             ),
           })}
@@ -732,7 +767,7 @@ function NavigationContent({
             title: 'Trackers',
             headerRight: () => (
               <HeaderRightWrapper>
-                <HeaderIconButton icon="add-circle-outline" onPress={() => navigation.navigate('CreateCustomTracker' as never)} color={primaryColor} />
+                <HeaderIconButton icon="add-circle-outline" onPress={() => navigation.navigate('CreateCustomTracker')} color={primaryColor} />
                 <HeaderIconButton icon="search-outline" onPress={() => {}} color={primaryColor} />
               </HeaderRightWrapper>
             ),
@@ -756,8 +791,18 @@ function NavigationContent({
   );
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   EXPORT — Wrapped with required providers
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 export default function AppNavigator({ isDark, initialState, onStateChange }: {
   isDark?: boolean; initialState?: any; onStateChange?: (state: any) => void;
 }) {
-  return <NavigationContent isDark={isDark} initialState={initialState} onStateChange={onStateChange} />;
+  return (
+    <SafeAreaProvider>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <NavigationContent isDark={isDark} initialState={initialState} onStateChange={onStateChange} />
+      </GestureHandlerRootView>
+    </SafeAreaProvider>
+  );
 }
