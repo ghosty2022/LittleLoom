@@ -1,5 +1,5 @@
 // src/components/ScreenWrapper.tsx
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   StyleSheet,
@@ -53,6 +53,7 @@ export const ScreenWrapper: React.FC<ScreenWrapperProps> = ({
 }) => {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
+  const mountedRef = useRef(false);
 
   const routeName = useNavigationState((state) => {
     if (!state) return '';
@@ -67,7 +68,7 @@ export const ScreenWrapper: React.FC<ScreenWrapperProps> = ({
   const isHidden = HIDDEN_ROUTES.has(routeName) || forceHideTabBar;
   const isAlwaysVisible = ALWAYS_VISIBLE_ROUTES.has(routeName);
 
-  const smartNav = useSmartNavVisibility();
+  const smartNav = useSmartNavVisibility({ enableHaptics: false }); // disable haptics in wrapper
   const [navState, setNavState] = useState<SmartNavState>({
     isVisible: true,
     isFullyHidden: false,
@@ -80,6 +81,10 @@ export const ScreenWrapper: React.FC<ScreenWrapperProps> = ({
   }, [smartNav]);
 
   useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      return;
+    }
     if (isHidden) {
       smartNav.forceHide();
     } else if (isAlwaysVisible || !enableNavHiding) {
@@ -134,6 +139,7 @@ export const ScreenWrapper: React.FC<ScreenWrapperProps> = ({
 export const AnimatedScreenWrapper: React.FC<ScreenWrapperProps> = (props) => {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
+  const mountedRef = useRef(false);
 
   const routeName = useNavigationState((state) => {
     if (!state) return '';
@@ -148,7 +154,7 @@ export const AnimatedScreenWrapper: React.FC<ScreenWrapperProps> = (props) => {
   const isHidden = HIDDEN_ROUTES.has(routeName) || props.forceHideTabBar;
   const isAlwaysVisible = ALWAYS_VISIBLE_ROUTES.has(routeName);
 
-  const smartNav = useSmartNavVisibility();
+  const smartNav = useSmartNavVisibility({ enableHaptics: false }); // disable haptics in wrapper
   const [navState, setNavState] = useState<SmartNavState>({
     isVisible: true,
     isFullyHidden: false,
@@ -161,6 +167,10 @@ export const AnimatedScreenWrapper: React.FC<ScreenWrapperProps> = (props) => {
   }, [smartNav]);
 
   useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      return;
+    }
     if (isHidden) smartNav.forceHide();
     else if (isAlwaysVisible) smartNav.forceShow();
     else smartNav.reset();

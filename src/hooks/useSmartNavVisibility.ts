@@ -36,6 +36,17 @@ let _metrics = {
   forced: false,
 };
 
+// Haptic debounce — prevent rapid-fire vibrations
+let _lastHapticTime = 0;
+const HAPTIC_COOLDOWN_MS = 400;
+
+const _shouldTriggerHaptic = (): boolean => {
+  const now = Date.now();
+  if (now - _lastHapticTime < HAPTIC_COOLDOWN_MS) return false;
+  _lastHapticTime = now;
+  return true;
+};
+
 const _emit = (state: SmartNavState) => {
   _state = state;
   _listeners.forEach(cb => cb(state));
@@ -52,7 +63,7 @@ const _setNavState = (newState: 'hidden' | 'visible', immediate = false, enableH
   if (immediate) {
     _stateMachine = newState;
     _metrics.forced = false;
-    if (enableHaptics && newState === 'visible') {
+    if (enableHaptics && newState === 'visible' && _shouldTriggerHaptic()) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
     _emit({
@@ -70,7 +81,7 @@ const _setNavState = (newState: 'hidden' | 'visible', immediate = false, enableH
     _stateMachine = newState;
     _metrics.forced = false;
 
-    if (enableHaptics) {
+    if (enableHaptics && _shouldTriggerHaptic()) {
       const hapticStyle = newState === 'visible'
         ? Haptics.ImpactFeedbackStyle.Light
         : Haptics.ImpactFeedbackStyle.Soft;
