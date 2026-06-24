@@ -150,6 +150,8 @@ export type RootStackParamList = {
 
   GrowthDashboard: { babyId?: string } | undefined;
 
+  Insights: undefined;
+
   VaccinationSchedule: { 
     babyId?: string; 
     birthDate?: string;
@@ -209,14 +211,12 @@ export type CommunityStackParamList = {
   CreatePost: { topicId?: string };
   PostDetail: { postId: string };
   
-  // RENAMED: Was UserProfile - now for viewing OTHER community members
   CommunityMemberProfile: { userId: string };
   
   ChatList: undefined;
   Chat: { userId: string };
   Notifications: undefined;
   
-  // RENAMED: Was EditCommunityProfile - now for viewing/editing SELF profile
   CommunityProfile: { userId?: string } | undefined;
   
   TopicMembers: { topicId: string };
@@ -234,10 +234,6 @@ export type CommunityStackParamList = {
     targetUserId?: string;
     postId?: string;
   };
-  
-  // DEPRECATED ROUTES (keep for backward compatibility during migration)
-  // UserProfile: { userId: string }; // Use CommunityMemberProfile instead
-  // EditCommunityProfile: undefined; // Use CommunityProfile instead
 };
 
 export type MainTabParamList = {
@@ -286,11 +282,13 @@ export type TrackerRemindersRouteProp = RouteProp<RootStackParamList, 'TrackerRe
 
 export type CreateCustomTrackerNavigationProp = NativeStackScreenProps<RootStackParamList, 'CreateCustomTracker'>['navigation'];
 
-// NEW: Community Profile screen types
+// NEW: Insights screen types
+export type InsightsNavigationProp = NativeStackScreenProps<RootStackParamList, 'Insights'>['navigation'];
+export type InsightsRouteProp = RouteProp<RootStackParamList, 'Insights'>;
+
 export type CommunityProfileNavigationProp = NativeStackScreenProps<CommunityStackParamList, 'CommunityProfile'>['navigation'];
 export type CommunityProfileRouteProp = RouteProp<CommunityStackParamList, 'CommunityProfile'>;
 
-// NEW: Community Member Profile screen types
 export type CommunityMemberProfileNavigationProp = NativeStackScreenProps<CommunityStackParamList, 'CommunityMemberProfile'>['navigation'];
 export type CommunityMemberProfileRouteProp = RouteProp<CommunityStackParamList, 'CommunityMemberProfile'>;
 

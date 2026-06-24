@@ -2,7 +2,7 @@
   "expo": {
     "name": "LittleLoom",
     "slug": "LittleLoom",
-    "scheme": ["com.tpm.littleloom", "littleloom"],
+    "scheme": "com.tpm.littleloom",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",

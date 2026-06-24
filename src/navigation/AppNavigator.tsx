@@ -1,3 +1,4 @@
+
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { View, Text, AppState, TouchableOpacity, StatusBar } from 'react-native';
 import {
@@ -35,6 +36,7 @@ import CommunityNavigator from './CommunityNavigator';
 import AddEntryScreen from '../screens/tracking/AddEntryScreen';
 import AchievementsScreen from '../screens/settings/AchievementsScreen';
 import GrowthDashboardScreen from '../screens/tracking/GrowthDashboardScreen';
+import InsightsScreen from '../screens/tracking/InsightsScreen';
 import TrackerRemindersScreen from '../screens/tracking/TrackerRemindersScreen';
 import FamilySharingScreen from '../screens/family/FamilySharingScreen';
 import FamilyDashboardScreen from '../screens/baby/FamilyDashboardScreen';
@@ -93,7 +95,7 @@ const MAIN_FLOW_SCREENS = new Set([
   'Timeline', 'PottyTracker', 'FeedTracker', 'SleepTracker',
   'Profile', 'SwitchBaby', 'EditProfile', 'EditGuardian',
   'Gallery', 'FamilyChatList', 'FamilyChat',
-  'AddEntry', 'Achievements', 'GrowthDashboard', 'TrackerReminders', 'FamilySharing', 'SoundMixer', 'Customize',
+  'AddEntry', 'Achievements', 'GrowthDashboard', 'Insights', 'TrackerReminders', 'FamilySharing', 'SoundMixer', 'Customize',
   'BiometricSetup', 'SecurityCenter',
   'BackupRestore', 'HelpCenter', 'ContactSupport', 'PrivacyPolicy', 'TermsOfService', 'About',
   'LanguageSettings', 'UnitSettings',
@@ -492,6 +494,7 @@ function NavigationContent({
           <Stack.Screen name="AddEntry" component={AddEntryScreen} />
           <Stack.Screen name="Achievements" component={AchievementsScreen} />
           <Stack.Screen name="GrowthDashboard" component={GrowthDashboardScreen} />
+          <Stack.Screen name="Insights" component={InsightsScreen} /> // ← NEW
           <Stack.Screen name="TrackerReminders" component={TrackerRemindersScreen} />
           <Stack.Screen name="FamilySharing" component={FamilySharingScreen} />
           <Stack.Screen name="SoundMixer" component={SoundMixerScreen} />
