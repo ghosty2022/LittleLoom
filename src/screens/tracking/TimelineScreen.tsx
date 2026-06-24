@@ -24,7 +24,6 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '@/types/navigation';
 
 import { useUnifiedTrackerTheme } from '@/hooks/useUnifiedTrackerTheme';
-import { AutoHideAnimatedScrollView } from '@/components/AutoHideScrollWrappers';
 import { useTracker } from '@/context/TrackerContext';
 import { useBaby } from '@/context/BabyContext';
 import { TrackerEntry, UnifiedTrackerConfig } from '@/types/trackers';
@@ -1576,7 +1575,7 @@ export default function EnhancedTimelineScreen() {
 
         {/* Smart Stats Overview */}
         <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(100)} style={styles.statsContainer}>
-          <AutoHideAnimatedScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statsContent}>
+          <Animated.ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statsContent}>
             <LinearGradient
               colors={[theme.primary, theme.secondary]}
               style={[styles.statCard, styles.primaryStatCard, { borderRadius: borderRadiusValue }]}
@@ -1630,7 +1629,7 @@ export default function EnhancedTimelineScreen() {
 
             {/* Filter Chips */}
             <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(200)} style={styles.filterContainer}>
-              <AutoHideAnimatedScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterContent}>
+              <Animated.ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterContent}>
                 {filterChips.map((filter, index) => (
                   <Animated.View key={filter.id} entering={FadeIn.delay(index * 50)}>
                     <TouchableOpacity
