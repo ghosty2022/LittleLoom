@@ -21,7 +21,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useUnifiedTrackerTheme } from '../../hooks/useUnifiedTrackerTheme';
-import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
+
 import { useTracker } from '../../context/TrackerContext';
 import { UnifiedTrackerConfig } from '../../types/trackers';
 import { SafeAvatar } from '../../components/SafeAvatar';

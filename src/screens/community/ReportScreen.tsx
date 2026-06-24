@@ -11,7 +11,7 @@ import { useUser } from '../../context/UserContext';
 import { showSuccessModal, showErrorModal } from '../../utils/modal';
 import { useReportRoute } from '../../hooks/useReportRoute';
 import { useCustomization } from '../../hooks/useCustomization';
-import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
+
 import { CommunityColors, CommunityGradients, CommunitySpacing, CommunityBorderRadius, CommunityShadows } from '../../theme/CommunityTheme';
 
 type ReportScreenProps = NativeStackScreenProps<CommunityStackParamList, 'Report'>;

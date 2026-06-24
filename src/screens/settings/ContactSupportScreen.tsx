@@ -9,7 +9,7 @@ import type { RootStackParamList } from '../../types/navigation';
 
 import { useCustomization } from '../../hooks/useCustomization';
 import { BlurView } from 'expo-blur';
-import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
+
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Alert, KeyboardAvoidingView, Linking, Platform, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';

@@ -24,7 +24,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
 import { useFamily } from '../../context/FamilyContext';
 import { useCustomization } from '../../hooks/useCustomization';
-import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
+
 import { SweetAlert } from '../../components/SweetAlert';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { saveParentImage } from '../../utils/imageUtils';

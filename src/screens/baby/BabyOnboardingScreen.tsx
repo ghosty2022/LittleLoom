@@ -11,7 +11,7 @@ import { useAuth } from '../../context/AuthContext';
 import type { RootStackParamList } from '../../types/navigation';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
-import { SafeBabyAvatar } from '../../components/SafeAvatar';import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
+import { SafeBabyAvatar } from '../../components/SafeAvatar';
 
 const { width } = Dimensions.get('window');
 const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpacity);

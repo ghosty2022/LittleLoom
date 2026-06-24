@@ -9,7 +9,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useSecurity } from '../../context/SecurityContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import type { RootStackParamList } from '../../types/navigation';
-import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
+
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type ForgotPasswordScreenProps = NativeStackScreenProps<RootStackParamList, 'ForgotPassword'>;

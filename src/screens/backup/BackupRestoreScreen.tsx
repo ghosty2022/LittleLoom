@@ -21,7 +21,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import type { RootStackParamList } from '../../types/navigation';
 
-import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
+
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { showAlert } from '@/utils/alert';

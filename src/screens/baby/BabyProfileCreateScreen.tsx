@@ -18,7 +18,7 @@ import { useBaby } from '../../context/BabyContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
-import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
+
 import { SafeBabyAvatar } from '../../components/SafeAvatar';const { width } = Dimensions.get('window');
 
 const BABY_IMAGES_DIR = FileSystem.documentDirectory + 'baby_images/';

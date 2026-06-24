@@ -9,7 +9,7 @@ import * as Haptics from 'expo-haptics';
 import { useCustomization } from '../../hooks/useCustomization';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
-import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
+
 
 type Props = NativeStackScreenProps<RootStackParamList, 'TermsOfService'>;
 

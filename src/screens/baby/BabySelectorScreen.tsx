@@ -2,7 +2,7 @@ import { StyleSheet, Dimensions, ScrollView, Switch, Text, TouchableOpacity, Vie
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { BlurView } from 'expo-blur';
-import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
+
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInUp, FadeIn, Layout, useSharedValue, useAnimatedStyle, withSpring, withTiming } from 'react-native-reanimated';
 

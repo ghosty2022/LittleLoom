@@ -18,7 +18,7 @@ import { useMedia } from '../../context/MediaContext';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { UniversalSpinner, InlineSpinner } from '../../components/UniversalSpinner';
-import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
+
 
 type Props = NativeStackScreenProps<CommunityStackParamList, 'CommunityProfile'>;
 

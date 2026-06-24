@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { AutoHideFlatList } from '../../components/AutoHideScrollWrappers';
 import { BlurView } from 'expo-blur';
-import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
+
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { format, isSameWeek, isToday, isYesterday } from 'date-fns';
 import { LinearGradient } from 'expo-linear-gradient';

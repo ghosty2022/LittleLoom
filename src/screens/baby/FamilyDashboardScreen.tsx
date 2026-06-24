@@ -29,7 +29,7 @@ import Animated, {
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import type { RootStackParamList } from '../../types/navigation';
-import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
+
 import { useAuth } from '../../context/AuthContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';

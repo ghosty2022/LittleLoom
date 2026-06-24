@@ -19,7 +19,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { BlurView } from 'expo-blur';
 import { EmptyState } from '../../components/EmptyState';
-import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
+
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInUp, FadeInDown, FadeIn, useAnimatedStyle, useSharedValue, withSpring, useAnimatedScrollHandler, interpolate, Extrapolation, Layout } from 'react-native-reanimated';
 

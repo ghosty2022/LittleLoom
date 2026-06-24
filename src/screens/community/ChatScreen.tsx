@@ -4,7 +4,7 @@ import { BlurView } from 'expo-blur';
 import { Easing, FadeIn, FadeInUp, FadeOut, interpolate, Layout, useAnimatedStyle, useSharedValue, withRepeat, withSpring } from 'react-native-reanimated';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { useCommunity } from '../../context/CommunityContext';
-import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
+
 import { AutoHideFlatList } from '../../components/AutoHideScrollWrappers';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';

@@ -10,7 +10,7 @@ import { useCustomization } from '../../hooks/useCustomization';
 import { useApp } from '../../context/AppContext';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
-import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
+
 import { SafeAvatar } from '../../components/SafeAvatar';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'About'>;

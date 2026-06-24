@@ -23,7 +23,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useFamily } from '../../context/FamilyContext';
 import type { RootStackParamList } from '../../types/navigation';
 import { useCustomization } from '../../hooks/useCustomization';
-import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
+
 import { SafeAvatar } from '../../components/SafeAvatar';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Parent2Setup'>;

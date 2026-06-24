@@ -2,7 +2,7 @@ import { StyleSheet,ActivityIndicator, Alert ,Button, Dimensions, Image, Keyboar
 import React, { useCallback, useEffect, useState } from 'react';
 
 import { BlurView } from 'expo-blur';
-import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
+
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInUp, FadeIn } from 'react-native-reanimated';
 

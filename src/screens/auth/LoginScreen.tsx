@@ -15,7 +15,7 @@ import { useSecurity } from '../../context/SecurityContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import type { RootStackParamList } from '../../types/navigation';
-import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
+
 import { UniversalSpinner } from '../../components/UniversalSpinner';
 
 type LoginScreenProps = NativeStackScreenProps<RootStackParamList, 'Login'>;

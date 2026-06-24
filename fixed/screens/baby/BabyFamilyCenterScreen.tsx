@@ -2,7 +2,7 @@ import { StyleSheet,ActionSheetIOS, ActivityIndicator , Dimensions ,Image, Modal
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { BlurView } from 'expo-blur';
-import { AutoHideAnimatedScrollView } from '../../components/AutoHideScrollWrappers';
+
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { format } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
