@@ -1665,7 +1665,7 @@ export default function GrowthDashboardScreen({ navigation }: any) {
                 <SectionHeader 
                   title="Smart Insights" 
                   subtitle={`${smartInsights.filter(i => i.priority === 'high').length} need attention`}
-                  action={() => navigation.navigate('Insights')}
+                  action={() => navigation.navigate('Insights' as never)}
                   actionLabel="View All"
                   theme={theme}
                 />
@@ -1939,58 +1939,70 @@ export default function GrowthDashboardScreen({ navigation }: any) {
         {/* ═════════════════════════════════════════════════════════════════
             TAB: INSIGHTS
            ═════════════════════════════════════════════════════════════════ */}
-        {activeTab === 'insights' && (
-          <>
-            <View style={styles.section}>
-              <SectionHeader 
-                title="All Insights" 
-                subtitle={`${smartInsights.length} items`}
-                theme={theme}
-              />
-              {smartInsights.map((insight, i) => (
-                <InsightCard
-                  key={insight.id}
-                  insight={insight}
-                  theme={theme}
-                  onPress={() => handleInsightPress(insight)}
-                  index={i}
-                />
-              ))}
-              {smartInsights.length === 0 && (
-                <GlassCard style={styles.emptyInsights}>
-                  <Ionicons name="bulb-outline" size={48} color={theme.text.muted} />
-                  <Text style={[styles.emptyInsightsText, { color: theme.text.muted }]}>No insights yet</Text>
-                  <Text style={[styles.emptyInsightsSub, { color: theme.text.secondary }]}>Keep tracking to get personalized insights</Text>
-                </GlassCard>
-              )}
-            </View>
+{activeTab === 'insights' && (
+  <>
+    <View style={styles.section}>
+      <SectionHeader 
+        title="Quick Insights" 
+        subtitle={`${smartInsights.length} items • Tap "View All" for full page`}
+        action={() => navigation.navigate('Insights' as never)}
+        actionLabel="View All"
+        theme={theme}
+      />
+      {smartInsights.slice(0, 3).map((insight, i) => (
+        <InsightCard
+          key={insight.id}
+          insight={insight}
+          theme={theme}
+          onPress={() => handleInsightPress(insight)}
+          index={i}
+        />
+      ))}
+      {smartInsights.length === 0 && (
+        <GlassCard style={styles.emptyInsights}>
+          <Ionicons name="bulb-outline" size={48} color={theme.text.muted} />
+          <Text style={[styles.emptyInsightsText, { color: theme.text.muted }]}>No insights yet</Text>
+          <Text style={[styles.emptyInsightsSub, { color: theme.text.secondary }]}>Keep tracking to get personalized insights</Text>
+        </GlassCard>
+      )}
+      {smartInsights.length > 3 && (
+        <TouchableOpacity 
+          onPress={() => navigation.navigate('Insights' as never)}
+          style={[styles.viewAllInsightsBtn, { backgroundColor: `${theme.primary}10` }]}
+        >
+          <Text style={[styles.viewAllInsightsText, { color: theme.primary }]}>
+            View {smartInsights.length - 3} More Insights
+          </Text>
+          <Ionicons name="arrow-forward" size={14} color={theme.primary} />
+        </TouchableOpacity>
+      )}
+    </View>
 
-            {/* Velocity Trends */}
-            {growthIndex?.velocityTrends && (
-              <View style={styles.section}>
-                <SectionHeader title="Velocity Trends" theme={theme} />
-                <View style={styles.velocityGrid}>
-                  {[
-                    { key: 'height', label: 'Height', unit: 'cm/mo', color: '#6366f1' },
-                    { key: 'weight', label: 'Weight', unit: 'kg/mo', color: '#ec4899' },
-                    { key: 'head', label: 'Head', unit: 'cm/mo', color: '#06b6d4' },
-                  ].map(v => {
-                    const data = (growthIndex.velocityTrends as any)?.[v.key];
-                    return (
-                      <GlassCard key={v.key} style={styles.velocityCard}>
-                        <Text style={[styles.velocityLabel, { color: theme.text.secondary }]}>{v.label}</Text>
-                        <Text style={[styles.velocityValue, { color: v.color }]}>{data?.perMonth?.toFixed(2) || '—'}</Text>
-                        <Text style={[styles.velocityUnit, { color: theme.text.muted }]}>{v.unit}</Text>
-                        <Text style={[styles.velocityPercentile, { color: theme.text.muted }]}>P{data?.percentile || '—'}</Text>
-                      </GlassCard>
-                    );
-                  })}
-                </View>
-              </View>
-            )}
-          </>
-        )}
-
+    {/* Velocity Trends */}
+    {growthIndex?.velocityTrends && (
+      <View style={styles.section}>
+        <SectionHeader title="Velocity Trends" theme={theme} />
+        <View style={styles.velocityGrid}>
+          {[
+            { key: 'height', label: 'Height', unit: 'cm/mo', color: '#6366f1' },
+            { key: 'weight', label: 'Weight', unit: 'kg/mo', color: '#ec4899' },
+            { key: 'head', label: 'Head', unit: 'cm/mo', color: '#06b6d4' },
+          ].map(v => {
+            const data = (growthIndex.velocityTrends as any)?.[v.key];
+            return (
+              <GlassCard key={v.key} style={styles.velocityCard}>
+                <Text style={[styles.velocityLabel, { color: theme.text.secondary }]}>{v.label}</Text>
+                <Text style={[styles.velocityValue, { color: v.color }]}>{data?.perMonth?.toFixed(2) || '—'}</Text>
+                <Text style={[styles.velocityUnit, { color: theme.text.muted }]}>{v.unit}</Text>
+                <Text style={[styles.velocityPercentile, { color: theme.text.muted }]}>P{data?.percentile || '—'}</Text>
+              </GlassCard>
+            );
+          })}
+        </View>
+      </View>
+    )}
+  </>
+)}
         {/* ═════════════════════════════════════════════════════════════════
             TAB: PHOTOS
            ═════════════════════════════════════════════════════════════════ */}
@@ -2755,7 +2767,21 @@ const styles = StyleSheet.create({
   babySwitcherInfo: { flex: 1 },
   babySwitcherName: { fontSize: 16, fontWeight: '700' },
   babySwitcherMeta: { fontSize: 12, fontWeight: '500', marginTop: 2 },
-
+  // ── View All Insights Button ──
+  viewAllInsightsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginHorizontal: 16,
+    marginTop: 8,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  viewAllInsightsText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
   // ── No Data States ──
   noDataTitle: { fontSize: 24, fontWeight: '800', marginBottom: 8 },
   noDataText: { fontSize: 15, fontWeight: '500', textAlign: 'center', marginHorizontal: 40, marginBottom: 24 },

@@ -494,7 +494,7 @@ function NavigationContent({
           <Stack.Screen name="AddEntry" component={AddEntryScreen} />
           <Stack.Screen name="Achievements" component={AchievementsScreen} />
           <Stack.Screen name="GrowthDashboard" component={GrowthDashboardScreen} />
-          <Stack.Screen name="Insights" component={InsightsScreen} /> // ← NEW
+          <Stack.Screen name="Insights" component={InsightsScreen} />
           <Stack.Screen name="TrackerReminders" component={TrackerRemindersScreen} />
           <Stack.Screen name="FamilySharing" component={FamilySharingScreen} />
           <Stack.Screen name="SoundMixer" component={SoundMixerScreen} />
