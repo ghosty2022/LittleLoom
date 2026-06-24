@@ -1,8 +1,9 @@
-
+// src/navigation/AppNavigator.tsx
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { View, Text, AppState, TouchableOpacity, StatusBar } from 'react-native';
 import {
   NavigationContainer, DefaultTheme, DarkTheme, NavigationContainerRef,
+  getFocusedRouteNameFromRoute,
 } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -107,7 +108,7 @@ const AUTH_FLOW_SCREENS = new Set(['Onboarding', 'Login', 'SignUp', 'ForgotPassw
 const SETUP_FLOW_SCREENS = new Set(['Parent2Optional', 'Parent2Setup', 'BabyOptional', 'CreateBabyProfile', 'AddParent']);
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   HEADER COMPONENTS — For screens that explicitly want headers
+   HEADER COMPONENTS
    ═══════════════════════════════════════════════════════════════════════════ */
 
 function HeaderRightWrapper({ children }: { children: React.ReactNode }) {
@@ -141,7 +142,7 @@ function HeaderIconButton({
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   SCREEN OPTIONS — Default: NO header. Only opt-in per screen.
+   SCREEN OPTIONS
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const getScreenOptions = (colors: any, isDark: boolean) => ({
@@ -155,8 +156,30 @@ const getScreenOptions = (colors: any, isDark: boolean) => ({
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   MAIN TABS — With Liquid Glass Navigation
+   MAIN TABS — Route-based tab bar visibility (NO scroll hiding)
+   
+   Uses getFocusedRouteNameFromRoute to detect nested routes and hide
+   the tab bar properly for all sub-screens.
    ═══════════════════════════════════════════════════════════════════════════ */
+
+// Routes where the tab bar should be completely hidden
+const HIDDEN_TAB_BAR_ROUTES = new Set([
+  'Track', 'Grow', 'Connect', 'More',
+  'CommunityMain', 'Topic', 'CreatePost', 'PostDetail', 'CommunityMemberProfile',
+  'Chat', 'ChatList', 'Notifications', 'CommunityProfile',
+  'TopicMembers', 'Followers', 'Following', 'SearchUsers', 'BlockedUsers', 'Report',
+  'CommunitySplash', 'CommunityOnboarding',
+]);
+
+function getTabBarVisibility(route: any): 'flex' | 'none' {
+  const routeName = getFocusedRouteNameFromRoute(route) ?? '';
+  
+  if (routeName === 'Home') return 'flex';
+  if (HIDDEN_TAB_BAR_ROUTES.has(routeName)) return 'none';
+  
+  // Default: show for safety (Home and unknown routes)
+  return 'flex';
+}
 
 function MainTabs() {
   const { isDark, colors } = useSafeApp();
@@ -170,11 +193,17 @@ function MainTabs() {
         }
         return <LiquidGlassNavigation {...props} />;
       }}
-      screenOptions={{
+      screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarStyle: { backgroundColor: colors?.navBackground || '#ffffff', borderTopWidth: 0, elevation: 0, shadowOpacity: 0 },
+        tabBarStyle: { 
+          backgroundColor: colors?.navBackground || '#ffffff', 
+          borderTopWidth: 0, 
+          elevation: 0, 
+          shadowOpacity: 0,
+          display: getTabBarVisibility(route),
+        },
         sceneStyle: { backgroundColor: colors?.background || '#f8faff' },
-      }}
+      })}
     >
       <Tab.Screen name="Home" component={HomeScreen} />
       <Tab.Screen name="Track" component={TrackScreen} />

@@ -1,3 +1,4 @@
+// metro.config.js
 const { getDefaultConfig } = require('expo/metro-config');
 const path = require('path');
 
@@ -21,7 +22,7 @@ module.exports = (async () => {
         keep_classnames: true,
         keep_fnames: true,
         mangle: {
-          toplevel: false, // safer for HMR
+          toplevel: false,
           keep_classnames: true,
           keep_fnames: true,
         },
@@ -35,8 +36,7 @@ module.exports = (async () => {
         },
         toplevel: false,
         compress: {
-          drop_console: false, // keep console in dev, strip in production build
-          drop_debugger: true,
+          drop_console: false,
           keep_classnames: true,
           keep_fnames: true,
           keep_infinity: true,
@@ -44,8 +44,8 @@ module.exports = (async () => {
         },
       },
       assetPlugins: ['expo-asset/tools/hashAssetFiles'],
-      // Fix for Reanimated worklets
-      babelTransformerPath: require.resolve('react-native-reanimated/plugin'),
+      // REMOVED: babelTransformerPath pointing to reanimated/plugin (wrong!)
+      // The reanimated Babel plugin should be in babel.config.js, not here
     },
 
     // ─── RESOLVER ────────────────────────────────────────────────────
@@ -72,7 +72,6 @@ module.exports = (async () => {
       alias: {
         '@': path.resolve(__dirname, 'src'),
       },
-      // Prevent circular dependency issues from crashing the bundle
       disableHierarchicalLookup: false,
     },
 
@@ -84,11 +83,9 @@ module.exports = (async () => {
       ...config.server,
       enhanceMiddleware: (middleware) => {
         return (req, res, next) => {
-          // Long-term cache for static assets
           if (req.url.match(/\\.(ttf|otf|woff|woff2|png|jpg|jpeg|gif|webp|mp3|mp4|wav)$/)) {
             res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
           }
-          // No-cache for JS bundles (HMR)
           if (req.url.match(/\\.(js|ts|tsx|jsx)$/)) {
             res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
           }
@@ -100,7 +97,6 @@ module.exports = (async () => {
     // ─── SERIALIZER ──────────────────────────────────────────────────
     serializer: {
       ...config.serializer,
-      // Ensure proper module ordering
       getModulesRunBeforeMainModule: () => [],
       getPolyfills: () => [],
     },

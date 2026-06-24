@@ -1,6 +1,7 @@
+// src/hooks/index.ts
 export { useActivity } from './useActivity';
 export { useAuth } from './useAuth';
-export { useBaby } from '@/context/BabyContext';        // ← changed from './useBaby'
+export { useBaby } from '@/context/BabyContext';
 export { useCustomization } from './useCustomization';
 export { useFamily } from './useFamily';
 export { useMedia } from './useMedia';
@@ -11,5 +12,7 @@ export { useSweetAlert } from './useSweetAlert';
 export { useUser } from './useUser';
 export { useSafeApp, useSafeBaby, useSafeAuth } from './useSafeContexts';
 export { useUnifiedTrackerTheme } from './useUnifiedTrackerTheme';
-export { useTrackedScroll } from './useTrackedScroll';
 export { useTracker } from './useTrackerContext';
+export { useRouteBasedNavVisibility } from './useRouteBasedNavVisibility'; // ← ADD THIS
+// REMOVED: export { useAutoHideNav } from './useAutoHideNav';
+// REMOVED: export { useSmartNavVisibility } from './useSmartNavVisibility';
