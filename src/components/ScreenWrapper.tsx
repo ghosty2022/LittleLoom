@@ -1,5 +1,5 @@
 // src/components/ScreenWrapper.tsx
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React from 'react';
 import {
   View,
   StyleSheet,
@@ -11,7 +11,6 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigationState } from '@react-navigation/native';
 import Animated from 'react-native-reanimated';
-import { useSmartNavVisibility, SmartNavState } from '../hooks/useSmartNavVisibility';
 import { useTheme } from '../context/AppContext';
 
 interface ScreenWrapperProps {
@@ -24,20 +23,21 @@ interface ScreenWrapperProps {
   scrollEventThrottle?: number;
   forceHideTabBar?: boolean;
   extraBottomPadding?: number;
-  enableNavHiding?: boolean;
 }
 
 const DOCK_HEIGHT = 72;
 const SAFE_BOTTOM = 8;
 
-// ONLY truly full-screen routes hide the nav completely.
-const HIDDEN_ROUTES = new Set([
+// Routes where tab bar is hidden — add bottom padding accordingly
+const HIDDEN_TAB_BAR_ROUTES = new Set([
   'SecurityLock', 'BiometricSetup',
   'CommunitySplash', 'CommunityOnboarding',
+  'Track', 'Grow', 'Connect', 'More', // These hide tab bar when entering
+  // All sub-screens are also hidden but they're not in main tabs
 ]);
 
-// Main tabs where nav always stays visible
-const ALWAYS_VISIBLE_ROUTES = new Set(['Home', 'Track', 'Grow', 'More']);
+// Main tabs where nav always stays visible (only Home)
+const ALWAYS_VISIBLE_ROUTES = new Set(['Home']);
 
 export const ScreenWrapper: React.FC<ScreenWrapperProps> = ({
   children,
@@ -49,11 +49,9 @@ export const ScreenWrapper: React.FC<ScreenWrapperProps> = ({
   scrollEventThrottle = 16,
   forceHideTabBar = false,
   extraBottomPadding = 0,
-  enableNavHiding = true,
 }) => {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
-  const mountedRef = useRef(false);
 
   const routeName = useNavigationState((state) => {
     if (!state) return '';
@@ -65,47 +63,19 @@ export const ScreenWrapper: React.FC<ScreenWrapperProps> = ({
     return route.name;
   });
 
-  const isHidden = HIDDEN_ROUTES.has(routeName) || forceHideTabBar;
+  const isHidden = HIDDEN_TAB_BAR_ROUTES.has(routeName) || forceHideTabBar;
   const isAlwaysVisible = ALWAYS_VISIBLE_ROUTES.has(routeName);
 
-  const smartNav = useSmartNavVisibility({ enableHaptics: false }); // disable haptics in wrapper
-  const [navState, setNavState] = useState<SmartNavState>({
-    isVisible: true,
-    isFullyHidden: false,
-    progress: 1,
-  });
-
-  useEffect(() => {
-    const unsub = smartNav.subscribe(setNavState);
-    return unsub;
-  }, [smartNav]);
-
-  useEffect(() => {
-    if (!mountedRef.current) {
-      mountedRef.current = true;
-      return;
-    }
-    if (isHidden) {
-      smartNav.forceHide();
-    } else if (isAlwaysVisible || !enableNavHiding) {
-      smartNav.forceShow();
-    } else {
-      smartNav.reset();
-    }
-  }, [routeName, isHidden, isAlwaysVisible, enableNavHiding, smartNav]);
-
-  const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    if (!isHidden && !isAlwaysVisible && enableNavHiding) {
-      smartNav.onScroll(event);
-    }
-    onScroll?.(event);
-  }, [smartNav, onScroll, isHidden, isAlwaysVisible, enableNavHiding]);
-
-  const bottomPadding = isHidden
-    ? Math.max(insets.bottom, 0) + extraBottomPadding
-    : isAlwaysVisible || !enableNavHiding
-      ? Math.max(insets.bottom, SAFE_BOTTOM) + DOCK_HEIGHT + extraBottomPadding
-      : Math.max(insets.bottom, SAFE_BOTTOM) + (navState.isVisible ? DOCK_HEIGHT : SAFE_BOTTOM) + extraBottomPadding;
+  // Calculate bottom padding:
+  // - Hidden routes: just safe area bottom
+  // - Home: safe area + dock height
+  // - Other tabs (when tab bar shows briefly): same as hidden since they hide on enter
+  // Actually, the tab bar handles its own visibility. We just need to ensure content isn't cut off.
+  // For Home: add dock height. For others: just safe area since tab bar hides.
+  
+  const bottomPadding = isAlwaysVisible && !forceHideTabBar
+    ? Math.max(insets.bottom, SAFE_BOTTOM) + DOCK_HEIGHT + extraBottomPadding
+    : Math.max(insets.bottom, SAFE_BOTTOM) + extraBottomPadding;
 
   if (scrollable) {
     return (
@@ -116,7 +86,7 @@ export const ScreenWrapper: React.FC<ScreenWrapperProps> = ({
           { paddingBottom: bottomPadding },
           contentContainerStyle,
         ]}
-        onScroll={handleScroll}
+        onScroll={onScroll}
         scrollEventThrottle={scrollEventThrottle}
         refreshControl={refreshControl}
         showsVerticalScrollIndicator={false}
@@ -139,7 +109,6 @@ export const ScreenWrapper: React.FC<ScreenWrapperProps> = ({
 export const AnimatedScreenWrapper: React.FC<ScreenWrapperProps> = (props) => {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
-  const mountedRef = useRef(false);
 
   const routeName = useNavigationState((state) => {
     if (!state) return '';
@@ -151,41 +120,11 @@ export const AnimatedScreenWrapper: React.FC<ScreenWrapperProps> = (props) => {
     return route.name;
   });
 
-  const isHidden = HIDDEN_ROUTES.has(routeName) || props.forceHideTabBar;
   const isAlwaysVisible = ALWAYS_VISIBLE_ROUTES.has(routeName);
 
-  const smartNav = useSmartNavVisibility({ enableHaptics: false }); // disable haptics in wrapper
-  const [navState, setNavState] = useState<SmartNavState>({
-    isVisible: true,
-    isFullyHidden: false,
-    progress: 1,
-  });
-
-  useEffect(() => {
-    const unsub = smartNav.subscribe(setNavState);
-    return unsub;
-  }, [smartNav]);
-
-  useEffect(() => {
-    if (!mountedRef.current) {
-      mountedRef.current = true;
-      return;
-    }
-    if (isHidden) smartNav.forceHide();
-    else if (isAlwaysVisible) smartNav.forceShow();
-    else smartNav.reset();
-  }, [routeName, isHidden, isAlwaysVisible, smartNav]);
-
-  const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    if (!isHidden && !isAlwaysVisible && props.enableNavHiding !== false) {
-      smartNav.onScroll(event);
-    }
-    props.onScroll?.(event);
-  }, [smartNav, props.onScroll, isHidden, isAlwaysVisible, props.enableNavHiding]);
-
-  const bottomPadding = isHidden
-    ? Math.max(insets.bottom, 0) + (props.extraBottomPadding || 0)
-    : Math.max(insets.bottom, SAFE_BOTTOM) + (navState.isVisible ? DOCK_HEIGHT : SAFE_BOTTOM) + (props.extraBottomPadding || 0);
+  const bottomPadding = isAlwaysVisible && !props.forceHideTabBar
+    ? Math.max(insets.bottom, SAFE_BOTTOM) + DOCK_HEIGHT + (props.extraBottomPadding || 0)
+    : Math.max(insets.bottom, SAFE_BOTTOM) + (props.extraBottomPadding || 0);
 
   return (
     <Animated.ScrollView
@@ -195,7 +134,7 @@ export const AnimatedScreenWrapper: React.FC<ScreenWrapperProps> = (props) => {
         { paddingBottom: bottomPadding },
         props.contentContainerStyle,
       ]}
-      onScroll={handleScroll}
+      onScroll={props.onScroll}
       scrollEventThrottle={props.scrollEventThrottle || 16}
       refreshControl={props.refreshControl}
       showsVerticalScrollIndicator={false}

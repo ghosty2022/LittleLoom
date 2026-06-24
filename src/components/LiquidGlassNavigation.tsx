@@ -1,5 +1,5 @@
 // src/components/LiquidGlassNavigation.tsx
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo } from 'react';
 import {
   View,
   StyleSheet,
@@ -21,17 +21,14 @@ import Animated, {
   useAnimatedStyle,
   withSpring,
   withTiming,
-  withRepeat,
-  withDelay,
   interpolate,
   Extrapolation,
   Easing,
 } from 'react-native-reanimated';
 
-import { useCustomization } from '../hooks/useCustomization';
-import { useSmartNavVisibility, SmartNavState } from '../hooks/useSmartNavVisibility';
 import { useTheme } from '../context/AppContext';
 import { HomeIcon, TrackIcon, GrowIcon, ConnectIcon, MoreIcon, AddLogIcon } from './TabIcons';
+import { useRouteBasedNavVisibility } from '../hooks/useRouteBasedNavVisibility';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -87,26 +84,12 @@ const TABS: TabItem[] = [
   },
 ];
 
-// Routes where nav is completely hidden
-const HIDDEN_ROUTES = new Set([
-  'SwitchBaby', 'EditProfile', 'EditGuardian', 'Gallery', 'FamilyChatList', 'FamilyChat',
-  'AddLog', 'Achievements', 'Reminders', 'FamilySharing', 'SoundMixer', 'Customize',
-  'BiometricSetup', 'SecurityCenter', 'SecurityLock',
-  'BackupRestore', 'HelpCenter', 'ContactSupport', 'PrivacyPolicy', 'TermsOfService', 'About',
-  'LanguageSettings', 'UnitSettings', 'SafetyCorner',
-  'UniversalTracker', 'PottyTracker', 'FeedTracker', 'SleepTracker',
-  'Profile', 'CreateBabyProfile', 'AddParent',
-  'CommunityMain', 'Topic', 'CreatePost', 'PostDetail', 'CommunityMemberProfile', 'Chat', 'ChatList',
-  'Notifications', 'CommunityProfile', 'TopicMembers', 'Followers', 'Following', 'SearchUsers',
-  'BlockedUsers', 'Report', 'CommunitySplash', 'CommunityOnboarding',
-]);
-
 const PILL_WIDTH = Math.min(SCREEN_WIDTH - 32, 360);
 const PILL_HEIGHT = 64;
 const BOTTOM_MARGIN = 12;
 const HIDDEN_TRANSLATE_Y = 140;
 
-// ─── Date Display for Add Log Button ──────────────────────────────────
+// ─── Date Display ─────────────────────────────────────────────────
 const DateDisplay: React.FC<{ isDark: boolean }> = React.memo(({ isDark }) => {
   const [dateStr, setDateStr] = React.useState('');
   
@@ -127,17 +110,16 @@ const DateDisplay: React.FC<{ isDark: boolean }> = React.memo(({ isDark }) => {
   );
 });
 
-// ─── Tab Button ──────────────────────────────────────────────────────
+// ─── Tab Button ─────────────────────────────────────────────────────
 interface TabButtonProps {
   tab: TabItem;
   isActive: boolean;
   onPress: () => void;
   isDark: boolean;
-  index: number;
 }
 
 const TabButton: React.FC<TabButtonProps> = React.memo(({ 
-  tab, isActive, onPress, isDark, index 
+  tab, isActive, onPress, isDark 
 }) => {
   const scale = useSharedValue(1);
   const glowOpacity = useSharedValue(0);
@@ -197,7 +179,6 @@ const TabButton: React.FC<TabButtonProps> = React.memo(({
       accessibilityState={{ selected: isActive }}
       hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
     >
-      {/* Gradient glow behind icon */}
       <Animated.View style={[styles.glowContainer, glowStyle]}>
         <LinearGradient
           colors={tab.gradient}
@@ -277,55 +258,23 @@ const ActiveColorWash: React.FC<{ activeIndex: number; isDark: boolean }> = Reac
 const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({ state, descriptors, navigation }) => {
   const insets = useSafeAreaInsets();
   const { isDark, colors } = useTheme();
-  const customization = useCustomization();
   
   const activeIndex = state.index;
   const activeRouteName = state.routes[activeIndex]?.name;
 
-  const shouldHideCompletely = useMemo(() => {
-    if (activeRouteName && HIDDEN_ROUTES.has(activeRouteName)) return true;
-    
-    // Check nested state for Connect tab
-    if (activeRouteName === 'Connect') {
-      const connectRoute = state.routes[activeIndex];
-      const nestedState = connectRoute?.state as any;
-      if (nestedState) {
-        const currentNestedRoute = nestedState.routes?.[nestedState.index ?? 0];
-        if (currentNestedRoute && HIDDEN_ROUTES.has(currentNestedRoute.name)) return true;
-      }
-    }
-    
-    return false;
-  }, [activeRouteName, state, activeIndex]);
+  // ─── ROUTE-BASED VISIBILITY ───────────────────────────────────
+  const { isVisible, isFullyHidden } = useRouteBasedNavVisibility();
 
-  const isTrackScreen = activeRouteName === 'Track';
-
-  // ─── SMART NAV VISIBILITY STATE ─────────────────────────────────
-  const smartNav = useSmartNavVisibility();
-  const [scrollNavState, setScrollNavState] = useState<SmartNavState>({
-    isVisible: true,
-    isFullyHidden: false,
-    progress: 1,
-  });
-
-  useEffect(() => {
-    const unsub = smartNav.subscribe((state) => {
-      setScrollNavState(state);
-    });
-    return unsub;
-  }, [smartNav]);
-
-  // ─── ANIMATED VALUES ────────────────────────────────────────────
+  // ─── ANIMATED VALUES ───────────────────────────────────────────
   const translateY = useSharedValue(0);
   const opacity = useSharedValue(1);
   const scale = useSharedValue(1);
   const pillScale = useSharedValue(1);
   const blurIntensity = useSharedValue(60);
 
-  // ─── UPDATE ANIMATIONS BASED ON STATE ───────────────────────────
+  // ─── UPDATE ANIMATIONS ─────────────────────────────────────────
   useEffect(() => {
-    if (shouldHideCompletely) {
-      // Completely hidden (full screen routes)
+    if (isFullyHidden) {
       translateY.value = withTiming(HIDDEN_TRANSLATE_Y, { 
         duration: 350,
         easing: Easing.bezier(0.32, 0.72, 0, 1),
@@ -334,17 +283,7 @@ const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({ state, descriptors
       scale.value = withTiming(0.9, { duration: 300 });
       pillScale.value = withTiming(0.94, { duration: 300 });
       blurIntensity.value = withTiming(0, { duration: 200 });
-    } else if (scrollNavState.isFullyHidden) {
-      // Scroll-hidden (smart nav)
-      translateY.value = withSpring(HIDDEN_TRANSLATE_Y, { 
-        damping: 24, stiffness: 320, mass: 0.7 
-      });
-      opacity.value = withTiming(0.3, { duration: 300 });
-      scale.value = withTiming(0.96, { duration: 300 });
-      pillScale.value = withTiming(0.97, { duration: 300 });
-      blurIntensity.value = withTiming(25, { duration: 300 });
     } else {
-      // Visible
       translateY.value = withSpring(0, { 
         damping: 20, stiffness: 300, mass: 0.6 
       });
@@ -353,7 +292,7 @@ const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({ state, descriptors
       pillScale.value = withSpring(1, { damping: 20, stiffness: 300, mass: 0.6 });
       blurIntensity.value = withTiming(60, { duration: 350 });
     }
-  }, [shouldHideCompletely, scrollNavState.isFullyHidden]);
+  }, [isFullyHidden]);
 
   const containerStyle = useAnimatedStyle(() => ({
     transform: [
@@ -382,11 +321,7 @@ const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({ state, descriptors
     navigation.navigate('AddEntry');
   }, [navigation]);
 
-  if (shouldHideCompletely) {
-    return null;
-  }
-
-  // ─── THEME COLORS ───────────────────────────────────────────────
+  // ─── THEME COLORS ─────────────────────────────────────────────
   const pillBackground = isDark 
     ? 'rgba(18, 18, 24, 0.94)' 
     : 'rgba(255, 255, 255, 0.96)';
@@ -397,7 +332,6 @@ const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({ state, descriptors
     ? 'rgba(255, 255, 255, 0.15)' 
     : 'rgba(255, 255, 255, 0.9)';
 
-  // Bolder, more visible border gradients
   const borderGradientColors = isDark
     ? ['rgba(102,126,234,0.35)', 'rgba(118,75,162,0.25)', 'rgba(240,147,251,0.15)', 'rgba(79,172,254,0.25)']
     : ['rgba(102,126,234,0.2)', 'rgba(118,75,162,0.12)', 'rgba(240,147,251,0.08)', 'rgba(79,172,254,0.12)'];
@@ -410,8 +344,8 @@ const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({ state, descriptors
       ]}
       pointerEvents="box-none"
     >
-      {/* ─── MODERN ADD LOG FAB ─────────────────────────────────── */}
-      {isTrackScreen && (
+      {/* ─── ADD LOG FAB (only on Track tab) ──────────────────── */}
+      {activeRouteName === 'Track' && isVisible && (
         <TouchableOpacity 
           style={styles.addLogFab} 
           onPress={handleAddLog}
@@ -429,15 +363,12 @@ const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({ state, descriptors
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
             />
-            
-            {/* Top border glow */}
             <LinearGradient
               colors={['rgba(17,153,142,0.6)', 'transparent']}
               style={styles.addLogTopBorder}
               start={{ x: 0, y: 0 }}
               end={{ x: 0, y: 1 }}
             />
-            
             <View style={styles.addLogContent}>
               <View style={styles.addLogIconRing}>
                 <AddLogIcon size={18} color="#11998e" />
@@ -460,7 +391,6 @@ const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({ state, descriptors
           borderColor: pillBorder,
         }]}>
 
-          {/* Bolder gradient borders */}
           <LinearGradient
             colors={borderGradientColors}
             start={{ x: 0, y: 0 }}
@@ -480,7 +410,6 @@ const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({ state, descriptors
             style={[styles.gradientBorderRight, { opacity: 0.5 }]}
           />
 
-          {/* Top highlight line - bolder */}
           <View style={[styles.outerBorderTop, { borderColor: pillBorderTop }]} />
 
           <Animated.View style={[styles.blurBackground, blurStyle]}>
@@ -492,7 +421,6 @@ const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({ state, descriptors
             
             <ActiveColorWash activeIndex={activeIndex} isDark={isDark} />
 
-            {/* Top glass highlight */}
             <LinearGradient
               colors={[isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.95)', 'transparent']}
               style={styles.topHighlight}
@@ -500,7 +428,6 @@ const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({ state, descriptors
               end={{ x: 0, y: 1 }}
             />
 
-            {/* Inner border - slightly more visible */}
             <View style={[styles.innerBorder, { 
               borderColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)'
             }]} />
@@ -513,7 +440,6 @@ const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({ state, descriptors
                   isActive={index === activeIndex}
                   onPress={() => handlePress(index, tab.route, tab)}
                   isDark={isDark}
-                  index={index}
                 />
               ))}
             </View>
@@ -543,7 +469,7 @@ const styles = StyleSheet.create({
     height: PILL_HEIGHT,
     borderRadius: PILL_HEIGHT / 2,
     overflow: 'hidden',
-    borderWidth: 1.2, // Slightly thicker
+    borderWidth: 1.2,
     position: 'relative',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
@@ -552,7 +478,6 @@ const styles = StyleSheet.create({
     elevation: 14,
   } as ViewStyle,
 
-  // Bolder gradient borders
   gradientBorderTop: {
     position: 'absolute',
     top: 0,
@@ -627,7 +552,6 @@ const styles = StyleSheet.create({
     gap: 2,
   } as ViewStyle,
   
-  // ─── Tab Button ─────────────────────────────────────────────────
   tabButton: {
     flex: 1,
     alignItems: 'center',
@@ -687,7 +611,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
   } as TextStyle,
   
-  // ─── Modern Add Log FAB ─────────────────────────────────────────
   addLogFab: {
     position: 'absolute',
     right: 16,
