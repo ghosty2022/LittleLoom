@@ -4,153 +4,133 @@ import { NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
 import * as Haptics from 'expo-haptics';
 
 interface SmartNavConfig {
-  /** Minimum scroll velocity (px/ms) to trigger hide */
   hideVelocityThreshold?: number;
-  /** Minimum scroll velocity to trigger show */
   showVelocityThreshold?: number;
-  /** Accumulated scroll distance before hiding */
   hideDistanceThreshold?: number;
-  /** Accumulated scroll distance before showing */
   showDistanceThreshold?: number;
-  /** Delay before hiding after scroll stops */
   hideDelay?: number;
-  /** Delay before showing after scroll stops */
   showDelay?: number;
-  /** Whether to enable haptic feedback on state changes */
   enableHaptics?: boolean;
 }
 
-interface SmartNavState {
+export interface SmartNavState {
   isVisible: boolean;
   isFullyHidden: boolean;
-  progress: number; // 0 = fully hidden, 1 = fully visible
+  progress: number;
 }
 
-type ScrollHandler = (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+// ─── SINGLETON STATE (shared across all hook instances) ──────────────
+let _state: SmartNavState = { isVisible: true, isFullyHidden: false, progress: 1 };
+let _stateMachine: 'idle' | 'hiding' | 'showing' | 'hidden' | 'visible' = 'visible';
+let _listeners = new Set<(state: SmartNavState) => void>();
+let _metrics = {
+  lastY: 0,
+  lastTime: Date.now(),
+  accumulatedDown: 0,
+  accumulatedUp: 0,
+  direction: 'none' as 'up' | 'down' | 'none',
+  confidence: 0,
+  timer: null as ReturnType<typeof setTimeout> | null,
+  isAtTop: false,
+  isAtBottom: false,
+};
 
-/**
- * 2026 Smart Navigation Visibility Engine
- * 
- * Uses velocity-based hysteresis with predictive intent detection.
- * Instead of reacting to every scroll pixel, it builds a "confidence score"
- * for hide/show decisions based on scroll patterns.
- */
+const _emit = (state: SmartNavState) => {
+  _state = state;
+  _listeners.forEach(cb => cb(state));
+};
+
+const _setNavState = (newState: 'hidden' | 'visible', immediate = false, enableHaptics = true) => {
+  if (_stateMachine === newState) return;
+
+  if (_metrics.timer) {
+    clearTimeout(_metrics.timer);
+    _metrics.timer = null;
+  }
+
+  if (immediate) {
+    _stateMachine = newState;
+    if (enableHaptics && newState === 'visible') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    _emit({
+      isVisible: newState === 'visible',
+      isFullyHidden: newState === 'hidden',
+      progress: newState === 'visible' ? 1 : 0,
+    });
+    return;
+  }
+
+  const delay = newState === 'hidden' ? 150 : 80;
+
+  _metrics.timer = setTimeout(() => {
+    _metrics.timer = null;
+    _stateMachine = newState;
+
+    if (enableHaptics) {
+      const hapticStyle = newState === 'visible'
+        ? Haptics.ImpactFeedbackStyle.Light
+        : Haptics.ImpactFeedbackStyle.Soft;
+      Haptics.impactAsync(hapticStyle);
+    }
+
+    _emit({
+      isVisible: newState === 'visible',
+      isFullyHidden: newState === 'hidden',
+      progress: newState === 'visible' ? 1 : 0,
+    });
+  }, delay);
+};
+
+// ─── HOOK ────────────────────────────────────────────────────────────
 export const useSmartNavVisibility = (config: SmartNavConfig = {}) => {
   const {
     hideVelocityThreshold = 0.8,
     showVelocityThreshold = 0.5,
     hideDistanceThreshold = 80,
     showDistanceThreshold = 40,
-    hideDelay = 150,
-    showDelay = 80,
     enableHaptics = true,
   } = config;
 
-  // State machine: 'idle' | 'hiding' | 'showing' | 'hidden' | 'visible'
-  const stateRef = useRef<'idle' | 'hiding' | 'showing' | 'hidden' | 'visible'>('visible');
-  const metricsRef = useRef({
-    lastY: 0,
-    lastTime: Date.now(),
-    accumulatedDown: 0,
-    accumulatedUp: 0,
-    direction: 'none' as 'up' | 'down' | 'none',
-    confidence: 0, // -100 to 100, negative = hide confidence, positive = show confidence
-    timer: null as ReturnType<typeof setTimeout> | null,
-    isAtTop: false,
-    isAtBottom: false,
-  });
-
-  const stateCallbackRef = useRef<((state: SmartNavState) => void) | null>(null);
-
-  const setNavState = useCallback((newState: 'hidden' | 'visible', immediate = false) => {
-    const m = metricsRef.current;
-    
-    if (stateRef.current === newState) return;
-
-    // Clear any pending timer
-    if (m.timer) {
-      clearTimeout(m.timer);
-      m.timer = null;
-    }
-
-    if (immediate) {
-      stateRef.current = newState;
-      if (enableHaptics && newState === 'visible') {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      }
-      stateCallbackRef.current?.({
-        isVisible: newState === 'visible',
-        isFullyHidden: newState === 'hidden',
-        progress: newState === 'visible' ? 1 : 0,
-      });
-      return;
-    }
-
-    const delay = newState === 'hidden' ? hideDelay : showDelay;
-    
-    m.timer = setTimeout(() => {
-      stateRef.current = newState;
-      m.timer = null;
-      
-      if (enableHaptics) {
-        const hapticStyle = newState === 'visible' 
-          ? Haptics.ImpactFeedbackStyle.Light 
-          : Haptics.ImpactFeedbackStyle.Soft;
-        Haptics.impactAsync(hapticStyle);
-      }
-
-      stateCallbackRef.current?.({
-        isVisible: newState === 'visible',
-        isFullyHidden: newState === 'hidden',
-        progress: newState === 'visible' ? 1 : 0,
-      });
-    }, delay);
-  }, [hideDelay, showDelay, enableHaptics]);
+  const subscribedRef = useRef(false);
 
   const onScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const now = Date.now();
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
     const currentY = contentOffset.y;
-    const m = metricsRef.current;
+    const m = _metrics;
 
     const deltaY = currentY - m.lastY;
     const deltaTime = now - m.lastTime;
-    const velocity = deltaTime > 0 ? deltaY / deltaTime : 0; // px/ms
+    const velocity = deltaTime > 0 ? deltaY / deltaTime : 0;
 
     m.isAtTop = currentY <= 5;
     m.isAtBottom = currentY + layoutMeasurement.height >= contentSize.height - 5;
 
-    // Always show at top or bottom
     if (m.isAtTop || m.isAtBottom) {
       m.accumulatedDown = 0;
       m.accumulatedUp = 0;
-      m.confidence = 50; // Bias toward showing
-      if (stateRef.current === 'hidden' || stateRef.current === 'hiding') {
-        setNavState('visible', m.isAtTop); // Immediate at top, delayed at bottom
+      m.confidence = 50;
+      if (_stateMachine === 'hidden' || _stateMachine === 'hiding') {
+        _setNavState('visible', m.isAtTop, enableHaptics);
       }
       m.lastY = currentY;
       m.lastTime = now;
       return;
     }
 
-    // Determine direction with deadzone to prevent jitter
-    const deadzone = 0.3; // px/ms
-    if (velocity > deadzone) {
-      m.direction = 'down';
-    } else if (velocity < -deadzone) {
-      m.direction = 'up';
-    }
+    const deadzone = 0.3;
+    if (velocity > deadzone) m.direction = 'down';
+    else if (velocity < -deadzone) m.direction = 'up';
 
-    // Accumulate distance in current direction, decay opposite
     if (m.direction === 'down') {
       m.accumulatedDown += Math.abs(deltaY);
-      m.accumulatedUp *= 0.7; // Decay
+      m.accumulatedUp *= 0.7;
     } else if (m.direction === 'up') {
       m.accumulatedUp += Math.abs(deltaY);
       m.accumulatedDown *= 0.7;
     }
 
-    // Build confidence score
     if (m.direction === 'down') {
       const velocityFactor = Math.min(Math.abs(velocity) / hideVelocityThreshold, 2);
       const distanceFactor = Math.min(m.accumulatedDown / hideDistanceThreshold, 1.5);
@@ -161,54 +141,60 @@ export const useSmartNavVisibility = (config: SmartNavConfig = {}) => {
       m.confidence += (velocityFactor * 20 + distanceFactor * 15);
     }
 
-    // Clamp confidence
     m.confidence = Math.max(-100, Math.min(100, m.confidence));
 
-    // State transitions based on confidence thresholds
     const HIDE_THRESHOLD = -60;
     const SHOW_THRESHOLD = 40;
 
-    if (m.confidence <= HIDE_THRESHOLD && stateRef.current !== 'hidden' && stateRef.current !== 'hiding') {
-      setNavState('hidden');
-      stateRef.current = 'hiding';
-    } else if (m.confidence >= SHOW_THRESHOLD && stateRef.current !== 'visible' && stateRef.current !== 'showing') {
-      setNavState('visible');
-      stateRef.current = 'showing';
+    if (m.confidence <= HIDE_THRESHOLD && _stateMachine !== 'hidden' && _stateMachine !== 'hiding') {
+      _setNavState('hidden', false, enableHaptics);
+      _stateMachine = 'hiding';
+    } else if (m.confidence >= SHOW_THRESHOLD && _stateMachine !== 'visible' && _stateMachine !== 'showing') {
+      _setNavState('visible', false, enableHaptics);
+      _stateMachine = 'showing';
     }
 
     m.lastY = currentY;
     m.lastTime = now;
-  }, [setNavState, hideVelocityThreshold, showVelocityThreshold, hideDistanceThreshold, showDistanceThreshold]);
+  }, [hideVelocityThreshold, showVelocityThreshold, hideDistanceThreshold, showDistanceThreshold, enableHaptics]);
 
   const reset = useCallback(() => {
-    const m = metricsRef.current;
-    m.lastY = 0;
-    m.accumulatedDown = 0;
-    m.accumulatedUp = 0;
-    m.confidence = 0;
-    m.direction = 'none';
-    if (m.timer) {
-      clearTimeout(m.timer);
-      m.timer = null;
+    _metrics.lastY = 0;
+    _metrics.accumulatedDown = 0;
+    _metrics.accumulatedUp = 0;
+    _metrics.confidence = 0;
+    _metrics.direction = 'none';
+    if (_metrics.timer) {
+      clearTimeout(_metrics.timer);
+      _metrics.timer = null;
     }
-    stateRef.current = 'visible';
+    _stateMachine = 'visible';
   }, []);
 
   const forceHide = useCallback(() => {
     reset();
-    setNavState('hidden', true);
-  }, [reset, setNavState]);
+    _setNavState('hidden', true, enableHaptics);
+  }, [reset, enableHaptics]);
 
   const forceShow = useCallback(() => {
     reset();
-    setNavState('visible', true);
-  }, [reset, setNavState]);
+    _setNavState('visible', true, enableHaptics);
+  }, [reset, enableHaptics]);
+
+  const subscribe = useCallback((callback: (state: SmartNavState) => void) => {
+    _listeners.add(callback);
+    callback(_state); // Immediately emit current state
+    return () => { _listeners.delete(callback); };
+  }, []);
+
+  const getCurrentState = useCallback(() => _state, []);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (metricsRef.current.timer) {
-        clearTimeout(metricsRef.current.timer);
+      if (_metrics.timer) {
+        clearTimeout(_metrics.timer);
+        _metrics.timer = null;
       }
     };
   }, []);
@@ -218,17 +204,10 @@ export const useSmartNavVisibility = (config: SmartNavConfig = {}) => {
     reset,
     forceHide,
     forceShow,
-    subscribe: (callback: (state: SmartNavState) => void) => {
-      stateCallbackRef.current = callback;
-      return () => { stateCallbackRef.current = null; };
-    },
-    getCurrentState: () => ({
-      isVisible: stateRef.current === 'visible' || stateRef.current === 'showing',
-      isFullyHidden: stateRef.current === 'hidden',
-      progress: stateRef.current === 'visible' ? 1 : stateRef.current === 'hidden' ? 0 : 0.5,
-    }),
+    subscribe,
+    getCurrentState,
   };
 };
 
-export type { SmartNavState, SmartNavConfig };
+export type { SmartNavConfig };
 export default useSmartNavVisibility;

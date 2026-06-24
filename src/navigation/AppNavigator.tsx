@@ -131,14 +131,13 @@ const getScreenOptions = (colors: any, isDark: boolean) => ({
 });
 
 function MainTabs() {
-  const { isDark, colors } = useSafeApp();
   return (
     <Tab.Navigator
       tabBar={(props) => <LiquidGlassNavigation {...props} />}
       screenOptions={{
         headerShown: false,
-        tabBarStyle: { backgroundColor: colors?.navBackground || '#ffffff', borderTopWidth: 0, elevation: 0, shadowOpacity: 0 },
-        sceneStyle: { backgroundColor: colors?.background || '#f8faff' },
+        // Remove tabBarStyle — LiquidGlass handles everything
+        // Add safe area padding for content
       }}
     >
       <Tab.Screen name="Home" component={HomeScreen as any} />
