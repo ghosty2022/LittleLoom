@@ -62,61 +62,51 @@ class BundleDiagnostic:
 
     def check_jsx_tags(self, file_path, content, lines):
         """Check for mismatched JSX tags"""
-        # Track tag stack
         tag_stack = []
 
-        # Pattern for self-closing tags: <Component ... />
-        self_closing_pattern = re.compile(r'<([A-Z][a-zA-Z0-9_]*|View|Text|Image|ScrollView|TouchableOpacity|Animated\.View|Animated\.ScrollView|LinearGradient|BlurView|SafeAreaView|FlatList|SectionList|Modal|TextInput|Switch|ActivityIndicator|RefreshControl|StatusBar)(?:\s+[^>]*)?\s*/>')
-
-        # Pattern for opening tags: <Component ...>
-        opening_pattern = re.compile(r'<([A-Z][a-zA-Z0-9_]*|View|Text|Image|ScrollView|TouchableOpacity|Animated\.View|Animated\.ScrollView|LinearGradient|BlurView|SafeAreaView|FlatList|SectionList|Modal|TextInput|Switch|ActivityIndicator|RefreshControl|StatusBar)(?:\s+[^>]*)?>')
-
-        # Pattern for closing tags: </Component>
-        closing_pattern = re.compile(r'</([A-Z][a-zA-Z0-9_]*|View|Text|Image|ScrollView|TouchableOpacity|Animated\.View|Animated\.ScrollView|LinearGradient|BlurView|SafeAreaView|FlatList|SectionList|Modal|TextInput|Switch|ActivityIndicator|RefreshControl|StatusBar)>')
-
-        # Pattern for fragment tags
+        # Simple patterns - avoid complex regex with quotes
+        self_closing_pattern = re.compile(r'<([A-Z][a-zA-Z0-9_.]*)(?:\s+[^>]*)?\s*/>')
+        opening_pattern = re.compile(r'<([A-Z][a-zA-Z0-9_.]*)(?:\s+[^>]*)?>')
+        closing_pattern = re.compile(r'</([A-Z][a-zA-Z0-9_.]*)>')
         fragment_open = re.compile(r'<>')
         fragment_close = re.compile(r'</>')
 
         for i, line in enumerate(lines, 1):
-            # Skip comments and strings (basic)
+            # Basic string/comment stripping
             code_line = re.sub(r'"[^"]*"', '""', line)
             code_line = re.sub(r"'[^']*'", "''", code_line)
             code_line = re.sub(r'`[^`]*`', '``', code_line)
 
-            # Check for self-closing tags (these are fine)
+            # Self-closing tags
             for match in self_closing_pattern.finditer(code_line):
-                pass  # Self-closing tags don't need tracking
+                pass
 
-            # Check for fragment opens
+            # Fragment opens
             for match in fragment_open.finditer(code_line):
                 tag_stack.append(('Fragment', i, file_path))
 
-            # Check for fragment closes
+            # Fragment closes
             for match in fragment_close.finditer(code_line):
                 if tag_stack and tag_stack[-1][0] == 'Fragment':
                     tag_stack.pop()
                 else:
                     self.log_error(file_path, i, "Unmatched fragment close tag </>", line)
 
-            # Check for opening tags
+            # Opening tags
             for match in opening_pattern.finditer(code_line):
                 tag_name = match.group(1)
-                # Skip if it's actually self-closing (ends with />)
                 if not code_line[match.end()-2:match.end()] == '/>':
                     tag_stack.append((tag_name, i, file_path))
 
-            # Check for closing tags
+            # Closing tags
             for match in closing_pattern.finditer(code_line):
                 tag_name = match.group(1)
                 if tag_stack and tag_stack[-1][0] == tag_name:
                     tag_stack.pop()
                 else:
-                    # Check if the tag exists anywhere in stack
                     found = False
                     for j, (stack_tag, stack_line, _) in enumerate(reversed(tag_stack)):
                         if stack_tag == tag_name:
-                            # Pop everything up to this tag
                             for _ in range(j + 1):
                                 tag_stack.pop()
                             found = True
@@ -124,7 +114,7 @@ class BundleDiagnostic:
                     if not found:
                         self.log_error(file_path, i, f"Unmatched closing tag </{tag_name}>", line)
 
-        # Report any unclosed tags
+        # Report unclosed tags
         for tag_name, line_num, _ in tag_stack:
             self.log_error(file_path, line_num, f"Unclosed JSX tag <{tag_name}>")
 
@@ -132,85 +122,46 @@ class BundleDiagnostic:
         """Check for common syntax errors that crash bundles"""
 
         for i, line in enumerate(lines, 1):
-            # Check for double closing braces on same line (common paste error)
+            # Double closing braces
             if re.search(r'\}\}\s*\}\}', line):
                 self.log_warning(file_path, i, "Suspicious double closing braces }}", line)
 
-            # Check for closing tag without matching opening on same line in wrong order
+            # Multiple different closing tags on same line
             if re.search(r'</([A-Za-z.]+)>\s*</([A-Za-z.]+)>', line):
                 matches = re.findall(r'</([A-Za-z.]+)>\s*</([A-Za-z.]+)>', line)
                 for m in matches:
                     if m[0] != m[1]:
-                        self.log_warning(file_path, i, f"Multiple different closing tags on same line: </{m[0]}> </{m[1]}>", line)
+                        self.log_warning(file_path, i, f"Multiple different closing tags: </{m[0]}> </{m[1]}>", line)
 
-            # Check for Text inside Text (can cause issues in some RN versions)
-            if '<Text' in line and any(prev_line.strip().startswith('<Text') for prev_line in lines[max(0,i-3):i-1]):
-                pass  # This is usually fine
-
-            # Check for missing closing parenthesis in arrow functions
-            if '=>' in line and '(' in line and ')' not in line:
-                # Check next few lines for closing paren
-                found_close = False
-                for j in range(i, min(i+5, len(lines))):
-                    if ')' in lines[j-1]:
-                        found_close = True
-                        break
-                if not found_close:
-                    self.log_warning(file_path, i, "Possible missing closing parenthesis in arrow function", line)
-
-            # Check for unclosed template literals
+            # Unclosed template literals
             backtick_count = line.count('`')
             if backtick_count % 2 != 0:
-                self.log_warning(file_path, i, "Possible unclosed template literal (odd number of backticks)", line)
+                self.log_warning(file_path, i, "Possible unclosed template literal", line)
 
-            # Check for common React Native specific issues
-            if 'style={[' in line and ']}' not in line:
-                # Check if style array is closed
-                found_close = False
-                for j in range(i, min(i+10, len(lines))):
-                    if ']}' in lines[j-1] or ']}' in lines[j-1]:
-                        found_close = True
-                        break
-                if not found_close:
-                    self.log_warning(file_path, i, "Possible unclosed style array", line)
-
-    def check_imports(self, file_path, content, lines):
-        """Check for import issues"""
-        # Find all imports - use raw string to avoid quote issues
-        import_pattern = r"import\s+{?([^}]+)}?\s+from\s+['"]([^'"]+)['"]"
-        imports = re.findall(import_pattern, content)
-
-        # Check for relative imports that might be circular
-        relative_imports = [imp for _, imp in imports if imp.startswith('.')]
-
-        # Check for imports from non-existent files (basic check)
-        for imported_names, import_path in imports:
-            if import_path.startswith('.'):
-                full_path = (file_path.parent / import_path).resolve()
-                # Check with various extensions
-                exists = False
-                for ext in ['', '.tsx', '.ts', '.jsx', '.js', '/index.tsx', '/index.ts', '/index.jsx', '/index.js']:
-                    if (full_path.with_suffix('') if not ext else Path(str(full_path) + ext)).exists():
-                        exists = True
-                        break
-                if not exists:
-                    self.log_error(file_path, 0, f"Import path does not exist: {import_path}")
-
-    def check_hooks_rules(self, file_path, content, lines):
-        """Check for common hooks issues"""
-        # Check for hooks inside conditionals or loops
-        hook_pattern = re.compile(r'\b(use[A-Z][a-zA-Z0-9_]*)\(')
-
+    def check_imports_simple(self, file_path, content, lines):
+        """Check imports without complex regex"""
         for i, line in enumerate(lines, 1):
             stripped = line.strip()
-            if hook_pattern.search(stripped):
-                # Check if line is inside a conditional or loop
-                # Look at previous lines for if/for/while
-                for j in range(max(0, i-5), i):
-                    prev = lines[j].strip()
-                    if prev.startswith('if ') or prev.startswith('for ') or prev.startswith('while ') or prev.startswith('?'):
-                        self.log_warning(file_path, i, f"Hook called inside conditional/loop: {hook_pattern.search(stripped).group(1)}", line)
-                        break
+            if stripped.startswith('import ') and ' from ' in stripped:
+                # Extract path between quotes
+                parts = stripped.split(' from ')
+                if len(parts) == 2:
+                    path_part = parts[1].strip()
+                    # Remove trailing semicolon and quotes
+                    path_part = path_part.rstrip(';').strip()
+                    if (path_part.startswith("'") and path_part.endswith("'")) or \
+                       (path_part.startswith('"') and path_part.endswith('"')):
+                        import_path = path_part[1:-1]
+                        if import_path.startswith('.'):
+                            full_path = (file_path.parent / import_path).resolve()
+                            exists = False
+                            for ext in ['', '.tsx', '.ts', '.jsx', '.js', '/index.tsx', '/index.ts', '/index.jsx', '/index.js']:
+                                check_path = Path(str(full_path) + ext)
+                                if check_path.exists():
+                                    exists = True
+                                    break
+                            if not exists:
+                                self.log_error(file_path, i, f"Import path does not exist: {import_path}", line)
 
     def check_file(self, file_path):
         """Run all checks on a single file"""
@@ -225,11 +176,9 @@ class BundleDiagnostic:
         self.files_checked += 1
         file_errors_before = len(self.errors)
 
-        # Run all checks
         self.check_jsx_tags(file_path, content, lines)
         self.check_common_syntax_errors(file_path, content, lines)
-        self.check_imports(file_path, content, lines)
-        self.check_hooks_rules(file_path, content, lines)
+        self.check_imports_simple(file_path, content, lines)
 
         if len(self.errors) > file_errors_before:
             self.files_with_errors += 1
@@ -263,7 +212,6 @@ class BundleDiagnostic:
             print(f"\n{Colors.BOLD}{Colors.RED}ERRORS ({len(self.errors)}):{Colors.END}")
             print(f"{Colors.RED}{'─'*70}{Colors.END}")
 
-            # Group by file
             by_file = defaultdict(list)
             for err in self.errors:
                 by_file[err['file']].append(err)
@@ -307,7 +255,6 @@ class BundleDiagnostic:
         print(f"\n{Colors.BOLD}{'='*70}{Colors.END}")
 
 def main():
-    # Get project path from command line or use current directory
     if len(sys.argv) > 1:
         project_path = sys.argv[1]
     else:
