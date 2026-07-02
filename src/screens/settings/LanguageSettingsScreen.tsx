@@ -195,7 +195,7 @@ export default function LanguageSettingsScreen({ navigation }: Props) {
         <Text style={[styles.note, isDark && styles.noteDark]}>
           More languages coming soon. Contact us if you'd like to help translate LittleLoom.
         </Text>
-      </AutoHideAnimatedScrollView>
+      </Animated.ScrollView>
     </LinearGradient>
   );
 }

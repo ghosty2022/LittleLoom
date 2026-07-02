@@ -262,7 +262,7 @@ export default function HelpCenterScreen({ navigation }: Props) {
                   </View>
                 </TouchableOpacity>
               ))}
-            </AutoHideAnimatedScrollView>
+            </Animated.ScrollView>
           </Animated.View>
         )}
 
@@ -354,7 +354,7 @@ export default function HelpCenterScreen({ navigation }: Props) {
             </TouchableOpacity>
           </BlurView>
         </Animated.View>
-      </AutoHideAnimatedScrollView>
+      </Animated.ScrollView>
     </LinearGradient>
   );
 }

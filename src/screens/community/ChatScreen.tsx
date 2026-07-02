@@ -379,7 +379,7 @@ const MessageBubble = React.memo(({
                   <Text style={styles.emojiText}>{emoji}</Text>
                 </TouchableOpacity>
               ))}
-            </AutoHideAnimatedScrollView>
+            </Animated.ScrollView>
             <View style={styles.actionButtons}>
               <TouchableOpacity style={styles.actionItem} onPress={() => { onReply(); setShowActions(false); }}>
                 <Ionicons name="arrow-undo" size={20} color={LL.primary} />

@@ -371,7 +371,7 @@ const AutoBackupModal = ({ visible, onClose, onSave, settings, isDark, primaryCo
                   </LinearGradient>
                 </TouchableOpacity>
               </View>
-            </AutoHideAnimatedScrollView>
+            </Animated.ScrollView>
           </View>
         </BlurView>
       </View>
@@ -986,7 +986,7 @@ sweetAlert.confirm(
         <Text style={[styles.note, isDark && styles.noteDark]}>
           💡 Tip: Back up regularly and store files in cloud storage for maximum safety. Encrypted backups require your password to restore.
         </Text>
-      </AutoHideAnimatedScrollView>
+      </Animated.ScrollView>
 
       {/* Modals */}
       <EncryptModal

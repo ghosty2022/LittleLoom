@@ -729,7 +729,7 @@ const MessageInfoModal: React.FC<{
                 </View>
               </View>
             )}
-          </AutoHideAnimatedScrollView>
+          </Animated.ScrollView>
         </Animated.View>
       </TouchableOpacity>
     </Modal>
@@ -1367,7 +1367,7 @@ const MessageBubble: React.FC<{
                   <Text style={styles.emojiText}>{emoji}</Text>
                 </TouchableOpacity>
               ))}
-            </AutoHideAnimatedScrollView>
+            </Animated.ScrollView>
 
             <View style={styles.actionButtons}>
               <TouchableOpacity
@@ -2280,7 +2280,7 @@ showSweetAlert('Chat Options', '', [
                 />
               </Animated.View>
             ))}
-          </AutoHideAnimatedScrollView>
+          </Animated.ScrollView>
         </Animated.View>
       )}
 
@@ -2356,7 +2356,7 @@ showSweetAlert('Chat Options', '', [
                 </Text>
               </TouchableOpacity>
             ))}
-          </AutoHideAnimatedScrollView>
+          </Animated.ScrollView>
         )}
 
         <BlurView

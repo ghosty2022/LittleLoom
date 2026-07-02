@@ -524,7 +524,7 @@ export default function ContactSupportScreen({ navigation }: Props) {
               ))}
             </BlurView>
           </Animated.View>
-        </AutoHideAnimatedScrollView>
+        </Animated.ScrollView>
       </LinearGradient>
     </KeyboardAvoidingView>
   );

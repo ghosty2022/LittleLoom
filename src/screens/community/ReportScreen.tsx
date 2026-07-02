@@ -422,7 +422,7 @@ export default function ReportScreen({ navigation, route }: ReportScreenProps) {
           {currentStep === 'category' && renderCategoryStep()}
           {currentStep === 'details' && renderDetailsStep()}
           {currentStep === 'confirm' && renderConfirmStep()}
-        </AutoHideAnimatedScrollView>
+        </Animated.ScrollView>
       </KeyboardAvoidingView>
     </View>
   );

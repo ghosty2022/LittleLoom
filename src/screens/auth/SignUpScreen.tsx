@@ -550,7 +550,7 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
               <Text style={styles.footerLink}>Sign In</Text>
             </TouchableOpacity>
           </Animated.View>
-        </AutoHideAnimatedScrollView>
+        </Animated.ScrollView>
       </KeyboardAvoidingView>
     </View>
   );

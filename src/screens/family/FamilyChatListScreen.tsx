@@ -1264,7 +1264,7 @@ showSweetAlert(
           </Text>
           <Text style={styles.memberRole}>New Member</Text>
         </TouchableOpacity>
-      </AutoHideAnimatedScrollView>
+      </Animated.ScrollView>
 
       <View style={styles.statsContainer}>
         <View
@@ -1922,7 +1922,7 @@ showSweetAlert(
                   )}
                 </TouchableOpacity>
               ))}
-            </AutoHideAnimatedScrollView>
+            </Animated.ScrollView>
 
             <TouchableOpacity
               style={[

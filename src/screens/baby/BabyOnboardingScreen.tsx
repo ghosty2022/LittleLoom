@@ -253,7 +253,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
               </Text>
             </TouchableOpacity>
           </Animated.View>
-        </AutoHideAnimatedScrollView>
+        </Animated.ScrollView>
       </LinearGradient>
     </View>
   );

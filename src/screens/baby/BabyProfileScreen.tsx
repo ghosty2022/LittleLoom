@@ -1570,7 +1570,7 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
           {activeTab === 'health' && renderHealthForm()}
           {activeTab === 'danger' && renderDangerZone()}
         </View>
-      </AutoHideAnimatedScrollView>
+      </Animated.ScrollView>
 
       <EmojiPickerModal 
         visible={showEmojiPicker} 

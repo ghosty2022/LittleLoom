@@ -596,7 +596,7 @@ sweetAlert.confirm(
               ))
             )}
           </View>
-        </AutoHideAnimatedScrollView>
+        </Animated.ScrollView>
 
         {/* Comment Input */}
         <View style={[styles.commentInputWrap, { paddingBottom: insets.bottom + 12 }]}>

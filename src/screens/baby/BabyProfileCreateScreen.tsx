@@ -921,7 +921,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
             {currentStep === 1 ? renderStep1() : renderStep2()}
 
             <View style={{ height: 40 }} />
-          </AutoHideAnimatedScrollView>
+          </Animated.ScrollView>
 
           {/* Bottom Actions */}
           <View style={[styles.bottomContainer, { paddingBottom: insets.bottom + 20 }]}>

@@ -247,7 +247,7 @@ export default function UnitSettingsScreen({ navigation }: Props) {
         <Text style={[styles.note, isDark && styles.noteDark]}>
           Existing entries will not be converted. New entries will use the selected units.
         </Text>
-      </AutoHideAnimatedScrollView>
+      </Animated.ScrollView>
     </LinearGradient>
   );
 }

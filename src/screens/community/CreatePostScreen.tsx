@@ -756,7 +756,7 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
                     )}
                   </TouchableOpacity>
                 ))}
-              </AutoHideAnimatedScrollView>
+              </Animated.ScrollView>
             ) : (
               <TouchableOpacity 
                 style={styles.noTopicsBanner}
@@ -839,7 +839,7 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
               </View>
             </LinearGradient>
           </Animated.View>
-        </AutoHideAnimatedScrollView>
+        </Animated.ScrollView>
       </KeyboardAvoidingView>
 
       {/* Country Picker Modal */}

@@ -1450,7 +1450,7 @@ sweetAlert.confirm(
         </Animated.View>
 
         <View style={{ height: 30 }} />
-      </AutoHideAnimatedScrollView>
+      </Animated.ScrollView>
 
       {/* Baby Selection Modal */}
       <BabySelectionModal

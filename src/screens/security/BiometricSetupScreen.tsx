@@ -447,7 +447,7 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
               </View>
             )}
           </View>
-        </AutoHideAnimatedScrollView>
+        </Animated.ScrollView>
 
         {/* Action Buttons */}
         <View style={styles.buttonContainer}>

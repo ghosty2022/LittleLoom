@@ -234,7 +234,7 @@ const ActionModal: React.FC<ActionModalProps> = ({
             contentContainerStyle={styles.modalScrollContent}
           >
             {children}
-          </AutoHideAnimatedScrollView>
+          </Animated.ScrollView>
         </Animated.View>
       </View>
     </Modal>

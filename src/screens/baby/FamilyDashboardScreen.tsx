@@ -375,7 +375,7 @@ const ActionModal: React.FC<ActionModalProps> = ({
           </View>
           <AutoHideAnimatedScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalScrollContent}>
             {children}
-          </AutoHideAnimatedScrollView>
+          </Animated.ScrollView>
         </Animated.View>
       </View>
     </Modal>
@@ -727,7 +727,7 @@ export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreen
             <Text style={[styles.addBabyText, isDark && styles.textDark]}>Add</Text>
           </View>
         </TouchableOpacity>
-      </AutoHideAnimatedScrollView>
+      </Animated.ScrollView>
     </View>
   );
 

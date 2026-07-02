@@ -548,7 +548,7 @@ export default function AboutScreen({ navigation }: Props) {
             </Text>
           </View>
         </Animated.View>
-      </AutoHideAnimatedScrollView>
+      </Animated.ScrollView>
     </LinearGradient>
   );
 }

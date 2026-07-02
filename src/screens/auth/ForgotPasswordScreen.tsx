@@ -255,7 +255,7 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordScree
               </BlurView>
             </Animated.View>
           )}
-        </AutoHideAnimatedScrollView>
+        </Animated.ScrollView>
       </KeyboardAvoidingView>
 </View>
   );

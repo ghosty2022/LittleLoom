@@ -797,7 +797,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
               <Text style={styles.footerLink}>Create Account</Text>
             </TouchableOpacity>
           </Animated.View>
-        </AutoHideAnimatedScrollView>
+        </Animated.ScrollView>
       </KeyboardAvoidingView>
     </View>
   );

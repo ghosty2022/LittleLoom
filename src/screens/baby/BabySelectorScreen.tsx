@@ -300,7 +300,7 @@ sweetAlert.confirm(
             </LinearGradient>
           </TouchableOpacity>
         </Animated.View>
-      </AutoHideAnimatedScrollView>
+      </Animated.ScrollView>
     </View>
   );
 }

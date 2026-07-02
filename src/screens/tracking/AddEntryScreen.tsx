@@ -1494,7 +1494,7 @@ function TrackerContent({
           </View>
 
           <View style={styles.bottomPadding} />
-        </AutoHideAnimatedScrollView>
+        </Animated.ScrollView>
       </KeyboardAvoidingView>
 
       {/* Modals */}

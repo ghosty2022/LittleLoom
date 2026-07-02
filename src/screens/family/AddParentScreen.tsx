@@ -743,7 +743,7 @@ export default function AddParentScreen({ navigation }: AddParentScreenProps) {
                 </Text>
               </View>
             </Animated.View>
-          </AutoHideAnimatedScrollView>
+          </Animated.ScrollView>
         </KeyboardAvoidingView>
       </LinearGradient>
 

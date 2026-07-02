@@ -291,7 +291,7 @@ export default function TermsOfServiceScreen({ navigation }: Props) {
             <Ionicons name="chevron-forward" size={16} color={isDark ? '#666' : '#999'} />
           </TouchableOpacity>
         </Animated.View>
-      </AutoHideAnimatedScrollView>
+      </Animated.ScrollView>
     </LinearGradient>
   );
 }

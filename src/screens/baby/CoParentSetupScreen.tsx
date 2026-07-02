@@ -306,7 +306,7 @@ export default function CoParentSetupScreen({ navigation }: Props) {
                 </TouchableOpacity>
               </BlurView>
             </AnimatedReanimated.View>
-          </AutoHideAnimatedScrollView>
+          </Animated.ScrollView>
         </KeyboardAvoidingView>
       </LinearGradient>
 
