@@ -35,7 +35,7 @@ import Animated, {
   FadeInRight 
 } from 'react-native-reanimated';  // FIXED: Removed Layout
 
-import { Audio } from 'expo-av';  // FIXED: Added missing Audio import
+import { AudioModule } from 'expo-audio';
 type FamilyChatScreenProps = NativeStackScreenProps<RootStackParamList, 'FamilyChat'>;
 
 const { width, height } = Dimensions.get('window');
@@ -1890,7 +1890,7 @@ showSweetAlert(
 
   const startRecording = async () => {
     try {
-      const { status } = await Audio.requestPermissionsAsync();
+      const { status } = await AudioModule.requestRecordingPermissionsAsync();
       if (status !== 'granted') {
         showSweetAlert(
           'error',
