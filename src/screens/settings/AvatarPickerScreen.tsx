@@ -9,7 +9,7 @@ import Animated, { FadeIn, FadeInUp, FadeInDown, FadeOut, FadeOutDown, Layout, u
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
-import { LittleLoomAvatar, BabyAvatar, SkinTonePicker, BABY_EMOJIS, ALL_EMOJIS, ILLUSTRATION_AVATARS, GRADIENT_PRESETS, GENDER_CONFIG, SKIN_TONES, type BabyGender, type AvatarSize } from './LittleLoomAvatars';
+import { LittleLoomAvatar, BabyAvatar, SkinTonePicker, BABY_EMOJIS, ALL_EMOJIS, ILLUSTRATION_AVATARS, GRADIENT_PRESETS, GENDER_CONFIG, SKIN_TONES, type BabyGender, type AvatarSize } from '../../components/avatars/LittleLoomAvatars';
 
 const { width, height } = Dimensions.get('window');
 const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
