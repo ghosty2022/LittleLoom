@@ -1653,6 +1653,7 @@ export default function EnhancedTimelineScreen() {
               </Animated.ScrollView>
             </Animated.View>
 
+            
             {/* ── NEW FEATURE 1: AI Pattern Predictor ── */}
             <AIPatternPredictor 
               entries={allEntries} 

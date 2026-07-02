@@ -5,7 +5,7 @@ import { Easing, FadeIn, FadeInUp, FadeOut, interpolate, Layout, useAnimatedStyl
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { useCommunity } from '../../context/CommunityContext';
 
-import { AutoHideFlatList } from '../../components/AutoHideScrollWrappers';
+
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -484,7 +484,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   const [isSearching, setIsSearching] = useState(false);
   const [pinnedMessage, setPinnedMessage] = useState<Message | null>(null);
 
-  const flatListRef = useRef<AutoHideFlatList>(null);
+  const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Initialize chat
@@ -937,7 +937,7 @@ sweetAlert.confirm(
       </View>
 
       {/* ── Messages List ── */}
-      <AutoHideFlatList
+      <FlatList
         ref={flatListRef}
         data={filteredMessages}
         renderItem={renderMessage}

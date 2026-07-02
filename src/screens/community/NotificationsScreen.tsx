@@ -12,7 +12,7 @@ import type { CommunityStackParamList } from '../../types/navigation';
 import { useApp } from '../../context/AppContext';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { useSweetAlert } from '../../components/SweetAlert';
-import { AutoHideFlatList } from '../../components/AutoHideScrollWrappers';
+
 
 // ═══════════════════════════════════════════════════════════
 // UNIFIED LITTLELOOM THEME — matches CommunityScreen exactly
@@ -278,7 +278,7 @@ export default function NotificationsScreen({ navigation }: NotificationsScreenP
       </View>
 
       {/* ── Notifications List ── */}
-      <AutoHideFlatList
+      <FlatList
         data={filteredNotifications}
         renderItem={renderNotification}
         keyExtractor={(item) => item.id}

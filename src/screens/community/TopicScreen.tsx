@@ -25,7 +25,7 @@ import { useRouteBasedNavVisibility } from '../../hooks/useRouteBasedNavVisibili
 import { useReportRoute } from '../../hooks/useReportRoute';
 import { useSafeCustomization } from '../../hooks/useSafeContexts';
 import { useUser } from '../../context/UserContext';
-import { AutoHideFlatList } from '../../components/AutoHideScrollWrappers';
+
 import {
   CommunityColors,
   CommunitySpacing,
@@ -383,7 +383,7 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
           </TouchableOpacity>
         </View>
 
-        <AutoHideFlatList
+        <FlatList
           data={sortedPosts}
           renderItem={renderPost}
           keyExtractor={(item) => item.id}

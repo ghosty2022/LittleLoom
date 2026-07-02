@@ -1,7 +1,7 @@
 import { StyleSheet, ActivityIndicator        , TouchableOpacity, View , Dimensions, Modal, TextInput, Image, Platform, StatusBar, KeyboardAvoidingView, Text, Share} from 'react-native';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { AutoHideFlatList } from '../../components/AutoHideScrollWrappers';
+
 import { BlurView } from 'expo-blur';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -1660,7 +1660,7 @@ export default function FamilyChatScreen({
     message: '',
   });
 
-  const flatListRef = useRef<AutoHideFlatList>(null);
+  const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const recordingInterval = useRef<NodeJS.Timeout | null>(null);
@@ -2285,7 +2285,7 @@ showSweetAlert('Chat Options', '', [
       )}
 
       {/* Messages */}
-      <AutoHideFlatList
+      <FlatList
         ref={flatListRef}
         data={messages}
         renderItem={renderMessage}

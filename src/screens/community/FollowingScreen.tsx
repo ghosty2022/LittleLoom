@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { AutoHideFlatList } from '../../components/AutoHideScrollWrappers';
+
 import { useCommunity } from '../../context/CommunityContext';
 import { EmptyState } from '../../components/EmptyState';
 import {  Alert, Button, Dimensions, FlatList, RefreshControl, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -410,7 +410,7 @@ export default function FollowingScreen
       </View>
 
       {/* Following List */}
-      <AutoHideFlatList
+      <FlatList
         data={filteredFollowing}
         renderItem={renderFollowing}
         keyExtractor={(item) => item.id}

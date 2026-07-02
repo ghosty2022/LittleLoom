@@ -1,7 +1,7 @@
 import { StyleSheet, ActivityIndicator    , RefreshControl  ,Text , TouchableOpacity, View , Dimensions, Modal, TextInput, Image, Platform, StatusBar} from 'react-native';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { AutoHideFlatList } from '../../components/AutoHideScrollWrappers';
+
 import { BlurView } from 'expo-blur';
 import { EmptyState } from '../../components/EmptyState';
 
@@ -1485,7 +1485,7 @@ showSweetAlert(
         </View>
       </BlurView>
 
-      <AutoHideFlatList
+      <FlatList
         data={sortedChats}
         renderItem={({ item }) => (
           <ChatListItem

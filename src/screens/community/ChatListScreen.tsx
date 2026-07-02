@@ -11,7 +11,7 @@ import { useCommunity, Chat } from '../../context/CommunityContext';
 import { useApp } from '../../context/AppContext';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { SafeAvatar } from '../../components/SafeAvatar';
-import { AutoHideFlatList } from '../../components/AutoHideScrollWrappers';
+
 
 // ═══════════════════════════════════════════════════════════
 // UNIFIED LITTLELOOM THEME — matches CommunityScreen exactly
@@ -227,7 +227,7 @@ export default function ChatListScreen({ navigation }: ChatListScreenProps) {
       </View>
 
       {/* ── Chat List ── */}
-      <AutoHideFlatList
+      <FlatList
         data={filteredChats}
         renderItem={renderChat}
         keyExtractor={(item) => item.id}
