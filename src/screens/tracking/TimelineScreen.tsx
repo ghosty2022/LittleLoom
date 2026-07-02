@@ -1610,7 +1610,7 @@ export default function EnhancedTimelineScreen() {
               </Text>
               <Text style={[styles.secondaryStatLabel, { color: theme.text.secondary }]}>Growth</Text>
             </View>
-          </AutoHideAnimatedScrollView>
+          </Animated.ScrollView>
         </Animated.View>
 
         {/* ── TAB BAR ── */}
@@ -1650,7 +1650,7 @@ export default function EnhancedTimelineScreen() {
                     </TouchableOpacity>
                   </Animated.View>
                 ))}
-              </AutoHideAnimatedScrollView>
+              </Animated.ScrollView>
             </Animated.View>
 
             {/* ── NEW FEATURE 1: AI Pattern Predictor ── */}
