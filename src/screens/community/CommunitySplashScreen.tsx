@@ -10,7 +10,7 @@ import { View,
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { useAutoHideNav } from '../../hooks/useAutoHideNav';
+import { useRouteBasedNavVisibility } from '../../hooks/useRouteBasedNavVisibility';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useCommunity } from '../../context/CommunityContext';
 import { getSectionState, updateSectionState } from '../../hooks/useIntelligentSplash';
@@ -39,7 +39,7 @@ export default function CommunitySplashScreen({
   onAnimationComplete,
   userName = 'Parent'
 }: CommunitySplashScreenProps) {
-  useAutoHideNav({ isCommunityScreen: true });
+  useRouteBasedNavVisibility();
 
   const { settings, themeColors, shouldReduceMotion } = useCustomization();
   const { currentUser, getSelectedTopics } = useCommunity();

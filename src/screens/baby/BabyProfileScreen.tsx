@@ -1551,7 +1551,7 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
 
       {renderStickyHeader()}
 
-      <AutoHideAnimatedScrollView
+      <Animated.ScrollView
         contentContainerStyle={[styles.scrollContent, { paddingTop: 0, paddingBottom: insets.bottom + 40 }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#6366f1" />}
         showsVerticalScrollIndicator={false}

@@ -238,7 +238,7 @@ const AutoBackupModal = ({ visible, onClose, onSave, settings, isDark, primaryCo
       <View style={styles.modalOverlay}>
         <BlurView intensity={isDark ? 60 : 90} style={styles.modalBlur} tint={isDark ? 'dark' : 'light'}>
           <View style={[styles.modalContent, isDark && styles.modalContentDark, { maxHeight: '80%' }]}>
-            <AutoHideAnimatedScrollView showsVerticalScrollIndicator={false}>
+            <Animated.ScrollView showsVerticalScrollIndicator={false}>
               <View style={styles.modalHeader}>
                 <Ionicons name="time-outline" size={32} color={primaryColor} />
                 <Text style={[styles.modalTitle, isDark && styles.textLight]}>Auto Backup</Text>
@@ -779,7 +779,7 @@ sweetAlert.alert('Backup Preview', '', 'info');
       colors={isDark ? ['#0f0f1e', '#1a1a2e'] : ['#f8faff', '#f0f4ff']}
       style={styles.container}
     >
-      <AutoHideAnimatedScrollView
+      <Animated.ScrollView
         contentContainerStyle={[
           styles.content,
           { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 40 }

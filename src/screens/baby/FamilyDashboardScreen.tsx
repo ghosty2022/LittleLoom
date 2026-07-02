@@ -373,7 +373,7 @@ const ActionModal: React.FC<ActionModalProps> = ({
               </TouchableOpacity>
             )}
           </View>
-          <AutoHideAnimatedScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalScrollContent}>
+          <Animated.ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalScrollContent}>
             {children}
           </Animated.ScrollView>
         </Animated.View>
@@ -690,7 +690,7 @@ export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreen
 
   const renderBabyChips = () => (
     <View style={styles.babyChipsContainer}>
-      <AutoHideAnimatedScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.babyChipsContent}>
+      <Animated.ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.babyChipsContent}>
         {babies.map((baby) => (
           <TouchableOpacity
             key={baby.id}

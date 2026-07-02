@@ -174,7 +174,7 @@ export default function HelpCenterScreen({ navigation }: Props) {
   return (
     <LinearGradient colors={bgColors} style={styles.container}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-      <AutoHideAnimatedScrollView
+      <Animated.ScrollView
         contentContainerStyle={[
           styles.content,
           { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 40 },
@@ -238,7 +238,7 @@ export default function HelpCenterScreen({ navigation }: Props) {
             style={styles.sectionWrapper}
           >
             <SectionHeader icon="bulb-outline" title="Quick Tips" color="#f59e0b" isDark={isDark} />
-            <AutoHideAnimatedScrollView
+            <Animated.ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.tipsScroll}

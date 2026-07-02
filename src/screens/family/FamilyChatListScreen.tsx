@@ -1219,7 +1219,7 @@ showSweetAlert(
         </TouchableOpacity>
       </View>
 
-      <AutoHideAnimatedScrollView
+      <Animated.ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.membersScroll}
@@ -1849,7 +1849,7 @@ showSweetAlert(
               Select Members
             </Text>
 
-            <AutoHideAnimatedScrollView style={styles.memberSelectList}>
+            <Animated.ScrollView style={styles.memberSelectList}>
               {otherMembers.map((member) => (
                 <TouchableOpacity
                   key={member.id}

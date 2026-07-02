@@ -560,7 +560,7 @@ const MessageInfoModal: React.FC<{
             </TouchableOpacity>
           </View>
 
-          <AutoHideAnimatedScrollView
+          <Animated.ScrollView
             showsVerticalScrollIndicator={false}
             style={styles.messageInfoContent}
           >
@@ -1342,7 +1342,7 @@ const MessageBubble: React.FC<{
             ]}
             tint={theme.background.main === '#0f0f1e' ? 'dark' : 'light'}
           >
-            <AutoHideAnimatedScrollView
+            <Animated.ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
               style={[
@@ -2260,7 +2260,7 @@ showSweetAlert('Chat Options', '', [
             style={StyleSheet.absoluteFill}
             tint={darkMode ? 'dark' : 'light'}
           />
-          <AutoHideAnimatedScrollView
+          <Animated.ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.userBubblesScroll}
@@ -2326,7 +2326,7 @@ showSweetAlert('Chat Options', '', [
       >
         {/* Quick Replies */}
         {!inputText && !replyingTo && (
-          <AutoHideAnimatedScrollView
+          <Animated.ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.quickReplies}

@@ -57,7 +57,7 @@ import type { Post, PostMood, Poll, CommunityUser } from '../../context/Communit
 import SafeAvatar from '../../components/SafeAvatar';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
-import { useAutoHideNav } from '../../hooks/useAutoHideNav';
+import { useRouteBasedNavVisibility } from '../../hooks/useRouteBasedNavVisibility';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { useUser } from '../../context/UserContext';
@@ -1428,7 +1428,7 @@ const NewPostsBanner = React.memo(({ count, onPress }: { count: number; onPress:
 // ═══════════════════════════════════════════════════════════════
 export default function CommunityScreen({ navigation }: Props) {
   const sweetAlert = useSweetAlert();
-  useAutoHideNav({ isCommunityScreen: true });
+  useRouteBasedNavVisibility();
 
   const {
     posts, topics, currentUser, likePost, unlikePost, repostPost, unrepostPost,

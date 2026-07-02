@@ -189,7 +189,7 @@ export default function CoParentSetupScreen({ navigation }: Props) {
         <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.container}>
-          <AutoHideAnimatedScrollView
+          <Animated.ScrollView
             contentContainerStyle={[
               styles.scrollContent,
               { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 20 },

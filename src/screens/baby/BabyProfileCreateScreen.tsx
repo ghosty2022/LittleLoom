@@ -143,7 +143,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
   const isMounted = useRef(true);
 
   /* ---- Refs ---- */
-  const scrollViewRef = useRef<AutoHideAnimatedScrollView>(null);
+  const scrollViewRef = useRef<Animated.ScrollView>(null);
   const nameInputRef = useRef<TextInput>(null);
 
   /* ---- Derived / Memoized ---- */
@@ -845,7 +845,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
         <StatusBar barStyle={statusBarStyle} translucent backgroundColor="transparent" />
 
         <KeyboardAvoidingView behavior={kbBehavior} enabled={kbEnabled} style={{ flex: 1 }}>
-          <AutoHideAnimatedScrollView
+          <Animated.ScrollView
             ref={scrollViewRef}
             contentContainerStyle={[
               styles.scrollContent,

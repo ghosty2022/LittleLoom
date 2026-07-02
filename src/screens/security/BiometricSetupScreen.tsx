@@ -351,7 +351,7 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
           </TouchableOpacity>
         </View>
 
-        <AutoHideAnimatedScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+        <Animated.ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
           <View style={styles.mainContent}>
             {selectedType && (
               <View style={styles.iconWrapper}>

@@ -21,7 +21,7 @@ import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { updateSectionState } from '../../hooks/useIntelligentSplash';
-import { useAutoHideNav } from '../../hooks/useAutoHideNav';
+import { useRouteBasedNavVisibility } from '../../hooks/useRouteBasedNavVisibility';
 import { useCommunity } from '../../context/CommunityContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
@@ -62,7 +62,7 @@ const FALLBACK_TOPICS = [
 
 export default function CommunityOnboardingScreen({ navigation, route, onComplete }: CommunityOnboardingScreenProps) {
   const sweetAlert = useSweetAlert();
-  useAutoHideNav({ isCommunityScreen: true });
+  useRouteBasedNavVisibility();
   const insets = useSafeAreaInsets();
 
   const [selectedTopics, setSelectedTopics] = useState<string[]>([]);

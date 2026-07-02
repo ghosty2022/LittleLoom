@@ -167,7 +167,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
       <LinearGradient colors={isDark ? ['#0a0a0a', '#1a1a2e'] : ['#f0f4ff', '#e0e7ff']} style={styles.gradient}>
         <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
-        <AutoHideAnimatedScrollView
+        <Animated.ScrollView
           contentContainerStyle={[styles.content, { paddingTop: insets.top + 40, paddingBottom: insets.bottom + 40 }]}
           showsVerticalScrollIndicator={false}
         >

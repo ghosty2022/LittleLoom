@@ -531,7 +531,7 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
           </TouchableOpacity>
         </View>
 
-        <AutoHideAnimatedScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        <Animated.ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
           {/* Author Card - with SafeAvatar */}
           <Animated.View entering={FadeInUp.duration(400)}>
@@ -724,7 +724,7 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
             </View>
 
             {filteredTopics.length > 0 ? (
-              <AutoHideAnimatedScrollView 
+              <Animated.ScrollView 
                 horizontal 
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.topicsStrip}

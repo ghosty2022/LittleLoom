@@ -597,7 +597,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
       >
-        <AutoHideAnimatedScrollView
+        <Animated.ScrollView
           contentContainerStyle={[
             styles.scrollContent,
             { paddingTop: insets.top + 40, paddingBottom: insets.bottom + 40 },

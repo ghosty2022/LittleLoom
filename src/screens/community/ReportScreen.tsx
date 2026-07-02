@@ -415,7 +415,7 @@ export default function ReportScreen({ navigation, route }: ReportScreenProps) {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
       >
-        <AutoHideAnimatedScrollView 
+        <Animated.ScrollView 
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
         >

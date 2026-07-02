@@ -21,7 +21,7 @@ import type { CommunityStackParamList } from '../../types/navigation';
 
 import { Post, Topic, useCommunity } from '../../context/CommunityContext';
 import { SafeAvatar } from '../../components/SafeAvatar';
-import { useAutoHideNav } from '../../hooks/useAutoHideNav';
+import { useRouteBasedNavVisibility } from '../../hooks/useRouteBasedNavVisibility';
 import { useReportRoute } from '../../hooks/useReportRoute';
 import { useSafeCustomization } from '../../hooks/useSafeContexts';
 import { useUser } from '../../context/UserContext';
@@ -54,7 +54,7 @@ const AvatarImage = ({ uri, size = 40 }: { uri: string; size?: number }) => (
 );
 
 export default function TopicScreen({ navigation, route }: TopicScreenProps) {
-  useAutoHideNav({ isCommunityScreen: true });
+  useRouteBasedNavVisibility();
   useReportRoute();
 
   const { topicId } = route.params;

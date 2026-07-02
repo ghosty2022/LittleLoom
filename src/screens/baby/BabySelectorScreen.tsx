@@ -184,7 +184,7 @@ sweetAlert.confirm(
         </TouchableOpacity>
       </Animated.View>
 
-      <AutoHideAnimatedScrollView
+      <Animated.ScrollView
         contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 80, paddingBottom: insets.bottom + 40 }]}
         showsVerticalScrollIndicator={false}
       >

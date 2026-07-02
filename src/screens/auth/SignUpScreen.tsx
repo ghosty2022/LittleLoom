@@ -337,7 +337,7 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
       >
-        <AutoHideAnimatedScrollView
+        <Animated.ScrollView
           contentContainerStyle={[
             styles.scrollContent,
             { paddingTop: insets.top + 30, paddingBottom: insets.bottom + 40 },

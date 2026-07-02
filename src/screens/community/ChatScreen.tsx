@@ -373,7 +373,7 @@ const MessageBubble = React.memo(({
       <Modal visible={showActions} transparent animationType="fade" onRequestClose={() => setShowActions(false)}>
         <Pressable style={styles.actionOverlay} onPress={() => setShowActions(false)}>
           <Animated.View entering={FadeIn.duration(200)} style={[styles.actionMenu, { backgroundColor: isDark ? LL.darkCard : LL.white, borderColor: isDark ? LL.darkBorder : LL.gray200 }]}>
-            <AutoHideAnimatedScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.emojiRow, { borderBottomColor: isDark ? LL.darkBorder : LL.gray200 }]}>
+            <Animated.ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.emojiRow, { borderBottomColor: isDark ? LL.darkBorder : LL.gray200 }]}>
               {['❤️', '👍', '😂', '😮', '😢', '🎉'].map((emoji) => (
                 <TouchableOpacity key={emoji} style={styles.emojiButton} onPress={() => { onReaction(emoji); setShowActions(false); }}>
                   <Text style={styles.emojiText}>{emoji}</Text>

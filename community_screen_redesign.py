@@ -69,7 +69,7 @@ import type { Post, PostMood, Poll } from '../../context/CommunityContext';
 import SafeAvatar from '../../components/SafeAvatar';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
-import { useAutoHideNav } from '../../hooks/useAutoHideNav';
+import { useRouteBasedNavVisibility } from '../../hooks/useRouteBasedNavVisibility';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { useUser } from '../../context/UserContext';

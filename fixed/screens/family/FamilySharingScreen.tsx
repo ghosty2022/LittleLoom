@@ -229,7 +229,7 @@ const ActionModal: React.FC<ActionModalProps> = ({
               </TouchableOpacity>
             )}
           </View>
-          <AutoHideAnimatedScrollView
+          <Animated.ScrollView
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.modalScrollContent}
           >
