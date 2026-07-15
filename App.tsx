@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import {
   StyleSheet,
   AppState,
@@ -16,7 +16,8 @@ import * as SplashScreen from 'expo-splash-screen';
 import * as SystemUI from 'expo-system-ui';
 import * as Font from 'expo-font';
 import { LinearGradient } from 'expo-linear-gradient';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getAppSetting } from '@/database/dbHelpers';
+import { DatabaseProvider } from '@/context/DatabaseContext';
 import { Image } from 'react-native';
 
 import { AppProvider, useTheme } from '@/context/AppContext';
@@ -42,7 +43,7 @@ LogBox.ignoreLogs([
 
 SplashScreen.preventAutoHideAsync();
 
-const APPEARANCE_STORAGE_KEY = '@littleloom_appearance_v1';
+// Theme now loaded from Drizzle app_settings table via DatabaseContext
 
 // ─── Optimized font preloading: only critical fonts ──────────────────
 const ICON_FONTS_TO_PRELOAD = {
@@ -165,13 +166,13 @@ export default function App(): JSX.Element | null {
   const initStartedRef = useRef(false);
   const stateSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ─── Phase 0: Read theme from storage immediately ─────────────────
+  // ─── Phase 0: Read theme from Drizzle DB immediately ─────────────────
   useEffect(() => {
     let mounted = true;
 
     const loadTheme = async () => {
       try {
-        const saved = await AsyncStorage.getItem(APPEARANCE_STORAGE_KEY);
+        const saved = await getAppSetting('appearance');
         if (!mounted) return;
 
         const isDark =
@@ -337,20 +338,22 @@ export default function App(): JSX.Element | null {
   }
 
   return (
-    <ErrorBoundary>
-      <GestureHandlerRootView style={styles.root}>
-        <SafeAreaProvider>
-          <AppProvider>
-            <ContextProvider>
-              <InnerApp
-                initialState={initialState}
-                onStateChange={onStateChange}
-              />
-            </ContextProvider>
-          </AppProvider>
-        </SafeAreaProvider>
-      </GestureHandlerRootView>
-    </ErrorBoundary>
+    <DatabaseProvider>
+      <ErrorBoundary>
+        <GestureHandlerRootView style={styles.root}>
+          <SafeAreaProvider>
+            <AppProvider>
+              <ContextProvider>
+                <InnerApp
+                  initialState={initialState}
+                  onStateChange={onStateChange}
+                />
+              </ContextProvider>
+            </AppProvider>
+          </SafeAreaProvider>
+        </GestureHandlerRootView>
+      </ErrorBoundary>
+    </DatabaseProvider>
   );
 }
 

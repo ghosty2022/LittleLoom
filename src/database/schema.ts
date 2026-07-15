@@ -186,6 +186,38 @@ export const scanSessions = sqliteTable('scan_sessions', {
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   FAMILY MEMBERS TABLE
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+export const familyMembers = sqliteTable('family_members', {
+  id: text('id').primaryKey().notNull(),
+  babyId: text('baby_id').notNull().references(() => babies.id, { onDelete: 'cascade' }),
+  userId: text('user_id'), // null for pending invites
+  email: text('email').notNull(),
+  fullName: text('full_name').notNull(),
+  avatar: text('avatar'),
+  role: text('role').notNull(), // 'parent1' | 'parent2' | 'guardian' | 'viewer'
+  relationship: text('relationship').notNull(),
+  permissions: text('permissions', { mode: 'json' }).$type<Record<string, boolean>>().notNull().default(sql`'{}'`),
+  addedAt: text('added_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+  addedBy: text('added_by').notNull(),
+  canBeRemoved: integer('can_be_removed', { mode: 'boolean' }).notNull().default(true),
+  lastActive: text('last_active'),
+  phoneNumber: text('phone_number'),
+  notificationsEnabled: integer('notifications_enabled', { mode: 'boolean' }).notNull().default(true),
+  status: text('status').notNull().default('pending'), // 'pending' | 'active' | 'declined'
+  updatedAt: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+  syncStatus: text('sync_status').notNull().default('pending'),
+  isDeleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
+}, (table) => ({
+  babyIdx: index('idx_family_baby').on(table.babyId),
+  emailIdx: index('idx_family_email').on(table.email),
+  roleIdx: index('idx_family_role').on(table.role),
+  statusIdx: index('idx_family_status').on(table.status),
+  babyRoleIdx: index('idx_family_baby_role').on(table.babyId, table.role),
+}));
+
+/* ═══════════════════════════════════════════════════════════════════════════
    TYPE EXPORTS (inferred from schema)
    ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -212,3 +244,6 @@ export type NewAppSetting = typeof appSettings.$inferInsert;
 
 export type ScanSession = typeof scanSessions.$inferSelect;
 export type NewScanSession = typeof scanSessions.$inferInsert;
+
+export type FamilyMember = typeof familyMembers.$inferSelect;
+export type NewFamilyMember = typeof familyMembers.$inferInsert;

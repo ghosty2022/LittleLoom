@@ -1,8 +1,14 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 
-import * as SecureStore from 'expo-secure-store';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  getFamilyMembersByBabyFromDb,
+  getFamilyMemberByIdFromDb,
+  getFamilyMemberByEmailAndBabyFromDb,
+  createFamilyMemberInDb,
+  updateFamilyMemberInDb,
+  softDeleteFamilyMemberInDb,
+} from '../database/dbHelpers';
 
 import { useBaby } from './BabyContext';
 import { UserRole, Permission, ROLE_PERMISSIONS, FamilyMember } from '../types/roles';
@@ -10,7 +16,8 @@ import { useUser } from './UserContext';
 
 export type { FamilyMember } from '../types/roles';
 
-const PARENT2_PROFILE_KEY = 'littleloom_parent2_profile_secure';
+// Parent2 is now stored in family_members table with role='parent2'
+// No more SecureStore key needed
 
 const EMAIL_REGEX = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
 
@@ -131,48 +138,36 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         });
       }
 
-      if (currentBaby.parent2Id) {
-        try {
-          const parent2Str = await SecureStore.getItemAsync(PARENT2_PROFILE_KEY);
-          if (parent2Str) {
-            const parent2Data = JSON.parse(parent2Str);
-            members.push({
-              id: currentBaby.parent2Id,
-              userId: currentBaby.parent2Id,
-              fullName: parent2Data.fullName || 'Parent 2',
-              email: parent2Data.email || '',
-              avatar: parent2Data.avatar,
-              role: UserRole.PARENT_2,
-              relationship: 'Co-Parent',
-              permissions: ROLE_PERMISSIONS[UserRole.PARENT_2],
-              addedAt: currentBaby.createdAt,
-              addedBy: currentBaby.parent1Id || '',
-              canBeRemoved: true,
-              lastActive: parent2Data.lastActive,
-              phoneNumber: parent2Data.phoneNumber,
-              notificationsEnabled: parent2Data.notificationsEnabled ?? true,
-            });
-          }
-        } catch (error) {
-          console.error('Error loading parent2:', error);
+      // Load all family members from Drizzle DB
+      try {
+        const dbMembers = await getFamilyMembersByBabyFromDb(currentBaby.id);
+        
+        for (const dbMember of dbMembers) {
+          // Skip if this is parent1 (we already added from profile)
+          if (dbMember.role === 'parent1') continue;
+          
+          const member: FamilyMember = {
+            id: dbMember.id,
+            userId: dbMember.userId || dbMember.id,
+            fullName: dbMember.fullName,
+            email: dbMember.email,
+            avatar: dbMember.avatar || undefined,
+            role: dbMember.role === 'parent2' ? UserRole.PARENT_2 
+              : dbMember.role === 'guardian' ? UserRole.GUARDIAN 
+              : UserRole.VIEWER,
+            relationship: dbMember.relationship,
+            permissions: dbMember.permissions as Permission || ROLE_PERMISSIONS[UserRole.VIEWER],
+            addedAt: dbMember.addedAt,
+            addedBy: dbMember.addedBy,
+            canBeRemoved: dbMember.canBeRemoved,
+            lastActive: dbMember.lastActive || undefined,
+            phoneNumber: dbMember.phoneNumber || undefined,
+            notificationsEnabled: dbMember.notificationsEnabled,
+          };
+          members.push(member);
         }
-      }
-
-      const guardiansKey = `littleloom_guardians_${currentBaby.id}`;
-      const guardiansStr = await AsyncStorage.getItem(guardiansKey);
-      if (guardiansStr) {
-        try {
-          const guardianData = JSON.parse(guardiansStr);
-          guardianData.forEach((g: FamilyMember) => {
-            members.push({
-              ...g,
-              permissions: ROLE_PERMISSIONS[g.role] || ROLE_PERMISSIONS[UserRole.VIEWER],
-              canBeRemoved: true,
-            });
-          });
-        } catch (parseError) {
-          console.error('Error parsing guardians data:', parseError);
-        }
+      } catch (error) {
+        console.error('Error loading family members from DB:', error);
       }
 
       setState({
@@ -205,19 +200,20 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     try {
-      const existingStr = await SecureStore.getItemAsync(PARENT2_PROFILE_KEY);
-      const existing = existingStr ? JSON.parse(existingStr) : {};
+      const parent2Member = await getFamilyMemberByIdFromDb(currentBaby.parent2Id);
+      if (!parent2Member) {
+        sweetAlert.alert('Error', 'Parent 2 not found in database', 'info');
+        return false;
+      }
 
-      const updated = {
-        ...existing,
-        ...updates,
-        id: currentBaby.parent2Id,
-        updatedAt: new Date().toISOString(),
-      };
+      const dbUpdates: Partial<typeof familyMembers.$inferInsert> = {};
+      if (updates.fullName !== undefined) dbUpdates.fullName = updates.fullName;
+      if (updates.email !== undefined) dbUpdates.email = updates.email;
+      if (updates.avatar !== undefined) dbUpdates.avatar = updates.avatar;
+      if (updates.phoneNumber !== undefined) dbUpdates.phoneNumber = updates.phoneNumber;
+      dbUpdates.lastActive = new Date().toISOString();
 
-      await SecureStore.setItemAsync(PARENT2_PROFILE_KEY, JSON.stringify(updated), {
-        keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
-      });
+      await updateFamilyMemberInDb(currentBaby.parent2Id, dbUpdates);
 
       if (updates.fullName || updates.email) {
         await updateBaby(currentBaby.id, {
@@ -266,16 +262,20 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     try {
-      const guardiansKey = `littleloom_guardians_${currentBaby?.id}`;
-      const existing = await AsyncStorage.getItem(guardiansKey);
-      if (!existing) return false;
+      const dbUpdates: Partial<typeof familyMembers.$inferInsert> = {};
+      if (updates.fullName !== undefined) dbUpdates.fullName = updates.fullName;
+      if (updates.email !== undefined) dbUpdates.email = updates.email;
+      if (updates.avatar !== undefined) dbUpdates.avatar = updates.avatar;
+      if (updates.phoneNumber !== undefined) dbUpdates.phoneNumber = updates.phoneNumber;
+      if (updates.relationship !== undefined) dbUpdates.relationship = updates.relationship;
+      if (updates.role !== undefined) {
+        dbUpdates.role = updates.role === UserRole.PARENT_2 ? 'parent2'
+          : updates.role === UserRole.GUARDIAN ? 'guardian'
+          : 'viewer';
+      }
+      if (updates.notificationsEnabled !== undefined) dbUpdates.notificationsEnabled = updates.notificationsEnabled;
 
-      const guardians: FamilyMember[] = JSON.parse(existing);
-      const updated = guardians.map(g => 
-        g.id === memberId ? { ...g, ...updates, updatedAt: new Date().toISOString() } : g
-      );
-
-      await AsyncStorage.setItem(guardiansKey, JSON.stringify(updated));
+      await updateFamilyMemberInDb(memberId, dbUpdates);
       await loadFamily();
 
       return true;
@@ -296,35 +296,34 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     try {
-      const newMember: FamilyMember = {
-        id: generateId(),
-        userId: '',
-        fullName: 'Pending Invitation',
-        email,
-        role,
-        relationship,
-        permissions: ROLE_PERMISSIONS[role],
-        addedAt: new Date().toISOString(),
-        addedBy: profile.id,
-        canBeRemoved: true,
-        notificationsEnabled: true,
-      };
-
-      const guardiansKey = `littleloom_guardians_${currentBaby.id}`;
-      const existing = await AsyncStorage.getItem(guardiansKey);
-      const guardians: FamilyMember[] = existing ? JSON.parse(existing) : [];
-
-      const existingInvite = guardians.find(g => g.email.toLowerCase() === email.toLowerCase());
+      // Check for duplicate email
+      const existingInvite = await getFamilyMemberByEmailAndBabyFromDb(email.toLowerCase(), currentBaby.id);
       if (existingInvite) {
         sweetAlert.alert('Duplicate Invite', 'An invitation has already been sent to this email', 'info');
         return false;
       }
 
-      guardians.push(newMember);
+      const newId = generateId();
+      const dbRole = role === UserRole.PARENT_2 ? 'parent2'
+        : role === UserRole.GUARDIAN ? 'guardian'
+        : 'viewer';
 
-      await AsyncStorage.setItem(guardiansKey, JSON.stringify(guardians));
+      await createFamilyMemberInDb({
+        id: newId,
+        babyId: currentBaby.id,
+        userId: null, // pending invite has no userId yet
+        email: email.toLowerCase(),
+        fullName: 'Pending Invitation',
+        role: dbRole,
+        relationship,
+        permissions: ROLE_PERMISSIONS[role] as Record<string, boolean>,
+        addedBy: profile.id,
+        canBeRemoved: true,
+        notificationsEnabled: true,
+        status: 'pending',
+      });
 
-      const updatedGuardianIds = [...(currentBaby.guardianIds || []), newMember.id];
+      const updatedGuardianIds = [...(currentBaby.guardianIds || []), newId];
       await updateBaby(currentBaby.id, { guardianIds: updatedGuardianIds });
 
       await loadFamily();
@@ -333,6 +332,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       return true;
     } catch (error) {
+      console.error('Error sending invitation:', error);
       sweetAlert.alert('Error', 'Failed to send invitation', 'info');
       return false;
     }
@@ -349,20 +349,12 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     try {
-      const guardiansKey = `littleloom_guardians_${currentBaby.id}`;
-      const existing = await AsyncStorage.getItem(guardiansKey);
-
-      if (existing) {
-        const guardians: FamilyMember[] = JSON.parse(existing);
-        const filtered = guardians.filter(g => g.id !== memberId);
-        await AsyncStorage.setItem(guardiansKey, JSON.stringify(filtered));
-      }
+      await softDeleteFamilyMemberInDb(memberId);
 
       const updatedGuardianIds = (currentBaby.guardianIds || []).filter(id => id !== memberId);
       await updateBaby(currentBaby.id, { guardianIds: updatedGuardianIds });
 
       if (state.parent2?.id === memberId) {
-        await SecureStore.deleteItemAsync(PARENT2_PROFILE_KEY);
         await updateBaby(currentBaby.id, { parent2Id: undefined });
       }
 
@@ -375,6 +367,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       return true;
     } catch (error) {
+      console.error('Error removing member:', error);
       sweetAlert.alert('Error', 'Failed to remove member', 'info');
       return false;
     }
