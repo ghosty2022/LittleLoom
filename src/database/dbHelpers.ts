@@ -443,7 +443,6 @@ export async function runOneTimeMigration(): Promise<void> {
   }
   
   // Also migrate user-specific community selected topics
-  const allKeys = await AsyncStorage.getAllKeys();
   const userTopicKeys = allKeys.filter(k => k.startsWith('@community_selected_topics_'));
   for (const key of userTopicKeys) {
     try {
