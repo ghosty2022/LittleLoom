@@ -31,14 +31,22 @@
       "buildNumber": "1.0.0",
       "infoPlist": {
         "NSFaceIDUsageDescription": "This app uses Face ID to securely log you into your account.",
-        "NSPhotoLibraryUsageDescription": "LittleLoom needs access to your photos to let you attach them to baby logs and milestones.",
+        "NSPhotoLibraryUsageDescription": "LittleLoom needs access to your photos to let you attach them to baby logs, milestones, and to automatically detect baby-related photos in your gallery.",
+        "NSPhotoLibraryAddUsageDescription": "LittleLoom needs permission to save photos to your library.",
         "NSCameraUsageDescription": "LittleLoom needs camera access to let you capture photos for baby logs and milestones.",
+        "NSMicrophoneUsageDescription": "LittleLoom may use the microphone when recording videos of your baby.",
+        "NSLocationWhenInUseUsageDescription": "LittleLoom uses your location to tag where photos were taken.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "LittleLoom uses your location to tag where photos were taken, even in the background.",
         "UIBackgroundModes": [
           "fetch",
-          "remote-notification"
+          "remote-notification",
+          "processing"
         ],
         "ITSAppUsesNonExemptEncryption": false,
-        "UIUserInterfaceStyle": "Automatic"
+        "UIUserInterfaceStyle": "Automatic",
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true
+        }
       }
     },
     "android": {
@@ -56,7 +64,14 @@
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
         "android.permission.READ_MEDIA_IMAGES",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_DATA_SYNC",
+        "android.permission.REQUEST_INSTALL_PACKAGES"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -102,6 +117,20 @@
           "photosPermission": "Allow LittleLoom to access your photos to attach them to baby logs and milestones.",
           "cameraPermission": "Allow LittleLoom to use your camera to capture photos for baby logs and milestones.",
           "microphonePermission": false
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow LittleLoom to access your photos for automatic baby photo detection and gallery management.",
+          "savePhotosPermission": "Allow LittleLoom to save photos to your library.",
+          "isAccessMediaLocationEnabled": true
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow LittleLoom to use your location to tag where photos were taken."
         }
       ],
       [
