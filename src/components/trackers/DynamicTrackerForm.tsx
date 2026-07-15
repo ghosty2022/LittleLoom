@@ -975,26 +975,26 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
       timeContext,
     };
     
-    const animatedWrapper = (children: React.ReactNode) => (
-      <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(50)}>
+    const animatedWrapper = (children: React.ReactNode, key?: string) => (
+      <Animated.View key={key} entering={shouldReduceMotion ? undefined : FadeInUp.delay(50)}>
         {children}
       </Animated.View>
     );
     
     switch (field.type) {
-      case 'text': return animatedWrapper(<SmartTextField {...commonProps} />);
-      case 'number': return animatedWrapper(<SmartNumberField {...commonProps} />);
-      case 'select': return animatedWrapper(<SmartSelectField {...commonProps} />);
-      case 'multiselect': return animatedWrapper(renderMultiselectField(field));
-      case 'toggle': return animatedWrapper(renderToggleField(field));
-      case 'duration': return animatedWrapper(<SmartDurationField {...commonProps} />);
-      case 'rating': return animatedWrapper(renderRatingField(field));
-      case 'textarea': return animatedWrapper(renderTextareaField(field));
-      case 'mood_emoji': return animatedWrapper(<SmartMoodField {...commonProps} />);
-      case 'slider': return animatedWrapper(renderSliderField(field));
-      case 'photo': return animatedWrapper(renderPhotoField(field));
-      case 'temperature': return animatedWrapper(renderTemperatureField(field));
-      default: return animatedWrapper(<SmartTextField {...commonProps} />);
+      case 'text': return animatedWrapper(<SmartTextField {...commonProps} />, field.id);
+      case 'number': return animatedWrapper(<SmartNumberField {...commonProps} />, field.id);
+      case 'select': return animatedWrapper(<SmartSelectField {...commonProps} />, field.id);
+      case 'multiselect': return animatedWrapper(renderMultiselectField(field), field.id);
+      case 'toggle': return animatedWrapper(renderToggleField(field), field.id);
+      case 'duration': return animatedWrapper(<SmartDurationField {...commonProps} />, field.id);
+      case 'rating': return animatedWrapper(renderRatingField(field), field.id);
+      case 'textarea': return animatedWrapper(renderTextareaField(field), field.id);
+      case 'mood_emoji': return animatedWrapper(<SmartMoodField {...commonProps} />, field.id);
+      case 'slider': return animatedWrapper(renderSliderField(field), field.id);
+      case 'photo': return animatedWrapper(renderPhotoField(field), field.id);
+      case 'temperature': return animatedWrapper(renderTemperatureField(field), field.id);
+      default: return animatedWrapper(<SmartTextField {...commonProps} />, field.id);
     }
   }, [data, errors, isFieldVisible, tracker, fullThemeColors, borderRadiusValue, fontSizeMultiplier, shouldReduceMotion, getFieldSuggestion, getYesterdayValue, getFieldTrend, timeContext, updateField, renderMultiselectField, renderToggleField, renderRatingField, renderTextareaField, renderSliderField, renderPhotoField, renderTemperatureField]);
 
