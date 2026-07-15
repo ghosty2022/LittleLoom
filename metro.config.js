@@ -44,6 +44,7 @@ config.resolver.assetExts = [
   'wav',
   'db',
   'sqlite',
+  'sql',
 ];
 
 // ─── Path alias for @/ imports ──────────────────────────────────────

@@ -640,8 +640,8 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
         loggedByName: row.loggedByName || '',
         loggedByRole: (row.loggedByRole as any) || 'parent1',
         notes: row.notes,
-        photoUris: row.photoUris ? JSON.parse(row.photoUris as any) : undefined,
-        tags: row.tags ? JSON.parse(row.tags as any) : undefined,
+        photoUris: row.photoUris ? safeParse<string[]>(row.photoUris as any, []) : undefined,
+                tags: row.tags ? safeParse<string[]>(row.tags as any, []) : undefined,
         location: row.location ? { name: row.location } : undefined,
         mood: row.mood,
         notificationId: row.notificationId,
@@ -1096,8 +1096,7 @@ Alert.alert('Missing Information', `Please fill in: ${missingFields.join(', ')}`
           : e
       );
 
-      // ── Update gallery storage if photos changed ──
-      if (updates.photoUris !== undefined) {
+      // ── Mark as deleted in gallery storage ──
         try {
           const allGalleryEntries = await AsyncStorage.getItem(TRACKER_ENTRIES_GALLERY_KEY);
           const galleryParsed: any[] = allGalleryEntries ? JSON.parse(allGalleryEntries) : [];
@@ -1159,8 +1158,7 @@ Alert.alert('Missing Information', `Please fill in: ${missingFields.join(', ')}`
         e.id === entryId ? { ...e, isDeleted: true } : e
       );
 
-      // ── Update gallery storage if photos changed ──
-      if (updates.photoUris !== undefined) {
+      // ── Mark as deleted in gallery storage ──
         try {
           const allGalleryEntries = await AsyncStorage.getItem(TRACKER_ENTRIES_GALLERY_KEY);
           const galleryParsed: any[] = allGalleryEntries ? JSON.parse(allGalleryEntries) : [];

@@ -307,7 +307,7 @@ export const IntegratedTrackerProvider: React.FC<{ children: React.ReactNode }> 
     const load = async () => {
       try {
         // Try DB first, fallback to AsyncStorage for migration
-        const dbVal = await getAppSetting('unlocked_achievements');
+        const dbVal = await getAppSetting('@littleloom_unlocked_achievements_v2');
         if (dbVal) {
           setState(prev => ({ ...prev, unlockedAchievements: JSON.parse(dbVal) }));
         } else {

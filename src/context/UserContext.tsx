@@ -3,7 +3,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getAppSetting, setAppSetting } from '@/database/dbHelpers';
-import { getAppSetting, setAppSetting, deleteAppSetting } from '@/database/dbHelpers';
+import { deleteAppSetting } from '@/database/dbHelpers';
 import { useAuth } from './AuthContext';
 import { UserRole, Permission, ROLE_PERMISSIONS } from '../types/roles';
 
