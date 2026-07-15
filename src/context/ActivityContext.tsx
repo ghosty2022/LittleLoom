@@ -1,6 +1,14 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState, useMemo } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
+import {
+  createEntryInDb,
+  updateEntryInDb,
+  softDeleteEntryInDb,
+  getEntriesByBabyFromDb,
+  getAppSetting,
+  setAppSetting,
+} from '../database/dbHelpers';
 
 export type ActivityType = 
   | 'potty' 
@@ -219,9 +227,31 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
     setError(null);
 
     try {
-      const stored = await AsyncStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored) as ActivityEntry[];
+      // Load from Drizzle DB instead of AsyncStorage
+      const currentBabyId = await getAppSetting('current_baby_id');
+      if (currentBabyId) {
+        const rows = await getEntriesByBabyFromDb(currentBabyId);
+        const parsed: ActivityEntry[] = rows.map(row => {
+          const data = typeof row.data === 'string' ? JSON.parse(row.data) : row.data;
+          return {
+            id: row.id,
+            type: row.trackerId as ActivityType,
+            babyId: row.babyId,
+            timestamp: row.timestamp,
+            title: row.title,
+            details: row.notes,
+            icon: undefined,
+            loggedBy: row.loggedBy || '',
+            loggedByName: row.loggedByName || '',
+            ...data,
+            notes: row.notes,
+            photo: data.photo || (row.photoUris ? JSON.parse(row.photoUris as any)[0] : undefined),
+            tags: row.tags ? JSON.parse(row.tags as any) : undefined,
+            notificationId: row.notificationId,
+            reminderScheduled: row.reminderScheduled,
+            syncedAt: row.syncedAt,
+          } as ActivityEntry;
+        });
         setEntries(parsed);
       }
     } catch (err) {
@@ -233,34 +263,41 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
     }
   }, []);
 
-  const saveEntries = useCallback(async (newEntries: ActivityEntry[]) => {
-    try {
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(newEntries));
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to save activities';
-      throw new Error(message);
-    }
+  const saveEntries = useCallback(async (_newEntries: ActivityEntry[]) => {
+    // DEPRECATED: Activities now persist via Drizzle DB directly
+    // Kept for backward compat during migration
   }, []);
 
   const addEntry = useCallback(async (entry: Omit<ActivityEntry, 'id'>) => {
     try {
-      const newEntry: ActivityEntry = {
-        ...entry,
-        id: `activity_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-      };
+      const newId = `activity_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      const newEntry: ActivityEntry = { ...entry, id: newId };
+
+      // Extract data fields for DB storage
+      const entryData: Record<string, unknown> = {};
+      const skipFields = ['id', 'type', 'babyId', 'timestamp', 'title', 'details', 'icon', 'loggedBy', 'loggedByName', 'notes', 'photo', 'tags', 'notificationId', 'reminderScheduled', 'syncedAt'];
+      for (const [key, value] of Object.entries(entry)) {
+        if (!skipFields.includes(key) && value !== undefined) {
+          entryData[key] = value;
+        }
+      }
+
+      await createEntryInDb({
+        id: newId,
+        trackerId: entry.type,
+        babyId: entry.babyId,
+        timestamp: entry.timestamp,
+        title: entry.title,
+        data: entryData,
+        notes: entry.notes || entry.details,
+        photoUris: entry.photo ? [entry.photo] : undefined,
+        tags: entry.tags,
+        loggedBy: entry.loggedBy,
+        loggedByName: entry.loggedByName,
+      });
 
       const updatedEntries = [newEntry, ...entries];
-      await saveEntries(updatedEntries);
       setEntries(updatedEntries);
-
-      try {
-        const babyKey = BABY_ACTIVITIES_KEY(entry.babyId);
-        const babyStored = await AsyncStorage.getItem(babyKey);
-        const babyActivities: ActivityEntry[] = babyStored ? JSON.parse(babyStored) : [];
-        babyActivities.unshift(newEntry);
-        await AsyncStorage.setItem(babyKey, JSON.stringify(babyActivities));
-      } catch {
-      }
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     } catch (err) {
@@ -269,33 +306,31 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
       throw err;
     }
-  }, [entries, saveEntries]);
+  }, [entries]);
 
   const updateEntry = useCallback(async (id: string, updates: Partial<ActivityEntry>) => {
     try {
+      const entryData: Record<string, unknown> = {};
+      const skipFields = ['id', 'type', 'babyId', 'timestamp', 'title', 'details', 'icon', 'loggedBy', 'loggedByName', 'notes', 'photo', 'tags', 'notificationId', 'reminderScheduled', 'syncedAt'];
+      for (const [key, value] of Object.entries(updates)) {
+        if (!skipFields.includes(key) && value !== undefined) {
+          entryData[key] = value;
+        }
+      }
+
+      await updateEntryInDb(id, {
+        title: updates.title,
+        data: entryData,
+        notes: updates.notes || updates.details,
+        photoUris: updates.photo ? [updates.photo] : undefined,
+        tags: updates.tags,
+      });
+
       const updatedEntries = entries.map(entry => 
         entry.id === id ? { ...entry, ...updates } : entry
       );
 
-      await saveEntries(updatedEntries);
       setEntries(updatedEntries);
-
-      const entry = entries.find(e => e.id === id);
-      if (entry) {
-        try {
-          const babyKey = BABY_ACTIVITIES_KEY(entry.babyId);
-          const babyStored = await AsyncStorage.getItem(babyKey);
-          if (babyStored) {
-            const babyActivities: ActivityEntry[] = JSON.parse(babyStored);
-            const idx = babyActivities.findIndex(a => a.id === id);
-            if (idx >= 0) {
-              babyActivities[idx] = { ...babyActivities[idx], ...updates };
-              await AsyncStorage.setItem(babyKey, JSON.stringify(babyActivities));
-            }
-          }
-        } catch {
-        }
-      }
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     } catch (err) {
@@ -304,7 +339,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
       throw err;
     }
-  }, [entries, saveEntries]);
+  }, [entries]);
 
   const deleteEntry = useCallback(async (id: string) => {
     try {
@@ -314,22 +349,10 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
         if (service) await service.cancelNotification(entry.notificationId);
       }
 
-      const updatedEntries = entries.filter(entry => entry.id !== id);
-      await saveEntries(updatedEntries);
-      setEntries(updatedEntries);
+      await softDeleteEntryInDb(id);
 
-      if (entry) {
-        try {
-          const babyKey = BABY_ACTIVITIES_KEY(entry.babyId);
-          const babyStored = await AsyncStorage.getItem(babyKey);
-          if (babyStored) {
-            const babyActivities: ActivityEntry[] = JSON.parse(babyStored);
-            const filtered = babyActivities.filter(a => a.id !== id);
-            await AsyncStorage.setItem(babyKey, JSON.stringify(filtered));
-          }
-        } catch {
-        }
-      }
+      const updatedEntries = entries.filter(entry => entry.id !== id);
+      setEntries(updatedEntries);
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     } catch (err) {
@@ -338,7 +361,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
       throw err;
     }
-  }, [entries, saveEntries]);
+  }, [entries]);
 
   const getEntriesByType = useCallback((type: ActivityType, babyId?: string) => {
     return entries.filter(entry => {
@@ -445,7 +468,8 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
     try {
       const notifKeys = (await AsyncStorage.getAllKeys()).filter(k => k.startsWith(NOTIFICATION_PREFIX));
       await AsyncStorage.multiRemove(notifKeys);
-      await AsyncStorage.removeItem(STORAGE_KEY);
+      // Note: DB entries are NOT cleared here — this is a UI cache clear
+      // Use resetDatabase() from db.ts for full DB wipe
       setEntries([]);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to clear entries';
@@ -497,24 +521,41 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
 
   const syncWithBabyContext = useCallback(async (babyId: string) => {
     try {
-      const babyKey = BABY_ACTIVITIES_KEY(babyId);
-      const stored = await AsyncStorage.getItem(babyKey);
+      // Now syncs FROM Drizzle DB instead of AsyncStorage
+      const rows = await getEntriesByBabyFromDb(babyId);
+      const existingIds = new Set(entries.map(e => e.id));
+      const newActivities: ActivityEntry[] = [];
 
-      if (stored) {
-        const babyActivities = JSON.parse(stored) as ActivityEntry[];
-
-        const existingIds = new Set(entries.map(e => e.id));
-        const newActivities = babyActivities.filter(a => !existingIds.has(a.id));
-
-        if (newActivities.length > 0) {
-          const merged = [...newActivities, ...entries];
-          await saveEntries(merged);
-          setEntries(merged);
+      for (const row of rows) {
+        if (!existingIds.has(row.id)) {
+          const data = typeof row.data === 'string' ? JSON.parse(row.data) : row.data;
+          newActivities.push({
+            id: row.id,
+            type: row.trackerId as ActivityType,
+            babyId: row.babyId,
+            timestamp: row.timestamp,
+            title: row.title,
+            details: row.notes,
+            loggedBy: row.loggedBy || '',
+            loggedByName: row.loggedByName || '',
+            ...data,
+            notes: row.notes,
+            photo: data.photo || (row.photoUris ? JSON.parse(row.photoUris as any)[0] : undefined),
+            tags: row.tags ? JSON.parse(row.tags as any) : undefined,
+            notificationId: row.notificationId,
+            reminderScheduled: row.reminderScheduled,
+            syncedAt: row.syncedAt,
+          } as ActivityEntry);
         }
+      }
+
+      if (newActivities.length > 0) {
+        const merged = [...newActivities, ...entries];
+        setEntries(merged);
       }
     } catch {
     }
-  }, [entries, saveEntries]);
+  }, [entries]);
 
   const getEntriesForNotification = useCallback(() => {
     const now = Date.now();
