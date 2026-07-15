@@ -29,7 +29,17 @@ type SecurityCenterScreenProps = NativeStackScreenProps<RootStackParamList, 'Sec
 const { width, height } = Dimensions.get('window');
 
 const PIN_LENGTH = 4;
-const AUTO_LOCK_OPTIONS = [1, 2, 5, 10, 15, 30];
+const AUTO_LOCK_OPTIONS = [1, 2, 5, 10, 15, 30, 60];
+
+const formatTimeout = (minutes: number): string => {
+  if (minutes < 60) return `${minutes}m`;
+  return '1h';
+};
+
+const formatTimeoutLabel = (minutes: number): string => {
+  if (minutes < 60) return `${minutes} minute${minutes > 1 ? 's' : ''}`;
+  return '1 hour';
+};
 
 const SECURITY_QUESTIONS_POOL = [
   "What was your childhood nickname?",
@@ -410,7 +420,7 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
   const handleTimeoutChange = async (minutes: number) => {
     setSelectedTimeout(minutes);
     await updateAutoLockTimeout(minutes);
-    showSuccess('Updated', `Auto-lock set to ${minutes} minute${minutes > 1 ? 's' : ''}`);
+    showSuccess('Updated', `Auto-lock set to ${formatTimeoutLabel(minutes)}`);
   };
 
   const getSecurityScore = useCallback(() => {
@@ -544,7 +554,7 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
       <SecurityCard
         icon="time-outline"
         title="Auto-Lock"
-        subtitle={`Locks after ${securitySettings.autoLockTimeout} min of inactivity`}
+        subtitle={`Locks after ${formatTimeoutLabel(securitySettings.autoLockTimeout)} of inactivity`}
         status="active"
         onPress={() => setActiveSection('timeout')}
         delay={400}
@@ -930,7 +940,7 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
                 isDark && selectedTimeout !== minutes && { color: '#f1f5f9' },
               ]}
             >
-              {minutes}m
+              {formatTimeout(minutes)}
             </Text>
           </TouchableOpacity>
         ))}
@@ -939,7 +949,7 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
       <View style={[styles.timeoutPreview, isDark && styles.timeoutPreviewDark]}>
         <Ionicons name="time-outline" size={20} color={themeColors.primary} />
         <Text style={[styles.timeoutPreviewText, { color: isDark ? '#f1f5f9' : '#1e293b' }]}>
-          App will lock after <Text style={{ fontWeight: '700', color: themeColors.primary }}>{selectedTimeout} minute{selectedTimeout > 1 ? 's' : ''}</Text> of inactivity
+          App will lock after <Text style={{ fontWeight: '700', color: themeColors.primary }}>{formatTimeoutLabel(selectedTimeout)}</Text> of inactivity
         </Text>
       </View>
     </AnimatedRe.View>
