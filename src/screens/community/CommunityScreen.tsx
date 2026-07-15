@@ -25,6 +25,7 @@ import Animated, {
   Easing,
   FadeIn,
   FadeInDown,
+  FadeInRight,
   FadeInUp,
   FadeOut,
   interpolate,
@@ -37,6 +38,7 @@ import Animated, {
   useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
+  withDelay,
   withRepeat,
   withSequence,
   withSpring,
@@ -55,7 +57,6 @@ import {
 import type { CommunityStackParamList } from '../../types/navigation';
 import type { Post, PostMood, Poll, CommunityUser } from '../../context/CommunityContext';
 import SafeAvatar from '../../components/SafeAvatar';
-import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { useRouteBasedNavVisibility } from '../../hooks/useRouteBasedNavVisibility';
 import { useCustomization } from '../../hooks/useCustomization';
@@ -1377,12 +1378,11 @@ const GlassHeader = React.memo(({
           </View>
         </View>
 
-        <View style={styles.headerActions} pointerEvents="auto">
-          <TouchableOpacity onPress={onSearchPress} style={styles.headerIconBtn} activeOpacity={0.7}>
-            <View style={[styles.headerIconInner, { backgroundColor: isDark ? 'rgba(99,102,241,0.15)' : `${DS.primary}10` }]}>
-              <Ionicons name="search" size={20} color={isDark ? DS.primaryLight : DS.primary} />
-            </View>
-          </TouchableOpacity>
+                    <TouchableOpacity onPress={onSearchPress} style={styles.headerIconBtn} activeOpacity={0.7}>
+              <View style={[styles.headerIconInner, { backgroundColor: isDark ? 'rgba(99,102,241,0.15)' : `${DS.primary}10` }]}>
+                <Ionicons name={showSearch ? 'close' : 'search'} size={20} color={isDark ? DS.primaryLight : DS.primary} />
+              </View>
+            </TouchableOpacity>
 
           <TouchableOpacity onPress={onNotifPress} style={styles.headerIconBtn} activeOpacity={0.7}>
             <View style={[styles.headerIconInner, { backgroundColor: isDark ? 'rgba(99,102,241,0.15)' : `${DS.primary}10` }]}>
@@ -1435,13 +1435,14 @@ export default function CommunityScreen({ navigation }: Props) {
     bookmarkPost, deletePost, addComment, likeComment, replyToComment, voteHelpful,
     followUser, unfollowUser, isFollowing, refreshFeed, loadMorePosts, getFeedPosts,
     getUnreadCount, incrementViewCount, isAuthenticated: checkIsAuth,
-    getAllUsers, votePoll, getUserStats,
+    getAllUsers, votePoll, getUserStats, markAllNotificationsRead,
   } = useCommunity();
 
   const { profile, communityProfile } = useUser();
   const { isAuthenticated: authIsAuth } = useAuth();
   const { triggerHaptic } = useCustomization();
-  const { isDark } = useApp();
+  const { settings } = useCustomization();
+  const isDark = settings?.darkMode ?? false;
 
   const [refreshing, setRefreshing] = useState(false);
   const [activeTopic, setActiveTopic] = useState('all');
@@ -1510,8 +1511,14 @@ export default function CommunityScreen({ navigation }: Props) {
   }, [posts, currentUser]);
 
   useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 800);
-    return () => clearTimeout(timer);
+    let mounted = true;
+    const timer = setTimeout(() => {
+      if (mounted) setIsLoading(false);
+    }, 800);
+    return () => {
+      mounted = false;
+      clearTimeout(timer);
+    };
   }, []);
 
   useEffect(() => {
@@ -1542,7 +1549,8 @@ export default function CommunityScreen({ navigation }: Props) {
       );
     }
     return filtered;
-  }, [posts, activeTopic, searchQuery, getFeedPosts]);
+  }, [activeTopic, searchQuery, getFeedPosts]);
+  // NOTE: Removed 'posts' from deps - getFeedPosts already encapsulates posts state
 
   const handleScrollToNew = useCallback(() => {
     setShowBanner(false);
@@ -1720,7 +1728,7 @@ export default function CommunityScreen({ navigation }: Props) {
             sweetAlert.alert('Sign In Required', 'Please sign in to post', 'warning');
             return;
           }
-          navigation.navigate(ROUTES.CREATE_POST as any, { prompt });
+          navigation.navigate(ROUTES.CREATE_POST, prompt ? { topicId: prompt } : undefined);
         }}
         suggestions={composeSuggestions}
         isDark={isDark}
@@ -1731,7 +1739,7 @@ export default function CommunityScreen({ navigation }: Props) {
         <WeeklyDigestCard
           stats={weeklyStats}
           isDark={isDark}
-          onViewDetails={() => navigation.navigate(ROUTES.EDIT_PROFILE as any)}
+          onViewDetails={() => navigation.navigate(ROUTES.EDIT_PROFILE)}
         />
       )}
 
@@ -1825,7 +1833,7 @@ export default function CommunityScreen({ navigation }: Props) {
             <TouchableOpacity
               style={styles.emptyBtn}
               onPress={() => canInteract
-                ? navigation.navigate(ROUTES.CREATE_POST as any)
+                ? navigation.navigate(ROUTES.CREATE_POST)
                 : sweetAlert.alert('Sign In Required', 'Please sign in to start a thread', 'warning')}
             >
               <LinearGradient colors={[DS.primary, DS.primaryDark]} style={styles.emptyBtnGrad}>
@@ -1851,7 +1859,7 @@ export default function CommunityScreen({ navigation }: Props) {
               currentUser={currentUser}
               unreadCount={unreadCount}
               onAvatarPress={() => canInteract
-                ? navigation.navigate(ROUTES.EDIT_PROFILE as any)
+                ? navigation.navigate(ROUTES.EDIT_PROFILE)
                 : sweetAlert.alert('Sign In Required', 'Please sign in to access your profile', 'warning')}
               onSearchPress={() => setShowSearch(s => !s)}
               onNotifPress={() => {
@@ -1862,7 +1870,7 @@ export default function CommunityScreen({ navigation }: Props) {
                 setShowNotificationChooser(true);
               }}
               onMessagePress={() => canInteract
-                ? navigation.navigate(ROUTES.MESSAGES as any)
+                ? navigation.navigate(ROUTES.MESSAGES)
                 : sweetAlert.alert('Sign In Required', 'Please sign in to access messages', 'warning')}
               canInteract={canInteract}
               isDark={isDark}
@@ -1870,6 +1878,38 @@ export default function CommunityScreen({ navigation }: Props) {
 
             {showBanner && (
               <NewPostsBanner count={newPostsCount} onPress={handleScrollToNew} />
+            )}
+
+            {showSearch && (
+              <Animated.View
+                entering={FadeInDown.duration(250)}
+                exiting={FadeOut.duration(200)}
+                style={[
+                  styles.searchBarContainer,
+                  { backgroundColor: isDark ? DS.darkCard : DS.white, marginTop: HEADER_TOTAL_HEIGHT + 8 }
+                ]}
+              >
+                <View style={[
+                  styles.searchBarInner,
+                  { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : DS.gray50 }
+                ]}>
+                  <Ionicons name="search" size={18} color={DS.gray400} />
+                  <TextInput
+                    style={[styles.searchInput, { color: isDark ? DS.white : DS.gray800 }]}
+                    placeholder="Search threads, topics, parents..."
+                    placeholderTextColor={DS.gray400}
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                    autoFocus
+                    returnKeyType="search"
+                  />
+                  {searchQuery.length > 0 && (
+                    <TouchableOpacity onPress={() => setSearchQuery('')}>
+                      <Ionicons name="close-circle" size={18} color={DS.gray400} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </Animated.View>
             )}
 
             {isLoading ? (
@@ -1914,6 +1954,99 @@ export default function CommunityScreen({ navigation }: Props) {
               />
             )}
 
+            {/* Notification Chooser Modal */}
+            <Modal
+              visible={showNotificationChooser}
+              transparent
+              animationType="fade"
+              onRequestClose={() => setShowNotificationChooser(false)}
+            >
+              <Pressable
+                style={styles.modalOverlay}
+                onPress={() => setShowNotificationChooser(false)}
+              >
+                <View
+                  style={[
+                    styles.notificationModal,
+                    { backgroundColor: isDark ? DS.darkCard : DS.white }
+                  ]}
+                >
+                  <View style={styles.notificationModalHeader}>
+                    <Text style={[styles.notificationModalTitle, { color: isDark ? DS.white : DS.gray900 }]}>
+                      Notifications
+                    </Text>
+                    <TouchableOpacity onPress={() => setShowNotificationChooser(false)}>
+                      <Ionicons name="close" size={24} color={isDark ? DS.gray400 : DS.gray500} />
+                    </TouchableOpacity>
+                  </View>
+
+                  <TouchableOpacity
+                    style={styles.notificationOption}
+                    onPress={() => {
+                      setShowNotificationChooser(false);
+                      navigation.navigate(ROUTES.NOTIFICATIONS);
+                    }}
+                  >
+                    <View style={[styles.notificationIconWrap, { backgroundColor: `${DS.primary}15` }]}>
+                      <Ionicons name="notifications" size={20} color={DS.primary} />
+                    </View>
+                    <View style={styles.notificationOptionTextWrap}>
+                      <Text style={[styles.notificationOptionTitle, { color: isDark ? DS.white : DS.gray900 }]}>
+                        All Notifications
+                      </Text>
+                      <Text style={[styles.notificationOptionDesc, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+                        {unreadCount > 0 ? `${unreadCount} unread` : 'No new notifications'}
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={DS.gray400} />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.notificationOption}
+                    onPress={() => {
+                      setShowNotificationChooser(false);
+                      navigation.navigate(ROUTES.MESSAGES);
+                    }}
+                  >
+                    <View style={[styles.notificationIconWrap, { backgroundColor: `${DS.accent}15` }]}>
+                      <Ionicons name="mail" size={20} color={DS.accent} />
+                    </View>
+                    <View style={styles.notificationOptionTextWrap}>
+                      <Text style={[styles.notificationOptionTitle, { color: isDark ? DS.white : DS.gray900 }]}>
+                        Messages
+                      </Text>
+                      <Text style={[styles.notificationOptionDesc, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+                        View your conversations
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={DS.gray400} />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.notificationOption}
+                    onPress={() => {
+                      setShowNotificationChooser(false);
+                      markAllNotificationsRead();
+                      sweetAlert.alert('Success', 'All notifications marked as read', 'success');
+                    }}
+                  >
+                    <View style={[styles.notificationIconWrap, { backgroundColor: `${DS.success}15` }]}>
+                      <Ionicons name="checkmark-done" size={20} color={DS.success} />
+                    </View>
+                    <View style={styles.notificationOptionTextWrap}>
+                      <Text style={[styles.notificationOptionTitle, { color: isDark ? DS.white : DS.gray900 }]}>
+                        Mark All as Read
+                      </Text>
+                      <Text style={[styles.notificationOptionDesc, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+                        Clear all notification badges
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={DS.gray400} />
+                  </TouchableOpacity>
+                </View>
+              </Pressable>
+            </Modal>
+
             {/* Premium FAB with glow */}
             <Animated.View
               entering={FadeIn.delay(600).duration(400)}
@@ -1926,7 +2059,7 @@ export default function CommunityScreen({ navigation }: Props) {
                     sweetAlert.alert('Sign In Required', 'Please sign in to weave a thread', 'warning');
                     return;
                   }
-                  navigation.navigate(ROUTES.CREATE_POST as any);
+                  navigation.navigate(ROUTES.CREATE_POST);
                 }}
                 activeOpacity={0.85}
               >
@@ -3079,7 +3212,87 @@ export default function CommunityScreen({ navigation }: Props) {
         zIndex: -1,
       },
 
-      // Footer
+
+
+      // Search Bar
+      searchBarContainer: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        zIndex: 95,
+        paddingHorizontal: DS.space.lg,
+        paddingVertical: DS.space.md,
+        borderRadius: DS.radius.lg,
+        marginHorizontal: DS.space.lg,
+        ...DS.shadow.md,
+      },
+      searchBarInner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: DS.space.sm,
+        borderRadius: DS.radius.full,
+        paddingHorizontal: DS.space.md,
+        paddingVertical: DS.space.sm,
+      },
+      searchInput: {
+        flex: 1,
+        fontSize: DS.text.base.size,
+        paddingVertical: 4,
+      },
+
+      // Notification Modal
+      modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: DS.space.lg,
+      },
+      notificationModal: {
+        width: '100%',
+        maxWidth: 360,
+        borderRadius: DS.radius.xl,
+        padding: DS.space.lg,
+        ...DS.shadow.lg,
+      },
+      notificationModalHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: DS.space.lg,
+      },
+      notificationModalTitle: {
+        fontSize: DS.text.xl.size,
+        fontWeight: '700',
+      },
+      notificationOption: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: DS.space.md,
+        paddingVertical: DS.space.md,
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(0,0,0,0.05)',
+      },
+      notificationIconWrap: {
+        width: 40,
+        height: 40,
+        borderRadius: DS.radius.md,
+        justifyContent: 'center',
+        alignItems: 'center',
+      },
+      notificationOptionTextWrap: {
+        flex: 1,
+      },
+      notificationOptionTitle: {
+        fontSize: DS.text.base.size,
+        fontWeight: '600',
+      },
+      notificationOptionDesc: {
+        fontSize: DS.text.xs.size,
+        marginTop: 2,
+      },
+            // Footer
       footerLoader: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -3092,4 +3305,3 @@ export default function CommunityScreen({ navigation }: Props) {
         fontWeight: '600',
       },
     });
-    
