@@ -13,6 +13,17 @@ import { useFamily } from '@/context/FamilyContext';
 import { useSweetAlert } from '@/components/SweetAlert';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  getEntriesByBabyFromDb,
+  getEntryByIdFromDb,
+  createEntryInDb,
+  updateEntryInDb,
+  softDeleteEntryInDb,
+  getAppSetting,
+  setAppSetting,
+  deleteAppSetting,
+  runOneTimeMigration,
+} from '../database/dbHelpers';
 
 import React, {
   createContext,
@@ -617,9 +628,29 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const loadEntries = useCallback(async (babyId: string): Promise<TrackerEntry[]> => {
     try {
-      const key = TRACKER_STORAGE_KEYS.ENTRIES_PREFIX(babyId);
-      const stored = await AsyncStorage.getItem(key);
-      return safeParse<TrackerEntry[]>(stored, []);
+      const rows = await getEntriesByBabyFromDb(babyId);
+      return rows.map(row => ({
+        id: row.id,
+        babyId: row.babyId,
+        trackerId: row.trackerId,
+        timestamp: row.timestamp,
+        title: row.title,
+        data: typeof row.data === 'string' ? JSON.parse(row.data) : row.data,
+        loggedBy: row.loggedBy || '',
+        loggedByName: row.loggedByName || '',
+        loggedByRole: (row.loggedByRole as any) || 'parent1',
+        notes: row.notes,
+        photoUris: row.photoUris ? JSON.parse(row.photoUris as any) : undefined,
+        tags: row.tags ? JSON.parse(row.tags as any) : undefined,
+        location: row.location ? { name: row.location } : undefined,
+        mood: row.mood,
+        notificationId: row.notificationId,
+        reminderScheduled: row.reminderScheduled,
+        syncedAt: row.syncedAt,
+        editedBy: row.editedBy,
+        editedAt: row.editedAt,
+        isDeleted: row.isDeleted || row.syncStatus === 'deleted',
+      }));
     } catch {
       return [];
     }
@@ -758,14 +789,9 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, []);
 
-  const persistEntries = useCallback(async (entries: TrackerEntry[]) => {
-    if (!state.currentBabyId) return;
-    try {
-      const key = TRACKER_STORAGE_KEYS.ENTRIES_PREFIX(state.currentBabyId);
-      await AsyncStorage.setItem(key, JSON.stringify(entries));
-    } catch (error) {
-      console.error('Failed to persist entries:', error);
-    }
+  const persistEntries = useCallback(async (_entries: TrackerEntry[]) => {
+    // DEPRECATED: Entries now auto-persist via Drizzle in createEntryInDb/updateEntryInDb
+    // Kept for backward compat during migration
   }, [state.currentBabyId]);
 
   /* ---- Get tracker ---- */
@@ -946,8 +972,9 @@ Alert.alert('Missing Information', `Please fill in: ${missingFields.join(', ')}`
     }
 
     try {
+      const newId = generateId();
       const newEntry: TrackerEntry = {
-        id: generateId(),
+        id: newId,
         babyId: state.currentBabyId || '',
         trackerId,
         timestamp: Date.now(),
@@ -961,8 +988,23 @@ Alert.alert('Missing Information', `Please fill in: ${missingFields.join(', ')}`
         tags: options?.tags,
       };
 
+      // Write directly to Drizzle DB
+      await createEntryInDb({
+        id: newId,
+        trackerId,
+        babyId: state.currentBabyId || '',
+        timestamp: Date.now(),
+        title: options?.title || `${tracker.emoji} ${tracker.name}`,
+        data,
+        notes: options?.notes,
+        photoUris: options?.photoUris,
+        tags: options?.tags,
+        loggedBy: userProfile?.id || 'unknown',
+        loggedByName: userProfile?.fullName || 'Unknown',
+        loggedByRole: (myRole as any) || 'parent1',
+      });
+
       const updatedEntries = [newEntry, ...state.entries];
-      await persistEntries(updatedEntries);
 
       // ── Sync to gallery storage ──
       try {
@@ -1038,12 +1080,21 @@ Alert.alert('Missing Information', `Please fill in: ${missingFields.join(', ')}`
     }
 
     try {
+      await updateEntryInDb(entryId, {
+        ...updates,
+        data: updates.data,
+        photoUris: updates.photoUris,
+        tags: updates.tags,
+        notes: updates.notes,
+        editedBy: userProfile?.id,
+        editedAt: Date.now(),
+      });
+
       const updatedEntries = state.entries.map(e =>
         e.id === entryId
           ? { ...e, ...updates, editedBy: userProfile?.id, editedAt: Date.now() }
           : e
       );
-      await persistEntries(updatedEntries);
 
       // ── Update gallery storage if photos changed ──
       if (updates.photoUris !== undefined) {
@@ -1102,10 +1153,11 @@ Alert.alert('Missing Information', `Please fill in: ${missingFields.join(', ')}`
     }
 
     try {
+      await softDeleteEntryInDb(entryId);
+
       const updatedEntries = state.entries.map(e =>
         e.id === entryId ? { ...e, isDeleted: true } : e
       );
-      await persistEntries(updatedEntries);
 
       // ── Update gallery storage if photos changed ──
       if (updates.photoUris !== undefined) {

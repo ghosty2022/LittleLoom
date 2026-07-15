@@ -78,8 +78,8 @@ export interface AppContextType {
   setCommunityScreen: (isCommunity: boolean) => void;
 }
 
-const THEME_STORAGE_KEY = '@littleloom_theme_v2';
-const APPEARANCE_STORAGE_KEY = '@littleloom_appearance_v1';
+const THEME_STORAGE_KEY = 'theme_mode';
+const APPEARANCE_STORAGE_KEY = 'appearance';
 
 // ─── STATIC CACHE: Survives re-renders, read once ─────────────────────
 let _cachedAppearance: AppearanceMode | null = null;
@@ -110,9 +110,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     let mounted = true;
     const load = async () => {
       try {
+        const { getAppSetting } = await import('../database/dbHelpers');
         const [savedTheme, savedAppearance] = await Promise.all([
-          AsyncStorage.getItem(THEME_STORAGE_KEY),
-          AsyncStorage.getItem(APPEARANCE_STORAGE_KEY),
+          getAppSetting(THEME_STORAGE_KEY),
+          getAppSetting(APPEARANCE_STORAGE_KEY),
         ]);
 
         if (!mounted) return;
@@ -168,14 +169,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const setThemeMode = useCallback(async (mode: ThemeMode) => {
     setThemeModeState(mode);
     _cachedThemeMode = mode;
-    await AsyncStorage.setItem(THEME_STORAGE_KEY, mode).catch(() => {});
+    const { setAppSetting } = await import('../database/dbHelpers');
+    await setAppSetting(THEME_STORAGE_KEY, mode).catch(() => {});
   }, []);
 
   const setAppearance = useCallback(async (newAppearance: AppearanceMode) => {
     setAppearanceState(newAppearance);
     _cachedAppearance = newAppearance;
     customization?.updateSettings?.({ appearance: newAppearance });
-    await AsyncStorage.setItem(APPEARANCE_STORAGE_KEY, newAppearance).catch(() => {});
+    const { setAppSetting } = await import('../database/dbHelpers');
+    await setAppSetting(APPEARANCE_STORAGE_KEY, newAppearance).catch(() => {});
   }, [customization]);
 
   const toggleTheme = useCallback(() => {

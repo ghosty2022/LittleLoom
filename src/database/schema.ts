@@ -23,6 +23,7 @@ export const babies = sqliteTable('babies', {
   updatedAt: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`),
   isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
   syncStatus: text('sync_status').notNull().default('pending'),
+  isDeleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
 }, (table) => ({
   activeIdx: index('idx_babies_active').on(table.isActive),
   parentIdx: index('idx_babies_parent').on(table.parent1Id),
@@ -61,6 +62,7 @@ export const photos = sqliteTable('photos', {
   createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
   updatedAt: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`),
   syncStatus: text('sync_status').notNull().default('pending'),
+  isDeleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
 }, (table) => ({
   babyIdx: index('idx_photos_baby').on(table.babyId),
   dateIdx: index('idx_photos_date').on(table.date),
@@ -93,6 +95,7 @@ export const trackerEntries = sqliteTable('tracker_entries', {
   createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
   updatedAt: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`),
   syncStatus: text('sync_status').notNull().default('pending'),
+  isDeleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
 }, (table) => ({
   trackerIdx: index('idx_entries_tracker').on(table.trackerId),
   babyIdx: index('idx_entries_baby').on(table.babyId),

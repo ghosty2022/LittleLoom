@@ -3,6 +3,22 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Alert } from 'react-native';
+import {
+  getAllBabiesFromDb,
+  getBabyByIdFromDb,
+  createBabyInDb,
+  updateBabyInDb,
+  deleteBabyFromDb,
+  setCurrentBabyInDb,
+  getAppSetting,
+  setAppSetting,
+  deleteAppSetting,
+  runOneTimeMigration,
+  getEntriesByBabyFromDb,
+  createEntryInDb,
+  updateEntryInDb,
+  softDeleteEntryInDb,
+} from '../database/dbHelpers';
 
 /* ------------------------------------------------------------------ */
 /*  Storage Keys                                                      */
@@ -491,31 +507,48 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const loadBabies = useCallback(async () => {
-    /* FIX #5: Guard against unmounted component */
     if (!isMounted.current) return;
     
     setState(prev => ({ ...prev, isLoading: true }));
 
     try {
-      const [babiesStr, currentId, hasSkipped] = await Promise.all([
-        withRetry(() => AsyncStorage.getItem(STORAGE_KEYS.BABIES)),
-        withRetry(() => AsyncStorage.getItem(STORAGE_KEYS.CURRENT_BABY)),
-        withRetry(() => AsyncStorage.getItem(STORAGE_KEYS.HAS_SKIPPED_BABY)),
-      ]);
+      // Run migration first, then load from Drizzle
+      await runOneTimeMigration();
+      
+      const dbBabies = await getAllBabiesFromDb();
+      const currentId = await getAppSetting('current_baby_id');
+      const hasSkipped = await getAppSetting('has_skipped_baby');
 
-      let babies: BabyProfile[] = safeParse<BabyProfile[]>(babiesStr, []);
-      babies = babies.map(b => ({ ...b, age: calculateAge(b.birthDate) }));
+      let babies: BabyProfile[] = dbBabies.map(b => ({
+        id: b.id,
+        name: b.name,
+        birthDate: b.dateOfBirth,
+        age: calculateAge(b.dateOfBirth),
+        gender: b.gender === 'male' ? 'boy' : b.gender === 'female' ? 'girl' : 'other',
+        skinTone: 0,
+        avatar: b.avatar || '',
+        parent1Id: b.parent1Id || 'default',
+        parent2Id: b.parent2Id,
+        weight: undefined,
+        height: undefined,
+        bloodType: b.bloodType,
+        allergies: undefined,
+        medicalNotes: b.medicalNotes,
+        streak: 0,
+        milestones: 0,
+        photos: 0,
+        createdAt: b.createdAt,
+        lastUpdated: b.updatedAt,
+      }));
 
-      /* FIX #4: Always set current baby for first baby if none exists */
       let effectiveCurrentId = currentId;
       if (!effectiveCurrentId && babies.length > 0) {
         effectiveCurrentId = babies[0].id;
-        await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY, effectiveCurrentId);
+        await setCurrentBabyInDb(effectiveCurrentId);
       }
 
       const currentBaby = babies.find(b => b.id === effectiveCurrentId) || babies[0] || null;
 
-      /* FIX #5: Check isMounted before setting state */
       if (!isMounted.current) return;
 
       setState(prev => ({
@@ -582,7 +615,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   /* ---- Skip / Clear skip ---- */
   const skipBaby = useCallback(async () => {
     try {
-      await AsyncStorage.setItem(STORAGE_KEYS.HAS_SKIPPED_BABY, 'true');
+      await setAppSetting('has_skipped_baby', 'true');
       if (isMounted.current) {
         setState(prev => ({ ...prev, hasSkippedBaby: true }));
       }
@@ -594,7 +627,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const clearSkipBaby = useCallback(async () => {
     try {
-      await AsyncStorage.removeItem(STORAGE_KEYS.HAS_SKIPPED_BABY);
+      await deleteAppSetting('has_skipped_baby');
       if (isMounted.current) {
         setState(prev => ({ ...prev, hasSkippedBaby: false }));
       }
@@ -619,40 +652,45 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
-      const babiesStr = await AsyncStorage.getItem(STORAGE_KEYS.BABIES);
-      const existingBabies: BabyProfile[] = safeParse(babiesStr, []);
+      const existingBabies = await getAllBabiesFromDb();
+      const newId = generateId();
 
-      const nowISO = new Date().toISOString();
+      await createBabyInDb({
+        id: newId,
+        name: data.name,
+        avatar: data.avatar,
+        dateOfBirth: data.birthDate,
+        gender: data.gender === 'boy' ? 'male' : data.gender === 'girl' ? 'female' : 'other',
+        bloodType: data.bloodType,
+        medicalNotes: data.medicalNotes,
+        parent1Id: 'default',
+      });
+
       const newBaby: BabyProfile = {
         ...data,
-        id: generateId(),
+        id: newId,
         parent1Id: 'default',
         streak: 0,
         milestones: 0,
         photos: 0,
-        createdAt: nowISO,
-        lastUpdated: nowISO,
+        createdAt: now.toISOString(),
+        lastUpdated: now.toISOString(),
         age: calculateAge(data.birthDate),
       };
 
-      const updatedBabies = [...existingBabies, newBaby];
-      await AsyncStorage.setItem(STORAGE_KEYS.BABIES, JSON.stringify(updatedBabies));
-
-      /* FIX #4: Always set current baby when creating the first baby */
       const isFirstBaby = existingBabies.length === 0;
       const newCurrentId = isFirstBaby ? newBaby.id : (state.currentBabyId || newBaby.id);
 
       if (isFirstBaby || !state.currentBabyId) {
-        await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY, newCurrentId);
+        await setCurrentBabyInDb(newCurrentId);
       }
 
       await clearSkipBaby();
 
-      /* FIX #5: Guard state update */
       if (isMounted.current) {
         setState(prev => ({
           ...prev,
-          babies: updatedBabies,
+          babies: [...prev.babies, newBaby],
           currentBabyId: newCurrentId,
           currentBaby: isFirstBaby ? newBaby : prev.currentBaby,
         }));
@@ -667,31 +705,46 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       Alert.alert('Error', 'Failed to create baby profile');
       return null;
     }
-  }, [calculateAge, clearSkipBaby, loadAllBabyData, state.currentBabyId]);
+  }, [calculateAge, clearSkipBaby, loadAllBabyData, state.currentBabyId, state.babies]);
 
   /* ---- Update baby ---- */
   const updateBaby = useCallback(async (id: string, updates: Partial<BabyProfile>) => {
     try {
-      /* FIX #5: Read fresh from storage instead of relying on stale state */
-      const babiesStr = await AsyncStorage.getItem(STORAGE_KEYS.BABIES);
-      const allBabies: BabyProfile[] = safeParse(babiesStr, []);
-      
-      const updated = allBabies.map(b => {
-        if (b.id === id) {
-          const updatedBaby: BabyProfile = { ...b, ...updates, lastUpdated: new Date().toISOString() };
-          if (updates.birthDate) updatedBaby.age = calculateAge(updates.birthDate);
-          return updatedBaby;
-        }
-        return b;
+      await updateBabyInDb(id, {
+        name: updates.name,
+        avatar: updates.avatar,
+        dateOfBirth: updates.birthDate,
+        gender: updates.gender === 'boy' ? 'male' : updates.gender === 'girl' ? 'female' : updates.gender === 'other' ? 'other' : undefined,
+        bloodType: updates.bloodType,
+        medicalNotes: updates.medicalNotes,
+        parent2Id: updates.parent2Id,
       });
 
-      await AsyncStorage.setItem(STORAGE_KEYS.BABIES, JSON.stringify(updated));
+      const fresh = await getBabyByIdFromDb(id);
+      if (fresh && isMounted.current) {
+        const updatedBaby: BabyProfile = {
+          id: fresh.id,
+          name: fresh.name,
+          birthDate: fresh.dateOfBirth,
+          age: calculateAge(fresh.dateOfBirth),
+          gender: fresh.gender === 'male' ? 'boy' : fresh.gender === 'female' ? 'girl' : 'other',
+          skinTone: 0,
+          avatar: fresh.avatar || '',
+          parent1Id: fresh.parent1Id || 'default',
+          parent2Id: fresh.parent2Id,
+          bloodType: fresh.bloodType,
+          medicalNotes: fresh.medicalNotes,
+          streak: 0,
+          milestones: 0,
+          photos: 0,
+          createdAt: fresh.createdAt,
+          lastUpdated: fresh.updatedAt,
+        };
 
-      if (isMounted.current) {
         setState(prev => ({
           ...prev,
-          babies: updated,
-          currentBaby: prev.currentBaby?.id === id ? updated.find(b => b.id === id) || null : prev.currentBaby,
+          babies: prev.babies.map(b => b.id === id ? updatedBaby : b),
+          currentBaby: prev.currentBaby?.id === id ? updatedBaby : prev.currentBaby,
         }));
       }
     } catch (error) {
@@ -703,43 +756,64 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   /* ---- Delete baby ---- */
   const deleteBaby = useCallback(async (id: string): Promise<boolean> => {
     try {
-      /* FIX #5: Read fresh from storage */
-      const babiesStr = await AsyncStorage.getItem(STORAGE_KEYS.BABIES);
-      const allBabies: BabyProfile[] = safeParse(babiesStr, []);
-      
-      const filtered = allBabies.filter(b => b.id !== id);
-      await AsyncStorage.setItem(STORAGE_KEYS.BABIES, JSON.stringify(filtered));
-
-      const cleanupKeys = [
-        STORAGE_KEYS.GROWTH_DATA(id),
-        STORAGE_KEYS.MILESTONES(id),
-        STORAGE_KEYS.SLEEP_LOGS(id),
-        STORAGE_KEYS.FEEDING_LOGS(id),
-        STORAGE_KEYS.POTTY_LOGS(id),
-        STORAGE_KEYS.MEDICATION_LOGS(id),
-        STORAGE_KEYS.ACTIVITIES(id),
-      ];
-
-      await Promise.all(cleanupKeys.map(key => AsyncStorage.removeItem(key)));
+      await deleteBabyFromDb(id);
+      // Entries cascade delete via ON DELETE CASCADE in schema
 
       let newCurrentId = state.currentBabyId;
       if (state.currentBabyId === id) {
-        newCurrentId = filtered[0]?.id || null;
+        const remaining = await getAllBabiesFromDb();
+        newCurrentId = remaining[0]?.id || null;
         if (newCurrentId) {
-          await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY, newCurrentId);
+          await setCurrentBabyInDb(newCurrentId);
         } else {
-          await AsyncStorage.multiRemove([STORAGE_KEYS.CURRENT_BABY, STORAGE_KEYS.HAS_SKIPPED_BABY]);
+          await setCurrentBabyInDb(null);
+          await deleteAppSetting('has_skipped_baby');
         }
       }
 
-      const newCurrentBaby = filtered.find(b => b.id === newCurrentId) || null;
+      const remaining = await getAllBabiesFromDb();
+      const newCurrentBaby = remaining.find(b => b.id === newCurrentId) || null;
 
       if (isMounted.current) {
         setState(prev => ({
           ...prev,
-          babies: filtered,
+          babies: remaining.map(b => ({
+            id: b.id,
+            name: b.name,
+            birthDate: b.dateOfBirth,
+            age: calculateAge(b.dateOfBirth),
+            gender: b.gender === 'male' ? 'boy' : b.gender === 'female' ? 'girl' : 'other',
+            skinTone: 0,
+            avatar: b.avatar || '',
+            parent1Id: b.parent1Id || 'default',
+            parent2Id: b.parent2Id,
+            bloodType: b.bloodType,
+            medicalNotes: b.medicalNotes,
+            streak: 0,
+            milestones: 0,
+            photos: 0,
+            createdAt: b.createdAt,
+            lastUpdated: b.updatedAt,
+          })),
           currentBabyId: newCurrentId,
-          currentBaby: newCurrentBaby,
+          currentBaby: newCurrentBaby ? {
+            id: newCurrentBaby.id,
+            name: newCurrentBaby.name,
+            birthDate: newCurrentBaby.dateOfBirth,
+            age: calculateAge(newCurrentBaby.dateOfBirth),
+            gender: newCurrentBaby.gender === 'male' ? 'boy' : newCurrentBaby.gender === 'female' ? 'girl' : 'other',
+            skinTone: 0,
+            avatar: newCurrentBaby.avatar || '',
+            parent1Id: newCurrentBaby.parent1Id || 'default',
+            parent2Id: newCurrentBaby.parent2Id,
+            bloodType: newCurrentBaby.bloodType,
+            medicalNotes: newCurrentBaby.medicalNotes,
+            streak: 0,
+            milestones: 0,
+            photos: 0,
+            createdAt: newCurrentBaby.createdAt,
+            lastUpdated: newCurrentBaby.updatedAt,
+          } : null,
           growthData: newCurrentId ? prev.growthData : [],
           milestones: newCurrentId ? prev.milestones : [],
           sleepLogs: newCurrentId ? prev.sleepLogs : [],
@@ -760,14 +834,11 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       Alert.alert('Error', 'Failed to delete baby profile');
       return false;
     }
-  }, [state.currentBabyId, loadAllBabyData]);
+  }, [state.currentBabyId, loadAllBabyData, calculateAge]);
 
   /* ---- Switch baby ---- */
   const switchBaby = useCallback(async (id: string): Promise<boolean> => {
-    /* FIX #5: Read fresh from storage to ensure baby exists */
-    const babiesStr = await AsyncStorage.getItem(STORAGE_KEYS.BABIES);
-    const allBabies: BabyProfile[] = safeParse(babiesStr, []);
-    const baby = allBabies.find(b => b.id === id);
+    const baby = await getBabyByIdFromDb(id);
     
     if (!baby) {
       console.warn(`Baby with id ${id} not found`);
@@ -775,14 +846,31 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
-      await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY, id);
+      await setCurrentBabyInDb(id);
       await loadAllBabyData(id);
 
       if (isMounted.current) {
         setState(prev => ({
           ...prev,
           currentBabyId: id,
-          currentBaby: baby,
+          currentBaby: {
+            id: baby.id,
+            name: baby.name,
+            birthDate: baby.dateOfBirth,
+            age: calculateAge(baby.dateOfBirth),
+            gender: baby.gender === 'male' ? 'boy' : baby.gender === 'female' ? 'girl' : 'other',
+            skinTone: 0,
+            avatar: baby.avatar || '',
+            parent1Id: baby.parent1Id || 'default',
+            parent2Id: baby.parent2Id,
+            bloodType: baby.bloodType,
+            medicalNotes: baby.medicalNotes,
+            streak: 0,
+            milestones: 0,
+            photos: 0,
+            createdAt: baby.createdAt,
+            lastUpdated: baby.updatedAt,
+          },
         }));
       }
 
@@ -792,7 +880,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('Error switching baby:', error);
       return false;
     }
-  }, [loadAllBabyData]);
+  }, [loadAllBabyData, calculateAge]);
 
   /* ---- Refresh current baby ---- */
   const refreshCurrentBaby = useCallback(async () => {
@@ -822,23 +910,30 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     measurement: Omit<GrowthMeasurement, 'id' | 'createdAt'>
   ): Promise<boolean> => {
     try {
-      const newMeasurement: GrowthMeasurement = { ...measurement, id: generateId(), createdAt: new Date().toISOString() };
+      const newId = generateId();
 
-      const key = STORAGE_KEYS.GROWTH_DATA(measurement.babyId);
-      const existing = await AsyncStorage.getItem(key);
-      const measurements: GrowthMeasurement[] = safeParse(existing, []);
-      measurements.push(newMeasurement);
+      await createEntryInDb({
+        id: newId,
+        trackerId: 'growth',
+        babyId: measurement.babyId,
+        timestamp: new Date(measurement.date).getTime() || Date.now(),
+        title: `📏 ${measurement.type}: ${measurement.value} ${measurement.unit}`,
+        data: {
+          measurementType: measurement.type,
+          value: measurement.value,
+          unit: measurement.unit,
+        },
+        notes: measurement.notes,
+        loggedBy: measurement.recordedBy,
+      });
 
-      await AsyncStorage.setItem(key, JSON.stringify(measurements));
+      const newMeasurement: GrowthMeasurement = { ...measurement, id: newId, createdAt: new Date().toISOString() };
 
       if (measurement.babyId === state.currentBabyId && isMounted.current) {
-        setState(prev => ({ ...prev, growthData: measurements }));
+        setState(prev => ({ ...prev, growthData: [...prev.growthData, newMeasurement] }));
       }
 
-      /* FIX #5: Read fresh baby data for update */
-      const babiesStr = await AsyncStorage.getItem(STORAGE_KEYS.BABIES);
-      const allBabies: BabyProfile[] = safeParse(babiesStr, []);
-      const baby = allBabies.find(b => b.id === measurement.babyId);
+      const baby = await getBabyByIdFromDb(measurement.babyId);
       if (baby) {
         const updates: Partial<BabyProfile> = {};
         if (measurement.type === 'height') updates.height = `${measurement.value} ${measurement.unit}`;
@@ -876,9 +971,8 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const deleteGrowthMeasurement = useCallback(async (id: string): Promise<boolean> => {
     try {
       if (!state.currentBabyId) return false;
-      const key = STORAGE_KEYS.GROWTH_DATA(state.currentBabyId);
+      await softDeleteEntryInDb(id);
       const filtered = state.growthData.filter(m => m.id !== id);
-      await AsyncStorage.setItem(key, JSON.stringify(filtered));
       if (isMounted.current) {
         setState(prev => ({ ...prev, growthData: filtered }));
       }
@@ -892,26 +986,32 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   /* ---- Milestones ---- */
   const addMilestone = useCallback(async (milestone: Omit<Milestone, 'id'>): Promise<boolean> => {
     try {
-      const newMilestone: Milestone = { ...milestone, id: generateId() };
+      const newId = generateId();
 
-      const key = STORAGE_KEYS.MILESTONES(milestone.babyId);
-      const existing = await AsyncStorage.getItem(key);
-      const milestones: Milestone[] = safeParse(existing, []);
-      milestones.push(newMilestone);
+      await createEntryInDb({
+        id: newId,
+        trackerId: 'milestone',
+        babyId: milestone.babyId,
+        timestamp: new Date(milestone.achievedAt).getTime() || Date.now(),
+        title: milestone.title,
+        data: {
+          description: milestone.description,
+          category: milestone.category,
+          firstTime: milestone.isFirstTime,
+        },
+        notes: milestone.notes,
+        loggedBy: milestone.recordedBy,
+        loggedByName: milestone.recordedByName,
+      });
 
-      await AsyncStorage.setItem(key, JSON.stringify(milestones));
+      const newMilestone: Milestone = { ...milestone, id: newId };
 
       if (milestone.babyId === state.currentBabyId && isMounted.current) {
-        setState(prev => ({ ...prev, milestones }));
+        setState(prev => ({ ...prev, milestones: [...prev.milestones, newMilestone] }));
       }
 
-      /* FIX #5: Read fresh baby data for update */
-      const babiesStr = await AsyncStorage.getItem(STORAGE_KEYS.BABIES);
-      const allBabies: BabyProfile[] = safeParse(babiesStr, []);
-      const baby = allBabies.find(b => b.id === milestone.babyId);
-      if (baby) {
-        await updateBaby(milestone.babyId, { milestones: baby.milestones + 1 });
-      }
+      const currentCount = state.milestones.filter(m => m.babyId === milestone.babyId).length + 1;
+      await updateBaby(milestone.babyId, { milestones: currentCount });
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       return true;
@@ -920,7 +1020,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       Alert.alert('Error', 'Failed to save milestone');
       return false;
     }
-  }, [state.currentBabyId, updateBaby]);
+  }, [state.currentBabyId, updateBaby, state.milestones]);
 
   const getMilestones = useCallback((category?: Milestone['category']) => {
     let data = [...state.milestones];
@@ -931,9 +1031,8 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const deleteMilestone = useCallback(async (id: string): Promise<boolean> => {
     try {
       if (!state.currentBabyId) return false;
-      const key = STORAGE_KEYS.MILESTONES(state.currentBabyId);
+      await softDeleteEntryInDb(id);
       const filtered = state.milestones.filter(m => m.id !== id);
-      await AsyncStorage.setItem(key, JSON.stringify(filtered));
       if (isMounted.current) {
         setState(prev => ({ ...prev, milestones: filtered }));
       }
@@ -1179,17 +1278,35 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
-      const newEntry: ActivityEntry = { ...entry, id: generateId() };
+      const newId = generateId();
 
-      const key = STORAGE_KEYS.ACTIVITIES(entry.babyId);
-      const existing = await AsyncStorage.getItem(key);
-      const activities: ActivityEntry[] = safeParse(existing, []);
-      activities.unshift(newEntry);
+      // Extract data fields
+      const entryData: Record<string, unknown> = {};
+      const skipFields = ['babyId', 'type', 'timestamp', 'title', 'details', 'icon', 'loggedBy', 'loggedByName', 'notes', 'photo', 'tags', 'notificationId', 'reminderScheduled', 'syncedAt'];
+      for (const [key, value] of Object.entries(entry)) {
+        if (!skipFields.includes(key) && value !== undefined) {
+          entryData[key] = value;
+        }
+      }
 
-      await AsyncStorage.setItem(key, JSON.stringify(activities));
+      await createEntryInDb({
+        id: newId,
+        trackerId: entry.type,
+        babyId: entry.babyId,
+        timestamp: entry.timestamp,
+        title: entry.title,
+        data: entryData,
+        notes: entry.notes || entry.details,
+        photoUris: entry.photo ? [entry.photo] : undefined,
+        tags: entry.tags,
+        loggedBy: entry.loggedBy,
+        loggedByName: entry.loggedByName,
+      });
+
+      const newEntry: ActivityEntry = { ...entry, id: newId };
 
       if (entry.babyId === state.currentBabyId && isMounted.current) {
-        setState(prev => ({ ...prev, activities }));
+        setState(prev => ({ ...prev, activities: [newEntry, ...prev.activities] }));
       }
 
       await syncToActivityContext(newEntry);
@@ -1234,10 +1351,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await AsyncStorage.removeItem(`${NOTIFICATION_PREFIX}${entry.id}`);
       }
 
-      const key = STORAGE_KEYS.ACTIVITIES(state.currentBabyId);
-      const filtered = state.activities.filter(a => a.id !== id);
+      await softDeleteEntryInDb(id);
 
-      await AsyncStorage.setItem(key, JSON.stringify(filtered));
+      const filtered = state.activities.filter(a => a.id !== id);
       if (isMounted.current) {
         setState(prev => ({ ...prev, activities: filtered }));
       }
