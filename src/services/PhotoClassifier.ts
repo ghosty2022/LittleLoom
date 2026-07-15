@@ -1,14 +1,14 @@
 // src/services/PhotoClassifier.ts
-// Heuristic + ML-based photo classification for baby detection
+// Heuristic-based photo classification for baby detection
 
 import * as FileSystem from 'expo-file-system';
 import * as ImageManipulator from 'expo-image-manipulator';
-import { PhotoScanner, ScannedPhoto } from './PhotoScanner';
+import { ScannedPhoto } from './PhotoScanner';
 
 export interface ClassificationResult {
   photoId: string;
   isBabyRelated: boolean;
-  confidence: number; // 0-100
+  confidence: number;
   detectedFaces: number;
   dominantColors: string[];
   suggestedBabyIds: string[];
@@ -17,9 +17,6 @@ export interface ClassificationResult {
 }
 
 export class PhotoClassifier {
-  private faceDetectionThreshold: number = 0.6;
-
-  /* ─── Main classify method ────────────────────────────────────── */
   async classify(photo: ScannedPhoto): Promise<ClassificationResult> {
     const results: Partial<ClassificationResult> = {
       photoId: photo.id,
@@ -30,19 +27,11 @@ export class PhotoClassifier {
     };
 
     try {
-      // 1. Analyze filename for clues
       const filenameScore = this.analyzeFilename(photo.filename);
-      
-      // 2. Check EXIF/metadata if available
       const metadataScore = await this.analyzeMetadata(photo);
-      
-      // 3. Image analysis (resize for performance)
       const imageScore = await this.analyzeImageContent(photo.uri);
-
-      // 4. Time-based heuristics
       const timeScore = this.analyzeTimestamp(photo.creationTime);
 
-      // Weighted scoring
       const confidence = Math.min(100, Math.round(
         filenameScore * 0.25 +
         metadataScore * 0.15 +
@@ -52,11 +41,7 @@ export class PhotoClassifier {
 
       results.isBabyRelated = confidence >= 50;
       results.confidence = confidence;
-
-      // Suggest type based on time + filename
       results.suggestedType = this.inferType(photo, filenameScore, timeScore);
-
-      // Extract tags from filename
       results.suggestedTags = this.extractTags(photo.filename);
 
       return results as ClassificationResult;
@@ -76,7 +61,6 @@ export class PhotoClassifier {
     }
   }
 
-  /* ─── Batch classify ───────────────────────────────────────────── */
   async classifyBatch(
     photos: ScannedPhoto[],
     onProgress?: (current: number, total: number) => void
@@ -91,7 +75,6 @@ export class PhotoClassifier {
         onProgress(i + 1, photos.length);
       }
       
-      // Yield to event loop every 5 photos
       if (i % 5 === 0) {
         await new Promise(r => setTimeout(r, 0));
       }
@@ -100,10 +83,9 @@ export class PhotoClassifier {
     return results;
   }
 
-  /* ─── Filename analysis ───────────────────────────────────────── */
   private analyzeFilename(filename: string): number {
     const lower = filename.toLowerCase();
-    let score = 30; // Base score
+    let score = 30;
 
     const positiveSignals = [
       /baby/i, /infant/i, /newborn/i, /toddler/i,
@@ -112,7 +94,7 @@ export class PhotoClassifier {
       /birthday/i, /month/i, /week/i,
       /mama/i, /dada/i, /mom/i, /dad/i,
       /family/i, /cute/i, /adorable/i,
-      /img_\d{8}/, /photo_\d{8}/, // Date-based filenames
+      /img_\d{8}/, /photo_\d{8}/,
     ];
 
     const negativeSignals = [
@@ -130,56 +112,46 @@ export class PhotoClassifier {
       if (signal.test(lower)) score -= 30;
     }
 
-    // Check for date patterns (common in camera photos)
     if (/\d{4}[-_]\d{2}[-_]\d{2}/.test(lower)) score += 10;
     if (/dsc_\d+/i.test(lower) || /img_\d+/i.test(lower)) score += 5;
 
     return Math.max(0, Math.min(100, score));
   }
 
-  /* ─── Metadata analysis ───────────────────────────────────────── */
   private async analyzeMetadata(photo: ScannedPhoto): Promise<number> {
     let score = 30;
 
-    // Portrait orientation suggests person photo
     if (photo.width < photo.height) score += 15;
 
-    // Reasonable resolution for baby photos
     const mp = (photo.width * photo.height) / 1000000;
     if (mp >= 1 && mp <= 24) score += 10;
-    if (mp > 24) score -= 10; // Too high res might be screenshot
+    if (mp > 24) score -= 10;
 
-    // Check if file exists and get more info
     try {
       const info = await FileSystem.getInfoAsync(photo.uri);
       if (info.exists && 'size' in info) {
         const sizeMB = info.size / (1024 * 1024);
-        if (sizeMB > 0.1 && sizeMB < 50) score += 10; // Reasonable photo size
-        if (sizeMB > 100) score -= 20; // Suspiciously large
+        if (sizeMB > 0.1 && sizeMB < 50) score += 10;
+        if (sizeMB > 100) score -= 20;
       }
     } catch {
-      // Ignore errors
+      // Ignore
     }
 
     return Math.max(0, Math.min(100, score));
   }
 
-  /* ─── Image content analysis (lightweight) ─────────────────────── */
   private async analyzeImageContent(uri: string): Promise<number> {
     try {
-      // Create a small thumbnail for analysis
       const thumbnail = await ImageManipulator.manipulateAsync(
         uri,
         [{ resize: { width: 100 } }],
         { compress: 0.5, format: ImageManipulator.SaveFormat.JPEG }
       );
 
-      // Get file size of thumbnail as proxy for complexity
       const info = await FileSystem.getInfoAsync(thumbnail.uri);
       
       if (info.exists && 'size' in info) {
-        // Very small = likely simple image (screenshot, icon)
-        // Medium = likely photo with content
         if (info.size > 2000 && info.size < 50000) return 60;
         if (info.size >= 50000) return 75;
       }
@@ -190,29 +162,24 @@ export class PhotoClassifier {
     }
   }
 
-  /* ─── Timestamp analysis ────────────────────────────────────────── */
   private analyzeTimestamp(timestamp: number): number {
     const date = new Date(timestamp);
     const hour = date.getHours();
     let score = 30;
 
-    // Baby photos often taken during waking hours
     if (hour >= 6 && hour <= 21) score += 15;
     
-    // Weekend photos slightly more likely to be family/baby
     const day = date.getDay();
     if (day === 0 || day === 6) score += 5;
 
-    // Recent photos more likely to be relevant
     const ageDays = (Date.now() - timestamp) / (1000 * 60 * 60 * 24);
     if (ageDays < 30) score += 10;
     else if (ageDays < 365) score += 5;
-    else if (ageDays > 365 * 3) score -= 10; // Very old photos less likely
+    else if (ageDays > 365 * 3) score -= 10;
 
     return Math.max(0, Math.min(100, score));
   }
 
-  /* ─── Type inference ────────────────────────────────────────────── */
   private inferType(
     photo: ScannedPhoto,
     filenameScore: number,
@@ -228,14 +195,12 @@ export class PhotoClassifier {
     if (/measure|weight|height|growth/i.test(lower)) return 'growth';
     if (/mileston|first|birthday|party/i.test(lower)) return 'milestone';
     
-    // Time-based inference
     if (hour >= 20 || hour <= 6) return 'sleep';
     if (hour >= 6 && hour <= 9) return 'feeding';
 
     return 'daily';
   }
 
-  /* ─── Tag extraction ──────────────────────────────────────────── */
   private extractTags(filename: string): string[] {
     const tags: string[] = [];
     const lower = filename.toLowerCase();

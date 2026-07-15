@@ -1,51 +1,74 @@
 // src/hooks/useSmartAlbums.ts
 import { useState, useEffect, useCallback } from 'react';
-import { useDatabase } from './useDatabase';
-import { Photo } from '../database';
+import { db } from '../database/db';
+import { photos, smartAlbums } from '../database/schema';
+import { eq, count, sql } from 'drizzle-orm';
 
-export interface SmartAlbum {
+export interface SmartAlbumWithCount {
   id: string;
   title: string;
   type: string;
-  icon: string;
-  gradient: [string, string];
+  icon: string | null;
+  gradient: [string, string] | null;
   photoCount: number;
-  coverPhoto?: Photo;
+  coverPhotoUri?: string;
 }
 
 export function useSmartAlbums() {
-  const { photoRepo, isReady } = useDatabase();
-  const [albums, setAlbums] = useState<SmartAlbum[]>([]);
+  const [albums, setAlbums] = useState<SmartAlbumWithCount[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const loadAlbums = useCallback(async () => {
-    if (!isReady) return;
-    
     setIsLoading(true);
     try {
-      const dbAlbums = await photoRepo.query<SmartAlbum>(
-        `SELECT * FROM "smart_albums" WHERE "isSystem" = 1 ORDER BY "sortOrder" ASC`
-      );
+      const dbAlbums = await db.select().from(smartAlbums)
+        .where(eq(smartAlbums.isSystem, true))
+        .orderBy(smartAlbums.sortOrder);
 
-      // Get photo counts and cover photos
       const enriched = await Promise.all(
         dbAlbums.map(async (album) => {
-          const photos = await photoRepo.findByAlbum(album.id, { limit: 1 });
-          const count = await photoRepo.count(
-            album.id === 'album_all' ? {} :
-            album.id === 'album_favorites' ? { isFavorite: true } :
-            album.id === 'album_screenshots' ? { isScreenshot: true } :
-            album.id === 'album_auto_import' ? { source: 'auto_import' } :
-            album.id === 'album_vault' ? { isPrivate: true } :
-            album.id === 'album_milestones' ? { type: 'milestone' } :
-            {}
-          );
+          let photoCount = 0;
+          let coverPhotoUri: string | undefined;
+
+          // Count photos based on album filter
+          if (album.id === 'album_all') {
+            const result = await db.select({ count: count() }).from(photos);
+            photoCount = result[0]?.count || 0;
+          } else if (album.id === 'album_favorites') {
+            const result = await db.select({ count: count() }).from(photos)
+              .where(eq(photos.isFavorite, true));
+            photoCount = result[0]?.count || 0;
+          } else if (album.id === 'album_screenshots') {
+            const result = await db.select({ count: count() }).from(photos)
+              .where(eq(photos.isScreenshot, true));
+            photoCount = result[0]?.count || 0;
+          } else if (album.id === 'album_auto_import') {
+            const result = await db.select({ count: count() }).from(photos)
+              .where(eq(photos.source, 'auto_import'));
+            photoCount = result[0]?.count || 0;
+          } else if (album.id === 'album_vault') {
+            const result = await db.select({ count: count() }).from(photos)
+              .where(eq(photos.isPrivate, true));
+            photoCount = result[0]?.count || 0;
+          } else if (album.id === 'album_milestones') {
+            const result = await db.select({ count: count() }).from(photos)
+              .where(eq(photos.type, 'milestone'));
+            photoCount = result[0]?.count || 0;
+          }
+
+          // Get cover photo
+          if (photoCount > 0) {
+            const cover = await db.select({ uri: photos.uri }).from(photos)
+              .orderBy(sql`${photos.timestamp} DESC`)
+              .limit(1);
+            coverPhotoUri = cover[0]?.uri;
+          }
 
           return {
             ...album,
-            photoCount: count,
-            coverPhoto: photos[0],
-            gradient: JSON.parse(album.gradient as any) as [string, string],
+            photoCount,
+            coverPhotoUri,
+            gradient: album.gradient as [string, string] | null,
           };
         })
       );
@@ -54,7 +77,7 @@ export function useSmartAlbums() {
     } finally {
       setIsLoading(false);
     }
-  }, [isReady, photoRepo]);
+  }, []);
 
   useEffect(() => {
     loadAlbums();

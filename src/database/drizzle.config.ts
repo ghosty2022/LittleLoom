@@ -1,3 +1,4 @@
+// src/database/drizzle.config.ts
 import { defineConfig } from 'drizzle-kit';
 
 export default defineConfig({
@@ -5,7 +6,4 @@ export default defineConfig({
   out: './src/database/migrations',
   dialect: 'sqlite',
   driver: 'expo',
-  dbCredentials: {
-    url: 'littleloom.db',
-  },
 });

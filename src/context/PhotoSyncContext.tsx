@@ -1,10 +1,10 @@
+
 // src/context/PhotoSyncContext.tsx
 // Manages auto-import and background photo scanning
 
 import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
 import { PhotoScanner, ScanProgress } from '../services/PhotoScanner';
 import { PhotoImportQueue } from '../services/PhotoImportQueue';
-import { useDatabase } from './DatabaseContext';
 import { useBaby } from './BabyContext';
 
 interface PhotoSyncContextType {
@@ -33,7 +33,6 @@ export const PhotoSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const scannerRef = useRef<PhotoScanner | null>(null);
   const importQueueRef = useRef<PhotoImportQueue | null>(null);
   
-  const { photoRepo } = useDatabase();
   const { currentBaby } = useBaby();
 
   const startScan = useCallback(async (options: { quick?: boolean; days?: number } = {}) => {
@@ -55,7 +54,6 @@ export const PhotoSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       });
       scannerRef.current = scanner;
 
-      // Scan
       const result = options.quick 
         ? await scanner.quickScan(options.days || 7)
         : await scanner.deepScan();
@@ -66,7 +64,6 @@ export const PhotoSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         message: `Importing ${result.newPhotos} photos...`,
       } : null);
 
-      // Queue for import
       const queue = new PhotoImportQueue();
       importQueueRef.current = queue;
 
@@ -77,7 +74,6 @@ export const PhotoSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         source: 'auto_import',
       });
 
-      // Process queue
       await queue.processQueue({
         babyId: currentBaby?.id,
         source: 'auto_import',
@@ -90,7 +86,6 @@ export const PhotoSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         } : null);
       });
 
-      // Update stats
       const stats = await queue.getQueueStats();
       setQueueStats(stats);
 

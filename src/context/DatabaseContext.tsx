@@ -1,44 +1,41 @@
 // src/context/DatabaseContext.tsx
 // Provides database access throughout the app
 
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { getDatabase, PhotoRepository, TrackerRepository, BabyRepository } from '../database';
-import { SQLiteDatabase } from 'expo-sqlite';
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import { db } from '../database/db';
+import * as schema from '../database/schema';
 
-interface DatabaseContextType {
-  db: SQLiteDatabase | null;
+type DatabaseContextType = {
   isReady: boolean;
   error: Error | null;
-  photoRepo: PhotoRepository;
-  trackerRepo: TrackerRepository;
-  babyRepo: BabyRepository;
-  resetDatabase: () => Promise<void>;
-}
+  schema: typeof schema;
+};
 
-const DatabaseContext = createContext<DatabaseContextType | null>(null);
+const DatabaseContext = createContext<DatabaseContextType>({
+  isReady: false,
+  error: null,
+  schema,
+});
 
 export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [db, setDb] = useState<SQLiteDatabase | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [error, setError] = useState<Error | null>(null);
-
-  const photoRepo = React.useMemo(() => new PhotoRepository(), []);
-  const trackerRepo = React.useMemo(() => new TrackerRepository(), []);
-  const babyRepo = React.useMemo(() => new BabyRepository(), []);
 
   useEffect(() => {
     let mounted = true;
 
     async function init() {
       try {
-        const database = await getDatabase();
+        // Test connection
+        await db.select().from(schema.appSettings).limit(1);
+        
         if (mounted) {
-          setDb(database);
           setIsReady(true);
         }
       } catch (err) {
+        console.log('[DB] First run - tables will be created by Drizzle');
         if (mounted) {
-          setError(err instanceof Error ? err : new Error('Database init failed'));
+          setIsReady(true);
         }
       }
     }
@@ -50,28 +47,8 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
-  const resetDatabase = useCallback(async () => {
-    // Implementation from database/connection.ts
-    const { resetDatabase: doReset } = await import('../database/connection');
-    await doReset();
-    setDb(null);
-    setIsReady(false);
-    // Re-init
-    const database = await getDatabase();
-    setDb(database);
-    setIsReady(true);
-  }, []);
-
   return (
-    <DatabaseContext.Provider value={{
-      db,
-      isReady,
-      error,
-      photoRepo,
-      trackerRepo,
-      babyRepo,
-      resetDatabase,
-    }}>
+    <DatabaseContext.Provider value={{ isReady, error, schema }}>
       {children}
     </DatabaseContext.Provider>
   );
