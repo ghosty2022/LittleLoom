@@ -2,9 +2,10 @@
 // Migration helpers: AsyncStorage → Drizzle SQLite
 
 import { db } from './db';
-import { babies, trackerEntries, appSettings } from './schema';
+import { babies, trackerEntries, appSettings, familyMembers } from './schema';
 import { eq, and, desc } from 'drizzle-orm';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 
 const MIGRATION_KEY = '@littleloom_db_migration_v1';
 
@@ -154,6 +155,89 @@ export async function deleteAppSetting(key: string): Promise<void> {
   await db.delete(appSettings).where(eq(appSettings.key, key));
 }
 
+// ─── FAMILY MEMBER HELPERS ───
+
+export async function getFamilyMembersByBabyFromDb(babyId: string, includeDeleted = false) {
+  const conditions = [eq(familyMembers.babyId, babyId)];
+  if (!includeDeleted) {
+    conditions.push(eq(familyMembers.isDeleted, false));
+  }
+  return db.select().from(familyMembers)
+    .where(and(...conditions))
+    .orderBy(desc(familyMembers.addedAt))
+    .all();
+}
+
+export async function getFamilyMemberByIdFromDb(id: string) {
+  const result = db.select().from(familyMembers)
+    .where(eq(familyMembers.id, id))
+    .all();
+  return result[0] || null;
+}
+
+export async function getFamilyMemberByEmailAndBabyFromDb(email: string, babyId: string) {
+  const result = db.select().from(familyMembers)
+    .where(
+      and(
+        eq(familyMembers.email, email),
+        eq(familyMembers.babyId, babyId),
+        eq(familyMembers.isDeleted, false)
+      )
+    )
+    .all();
+  return result[0] || null;
+}
+
+export async function createFamilyMemberInDb(data: {
+  id: string;
+  babyId: string;
+  email: string;
+  fullName: string;
+  role: string;
+  relationship: string;
+  permissions: Record<string, boolean>;
+  addedBy: string;
+  userId?: string;
+  avatar?: string;
+  phoneNumber?: string;
+  canBeRemoved?: boolean;
+  notificationsEnabled?: boolean;
+  status?: string;
+}) {
+  const now = new Date().toISOString();
+  return db.insert(familyMembers).values({
+    ...data,
+    addedAt: now,
+    updatedAt: now,
+    syncStatus: 'pending',
+  }).returning().all();
+}
+
+export async function updateFamilyMemberInDb(id: string, updates: Partial<typeof familyMembers.$inferInsert>) {
+  const now = new Date().toISOString();
+  const processed = { ...updates };
+  if (updates.permissions && typeof updates.permissions !== 'string') {
+    processed.permissions = JSON.stringify(updates.permissions) as any;
+  }
+  return db.update(familyMembers)
+    .set({ ...processed, updatedAt: now, syncStatus: 'pending' })
+    .where(eq(familyMembers.id, id))
+    .returning()
+    .all();
+}
+
+export async function softDeleteFamilyMemberInDb(id: string) {
+  return db.update(familyMembers)
+    .set({ isDeleted: true, syncStatus: 'deleted', updatedAt: new Date().toISOString() })
+    .where(eq(familyMembers.id, id))
+    .returning()
+    .all();
+}
+
+export async function deleteFamilyMembersByBabyFromDb(babyId: string) {
+  return db.delete(familyMembers).where(eq(familyMembers.babyId, babyId));
+}
+
 // ─── ONE-TIME MIGRATION RUNNER ───
 
 export async function runOneTimeMigration(): Promise<void> {
@@ -253,6 +337,60 @@ export async function runOneTimeMigration(): Promise<void> {
 
   const notifSettings = await AsyncStorage.getItem('@littleloom_notification_settings');
   if (notifSettings) await setAppSetting('notification_settings', notifSettings);
+
+  // 6. Migrate family members (guardians + parent2)
+  const guardiansKeys = allKeys.filter(k => k.startsWith('littleloom_guardians_'));
+  let familyCount = 0;
+  for (const key of guardiansKeys) {
+    const json = await AsyncStorage.getItem(key);
+    if (!json) continue;
+    try {
+      const members = JSON.parse(json);
+      const babyId = key.replace('littleloom_guardians_', '');
+      for (const member of members) {
+        if (!member.id) continue;
+        const existing = await getFamilyMemberByIdFromDb(member.id);
+        if (!existing) {
+          await createFamilyMemberInDb({
+            id: member.id,
+            babyId: member.babyId || babyId,
+            userId: member.userId || null,
+            email: member.email || '',
+            fullName: member.fullName || 'Unknown',
+            role: member.role === 'PARENT_1' ? 'parent1' 
+              : member.role === 'PARENT_2' ? 'parent2' 
+              : member.role === 'GUARDIAN' ? 'guardian' 
+              : 'viewer',
+            relationship: member.relationship || 'Guardian',
+            permissions: member.permissions || {},
+            addedBy: member.addedBy || '',
+            avatar: member.avatar,
+            phoneNumber: member.phoneNumber,
+            canBeRemoved: member.canBeRemoved ?? true,
+            notificationsEnabled: member.notificationsEnabled ?? true,
+            status: member.userId ? 'active' : 'pending',
+          });
+          familyCount++;
+        }
+      }
+    } catch (e) {
+      console.error(`[Migration] Failed to migrate family members from ${key}:`, e);
+    }
+  }
+
+  // 7. Migrate parent2 profile from SecureStore (best effort - may not exist)
+  try {
+    const parent2Str = await SecureStore.getItemAsync('littleloom_parent2_profile_secure');
+    if (parent2Str) {
+      const parent2Data = JSON.parse(parent2Str);
+      // Parent2 data is stored per-baby in the baby record, so we note it here
+      // The actual parent2Id is already in the babies table from step 1
+      console.log('[Migration] Parent2 profile found in SecureStore (baby record already migrated)');
+    }
+  } catch {
+    // SecureStore may not be available in this context, that's OK
+  }
+  console.log(`[Migration] Migrated ${familyCount} family members`);
 
   await markMigrationComplete();
   console.log('[Migration] Complete!');

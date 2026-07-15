@@ -13,7 +13,10 @@
     "test": "jest",
     "prebuild": "expo prebuild",
     "dev": "expo start --clear --max-workers 1",
-    "prebuild:clean": "expo prebuild --clean"
+    "prebuild:clean": "expo prebuild --clean",
+    "db:generate": "drizzle-kit generate --config=src/database/drizzle.config.ts",
+    "db:push": "drizzle-kit push --config=src/database/drizzle.config.ts",
+    "db:studio": "drizzle-kit studio --config=src/database/drizzle.config.ts"
   },
   "dependencies": {
     "@expo/metro-runtime": "~4.0.0",
