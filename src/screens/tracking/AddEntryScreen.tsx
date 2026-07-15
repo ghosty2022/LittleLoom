@@ -900,6 +900,8 @@ function TrackerContent({
   handlePickerClose,
 }: any) {
   const theme = useUnifiedTrackerTheme();
+  const scrollViewRef = useRef<Animated.ScrollView>(null);
+  
   const {
     fullThemeColors,
     themeColors,
@@ -1317,7 +1319,7 @@ function TrackerContent({
     <LinearGradient colors={gradientColors} style={styles.container}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.keyboardView} keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}>
-        <Animated.ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + 20 }]} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+        <Animated.ScrollView ref={scrollViewRef} contentContainerStyle={[styles.content, { paddingTop: insets.top + 20 }]} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
 
           {/* Top Nav Row */}
           <Animated.View entering={shouldReduceMotion ? undefined : FadeInDown.springify()} style={styles.headerRow}>
@@ -1351,7 +1353,10 @@ function TrackerContent({
             <View style={styles.sectionMargin}>
               <StreakGoalRing streak={streak} isAtRisk={isAtRisk} hoursUntilBreak={hoursUntilBreak} streakMessage={streakMessage}
                 entriesToday={entriesToday} dailyGoal={3} trackerColor={tracker.gradient[0]} colors={fullThemeColors}
-                borderRadiusValue={borderRadiusValue} onLogNow={() => {}} />
+                borderRadiusValue={borderRadiusValue} onLogNow={() => {
+                  // Scroll to form area
+                  scrollViewRef.current?.scrollTo({ y: 500, animated: true });
+                }} />
             </View>
           )}
 

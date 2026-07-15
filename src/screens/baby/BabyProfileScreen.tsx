@@ -595,10 +595,10 @@ const FamilyConnectionHub = React.memo(({ members, onManage }: { members: Family
 const QuickActionDock = React.memo(({ onAction }: { onAction: (screen: string, params?: any) => void }) => {
   const actions = [
     { icon: '📏', label: 'Measure', screen: 'GrowthDashboard', color: '#6366f1', gradient: ['#6366f1', '#8b5cf6'] as [string, string] },
-    { icon: '🍼', label: 'Feed', screen: 'AddEntry', params: { type: 'feed' }, color: '#f59e0b', gradient: ['#f59e0b', '#fbbf24'] as [string, string] },
-    { icon: '😴', label: 'Sleep', screen: 'AddEntry', params: { type: 'sleep' }, color: '#3b82f6', gradient: ['#3b82f6', '#60a5fa'] as [string, string] },
-    { icon: '💊', label: 'Med', screen: 'AddEntry', params: { type: 'medication' }, color: '#ef4444', gradient: ['#ef4444', '#f87171'] as [string, string] },
-    { icon: '🌟', label: 'Milestone', screen: 'AddEntry', params: { type: 'milestone' }, color: '#10b981', gradient: ['#10b981', '#34d399'] as [string, string] },
+    { icon: '🍼', label: 'Feed', screen: 'AddEntry', params: { trackerId: 'feed' }, color: '#f59e0b', gradient: ['#f59e0b', '#fbbf24'] as [string, string] },
+    { icon: '😴', label: 'Sleep', screen: 'AddEntry', params: { trackerId: 'sleep' }, color: '#3b82f6', gradient: ['#3b82f6', '#60a5fa'] as [string, string] },
+    { icon: '💊', label: 'Med', screen: 'AddEntry', params: { trackerId: 'medication' }, color: '#ef4444', gradient: ['#ef4444', '#f87171'] as [string, string] },
+    { icon: '🌟', label: 'Milestone', screen: 'AddEntry', params: { trackerId: 'milestone' }, color: '#10b981', gradient: ['#10b981', '#34d399'] as [string, string] },
   ];
 
   return (
@@ -1177,13 +1177,17 @@ ${changes.join('\n')}`,
             <NextMilestoneCountdown baby={currentBabyData} milestones={babyMilestones} />
             <FamilyConnectionHub 
               members={familyMembers} 
-              onManage={() => navigation.navigate('FamilySettings' as never)} 
+              onManage={() => navigation.navigate('FamilySharing' as never)} 
             />
 
             <Animated.View entering={FadeInUp.delay(500).springify()}>
               <SectionHeader 
                 title="Recent Activity" 
-                subtitle={`${recentActivities.length} entries`}
+                AddEntry: { 
+    trackerId?: string;
+    type?: string; 
+    ...
+}={`${recentActivities.length} entries`}
                 action={() => navigation.navigate('Timeline' as never, { babyId: currentBabyData?.id } as never)}
                 actionLabel="See All"
               />
