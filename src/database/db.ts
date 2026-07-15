@@ -1,10 +1,13 @@
 // src/database/db.ts
 // Drizzle ORM connection using expo-sqlite
-// Migrations are optional - schema auto-creates on first run
+// Uses proper Drizzle migrations for schema + custom data migration
 
+import { useState, useEffect } from 'react';
 import { openDatabaseSync, SQLiteDatabase } from 'expo-sqlite';
 import { drizzle } from 'drizzle-orm/expo-sqlite';
+import { migrate } from 'drizzle-orm/expo-sqlite/migrator';
 import * as schema from './schema';
+import migrations from './migrations/migrations';
 
 // ─── Database Setup ───────────────────────────────────────────────────
 
@@ -31,26 +34,46 @@ export function getDb() {
 
 export const db = getDb();
 
-// ─── Migration Hook (optional - for when you generate migrations) ─────
+// ─── Schema + Data Migration Runner ───────────────────────────────────
+
+let initPromise: Promise<void> | null = null;
+
+export async function initializeDatabase(): Promise<void> {
+  if (initPromise) return initPromise;
+
+  initPromise = (async () => {
+    try {
+      // 1. Run Drizzle schema migrations (creates/updates all tables)
+      await migrate(db, migrations);
+      console.log('[DB] Schema migrations applied');
+
+      // 2. Run AsyncStorage → SQLite data migration
+      const { runOneTimeMigration } = await import('./dbHelpers');
+      await runOneTimeMigration();
+    } catch (error) {
+      console.error('[DB] Initialization failed:', error);
+      throw error;
+    }
+  })();
+
+  return initPromise;
+}
+
+// Fire on module load — blocks until migrations complete
+initializeDatabase().catch(console.error);
+
+// ─── Migration Hook (for React components to await if needed) ────────
 
 export function useDatabaseMigrations() {
-  // Try to use Drizzle's migrator if migrations exist
-  try {
-    const { useMigrations } = require('drizzle-orm/expo-sqlite/migrator');
+  const [status, setStatus] = useState({ success: false, error: null as Error | null });
 
-    let migrations: any;
-    try {
-      migrations = require('./migrations/migrations').default;
-    } catch {
-      // No migrations generated yet - that's OK
-      migrations = { journal: { entries: [] }, migrations: {} };
-    }
+  useEffect(() => {
+    initializeDatabase()
+      .then(() => setStatus({ success: true, error: null }))
+      .catch((err) => setStatus({ success: false, error: err }));
+  }, []);
 
-    return useMigrations(db, migrations);
-  } catch {
-    // drizzle-orm/expo-sqlite/migrator not available
-    return { success: true, error: null };
-  }
+  return status;
 }
 
 // ─── Schema Export ────────────────────────────────────────────────────

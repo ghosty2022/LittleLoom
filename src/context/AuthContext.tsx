@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { Alert, AppState, AppStateStatus } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
+import { getAppSetting, setAppSetting } from '@/database/dbHelpers';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { SocialUser } from '../hooks/useSocialAuth';
 
@@ -315,13 +316,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         
         if (userProfile) {
           const [commUsername, commHandle, commBio, commAvatar, commDisplayName, commStats, commTopics] = await Promise.all([
-            AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_USERNAME),
-            AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_HANDLE),
-            AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_BIO),
-            AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_AVATAR),
-            AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_DISPLAY_NAME),
-            AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_STATS),
-            AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS),
+            getAppSetting(ASYNC_KEYS.COMMUNITY_USERNAME),
+            getAppSetting(ASYNC_KEYS.COMMUNITY_HANDLE),
+            getAppSetting(ASYNC_KEYS.COMMUNITY_BIO),
+            getAppSetting(ASYNC_KEYS.COMMUNITY_AVATAR),
+            getAppSetting(ASYNC_KEYS.COMMUNITY_DISPLAY_NAME),
+            getAppSetting(ASYNC_KEYS.COMMUNITY_STATS),
+            getAppSetting(ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS),
           ]);
           
           const baseName = userProfile.fullName || 'Parent';
@@ -510,13 +511,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       
       const [commUsername, commHandle, commBio, commAvatar, commDisplayName, commStats, commTopics] = await Promise.all([
-        AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_USERNAME),
-        AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_HANDLE),
-        AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_BIO),
-        AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_AVATAR),
-        AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_DISPLAY_NAME),
-        AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_STATS),
-        AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS),
+        getAppSetting(ASYNC_KEYS.COMMUNITY_USERNAME),
+        getAppSetting(ASYNC_KEYS.COMMUNITY_HANDLE),
+        getAppSetting(ASYNC_KEYS.COMMUNITY_BIO),
+        getAppSetting(ASYNC_KEYS.COMMUNITY_AVATAR),
+        getAppSetting(ASYNC_KEYS.COMMUNITY_DISPLAY_NAME),
+        getAppSetting(ASYNC_KEYS.COMMUNITY_STATS),
+        getAppSetting(ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS),
       ]);
       
       const baseName = email.split('@')[0];
@@ -591,13 +592,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const token = `social_token_${socialUser.provider}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       
       const [commUsername, commHandle, commBio, commAvatar, commDisplayName, commStats, commTopics] = await Promise.all([
-        AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_USERNAME),
-        AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_HANDLE),
-        AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_BIO),
-        AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_AVATAR),
-        AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_DISPLAY_NAME),
-        AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_STATS),
-        AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS),
+        getAppSetting(ASYNC_KEYS.COMMUNITY_USERNAME),
+        getAppSetting(ASYNC_KEYS.COMMUNITY_HANDLE),
+        getAppSetting(ASYNC_KEYS.COMMUNITY_BIO),
+        getAppSetting(ASYNC_KEYS.COMMUNITY_AVATAR),
+        getAppSetting(ASYNC_KEYS.COMMUNITY_DISPLAY_NAME),
+        getAppSetting(ASYNC_KEYS.COMMUNITY_STATS),
+        getAppSetting(ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS),
       ]);
       
       const baseName = socialUser.fullName;
@@ -681,9 +682,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(userProfile)),
         AsyncStorage.setItem(ASYNC_KEYS.ONBOARDING_COMPLETE, 'true'),
         AsyncStorage.setItem(ASYNC_KEYS.HAS_SEEN_ONBOARDING, 'true'),
-        AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_USERNAME, fullName),
-        AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_HANDLE, handle),
-        AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_DISPLAY_NAME, fullName),
+        setAppSetting(ASYNC_KEYS.COMMUNITY_USERNAME, fullName),
+        setAppSetting(ASYNC_KEYS.COMMUNITY_HANDLE, handle),
+        setAppSetting(ASYNC_KEYS.COMMUNITY_DISPLAY_NAME, fullName),
       ]);
 
       if (isMounted.current) {
@@ -810,26 +811,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       if (updates.username !== undefined) {
         updatedProfile.communityUsername = updates.username;
-        storageOps.push(AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_USERNAME, updates.username));
+        storageOps.push(setAppSetting(ASYNC_KEYS.COMMUNITY_USERNAME, updates.username));
       }
       if (updates.handle !== undefined) {
         updatedProfile.communityHandle = updates.handle;
-        storageOps.push(AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_HANDLE, updates.handle));
+        storageOps.push(setAppSetting(ASYNC_KEYS.COMMUNITY_HANDLE, updates.handle));
       }
       if (updates.bio !== undefined) {
         updatedProfile.communityBio = updates.bio;
-        storageOps.push(AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_BIO, updates.bio));
+        storageOps.push(setAppSetting(ASYNC_KEYS.COMMUNITY_BIO, updates.bio));
       }
       if (updates.avatar !== undefined) {
         updatedProfile.communityAvatar = updates.avatar;
         if (!updatedProfile.avatar) {
           updatedProfile.avatar = updates.avatar;
         }
-        storageOps.push(AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_AVATAR, updates.avatar));
+        storageOps.push(setAppSetting(ASYNC_KEYS.COMMUNITY_AVATAR, updates.avatar));
       }
       if (updates.displayName !== undefined) {
         updatedProfile.communityDisplayName = updates.displayName;
-        storageOps.push(AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_DISPLAY_NAME, updates.displayName));
+        storageOps.push(setAppSetting(ASYNC_KEYS.COMMUNITY_DISPLAY_NAME, updates.displayName));
       }
       
       await Promise.all([
@@ -869,7 +870,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const updated = { ...state.userProfile, communityStats: newStats };
       await Promise.all([
         secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(updated)),
-        AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_STATS, JSON.stringify(newStats)),
+        setAppSetting(ASYNC_KEYS.COMMUNITY_STATS, JSON.stringify(newStats)),
       ]);
       if (isMounted.current) setState(prev => ({ ...prev, userProfile: updated }));
       return true;
@@ -883,7 +884,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const updated = { ...state.userProfile, communitySelectedTopics: trimmed };
       await Promise.all([
         secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(updated)),
-        AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS, JSON.stringify(trimmed)),
+        setAppSetting(ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS, JSON.stringify(trimmed)),
       ]);
       if (isMounted.current) setState(prev => ({ ...prev, userProfile: updated }));
       return true;

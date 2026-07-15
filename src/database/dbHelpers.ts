@@ -416,6 +416,49 @@ export async function runOneTimeMigration(): Promise<void> {
   }
   console.log(`[Migration] Migrated ${familyCount} family members`);
 
+  // 8. Migrate community profile data from AsyncStorage to app_settings
+  const communityKeys = [
+    'littleloom_community_profile',
+    'littleloom_username_registry',
+    'littleloom_community_username',
+    'littleloom_community_handle',
+    'littleloom_community_bio',
+    'littleloom_community_avatar',
+    'littleloom_community_display_name',
+    'littleloom_community_stats',
+    '@community_selected_topics',
+  ];
+  
+  let communityMigrated = 0;
+  for (const key of communityKeys) {
+    try {
+      const value = await AsyncStorage.getItem(key);
+      if (value !== null) {
+        await setAppSetting(key, value);
+        communityMigrated++;
+      }
+    } catch (e) {
+      console.error(`[Migration] Failed to migrate community key ${key}:`, e);
+    }
+  }
+  
+  // Also migrate user-specific community selected topics
+  const allKeys = await AsyncStorage.getAllKeys();
+  const userTopicKeys = allKeys.filter(k => k.startsWith('@community_selected_topics_'));
+  for (const key of userTopicKeys) {
+    try {
+      const value = await AsyncStorage.getItem(key);
+      if (value !== null) {
+        await setAppSetting(key, value);
+        communityMigrated++;
+      }
+    } catch (e) {
+      console.error(`[Migration] Failed to migrate community key ${key}:`, e);
+    }
+  }
+  
+  console.log(`[Migration] Migrated ${communityMigrated} community settings`);
+
   await markMigrationComplete();
   console.log('[Migration] Complete!');
 }

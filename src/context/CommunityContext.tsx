@@ -498,7 +498,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       
       const validTopics = validateTopicIds(mergedTopics);
 
-      const existingStats = await AsyncStorage.getItem(`${STORAGE_KEYS.USER_STATS}_${authProfile.id}`);
+      const existingStats = await getAppSetting(`${STORAGE_KEYS.USER_STATS}_${authProfile.id}`);
       const parsedStats = existingStats ? JSON.parse(existingStats) : null;
 
       const communityUser: CommunityUser = {
@@ -534,7 +534,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       if (!communityUser.following?.includes('littleloom_team')) {
         const updatedFollowing = ['littleloom_team', ...(communityUser.following || [])];
-        await AsyncStorage.setItem(
+        await setAppSetting(
           `${STORAGE_KEYS.USER_FOLLOWING}_${authProfile.id}`,
           JSON.stringify(updatedFollowing)
         );
@@ -605,9 +605,9 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         promises.push(AsyncStorage.setItem(STORAGE_KEYS.BLOCKED_USERS, JSON.stringify(currentState.blockedUsers)));
       }
       if (keysToPersist.includes('selectedTopics')) {
-        promises.push(AsyncStorage.setItem(STORAGE_KEYS.SELECTED_TOPICS, JSON.stringify(currentState.selectedTopics)));
+        promises.push(setAppSetting(STORAGE_KEYS.SELECTED_TOPICS, JSON.stringify(currentState.selectedTopics)));
         if (currentState.currentUser?.id) {
-          promises.push(AsyncStorage.setItem(
+          promises.push(setAppSetting(
             `${STORAGE_KEYS.SELECTED_TOPICS}_${currentState.currentUser.id}`,
             JSON.stringify(currentState.selectedTopics)
           ));
@@ -666,7 +666,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         AsyncStorage.getItem(STORAGE_KEYS.MESSAGES),
         AsyncStorage.getItem(STORAGE_KEYS.BLOCKED_USERS),
         currentUserId 
-          ? AsyncStorage.getItem(`${STORAGE_KEYS.SELECTED_TOPICS}_${currentUserId}`)
+          ? getAppSetting(`${STORAGE_KEYS.SELECTED_TOPICS}_${currentUserId}`)
           : Promise.resolve(null),
         AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING),
         AsyncStorage.getItem(STORAGE_KEYS.LIKES),
@@ -765,7 +765,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       lastStreakDate: new Date().toISOString(),
     };
 
-    await AsyncStorage.setItem(`${STORAGE_KEYS.USER_STATS}_${stateRef.current.currentUser.id}`, JSON.stringify(updatedStats));
+    await setAppSetting(`${STORAGE_KEYS.USER_STATS}_${stateRef.current.currentUser.id}`, JSON.stringify(updatedStats));
 
     setState(prev => ({
       ...prev,
@@ -900,7 +900,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       AsyncStorage.setItem(STORAGE_KEYS.POSTS, JSON.stringify(updatedPosts)).catch(console.error);
       AsyncStorage.setItem(STORAGE_KEYS.TOPICS, JSON.stringify(updatedTopics)).catch(console.error);
-      AsyncStorage.setItem(`${STORAGE_KEYS.USER_STATS}_${currentUser.id}`, JSON.stringify(updatedStats)).catch(console.error);
+      setAppSetting(`${STORAGE_KEYS.USER_STATS}_${currentUser.id}`, JSON.stringify(updatedStats)).catch(console.error);
 
       return {
         ...prev,
@@ -1255,7 +1255,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
           AsyncStorage.setItem(STORAGE_KEYS.POSTS, JSON.stringify(updatedPosts)).catch(console.error);
           AsyncStorage.setItem(STORAGE_KEYS.TOPICS, JSON.stringify(updatedTopics)).catch(console.error);
-          AsyncStorage.setItem(`${STORAGE_KEYS.USER_STATS}_${currentUser.id}`, JSON.stringify(updatedStats)).catch(console.error);
+          setAppSetting(`${STORAGE_KEYS.USER_STATS}_${currentUser.id}`, JSON.stringify(updatedStats)).catch(console.error);
 
           return {
             ...prev,
@@ -1535,7 +1535,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const following = existingFollowing ? JSON.parse(existingFollowing) : [];
     if (!following.includes(userId)) {
       following.push(userId);
-      await AsyncStorage.setItem(followingKey, JSON.stringify(following));
+      await setAppSetting(followingKey, JSON.stringify(following));
     }
 
     setState(prev => {
@@ -1605,12 +1605,12 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const existingFollowers = await AsyncStorage.getItem(followersKey);
     const followers = existingFollowers ? JSON.parse(existingFollowers) : [];
     const updatedFollowers = followers.filter((id: string) => id !== currentUser.id);
-    await AsyncStorage.setItem(followersKey, JSON.stringify(updatedFollowers));
+    await setAppSetting(followersKey, JSON.stringify(updatedFollowers));
 
     const existingFollowing = await AsyncStorage.getItem(followingKey);
     const following = existingFollowing ? JSON.parse(existingFollowing) : [];
     const updatedFollowing = following.filter((id: string) => id !== userId);
-    await AsyncStorage.setItem(followingKey, JSON.stringify(updatedFollowing));
+    await setAppSetting(followingKey, JSON.stringify(updatedFollowing));
 
     setState(prev => {
       const updatedPosts = prev.posts.map(post => {
@@ -1671,7 +1671,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const getFollowers = useCallback(async (userId: string): Promise<string[]> => {
     try {
       const followersKey = `${STORAGE_KEYS.USER_FOLLOWERS}_${userId}`;
-      const existingFollowers = await AsyncStorage.getItem(followersKey);
+      const existingFollowers = await getAppSetting(followersKey);
       if (existingFollowers) {
         return JSON.parse(existingFollowers);
       }
@@ -1687,7 +1687,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const getFollowing = useCallback(async (userId: string): Promise<string[]> => {
     try {
       const followingKey = `${STORAGE_KEYS.USER_FOLLOWING}_${userId}`;
-      const existingFollowing = await AsyncStorage.getItem(followingKey);
+      const existingFollowing = await getAppSetting(followingKey);
       if (existingFollowing) {
         return JSON.parse(existingFollowing);
       }
