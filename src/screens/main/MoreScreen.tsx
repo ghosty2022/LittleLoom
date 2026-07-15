@@ -8,7 +8,6 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { BlurView } from 'expo-blur';
 import type { FamilyMember } from '../../types/roles';
 import type { RootStackParamList } from '../../types/navigation';
-
 import { SafeAvatar, SafeBabyAvatar } from '../../components/SafeAvatar';
 import { useActivity } from '../../context/ActivityContext';
 import { useApp } from '../../context/AppContext';
@@ -912,7 +911,7 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
 
   const handleLockNow = useCallback(async () => {
     if (!availableMethods.hasPin && !availableMethods.hasBiometric) {
-      sweetAlert.alert('No Security Enabled', 'Please enable PIN or Biometric authentication first.', 'warning');
+      sweetAlert.error('No Security Enabled', 'Please enable PIN or Biometric authentication first.');
       return;
     }
     await lockApp();
