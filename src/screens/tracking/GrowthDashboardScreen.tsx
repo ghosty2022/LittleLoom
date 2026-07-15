@@ -1,9 +1,20 @@
-import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+// GrowthDashboardScreen.tsx — UNIFIED v5.0
+// TrackerHub aesthetics + Growth-specific intelligence
+// Glass cards, cohesive spacing, unified modals, no feature duplication
+
+import React, {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
-  Alert,
+  ActivityIndicator,
   Dimensions,
-  Image,
   Modal,
+  Pressable,
   RefreshControl,
   ScrollView,
   StatusBar,
@@ -18,31 +29,23 @@ import {
 } from 'react-native';
 
 import { BlurView } from 'expo-blur';
-import { differenceInDays, differenceInMonths, differenceInWeeks, format, isValid, parseISO, addMonths } from 'date-fns';
-import { FontAwesome5, Ionicons, MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
-import { GrowthIndex, useGrowthIntelligence } from '@/hooks/useGrowthIntelligence';
+import {
+  differenceInDays,
+  differenceInMonths,
+  differenceInWeeks,
+  format,
+  isValid,
+  parseISO,
+  addMonths,
+  startOfDay,
+} from 'date-fns';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { SafeAvatar } from '@/components/SafeAvatar';
-import { useAuth } from '@/context/AuthContext';
-import { useCustomization } from '@/hooks/useCustomization';
-import { useFamily } from '@/context/FamilyContext';
-import { useMedia } from '@/context/MediaContext';
-import { useSweetAlert } from '@/components/SweetAlert';
-import { useTimelineCorrelations } from '@/hooks/useTimelineCorrelations';
-import { useTracker } from '@/context/TrackerContext';
-import { useTrackerAchievements } from '@/hooks/useTrackerAchievements';
-import { useTrackerProgressive } from '@/hooks/useTrackerProgressive';
-import { useUnifiedTrackerTheme } from '@/hooks/useUnifiedTrackerTheme';
-import { useWHOGrowthCalculator } from '@/hooks/useWHOGrowthCalculator';
 import * as Haptics from 'expo-haptics';
-import * as MediaLibrary from 'expo-media-library';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
 import Animated, {
   FadeInUp,
   FadeInDown,
   FadeIn,
-  FadeInRight,
   useSharedValue,
   useAnimatedScrollHandler,
   useAnimatedStyle,
@@ -50,11 +53,20 @@ import Animated, {
   Extrapolation,
   withSpring,
   withTiming,
-  runOnJS,
-  useAnimatedProps,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { SafeAvatar } from '@/components/SafeAvatar';
+import { useAuth } from '@/context/AuthContext';
+import { useCustomization } from '@/hooks/useCustomization';
 import { useBaby } from '@/context/BabyContext';
+import { useTracker } from '@/context/TrackerContext';
+import { useSweetAlert } from '@/components/SweetAlert';
+import { useGrowthIntelligence } from '@/hooks/useGrowthIntelligence';
+import { useTimelineCorrelations } from '@/hooks/useTimelineCorrelations';
+import { useTrackerAchievements } from '@/hooks/useTrackerAchievements';
+import { useTrackerProgressive } from '@/hooks/useTrackerProgressive';
+import { useWHOGrowthCalculator } from '@/hooks/useWHOGrowthCalculator';
 import type { GrowthMeasurement, BabyProfile } from '@/types';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -64,33 +76,30 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   DESIGN TOKENS — Refined, cohesive system
+   DESIGN TOKENS — Unified with TrackerHub
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const DESIGN = {
-  radius: {
-    xs: 8,
-    sm: 12,
-    md: 16,
-    lg: 20,
-    xl: 24,
-    full: 999,
-  },
-  spacing: {
-    xs: 4,
-    sm: 8,
-    md: 12,
-    lg: 16,
-    xl: 20,
-    xxl: 24,
-    xxxl: 32,
-  },
-  shadow: {
-    sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 2 },
-    md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 4 },
-    lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 24, elevation: 8 },
-  },
+const SPACING = {
+  xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32, xxxxl: 48,
 };
+
+const RADIUS = {
+  xs: 6, sm: 10, md: 14, lg: 18, xl: 22, full: 999,
+};
+
+const SHADOW = {
+  none: { shadowOpacity: 0, elevation: 0 },
+  xs: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.03, shadowRadius: 2, elevation: 1 },
+  sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 6, elevation: 2 },
+  md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 12, elevation: 3 },
+  lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.07, shadowRadius: 24, elevation: 6 },
+  xl: { shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.1, shadowRadius: 32, elevation: 10 },
+};
+
+const SPRING_CONFIG = { damping: 15, stiffness: 300 };
+const HAPTIC_LIGHT = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+const HAPTIC_MEDIUM = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+const HAPTIC_SUCCESS = () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
 /* ═══════════════════════════════════════════════════════════════════════════
    SAFE HELPERS
@@ -120,22 +129,22 @@ const safeDiffDays = (a: Date | string, b: Date | string): number => {
   return differenceInDays(left, right);
 };
 
-const safeDiffWeeks = (a: Date | string, b: Date | string): number => {
-  const left = safeParseDate(typeof a === 'string' ? a : undefined) || (a instanceof Date ? a : null);
-  const right = safeParseDate(typeof b === 'string' ? b : undefined) || (b instanceof Date ? b : null);
-  if (!left || !right) return 0;
-  return Math.max(0, differenceInWeeks(left, right));
-};
-
 const safeFmt = (d: Date | string | null | undefined, fmt: string): string => {
   const p = safeParseDate(typeof d === 'string' ? d : undefined) || (d instanceof Date ? d : null);
   if (!p) return '—';
   try { return format(p, fmt); } catch { return '—'; }
 };
 
-const isValidUri = (uri?: string): boolean => {
-  if (!uri) return false;
-  return /^https?:\/\/|^file:\/\/|^ph:\/\/|^assets-library:/.test(uri);
+const safeStr = (val: unknown, fallback = ''): string => {
+  if (val === undefined || val === null) return fallback;
+  return String(val);
+};
+
+const safeNum = (val: unknown, fallback = 0): number => {
+  if (val === undefined || val === null) return fallback;
+  const num = Number(val);
+  if (Number.isNaN(num) || !Number.isFinite(num)) return fallback;
+  return num;
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -144,18 +153,8 @@ const isValidUri = (uri?: string): boolean => {
 
 type MetricType = 'height' | 'weight' | 'head' | 'bmi';
 type TimeRange = '1m' | '3m' | '6m' | '1y' | 'all';
-type ChartMode = 'trend' | 'velocity' | 'percentile' | 'comparison';
+type ChartMode = 'trend' | 'velocity' | 'percentile';
 type DashboardTab = 'overview' | 'growth' | 'milestones' | 'insights' | 'photos';
-
-interface PhotoItem {
-  id: string;
-  uri: string;
-  date: string;
-  ageMonths: number;
-  source: 'app' | 'device';
-  measurementId?: string;
-  milestoneId?: string;
-}
 
 interface InsightItem {
   id: string;
@@ -190,82 +189,169 @@ interface ActivitySuggestion {
   color: string;
 }
 
-interface VelocityHeatmapData {
-  week: string;
-  height: number | null;
-  weight: number | null;
-  head: number | null;
-  status: 'normal' | 'high' | 'low' | 'none';
-}
-
 /* ═══════════════════════════════════════════════════════════════════════════
-   REFINED SUB-COMPONENTS
+   THEME HOOK — Unified with TrackerHub pattern
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const GlassCard = memo(({ children, style, onPress, active = false }: { children: React.ReactNode; style?: any; onPress?: () => void; active?: boolean }) => {
-  const theme = useUnifiedTrackerTheme();
+const useDashboardTheme = () => {
+  const { isDark, colors, fullThemeColors } = useCustomization();
+
+  return useMemo(() => ({
+    primary: colors?.primary || '#667eea',
+    secondary: colors?.secondary || '#764ba2',
+    isDark: !!isDark,
+    bgColors: isDark ? ['#0a0a1a', '#12122a'] : ['#f8faff', '#eef2ff'],
+    statusBar: isDark ? 'light-content' : 'dark-content' as const,
+    blur: isDark ? 'dark' : 'light' as const,
+    text: {
+      primary: fullThemeColors?.text || (isDark ? '#ffffff' : '#1a1a1a'),
+      secondary: fullThemeColors?.textSecondary || (isDark ? '#94a3b8' : '#64748b'),
+      muted: fullThemeColors?.textMuted || (isDark ? '#64748b' : '#94a3b8'),
+    },
+    surface: {
+      bg: fullThemeColors?.surface || (isDark ? 'rgba(30,30,45,0.8)' : 'rgba(255,255,255,0.9)'),
+      card: fullThemeColors?.card || (isDark ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.85)'),
+      border: fullThemeColors?.border || (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'),
+    },
+  }), [isDark, colors, fullThemeColors]);
+};
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   UNIFIED GLASS CARD — Matches TrackerHub exactly
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const GlassCard = memo(({ 
+  children, 
+  style, 
+  onPress, 
+  active = false,
+  shadow = 'md',
+}: { 
+  children: React.ReactNode; 
+  style?: any; 
+  onPress?: () => void; 
+  active?: boolean;
+  shadow?: keyof typeof SHADOW;
+}) => {
+  const theme = useDashboardTheme();
   const Wrapper = onPress ? TouchableOpacity : View;
   return (
-    <Wrapper onPress={onPress} activeOpacity={onPress ? 0.85 : 1} style={[
-      styles.glassCard,
-      active && { borderColor: theme.primary, borderWidth: 2 },
-      style
-    ]}>
+    <Wrapper 
+      onPress={onPress} 
+      activeOpacity={onPress ? 0.85 : 1} 
+      style={[
+        styles.glassCard,
+        SHADOW[shadow],
+        active && { borderColor: theme.primary, borderWidth: 2 },
+        style
+      ]}
+    >
       <LinearGradient
         colors={theme.isDark 
-          ? ['rgba(45,45,60,0.85)', 'rgba(35,35,50,0.65)'] 
-          : ['rgba(255,255,255,0.92)', 'rgba(250,250,255,0.75)']}
+          ? ['rgba(45,45,60,0.9)', 'rgba(35,35,50,0.7)'] 
+          : ['rgba(255,255,255,0.95)', 'rgba(250,250,255,0.8)']}
         style={StyleSheet.absoluteFill}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       />
-      <View style={[styles.glassBorder, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.5)' }]} />
+      <View style={[styles.glassBorder, { 
+        backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.6)' 
+      }]} />
       <View style={styles.glassContent}>{children}</View>
     </Wrapper>
   );
 });
 
-const SectionHeader = memo(({ title, subtitle, action, actionLabel, theme }: { title: string; subtitle?: string; action?: () => void; actionLabel?: string; theme: any }) => (
-  <View style={styles.sectionHeader}>
-    <View>
-      <Text style={[styles.sectionTitle, { color: theme.text.primary }]}>{title}</Text>
-      {subtitle && <Text style={[styles.sectionSubtitle, { color: theme.text.muted }]}>{subtitle}</Text>}
-    </View>
-    {action && (
-      <TouchableOpacity onPress={action} style={styles.sectionAction}>
-        <Text style={[styles.sectionActionText, { color: theme.primary }]}>{actionLabel || 'See All'}</Text>
-        <Ionicons name="chevron-forward" size={14} color={theme.primary} />
-      </TouchableOpacity>
-    )}
-  </View>
-));
+/* ═══════════════════════════════════════════════════════════════════════════
+   SECTION HEADER — Matches TrackerHub exactly
+   ═══════════════════════════════════════════════════════════════════════════ */
 
-const TabBar = memo(({ tabs, activeTab, onChange, theme }: { tabs: { key: DashboardTab; label: string; icon: string }[]; activeTab: DashboardTab; onChange: (t: DashboardTab) => void; theme: any }) => (
-  <View style={[styles.tabBar, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
-    {tabs.map((tab) => {
-      const isActive = activeTab === tab.key;
-      return (
-        <TouchableOpacity
-          key={tab.key}
-          onPress={() => onChange(tab.key)}
-          style={[
-            styles.tabItem,
-            isActive && { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.12)' : '#fff', ...DESIGN.shadow.sm }
-          ]}
-        >
-          <Ionicons name={tab.icon as any} size={16} color={isActive ? theme.primary : theme.text.muted} />
-          <Text style={[
-            styles.tabLabel,
-            { color: isActive ? theme.primary : theme.text.muted },
-            isActive && { fontWeight: '700' }
-          ]}>
-            {tab.label}
+const SectionHeader = memo(({ 
+  title, 
+  subtitle, 
+  action, 
+  actionLabel,
+  icon,
+}: { 
+  title: string; 
+  subtitle?: string; 
+  action?: () => void; 
+  actionLabel?: string;
+  icon?: keyof typeof Ionicons.glyphMap;
+}) => {
+  const theme = useDashboardTheme();
+  return (
+    <View style={styles.sectionHeader}>
+      <View style={styles.sectionHeaderLeft}>
+        {icon && (
+          <View style={[styles.sectionHeaderIcon, { backgroundColor: `${theme.primary}12` }]}>
+            <Ionicons name={icon} size={16} color={theme.primary} />
+          </View>
+        )}
+        <View>
+          <Text style={[styles.sectionTitle, { color: theme.text.primary }]}>{title}</Text>
+          {subtitle && (
+            <Text style={[styles.sectionSubtitle, { color: theme.text.muted }]}>{subtitle}</Text>
+          )}
+        </View>
+      </View>
+      {action && (
+        <TouchableOpacity onPress={action} style={styles.sectionAction} activeOpacity={0.7}>
+          <Text style={[styles.sectionActionText, { color: theme.primary }]}>
+            {actionLabel || 'See All'}
           </Text>
+          <Ionicons name="chevron-forward" size={14} color={theme.primary} />
         </TouchableOpacity>
-      );
-    })}
-  </View>
-));
+      )}
+    </View>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TAB BAR — Unified style
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const TabBar = memo(({ 
+  tabs, 
+  activeTab, 
+  onChange 
+}: { 
+  tabs: { key: DashboardTab; label: string; icon: keyof typeof Ionicons.glyphMap }[]; 
+  activeTab: DashboardTab; 
+  onChange: (t: DashboardTab) => void;
+}) => {
+  const theme = useDashboardTheme();
+  return (
+    <View style={[styles.tabBar, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
+      {tabs.map((tab) => {
+        const isActive = activeTab === tab.key;
+        return (
+          <TouchableOpacity
+            key={tab.key}
+            onPress={() => onChange(tab.key)}
+            style={[
+              styles.tabItem,
+              isActive && { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.12)' : '#fff', ...SHADOW.sm }
+            ]}
+          >
+            <Ionicons name={tab.icon} size={16} color={isActive ? theme.primary : theme.text.muted} />
+            <Text style={[
+              styles.tabLabel,
+              { color: isActive ? theme.primary : theme.text.muted },
+              isActive && { fontWeight: '700' }
+            ]}>
+              {tab.label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   KPI CARD — Growth-specific, unified aesthetic
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 const KpiCard = memo(({ 
   title, 
@@ -278,15 +364,15 @@ const KpiCard = memo(({
   percentile, 
   status, 
   onPress, 
-  theme,
   size = 'normal'
 }: any) => {
+  const theme = useDashboardTheme();
   const isLarge = size === 'large';
+  
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={[
       styles.kpiCard,
       isLarge && styles.kpiCardLarge,
-      { backgroundColor: theme.isDark ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.85)' }
     ]}>
       <LinearGradient
         colors={[`${color}08`, `${color}02`]}
@@ -344,65 +430,63 @@ const KpiCard = memo(({
   );
 });
 
-const InsightCard = memo(({ insight, theme, onPress, index }: { insight: InsightItem; theme: any; onPress: () => void; index: number }) => (
-  <Animated.View entering={FadeInUp.delay(index * 60).springify()}>
-    <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={[
-      styles.insightCard,
-      insight.priority === 'high' && { borderLeftWidth: 3, borderLeftColor: insight.color },
-      { backgroundColor: theme.isDark ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.85)' }
-    ]}>
-      <View style={styles.insightRow}>
-        <View style={[styles.insightIconBg, { backgroundColor: `${insight.color}12` }]}>
-          <Text style={styles.insightEmoji}>{insight.emoji}</Text>
-        </View>
-        <View style={styles.insightContent}>
-          <View style={styles.insightHeader}>
-            <Text style={[styles.insightTitle, { color: theme.text.primary }]} numberOfLines={1}>{insight.title}</Text>
-            <Text style={[styles.insightTime, { color: theme.text.muted }]}>{safeFmt(insight.timestamp, 'MMM d')}</Text>
-          </View>
-          <Text style={[styles.insightDesc, { color: theme.text.secondary }]} numberOfLines={2}>{insight.description}</Text>
-          {insight.action && (
-            <View style={[styles.insightActionBadge, { backgroundColor: `${theme.primary}10` }]}>
-              <Text style={[styles.insightActionText, { color: theme.primary }]}>{insight.action.label} →</Text>
-            </View>
-          )}
-        </View>
-        <View style={[styles.insightPriority, { backgroundColor: insight.color }]} />
-      </View>
-    </TouchableOpacity>
-  </Animated.View>
-));
-
 /* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 1: AI Growth Predictor Card
+   INSIGHT CARD — Unified with TrackerHub SmartInsightsCarousel style
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const AIGrowthPredictor = memo(({ baby, growthIndex, theme, onPress }: { baby: BabyProfile; growthIndex: any; theme: any; onPress: () => void }) => {
+const InsightCard = memo(({ 
+  insight, 
+  onPress, 
+  index 
+}: { 
+  insight: InsightItem; 
+  onPress: () => void; 
+  index: number;
+}) => {
+  const theme = useDashboardTheme();
+  
+  return (
+    <Animated.View entering={FadeInUp.delay(index * 60).springify()}>
+      <TouchableOpacity
+        onPress={onPress}
+        style={[styles.insightCard, { borderLeftColor: insight.color, borderLeftWidth: 3 }]}
+        activeOpacity={0.85}
+      >
+        <LinearGradient
+          colors={[`${insight.color}08`, `${insight.color}02`]}
+          style={StyleSheet.absoluteFill}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        />
+        <View style={styles.insightTop}>
+          <Text style={styles.insightEmoji}>{insight.emoji}</Text>
+          <View style={[styles.insightPriorityDot, { backgroundColor: insight.color }]} />
+        </View>
+        <Text style={[styles.insightTitle, { color: theme.text.primary }]} numberOfLines={1}>{insight.title}</Text>
+        <Text style={[styles.insightDesc, { color: theme.text.secondary }]} numberOfLines={2}>{insight.description}</Text>
+        {insight.action && (
+          <View style={[styles.insightActionBadge, { backgroundColor: `${theme.primary}10` }]}>
+            <Text style={[styles.insightActionText, { color: theme.primary }]}>{insight.action.label} →</Text>
+          </View>
+        )}
+      </TouchableOpacity>
+    </Animated.View>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   GROWTH-SPECIFIC COMPONENTS (kept, restyled to match)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const AIGrowthPredictor = memo(({ baby, growthIndex, onPress }: { baby: BabyProfile; growthIndex: any; onPress: () => void }) => {
+  const theme = useDashboardTheme();
   const predictions = useMemo(() => {
     if (!growthIndex) return [];
     const ageNow = safeDiffMonths(new Date(), baby.birthDate);
     return [
-      {
-        milestone: 'First Words',
-        predictedAge: Math.round(ageNow + 2),
-        confidence: 78,
-        category: 'Cognitive',
-        emoji: '🗣️',
-      },
-      {
-        milestone: 'Walking Unassisted',
-        predictedAge: Math.round(ageNow + 4),
-        confidence: 65,
-        category: 'Physical',
-        emoji: '🚶',
-      },
-      {
-        milestone: 'Potty Training',
-        predictedAge: Math.round(ageNow + 8),
-        confidence: 45,
-        category: 'Independence',
-        emoji: '🚽',
-      },
+      { milestone: 'First Words', predictedAge: Math.round(ageNow + 2), confidence: 78, category: 'Cognitive', emoji: '🗣️' },
+      { milestone: 'Walking Unassisted', predictedAge: Math.round(ageNow + 4), confidence: 65, category: 'Physical', emoji: '🚶' },
+      { milestone: 'Potty Training', predictedAge: Math.round(ageNow + 8), confidence: 45, category: 'Independence', emoji: '🚽' },
     ].filter(p => p.predictedAge > ageNow);
   }, [growthIndex, baby]);
 
@@ -420,7 +504,6 @@ const AIGrowthPredictor = memo(({ baby, growthIndex, theme, onPress }: { baby: B
             <Text style={[styles.predictorSubtitle, { color: theme.text.muted }]}>Based on current patterns</Text>
           </View>
         </View>
-        
         <View style={styles.predictorList}>
           {predictions.map((pred, i) => (
             <View key={i} style={[styles.predictorItem, i < predictions.length - 1 && { borderBottomWidth: 1, borderBottomColor: theme.surface.border }]}>
@@ -433,7 +516,10 @@ const AIGrowthPredictor = memo(({ baby, growthIndex, theme, onPress }: { baby: B
               </View>
               <View style={styles.predictorRight}>
                 <View style={styles.predictorBarBg}>
-                  <View style={[styles.predictorBarFill, { width: `${pred.confidence}%`, backgroundColor: pred.confidence > 70 ? '#10b981' : pred.confidence > 50 ? '#f59e0b' : '#ef4444' }]} />
+                  <View style={[styles.predictorBarFill, { 
+                    width: `${pred.confidence}%`, 
+                    backgroundColor: pred.confidence > 70 ? '#10b981' : pred.confidence > 50 ? '#f59e0b' : '#ef4444' 
+                  }]} />
                 </View>
                 <Text style={[styles.predictorConfidence, { color: theme.text.secondary }]}>{pred.confidence}% confidence</Text>
                 <Text style={[styles.predictorAge, { color: theme.primary }]}>~{pred.predictedAge} months</Text>
@@ -446,11 +532,8 @@ const AIGrowthPredictor = memo(({ baby, growthIndex, theme, onPress }: { baby: B
   );
 });
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 2: WHO Percentile Radar (Visual Multi-Dimension)
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const PercentileRadar = memo(({ stats, theme }: { stats: any; theme: any }) => {
+const PercentileRadar = memo(({ stats }: { stats: any }) => {
+  const theme = useDashboardTheme();
   if (!stats) return null;
   
   const dimensions = [
@@ -478,10 +561,8 @@ const PercentileRadar = memo(({ stats, theme }: { stats: any; theme: any }) => {
           <Text style={[styles.radarTitle, { color: theme.text.primary }]}>Growth Dimensions</Text>
           <Text style={[styles.radarSubtitle, { color: theme.text.muted }]}>WHO Percentiles</Text>
         </View>
-        
         <View style={styles.radarContainer}>
           <View style={[styles.radarCanvas, { width: size, height: size }]}>
-            {/* Background web */}
             {[0.25, 0.5, 0.75, 1].map((r, i) => (
               <View key={i} style={[
                 styles.radarRing,
@@ -495,12 +576,8 @@ const PercentileRadar = memo(({ stats, theme }: { stats: any; theme: any }) => {
                 }
               ]} />
             ))}
-            
-            {/* Axis lines */}
             {dimensions.map((_, i) => {
               const angle = i * angleStep - Math.PI / 2;
-              const x = center + Math.cos(angle) * radius;
-              const y = center + Math.sin(angle) * radius;
               return (
                 <View key={`axis-${i}`} style={[
                   styles.radarAxis,
@@ -514,29 +591,19 @@ const PercentileRadar = memo(({ stats, theme }: { stats: any; theme: any }) => {
                 ]} />
               );
             })}
-
-            {/* Data polygon */}
-            <View style={StyleSheet.absoluteFill}>
-              {values.map((v, i) => {
-                const angle = i * angleStep - Math.PI / 2;
-                const r = (v / maxVal) * radius;
-                const x = center + Math.cos(angle) * r;
-                const y = center + Math.sin(angle) * r;
-                return (
-                  <View key={`pt-${i}`} style={[
-                    styles.radarPoint,
-                    {
-                      left: x - 4,
-                      top: y - 4,
-                      backgroundColor: dimensions[i].color,
-                    }
-                  ]} />
-                );
-              })}
-            </View>
+            {values.map((v, i) => {
+              const angle = i * angleStep - Math.PI / 2;
+              const r = (v / maxVal) * radius;
+              const x = center + Math.cos(angle) * r;
+              const y = center + Math.sin(angle) * r;
+              return (
+                <View key={`pt-${i}`} style={[
+                  styles.radarPoint,
+                  { left: x - 4, top: y - 4, backgroundColor: dimensions[i].color }
+                ]} />
+              );
+            })}
           </View>
-
-          {/* Legend */}
           <View style={styles.radarLegend}>
             {dimensions.map((d, i) => (
               <View key={d.key} style={styles.radarLegendItem}>
@@ -552,12 +619,10 @@ const PercentileRadar = memo(({ stats, theme }: { stats: any; theme: any }) => {
   );
 });
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 3: Growth Velocity Heatmap
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const VelocityHeatmap = memo(({ measurements, theme, activeMetric }: { measurements: GrowthMeasurement[]; theme: any; activeMetric: MetricType }) => {
-  const heatmapData = useMemo((): VelocityHeatmapData[] => {
+const VelocityHeatmap = memo(({ measurements, activeMetric }: { measurements: GrowthMeasurement[]; activeMetric: MetricType }) => {
+  const theme = useDashboardTheme();
+  
+  const heatmapData = useMemo(() => {
     const sorted = [...measurements].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     const weeks: Record<string, { values: number[]; dates: Date[] }> = {};
     
@@ -576,15 +641,13 @@ const VelocityHeatmap = memo(({ measurements, theme, activeMetric }: { measureme
       const prevAvg = prevWeek ? prevWeek[1].values.reduce((a, b) => a + b, 0) / prevWeek[1].values.length : avg;
       const change = ((avg - prevAvg) / prevAvg) * 100;
       
-      let status: VelocityHeatmapData['status'] = 'normal';
+      let status: 'normal' | 'high' | 'low' | 'none' = 'normal';
       if (Math.abs(change) > 15) status = change > 0 ? 'high' : 'low';
       if (data.values.length === 0) status = 'none';
 
       return {
         week: `W${week.split('-')[1]}`,
-        height: activeMetric === 'height' ? avg : null,
-        weight: activeMetric === 'weight' ? avg : null,
-        head: activeMetric === 'head' ? avg : null,
+        value: avg,
         status,
       };
     });
@@ -613,7 +676,6 @@ const VelocityHeatmap = memo(({ measurements, theme, activeMetric }: { measureme
             <Text style={[styles.heatmapLegendText, { color: theme.text.muted }]}>Low</Text>
           </View>
         </View>
-        
         <View style={styles.heatmapGrid}>
           {heatmapData.map((week, i) => (
             <View key={i} style={styles.heatmapCell}>
@@ -622,7 +684,7 @@ const VelocityHeatmap = memo(({ measurements, theme, activeMetric }: { measureme
                 { backgroundColor: getStatusColor(week.status) + '20', borderColor: getStatusColor(week.status) }
               ]}>
                 <Text style={[styles.heatmapValue, { color: getStatusColor(week.status) }]}>
-                  {week[activeMetric] ? week[activeMetric]?.toFixed(1) : '—'}
+                  {week.value ? week.value.toFixed(1) : '—'}
                 </Text>
               </View>
               <Text style={[styles.heatmapWeek, { color: theme.text.muted }]}>{week.week}</Text>
@@ -634,11 +696,9 @@ const VelocityHeatmap = memo(({ measurements, theme, activeMetric }: { measureme
   );
 });
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 4: Smart Health Correlation
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const HealthCorrelation = memo(({ trackerEntries, baby, theme }: { trackerEntries: any[]; baby: BabyProfile; theme: any }) => {
+const HealthCorrelation = memo(({ trackerEntries, baby }: { trackerEntries: any[]; baby: BabyProfile }) => {
+  const theme = useDashboardTheme();
+  
   const correlations = useMemo(() => {
     const sleepEntries = trackerEntries.filter((e: any) => e.trackerId === 'sleep' && e.babyId === baby?.id).slice(-7);
     const feedEntries = trackerEntries.filter((e: any) => e.trackerId === 'feed' && e.babyId === baby?.id).slice(-7);
@@ -682,7 +742,6 @@ const HealthCorrelation = memo(({ trackerEntries, baby, theme }: { trackerEntrie
           <Text style={[styles.correlationTitle, { color: theme.text.primary }]}>Health Correlations</Text>
           <Text style={[styles.correlationSubtitle, { color: theme.text.muted }]}>How habits affect growth</Text>
         </View>
-        
         <View style={styles.correlationList}>
           {correlations.map((corr, i) => (
             <View key={i} style={styles.correlationItem}>
@@ -707,65 +766,24 @@ const HealthCorrelation = memo(({ trackerEntries, baby, theme }: { trackerEntrie
   );
 });
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 5: Personalized Activity Suggestions
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const ActivitySuggestions = memo(({ baby, growthIndex, theme, onPress }: { baby: BabyProfile; growthIndex: any; theme: any; onPress: (a: ActivitySuggestion) => void }) => {
+const ActivitySuggestions = memo(({ baby, onPress }: { baby: BabyProfile; onPress: (a: ActivitySuggestion) => void }) => {
+  const theme = useDashboardTheme();
   const ageMonths = safeDiffMonths(new Date(), baby.birthDate);
   
   const suggestions = useMemo((): ActivitySuggestion[] => {
     const base: ActivitySuggestion[] = [];
-    
     if (ageMonths < 3) {
-      base.push({
-        id: 'tummy-time',
-        title: 'Tummy Time',
-        category: 'Physical',
-        duration: '5-10 min',
-        frequency: '3x daily',
-        benefit: 'Strengthens neck & shoulders',
-        emoji: '👶',
-        color: '#10b981',
-      });
+      base.push({ id: 'tummy-time', title: 'Tummy Time', category: 'Physical', duration: '5-10 min', frequency: '3x daily', benefit: 'Strengthens neck & shoulders', emoji: '👶', color: '#10b981' });
     }
     if (ageMonths >= 3 && ageMonths < 6) {
-      base.push({
-        id: 'reach-grasp',
-        title: 'Reach & Grasp',
-        category: 'Motor',
-        duration: '10 min',
-        frequency: '2x daily',
-        benefit: 'Develops hand-eye coordination',
-        emoji: '👋',
-        color: '#6366f1',
-      });
+      base.push({ id: 'reach-grasp', title: 'Reach & Grasp', category: 'Motor', duration: '10 min', frequency: '2x daily', benefit: 'Develops hand-eye coordination', emoji: '👋', color: '#6366f1' });
     }
     if (ageMonths >= 6) {
-      base.push({
-        id: 'crawl-play',
-        title: 'Crawl Exploration',
-        category: 'Physical',
-        duration: '15 min',
-        frequency: 'Daily',
-        benefit: 'Builds core strength',
-        emoji: '🐛',
-        color: '#ec4899',
-      });
+      base.push({ id: 'crawl-play', title: 'Crawl Exploration', category: 'Physical', duration: '15 min', frequency: 'Daily', benefit: 'Builds core strength', emoji: '🐛', color: '#ec4899' });
     }
     if (ageMonths >= 9) {
-      base.push({
-        id: 'peekaboo',
-        title: 'Peek-a-Boo Games',
-        category: 'Cognitive',
-        duration: '10 min',
-        frequency: 'Daily',
-        benefit: 'Object permanence & social',
-        emoji: '🙈',
-        color: '#f59e0b',
-      });
+      base.push({ id: 'peekaboo', title: 'Peek-a-Boo Games', category: 'Cognitive', duration: '10 min', frequency: 'Daily', benefit: 'Object permanence & social', emoji: '🙈', color: '#f59e0b' });
     }
-    
     return base.slice(0, 3);
   }, [ageMonths]);
 
@@ -777,7 +795,6 @@ const ActivitySuggestions = memo(({ baby, growthIndex, theme, onPress }: { baby:
         <Text style={[styles.suggestionsTitle, { color: theme.text.primary }]}>Recommended Activities</Text>
         <Text style={[styles.suggestionsSubtitle, { color: theme.text.muted }]}>For {ageMonths} month old</Text>
       </View>
-      
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.suggestionsScroll}>
         {suggestions.map((suggestion) => (
           <TouchableOpacity key={suggestion.id} onPress={() => onPress(suggestion)} style={styles.suggestionCard}>
@@ -806,11 +823,8 @@ const ActivitySuggestions = memo(({ baby, growthIndex, theme, onPress }: { baby:
   );
 });
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 6: Predictive Milestone Calendar
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const PredictiveMilestoneCalendar = memo(({ baby, milestones, theme, onPress }: { baby: BabyProfile; milestones: any[]; theme: any; onPress: (m: PredictedMilestone) => void }) => {
+const PredictiveMilestoneCalendar = memo(({ baby, milestones, onPress }: { baby: BabyProfile; milestones: any[]; onPress: (m: PredictedMilestone) => void }) => {
+  const theme = useDashboardTheme();
   const ageMonths = safeDiffMonths(new Date(), baby.birthDate);
   
   const predictedMilestones = useMemo((): PredictedMilestone[] => {
@@ -853,15 +867,16 @@ const PredictiveMilestoneCalendar = memo(({ baby, milestones, theme, onPress }: 
       <SectionHeader 
         title="Upcoming Milestones" 
         subtitle="Predicted based on WHO standards"
-        theme={theme}
+        icon="trophy-outline"
       />
-      
       <View style={styles.calendarTimeline}>
         {predictedMilestones.map((milestone, i) => (
           <TouchableOpacity key={milestone.id} onPress={() => onPress(milestone)} style={styles.calendarItem}>
             <View style={styles.calendarLeft}>
               <View style={[styles.calendarLine, { backgroundColor: theme.surface.border }]} />
-              <View style={[styles.calendarDot, { backgroundColor: milestone.confidence > 70 ? '#10b981' : milestone.confidence > 50 ? '#f59e0b' : '#ef4444' }]} />
+              <View style={[styles.calendarDot, { 
+                backgroundColor: milestone.confidence > 70 ? '#10b981' : milestone.confidence > 50 ? '#f59e0b' : '#ef4444' 
+              }]} />
               {i === predictedMilestones.length - 1 && <View style={[styles.calendarLineEnd, { backgroundColor: 'transparent' }]} />}
             </View>
             <View style={[styles.calendarCard, { backgroundColor: theme.isDark ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.85)' }]}>
@@ -871,15 +886,19 @@ const PredictiveMilestoneCalendar = memo(({ baby, milestones, theme, onPress }: 
                   <Text style={[styles.calendarTitle, { color: theme.text.primary }]}>{milestone.title}</Text>
                   <Text style={[styles.calendarCategory, { color: theme.text.muted }]}>{milestone.category}</Text>
                 </View>
-                <View style={[styles.calendarBadge, { backgroundColor: `${milestone.confidence > 70 ? '#10b981' : milestone.confidence > 50 ? '#f59e0b' : '#ef4444'}15` }]}>
-                  <Text style={[styles.calendarBadgeText, { color: milestone.confidence > 70 ? '#10b981' : milestone.confidence > 50 ? '#f59e0b' : '#ef4444' }]}>
+                <View style={[styles.calendarBadge, { 
+                  backgroundColor: `${milestone.confidence > 70 ? '#10b981' : milestone.confidence > 50 ? '#f59e0b' : '#ef4444'}15` 
+                }]}>
+                  <Text style={[styles.calendarBadgeText, { 
+                    color: milestone.confidence > 70 ? '#10b981' : milestone.confidence > 50 ? '#f59e0b' : '#ef4444' 
+                  }]}>
                     {milestone.confidence}% ready
                   </Text>
                 </View>
               </View>
               <Text style={[styles.calendarDesc, { color: theme.text.secondary }]}>{milestone.description}</Text>
               <Text style={[styles.calendarAge, { color: theme.primary }]}>
-                Expected: {milestone.predictedAge} months ({safeDiffMonths(addMonths(new Date(), milestone.predictedAge - ageMonths), new Date())} months from now)
+                Expected: {milestone.predictedAge} months
               </Text>
             </View>
           </TouchableOpacity>
@@ -890,125 +909,11 @@ const PredictiveMilestoneCalendar = memo(({ baby, milestones, theme, onPress }: 
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   MODALS (centered, refined)
+   PURE CHART (No SVG) — Kept from original, restyled
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const AddMeasurementModal = memo(({ visible, onClose, onSave, type, previousValue, theme }: any) => {
-  const [value, setValue] = useState('');
-  const [notes, setNotes] = useState('');
-  const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
-
-  const unit = type === 'weight' ? 'kg' : 'cm';
-
-  const handleSave = useCallback(() => {
-    const num = parseFloat(value);
-    if (isNaN(num) || num <= 0) return;
-    onSave({ type, value: num, unit, date: new Date(date).toISOString(), notes: notes || undefined });
-    setValue(''); setNotes(''); onClose();
-  }, [value, notes, date, type, unit, onSave, onClose]);
-
-  useEffect(() => { if (visible) { setValue(''); setNotes(''); setDate(format(new Date(), 'yyyy-MM-dd')); } }, [visible]);
-
-  if (!visible) return null;
-
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
-      <View style={styles.modalOverlay}>
-        <BlurView intensity={90} tint={theme.isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
-        <Animated.View entering={FadeInUp.springify()} style={[styles.modalContent, { backgroundColor: theme.surface.bg }]}>
-          <LinearGradient colors={theme.isDark ? ['rgba(50,50,70,0.95)', 'rgba(40,40,60,0.9)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.95)']} style={StyleSheet.absoluteFill} />
-          <View style={styles.modalHeader}>
-            <Text style={[styles.modalTitle, { color: theme.text.primary }]}>Add {type}</Text>
-            <TouchableOpacity onPress={onClose} style={styles.modalClose}>
-              <Ionicons name="close" size={20} color={theme.text.secondary} />
-            </TouchableOpacity>
-          </View>
-
-          {previousValue !== undefined && (
-            <View style={[styles.prevValueBox, { backgroundColor: `${theme.primary}10` }]}>
-              <Ionicons name="information-circle" size={18} color={theme.primary} />
-              <Text style={[styles.prevValueText, { color: theme.primary }]}>Previous: {previousValue} {unit}</Text>
-            </View>
-          )}
-
-          <View style={styles.inputGroup}>
-            <Text style={[styles.inputLabel, { color: theme.text.secondary }]}>Value ({unit})</Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', color: theme.text.primary }]}
-              keyboardType="decimal-pad"
-              value={value}
-              onChangeText={setValue}
-              placeholder={`Enter ${type}`}
-              placeholderTextColor={theme.text.muted}
-            />
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={[styles.inputLabel, { color: theme.text.secondary }]}>Date</Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', color: theme.text.primary }]}
-              value={date}
-              onChangeText={setDate}
-            />
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={[styles.inputLabel, { color: theme.text.secondary }]}>Notes</Text>
-            <TextInput
-              style={[styles.input, styles.inputMultiline, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', color: theme.text.primary }]}
-              multiline
-              value={notes}
-              onChangeText={setNotes}
-              placeholder="Optional notes..."
-              placeholderTextColor={theme.text.muted}
-            />
-          </View>
-
-          <TouchableOpacity onPress={handleSave} style={styles.saveButton}>
-            <LinearGradient colors={[theme.primary, theme.secondary]} style={styles.saveButtonGradient}>
-              <Text style={styles.saveButtonText}>Save Measurement</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-        </Animated.View>
-      </View>
-    </Modal>
-  );
-});
-
-const BabySwitcherModal = memo(({ visible, onClose, babies, currentBaby, onSwitch, theme }: any) => {
-  if (!visible) return null;
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
-      <TouchableOpacity style={styles.modalOverlay} onPress={onClose} activeOpacity={1}>
-        <BlurView intensity={95} tint={theme.isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
-        <Animated.View entering={FadeInUp.springify()} style={[styles.babySwitcherModal, { backgroundColor: theme.surface.bg }]}>
-          <LinearGradient colors={theme.isDark ? ['rgba(50,50,70,0.95)', 'rgba(40,40,60,0.9)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.95)']} style={StyleSheet.absoluteFill} />
-          <Text style={[styles.babySwitcherTitle, { color: theme.text.primary }]}>Select Baby</Text>
-          {babies.map((baby: BabyProfile) => (
-            <TouchableOpacity
-              key={baby.id}
-              onPress={() => { onSwitch(baby.id); onClose(); }}
-              style={[styles.babySwitcherItem, currentBaby?.id === baby.id && { backgroundColor: `${theme.primary}15` }]}
-            >
-              <SafeAvatar avatar={baby.avatar} size={44} fallbackIcon="person" borderColor={currentBaby?.id === baby.id ? theme.primary : theme.surface.border} borderWidth={2} />
-              <View style={styles.babySwitcherInfo}>
-                <Text style={[styles.babySwitcherName, { color: theme.text.primary }]}>{baby.name}</Text>
-                <Text style={[styles.babySwitcherMeta, { color: theme.text.secondary }]}>{safeFmt(baby.birthDate, 'MMM d, yyyy')} • {safeDiffMonths(new Date(), baby.birthDate)} months</Text>
-              </View>
-              {currentBaby?.id === baby.id && <Ionicons name="checkmark-circle" size={22} color={theme.primary} />}
-            </TouchableOpacity>
-          ))}
-        </Animated.View>
-      </TouchableOpacity>
-    </Modal>
-  );
-});
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   PURE CHART (No SVG)
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const PureChart = memo(({ data, mode, theme, width, height }: any) => {
+const PureChart = memo(({ data, mode, width, height }: any) => {
+  const theme = useDashboardTheme();
   if (!data || data.length === 0) return null;
   
   const values = data.map((d: any) => d.value);
@@ -1067,8 +972,6 @@ const PureChart = memo(({ data, mode, theme, width, height }: any) => {
       </View>
     );
   }
-  
-  const points = data.map((d: any, i: number) => `${getX(i)},${getY(d.value)}`).join(' ');
   
   return (
     <View style={{ width, height }}>
@@ -1147,12 +1050,135 @@ const PureChart = memo(({ data, mode, theme, width, height }: any) => {
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   MAIN SCREEN — REDESIGNED WITH TABS & BETTER LAYOUT
+   UNIFIED MODALS — TrackerHub style
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const AddMeasurementModal = memo(({ visible, onClose, onSave, type, previousValue }: any) => {
+  const theme = useDashboardTheme();
+  const [value, setValue] = useState('');
+  const [notes, setNotes] = useState('');
+  const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const unit = type === 'weight' ? 'kg' : 'cm';
+
+  const handleSave = useCallback(() => {
+    const num = parseFloat(value);
+    if (isNaN(num) || num <= 0) return;
+    onSave({ type, value: num, unit, date: new Date(date).toISOString(), notes: notes || undefined });
+    setValue(''); setNotes(''); onClose();
+  }, [value, notes, date, type, unit, onSave, onClose]);
+
+  useEffect(() => { 
+    if (visible) { setValue(''); setNotes(''); setDate(format(new Date(), 'yyyy-MM-dd')); } 
+  }, [visible]);
+
+  if (!visible) return null;
+
+  return (
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
+        <Animated.View entering={FadeInUp.springify()} style={[styles.modalContent, { backgroundColor: theme.surface.bg }]}>
+          <LinearGradient 
+            colors={theme.isDark ? ['rgba(50,50,70,0.95)', 'rgba(40,40,60,0.9)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.95)']} 
+            style={StyleSheet.absoluteFill} 
+          />
+          <View style={styles.modalHeader}>
+            <Text style={[styles.modalTitle, { color: theme.text.primary }]}>Add {type}</Text>
+            <TouchableOpacity onPress={onClose} style={styles.modalClose}>
+              <Ionicons name="close" size={20} color={theme.text.secondary} />
+            </TouchableOpacity>
+          </View>
+
+          {previousValue !== undefined && (
+            <View style={[styles.prevValueBox, { backgroundColor: `${theme.primary}10` }]}>
+              <Ionicons name="information-circle" size={18} color={theme.primary} />
+              <Text style={[styles.prevValueText, { color: theme.primary }]}>Previous: {previousValue} {unit}</Text>
+            </View>
+          )}
+
+          <View style={styles.inputGroup}>
+            <Text style={[styles.inputLabel, { color: theme.text.secondary }]}>Value ({unit})</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', color: theme.text.primary }]}
+              keyboardType="decimal-pad"
+              value={value}
+              onChangeText={setValue}
+              placeholder={`Enter ${type}`}
+              placeholderTextColor={theme.text.muted}
+            />
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={[styles.inputLabel, { color: theme.text.secondary }]}>Date</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', color: theme.text.primary }]}
+              value={date}
+              onChangeText={setDate}
+            />
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={[styles.inputLabel, { color: theme.text.secondary }]}>Notes</Text>
+            <TextInput
+              style={[styles.input, styles.inputMultiline, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', color: theme.text.primary }]}
+              multiline
+              value={notes}
+              onChangeText={setNotes}
+              placeholder="Optional notes..."
+              placeholderTextColor={theme.text.muted}
+            />
+          </View>
+
+          <TouchableOpacity onPress={handleSave} style={styles.saveButton}>
+            <LinearGradient colors={[theme.primary, theme.secondary]} style={styles.saveButtonGradient}>
+              <Text style={styles.saveButtonText}>Save Measurement</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        </Animated.View>
+      </Pressable>
+    </Modal>
+  );
+});
+
+const BabySwitcherModal = memo(({ visible, onClose, babies, currentBaby, onSwitch }: any) => {
+  const theme = useDashboardTheme();
+  if (!visible) return null;
+  
+  return (
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
+        <Animated.View entering={FadeInUp.springify()} style={[styles.babySwitcherModal, { backgroundColor: theme.surface.bg }]}>
+          <LinearGradient 
+            colors={theme.isDark ? ['rgba(50,50,70,0.95)', 'rgba(40,40,60,0.9)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.95)']} 
+            style={StyleSheet.absoluteFill} 
+          />
+          <Text style={[styles.babySwitcherTitle, { color: theme.text.primary }]}>Select Baby</Text>
+          {babies.map((baby: BabyProfile) => (
+            <TouchableOpacity
+              key={baby.id}
+              onPress={() => { onSwitch(baby.id); onClose(); }}
+              style={[styles.babySwitcherItem, currentBaby?.id === baby.id && { backgroundColor: `${theme.primary}15` }]}
+            >
+              <SafeAvatar avatar={baby.avatar} size={44} fallbackIcon="person" borderColor={currentBaby?.id === baby.id ? theme.primary : theme.surface.border} borderWidth={2} />
+              <View style={styles.babySwitcherInfo}>
+                <Text style={[styles.babySwitcherName, { color: theme.text.primary }]}>{baby.name}</Text>
+                <Text style={[styles.babySwitcherMeta, { color: theme.text.secondary }]}>{safeFmt(baby.birthDate, 'MMM d, yyyy')} • {safeDiffMonths(new Date(), baby.birthDate)} months</Text>
+              </View>
+              {currentBaby?.id === baby.id && <Ionicons name="checkmark-circle" size={22} color={theme.primary} />}
+            </TouchableOpacity>
+          ))}
+        </Animated.View>
+      </Pressable>
+    </Modal>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MAIN SCREEN — UNIFIED v5.0
    ═══════════════════════════════════════════════════════════════════════════ */
 
 export default function GrowthDashboardScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
-  const theme = useUnifiedTrackerTheme();
+  const theme = useDashboardTheme();
   const { triggerHaptic } = useCustomization();
   const sweetAlert = useSweetAlert();
 
@@ -1166,14 +1192,12 @@ export default function GrowthDashboardScreen({ navigation }: any) {
     getGrowthData,
   } = useBaby();
   const { userProfile } = useAuth();
-  const { pickImage, takePhoto } = useMedia();
   const { entries: trackerEntries } = useTracker();
 
   const { growthIndex } = useGrowthIntelligence();
   const { correlations: timelineCorrelations } = useTimelineCorrelations();
   const { achievements, newlyUnlocked, streak: globalStreak } = useTrackerAchievements();
   const { insights: progressiveInsights } = useTrackerProgressive('growth');
-
   const { getPercentile, getStatus, getVelocity, getPrediction } = useWHOGrowthCalculator();
 
   // ── State ──
@@ -1300,7 +1324,7 @@ export default function GrowthDashboardScreen({ navigation }: any) {
     return result;
   }, [growthData, currentBaby, getGrowthData, getPercentile, getStatus]);
 
-  // ── Smart Insights ──
+  // ── Smart Insights (growth-specific, no duplication with TrackerHub) ──
   const smartInsights = useMemo((): InsightItem[] => {
     if (!currentBaby) return [];
     const items: InsightItem[] = [];
@@ -1309,56 +1333,35 @@ export default function GrowthDashboardScreen({ navigation }: any) {
     if (growthIndex) {
       if (growthIndex.nutritionScore?.value < 50) {
         items.push({
-          id: 'gi-nutrition',
-          type: 'nutrition',
-          title: 'Nutrition Needs Attention',
+          id: 'gi-nutrition', type: 'nutrition', title: 'Nutrition Needs Attention',
           description: `Nutrition score is ${growthIndex.nutritionScore.value}/100. Consider reviewing feeding patterns.`,
-          emoji: '🍎',
-          color: '#FF9F43',
-          priority: 'high',
-          action: { label: 'Track Feed', screen: 'AddEntry', params: { trackerId: 'feed' } },
-          timestamp: now,
+          emoji: '🍎', color: '#FF9F43', priority: 'high',
+          action: { label: 'Track Feed', screen: 'AddEntry', params: { trackerId: 'feed' } }, timestamp: now,
         });
       }
       if (growthIndex.restScore?.value < 50) {
         items.push({
-          id: 'gi-sleep',
-          type: 'sleep',
-          title: 'Sleep Quality Low',
+          id: 'gi-sleep', type: 'sleep', title: 'Sleep Quality Low',
           description: `Rest score is ${growthIndex.restScore.value}/100. Check sleep schedule consistency.`,
-          emoji: '😴',
-          color: '#5F27CD',
-          priority: 'medium',
-          action: { label: 'Track Sleep', screen: 'AddEntry', params: { trackerId: 'sleep' } },
-          timestamp: now,
+          emoji: '😴', color: '#5F27CD', priority: 'medium',
+          action: { label: 'Track Sleep', screen: 'AddEntry', params: { trackerId: 'sleep' } }, timestamp: now,
         });
       }
       if (growthIndex.milestoneReadiness?.length > 0) {
         const top = growthIndex.milestoneReadiness[0];
         items.push({
-          id: 'gi-milestone',
-          type: 'milestone',
-          title: `${top.category} Milestone Ready!`,
+          id: 'gi-milestone', type: 'milestone', title: `${top.category} Milestone Ready!`,
           description: `${top.readinessPercent}% readiness for ${top.category} milestones.`,
-          emoji: '🎯',
-          color: '#10AC84',
-          priority: 'medium',
-          action: { label: 'Log Milestone', screen: 'AddEntry', params: { trackerId: 'milestone' } },
-          timestamp: now,
+          emoji: '🎯', color: '#10AC84', priority: 'medium',
+          action: { label: 'Log Milestone', screen: 'AddEntry', params: { trackerId: 'milestone' } }, timestamp: now,
         });
       }
     }
 
     timelineCorrelations.slice(0, 2).forEach(c => {
       items.push({
-        id: `corr-${c.id}`,
-        type: 'correlation',
-        title: 'Pattern Discovered',
-        description: c.insight,
-        emoji: '🔗',
-        color: '#54A0FF',
-        priority: 'low',
-        timestamp: now,
+        id: `corr-${c.id}`, type: 'correlation', title: 'Pattern Discovered',
+        description: c.insight, emoji: '🔗', color: '#54A0FF', priority: 'low', timestamp: now,
       });
     });
 
@@ -1369,13 +1372,9 @@ export default function GrowthDashboardScreen({ navigation }: any) {
     })[0];
     if (recentMilestone && safeParseDate(recentMilestone.achievedAt) && safeDiffDays(new Date(), recentMilestone.achievedAt) < 7) {
       items.push({
-        id: 'recent-milestone',
-        type: 'milestone',
-        title: 'New Milestone! 🌟',
+        id: 'recent-milestone', type: 'milestone', title: 'New Milestone! 🌟',
         description: `${currentBaby.name} achieved "${recentMilestone.title}"`,
-        emoji: '🏆',
-        color: '#f59e0b',
-        priority: 'high',
+        emoji: '🏆', color: '#f59e0b', priority: 'high',
         timestamp: safeParseDate(recentMilestone.achievedAt)?.getTime() || now,
       });
     }
@@ -1389,15 +1388,10 @@ export default function GrowthDashboardScreen({ navigation }: any) {
         const drop = ((prev.value - latest.value) / prev.value) * 100;
         if (drop > 5) {
           items.push({
-            id: 'growth-drop',
-            type: 'growth',
-            title: 'Measurement Decrease',
+            id: 'growth-drop', type: 'growth', title: 'Measurement Decrease',
             description: `Latest ${activeMetric} dropped ${drop.toFixed(1)}% from previous. Please verify.`,
-            emoji: '⚠️',
-            color: '#ef4444',
-            priority: 'high',
-            action: { label: 'Re-measure', screen: 'AddEntry', params: { trackerId: 'growth' } },
-            timestamp: now,
+            emoji: '⚠️', color: '#ef4444', priority: 'high',
+            action: { label: 'Re-measure', screen: 'AddEntry', params: { trackerId: 'growth' } }, timestamp: now,
           });
         }
       }
@@ -1405,29 +1399,19 @@ export default function GrowthDashboardScreen({ navigation }: any) {
 
     if (globalStreak?.streakAtRisk && globalStreak.currentStreak > 0) {
       items.push({
-        id: 'streak-risk',
-        type: 'achievement',
-        title: '🔥 Streak at Risk!',
+        id: 'streak-risk', type: 'achievement', title: '🔥 Streak at Risk!',
         description: `Log an entry in ${globalStreak.hoursUntilBreak}h to keep your ${globalStreak.currentStreak}-day streak alive.`,
-        emoji: '⏰',
-        color: '#ef4444',
-        priority: 'high',
-        action: { label: 'Log Now', screen: 'AddEntry' },
-        timestamp: now,
+        emoji: '⏰', color: '#ef4444', priority: 'high',
+        action: { label: 'Log Now', screen: 'AddEntry' }, timestamp: now,
       });
     }
 
     if (newlyUnlocked?.length > 0) {
       items.push({
-        id: 'new-achievement',
-        type: 'achievement',
-        title: 'Achievement Unlocked! 🎉',
+        id: 'new-achievement', type: 'achievement', title: 'Achievement Unlocked! 🎉',
         description: `${newlyUnlocked.length} new achievement${newlyUnlocked.length > 1 ? 's' : ''} earned!`,
-        emoji: '🏆',
-        color: '#8b5cf6',
-        priority: 'medium',
-        action: { label: 'View All', screen: 'Achievements' },
-        timestamp: now,
+        emoji: '🏆', color: '#8b5cf6', priority: 'medium',
+        action: { label: 'View All', screen: 'Achievements' }, timestamp: now,
       });
     }
 
@@ -1456,17 +1440,17 @@ export default function GrowthDashboardScreen({ navigation }: any) {
       recordedBy: userProfile?.fullName?.split(' ')[0] || 'Parent',
     });
     if (success) {
-      triggerHaptic('success');
+      HAPTIC_SUCCESS();
       setShowAddModal(false);
     }
-  }, [currentBaby, addGrowthMeasurement, userProfile, triggerHaptic]);
+  }, [currentBaby, addGrowthMeasurement, userProfile]);
 
   const handleInsightPress = useCallback((insight: InsightItem) => {
-    triggerHaptic('light');
+    HAPTIC_LIGHT();
     if (insight.action?.screen) {
       navigation.navigate(insight.action.screen, insight.action.params);
     }
-  }, [navigation, triggerHaptic]);
+  }, [navigation]);
 
   const getPreviousValue = useCallback(() => {
     const data = getGrowthData(activeMetric).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -1476,8 +1460,8 @@ export default function GrowthDashboardScreen({ navigation }: any) {
   const handleTabChange = useCallback((tab: DashboardTab) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setActiveTab(tab);
-    triggerHaptic('light');
-  }, [triggerHaptic]);
+    HAPTIC_LIGHT();
+  }, []);
 
   // ── Loading / No baby ──
   if (!currentBaby) {
@@ -1488,7 +1472,7 @@ export default function GrowthDashboardScreen({ navigation }: any) {
         <Ionicons name="person-add" size={64} color={theme.primary} style={{ marginBottom: 16 }} />
         <Text style={[styles.noDataTitle, { color: theme.text.primary }]}>No Baby Profile</Text>
         <Text style={[styles.noDataText, { color: theme.text.secondary }]}>Create a profile to start tracking growth</Text>
-        <TouchableOpacity style={[styles.createBtn, { backgroundColor: theme.primary }]} onPress={() => navigation.navigate('CreateBabyProfile' as never)}>
+        <TouchableOpacity style={[styles.createBtn, { backgroundColor: theme.primary }]} onPress={() => navigation.navigate('CreateBabyProfile')}>
           <Text style={styles.createBtnText}>Create Profile</Text>
         </TouchableOpacity>
       </View>
@@ -1496,11 +1480,11 @@ export default function GrowthDashboardScreen({ navigation }: any) {
   }
 
   const tabs = [
-    { key: 'overview' as DashboardTab, label: 'Overview', icon: 'grid-outline' },
-    { key: 'growth' as DashboardTab, label: 'Growth', icon: 'trending-up-outline' },
-    { key: 'milestones' as DashboardTab, label: 'Milestones', icon: 'trophy-outline' },
-    { key: 'insights' as DashboardTab, label: 'Insights', icon: 'bulb-outline' },
-    { key: 'photos' as DashboardTab, label: 'Photos', icon: 'images-outline' },
+    { key: 'overview' as DashboardTab, label: 'Overview', icon: 'grid-outline' as const },
+    { key: 'growth' as DashboardTab, label: 'Growth', icon: 'trending-up-outline' as const },
+    { key: 'milestones' as DashboardTab, label: 'Milestones', icon: 'trophy-outline' as const },
+    { key: 'insights' as DashboardTab, label: 'Insights', icon: 'bulb-outline' as const },
+    { key: 'photos' as DashboardTab, label: 'Photos', icon: 'images-outline' as const },
   ];
 
   return (
@@ -1508,7 +1492,7 @@ export default function GrowthDashboardScreen({ navigation }: any) {
       <StatusBar barStyle={theme.statusBar} />
       <LinearGradient colors={theme.bgColors} style={StyleSheet.absoluteFill} />
 
-      {/* Sticky Header */}
+      {/* Sticky Header — matches TrackerHub exactly */}
       <Animated.View style={[styles.stickyHeader, { paddingTop: insets.top + 8 }, headerOpacity]}>
         <BlurView intensity={theme.isDark ? 40 : 80} tint={theme.blur} style={StyleSheet.absoluteFill} />
         <Text style={[styles.stickyTitle, { color: theme.text.primary }]}>{currentBaby.name}'s Growth</Text>
@@ -1519,7 +1503,7 @@ export default function GrowthDashboardScreen({ navigation }: any) {
       <Animated.ScrollView
         onScroll={scrollHandler}
         scrollEventThrottle={16}
-        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 12 }]}
+        contentContainerStyle={{ paddingTop: insets.top + 12, paddingBottom: insets.bottom + 40 }}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} colors={[theme.primary, theme.secondary]} />
@@ -1527,15 +1511,25 @@ export default function GrowthDashboardScreen({ navigation }: any) {
       >
         {/* ── TOP HEADER ROW ── */}
         <Animated.View entering={FadeInDown.springify()} style={styles.topHeader}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={[styles.backBtn, { backgroundColor: theme.surface.card }]}>
-            <Ionicons name="arrow-back" size={22} color={theme.text.primary} />
+          <TouchableOpacity 
+            onPress={() => navigation.goBack()} 
+            style={[styles.headerIconBtn, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' }]}
+          >
+            <Ionicons name="arrow-back" size={22} color={theme.text.secondary} />
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={() => setShowBabySwitcher(true)} style={styles.babyChip}>
+          <TouchableOpacity onPress={() => setShowBabySwitcher(true)} style={styles.babyPill}>
+            <LinearGradient
+             
+              colors={theme.isDark ? ['#2a2a4a', '#1a1a3e'] : ['#f0f4ff', '#e8eeff']}
+              style={StyleSheet.absoluteFill}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            />
             <SafeAvatar avatar={currentBaby.avatar} size={36} fallbackIcon="person" borderColor={theme.primary} borderWidth={2} />
-                        <View style={styles.babyChipText}>
-              <Text style={[styles.babyChipName, { color: theme.text.primary }]}>{currentBaby.name}</Text>
-              <Text style={[styles.babyChipAge, { color: theme.text.secondary }]}>{ageMonths}mo</Text>
+            <View style={styles.babyPillText}>
+              <Text style={[styles.babyPillName, { color: theme.text.primary }]} numberOfLines={1}>{currentBaby.name}</Text>
+              <Text style={[styles.babyPillAge, { color: theme.text.secondary }]}>{ageMonths}mo</Text>
             </View>
             <Ionicons name="chevron-down" size={16} color={theme.text.muted} />
           </TouchableOpacity>
@@ -1548,7 +1542,7 @@ export default function GrowthDashboardScreen({ navigation }: any) {
         {/* ── COMPOSITE GROWTH SCORE (Hero) ── */}
         {growthIndex && (
           <Animated.View entering={FadeInUp.delay(100).springify()}>
-            <GlassCard onPress={() => navigation.navigate('GrowthIntelligence' as never)}>
+            <GlassCard onPress={() => navigation.navigate('GrowthIntelligence')}>
               <View style={styles.heroScore}>
                 <View style={styles.heroScoreLeft}>
                   <View style={[styles.heroScoreRing, { borderColor: `${theme.primary}30` }]}>
@@ -1584,7 +1578,7 @@ export default function GrowthDashboardScreen({ navigation }: any) {
         )}
 
         {/* ── TAB BAR ── */}
-        <TabBar tabs={tabs} activeTab={activeTab} onChange={handleTabChange} theme={theme} />
+        <TabBar tabs={tabs} activeTab={activeTab} onChange={handleTabChange} />
 
         {/* ═════════════════════════════════════════════════════════════════
             TAB: OVERVIEW
@@ -1604,10 +1598,7 @@ export default function GrowthDashboardScreen({ navigation }: any) {
                   <Animated.View 
                     key={m.key} 
                     entering={FadeInUp.delay(150 + i * 80).springify()} 
-                    style={[
-                      styles.kpiGridItem,
-                      m.size === 'large' ? styles.kpiGridItemLarge : styles.kpiGridItemNormal
-                    ]}
+                    style={[styles.kpiGridItem, m.size === 'large' ? styles.kpiGridItemLarge : styles.kpiGridItemNormal]}
                   >
                     <KpiCard
                       title={m.title}
@@ -1619,8 +1610,7 @@ export default function GrowthDashboardScreen({ navigation }: any) {
                       color={m.color}
                       percentile={s?.percentile}
                       status={s?.status}
-                      onPress={() => { setActiveMetric(m.key as MetricType); setActiveTab('growth'); triggerHaptic('light'); }}
-                      theme={theme}
+                      onPress={() => { setActiveMetric(m.key as MetricType); setActiveTab('growth'); HAPTIC_LIGHT(); }}
                       size={m.size}
                     />
                   </Animated.View>
@@ -1628,34 +1618,29 @@ export default function GrowthDashboardScreen({ navigation }: any) {
               })}
             </View>
 
-            {/* ── NEW FEATURE 1: AI Growth Predictor ── */}
+            {/* ── AI Growth Predictor ── */}
             <AIGrowthPredictor 
               baby={currentBaby} 
               growthIndex={growthIndex} 
-              theme={theme} 
-              onPress={() => navigation.navigate('GrowthIntelligence' as never)} 
+              onPress={() => navigation.navigate('GrowthIntelligence')} 
             />
 
-            {/* ── NEW FEATURE 4: Health Correlations ── */}
+            {/* ── Health Correlations ── */}
             <HealthCorrelation 
               trackerEntries={trackerEntries} 
               baby={currentBaby} 
-              theme={theme} 
             />
 
-            {/* ── NEW FEATURE 5: Activity Suggestions ── */}
+            {/* ── Activity Suggestions ── */}
             <ActivitySuggestions 
               baby={currentBaby} 
-              growthIndex={growthIndex} 
-              theme={theme} 
               onPress={(a) => navigation.navigate('ActivityDetail', { activity: a })} 
             />
 
-            {/* ── NEW FEATURE 6: Predictive Milestone Calendar ── */}
+            {/* ── Predictive Milestone Calendar ── */}
             <PredictiveMilestoneCalendar 
               baby={currentBaby} 
               milestones={milestones} 
-              theme={theme} 
               onPress={(m) => navigation.navigate('MilestoneDetail', { milestone: m })} 
             />
 
@@ -1665,15 +1650,14 @@ export default function GrowthDashboardScreen({ navigation }: any) {
                 <SectionHeader 
                   title="Smart Insights" 
                   subtitle={`${smartInsights.filter(i => i.priority === 'high').length} need attention`}
-                  action={() => navigation.navigate('Insights' as never)}
+                  action={() => navigation.navigate('Insights')}
                   actionLabel="View All"
-                  theme={theme}
+                  icon="sparkles-outline"
                 />
                 {smartInsights.slice(0, 3).map((insight, i) => (
                   <InsightCard
                     key={insight.id}
                     insight={insight}
-                    theme={theme}
                     onPress={() => handleInsightPress(insight)}
                     index={i}
                   />
@@ -1682,7 +1666,7 @@ export default function GrowthDashboardScreen({ navigation }: any) {
             )}
 
             {/* ── QUICK ACTIONS ── */}
-            <View style={styles.quickActions}>
+            <View style={styles.quickActionsGrid}>
               {[
                 { icon: '🌟', label: 'Milestones', screen: 'Timeline', params: { filter: 'milestone' }, gradient: ['#f59e0b', '#fbbf24'] },
                 { icon: '💉', label: 'Vaccines', screen: 'VaccinationSchedule', params: {}, gradient: [theme.primary, theme.secondary] },
@@ -1705,8 +1689,8 @@ export default function GrowthDashboardScreen({ navigation }: any) {
            ═════════════════════════════════════════════════════════════════ */}
         {activeTab === 'growth' && (
           <>
-            {/* ── NEW FEATURE 2: WHO Percentile Radar ── */}
-            <PercentileRadar stats={stats} theme={theme} />
+            {/* ── WHO Percentile Radar ── */}
+            <PercentileRadar stats={stats} />
 
             {/* ── Metric Selector ── */}
             <View style={styles.metricSelector}>
@@ -1714,15 +1698,9 @@ export default function GrowthDashboardScreen({ navigation }: any) {
                 <TouchableOpacity
                   key={m}
                   onPress={() => setActiveMetric(m)}
-                  style={[
-                    styles.metricSelectorChip,
-                    activeMetric === m && { backgroundColor: theme.primary }
-                  ]}
+                  style={[styles.metricSelectorChip, activeMetric === m && { backgroundColor: theme.primary }]}
                 >
-                  <Text style={[
-                    styles.metricSelectorText,
-                    { color: activeMetric === m ? '#fff' : theme.text.secondary }
-                  ]}>
+                  <Text style={[styles.metricSelectorText, { color: activeMetric === m ? '#fff' : theme.text.secondary }]}>
                     {m.charAt(0).toUpperCase() + m.slice(1)}
                   </Text>
                 </TouchableOpacity>
@@ -1735,15 +1713,9 @@ export default function GrowthDashboardScreen({ navigation }: any) {
                 <TouchableOpacity
                   key={r}
                   onPress={() => setTimeRange(r)}
-                  style={[
-                    styles.timeRangeChip,
-                    timeRange === r && { backgroundColor: theme.primary }
-                  ]}
+                  style={[styles.timeRangeChip, timeRange === r && { backgroundColor: theme.primary }]}
                 >
-                  <Text style={[
-                    styles.timeRangeText,
-                    { color: timeRange === r ? '#fff' : theme.text.secondary }
-                  ]}>{r === 'all' ? 'All' : r}</Text>
+                  <Text style={[styles.timeRangeText, { color: timeRange === r ? '#fff' : theme.text.secondary }]}>{r === 'all' ? 'All' : r}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -1758,16 +1730,10 @@ export default function GrowthDashboardScreen({ navigation }: any) {
                 <TouchableOpacity
                   key={m.key}
                   onPress={() => setChartMode(m.key)}
-                  style={[
-                    styles.chartModeChip,
-                    chartMode === m.key && { backgroundColor: theme.secondary }
-                  ]}
+                  style={[styles.chartModeChip, chartMode === m.key && { backgroundColor: theme.secondary }]}
                 >
                   <Ionicons name={m.icon as any} size={14} color={chartMode === m.key ? '#fff' : theme.text.secondary} />
-                  <Text style={[
-                    styles.chartModeText,
-                    { color: chartMode === m.key ? '#fff' : theme.text.secondary, marginLeft: 6 }
-                  ]}>{m.label}</Text>
+                  <Text style={[styles.chartModeText, { color: chartMode === m.key ? '#fff' : theme.text.secondary }]}>{m.label}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -1798,7 +1764,6 @@ export default function GrowthDashboardScreen({ navigation }: any) {
                   <PureChart
                     data={chartMode === 'velocity' ? velocityData : chartData}
                     mode={chartMode}
-                    theme={theme}
                     width={SCREEN_W - 72}
                     height={220}
                   />
@@ -1814,10 +1779,9 @@ export default function GrowthDashboardScreen({ navigation }: any) {
               </GlassCard>
             </Animated.View>
 
-            {/* ── NEW FEATURE 3: Velocity Heatmap ── */}
+            {/* ── Velocity Heatmap ── */}
             <VelocityHeatmap 
               measurements={getGrowthData(activeMetric)} 
-              theme={theme} 
               activeMetric={activeMetric}
             />
 
@@ -1827,7 +1791,7 @@ export default function GrowthDashboardScreen({ navigation }: any) {
                 title="Recent Measurements" 
                 action={() => navigation.navigate('Timeline', { filter: 'growth' })}
                 actionLabel="History"
-                theme={theme}
+                icon="time-outline"
               />
               <GlassCard style={styles.historyCard}>
                 {getGrowthData(activeMetric)
@@ -1875,7 +1839,7 @@ export default function GrowthDashboardScreen({ navigation }: any) {
             {/* Milestone Readiness */}
             {growthIndex?.milestoneReadiness && growthIndex.milestoneReadiness.length > 0 && (
               <View style={styles.section}>
-                <SectionHeader title="Milestone Readiness" theme={theme} />
+                <SectionHeader title="Milestone Readiness" icon="trophy-outline" />
                 <GlassCard>
                   {growthIndex.milestoneReadiness.map((m: any, i: number) => (
                     <View key={i} style={[styles.milestoneRow, i < growthIndex.milestoneReadiness.length - 1 && { borderBottomWidth: 1, borderBottomColor: theme.surface.border }]}>
@@ -1896,7 +1860,6 @@ export default function GrowthDashboardScreen({ navigation }: any) {
             <PredictiveMilestoneCalendar 
               baby={currentBaby} 
               milestones={milestones} 
-              theme={theme} 
               onPress={(m) => navigation.navigate('MilestoneDetail', { milestone: m })} 
             />
 
@@ -1905,7 +1868,7 @@ export default function GrowthDashboardScreen({ navigation }: any) {
               <SectionHeader 
                 title="Achieved Milestones" 
                 subtitle={`${milestones.length} total`}
-                theme={theme}
+                icon="checkmark-circle-outline"
               />
               {milestones
                 .sort((a, b) => {
@@ -1939,70 +1902,70 @@ export default function GrowthDashboardScreen({ navigation }: any) {
         {/* ═════════════════════════════════════════════════════════════════
             TAB: INSIGHTS
            ═════════════════════════════════════════════════════════════════ */}
-{activeTab === 'insights' && (
-  <>
-    <View style={styles.section}>
-      <SectionHeader 
-        title="Quick Insights" 
-        subtitle={`${smartInsights.length} items • Tap "View All" for full page`}
-        action={() => navigation.navigate('Insights' as never)}
-        actionLabel="View All"
-        theme={theme}
-      />
-      {smartInsights.slice(0, 3).map((insight, i) => (
-        <InsightCard
-          key={insight.id}
-          insight={insight}
-          theme={theme}
-          onPress={() => handleInsightPress(insight)}
-          index={i}
-        />
-      ))}
-      {smartInsights.length === 0 && (
-        <GlassCard style={styles.emptyInsights}>
-          <Ionicons name="bulb-outline" size={48} color={theme.text.muted} />
-          <Text style={[styles.emptyInsightsText, { color: theme.text.muted }]}>No insights yet</Text>
-          <Text style={[styles.emptyInsightsSub, { color: theme.text.secondary }]}>Keep tracking to get personalized insights</Text>
-        </GlassCard>
-      )}
-      {smartInsights.length > 3 && (
-        <TouchableOpacity 
-          onPress={() => navigation.navigate('Insights' as never)}
-          style={[styles.viewAllInsightsBtn, { backgroundColor: `${theme.primary}10` }]}
-        >
-          <Text style={[styles.viewAllInsightsText, { color: theme.primary }]}>
-            View {smartInsights.length - 3} More Insights
-          </Text>
-          <Ionicons name="arrow-forward" size={14} color={theme.primary} />
-        </TouchableOpacity>
-      )}
-    </View>
+        {activeTab === 'insights' && (
+          <>
+            <View style={styles.section}>
+              <SectionHeader 
+                title="Quick Insights" 
+                subtitle={`${smartInsights.length} items`}
+                action={() => navigation.navigate('Insights')}
+                actionLabel="View All"
+                icon="bulb-outline"
+              />
+              {smartInsights.slice(0, 3).map((insight, i) => (
+                <InsightCard
+                  key={insight.id}
+                  insight={insight}
+                  onPress={() => handleInsightPress(insight)}
+                  index={i}
+                />
+              ))}
+              {smartInsights.length === 0 && (
+                <GlassCard style={styles.emptyInsights}>
+                  <Ionicons name="bulb-outline" size={48} color={theme.text.muted} />
+                  <Text style={[styles.emptyInsightsText, { color: theme.text.muted }]}>No insights yet</Text>
+                  <Text style={[styles.emptyInsightsSub, { color: theme.text.secondary }]}>Keep tracking to get personalized insights</Text>
+                </GlassCard>
+              )}
+              {smartInsights.length > 3 && (
+                <TouchableOpacity 
+                  onPress={() => navigation.navigate('Insights')}
+                  style={[styles.viewAllInsightsBtn, { backgroundColor: `${theme.primary}10` }]}
+                >
+                  <Text style={[styles.viewAllInsightsText, { color: theme.primary }]}>
+                    View {smartInsights.length - 3} More Insights
+                  </Text>
+                  <Ionicons name="arrow-forward" size={14} color={theme.primary} />
+                </TouchableOpacity>
+              )}
+            </View>
 
-    {/* Velocity Trends */}
-    {growthIndex?.velocityTrends && (
-      <View style={styles.section}>
-        <SectionHeader title="Velocity Trends" theme={theme} />
-        <View style={styles.velocityGrid}>
-          {[
-            { key: 'height', label: 'Height', unit: 'cm/mo', color: '#6366f1' },
-            { key: 'weight', label: 'Weight', unit: 'kg/mo', color: '#ec4899' },
-            { key: 'head', label: 'Head', unit: 'cm/mo', color: '#06b6d4' },
-          ].map(v => {
-            const data = (growthIndex.velocityTrends as any)?.[v.key];
-            return (
-              <GlassCard key={v.key} style={styles.velocityCard}>
-                <Text style={[styles.velocityLabel, { color: theme.text.secondary }]}>{v.label}</Text>
-                <Text style={[styles.velocityValue, { color: v.color }]}>{data?.perMonth?.toFixed(2) || '—'}</Text>
-                <Text style={[styles.velocityUnit, { color: theme.text.muted }]}>{v.unit}</Text>
-                <Text style={[styles.velocityPercentile, { color: theme.text.muted }]}>P{data?.percentile || '—'}</Text>
-              </GlassCard>
-            );
-          })}
-        </View>
-      </View>
-    )}
-  </>
-)}
+            {/* Velocity Trends */}
+            {growthIndex?.velocityTrends && (
+              <View style={styles.section}>
+                <SectionHeader title="Velocity Trends" icon="trending-up-outline" />
+                <View style={styles.velocityGrid}>
+                  {[
+                    { key: 'height', label: 'Height', unit: 'cm/mo', color: '#6366f1' },
+                    { key: 'weight', label: 'Weight', unit: 'kg/mo', color: '#ec4899' },
+                    { key: 'head', label: 'Head', unit: 'cm/mo', color: '#06b6d4' },
+                  ].map(v => {
+                    const data = (growthIndex.velocityTrends as any)?.[v.key];
+                    return (
+                      <GlassCard key={v.key} style={styles.velocityCard}>
+                        <Text style={[styles.velocityLabel, { color: theme.text.secondary }]}>{v.label}</Text>
+                        <Text style={[styles.velocityValue, { color: v.color }]}>{data?.perMonth?.toFixed(2) || '—'}</Text>
+                        <Text style={[styles.velocityUnit, { color: theme.text.muted }]}>{v.unit}</Text>
+                        <Text style={[styles.velocityPercentile, { color: theme.text.muted }]}>P{data?.percentile || '—'}</Text>
+                      </GlassCard>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
+          </>
+        )}
+
         {/* ═════════════════════════════════════════════════════════════════
             TAB: PHOTOS
            ═════════════════════════════════════════════════════════════════ */}
@@ -2011,18 +1974,15 @@ export default function GrowthDashboardScreen({ navigation }: any) {
             <SectionHeader 
               title="Growth Memories" 
               subtitle="Photos tied to measurements"
-              theme={theme}
+              icon="images-outline"
             />
             <View style={styles.photoGrid}>
-              {/* Add Photo Button */}
               <TouchableOpacity onPress={() => {}} style={[styles.photoGridAdd, { borderColor: theme.primary }]}>
                 <LinearGradient colors={[theme.primary, theme.secondary]} style={styles.photoGridAddGradient}>
                   <Ionicons name="camera" size={28} color="#fff" />
                   <Text style={styles.photoGridAddText}>Add Photo</Text>
                 </LinearGradient>
               </TouchableOpacity>
-              
-              {/* Placeholder for photo items - would map actual photos */}
               {[1, 2, 3, 4, 5].map((_, i) => (
                 <View key={i} style={[styles.photoGridItem, { backgroundColor: theme.isDark ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.85)' }]}>
                   <View style={styles.photoGridPlaceholder}>
@@ -2037,7 +1997,7 @@ export default function GrowthDashboardScreen({ navigation }: any) {
           </View>
         )}
 
-        <View style={{ height: insets.bottom + 40 }} />
+        <View style={{ height: insets.bottom + 20 }} />
       </Animated.ScrollView>
 
       {/* ── MODALS ── */}
@@ -2047,7 +2007,6 @@ export default function GrowthDashboardScreen({ navigation }: any) {
         onSave={handleAddMeasurement}
         type={activeMetric}
         previousValue={getPreviousValue()}
-        theme={theme}
       />
 
       <BabySwitcherModal
@@ -2056,55 +2015,114 @@ export default function GrowthDashboardScreen({ navigation }: any) {
         babies={babies}
         currentBaby={currentBaby}
         onSwitch={switchBaby}
-        theme={theme}
       />
     </View>
   );
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   STYLES — Completely Redesigned
+   STYLES — Unified with TrackerHub v5.0
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { justifyContent: 'center', alignItems: 'center' },
-  scrollContent: { paddingBottom: 24 },
+
+  // ── Glass Card ──
+  glassCard: {
+    borderRadius: RADIUS.lg,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.lg,
+  },
+  glassBorder: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 1,
+  },
+  glassContent: { flex: 1 },
+
+  // ── Section Header ──
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.md,
+    marginTop: SPACING.md,
+  },
+  sectionHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  sectionHeaderIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: RADIUS.sm,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sectionTitle: { fontSize: 17, fontWeight: '800', letterSpacing: -0.3 },
+  sectionSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2, opacity: 0.7 },
+  sectionAction: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  sectionActionText: { fontSize: 13, fontWeight: '700' },
+
+  // ── Sticky Header ──
+  stickyHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
+    alignItems: 'center',
+    paddingHorizontal: SPACING.xl,
+    paddingBottom: SPACING.sm,
+  },
+  stickyTitle: { fontSize: 17, fontWeight: '800' },
+  stickySubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
 
   // ── Top Header ──
-  topHeader: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: 10, 
-    marginHorizontal: 16, 
-    marginBottom: 16 
+  topHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.lg,
   },
-  backBtn: { 
-    width: 40, 
-    height: 40, 
-    borderRadius: 12, 
-    justifyContent: 'center', 
-    alignItems: 'center' 
+  headerIconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: RADIUS.sm,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  babyChip: { 
-    flex: 1, 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: 10, 
-    paddingHorizontal: 12, 
-    paddingVertical: 6, 
-    borderRadius: 16, 
-    backgroundColor: 'rgba(255,255,255,0.1)' 
+  babyPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 10,
+    borderRadius: RADIUS.full,
+    alignSelf: 'flex-start',
+    gap: 10,
+    overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(102,126,234,0.15)',
+    flex: 1,
   },
-  babyChipText: { flex: 1 },
-  babyChipName: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3 },
-  babyChipAge: { fontSize: 12, fontWeight: '600', marginTop: 1, opacity: 0.7 },
-  addBtn: { 
-    width: 44, 
-    height: 44, 
-    borderRadius: 14, 
-    justifyContent: 'center', 
-    alignItems: 'center' 
+  babyPillText: { flexDirection: 'row', alignItems: 'baseline', gap: 6, flex: 1 },
+  babyPillName: { fontSize: 15, fontWeight: '700', maxWidth: 140 },
+  babyPillAge: { fontSize: 12, fontWeight: '600' },
+  addBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.md,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 
   // ── Hero Score ──
@@ -2143,8 +2161,8 @@ const styles = StyleSheet.create({
   // ── Tab Bar ──
   tabBar: { 
     flexDirection: 'row', 
-    marginHorizontal: 16, 
-    marginBottom: 16, 
+    marginHorizontal: SPACING.lg, 
+    marginBottom: SPACING.lg, 
     padding: 4, 
     borderRadius: 16, 
     gap: 2 
@@ -2165,8 +2183,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row', 
     flexWrap: 'wrap', 
     gap: 10, 
-    marginHorizontal: 16, 
-    marginBottom: 16 
+    marginHorizontal: SPACING.lg, 
+    marginBottom: SPACING.lg 
   },
   kpiGridItem: { marginBottom: 0 },
   kpiGridItemLarge: { width: (SCREEN_W - 56) / 2, height: 140 },
@@ -2175,10 +2193,10 @@ const styles = StyleSheet.create({
   // ── KPI Card ──
   kpiCard: { 
     flex: 1, 
-    borderRadius: 20, 
+    borderRadius: RADIUS.lg, 
     overflow: 'hidden', 
     padding: 14, 
-    ...DESIGN.shadow.md 
+    ...SHADOW.md 
   },
   kpiCardLarge: { padding: 16 },
   kpiInner: { flex: 1, justifyContent: 'space-between' },
@@ -2190,7 +2208,7 @@ const styles = StyleSheet.create({
   kpiIconBg: { 
     width: 36, 
     height: 36, 
-    borderRadius: 10, 
+    borderRadius: RADIUS.sm, 
     justifyContent: 'center', 
     alignItems: 'center' 
   },
@@ -2198,7 +2216,7 @@ const styles = StyleSheet.create({
   kpiPercentileBadge: { 
     paddingHorizontal: 8, 
     paddingVertical: 4, 
-    borderRadius: 8 
+    borderRadius: RADIUS.xs 
   },
   kpiPercentileText: { fontSize: 11, fontWeight: '800' },
   kpiBody: { gap: 2, marginTop: 8 },
@@ -2215,76 +2233,32 @@ const styles = StyleSheet.create({
     gap: 4, 
     paddingHorizontal: 8, 
     paddingVertical: 4, 
-    borderRadius: 8, 
+    borderRadius: RADIUS.xs, 
     alignSelf: 'flex-start' 
   },
   kpiStatusDot: { width: 6, height: 6, borderRadius: 3 },
   kpiStatusText: { fontSize: 10, fontWeight: '700' },
 
-  // ── Glass Card ──
-  glassCard: {
-    borderRadius: DESIGN.radius.lg,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    ...DESIGN.shadow.md,
-    marginHorizontal: DESIGN.spacing.lg,
-    marginBottom: DESIGN.spacing.lg,
-  },
-  glassBorder: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 1,
-  },
-  glassContent: { flex: 1 },
-
-  // ── Section Header ──
-  sectionHeader: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'flex-start', 
-    marginHorizontal: 20, 
-    marginBottom: 12, 
-    marginTop: 8 
-  },
-  sectionTitle: { fontSize: 18, fontWeight: '800', letterSpacing: -0.3 },
-  sectionSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2, opacity: 0.7 },
-  sectionAction: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  sectionActionText: { fontSize: 13, fontWeight: '700' },
-
   // ── Insight Card ──
-  insightCard: { 
-    padding: 14, 
-    marginBottom: 8, 
-    borderRadius: 16, 
-    marginHorizontal: 16, 
-    ...DESIGN.shadow.sm 
+  insightCard: {
+    padding: SPACING.md,
+    borderRadius: RADIUS.lg,
+    overflow: 'hidden',
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.sm,
   },
-  insightRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  insightIconBg: { 
-    width: 42, 
-    height: 42, 
-    borderRadius: 12, 
-    justifyContent: 'center', 
-    alignItems: 'center' 
-  },
-  insightEmoji: { fontSize: 20 },
-  insightContent: { flex: 1, gap: 3 },
-  insightHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  insightTitle: { fontSize: 14, fontWeight: '700' },
-  insightTime: { fontSize: 11, fontWeight: '500' },
-  insightDesc: { fontSize: 12, lineHeight: 17, fontWeight: '500' },
+  insightTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 },
+  insightEmoji: { fontSize: 22 },
+  insightPriorityDot: { width: 8, height: 8, borderRadius: 4 },
+  insightTitle: { fontSize: 13, fontWeight: '700', marginBottom: 4 },
+  insightDesc: { fontSize: 11, fontWeight: '500', lineHeight: 16, marginBottom: 8 },
   insightActionBadge: { 
     alignSelf: 'flex-start', 
     paddingHorizontal: 10, 
     paddingVertical: 5, 
-    borderRadius: 8, 
-    marginTop: 4 
+    borderRadius: RADIUS.sm 
   },
   insightActionText: { fontSize: 11, fontWeight: '700' },
-  insightPriority: { width: 4, height: 36, borderRadius: 2 },
 
   // ── AI Growth Predictor ──
   predictorHeader: { 
@@ -2297,7 +2271,7 @@ const styles = StyleSheet.create({
   predictorIconBg: { 
     width: 40, 
     height: 40, 
-    borderRadius: 12, 
+    borderRadius: RADIUS.sm, 
     justifyContent: 'center', 
     alignItems: 'center' 
   },
@@ -2338,8 +2312,7 @@ const styles = StyleSheet.create({
   },
   radarRing: { 
     position: 'absolute', 
-    borderWidth: 1, 
-    borderColor: 'rgba(0,0,0,0.06)' 
+    borderWidth: 1 
   },
   radarAxis: { 
     position: 'absolute', 
@@ -2406,21 +2379,21 @@ const styles = StyleSheet.create({
   correlationValue: { fontSize: 12, fontWeight: '700' },
 
   // ── Activity Suggestions ──
-  suggestionsHeader: { marginHorizontal: 20, marginBottom: 12, marginTop: 8 },
-  suggestionsTitle: { fontSize: 18, fontWeight: '800', letterSpacing: -0.3 },
+  suggestionsHeader: { marginHorizontal: SPACING.lg, marginBottom: SPACING.md, marginTop: SPACING.md },
+  suggestionsTitle: { fontSize: 17, fontWeight: '800', letterSpacing: -0.3 },
   suggestionsSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2, opacity: 0.7 },
-  suggestionsScroll: { paddingHorizontal: 16, gap: 12, paddingBottom: 4 },
+  suggestionsScroll: { paddingHorizontal: SPACING.lg, gap: 12, paddingBottom: 4 },
   suggestionCard: { 
     width: 160, 
     padding: 14, 
-    borderRadius: 20, 
+    borderRadius: RADIUS.lg, 
     overflow: 'hidden', 
-    ...DESIGN.shadow.md 
+    ...SHADOW.md 
   },
   suggestionIconBg: { 
     width: 44, 
     height: 44, 
-    borderRadius: 14, 
+    borderRadius: RADIUS.sm, 
     justifyContent: 'center', 
     alignItems: 'center', 
     marginBottom: 10 
@@ -2434,7 +2407,7 @@ const styles = StyleSheet.create({
   suggestionBenefit: { fontSize: 11, fontWeight: '500', lineHeight: 15 },
 
   // ── Predictive Milestone Calendar ──
-  calendarTimeline: { marginHorizontal: 16, gap: 0 },
+  calendarTimeline: { marginHorizontal: SPACING.lg, gap: 0 },
   calendarItem: { flexDirection: 'row', gap: 12 },
   calendarLeft: { 
     width: 24, 
@@ -2466,16 +2439,16 @@ const styles = StyleSheet.create({
   calendarCard: { 
     flex: 1, 
     padding: 14, 
-    borderRadius: 16, 
+    borderRadius: RADIUS.lg, 
     marginBottom: 12, 
-    ...DESIGN.shadow.sm 
+    ...SHADOW.sm 
   },
   calendarHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 },
   calendarEmoji: { fontSize: 20 },
   calendarMeta: { flex: 1 },
   calendarTitle: { fontSize: 14, fontWeight: '700' },
   calendarCategory: { fontSize: 11, fontWeight: '500', marginTop: 1 },
-  calendarBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  calendarBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: RADIUS.xs },
   calendarBadgeText: { fontSize: 10, fontWeight: '700' },
   calendarDesc: { fontSize: 12, fontWeight: '500', marginBottom: 4, lineHeight: 17 },
   calendarAge: { fontSize: 11, fontWeight: '600' },
@@ -2483,14 +2456,14 @@ const styles = StyleSheet.create({
   // ── Metric Selector ──
   metricSelector: { 
     flexDirection: 'row', 
-    marginHorizontal: 16, 
+    marginHorizontal: SPACING.lg, 
     marginBottom: 10, 
     gap: 8 
   },
   metricSelectorChip: { 
     flex: 1, 
     paddingVertical: 10, 
-    borderRadius: 12, 
+    borderRadius: RADIUS.sm, 
     backgroundColor: 'rgba(100,116,139,0.08)', 
     alignItems: 'center' 
   },
@@ -2499,14 +2472,14 @@ const styles = StyleSheet.create({
   // ── Time Range ──
   timeRangeWrap: { 
     flexDirection: 'row', 
-    marginHorizontal: 16, 
+    marginHorizontal: SPACING.lg, 
     marginBottom: 10, 
     gap: 8 
   },
   timeRangeChip: { 
     flex: 1, 
     paddingVertical: 10, 
-    borderRadius: 12, 
+    borderRadius: RADIUS.sm, 
     backgroundColor: 'rgba(100,116,139,0.08)', 
     alignItems: 'center' 
   },
@@ -2515,8 +2488,8 @@ const styles = StyleSheet.create({
   // ── Chart Mode ──
   chartModeWrap: { 
     flexDirection: 'row', 
-    marginHorizontal: 16, 
-    marginBottom: 16, 
+    marginHorizontal: SPACING.lg, 
+    marginBottom: SPACING.lg, 
     gap: 8 
   },
   chartModeChip: { 
@@ -2525,14 +2498,14 @@ const styles = StyleSheet.create({
     alignItems: 'center', 
     justifyContent: 'center', 
     paddingVertical: 10, 
-    borderRadius: 12, 
+    borderRadius: RADIUS.sm, 
     backgroundColor: 'rgba(100,116,139,0.08)', 
     gap: 6 
   },
   chartModeText: { fontSize: 12, fontWeight: '600' },
 
   // ── Chart ──
-  chartCard: { padding: DESIGN.spacing.lg, marginBottom: DESIGN.spacing.lg },
+  chartCard: { padding: SPACING.lg, marginBottom: SPACING.lg },
   chartHeader: { 
     flexDirection: 'row', 
     justifyContent: 'space-between', 
@@ -2541,15 +2514,15 @@ const styles = StyleSheet.create({
   },
   chartTitle: { fontSize: 17, fontWeight: '800', letterSpacing: -0.3 },
   chartSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
-  chartPercentileBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10 },
+  chartPercentileBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: RADIUS.sm },
   chartPercentileText: { fontSize: 13, fontWeight: '800' },
   emptyChart: { height: 200, alignItems: 'center', justifyContent: 'center', gap: 12 },
   emptyChartText: { fontSize: 14, fontWeight: '500' },
-  addDataBtn: { marginTop: 8, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12 },
+  addDataBtn: { marginTop: 8, paddingHorizontal: 20, paddingVertical: 12, borderRadius: RADIUS.sm },
   addDataBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
 
   // ── Section ──
-  section: { marginBottom: DESIGN.spacing.xl },
+  section: { marginBottom: SPACING.xl },
 
   // ── History ──
   historyCard: { padding: 8 },
@@ -2562,7 +2535,7 @@ const styles = StyleSheet.create({
   historyIcon: { 
     width: 36, 
     height: 36, 
-    borderRadius: 10, 
+    borderRadius: RADIUS.xs, 
     justifyContent: 'center', 
     alignItems: 'center' 
   },
@@ -2571,7 +2544,7 @@ const styles = StyleSheet.create({
   historyDate: { fontSize: 11, fontWeight: '500' },
   historyRight: { alignItems: 'flex-end', gap: 4 },
   historyValue: { fontSize: 16, fontWeight: '800' },
-  historyPercentile: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  historyPercentile: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: RADIUS.xs },
   historyPercentileText: { fontSize: 10, fontWeight: '800' },
   emptyHistory: { padding: 24, alignItems: 'center' },
   emptyHistoryText: { fontSize: 14, fontWeight: '500' },
@@ -2596,7 +2569,7 @@ const styles = StyleSheet.create({
   achievedIconBg: { 
     width: 40, 
     height: 40, 
-    borderRadius: 12, 
+    borderRadius: RADIUS.sm, 
     justifyContent: 'center', 
     alignItems: 'center' 
   },
@@ -2622,18 +2595,32 @@ const styles = StyleSheet.create({
   },
   emptyInsightsText: { fontSize: 16, fontWeight: '700' },
   emptyInsightsSub: { fontSize: 13, fontWeight: '500', textAlign: 'center' },
+  viewAllInsightsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginHorizontal: 16,
+    marginTop: 8,
+    paddingVertical: 12,
+    borderRadius: RADIUS.sm,
+  },
+  viewAllInsightsText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
 
   // ── Photo Grid ──
   photoGrid: { 
     flexDirection: 'row', 
     flexWrap: 'wrap', 
-    marginHorizontal: 16, 
+    marginHorizontal: SPACING.lg, 
     gap: 10 
   },
   photoGridAdd: { 
     width: (SCREEN_W - 56) / 3, 
     aspectRatio: 1, 
-    borderRadius: 16, 
+    borderRadius: RADIUS.lg, 
     borderWidth: 2, 
     borderStyle: 'dashed', 
     overflow: 'hidden' 
@@ -2648,9 +2635,9 @@ const styles = StyleSheet.create({
   photoGridItem: { 
     width: (SCREEN_W - 56) / 3, 
     aspectRatio: 1, 
-    borderRadius: 16, 
+    borderRadius: RADIUS.lg, 
     overflow: 'hidden', 
-    ...DESIGN.shadow.sm 
+    ...SHADOW.sm 
   },
   photoGridPlaceholder: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   photoGridOverlay: { 
@@ -2664,18 +2651,18 @@ const styles = StyleSheet.create({
   photoGridAge: { color: '#fff', fontSize: 11, fontWeight: '700' },
 
   // ── Quick Actions ──
-  quickActions: { 
+  quickActionsGrid: { 
     flexDirection: 'row', 
-    gap: DESIGN.spacing.md, 
-    marginHorizontal: DESIGN.spacing.lg, 
-    marginBottom: DESIGN.spacing.xxl, 
+    gap: SPACING.md, 
+    marginHorizontal: SPACING.lg, 
+    marginBottom: SPACING.xxl, 
     marginTop: 8 
   },
   quickAction: { 
     flex: 1, 
-    borderRadius: 16, 
+    borderRadius: RADIUS.lg, 
     overflow: 'hidden', 
-    ...DESIGN.shadow.md 
+    ...SHADOW.md 
   },
   quickActionGradient: { 
     paddingVertical: 16, 
@@ -2685,29 +2672,15 @@ const styles = StyleSheet.create({
   quickActionIcon: { fontSize: 22 },
   quickActionText: { color: '#fff', fontSize: 12, fontWeight: '700' },
 
-  // ── Sticky Header ──
-  stickyHeader: { 
-    position: 'absolute', 
-    top: 0, 
-    left: 0, 
-    right: 0, 
-    zIndex: 100, 
-    alignItems: 'center', 
-    paddingHorizontal: 20, 
-    paddingBottom: 10 
-  },
-  stickyTitle: { fontSize: 17, fontWeight: '800' },
-  stickySubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
-
   // ── Modals ──
-  modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
+  modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, backgroundColor: 'rgba(0,0,0,0.5)' },
   modalContent: { 
     width: '100%', 
     maxWidth: 400, 
-    borderRadius: DESIGN.radius.xl, 
-    padding: DESIGN.spacing.xxl, 
+    borderRadius: RADIUS.xl, 
+    padding: SPACING.xxl, 
     overflow: 'hidden', 
-    ...DESIGN.shadow.lg 
+    ...SHADOW.lg 
   },
   modalHeader: { 
     flexDirection: 'row', 
@@ -2719,7 +2692,7 @@ const styles = StyleSheet.create({
   modalClose: { 
     width: 36, 
     height: 36, 
-    borderRadius: 10, 
+    borderRadius: RADIUS.xs, 
     backgroundColor: 'rgba(100,116,139,0.1)', 
     justifyContent: 'center', 
     alignItems: 'center' 
@@ -2729,7 +2702,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', 
     gap: 8, 
     padding: 12, 
-    borderRadius: 12, 
+    borderRadius: RADIUS.sm, 
     marginBottom: 16 
   },
   prevValueText: { fontSize: 13, fontWeight: '600' },
@@ -2737,13 +2710,13 @@ const styles = StyleSheet.create({
   inputLabel: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 },
   input: { 
     height: 50, 
-    borderRadius: 12, 
+    borderRadius: RADIUS.sm, 
     paddingHorizontal: 16, 
     fontSize: 16, 
     fontWeight: '600' 
   },
   inputMultiline: { height: 80, paddingTop: 12, textAlignVertical: 'top' },
-  saveButton: { marginTop: 6, borderRadius: 12, overflow: 'hidden' },
+  saveButton: { marginTop: 6, borderRadius: RADIUS.sm, overflow: 'hidden' },
   saveButtonGradient: { paddingVertical: 16, alignItems: 'center' },
   saveButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 
@@ -2751,7 +2724,7 @@ const styles = StyleSheet.create({
   babySwitcherModal: { 
     width: '85%', 
     maxWidth: 360, 
-    borderRadius: 24, 
+    borderRadius: RADIUS.xl, 
     padding: 20, 
     overflow: 'hidden' 
   },
@@ -2761,34 +2734,20 @@ const styles = StyleSheet.create({
     alignItems: 'center', 
     gap: 14, 
     padding: 12, 
-    borderRadius: 16, 
+    borderRadius: RADIUS.lg, 
     marginBottom: 8 
   },
   babySwitcherInfo: { flex: 1 },
   babySwitcherName: { fontSize: 16, fontWeight: '700' },
   babySwitcherMeta: { fontSize: 12, fontWeight: '500', marginTop: 2 },
-  // ── View All Insights Button ──
-  viewAllInsightsBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    marginHorizontal: 16,
-    marginTop: 8,
-    paddingVertical: 12,
-    borderRadius: 12,
-  },
-  viewAllInsightsText: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
+
   // ── No Data States ──
   noDataTitle: { fontSize: 24, fontWeight: '800', marginBottom: 8 },
   noDataText: { fontSize: 15, fontWeight: '500', textAlign: 'center', marginHorizontal: 40, marginBottom: 24 },
   createBtn: { 
     paddingHorizontal: 32, 
     paddingVertical: 16, 
-    borderRadius: 16, 
+    borderRadius: RADIUS.lg, 
     shadowColor: '#667eea', 
     shadowOffset: { width: 0, height: 4 }, 
     shadowOpacity: 0.3, 

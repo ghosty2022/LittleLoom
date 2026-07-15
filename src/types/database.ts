@@ -2,22 +2,20 @@
 // Re-export all database types for convenience
 
 export type {
-  Photo,
-  PhotoFilter,
-  DateGroup,
-} from '../database/repositories/PhotoRepository';
-
-export type {
-  TrackerEntry,
-  TrackerStats,
-  TimeRange,
-} from '../database/repositories/TrackerRepository';
-
-export type {
   Baby,
-} from '../database/repositories/BabyRepository';
-
-export type {
-  QueryOptions,
-  PaginatedResult,
-} from '../database/repositories/BaseRepository';
+  NewBaby,
+  Photo,
+  NewPhoto,
+  TrackerEntry,
+  NewTrackerEntry,
+  PhotoImportJob,
+  NewPhotoImportJob,
+  SmartAlbum,
+  NewSmartAlbum,
+  AlbumPhoto,
+  NewAlbumPhoto,
+  AppSetting,
+  NewAppSetting,
+  ScanSession,
+  NewScanSession,
+} from '../database/schema';

@@ -4,7 +4,6 @@ const path = require('path');
 const config = getDefaultConfig(__dirname);
 
 // ─── Performance: Inline requires for faster startup ─────────────────
-// Reduces TTI by loading modules on-demand instead of upfront
 config.transformer.getTransformOptions = async () => ({
   transform: {
     experimentalImportSupport: false,
@@ -13,7 +12,12 @@ config.transformer.getTransformOptions = async () => ({
 });
 
 // ─── SVG Support ──────────────────────────────────────────────────────
-config.transformer.babelTransformerPath = require.resolve('react-native-svg-transformer');
+// Only apply SVG transformer if react-native-svg-transformer is installed
+try {
+  config.transformer.babelTransformerPath = require.resolve('react-native-svg-transformer');
+} catch (e) {
+  console.warn('[metro] react-native-svg-transformer not found, SVG support disabled');
+}
 
 // ─── Source extensions ──────────────────────────────────────────────
 config.resolver.sourceExts = [
@@ -46,8 +50,5 @@ config.resolver.assetExts = [
 config.resolver.alias = {
   '@': path.resolve(__dirname, 'src'),
 };
-
-// ─── Cache reset (development only, remove for production builds) ────
-// config.resetCache = true; // Uncomment only when clearing cache
 
 module.exports = config;
