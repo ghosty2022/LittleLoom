@@ -29,8 +29,8 @@ import { InlineSpinner } from '@/components/UniversalSpinner';
 import { ensureAllImageDirs } from '@/utils/imageUtils';
 
 // ─── Lazy load heavy components ───────────────────────────────────────
-const ErrorBoundary = React.lazy(() => import('@/components/ErrorBoundary'));
-const GlobalAudioPlayer = React.lazy(() => import('@/components/GlobalAudioPlayer').then(m => ({ default: m.GlobalAudioPlayer })));
+import ErrorBoundary from '@/components/ErrorBoundary';
+import { GlobalAudioPlayer } from '@/components/GlobalAudioPlayer';
 
 SplashScreen.preventAutoHideAsync();
 

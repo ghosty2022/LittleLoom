@@ -4,9 +4,6 @@ module.exports = function (api) {
   return {
     presets: ['babel-preset-expo'],
     plugins: [
-      'react-native-reanimated/plugin',
-      '@babel/plugin-syntax-dynamic-import',
-      ['transform-remove-console', { exclude: ['error', 'warn'] }],
       ['module-resolver', {
         root: ['./src'],
         alias: {
@@ -14,6 +11,8 @@ module.exports = function (api) {
         },
         extensions: ['.ts', '.tsx', '.js', '.jsx', '.json'],
       }],
+      // react-native-reanimated/plugin MUST BE LAST
+      'react-native-reanimated/plugin',
     ],
   };
 };
