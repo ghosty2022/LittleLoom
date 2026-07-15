@@ -1,7 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-
-import { InlineSpinner } from '../../components/UniversalSpinner';
-import {  Alert, Button, Dimensions, Image, Modal, ScrollView, Settings, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { Dimensions, Modal, ScrollView, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -887,7 +885,7 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
   const handleBiometricToggle = useCallback(async (enabled: boolean) => {
     if (enabled) {
       if (!hasBiometric) {
-        sweetAlert.alert('Biometric Not Available', 'Please set up biometric authentication in your device settings first.', 'warning');
+        sweetAlert.error('Biometric Not Available', 'Please set up biometric authentication in your device settings first.');
         return;
       }
       navigation.navigate('BiometricSetup');
@@ -920,47 +918,37 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
     await lockApp();
   }, [availableMethods, lockApp, sweetAlert]);
 
+  const [showTimeoutModal, setShowTimeoutModal] = useState(false);
+
   const handleAutoLockTimeout = useCallback(() => {
-    const options = [
-      { label: '1 minute', value: 1 },
-      { label: '2 minutes', value: 2 },
-      { label: '5 minutes', value: 5 },
-      { label: '10 minutes', value: 10 },
-      { label: '15 minutes', value: 15 },
-      { label: '30 minutes', value: 30 },
-      { label: '1 hour', value: 60 },
-    ];
+    if (!securitySettings.isAppLockEnabled) {
+      sweetAlert.toast('Enable App Lock first', 'Turn on Auto-Lock App to set a timeout', 'warning');
+      return;
+    }
+    setShowTimeoutModal(true);
+  }, [securitySettings.isAppLockEnabled, sweetAlert]);
 
-    sweetAlert.confirm(
-    'Auto-Lock Timeout',
-    'Select when to automatically lock the app',
-    () => {},
-    undefined,
-    'OK',
-    'Cancel'
-  );
-
-sweetAlert.confirm(
-      'Auto-Lock Timeout',
-      'Select when to automatically lock the app',
-      () => {},
-      undefined,
-      'OK',
-      'Cancel'
-    );
-  }, [updateAutoLockTimeout, sweetAlert]);
+  const handleSelectTimeout = useCallback(async (minutes: number) => {
+    setShowTimeoutModal(false);
+    try {
+      await updateAutoLockTimeout(minutes);
+      sweetAlert.toast('Timeout Updated', `Auto-lock set to ${formatTimeout(minutes)}`, 'success');
+    } catch (err) {
+      sweetAlert.error('Update Failed', 'Could not update auto-lock timeout.');
+    }
+  }, [updateAutoLockTimeout, sweetAlert, formatTimeout]);
 
   const handleLogout = useCallback(() => {
     sweetAlert.confirm(
-    'Logout',
-    'Are you sure you want to sign out? You will need to sign in again to access your data.',
-    () => {
+      'Logout',
+      'Are you sure you want to sign out? You will need to sign in again to access your data.',
+      () => {
         signOut();
       },
-    undefined,
-    'Logout',
-    'Stay'
-  );
+      undefined,
+      'Logout',
+      'Stay'
+    );
   }, [signOut, sweetAlert]);
 
   const handleSelectBabyFromModal = useCallback((baby: any) => {
@@ -1451,6 +1439,83 @@ sweetAlert.confirm(
 
         <View style={{ height: 30 }} />
       </Animated.ScrollView>
+
+      {/* Auto-Lock Timeout Selection Modal */}
+      <Modal
+        visible={showTimeoutModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowTimeoutModal(false)}
+      >
+        <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
+          <BlurView
+            intensity={isDark ? 60 : 90}
+            style={[styles.timeoutModal, isDark && styles.timeoutModalDark]}
+            tint={isDark ? 'dark' : 'light'}
+          >
+            <View style={styles.timeoutModalHeader}>
+              <Text style={[styles.timeoutModalTitle, isDark && styles.textLight]}>
+                Auto-Lock Timeout
+              </Text>
+              <PressableScale onPress={() => setShowTimeoutModal(false)} hapticType="light">
+                <View style={[styles.modalCloseBtn, isDark && styles.modalCloseBtnDark]}>
+                  <Ionicons name="close" size={22} color={isDark ? '#fff' : '#1a1a1a'} />
+                </View>
+              </PressableScale>
+            </View>
+            <Text style={[styles.timeoutModalSubtitle, isDark && styles.textMuted]}>
+              Select when to automatically lock the app
+            </Text>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {[
+                { label: '1 minute', value: 1 },
+                { label: '2 minutes', value: 2 },
+                { label: '5 minutes', value: 5 },
+                { label: '10 minutes', value: 10 },
+                { label: '15 minutes', value: 15 },
+                { label: '30 minutes', value: 30 },
+                { label: '1 hour', value: 60 },
+              ].map((option) => {
+                const isActive = securitySettings.autoLockTimeout === option.value;
+                return (
+                  <PressableScale
+                    key={option.value}
+                    onPress={() => handleSelectTimeout(option.value)}
+                    activeScale={0.98}
+                  >
+                    <View style={[
+                      styles.timeoutOption,
+                      isDark && styles.timeoutOptionDark,
+                      isActive && [styles.timeoutOptionActive, { borderColor: primary }],
+                      isActive && isDark && styles.timeoutOptionActiveDark,
+                    ]}>
+                      <View style={[styles.timeoutOptionIcon, { backgroundColor: isActive ? `${primary}18` : 'transparent' }]}>
+                        <Ionicons
+                          name={isActive ? 'time' : 'time-outline'}
+                          size={22}
+                          color={isActive ? primary : isDark ? '#666' : '#999'}
+                        />
+                      </View>
+                      <Text style={[
+                        styles.timeoutOptionLabel,
+                        isDark && styles.textLight,
+                        isActive && { color: primary, fontWeight: '800' },
+                      ]}>
+                        {option.label}
+                      </Text>
+                      {isActive && (
+                        <View style={[styles.activeCheck, { backgroundColor: primary }]}>
+                          <Ionicons name="checkmark" size={16} color="#fff" />
+                        </View>
+                      )}
+                    </View>
+                  </PressableScale>
+                );
+              })}
+            </ScrollView>
+          </BlurView>
+        </View>
+      </Modal>
 
       {/* Baby Selection Modal */}
       <BabySelectionModal
@@ -2064,5 +2129,81 @@ const styles = StyleSheet.create({
     borderRadius: 13,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+
+  // Timeout Modal Styles
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  timeoutModal: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderRadius: 28,
+    padding: 20,
+    maxHeight: SCREEN_HEIGHT * 0.6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.2,
+    shadowRadius: 40,
+    elevation: 20,
+    overflow: 'hidden',
+  },
+  timeoutModalDark: {
+    backgroundColor: 'rgba(26,26,46,0.95)',
+  },
+  timeoutModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  timeoutModalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#1a1a1a',
+  },
+  timeoutModalSubtitle: {
+    fontSize: 14,
+    color: '#888',
+    fontWeight: '500',
+    marginBottom: 16,
+  },
+  timeoutOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.6)',
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: 'transparent',
+    gap: 12,
+  },
+  timeoutOptionDark: {
+    backgroundColor: 'rgba(30,30,40,0.4)',
+  },
+  timeoutOptionActive: {
+    backgroundColor: 'rgba(102,126,234,0.08)',
+    borderWidth: 2,
+  },
+  timeoutOptionActiveDark: {
+    backgroundColor: 'rgba(102,126,234,0.15)',
+  },
+  timeoutOptionIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  timeoutOptionLabel: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1a1a1a',
   },
 });

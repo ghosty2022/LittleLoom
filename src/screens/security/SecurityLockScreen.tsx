@@ -35,6 +35,7 @@ interface BiometricTypeInfo {
   name: string;
   icon: string;
   label: string;
+  iconFilled?: string;
 }
 
 interface SecurityQuestion {
@@ -366,6 +367,8 @@ const hashAnswer = async (answer: string): Promise<string> => {
           setAttempts(0);
           triggerHaptic('success');
           toast('Welcome Back!', `Good to see you, ${userName}`, 'success');
+          // Ensure security lock is fully released
+          forceUnlock?.();
         }
       } catch (error) {
         shake();
@@ -426,6 +429,8 @@ const hashAnswer = async (answer: string): Promise<string> => {
       if (success) {
         triggerHaptic('success');
         toast('Welcome Back!', `Good to see you, ${userName}`, 'success');
+        // Ensure security lock is fully released
+        forceUnlock?.();
       } else {
         triggerHaptic('error');
         shake();
