@@ -1,3 +1,5 @@
+import React from 'react';
+
 export type WeightUnit = 'kg' | 'g' | 'lb' | 'oz';
 export type HeightUnit = 'cm' | 'm' | 'ft' | 'in';
 export type TemperatureUnit = 'c' | 'f';
@@ -115,27 +117,27 @@ export function smartHeightDisplay(valueCm: number, locale: string = 'en'): stri
 
 export function parseHeightInput(input: string): { value: number; unit: HeightUnit } | null {
   const trimmed = input.trim().toLowerCase();
-  
+
   const ftInMatch = trimmed.match(/^(\d+)'(\d+)(?:"|in)?$/);
   if (ftInMatch) {
     const feet = parseInt(ftInMatch[1]);
     const inches = parseInt(ftInMatch[2]);
     return { value: feet + inches / 12, unit: 'ft' };
   }
-  
+
   const cmMatch = trimmed.match(/^(\d+(?:\.\d+)?)\s*(cm|m)$/);
   if (cmMatch) {
     const value = parseFloat(cmMatch[1]);
     const unit = cmMatch[2] as HeightUnit;
     return { value: unit === 'm' ? value * 100 : value, unit: 'cm' };
   }
-  
+
   return null;
 }
 
 export function useUnitPreferences() {
   const [preferences, setPreferences] = React.useState<UnitPreferences>(DEFAULT_UNITS);
-  
+
   const updatePreferences = React.useCallback((updates: Partial<UnitPreferences>) => {
     setPreferences(prev => ({ ...prev, ...updates }));
   }, []);
