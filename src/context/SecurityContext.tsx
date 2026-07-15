@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as Crypto from 'expo-crypto';
+import { getAppSetting, setAppSetting, deleteAppSetting } from '@/database/dbHelpers';
 
 const SECURE_KEYS = {
   PIN_HASH: 'littleloom_pin_hash',
@@ -219,10 +220,10 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
           biometricEnabled, pinHash, appLockEnabled, autoLockTimeout,
           securityLocked, securityQuestionsStr,
         ] = await Promise.all([
-          AsyncStorage.getItem(ASYNC_KEYS.BIOMETRIC_ENABLED),
+          getAppSetting(ASYNC_KEYS.BIOMETRIC_ENABLED),
           secureStorage.getItem(SECURE_KEYS.PIN_HASH),
-          AsyncStorage.getItem(ASYNC_KEYS.APP_LOCK_ENABLED),
-          AsyncStorage.getItem(ASYNC_KEYS.AUTO_LOCK_TIMEOUT),
+          getAppSetting(ASYNC_KEYS.APP_LOCK_ENABLED),
+          getAppSetting(ASYNC_KEYS.AUTO_LOCK_TIMEOUT),
           AsyncStorage.getItem(ASYNC_KEYS.SECURITY_LOCK),
           AsyncStorage.getItem(ASYNC_KEYS.SECURITY_QUESTIONS),
         ]);
@@ -337,13 +338,13 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     if (enabled) {
       const result = await authenticateWithBiometric('Confirm to enable biometric unlock');
       if (result.success) {
-        await AsyncStorage.setItem(ASYNC_KEYS.BIOMETRIC_ENABLED, 'true');
+        await setAppSetting(ASYNC_KEYS.BIOMETRIC_ENABLED, 'true');
         if (isMounted.current) setState(prev => ({ ...prev, settings: { ...prev.settings, isBiometricEnabled: true } }));
         return true;
       }
       return false;
     } else {
-      await AsyncStorage.setItem(ASYNC_KEYS.BIOMETRIC_ENABLED, 'false');
+      await setAppSetting(ASYNC_KEYS.BIOMETRIC_ENABLED, 'false');
       if (isMounted.current) setState(prev => ({ ...prev, settings: { ...prev.settings, isBiometricEnabled: false } }));
       return true;
     }
@@ -370,12 +371,12 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
   }, [verifyPin, setupPin]);
 
   const toggleAppLock = useCallback(async (enabled: boolean) => {
-    await AsyncStorage.setItem(ASYNC_KEYS.APP_LOCK_ENABLED, enabled ? 'true' : 'false');
+    await setAppSetting(ASYNC_KEYS.APP_LOCK_ENABLED, enabled ? 'true' : 'false');
     if (isMounted.current) setState(prev => ({ ...prev, settings: { ...prev.settings, isAppLockEnabled: enabled } }));
   }, []);
 
   const updateAutoLockTimeout = useCallback(async (minutes: number) => {
-    await AsyncStorage.setItem(ASYNC_KEYS.AUTO_LOCK_TIMEOUT, minutes.toString());
+    await setAppSetting(ASYNC_KEYS.AUTO_LOCK_TIMEOUT, minutes.toString());
     if (isMounted.current) setState(prev => ({ ...prev, settings: { ...prev.settings, autoLockTimeout: minutes } }));
   }, []);
 
@@ -583,6 +584,9 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
       ASYNC_KEYS.SECURITY_LOCK, ASYNC_KEYS.LAST_ACTIVE,
       ASYNC_KEYS.MANUAL_LOCK_TIME, ASYNC_KEYS.SECURITY_QUESTIONS,
     ]);
+    await deleteAppSetting(ASYNC_KEYS.BIOMETRIC_ENABLED);
+    await deleteAppSetting(ASYNC_KEYS.APP_LOCK_ENABLED);
+    await deleteAppSetting(ASYNC_KEYS.AUTO_LOCK_TIMEOUT);
     lastActiveRef.current = Date.now();
     manualLockTimeRef.current = 0;
     lastUnlockTimeRef.current = 0;

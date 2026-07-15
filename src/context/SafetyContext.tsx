@@ -1,7 +1,8 @@
 import * as Haptics from 'expo-haptics';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { multiRemoveAppSettings } from '@/database/dbHelpers';
+import { getAppSetting, setAppSetting, deleteAppSetting } from '@/database/dbHelpers';
 
 import { useSweetAlert } from '../components/SweetAlert';
 
@@ -519,16 +520,14 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   useEffect(() => {
     const persist = async () => {
       try {
-        await AsyncStorage.setItem(
-          STORAGE_KEY,
-          JSON.stringify({
-            emergencyContacts: state.emergencyContacts,
-            recentTipsViewed: state.recentTipsViewed,
-            checklists: state.checklists,
-            lastEmergencyCall: state.lastEmergencyCall,
-            doctorReports: state.doctorReports,
-          })
-        );
+        const data = JSON.stringify({
+          emergencyContacts: state.emergencyContacts,
+          recentTipsViewed: state.recentTipsViewed,
+          checklists: state.checklists,
+          lastEmergencyCall: state.lastEmergencyCall,
+          doctorReports: state.doctorReports,
+        });
+        await setAppSetting(STORAGE_KEY, data);
       } catch (error) {
         console.error('[SafetyContext] Failed to save safety data:', error);
       }
@@ -540,7 +539,8 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   useEffect(() => {
     const persistLogs = async () => {
       try {
-        await AsyncStorage.setItem(EMERGENCY_LOG_KEY, JSON.stringify(state.emergencyLogs));
+        const data = JSON.stringify(state.emergencyLogs);
+        await setAppSetting(EMERGENCY_LOG_KEY, data);
       } catch (error) {
         console.error('[SafetyContext] Failed to save emergency logs:', error);
       }
@@ -552,10 +552,10 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const loadSafetyData = useCallback(async () => {
     try {
       const [stored, logsStored, streakStored, reportsStored] = await Promise.all([
-        AsyncStorage.getItem(STORAGE_KEY),
-        AsyncStorage.getItem(EMERGENCY_LOG_KEY),
-        AsyncStorage.getItem(STREAK_KEY),
-        AsyncStorage.getItem(DOCTOR_REPORTS_KEY),
+        getAppSetting(STORAGE_KEY),
+        getAppSetting(EMERGENCY_LOG_KEY),
+        getAppSetting(STREAK_KEY),
+        getAppSetting(DOCTOR_REPORTS_KEY),
       ]);
 
       const updates: Partial<SafetyState> = {};
@@ -611,7 +611,10 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   /* ── Reset all data ── */
   const resetSafetyData = useCallback(async () => {
     try {
-      await AsyncStorage.multiRemove([STORAGE_KEY, EMERGENCY_LOG_KEY, STREAK_KEY, DOCTOR_REPORTS_KEY]);
+      await deleteAppSetting(STORAGE_KEY);
+      await deleteAppSetting(EMERGENCY_LOG_KEY);
+      await deleteAppSetting(STREAK_KEY);
+      await deleteAppSetting(DOCTOR_REPORTS_KEY);
       setState({
         topics: defaultTopics.map((t) => ({ ...t, isExpanded: false })),
         emergencyContacts: defaultEmergencyContacts,
@@ -1195,10 +1198,8 @@ sweetAlert.confirm('Find Hospitals', 'Open maps to search for hospitals?',
         }));
 
         try {
-          await AsyncStorage.setItem(
-            STREAK_KEY,
-            JSON.stringify({ streakDays: newStreak, lastActiveDate: today })
-          );
+          const data = JSON.stringify({ streakDays: newStreak, lastActiveDate: today });
+          await setAppSetting(STREAK_KEY, data);
         } catch (e) {
           console.error('[SafetyContext] Failed to save streak:', e);
         }
@@ -1261,7 +1262,7 @@ sweetAlert.confirm('Find Hospitals', 'Open maps to search for hospitals?',
   const clearEmergencyLogs = useCallback(async () => {
     setState((prev) => ({ ...prev, emergencyLogs: [] }));
     try {
-      await AsyncStorage.removeItem(EMERGENCY_LOG_KEY);
+      await deleteAppSetting(EMERGENCY_LOG_KEY);
     } catch (e) {
       console.error('[SafetyContext] Failed to clear logs:', e);
     }
@@ -1330,10 +1331,8 @@ sweetAlert.confirm('Find Hospitals', 'Open maps to search for hospitals?',
         doctorReports: [newReport, ...prev.doctorReports],
       }));
       try {
-        await AsyncStorage.setItem(
-          DOCTOR_REPORTS_KEY,
-          JSON.stringify([newReport, ...state.doctorReports])
-        );
+        const data = JSON.stringify([newReport, ...state.doctorReports]);
+        await setAppSetting(DOCTOR_REPORTS_KEY, data);
       } catch (e) {
         console.error('[SafetyContext] Failed to save doctor report:', e);
       }
@@ -1368,10 +1367,8 @@ sweetAlert.confirm('Find Hospitals', 'Open maps to search for hospitals?',
         doctorReports: prev.doctorReports.filter((r) => r.id !== reportId),
       }));
       try {
-        await AsyncStorage.setItem(
-          DOCTOR_REPORTS_KEY,
-          JSON.stringify(state.doctorReports.filter((r) => r.id !== reportId))
-        );
+        const data = JSON.stringify(state.doctorReports.filter((r) => r.id !== reportId));
+        await setAppSetting(DOCTOR_REPORTS_KEY, data);
       } catch (e) {
         console.error('[SafetyContext] Failed to delete doctor report:', e);
       }

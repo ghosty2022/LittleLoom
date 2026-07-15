@@ -155,6 +155,30 @@ export async function deleteAppSetting(key: string): Promise<void> {
   await db.delete(appSettings).where(eq(appSettings.key, key));
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   APP SETTINGS BULK OPERATIONS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+export async function getAllAppSettingKeys(): Promise<string[]> {
+  try {
+    const results = db.select({ key: appSettings.key }).from(appSettings).all();
+    return results.map(r => r.key);
+  } catch (error) {
+    console.error('[DB] Failed to get all app setting keys:', error);
+    return [];
+  }
+}
+
+export async function multiRemoveAppSettings(keys: string[]): Promise<void> {
+  try {
+    for (const key of keys) {
+      await db.delete(appSettings).where(eq(appSettings.key, key));
+    }
+  } catch (error) {
+    console.error('[DB] Failed to multi-remove app settings:', error);
+  }
+}
+
 // ─── FAMILY MEMBER HELPERS ───
 
 export async function getFamilyMembersByBabyFromDb(babyId: string, includeDeleted = false) {

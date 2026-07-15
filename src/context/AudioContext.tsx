@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getAppSetting, setAppSetting, deleteAppSetting } from '@/database/dbHelpers';
 import { useBaby } from './BabyContext';
 import * as DocumentPicker from 'expo-document-picker';
 
@@ -130,27 +131,27 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const loadFavorites = async () => {
     if (!currentBaby?.id) return;
     try {
-      const stored = await AsyncStorage.getItem(FAVORITES_STORAGE_KEY + currentBaby.id);
+      const stored = await getAppSetting(FAVORITES_STORAGE_KEY + currentBaby.id);
       if (stored) setFavorites(JSON.parse(stored));
     } catch (e) { console.error('Error loading favorites:', e); }
   };
 
   const loadImportedTracks = async () => {
     try {
-      const stored = await AsyncStorage.getItem(IMPORTED_STORAGE_KEY);
+      const stored = await getAppSetting(IMPORTED_STORAGE_KEY);
       if (stored) setImportedTracks(JSON.parse(stored));
     } catch (e) { console.error('Error loading imported tracks:', e); }
   };
 
   const loadSleepTimer = async () => {
     try {
-      const stored = await AsyncStorage.getItem(SLEEP_TIMER_KEY);
+      const stored = await getAppSetting(SLEEP_TIMER_KEY);
       if (stored) {
         const timer = JSON.parse(stored);
         if (timer.enabled && timer.endTime > Date.now()) {
           setSleepTimerState(timer);
         } else {
-          await AsyncStorage.removeItem(SLEEP_TIMER_KEY);
+          await deleteAppSetting(SLEEP_TIMER_KEY);
         }
       }
     } catch (e) { console.error('Error loading sleep timer:', e); }
@@ -159,7 +160,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const saveFavorites = async (newFavorites: string[]) => {
     if (!currentBaby?.id) return;
     try {
-      await AsyncStorage.setItem(FAVORITES_STORAGE_KEY + currentBaby.id, JSON.stringify(newFavorites));
+      await setAppSetting(FAVORITES_STORAGE_KEY + currentBaby.id, JSON.stringify(newFavorites));
     } catch (e) { console.error('Error saving favorites:', e); }
   };
 
@@ -265,14 +266,14 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const newTrack: AudioTrack = { ...track, id: `imported_${Date.now()}` };
     const updated = [...importedTracks, newTrack];
     setImportedTracks(updated);
-    await AsyncStorage.setItem(IMPORTED_STORAGE_KEY, JSON.stringify(updated));
+    await setAppSetting(IMPORTED_STORAGE_KEY, JSON.stringify(updated));
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }, [importedTracks]);
 
   const removeImportedTrack = useCallback(async (id: string) => {
     const updated = importedTracks.filter(t => t.id !== id);
     setImportedTracks(updated);
-    await AsyncStorage.setItem(IMPORTED_STORAGE_KEY, JSON.stringify(updated));
+    await setAppSetting(IMPORTED_STORAGE_KEY, JSON.stringify(updated));
   }, [importedTracks]);
 
   const importFromDevice = useCallback(async () => {
@@ -313,13 +314,13 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     
     if (minutes === 0) {
       setSleepTimerState({ enabled: false, duration: 0 });
-      await AsyncStorage.removeItem(SLEEP_TIMER_KEY);
+      await deleteAppSetting(SLEEP_TIMER_KEY);
       if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     } else {
       const endTime = Date.now() + (minutes * 60 * 1000);
       const timerData = { enabled: true, duration: minutes, endTime };
       setSleepTimerState(timerData);
-      await AsyncStorage.setItem(SLEEP_TIMER_KEY, JSON.stringify(timerData));
+      await setAppSetting(SLEEP_TIMER_KEY, JSON.stringify(timerData));
     }
   }, []);
 

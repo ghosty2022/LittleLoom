@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { AppState, AppStateStatus } from 'react-native'; // <-- add this line
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
+import { getAppSetting, setAppSetting, deleteAppSetting } from '@/database/dbHelpers';
 import { useAuth } from './AuthContext';
 import { useSweetAlert } from '../components/SweetAlert';
 import { showAlert } from '@/utils/alert';
@@ -488,10 +488,10 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const syncWithAuthUser = async (authProfile: any) => {
     try {
       const savedTopicsKey = `${STORAGE_KEYS.SELECTED_TOPICS}_${authProfile.id}`;
-      const savedTopicsData = await AsyncStorage.getItem(savedTopicsKey);
+      const savedTopicsData = await getAppSetting(savedTopicsKey);
       const savedTopics = savedTopicsData ? JSON.parse(savedTopicsData) : [];
       
-      const globalTopicsData = await AsyncStorage.getItem(STORAGE_KEYS.SELECTED_TOPICS);
+      const globalTopicsData = await getAppSetting(STORAGE_KEYS.SELECTED_TOPICS);
       const globalTopics = globalTopicsData ? JSON.parse(globalTopicsData) : [];
       
       const mergedTopics = savedTopics.length > 0 ? savedTopics : (authProfile.communitySelectedTopics || globalTopics);
@@ -676,7 +676,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         AsyncStorage.getItem(STORAGE_KEYS.TRENDING_TOPICS),
       ]);
 
-      const globalTopicsData = await AsyncStorage.getItem(STORAGE_KEYS.SELECTED_TOPICS);
+      const globalTopicsData = await getAppSetting(STORAGE_KEYS.SELECTED_TOPICS);
 
       let loadedPosts: Post[] = postsData ? JSON.parse(postsData) : [];
       const loadedTopics = topicsData ? JSON.parse(topicsData) : INITIAL_TOPICS;

@@ -2,16 +2,10 @@ import { useSweetAlert } from '../components/SweetAlert';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as SecureStore from 'expo-secure-store';
-
+import { getAppSetting, setAppSetting } from '@/database/dbHelpers';
+import { getAppSetting, setAppSetting, deleteAppSetting } from '@/database/dbHelpers';
 import { useAuth } from './AuthContext';
 import { UserRole, Permission, ROLE_PERMISSIONS } from '../types/roles';
-
-const SECURE_KEYS = {
-  USER_PROFILE: 'littleloom_user_profile_secure',
-  COMMUNITY_PROFILE: 'littleloom_community_profile_secure',
-  USERNAME_REGISTRY: 'littleloom_username_registry_secure',
-} as const;
 
 const ASYNC_KEYS = {
   COMMUNITY_PROFILE: 'littleloom_community_profile',
@@ -20,32 +14,32 @@ const ASYNC_KEYS = {
   COMMUNITY_SELECTED_TOPICS: '@community_selected_topics',
 } as const;
 
-const secureStorage = {
+// Migrated from SecureStore to app_settings table for cross-device sync
+// PIN and sensitive auth tokens still use SecureStore (in AuthContext)
+const dbStorage = {
   async getItem(key: string): Promise<string | null> {
     try {
-      return await SecureStore.getItemAsync(key);
+      return await getAppSetting(key);
     } catch (error) {
-      console.warn(`SecureStore getItem failed for ${key}:`, error);
+      console.warn(`DB getItem failed for ${key}:`, error);
       return null;
     }
   },
   async setItem(key: string, value: string): Promise<boolean> {
     try {
-      await SecureStore.setItemAsync(key, value, {
-        keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
-      });
+      await setAppSetting(key, value);
       return true;
     } catch (error) {
-      console.warn(`SecureStore setItem failed for ${key}:`, error);
+      console.warn(`DB setItem failed for ${key}:`, error);
       return false;
     }
   },
   async deleteItem(key: string): Promise<boolean> {
     try {
-      await SecureStore.deleteItemAsync(key);
+      await deleteAppSetting(key);
       return true;
     } catch (error) {
-      console.warn(`SecureStore deleteItem failed for ${key}:`, error);
+      console.warn(`DB deleteItem failed for ${key}:`, error);
       return false;
     }
   },
@@ -223,10 +217,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const saveCommunityProfile = async (profile: CommunityProfile): Promise<void> => {
     const profileStr = JSON.stringify(profile);
-    await Promise.all([
-      secureStorage.setItem(SECURE_KEYS.COMMUNITY_PROFILE, profileStr),
-      AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_PROFILE, profileStr),
-    ]);
+    await dbStorage.setItem(ASYNC_KEYS.COMMUNITY_PROFILE, profileStr);
   };
 
   const createDefaultCommunityProfile = (userProfile: UserProfile): CommunityProfile => ({
@@ -253,24 +244,16 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const saveUsernameRegistry = async (registry: UsernameRegistry): Promise<void> => {
     const registryStr = JSON.stringify(registry);
-    await Promise.all([
-      secureStorage.setItem(SECURE_KEYS.USERNAME_REGISTRY, registryStr),
-      AsyncStorage.setItem(ASYNC_KEYS.USERNAME_REGISTRY, registryStr),
-    ]);
+    await dbStorage.setItem(ASYNC_KEYS.USERNAME_REGISTRY, registryStr);
   };
 
   const loadUser = useCallback(async () => {
     setState(prev => ({ ...prev, isLoading: true }));
     try {
-      const [communitySecure, communityAsync, registrySecure, registryAsync] = await Promise.all([
-        secureStorage.getItem(SECURE_KEYS.COMMUNITY_PROFILE),
-        AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_PROFILE),
-        secureStorage.getItem(SECURE_KEYS.USERNAME_REGISTRY),
-        AsyncStorage.getItem(ASYNC_KEYS.USERNAME_REGISTRY),
+      const [communityStr, registryStr] = await Promise.all([
+        dbStorage.getItem(ASYNC_KEYS.COMMUNITY_PROFILE),
+        dbStorage.getItem(ASYNC_KEYS.USERNAME_REGISTRY),
       ]);
-
-      const communityStr = communitySecure || communityAsync;
-      const registryStr = registrySecure || registryAsync;
 
       let profile: UserProfile | null = null;
       let communityProfile: CommunityProfile | null = null;
@@ -617,9 +600,9 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     await saveCommunityProfile(newProfile);
-    await AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS, JSON.stringify(trimmedTopics));
+    await setAppSetting(ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS, JSON.stringify(trimmedTopics));
     if (state.profile?.id) {
-      await AsyncStorage.setItem(`${ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS}_${state.profile.id}`, JSON.stringify(trimmedTopics));
+      await setAppSetting(`${ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS}_${state.profile.id}`, JSON.stringify(trimmedTopics));
     }
 
     setState(prev => ({ ...prev, communityProfile: newProfile }));
@@ -633,7 +616,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!state.communityProfile || !state.profile) return;
 
     try {
-      const postsData = await AsyncStorage.getItem('@community_posts');
+      const postsData = await getAppSetting('@community_posts');
       if (!postsData) return;
 
       const posts = JSON.parse(postsData);
@@ -655,7 +638,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return post;
       });
 
-      await AsyncStorage.setItem('@community_posts', JSON.stringify(updatedPosts));
+      await setAppSetting('@community_posts', JSON.stringify(updatedPosts));
     } catch (error) {
       console.error('syncProfileToPosts error:', error);
     }
@@ -678,11 +661,9 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await unregisterUsername(state.communityProfile.handle);
     }
 
-    await Promise.all([
-      secureStorage.deleteItem(SECURE_KEYS.COMMUNITY_PROFILE),
-      secureStorage.deleteItem(SECURE_KEYS.USERNAME_REGISTRY),
-      AsyncStorage.removeItem(ASYNC_KEYS.COMMUNITY_PROFILE),
-      AsyncStorage.removeItem(ASYNC_KEYS.USERNAME_REGISTRY),
+        await Promise.all([
+      dbStorage.deleteItem(ASYNC_KEYS.COMMUNITY_PROFILE),
+      dbStorage.deleteItem(ASYNC_KEYS.USERNAME_REGISTRY),
       AsyncStorage.removeItem(ASYNC_KEYS.PROFILE_SYNC_QUEUE),
     ]);
     setState(DEFAULT_USER_STATE);
