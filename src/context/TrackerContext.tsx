@@ -88,7 +88,8 @@ export interface LegacyActivityEntry {
   method?: string;
   symptoms?: string[];
   notes?: string;
-  photo?: string;
+   photo?: string;
+  photos?: string[];  // ADD THIS
   tags?: string[];
   notificationId?: string;
   reminderScheduled?: boolean;
@@ -963,6 +964,21 @@ Alert.alert('Missing Information', `Please fill in: ${missingFields.join(', ')}`
       const updatedEntries = [newEntry, ...state.entries];
       await persistEntries(updatedEntries);
 
+      // ── Sync to gallery storage ──
+      try {
+        const allGalleryEntries = await AsyncStorage.getItem(TRACKER_ENTRIES_GALLERY_KEY);
+        const galleryParsed: any[] = allGalleryEntries ? JSON.parse(allGalleryEntries) : [];
+        galleryParsed.unshift({
+          ...newEntry,
+          trackerName: tracker.name,
+          trackerEmoji: tracker.emoji,
+          trackerColor: tracker.color,
+        });
+        await AsyncStorage.setItem(TRACKER_ENTRIES_GALLERY_KEY, JSON.stringify(galleryParsed));
+      } catch (galleryErr) {
+        console.error('Failed to sync entry to gallery:', galleryErr);
+      }
+
       const updatedEntriesByTracker = { ...state.entriesByTracker };
       if (!updatedEntriesByTracker[trackerId]) {
         updatedEntriesByTracker[trackerId] = [];
@@ -1029,6 +1045,20 @@ Alert.alert('Missing Information', `Please fill in: ${missingFields.join(', ')}`
       );
       await persistEntries(updatedEntries);
 
+      // ── Update gallery storage if photos changed ──
+      if (updates.photoUris !== undefined) {
+        try {
+          const allGalleryEntries = await AsyncStorage.getItem(TRACKER_ENTRIES_GALLERY_KEY);
+          const galleryParsed: any[] = allGalleryEntries ? JSON.parse(allGalleryEntries) : [];
+          const updatedGallery = galleryParsed.map(e => 
+            e.id === entryId ? { ...e, ...updates } : e
+          );
+          await AsyncStorage.setItem(TRACKER_ENTRIES_GALLERY_KEY, JSON.stringify(updatedGallery));
+        } catch (galleryErr) {
+          console.error('Failed to update gallery entry:', galleryErr);
+        }
+      }
+
       const updatedEntriesByTracker: Record<string, TrackerEntry[]> = {};
       updatedEntries.forEach(e => {
         if (!updatedEntriesByTracker[e.trackerId]) {
@@ -1042,6 +1072,19 @@ Alert.alert('Missing Information', `Please fill in: ${missingFields.join(', ')}`
         entries: updatedEntries,
         entriesByTracker: updatedEntriesByTracker,
       }));
+
+      // ── Mark as deleted in gallery storage ──
+      try {
+        const allGalleryEntries = await AsyncStorage.getItem(TRACKER_ENTRIES_GALLERY_KEY);
+        const galleryParsed: any[] = allGalleryEntries ? JSON.parse(allGalleryEntries) : [];
+        const updatedGallery = galleryParsed.map(e => 
+          e.id === entryId ? { ...e, isDeleted: true } : e
+        );
+        await AsyncStorage.setItem(TRACKER_ENTRIES_GALLERY_KEY, JSON.stringify(updatedGallery));
+      } catch (galleryErr) {
+        console.error('Failed to mark gallery entry deleted:', galleryErr);
+      }
+
       return true;
     } catch (error) {
       sweetAlert('Error', 'Failed to update entry', 'warning');
@@ -1064,6 +1107,20 @@ Alert.alert('Missing Information', `Please fill in: ${missingFields.join(', ')}`
       );
       await persistEntries(updatedEntries);
 
+      // ── Update gallery storage if photos changed ──
+      if (updates.photoUris !== undefined) {
+        try {
+          const allGalleryEntries = await AsyncStorage.getItem(TRACKER_ENTRIES_GALLERY_KEY);
+          const galleryParsed: any[] = allGalleryEntries ? JSON.parse(allGalleryEntries) : [];
+          const updatedGallery = galleryParsed.map(e => 
+            e.id === entryId ? { ...e, ...updates } : e
+          );
+          await AsyncStorage.setItem(TRACKER_ENTRIES_GALLERY_KEY, JSON.stringify(updatedGallery));
+        } catch (galleryErr) {
+          console.error('Failed to update gallery entry:', galleryErr);
+        }
+      }
+
       const updatedEntriesByTracker: Record<string, TrackerEntry[]> = {};
       updatedEntries.filter(e => !e.isDeleted).forEach(e => {
         if (!updatedEntriesByTracker[e.trackerId]) {
@@ -1077,6 +1134,19 @@ Alert.alert('Missing Information', `Please fill in: ${missingFields.join(', ')}`
         entries: updatedEntries,
         entriesByTracker: updatedEntriesByTracker,
       }));
+
+      // ── Mark as deleted in gallery storage ──
+      try {
+        const allGalleryEntries = await AsyncStorage.getItem(TRACKER_ENTRIES_GALLERY_KEY);
+        const galleryParsed: any[] = allGalleryEntries ? JSON.parse(allGalleryEntries) : [];
+        const updatedGallery = galleryParsed.map(e => 
+          e.id === entryId ? { ...e, isDeleted: true } : e
+        );
+        await AsyncStorage.setItem(TRACKER_ENTRIES_GALLERY_KEY, JSON.stringify(updatedGallery));
+      } catch (galleryErr) {
+        console.error('Failed to mark gallery entry deleted:', galleryErr);
+      }
+
       return true;
     } catch (error) {
       sweetAlert('Error', 'Failed to delete entry', 'warning');
@@ -1359,7 +1429,8 @@ Alert.alert('Missing Information', `Please fill in: ${missingFields.join(', ')}`
       loggedBy: entry.loggedBy,
       loggedByName: entry.loggedByName,
       notes: entry.notes,
-      photo: entry.photoUris?.[0],
+      photo: entry.photoUris?.[0],        // Keep for backward compat
+      photos: entry.photoUris,            // Add full array for new code
       tags: entry.tags,
       notificationId: entry.notificationId,
       reminderScheduled: entry.reminderScheduled,
