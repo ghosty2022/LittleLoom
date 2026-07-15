@@ -28,7 +28,7 @@ import { statePersistence } from '@/utils/statePersistence';
 import { InlineSpinner } from '@/components/UniversalSpinner';
 import { ensureAllImageDirs } from '@/utils/imageUtils';
 
-// ─── Lazy load heavy components ───────────────────────────────────────
+// ─── Static imports (Metro does NOT support React.lazy + dynamic import()) ───
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { GlobalAudioPlayer } from '@/components/GlobalAudioPlayer';
 
@@ -36,7 +36,7 @@ SplashScreen.preventAutoHideAsync();
 
 const APPEARANCE_STORAGE_KEY = '@littleloom_appearance_v1';
 
-// ─── Icon fonts (same as before) ──────────────────────────────────────
+// ─── Icon fonts ───────────────────────────────────────────────────────
 const ICON_FONTS_TO_PRELOAD = {
   'Ionicons': require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf'),
   'MaterialIcons': require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialIcons.ttf'),
@@ -61,7 +61,7 @@ const NON_RESTORABLE_ROUTES = new Set([
   'SecurityLock', 'Login', 'SignUp', 'ForgotPassword', 'Onboarding'
 ]);
 
-// ─── Theme hook (unchanged logic) ─────────────────────────────────────
+// ─── Theme hook ───────────────────────────────────────────────────────
 const useSavedThemeForSplash = () => {
   const systemScheme = useColorScheme();
   const [savedAppearance, setSavedAppearance] = useState<string | null>(null);
@@ -155,9 +155,7 @@ const InnerApp: React.FC<InnerAppProps> = React.memo(({ initialState, onStateCha
     <ModalProvider>
       <Animated.View entering={FadeIn.duration(200)} style={styles.container}>
         <AppNavigator initialState={initialState} onStateChange={onStateChange} />
-        <React.Suspense fallback={null}>
-          <GlobalAudioPlayer />
-        </React.Suspense>
+        <GlobalAudioPlayer />
       </Animated.View>
       <StatusBar style={isDark ? 'light' : 'dark'} />
     </ModalProvider>
@@ -275,22 +273,20 @@ export default function App(): JSX.Element | null {
   }
 
   return (
-    <React.Suspense fallback={<CustomSplashScreen />}>
-      <ErrorBoundary>
-        <GestureHandlerRootView style={styles.root}>
-          <SafeAreaProvider>
-            <AppProvider>
-              <ContextProvider>
-                <InnerApp
-                  initialState={initialState}
-                  onStateChange={onStateChange}
-                />
-              </ContextProvider>
-            </AppProvider>
-          </SafeAreaProvider>
-        </GestureHandlerRootView>
-      </ErrorBoundary>
-    </React.Suspense>
+    <ErrorBoundary>
+      <GestureHandlerRootView style={styles.root}>
+        <SafeAreaProvider>
+          <AppProvider>
+            <ContextProvider>
+              <InnerApp
+                initialState={initialState}
+                onStateChange={onStateChange}
+              />
+            </ContextProvider>
+          </AppProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    </ErrorBoundary>
   );
 }
 

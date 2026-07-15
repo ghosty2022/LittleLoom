@@ -11,7 +11,8 @@ module.exports = function (api) {
         },
         extensions: ['.ts', '.tsx', '.js', '.jsx', '.json'],
       }],
-      // react-native-reanimated/plugin MUST BE LAST
+      // react-native-reanimated/plugin MUST BE LAST — it inserts worklet directives
+      // and must run after all other transforms
       'react-native-reanimated/plugin',
     ],
   };
