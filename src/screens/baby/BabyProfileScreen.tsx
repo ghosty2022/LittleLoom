@@ -1183,11 +1183,7 @@ ${changes.join('\n')}`,
             <Animated.View entering={FadeInUp.delay(500).springify()}>
               <SectionHeader 
                 title="Recent Activity" 
-                AddEntry: { 
-    trackerId?: string;
-    type?: string; 
-    ...
-}={`${recentActivities.length} entries`}
+                subtitle={`${recentActivities.length} entries`}
                 action={() => navigation.navigate('Timeline' as never, { babyId: currentBabyData?.id } as never)}
                 actionLabel="See All"
               />
