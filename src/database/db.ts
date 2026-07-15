@@ -12,46 +12,38 @@ import migrations from './migrations/migrations';
 // ─── Database Setup ───────────────────────────────────────────────────
 
 const DB_NAME = 'littleloom.db';
-let expoDb: SQLiteDatabase;
+let expoDb: SQLiteDatabase | null = null;
 let dbInstance: ReturnType<typeof drizzle> | null = null;
-
-function getExpoDb(): SQLiteDatabase {
-  if (!expoDb) {
-    expoDb = openDatabaseSync(DB_NAME);
-  }
-  return expoDb;
-}
+let initPromise: Promise<void> | null = null;
 
 export function getDb() {
   if (!dbInstance) {
-    const database = getExpoDb();
-    dbInstance = drizzle(database, { schema });
+    expoDb = openDatabaseSync(DB_NAME);
+    dbInstance = drizzle(expoDb, { schema });
   }
   return dbInstance;
 }
 
-// ─── Main Export ─────────────────────────────────────────────────────
-
 export const db = getDb();
 
 // ─── Schema + Data Migration Runner ───────────────────────────────────
-
-let initPromise: Promise<void> | null = null;
 
 export async function initializeDatabase(): Promise<void> {
   if (initPromise) return initPromise;
 
   initPromise = (async () => {
     try {
-      // 1. Run Drizzle schema migrations (creates/updates all tables)
-      await migrate(db, migrations);
+      const database = getDb();
+      await migrate(database, migrations);
       console.log('[DB] Schema migrations applied');
 
       // 2. Run AsyncStorage → SQLite data migration
       const { runOneTimeMigration } = await import('./dbHelpers');
       await runOneTimeMigration();
+      console.log('[DB] Data migration complete');
     } catch (error) {
       console.error('[DB] Initialization failed:', error);
+      initPromise = null; // Allow retry on next call
       throw error;
     }
   })();
@@ -59,18 +51,27 @@ export async function initializeDatabase(): Promise<void> {
   return initPromise;
 }
 
-// Fire on module load — blocks until migrations complete
-initializeDatabase().catch(console.error);
-
 // ─── Migration Hook (for React components to await if needed) ────────
 
 export function useDatabaseMigrations() {
-  const [status, setStatus] = useState({ success: false, error: null as Error | null });
+  const [status, setStatus] = useState({
+    success: false,
+    error: null as Error | null,
+    isLoading: true,
+  });
 
   useEffect(() => {
+    let cancelled = false;
+
     initializeDatabase()
-      .then(() => setStatus({ success: true, error: null }))
-      .catch((err) => setStatus({ success: false, error: err }));
+      .then(() => {
+        if (!cancelled) setStatus({ success: true, error: null, isLoading: false });
+      })
+      .catch((err) => {
+        if (!cancelled) setStatus({ success: false, error: err, isLoading: false });
+      });
+
+    return () => { cancelled = true; };
   }, []);
 
   return status;
@@ -86,7 +87,8 @@ export async function resetDatabase(): Promise<void> {
   const { deleteDatabaseSync } = require('expo-sqlite');
   deleteDatabaseSync(DB_NAME);
   dbInstance = null;
-  expoDb = undefined as any;
+  expoDb = null;
+  initPromise = null;
 }
 
 export default db;

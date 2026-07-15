@@ -1,63 +1,77 @@
 // src/context/DatabaseContext.tsx
-// Provides database access throughout the app
-
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { db } from '../database/db';
-import * as schema from '../database/schema';
+import { View, ActivityIndicator, Text, StyleSheet } from 'react-native';
+import { initializeDatabase } from '@/database/db';
 
-type DatabaseContextType = {
+interface DatabaseContextType {
   isReady: boolean;
   error: Error | null;
-  schema: typeof schema;
-};
+}
 
 const DatabaseContext = createContext<DatabaseContextType>({
   isReady: false,
   error: null,
-  schema,
 });
+
+export const useDatabase = () => useContext(DatabaseContext);
 
 export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isReady, setIsReady] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
-    let mounted = true;
+    let cancelled = false;
 
-    async function init() {
-      try {
-        // Test connection
-        await db.select().from(schema.appSettings).limit(1);
-        
-        if (mounted) {
-          setIsReady(true);
-        }
-      } catch (err) {
-        console.log('[DB] First run - tables will be created by Drizzle');
-        if (mounted) {
-          setIsReady(true);
-        }
-      }
-    }
+    initializeDatabase()
+      .then(() => {
+        if (!cancelled) setIsReady(true);
+      })
+      .catch((err) => {
+        console.error('[DatabaseContext] Init failed:', err);
+        if (!cancelled) setError(err instanceof Error ? err : new Error(String(err)));
+      });
 
-    init();
-
-    return () => {
-      mounted = false;
-    };
+    return () => { cancelled = true; };
   }, []);
 
+  if (error) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.emoji}>💥</Text>
+        <Text style={styles.title}>Database Error</Text>
+        <Text style={styles.message}>{error.message}</Text>
+      </View>
+    );
+  }
+
+  if (!isReady) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color="#667eea" />
+        <Text style={styles.loading}>Setting up database...</Text>
+      </View>
+    );
+  }
+
   return (
-    <DatabaseContext.Provider value={{ isReady, error, schema }}>
+    <DatabaseContext.Provider value={{ isReady, error }}>
       {children}
     </DatabaseContext.Provider>
   );
 };
 
-export const useDatabase = () => {
-  const context = useContext(DatabaseContext);
-  if (!context) throw new Error('useDatabase must be used within DatabaseProvider');
-  return context;
-};
+const styles = StyleSheet.create({
+  center: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f8faff',
+    padding: 32,
+  },
+  emoji: { fontSize: 48, marginBottom: 12 },
+  title: { fontSize: 20, fontWeight: '700', color: '#1a1a1a', marginBottom: 8 },
+  message: { fontSize: 14, color: '#64748b', textAlign: 'center' },
+  loading: { marginTop: 16, fontSize: 14, color: '#64748b' },
+});
 
 export default DatabaseProvider;
