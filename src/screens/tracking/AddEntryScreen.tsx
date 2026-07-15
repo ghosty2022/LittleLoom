@@ -3,7 +3,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react';
 import {
-  Dimensions, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView,
+  Dimensions, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView,
   StatusBar, StyleSheet, Text, TouchableOpacity, View, UIManager,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -595,10 +595,28 @@ const ConfirmModal = memo<ConfirmModalProps>(({
             <Animated.ScrollView style={modalStyles.modalBody} showsVerticalScrollIndicator={false}>
               <View style={[modalStyles.previewCard, { backgroundColor: fullThemeColors.glassBg, borderColor: fullThemeColors.border, borderRadius: borderRadiusValue }]}>
                 <Text style={[modalStyles.previewTime, { color: fullThemeColors.textSecondary }]}>{format(date, 'MMM d, yyyy \u2022 h:mm a')}</Text>
-                {(data.photoUris as string[])?.length > 0 && (
-                  <View style={[modalStyles.previewPhotoContainer, { borderRadius: borderRadiusValue }]} />
-                )}
-                <Text style={[modalStyles.previewTitle, { color: fullThemeColors.text, fontSize: 18 * fontSizeMultiplier }]}>{tracker.emoji} {tracker.name}</Text>
+                 {(data.photoUris as string[])?.length > 0 && (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={{ marginBottom: 12 }}
+                    contentContainerStyle={{ gap: 8 }}
+                  >
+                    {(data.photoUris as string[]).map((uri, idx) => (
+                      <Image
+                        key={idx}
+                        source={{ uri }}
+                        style={{
+                          width: 80,
+                          height: 80,
+                          borderRadius: borderRadiusValue,
+                          backgroundColor: fullThemeColors.border,
+                        }}
+                        resizeMode="cover"
+                      />
+                    ))}
+                  </ScrollView>
+                )}                <Text style={[modalStyles.previewTitle, { color: fullThemeColors.text, fontSize: 18 * fontSizeMultiplier }]}>{tracker.emoji} {tracker.name}</Text>
                 {notes && <Text style={[modalStyles.previewDetails, { color: fullThemeColors.textSecondary }]}>{notes}</Text>}
                 {preview.length > 0 && (
                   <View style={modalStyles.previewFields}>
@@ -765,9 +783,18 @@ const YesterdayEntriesModal = memo<YesterdayEntriesModalProps>(({
                           </View>
                         ))}
                       </View>
+                     )}
+                    {(entry as any).photoUris && (entry as any).photoUris.length > 0 && (
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false}
+                        style={{ marginTop: 8 }} contentContainerStyle={{ gap: 6 }}>
+                        {(entry as any).photoUris.map((uri: string, idx: number) => (
+                          <Image key={idx} source={{ uri }}
+                            style={{ width: 48, height: 48, borderRadius: borderRadiusValue / 2 }}
+                            resizeMode="cover" />
+                        ))}
+                      </ScrollView>
                     )}
-                    <TouchableOpacity style={[yesterdayModalStyles.copyBtn, { backgroundColor: tracker.gradient[0], borderRadius: borderRadiusValue }]}
-                      onPress={() => handleCopy(entry)} activeOpacity={0.85} accessibilityRole="button"
+                    <TouchableOpacity style={[yesterdayModalStyles.copyBtn, { backgroundColor: tracker.gradient[0], borderRadius: borderRadiusValue }]}                      onPress={() => handleCopy(entry)} activeOpacity={0.85} accessibilityRole="button"
                       accessibilityLabel={`Copy ${tracker.name} entry from ${format(entryDate, 'h:mm a')}`}>
                       <Ionicons name="copy-outline" size={16} color="#fff" />
                       <Text style={yesterdayModalStyles.copyBtnText}>Copy to Today</Text>
@@ -1466,10 +1493,15 @@ function TrackerContent({
                 <Text style={[styles.sectionTitle, { color: fullThemeColors.textSecondary, fontSize: 13 * fontSizeMultiplier }]}>Recent {tracker.name}</Text>
               </View>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                {recentEntries.map((entry: any) => (
+                 {recentEntries.map((entry: any) => (
                   <View key={entry.id} style={[styles.recentCard, { backgroundColor: fullThemeColors.glassBg, borderColor: fullThemeColors.border, borderRadius: borderRadiusValue }]}>
                     <Text style={styles.recentEmoji}>{tracker.emoji}</Text>
                     <Text style={[styles.recentTime, { color: fullThemeColors.textSecondary }]}>{format(new Date(entry.timestamp), 'h:mm a')}</Text>
+                    {entry.photoUris && entry.photoUris.length > 0 && (
+                      <View style={{ position: 'absolute', top: 4, right: 4 }}>
+                        <Ionicons name="image" size={12} color={fullThemeColors.textSecondary} />
+                      </View>
+                    )}
                   </View>
                 ))}
               </ScrollView>

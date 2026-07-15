@@ -1378,11 +1378,12 @@ const GlassHeader = React.memo(({
           </View>
         </View>
 
-                    <TouchableOpacity onPress={onSearchPress} style={styles.headerIconBtn} activeOpacity={0.7}>
-              <View style={[styles.headerIconInner, { backgroundColor: isDark ? 'rgba(99,102,241,0.15)' : `${DS.primary}10` }]}>
-                <Ionicons name={showSearch ? 'close' : 'search'} size={20} color={isDark ? DS.primaryLight : DS.primary} />
-              </View>
-            </TouchableOpacity>
+        <View style={styles.headerActions} pointerEvents="auto">
+          <TouchableOpacity onPress={onSearchPress} style={styles.headerIconBtn} activeOpacity={0.7}>
+            <View style={[styles.headerIconInner, { backgroundColor: isDark ? 'rgba(99,102,241,0.15)' : `${DS.primary}10` }]}>
+              <Ionicons name={showSearch ? 'close' : 'search'} size={20} color={isDark ? DS.primaryLight : DS.primary} />
+            </View>
+          </TouchableOpacity>
 
           <TouchableOpacity onPress={onNotifPress} style={styles.headerIconBtn} activeOpacity={0.7}>
             <View style={[styles.headerIconInner, { backgroundColor: isDark ? 'rgba(99,102,241,0.15)' : `${DS.primary}10` }]}>

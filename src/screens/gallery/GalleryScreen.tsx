@@ -730,7 +730,53 @@ export default function GalleryScreen({ navigation }: any) {
     };
     load();
   }, []);
+ useEffect(() => {
+    const importTrackerPhotos = async () => {
+      try {
+        const trackerEntries = await AsyncStorage.getItem('@littleloom_tracker_entries');
+        if (!trackerEntries) return;
 
+        const entries = JSON.parse(trackerEntries);
+        const existingUris = new Set(photos.map(p => p.uri));
+        const newPhotos: Photo[] = [];
+
+        entries.forEach((entry: any) => {
+          if (entry.photoUris && entry.photoUris.length > 0) {
+            entry.photoUris.forEach((uri: string) => {
+              if (!existingUris.has(uri)) {
+                newPhotos.push({
+                  id: `tracker_${entry.id}_${Math.random().toString(36).substr(2, 9)}`,
+                  uri,
+                  date: new Date(entry.timestamp).toISOString(),
+                  timestamp: entry.timestamp,
+                  type: 'tracker',
+                  caption: entry.title || `${entry.trackerName || 'Tracker'} entry`,
+                  babyId: entry.babyId,
+                  source: 'tracker',
+                  isPrivate: false,
+                  linkedEntry: {
+                    type: 'activity',
+                    id: entry.id,
+                    title: entry.title || 'Tracker Entry',
+                  },
+                });
+                existingUris.add(uri);
+              }
+            });
+          }
+        });
+
+        if (newPhotos.length > 0) {
+          setPhotos(prev => [...newPhotos, ...prev]);
+        }
+      } catch (e) {
+        console.error('Failed to import tracker photos:', e);
+      }
+    };
+
+    importTrackerPhotos();
+  }, []);
+  
   useEffect(() => {
     AsyncStorage.setItem(STORAGE_KEYS.PHOTOS, JSON.stringify(photos));
   }, [photos]);

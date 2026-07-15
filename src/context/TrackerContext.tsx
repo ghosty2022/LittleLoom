@@ -217,6 +217,7 @@ const getDateKey = (date: Date | string | number): string => {
 
 const BABY_ACTIVITIES_KEY = (babyId: string) => `@littleloom_activities_${babyId}`;
 const BABY_CURRENT_KEY = '@littleloom_current_baby';
+const TRACKER_ENTRIES_GALLERY_KEY = '@littleloom_tracker_entries'; // For gallery photo sync
 
 /* ------------------------------------------------------------------ */
 /*  NEW: Smart Suggestion Engine                                       */

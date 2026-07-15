@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, StyleSheet, Text, StatusBar } from 'react-native';
+import { View, StyleSheet, Text, StatusBar, FlatList, TextInput, TouchableOpacity } from 'react-native';
+import { useRoute } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
@@ -189,23 +190,92 @@ const MAIN_SCREEN_OPTIONS = {
   contentStyle: { backgroundColor: CommunityColors.background.main },
 };
 
-const TopicMembersScreen = () => (
-  <View style={styles.placeholderContainer}>
-    <Text style={styles.placeholderText}>Topic Members</Text>
-  </View>
-);
+const TopicMembersScreen = () => {
+  const { topics } = useCommunity();
+  const route = useRoute();
+  const { topicId } = route.params as { topicId: string };
+  const topic = topics.find(t => t.id === topicId);
+  
+  return (
+    <View style={[styles.placeholderContainer, { backgroundColor: CommunityColors.background.main }]}>
+      <Ionicons name="people" size={48} color={CommunityColors.primary} />
+      <Text style={[styles.placeholderText, { marginTop: 16 }]}>{topic?.name || 'Topic'} Members</Text>
+      <Text style={{ color: CommunityColors.text.secondary, marginTop: 8 }}>
+        {topic?.members?.toLocaleString() || 0} members
+      </Text>
+    </View>
+  );
+};
 
-const SearchUsersScreen = () => (
-  <View style={styles.placeholderContainer}>
-    <Text style={styles.placeholderText}>Search Users</Text>
-  </View>
-);
+const SearchUsersScreen = () => {
+  const { getAllUsers } = useCommunity();
+  const [query, setQuery] = useState('');
+  const users = getAllUsers();
+  
+  const filtered = query.trim() 
+    ? users.filter(u => u.displayName.toLowerCase().includes(query.toLowerCase()))
+    : users;
+  
+  return (
+    <View style={[styles.placeholderContainer, { backgroundColor: CommunityColors.background.main, alignItems: 'stretch', paddingHorizontal: 20 }]}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 12, paddingHorizontal: 12, marginBottom: 20, height: 44 }}>
+        <Ionicons name="search" size={20} color={CommunityColors.text.secondary} />
+        <TextInput 
+          style={{ flex: 1, marginLeft: 8, fontSize: 16 }}
+          placeholder="Search parents..."
+          value={query}
+          onChangeText={setQuery}
+        />
+      </View>
+      <FlatList
+        data={filtered}
+        keyExtractor={u => u.id}
+        renderItem={({ item }) => (
+          <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' }}>
+            <Text style={{ fontSize: 24, marginRight: 12 }}>{item.avatar}</Text>
+            <View>
+              <Text style={{ fontWeight: '600', fontSize: 16 }}>{item.displayName}</Text>
+              <Text style={{ color: CommunityColors.text.secondary, fontSize: 13 }}>{item.handle}</Text>
+            </View>
+          </View>
+        )}
+        ListEmptyComponent={<Text style={{ textAlign: 'center', color: CommunityColors.text.secondary }}>No users found</Text>}
+      />
+    </View>
+  );
+};
 
-const BlockedUsersScreen = () => (
-  <View style={styles.placeholderContainer}>
-    <Text style={styles.placeholderText}>Blocked Users</Text>
-  </View>
-);
+const BlockedUsersScreen = () => {
+  const { blockedUsers, getUserById, blockUser } = useCommunity();
+  
+  return (
+    <View style={[styles.placeholderContainer, { backgroundColor: CommunityColors.background.main, alignItems: 'stretch', paddingHorizontal: 20 }]}>
+      <Text style={[styles.placeholderText, { marginBottom: 20 }]}>Blocked Users</Text>
+      {blockedUsers.length === 0 ? (
+        <Text style={{ textAlign: 'center', color: CommunityColors.text.secondary }}>No blocked users</Text>
+      ) : (
+        <FlatList
+          data={blockedUsers}
+          keyExtractor={id => id}
+          renderItem={({ item }) => {
+            const user = getUserById(item);
+            return (
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Text style={{ fontSize: 24, marginRight: 12 }}>{user?.avatar || '👤'}</Text>
+                  <Text style={{ fontWeight: '600' }}>{user?.displayName || 'Unknown'}</Text>
+                </View>
+                <TouchableOpacity onPress={() => blockUser(item)} style={{ backgroundColor: CommunityColors.primary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}>
+                  <Text style={{ color: '#fff', fontWeight: '600' }}>Unblock</Text>
+                </TouchableOpacity>
+              </View>
+            );
+          }}
+        />
+      )}
+    </View>
+  );
+};
 
 const CommunityNavigator = React.memo(() => {
   const { isLoading, currentUser, checkOnboardingStatus, getSelectedTopics, isInitialized } = useCommunity();

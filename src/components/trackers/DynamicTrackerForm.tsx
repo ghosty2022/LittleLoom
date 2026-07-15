@@ -907,14 +907,18 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
   ), [data, fullThemeColors, tracker.color, fontSizeMultiplier, updateField]);
 
   const renderPhotoField = useCallback((field: FieldConfig) => (
-    <View key={field.id} style={styles.fieldContainer}>
-      <Text style={[styles.label, { color: fullThemeColors.text, fontSize: 15 * fontSizeMultiplier }]}>{field.label}</Text>
-      <TouchableOpacity style={[styles.photoUpload, { borderColor: fullThemeColors.border, borderRadius: borderRadiusValue, backgroundColor: fullThemeColors.surface }]}>
-        <Ionicons name="camera-outline" size={32} color={tracker.color} />
-        <Text style={[styles.photoText, { color: fullThemeColors.textSecondary }]}>Tap to add photo</Text>
-      </TouchableOpacity>
-    </View>
-  ), [fullThemeColors, tracker.color, borderRadiusValue, fontSizeMultiplier]);
+    <SmartPhotoField
+      key={field.id}
+      field={field}
+      value={photoUris}
+      onChange={(uris) => setPhotoUris(uris)}
+      trackerColor={tracker.color}
+      colors={fullThemeColors}
+      fontSizeMultiplier={fontSizeMultiplier}
+      borderRadiusValue={borderRadiusValue}
+      maxPhotos={field.max || 5}
+    />
+  ), [photoUris, tracker.color, fullThemeColors, borderRadiusValue, fontSizeMultiplier, setPhotoUris]);
 
   const renderTemperatureField = useCallback((field: FieldConfig) => (
     <View key={field.id} style={styles.fieldContainer}>
@@ -1460,14 +1464,7 @@ const styles = StyleSheet.create({
   
   slider: { width: '100%', height: 40, marginTop: 8 },
   
-  photoUpload: {
-    height: 120,
-    borderWidth: 2,
-    borderStyle: 'dashed',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  photoText: { marginTop: 8, fontSize: 14 },
+
   
   tempRow: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, paddingHorizontal: 16 },
   tempInput: { flex: 1, paddingVertical: 14, fontWeight: '500' },

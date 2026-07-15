@@ -1219,19 +1219,59 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, []);
 
   const deletePost = useCallback(async (postId: string) => {
+    const currentUser = stateRef.current.currentUser;
+    if (!currentUser) {
+      sweetAlert.alert('Sign In Required', 'Please sign in to delete posts', 'warning');
+      return;
+    }
 
-sweetAlert.confirm(
+    const post = stateRef.current.posts.find(p => p.id === postId);
+    if (!post) {
+      sweetAlert.alert('Error', 'Post not found', 'error');
+      return;
+    }
+
+    if (post.authorId !== currentUser.id) {
+      sweetAlert.alert('Unauthorized', 'You can only delete your own posts', 'warning');
+      return;
+    }
+
+    sweetAlert.confirm(
       'Delete Post',
       'Are you sure you want to delete this post? This action cannot be undone.',
-      () => {
-        // TODO: Confirm action
+      async () => {
+        setState(prev => {
+          const updatedPosts = prev.posts.filter(p => p.id !== postId);
+          const updatedTopics = prev.topics.map(t => 
+            t.id === post.topicId 
+              ? { ...t, posts: Math.max(0, t.posts - 1) }
+              : t
+          );
+
+          const updatedStats = {
+            ...currentUser.stats,
+            posts: Math.max(0, currentUser.stats.posts - 1),
+          };
+
+          AsyncStorage.setItem(STORAGE_KEYS.POSTS, JSON.stringify(updatedPosts)).catch(console.error);
+          AsyncStorage.setItem(STORAGE_KEYS.TOPICS, JSON.stringify(updatedTopics)).catch(console.error);
+          AsyncStorage.setItem(`${STORAGE_KEYS.USER_STATS}_${currentUser.id}`, JSON.stringify(updatedStats)).catch(console.error);
+
+          return {
+            ...prev,
+            posts: updatedPosts,
+            topics: updatedTopics,
+            currentUser: { ...currentUser, stats: updatedStats },
+          };
+        });
+
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        console.log('Post deleted successfully');
       },
-      () => {
-        // Cancel action
-      },
-      'OK',
+      undefined,
+      'Delete',
       'Cancel',
-      false
+      true
     );
   }, []);
 
