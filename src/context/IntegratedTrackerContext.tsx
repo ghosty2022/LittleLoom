@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useCallback, useMemo, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
+import { getEntriesByBabyFromDb, getAppSetting } from '../database/dbHelpers';
 
 // FIX: Import directly from context sources
 import { useTracker } from './TrackerContext';
@@ -305,9 +306,17 @@ export const IntegratedTrackerProvider: React.FC<{ children: React.ReactNode }> 
   useEffect(() => {
     const load = async () => {
       try {
-        const saved = await AsyncStorage.getItem(ACHIEVEMENT_STORAGE_KEY);
-        if (saved) {
-          setState(prev => ({ ...prev, unlockedAchievements: JSON.parse(saved) }));
+        // Try DB first, fallback to AsyncStorage for migration
+        const dbVal = await getAppSetting('unlocked_achievements');
+        if (dbVal) {
+          setState(prev => ({ ...prev, unlockedAchievements: JSON.parse(dbVal) }));
+        } else {
+          const saved = await AsyncStorage.getItem(ACHIEVEMENT_STORAGE_KEY);
+          if (saved) {
+            setState(prev => ({ ...prev, unlockedAchievements: JSON.parse(saved) }));
+            // Migrate to DB
+            await (await import('../database/dbHelpers')).setAppSetting('unlocked_achievements', saved);
+          }
         }
       } catch (e) { console.warn('Failed to load achievements:', e); }
     };
@@ -419,7 +428,8 @@ export const IntegratedTrackerProvider: React.FC<{ children: React.ReactNode }> 
   /* ── Dismiss achievement ── */
   const dismissAchievement = useCallback(async (id: string) => {
     const updated = [...state.unlockedAchievements, id];
-    await AsyncStorage.setItem(ACHIEVEMENT_STORAGE_KEY, JSON.stringify(updated));
+    const { setAppSetting } = await import('../database/dbHelpers');
+    await setAppSetting('unlocked_achievements', JSON.stringify(updated));
     setState(prev => ({
       ...prev,
       unlockedAchievements: updated,
@@ -439,10 +449,11 @@ export const IntegratedTrackerProvider: React.FC<{ children: React.ReactNode }> 
   /* ── Dismiss reminder ── */
   const dismissReminder = useCallback(async (id: string) => {
     try {
-      const dismissed = await AsyncStorage.getItem(REMINDER_DISMISSED_KEY);
+      const { getAppSetting, setAppSetting } = await import('../database/dbHelpers');
+      const dismissed = await getAppSetting('dismissed_reminders');
       const list: string[] = dismissed ? JSON.parse(dismissed) : [];
-      list.push(id);
-      await AsyncStorage.setItem(REMINDER_DISMISSED_KEY, JSON.stringify(list));
+      if (!list.includes(id)) list.push(id);
+      await setAppSetting('dismissed_reminders', JSON.stringify(list));
     } catch (e) {}
 
     setState(prev => ({
