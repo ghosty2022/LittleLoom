@@ -1,3 +1,4 @@
+// plugins/withStripeFix.js
 const { withAppBuildGradle } = require('@expo/config-plugins');
 
 module.exports = function withStripeFix(config) {
@@ -5,18 +6,27 @@ module.exports = function withStripeFix(config) {
     let buildGradle = config.modResults.contents;
 
     // Already applied?
-    if (buildGradle.includes('com.stripe:stripe-android')) {
+    if (buildGradle.includes('stripe-force-resolution')) {
       return config;
     }
 
     const resolutionStrategy = `configurations.all {
     resolutionStrategy {
-        force 'com.stripe:stripe-android:20.48.0'
+        // stripe-force-resolution: align all Stripe artifacts to 20.48.6
+        force 'com.stripe:payments-core:20.48.6'
+        force 'com.stripe:payments-model:20.48.6'
+        force 'com.stripe:stripe-android:20.48.6'
+        force 'com.stripe:stripe-core:20.48.6'
+        force 'com.stripe:payments-ui-core:20.48.6'
+        force 'com.stripe:payment-method-messaging:20.48.6'
+        force 'com.stripe:financial-connections:20.48.6'
+        force 'com.stripe:identity:20.48.6'
+        force 'com.stripe:link:20.48.6'
+        force 'com.stripe:ml-core:20.48.6'
     }
 }`;
 
-    // Insert right after the opening `android {` line
-    // This ensures it goes inside the android block but before dependencies
+    // Insert inside the android block
     buildGradle = buildGradle.replace(
       /(android\s*\{)/,
       `$1\n    ${resolutionStrategy}`
