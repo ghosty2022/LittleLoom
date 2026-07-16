@@ -27,8 +27,12 @@ import { useCustomization } from '../../hooks/useCustomization';
 
 import { SweetAlert } from '../../components/SweetAlert';
 import { SafeAvatar } from '../../components/SafeAvatar';
-import { saveParentImage } from '../../utils/imageUtils';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
+
+/* Permanent storage for parent photos (cache URIs get purged by the OS) */
+const PARENT_IMAGES_DIR = FileSystem.documentDirectory + 'parent_images/';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
@@ -353,13 +357,38 @@ export default function AddParentScreen({ navigation }: AddParentScreenProps) {
 
   const handleImagePick = useCallback(async () => {
     triggerHaptic('medium');
-    const imageUri = await saveParentImage(form.email || 'temp');
-    if (imageUri) {
-      updateField('avatar', imageUri);
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        showToast('warning', 'Permission Required', 'Please allow access to your photo library');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (result.canceled || !result.assets?.[0]?.uri) return;
+
+      // Copy from the temporary picker cache into permanent app storage
+      const dirInfo = await FileSystem.getInfoAsync(PARENT_IMAGES_DIR);
+      if (!dirInfo.exists) {
+        await FileSystem.makeDirectoryAsync(PARENT_IMAGES_DIR, { intermediates: true });
+      }
+      const permanentUri = `${PARENT_IMAGES_DIR}parent_${Date.now()}.jpg`;
+      await FileSystem.copyAsync({ from: result.assets[0].uri, to: permanentUri });
+
+      updateField('avatar', permanentUri);
       triggerHaptic('success');
       showToast('success', 'Photo Saved!', 'Profile picture updated successfully');
+    } catch (error) {
+      console.error('Parent image pick error:', error);
+      showToast('error', 'Error', 'Failed to pick image. Please try again.');
     }
-  }, [form.email, triggerHaptic, updateField, showToast]);
+  }, [triggerHaptic, updateField, showToast]);
 
   const handleAddParent = useCallback(async () => {
     if (!validateForm()) {

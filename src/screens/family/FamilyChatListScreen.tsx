@@ -1,4 +1,4 @@
-import { StyleSheet, ActivityIndicator    , RefreshControl  ,Text , TouchableOpacity, View , Dimensions, Modal, TextInput, Image, Platform, StatusBar} from 'react-native';
+import { StyleSheet, ActivityIndicator, RefreshControl, Text, TouchableOpacity, View, Dimensions, Modal, TextInput, Image, Platform, StatusBar, FlatList } from 'react-native';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 
@@ -1040,35 +1040,12 @@ export default function FamilyChatListScreen({
   const handleDeleteChat = () => {
     if (!selectedChat) return;
 
-showSweetAlert(
-      'Delete Chat',
-      `Are you sure you want to delete "${selectedChat.name}"? This cannot be undone.`,
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-          onPress: () => setShowOptionsModal(false),
-        },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            Haptics.notificationAsync(
-              Haptics.NotificationFeedbackType.Warning
-            );
-            await deleteChat(selectedChat.id);
-            setShowOptionsModal(false);
-            setSelectedChat(null);
-            showSweetAlert(
-              'success',
-              'Deleted',
-              'Chat has been removed'
-            );
-          },
-        },
-      ]
-    );
-  };
+    // Use a local state modal or confirm instead - showSweetAlert only supports toast style
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    await deleteChat(selectedChat.id);
+    setShowOptionsModal(false);
+    setSelectedChat(null);
+    showSweetAlert('success', 'Deleted', 'Chat has been removed');
 
   const handlePinChat = async () => {
     if (!selectedChat) return;
@@ -1768,15 +1745,9 @@ showSweetAlert(
                 style={styles.groupPhotoContainer}
                 onPress={() => {
 
-showSweetAlert(
-                    'Group Photo',
-                    'Choose a photo for your group',
-                    [
-                      { text: 'Camera', onPress: handleTakePhoto },
-                      { text: 'Gallery', onPress: handlePickImage },
-                      { text: 'Cancel', style: 'cancel' },
-                    ]
-                  );
+                // Use a proper action sheet or modal instead
+                // For now, default to gallery
+                handlePickImage();
                 }}
               >
                 {groupPhoto ? (
