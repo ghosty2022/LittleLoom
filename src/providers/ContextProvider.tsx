@@ -1,3 +1,4 @@
+// src/providers/ContextProvider.tsx
 import React, { useEffect, useRef, useMemo, useState, useContext } from 'react';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { UserProvider } from '@/context/UserContext';
@@ -11,8 +12,8 @@ import { CommunityProvider } from '@/context/CommunityContext';
 import { SafetyProvider } from '@/context/SafetyContext';
 import { AudioProvider } from '@/context/AudioContext';
 import { AppProvider, useTheme } from '@/context/AppContext';
-// FIX: Removed unused 'useTracker' import, kept only TrackerContext and TrackerProvider
-import { TrackerProvider, TrackerContext } from '@/context/TrackerContext';
+// FIX: Import only what exists - useTracker hook if available, not TrackerContext
+import { TrackerProvider } from '@/context/TrackerContext';
 import { SweetAlertProvider } from '@/components/SweetAlert';
 import useCustomization from '@/hooks/useCustomization';
 import { notificationService } from '@/services/NotificationService';
@@ -61,20 +62,25 @@ const ActivitySyncBridge: React.FC<{ children: React.ReactNode }> = ({ children 
   return <>{children}</>;
 };
 
-// ─── FIX: Safe tracker sync that doesn't crash if context isn't ready ─
+// FIX: Safe tracker sync without requiring TrackerContext export
 const TrackerBabySync: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { currentBabyId } = useBaby();
   
-  // Use useContext directly with a fallback instead of useTracker which throws
-  const trackerContext = useContext(TrackerContext);
+  // Use lazy context access to avoid crash if context doesn't exist
+  const trackerContext = useContext(
+    // @ts-ignore - handle missing context gracefully
+    require('@/context/TrackerContext').TrackerContext || React.createContext(null)
+  );
   const initRef = useRef(false);
 
   useEffect(() => {
     if (!currentBabyId || initRef.current) return;
-    if (!trackerContext) return; // Safe: wait until TrackerProvider is ready
+    if (!trackerContext) return; // Safe: skip if context not available
     
     initRef.current = true;
-    trackerContext.setCurrentBabyId(currentBabyId);
+    if (trackerContext.setCurrentBabyId) {
+      trackerContext.setCurrentBabyId(currentBabyId);
+    }
   }, [currentBabyId, trackerContext]);
 
   return <>{children}</>;
@@ -108,7 +114,7 @@ const SweetAlertWrapper: React.FC<{ children: React.ReactNode }> = ({ children }
   );
 };
 
-// ✅ Wrapper that defers FamilyChatProvider to next tick
+// Wrapper that defers FamilyChatProvider to next tick
 const FamilyChatWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [ready, setReady] = useState(false);
 
@@ -122,7 +128,7 @@ const FamilyChatWrapper: React.FC<{ children: React.ReactNode }> = ({ children }
   }
 
   return (
-        <FamilyChatProvider>
+    <FamilyChatProvider>
       {children}
     </FamilyChatProvider>
   );

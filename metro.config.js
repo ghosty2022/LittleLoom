@@ -1,3 +1,4 @@
+// metro.config.js
 const { getDefaultConfig } = require('expo/metro-config');
 const path = require('path');
 
@@ -12,12 +13,15 @@ config.transformer.getTransformOptions = async () => ({
 });
 
 // ─── SVG Support ──────────────────────────────────────────────────────
-// Only apply SVG transformer if react-native-svg-transformer is installed
+// ⚠️ ONLY enable if react-native-svg-transformer is INSTALLED
+// If you get "React is not defined" errors, comment this out:
+/*
 try {
   config.transformer.babelTransformerPath = require.resolve('react-native-svg-transformer');
 } catch (e) {
   console.warn('[metro] react-native-svg-transformer not found, SVG support disabled');
 }
+*/
 
 // ─── Source extensions ──────────────────────────────────────────────
 config.resolver.sourceExts = [
@@ -27,7 +31,7 @@ config.resolver.sourceExts = [
   'svg',
 ];
 
-// ─── Asset extensions (Metro serves these as static files) ───────────
+// ─── Asset extensions ────────────────────────────────────────────────
 config.resolver.assetExts = [
   ...config.resolver.assetExts.filter(ext => ext !== 'svg'),
   'ttf',

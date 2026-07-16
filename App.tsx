@@ -1,8 +1,8 @@
-import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+// App.tsx - Clean version
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   StyleSheet,
   AppState,
-  Platform,
   View,
   Text,
   useColorScheme,
@@ -29,11 +29,9 @@ import { statePersistence } from '@/utils/statePersistence';
 import { InlineSpinner } from '@/components/UniversalSpinner';
 import { ensureAllImageDirs } from '@/utils/imageUtils';
 
-// ─── Static imports ───────────────────────────────────────────────────
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { GlobalAudioPlayer } from '@/components/GlobalAudioPlayer';
 
-// ─── Suppress known harmless warnings in production ────────────────────
 LogBox.ignoreLogs([
   'Non-serializable values were found in the navigation state',
   'The provided Linking scheme',
@@ -43,9 +41,6 @@ LogBox.ignoreLogs([
 
 SplashScreen.preventAutoHideAsync();
 
-// Theme now loaded from Drizzle app_settings table via DatabaseContext
-
-// ─── Optimized font preloading: only critical fonts ──────────────────
 const ICON_FONTS_TO_PRELOAD = {
   'Ionicons': require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf'),
   'MaterialIcons': require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialIcons.ttf'),
@@ -53,14 +48,10 @@ const ICON_FONTS_TO_PRELOAD = {
   'Feather': require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Feather.ttf'),
 };
 
-const CRITICAL_IMAGES_TO_PRELOAD: number[] = [];
-
-// ─── Non-restorable routes ────────────────────────────────────────────
 const NON_RESTORABLE_ROUTES = new Set([
   'SecurityLock', 'Login', 'SignUp', 'ForgotPassword', 'Onboarding'
 ]);
 
-// ─── Pre-computed theme colors (no hook overhead) ───────────────────
 const SPLASH_THEMES = {
   trueBlack: {
     gradient: ['#000000', '#0a0a0a', '#1a1a2e'] as const,
@@ -88,7 +79,6 @@ const SPLASH_THEMES = {
   },
 };
 
-// ─── Optimized Splash: zero hooks, pure render ──────────────────────
 interface CustomSplashScreenProps {
   isDark: boolean;
   isTrueBlack: boolean;
@@ -147,11 +137,9 @@ const InnerApp: React.FC<InnerAppProps> = React.memo(({ initialState, onStateCha
   );
 });
 
-// ─── MAIN APP ─────────────────────────────────────────────────────────
 export default function App(): JSX.Element | null {
   const systemScheme = useColorScheme();
 
-  // ─── Theme preloaded BEFORE any render ────────────────────────────
   const [themeLoaded, setThemeLoaded] = useState(false);
   const [initialTheme, setInitialTheme] = useState({
     isDark: systemScheme === 'dark',
@@ -166,7 +154,7 @@ export default function App(): JSX.Element | null {
   const initStartedRef = useRef(false);
   const stateSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ─── Phase 0: Read theme from Drizzle DB immediately ─────────────────
+  // Phase 0: Read theme from database immediately
   useEffect(() => {
     let mounted = true;
 
@@ -183,7 +171,6 @@ export default function App(): JSX.Element | null {
 
         setInitialTheme({ isDark, isTrueBlack });
       } catch (e) {
-        // Fallback to system scheme
         setInitialTheme({
           isDark: systemScheme === 'dark',
           isTrueBlack: false,
@@ -197,22 +184,14 @@ export default function App(): JSX.Element | null {
     return () => { mounted = false; };
   }, [systemScheme]);
 
-  // ─── Phase 1: Parallel initialization ─────────────────────────────
+  // Phase 1: Parallel initialization
   useEffect(() => {
     if (!themeLoaded || initStartedRef.current) return;
     initStartedRef.current = true;
 
     const init = async () => {
       try {
-        // Fire all async work in parallel
         const fontPromise = Font.loadAsync(ICON_FONTS_TO_PRELOAD);
-        const imagePromise =
-          CRITICAL_IMAGES_TO_PRELOAD.length > 0
-            ? Promise.all(
-                CRITICAL_IMAGES_TO_PRELOAD.map((uri) => Image.prefetch(String(uri)))
-              )
-            : Promise.resolve();
-
         const servicesPromise = Promise.all([
           notificationService
             .initialize()
@@ -221,7 +200,6 @@ export default function App(): JSX.Element | null {
           SystemUI.setBackgroundColorAsync('#f8faff').catch(() => {}),
         ]);
 
-        // Restore nav state in parallel
         const navRestorePromise = (async () => {
           try {
             const navState = await statePersistence.getNavigationState();
@@ -238,10 +216,8 @@ export default function App(): JSX.Element | null {
           }
         })();
 
-        // Wait for everything
-        await Promise.all([fontPromise, imagePromise, servicesPromise, navRestorePromise]);
+        await Promise.all([fontPromise, servicesPromise, navRestorePromise]);
 
-        // Hide splash and reveal app
         await SplashScreen.hideAsync();
         setReady(true);
       } catch (e) {
@@ -258,7 +234,7 @@ export default function App(): JSX.Element | null {
     };
   }, [themeLoaded]);
 
-  // ─── Phase 2: Background state saving ─────────────────────────────
+  // Phase 2: Background state saving
   useEffect(() => {
     const sub = AppState.addEventListener('change', async (next) => {
       if (
@@ -282,7 +258,6 @@ export default function App(): JSX.Element | null {
     return () => sub.remove();
   }, []);
 
-  // ─── Debounced state change handler (1s instead of 300ms) ──────────
   const onStateChange = useCallback((state: object | undefined) => {
     if (!state) return;
     lastStateRef.current = state;
@@ -290,7 +265,6 @@ export default function App(): JSX.Element | null {
     const parsed = state as any;
     const route = parsed.routes?.[parsed.index];
     if (route && route.name !== 'SecurityLock') {
-      // Debounce: clear pending timer and queue new save
       if (stateSaveTimerRef.current) {
         clearTimeout(stateSaveTimerRef.current);
       }
@@ -308,7 +282,6 @@ export default function App(): JSX.Element | null {
     }
   }, []);
 
-  // Cleanup timer on unmount
   useEffect(() => {
     return () => {
       if (stateSaveTimerRef.current) {
@@ -317,7 +290,6 @@ export default function App(): JSX.Element | null {
     };
   }, []);
 
-  // ─── Render ───────────────────────────────────────────────────────
   if (!themeLoaded || !ready) {
     return (
       <CustomSplashScreen

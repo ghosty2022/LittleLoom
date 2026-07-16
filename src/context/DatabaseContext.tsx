@@ -15,23 +15,47 @@ const DatabaseContext = createContext<DatabaseContextType>({
 
 export const useDatabase = () => useContext(DatabaseContext);
 
+const DB_INIT_TIMEOUT = 10000; // 10 second timeout
+
 export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isReady, setIsReady] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+    let timeoutId: NodeJS.Timeout;
 
-    initializeDatabase()
-      .then(() => {
+    const init = async () => {
+      try {
+        // Add timeout to prevent hanging forever
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(() => {
+            reject(new Error('Database initialization timed out after 10s'));
+          }, DB_INIT_TIMEOUT);
+        });
+
+        const initPromise = initializeDatabase();
+        
+        await Promise.race([initPromise, timeoutPromise]);
+        
+        clearTimeout(timeoutId);
+        
         if (!cancelled) setIsReady(true);
-      })
-      .catch((err) => {
+      } catch (err) {
+        clearTimeout(timeoutId);
         console.error('[DatabaseContext] Init failed:', err);
-        if (!cancelled) setError(err instanceof Error ? err : new Error(String(err)));
-      });
+        if (!cancelled) {
+          setError(err instanceof Error ? err : new Error(String(err)));
+        }
+      }
+    };
 
-    return () => { cancelled = true; };
+    init();
+
+    return () => { 
+      cancelled = true; 
+      clearTimeout(timeoutId);
+    };
   }, []);
 
   if (error) {
@@ -40,6 +64,7 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         <Text style={styles.emoji}>💥</Text>
         <Text style={styles.title}>Database Error</Text>
         <Text style={styles.message}>{error.message}</Text>
+        <Text style={styles.hint}>Try clearing app data or reinstalling</Text>
       </View>
     );
   }
@@ -70,7 +95,8 @@ const styles = StyleSheet.create({
   },
   emoji: { fontSize: 48, marginBottom: 12 },
   title: { fontSize: 20, fontWeight: '700', color: '#1a1a1a', marginBottom: 8 },
-  message: { fontSize: 14, color: '#64748b', textAlign: 'center' },
+  message: { fontSize: 14, color: '#64748b', textAlign: 'center', marginBottom: 8 },
+  hint: { fontSize: 12, color: '#94a3b8', textAlign: 'center' },
   loading: { marginTop: 16, fontSize: 14, color: '#64748b' },
 });
 

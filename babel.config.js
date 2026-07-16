@@ -5,7 +5,7 @@ module.exports = function (api) {
   return {
     presets: [
       ['babel-preset-expo', {
-        jsxRuntime: 'automatic',  // ← ADD THIS
+        jsxRuntime: 'automatic',
       }],
     ],
     plugins: [
@@ -16,7 +16,8 @@ module.exports = function (api) {
         },
         extensions: ['.ts', '.tsx', '.js', '.jsx', '.json'],
       }],
-      'react-native-reanimated/plugin',  // MUST BE LAST
+      // react-native-reanimated/plugin MUST BE LAST
+      'react-native-reanimated/plugin',
     ],
   };
 };
