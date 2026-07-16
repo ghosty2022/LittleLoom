@@ -14,7 +14,7 @@ config.transformer.getTransformOptions = async () => ({
 
 // ─── SVG Support ──────────────────────────────────────────────────────
 // ⚠️ ONLY enable if react-native-svg-transformer is INSTALLED
-// If you get "React is not defined" errors, comment this out:
+// If you get "React is not defined" errors, keep this commented out:
 /*
 try {
   config.transformer.babelTransformerPath = require.resolve('react-native-svg-transformer');

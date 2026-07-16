@@ -3,7 +3,7 @@
 
 import { db } from './db';
 import { babies, trackerEntries, appSettings, familyMembers } from './schema';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, count } from 'drizzle-orm';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 
@@ -21,12 +21,44 @@ export async function markMigrationComplete(): Promise<void> {
 // ─── BABY HELPERS ───
 
 export async function getAllBabiesFromDb() {
-  return db.select().from(babies).where(eq(babies.isActive, true)).all();
+  try {
+    return db.select().from(babies).where(eq(babies.isActive, true)).all();
+  } catch (error) {
+    const msg = String(error);
+    if (msg.includes('no such table') || msg.includes('prepareSync')) {
+      console.warn('[DB] Table not ready for getAllBabiesFromDb, returning []');
+      return [];
+    }
+    throw error;
+  }
 }
 
 export async function getBabyByIdFromDb(id: string) {
-  const result = db.select().from(babies).where(eq(babies.id, id)).all();
-  return result[0] || null;
+  try {
+    const result = db.select().from(babies).where(eq(babies.id, id)).all();
+    return result[0] || null;
+  } catch (error) {
+    const msg = String(error);
+    if (msg.includes('no such table') || msg.includes('prepareSync')) {
+      console.warn(`[DB] Table not ready for getBabyByIdFromDb('${id}'), returning null`);
+      return null;
+    }
+    throw error;
+  }
+}
+
+export async function getBabyCountFromDb(): Promise<number> {
+  try {
+    const result = db.select({ count: count() }).from(babies).where(eq(babies.isActive, true)).all();
+    return result[0]?.count ?? 0;
+  } catch (error) {
+    const msg = String(error);
+    if (msg.includes('no such table') || msg.includes('prepareSync')) {
+      console.warn('[DB] Table not ready for getBabyCountFromDb, returning 0');
+      return 0;
+    }
+    throw error;
+  }
 }
 
 export async function createBabyInDb(data: {
@@ -40,47 +72,112 @@ export async function createBabyInDb(data: {
   parent1Id?: string;
   parent2Id?: string;
 }) {
-  const now = new Date().toISOString();
-  return db.insert(babies).values({
-    ...data,
-    createdAt: now,
-    updatedAt: now,
-    syncStatus: 'pending',
-  }).returning().all();
+  try {
+    const now = new Date().toISOString();
+    return db.insert(babies).values({
+      ...data,
+      createdAt: now,
+      updatedAt: now,
+      syncStatus: 'pending',
+    }).returning().all();
+  } catch (error) {
+    const msg = String(error);
+    if (msg.includes('no such table') || msg.includes('prepareSync')) {
+      console.warn('[DB] Table not ready for createBabyInDb, skipping');
+      return [];
+    }
+    throw error;
+  }
 }
 
 export async function updateBabyInDb(id: string, updates: Partial<typeof babies.$inferInsert>) {
-  const now = new Date().toISOString();
-  return db.update(babies)
-    .set({ ...updates, updatedAt: now, syncStatus: 'pending' })
-    .where(eq(babies.id, id))
-    .returning()
-    .all();
+  try {
+    const now = new Date().toISOString();
+    return db.update(babies)
+      .set({ ...updates, updatedAt: now, syncStatus: 'pending' })
+      .where(eq(babies.id, id))
+      .returning()
+      .all();
+  } catch (error) {
+    const msg = String(error);
+    if (msg.includes('no such table') || msg.includes('prepareSync')) {
+      console.warn(`[DB] Table not ready for updateBabyInDb('${id}'), skipping`);
+      return [];
+    }
+    throw error;
+  }
 }
 
 export async function deleteBabyFromDb(id: string) {
-  return db.update(babies)
-    .set({ isActive: false, updatedAt: new Date().toISOString(), syncStatus: 'pending' })
-    .where(eq(babies.id, id))
-    .returning()
-    .all();
+  try {
+    return db.update(babies)
+      .set({ isActive: false, updatedAt: new Date().toISOString(), syncStatus: 'pending' })
+      .where(eq(babies.id, id))
+      .returning()
+      .all();
+  } catch (error) {
+    const msg = String(error);
+    if (msg.includes('no such table') || msg.includes('prepareSync')) {
+      console.warn(`[DB] Table not ready for deleteBabyFromDb('${id}'), skipping`);
+      return [];
+    }
+    throw error;
+  }
+}
+
+// ─── CURRENT BABY HELPERS (NEW - fixes your error) ───
+
+export async function getCurrentBabyIdFromDb(): Promise<string | null> {
+  return getAppSetting('current_baby_id');
+}
+
+export async function setCurrentBabyInDb(babyId: string | null): Promise<void> {
+  if (babyId) {
+    await setAppSetting('current_baby_id', babyId);
+  } else {
+    await deleteAppSetting('current_baby_id');
+  }
+}
+
+export async function getCurrentBabyFromDb() {
+  const babyId = await getCurrentBabyIdFromDb();
+  if (!babyId) return null;
+  return getBabyByIdFromDb(babyId);
 }
 
 // ─── TRACKER ENTRY HELPERS ───
 
 export async function getEntriesByBabyFromDb(babyId: string, trackerId?: string) {
-  if (trackerId) {
-    return db.select().from(trackerEntries).where(
-      and(eq(trackerEntries.babyId, babyId), eq(trackerEntries.trackerId, trackerId))
-    ).orderBy(desc(trackerEntries.timestamp)).all();
+  try {
+    if (trackerId) {
+      return db.select().from(trackerEntries).where(
+        and(eq(trackerEntries.babyId, babyId), eq(trackerEntries.trackerId, trackerId))
+      ).orderBy(desc(trackerEntries.timestamp)).all();
+    }
+    return db.select().from(trackerEntries).where(eq(trackerEntries.babyId, babyId))
+      .orderBy(desc(trackerEntries.timestamp)).all();
+  } catch (error) {
+    const msg = String(error);
+    if (msg.includes('no such table') || msg.includes('prepareSync')) {
+      console.warn(`[DB] Table not ready for getEntriesByBabyFromDb, returning []`);
+      return [];
+    }
+    throw error;
   }
-  return db.select().from(trackerEntries).where(eq(trackerEntries.babyId, babyId))
-    .orderBy(desc(trackerEntries.timestamp)).all();
 }
 
 export async function getEntryByIdFromDb(id: string) {
-  const result = db.select().from(trackerEntries).where(eq(trackerEntries.id, id)).all();
-  return result[0] || null;
+  try {
+    const result = db.select().from(trackerEntries).where(eq(trackerEntries.id, id)).all();
+    return result[0] || null;
+  } catch (error) {
+    const msg = String(error);
+    if (msg.includes('no such table') || msg.includes('prepareSync')) {
+      console.warn(`[DB] Table not ready for getEntryByIdFromDb('${id}'), returning null`);
+      return null;
+    }
+    throw error;
+  }
 }
 
 export async function createEntryInDb(data: {
@@ -99,60 +196,113 @@ export async function createEntryInDb(data: {
   loggedByName?: string;
   loggedByRole?: string;
 }) {
-  const now = new Date().toISOString();
-  return db.insert(trackerEntries).values({
-    ...data,
-    data: JSON.stringify(data.data),
-    photoUris: data.photoUris ? JSON.stringify(data.photoUris) : undefined,
-    tags: data.tags ? JSON.stringify(data.tags) : undefined,
-    createdAt: now,
-    updatedAt: now,
-    syncStatus: 'pending',
-  }).returning().all();
+  try {
+    const now = new Date().toISOString();
+    return db.insert(trackerEntries).values({
+      ...data,
+      data: JSON.stringify(data.data),
+      photoUris: data.photoUris ? JSON.stringify(data.photoUris) : undefined,
+      tags: data.tags ? JSON.stringify(data.tags) : undefined,
+      createdAt: now,
+      updatedAt: now,
+      syncStatus: 'pending',
+    }).returning().all();
+  } catch (error) {
+    const msg = String(error);
+    if (msg.includes('no such table') || msg.includes('prepareSync')) {
+      console.warn('[DB] Table not ready for createEntryInDb, skipping');
+      return [];
+    }
+    throw error;
+  }
 }
 
 export async function updateEntryInDb(id: string, updates: Partial<typeof trackerEntries.$inferInsert>) {
-  const now = new Date().toISOString();
-  const processed = { ...updates };
-  if (updates.data && typeof updates.data !== 'string') processed.data = JSON.stringify(updates.data);
-  if (updates.photoUris && typeof updates.photoUris !== 'string') processed.photoUris = JSON.stringify(updates.photoUris);
-  if (updates.tags && typeof updates.tags !== 'string') processed.tags = JSON.stringify(updates.tags);
-  
-  return db.update(trackerEntries)
-    .set({ ...processed, updatedAt: now, syncStatus: 'pending' })
-    .where(eq(trackerEntries.id, id))
-    .returning()
-    .all();
+  try {
+    const now = new Date().toISOString();
+    const processed = { ...updates };
+    if (updates.data && typeof updates.data !== 'string') processed.data = JSON.stringify(updates.data);
+    if (updates.photoUris && typeof updates.photoUris !== 'string') processed.photoUris = JSON.stringify(updates.photoUris);
+    if (updates.tags && typeof updates.tags !== 'string') processed.tags = JSON.stringify(updates.tags);
+    
+    return db.update(trackerEntries)
+      .set({ ...processed, updatedAt: now, syncStatus: 'pending' })
+      .where(eq(trackerEntries.id, id))
+      .returning()
+      .all();
+  } catch (error) {
+    const msg = String(error);
+    if (msg.includes('no such table') || msg.includes('prepareSync')) {
+      console.warn(`[DB] Table not ready for updateEntryInDb('${id}'), skipping`);
+      return [];
+    }
+    throw error;
+  }
 }
 
-// REPLACE softDeleteEntryInDb with:
 export async function softDeleteEntryInDb(id: string) {
-  return db.update(trackerEntries)
-    .set({ isDeleted: true, syncStatus: 'deleted', updatedAt: new Date().toISOString() })
-    .where(eq(trackerEntries.id, id))
-    .returning()
-    .all();
+  try {
+    return db.update(trackerEntries)
+      .set({ isDeleted: true, syncStatus: 'deleted', updatedAt: new Date().toISOString() })
+      .where(eq(trackerEntries.id, id))
+      .returning()
+      .all();
+  } catch (error) {
+    const msg = String(error);
+    if (msg.includes('no such table') || msg.includes('prepareSync')) {
+      console.warn(`[DB] Table not ready for softDeleteEntryInDb('${id}'), skipping`);
+      return [];
+    }
+    throw error;
+  }
 }
 
-// ─── APP SETTINGS HELPERS ───
+// ─── APP SETTINGS HELPERS (SAFE - with try/catch) ───
 
 export async function getAppSetting(key: string): Promise<string | null> {
-  const result = db.select().from(appSettings).where(eq(appSettings.key, key)).all();
-  return result[0]?.value ?? null;
+  try {
+    const result = db.select().from(appSettings).where(eq(appSettings.key, key)).all();
+    return result[0]?.value ?? null;
+  } catch (error) {
+    const msg = String(error);
+    if (msg.includes('no such table') || msg.includes('prepareSync')) {
+      console.warn(`[DB] Table not ready for getAppSetting('${key}'), returning null`);
+      return null;
+    }
+    throw error;
+  }
 }
 
 export async function setAppSetting(key: string, value: string): Promise<void> {
-  const now = new Date().toISOString();
-  await db.insert(appSettings)
-    .values({ key, value, updatedAt: now })
-    .onConflictDoUpdate({
-      target: appSettings.key,
-      set: { value, updatedAt: now },
-    });
+  try {
+    const now = new Date().toISOString();
+    await db.insert(appSettings)
+      .values({ key, value, updatedAt: now })
+      .onConflictDoUpdate({
+        target: appSettings.key,
+        set: { value, updatedAt: now },
+      });
+  } catch (error) {
+    const msg = String(error);
+    if (msg.includes('no such table') || msg.includes('prepareSync')) {
+      console.warn(`[DB] Table not ready for setAppSetting('${key}'), skipping`);
+      return;
+    }
+    throw error;
+  }
 }
 
 export async function deleteAppSetting(key: string): Promise<void> {
-  await db.delete(appSettings).where(eq(appSettings.key, key));
+  try {
+    await db.delete(appSettings).where(eq(appSettings.key, key));
+  } catch (error) {
+    const msg = String(error);
+    if (msg.includes('no such table') || msg.includes('prepareSync')) {
+      console.warn(`[DB] Table not ready for deleteAppSetting('${key}'), skipping`);
+      return;
+    }
+    throw error;
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -164,6 +314,11 @@ export async function getAllAppSettingKeys(): Promise<string[]> {
     const results = db.select({ key: appSettings.key }).from(appSettings).all();
     return results.map(r => r.key);
   } catch (error) {
+    const msg = String(error);
+    if (msg.includes('no such table') || msg.includes('prepareSync')) {
+      console.warn('[DB] Table not ready for getAllAppSettingKeys, returning []');
+      return [];
+    }
     console.error('[DB] Failed to get all app setting keys:', error);
     return [];
   }
@@ -175,6 +330,11 @@ export async function multiRemoveAppSettings(keys: string[]): Promise<void> {
       await db.delete(appSettings).where(eq(appSettings.key, key));
     }
   } catch (error) {
+    const msg = String(error);
+    if (msg.includes('no such table') || msg.includes('prepareSync')) {
+      console.warn('[DB] Table not ready for multiRemoveAppSettings, skipping');
+      return;
+    }
     console.error('[DB] Failed to multi-remove app settings:', error);
   }
 }
@@ -182,34 +342,61 @@ export async function multiRemoveAppSettings(keys: string[]): Promise<void> {
 // ─── FAMILY MEMBER HELPERS ───
 
 export async function getFamilyMembersByBabyFromDb(babyId: string, includeDeleted = false) {
-  const conditions = [eq(familyMembers.babyId, babyId)];
-  if (!includeDeleted) {
-    conditions.push(eq(familyMembers.isDeleted, false));
+  try {
+    const conditions = [eq(familyMembers.babyId, babyId)];
+    if (!includeDeleted) {
+      conditions.push(eq(familyMembers.isDeleted, false));
+    }
+    return db.select().from(familyMembers)
+      .where(and(...conditions))
+      .orderBy(desc(familyMembers.addedAt))
+      .all();
+  } catch (error) {
+    const msg = String(error);
+    if (msg.includes('no such table') || msg.includes('prepareSync')) {
+      console.warn(`[DB] Table not ready for getFamilyMembersByBabyFromDb, returning []`);
+      return [];
+    }
+    throw error;
   }
-  return db.select().from(familyMembers)
-    .where(and(...conditions))
-    .orderBy(desc(familyMembers.addedAt))
-    .all();
 }
 
 export async function getFamilyMemberByIdFromDb(id: string) {
-  const result = db.select().from(familyMembers)
-    .where(eq(familyMembers.id, id))
-    .all();
-  return result[0] || null;
+  try {
+    const result = db.select().from(familyMembers)
+      .where(eq(familyMembers.id, id))
+      .all();
+    return result[0] || null;
+  } catch (error) {
+    const msg = String(error);
+    if (msg.includes('no such table') || msg.includes('prepareSync')) {
+      console.warn(`[DB] Table not ready for getFamilyMemberByIdFromDb('${id}'), returning null`);
+      return null;
+    }
+    throw error;
+  }
 }
 
 export async function getFamilyMemberByEmailAndBabyFromDb(email: string, babyId: string) {
-  const result = db.select().from(familyMembers)
-    .where(
-      and(
-        eq(familyMembers.email, email),
-        eq(familyMembers.babyId, babyId),
-        eq(familyMembers.isDeleted, false)
+  try {
+    const result = db.select().from(familyMembers)
+      .where(
+        and(
+          eq(familyMembers.email, email),
+          eq(familyMembers.babyId, babyId),
+          eq(familyMembers.isDeleted, false)
+        )
       )
-    )
-    .all();
-  return result[0] || null;
+      .all();
+    return result[0] || null;
+  } catch (error) {
+    const msg = String(error);
+    if (msg.includes('no such table') || msg.includes('prepareSync')) {
+      console.warn(`[DB] Table not ready for getFamilyMemberByEmailAndBabyFromDb, returning null`);
+      return null;
+    }
+    throw error;
+  }
 }
 
 export async function createFamilyMemberInDb(data: {
@@ -228,38 +415,74 @@ export async function createFamilyMemberInDb(data: {
   notificationsEnabled?: boolean;
   status?: string;
 }) {
-  const now = new Date().toISOString();
-  return db.insert(familyMembers).values({
-    ...data,
-    addedAt: now,
-    updatedAt: now,
-    syncStatus: 'pending',
-  }).returning().all();
+  try {
+    const now = new Date().toISOString();
+    return db.insert(familyMembers).values({
+      ...data,
+      addedAt: now,
+      updatedAt: now,
+      syncStatus: 'pending',
+    }).returning().all();
+  } catch (error) {
+    const msg = String(error);
+    if (msg.includes('no such table') || msg.includes('prepareSync')) {
+      console.warn('[DB] Table not ready for createFamilyMemberInDb, skipping');
+      return [];
+    }
+    throw error;
+  }
 }
 
 export async function updateFamilyMemberInDb(id: string, updates: Partial<typeof familyMembers.$inferInsert>) {
-  const now = new Date().toISOString();
-  const processed = { ...updates };
-  if (updates.permissions && typeof updates.permissions !== 'string') {
-    processed.permissions = JSON.stringify(updates.permissions) as any;
+  try {
+    const now = new Date().toISOString();
+    const processed = { ...updates };
+    if (updates.permissions && typeof updates.permissions !== 'string') {
+      processed.permissions = JSON.stringify(updates.permissions) as any;
+    }
+    return db.update(familyMembers)
+      .set({ ...processed, updatedAt: now, syncStatus: 'pending' })
+      .where(eq(familyMembers.id, id))
+      .returning()
+      .all();
+  } catch (error) {
+    const msg = String(error);
+    if (msg.includes('no such table') || msg.includes('prepareSync')) {
+      console.warn(`[DB] Table not ready for updateFamilyMemberInDb('${id}'), skipping`);
+      return [];
+    }
+    throw error;
   }
-  return db.update(familyMembers)
-    .set({ ...processed, updatedAt: now, syncStatus: 'pending' })
-    .where(eq(familyMembers.id, id))
-    .returning()
-    .all();
 }
 
 export async function softDeleteFamilyMemberInDb(id: string) {
-  return db.update(familyMembers)
-    .set({ isDeleted: true, syncStatus: 'deleted', updatedAt: new Date().toISOString() })
-    .where(eq(familyMembers.id, id))
-    .returning()
-    .all();
+  try {
+    return db.update(familyMembers)
+      .set({ isDeleted: true, syncStatus: 'deleted', updatedAt: new Date().toISOString() })
+      .where(eq(familyMembers.id, id))
+      .returning()
+      .all();
+  } catch (error) {
+    const msg = String(error);
+    if (msg.includes('no such table') || msg.includes('prepareSync')) {
+      console.warn(`[DB] Table not ready for softDeleteFamilyMemberInDb('${id}'), skipping`);
+      return [];
+    }
+    throw error;
+  }
 }
 
 export async function deleteFamilyMembersByBabyFromDb(babyId: string) {
-  return db.delete(familyMembers).where(eq(familyMembers.babyId, babyId));
+  try {
+    return db.delete(familyMembers).where(eq(familyMembers.babyId, babyId));
+  } catch (error) {
+    const msg = String(error);
+    if (msg.includes('no such table') || msg.includes('prepareSync')) {
+      console.warn(`[DB] Table not ready for deleteFamilyMembersByBabyFromDb, skipping`);
+      return;
+    }
+    throw error;
+  }
 }
 
 // ─── ONE-TIME MIGRATION RUNNER ───
@@ -407,8 +630,6 @@ export async function runOneTimeMigration(): Promise<void> {
     const parent2Str = await SecureStore.getItemAsync('littleloom_parent2_profile_secure');
     if (parent2Str) {
       const parent2Data = JSON.parse(parent2Str);
-      // Parent2 data is stored per-baby in the baby record, so we note it here
-      // The actual parent2Id is already in the babies table from step 1
       console.log('[Migration] Parent2 profile found in SecureStore (baby record already migrated)');
     }
   } catch {
@@ -442,7 +663,6 @@ export async function runOneTimeMigration(): Promise<void> {
     }
   }
   
-  // Also migrate user-specific community selected topics
   const userTopicKeys = allKeys.filter(k => k.startsWith('@community_selected_topics_'));
   for (const key of userTopicKeys) {
     try {
