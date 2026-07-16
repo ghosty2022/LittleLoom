@@ -1151,6 +1151,7 @@ const RecentActivityList: React.FC<{
   };
 
   const formatTimeAgo = (timestamp: number): string => {
+    if (!timestamp) return '';
     const diff = Date.now() - timestamp;
     const minutes = Math.floor(diff / 60000);
     const hours = Math.floor(diff / 3600000);
@@ -1162,11 +1163,14 @@ const RecentActivityList: React.FC<{
     return new Date(timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
-  if (activities.length === 0) {
+  if (!activities || activities.length === 0) {
     return (
       <View style={[styles.emptyState, isDark && styles.emptyStateDark]}>
         <Ionicons name="time-outline" size={48} color={isDark ? '#555' : '#ccc'} />
         <Text style={[styles.emptyStateText, isDark && styles.textMuted]}>No recent activity</Text>
+        <TouchableOpacity style={[styles.addFirstActivityBtn, { backgroundColor: theme.primary }]} onPress={onViewAll}>
+          <Text style={styles.addFirstActivityText}>Log First Activity</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -1174,7 +1178,7 @@ const RecentActivityList: React.FC<{
   return (
     <View style={styles.timelineContainer}>
       {displayedActivities.map((event, index) => {
-        const config = ACTIVITY_CONFIG[event?.type] || ACTIVITY_CONFIG.default;
+        const config = ACTIVITY_CONFIG[event?.type || event?.trackerId] || ACTIVITY_CONFIG.default;
         const isLast = index === displayedActivities.length - 1;
 
         return (
@@ -1192,9 +1196,13 @@ const RecentActivityList: React.FC<{
                 {!isLast && <View style={[styles.timelineLine, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]} />}
               </View>
 
-              <View style={[styles.timelineCard, isDark && styles.timelineCardDark]}>
+              <View style={[
+                styles.timelineCard, 
+                isDark && styles.timelineCardDark,
+                { borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }
+              ]}>
                 <LinearGradient
-                  colors={isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.85)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.92)']}
+                  colors={isDark ? ['rgba(55,55,75,0.50)', 'rgba(42,42,60,0.35)'] : ['rgba(255,255,255,0.80)', 'rgba(250,252,255,0.60)']}
                   style={StyleSheet.absoluteFill}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
@@ -1202,22 +1210,28 @@ const RecentActivityList: React.FC<{
 
                 <View style={styles.timelineCardContent}>
                   <View style={styles.timelineCardHeader}>
-                    <View style={[styles.timelineIconBg, { backgroundColor: config.color + '12' }]}>
+                    <View style={[styles.timelineIconBg, { backgroundColor: config.color + '10' }]}>
                       <Text style={styles.timelineEmoji}>{config.emoji}</Text>
                     </View>
                     <View style={styles.timelineCardInfo}>
-                      <Text style={[styles.timelineCardTitle, isDark && styles.textDark]} numberOfLines={1}>{event?.title || config.label}</Text>
+                      <Text style={[styles.timelineCardTitle, isDark && styles.textDark]} numberOfLines={1}>
+                        {event?.title || event?.name || config.label}
+                      </Text>
                       <Text style={[styles.timelineCardActor, isDark && styles.textMuted]}>
                         {formatTimeAgo(event?.timestamp)}
+                        {event?.loggedByName ? ` • by ${event.loggedByName}` : ''}
                       </Text>
                     </View>
-                    <View style={[styles.timelineTypeBadge, { backgroundColor: config.color + '10' }]}>
+                    <View style={[styles.timelineTypeBadge, { backgroundColor: config.color + '08' }]}>
                       <Text style={[styles.timelineTypeText, { color: config.color }]}>{config.label}</Text>
                     </View>
                   </View>
 
                   {event?.details && (
                     <Text style={[styles.timelineCardDesc, isDark && styles.textMuted]} numberOfLines={2}>{event.details}</Text>
+                  )}
+                  {event?.notes && (
+                    <Text style={[styles.timelineCardDesc, isDark && styles.textMuted]} numberOfLines={2}>{event.notes}</Text>
                   )}
                 </View>
               </View>
@@ -1781,7 +1795,10 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
 
   const allTimelineEvents = useMemo(() => {
     if (!currentBaby) return [];
-    return getRecentTimelineEvents(50, currentBaby.id);
+    // Use activities from useActivity hook directly for real-time updates
+    const timelineEvents = getRecentTimelineEvents(50, currentBaby.id);
+    // Also include entries from useTracker if available
+    return timelineEvents.length > 0 ? timelineEvents : activities.slice(0, 50);
   }, [currentBaby, getRecentTimelineEvents, activities]);
 
   const unreadCommunityCount = useMemo(() => getUnreadCount(), [getUnreadCount]);
@@ -2437,8 +2454,16 @@ const styles = StyleSheet.create({
   timelineLeft: { width: 24, alignItems: 'center', paddingTop: 16 },
   timelineDot: { width: 12, height: 12, borderRadius: 6, borderWidth: 2, zIndex: 1 },
   timelineLine: { position: 'absolute', top: 0, bottom: -12, width: 2, left: 11 },
-  timelineCard: { flex: 1, borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', ...DESIGN.shadow.sm },
-  timelineCardDark: { borderColor: 'rgba(255,255,255,0.08)' },
+  timelineCard: { 
+    flex: 1, 
+    borderRadius: 16, 
+    overflow: 'hidden', 
+    borderWidth: 1, 
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
+  timelineCardDark: { 
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
   timelineCardContent: { padding: 14, gap: 8 },
   timelineCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   timelineIconBg: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
@@ -2452,6 +2477,8 @@ const styles = StyleSheet.create({
   emptyState: { alignItems: 'center', justifyContent: 'center', padding: 32 },
   emptyStateDark: { backgroundColor: 'rgba(30,30,35,0.5)' },
   emptyStateText: { fontSize: 14, fontWeight: '500', marginTop: 8 },
+  addFirstActivityBtn: { marginTop: 16, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12 },
+  addFirstActivityText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   loadMoreButton: { marginTop: 14, borderRadius: 14, paddingVertical: 12, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6, backgroundColor: 'rgba(102,126,234,0.06)' },
   loadMoreText: { fontSize: 13, fontWeight: '600' },
   viewAllButton: { marginTop: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10 },
