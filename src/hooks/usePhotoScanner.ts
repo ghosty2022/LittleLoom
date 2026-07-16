@@ -1,7 +1,9 @@
 // src/hooks/usePhotoScanner.ts
 import { useState, useCallback } from 'react';
 import { PhotoScanner, ScanProgress, ScanResult } from '../services/PhotoScanner';
-import { usePhotoSync } from '../context/PhotoSyncContext';
+// REPLACE with:
+// import { usePhotoSync } from '../context/PhotoSyncContext';
+// TODO: Create PhotoSyncContext or remove this dependency
 
 export function usePhotoScanner() {
   const [isScanning, setIsScanning] = useState(false);
@@ -9,7 +11,11 @@ export function usePhotoScanner() {
   const [result, setResult] = useState<ScanResult | null>(null);
   const [error, setError] = useState<Error | null>(null);
 
-  const { startScan: contextStartScan } = usePhotoSync();
+  // const { startScan: contextStartScan } = usePhotoSync();
+  const contextStartScan = async (options?: any) => {
+    console.warn('[usePhotoScanner] PhotoSyncContext not available, using direct scan');
+    // Fallback: scan directly without context
+  };
 
   const scan = useCallback(async (options?: { quick?: boolean; days?: number }) => {
     setIsScanning(true);

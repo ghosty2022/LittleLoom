@@ -1,4 +1,5 @@
-import { useModal as useModalContext, SweetAlert, ModalConfig } from '../utils/modal';
+import { useModal as useModalContext, SweetAlert } from '../utils/modal';
+import type { ModalConfig } from '../utils/modal';
 
 export const useModal = () => {
   const modal = useModalContext();
