@@ -1132,88 +1132,93 @@ const RecentActivityList: React.FC<{
   const [displayCount, setDisplayCount] = useState(5);
   const displayedActivities = activities.slice(0, displayCount);
 
-  const getActivityIcon = (type?: string): string => {
-    const iconMap: Record<string, string> = {
-      potty: 'water-outline',
-      feed: 'nutrition-outline',
-      sleep: 'moon-outline',
-      diaper: 'shirt-outline',
-      growth: 'trending-up-outline',
-      milestone: 'trophy-outline',
-      medication: 'medical-outline',
-      note: 'document-text-outline',
-      pump: 'swap-horizontal-outline',
-      bath: 'water-outline',
-      play: 'game-controller-outline',
-      walk: 'walk-outline',
-      temperature: 'thermometer-outline',
-      symptom: 'pulse-outline',
-    };
-    return iconMap[type || ''] || 'ellipse-outline';
+  const ACTIVITY_CONFIG: Record<string, { icon: keyof typeof Ionicons.glyphMap; color: string; label: string; emoji: string }> = {
+    potty: { icon: 'water-outline', color: '#06b6d4', label: 'Potty', emoji: '💧' },
+    feed: { icon: 'restaurant-outline', color: '#f59e0b', label: 'Feeding', emoji: '🍼' },
+    sleep: { icon: 'moon-outline', color: '#8b5cf6', label: 'Sleep', emoji: '😴' },
+    growth: { icon: 'trending-up-outline', color: '#10b981', label: 'Growth', emoji: '📏' },
+    medication: { icon: 'medical-outline', color: '#ef4444', label: 'Medication', emoji: '💊' },
+    milestone: { icon: 'trophy-outline', color: '#fbbf24', label: 'Milestone', emoji: '🏆' },
+    diaper: { icon: 'layers-outline', color: '#3b82f6', label: 'Diaper', emoji: '👶' },
+    note: { icon: 'document-text-outline', color: '#6b7280', label: 'Note', emoji: '📝' },
+    pump: { icon: 'swap-horizontal-outline', color: '#8b5cf6', label: 'Pump', emoji: '🔄' },
+    bath: { icon: 'water-outline', color: '#3b82f6', label: 'Bath', emoji: '🛁' },
+    play: { icon: 'game-controller-outline', color: '#ec4899', label: 'Play', emoji: '🎮' },
+    walk: { icon: 'walk-outline', color: '#10b981', label: 'Walk', emoji: '🚶' },
+    temperature: { icon: 'thermometer-outline', color: '#f97316', label: 'Temp', emoji: '🌡️' },
+    symptom: { icon: 'pulse-outline', color: '#ef4444', label: 'Symptom', emoji: '🤒' },
+    default: { icon: 'ellipse-outline', color: '#9ca3af', label: 'Activity', emoji: '•' },
   };
 
-  const getActivityColor = (type?: string): string => {
-    const colorMap: Record<string, string> = {
-      potty: '#667eea',
-      feed: '#fa709a',
-      sleep: '#11998e',
-      diaper: '#fc5c7d',
-      growth: '#43e97b',
-      milestone: '#f59e0b',
-      medication: '#ef4444',
-      note: '#64748b',
-      pump: '#8b5cf6',
-      bath: '#3b82f6',
-      play: '#ec4899',
-      walk: '#10b981',
-    };
-    return colorMap[type || ''] || '#667eea';
+  const formatTimeAgo = (timestamp: number): string => {
+    const diff = Date.now() - timestamp;
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(diff / 86400000);
+    if (minutes < 1) return 'Just now';
+    if (minutes < 60) return `${minutes}m ago`;
+    if (hours < 24) return `${hours}h ago`;
+    if (days < 7) return `${days}d ago`;
+    return new Date(timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
   if (activities.length === 0) {
     return (
-      <GlassCard style={styles.emptyStateCard}>
-        <View style={styles.emptyStateIcon}>
-          <Ionicons name="document-text-outline" size={28} color={theme.primary} />
-        </View>
-        <Text style={[styles.emptyStateTitle, { color: theme.text }]}>No activities yet</Text>
-        <Text style={[styles.emptyStateText, { color: theme.textSecondary }]}>
-          Tap a quick action above to log your first activity!
-        </Text>
-      </GlassCard>
+      <View style={[styles.emptyState, isDark && styles.emptyStateDark]}>
+        <Ionicons name="time-outline" size={48} color={isDark ? '#555' : '#ccc'} />
+        <Text style={[styles.emptyStateText, isDark && styles.textMuted]}>No recent activity</Text>
+      </View>
     );
   }
 
   return (
-    <View>
-      {displayedActivities.map((item, index) => {
-        const iconName = getActivityIcon(item?.type);
-        const iconColor = getActivityColor(item?.type);
+    <View style={styles.timelineContainer}>
+      {displayedActivities.map((event, index) => {
+        const config = ACTIVITY_CONFIG[event?.type] || ACTIVITY_CONFIG.default;
+        const isLast = index === displayedActivities.length - 1;
+
         return (
-          <Animated.View 
-            key={item.id || `activity-${index}`} 
+          <Animated.View
+            key={event?.id || `activity-${index}`}
             entering={FadeInUp.delay(index * 40).springify()}
           >
-            <TouchableOpacity onPress={() => onActivityPress(item)} activeOpacity={0.8}>
-              <View style={[styles.activityItem, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.6)', borderColor: theme.border }]}>
-                <View style={[styles.activityIcon, { backgroundColor: `${iconColor}12` }]}>
-                  <Ionicons name={iconName as any} size={18} color={iconColor} />
-                </View>
-                <View style={styles.activityContent}>
-                  <Text style={[styles.activityTitle, { color: theme.text }]} numberOfLines={1}>
-                    {item.title || 'Activity'}
-                  </Text>
-                  <Text style={[styles.activityTime, { color: theme.textMuted }]}>
-                    {formatDistanceToNow(item.timestamp, { addSuffix: true })}
-                  </Text>
-                  {item.details && (
-                    <Text style={[styles.activityDetails, { color: theme.textSecondary }]} numberOfLines={1}>
-                      {item.details}
-                    </Text>
+            <TouchableOpacity
+              onPress={() => onActivityPress(event)}
+              style={styles.timelineItem}
+              activeOpacity={0.7}
+            >
+              <View style={styles.timelineLeft}>
+                <View style={[styles.timelineDot, { backgroundColor: config.color, borderColor: isDark ? '#1a1a2e' : '#f8fafc' }]} />
+                {!isLast && <View style={[styles.timelineLine, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]} />}
+              </View>
+
+              <View style={[styles.timelineCard, isDark && styles.timelineCardDark]}>
+                <LinearGradient
+                  colors={isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.85)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.92)']}
+                  style={StyleSheet.absoluteFill}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                />
+
+                <View style={styles.timelineCardContent}>
+                  <View style={styles.timelineCardHeader}>
+                    <View style={[styles.timelineIconBg, { backgroundColor: config.color + '12' }]}>
+                      <Text style={styles.timelineEmoji}>{config.emoji}</Text>
+                    </View>
+                    <View style={styles.timelineCardInfo}>
+                      <Text style={[styles.timelineCardTitle, isDark && styles.textDark]} numberOfLines={1}>{event?.title || config.label}</Text>
+                      <Text style={[styles.timelineCardActor, isDark && styles.textMuted]}>
+                        {formatTimeAgo(event?.timestamp)}
+                      </Text>
+                    </View>
+                    <View style={[styles.timelineTypeBadge, { backgroundColor: config.color + '10' }]}>
+                      <Text style={[styles.timelineTypeText, { color: config.color }]}>{config.label}</Text>
+                    </View>
+                  </View>
+
+                  {event?.details && (
+                    <Text style={[styles.timelineCardDesc, isDark && styles.textMuted]} numberOfLines={2}>{event.details}</Text>
                   )}
-                </View>
-                <View style={[styles.activityArrow, { backgroundColor: `${iconColor}08` }]}>
-                  <Ionicons name="chevron-forward" size={14} color={iconColor} />
                 </View>
               </View>
             </TouchableOpacity>
@@ -2426,18 +2431,27 @@ const styles = StyleSheet.create({
   bar: { width: 2.5, height: 10, backgroundColor: '#1DB954', borderRadius: 1 },
   barMiddle: { height: 16 },
 
-  /* ── Activity List ── */
-  activityItem: { marginVertical: 4, padding: 12, borderRadius: 16, flexDirection: 'row', alignItems: 'center', borderWidth: 1 },
-  activityIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-  activityContent: { flex: 1 },
-  activityTitle: { fontSize: 14, fontWeight: '700', marginBottom: 1 },
-  activityTime: { fontSize: 11, fontWeight: '500' },
-  activityDetails: { fontSize: 11, marginTop: 1 },
-  activityArrow: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  emptyStateCard: { padding: 28, alignItems: 'center', borderRadius: 22 },
-  emptyStateIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(102,126,234,0.08)', alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
-  emptyStateTitle: { fontSize: 16, fontWeight: '700', marginBottom: 6 },
-  emptyStateText: { fontSize: 13, textAlign: 'center' },
+  /* ── Timeline Activity List (Borrowed from FamilySharing) ── */
+  timelineContainer: { marginBottom: 0 },
+  timelineItem: { flexDirection: 'row', gap: 12, marginBottom: 12 },
+  timelineLeft: { width: 24, alignItems: 'center', paddingTop: 16 },
+  timelineDot: { width: 12, height: 12, borderRadius: 6, borderWidth: 2, zIndex: 1 },
+  timelineLine: { position: 'absolute', top: 0, bottom: -12, width: 2, left: 11 },
+  timelineCard: { flex: 1, borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', ...DESIGN.shadow.sm },
+  timelineCardDark: { borderColor: 'rgba(255,255,255,0.08)' },
+  timelineCardContent: { padding: 14, gap: 8 },
+  timelineCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  timelineIconBg: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+  timelineEmoji: { fontSize: 18 },
+  timelineCardInfo: { flex: 1, gap: 2 },
+  timelineCardTitle: { fontSize: 14, fontWeight: '700', letterSpacing: -0.2 },
+  timelineCardActor: { fontSize: 11, fontWeight: '500' },
+  timelineTypeBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  timelineTypeText: { fontSize: 10, fontWeight: '700' },
+  timelineCardDesc: { fontSize: 12, fontWeight: '500', lineHeight: 17, marginLeft: 46 },
+  emptyState: { alignItems: 'center', justifyContent: 'center', padding: 32 },
+  emptyStateDark: { backgroundColor: 'rgba(30,30,35,0.5)' },
+  emptyStateText: { fontSize: 14, fontWeight: '500', marginTop: 8 },
   loadMoreButton: { marginTop: 14, borderRadius: 14, paddingVertical: 12, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6, backgroundColor: 'rgba(102,126,234,0.06)' },
   loadMoreText: { fontSize: 13, fontWeight: '600' },
   viewAllButton: { marginTop: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10 },

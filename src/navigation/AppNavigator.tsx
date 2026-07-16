@@ -286,13 +286,22 @@ function NavigationContent({
   const lastSecCheck = useRef(0);
   const stateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const babiesLoaded = useRef(false);
+  const firstOpenChecked = useRef(false);
+
+  // Refs to track current baby values without causing re-renders
+  const babyCountRef = useRef(0);
+  const hasSkippedBabyRef = useRef(false);
 
   const securityOn = useMemo(() =>
     !!(secSettings?.isPinEnabled || secSettings?.isBiometricEnabled),
     [secSettings?.isPinEnabled, secSettings?.isBiometricEnabled]
   );
 
+  // FIX #1: Load isFirstOpen ONCE using ref guard
   useEffect(() => {
+    if (firstOpenChecked.current) return;
+    firstOpenChecked.current = true;
+
     AsyncStorage.getItem(ONBOARDING_COMPLETE_KEY).then(v => {
       const complete = v === 'true';
       AsyncStorage.getItem(ONBOARDING_SEEN_KEY).then(v2 => {
@@ -301,17 +310,32 @@ function NavigationContent({
     }).catch(() => setIsFirstOpen(false));
   }, []);
 
+  // Keep refs in sync with current values
   useEffect(() => {
-    if (authLoading || isFirstOpen === undefined) return;
+    babyCountRef.current = babies?.length || 0;
+    hasSkippedBabyRef.current = hasSkippedBaby;
+  });
+
+  // FIX #2: Compute navState with stable deps - REMOVED babies?.length and hasSkippedBaby
+  useEffect(() => {
+    if (authLoading || !firstOpenChecked.current) return;
 
     const newState = getNavState(
-      authLoading, isAuthenticated, isSecurityLocked, securityOn,
-      setupComplete, hasParent2, hasBaby, babies?.length || 0,
-      hasSkippedBaby, hasSeenOnboarding, isFirstOpen,
+      authLoading,
+      isAuthenticated,
+      isSecurityLocked,
+      securityOn,
+      setupComplete,
+      hasParent2,
+      hasBaby,
+      babyCountRef.current,
+      hasSkippedBabyRef.current,
+      hasSeenOnboarding,
+      isFirstOpen,
     );
 
     if (newState === 'MAIN' && lastNavState.current !== 'MAIN' &&
-        babies?.length > 1 && !hasShownSwitchBaby.current &&
+        babyCountRef.current > 1 && !hasShownSwitchBaby.current &&
         isAuthenticated && setupComplete && !isFirstOpen) {
       setShouldShowSwitchBaby(true);
     }
@@ -325,17 +349,29 @@ function NavigationContent({
       setNavState(newState);
     }
 
-    setInitialCheckDone(true);
-  }, [authLoading, isAuthenticated, isSecurityLocked, securityOn, setupComplete,
-      hasParent2, hasBaby, babies?.length, hasSkippedBaby, hasSeenOnboarding, isFirstOpen]);
+    if (!initialCheckDone) setInitialCheckDone(true);
+  }, [
+    authLoading,
+    isAuthenticated,
+    isSecurityLocked,
+    securityOn,
+    setupComplete,
+    hasParent2,
+    hasBaby,
+    hasSeenOnboarding,
+    isFirstOpen,
+    // REMOVED: babies?.length, hasSkippedBaby — these change when loadBabies() runs
+  ]);
 
+  // FIX #3: Load babies ONCE, no deps that change
   useEffect(() => {
     if (isAuthenticated && !authLoading && !babiesLoaded.current) {
       babiesLoaded.current = true;
       loadBabies();
     }
-  }, [isAuthenticated, authLoading, loadBabies]);
+  }, [isAuthenticated, authLoading]); // REMOVED: loadBabies
 
+  // FIX #4: AppState listener with correct deps
   useEffect(() => {
     const sub = AppState.addEventListener('change', async (next) => {
       const current = AppState.currentState;
@@ -367,7 +403,7 @@ function NavigationContent({
       }
     });
     return () => sub.remove();
-  }, []);
+  }, [isAuthenticated, setupComplete, checkSecurityOnResume, loadBabies]);
 
   const handleStateChange = useCallback((state: any) => {
     if (!state) return;
@@ -383,8 +419,10 @@ function NavigationContent({
     }, 300);
   }, [onStateChange]);
 
-  useEffect(() => () => {
-    if (stateTimer.current) clearTimeout(stateTimer.current);
+  useEffect(() => {
+    return () => {
+      if (stateTimer.current) clearTimeout(stateTimer.current);
+    };
   }, []);
 
   useEffect(() => {

@@ -1772,44 +1772,47 @@ export default function EnhancedTimelineScreen() {
                                   onPress={() => handleEventPress(event)}
                                   activeOpacity={0.9}
                                 >
-                                  <View
-                                    style={[
-                                      styles.eventCard,
-                                      {
-                                        backgroundColor: theme.surface.card,
-                                        borderColor: theme.surface.border,
-                                        borderRadius: borderRadiusValue,
-                                      },
-                                    ]}
-                                  >
-                                    <View style={[styles.eventIconContainer, { backgroundColor: `${tracker.gradient?.[0] || tracker.color || theme.primary}15` }]}>
-                                      <Text style={styles.eventIcon}>{tracker.emoji}</Text>
-                                    </View>
-                                    <View style={styles.eventContent}>
-                                      <Text style={[styles.eventTitle, { color: theme.text.primary }]}>{event?.title || 'Entry'}</Text>
+                                  <View style={[styles.timelineEntryCard, { borderRadius: borderRadiusValue, borderColor: theme.surface.border }]}>
+                                    <LinearGradient
+                                      colors={theme.isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.85)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.92)']}
+                                      style={StyleSheet.absoluteFill}
+                                      start={{ x: 0, y: 0 }}
+                                      end={{ x: 1, y: 1 }}
+                                    />
+                                    
+                                    <View style={styles.timelineEntryContent}>
+                                      <View style={styles.timelineEntryHeader}>
+                                        <View style={[styles.timelineEntryIconBg, { backgroundColor: `${tracker.gradient?.[0] || tracker.color || theme.primary}12` }]}>
+                                          <Text style={styles.timelineEntryEmoji}>{tracker.emoji}</Text>
+                                        </View>
+                                        <View style={styles.timelineEntryInfo}>
+                                          <Text style={[styles.timelineEntryTitle, { color: theme.text.primary }]} numberOfLines={1}>{event?.title || 'Entry'}</Text>
+                                          <Text style={[styles.timelineEntryTime, { color: theme.text.secondary }]}>
+                                            {event?.timestamp ? format(event.timestamp, 'MMM d, h:mm a') : ''}
+                                            {event?.loggedByName ? ` • by ${event.loggedByName}` : ''}
+                                          </Text>
+                                        </View>
+                                        <View style={[styles.timelineEntryTypeBadge, { backgroundColor: `${tracker.gradient?.[0] || tracker.color || theme.primary}10` }]}>
+                                          <Text style={[styles.timelineEntryTypeText, { color: tracker.gradient?.[0] || tracker.color || theme.primary }]}>{tracker.name}</Text>
+                                        </View>
+                                      </View>
+                                      
                                       {event?.notes && (
-                                        <Text style={[styles.eventSubtitle, { color: theme.text.secondary }]} numberOfLines={2}>
+                                        <Text style={[styles.timelineEntryNotes, { color: theme.text.secondary }]} numberOfLines={2}>
                                           {event.notes}
                                         </Text>
                                       )}
-                                      <View style={styles.eventMeta}>
-                                        <Text style={[styles.eventTime, { color: theme.text.secondary }]}>
-                                          {event?.timestamp ? format(event.timestamp, 'MMM d, h:mm a') : ''}
-                                        </Text>
-                                        {event?.loggedByName && (
-                                          <Text style={[styles.eventAuthor, { color: theme.text.secondary }]}>
-                                            by {event.loggedByName}
-                                          </Text>
-                                        )}
+                                      
+                                      <View style={styles.timelineEntryActions}>
+                                        <TouchableOpacity style={[styles.timelineEntryActionBtn, { backgroundColor: `${theme.primary}08` }]} onPress={() => handleEditEvent(event)}>
+                                          <Ionicons name="create-outline" size={16} color={theme.primary} />
+                                          <Text style={[styles.timelineEntryActionText, { color: theme.primary }]}>Edit</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity style={[styles.timelineEntryActionBtn, { backgroundColor: '#ef444408' }]} onPress={() => handleDeleteEvent(event)}>
+                                          <Ionicons name="trash-outline" size={16} color="#ef4444" />
+                                          <Text style={[styles.timelineEntryActionText, { color: '#ef4444' }]}>Delete</Text>
+                                        </TouchableOpacity>
                                       </View>
-                                    </View>
-                                    <View style={styles.eventActions}>
-                                      <TouchableOpacity style={styles.actionButton} onPress={() => handleEditEvent(event)}>
-                                        <Ionicons name="create-outline" size={18} color={theme.text.secondary} />
-                                      </TouchableOpacity>
-                                      <TouchableOpacity style={styles.actionButton} onPress={() => handleDeleteEvent(event)}>
-                                        <Ionicons name="trash-outline" size={18} color="#ef4444" />
-                                      </TouchableOpacity>
                                     </View>
                                   </View>
                                 </TouchableOpacity>
