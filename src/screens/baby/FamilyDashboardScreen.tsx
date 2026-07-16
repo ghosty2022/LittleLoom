@@ -707,7 +707,11 @@ export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreen
               }
               style={styles.babyChipGradient}
             >
-              <Text style={styles.babyChipEmoji}>{baby.avatar || '👶'}</Text>
+              {isImageUri(baby.avatar) ? (
+                <SafeAvatar avatar={baby.avatar} gender={baby.gender} size={26} />
+              ) : (
+                <Text style={styles.babyChipEmoji}>{baby.avatar || '👶'}</Text>
+              )}
               <Text
                 style={[
                   styles.babyChipName,
@@ -822,9 +826,13 @@ export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreen
       <GlassCard style={styles.parentCard} onPress={handleCurrentUserEdit}>
         <LinearGradient colors={['#11998e20', '#38ef7d10']} style={StyleSheet.absoluteFill} />
         <View style={styles.parentRow}>
-          <LinearGradient colors={['#11998e', '#38ef7d']} style={styles.parentAvatar}>
-            <Text style={styles.parentAvatarText}>{effectiveUser?.fullName?.charAt(0) || 'P'}</Text>
-          </LinearGradient>
+          {isImageUri(effectiveUser?.avatar) ? (
+            <SafeAvatar avatar={effectiveUser?.avatar} size={52} />
+          ) : (
+            <LinearGradient colors={['#11998e', '#38ef7d']} style={styles.parentAvatar}>
+              <Text style={styles.parentAvatarText}>{effectiveUser?.fullName?.charAt(0) || 'P'}</Text>
+            </LinearGradient>
+          )}
           <View style={styles.parentInfo}>
             <Text style={[styles.parentName, isDark && styles.textDark]}>
               {effectiveUser?.fullName || 'Parent'}
@@ -904,18 +912,26 @@ export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreen
           >
             <GlassCard onPress={() => handleMemberPress(member, member.id === (userProfile?.id || profile?.id))}>
               <View style={styles.memberRow}>
-                <LinearGradient
-                  colors={
-                    member.role === UserRole.PARENT_1
-                      ? ['#667eea', '#764ba2']
-                      : member.role === UserRole.PARENT_2
-                      ? ['#fa709a', '#fee140']
-                      : ['#11998e', '#38ef7d']
-                  }
-                  style={styles.memberAvatar}
-                >
-                  <Text style={styles.memberAvatarText}>{member.fullName?.charAt(0) || '?'}</Text>
-                </LinearGradient>
+                {isImageUri(member.avatar) ? (
+                  <SafeAvatar avatar={member.avatar} size={48} />
+                ) : isEmoji(member.avatar) ? (
+                  <View style={[styles.memberAvatar, { backgroundColor: '#e2e8f0' }]}>
+                    <Text style={{ fontSize: 22 }}>{member.avatar}</Text>
+                  </View>
+                ) : (
+                  <LinearGradient
+                    colors={
+                      member.role === UserRole.PARENT_1
+                        ? ['#667eea', '#764ba2']
+                        : member.role === UserRole.PARENT_2
+                        ? ['#fa709a', '#fee140']
+                        : ['#11998e', '#38ef7d']
+                    }
+                    style={styles.memberAvatar}
+                  >
+                    <Text style={styles.memberAvatarText}>{member.fullName?.charAt(0) || '?'}</Text>
+                  </LinearGradient>
+                )}
                 <View style={styles.memberDetails}>
                   <Text style={[styles.memberName, isDark && styles.textDark]}>{member.fullName}</Text>
                   <View
@@ -1091,7 +1107,11 @@ export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreen
                   { backgroundColor: currentBaby?.id === baby.id ? themeColors.primary : isDark ? '#333' : '#e2e8f0' },
                 ]}
               >
-                <Text style={styles.babyOptionEmoji}>👶</Text>
+                {isImageUri(baby.avatar) ? (
+                  <SafeAvatar avatar={baby.avatar} gender={baby.gender} size={36} />
+                ) : (
+                  <Text style={styles.babyOptionEmoji}>{baby.avatar || '👶'}</Text>
+                )}
               </View>
               <View style={styles.babyOptionInfo}>
                 <Text style={[styles.babyOptionName, isDark && styles.textDark]}>{baby.name}</Text>

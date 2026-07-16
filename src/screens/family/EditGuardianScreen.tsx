@@ -46,7 +46,11 @@ import { useUser } from '../../context/UserContext';
 import { useBaby, ActivityEntry } from '../../context/BabyContext';
 import { useAuth } from '../../context/AuthContext';
 import { useCustomization } from '../../hooks/useCustomization';
-import { useMedia } from '../../context/MediaContext';
+import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
+
+/* Permanent storage for guardian/member photos (cache URIs get purged by the OS) */
+const GUARDIAN_IMAGES_DIR = FileSystem.documentDirectory + 'guardian_images/';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { UniversalSpinner, InlineSpinner } from '../../components/UniversalSpinner';
@@ -503,7 +507,6 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
   const { currentBaby, getRecentActivities, milestones } = useBaby();
   const { userProfile } = useAuth();
   const { triggerHaptic } = useCustomization();
-  const { pickImage, compressImage, cacheImage } = useMedia();
   const sweetAlert = useSweetAlert();
 
   const insets = useSafeAreaInsets();
@@ -622,12 +625,24 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     setShowImagePicker(false);
     try {
       triggerHaptic('light');
-      const uri = await pickImage({ allowsEditing: true, aspect: [1, 1], quality: 0.8 });
-      if (!uri) { sweetAlert.toast('No Image Selected', 'You did not select an image'); return; }
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') { sweetAlert.error('Permission Required', 'Please allow access to your photo library'); return; }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+      if (result.canceled || !result.assets?.[0]?.uri) return;
+
       setIsSaving(true);
-      let processedUri = uri;
-      try { processedUri = await compressImage(uri, 0.8); } catch (e) {}
-      try { processedUri = await cacheImage(processedUri); } catch (e) {}
+      // Copy from the temporary picker cache into permanent app storage
+      const dirInfo = await FileSystem.getInfoAsync(GUARDIAN_IMAGES_DIR);
+      if (!dirInfo.exists) { await FileSystem.makeDirectoryAsync(GUARDIAN_IMAGES_DIR, { intermediates: true }); }
+      const processedUri = `${GUARDIAN_IMAGES_DIR}${member?.id || 'member'}_${Date.now()}.jpg`;
+      await FileSystem.copyAsync({ from: result.assets[0].uri, to: processedUri });
+
       setFormData(prev => ({ ...prev, avatar: processedUri }));
       if (!isEditing && member) {
         const success = await updateGuardianProfile(member.id, { avatar: processedUri });

@@ -41,6 +41,10 @@ import Animated, {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
+
+/* Permanent storage for family-member photos (cache URIs get purged by the OS) */
+const FAMILY_IMAGES_DIR = FileSystem.documentDirectory + 'family_images/';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import type { RootStackParamList } from '../../types/navigation';
@@ -1258,15 +1262,32 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
   };
 
   const handleImagePick = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      sweetAlert.alert('Permission Required', 'Please allow access to your photo library', 'warning');
+      return;
+    }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.8,
     });
-    if (!result.canceled) {
-      setEditForm(prev => ({ ...prev, avatar: result.assets[0].uri }));
-      triggerHaptic('light');
+    if (!result.canceled && result.assets?.[0]?.uri) {
+      try {
+        // Copy from the temporary picker cache into permanent app storage
+        const dirInfo = await FileSystem.getInfoAsync(FAMILY_IMAGES_DIR);
+        if (!dirInfo.exists) {
+          await FileSystem.makeDirectoryAsync(FAMILY_IMAGES_DIR, { intermediates: true });
+        }
+        const permanentUri = `${FAMILY_IMAGES_DIR}${selectedMember?.id || 'member'}_${Date.now()}.jpg`;
+        await FileSystem.copyAsync({ from: result.assets[0].uri, to: permanentUri });
+        setEditForm(prev => ({ ...prev, avatar: permanentUri }));
+        triggerHaptic('light');
+      } catch (error) {
+        console.error('Failed to save member photo:', error);
+        sweetAlert.alert('Error', 'Failed to save photo. Please try again.', 'warning');
+      }
     }
   };
 
