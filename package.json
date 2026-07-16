@@ -16,7 +16,9 @@
     "prebuild:clean": "expo prebuild --clean",
     "db:generate": "drizzle-kit generate --config=src/database/drizzle.config.ts",
     "db:push": "drizzle-kit push --config=src/database/drizzle.config.ts",
-    "db:studio": "drizzle-kit studio --config=src/database/drizzle.config.ts"
+    "db:studio": "drizzle-kit studio --config=src/database/drizzle.config.ts",
+    "prebuild:check": "node prebuild-check.js",
+    "build:dev": "node prebuild-check.js && eas build --platform android --profile development"
   },
   "dependencies": {
     "@expo/metro-runtime": "~4.0.0",
