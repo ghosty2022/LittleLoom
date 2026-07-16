@@ -497,6 +497,7 @@ const WeeklyDigestCard = React.memo(({
   stats,
   isDark,
   onViewDetails,
+  onViewTopic,
 }: {
   stats: {
     postsThisWeek: number;
@@ -507,6 +508,7 @@ const WeeklyDigestCard = React.memo(({
   };
   isDark: boolean;
   onViewDetails: () => void;
+  onViewTopic?: (topicId: string) => void;
 }) => {
   const progressAnim = useSharedValue(0);
   
@@ -547,14 +549,18 @@ const WeeklyDigestCard = React.memo(({
       </View>
       
       <View style={styles.digestStats}>
-        <View style={styles.digestStat}>
+        <TouchableOpacity 
+          style={styles.digestStat}
+          onPress={() => onViewTopic?.('topic_1')}
+          activeOpacity={0.7}
+        >
           <Text style={[styles.digestStatValue, { color: isDark ? DS.white : DS.gray900 }]}>
             {stats.postsThisWeek}
           </Text>
           <Text style={[styles.digestStatLabel, { color: isDark ? DS.gray400 : DS.gray500 }]}>
             Posts
           </Text>
-        </View>
+        </TouchableOpacity>
         <View style={[styles.digestDivider, { backgroundColor: isDark ? DS.darkBorder : DS.gray200 }]} />
         <View style={styles.digestStat}>
           <Text style={[styles.digestStatValue, { color: isDark ? DS.white : DS.gray900 }]}>
@@ -615,11 +621,13 @@ const TopicHeatmap = React.memo(({
   topics,
   activeTopic,
   onSelect,
+  onNavigateToTopic,
   isDark,
 }: {
   topics: any[];
   activeTopic: string;
   onSelect: (topicId: string) => void;
+  onNavigateToTopic?: (topicId: string) => void;
   isDark: boolean;
 }) => {
   return (
@@ -664,6 +672,8 @@ const TopicHeatmap = React.memo(({
             >
               <Pressable
                 onPress={() => onSelect(isActive ? 'all' : topic.id)}
+                onLongPress={() => onNavigateToTopic?.(topic.id)}
+                delayLongPress={600}
                 style={[
                   styles.heatmapCell,
                   { backgroundColor: bgColor, borderColor },
@@ -791,7 +801,6 @@ const SmartVideoPlayer = React.memo(({ uri, isVisible }: { uri: string; isVisibl
       player.play();
     } else {
       player.pause();
-      player.currentTime = 0;
     }
   }, [isVisible, player]);
 
@@ -1794,6 +1803,7 @@ export default function CommunityScreen({ navigation }: Props) {
           stats={weeklyStats}
           isDark={isDark}
           onViewDetails={() => navigation.navigate(ROUTES.EDIT_PROFILE)}
+          onViewTopic={(topicId) => navigation.navigate(ROUTES.TOPICS, { topicId })}
         />
       )}
 
@@ -1862,6 +1872,7 @@ export default function CommunityScreen({ navigation }: Props) {
         topics={topics}
         activeTopic={activeTopic}
         onSelect={setActiveTopic}
+        onNavigateToTopic={(topicId) => navigation.navigate(ROUTES.TOPICS, { topicId })}
         isDark={isDark}
       />
           {/* Active Filter */}

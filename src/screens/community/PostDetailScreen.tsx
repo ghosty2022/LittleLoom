@@ -16,6 +16,7 @@ import { Comment, Post, useCommunity } from '../../context/CommunityContext';
 import { CommunityBorderRadius, CommunityColors, CommunityShadows, CommunitySpacing } from '../../theme/CommunityTheme';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { useCustomization } from '../../hooks/useCustomization';
+import { useSweetAlert } from '../../components/SweetAlert';
 type PostDetailScreenProps = NativeStackScreenProps<CommunityStackParamList, 'PostDetail'>;
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -46,6 +47,7 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
   } = useCommunity();
 
   const { shouldReduceMotion, triggerHaptic, spinnerColor } = useCustomization();
+  const sweetAlert = useSweetAlert();
 
   const [post, setPost] = useState<Post | undefined>(undefined);
   const [commentText, setCommentText] = useState('');
@@ -146,21 +148,21 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
   const handleDelete = useCallback(() => {
     if (!post) return;
 
-sweetAlert.confirm(
+    sweetAlert.confirm(
       'Delete Post',
       'Are you sure you want to delete this post? This action cannot be undone.',
       () => {
-        // TODO: Confirm action
+        deletePost(post.id);
+        setShowMoreMenu(false);
+        navigation.goBack();
       },
       () => {
-        // Cancel action
+        setShowMoreMenu(false);
       },
-      'OK',
-      'Cancel',
-      false
+      'Delete',
+      'Cancel'
     );
-    setShowMoreMenu(false);
-  }, [post, deletePost, navigation]);
+  }, [post, deletePost, navigation, sweetAlert]);
 
   const handleBlock = useCallback(() => {
     if (!post) return;

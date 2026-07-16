@@ -8,9 +8,10 @@ import type {  NativeStackScreenProps  } from '@react-navigation/native-stack';
 import type {  CommunityStackParamList  } from '../../types/navigation';
 import { useCommunity } from '../../context/CommunityContext';
 import { useUser } from '../../context/UserContext';
-import { showSuccessModal, showErrorModal } from '../../utils/modal';
+// Using sweetAlert instead of modal utils
 import { useReportRoute } from '../../hooks/useReportRoute';
 import { useCustomization } from '../../hooks/useCustomization';
+import { useSweetAlert } from '../../components/SweetAlert';
 
 import { CommunityColors, CommunityGradients, CommunitySpacing, CommunityBorderRadius, CommunityShadows } from '../../theme/CommunityTheme';
 
@@ -105,6 +106,8 @@ export default function ReportScreen({ navigation, route }: ReportScreenProps) {
   const { currentUser, blockUser, isUserBlocked } = useCommunity();
   const { communityProfile } = useUser();
 
+  const sweetAlert = useSweetAlert();
+
   const {
     shouldReduceMotion,
     triggerHaptic,
@@ -134,7 +137,7 @@ export default function ReportScreen({ navigation, route }: ReportScreenProps) {
 
   const handleSubmit = async () => {
     if (!selectedCategory) {
-      showErrorModal({ message: 'Please select a reason for reporting' });
+      sweetAlert.error('Selection Required', 'Please select a reason for reporting');
       return;
     }
 
@@ -165,13 +168,13 @@ export default function ReportScreen({ navigation, route }: ReportScreenProps) {
       setIsSubmitting(false);
       setCurrentStep('confirm');
 
-      showSuccessModal({
-        title: 'Report Submitted',
-        message: 'Thank you for helping keep our community safe. Our team will review this report within 24 hours.',
-      });
+      sweetAlert.success(
+        'Report Submitted',
+        'Thank you for helping keep our community safe. Our team will review this report within 24 hours.'
+      );
     } catch (error) {
       setIsSubmitting(false);
-      showErrorModal({ message: 'Failed to submit report. Please try again.' });
+      sweetAlert.error('Submission Failed', 'Failed to submit report. Please try again.');
     }
   };
 

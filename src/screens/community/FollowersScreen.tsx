@@ -124,7 +124,14 @@ export default function FollowersScreen
       }
 
       const targetUser = getUserById(userId);
-      const count = targetUser?.stats?.followers || Math.floor(Math.random() * 50) + 10;
+      // Get real follower count from the community context
+      let realFollowers: string[] = [];
+      try {
+        realFollowers = await getFollowers(userId);
+      } catch (e) {
+        console.log('Could not load real followers:', e);
+      }
+      const count = realFollowers.length > 0 ? realFollowers.length : (targetUser?.stats?.followers || Math.floor(Math.random() * 50) + 10);
 
       const additionalFollowers = generateDemoFollowers(Math.min(count, 30), userId);
 
@@ -363,7 +370,7 @@ export default function FollowersScreen
 
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Followers</Text>
-          <Text style={styles.headerSubtitle}>{followers.length.toLocaleString()}</Text>
+          <Text style={styles.headerSubtitle}>{(currentUser?.stats?.followers ?? followers.length).toLocaleString()}</Text>
         </View>
 
         <View style={styles.headerButton} />

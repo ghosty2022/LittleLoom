@@ -129,11 +129,18 @@ export default function FollowingScreen
         console.log('Could not load persisted following:', e);
       }
       
-      const targetUser = getUserById(userId);
-      const count = targetUser?.stats?.following || Math.floor(Math.random() * 40) + 5;
-      
+            const targetUser = getUserById(userId);
+      // Get real following count from the community context
+      let realFollowing: string[] = [];
+      try {
+        realFollowing = await getFollowing(userId);
+      } catch (e) {
+        console.log('Could not load real following:', e);
+      }
+      const count = realFollowing.length > 0 ? realFollowing.length : (targetUser?.stats?.following || Math.floor(Math.random() * 40) + 5);
+
       const additionalFollowing = generateDemoFollowing(Math.min(count, 30), userId);
-      
+
       demoFollowing = [...demoFollowing, ...additionalFollowing];
       
       const seen = new Set<string>();
@@ -383,7 +390,7 @@ export default function FollowingScreen
         
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Following</Text>
-          <Text style={styles.headerSubtitle}>{followingList.length.toLocaleString()}</Text>
+          <Text style={styles.headerSubtitle}>{(currentUser?.stats?.following ?? followingList.length).toLocaleString()}</Text>
         </View>
         
         <View style={styles.headerButton} />

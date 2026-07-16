@@ -25,6 +25,7 @@ import { useRouteBasedNavVisibility } from '../../hooks/useRouteBasedNavVisibili
 import { useReportRoute } from '../../hooks/useReportRoute';
 import { useSafeCustomization } from '../../hooks/useSafeContexts';
 import { useUser } from '../../context/UserContext';
+import { useSweetAlert } from '../../components/SweetAlert';
 
 import {
   CommunityColors,
@@ -78,6 +79,8 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
     shouldReduceMotion = false,
     triggerHaptic = () => {},
   } = useSafeCustomization();
+  
+  const sweetAlert = useSweetAlert();
 
   const [refreshing, setRefreshing] = useState(false);
   const [sortBy, setSortBy] = useState<'trending' | 'newest' | 'popular'>('trending');
@@ -333,8 +336,7 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
                 }),
                 undefined,
                 'Report',
-                'Cancel',
-                true
+                'Cancel'
               )
             }
           >
@@ -366,16 +368,11 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
         <View style={styles.sortContainer}>
           <TouchableOpacity
             style={styles.sortButton}
-            onPress={() =>
-              sweetAlert.confirm(
-                'Sort by',
-                'Choose sorting option',
-                () => setSortBy('trending'),
-                undefined,
-                'Trending',
-                'Cancel'
-              )
-            }
+            onPress={() => {
+              // Simple sort toggle instead of confirm dialog
+              setSortBy(prev => prev === 'trending' ? 'newest' : prev === 'newest' ? 'popular' : 'trending');
+              triggerHaptic('light');
+            }}
           >
             <Text style={styles.sortText}>
               {sortBy.charAt(0).toUpperCase() + sortBy.slice(1)}

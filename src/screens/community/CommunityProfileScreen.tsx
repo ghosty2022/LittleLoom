@@ -24,7 +24,6 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  useColorScheme,
   View,
   Platform,
   UIManager,
@@ -514,8 +513,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   const sweetAlert = useSweetAlert();
 
   const insets = useSafeAreaInsets();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+  const isDark = false; // This screen uses dark-first design, always dark
   const scrollY = useSharedValue(0);
 
   const [isEditing, setIsEditing] = useState(false);
@@ -719,8 +717,15 @@ export default function CommunityProfileScreen({ navigation }: Props) {
       triggerHaptic('light');
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') { sweetAlert.alert('Permission Required', 'Camera access is needed', 'warning'); return; }
-      const result = await ImagePicker.launchCameraAsync({ allowsEditing: true, aspect: [1, 1], quality: 0.8 });
-      if (!result.canceled && result.assets[0]) { setFormData(prev => ({ ...prev, avatar: result.assets[0].uri })); }
+      const result = await ImagePicker.launchCameraAsync({ 
+        allowsEditing: true, 
+        aspect: [1, 1], 
+        quality: 0.8,
+        cameraType: ImagePicker.CameraType.front,
+      });
+      if (!result.canceled && result.assets && result.assets[0]) { 
+        setFormData(prev => ({ ...prev, avatar: result.assets[0].uri })); 
+      }
     } catch (error) { sweetAlert.error('Error', 'Failed to take photo'); }
   };
 
