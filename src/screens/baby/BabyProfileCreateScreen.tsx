@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {  ActivityIndicator, Dimensions, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,6 +14,7 @@ import * as FileSystem from 'expo-file-system';
 import { useAuth } from '../../context/AuthContext';
 import { useSweetAlert } from '../../hooks/useSweetAlert';
 import { useBaby } from '../../context/BabyContext';
+import { getBabyByIdFromDb } from '../../database/dbHelpers';
 import { useCustomization } from '../../hooks/useCustomization';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
@@ -229,7 +229,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.8,
@@ -370,17 +370,6 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
     setIsLoading(true);
     triggerHaptic('medium');
 
-    try {
-      const babiesCheck = await AsyncStorage.getItem('@littleloom_babies');
-      const existingBabies = babiesCheck ? JSON.parse(babiesCheck) : [];
-
-      if (existingBabies.length === 0) {
-        await AsyncStorage.removeItem('@littleloom_current_baby');
-      }
-    } catch (cleanupError) {
-      console.warn('Cleanup before create failed:', cleanupError);
-    }
-
     let babyId: string | null = null;
 
     try {
@@ -445,11 +434,13 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
 
         if (!isMounted.current) return;
 
-        const verifyBabies = await AsyncStorage.getItem('@littleloom_babies');
-        const parsedBabies = verifyBabies ? JSON.parse(verifyBabies) : [];
+        /* Babies are persisted to the SQLite/Drizzle database via BabyContext,
+           so verify against the DB. The legacy @littleloom_babies AsyncStorage
+           key is no longer written and always failed this check */
+        const persisted = await getBabyByIdFromDb(babyId);
 
-        if (parsedBabies.length === 0) {
-          console.error('CRITICAL: Baby profile was not persisted to storage!');
+        if (!persisted) {
+          console.error('CRITICAL: Baby profile was not persisted to the database!');
           if (isMounted.current) {
             showError('Profile could not be saved. Please try again.');
             setIsLoading(false);
@@ -457,7 +448,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
           return;
         }
 
-        console.log('✅ Baby profile verified:', parsedBabies.length, 'baby(ies) in storage');
+        console.log('✅ Baby profile verified in database:', persisted.id);
         
         if (isMounted.current) {
           navigation.replace('Main');
