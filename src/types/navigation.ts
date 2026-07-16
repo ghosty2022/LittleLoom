@@ -152,6 +152,8 @@ export type RootStackParamList = {
 
   Insights: undefined;
 
+  EntryDetail: { entryId: string; trackerId?: string };
+
   VaccinationSchedule: { 
     babyId?: string; 
     birthDate?: string;
@@ -285,6 +287,10 @@ export type CreateCustomTrackerNavigationProp = NativeStackScreenProps<RootStack
 // NEW: Insights screen types
 export type InsightsNavigationProp = NativeStackScreenProps<RootStackParamList, 'Insights'>['navigation'];
 export type InsightsRouteProp = RouteProp<RootStackParamList, 'Insights'>;
+
+// NEW: EntryDetail screen types
+export type EntryDetailNavigationProp = NativeStackScreenProps<RootStackParamList, 'EntryDetail'>['navigation'];
+export type EntryDetailRouteProp = RouteProp<RootStackParamList, 'EntryDetail'>;
 
 export type CommunityProfileNavigationProp = NativeStackScreenProps<CommunityStackParamList, 'CommunityProfile'>['navigation'];
 export type CommunityProfileRouteProp = RouteProp<CommunityStackParamList, 'CommunityProfile'>;

@@ -1105,6 +1105,9 @@ export default function EnhancedTimelineScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
   const [showTimelinePicker, setShowTimelinePicker] = useState(false);
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState<Date>(new Date());
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [dismissedInsights, setDismissedInsights] = useState<Set<string>>(new Set());
   const [dismissedReminders, setDismissedReminders] = useState<Set<string>>(new Set());
   const [showAchievementToast, setShowAchievementToast] = useState(false);
@@ -1410,7 +1413,8 @@ export default function EnhancedTimelineScreen() {
   }, [deleteEntry, triggerHaptic, confirm, success]);
 
   const handleEventPress = useCallback((entry: TrackerEntry) => {
-    navigation.navigate('AddEntry', { viewMode: true, eventId: entry?.id, trackerId: entry?.trackerId });
+    if (!entry?.id) return;
+    navigation.navigate('EntryDetail', { entryId: entry.id, trackerId: entry.trackerId });
   }, [navigation]);
 
   const handleScroll = useAnimatedScrollHandler({
