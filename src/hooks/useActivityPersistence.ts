@@ -165,15 +165,16 @@ export function useEmergencySave<T>(
       }
     };
 
-    if (typeof window !== 'undefined') {
-      window.addEventListener('beforeunload', handleBeforeUnload);
-    }
-
+    // window object only exists in web, not React Native
+    // if (typeof window !== 'undefined') {
+    //   window.addEventListener('beforeunload', handleBeforeUnload);
+    // }
     return () => {
       subscription.remove();
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('beforeunload', handleBeforeUnload);
-      }
+      // window object only exists in web, not React Native
+      // if (typeof window !== 'undefined') {
+      //   window.removeEventListener('beforeunload', handleBeforeUnload);
+      // }
     };
   }, [enabled, critical, saveFn]);
 }

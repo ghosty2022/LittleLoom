@@ -595,7 +595,7 @@ const ConfirmModal = memo<ConfirmModalProps>(({
             <Animated.ScrollView style={modalStyles.modalBody} showsVerticalScrollIndicator={false}>
               <View style={[modalStyles.previewCard, { backgroundColor: fullThemeColors.glassBg, borderColor: fullThemeColors.border, borderRadius: borderRadiusValue }]}>
                 <Text style={[modalStyles.previewTime, { color: fullThemeColors.textSecondary }]}>{format(date, 'MMM d, yyyy \u2022 h:mm a')}</Text>
-                 {(data.photoUris as string[])?.length > 0 && (
+              {(data.photoUris as string[])?.length > 0 && (
                   <ScrollView
                     horizontal
                     showsHorizontalScrollIndicator={false}
@@ -616,7 +616,8 @@ const ConfirmModal = memo<ConfirmModalProps>(({
                       />
                     ))}
                   </ScrollView>
-                )}                <Text style={[modalStyles.previewTitle, { color: fullThemeColors.text, fontSize: 18 * fontSizeMultiplier }]}>{tracker.emoji} {tracker.name}</Text>
+                )}
+                <Text style={[modalStyles.previewTitle, { color: fullThemeColors.text, fontSize: 18 * fontSizeMultiplier }]}>{tracker.emoji} {tracker.name}</Text>
                 {notes && <Text style={[modalStyles.previewDetails, { color: fullThemeColors.textSecondary }]}>{notes}</Text>}
                 {preview.length > 0 && (
                   <View style={modalStyles.previewFields}>

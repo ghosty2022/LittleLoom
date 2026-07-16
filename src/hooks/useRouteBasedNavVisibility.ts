@@ -65,21 +65,25 @@ export const useRouteBasedNavVisibility = () => {
 
   // Get current route from navigation state
   const routeName = useNavigationState((state) => {
-    if (!state) return '';
+    if (!state || typeof state.index !== 'number') return '';
     
     // Find the deepest active route
-    let route = state.routes[state.index];
-    while (route.state) {
+    let route = state.routes?.[state.index];
+    if (!route) return '';
+    
+    while (route?.state) {
       const nested = route.state as any;
       route = nested.routes?.[nested.index ?? 0] ?? route;
+      if (!route) return '';
     }
-    return route.name;
+    return route?.name || '';
   });
 
   // Get parent tab info
   const parentTab = useNavigationState((state) => {
-    if (!state) return null;
-    const mainRoute = state.routes[state.index];
+    if (!state || typeof state.index !== 'number') return null;
+    const mainRoute = state.routes?.[state.index];
+    if (!mainRoute) return null;
     if (mainRoute.state) {
       const nested = mainRoute.state as any;
       return nested.routes?.[nested.index ?? 0]?.name || mainRoute.name;
