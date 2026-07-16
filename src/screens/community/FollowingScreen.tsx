@@ -230,9 +230,10 @@ export default function FollowingScreen
       () => {
         blockUser(user.id)
           .then(() => {
-            sweetAlert.success(
+            sweetAlert.alert(
               blocked ? 'Unblocked' : 'Blocked',
-              blocked ? 'User has been unblocked' : 'User blocked'
+              blocked ? 'User has been unblocked' : 'User blocked',
+              'success'
             );
           })
           .catch(() => {

@@ -669,19 +669,11 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
 
   const handleFilePress = async (meta?: FileMetadata) => {
     if (!meta) return;
-
-sweetAlert.confirm(
-      'Alert',
-      '',
-      () => {
-        // TODO: Confirm action
-      },
-      () => {
-        // Cancel action
-      },
-      'Share',
-      'Cancel',
-      false
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    sweetAlert.alert(
+      meta.name || 'File',
+      meta.size ? `${(meta.size / 1024).toFixed(1)} KB` : 'Attachment',
+      'info'
     );
   };
 

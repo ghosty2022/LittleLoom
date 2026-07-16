@@ -220,9 +220,10 @@ export default function FollowersScreen
       () => {
         blockUser(follower.id)
           .then(() => {
-            sweetAlert.success(
+            sweetAlert.alert(
               isBlocked ? 'Unblocked' : 'Blocked',
-              isBlocked ? 'User has been unblocked' : 'You will no longer see their content.'
+              isBlocked ? 'User has been unblocked' : 'You will no longer see their content.',
+              'success'
             );
           })
           .catch(() => {

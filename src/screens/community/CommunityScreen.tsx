@@ -148,6 +148,10 @@ const ROUTES = {
   NOTIFICATIONS: 'Notifications',
   MESSAGES: 'ChatList',
   TOPICS: 'Topic',
+  REPORT: 'Report',
+  FOLLOWERS: 'Followers',
+  FOLLOWING: 'Following',
+  SEARCH_USERS: 'SearchUsers',
   TRACKER_REMINDERS: 'TrackerReminders',
 } as const;
 
@@ -245,12 +249,14 @@ const ParentMatchCard = React.memo(({
   match,
   onConnect,
   onDismiss,
+  onViewProfile,
   index,
   isDark,
 }: {
   match: ParentMatch;
   onConnect: (userId: string) => void;
   onDismiss: (userId: string) => void;
+  onViewProfile: (userId: string) => void;
   index: number;
   isDark: boolean;
 }) => {
@@ -272,7 +278,7 @@ const ParentMatchCard = React.memo(({
         end={{ x: 1, y: 1 }}
       />
       
-      <View style={styles.matchHeader}>
+      <TouchableOpacity style={styles.matchHeader} onPress={() => onViewProfile(match.user.id)} activeOpacity={0.7}>
         <WeaveScoreRing score={match.matchScore} size={48}>
           <SafeAvatar
             avatar={match.user.avatar}
@@ -297,9 +303,9 @@ const ParentMatchCard = React.memo(({
               </View>
             ))}
           </View>
-        </View>
-      </View>
-      
+                </View>
+      </TouchableOpacity>
+
       <View style={styles.matchActions}>
         <TouchableOpacity
           style={[styles.matchBtn, styles.matchBtnPrimary]}
@@ -1001,16 +1007,11 @@ const PostCard = React.memo(({
     transform: [{ scale: cardScale.value }],
   }));
 
+  const [showMenu, setShowMenu] = useState(false);
+
   const handleLongPress = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    sweetAlert.confirm(
-      'Thread Options',
-      'What would you like to do?',
-      () => onShare(post),
-      undefined,
-      'Share',
-      'Cancel'
-    );
+    setShowMenu(true);
   };
 
   return (
@@ -1274,6 +1275,48 @@ const PostCard = React.memo(({
           )}
         </Animated.View>
       </Pressable>
+
+      {/* Thread action sheet */}
+      <Modal visible={showMenu} transparent animationType="fade" onRequestClose={() => setShowMenu(false)}>
+        <Pressable style={styles.menuOverlay} onPress={() => setShowMenu(false)}>
+          <View style={[styles.menuSheet, { backgroundColor: isDark ? DS.darkCard : DS.white }]}>
+            {isAuthor && (
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => { setShowMenu(false); onDelete(post.id); }}
+              >
+                <Ionicons name="trash-outline" size={18} color={DS.danger} />
+                <Text style={[styles.menuItemText, { color: DS.danger }]}>Delete thread</Text>
+              </TouchableOpacity>
+            )}
+            {!isAuthor && (
+              <>
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => { setShowMenu(false); onNavigate(ROUTES.USER_PROFILE, { userId: post.authorId }); }}
+                >
+                  <Ionicons name="person-outline" size={18} color={isDark ? DS.gray300 : DS.gray600} />
+                  <Text style={[styles.menuItemText, { color: isDark ? DS.gray300 : DS.gray700 }]}>View profile</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => { setShowMenu(false); onNavigate(ROUTES.REPORT, { type: 'post', targetId: post.id, targetUserId: post.authorId }); }}
+                >
+                  <Ionicons name="flag-outline" size={18} color={DS.warning} />
+                  <Text style={[styles.menuItemText, { color: isDark ? DS.gray300 : DS.gray700 }]}>Report thread</Text>
+                </TouchableOpacity>
+              </>
+            )}
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => { setShowMenu(false); onShare(post); }}
+            >
+              <Ionicons name="share-outline" size={18} color={isDark ? DS.gray300 : DS.gray600} />
+              <Text style={[styles.menuItemText, { color: isDark ? DS.gray300 : DS.gray700 }]}>Share</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
     </Animated.View>
   );
 });
@@ -1746,6 +1789,34 @@ export default function CommunityScreen({ navigation }: Props) {
         />
       )}
 
+      {/* Followers / Following quick links */}
+      {canInteract && currentUser && (
+        <View style={styles.followRow}>
+          <TouchableOpacity
+            style={[styles.followPill, { backgroundColor: isDark ? DS.darkCard : DS.white }]}
+            onPress={() => navigation.navigate(ROUTES.FOLLOWERS, { userId: currentUser.id })}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.followPillValue, { color: isDark ? DS.white : DS.gray900 }]}>
+              {currentUser.stats?.followers ?? 0}
+            </Text>
+            <Text style={[styles.followPillLabel, { color: isDark ? DS.gray400 : DS.gray500 }]}>Followers</Text>
+            <Ionicons name="chevron-forward" size={14} color={DS.gray400} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.followPill, { backgroundColor: isDark ? DS.darkCard : DS.white }]}
+            onPress={() => navigation.navigate(ROUTES.FOLLOWING, { userId: currentUser.id })}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.followPillValue, { color: isDark ? DS.white : DS.gray900 }]}>
+              {currentUser.stats?.following ?? 0}
+            </Text>
+            <Text style={[styles.followPillLabel, { color: isDark ? DS.gray400 : DS.gray500 }]}>Following</Text>
+            <Ionicons name="chevron-forward" size={14} color={DS.gray400} />
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Parent Match Cards */}
       {parentMatches.length > 0 && canInteract && (
         <View style={[styles.matchesContainer, { backgroundColor: isDark ? DS.darkSurface : DS.gray50 }]}>
@@ -1768,6 +1839,7 @@ export default function CommunityScreen({ navigation }: Props) {
                 match={item}
                 onConnect={handleConnectParent}
                 onDismiss={handleDismissMatch}
+                onViewProfile={(userId) => navigation.navigate(ROUTES.USER_PROFILE, { userId })}
                 index={index}
                 isDark={isDark}
               />
@@ -1800,7 +1872,7 @@ export default function CommunityScreen({ navigation }: Props) {
           )}
         </View>
       ), [
-        isDark, activeTopic, topics, composeSuggestions, weeklyStats, parentMatches,
+        isDark, activeTopic, topics, composeSuggestions, weeklyStats, parentMatches, currentUser,
         canInteract, handleConnectParent, handleDismissMatch, navigation, sweetAlert
       ]);
 
@@ -1913,6 +1985,19 @@ export default function CommunityScreen({ navigation }: Props) {
                     </TouchableOpacity>
                   )}
                 </View>
+                {searchQuery.trim().length > 0 && (
+                  <TouchableOpacity
+                    style={styles.searchPeopleBtn}
+                    onPress={() => navigation.navigate(ROUTES.SEARCH_USERS, { initialQuery: searchQuery.trim() })}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="people-outline" size={16} color={DS.primary} />
+                    <Text style={[styles.searchPeopleText, { color: DS.primary }]}>
+                      Find parents matching "{searchQuery.trim()}"
+                    </Text>
+                    <Ionicons name="chevron-forward" size={14} color={DS.primary} />
+                  </TouchableOpacity>
+                )}
               </Animated.View>
             )}
 
@@ -3305,6 +3390,73 @@ export default function CommunityScreen({ navigation }: Props) {
         paddingVertical: DS.space.xl,
       },
       footerLoaderText: {
+        fontSize: DS.text.sm.size,
+        fontWeight: '600',
+      },
+
+      // Thread action sheet
+      menuOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.45)',
+        justifyContent: 'flex-end',
+      },
+      menuSheet: {
+        marginHorizontal: DS.space.lg,
+        marginBottom: 40,
+        borderRadius: DS.radius.xl,
+        paddingVertical: DS.space.sm,
+        ...DS.shadow.lg,
+      },
+      menuItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: DS.space.md,
+        paddingHorizontal: DS.space.xl,
+        paddingVertical: DS.space.lg,
+      },
+      menuItemText: {
+        fontSize: DS.text.base.size,
+        fontWeight: '600',
+      },
+
+      // Followers / Following pills
+      followRow: {
+        flexDirection: 'row',
+        gap: DS.space.md,
+        paddingHorizontal: DS.space.lg,
+        marginBottom: DS.space.lg,
+      },
+      followPill: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: DS.space.sm,
+        paddingHorizontal: DS.space.lg,
+        paddingVertical: DS.space.md,
+        borderRadius: DS.radius.lg,
+        ...DS.shadow.sm,
+      },
+      followPillValue: {
+        fontSize: DS.text.lg.size,
+        fontWeight: '800',
+      },
+      followPillLabel: {
+        flex: 1,
+        fontSize: DS.text.sm.size,
+        fontWeight: '600',
+      },
+
+      // Search people shortcut
+      searchPeopleBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: DS.space.sm,
+        paddingHorizontal: DS.space.sm,
+        paddingVertical: DS.space.md,
+        marginTop: DS.space.xs,
+      },
+      searchPeopleText: {
+        flex: 1,
         fontSize: DS.text.sm.size,
         fontWeight: '600',
       },

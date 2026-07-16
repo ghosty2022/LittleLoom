@@ -6,6 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import * as Localization from 'expo-localization';
 
+import { Ionicons } from '@expo/vector-icons';
 import { useCommunity } from '../context/CommunityContext';
 import { useUser } from '../context/UserContext';
 import { useCustomization } from '../hooks/useCustomization';

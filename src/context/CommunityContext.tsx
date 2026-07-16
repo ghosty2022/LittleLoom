@@ -151,6 +151,13 @@ export interface Notification {
   read: boolean;
 }
 
+export interface FileMetadata {
+  name: string;
+  size?: number;
+  mimeType?: string;
+  uri: string;
+}
+
 export interface Message {
   id: string;
   chatId: string;
@@ -161,6 +168,11 @@ export interface Message {
   read: boolean;
   type: MessageType;
   imageUrl?: string;
+  fileMeta?: FileMetadata;
+  deliveryStatus?: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
+  replyTo?: string;
+  replyToPreview?: string;
+  editedAt?: string;
 }
 
 export interface Chat {
@@ -232,7 +244,10 @@ interface CommunityContextType extends CommunityState {
   markNotificationRead: (notificationId: string) => Promise<void>;
   markAllNotificationsRead: () => Promise<void>;
   getUnreadCount: () => number;
-  sendMessage: (userId: string, content: string, type?: MessageType, imageUrl?: string) => Promise<void>;
+  sendMessage: (userId: string, content: string, type?: MessageType, imageUrl?: string, fileMeta?: FileMetadata, replyToId?: string) => Promise<void>;
+  editMessage: (userId: string, messageId: string, newContent: string) => Promise<void>;
+  resendMessage: (userId: string, messageId: string) => Promise<void>;
+  deleteMessage: (userId: string, messageId: string) => Promise<void>;
   getChatMessages: (userId: string) => Message[];
   markChatRead: (userId: string) => Promise<void>;
   getOrCreateChat: (userId: string) => Chat | undefined;
@@ -1776,7 +1791,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return stateRef.current.notifications.filter(n => !n.read).length;
   }, []);
 
-  const sendMessage = useCallback(async (userId: string, content: string, type: MessageType = 'text', imageUrl?: string) => {
+  const sendMessage = useCallback(async (userId: string, content: string, type: MessageType = 'text', imageUrl?: string, fileMeta?: FileMetadata, replyToId?: string) => {
     const currentUser = stateRef.current.currentUser;
     if (!currentUser) {
       sweetAlert.alert('Sign In Required', 'Please sign in to send messages', 'warning');
@@ -1798,6 +1813,12 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       read: false,
       type,
       imageUrl: imageUrl ? normalizeImageUri(imageUrl) : undefined,
+      fileMeta,
+      deliveryStatus: 'sent',
+      replyTo: replyToId,
+      replyToPreview: replyToId
+        ? stateRef.current.chats.find(c => c.participantId === userId)?.messages.find(m => m.id === replyToId)?.content.substring(0, 60)
+        : undefined,
     };
 
     setState(prev => {
@@ -1853,6 +1874,55 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }, [getUserById]);
+
+  const editMessage = useCallback(async (userId: string, messageId: string, newContent: string) => {
+    setState(prev => {
+      const updatedChats = prev.chats.map(chat =>
+        chat.participantId === userId
+          ? {
+              ...chat,
+              messages: chat.messages.map(m =>
+                m.id === messageId ? { ...m, content: newContent, editedAt: new Date().toISOString() } : m
+              ),
+              lastMessage: chat.lastMessage.id === messageId
+                ? { ...chat.lastMessage, content: newContent, editedAt: new Date().toISOString() }
+                : chat.lastMessage,
+            }
+          : chat
+      );
+      AsyncStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(updatedChats)).catch(console.error);
+      return { ...prev, chats: updatedChats };
+    });
+  }, []);
+
+  const resendMessage = useCallback(async (userId: string, messageId: string) => {
+    setState(prev => {
+      const updatedChats = prev.chats.map(chat =>
+        chat.participantId === userId
+          ? {
+              ...chat,
+              messages: chat.messages.map(m =>
+                m.id === messageId ? { ...m, deliveryStatus: 'sent' as const, timestamp: new Date().toISOString() } : m
+              ),
+            }
+          : chat
+      );
+      AsyncStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(updatedChats)).catch(console.error);
+      return { ...prev, chats: updatedChats };
+    });
+  }, []);
+
+  const deleteMessage = useCallback(async (userId: string, messageId: string) => {
+    setState(prev => {
+      const updatedChats = prev.chats.map(chat =>
+        chat.participantId === userId
+          ? { ...chat, messages: chat.messages.filter(m => m.id !== messageId) }
+          : chat
+      );
+      AsyncStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(updatedChats)).catch(console.error);
+      return { ...prev, chats: updatedChats };
+    });
+  }, []);
 
   const getChatMessages = useCallback((userId: string): Message[] => {
     const chat = stateRef.current.chats.find(c => c.participantId === userId);
@@ -2221,6 +2291,9 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     markAllNotificationsRead,
     getUnreadCount,
     sendMessage,
+    editMessage,
+    resendMessage,
+    deleteMessage,
     getChatMessages,
     markChatRead,
     getOrCreateChat,
@@ -2286,6 +2359,9 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     markAllNotificationsRead,
     getUnreadCount,
     sendMessage,
+    editMessage,
+    resendMessage,
+    deleteMessage,
     getChatMessages,
     markChatRead,
     getOrCreateChat,

@@ -137,7 +137,11 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
     if (!topic) return;
 
     if (topic.isJoined) {
-      Alert.alert('Leave Topic', '');
+      await leaveTopic(topic.id);
+      setTopic((prev) =>
+        prev ? { ...prev, isJoined: false, members: Math.max(0, prev.members - 1) } : undefined
+      );
+      triggerHaptic('light');
     } else {
       await joinTopic(topic.id);
       setTopic((prev) =>
@@ -343,7 +347,7 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
           <Text style={styles.topicName}>{topic.name}</Text>
           <Text style={styles.topicDescription}>{topic.description}</Text>
           <View style={styles.topicStats}>
-            <Text style={styles.stat}>{topic.members.toLocaleString()} members</Text>
+            <Text style={styles.stat} onPress={() => navigation.navigate('TopicMembers', { topicId })}>{topic.members.toLocaleString()} members</Text>
             <Text style={styles.statDot}>•</Text>
             <Text style={styles.stat}>{topic.posts.toLocaleString()} posts</Text>
           </View>
