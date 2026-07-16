@@ -374,31 +374,25 @@ const KpiCard = memo(({
       styles.kpiCard,
       isLarge && styles.kpiCardLarge,
     ]}>
-      <LinearGradient
-        colors={[`${color}08`, `${color}02`]}
-        style={StyleSheet.absoluteFill}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-      />
       <View style={styles.kpiInner}>
-        <View style={styles.kpiTop}>
-          <View style={[styles.kpiIconBg, { backgroundColor: `${color}15` }]}>
-            <Text style={styles.kpiIcon}>{icon}</Text>
-          </View>
-          {percentile !== undefined && (
-            <View style={[styles.kpiPercentileBadge, { backgroundColor: `${color}12` }]}>
-              <Text style={[styles.kpiPercentileText, { color }]}>P{percentile}</Text>
-            </View>
-          )}
+        <View style={[styles.kpiIconBg, { backgroundColor: `${color}12` }]}>
+          <Text style={styles.kpiIcon}>{icon}</Text>
         </View>
         
         <View style={styles.kpiBody}>
-          <Text style={[styles.kpiValue, { color: theme.text.primary, fontSize: isLarge ? 32 : 24 }]} numberOfLines={1}>
+          <Text style={[styles.kpiValue, { color: theme.text.primary, fontSize: isLarge ? 28 : 22 }]} numberOfLines={1}>
             {value}
-            <Text style={[styles.kpiUnit, { color }]}>{unit}</Text>
           </Text>
-          <Text style={[styles.kpiTitle, { color: theme.text.secondary }]}>{title}</Text>
+          <Text style={[styles.kpiUnit, { color }]}>{unit}</Text>
         </View>
+
+        <Text style={[styles.kpiTitle, { color: theme.text.secondary }]}>{title}</Text>
+
+        {percentile !== undefined && (
+          <View style={[styles.kpiPercentileBadge, { backgroundColor: `${color}10` }]}>
+            <Text style={[styles.kpiPercentileText, { color }]}>P{percentile}</Text>
+          </View>
+        )}
 
         {(change !== undefined || status) && (
           <View style={styles.kpiFooter}>
@@ -406,7 +400,7 @@ const KpiCard = memo(({
               <View style={styles.kpiChangeRow}>
                 <Ionicons 
                   name={change >= 0 ? 'trending-up' : 'trending-down'} 
-                  size={12} 
+                  size={10} 
                   color={change >= 0 ? '#10b981' : '#ef4444'} 
                 />
                 <Text style={[styles.kpiChange, { color: change >= 0 ? '#10b981' : '#ef4444' }]}>
@@ -418,7 +412,7 @@ const KpiCard = memo(({
               </View>
             )}
             {status && (
-              <View style={[styles.kpiStatusBadge, { backgroundColor: `${status.color}12` }]}>
+              <View style={[styles.kpiStatusBadge, { backgroundColor: `${status.color}10` }]}>
                 <View style={[styles.kpiStatusDot, { backgroundColor: status.color }]} />
                 <Text style={[styles.kpiStatusText, { color: status.color }]}>{status.label}</Text>
               </View>
@@ -1585,7 +1579,7 @@ export default function GrowthDashboardScreen({ navigation }: any) {
            ═════════════════════════════════════════════════════════════════ */}
         {activeTab === 'overview' && (
           <>
-            {/* ── KPI GRID (2x2) ── */}
+            {/* ── KPI GRID (2x2) — TOP PRIORITY ── */}
             <View style={styles.kpiGrid}>
               {[
                 { key: 'height', title: 'Height', icon: '📏', color: '#6366f1', size: 'large' },
@@ -1668,7 +1662,7 @@ export default function GrowthDashboardScreen({ navigation }: any) {
             {/* ── QUICK ACTIONS ── */}
             <View style={styles.quickActionsGrid}>
               {[
-                { icon: '🌟', label: 'Milestones', screen: 'Timeline', params: { filter: 'milestone' }, gradient: ['#f59e0b', '#fbbf24'] },
+                { icon: '🌟', label: `${currentBaby?.name || 'Baby'}'s Timeline`, screen: 'Timeline', params: { filter: 'milestone' }, gradient: ['#f59e0b', '#fbbf24'] },
                 { icon: '💉', label: 'Vaccines', screen: 'VaccinationSchedule', params: {}, gradient: [theme.primary, theme.secondary] },
                 { icon: '📸', label: 'Photos', screen: 'Gallery', params: {}, gradient: ['#10b981', '#34d399'] },
                 { icon: '🏆', label: 'Achievements', screen: 'Achievements', params: {}, gradient: ['#8b5cf6', '#a78bfa'] },
@@ -2033,9 +2027,10 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: 'rgba(255,255,255,0.15)',
     marginHorizontal: SPACING.lg,
     marginBottom: SPACING.lg,
+    ...SHADOW.sm,
   },
   glassBorder: {
     position: 'absolute',
@@ -2195,48 +2190,72 @@ const styles = StyleSheet.create({
     flex: 1, 
     borderRadius: RADIUS.lg, 
     overflow: 'hidden', 
-    padding: 14, 
-    ...SHADOW.md 
+    padding: 16, 
+    backgroundColor: 'rgba(255,255,255,0.6)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.5)',
+    alignItems: 'center',
   },
-  kpiCardLarge: { padding: 16 },
-  kpiInner: { flex: 1, justifyContent: 'space-between' },
-  kpiTop: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'flex-start' 
+  kpiCardLarge: { padding: 20 },
+  kpiInner: { 
+    flex: 1, 
+    justifyContent: 'center', 
+    alignItems: 'center',
+    width: '100%',
   },
   kpiIconBg: { 
-    width: 36, 
-    height: 36, 
-    borderRadius: RADIUS.sm, 
+    width: 44, 
+    height: 44, 
+    borderRadius: RADIUS.md, 
     justifyContent: 'center', 
-    alignItems: 'center' 
+    alignItems: 'center',
+    marginBottom: 10,
   },
-  kpiIcon: { fontSize: 18 },
+  kpiIcon: { fontSize: 22 },
   kpiPercentileBadge: { 
-    paddingHorizontal: 8, 
+    paddingHorizontal: 10, 
     paddingVertical: 4, 
-    borderRadius: RADIUS.xs 
+    borderRadius: RADIUS.sm,
+    marginTop: 8,
   },
   kpiPercentileText: { fontSize: 11, fontWeight: '800' },
-  kpiBody: { gap: 2, marginTop: 8 },
-  kpiValue: { fontWeight: '800', letterSpacing: -0.5 },
-  kpiUnit: { fontSize: 13, fontWeight: '600', marginLeft: 2 },
-  kpiTitle: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
-  kpiFooter: { marginTop: 8, gap: 4 },
+  kpiBody: { 
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 4,
+  },
+  kpiValue: { 
+    fontWeight: '800', 
+    letterSpacing: -0.5,
+    textAlign: 'center',
+  },
+  kpiUnit: { 
+    fontSize: 13, 
+    fontWeight: '700', 
+    marginTop: 2,
+    textAlign: 'center',
+  },
+  kpiTitle: { 
+    fontSize: 12, 
+    fontWeight: '700', 
+    textTransform: 'uppercase', 
+    letterSpacing: 0.5,
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  kpiFooter: { marginTop: 10, gap: 4, alignItems: 'center' },
   kpiChangeRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  kpiChange: { fontSize: 12, fontWeight: '700' },
-  kpiChangeLabel: { fontSize: 11, fontWeight: '500', marginLeft: 2 },
+  kpiChange: { fontSize: 11, fontWeight: '700' },
+  kpiChangeLabel: { fontSize: 10, fontWeight: '500', marginLeft: 2 },
   kpiStatusBadge: { 
     flexDirection: 'row', 
     alignItems: 'center', 
     gap: 4, 
     paddingHorizontal: 8, 
-    paddingVertical: 4, 
+    paddingVertical: 3, 
     borderRadius: RADIUS.xs, 
-    alignSelf: 'flex-start' 
   },
-  kpiStatusDot: { width: 6, height: 6, borderRadius: 3 },
+  kpiStatusDot: { width: 5, height: 5, borderRadius: 3 },
   kpiStatusText: { fontSize: 10, fontWeight: '700' },
 
   // ── Insight Card ──
@@ -2385,26 +2404,29 @@ const styles = StyleSheet.create({
   suggestionsScroll: { paddingHorizontal: SPACING.lg, gap: 12, paddingBottom: 4 },
   suggestionCard: { 
     width: 160, 
-    padding: 14, 
+    padding: 16, 
     borderRadius: RADIUS.lg, 
     overflow: 'hidden', 
-    ...SHADOW.md 
+    backgroundColor: 'rgba(255,255,255,0.5)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.6)',
+    alignItems: 'center',
   },
   suggestionIconBg: { 
-    width: 44, 
-    height: 44, 
-    borderRadius: RADIUS.sm, 
+    width: 48, 
+    height: 48, 
+    borderRadius: RADIUS.md, 
     justifyContent: 'center', 
     alignItems: 'center', 
-    marginBottom: 10 
+    marginBottom: 12,
   },
-  suggestionEmoji: { fontSize: 22 },
-  suggestionTitle: { fontSize: 14, fontWeight: '700', marginBottom: 2 },
-  suggestionCategory: { fontSize: 11, fontWeight: '700', marginBottom: 6 },
-  suggestionMeta: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 6 },
+  suggestionEmoji: { fontSize: 26 },
+  suggestionTitle: { fontSize: 14, fontWeight: '700', marginBottom: 4, textAlign: 'center' },
+  suggestionCategory: { fontSize: 11, fontWeight: '700', marginBottom: 8, textAlign: 'center' },
+  suggestionMeta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, marginBottom: 8 },
   suggestionMetaText: { fontSize: 10, fontWeight: '600' },
   suggestionDot: { fontSize: 10 },
-  suggestionBenefit: { fontSize: 11, fontWeight: '500', lineHeight: 15 },
+  suggestionBenefit: { fontSize: 11, fontWeight: '500', lineHeight: 15, textAlign: 'center' },
 
   // ── Predictive Milestone Calendar ──
   calendarTimeline: { marginHorizontal: SPACING.lg, gap: 0 },

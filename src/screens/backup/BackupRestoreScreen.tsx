@@ -8,19 +8,19 @@ import {
   StatusBar,
   StyleSheet,
   ScrollView,
-  Modal,           // also used but not imported
-  TextInput,       // also used but not imported
-  ActivityIndicator, // also used but not imported
+  Modal,
+  TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInUp, FadeIn, useSharedValue, useAnimatedStyle, withSpring, withSequence, withTiming } from 'react-native-reanimated';
 
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import type { RootStackParamList } from '../../types/navigation';
-
 
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
@@ -39,6 +39,88 @@ const COLORS = {
   orange: '#e67e22',
 };
 
+// ─── Type Definitions ──────────────────────────────────────────────
+
+interface AutoBackupSettings {
+  enabled: boolean;
+  frequency: 'daily' | 'weekly' | 'monthly';
+  timeOfDay: string;
+  keepCount: number;
+  includeMedia: boolean;
+  encryptBackups: boolean;
+  encryptionPassword?: string;
+}
+
+interface LocalBackupInfo {
+  id: string;
+  name: string;
+  path: string;
+  dateFormatted: string;
+  sizeFormatted: string;
+  isEncrypted: boolean;
+}
+
+interface BackupPreview {
+  valid: boolean;
+  babies?: number;
+  logs?: number;
+  milestones?: number;
+  date?: string;
+}
+
+interface BackupResult {
+  success: boolean;
+  filePath?: string;
+  error?: string;
+}
+
+interface PickedBackup {
+  content: string;
+}
+
+// ─── Stub backupService (replace with your actual service) ─────────
+
+const backupService = {
+  getCurrentStats: async (): Promise<{ keys: number; size: string; babies: number }> => {
+    return { keys: 0, size: '0 B', babies: 0 };
+  },
+  listLocalBackups: async (): Promise<LocalBackupInfo[]> => {
+    return [];
+  },
+  getAutoBackupSettings: async (): Promise<AutoBackupSettings> => {
+    return {
+      enabled: false,
+      frequency: 'weekly',
+      timeOfDay: '02:00',
+      keepCount: 5,
+      includeMedia: false,
+      encryptBackups: false,
+    };
+  },
+  createBackup: async (_opts: { encrypted: boolean; password?: string }): Promise<BackupResult> => {
+    return { success: false, error: 'Not implemented' };
+  },
+  shareBackup: async (_path: string): Promise<boolean> => {
+    return false;
+  },
+  cleanupBackupFile: async (_path: string): Promise<void> => {},
+  pickBackupFile: async (): Promise<PickedBackup | null> => {
+    return null;
+  },
+  previewBackup: async (_content: string, _password?: string): Promise<BackupPreview> => {
+    return { valid: false };
+  },
+  readLocalBackup: async (_path: string): Promise<string | null> => {
+    return null;
+  },
+  saveAutoBackupSettings: async (_settings: AutoBackupSettings): Promise<void> => {},
+  runAutoBackupIfDue: async (): Promise<BackupResult | null> => {
+    return null;
+  },
+};
+
+// ─── EncryptModal ────────────────────────────────────────────────
+
 interface EncryptModalProps {
   visible: boolean;
   onClose: () => void;
@@ -53,6 +135,7 @@ const EncryptModal = ({
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const sweetAlert = useSweetAlert();
 
   const handleConfirm = () => {
     if (password.length < 6) {
@@ -60,8 +143,7 @@ const EncryptModal = ({
       return;
     }
     if (password !== confirmPassword) {
-
-sweetAlert.alert('Alert', '', 'info');
+      sweetAlert.alert('Passwords Do Not Match', 'Please make sure both passwords match', 'warning');
       return;
     }
     onConfirm(password);
@@ -134,6 +216,8 @@ sweetAlert.alert('Alert', '', 'info');
   );
 };
 
+// ─── PasswordModal ───────────────────────────────────────────────
+
 interface PasswordModalProps {
   visible: boolean;
   onClose: () => void;
@@ -148,6 +232,7 @@ interface PasswordModalProps {
 const PasswordModal = ({ visible, onClose, onConfirm, isDark, primaryColor, secondaryColor, title, subtitle }: PasswordModalProps) => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const sweetAlert = useSweetAlert();
 
   const handleConfirm = () => {
     if (!password) {
@@ -210,6 +295,8 @@ const PasswordModal = ({ visible, onClose, onConfirm, isDark, primaryColor, seco
     </Modal>
   );
 };
+
+// ─── AutoBackupModal ─────────────────────────────────────────────
 
 interface AutoBackupModalProps {
   visible: boolean;
@@ -379,8 +466,11 @@ const AutoBackupModal = ({ visible, onClose, onSave, settings, isDark, primaryCo
   );
 };
 
+// ─── Main Screen ─────────────────────────────────────────────────
+
 export default function BackupRestoreScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
+  const sweetAlert = useSweetAlert();
 
   const {
     darkMode: isDark,
@@ -450,31 +540,17 @@ export default function BackupRestoreScreen({ navigation }: Props) {
         if (shared) {
           setLastBackup(new Date().toLocaleString());
           triggerHaptic('success');
-
-sweetAlert.confirm(
-      '✅ Backup Created!',
-      '',
-      () => {
-        // TODO: Confirm action
-      },
-      () => {
-        // Cancel action
-      },
-      'Great!',
-      'Great!',
-      false
-    );
+          sweetAlert.alert('✅ Backup Created!', 'Your backup has been created and shared successfully.', 'success');
         }
 
         await backupService.cleanupBackupFile(result.filePath);
-        await loadLocalBackups(); // Refresh list
+        await loadLocalBackups();
       } else {
         throw new Error(result.error || 'Failed to create backup');
       }
     } catch (error) {
       triggerHaptic('error');
-
-sweetAlert.alert('Backup Failed', '', 'info');
+      sweetAlert.alert('Backup Failed', 'Something went wrong while creating your backup.', 'error');
     } finally {
       setIsCreating(false);
     }
@@ -508,8 +584,7 @@ sweetAlert.alert('Backup Failed', '', 'info');
       await processRestore(picked.content);
     } catch (error) {
       triggerHaptic('error');
-
-sweetAlert.alert('Restore Failed', '', 'info');
+      sweetAlert.alert('Restore Failed', 'Could not read the selected backup file.', 'error');
       setIsRestoring(false);
     }
   };
@@ -523,29 +598,28 @@ sweetAlert.alert('Restore Failed', '', 'info');
 
       if (!previewData.valid) {
         triggerHaptic('error');
-
-sweetAlert.alert('Invalid Backup', '', 'info');
+        sweetAlert.alert('Invalid Backup', 'The selected file is not a valid backup.', 'error');
         setIsRestoring(false);
         return;
       }
 
-sweetAlert.confirm(
-      'Restore Backup?',
-      '',
-      () => {
-        // TODO: Confirm action
-      },
-      () => {
-        // Cancel action
-      },
-      'Restart App',
-      'Cancel',
-      true
-    );
+      sweetAlert.confirm(
+        'Restore Backup?',
+        `This will restore ${previewData.babies || 0} babies and ${previewData.logs || 0} logs. The app will restart after restore.`,
+        async () => {
+          // TODO: Actually perform the restore
+          setIsRestoring(false);
+        },
+        () => {
+          setIsRestoring(false);
+        },
+        'Restore',
+        'Cancel',
+        true
+      );
     } catch (error) {
       triggerHaptic('error');
-
-sweetAlert.alert('Restore Failed', '', 'info');
+      sweetAlert.alert('Restore Failed', 'Could not process the backup file.', 'error');
       setIsRestoring(false);
     }
   };
@@ -569,16 +643,14 @@ sweetAlert.alert('Restore Failed', '', 'info');
     const previewData = await backupService.previewBackup(content);
     setPreview(previewData);
 
-sweetAlert.confirm(
-      'Alert',
-      '',
+    sweetAlert.confirm(
+      'Backup Preview',
+      `Created: ${previewData.date || 'Unknown'}\nBabies: ${previewData.babies || 0}\nLogs: ${previewData.logs || 0}`,
       () => {
-        // TODO: Confirm action
+        // TODO: Restore this backup
       },
-      () => {
-        // Cancel action
-      },
-      'Delete',
+      () => {},
+      'Restore',
       'Cancel',
       true
     );
@@ -592,16 +664,14 @@ sweetAlert.confirm(
   };
 
   const deleteLocalBackup = (backup: LocalBackupInfo) => {
-
-sweetAlert.confirm(
+    sweetAlert.confirm(
       'Delete Backup?',
-      '',
-      () => {
-        // TODO: Confirm action
+      `Are you sure you want to delete "${backup.name}"? This cannot be undone.`,
+      async () => {
+        // TODO: Actually delete the backup
+        await loadLocalBackups();
       },
-      () => {
-        // Cancel action
-      },
+      () => {},
       'Delete',
       'Cancel',
       true
@@ -613,8 +683,7 @@ sweetAlert.confirm(
     setAutoBackupSettings(settings);
     setShowAutoBackupModal(false);
     triggerHaptic('success');
-
-sweetAlert.alert('Settings Saved', '', 'info');
+    sweetAlert.alert('Settings Saved', 'Your auto backup settings have been saved.', 'success');
   };
 
   const runAutoBackupNow = async () => {
@@ -626,18 +695,17 @@ sweetAlert.alert('Settings Saved', '', 'info');
       if (result) {
         if (result.success) {
           triggerHaptic('success');
-          sweetAlert.alert('✅ Auto Backup Complete', 'Your data has been backed up successfully.', 'warning');
+          sweetAlert.alert('✅ Auto Backup Complete', 'Your data has been backed up successfully.', 'success');
           await loadLocalBackups();
         } else {
           throw new Error(result.error || 'Auto backup failed');
         }
       } else {
-        sweetAlert.alert('Not Due Yet', 'Auto backup is not scheduled to run at this time.', 'warning');
+        sweetAlert.alert('Not Due Yet', 'Auto backup is not scheduled to run at this time.', 'info');
       }
     } catch (error) {
       triggerHaptic('error');
-
-sweetAlert.alert('Auto Backup Failed', '', 'info');
+      sweetAlert.alert('Auto Backup Failed', 'Something went wrong during auto backup.', 'error');
     } finally {
       setIsCreating(false);
     }
@@ -651,8 +719,7 @@ sweetAlert.alert('Auto Backup Failed', '', 'info');
     } else if (pendingAction === 'preview' && pendingContent) {
       const previewData = await backupService.previewBackup(pendingContent, password);
       setPreview(previewData);
-
-sweetAlert.alert('Backup Preview', '', 'info');
+      sweetAlert.alert('Backup Preview', `Babies: ${previewData.babies || 0}, Logs: ${previewData.logs || 0}`, 'info');
     }
     setPendingAction(null);
     setPendingContent(null);
@@ -896,20 +963,18 @@ sweetAlert.alert('Backup Preview', '', 'info');
                     <TouchableOpacity
                       style={styles.clearAllButton}
                       onPress={() => {
-
-sweetAlert.confirm(
-      'Clear All Backups?',
-      '',
-      () => {
-        // TODO: Confirm action
-      },
-      () => {
-        // Cancel action
-      },
-      'Delete All',
-      'Cancel',
-      true
-    );
+                        sweetAlert.confirm(
+                          'Clear All Backups?',
+                          'This will delete all local backups. This cannot be undone.',
+                          async () => {
+                            // TODO: Clear all backups
+                            await loadLocalBackups();
+                          },
+                          () => {},
+                          'Delete All',
+                          'Cancel',
+                          true
+                        );
                       }}
                     >
                       <Text style={styles.clearAllText}>Clear All Local Backups</Text>
