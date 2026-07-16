@@ -83,7 +83,7 @@ const DESIGN = {
   },
   shadow: {
     sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 2 },
-    md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 4 },
+    md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 16, elevation: 4 },
     lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 24, elevation: 8 },
   },
 };
@@ -214,7 +214,7 @@ const FamilyHealthScore: React.FC<FamilyHealthScoreProps> = ({ members, isDark, 
     <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(100).springify()}>
       <View style={[styles.healthScoreCard, isDark && styles.healthScoreCardDark]}>
         <LinearGradient
-          colors={isDark ? ['rgba(40,40,55,0.9)', 'rgba(30,30,45,0.7)'] : ['rgba(255,255,255,0.95)', 'rgba(250,250,255,0.8)']}
+          colors={isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.85)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.92)']}
           style={StyleSheet.absoluteFill}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
@@ -299,7 +299,7 @@ const DailyFamilyGoals: React.FC<{
               style={[styles.goalCard, isDark && styles.goalCardDark]}
             >
               <LinearGradient
-                colors={isDark ? ['rgba(45,45,60,0.6)', 'rgba(35,35,50,0.4)'] : ['rgba(255,255,255,0.9)', 'rgba(250,250,255,0.7)']}
+                colors={isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.85)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.92)']}
                 style={StyleSheet.absoluteFill}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
@@ -394,7 +394,7 @@ const SmartSuggestions: React.FC<{
             style={[styles.suggestionCard, isDark && styles.suggestionCardDark]}
           >
             <LinearGradient
-              colors={isDark ? ['rgba(45,45,60,0.7)', 'rgba(35,35,50,0.5)'] : ['rgba(255,255,255,0.95)', 'rgba(250,250,255,0.8)']}
+              colors={isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.85)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.92)']}
               style={StyleSheet.absoluteFill}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
@@ -538,7 +538,7 @@ const FamilyActivityTimeline: React.FC<{
 
                   <View style={[styles.timelineCard, isDark && styles.timelineCardDark]}>
                     <LinearGradient
-                      colors={isDark ? ['rgba(45,45,60,0.5)', 'rgba(35,35,50,0.3)'] : ['rgba(255,255,255,0.9)', 'rgba(250,250,255,0.7)']}
+                      colors={isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.85)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.92)']}
                       style={StyleSheet.absoluteFill}
                       start={{ x: 0, y: 0 }}
                       end={{ x: 1, y: 1 }}
@@ -637,7 +637,7 @@ const FamilyChatPreview: React.FC<{
             activeOpacity={0.8}
           >
             <LinearGradient
-              colors={isDark ? ['rgba(45,45,60,0.5)', 'rgba(35,35,50,0.3)'] : ['rgba(255,255,255,0.9)', 'rgba(250,250,255,0.7)']}
+              colors={isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.85)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.92)']}
               style={StyleSheet.absoluteFill}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
@@ -726,7 +726,7 @@ const FamilyInsights: React.FC<{
             style={[styles.insightItem, isDark && styles.insightItemDark]}
           >
             <LinearGradient
-              colors={isDark ? ['rgba(45,45,60,0.5)', 'rgba(35,35,50,0.3)'] : ['rgba(255,255,255,0.9)', 'rgba(250,250,255,0.7)']}
+              colors={isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.85)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.92)']}
               style={StyleSheet.absoluteFill}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
@@ -919,7 +919,7 @@ const MemberCard: React.FC<MemberCardProps> = ({
         >
           <View style={[styles.memberCard, isDark && styles.memberCardDark]}>
             <LinearGradient
-              colors={isDark ? ['rgba(40,40,45,0.6)', 'rgba(25,25,30,0.4)'] : ['rgba(255,255,255,0.8)', 'rgba(250,250,255,0.6)']}
+              colors={isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.85)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.92)']}
               style={StyleSheet.absoluteFill}
             />
             <LinearGradient
@@ -1480,7 +1480,7 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
                     style={[styles.pendingCard, isDark && styles.pendingCardDark]}
                   >
                     <LinearGradient
-                      colors={isDark ? ['rgba(45,45,60,0.5)', 'rgba(35,35,50,0.3)'] : ['rgba(255,255,255,0.9)', 'rgba(250,250,255,0.7)']}
+                      colors={isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.85)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.92)']}
                       style={StyleSheet.absoluteFill}
                       start={{ x: 0, y: 0 }}
                       end={{ x: 1, y: 1 }}
@@ -1534,7 +1534,7 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
                       ]}
                     >
                       <LinearGradient
-                        colors={isDark ? ['rgba(45,45,60,0.5)', 'rgba(35,35,50,0.3)'] : ['rgba(255,255,255,0.9)', 'rgba(250,250,255,0.7)']}
+                        colors={isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.85)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.92)']}
                         style={StyleSheet.absoluteFill}
                         start={{ x: 0, y: 0 }}
                         end={{ x: 1, y: 1 }}
@@ -1596,7 +1596,7 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
                       style={[styles.distributionItem, isDark && styles.distributionItemDark]}
                     >
                       <LinearGradient
-                        colors={isDark ? ['rgba(45,45,60,0.5)', 'rgba(35,35,50,0.3)'] : ['rgba(255,255,255,0.9)', 'rgba(250,250,255,0.7)']}
+                        colors={isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.85)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.92)']}
                         style={StyleSheet.absoluteFill}
                         start={{ x: 0, y: 0 }}
                         end={{ x: 1, y: 1 }}
@@ -1623,7 +1623,7 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
                   style={[styles.analyticsMemberRow, isDark && styles.analyticsMemberRowDark]}
                 >
                   <LinearGradient
-                    colors={isDark ? ['rgba(45,45,60,0.5)', 'rgba(35,35,50,0.3)'] : ['rgba(255,255,255,0.9)', 'rgba(250,250,255,0.7)']}
+                    colors={isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.85)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.92)']}
                     style={StyleSheet.absoluteFill}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
@@ -2373,10 +2373,10 @@ const styles = StyleSheet.create({
     marginBottom: DESIGN.spacing.xl,
     ...DESIGN.shadow.md,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: 'rgba(255,255,255,0.08)',
   },
   healthScoreCardDark: {
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderColor: 'rgba(255,255,255,0.08)',
   },
   healthScoreContent: {
     flexDirection: 'row',
@@ -2462,10 +2462,10 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     ...DESIGN.shadow.sm,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: 'rgba(255,255,255,0.08)',
   },
   goalCardDark: {
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderColor: 'rgba(255,255,255,0.08)',
   },
   goalContent: {
     flexDirection: 'row',
@@ -2561,10 +2561,10 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     ...DESIGN.shadow.md,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: 'rgba(255,255,255,0.08)',
   },
   suggestionCardDark: {
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderColor: 'rgba(255,255,255,0.08)',
   },
   suggestionPriority: {
     position: 'absolute',
@@ -2666,10 +2666,10 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     ...DESIGN.shadow.sm,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: 'rgba(255,255,255,0.08)',
   },
   timelineCardDark: {
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderColor: 'rgba(255,255,255,0.08)',
   },
   timelineCardContent: {
     padding: 14,
@@ -2744,11 +2744,11 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     ...DESIGN.shadow.sm,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: 'rgba(255,255,255,0.08)',
     gap: 12,
   },
   chatPreviewItemDark: {
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderColor: 'rgba(255,255,255,0.08)',
   },
   chatPreviewAvatar: {
     position: 'relative',
@@ -2825,11 +2825,11 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     ...DESIGN.shadow.sm,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: 'rgba(255,255,255,0.08)',
     flexDirection: 'row',
   },
   insightItemDark: {
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderColor: 'rgba(255,255,255,0.08)',
   },
   insightLeftBorder: {
     width: 4,
@@ -2906,7 +2906,7 @@ const styles = StyleSheet.create({
     borderRadius: DESIGN.radius.lg,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
+    borderColor: 'rgba(255,255,255,0.08)',
     ...DESIGN.shadow.md,
   },
   memberCardDark: {
@@ -3049,10 +3049,10 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     ...DESIGN.shadow.sm,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: 'rgba(255,255,255,0.08)',
   },
   pendingCardDark: {
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderColor: 'rgba(255,255,255,0.08)',
   },
   pendingIcon: {
     width: 44,
@@ -3122,10 +3122,10 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     ...DESIGN.shadow.sm,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: 'rgba(255,255,255,0.08)',
   },
   roleLimitItemDark: {
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderColor: 'rgba(255,255,255,0.08)',
   },
   roleLimitItemFull: {
     borderWidth: 1,
@@ -3189,10 +3189,10 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     ...DESIGN.shadow.sm,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: 'rgba(255,255,255,0.08)',
   },
   distributionItemDark: {
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderColor: 'rgba(255,255,255,0.08)',
   },
   distributionValue: {
     fontSize: 24,
@@ -3214,10 +3214,10 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     ...DESIGN.shadow.sm,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: 'rgba(255,255,255,0.08)',
   },
   analyticsMemberRowDark: {
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderColor: 'rgba(255,255,255,0.08)',
   },
   analyticsMemberInfo: {
     flex: 1,
