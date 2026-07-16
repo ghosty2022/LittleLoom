@@ -7,6 +7,7 @@ import { useNavigation } from '@react-navigation/native';
 
 import { useGrowthIntelligence, SubScore } from '../../hooks/';
 import { SafeAvatar } from '../../components/';
+import { useCustomization } from '../../hooks/useCustomization';
 
 interface SubScoreBarProps {
   score: SubScore;
@@ -118,21 +119,21 @@ export const GrowthIndexCard: React.FC = () => {
         <View style={styles.velocityRow}>
           <VelocityPill 
             label="Height" 
-            value={growthIndex.velocityTrends.height.cmPerMonth} 
+            value={growthIndex.velocityTrends.height.perMonth} 
             unit="cm/mo" 
             percentile={growthIndex.velocityTrends.height.percentile}
             color="#667eea"
           />
           <VelocityPill 
             label="Weight" 
-            value={growthIndex.velocityTrends.weight.kgPerMonth} 
+            value={growthIndex.velocityTrends.weight.perMonth} 
             unit="kg/mo" 
             percentile={growthIndex.velocityTrends.weight.percentile}
             color="#fa709a"
           />
           <VelocityPill 
             label="Head" 
-            value={growthIndex.velocityTrends.head.cmPerMonth} 
+            value={growthIndex.velocityTrends.head.perMonth} 
             unit="cm/mo" 
             percentile={growthIndex.velocityTrends.head.percentile}
             color="#11998e"
@@ -197,7 +198,7 @@ const VelocityPill: React.FC<{ label: string; value: number; unit: string; perce
     <Text style={styles.velocityPillValue}>
       {value > 0 ? value.toFixed(1) : '--'} <Text style={styles.velocityPillUnit}>{unit}</Text>
     </Text>
-    <Text style={[styles.velocityPillPercentile, { color }]}>{percentile}th %ile</Text>
+    <Text style={[styles.velocityPillPercentile, { color }]}>{percentile}th %ile (latest)</Text>
   </View>
 );
 

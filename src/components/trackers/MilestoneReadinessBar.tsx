@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 
 import { MilestoneReadiness } from '../../hooks/';
+import { useCustomization } from '../../hooks/useCustomization';
 
 interface MilestoneReadinessBarProps {
   readiness: MilestoneReadiness;

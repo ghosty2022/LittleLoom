@@ -230,6 +230,7 @@ const getDateKey = (date: Date | string | number): string => {
 const BABY_ACTIVITIES_KEY = (babyId: string) => `@littleloom_activities_${babyId}`;
 const BABY_CURRENT_KEY = '@littleloom_current_baby';
 const TRACKER_ENTRIES_GALLERY_KEY = '@littleloom_tracker_entries'; // For gallery photo sync
+const DISMISSED_INSIGHTS_KEY = '@littleloom_dismissed_tracker_insights';
 const EDIT_HISTORY_KEY = '@littleloom_edit_history_v1'; // Previous versions of edited entries
 
 /* A snapshot of an entry's previous state, captured just before each edit.
@@ -416,6 +417,7 @@ const generateInsights = (
   const insights: TrackerInsight[] = [];
   const now = Date.now();
   const weekAgo = now - 7 * 86400000;
+  const dayKey = getDateKey(new Date(now)); // stable id suffix — regenerated insights keep the same id each day
 
   const recentEntries = entries.filter(e =>
     e.babyId === currentBabyId && !e.isDeleted && e.timestamp >= weekAgo
@@ -426,7 +428,7 @@ const generateInsights = (
     const streak = calculateStreak('medication', entries, currentBabyId);
     if (streak.currentStreak >= 3) {
       insights.push({
-        id: `med_streak_${now}`,
+        id: `med_streak_${dayKey}`,
         trackerId: 'medication',
         type: 'milestone',
         title: `${streak.currentStreak} Day Medication Streak!`,
@@ -443,7 +445,7 @@ const generateInsights = (
   if (tempEntries.length >= 2) {
     const temps = tempEntries.map(e => {
       const val = Number(e.data['value']);
-      const unit = e.data['value_unit'] as string;
+      const unit = e.data['unit'] as string;
       return unit === 'fahrenheit' ? (val - 32) * 5 / 9 : val;
     }).filter(t => !isNaN(t));
 
@@ -453,7 +455,7 @@ const generateInsights = (
 
       if (lastTemp > 38) {
         insights.push({
-          id: `temp_high_${now}`,
+          id: `temp_high_${dayKey}`,
           trackerId: 'temperature',
           type: 'anomaly',
           title: 'Elevated Temperature Detected',
@@ -479,7 +481,7 @@ const generateInsights = (
       const avg = qualities.reduce((a, b) => a + b, 0) / qualities.length;
       if (avg < 3) {
         insights.push({
-          id: `sleep_low_${now}`,
+          id: `sleep_low_${dayKey}`,
           trackerId: 'sleep',
           type: 'pattern',
           title: 'Sleep Quality Trending Low',
@@ -504,7 +506,7 @@ const generateInsights = (
     const badMoods = moodEntries.filter(m => (m.data['mood'] as number) <= 2);
     if (badMoods.length >= 2) {
       insights.push({
-        id: `feed_mood_${now}`,
+        id: `feed_mood_${dayKey}`,
         trackerId: 'feed',
         type: 'correlation',
         title: 'Feeding & Mood Pattern Detected',
@@ -528,7 +530,7 @@ const generateInsights = (
     const daysSince = Math.floor((now - lastGrowth.timestamp) / 86400000);
     if (daysSince >= 14) {
       insights.push({
-        id: `growth_reminder_${now}`,
+        id: `growth_reminder_${dayKey}`,
         trackerId: 'growth',
         type: 'suggestion',
         title: 'Time for a Growth Check?',
@@ -581,6 +583,7 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
   });
 
   const initRef = useRef(false);
+  const dismissedInsightIdsRef = useRef<Set<string>>(new Set());
 
   /* ---- Detect current baby ---- */
   const detectCurrentBaby = useCallback(async (): Promise<string | null> => {
@@ -691,12 +694,14 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
       try {
         const babyId = await detectCurrentBaby();
 
-        const [customTrackers, entries, lastTracker, reminders] = await Promise.all([
+        const [customTrackers, entries, lastTracker, reminders, dismissedRaw] = await Promise.all([
           loadCustomTrackers(),
           babyId ? loadEntries(babyId) : Promise.resolve([]),
           AsyncStorage.getItem(TRACKER_STORAGE_KEYS.LAST_TRACKER),
           loadReminders(),
+          AsyncStorage.getItem(DISMISSED_INSIGHTS_KEY),
         ]);
+        dismissedInsightIdsRef.current = new Set(safeParse<string[]>(dismissedRaw, []));
 
         const safeEntries = Array.isArray(entries) ? entries : [];
 
@@ -731,7 +736,9 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
 
         const allTrackerIds = [...new Set(safeEntries.filter(e => e.babyId === babyId).map(e => e.trackerId))];
         const streaks = allTrackerIds.map(id => calculateStreak(id, safeEntries, babyId || ''));
-        const insights = babyId ? generateInsights(safeEntries, babyId) : [];
+        const insights = babyId
+          ? generateInsights(safeEntries, babyId).filter(i => !dismissedInsightIdsRef.current.has(i.id))
+          : [];
 
         setState({
           isLoading: false,
@@ -781,7 +788,8 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
 
     const allTrackerIds = [...new Set(state.entries.filter(e => e.babyId === state.currentBabyId).map(e => e.trackerId))];
     const streaks = allTrackerIds.map(id => calculateStreak(id, state.entries, state.currentBabyId));
-    const insights = generateInsights(state.entries, state.currentBabyId);
+    const insights = generateInsights(state.entries, state.currentBabyId)
+      .filter(i => !dismissedInsightIdsRef.current.has(i.id));
 
     setState(prev => ({
       ...prev,
@@ -1321,10 +1329,15 @@ Alert.alert('Missing Information', `Please fill in: ${missingFields.join(', ')}`
 
   const getInsights = useCallback(() => {
     if (!state.currentBabyId) return [];
-    return generateInsights(state.entries, state.currentBabyId);
+    return generateInsights(state.entries, state.currentBabyId)
+      .filter(i => !dismissedInsightIdsRef.current.has(i.id));
   }, [state.entries, state.currentBabyId]);
 
   const dismissInsight = useCallback((id: string) => {
+    dismissedInsightIdsRef.current.add(id);
+    AsyncStorage
+      .setItem(DISMISSED_INSIGHTS_KEY, JSON.stringify([...dismissedInsightIdsRef.current]))
+      .catch(() => {});
     setState(prev => ({
       ...prev,
       progressive: {

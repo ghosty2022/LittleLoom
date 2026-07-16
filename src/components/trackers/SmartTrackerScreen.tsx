@@ -22,6 +22,7 @@ import { useTrackerProgressive } from '../../hooks/useTrackerProgressive';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { DynamicTrackerForm } from './DynamicTrackerForm';
+import type { UnifiedTrackerConfig } from '../../types/trackers';
 import { SafeAvatar } from '../../components/SafeAvatar';
 
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -43,7 +44,6 @@ export const SmartTrackerScreen: React.FC<SmartTrackerScreenProps> = ({ tracker,
   } = useCustomization();
   const { success, info, confirm } = useSweetAlert();
   const {
-    currentBaby,
     addEntry,
     linkEntries,
   } = useTracker();
@@ -75,6 +75,9 @@ export const SmartTrackerScreen: React.FC<SmartTrackerScreenProps> = ({ tracker,
 
   const [mode, setMode] = useState<'dashboard' | 'form' | 'history' | 'insights'>('dashboard');
   const [linkedEntryId, setLinkedEntryId] = useState<string | undefined>(undefined);
+  // One-shot override merged over prefillData when opening the form from a
+  // template or correlation action. Cleared on plain quick-log and after save.
+  const [formPreset, setFormPreset] = useState<Record<string, unknown> | null>(null);
 
   useEffect(() => {
     if (mode === 'dashboard') {
@@ -86,46 +89,44 @@ export const SmartTrackerScreen: React.FC<SmartTrackerScreenProps> = ({ tracker,
     data: Record<string, unknown>,
     options: { title?: string; notes?: string; photoUris?: string[]; tags?: string[]; linkedEntryId?: string }
   ) => {
-    const entry = await addEntry({
-      babyId: currentBaby?.id || '',
-      trackerId: tracker.id,
-      title: options.title || `${tracker.name} - ${new Date().toLocaleTimeString()}`,
-      data,
-      loggedBy: 'current_user',
-      loggedByName: 'Parent',
-      loggedByRole: 'parent1',
+    const entry = await addEntry(tracker.id, data, {
+      title: options.title || `${tracker.emoji} ${tracker.name}`,
       notes: options.notes,
       photoUris: options.photoUris,
       tags: options.tags,
     });
 
+    if (!entry) return; // context already showed the error alert — do NOT claim success
+
     if (options.linkedEntryId) {
       await linkEntries(entry.id, options.linkedEntryId, 'related');
     }
 
+    setFormPreset(null);
     success('Saved!', `${tracker.emoji} ${tracker.name} logged successfully.`);
-    
     setMode('dashboard');
-  }, [tracker, currentBaby, addEntry, linkEntries, success]);
+  }, [tracker, addEntry, linkEntries, success]);
 
   const applyTemplate = (template: any) => {
     triggerHaptic('light');
+    setFormPreset(template?.data ?? null);
     setMode('form');
   };
 
   const quickLog = () => {
     triggerHaptic('light');
+    setFormPreset(null); // plain quick-log must not inherit a stale preset
     setMode('form');
   };
 
   const handleCorrelationAction = (correlation: typeof correlations[0]) => {
-    if (correlation.action === 'log_now') {
-      if (correlation.prefillData) {
-      }
-      quickLog();
-    } else if (correlation.action === 'prefill' && correlation.prefillData) {
-      quickLog();
+    triggerHaptic('light');
+    if ((correlation.action === 'log_now' || correlation.action === 'prefill') && correlation.prefillData) {
+      setFormPreset(correlation.prefillData);
+    } else {
+      setFormPreset(null);
     }
+    setMode('form');
   };
 
   const handleDismissInsight = (insightId: string) => {
@@ -472,7 +473,7 @@ export const SmartTrackerScreen: React.FC<SmartTrackerScreenProps> = ({ tracker,
         <DynamicTrackerForm
           tracker={tracker}
           progressiveState={{
-            prefillData,
+            prefillData: { ...prefillData, ...(formPreset || {}) },
             suggestions,
             streak,
             insights,

@@ -21,7 +21,7 @@ import { useTracker } from '../../context/TrackerContext';
 import { useGrowthIntelligence } from '../../hooks/useGrowthIntelligence';
 import { useTimelineCorrelations } from '../../hooks/useTimelineCorrelations';
 import { useTrackerAchievements } from '../../hooks/useTrackerAchievements';
-import { useTrackerProgressive } from '../../hooks/useTrackerProgressive';
+
 import { useWHOGrowthCalculator } from '../../hooks/useWHOGrowthCalculator';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -391,7 +391,7 @@ export default function InsightsScreen({ navigation }: InsightsScreenProps) {
   const { growthIndex } = useGrowthIntelligence();
   const { correlations: timelineCorrelations } = useTimelineCorrelations();
   const { achievements, newlyUnlocked, streak: globalStreak } = useTrackerAchievements();
-  const { insights: progressiveInsights } = useTrackerProgressive('growth');
+  const { getInsights: getEngineInsights, getEntries: getTrackerEntries, refreshEntries } = useTracker();
   const { getPercentile, getStatus } = useWHOGrowthCalculator();
   const sweetAlert = useSweetAlert();
 
@@ -672,7 +672,7 @@ export default function InsightsScreen({ navigation }: InsightsScreenProps) {
     }
 
     // Sleep pattern insight
-    const todaySleep = trackerEntries.filter((e: any) => e.trackerId === 'sleep' && isSameDay(new Date(e.timestamp), new Date()));
+    const todaySleep = getTrackerEntries('sleep').filter((e: any) => isSameDay(new Date(e.timestamp), new Date()));
     if (todaySleep.length === 0 && new Date().getHours() > 14) {
       items.push({
         id: 'nap-reminder',
@@ -687,6 +687,23 @@ export default function InsightsScreen({ navigation }: InsightsScreenProps) {
       });
     }
 
+    // Tracker-engine insights (med streak, fever, sleep quality, feed-mood, growth reminder)
+    getEngineInsights().forEach((i) => {
+      items.push({
+        id: `engine-${i.id}`,
+        type: i.trackerId === 'sleep' ? 'sleep' : i.trackerId === 'feed' ? 'nutrition' : i.trackerId === 'growth' ? 'growth' : 'health',
+        title: i.title,
+        description: i.description,
+        emoji: i.emoji || '💡',
+        color: i.priority === 'warning' ? '#ef4444' : i.priority === 'good' ? '#10b981' : '#6366f1',
+        priority: i.priority === 'warning' ? 'high' : i.priority === 'good' ? 'low' : 'medium',
+        action: i.action?.trackerId
+          ? { label: i.action.message || 'Log Now', screen: 'UniversalTrackerHub', params: { type: i.action.trackerId } }
+          : undefined,
+        timestamp: i.generatedAt || now,
+      });
+    });
+
     return items.sort((a, b) => {
       const prioOrder = { high: 0, medium: 1, low: 2 };
       if (prioOrder[a.priority] !== prioOrder[b.priority]) {
@@ -694,7 +711,7 @@ export default function InsightsScreen({ navigation }: InsightsScreenProps) {
       }
       return b.timestamp - a.timestamp;
     });
-  }, [growthIndex, timelineCorrelations, milestones, currentBaby, getGrowthData, globalStreak, newlyUnlocked, trackerEntries, getPercentile]);
+  }, [growthIndex, timelineCorrelations, milestones, currentBaby, getGrowthData, globalStreak, newlyUnlocked, trackerEntries, getPercentile, getEngineInsights, getTrackerEntries]);
 
   /* ── Filtered insights ── */
   const filteredInsights = useMemo(() => {
@@ -775,9 +792,11 @@ export default function InsightsScreen({ navigation }: InsightsScreenProps) {
   /* ── Handlers ── */
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await new Promise(r => setTimeout(r, 1000));
+    try {
+      await refreshEntries(); // re-reads entries from the DB; BabyContext data re-reads on its own provider cycle
+    } catch { /* keep the spinner honest even on failure */ }
     setRefreshing(false);
-  }, []);
+  }, [refreshEntries]);
 
   const handleInsightPress = useCallback((insight: InsightItem) => {
     triggerHaptic('light');

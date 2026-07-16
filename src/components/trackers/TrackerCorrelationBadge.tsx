@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { useCustomization } from '../../hooks/useCustomization';
 
 export interface TimelineCorrelation {
   id: string;
@@ -45,8 +46,10 @@ export const TrackerCorrelationBadge: React.FC<TrackerCorrelationBadgeProps> = (
           },
         ]}
         onPress={() => {
-          navigation.navigate('Timeline', {
-            filter: correlation.primaryEntry.trackerId,
+          // 'Timeline' is a tab screen, not a stack route in this project — open the
+          // correlated tracker in the universal hub instead (same param shape as InsightsScreen).
+          (navigation as any).navigate('UniversalTrackerHub', {
+            type: correlation.primaryEntry.trackerId,
           });
         }}
         activeOpacity={0.8}

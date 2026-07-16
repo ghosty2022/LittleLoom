@@ -19,10 +19,17 @@ import {
   updateEntryInDb,
   softDeleteEntryInDb,
 } from '../database/dbHelpers';
+import type { Baby as DbBaby, TrackerEntry as DbTrackerEntry } from '../database/schema';
 
 /* ------------------------------------------------------------------ */
 /*  Storage Keys                                                      */
 /* ------------------------------------------------------------------ */
+/* DEPRECATED — legacy per-baby AsyncStorage keys.
+   Nothing in this context reads or writes them anymore: babies live in the
+   `babies` table and ALL tracker data (growth, milestones, sleep, feeding,
+   potty, medication, activities) lives in `tracker_entries`.
+   They remain exported only because the one-time migration in dbHelpers
+   (runTrackerLogMigration) still reads them to import pre-DB data. */
 export const STORAGE_KEYS = {
   BABIES: '@littleloom_babies',
   CURRENT_BABY: '@littleloom_current_baby',
@@ -397,6 +404,171 @@ const withRetry = async <T,>(
 };
 
 /* ------------------------------------------------------------------ */
+/*  DB row → domain model mappers                                      */
+/*  Single source of truth for translating tracker_entries rows back   */
+/*  into the typed shapes the UI consumes.                             */
+/* ------------------------------------------------------------------ */
+
+/* Row JSON columns may arrive already parsed (mode: 'json') or as a raw
+   string depending on how the row was written — tolerate both. */
+const parseRowData = (raw: unknown): Record<string, any> =>
+  typeof raw === 'string' ? safeParse(raw, {}) : ((raw as Record<string, any>) ?? {});
+
+const parseRowArray = (raw: unknown): string[] =>
+  typeof raw === 'string' ? safeParse(raw, []) : Array.isArray(raw) ? (raw as string[]) : [];
+
+const mapDbBabyToProfile = (b: DbBaby, calculateAge: (birthDate: string) => string): BabyProfile => ({
+  id: b.id,
+  name: b.name,
+  birthDate: b.dateOfBirth,
+  age: calculateAge(b.dateOfBirth),
+  gender: b.gender === 'male' ? 'boy' : b.gender === 'female' ? 'girl' : 'other',
+  skinTone: 0,
+  avatar: b.avatar || '',
+  parent1Id: b.parent1Id || 'default',
+  parent2Id: b.parent2Id ?? undefined,
+  bloodType: b.bloodType ?? undefined,
+  medicalNotes: b.medicalNotes ?? undefined,
+  streak: 0,
+  milestones: 0,
+  photos: 0,
+  createdAt: b.createdAt,
+  lastUpdated: b.updatedAt,
+});
+
+const mapRowToGrowth = (row: DbTrackerEntry): GrowthMeasurement => {
+  const data = parseRowData(row.data);
+  return {
+    id: row.id,
+    babyId: row.babyId,
+    type: (data.measurementType as GrowthMeasurement['type']) ?? 'weight',
+    value: Number(data.value ?? 0),
+    unit: (data.unit as GrowthMeasurement['unit']) ?? 'kg',
+    date: typeof data.date === 'string' ? data.date : new Date(row.timestamp).toISOString(),
+    notes: row.notes ?? undefined,
+    recordedBy: (data.recordedBy as string) ?? (data.loggedBy as string) ?? '',
+    createdAt: row.createdAt ?? new Date(row.timestamp).toISOString(),
+  };
+};
+
+const mapRowToMilestone = (row: DbTrackerEntry): Milestone => {
+  const data = parseRowData(row.data);
+  const photoUris = parseRowArray(row.photoUris);
+  return {
+    id: row.id,
+    babyId: row.babyId,
+    title: row.title ?? (data.title as string) ?? '',
+    description: (data.description as string) ?? '',
+    category: (data.category as Milestone['category']) ?? 'physical',
+    achievedAt: typeof data.achievedAt === 'string' ? data.achievedAt : new Date(row.timestamp).toISOString(),
+    imageUrl: photoUris[0] ?? (data.imageUrl as string) ?? undefined,
+    notes: row.notes ?? undefined,
+    isFirstTime: (data.firstTime as boolean) ?? undefined,
+    recordedBy: (data.recordedBy as string) ?? (data.loggedBy as string) ?? undefined,
+    recordedByName: (data.recordedByName as string) ?? (data.loggedByName as string) ?? undefined,
+  };
+};
+
+const mapRowToSleep = (row: DbTrackerEntry): SleepLog => {
+  const data = parseRowData(row.data);
+  return {
+    id: row.id,
+    babyId: row.babyId,
+    startTime: typeof data.startTime === 'string' ? data.startTime : new Date(row.timestamp).toISOString(),
+    endTime: (data.endTime as string) ?? undefined,
+    duration: (data.duration as number) ?? undefined,
+    quality: (data.quality as SleepLog['quality']) ?? 'good',
+    location: (data.location as SleepLog['location']) ?? 'other',
+    notes: row.notes ?? undefined,
+    createdAt: row.createdAt ?? new Date(row.timestamp).toISOString(),
+  };
+};
+
+const mapRowToFeeding = (row: DbTrackerEntry): FeedingLog => {
+  const data = parseRowData(row.data);
+  return {
+    id: row.id,
+    babyId: row.babyId,
+    type: (data.feedType as FeedingLog['type']) ?? (data.type as FeedingLog['type']) ?? 'bottle',
+    startTime: typeof data.startTime === 'string' ? data.startTime : new Date(row.timestamp).toISOString(),
+    duration: (data.duration as number) ?? undefined,
+    amount: (data.amount as number) ?? undefined,
+    unit: (data.unit as FeedingLog['unit']) ?? undefined,
+    food: (data.food as string) ?? undefined,
+    notes: row.notes ?? undefined,
+    createdAt: row.createdAt ?? new Date(row.timestamp).toISOString(),
+  };
+};
+
+const mapRowToPotty = (row: DbTrackerEntry): PottyLog => {
+  const data = parseRowData(row.data);
+  return {
+    id: row.id,
+    babyId: row.babyId,
+    type: (data.pottyType as PottyLog['type']) ?? (data.type as PottyLog['type']) ?? 'pee',
+    location: (data.location as PottyLog['location']) ?? 'diaper',
+    successful: Boolean(data.successful),
+    timestamp: typeof data.timestamp === 'string' ? data.timestamp : new Date(row.timestamp).toISOString(),
+    notes: row.notes ?? undefined,
+    createdAt: row.createdAt ?? new Date(row.timestamp).toISOString(),
+  };
+};
+
+const mapRowToMedication = (row: DbTrackerEntry): MedicationLog => {
+  const data = parseRowData(row.data);
+  return {
+    id: row.id,
+    babyId: row.babyId,
+    medicationName: (data.medicationName as string) ?? '',
+    dosage: (data.dosage as string) ?? '',
+    reason: (data.reason as string) ?? undefined,
+    givenBy: (data.givenBy as string) ?? (data.loggedBy as string) ?? '',
+    timestamp: typeof data.timestamp === 'string' ? data.timestamp : new Date(row.timestamp).toISOString(),
+    notes: row.notes ?? undefined,
+    createdAt: row.createdAt ?? new Date(row.timestamp).toISOString(),
+  };
+};
+
+const mapRowToActivity = (row: DbTrackerEntry): ActivityEntry => {
+  const data = parseRowData(row.data);
+  const photoUris = parseRowArray(row.photoUris);
+  const tags = parseRowArray(row.tags);
+  return {
+    ...data,
+    id: row.id,
+    babyId: row.babyId,
+    type: row.trackerId,
+    timestamp: row.timestamp,
+    title: row.title ?? '',
+    details: (data.details as string) ?? row.notes ?? undefined,
+    notes: row.notes ?? undefined,
+    photo: photoUris[0] ?? (data.photo as string) ?? undefined,
+    tags,
+    loggedBy: (data.loggedBy as string) ?? '',
+    loggedByName: (data.loggedByName as string) ?? '',
+  };
+};
+
+/* Fields that live in dedicated tracker_entries columns (or are derived)
+   rather than in the JSON `data` payload. Everything else on an
+   ActivityEntry is preserved inside `data` so it survives a DB round-trip —
+   including icon, notificationId and reminderScheduled. */
+const ENTRY_COLUMN_FIELDS = new Set([
+  'id', 'babyId', 'type', 'timestamp', 'title', 'details',
+  'loggedBy', 'loggedByName', 'notes', 'photo', 'tags', 'syncedAt',
+]);
+
+const extractEntryData = (entry: Partial<ActivityEntry>): Record<string, unknown> => {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(entry)) {
+    if (!ENTRY_COLUMN_FIELDS.has(key) && value !== undefined) {
+      out[key] = value;
+    }
+  }
+  return out;
+};
+
+/* ------------------------------------------------------------------ */
 /*  Provider                                                           */
 /* ------------------------------------------------------------------ */
 export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -420,7 +592,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const ageIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const initRef = useRef(false);
-  
+
   /* FIX #5: isMounted ref for all async operations */
   const isMounted = useRef(true);
 
@@ -461,38 +633,70 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [state.babies, state.currentBabyId]);
 
   /* ---- Data loading ---- */
+  /* All tracker data (growth, milestones, sleep, feeding, potty, medication,
+     activities) is loaded from the Drizzle DB. The legacy per-baby
+     AsyncStorage keys are migrated once by runOneTimeMigration() /
+     runTrackerLogMigration() and are never read here — reading them was the
+     source of "data disappears after restart" bugs, because writes had
+     already moved to the DB while reads still pointed at dead keys. */
   const loadAllBabyData = useCallback(async (babyId: string) => {
     /* FIX #5: Guard against unmounted component */
     if (!isMounted.current) return;
-    
+
     setState(prev => ({ ...prev, isLoading: true }));
     setIsLoadingEntries(true);
 
     try {
-      const [growthStr, milestonesStr, sleepStr, feedingStr, pottyStr, medicationStr, activitiesStr] =
-        await Promise.all([
-          withRetry(() => AsyncStorage.getItem(STORAGE_KEYS.GROWTH_DATA(babyId))),
-          withRetry(() => AsyncStorage.getItem(STORAGE_KEYS.MILESTONES(babyId))),
-          withRetry(() => AsyncStorage.getItem(STORAGE_KEYS.SLEEP_LOGS(babyId))),
-          withRetry(() => AsyncStorage.getItem(STORAGE_KEYS.FEEDING_LOGS(babyId))),
-          withRetry(() => AsyncStorage.getItem(STORAGE_KEYS.POTTY_LOGS(babyId))),
-          withRetry(() => AsyncStorage.getItem(STORAGE_KEYS.MEDICATION_LOGS(babyId))),
-          withRetry(() => AsyncStorage.getItem(STORAGE_KEYS.ACTIVITIES(babyId))),
-        ]);
+      const rows = await withRetry(() => getEntriesByBabyFromDb(babyId));
 
       /* FIX #5: Check isMounted before setting state */
       if (!isMounted.current) return;
 
+      const growthData: GrowthMeasurement[] = [];
+      const milestones: Milestone[] = [];
+      const sleepLogs: SleepLog[] = [];
+      const feedingLogs: FeedingLog[] = [];
+      const pottyLogs: PottyLog[] = [];
+      const medicationLogs: MedicationLog[] = [];
+      const activities: ActivityEntry[] = [];
+
+      for (const row of rows) {
+        if (row.isDeleted) continue;
+        switch (row.trackerId) {
+          case 'growth':
+            growthData.push(mapRowToGrowth(row));
+            break;
+          case 'milestone':
+            milestones.push(mapRowToMilestone(row));
+            break;
+          case 'sleep':
+            sleepLogs.push(mapRowToSleep(row));
+            break;
+          case 'feeding':
+            feedingLogs.push(mapRowToFeeding(row));
+            break;
+          case 'potty':
+            pottyLogs.push(mapRowToPotty(row));
+            break;
+          case 'medication':
+            medicationLogs.push(mapRowToMedication(row));
+            break;
+          default:
+            activities.push(mapRowToActivity(row));
+            break;
+        }
+      }
+
       setState(prev => ({
         ...prev,
         isLoading: false,
-        growthData: safeParse<GrowthMeasurement[]>(growthStr, []),
-        milestones: safeParse<Milestone[]>(milestonesStr, []),
-        sleepLogs: safeParse<SleepLog[]>(sleepStr, []),
-        feedingLogs: safeParse<FeedingLog[]>(feedingStr, []),
-        pottyLogs: safeParse<PottyLog[]>(pottyStr, []),
-        medicationLogs: safeParse<MedicationLog[]>(medicationStr, []),
-        activities: safeParse<ActivityEntry[]>(activitiesStr, []),
+        growthData,
+        milestones,
+        sleepLogs,
+        feedingLogs,
+        pottyLogs,
+        medicationLogs,
+        activities,
       }));
     } catch (error) {
       console.error('Error loading baby data:', error);
@@ -508,38 +712,18 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loadBabies = useCallback(async () => {
     if (!isMounted.current) return;
-    
+
     setState(prev => ({ ...prev, isLoading: true }));
 
     try {
       // Run migration first, then load from Drizzle
       await runOneTimeMigration();
-      
+
       const dbBabies = await getAllBabiesFromDb();
       const currentId = await getAppSetting('current_baby_id');
       const hasSkipped = await getAppSetting('has_skipped_baby');
 
-      let babies: BabyProfile[] = dbBabies.map(b => ({
-        id: b.id,
-        name: b.name,
-        birthDate: b.dateOfBirth,
-        age: calculateAge(b.dateOfBirth),
-        gender: b.gender === 'male' ? 'boy' : b.gender === 'female' ? 'girl' : 'other',
-        skinTone: 0,
-        avatar: b.avatar || '',
-        parent1Id: b.parent1Id || 'default',
-        parent2Id: b.parent2Id,
-        weight: undefined,
-        height: undefined,
-        bloodType: b.bloodType,
-        allergies: undefined,
-        medicalNotes: b.medicalNotes,
-        streak: 0,
-        milestones: 0,
-        photos: 0,
-        createdAt: b.createdAt,
-        lastUpdated: b.updatedAt,
-      }));
+      const babies: BabyProfile[] = dbBabies.map(b => mapDbBabyToProfile(b, calculateAge));
 
       let effectiveCurrentId = currentId;
       if (!effectiveCurrentId && babies.length > 0) {
@@ -574,11 +758,11 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     if (initRef.current) return;
     initRef.current = true;
-    
+
     /* FIX #5: Track mount status */
     isMounted.current = true;
     loadBabies();
-    
+
     return () => {
       isMounted.current = false;
     };
@@ -591,7 +775,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const updateAges = () => {
       /* FIX #5: Guard state updates */
       if (!isMounted.current) return;
-      
+
       setState(prev => ({
         ...prev,
         babies: prev.babies.map(b => ({ ...b, age: calculateAge(b.birthDate) })),
@@ -666,6 +850,17 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         parent1Id: 'default',
       });
 
+      /* Read-back verification: createBabyInDb swallows "table not ready"
+         failures (returns [] instead of throwing), so confirm the row really
+         exists before reporting success. Failing here — with a null return
+         the caller already handles — prevents the downstream
+         "CRITICAL: Baby profile was not persisted" class of error. */
+      const persisted = await getBabyByIdFromDb(newId);
+      if (!persisted) {
+        console.error('[BabyContext] createBaby: insert did not persist, aborting');
+        return null;
+      }
+
       const newBaby: BabyProfile = {
         ...data,
         id: newId,
@@ -696,7 +891,10 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }));
       }
 
-      await loadAllBabyData(newBaby.id);
+      /* Load the EFFECTIVE current baby's data — previously this always
+         loaded the NEW baby's (empty) data, which wiped the current baby's
+         logs from state whenever a second baby was added. */
+      await loadAllBabyData(newCurrentId);
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       return newBaby.id;
@@ -722,24 +920,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const fresh = await getBabyByIdFromDb(id);
       if (fresh && isMounted.current) {
-        const updatedBaby: BabyProfile = {
-          id: fresh.id,
-          name: fresh.name,
-          birthDate: fresh.dateOfBirth,
-          age: calculateAge(fresh.dateOfBirth),
-          gender: fresh.gender === 'male' ? 'boy' : fresh.gender === 'female' ? 'girl' : 'other',
-          skinTone: 0,
-          avatar: fresh.avatar || '',
-          parent1Id: fresh.parent1Id || 'default',
-          parent2Id: fresh.parent2Id,
-          bloodType: fresh.bloodType,
-          medicalNotes: fresh.medicalNotes,
-          streak: 0,
-          milestones: 0,
-          photos: 0,
-          createdAt: fresh.createdAt,
-          lastUpdated: fresh.updatedAt,
-        };
+        const updatedBaby = mapDbBabyToProfile(fresh, calculateAge);
 
         setState(prev => ({
           ...prev,
@@ -772,48 +953,14 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       const remaining = await getAllBabiesFromDb();
-      const newCurrentBaby = remaining.find(b => b.id === newCurrentId) || null;
+      const newCurrentRow = remaining.find(b => b.id === newCurrentId) || null;
 
       if (isMounted.current) {
         setState(prev => ({
           ...prev,
-          babies: remaining.map(b => ({
-            id: b.id,
-            name: b.name,
-            birthDate: b.dateOfBirth,
-            age: calculateAge(b.dateOfBirth),
-            gender: b.gender === 'male' ? 'boy' : b.gender === 'female' ? 'girl' : 'other',
-            skinTone: 0,
-            avatar: b.avatar || '',
-            parent1Id: b.parent1Id || 'default',
-            parent2Id: b.parent2Id,
-            bloodType: b.bloodType,
-            medicalNotes: b.medicalNotes,
-            streak: 0,
-            milestones: 0,
-            photos: 0,
-            createdAt: b.createdAt,
-            lastUpdated: b.updatedAt,
-          })),
+          babies: remaining.map(b => mapDbBabyToProfile(b, calculateAge)),
           currentBabyId: newCurrentId,
-          currentBaby: newCurrentBaby ? {
-            id: newCurrentBaby.id,
-            name: newCurrentBaby.name,
-            birthDate: newCurrentBaby.dateOfBirth,
-            age: calculateAge(newCurrentBaby.dateOfBirth),
-            gender: newCurrentBaby.gender === 'male' ? 'boy' : newCurrentBaby.gender === 'female' ? 'girl' : 'other',
-            skinTone: 0,
-            avatar: newCurrentBaby.avatar || '',
-            parent1Id: newCurrentBaby.parent1Id || 'default',
-            parent2Id: newCurrentBaby.parent2Id,
-            bloodType: newCurrentBaby.bloodType,
-            medicalNotes: newCurrentBaby.medicalNotes,
-            streak: 0,
-            milestones: 0,
-            photos: 0,
-            createdAt: newCurrentBaby.createdAt,
-            lastUpdated: newCurrentBaby.updatedAt,
-          } : null,
+          currentBaby: newCurrentRow ? mapDbBabyToProfile(newCurrentRow, calculateAge) : null,
           growthData: newCurrentId ? prev.growthData : [],
           milestones: newCurrentId ? prev.milestones : [],
           sleepLogs: newCurrentId ? prev.sleepLogs : [],
@@ -839,7 +986,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   /* ---- Switch baby ---- */
   const switchBaby = useCallback(async (id: string): Promise<boolean> => {
     const baby = await getBabyByIdFromDb(id);
-    
+
     if (!baby) {
       console.warn(`Baby with id ${id} not found`);
       return false;
@@ -853,24 +1000,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setState(prev => ({
           ...prev,
           currentBabyId: id,
-          currentBaby: {
-            id: baby.id,
-            name: baby.name,
-            birthDate: baby.dateOfBirth,
-            age: calculateAge(baby.dateOfBirth),
-            gender: baby.gender === 'male' ? 'boy' : baby.gender === 'female' ? 'girl' : 'other',
-            skinTone: 0,
-            avatar: baby.avatar || '',
-            parent1Id: baby.parent1Id || 'default',
-            parent2Id: baby.parent2Id,
-            bloodType: baby.bloodType,
-            medicalNotes: baby.medicalNotes,
-            streak: 0,
-            milestones: 0,
-            photos: 0,
-            createdAt: baby.createdAt,
-            lastUpdated: baby.updatedAt,
-          },
+          currentBaby: mapDbBabyToProfile(baby, calculateAge),
         }));
       }
 
@@ -883,23 +1013,31 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [loadAllBabyData, calculateAge]);
 
   /* ---- Refresh current baby ---- */
+  /* Reads from the Drizzle DB. Previously this read the legacy
+     @littleloom_babies AsyncStorage key, which nothing writes anymore —
+     so it silently no-oped every time. */
   const refreshCurrentBaby = useCallback(async () => {
     if (!state.currentBabyId) return;
 
     try {
-      const babiesStr = await AsyncStorage.getItem(STORAGE_KEYS.BABIES);
-      const babies = safeParse<BabyProfile[]>(babiesStr, []);
-      const currentBaby = babies.find(b => b.id === state.currentBabyId);
+      const [dbBabies, currentRow] = await Promise.all([
+        getAllBabiesFromDb(),
+        getBabyByIdFromDb(state.currentBabyId),
+      ]);
 
-      if (currentBaby && isMounted.current) {
-        setState(prev => ({
-          ...prev,
-          babies: babies.map(b => ({ ...b, age: calculateAge(b.birthDate) })),
-          currentBaby: { ...currentBaby, age: calculateAge(currentBaby.birthDate) },
-        }));
+      if (!isMounted.current) return;
 
-        await loadAllBabyData(state.currentBabyId);
-      }
+      const babies = dbBabies.map(b => mapDbBabyToProfile(b, calculateAge));
+
+      setState(prev => ({
+        ...prev,
+        babies,
+        /* Keep the previous currentBaby if the row is momentarily
+           unavailable rather than blanking the UI. */
+        currentBaby: currentRow ? mapDbBabyToProfile(currentRow, calculateAge) : prev.currentBaby,
+      }));
+
+      await loadAllBabyData(state.currentBabyId);
     } catch (error) {
       console.error('Error refreshing current baby:', error);
     }
@@ -922,6 +1060,8 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           measurementType: measurement.type,
           value: measurement.value,
           unit: measurement.unit,
+          date: measurement.date,
+          recordedBy: measurement.recordedBy,
         },
         notes: measurement.notes,
         loggedBy: measurement.recordedBy,
@@ -997,9 +1137,13 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         data: {
           description: milestone.description,
           category: milestone.category,
+          achievedAt: milestone.achievedAt,
           firstTime: milestone.isFirstTime,
+          recordedBy: milestone.recordedBy,
+          recordedByName: milestone.recordedByName,
         },
         notes: milestone.notes,
+        photoUris: milestone.imageUrl ? [milestone.imageUrl] : undefined,
         loggedBy: milestone.recordedBy,
         loggedByName: milestone.recordedByName,
       });
@@ -1043,20 +1187,30 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [state.currentBabyId, state.milestones]);
 
-  /* ---- Sleep ---- */
+  /* ---- Sleep (Drizzle DB — trackerId 'sleep') ---- */
   const addSleepLog = useCallback(async (log: Omit<SleepLog, 'id' | 'createdAt'>): Promise<boolean> => {
     try {
-      const newLog: SleepLog = { ...log, id: generateId(), createdAt: new Date().toISOString() };
+      const newId = generateId();
+      const newLog: SleepLog = { ...log, id: newId, createdAt: new Date().toISOString() };
 
-      const key = STORAGE_KEYS.SLEEP_LOGS(log.babyId);
-      const existing = await AsyncStorage.getItem(key);
-      const logs: SleepLog[] = safeParse(existing, []);
-      logs.push(newLog);
-
-      await AsyncStorage.setItem(key, JSON.stringify(logs));
+      await createEntryInDb({
+        id: newId,
+        trackerId: 'sleep',
+        babyId: log.babyId,
+        timestamp: new Date(log.startTime).getTime() || Date.now(),
+        title: '😴 Sleep',
+        data: {
+          startTime: log.startTime,
+          endTime: log.endTime,
+          duration: log.duration,
+          quality: log.quality,
+          location: log.location,
+        },
+        notes: log.notes,
+      });
 
       if (log.babyId === state.currentBabyId && isMounted.current) {
-        setState(prev => ({ ...prev, sleepLogs: logs }));
+        setState(prev => ({ ...prev, sleepLogs: [...prev.sleepLogs, newLog] }));
       }
 
       return true;
@@ -1079,22 +1233,31 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const endSleepSession = useCallback(async (logId: string, endTime: string): Promise<boolean> => {
     try {
       if (!state.currentBabyId) return false;
-      const key = STORAGE_KEYS.SLEEP_LOGS(state.currentBabyId);
-      const updated = state.sleepLogs.map(log => {
-        if (log.id === logId) {
-          const start = new Date(log.startTime);
-          const end = new Date(endTime);
-          if (end <= start) {
-            console.warn('End time must be after start time');
-            return log;
-          }
-          const duration = Math.floor((end.getTime() - start.getTime()) / (1000 * 60));
-          return { ...log, endTime, duration };
-        }
-        return log;
+
+      const target = state.sleepLogs.find(log => log.id === logId);
+      if (!target) return false;
+
+      const start = new Date(target.startTime);
+      const end = new Date(endTime);
+      if (end <= start) {
+        console.warn('End time must be after start time');
+        return false;
+      }
+      const duration = Math.floor((end.getTime() - start.getTime()) / (1000 * 60));
+
+      await updateEntryInDb(logId, {
+        data: {
+          startTime: target.startTime,
+          endTime,
+          duration,
+          quality: target.quality,
+          location: target.location,
+        },
       });
 
-      await AsyncStorage.setItem(key, JSON.stringify(updated));
+      const updated = state.sleepLogs.map(log =>
+        log.id === logId ? { ...log, endTime, duration } : log
+      );
       if (isMounted.current) {
         setState(prev => ({ ...prev, sleepLogs: updated }));
       }
@@ -1110,7 +1273,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return state.sleepLogs.filter(log => new Date(log.startTime) >= today).length;
   }, [state.sleepLogs]);
 
-  /* ---- Feeding ---- */
+  /* ---- Feeding (Drizzle DB — trackerId 'feeding') ---- */
   const addFeedingLog = useCallback(async (log: Omit<FeedingLog, 'id' | 'createdAt'>): Promise<boolean> => {
     try {
       if (log.amount !== undefined && (isNaN(log.amount) || log.amount < 0)) {
@@ -1118,17 +1281,28 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return false;
       }
 
-      const newLog: FeedingLog = { ...log, id: generateId(), createdAt: new Date().toISOString() };
+      const newId = generateId();
+      const newLog: FeedingLog = { ...log, id: newId, createdAt: new Date().toISOString() };
 
-      const key = STORAGE_KEYS.FEEDING_LOGS(log.babyId);
-      const existing = await AsyncStorage.getItem(key);
-      const logs: FeedingLog[] = safeParse(existing, []);
-      logs.push(newLog);
-
-      await AsyncStorage.setItem(key, JSON.stringify(logs));
+      await createEntryInDb({
+        id: newId,
+        trackerId: 'feeding',
+        babyId: log.babyId,
+        timestamp: new Date(log.startTime).getTime() || Date.now(),
+        title: '🍼 Feeding',
+        data: {
+          feedType: log.type,
+          startTime: log.startTime,
+          duration: log.duration,
+          amount: log.amount,
+          unit: log.unit,
+          food: log.food,
+        },
+        notes: log.notes,
+      });
 
       if (log.babyId === state.currentBabyId && isMounted.current) {
-        setState(prev => ({ ...prev, feedingLogs: logs }));
+        setState(prev => ({ ...prev, feedingLogs: [...prev.feedingLogs, newLog] }));
       }
 
       return true;
@@ -1153,7 +1327,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return state.feedingLogs.filter(log => new Date(log.startTime) >= today).length;
   }, [state.feedingLogs]);
 
-  /* ---- Potty ---- */
+  /* ---- Potty (Drizzle DB — trackerId 'potty') ---- */
   const calculatePottyStreak = useCallback((logs: PottyLog[]): number => {
     if (logs.length === 0) return 0;
 
@@ -1179,21 +1353,30 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const addPottyLog = useCallback(async (log: Omit<PottyLog, 'id' | 'createdAt'>): Promise<boolean> => {
     try {
-      const newLog: PottyLog = { ...log, id: generateId(), createdAt: new Date().toISOString() };
+      const newId = generateId();
+      const newLog: PottyLog = { ...log, id: newId, createdAt: new Date().toISOString() };
 
-      const key = STORAGE_KEYS.POTTY_LOGS(log.babyId);
-      const existing = await AsyncStorage.getItem(key);
-      const logs: PottyLog[] = safeParse(existing, []);
-      logs.push(newLog);
-
-      await AsyncStorage.setItem(key, JSON.stringify(logs));
+      await createEntryInDb({
+        id: newId,
+        trackerId: 'potty',
+        babyId: log.babyId,
+        timestamp: new Date(log.timestamp).getTime() || Date.now(),
+        title: '🚽 Potty',
+        data: {
+          pottyType: log.type,
+          location: log.location,
+          successful: log.successful,
+          timestamp: log.timestamp,
+        },
+        notes: log.notes,
+      });
 
       if (log.babyId === state.currentBabyId && isMounted.current) {
-        setState(prev => ({ ...prev, pottyLogs: logs }));
+        setState(prev => ({ ...prev, pottyLogs: [...prev.pottyLogs, newLog] }));
       }
 
       if (log.successful) {
-        const streak = calculatePottyStreak([...logs]);
+        const streak = calculatePottyStreak([...state.pottyLogs, newLog]);
         await updateBaby(log.babyId, { streak });
       }
 
@@ -1203,7 +1386,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       Alert.alert('Error', 'Failed to save potty log');
       return false;
     }
-  }, [state.currentBabyId, updateBaby, calculatePottyStreak]);
+  }, [state.currentBabyId, state.pottyLogs, updateBaby, calculatePottyStreak]);
 
   const getPottyLogs = useCallback((days: number = 7) => {
     if (days <= 0) return [];
@@ -1227,7 +1410,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return Math.round((successful / state.pottyLogs.length) * 100);
   }, [state.pottyLogs]);
 
-  /* ---- Medication ---- */
+  /* ---- Medication (Drizzle DB — trackerId 'medication') ---- */
   const addMedicationLog = useCallback(async (log: Omit<MedicationLog, 'id' | 'createdAt'>): Promise<boolean> => {
     try {
       if (!log.medicationName.trim()) {
@@ -1235,22 +1418,32 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return false;
       }
 
+      const newId = generateId();
       const newLog: MedicationLog = {
         ...log,
         medicationName: log.medicationName.trim(),
-        id: generateId(),
+        id: newId,
         createdAt: new Date().toISOString(),
       };
 
-      const key = STORAGE_KEYS.MEDICATION_LOGS(log.babyId);
-      const existing = await AsyncStorage.getItem(key);
-      const logs: MedicationLog[] = safeParse(existing, []);
-      logs.push(newLog);
-
-      await AsyncStorage.setItem(key, JSON.stringify(logs));
+      await createEntryInDb({
+        id: newId,
+        trackerId: 'medication',
+        babyId: log.babyId,
+        timestamp: new Date(log.timestamp).getTime() || Date.now(),
+        title: `💊 ${newLog.medicationName}`,
+        data: {
+          medicationName: newLog.medicationName,
+          dosage: log.dosage,
+          reason: log.reason,
+          givenBy: log.givenBy,
+          timestamp: log.timestamp,
+        },
+        notes: log.notes,
+      });
 
       if (log.babyId === state.currentBabyId && isMounted.current) {
-        setState(prev => ({ ...prev, medicationLogs: logs }));
+        setState(prev => ({ ...prev, medicationLogs: [...prev.medicationLogs, newLog] }));
       }
 
       return true;
@@ -1280,14 +1473,10 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const newId = generateId();
 
-      // Extract data fields
-      const entryData: Record<string, unknown> = {};
-      const skipFields = ['babyId', 'type', 'timestamp', 'title', 'details', 'icon', 'loggedBy', 'loggedByName', 'notes', 'photo', 'tags', 'notificationId', 'reminderScheduled', 'syncedAt'];
-      for (const [key, value] of Object.entries(entry)) {
-        if (!skipFields.includes(key) && value !== undefined) {
-          entryData[key] = value;
-        }
-      }
+      /* Everything that isn't a dedicated column is preserved in the JSON
+         payload — including icon, notificationId and reminderScheduled,
+         which previously were dropped on write and lost after reload. */
+      const entryData = extractEntryData(entry);
 
       await createEntryInDb({
         id: newId,
@@ -1459,14 +1648,28 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const deleteEntry = deleteActivity;
   const addEntry = addActivity;
 
+  /* Persists edits to the Drizzle DB. Previously this wrote to the legacy
+     per-baby ACTIVITIES AsyncStorage key — which nothing reads anymore —
+     so every edit was silently lost on the next load. */
   const updateEntry = useCallback(async (id: string, entry: Partial<ActivityEntry>): Promise<boolean> => {
     try {
       if (!state.currentBabyId) return false;
 
-      const key = STORAGE_KEYS.ACTIVITIES(state.currentBabyId);
-      const updated = state.activities.map(a => a.id === id ? { ...a, ...entry } : a);
+      const existingEntry = state.activities.find(a => a.id === id);
+      if (!existingEntry) return false;
 
-      await AsyncStorage.setItem(key, JSON.stringify(updated));
+      const merged: ActivityEntry = { ...existingEntry, ...entry };
+
+      await updateEntryInDb(id, {
+        timestamp: merged.timestamp,
+        title: merged.title,
+        notes: merged.notes || merged.details,
+        data: extractEntryData(merged),
+        tags: merged.tags,
+        photoUris: merged.photo ? [merged.photo] : undefined,
+      });
+
+      const updated = state.activities.map(a => a.id === id ? merged : a);
       if (isMounted.current) {
         setState(prev => ({ ...prev, activities: updated }));
       }
@@ -1640,5 +1843,3 @@ export const useBaby = (): BabyContextType => {
   if (!context) throw new Error('useBaby must be used within BabyProvider');
   return context;
 };
-
-export default BabyProvider;

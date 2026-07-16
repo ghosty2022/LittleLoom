@@ -298,7 +298,7 @@ export const useTrackerAchievements = (): TrackerAchievementSummary => {
     const pottySuccessRate = totalPotty > 0 ? (pottySuccessful / totalPotty) * 100 : 0;
 
     const goodSleep = sleepEntries.filter(
-      (e: any) => e.data?.quality === 'good' || e.data?.quality === 'excellent'
+      (e: any) => Number(e.data?.quality) >= 4 || e.data?.quality === 'good' || e.data?.quality === 'excellent'
     ).length;
 
     const feedTypes = new Set(feedEntries.map((e: any) => e.data?.feedType).filter(Boolean));
@@ -319,7 +319,8 @@ export const useTrackerAchievements = (): TrackerAchievementSummary => {
 
     const photoCount = allEntries.filter((e: any) => e.photoUris && e.photoUris.length > 0).length;
 
-    const sharedCount = allEntries.filter((e: any) => e.data?.shared === true).length;
+    // No tracker has a `shared` field — count partner-logged entries instead (real shared-care signal)
+    const sharedCount = allEntries.filter((e: any) => e.loggedByRole === 'parent2').length;
 
     const usedTypes = new Set(allEntries.map((e: any) => e.trackerId)).size;
 
@@ -650,8 +651,8 @@ export const useTrackerAchievements = (): TrackerAchievementSummary => {
         title: 'Nap Ninja',
         description: '5 perfect nap sessions',
         emoji: '💤',
-        unlocked: sleepEntries.filter((e: any) => e.data?.sleepType === 'nap' && (e.data?.quality === 'good' || e.data?.quality === 'excellent')).length >= 5,
-        progress: sleepEntries.filter((e: any) => e.data?.sleepType === 'nap' && (e.data?.quality === 'good' || e.data?.quality === 'excellent')).length,
+        unlocked: sleepEntries.filter((e: any) => e.data?.sleepType === 'nap' && (Number(e.data?.quality) >= 4 || e.data?.quality === 'good' || e.data?.quality === 'excellent')).length >= 5,
+        progress: sleepEntries.filter((e: any) => e.data?.sleepType === 'nap' && (Number(e.data?.quality) >= 4 || e.data?.quality === 'good' || e.data?.quality === 'excellent')).length,
         maxProgress: 5,
         category: 'care',
         rarity: 'rare',
@@ -926,9 +927,9 @@ export const useTrackerAchievements = (): TrackerAchievementSummary => {
       },
       {
         id: 'social_sharer',
-        title: 'Social Sharer',
-        description: 'Share 5 activities',
-        emoji: '🔗',
+        title: 'Tag Team',
+        description: '5 entries logged by your partner — caregiving is shared',
+        emoji: '🤝',
         unlocked: sharedCount >= 5,
         progress: sharedCount,
         maxProgress: 5,
@@ -968,8 +969,8 @@ export const useTrackerAchievements = (): TrackerAchievementSummary => {
       ...predictiveAchievements,
     ];
 
-    return built;
-  }, [tracker, baby, growthIndex, predictiveReminders, unlockedHistory, refreshToken]);
+    return built.map((a) => ({ ...a, unlockedAt: unlockedAtMap[a.id] }));
+  }, [tracker, baby, growthIndex, predictiveReminders, unlockedHistory, unlockedAtMap, refreshToken]);
 
   /* ── Detect newly unlocked ── */
   useEffect(() => {

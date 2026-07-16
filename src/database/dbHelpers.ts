@@ -8,6 +8,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 
 const MIGRATION_KEY = '@littleloom_db_migration_v1';
+/* v2: explicit per-type migration of the legacy per-baby log keys
+   (growth / milestones / sleep / feeding / potty / medication).
+   Tracked separately so it also runs on installs where v1 already
+   completed — v1 either skipped these or filed them under the wrong
+   trackerId (see note at LEGACY_LOG_SPECS). */
+const LOG_MIGRATION_KEY = '@littleloom_db_migration_v2_logs';
 
 export async function isMigrationComplete(): Promise<boolean> {
   const flag = await AsyncStorage.getItem(MIGRATION_KEY);
@@ -198,11 +204,28 @@ export async function createEntryInDb(data: {
 }) {
   try {
     const now = new Date().toISOString();
+
+    /* tracker_entries has no loggedBy* columns. Fold them into the JSON
+       payload so the info is not silently dropped, and pass ONLY real
+       columns to the insert — extra keys can raise unknown-column errors
+       depending on the Drizzle/SQLite version. */
+    const payload: Record<string, unknown> = { ...data.data };
+    if (data.loggedBy !== undefined && payload.loggedBy === undefined) payload.loggedBy = data.loggedBy;
+    if (data.loggedByName !== undefined && payload.loggedByName === undefined) payload.loggedByName = data.loggedByName;
+    if (data.loggedByRole !== undefined && payload.loggedByRole === undefined) payload.loggedByRole = data.loggedByRole;
+
     return db.insert(trackerEntries).values({
-      ...data,
-      data: JSON.stringify(data.data),
+      id: data.id,
+      trackerId: data.trackerId,
+      babyId: data.babyId,
+      timestamp: data.timestamp,
+      title: data.title,
+      data: JSON.stringify(payload),
+      notes: data.notes,
       photoUris: data.photoUris ? JSON.stringify(data.photoUris) : undefined,
       tags: data.tags ? JSON.stringify(data.tags) : undefined,
+      location: data.location,
+      mood: data.mood,
       createdAt: now,
       updatedAt: now,
       syncStatus: 'pending',
@@ -224,7 +247,7 @@ export async function updateEntryInDb(id: string, updates: Partial<typeof tracke
     if (updates.data && typeof updates.data !== 'string') processed.data = JSON.stringify(updates.data);
     if (updates.photoUris && typeof updates.photoUris !== 'string') processed.photoUris = JSON.stringify(updates.photoUris);
     if (updates.tags && typeof updates.tags !== 'string') processed.tags = JSON.stringify(updates.tags);
-    
+
     return db.update(trackerEntries)
       .set({ ...processed, updatedAt: now, syncStatus: 'pending' })
       .where(eq(trackerEntries.id, id))
@@ -408,7 +431,7 @@ export async function createFamilyMemberInDb(data: {
   relationship: string;
   permissions: Record<string, boolean>;
   addedBy: string;
-  userId?: string;
+  userId?: string | null;
   avatar?: string;
   phoneNumber?: string;
   canBeRemoved?: boolean;
@@ -485,199 +508,422 @@ export async function deleteFamilyMembersByBabyFromDb(babyId: string) {
   }
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   V2 TRACKER LOG MIGRATION
+   ═══════════════════════════════════════════════════════════════════════════
+   The legacy per-baby log keys store shapes whose `type` field is NOT a
+   tracker id (FeedingLog.type = 'breast' | 'bottle' | …, PottyLog.type =
+   'pee' | 'poop' | …, SleepLog/MedicationLog have no `type` at all). The
+   generic v1 migration mapped entry.type → trackerId, which would have
+   filed those rows under 'breast', 'pee', 'unknown', etc. — unreadable by
+   the app, which queries 'feeding' / 'potty' / 'sleep' / 'medication' /
+   'growth' / 'milestone'.
+
+   This migration therefore maps each key prefix to its trackerId and field
+   layout EXPLICITLY. It is idempotent, and it also repairs rows that v1
+   already imported under a wrong trackerId. */
+
+interface LegacyLogSpec {
+  prefix: string;
+  trackerId: 'growth' | 'milestone' | 'sleep' | 'feeding' | 'potty' | 'medication';
+  build: (raw: any) => {
+    timestamp: number;
+    title: string;
+    data: Record<string, unknown>;
+    notes?: string;
+    photoUris?: string[];
+  } | null;
+}
+
+const LEGACY_LOG_SPECS: LegacyLogSpec[] = [
+  {
+    prefix: '@littleloom_growth_',
+    trackerId: 'growth',
+    build: (raw) => {
+      const ts = new Date(raw.date).getTime();
+      return {
+        timestamp: isNaN(ts) ? Date.now() : ts,
+        title: `📏 ${raw.type}: ${raw.value} ${raw.unit}`,
+        data: {
+          measurementType: raw.type,
+          value: raw.value,
+          unit: raw.unit,
+          date: raw.date,
+          recordedBy: raw.recordedBy,
+        },
+        notes: raw.notes,
+      };
+    },
+  },
+  {
+    prefix: '@littleloom_milestones_',
+    trackerId: 'milestone',
+    build: (raw) => {
+      const ts = new Date(raw.achievedAt).getTime();
+      return {
+        timestamp: isNaN(ts) ? Date.now() : ts,
+        title: raw.title || 'Milestone',
+        data: {
+          description: raw.description,
+          category: raw.category,
+          achievedAt: raw.achievedAt,
+          firstTime: raw.isFirstTime,
+          recordedBy: raw.recordedBy,
+          recordedByName: raw.recordedByName,
+        },
+        notes: raw.notes,
+        photoUris: raw.imageUrl ? [raw.imageUrl] : undefined,
+      };
+    },
+  },
+  {
+    prefix: '@littleloom_sleep_',
+    trackerId: 'sleep',
+    build: (raw) => {
+      const ts = new Date(raw.startTime).getTime();
+      return {
+        timestamp: isNaN(ts) ? Date.now() : ts,
+        title: '😴 Sleep',
+        data: {
+          startTime: raw.startTime,
+          endTime: raw.endTime,
+          duration: raw.duration,
+          quality: raw.quality,
+          location: raw.location,
+        },
+        notes: raw.notes,
+      };
+    },
+  },
+  {
+    prefix: '@littleloom_feeding_',
+    trackerId: 'feeding',
+    build: (raw) => {
+      const ts = new Date(raw.startTime).getTime();
+      return {
+        timestamp: isNaN(ts) ? Date.now() : ts,
+        title: '🍼 Feeding',
+        data: {
+          feedType: raw.type,
+          startTime: raw.startTime,
+          duration: raw.duration,
+          amount: raw.amount,
+          unit: raw.unit,
+          food: raw.food,
+        },
+        notes: raw.notes,
+      };
+    },
+  },
+  {
+    prefix: '@littleloom_potty_',
+    trackerId: 'potty',
+    build: (raw) => {
+      const ts = new Date(raw.timestamp).getTime();
+      return {
+        timestamp: isNaN(ts) ? Date.now() : ts,
+        title: '🚽 Potty',
+        data: {
+          pottyType: raw.type,
+          location: raw.location,
+          successful: raw.successful,
+          timestamp: raw.timestamp,
+        },
+        notes: raw.notes,
+      };
+    },
+  },
+  {
+    prefix: '@littleloom_medication_',
+    trackerId: 'medication',
+    build: (raw) => {
+      const ts = new Date(raw.timestamp).getTime();
+      return {
+        timestamp: isNaN(ts) ? Date.now() : ts,
+        title: `💊 ${raw.medicationName || 'Medication'}`,
+        data: {
+          medicationName: raw.medicationName,
+          dosage: raw.dosage,
+          reason: raw.reason,
+          givenBy: raw.givenBy,
+          timestamp: raw.timestamp,
+        },
+        notes: raw.notes,
+      };
+    },
+  },
+];
+
+export async function runTrackerLogMigration(): Promise<void> {
+  const flag = await AsyncStorage.getItem(LOG_MIGRATION_KEY);
+  if (flag === 'complete') return;
+
+  console.log('[Migration v2] Migrating per-baby logs → tracker_entries...');
+
+  const allKeys = await AsyncStorage.getAllKeys();
+  let migrated = 0;
+  let healed = 0;
+
+  for (const spec of LEGACY_LOG_SPECS) {
+    const keys = allKeys.filter(k => k.startsWith(spec.prefix));
+
+    for (const key of keys) {
+      const babyId = key.slice(spec.prefix.length);
+      if (!babyId) continue;
+
+      const json = await AsyncStorage.getItem(key);
+      if (!json) continue;
+
+      let rawList: any[];
+      try {
+        rawList = JSON.parse(json);
+      } catch (e) {
+        console.error(`[Migration v2] Failed to parse ${key}:`, e);
+        continue;
+      }
+      if (!Array.isArray(rawList)) continue;
+
+      for (const raw of rawList) {
+        if (!raw?.id) continue;
+        try {
+          const built = spec.build(raw);
+          if (!built) continue;
+
+          const existing = await getEntryByIdFromDb(raw.id);
+          if (!existing) {
+            await createEntryInDb({
+              id: raw.id,
+              trackerId: spec.trackerId,
+              babyId: raw.babyId || babyId,
+              timestamp: built.timestamp,
+              title: built.title,
+              data: built.data,
+              notes: built.notes,
+              photoUris: built.photoUris,
+            });
+            migrated++;
+          } else if (existing.trackerId !== spec.trackerId) {
+            /* Row exists but was filed under a wrong trackerId by the v1
+               generic mapping (e.g. 'breast', 'pee', 'unknown') — repair it
+               in place so the app can actually find it. */
+            await updateEntryInDb(raw.id, {
+              trackerId: spec.trackerId,
+              timestamp: built.timestamp,
+              title: built.title,
+              data: built.data as any,
+              notes: built.notes,
+            });
+            healed++;
+          }
+        } catch (e) {
+          console.error(`[Migration v2] Failed to migrate entry ${raw.id} from ${key}:`, e);
+        }
+      }
+    }
+  }
+
+  await AsyncStorage.setItem(LOG_MIGRATION_KEY, 'complete');
+  console.log(`[Migration v2] Complete! Migrated ${migrated} logs, repaired ${healed} mis-filed rows.`);
+}
+
 // ─── ONE-TIME MIGRATION RUNNER ───
 
 export async function runOneTimeMigration(): Promise<void> {
-  if (await isMigrationComplete()) return;
+  if (!(await isMigrationComplete())) {
 
-  console.log('[Migration] Starting AsyncStorage → Drizzle migration...');
+    console.log('[Migration] Starting AsyncStorage → Drizzle migration...');
 
-  // 1. Migrate babies
-  const babiesJson = await AsyncStorage.getItem('@littleloom_babies');
-  if (babiesJson) {
-    try {
-      const babyList = JSON.parse(babiesJson);
-      for (const baby of babyList) {
-        const existing = await getBabyByIdFromDb(baby.id);
-        if (!existing) {
-          await createBabyInDb({
-            id: baby.id,
-            name: baby.name,
-            avatar: baby.avatar,
-            dateOfBirth: baby.birthDate || baby.dateOfBirth,
-            gender: baby.gender === 'boy' ? 'male' : baby.gender === 'girl' ? 'female' : 'other',
-            bloodType: baby.bloodType,
-            medicalNotes: baby.medicalNotes,
-            parent1Id: baby.parent1Id,
-            parent2Id: baby.parent2Id,
-          });
+    // 1. Migrate babies
+    const babiesJson = await AsyncStorage.getItem('@littleloom_babies');
+    if (babiesJson) {
+      try {
+        const babyList = JSON.parse(babiesJson);
+        for (const baby of babyList) {
+          const existing = await getBabyByIdFromDb(baby.id);
+          if (!existing) {
+            await createBabyInDb({
+              id: baby.id,
+              name: baby.name,
+              avatar: baby.avatar,
+              dateOfBirth: baby.birthDate || baby.dateOfBirth,
+              gender: baby.gender === 'boy' ? 'male' : baby.gender === 'girl' ? 'female' : 'other',
+              bloodType: baby.bloodType,
+              medicalNotes: baby.medicalNotes,
+              parent1Id: baby.parent1Id,
+              parent2Id: baby.parent2Id,
+            });
+          }
         }
+        console.log(`[Migration] Migrated ${babyList.length} babies`);
+      } catch (e) {
+        console.error('[Migration] Babies migration failed:', e);
       }
-      console.log(`[Migration] Migrated ${babyList.length} babies`);
-    } catch (e) {
-      console.error('[Migration] Babies migration failed:', e);
     }
-  }
 
-  // 2. Migrate current baby
-  const currentBabyId = await AsyncStorage.getItem('@littleloom_current_baby');
-  if (currentBabyId) await setAppSetting('current_baby_id', currentBabyId);
+    // 2. Migrate current baby
+    const currentBabyId = await AsyncStorage.getItem('@littleloom_current_baby');
+    if (currentBabyId) await setAppSetting('current_baby_id', currentBabyId);
 
-  // 3. Migrate skipped flag
-  const hasSkipped = await AsyncStorage.getItem('@littleloom_has_skipped_baby');
-  if (hasSkipped) await setAppSetting('has_skipped_baby', hasSkipped);
+    // 3. Migrate skipped flag
+    const hasSkipped = await AsyncStorage.getItem('@littleloom_has_skipped_baby');
+    if (hasSkipped) await setAppSetting('has_skipped_baby', hasSkipped);
 
-  // 4. Migrate tracker entries from all activity keys
-  const allKeys = await AsyncStorage.getAllKeys();
-  const activityKeys = allKeys.filter(k => 
-    k.startsWith('@littleloom_activities_') || 
-    k.startsWith('@littleloom_entries_') ||
-    k.startsWith('@littleloom_growth_') ||
-    k.startsWith('@littleloom_milestones_') ||
-    k.startsWith('@littleloom_sleep_') ||
-    k.startsWith('@littleloom_feeding_') ||
-    k.startsWith('@littleloom_potty_') ||
-    k.startsWith('@littleloom_medication_')
-  );
-  
-  let entryCount = 0;
-  for (const key of activityKeys) {
-    const json = await AsyncStorage.getItem(key);
-    if (!json) continue;
-    try {
-      const entries = JSON.parse(json);
-      const babyId = key.split('_').pop() || '';
-      for (const entry of entries) {
-        if (!entry.id) continue;
-        const existing = await getEntryByIdFromDb(entry.id);
-        if (!existing) {
-          const trackerId = entry.trackerId || entry.type || 'unknown';
-          await createEntryInDb({
-            id: entry.id,
-            trackerId,
-            babyId: entry.babyId || babyId,
-            timestamp: entry.timestamp || Date.now(),
-            title: entry.title || 'Untitled',
-            data: entry.data || {},
-            notes: entry.notes || entry.details,
-            photoUris: entry.photoUris || (entry.photo ? [entry.photo] : undefined),
-            tags: entry.tags,
-            loggedBy: entry.loggedBy,
-            loggedByName: entry.loggedByName,
-            loggedByRole: entry.loggedByRole,
-          });
-          entryCount++;
+    // 4. Migrate tracker entries from generic activity buckets only.
+    //    growth/milestones/sleep/feeding/potty/medication keys are handled by
+    //    runTrackerLogMigration() with explicit per-type field mapping — their
+    //    raw `type` fields are NOT tracker ids, so the generic mapping below
+    //    would file them under the wrong trackerId.
+    const allKeys = await AsyncStorage.getAllKeys();
+    const activityKeys = allKeys.filter(k =>
+      k.startsWith('@littleloom_activities_') ||
+      k.startsWith('@littleloom_entries_')
+    );
+
+    let entryCount = 0;
+    for (const key of activityKeys) {
+      const json = await AsyncStorage.getItem(key);
+      if (!json) continue;
+      try {
+        const entries = JSON.parse(json);
+        const babyId = key.split('_').pop() || '';
+        for (const entry of entries) {
+          if (!entry.id) continue;
+          const existing = await getEntryByIdFromDb(entry.id);
+          if (!existing) {
+            const trackerId = entry.trackerId || entry.type || 'unknown';
+            await createEntryInDb({
+              id: entry.id,
+              trackerId,
+              babyId: entry.babyId || babyId,
+              timestamp: entry.timestamp || Date.now(),
+              title: entry.title || 'Untitled',
+              data: entry.data || {},
+              notes: entry.notes || entry.details,
+              photoUris: entry.photoUris || (entry.photo ? [entry.photo] : undefined),
+              tags: entry.tags,
+              loggedBy: entry.loggedBy,
+              loggedByName: entry.loggedByName,
+              loggedByRole: entry.loggedByRole,
+            });
+            entryCount++;
+          }
         }
+      } catch (e) {
+        console.error(`[Migration] Failed to migrate ${key}:`, e);
       }
-    } catch (e) {
-      console.error(`[Migration] Failed to migrate ${key}:`, e);
     }
-  }
-  console.log(`[Migration] Migrated ${entryCount} tracker entries`);
+    console.log(`[Migration] Migrated ${entryCount} tracker entries`);
 
-  // 5. Migrate app settings
-  const themeMode = await AsyncStorage.getItem('@littleloom_theme_v2');
-  if (themeMode) await setAppSetting('theme_mode', themeMode);
-  
-  const appearance = await AsyncStorage.getItem('@littleloom_appearance_v1');
-  if (appearance) await setAppSetting('appearance', appearance);
+    // 5. Migrate app settings
+    const themeMode = await AsyncStorage.getItem('@littleloom_theme_v2');
+    if (themeMode) await setAppSetting('theme_mode', themeMode);
 
-  const notifSettings = await AsyncStorage.getItem('@littleloom_notification_settings');
-  if (notifSettings) await setAppSetting('notification_settings', notifSettings);
+    const appearance = await AsyncStorage.getItem('@littleloom_appearance_v1');
+    if (appearance) await setAppSetting('appearance', appearance);
 
-  // 6. Migrate family members (guardians + parent2)
-  const guardiansKeys = allKeys.filter(k => k.startsWith('littleloom_guardians_'));
-  let familyCount = 0;
-  for (const key of guardiansKeys) {
-    const json = await AsyncStorage.getItem(key);
-    if (!json) continue;
-    try {
-      const members = JSON.parse(json);
-      const babyId = key.replace('littleloom_guardians_', '');
-      for (const member of members) {
-        if (!member.id) continue;
-        const existing = await getFamilyMemberByIdFromDb(member.id);
-        if (!existing) {
-          await createFamilyMemberInDb({
-            id: member.id,
-            babyId: member.babyId || babyId,
-            userId: member.userId || null,
-            email: member.email || '',
-            fullName: member.fullName || 'Unknown',
-            role: member.role === 'PARENT_1' ? 'parent1' 
-              : member.role === 'PARENT_2' ? 'parent2' 
-              : member.role === 'GUARDIAN' ? 'guardian' 
-              : 'viewer',
-            relationship: member.relationship || 'Guardian',
-            permissions: member.permissions || {},
-            addedBy: member.addedBy || '',
-            avatar: member.avatar,
-            phoneNumber: member.phoneNumber,
-            canBeRemoved: member.canBeRemoved ?? true,
-            notificationsEnabled: member.notificationsEnabled ?? true,
-            status: member.userId ? 'active' : 'pending',
-          });
-          familyCount++;
+    const notifSettings = await AsyncStorage.getItem('@littleloom_notification_settings');
+    if (notifSettings) await setAppSetting('notification_settings', notifSettings);
+
+    // 6. Migrate family members (guardians + parent2)
+    const guardiansKeys = allKeys.filter(k => k.startsWith('littleloom_guardians_'));
+    let familyCount = 0;
+    for (const key of guardiansKeys) {
+      const json = await AsyncStorage.getItem(key);
+      if (!json) continue;
+      try {
+        const members = JSON.parse(json);
+        const babyId = key.replace('littleloom_guardians_', '');
+        for (const member of members) {
+          if (!member.id) continue;
+          const existing = await getFamilyMemberByIdFromDb(member.id);
+          if (!existing) {
+            await createFamilyMemberInDb({
+              id: member.id,
+              babyId: member.babyId || babyId,
+              userId: member.userId || null,
+              email: member.email || '',
+              fullName: member.fullName || 'Unknown',
+              role: member.role === 'PARENT_1' ? 'parent1'
+                : member.role === 'PARENT_2' ? 'parent2'
+                : member.role === 'GUARDIAN' ? 'guardian'
+                : 'viewer',
+              relationship: member.relationship || 'Guardian',
+              permissions: member.permissions || {},
+              addedBy: member.addedBy || '',
+              avatar: member.avatar,
+              phoneNumber: member.phoneNumber,
+              canBeRemoved: member.canBeRemoved ?? true,
+              notificationsEnabled: member.notificationsEnabled ?? true,
+              status: member.userId ? 'active' : 'pending',
+            });
+            familyCount++;
+          }
         }
+      } catch (e) {
+        console.error(`[Migration] Failed to migrate family members from ${key}:`, e);
       }
-    } catch (e) {
-      console.error(`[Migration] Failed to migrate family members from ${key}:`, e);
     }
-  }
 
-  // 7. Migrate parent2 profile from SecureStore (best effort - may not exist)
-  try {
-    const parent2Str = await SecureStore.getItemAsync('littleloom_parent2_profile_secure');
-    if (parent2Str) {
-      const parent2Data = JSON.parse(parent2Str);
-      console.log('[Migration] Parent2 profile found in SecureStore (baby record already migrated)');
-    }
-  } catch {
-    // SecureStore may not be available in this context, that's OK
-  }
-  console.log(`[Migration] Migrated ${familyCount} family members`);
-
-  // 8. Migrate community profile data from AsyncStorage to app_settings
-  const communityKeys = [
-    'littleloom_community_profile',
-    'littleloom_username_registry',
-    'littleloom_community_username',
-    'littleloom_community_handle',
-    'littleloom_community_bio',
-    'littleloom_community_avatar',
-    'littleloom_community_display_name',
-    'littleloom_community_stats',
-    '@community_selected_topics',
-  ];
-  
-  let communityMigrated = 0;
-  for (const key of communityKeys) {
+    // 7. Migrate parent2 profile from SecureStore (best effort - may not exist)
     try {
-      const value = await AsyncStorage.getItem(key);
-      if (value !== null) {
-        await setAppSetting(key, value);
-        communityMigrated++;
+      const parent2Str = await SecureStore.getItemAsync('littleloom_parent2_profile_secure');
+      if (parent2Str) {
+        const parent2Data = JSON.parse(parent2Str);
+        console.log('[Migration] Parent2 profile found in SecureStore (baby record already migrated)');
       }
-    } catch (e) {
-      console.error(`[Migration] Failed to migrate community key ${key}:`, e);
+    } catch {
+      // SecureStore may not be available in this context, that's OK
     }
-  }
-  
-  const userTopicKeys = allKeys.filter(k => k.startsWith('@community_selected_topics_'));
-  for (const key of userTopicKeys) {
-    try {
-      const value = await AsyncStorage.getItem(key);
-      if (value !== null) {
-        await setAppSetting(key, value);
-        communityMigrated++;
-      }
-    } catch (e) {
-      console.error(`[Migration] Failed to migrate community key ${key}:`, e);
-    }
-  }
-  
-  console.log(`[Migration] Migrated ${communityMigrated} community settings`);
+    console.log(`[Migration] Migrated ${familyCount} family members`);
 
-  await markMigrationComplete();
-  console.log('[Migration] Complete!');
+    // 8. Migrate community profile data from AsyncStorage to app_settings
+    const communityKeys = [
+      'littleloom_community_profile',
+      'littleloom_username_registry',
+      'littleloom_community_username',
+      'littleloom_community_handle',
+      'littleloom_community_bio',
+      'littleloom_community_avatar',
+      'littleloom_community_display_name',
+      'littleloom_community_stats',
+      '@community_selected_topics',
+    ];
+
+    let communityMigrated = 0;
+    for (const key of communityKeys) {
+      try {
+        const value = await AsyncStorage.getItem(key);
+        if (value !== null) {
+          await setAppSetting(key, value);
+          communityMigrated++;
+        }
+      } catch (e) {
+        console.error(`[Migration] Failed to migrate community key ${key}:`, e);
+      }
+    }
+
+    const userTopicKeys = allKeys.filter(k => k.startsWith('@community_selected_topics_'));
+    for (const key of userTopicKeys) {
+      try {
+        const value = await AsyncStorage.getItem(key);
+        if (value !== null) {
+          await setAppSetting(key, value);
+          communityMigrated++;
+        }
+      } catch (e) {
+        console.error(`[Migration] Failed to migrate community key ${key}:`, e);
+      }
+    }
+
+    console.log(`[Migration] Migrated ${communityMigrated} community settings`);
+
+    await markMigrationComplete();
+    console.log('[Migration] Complete!');
+  }
+
+  /* Always attempt the v2 log migration — it has its own completion flag,
+     so it runs even on installs where v1 was already marked complete
+     (i.e. devices whose sleep/feeding/potty/medication logs were written
+     to AsyncStorage AFTER v1 ran, or were mis-filed by v1). */
+  await runTrackerLogMigration();
 }

@@ -5,6 +5,7 @@ import Animated, { FadeInUp } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 
 import { Achievement } from '../../hooks/';
+import { useCustomization } from '../../hooks/useCustomization';
 
 interface AchievementBadgeProps {
   achievement: Achievement;
@@ -15,6 +16,9 @@ interface AchievementBadgeProps {
 export const AchievementBadge: React.FC<AchievementBadgeProps> = ({ achievement, index, compact = false }) => {
   const { fullThemeColors, borderRadiusValue, fontSizeMultiplier } = useCustomization();
 
+  const rarityToTier: Record<string, string> = {
+    common: 'bronze', rare: 'silver', epic: 'gold', legendary: 'platinum',
+  };
   const tierColors: Record<string, [string, string]> = {
     bronze: ['#CD7F32', '#B87333'],
     silver: ['#C0C0C0', '#A8A8A8'],
@@ -22,7 +26,9 @@ export const AchievementBadge: React.FC<AchievementBadgeProps> = ({ achievement,
     platinum: ['#E5E4E2', '#B0B0B0'],
   };
 
-  const colors = tierColors[achievement.tier] || tierColors.bronze;
+  const tier = rarityToTier[achievement.rarity] || 'bronze';
+  const colors = tierColors[tier];
+  const isUnlocked = achievement.unlocked || !!achievement.unlockedAt;
 
   if (compact) {
     return (
@@ -64,7 +70,7 @@ export const AchievementBadge: React.FC<AchievementBadgeProps> = ({ achievement,
             </Text>
             {achievement.unlockedAt && (
               <View style={[styles.tierBadge, { backgroundColor: colors[0] }]}>
-                <Text style={styles.tierText}>{achievement.tier.toUpperCase()}</Text>
+                <Text style={styles.tierText}>{tier.toUpperCase()}</Text>
               </View>
             )}
           </View>
@@ -96,11 +102,11 @@ export const AchievementBadge: React.FC<AchievementBadgeProps> = ({ achievement,
       </View>
 
       {/* Reward */}
-      {achievement.reward && achievement.unlockedAt && (
+      {isUnlocked && (
         <View style={[styles.rewardBadge, { backgroundColor: `${colors[0]}15` }]}>
-          <Ionicons name="gift" size={14} color={colors[0]} />
+          <Ionicons name="star" size={14} color={colors[0]} />
           <Text style={[styles.rewardText, { color: colors[0] }]}>
-            Reward: {achievement.reward.value}
+            +{achievement.points} points
           </Text>
         </View>
       )}
