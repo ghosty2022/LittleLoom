@@ -1291,6 +1291,7 @@ const GlassHeader = React.memo(({
   onMessagePress,
   canInteract,
   isDark,
+  isSearchActive,
 }: {
   scrollY: Animated.SharedValue<number>;
   currentUser: any;
@@ -1301,6 +1302,7 @@ const GlassHeader = React.memo(({
   onMessagePress: () => void;
   canInteract: boolean;
   isDark: boolean;
+  isSearchActive: boolean;
 }) => {
   const headerSolid = useSharedValue(0);
 
@@ -1381,7 +1383,7 @@ const GlassHeader = React.memo(({
         <View style={styles.headerActions} pointerEvents="auto">
           <TouchableOpacity onPress={onSearchPress} style={styles.headerIconBtn} activeOpacity={0.7}>
             <View style={[styles.headerIconInner, { backgroundColor: isDark ? 'rgba(99,102,241,0.15)' : `${DS.primary}10` }]}>
-              <Ionicons name={showSearch ? 'close' : 'search'} size={20} color={isDark ? DS.primaryLight : DS.primary} />
+              <Ionicons name={isSearchActive ? 'close' : 'search'} size={20} color={isDark ? DS.primaryLight : DS.primary} />
             </View>
           </TouchableOpacity>
 
@@ -1859,6 +1861,7 @@ export default function CommunityScreen({ navigation }: Props) {
               scrollY={scrollY}
               currentUser={currentUser}
               unreadCount={unreadCount}
+              isSearchActive={showSearch}
               onAvatarPress={() => canInteract
                 ? navigation.navigate(ROUTES.EDIT_PROFILE)
                 : sweetAlert.alert('Sign In Required', 'Please sign in to access your profile', 'warning')}
