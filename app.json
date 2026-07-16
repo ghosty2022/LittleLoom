@@ -1,4 +1,3 @@
-
 {
   "expo": {
     "name": "LittleLoom",
@@ -86,6 +85,7 @@
     },
     "plugins": [
       "./plugins/withPackagingOptions.js",
+      "./plugins/withStripeFix.js",
       [
         "expo-build-properties",
         {
