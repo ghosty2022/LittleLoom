@@ -1037,7 +1037,7 @@ export default function FamilyChatListScreen({
     );
   };
 
-  const handleDeleteChat = () => {
+  const handleDeleteChat = async () => {
     if (!selectedChat) return;
 
     // Use a local state modal or confirm instead - showSweetAlert only supports toast style
@@ -1046,6 +1046,7 @@ export default function FamilyChatListScreen({
     setShowOptionsModal(false);
     setSelectedChat(null);
     showSweetAlert('success', 'Deleted', 'Chat has been removed');
+  };
 
   const handlePinChat = async () => {
     if (!selectedChat) return;

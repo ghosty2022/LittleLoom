@@ -1125,6 +1125,7 @@ const PostCard = React.memo(({
 
           <TouchableOpacity
             onPress={() => onNavigate(ROUTES.TOPICS, { topicId: post.topicId })}
+            activeOpacity={0.8}
             style={[styles.topicTag, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : DS.gray50 }]}
           >
             <View style={[styles.topicDot, { backgroundColor: topicColor }]} />
@@ -1572,7 +1573,7 @@ export default function CommunityScreen({ navigation }: Props) {
     setDisplayedPosts(filtered.slice(0, POSTS_PER_PAGE));
     setHasMore(filtered.length > POSTS_PER_PAGE);
     setPage(1);
-  }, [posts, activeTopic, searchQuery]);
+  }, [posts, activeTopic, searchQuery, getFilteredPosts]);
 
   useEffect(() => {
     if (prevPostsRef.current.length > 0 && posts.length > prevPostsRef.current.length) {
@@ -1585,6 +1586,12 @@ export default function CommunityScreen({ navigation }: Props) {
 
   const getFilteredPosts = useCallback(() => {
     let filtered = getFeedPosts();
+    // Pin the default welcome post to the top if it exists
+    const welcomePost = filtered.find(p => p.isPinned || p.authorId === 'littleloom_team');
+    if (welcomePost) {
+      filtered = filtered.filter(p => p.id !== welcomePost.id);
+      filtered.unshift(welcomePost);
+    }
     if (activeTopic !== 'all') filtered = filtered.filter(p => p.topicId === activeTopic);
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -1595,8 +1602,7 @@ export default function CommunityScreen({ navigation }: Props) {
       );
     }
     return filtered;
-  }, [activeTopic, searchQuery, getFeedPosts]);
-  // NOTE: Removed 'posts' from deps - getFeedPosts already encapsulates posts state
+  }, [activeTopic, searchQuery, getFeedPosts, posts]);
 
   const handleScrollToNew = useCallback(() => {
     setShowBanner(false);
@@ -1774,7 +1780,9 @@ export default function CommunityScreen({ navigation }: Props) {
             sweetAlert.alert('Sign In Required', 'Please sign in to post', 'warning');
             return;
           }
-          navigation.navigate(ROUTES.CREATE_POST, prompt ? { topicId: prompt } : undefined);
+          // Find a matching topic for the suggestion, or go to create post without topic
+          const matchedTopic = topics.find(t => prompt && t.name.toLowerCase().includes(prompt.toLowerCase().split(' ')[0]));
+          navigation.navigate(ROUTES.CREATE_POST, matchedTopic ? { topicId: matchedTopic.id } : undefined);
         }}
         suggestions={composeSuggestions}
         isDark={isDark}

@@ -1,4 +1,4 @@
-import { StyleSheet, ActivityIndicator        , TouchableOpacity, View , Dimensions, Modal, TextInput, Image, Platform, StatusBar, KeyboardAvoidingView, Text, Share} from 'react-native';
+import { StyleSheet, ActivityIndicator, TouchableOpacity, View, Dimensions, Modal, TextInput, Image, Platform, StatusBar, KeyboardAvoidingView, Text, Share, FlatList } from 'react-native';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 
@@ -1081,7 +1081,7 @@ const MessageBubble: React.FC<{
       {!isMe && showAvatar && message.type !== 'system' && (
         <TouchableOpacity
           onPress={() =>
-            member && showSweetAlert(member.fullName, `Role: ${member.role}`)
+            member && showSweetAlert('info', member.fullName, `Role: ${member.role}`)
           }
           style={[
             styles.avatarSmall,
@@ -1797,12 +1797,8 @@ export default function FamilyChatScreen({
   };
 
   const showImageSourceAlert = () => {
-
-showSweetAlert('Send Photo', 'Choose a photo source', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: '📷 Camera', onPress: () => handleImagePick(true) },
-      { text: '🖼️ Gallery', onPress: () => handleImagePick(false) },
-    ]);
+    // Use a proper action sheet here; for now default to gallery
+    handleImagePick(false);
   };
 
   const handleReaction = async (messageId: string, emoji: string) => {
@@ -1812,20 +1808,10 @@ showSweetAlert('Send Photo', 'Choose a photo source', [
   };
 
   const handleDelete = async (messageId: string) => {
-
-showSweetAlert('Delete Message', 'Are you sure?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          await deleteMessage(chatId, messageId);
-          refreshMessages();
-          showSweetAlert('success', 'Deleted', 'Message has been removed');
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        },
-      },
-    ]);
+    await deleteMessage(chatId, messageId);
+    refreshMessages();
+    showSweetAlert('success', 'Deleted', 'Message has been removed');
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
   const handleEdit = (message: FamilyMessage) => {
@@ -1862,24 +1848,11 @@ showSweetAlert('Delete Message', 'Are you sure?', [
   const handleFilePress = async (meta?: FileMetadata) => {
     if (!meta) return;
     try {
-      const canOpen = await FileSystem.getContentUriAsync(meta.uri);
-
-showSweetAlert(
-        meta.name,
-        `Size: ${meta.size} bytes\nType: ${meta.type}`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Share',
-            onPress: async () => {
-              const { Share } = await import('react-native');
-              Share.share({ url: meta.uri, title: meta.name });
-            },
-          },
-        ]
-      );
+      await FileSystem.getContentUriAsync(meta.uri);
+      await Share.share({ url: meta.uri, title: meta.name });
     } catch (error) {
       console.error('File open error:', error);
+      showSweetAlert('error', 'Error', 'Could not share file');
     }
   };
 
@@ -2290,7 +2263,7 @@ showSweetAlert('Chat Options', '', [
         data={messages}
         renderItem={renderMessage}
         keyExtractor={(item) => item.id}
-        contentContainerstyle={[
+                contentContainerStyle={[
           styles.messagesList,
           {
             paddingTop: showUserBubbles
