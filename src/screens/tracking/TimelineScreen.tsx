@@ -173,18 +173,17 @@ const GlassCard = ({ children, style, onPress, active = false }: { children: Rea
   return (
     <Wrapper onPress={onPress} activeOpacity={onPress ? 0.85 : 1} style={[
       styles.glassCard,
-      active && { borderColor: theme.primary, borderWidth: 2 },
+      active && { borderColor: theme.primary, borderWidth: 1.5 },
       style
     ]}>
       <LinearGradient
         colors={theme.isDark 
-          ? ['rgba(45,45,60,0.85)', 'rgba(35,35,50,0.65)'] 
-          : ['rgba(255,255,255,0.92)', 'rgba(250,250,255,0.75)']}
+          ? ['rgba(55,55,75,0.60)', 'rgba(40,40,58,0.45)'] 
+          : ['rgba(255,255,255,0.75)', 'rgba(248,250,255,0.55)']}
         style={StyleSheet.absoluteFill}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       />
-      <View style={[styles.glassBorder, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.5)' }]} />
       <View style={styles.glassContent}>{children}</View>
     </Wrapper>
   );
@@ -1770,47 +1769,50 @@ export default function EnhancedTimelineScreen() {
                                 <TouchableOpacity
                                   style={styles.eventCardContainer}
                                   onPress={() => handleEventPress(event)}
-                                  activeOpacity={0.9}
+                                  activeOpacity={0.85}
                                 >
-                                  <View style={[styles.timelineEntryCard, { borderRadius: borderRadiusValue, borderColor: theme.surface.border }]}>
+                                  <View style={[
+                                    styles.timelineCard,
+                                    { borderRadius: borderRadiusValue, borderColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }
+                                  ]}>
                                     <LinearGradient
-                                      colors={theme.isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.85)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.92)']}
+                                      colors={theme.isDark ? ['rgba(55,55,75,0.50)', 'rgba(42,42,60,0.35)'] : ['rgba(255,255,255,0.80)', 'rgba(250,252,255,0.60)']}
                                       style={StyleSheet.absoluteFill}
                                       start={{ x: 0, y: 0 }}
                                       end={{ x: 1, y: 1 }}
                                     />
                                     
-                                    <View style={styles.timelineEntryContent}>
-                                      <View style={styles.timelineEntryHeader}>
-                                        <View style={[styles.timelineEntryIconBg, { backgroundColor: `${tracker.gradient?.[0] || tracker.color || theme.primary}12` }]}>
-                                          <Text style={styles.timelineEntryEmoji}>{tracker.emoji}</Text>
+                                    <View style={styles.timelineCardContent}>
+                                      <View style={styles.timelineCardHeader}>
+                                        <View style={[styles.timelineIconBg, { backgroundColor: `${tracker.gradient?.[0] || tracker.color || theme.primary}10` }]}>
+                                          <Text style={styles.timelineEmoji}>{tracker.emoji}</Text>
                                         </View>
-                                        <View style={styles.timelineEntryInfo}>
-                                          <Text style={[styles.timelineEntryTitle, { color: theme.text.primary }]} numberOfLines={1}>{event?.title || 'Entry'}</Text>
-                                          <Text style={[styles.timelineEntryTime, { color: theme.text.secondary }]}>
+                                        <View style={styles.timelineCardInfo}>
+                                          <Text style={[styles.timelineCardTitle, { color: theme.text.primary }]} numberOfLines={1}>{event?.title || 'Entry'}</Text>
+                                          <Text style={[styles.timelineCardActor, { color: theme.text.secondary }]}>
                                             {event?.timestamp ? format(event.timestamp, 'MMM d, h:mm a') : ''}
                                             {event?.loggedByName ? ` • by ${event.loggedByName}` : ''}
                                           </Text>
                                         </View>
-                                        <View style={[styles.timelineEntryTypeBadge, { backgroundColor: `${tracker.gradient?.[0] || tracker.color || theme.primary}10` }]}>
-                                          <Text style={[styles.timelineEntryTypeText, { color: tracker.gradient?.[0] || tracker.color || theme.primary }]}>{tracker.name}</Text>
+                                        <View style={[styles.timelineTypeBadge, { backgroundColor: `${tracker.gradient?.[0] || tracker.color || theme.primary}08` }]}>
+                                          <Text style={[styles.timelineTypeText, { color: tracker.gradient?.[0] || tracker.color || theme.primary }]}>{tracker.name}</Text>
                                         </View>
                                       </View>
                                       
                                       {event?.notes && (
-                                        <Text style={[styles.timelineEntryNotes, { color: theme.text.secondary }]} numberOfLines={2}>
+                                        <Text style={[styles.timelineCardDesc, { color: theme.text.secondary }]} numberOfLines={2}>
                                           {event.notes}
                                         </Text>
                                       )}
                                       
-                                      <View style={styles.timelineEntryActions}>
-                                        <TouchableOpacity style={[styles.timelineEntryActionBtn, { backgroundColor: `${theme.primary}08` }]} onPress={() => handleEditEvent(event)}>
-                                          <Ionicons name="create-outline" size={16} color={theme.primary} />
-                                          <Text style={[styles.timelineEntryActionText, { color: theme.primary }]}>Edit</Text>
+                                      <View style={styles.timelineCardActions}>
+                                        <TouchableOpacity style={[styles.timelineActionBtn, { backgroundColor: `${theme.primary}06` }]} onPress={() => handleEditEvent(event)}>
+                                          <Ionicons name="create-outline" size={14} color={theme.primary} />
+                                          <Text style={[styles.timelineActionText, { color: theme.primary }]}>Edit</Text>
                                         </TouchableOpacity>
-                                        <TouchableOpacity style={[styles.timelineEntryActionBtn, { backgroundColor: '#ef444408' }]} onPress={() => handleDeleteEvent(event)}>
-                                          <Ionicons name="trash-outline" size={16} color="#ef4444" />
-                                          <Text style={[styles.timelineEntryActionText, { color: '#ef4444' }]}>Delete</Text>
+                                        <TouchableOpacity style={[styles.timelineActionBtn, { backgroundColor: '#ef444406' }]} onPress={() => handleDeleteEvent(event)}>
+                                          <Ionicons name="trash-outline" size={14} color="#ef4444" />
+                                          <Text style={[styles.timelineActionText, { color: '#ef4444' }]}>Delete</Text>
                                         </TouchableOpacity>
                                       </View>
                                     </View>
@@ -2264,8 +2266,8 @@ const styles = StyleSheet.create({
     borderRadius: DESIGN.radius.lg,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    ...DESIGN.shadow.md,
+    borderColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: 'transparent',
     marginHorizontal: DESIGN.spacing.lg,
     marginBottom: DESIGN.spacing.lg,
   },
@@ -2600,17 +2602,80 @@ const styles = StyleSheet.create({
   timeText: { fontSize: 12, fontWeight: '700' },
   timelineLine: { width: 2, flex: 1, marginTop: 4 },
   eventCardContainer: { flex: 1, paddingBottom: 16 },
-  eventCard: { flexDirection: 'row', alignItems: 'center', padding: 14, borderWidth: 1, gap: 12 },
-  eventIconContainer: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  eventIcon: { fontSize: 20 },
-  eventContent: { flex: 1, gap: 2 },
-  eventTitle: { fontSize: 15, fontWeight: '700' },
-  eventSubtitle: { fontSize: 13, lineHeight: 18, marginTop: 2 },
-  eventMeta: { flexDirection: 'row', gap: 8, marginTop: 4 },
-  eventTime: { fontSize: 11, fontWeight: '500' },
-  eventAuthor: { fontSize: 11, fontWeight: '500' },
-  eventActions: { flexDirection: 'row', gap: 4 },
-  actionButton: { padding: 6 },
+  
+  // Soft FamilySharing-style timeline cards (NO inner shadows)
+  timelineCard: {
+    flex: 1,
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
+  timelineCardContent: {
+    padding: 14,
+    gap: 8,
+  },
+  timelineCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  timelineIconBg: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  timelineEmoji: {
+    fontSize: 18,
+  },
+  timelineCardInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  timelineCardTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+  },
+  timelineCardActor: {
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  timelineTypeBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  timelineTypeText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  timelineCardDesc: {
+    fontSize: 12,
+    fontWeight: '500',
+    lineHeight: 17,
+    marginLeft: 46,
+  },
+  timelineCardActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+    marginLeft: 46,
+  },
+  timelineActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  timelineActionText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
 
   // ── Achievements Tab ──
   section: { marginBottom: DESIGN.spacing.xl },
