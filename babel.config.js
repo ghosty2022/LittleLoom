@@ -1,8 +1,13 @@
+// babel.config.js
 module.exports = function (api) {
   api.cache(true);
 
   return {
-    presets: ['babel-preset-expo'],
+    presets: [
+      ['babel-preset-expo', {
+        jsxRuntime: 'automatic',  // ← ADD THIS
+      }],
+    ],
     plugins: [
       ['module-resolver', {
         root: ['./src'],
@@ -11,9 +16,7 @@ module.exports = function (api) {
         },
         extensions: ['.ts', '.tsx', '.js', '.jsx', '.json'],
       }],
-      // react-native-reanimated/plugin MUST BE LAST — it inserts worklet directives
-      // and must run after all other transforms
-      'react-native-reanimated/plugin',
+      'react-native-reanimated/plugin',  // MUST BE LAST
     ],
   };
 };
