@@ -1741,7 +1741,8 @@ export default function UniversalTrackerHubScreen() {
   }, [navigation]);
 
   const handleEntryPress = useCallback((entry: any) => {
-    navigation.navigate('AddEntry', { viewMode: true, eventId: entry.id, trackerId: entry.trackerId });
+    if (!entry?.id) return;
+    navigation.navigate('EntryDetail', { entryId: entry.id, trackerId: entry.trackerId });
   }, [navigation]);
 
   const handleInsightPress = useCallback((insight: SmartInsight) => {

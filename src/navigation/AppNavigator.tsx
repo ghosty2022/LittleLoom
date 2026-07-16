@@ -37,6 +37,7 @@ import AddEntryScreen from '../screens/tracking/AddEntryScreen';
 import AchievementsScreen from '../screens/settings/AchievementsScreen';
 import GrowthDashboardScreen from '../screens/tracking/GrowthDashboardScreen';
 import InsightsScreen from '../screens/tracking/InsightsScreen';
+import EntryDetailScreen from '../screens/tracking/EntryDetailScreen';
 import TrackerRemindersScreen from '../screens/tracking/TrackerRemindersScreen';
 import FamilySharingScreen from '../screens/family/FamilySharingScreen';
 import FamilyDashboardScreen from '../screens/baby/FamilyDashboardScreen';
@@ -87,6 +88,7 @@ const MAIN_FLOW_SCREENS = new Set([
   'Profile', 'SwitchBaby', 'EditProfile', 'EditGuardian',
   'Gallery', 'FamilyChatList', 'FamilyChat',
   'AddEntry', 'Achievements', 'GrowthDashboard', 'Insights', 'TrackerReminders', 'FamilySharing', 'SoundMixer', 'Customize',
+  'EntryDetail',
   'BiometricSetup', 'SecurityCenter',
   'BackupRestore', 'HelpCenter', 'ContactSupport', 'PrivacyPolicy', 'TermsOfService', 'About',
   'LanguageSettings', 'UnitSettings',
@@ -464,6 +466,7 @@ function NavigationContent({
 
         {/* MAIN SCREENS — NO HEADERS by default */}
         <Stack.Screen name="Timeline" component={TimelineScreen} />
+        <Stack.Screen name="EntryDetail" component={EntryDetailScreen} />
         <Stack.Screen name="PottyTracker" component={TimelineScreen} />
         <Stack.Screen name="FeedTracker" component={TimelineScreen} />
         <Stack.Screen name="SleepTracker" component={TimelineScreen} />

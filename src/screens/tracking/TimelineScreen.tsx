@@ -1336,6 +1336,10 @@ export default function EnhancedTimelineScreen() {
       );
     }
 
+    if (selectedDate) {
+      filtered = filtered.filter(e => e?.timestamp && isSameDay(new Date(e.timestamp), selectedDate));
+    }
+
     const groups: { title: string; date: Date; events: TrackerEntry[] }[] = [];
     let currentGroup: typeof groups[0] | null = null;
 
@@ -1350,7 +1354,29 @@ export default function EnhancedTimelineScreen() {
     });
 
     return groups;
-  }, [allEntries, selectedFilter, searchQuery]);
+  }, [allEntries, selectedFilter, searchQuery, selectedDate]);
+
+  // ── Calendar day-view: per-day entry counts + month grid cells ──
+  const entryCountByDay = useMemo(() => {
+    const map = new Map<string, number>();
+    allEntries.forEach(e => {
+      if (!e?.timestamp) return;
+      const key = format(new Date(e.timestamp), 'yyyy-MM-dd');
+      map.set(key, (map.get(key) || 0) + 1);
+    });
+    return map;
+  }, [allEntries]);
+
+  const calendarCells = useMemo((): (Date | null)[] => {
+    const y = calendarMonth.getFullYear();
+    const m = calendarMonth.getMonth();
+    const firstWeekday = new Date(y, m, 1).getDay();
+    const daysInMonth = new Date(y, m + 1, 0).getDate();
+    const cells: (Date | null)[] = [];
+    for (let i = 0; i < firstWeekday; i++) cells.push(null);
+    for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(y, m, d));
+    return cells;
+  }, [calendarMonth]);
 
   const stats = useMemo(() => {
     const today = new Date();
@@ -1521,6 +1547,14 @@ export default function EnhancedTimelineScreen() {
 
           <View style={styles.headerActions}>
             <TouchableOpacity
+              onPress={() => { triggerHaptic('light'); setCalendarMonth(selectedDate || new Date()); setShowCalendar(true); }}
+              style={[styles.headerButton, { borderRadius: borderRadiusValue }]}
+            >
+              <BlurView intensity={theme.isDark ? 40 : 80} style={StyleSheet.absoluteFill} tint={theme.isDark ? 'dark' : 'light'} />
+              <Ionicons name="calendar-outline" size={22} color={selectedDate ? theme.primary : theme.text.primary} />
+              {selectedDate && <View style={[styles.calendarActiveDot, { backgroundColor: theme.primary }]} />}
+            </TouchableOpacity>
+            <TouchableOpacity
               onPress={() => setShowSearch(!showSearch)}
               style={[styles.headerButton, { borderRadius: borderRadiusValue }]}
             >
@@ -1665,6 +1699,19 @@ export default function EnhancedTimelineScreen() {
               onPress={() => navigation.navigate('Analytics')} 
             />
 
+            {/* Active date filter banner */}
+            {selectedDate && (
+              <Animated.View entering={shouldReduceMotion ? undefined : FadeInDown} style={[styles.dateFilterBanner, { backgroundColor: `${theme.primary}15`, borderColor: `${theme.primary}40`, borderRadius: borderRadiusValue }]}>
+                <Ionicons name="calendar" size={16} color={theme.primary} />
+                <Text style={[styles.dateFilterText, { color: theme.primary }]}>
+                  {format(selectedDate, 'EEEE, MMM d, yyyy')}
+                </Text>
+                <TouchableOpacity onPress={() => { triggerHaptic('light'); setSelectedDate(null); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="close-circle" size={18} color={theme.primary} />
+                </TouchableOpacity>
+              </Animated.View>
+            )}
+
             {/* Timeline Events */}
             <View style={styles.timelineContainer}>
               {groupedEvents.length === 0 ? (
@@ -1673,10 +1720,10 @@ export default function EnhancedTimelineScreen() {
                     <Ionicons name="document-text-outline" size={64} color={theme.text.muted} />
                   </View>
                   <Text style={[styles.emptyTitle, { color: theme.text.primary, fontSize: 22 * fontSizeMultiplier }]}>
-                    {searchQuery ? 'No matches found' : 'No entries yet'}
+                    {searchQuery ? 'No matches found' : selectedDate ? 'No entries this day' : 'No entries yet'}
                   </Text>
                   <Text style={[styles.emptySubtitle, { color: theme.text.secondary, fontSize: 15 * fontSizeMultiplier }]}>
-                    {searchQuery ? 'Try adjusting your search' : "Start tracking with the + button"}
+                    {searchQuery ? 'Try adjusting your search' : selectedDate ? 'Tap the banner above to clear the date' : "Start tracking with the + button"}
                   </Text>
                 </Animated.View>
               ) : (
@@ -1997,6 +2044,78 @@ export default function EnhancedTimelineScreen() {
         currentBabyName={currentBaby?.name}
         currentBabyAvatar={currentBaby?.avatar}
       />
+
+      {/* Calendar Day-View Modal */}
+      <Modal visible={showCalendar} transparent animationType="fade" onRequestClose={() => setShowCalendar(false)}>
+        <View style={styles.calendarModalOverlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setShowCalendar(false)} />
+          <View style={[styles.calendarModalCard, { backgroundColor: theme.surface.card, borderColor: theme.surface.border, borderRadius: borderRadiusValue * 1.5 }]}>
+            <View style={styles.calendarModalHeader}>
+              <TouchableOpacity onPress={() => { triggerHaptic('light'); setCalendarMonth(addMonths(calendarMonth, -1)); }} style={styles.calendarNavBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="chevron-back" size={22} color={theme.text.primary} />
+              </TouchableOpacity>
+              <Text style={[styles.calendarModalTitle, { color: theme.text.primary }]}>
+                {format(calendarMonth, 'MMMM yyyy')}
+              </Text>
+              <TouchableOpacity onPress={() => { triggerHaptic('light'); setCalendarMonth(addMonths(calendarMonth, 1)); }} style={styles.calendarNavBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="chevron-forward" size={22} color={theme.text.primary} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.calendarWeekRow}>
+              {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
+                <Text key={`${d}-${i}`} style={[styles.calendarWeekLabel, { color: theme.text.muted }]}>{d}</Text>
+              ))}
+            </View>
+
+            <View style={styles.calendarGrid}>
+              {calendarCells.map((day, idx) => {
+                if (!day) return <View key={`empty-${idx}`} style={styles.calendarCell} />;
+                const key = format(day, 'yyyy-MM-dd');
+                const count = entryCountByDay.get(key) || 0;
+                const isSelected = !!selectedDate && isSameDay(day, selectedDate);
+                const isToday = isSameDay(day, new Date());
+                return (
+                  <TouchableOpacity
+                    key={key}
+                    style={styles.calendarCell}
+                    activeOpacity={0.7}
+                    onPress={() => { triggerHaptic('light'); setSelectedDate(day); setShowCalendar(false); }}
+                  >
+                    <View style={[
+                      styles.calendarDayCircle,
+                      isSelected && { backgroundColor: theme.primary },
+                      !isSelected && isToday && { borderWidth: 1.5, borderColor: theme.primary },
+                    ]}>
+                      <Text style={[styles.calendarDayText, { color: isSelected ? '#fff' : theme.text.primary }]}>
+                        {day.getDate()}
+                      </Text>
+                    </View>
+                    {count > 0 && (
+                      <View style={[styles.calendarCountDot, { backgroundColor: isSelected ? '#fff' : theme.primary }]} />
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <View style={styles.calendarFooter}>
+              <TouchableOpacity
+                onPress={() => { triggerHaptic('light'); setSelectedDate(null); setShowCalendar(false); }}
+                style={[styles.calendarFooterBtn, { borderRadius: borderRadiusValue }]}
+              >
+                <Text style={[styles.calendarFooterBtnText, { color: theme.text.secondary }]}>Clear</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => { triggerHaptic('light'); const t = new Date(); setSelectedDate(t); setCalendarMonth(t); setShowCalendar(false); }}
+                style={[styles.calendarFooterBtn, { backgroundColor: theme.primary, borderRadius: borderRadiusValue }]}
+              >
+                <Text style={[styles.calendarFooterBtnText, { color: '#fff' }]}>Today</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -2457,6 +2576,26 @@ const styles = StyleSheet.create({
   analyticsEmoji: { fontSize: 22 },
   analyticsCount: { fontSize: 20, fontWeight: '800' },
   analyticsLabel: { fontSize: 11, fontWeight: '600' },
+
+  // ── Calendar Day-View ──
+  calendarActiveDot: { position: 'absolute', top: 8, right: 8, width: 8, height: 8, borderRadius: 4 },
+  dateFilterBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 20, marginBottom: 12, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1 },
+  dateFilterText: { flex: 1, fontSize: 14, fontWeight: '700' },
+  calendarModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  calendarModalCard: { width: '100%', maxWidth: 380, padding: 16, borderWidth: 1 },
+  calendarModalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  calendarModalTitle: { fontSize: 17, fontWeight: '800' },
+  calendarNavBtn: { width: 36, height: 36, justifyContent: 'center', alignItems: 'center' },
+  calendarWeekRow: { flexDirection: 'row', marginBottom: 6 },
+  calendarWeekLabel: { width: `${100 / 7}%`, textAlign: 'center', fontSize: 12, fontWeight: '700' },
+  calendarGrid: { flexDirection: 'row', flexWrap: 'wrap' },
+  calendarCell: { width: `${100 / 7}%`, aspectRatio: 1, justifyContent: 'center', alignItems: 'center' },
+  calendarDayCircle: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
+  calendarDayText: { fontSize: 14, fontWeight: '600' },
+  calendarCountDot: { position: 'absolute', bottom: 6, width: 5, height: 5, borderRadius: 2.5 },
+  calendarFooter: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 14 },
+  calendarFooterBtn: { paddingHorizontal: 18, paddingVertical: 10 },
+  calendarFooterBtnText: { fontSize: 14, fontWeight: '700' },
 
   // ── FAB ──
   fabContainer: { position: 'absolute', zIndex: 100 },
