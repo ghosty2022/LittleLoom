@@ -1378,6 +1378,12 @@ export default function EnhancedTimelineScreen() {
     return cells;
   }, [calendarMonth]);
 
+  // ── Day-view: entries for the date currently highlighted in the calendar ──
+  const selectedDayEntries = useMemo(() => {
+    if (!selectedDate) return [] as TrackerEntry[];
+    return allEntries.filter(e => e?.timestamp && isSameDay(new Date(e.timestamp), selectedDate));
+  }, [allEntries, selectedDate]);
+
   const stats = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -1696,7 +1702,7 @@ export default function EnhancedTimelineScreen() {
             <AIPatternPredictor 
               entries={allEntries} 
               theme={theme} 
-              onPress={() => navigation.navigate('Analytics')} 
+              onPress={() => handleTabChange('analytics')} 
             />
 
             {/* Active date filter banner */}
@@ -2080,7 +2086,7 @@ export default function EnhancedTimelineScreen() {
                     key={key}
                     style={styles.calendarCell}
                     activeOpacity={0.7}
-                    onPress={() => { triggerHaptic('light'); setSelectedDate(day); setShowCalendar(false); }}
+                    onPress={() => { triggerHaptic('light'); setSelectedDate(day); }}
                   >
                     <View style={[
                       styles.calendarDayCircle,
@@ -2099,18 +2105,80 @@ export default function EnhancedTimelineScreen() {
               })}
             </View>
 
+            {/* ── Day view: entries for the highlighted date — tap any row to open EntryDetail ── */}
+            <View style={[styles.calendarDayView, { borderTopColor: theme.surface.border }]}>
+              <View style={styles.calendarDayViewHeader}>
+                <Ionicons name="list-outline" size={14} color={theme.primary} />
+                <Text style={[styles.calendarDayViewTitle, { color: theme.text.primary }]}>
+                  {selectedDate ? format(selectedDate, 'EEEE, MMM d') : 'Tap a day'}
+                </Text>
+                {!!selectedDate && (
+                  <View style={[styles.calendarDayViewCount, { backgroundColor: `${theme.primary}15` }]}>
+                    <Text style={[styles.calendarDayViewCountText, { color: theme.primary }]}>{selectedDayEntries.length}</Text>
+                  </View>
+                )}
+              </View>
+              <ScrollView style={styles.calendarDayViewList} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+                {!selectedDate ? (
+                  <Text style={[styles.calendarDayViewEmpty, { color: theme.text.muted }]}>
+                    Pick a date above to preview that day's entries.
+                  </Text>
+                ) : selectedDayEntries.length === 0 ? (
+                  <Text style={[styles.calendarDayViewEmpty, { color: theme.text.muted }]}>
+                    No entries logged this day.
+                  </Text>
+                ) : (
+                  selectedDayEntries.map((e) => {
+                    const t = getTracker(e.trackerId);
+                    const c = t?.gradient?.[0] || t?.color || theme.primary;
+                    return (
+                      <TouchableOpacity
+                        key={e.id}
+                        style={styles.calendarDayViewRow}
+                        activeOpacity={0.75}
+                        onPress={() => {
+                          triggerHaptic('light');
+                          setShowCalendar(false);
+                          setTimeout(() => navigation.navigate('EntryDetail', { entryId: e.id, trackerId: e.trackerId }), 60);
+                        }}
+                      >
+                        <View style={[styles.calendarDayViewEmoji, { backgroundColor: `${c}15` }]}>
+                          <Text style={styles.calendarDayViewEmojiText}>{t?.emoji || '📋'}</Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.calendarDayViewRowTitle, { color: theme.text.primary }]} numberOfLines={1}>
+                            {e.title || t?.name || 'Entry'}
+                          </Text>
+                          <Text style={[styles.calendarDayViewRowMeta, { color: theme.text.muted }]}>
+                            {format(new Date(e.timestamp), 'h:mm a')}{e.loggedByName ? ` • ${e.loggedByName}` : ''}
+                          </Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={14} color={theme.text.muted} />
+                      </TouchableOpacity>
+                    );
+                  })
+                )}
+              </ScrollView>
+            </View>
+
             <View style={styles.calendarFooter}>
               <TouchableOpacity
-                onPress={() => { triggerHaptic('light'); setSelectedDate(null); setShowCalendar(false); }}
+                onPress={() => { triggerHaptic('light'); setSelectedDate(null); }}
                 style={[styles.calendarFooterBtn, { borderRadius: borderRadiusValue }]}
               >
                 <Text style={[styles.calendarFooterBtnText, { color: theme.text.secondary }]}>Clear</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={() => { triggerHaptic('light'); const t = new Date(); setSelectedDate(t); setCalendarMonth(t); setShowCalendar(false); }}
+                onPress={() => { triggerHaptic('light'); const t = new Date(); setSelectedDate(t); setCalendarMonth(t); }}
+                style={[styles.calendarFooterBtn, { borderRadius: borderRadiusValue }]}
+              >
+                <Text style={[styles.calendarFooterBtnText, { color: theme.text.secondary }]}>Today</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => { triggerHaptic('light'); setShowCalendar(false); }}
                 style={[styles.calendarFooterBtn, { backgroundColor: theme.primary, borderRadius: borderRadiusValue }]}
               >
-                <Text style={[styles.calendarFooterBtnText, { color: '#fff' }]}>Today</Text>
+                <Text style={[styles.calendarFooterBtnText, { color: '#fff' }]}>Done</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -2596,6 +2664,18 @@ const styles = StyleSheet.create({
   calendarFooter: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 14 },
   calendarFooterBtn: { paddingHorizontal: 18, paddingVertical: 10 },
   calendarFooterBtnText: { fontSize: 14, fontWeight: '700' },
+  calendarDayView: { marginTop: 14, borderTopWidth: 1, paddingTop: 10 },
+  calendarDayViewHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
+  calendarDayViewTitle: { flex: 1, fontSize: 14, fontWeight: '800' },
+  calendarDayViewCount: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 },
+  calendarDayViewCountText: { fontSize: 11, fontWeight: '800' },
+  calendarDayViewList: { maxHeight: 140 },
+  calendarDayViewEmpty: { fontSize: 13, fontWeight: '500', paddingVertical: 14, textAlign: 'center' },
+  calendarDayViewRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
+  calendarDayViewEmoji: { width: 32, height: 32, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+  calendarDayViewEmojiText: { fontSize: 15 },
+  calendarDayViewRowTitle: { fontSize: 14, fontWeight: '700' },
+  calendarDayViewRowMeta: { fontSize: 11, fontWeight: '500', marginTop: 1 },
 
   // ── FAB ──
   fabContainer: { position: 'absolute', zIndex: 100 },

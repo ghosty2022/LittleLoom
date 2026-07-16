@@ -230,6 +230,21 @@ const getDateKey = (date: Date | string | number): string => {
 const BABY_ACTIVITIES_KEY = (babyId: string) => `@littleloom_activities_${babyId}`;
 const BABY_CURRENT_KEY = '@littleloom_current_baby';
 const TRACKER_ENTRIES_GALLERY_KEY = '@littleloom_tracker_entries'; // For gallery photo sync
+const EDIT_HISTORY_KEY = '@littleloom_edit_history_v1'; // Previous versions of edited entries
+
+/* A snapshot of an entry's previous state, captured just before each edit.
+   Consumed by EntryDetailScreen's "Edited history" section. */
+export interface EntryEditVersion {
+  editedAt: number;          // when the edit was made
+  editedBy?: string;         // user id who made the edit
+  editedByName: string;      // display name who made the edit
+  prevTitle?: string;
+  prevNotes?: string;
+  prevTimestamp: number;
+  prevData?: Record<string, unknown>;
+  prevPhotoUris?: string[];
+  prevTags?: string[];
+}
 
 /* ------------------------------------------------------------------ */
 /*  NEW: Smart Suggestion Engine                                       */
@@ -1080,6 +1095,26 @@ Alert.alert('Missing Information', `Please fill in: ${missingFields.join(', ')}`
     }
 
     try {
+      // ── Snapshot the previous version for "Edited history" ──
+      try {
+        const rawHistory = await AsyncStorage.getItem(EDIT_HISTORY_KEY);
+        const historyStore: Record<string, EntryEditVersion[]> = rawHistory ? JSON.parse(rawHistory) : {};
+        const versionList = Array.isArray(historyStore[entryId]) ? historyStore[entryId] : [];
+        versionList.push({
+          editedAt: Date.now(),
+          editedBy: userProfile?.id,
+          editedByName: userProfile?.fullName || 'Unknown',
+          prevTitle: entry.title,
+          prevNotes: entry.notes,
+          prevTimestamp: entry.timestamp,
+          prevData: entry.data as Record<string, unknown>,
+          prevPhotoUris: entry.photoUris,
+          prevTags: entry.tags,
+        });
+        historyStore[entryId] = versionList.slice(-20); // keep last 20 versions per entry
+        await AsyncStorage.setItem(EDIT_HISTORY_KEY, JSON.stringify(historyStore));
+      } catch {}
+
       await updateEntryInDb(entryId, {
         ...updates,
         data: updates.data,

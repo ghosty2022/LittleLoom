@@ -91,7 +91,7 @@ const SHADOW = {
   none: { shadowOpacity: 0, elevation: 0 },
   xs: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.03, shadowRadius: 2, elevation: 1 },
   sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 6, elevation: 2 },
-  md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 12, elevation: 3 },
+  md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 16, elevation: 4 },
   lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.07, shadowRadius: 24, elevation: 6 },
   xl: { shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.1, shadowRadius: 32, elevation: 10 },
 };
@@ -248,8 +248,8 @@ const GlassCard = memo(({
     >
       <LinearGradient
         colors={theme.isDark 
-          ? ['rgba(45,45,60,0.9)', 'rgba(35,35,50,0.7)'] 
-          : ['rgba(255,255,255,0.95)', 'rgba(250,250,255,0.8)']}
+          ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.85)'] 
+          : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.92)']}
         style={StyleSheet.absoluteFill}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
@@ -879,7 +879,7 @@ const PredictiveMilestoneCalendar = memo(({ baby, milestones, onPress }: { baby:
               }]} />
               {i === predictedMilestones.length - 1 && <View style={[styles.calendarLineEnd, { backgroundColor: 'transparent' }]} />}
             </View>
-            <View style={[styles.calendarCard, { backgroundColor: theme.isDark ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.85)' }]}>
+            <View style={[styles.calendarCard, { backgroundColor: theme.isDark ? 'rgba(45,45,60,0.95)' : 'rgba(255,255,255,0.98)' }]}>
               <View style={styles.calendarHeader}>
                 <Text style={styles.calendarEmoji}>{milestone.emoji}</Text>
                 <View style={styles.calendarMeta}>
@@ -1984,7 +1984,7 @@ export default function GrowthDashboardScreen({ navigation }: any) {
                 </LinearGradient>
               </TouchableOpacity>
               {[1, 2, 3, 4, 5].map((_, i) => (
-                <View key={i} style={[styles.photoGridItem, { backgroundColor: theme.isDark ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.85)' }]}>
+                <View key={i} style={[styles.photoGridItem, { backgroundColor: theme.isDark ? 'rgba(45,45,60,0.95)' : 'rgba(255,255,255,0.98)' }]}>
                   <View style={styles.photoGridPlaceholder}>
                     <Ionicons name="image" size={32} color={theme.text.muted} />
                   </View>
@@ -2030,10 +2030,10 @@ const styles = StyleSheet.create({
 
   // ── Glass Card ──
   glassCard: {
-    borderRadius: RADIUS.lg,
+    borderRadius: 20,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: 'rgba(255,255,255,0.08)',
     marginHorizontal: SPACING.lg,
     marginBottom: SPACING.lg,
   },

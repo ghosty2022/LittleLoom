@@ -2,7 +2,7 @@
 // Complete, traceable view of a single logged entry:
 // photos, particulars, audit trail, same-day context, prev/next, actions.
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Dimensions, Image, Modal, ScrollView, Share, StatusBar, StyleSheet,
   Text, TouchableOpacity, View,
@@ -11,8 +11,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Animated, { FadeInUp, FadeInDown } from 'react-native-reanimated';
-import { format, isToday, isYesterday, formatDistanceToNow } from 'date-fns';
+import { format, isToday, isYesterday, isSameDay, formatDistanceToNow } from 'date-fns';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -49,6 +50,35 @@ const ROLE_META: Record<string, { label: string; color: string }> = {
   parent2: { label: 'Co-Parent', color: '#fa709a' },
   guardian: { label: 'Guardian', color: '#11998e' },
   viewer: { label: 'Viewer', color: '#64748b' },
+};
+
+/* ── Edit history (previous versions snapshotted by TrackerContext on each edit) ── */
+
+const EDIT_HISTORY_KEY = '@littleloom_edit_history_v1';
+
+interface EntryEditVersion {
+  editedAt: number;
+  editedBy?: string;
+  editedByName: string;
+  prevTitle?: string;
+  prevNotes?: string;
+  prevTimestamp: number;
+  prevData?: Record<string, unknown>;
+  prevPhotoUris?: string[];
+  prevTags?: string[];
+}
+
+const versionValueText = (v: unknown): string => {
+  if (v === undefined || v === null || v === '') return '—';
+  if (typeof v === 'boolean') return v ? 'Yes' : 'No';
+  if (Array.isArray(v)) return v.length ? v.map(String).join(', ') : '—';
+  if (typeof v === 'object') {
+    const o = v as any;
+    if (o?.name) return String(o.name);
+    if (o?.label) return String(o.label);
+    return JSON.stringify(v);
+  }
+  return String(v);
 };
 
 /* ── Value intelligence ─────────────────────────────────────── */
@@ -184,6 +214,23 @@ export default function EntryDetailScreen() {
   const radius = borderRadiusValue || DESIGN.radius.lg;
 
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
+  const [editHistory, setEditHistory] = useState<EntryEditVersion[]>([]);
+  const [historyExpanded, setHistoryExpanded] = useState(false);
+
+  /* Load previous versions of this entry (re-runs when editedAt changes) */
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      if (!entryId) return;
+      try {
+        const raw = await AsyncStorage.getItem(EDIT_HISTORY_KEY);
+        const store = raw ? JSON.parse(raw) : {};
+        const list = Array.isArray(store[entryId]) ? store[entryId] : [];
+        if (mounted) setEditHistory(list);
+      } catch {}
+    })();
+    return () => { mounted = false; };
+  }, [entryId, entry?.editedAt]);
 
   const baby = useMemo(() => {
     if (!entry) return currentBaby;
@@ -267,6 +314,141 @@ export default function EntryDetailScreen() {
     const d = new Date(entry.syncedAt as any);
     return isNaN(d.getTime()) ? null : format(d, 'MMM d, h:mm a');
   }, [entry]);
+
+  /* ── Edited history rows with field-level diffs (newest first) ── */
+  const historyRows = useMemo(() => {
+    if (!entry || editHistory.length === 0) return [] as {
+      key: string;
+      version: number;
+      editedAt: number;
+      editedByName: string;
+      changes: { label: string; before: string; after: string }[];
+    }[];
+
+    return editHistory.map((v, idx) => {
+      const isLast = idx === editHistory.length - 1;
+      const afterData = (isLast ? entry.data : editHistory[idx + 1]?.prevData) as Record<string, unknown> | undefined;
+      const afterTitle = isLast ? entry.title : editHistory[idx + 1]?.prevTitle;
+      const afterNotes = isLast ? entry.notes : editHistory[idx + 1]?.prevNotes;
+      const afterTimestamp = isLast ? entry.timestamp : editHistory[idx + 1]?.prevTimestamp;
+
+      const changes: { label: string; before: string; after: string }[] = [];
+
+      if ((v.prevTitle || '') !== (afterTitle || '')) {
+        changes.push({ label: 'Title', before: versionValueText(v.prevTitle), after: versionValueText(afterTitle) });
+      }
+      if ((v.prevNotes || '') !== (afterNotes || '')) {
+        changes.push({ label: 'Notes', before: versionValueText(v.prevNotes), after: versionValueText(afterNotes) });
+      }
+      if (afterTimestamp && v.prevTimestamp !== afterTimestamp) {
+        changes.push({
+          label: 'Time',
+          before: format(new Date(v.prevTimestamp), 'MMM d, h:mm a'),
+          after: format(new Date(afterTimestamp), 'MMM d, h:mm a'),
+        });
+      }
+
+      const prevData = (v.prevData || {}) as Record<string, unknown>;
+      const nextData = (afterData || {}) as Record<string, unknown>;
+      const allKeys = [...new Set([...Object.keys(prevData), ...Object.keys(nextData)])].filter(k => !SKIP_KEYS.has(k));
+      allKeys.forEach(k => {
+        const before = versionValueText(prevData[k]);
+        const after = versionValueText(nextData[k]);
+        if (before !== after) {
+          const field = tracker?.fields?.find((fl: any) => fl.id === k);
+          changes.push({ label: field?.label || humanizeKey(k), before, after });
+        }
+      });
+
+      return {
+        key: `${v.editedAt}-${idx}`,
+        version: idx + 1,
+        editedAt: v.editedAt,
+        editedByName: v.editedByName || 'Unknown',
+        changes,
+      };
+    }).reverse(); // newest edit first
+  }, [entry, editHistory, tracker]);
+
+  /* ── In-context stats: this entry's rhythm inside its tracker ── */
+  const contextStats = useMemo(() => {
+    if (!entry) return null;
+    const list = getEntries(entry.trackerId)
+      .filter(e => e.id !== entry.id)
+      .slice()
+      .sort((a, b) => a.timestamp - b.timestamp);
+
+    // Position within its day (e.g. "3rd of 5 that day")
+    const sameDay = list.filter(e => isSameDay(new Date(e.timestamp), new Date(entry.timestamp)));
+    const dayTotal = sameDay.length + 1;
+    const dayIndex = sameDay.filter(e => e.timestamp < entry.timestamp).length + 1;
+
+    // Gap from the previous entry of this tracker
+    const prev = list.filter(e => e.timestamp < entry.timestamp).pop() || null;
+    const gapMs = prev ? entry.timestamp - prev.timestamp : null;
+
+    // Typical gap across the 10 entries before this one
+    const before = list.filter(e => e.timestamp <= entry.timestamp).slice(-10);
+    let avgGapMs: number | null = null;
+    if (before.length >= 2) {
+      let sum = 0;
+      for (let i = 1; i < before.length; i++) sum += before[i].timestamp - before[i - 1].timestamp;
+      avgGapMs = sum / (before.length - 1);
+    }
+
+    const fmtGap = (ms: number): string => {
+      const mins = Math.round(ms / 60000);
+      if (mins < 60) return `${mins}m`;
+      const h = Math.floor(mins / 60);
+      const m = mins % 60;
+      if (h < 24) return m ? `${h}h ${m}m` : `${h}h`;
+      const d = Math.floor(h / 24);
+      const rh = h % 24;
+      return rh ? `${d}d ${rh}h` : `${d}d`;
+    };
+
+    const ordinal = (n: number): string => {
+      const s = ['th', 'st', 'nd', 'rd'];
+      const v = n % 100;
+      return n + (s[(v - 20) % 10] || s[v] || s[0]);
+    };
+
+    return {
+      dayPosition: `${ordinal(dayIndex)} of ${dayTotal} that day`,
+      sincePrev: gapMs !== null ? fmtGap(gapMs) : null,
+      avgGap: avgGapMs !== null ? fmtGap(avgGapMs) : null,
+    };
+  }, [entry, getEntries]);
+
+  /* ── Precise age of the baby at the moment this entry was logged ── */
+  const ageAtLogging = useMemo(() => {
+    const dobStr = (baby as any)?.birthDate;
+    if (!dobStr || !entryDate) return baby?.age ? `${baby.age} old at logging` : '';
+    const dob = new Date(dobStr);
+    if (isNaN(dob.getTime())) return baby?.age ? `${baby.age} old at logging` : '';
+    const totalDays = Math.floor((entryDate.getTime() - dob.getTime()) / 86400000);
+    if (totalDays < 0) return '';
+    if (totalDays < 1) return 'Newborn at logging';
+    if (totalDays < 14) return `${totalDays} day${totalDays === 1 ? '' : 's'} old at logging`;
+    if (totalDays < 60) {
+      const weeks = Math.floor(totalDays / 7);
+      const remDays = totalDays % 7;
+      return remDays > 0 ? `${weeks}w ${remDays}d old at logging` : `${weeks} week${weeks === 1 ? '' : 's'} old at logging`;
+    }
+    let months = (entryDate.getFullYear() - dob.getFullYear()) * 12;
+    months += entryDate.getMonth() - dob.getMonth();
+    if (entryDate.getDate() < dob.getDate()) months--;
+    if (months < 0) months = 0;
+    if (months < 24) {
+      const anchor = new Date(dob);
+      anchor.setMonth(anchor.getMonth() + months);
+      const remDays = Math.max(0, Math.floor((entryDate.getTime() - anchor.getTime()) / 86400000));
+      return remDays > 0 ? `${months}m ${remDays}d old at logging` : `${months} month${months === 1 ? '' : 's'} old at logging`;
+    }
+    const years = Math.floor(months / 12);
+    const remMonths = months % 12;
+    return remMonths > 0 ? `${years}y ${remMonths}m old at logging` : `${years} year${years === 1 ? '' : 's'} old at logging`;
+  }, [baby, entryDate]);
 
   /* ── Share summary ── */
   const shareText = useMemo(() => {
@@ -461,7 +643,7 @@ export default function EntryDetailScreen() {
                   <SafeAvatar avatar={baby.avatar} size={36} fallbackIcon="person" borderColor="rgba(255,255,255,0.6)" borderWidth={2} animated={false} />
                   <View style={{ flex: 1 }}>
                     <Text style={styles.heroBabyName}>{baby.name}</Text>
-                    {!!baby.age && <Text style={styles.heroBabyMeta}>{baby.age} old at logging</Text>}
+                    {!!ageAtLogging && <Text style={styles.heroBabyMeta}>{ageAtLogging}</Text>}
                   </View>
                   {photos.length > 0 && (
                     <View style={styles.heroDateBadge}>
@@ -473,6 +655,43 @@ export default function EntryDetailScreen() {
             </LinearGradient>
           </View>
         </Animated.View>
+
+        {/* ── IN CONTEXT: rhythm of this tracker around the entry ── */}
+        {contextStats && (contextStats.sincePrev || contextStats.avgGap || dayLabel) && (
+          <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(100)}>
+            <View style={[styles.card, { backgroundColor: theme.surface.card, borderColor: theme.surface.border, borderRadius: radius }]}>
+              <View style={styles.cardInner}>
+                <View style={styles.cardHeader}>
+                  <View style={[styles.cardHeaderIcon, { backgroundColor: `${accent}15` }]}>
+                    <Ionicons name="pulse-outline" size={15} color={accent} />
+                  </View>
+                  <Text style={[styles.cardTitle, { color: theme.text.primary }]}>In Context</Text>
+                </View>
+                <View style={styles.contextRow}>
+                  <View style={[styles.contextTile, { backgroundColor: `${accent}0D` }]}>
+                    <Ionicons name="calendar-number-outline" size={16} color={accent} />
+                    <Text style={[styles.contextValue, { color: theme.text.primary }]}>{contextStats.dayPosition}</Text>
+                    <Text style={[styles.contextLabel, { color: theme.text.muted }]}>Daily order</Text>
+                  </View>
+                  {!!contextStats.sincePrev && (
+                    <View style={[styles.contextTile, { backgroundColor: `${accent}0D` }]}>
+                      <Ionicons name="timer-outline" size={16} color={accent} />
+                      <Text style={[styles.contextValue, { color: theme.text.primary }]}>{contextStats.sincePrev}</Text>
+                      <Text style={[styles.contextLabel, { color: theme.text.muted }]}>After previous</Text>
+                    </View>
+                  )}
+                  {!!contextStats.avgGap && (
+                    <View style={[styles.contextTile, { backgroundColor: `${accent}0D` }]}>
+                      <Ionicons name="stats-chart-outline" size={16} color={accent} />
+                      <Text style={[styles.contextValue, { color: theme.text.primary }]}>{contextStats.avgGap}</Text>
+                      <Text style={[styles.contextLabel, { color: theme.text.muted }]}>Typical gap</Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+            </View>
+          </Animated.View>
+        )}
 
         {/* ── PHOTOS ── */}
         {photos.length > 0 && (
@@ -616,6 +835,47 @@ export default function EntryDetailScreen() {
                   <Text style={[styles.auditSubText, { color: theme.text.muted }]}>
                     Edited {format(new Date(entry.editedAt), 'MMM d, yyyy • h:mm a')}
                   </Text>
+                </View>
+              )}
+              {historyRows.length > 0 && (
+                <View style={[styles.historyWrap, { borderColor: theme.surface.border }]}>
+                  <TouchableOpacity
+                    style={styles.historyHeader}
+                    activeOpacity={0.75}
+                    onPress={() => { triggerHaptic('light'); setHistoryExpanded(prev => !prev); }}
+                  >
+                    <Ionicons name="time-outline" size={14} color={accent} />
+                    <Text style={[styles.historyHeaderText, { color: theme.text.primary }]}>
+                      Edited history · {historyRows.length} previous version{historyRows.length > 1 ? 's' : ''}
+                    </Text>
+                    <Ionicons name={historyExpanded ? 'chevron-up' : 'chevron-down'} size={14} color={theme.text.muted} />
+                  </TouchableOpacity>
+                  {historyExpanded && historyRows.map((row) => (
+                    <View key={row.key} style={[styles.historyVersion, { borderColor: theme.surface.border }]}>
+                      <View style={styles.historyVersionHeader}>
+                        <View style={[styles.historyVersionBadge, { backgroundColor: `${accent}15` }]}>
+                          <Text style={[styles.historyVersionBadgeText, { color: accent }]}>v{row.version}</Text>
+                        </View>
+                        <Text style={[styles.historyVersionMeta, { color: theme.text.secondary }]} numberOfLines={1}>
+                          {row.editedByName} • {format(new Date(row.editedAt), 'MMM d, yyyy • h:mm a')}
+                        </Text>
+                      </View>
+                      {row.changes.length === 0 ? (
+                        <Text style={[styles.historyChangeText, { color: theme.text.muted }]}>No field changes recorded</Text>
+                      ) : (
+                        row.changes.map((c, i) => (
+                          <View key={`${row.key}-${i}`} style={styles.historyChangeRow}>
+                            <Text style={[styles.historyChangeLabel, { color: theme.text.muted }]}>{c.label}</Text>
+                            <Text style={[styles.historyChangeText, { color: theme.text.secondary }]} numberOfLines={2}>
+                              <Text style={{ textDecorationLine: 'line-through', color: theme.text.muted }}>{c.before}</Text>
+                              {'  →  '}
+                              <Text style={{ color: theme.text.primary, fontWeight: '600' }}>{c.after}</Text>
+                            </Text>
+                          </View>
+                        ))
+                      )}
+                    </View>
+                  ))}
                 </View>
               )}
               {!!syncedLabel && (
@@ -899,4 +1159,23 @@ const styles = StyleSheet.create({
   viewerClose: { position: 'absolute', right: 20, width: 40, height: 40, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center', zIndex: 10 },
   viewerCounter: { position: 'absolute', alignSelf: 'center', backgroundColor: 'rgba(255,255,255,0.15)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },
   viewerCounterText: { color: '#fff', fontSize: 13, fontWeight: '800' },
+
+  // ── In Context tiles ──
+  contextRow: { flexDirection: 'row', gap: 8 },
+  contextTile: { flex: 1, alignItems: 'center', paddingVertical: 12, paddingHorizontal: 6, borderRadius: DESIGN.radius.sm, gap: 4 },
+  contextValue: { fontSize: 13, fontWeight: '800', textAlign: 'center' },
+  contextLabel: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4, textAlign: 'center' },
+
+  // ── Edited history ──
+  historyWrap: { marginTop: 12, borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 10 },
+  historyHeader: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  historyHeaderText: { flex: 1, fontSize: 13, fontWeight: '800' },
+  historyVersion: { marginTop: 10, borderWidth: StyleSheet.hairlineWidth, borderRadius: DESIGN.radius.sm, padding: 10 },
+  historyVersionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
+  historyVersionBadge: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 8 },
+  historyVersionBadgeText: { fontSize: 10, fontWeight: '800' },
+  historyVersionMeta: { flex: 1, fontSize: 11, fontWeight: '600' },
+  historyChangeRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
+  historyChangeLabel: { width: 72, fontSize: 11, fontWeight: '700', textTransform: 'capitalize' },
+  historyChangeText: { flex: 1, fontSize: 11, fontWeight: '500', lineHeight: 16 },
 });
