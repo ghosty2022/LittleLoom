@@ -3,12 +3,12 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 
 import { BlurView } from 'expo-blur';
-import { EmptyState } from '../../components/EmptyState';
+
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, { FadeInUp, FadeInRight, FadeIn, SlideInRight, useSharedValue, withSpring, runOnJS } from 'react-native-reanimated';
+import Animated, { FadeInUp, FadeInRight, FadeIn, useSharedValue, withSpring, runOnJS } from 'react-native-reanimated';
 
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as FileSystem from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
@@ -939,7 +939,7 @@ export default function FamilyChatListScreen({
 
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: 'images',
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.8,

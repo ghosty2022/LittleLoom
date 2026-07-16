@@ -14,7 +14,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import type { RootStackParamList } from '../../types/navigation';
 
-import { FamilyMessage, FileMetadata, MessageType, useFamilyChat } from '../../context/FamilyChatContext';
+import { FamilyMessage, FileMetadata, useFamilyChat } from '../../context/FamilyChatContext';
 import { useAuth } from '../../context/AuthContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useFamily } from '../../context/FamilyContext';
@@ -2191,16 +2191,8 @@ export default function FamilyChatScreen({
               },
             ]}
             onPress={() => {
-
-showSweetAlert('Chat Options', '', [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                  text: 'Clear Chat',
-                  style: 'destructive',
-                  onPress: () => {},
-                },
-                { text: 'Export Chat', onPress: () => {} },
-              ]);
+              // TODO: Replace with proper action sheet for multiple options
+              showSweetAlert('info', 'Chat Options', 'Clear Chat, Export Chat, and more options coming soon');
             }}
           >
             <Ionicons
