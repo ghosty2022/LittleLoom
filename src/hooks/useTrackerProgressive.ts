@@ -36,33 +36,11 @@ import {
 } from '@/types/trackers';
 
 // FIX: Use safe dynamic requires to prevent circular dependency crashes
-const useGrowthIntelligenceSafe = () => {
-  try {
-    const { useGrowthIntelligence } = require('./useGrowthIntelligence');
-    return useGrowthIntelligence();
-  } catch {
-    return { growthIndex: null, isLoading: false };
-  }
-};
-
-const usePredictiveRemindersSafe = () => {
-  try {
-    const { usePredictiveReminders } = require('./usePredictiveReminders');
-    return usePredictiveReminders();
-  } catch {
-    return { reminders: [], isLoading: false };
-  }
-};
-
-const useTimelineCorrelationsSafe = () => {
-  try {
-    const { useTimelineCorrelations } = require('./useTimelineCorrelations');
-    return useTimelineCorrelations();
-  } catch {
-    return { correlations: [], isLoading: false };
-  }
-};
-
+// These hooks are called at top level to maintain hook order
+// The try/catch inside them handles missing contexts gracefully
+import { useGrowthIntelligence } from './useGrowthIntelligence';
+import { usePredictiveReminders } from './usePredictiveReminders';
+import { useTimelineCorrelations } from './useTimelineCorrelations';
 /* ═══════════════════════════════════════════════════════════════
    TYPES
    ═════════════════════════════════════════════════════════════ */
@@ -214,9 +192,30 @@ export const useTrackerProgressive = (trackerId: string) => {
   } = useTracker();
 
   const { currentBaby, growthData } = useBaby();
-  const { growthIndex } = useGrowthIntelligenceSafe();
-  const { reminders: predictiveReminders } = usePredictiveRemindersSafe();
-  const { correlations: timelineCorrelations } = useTimelineCorrelationsSafe();
+  let growthIndex = null;
+  let predictiveReminders: any[] = [];
+  let timelineCorrelations: any[] = [];
+  
+  try {
+    const gi = useGrowthIntelligence();
+    growthIndex = gi.growthIndex;
+  } catch {
+    growthIndex = null;
+  }
+  
+  try {
+    const pr = usePredictiveReminders();
+    predictiveReminders = pr.reminders;
+  } catch {
+    predictiveReminders = [];
+  }
+  
+  try {
+    const tc = useTimelineCorrelations();
+    timelineCorrelations = tc.correlations;
+  } catch {
+    timelineCorrelations = [];
+  }
 
   const [isLoading, setIsLoading] = useState(true);
   const [refreshToken, setRefreshToken] = useState(0);

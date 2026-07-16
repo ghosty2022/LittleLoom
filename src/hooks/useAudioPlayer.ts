@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { useAudioPlayer as useExpoAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
+import { useAudioPlayer as useExpoAudioPlayer, useAudioPlayerState } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
 
 interface AudioState {
@@ -17,21 +17,21 @@ export const useAudioPlayer = (uri: string) => {
     isLoading: false,
   });
 
-  const player = useExpoAudioPlayer(uri);
-  const status = useAudioPlayerStatus(player);
+  const player = useExpoAudioPlayer({ uri });
+  const status = useAudioPlayerState(player);
   const isMounted = useRef(true);
 
   useEffect(() => {
     if (!isMounted.current) return;
 
-    const positionMs = (status?.currentTime ?? 0) * 1000;
+     const positionMs = (status?.currentTime ?? 0) * 1000;
     const durationMs = (status?.duration ?? 0) * 1000;
 
     setState({
       isPlaying: status?.playing ?? false,
       position: positionMs,
       duration: durationMs,
-      isLoading: status?.isBuffering ?? false,
+      isLoading: status?.buffering ?? false,
     });
   }, [status]);
 
@@ -46,10 +46,10 @@ export const useAudioPlayer = (uri: string) => {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
       if (state.isPlaying) {
-        player.pause();
+        await player.pause();
         setState(prev => ({ ...prev, isPlaying: false }));
       } else {
-        player.play();
+        await player.play();
         setState(prev => ({ ...prev, isPlaying: true }));
       }
     } catch (error) {
@@ -59,7 +59,7 @@ export const useAudioPlayer = (uri: string) => {
   }, [state.isPlaying, player]);
 
   const stop = useCallback(() => {
-    player.pause();
+    await player.pause();
     player.seekTo(0);
     setState(prev => ({ ...prev, isPlaying: false, position: 0 }));
   }, [player]);

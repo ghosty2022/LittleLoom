@@ -2,10 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
-const getCustomization = async () => {
-  const { useCustomization } = await import('@/hooks/useCustomization');
-  return useCustomization;
-};
+import { useCustomization } from '@/hooks/useCustomization';
 
 export const NOTIFICATION_CHANNELS = {
   DEFAULT: 'default',
@@ -244,12 +241,16 @@ export const notificationService = NotificationService.getInstance();
 export function useNotifications() {
   const [isEnabled, setIsEnabled] = useState(true);
 
-  useEffect(() => {
+ useEffect(() => {
     const checkSettings = async () => {
       try {
-        const useCustomization = await getCustomization();
-        const customization = useCustomization();
-        setIsEnabled(customization.settings?.notifications ?? true);
+        // Use AsyncStorage directly to avoid hook rules violation
+        const { AsyncStorage } = await import('@react-native-async-storage/async-storage');
+        const saved = await AsyncStorage.getItem('@littleloom_customization_v3');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          setIsEnabled(parsed.notifications ?? true);
+        }
       } catch {
         setIsEnabled(true);
       }

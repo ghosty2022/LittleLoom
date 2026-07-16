@@ -30,38 +30,47 @@ export function useSmartAlbums() {
           let photoCount = 0;
           let coverPhotoUri: string | undefined;
 
-          // Count photos based on album filter
-          if (album.id === 'album_all') {
-            const result = await db.select({ count: count() }).from(photos);
-            photoCount = result[0]?.count || 0;
-          } else if (album.id === 'album_favorites') {
-            const result = await db.select({ count: count() }).from(photos)
-              .where(eq(photos.isFavorite, true));
-            photoCount = result[0]?.count || 0;
-          } else if (album.id === 'album_screenshots') {
-            const result = await db.select({ count: count() }).from(photos)
-              .where(eq(photos.isScreenshot, true));
-            photoCount = result[0]?.count || 0;
-          } else if (album.id === 'album_auto_import') {
-            const result = await db.select({ count: count() }).from(photos)
-              .where(eq(photos.source, 'auto_import'));
-            photoCount = result[0]?.count || 0;
-          } else if (album.id === 'album_vault') {
-            const result = await db.select({ count: count() }).from(photos)
-              .where(eq(photos.isPrivate, true));
-            photoCount = result[0]?.count || 0;
-          } else if (album.id === 'album_milestones') {
-            const result = await db.select({ count: count() }).from(photos)
-              .where(eq(photos.type, 'milestone'));
-            photoCount = result[0]?.count || 0;
-          }
+          try {
+            // Count photos based on album filter
+            if (album.id === 'album_all') {
+              const result = await db.select({ count: count() }).from(photos);
+              photoCount = result[0]?.count || 0;
+            } else if (album.id === 'album_favorites') {
+              const result = await db.select({ count: count() }).from(photos)
+                .where(eq(photos.isFavorite, true));
+              photoCount = result[0]?.count || 0;
+            } else if (album.id === 'album_screenshots') {
+              const result = await db.select({ count: count() }).from(photos)
+                .where(eq(photos.isScreenshot, true));
+              photoCount = result[0]?.count || 0;
+            } else if (album.id === 'album_auto_import') {
+              const result = await db.select({ count: count() }).from(photos)
+                .where(eq(photos.source, 'auto_import'));
+              photoCount = result[0]?.count || 0;
+            } else if (album.id === 'album_vault') {
+              const result = await db.select({ count: count() }).from(photos)
+                .where(eq(photos.isPrivate, true));
+              photoCount = result[0]?.count || 0;
+            } else if (album.id === 'album_milestones') {
+              const result = await db.select({ count: count() }).from(photos)
+                .where(eq(photos.type, 'milestone'));
+              photoCount = result[0]?.count || 0;
+            }
 
-          // Get cover photo
-          if (photoCount > 0) {
-            const cover = await db.select({ uri: photos.uri }).from(photos)
-              .orderBy(sql`${photos.timestamp} DESC`)
-              .limit(1);
-            coverPhotoUri = cover[0]?.uri;
+            // Get cover photo
+            if (photoCount > 0) {
+              const cover = await db.select({ uri: photos.uri }).from(photos)
+                .orderBy(sql`${photos.timestamp} DESC`)
+                .limit(1);
+              coverPhotoUri = cover[0]?.uri;
+            }
+          } catch (dbError) {
+            const msg = String(dbError);
+            if (msg.includes('no such table') || msg.includes('prepareSync')) {
+              console.warn(`[useSmartAlbums] Table not ready for album ${album.id}, skipping`);
+            } else {
+              throw dbError;
+            }
           }
 
           return {
@@ -74,6 +83,14 @@ export function useSmartAlbums() {
       );
 
       setAlbums(enriched);
+    } catch (error) {
+      const msg = String(error);
+      if (msg.includes('no such table') || msg.includes('prepareSync')) {
+        console.warn('[useSmartAlbums] smart_albums table not ready, returning empty');
+        setAlbums([]);
+      } else {
+        console.error('[useSmartAlbums] Failed to load albums:', error);
+      }
     } finally {
       setIsLoading(false);
     }

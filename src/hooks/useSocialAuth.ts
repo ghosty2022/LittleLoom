@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { showAlert } from '@/utils/alert';
+import { Alert } from 'react-native';
 
 export interface SocialUser {
   id: string;
@@ -40,7 +40,7 @@ export const useSocialAuth = () => {
       const message = error?.message || 'Google sign-in failed';
       setState(prev => ({ ...prev, isLoading: false, error: message }));
 
-Alert.alert('Sign In Error', '');
+Alert.alert('Sign In Error', 'Sign in failed. Please try again.');
       return null;
     }
   }, []);
@@ -60,7 +60,7 @@ Alert.alert('Sign In Error', '');
       const message = error?.message || 'Apple sign-in failed';
       setState(prev => ({ ...prev, isLoading: false, error: message }));
 
-Alert.alert('Sign In Error', '');
+Alert.alert('Sign In Error', 'Sign in failed. Please try again.');
       return null;
     }
   }, []);
@@ -81,7 +81,7 @@ Alert.alert('Sign In Error', '');
       const message = error?.message || 'Facebook sign-in failed';
       setState(prev => ({ ...prev, isLoading: false, error: message }));
 
-Alert.alert('Sign In Error', '');
+Alert.alert('Sign In Error', 'Sign in failed. Please try again.');
       return null;
     }
   }, []);
