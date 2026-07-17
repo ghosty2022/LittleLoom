@@ -40,6 +40,12 @@ interface FamilyContextType extends FamilyState {
   resendInvite: (memberId: string) => Promise<boolean>;
   cancelInvite: (memberId: string) => Promise<boolean>;
   refreshMemberStatus: (memberId: string) => Promise<void>;
+  generateInviteCode: (
+    role: 'parent2' | 'guardian' | 'viewer',
+    relationship?: string
+  ) => Promise<{ code: string; success: boolean; message: string }>;
+  getActiveInviteCodes: () => Promise<import('@/database/dbHelpers').InviteCode[]>;
+  revokeInviteCode: (code: string) => Promise<boolean>;
 }
 
 const FamilyContext = createContext<FamilyContextType | null>(null);
@@ -389,6 +395,59 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     await loadFamily();
   }, [loadFamily]);
 
+  // ─── INVITE CODE GENERATION ──────────────────────────────────────────
+  const generateInviteCode = useCallback(async (
+    role: 'parent2' | 'guardian' | 'viewer',
+    relationship?: string
+  ): Promise<{ code: string; success: boolean; message: string }> => {
+    const canManage = myPermissions?.manageFamily ?? false;
+
+    if (!canManage || !profile || !currentBaby) {
+      return { code: '', success: false, message: 'You do not have permission to invite family members' };
+    }
+
+    try {
+      const { createInviteCode } = await import('@/database/dbHelpers');
+      const result = await createInviteCode({
+        familyId: currentBaby.id,
+        role,
+        createdBy: profile.id,
+        relationship,
+        maxUses: 1,
+        expiresInDays: 7,
+      });
+
+      return result;
+    } catch (error) {
+      console.error('Error generating invite code:', error);
+      return { code: '', success: false, message: 'Failed to generate invite code' };
+    }
+  }, [myPermissions, profile, currentBaby]);
+
+  const getActiveInviteCodes = useCallback(async (): Promise<import('@/database/dbHelpers').InviteCode[]> => {
+    if (!currentBaby) return [];
+    try {
+      const { getActiveInviteCodesForFamily } = await import('@/database/dbHelpers');
+      return await getActiveInviteCodesForFamily(currentBaby.id);
+    } catch (error) {
+      console.error('Error getting active invite codes:', error);
+      return [];
+    }
+  }, [currentBaby]);
+
+  const revokeInviteCode = useCallback(async (code: string): Promise<boolean> => {
+    const canManage = myPermissions?.manageFamily ?? false;
+    if (!canManage) return false;
+
+    try {
+      const { deactivateInviteCode } = await import('@/database/dbHelpers');
+      return await deactivateInviteCode(code);
+    } catch (error) {
+      console.error('Error revoking invite code:', error);
+      return false;
+    }
+  }, [myPermissions]);
+
   const getEffectivePermissions = useCallback((userId?: string): Permission => {
     const targetId = userId || profile?.id;
     const member = state.members.find(m => m.userId === targetId || m.id === targetId);
@@ -406,7 +465,10 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     resendInvite,
     cancelInvite,
     refreshMemberStatus,
-  }), [state, loadFamily, inviteMember, removeMember, getEffectivePermissions, updateParent2Profile, updateGuardianProfile, resendInvite, cancelInvite, refreshMemberStatus]);
+    generateInviteCode,
+    getActiveInviteCodes,
+    revokeInviteCode,
+  }), [state, loadFamily, inviteMember, removeMember, getEffectivePermissions, updateParent2Profile, updateGuardianProfile, resendInvite, cancelInvite, refreshMemberStatus, generateInviteCode, getActiveInviteCodes, revokeInviteCode]);
 
   return (
     <FamilyContext.Provider value={value}>

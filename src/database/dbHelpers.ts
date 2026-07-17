@@ -15,6 +15,27 @@ const MIGRATION_KEY = '@littleloom_db_migration_v1';
    trackerId (see note at LEGACY_LOG_SPECS). */
 const LOG_MIGRATION_KEY = '@littleloom_db_migration_v2_logs';
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   FAMILY INVITATION CODE SYSTEM
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+export interface InviteCode {
+  code: string;
+  familyId: string;        // babyId this code is for
+  role: 'parent2' | 'guardian' | 'viewer';
+  createdBy: string;       // userId of parent1
+  createdAt: string;
+  expiresAt: string;       // ISO date
+  maxUses: number;
+  usedBy: string[];        // array of userIds who used it
+  usedCount: number;
+  isActive: boolean;
+  relationship?: string;   // e.g., "Mother", "Father", "Grandparent"
+}
+
+const INVITE_CODE_PREFIX = '@littleloom_invite_';
+const INVITE_CODE_INDEX_KEY = '@littleloom_invite_codes_index';
+
 export async function isMigrationComplete(): Promise<boolean> {
   const flag = await AsyncStorage.getItem(MIGRATION_KEY);
   return flag === 'complete';
@@ -492,6 +513,228 @@ export async function softDeleteFamilyMemberInDb(id: string) {
       return [];
     }
     throw error;
+  }
+}
+
+function generateInviteCode(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // No 0, O, I, 1 (confusing)
+  let code = '';
+  for (let i = 0; i < 6; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+}
+
+export async function createInviteCode(data: {
+  familyId: string;
+  role: 'parent2' | 'guardian' | 'viewer';
+  createdBy: string;
+  relationship?: string;
+  maxUses?: number;
+  expiresInDays?: number;
+}): Promise<{ code: string; success: boolean; message: string }> {
+  try {
+    // Check if user already has an active code for this family+role
+    const existingCodes = await getActiveInviteCodesForFamily(data.familyId);
+    const existingForRole = existingCodes.find(c => c.role === data.role && c.createdBy === data.createdBy && c.isActive);
+
+    if (existingForRole) {
+      // Return existing code if still valid
+      const now = new Date();
+      const expires = new Date(existingForRole.expiresAt);
+      if (expires > now) {
+        return { 
+          code: existingForRole.code, 
+          success: true, 
+          message: 'Existing code still valid' 
+        };
+      }
+    }
+
+    // Generate unique code
+    let code = generateInviteCode();
+    let attempts = 0;
+    let existing = await getInviteCodeFromDb(code);
+
+    while (existing && attempts < 10) {
+      code = generateInviteCode();
+      existing = await getInviteCodeFromDb(code);
+      attempts++;
+    }
+
+    if (existing) {
+      return { code: '', success: false, message: 'Could not generate unique code. Please try again.' };
+    }
+
+    const now = new Date();
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + (data.expiresInDays || 7));
+
+    const inviteData: InviteCode = {
+      code,
+      familyId: data.familyId,
+      role: data.role,
+      createdBy: data.createdBy,
+      createdAt: now.toISOString(),
+      expiresAt: expiresAt.toISOString(),
+      maxUses: data.maxUses || 1,
+      usedBy: [],
+      usedCount: 0,
+      isActive: true,
+      relationship: data.relationship,
+    };
+
+    await setAppSetting(`${INVITE_CODE_PREFIX}${code}`, JSON.stringify(inviteData));
+
+    // Update index
+    const indexStr = await getAppSetting(INVITE_CODE_INDEX_KEY);
+    const index: string[] = indexStr ? JSON.parse(indexStr) : [];
+    if (!index.includes(code)) {
+      index.push(code);
+      await setAppSetting(INVITE_CODE_INDEX_KEY, JSON.stringify(index));
+    }
+
+    return { code, success: true, message: 'Invite code created successfully' };
+  } catch (error) {
+    console.error('Error creating invite code:', error);
+    return { code: '', success: false, message: 'Failed to create invite code' };
+  }
+}
+
+export async function getInviteCodeFromDb(code: string): Promise<InviteCode | null> {
+  try {
+    const data = await getAppSetting(`${INVITE_CODE_PREFIX}${code}`);
+    if (!data) return null;
+    return JSON.parse(data) as InviteCode;
+  } catch (error) {
+    console.error('Error getting invite code:', error);
+    return null;
+  }
+}
+
+export async function validateInviteCode(code: string): Promise<{ 
+  valid: boolean; 
+  invite?: InviteCode; 
+  message: string;
+}> {
+  try {
+    const trimmed = code.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+    if (trimmed.length !== 6) {
+      return { valid: false, message: 'Code must be 6 characters' };
+    }
+
+    const invite = await getInviteCodeFromDb(trimmed);
+
+    if (!invite) {
+      return { valid: false, message: 'Invalid invite code' };
+    }
+
+    if (!invite.isActive) {
+      return { valid: false, message: 'This invite code has been deactivated' };
+    }
+
+    const now = new Date();
+    const expiresAt = new Date(invite.expiresAt);
+
+    if (now > expiresAt) {
+      return { valid: false, message: 'This invite code has expired' };
+    }
+
+    if (invite.usedCount >= invite.maxUses) {
+      return { valid: false, message: 'This invite code has reached its maximum uses' };
+    }
+
+    return { valid: true, invite, message: 'Code is valid!' };
+  } catch (error) {
+    console.error('Error validating invite code:', error);
+    return { valid: false, message: 'Error validating code' };
+  }
+}
+
+export async function markInviteCodeUsed(code: string, userId: string): Promise<boolean> {
+  try {
+    const invite = await getInviteCodeFromDb(code);
+    if (!invite) return false;
+
+    invite.usedBy.push(userId);
+    invite.usedCount = invite.usedBy.length;
+
+    if (invite.usedCount >= invite.maxUses) {
+      invite.isActive = false;
+    }
+
+    await setAppSetting(`${INVITE_CODE_PREFIX}${code}`, JSON.stringify(invite));
+    return true;
+  } catch (error) {
+    console.error('Error marking invite code used:', error);
+    return false;
+  }
+}
+
+export async function deactivateInviteCode(code: string): Promise<boolean> {
+  try {
+    const invite = await getInviteCodeFromDb(code);
+    if (!invite) return false;
+
+    invite.isActive = false;
+    await setAppSetting(`${INVITE_CODE_PREFIX}${code}`, JSON.stringify(invite));
+    return true;
+  } catch (error) {
+    console.error('Error deactivating invite code:', error);
+    return false;
+  }
+}
+
+export async function getActiveInviteCodesForFamily(familyId: string): Promise<InviteCode[]> {
+  try {
+    const indexStr = await getAppSetting(INVITE_CODE_INDEX_KEY);
+    const index: string[] = indexStr ? JSON.parse(indexStr) : [];
+
+    const codes: InviteCode[] = [];
+    for (const code of index) {
+      const invite = await getInviteCodeFromDb(code);
+      if (invite && invite.familyId === familyId) {
+        codes.push(invite);
+      }
+    }
+    return codes;
+  } catch (error) {
+    console.error('Error getting active invite codes:', error);
+    return [];
+  }
+}
+
+export async function cleanupExpiredInviteCodes(): Promise<number> {
+  try {
+    const indexStr = await getAppSetting(INVITE_CODE_INDEX_KEY);
+    const index: string[] = indexStr ? JSON.parse(indexStr) : [];
+
+    const now = new Date();
+    let cleaned = 0;
+    const remaining: string[] = [];
+
+    for (const code of index) {
+      const invite = await getInviteCodeFromDb(code);
+      if (!invite) {
+        cleaned++;
+        continue;
+      }
+
+      const expiresAt = new Date(invite.expiresAt);
+      if (now > expiresAt || !invite.isActive) {
+        await deleteAppSetting(`${INVITE_CODE_PREFIX}${code}`);
+        cleaned++;
+      } else {
+        remaining.push(code);
+      }
+    }
+
+    await setAppSetting(INVITE_CODE_INDEX_KEY, JSON.stringify(remaining));
+    return cleaned;
+  } catch (error) {
+    console.error('Error cleaning up invite codes:', error);
+    return 0;
   }
 }
 

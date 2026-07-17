@@ -121,6 +121,12 @@ interface AuthContextType extends AuthState {
   registerCommunityUsername: (username: string) => Promise<boolean>;
   updateCommunityUsername: (newUsername: string) => Promise<{ success: boolean; message: string }>;
   updateCommunityAvatar: (avatarUri: string) => Promise<boolean>;
+  signUpWithInviteCode: (
+    code: string,
+    fullName: string,
+    email: string,
+    password: string
+  ) => Promise<{ success: boolean; message: string }>;
 }
 
 const secureStorage = {
@@ -706,6 +712,121 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally { releaseSignInLock(); }
   }, [acquireSignInLock, releaseSignInLock]);
 
+  // ─── INVITE CODE SIGN UP ─────────────────────────────────────────────
+  const signUpWithInviteCode = useCallback(async (
+    code: string,
+    fullName: string,
+    email: string,
+    password: string
+  ): Promise<{ success: boolean; message: string }> => {
+    if (!acquireSignInLock()) return { success: false, message: 'Another operation in progress' };
+
+    try {
+      // Validate the invite code
+      const { validateInviteCode, markInviteCodeUsed, getBabyByIdFromDb, createFamilyMemberInDb, updateBabyInDb } = await import('@/database/dbHelpers');
+      const validation = await validateInviteCode(code);
+
+      if (!validation.valid || !validation.invite) {
+        return { success: false, message: validation.message };
+      }
+
+      const invite = validation.invite;
+
+      // Check if baby exists
+      const baby = await getBabyByIdFromDb(invite.familyId);
+      if (!baby) {
+        return { success: false, message: 'Family not found. The baby profile may have been deleted.' };
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 800));
+
+      const token = `auth_token_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+      const handle = `@${fullName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
+
+      const userProfile: UserProfile = {
+        id: userId,
+        fullName,
+        email,
+        role: invite.role === 'parent2' ? 'parent2' : invite.role === 'guardian' ? 'guardian' : 'guardian',
+        createdAt: new Date().toISOString(),
+        preferences: { notifications: true, darkMode: false, language: 'en' },
+        communityUsername: fullName,
+        communityHandle: handle,
+        communityBio: '',
+        communityAvatar: '👤',
+        communityDisplayName: fullName,
+        communityStats: { posts: 0, followers: 0, following: 0, helpful: 0 },
+        communitySelectedTopics: [],
+      };
+
+      // Save auth
+      await Promise.all([
+        secureStorage.setItem(SECURE_KEYS.AUTH_TOKEN, token),
+        secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(userProfile)),
+        AsyncStorage.setItem(ASYNC_KEYS.ONBOARDING_COMPLETE, 'true'),
+        AsyncStorage.setItem(ASYNC_KEYS.HAS_SEEN_ONBOARDING, 'true'),
+      ]);
+
+      // Create family member entry
+      const memberId = `fam_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      await createFamilyMemberInDb({
+        id: memberId,
+        babyId: invite.familyId,
+        userId: userId,
+        email: email.toLowerCase(),
+        fullName: fullName,
+        role: invite.role,
+        relationship: invite.relationship || (invite.role === 'parent2' ? 'Parent' : 'Guardian'),
+        permissions: {},
+        addedBy: invite.createdBy,
+        canBeRemoved: true,
+        notificationsEnabled: true,
+        status: 'active',
+      });
+
+      // Link to baby
+      if (invite.role === 'parent2') {
+        await updateBabyInDb(invite.familyId, { parent2Id: userId });
+      }
+
+      // Mark code as used
+      await markInviteCodeUsed(code, userId);
+
+      // Mark setup as complete (skip parent2/baby setup since joining existing)
+      await Promise.all([
+        AsyncStorage.setItem(ASYNC_KEYS.HAS_PARENT2, 'true'),
+        AsyncStorage.setItem(ASYNC_KEYS.HAS_BABY, 'true'),
+        AsyncStorage.setItem(ASYNC_KEYS.PARENT2_COMPLETED, 'true'),
+        AsyncStorage.setItem(ASYNC_KEYS.BABY_COMPLETED, 'true'),
+        AsyncStorage.setItem(ASYNC_KEYS.SETUP_COMPLETE, 'true'),
+      ]);
+
+      if (isMounted.current) {
+        setState(prev => ({
+          ...prev,
+          isAuthenticated: true,
+          userToken: token,
+          userProfile,
+          onboardingComplete: true,
+          hasSeenOnboarding: true,
+          setupComplete: true,
+          hasParent2: true,
+          hasBaby: true,
+        }));
+      }
+
+      lastSignInTime.current = Date.now();
+      return { success: true, message: 'Welcome to the family!' };
+    } catch (error) {
+      console.error('Invite code sign up error:', error);
+      return { success: false, message: 'Failed to join family. Please try again.' };
+    } finally {
+      releaseSignInLock();
+    }
+  }, [acquireSignInLock, releaseSignInLock]);
+
   const loginWithBiometric = useCallback(async (): Promise<boolean> => {
     if (!acquireBiometricLock()) return false;
     try {
@@ -1184,7 +1305,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     registerCommunityUsername,
     updateCommunityUsername,
     updateCommunityAvatar,
-  }), [state, signIn, signUp, signInWithSocial, signOut, checkBiometricAvailability, authenticateWithBiometric, enableBiometricForApp, enableBiometricLogin, disableBiometricLogin, hasBiometricLoginCredentials, loginWithBiometric, updateUserProfile, updateUserPreferences, skipSetup, completeSetup, resetSetupFlow, wasSetupCompleted, setSetupCompleteCallback, markOnboardingSeen, shouldShowBiometricPrompt, isAppActive, getLastActiveTime, getBiometricTypeInfo, clearAllLocks, getCurrentUserProfile, updateCommunityProfile, getCommunityProfile, updateCommunityStats, updateCommunityTopics, isUsernameAvailable, registerCommunityUsername, updateCommunityUsername, updateCommunityAvatar]);
+    signUpWithInviteCode,
+  }), [state, signIn, signUp, signInWithSocial, signOut, checkBiometricAvailability, authenticateWithBiometric, enableBiometricForApp, enableBiometricLogin, disableBiometricLogin, hasBiometricLoginCredentials, loginWithBiometric, updateUserProfile, updateUserPreferences, skipSetup, completeSetup, resetSetupFlow, wasSetupCompleted, setSetupCompleteCallback, markOnboardingSeen, shouldShowBiometricPrompt, isAppActive, getLastActiveTime, getBiometricTypeInfo, clearAllLocks, getCurrentUserProfile, updateCommunityProfile, getCommunityProfile, updateCommunityStats, updateCommunityTopics, isUsernameAvailable, registerCommunityUsername, updateCommunityUsername, updateCommunityAvatar, signUpWithInviteCode]);
 
   return (
     <AuthContext.Provider value={value}>
