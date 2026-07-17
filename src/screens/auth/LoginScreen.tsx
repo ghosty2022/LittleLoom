@@ -97,20 +97,38 @@ const SocialButton = React.memo(({ provider, onPress, disabled, isDark }: Social
 });
 
 const isValidEmail = (email: string): boolean => {
-  const re = /^[^\s@]+@[^\s@]+\\.[^\s@]+$/;
+  const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   return re.test(email.trim().toLowerCase());
 };
 
 export default function LoginScreen({ navigation }: LoginScreenProps) {
+  // ─── TAB STATE ───
+  const [activeTab, setActiveTab] = useState<'signin' | 'join'>('signin');
+
+  // ─── SIGN IN STATE ───
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+
+  // ─── JOIN FAMILY STATE ───
+  const [inviteCode, setInviteCode] = useState('');
+  const [joinFullName, setJoinFullName] = useState('');
+  const [joinEmail, setJoinEmail] = useState('');
+  const [joinPassword, setJoinPassword] = useState('');
+  const [joinConfirmPassword, setJoinConfirmPassword] = useState('');
+  const [showJoinPassword, setShowJoinPassword] = useState(false);
+  const [showJoinConfirmPassword, setShowJoinConfirmPassword] = useState(false);
+  const [codeValidated, setCodeValidated] = useState(false);
+  const [codeInfo, setCodeInfo] = useState<{ role: string; relationship?: string } | null>(null);
+  const [isValidatingCode, setIsValidatingCode] = useState(false);
+
   const [isProcessing, setIsProcessing] = useState(false);
   const [showBiometricButton, setShowBiometricButton] = useState(false);
   const [authInitialized, setAuthInitialized] = useState(false);
 
   const {
     signIn,
+    signUpWithInviteCode,
     signInWithSocial,
     isLoading: authLoading,
     isAuthenticated,
@@ -128,7 +146,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
 
   const { resetUnlockLock, forceUnlock } = useSecurity();
   const { darkMode: isDark, themeColors, triggerHaptic } = useCustomization();
-  const { toast, error: showError, success: showSuccess, confirm } = useSweetAlert();
+  const { toast, error: showError, success: showSuccess, confirm, info: showInfo } = useSweetAlert();
 
   const insets = useSafeAreaInsets();
 
@@ -138,9 +156,11 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
 
   const isMounted = useRef(true);
   const loginAttempted = useRef(false);
+  const joinAttempted = useRef(false);
   const autoLoginAttempted = useRef(false);
   const biometricCheckComplete = useRef(false);
   const socialAuthInProgress = useRef(false);
+  const codeDebounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const userName = userProfile?.fullName || 'there';
 
@@ -176,6 +196,8 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
       loginAttempted.current = false;
       autoLoginAttempted.current = false;
       socialAuthInProgress.current = false;
+      joinAttempted.current = false;
+      if (codeDebounceTimer.current) clearTimeout(codeDebounceTimer.current);
     };
   }, []);
 
@@ -191,7 +213,46 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     );
   }, []);
 
-  
+  // ─── CODE VALIDATION WITH DEBOUNCE ───
+  useEffect(() => {
+    if (activeTab !== 'join') return;
+    if (codeDebounceTimer.current) clearTimeout(codeDebounceTimer.current);
+
+    const trimmed = inviteCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+    if (trimmed.length !== 6) {
+      setCodeValidated(false);
+      setCodeInfo(null);
+      return;
+    }
+
+    setIsValidatingCode(true);
+    codeDebounceTimer.current = setTimeout(async () => {
+      try {
+        const { validateInviteCode } = await import('@/database/dbHelpers');
+        const result = await validateInviteCode(trimmed);
+
+        if (isMounted.current) {
+          if (result.valid && result.invite) {
+            setCodeValidated(true);
+            setCodeInfo({
+              role: result.invite.role,
+              relationship: result.invite.relationship,
+            });
+            showInfo('Valid Code!', `You'll join as ${result.invite.role === 'parent2' ? 'Parent 2' : result.invite.role === 'guardian' ? 'Guardian' : 'Viewer'}`);
+          } else {
+            setCodeValidated(false);
+            setCodeInfo(null);
+          }
+        }
+      } catch (error) {
+        console.error('Code validation error:', error);
+      } finally {
+        if (isMounted.current) setIsValidatingCode(false);
+      }
+    }, 500);
+  }, [inviteCode, activeTab]);
+
   useEffect(() => {
     if (googleResponse?.type === 'success') {
       const { authentication } = googleResponse;
@@ -228,7 +289,6 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     }
   };
 
-  
   useEffect(() => {
     if (fbResponse?.type === 'success') {
       const { authentication } = fbResponse;
@@ -354,6 +414,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     const unsubscribe = navigation.addListener('focus', () => {
       resetUnlockLock();
       loginAttempted.current = false;
+      joinAttempted.current = false;
     });
     return unsubscribe;
   }, [navigation, resetUnlockLock]);
@@ -388,7 +449,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
   const handleAppleLogin = async () => {
     if (socialAuthInProgress.current) return;
     triggerHaptic('light');
-    
+
     try {
       const { AppleAuthentication } = await import('expo-apple-authentication');
 
@@ -502,6 +563,76 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     showSuccess,
   ]);
 
+  // ─── JOIN FAMILY HANDLER ───
+  const handleJoinFamily = useCallback(async () => {
+    if (joinAttempted.current || isProcessing || authLoading) return;
+
+    const trimmedCode = inviteCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+    if (trimmedCode.length !== 6) {
+      showError('Invalid Code', 'Please enter a valid 6-character invite code');
+      triggerHaptic('error');
+      return;
+    }
+    if (!codeValidated) {
+      showError('Invalid Code', 'The invite code is not valid or has expired');
+      triggerHaptic('error');
+      return;
+    }
+    if (!joinFullName.trim()) {
+      showError('Missing Name', 'Please enter your full name');
+      triggerHaptic('error');
+      return;
+    }
+    if (!joinEmail.trim()) {
+      showError('Missing Email', 'Please enter your email address');
+      triggerHaptic('error');
+      return;
+    }
+    if (!isValidEmail(joinEmail)) {
+      showError('Invalid Email', 'Please enter a valid email address');
+      triggerHaptic('error');
+      return;
+    }
+    if (!joinPassword) {
+      showError('Missing Password', 'Please enter a password');
+      triggerHaptic('error');
+      return;
+    }
+    if (joinPassword.length < 6) {
+      showError('Weak Password', 'Password must be at least 6 characters');
+      triggerHaptic('error');
+      return;
+    }
+    if (joinPassword !== joinConfirmPassword) {
+      showError('Password Mismatch', 'Passwords do not match');
+      triggerHaptic('error');
+      return;
+    }
+
+    joinAttempted.current = true;
+    setIsProcessing(true);
+    Keyboard.dismiss();
+    triggerHaptic('medium');
+
+    try {
+      const result = await signUpWithInviteCode(trimmedCode, joinFullName.trim(), joinEmail.trim(), joinPassword);
+
+      if (result.success && isMounted.current) {
+        showSuccess(`Welcome, ${joinFullName.trim()}!`, result.message);
+        forceUnlock().catch(() => {});
+      } else {
+        showError('Join Failed', result.message || 'Could not join family. Please try again.');
+        joinAttempted.current = false;
+      }
+    } catch (error) {
+      showError('Error', 'Failed to join family. Please try again.');
+      joinAttempted.current = false;
+    } finally {
+      if (isMounted.current) setIsProcessing(false);
+    }
+  }, [inviteCode, codeValidated, joinFullName, joinEmail, joinPassword, joinConfirmPassword, signUpWithInviteCode, isProcessing, authLoading, triggerHaptic, showError, showSuccess, forceUnlock]);
+
   const handleBiometricLogin = useCallback(async () => {
     if (loginAttempted.current || isProcessing || authLoading) {
       return false;
@@ -573,13 +704,396 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
 
   const isLoading = authLoading || isProcessing || !authInitialized;
 
+  // ─── RENDER TAB SWITCHER ───
+  const renderTabSwitcher = () => (
+    <View style={[styles.tabContainer, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(102,126,234,0.08)' }]}>
+      <TouchableOpacity
+        style={[
+          styles.tabButton,
+          activeTab === 'signin' && [styles.tabButtonActive, { backgroundColor: isDark ? 'rgba(102,126,234,0.4)' : '#667eea' }],
+        ]}
+        onPress={() => setActiveTab('signin')}
+        disabled={isLoading}
+      >
+        <Text style={[
+          styles.tabText,
+          { color: activeTab === 'signin' ? '#fff' : isDark ? 'rgba(255,255,255,0.6)' : '#64748b' }
+        ]}>
+          Sign In
+        </Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[
+          styles.tabButton,
+          activeTab === 'join' && [styles.tabButtonActive, { backgroundColor: isDark ? 'rgba(34,197,94,0.4)' : '#22c55e' }],
+        ]}
+        onPress={() => setActiveTab('join')}
+        disabled={isLoading}
+      >
+        <Text style={[
+          styles.tabText,
+          { color: activeTab === 'join' ? '#fff' : isDark ? 'rgba(255,255,255,0.6)' : '#64748b' }
+        ]}>
+          Join Family
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  // ─── RENDER SIGN IN FORM ───
+  const renderSignInForm = () => (
+    <>
+      {/* Social Login Icons */}
+      <View style={styles.socialIconsContainer}>
+        <TouchableOpacity
+          style={[styles.socialIconButton, { borderColor: 'rgba(219,68,55,0.2)' }]}
+          onPress={handleGoogleLogin}
+          disabled={isLoading}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="logo-google" size={28} color="#DB4437" />
+        </TouchableOpacity>
+
+        {Platform.OS === 'ios' && (
+          <TouchableOpacity
+            style={[styles.socialIconButton, { borderColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)' }]}
+            onPress={handleAppleLogin}
+            disabled={isLoading}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="logo-apple" size={28} color={isDark ? '#FFFFFF' : '#000000'} />
+          </TouchableOpacity>
+        )}
+
+        <TouchableOpacity
+          style={[styles.socialIconButton, { borderColor: 'rgba(24,119,242,0.2)' }]}
+          onPress={handleFacebookLogin}
+          disabled={isLoading}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="logo-facebook" size={28} color="#1877F2" />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.divider}>
+        <View style={[styles.dividerLine, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
+        <Text style={[styles.dividerText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+          or sign in with email
+        </Text>
+        <View style={[styles.dividerLine, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
+      </View>
+
+      {/* Biometric Login */}
+      {showBiometricButton && (
+        <Animated.View style={[styles.biometricSection, biometricStyle]}>
+          <TouchableOpacity
+            style={styles.biometricButton}
+            onPress={handleBiometricLogin}
+            disabled={isLoading}
+            activeOpacity={0.8}
+          >
+            <View style={styles.biometricIconWrapper}>
+              <LinearGradient
+                colors={['rgba(102,126,234,0.2)', 'rgba(118,75,162,0.1)']}
+                style={styles.biometricIconBg}
+              >
+                <Ionicons name="finger-print" size={32} color="#667eea" />
+              </LinearGradient>
+            </View>
+            <Text style={styles.biometricTitle}>Use Biometrics</Text>
+            <Text style={styles.biometricSubtitle}>Tap to unlock instantly</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      )}
+
+      {/* Email Input */}
+      <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
+        <Ionicons name="mail-outline" size={20} color="#667eea" style={styles.inputIcon} />
+        <TextInput
+          style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
+          placeholder="Email address"
+          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoCorrect={false}
+          editable={!isLoading}
+          returnKeyType="next"
+          textContentType="emailAddress"
+          autoComplete="email"
+        />
+      </View>
+
+      {/* Password Input */}
+      <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
+        <Ionicons name="lock-closed-outline" size={20} color="#667eea" style={styles.inputIcon} />
+        <TextInput
+          style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
+          placeholder="Password"
+          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry={!showPassword}
+          editable={!isLoading}
+          returnKeyType="done"
+          onSubmitEditing={handleLogin}
+          textContentType="password"
+          autoComplete="password"
+        />
+        <TouchableOpacity
+          onPress={() => setShowPassword(!showPassword)}
+          style={styles.eyeButton}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          disabled={isLoading}
+        >
+          <Ionicons
+            name={showPassword ? 'eye-outline' : 'eye-off-outline'}
+            size={20}
+            color="#667eea"
+          />
+        </TouchableOpacity>
+      </View>
+
+      <TouchableOpacity
+        style={styles.forgotPassword}
+        onPress={() => navigation.navigate('ForgotPassword')}
+        disabled={isLoading}
+      >
+        <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[styles.loginButton, isLoading && styles.loginButtonDisabled]}
+        onPress={handleLogin}
+        disabled={isLoading}
+        activeOpacity={0.8}
+      >
+        <LinearGradient
+          colors={['#667eea', '#764ba2']}
+          style={styles.loginGradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        >
+          {isLoading ? (
+            <ActivityIndicator color="white" size="small" />
+          ) : (
+            <Text style={styles.loginText}>Sign In</Text>
+          )}
+        </LinearGradient>
+      </TouchableOpacity>
+
+      {/* Fallback Biometric */}
+      {!showBiometricButton && isBiometricAvailable && (
+        <Animated.View entering={FadeInUp.delay(600)} style={styles.biometricFallback}>
+          <TouchableOpacity
+            style={styles.biometricFallbackButton}
+            onPress={handleBiometricLogin}
+            disabled={isLoading}
+          >
+            <Ionicons name="finger-print" size={24} color="#667eea" />
+            <Text style={styles.biometricFallbackText}>Use Biometrics</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      )}
+    </>
+  );
+
+  // ─── RENDER JOIN FAMILY FORM ───
+  const renderJoinForm = () => (
+    <>
+      <View style={styles.joinHeader}>
+        <Ionicons name="people-outline" size={32} color="#22c55e" />
+        <Text style={[styles.joinTitle, { color: isDark ? '#fff' : '#1e293b' }]}>
+          Join Your Family
+        </Text>
+        <Text style={[styles.joinSubtitle, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+          Enter the invite code shared by your family member
+        </Text>
+      </View>
+
+      {/* Invite Code Input */}
+      <View style={[
+        styles.inputContainer,
+        isDark && styles.inputContainerDark,
+        codeValidated && styles.inputContainerSuccess,
+        !codeValidated && inviteCode.length >= 6 && !isValidatingCode && styles.inputContainerError,
+      ]}>
+        <Ionicons name="key-outline" size={20} color={codeValidated ? '#22c55e' : '#667eea'} style={styles.inputIcon} />
+        <TextInput
+          style={[styles.input, { color: isDark ? '#fff' : '#1e293b', letterSpacing: 4, fontWeight: '700', fontSize: 18, textTransform: 'uppercase' }]}
+          placeholder="INVITE CODE"
+          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+          value={inviteCode}
+          onChangeText={(text) => setInviteCode(text.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))}
+          autoCapitalize="characters"
+          autoCorrect={false}
+          editable={!isLoading}
+          returnKeyType="next"
+          maxLength={6}
+        />
+        {isValidatingCode && (
+          <ActivityIndicator size="small" color="#667eea" style={{ marginLeft: 8 }} />
+        )}
+        {codeValidated && !isValidatingCode && (
+          <Ionicons name="checkmark-circle" size={22} color="#22c55e" />
+        )}
+      </View>
+
+      {codeValidated && codeInfo && (
+        <View style={[styles.codeInfoCard, { backgroundColor: isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)' }]}>
+          <Ionicons name="shield-checkmark" size={18} color="#22c55e" />
+          <Text style={[styles.codeInfoText, { color: isDark ? '#86efac' : '#15803d' }]}>
+            You'll join as <Text style={{ fontWeight: '700' }}>{codeInfo.role === 'parent2' ? 'Parent 2' : codeInfo.role === 'guardian' ? 'Guardian' : 'Viewer'}</Text>
+            {codeInfo.relationship ? ` (${codeInfo.relationship})` : ''}
+          </Text>
+        </View>
+      )}
+
+      {!codeValidated && inviteCode.length >= 6 && !isValidatingCode && (
+        <View style={[styles.codeInfoCard, { backgroundColor: isDark ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.1)' }]}>
+          <Ionicons name="alert-circle" size={18} color="#ef4444" />
+          <Text style={[styles.codeInfoText, { color: isDark ? '#fca5a5' : '#b91c1c' }]}>
+            Invalid or expired code. Please check and try again.
+          </Text>
+        </View>
+      )}
+
+      {codeValidated && (
+        <>
+          <View style={styles.divider}>
+            <View style={[styles.dividerLine, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
+            <Text style={[styles.dividerText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+              set up your account
+            </Text>
+            <View style={[styles.dividerLine, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
+          </View>
+
+          {/* Full Name */}
+          <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
+            <Ionicons name="person-outline" size={20} color="#667eea" style={styles.inputIcon} />
+            <TextInput
+              style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
+              placeholder="Full name"
+              placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+              value={joinFullName}
+              onChangeText={setJoinFullName}
+              autoCapitalize="words"
+              autoCorrect={false}
+              editable={!isLoading}
+              returnKeyType="next"
+              textContentType="name"
+            />
+          </View>
+
+          {/* Email */}
+          <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
+            <Ionicons name="mail-outline" size={20} color="#667eea" style={styles.inputIcon} />
+            <TextInput
+              style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
+              placeholder="Email address"
+              placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+              value={joinEmail}
+              onChangeText={setJoinEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={!isLoading}
+              returnKeyType="next"
+              textContentType="emailAddress"
+              autoComplete="email"
+            />
+          </View>
+
+          {/* Password */}
+          <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
+            <Ionicons name="lock-closed-outline" size={20} color="#667eea" style={styles.inputIcon} />
+            <TextInput
+              style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
+              placeholder="Password"
+              placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+              value={joinPassword}
+              onChangeText={setJoinPassword}
+              secureTextEntry={!showJoinPassword}
+              editable={!isLoading}
+              returnKeyType="next"
+              textContentType="newPassword"
+              autoComplete="new-password"
+            />
+            <TouchableOpacity
+              onPress={() => setShowJoinPassword(!showJoinPassword)}
+              style={styles.eyeButton}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              disabled={isLoading}
+            >
+              <Ionicons
+                name={showJoinPassword ? 'eye-outline' : 'eye-off-outline'}
+                size={20}
+                color="#667eea"
+              />
+            </TouchableOpacity>
+          </View>
+
+          {/* Confirm Password */}
+          <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
+            <Ionicons name="shield-checkmark-outline" size={20} color="#667eea" style={styles.inputIcon} />
+            <TextInput
+              style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
+              placeholder="Confirm password"
+              placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+              value={joinConfirmPassword}
+              onChangeText={setJoinConfirmPassword}
+              secureTextEntry={!showJoinConfirmPassword}
+              editable={!isLoading}
+              returnKeyType="done"
+              onSubmitEditing={handleJoinFamily}
+              textContentType="newPassword"
+            />
+            <TouchableOpacity
+              onPress={() => setShowJoinConfirmPassword(!showJoinConfirmPassword)}
+              style={styles.eyeButton}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              disabled={isLoading}
+            >
+              <Ionicons
+                name={showJoinConfirmPassword ? 'eye-outline' : 'eye-off-outline'}
+                size={20}
+                color="#667eea"
+              />
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity
+            style={[styles.loginButton, isLoading && styles.loginButtonDisabled]}
+            onPress={handleJoinFamily}
+            disabled={isLoading}
+            activeOpacity={0.8}
+          >
+            <LinearGradient
+              colors={['#22c55e', '#16a34a']}
+              style={styles.loginGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              {isLoading ? (
+                <ActivityIndicator color="white" size="small" />
+              ) : (
+                <Text style={styles.loginText}>Join Family</Text>
+              )}
+            </LinearGradient>
+          </TouchableOpacity>
+        </>
+      )}
+    </>
+  );
+
   return (
     <View style={[styles.container, { backgroundColor: isDark ? '#0a0a0a' : '#f8faff' }]}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
       <UniversalSpinner
         visible={isLoading && !isAuthenticated}
-        text="Signing you in..."
+        text={activeTab === 'join' ? 'Joining your family...' : 'Signing you in...'}
         subtext="Please wait a moment"
         size="medium"
         overlay={true}
@@ -629,173 +1143,36 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
               />
 
               <Text style={[styles.welcomeText, { color: isDark ? '#fff' : '#1e293b' }]}>
-                Welcome Back{userName !== 'there' ? `, ${userName}` : ''}
+                {activeTab === 'signin' ? `Welcome Back${userName !== 'there' ? `, ${userName}` : ''}` : 'Join Family'}
               </Text>
 
-              {/* Social Login Icons */}
-              <View style={styles.socialIconsContainer}>
-                <TouchableOpacity
-                  style={[styles.socialIconButton, { borderColor: 'rgba(219,68,55,0.2)' }]}
-                  onPress={handleGoogleLogin}
-                  disabled={isLoading}
-                  activeOpacity={0.8}
-                >
-                  <Ionicons name="logo-google" size={28} color="#DB4437" />
-                </TouchableOpacity>
+              {renderTabSwitcher()}
 
-                {Platform.OS === 'ios' && (
-                  <TouchableOpacity
-                    style={[styles.socialIconButton, { borderColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)' }]}
-                    onPress={handleAppleLogin}
-                    disabled={isLoading}
-                    activeOpacity={0.8}
-                  >
-                    <Ionicons name="logo-apple" size={28} color={isDark ? '#FFFFFF' : '#000000'} />
-                  </TouchableOpacity>
-                )}
-
-                <TouchableOpacity
-                  style={[styles.socialIconButton, { borderColor: 'rgba(24,119,242,0.2)' }]}
-                  onPress={handleFacebookLogin}
-                  disabled={isLoading}
-                  activeOpacity={0.8}
-                >
-                  <Ionicons name="logo-facebook" size={28} color="#1877F2" />
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.divider}>
-                <View style={[styles.dividerLine, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
-                <Text style={[styles.dividerText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
-                  or sign in with email
-                </Text>
-                <View style={[styles.dividerLine, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
-              </View>
-
-              {/* Biometric Login */}
-              {showBiometricButton && (
-                <Animated.View style={[styles.biometricSection, biometricStyle]}>
-                  <TouchableOpacity
-                    style={styles.biometricButton}
-                    onPress={handleBiometricLogin}
-                    disabled={isLoading}
-                    activeOpacity={0.8}
-                  >
-                    <View style={styles.biometricIconWrapper}>
-                      <LinearGradient
-                        colors={['rgba(102,126,234,0.2)', 'rgba(118,75,162,0.1)']}
-                        style={styles.biometricIconBg}
-                      >
-                        <Ionicons name="finger-print" size={32} color="#667eea" />
-                      </LinearGradient>
-                    </View>
-                    <Text style={styles.biometricTitle}>Use Biometrics</Text>
-                    <Text style={styles.biometricSubtitle}>Tap to unlock instantly</Text>
-                  </TouchableOpacity>
-                </Animated.View>
-              )}
-
-              {/* Email Input */}
-              <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
-                <Ionicons name="mail-outline" size={20} color="#667eea" style={styles.inputIcon} />
-                <TextInput
-                  style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
-                  placeholder="Email address"
-                  placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
-                  value={email}
-                  onChangeText={setEmail}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  editable={!isLoading}
-                  returnKeyType="next"
-                  textContentType="emailAddress"
-                  autoComplete="email"
-                />
-              </View>
-
-              {/* Password Input */}
-              <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
-                <Ionicons name="lock-closed-outline" size={20} color="#667eea" style={styles.inputIcon} />
-                <TextInput
-                  style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
-                  placeholder="Password"
-                  placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry={!showPassword}
-                  editable={!isLoading}
-                  returnKeyType="done"
-                  onSubmitEditing={handleLogin}
-                  textContentType="password"
-                  autoComplete="password"
-                />
-                <TouchableOpacity
-                  onPress={() => setShowPassword(!showPassword)}
-                  style={styles.eyeButton}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  disabled={isLoading}
-                >
-                  <Ionicons
-                    name={showPassword ? 'eye-outline' : 'eye-off-outline'}
-                    size={20}
-                    color="#667eea"
-                  />
-                </TouchableOpacity>
-              </View>
-
-              <TouchableOpacity
-                style={styles.forgotPassword}
-                onPress={() => navigation.navigate('ForgotPassword')}
-                disabled={isLoading}
-              >
-                <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.loginButton, isLoading && styles.loginButtonDisabled]}
-                onPress={handleLogin}
-                disabled={isLoading}
-                activeOpacity={0.8}
-              >
-                <LinearGradient
-                  colors={['#667eea', '#764ba2']}
-                  style={styles.loginGradient}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                >
-                  {isLoading ? (
-                    <ActivityIndicator color="white" size="small" />
-                  ) : (
-                    <Text style={styles.loginText}>Sign In</Text>
-                  )}
-                </LinearGradient>
-              </TouchableOpacity>
-
-              {/* Fallback Biometric */}
-              {!showBiometricButton && isBiometricAvailable && (
-                <Animated.View entering={FadeInUp.delay(600)} style={styles.biometricFallback}>
-                  <TouchableOpacity
-                    style={styles.biometricFallbackButton}
-                    onPress={handleBiometricLogin}
-                    disabled={isLoading}
-                  >
-                    <Ionicons name="finger-print" size={24} color="#667eea" />
-                    <Text style={styles.biometricFallbackText}>Use Biometrics</Text>
-                  </TouchableOpacity>
-                </Animated.View>
-              )}
+              {activeTab === 'signin' ? renderSignInForm() : renderJoinForm()}
             </BlurView>
           </Animated.View>
 
           {/* Footer */}
           <Animated.View entering={FadeIn.delay(800)} style={styles.footer}>
-            <Text style={[styles.footerText, { color: isDark ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.9)' }]}>
-              Don't have an account?
-            </Text>
-            <TouchableOpacity onPress={() => navigation.navigate('SignUp')} disabled={isLoading}>
-              <Text style={styles.footerLink}>Create Account</Text>
-            </TouchableOpacity>
+            {activeTab === 'signin' ? (
+              <>
+                <Text style={[styles.footerText, { color: isDark ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.9)' }]}>
+                  Don't have an account?
+                </Text>
+                <TouchableOpacity onPress={() => navigation.navigate('SignUp')} disabled={isLoading}>
+                  <Text style={styles.footerLink}>Create Account</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <Text style={[styles.footerText, { color: isDark ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.9)' }]}>
+                  Want your own family?
+                </Text>
+                <TouchableOpacity onPress={() => navigation.navigate('SignUp')} disabled={isLoading}>
+                  <Text style={styles.footerLink}>Create Account</Text>
+                </TouchableOpacity>
+              </>
+            )}
           </Animated.View>
         </Animated.ScrollView>
       </KeyboardAvoidingView>
@@ -874,6 +1251,68 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     textAlign: 'center',
   },
+  // ─── TAB SWITCHER ───
+  tabContainer: {
+    flexDirection: 'row',
+    borderRadius: 14,
+    padding: 4,
+    marginBottom: 24,
+  },
+  tabButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  tabButtonActive: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  // ─── JOIN FAMILY ───
+  joinHeader: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  joinTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginTop: 12,
+  },
+  joinSubtitle: {
+    fontSize: 13,
+    textAlign: 'center',
+    marginTop: 4,
+    paddingHorizontal: 20,
+  },
+  codeInfoCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  codeInfoText: {
+    fontSize: 13,
+    fontWeight: '500',
+    flex: 1,
+  },
+  inputContainerSuccess: {
+    borderColor: '#22c55e',
+    backgroundColor: 'rgba(34,197,94,0.05)',
+  },
+  inputContainerError: {
+    borderColor: '#ef4444',
+    backgroundColor: 'rgba(239,68,68,0.05)',
+  },
+  // ─── SOCIAL ───
   socialIconsContainer: {
     flexDirection: 'row',
     justifyContent: 'center',

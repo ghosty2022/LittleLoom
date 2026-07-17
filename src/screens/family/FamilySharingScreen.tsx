@@ -1034,6 +1034,9 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
     updateParent2Profile,
     resendInvite,
     cancelInvite,
+    generateInviteCode,
+    getActiveInviteCodes,
+    revokeInviteCode,
   } = useFamily();
 
   const { profile } = useUser();
@@ -1060,6 +1063,15 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
   const [showRoleModal, setShowRoleModal] = useState(false);
   const [showBabySelector, setShowBabySelector] = useState(false);
   const [activeTab, setActiveTab] = useState<'members' | 'activity' | 'analytics'>('members');
+
+  // ── Invite Code State ──
+  const [showInviteCodeModal, setShowInviteCodeModal] = useState(false);
+  const [inviteCodeRole, setInviteCodeRole] = useState<'parent2' | 'guardian' | 'viewer'>('guardian');
+  const [inviteCodeRelationship, setInviteCodeRelationship] = useState('');
+  const [generatedCode, setGeneratedCode] = useState('');
+  const [isGeneratingCode, setIsGeneratingCode] = useState(false);
+  const [activeCodes, setActiveCodes] = useState<any[]>([]);
+  const [isLoadingCodes, setIsLoadingCodes] = useState(false);
 
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<UserRole>(UserRole.GUARDIAN);
@@ -1363,6 +1375,86 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
     triggerHaptic('light');
   };
 
+  // ── Invite Code Handlers ──
+  const handleGenerateCode = useCallback(async () => {
+    if (!inviteCodeRelationship.trim()) {
+      sweetAlert.alert('Missing Info', 'Please specify the relationship (e.g., Grandma, Uncle)', 'warning');
+      return;
+    }
+    setIsGeneratingCode(true);
+    triggerHaptic('medium');
+    try {
+      const result = await generateInviteCode(inviteCodeRole, inviteCodeRelationship.trim());
+      if (result.success) {
+        setGeneratedCode(result.code);
+        triggerHaptic('success');
+        sweetAlert.alert('Code Generated!', `Share this code: ${result.code}`, 'success');
+        // Refresh active codes
+        const codes = await getActiveInviteCodes();
+        setActiveCodes(codes);
+      } else {
+        sweetAlert.alert('Error', result.message, 'warning');
+      }
+    } catch (error) {
+      console.error('Generate code error:', error);
+      sweetAlert.alert('Error', 'Failed to generate invite code', 'warning');
+    } finally {
+      setIsGeneratingCode(false);
+    }
+  }, [inviteCodeRole, inviteCodeRelationship, generateInviteCode, getActiveInviteCodes, triggerHaptic, sweetAlert]);
+
+  const handleLoadActiveCodes = useCallback(async () => {
+    setIsLoadingCodes(true);
+    try {
+      const codes = await getActiveInviteCodes();
+      setActiveCodes(codes);
+    } catch (error) {
+      console.error('Load codes error:', error);
+    } finally {
+      setIsLoadingCodes(false);
+    }
+  }, [getActiveInviteCodes]);
+
+  const handleRevokeCode = useCallback(async (code: string) => {
+    sweetAlert.confirm(
+      'Revoke Invite Code',
+      `Are you sure you want to revoke code ${code}?`,
+      async () => {
+        const success = await revokeInviteCode(code);
+        if (success) {
+          triggerHaptic('success');
+          sweetAlert.alert('Revoked', 'Invite code has been deactivated', 'success');
+          handleLoadActiveCodes();
+        } else {
+          sweetAlert.alert('Error', 'Failed to revoke code', 'warning');
+        }
+      },
+      () => {},
+      'Revoke',
+      'Cancel',
+      true
+    );
+  }, [revokeInviteCode, handleLoadActiveCodes, triggerHaptic, sweetAlert]);
+
+  const handleShareCode = useCallback(async (code: string) => {
+    try {
+      await Share.share({
+        message: `Join our family on LittleLoom! Use invite code: ${code}\n\nDownload the app and enter this code on the sign-up screen.`,
+        title: 'LittleLoom Family Invite',
+      });
+    } catch (error) {
+      console.error('Share error:', error);
+    }
+  }, []);
+
+  const openInviteCodeModal = useCallback(() => {
+    setGeneratedCode('');
+    setInviteCodeRelationship('');
+    setInviteCodeRole('guardian');
+    setShowInviteCodeModal(true);
+    handleLoadActiveCodes();
+  }, [handleLoadActiveCodes]);
+
   const handleSuggestionAction = (suggestion: SmartSuggestion) => {
     triggerHaptic('light');
     switch (suggestion.type) {
@@ -1395,12 +1487,20 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
           )}
         </View>
 
-        <TouchableOpacity
-          style={[styles.headerBtn, styles.headerBtnAccent, { backgroundColor: themeColors.primary }]}
-          onPress={() => setShowInviteModal(true)}
-        >
-          <Ionicons name="person-add" size={18} color="#fff" />
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <TouchableOpacity
+            style={[styles.headerBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.95)', borderColor: themeColors.primary + '40', borderWidth: 1 }]}
+            onPress={openInviteCodeModal}
+          >
+            <Ionicons name="key-outline" size={18} color={themeColors.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.headerBtn, styles.headerBtnAccent, { backgroundColor: themeColors.primary }]}
+            onPress={() => setShowInviteModal(true)}
+          >
+            <Ionicons name="person-add" size={18} color="#fff" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Modern Tab Bar */}
@@ -2152,6 +2252,136 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
                 </TouchableOpacity>
               );
             })}
+        </View>
+      </ActionModal>
+
+      {/* Invite Code Modal */}
+      <ActionModal
+        visible={showInviteCodeModal}
+        onClose={() => setShowInviteCodeModal(false)}
+        title="Invite Code"
+        isDark={isDark}
+        primaryColor={themeColors.primary}
+      >
+        <View style={styles.inviteForm}>
+          <Text style={[styles.inviteDescription, isDark && styles.textMuted]}>
+            Generate a shareable 6-character code for family members to join instantly.
+          </Text>
+
+          {/* Role Selection */}
+          <Text style={[styles.formLabel, isDark && styles.textDark, { marginTop: 8 }]}>Select Role</Text>
+          <View style={styles.roleSelection}>
+            {(['parent2', 'guardian', 'viewer'] as const).map((role) => {
+              const config = ROLE_CONFIG[role === 'parent2' ? UserRole.PARENT_2 : role === 'guardian' ? UserRole.GUARDIAN : UserRole.VIEWER];
+              const isSelected = inviteCodeRole === role;
+              return (
+                <TouchableOpacity
+                  key={role}
+                  style={[
+                    styles.roleOption,
+                    isSelected && { borderColor: config.color, backgroundColor: config.color + '10' },
+                    isDark && styles.roleOptionDark
+                  ]}
+                  onPress={() => setInviteCodeRole(role)}
+                >
+                  <LinearGradient colors={config.gradient} style={styles.roleOptionIcon}>
+                    <Ionicons name={config.icon} size={20} color="#fff" />
+                  </LinearGradient>
+                  <View style={styles.roleOptionInfo}>
+                    <Text style={[styles.roleOptionTitle, isDark && styles.textDark]}>{config.label}</Text>
+                    <Text style={[styles.roleOptionDesc, isDark && styles.textMuted]}>{config.description}</Text>
+                  </View>
+                  {isSelected && <Ionicons name="checkmark-circle" size={24} color={config.color} />}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* Relationship Input */}
+          <View style={styles.formGroup}>
+            <Text style={[styles.formLabel, isDark && styles.textDark]}>Relationship to Baby</Text>
+            <TextInput
+              style={[styles.formInput, isDark && styles.formInputDark]}
+              value={inviteCodeRelationship}
+              onChangeText={setInviteCodeRelationship}
+              placeholder="e.g., Grandma, Uncle, Babysitter"
+              placeholderTextColor={isDark ? '#666' : '#999'}
+            />
+          </View>
+
+          {/* Generated Code Display */}
+          {generatedCode ? (
+            <Animated.View entering={FadeInUp.springify()} style={[styles.codeDisplayCard, { backgroundColor: themeColors.primary + '10', borderColor: themeColors.primary + '30' }]}>
+              <View style={styles.codeDisplayHeader}>
+                <Ionicons name="checkmark-circle" size={24} color="#22c55e" />
+                <Text style={[styles.codeDisplayTitle, { color: '#22c55e' }]}>Code Generated!</Text>
+              </View>
+              <View style={[styles.codeBox, { backgroundColor: isDark ? '#1a1a2e' : '#fff' }]}>
+                <Text style={[styles.codeText, { color: themeColors.primary, letterSpacing: 8 }]}>{generatedCode}</Text>
+              </View>
+              <Text style={[styles.codeDisplaySubtitle, isDark && styles.textMuted]}>
+                Share this code with your family member. They can enter it on the sign-up screen.
+              </Text>
+              <TouchableOpacity
+                style={[styles.shareCodeBtn, { backgroundColor: themeColors.primary }]}
+                onPress={() => handleShareCode(generatedCode)}
+              >
+                <Ionicons name="share-outline" size={18} color="#fff" />
+                <Text style={styles.shareCodeBtnText}>Share Code</Text>
+              </TouchableOpacity>
+            </Animated.View>
+          ) : (
+            <TouchableOpacity
+              style={[styles.inviteButton, (!inviteCodeRelationship.trim() || isGeneratingCode) && styles.inviteButtonDisabled]}
+              onPress={handleGenerateCode}
+              disabled={!inviteCodeRelationship.trim() || isGeneratingCode}
+            >
+              <LinearGradient colors={[themeColors.primary, themeColors.secondary]} style={styles.inviteButtonGradient}>
+                {isGeneratingCode ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <>
+                    <Ionicons name="key" size={20} color="#fff" style={{ marginRight: 8 }} />
+                    <Text style={styles.inviteButtonText}>Generate Invite Code</Text>
+                  </>
+                )}
+              </LinearGradient>
+            </TouchableOpacity>
+          )}
+
+          {/* Active Codes List */}
+          {activeCodes.length > 0 && (
+            <View style={{ marginTop: 20 }}>
+              <Text style={[styles.formLabel, isDark && styles.textDark]}>Active Codes</Text>
+              {activeCodes.map((code) => (
+                <View key={code.code} style={[styles.activeCodeRow, isDark && styles.activeCodeRowDark]}>
+                  <View style={styles.activeCodeLeft}>
+                    <Text style={[styles.activeCodeText, { color: themeColors.primary, letterSpacing: 4 }]}>{code.code}</Text>
+                    <View style={styles.activeCodeMeta}>
+                      <Text style={[styles.activeCodeRole, isDark && styles.textMuted]}>
+                        {code.role === 'parent2' ? 'Co-Parent' : code.role === 'guardian' ? 'Guardian' : 'Viewer'}
+                      </Text>
+                      <Text style={[styles.activeCodeExpiry, isDark && styles.textMuted]}>
+                        Expires {new Date(code.expiresAt).toLocaleDateString()}
+                      </Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    style={[styles.revokeCodeBtn, { backgroundColor: '#ef444415' }]}
+                    onPress={() => handleRevokeCode(code.code)}
+                  >
+                    <Ionicons name="close" size={18} color="#ef4444" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {isLoadingCodes && (
+            <View style={{ alignItems: 'center', padding: 20 }}>
+              <ActivityIndicator color={themeColors.primary} />
+            </View>
+          )}
         </View>
       </ActionModal>
 
@@ -3536,6 +3766,100 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '800',
+  },
+
+  // ── Invite Code Display ──
+  codeDisplayCard: {
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 8,
+  },
+  codeDisplayHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  codeDisplayTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  codeBox: {
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: 'rgba(102,126,234,0.2)',
+  },
+  codeText: {
+    fontSize: 28,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  codeDisplaySubtitle: {
+    fontSize: 13,
+    fontWeight: '500',
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  shareCodeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginTop: 4,
+  },
+  shareCodeBtnText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  activeCodeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 14,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.02)',
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.05)',
+  },
+  activeCodeRowDark: {
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderColor: 'rgba(255,255,255,0.05)',
+  },
+  activeCodeLeft: {
+    flex: 1,
+  },
+  activeCodeText: {
+    fontSize: 20,
+    fontWeight: '900',
+    marginBottom: 4,
+  },
+  activeCodeMeta: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  activeCodeRole: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  activeCodeExpiry: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  revokeCodeBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   // ── Invite Form ──
