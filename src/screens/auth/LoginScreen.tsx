@@ -537,7 +537,15 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
           }
         }
       } else {
-        showError('Login Failed', 'Invalid email or password');
+        // ─── CRITICAL FIX: Distinguish unknown user from wrong password ─
+        const { findUserByEmail } = await import('@/database/dbHelpers');
+        const existing = await findUserByEmail(email.trim());
+        
+        if (!existing) {
+          showError('No Account Found', 'No account exists with this email. Please create an account first.');
+        } else {
+          showError('Login Failed', 'Invalid email or password');
+        }
         loginAttempted.current = false;
       }
     } catch (error) {
@@ -566,6 +574,17 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
   // ─── JOIN FAMILY HANDLER ───
   const handleJoinFamily = useCallback(async () => {
     if (joinAttempted.current || isProcessing || authLoading) return;
+
+    // ─── CRITICAL FIX: Check if email already has an account ─────────
+    const { findUserByEmail } = await import('@/database/dbHelpers');
+    const existingUser = await findUserByEmail(joinEmail.trim());
+    
+    if (existingUser) {
+      showInfo('Account Found', 'You already have an account. Please sign in instead.');
+      setActiveTab('signin');
+      setEmail(joinEmail.trim());
+      return;
+    }
 
     const trimmedCode = inviteCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
 

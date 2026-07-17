@@ -40,6 +40,7 @@ const ASYNC_KEYS = {
   COMMUNITY_STATS: 'littleloom_community_stats',
   COMMUNITY_SELECTED_TOPICS: 'littleloom_community_selected_topics',
   USERNAME_REGISTRY: 'littleloom_username_registry',
+  // User registry keys are in dbHelpers.ts, not here
 } as const;
 
 export interface UserProfile {
@@ -159,6 +160,14 @@ const secureStorage = {
     }
   },
 };
+
+// Import user registry functions from dbHelpers
+import { 
+  findUserByEmail, 
+  registerUser, 
+  updateUserInRegistry,
+  type UserRegistryEntry,
+} from '@/database/dbHelpers';
 
 const getBiometricTypeName = (types: LocalAuthentication.AuthenticationType[]): string => {
   if (!types || types.length === 0) return 'Biometric';
@@ -512,38 +521,79 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       await new Promise(resolve => setTimeout(resolve, 800));
-      
+
       const token = `auth_token_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       
-      const [commUsername, commHandle, commBio, commAvatar, commDisplayName, commStats, commTopics] = await Promise.all([
-        getAppSetting(ASYNC_KEYS.COMMUNITY_USERNAME),
-        getAppSetting(ASYNC_KEYS.COMMUNITY_HANDLE),
-        getAppSetting(ASYNC_KEYS.COMMUNITY_BIO),
-        getAppSetting(ASYNC_KEYS.COMMUNITY_AVATAR),
-        getAppSetting(ASYNC_KEYS.COMMUNITY_DISPLAY_NAME),
-        getAppSetting(ASYNC_KEYS.COMMUNITY_STATS),
-        getAppSetting(ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS),
-      ]);
+      // ─── CRITICAL FIX: Check if user already exists by email ─────────
+      const existingUser = await findUserByEmail(email);
       
-      const baseName = email.split('@')[0];
-      const baseHandle = `@${baseName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
-      
-      const userProfile: UserProfile = {
-        id: userId,
-        fullName: baseName,
-        email,
-        role: 'parent1',
-        createdAt: new Date().toISOString(),
-        preferences: { notifications: true, darkMode: false, language: 'en' },
-        communityUsername: commUsername || baseName,
-        communityHandle: commHandle || baseHandle,
-        communityBio: commBio || '',
-        communityAvatar: commAvatar || '👤',
-        communityDisplayName: commDisplayName || baseName,
-        communityStats: commStats ? JSON.parse(commStats) : { posts: 0, followers: 0, following: 0, helpful: 0 },
-        communitySelectedTopics: commTopics ? JSON.parse(commTopics) : [],
-      };
+      let userProfile: UserProfile;
+      let userId: string;
+
+      if (existingUser) {
+        // Existing user — restore their profile from registry
+        userId = existingUser.userId;
+        
+        // Merge stored community data with any newer app_settings data
+        const [commUsername, commHandle, commBio, commAvatar, commDisplayName, commStats, commTopics] = await Promise.all([
+          getAppSetting(ASYNC_KEYS.COMMUNITY_USERNAME),
+          getAppSetting(ASYNC_KEYS.COMMUNITY_HANDLE),
+          getAppSetting(ASYNC_KEYS.COMMUNITY_BIO),
+          getAppSetting(ASYNC_KEYS.COMMUNITY_AVATAR),
+          getAppSetting(ASYNC_KEYS.COMMUNITY_DISPLAY_NAME),
+          getAppSetting(ASYNC_KEYS.COMMUNITY_STATS),
+          getAppSetting(ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS),
+        ]);
+
+        userProfile = {
+          id: userId,
+          fullName: existingUser.fullName,
+          email: existingUser.email,
+          role: existingUser.role as 'parent1' | 'parent2' | 'guardian',
+          createdAt: existingUser.createdAt,
+          preferences: { notifications: true, darkMode: false, language: 'en' },
+          socialProvider: existingUser.socialProvider as 'google' | 'apple' | 'facebook' | null | undefined,
+          communityUsername: commUsername || existingUser.communityUsername || existingUser.fullName,
+          communityHandle: commHandle || existingUser.communityHandle || `@${existingUser.fullName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`,
+          communityBio: commBio || existingUser.communityBio || '',
+          communityAvatar: commAvatar || existingUser.communityAvatar || '👤',
+          communityDisplayName: commDisplayName || existingUser.communityDisplayName || existingUser.fullName,
+          communityStats: commStats ? JSON.parse(commStats) : (existingUser.communityStats || { posts: 0, followers: 0, following: 0, helpful: 0 }),
+          communitySelectedTopics: commTopics ? JSON.parse(commTopics) : (existingUser.communitySelectedTopics || []),
+        };
+      } else {
+        // New user — create fresh profile (fallback for legacy users)
+        userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        
+        const [commUsername, commHandle, commBio, commAvatar, commDisplayName, commStats, commTopics] = await Promise.all([
+          getAppSetting(ASYNC_KEYS.COMMUNITY_USERNAME),
+          getAppSetting(ASYNC_KEYS.COMMUNITY_HANDLE),
+          getAppSetting(ASYNC_KEYS.COMMUNITY_BIO),
+          getAppSetting(ASYNC_KEYS.COMMUNITY_AVATAR),
+          getAppSetting(ASYNC_KEYS.COMMUNITY_DISPLAY_NAME),
+          getAppSetting(ASYNC_KEYS.COMMUNITY_STATS),
+          getAppSetting(ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS),
+        ]);
+        
+        const baseName = email.split('@')[0];
+        const baseHandle = `@${baseName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
+        
+        userProfile = {
+          id: userId,
+          fullName: baseName,
+          email,
+          role: 'parent1',
+          createdAt: new Date().toISOString(),
+          preferences: { notifications: true, darkMode: false, language: 'en' },
+          communityUsername: commUsername || baseName,
+          communityHandle: commHandle || baseHandle,
+          communityBio: commBio || '',
+          communityAvatar: commAvatar || '👤',
+          communityDisplayName: commDisplayName || baseName,
+          communityStats: commStats ? JSON.parse(commStats) : { posts: 0, followers: 0, following: 0, helpful: 0 },
+          communitySelectedTopics: commTopics ? JSON.parse(commTopics) : [],
+        };
+      }
 
       const [tokenStored, profileStored] = await Promise.all([
         secureStorage.setItem(SECURE_KEYS.AUTH_TOKEN, token),
@@ -583,6 +633,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await new Promise(resolve => setTimeout(resolve, 1500 - (now - lastSignInTime.current)));
     }
     try {
+      // ─── CRITICAL FIX: Reject sign-in for unknown emails ─────────────
+      const existingUser = await findUserByEmail(email);
+      if (!existingUser) {
+        console.warn('[Auth] Sign in rejected: no account found for', email);
+        return false; // Unknown user — don't create new account
+      }
+      
       const success = await performSignInInternal(email, password, false);
       lastSignInTime.current = Date.now();
       return success;
@@ -610,23 +667,72 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const baseName = socialUser.fullName;
       const baseHandle = `@${baseName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
       
-      const userProfile: UserProfile = {
-        id: socialUser.id,
-        fullName: socialUser.fullName,
-        email: socialUser.email,
-        avatar: socialUser.avatar,
-        role: 'parent1',
-        createdAt: new Date().toISOString(),
-        preferences: { notifications: true, darkMode: false, language: 'en' },
-        socialProvider: socialUser.provider,
-        communityUsername: commUsername || baseName,
-        communityHandle: commHandle || baseHandle,
-        communityBio: commBio || '',
-        communityAvatar: commAvatar || socialUser.avatar || '👤',
-        communityDisplayName: commDisplayName || baseName,
-        communityStats: commStats ? JSON.parse(commStats) : { posts: 0, followers: 0, following: 0, helpful: 0 },
-        communitySelectedTopics: commTopics ? JSON.parse(commTopics) : [],
-      };
+      // ─── CRITICAL FIX: Check if social user already exists by email ──
+      const existingUser = await findUserByEmail(socialUser.email);
+      
+      let userProfile: UserProfile;
+      let finalUserId: string;
+
+      if (existingUser) {
+        // Restore existing user
+        finalUserId = existingUser.userId;
+        userProfile = {
+          id: finalUserId,
+          fullName: existingUser.fullName,
+          email: existingUser.email,
+          avatar: socialUser.avatar || existingUser.communityAvatar || '👤',
+          role: existingUser.role as 'parent1' | 'parent2' | 'guardian',
+          createdAt: existingUser.createdAt,
+          preferences: { notifications: true, darkMode: false, language: 'en' },
+          socialProvider: socialUser.provider,
+          communityUsername: commUsername || existingUser.communityUsername || existingUser.fullName,
+          communityHandle: commHandle || existingUser.communityHandle || baseHandle,
+          communityBio: commBio || existingUser.communityBio || '',
+          communityAvatar: commAvatar || existingUser.communityAvatar || socialUser.avatar || '👤',
+          communityDisplayName: commDisplayName || existingUser.communityDisplayName || existingUser.fullName,
+          communityStats: commStats ? JSON.parse(commStats) : (existingUser.communityStats || { posts: 0, followers: 0, following: 0, helpful: 0 }),
+          communitySelectedTopics: commTopics ? JSON.parse(commTopics) : (existingUser.communitySelectedTopics || []),
+        };
+      } else {
+        // New social user
+        finalUserId = socialUser.id;
+        userProfile = {
+          id: finalUserId,
+          fullName: socialUser.fullName,
+          email: socialUser.email,
+          avatar: socialUser.avatar,
+          role: 'parent1',
+          createdAt: new Date().toISOString(),
+          preferences: { notifications: true, darkMode: false, language: 'en' },
+          socialProvider: socialUser.provider,
+          communityUsername: commUsername || baseName,
+          communityHandle: commHandle || baseHandle,
+          communityBio: commBio || '',
+          communityAvatar: commAvatar || socialUser.avatar || '👤',
+          communityDisplayName: commDisplayName || baseName,
+          communityStats: commStats ? JSON.parse(commStats) : { posts: 0, followers: 0, following: 0, helpful: 0 },
+          communitySelectedTopics: commTopics ? JSON.parse(commTopics) : [],
+        };
+
+        // Register in persistent registry
+        const registryEntry: UserRegistryEntry = {
+          userId: finalUserId,
+          email: socialUser.email,
+          fullName: socialUser.fullName,
+          role: 'parent1',
+          createdAt: userProfile.createdAt,
+          communityUsername: userProfile.communityUsername,
+          communityHandle: userProfile.communityHandle,
+          communityBio: '',
+          communityAvatar: socialUser.avatar || '👤',
+          communityDisplayName: userProfile.communityDisplayName,
+          communityStats: userProfile.communityStats,
+          communitySelectedTopics: [],
+          socialProvider: socialUser.provider,
+          hasPassword: false,
+        };
+        await registerUser(registryEntry);
+      }
 
       await Promise.all([
         secureStorage.setItem(SECURE_KEYS.AUTH_TOKEN, token),
@@ -660,6 +766,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signUp = useCallback(async (fullName: string, email: string, password: string): Promise<boolean> => {
     if (!acquireSignInLock()) return false;
     try {
+      // ─── CRITICAL FIX: Check if email already exists ─────────────────
+      const existingUser = await findUserByEmail(email);
+      if (existingUser) {
+        console.warn('[Auth] Sign up rejected: email already registered:', email);
+        return false; // Caller should detect this and redirect to login
+      }
+
       await new Promise(resolve => setTimeout(resolve, 800));
       
       const token = `auth_token_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -682,6 +795,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         communityStats: { posts: 0, followers: 0, following: 0, helpful: 0 },
         communitySelectedTopics: [],
       };
+
+      // ─── CRITICAL FIX: Register user in persistent registry ──────────
+      const registryEntry: UserRegistryEntry = {
+        userId,
+        email,
+        fullName,
+        role: 'parent1',
+        createdAt: userProfile.createdAt,
+        communityUsername: fullName,
+        communityHandle: handle,
+        communityBio: '',
+        communityAvatar: '👤',
+        communityDisplayName: fullName,
+        communityStats: { posts: 0, followers: 0, following: 0, helpful: 0 },
+        communitySelectedTopics: [],
+        hasPassword: true,
+      };
+      await registerUser(registryEntry);
 
       await Promise.all([
         secureStorage.setItem(SECURE_KEYS.AUTH_TOKEN, token),
@@ -760,6 +891,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         communityStats: { posts: 0, followers: 0, following: 0, helpful: 0 },
         communitySelectedTopics: [],
       };
+
+      // ─── CRITICAL FIX: Register user in persistent registry ──────────
+      const registryEntry: UserRegistryEntry = {
+        userId,
+        email,
+        fullName,
+        role: userProfile.role,
+        createdAt: userProfile.createdAt,
+        communityUsername: fullName,
+        communityHandle: handle,
+        communityBio: '',
+        communityAvatar: '👤',
+        communityDisplayName: fullName,
+        communityStats: { posts: 0, followers: 0, following: 0, helpful: 0 },
+        communitySelectedTopics: [],
+        hasPassword: true,
+      };
+      await registerUser(registryEntry);
 
       // Save auth
       await Promise.all([
@@ -868,9 +1017,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         secureStorage.getItem(SECURE_KEYS.BIOMETRIC_LOGIN_ENABLED),
       ]);
 
+      // ─── CRITICAL FIX: Only delete token, NOT profile data ────────────
+      // User registry stays in app_settings so they can sign back in
       await Promise.all([
         secureStorage.deleteItem(SECURE_KEYS.AUTH_TOKEN),
-        secureStorage.deleteItem(SECURE_KEYS.USER_PROFILE),
+        // DO NOT delete USER_PROFILE — keep it for biometric login and data persistence
+        // secureStorage.deleteItem(SECURE_KEYS.USER_PROFILE), // REMOVED
         secureStorage.deleteItem(SECURE_KEYS.PIN_HASH),
         secureStorage.deleteItem(SECURE_KEYS.SOCIAL_PROVIDER),
         AsyncStorage.multiRemove([
@@ -908,6 +1060,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!state.userProfile) return false;
       const updated = { ...state.userProfile, ...updates };
       await secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(updated));
+      
+      // ─── CRITICAL FIX: Sync profile changes to persistent registry ───
+      await updateUserInRegistry(updated.id, {
+        fullName: updated.fullName,
+        email: updated.email,
+        avatar: updated.avatar,
+        role: updated.role,
+        communityUsername: updated.communityUsername,
+        communityHandle: updated.communityHandle,
+        communityBio: updated.communityBio,
+        communityAvatar: updated.communityAvatar,
+        communityDisplayName: updated.communityDisplayName,
+        communityStats: updated.communityStats,
+        communitySelectedTopics: updated.communitySelectedTopics,
+        socialProvider: updated.socialProvider,
+      });
+      
       if (isMounted.current) setState(prev => ({ ...prev, userProfile: updated }));
       return true;
     } catch (error) { return false; }

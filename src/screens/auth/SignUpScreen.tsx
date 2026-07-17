@@ -324,7 +324,18 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
       if (success && isMounted.current) {
         showSuccess(`Welcome, ${fullName.trim()}!`, 'Your account has been created successfully');
       } else {
-        showError('Sign Up Failed', 'Could not create account. Please try again.');
+        // ─── CRITICAL FIX: Check if email already exists ───────────────
+        const { findUserByEmail } = await import('@/database/dbHelpers');
+        const existing = await findUserByEmail(email.trim());
+        
+        if (existing) {
+          showInfo('Account Exists', 'An account with this email already exists. Redirecting to sign in...');
+          setTimeout(() => {
+            navigation.navigate('Login');
+          }, 1500);
+        } else {
+          showError('Sign Up Failed', 'Could not create account. Please try again.');
+        }
         signUpAttempted.current = false;
       }
     } catch (error) {
@@ -388,6 +399,23 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
     triggerHaptic('medium');
 
     try {
+      // ─── CRITICAL FIX: Prevent duplicate accounts ────────────────────
+      const { findUserByEmail } = await import('@/database/dbHelpers');
+      const existingUser = await findUserByEmail(joinEmail.trim());
+      
+      if (existingUser) {
+        showInfo('Account Exists', 'You already have an account. Signing you in...');
+        // Auto-sign in existing user
+        const success = await signIn(joinEmail.trim(), joinPassword);
+        if (success) {
+          showSuccess('Welcome Back!', 'Signed in with your existing account');
+        } else {
+          showError('Sign In Failed', 'Please try signing in manually');
+          setTimeout(() => navigation.navigate('Login'), 1500);
+        }
+        return;
+      }
+
       const result = await signUpWithInviteCode(trimmedCode, joinFullName.trim(), joinEmail.trim(), joinPassword);
 
       if (result.success && isMounted.current) {

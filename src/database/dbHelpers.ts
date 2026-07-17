@@ -750,6 +750,79 @@ export async function deleteFamilyMembersByBabyFromDb(babyId: string) {
     throw error;
   }
 }
+// ═══════════════════════════════════════════════════════════════════════
+// USER REGISTRY (for cross-session authentication persistence)
+// ═══════════════════════════════════════════════════════════════════════
+
+export interface UserRegistryEntry {
+  userId: string;
+  email: string;
+  fullName: string;
+  avatar?: string;
+  role: string;
+  createdAt: string;
+  communityUsername?: string;
+  communityHandle?: string;
+  communityBio?: string;
+  communityAvatar?: string;
+  communityDisplayName?: string;
+  communityStats?: any;
+  communitySelectedTopics?: string[];
+  socialProvider?: string | null;
+  hasPassword: boolean;
+}
+
+const USER_REGISTRY_KEY = 'littleloom_user_registry';
+const USER_EMAIL_INDEX_KEY = 'littleloom_user_email_index';
+
+export async function getUserRegistry(): Promise<Record<string, UserRegistryEntry>> {
+  try {
+    const data = await getAppSetting(USER_REGISTRY_KEY);
+    return data ? JSON.parse(data) : {};
+  } catch {
+    return {};
+  }
+}
+
+export async function getEmailIndex(): Promise<Record<string, string>> {
+  try {
+    const data = await getAppSetting(USER_EMAIL_INDEX_KEY);
+    return data ? JSON.parse(data) : {};
+  } catch {
+    return {};
+  }
+}
+
+export async function saveUserRegistry(registry: Record<string, UserRegistryEntry>): Promise<void> {
+  await setAppSetting(USER_REGISTRY_KEY, JSON.stringify(registry));
+}
+
+export async function saveEmailIndex(index: Record<string, string>): Promise<void> {
+  await setAppSetting(USER_EMAIL_INDEX_KEY, JSON.stringify(index));
+}
+
+export async function findUserByEmail(email: string): Promise<UserRegistryEntry | null> {
+  const index = await getEmailIndex();
+  const userId = index[email.toLowerCase().trim()];
+  if (!userId) return null;
+  const registry = await getUserRegistry();
+  return registry[userId] || null;
+}
+
+export async function registerUser(entry: UserRegistryEntry): Promise<void> {
+  const [registry, index] = await Promise.all([getUserRegistry(), getEmailIndex()]);
+  registry[entry.userId] = entry;
+  index[entry.email.toLowerCase().trim()] = entry.userId;
+  await Promise.all([saveUserRegistry(registry), saveEmailIndex(index)]);
+}
+
+export async function updateUserInRegistry(userId: string, updates: Partial<UserRegistryEntry>): Promise<void> {
+  const registry = await getUserRegistry();
+  if (registry[userId]) {
+    registry[userId] = { ...registry[userId], ...updates };
+    await saveUserRegistry(registry);
+  }
+}
 
 /* ═══════════════════════════════════════════════════════════════════════════
    V2 TRACKER LOG MIGRATION
