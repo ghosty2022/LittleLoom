@@ -183,7 +183,7 @@ const SmartContextHeader = memo(({
             </View>
           </View>
           <View style={contextStyles.middleRow}>
-            <SafeAvatar avatar={currentBaby?.avatar} size={48} fallbackIcon="person" borderColor={tracker.gradient[0]} borderWidth={2} animated={false} />
+            <SafeAvatar avatar={currentBaby?.avatar} gender={currentBaby?.gender} size={48} fallbackIcon="happy-outline" fallbackColor={tracker.gradient[0]} />
             <View style={contextStyles.infoColumn}>
               <Text style={[contextStyles.babyName, { color: colors.text, fontSize: 18 * fontSizeMultiplier }]}>{currentBaby?.name || 'Baby'}</Text>
               <Text style={[contextStyles.trackerLabel, { color: colors.textSecondary }]}>{tracker.emoji} {tracker.name}</Text>

@@ -1497,7 +1497,7 @@ export default function EnhancedTimelineScreen() {
           colors={theme.isDark ? [theme.bgColors[0], theme.bgColors[1]] : ['#f8fafc', '#e2e8f0']}
           style={styles.loadingGradient}
         >
-          <SafeAvatar size={64} fallbackIcon="happy-outline" borderColor={theme.primary} borderWidth={3} animated />
+          <SafeAvatar size={64} avatar={currentBaby?.avatar} gender={currentBaby?.gender} fallbackIcon="happy-outline" borderColor={theme.primary} borderWidth={3} />
           <Text style={[styles.loadingText, { color: theme.primary }]}>LittleLoom</Text>
           <View style={styles.loadingDots}>
             <View style={[styles.dot, { backgroundColor: theme.primary, opacity: 0.4 }]} />
@@ -1552,26 +1552,35 @@ export default function EnhancedTimelineScreen() {
           </TouchableOpacity>
 
           <View style={styles.headerCenter}>
-            {currentBaby?.avatar ? (
-              <SafeAvatar
-                uri={currentBaby.avatar}
-                size={44}
-                fallbackIcon="happy-outline"
-                borderColor={theme.primary}
-                borderWidth={2}
-                style={{ marginBottom: 6 }}
-              />
+            {currentBaby ? (
+              <>
+                <SafeAvatar
+                  avatar={currentBaby.avatar}
+                  gender={currentBaby.gender}
+                  size={56}
+                  fallbackIcon="happy-outline"
+                  fallbackColor={theme.primary}
+                />
+                <Text style={[styles.headerTitle, { color: theme.text.primary }]}>
+                  {currentBaby.name}
+                </Text>
+                <Text style={[styles.headerSubtitle, { color: theme.text.secondary }]}>
+                  {format(new Date(), 'EEEE, MMM d')} • {stats.today} entries
+                </Text>
+              </>
             ) : (
-              <View style={[styles.headerBabyPlaceholder, { backgroundColor: `${theme.primary}15` }]}>
-                <Ionicons name="baby" size={28} color={theme.primary} />
-              </View>
+              <>
+                <View style={[styles.headerBabyPlaceholder, { backgroundColor: `${theme.primary}15` }]}>
+                  <Ionicons name="happy-outline" size={28} color={theme.primary} />
+                </View>
+                <Text style={[styles.headerTitle, { color: theme.text.primary }]}>
+                  Timeline
+                </Text>
+                <Text style={[styles.headerSubtitle, { color: theme.text.secondary }]}>
+                  {format(new Date(), 'EEEE, MMM d')} • {stats.today} entries
+                </Text>
+              </>
             )}
-            <Text style={[styles.headerTitle, { color: theme.text.primary }]}>
-              {currentBaby?.name || 'Timeline'}
-            </Text>
-            <Text style={[styles.headerSubtitle, { color: theme.text.secondary }]}>
-              {format(new Date(), 'EEEE, MMM d')} • {stats.today} entries
-            </Text>
           </View>
 
           <View style={styles.headerActions}>
@@ -1596,7 +1605,7 @@ export default function EnhancedTimelineScreen() {
         <Animated.View style={[styles.stickyHeader, headerAnimatedStyle, { top: insets.top + 8 }]}>
           <BlurView intensity={theme.isDark ? 40 : 90} style={[styles.stickyBlur, { borderRadius: borderRadiusValue }]} tint={theme.isDark ? 'dark' : 'light'}>
             <Text style={[styles.stickyTitle, { color: theme.text.primary }]}>
-              {currentBaby?.name ? `${currentBaby.name}'s Timeline` : '🗓️ Timeline'}
+              {currentBaby?.name ? `${currentBaby.name}` : '🗓️ Timeline'}
             </Text>
             <Text style={[styles.stickySubtitle, { color: theme.text.secondary }]}>
               {stats.today} entries • {stats.achievements} achievements
@@ -2314,7 +2323,7 @@ const styles = StyleSheet.create({
   headerContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 16 },
   headerButton: { width: 48, height: 48, overflow: 'hidden', justifyContent: 'center', alignItems: 'center' },
   headerCenter: { alignItems: 'center', flex: 1, marginHorizontal: 10, gap: 4 },
-  headerTitle: { fontSize: 20, fontWeight: '800', letterSpacing: -0.5 },
+  headerTitle: { fontSize: 18, fontWeight: '800', letterSpacing: -0.5, marginTop: 4 },
   headerSubtitle: { fontSize: 13, marginTop: 2, fontWeight: '500' },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
 
@@ -2826,7 +2835,7 @@ const styles = StyleSheet.create({
   },
   achievementInlineText: { fontSize: 11, fontWeight: '700' },
     headerBabyImage: { width: 44, height: 44, borderRadius: 14, borderWidth: 2, marginBottom: 6 },
-  headerBabyPlaceholder: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginBottom: 6 },
+  headerBabyPlaceholder: { width: 56, height: 56, borderRadius: 18, justifyContent: 'center', alignItems: 'center', marginBottom: 6 },
     // ── Latest Entries Preview ──
   latestEntryRow: { 
     flexDirection: 'row', 
