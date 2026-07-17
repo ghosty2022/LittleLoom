@@ -1389,8 +1389,15 @@ export default function EnhancedTimelineScreen() {
     const firstWeekday = new Date(y, m, 1).getDay();
     const daysInMonth = new Date(y, m + 1, 0).getDate();
     const cells: (Date | null)[] = [];
+    // Pad start to align with week start (Sunday = 0)
     for (let i = 0; i < firstWeekday; i++) cells.push(null);
     for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(y, m, d));
+    // Pad end to complete the last week row
+    const totalCells = cells.length;
+    const remainingCells = 7 - (totalCells % 7);
+    if (remainingCells < 7) {
+      for (let i = 0; i < remainingCells; i++) cells.push(null);
+    }
     return cells;
   }, [calendarMonth]);
 
@@ -1569,19 +1576,22 @@ export default function EnhancedTimelineScreen() {
           </TouchableOpacity>
 
           <Animated.View style={[styles.headerCenter, titleAnimatedStyle]}>
-            <SafeAvatar
-              avatar={currentBaby?.avatar}
-              size={36}
-              fallbackIcon="person"
-              borderColor={theme.surface.border}
-              borderWidth={2}
-              animated={false}
-            />
+            {currentBaby?.avatar ? (
+              <Image 
+                source={{ uri: currentBaby.avatar }} 
+                style={[styles.headerBabyImage, { borderColor: theme.primary }]} 
+                resizeMode="cover"
+              />
+            ) : (
+              <View style={[styles.headerBabyPlaceholder, { backgroundColor: `${theme.primary}15` }]}>
+                <Ionicons name="baby-outline" size={28} color={theme.primary} />
+              </View>
+            )}
             <Text style={[styles.headerTitle, { color: theme.text.primary }]}>
-              🗓️ {format(new Date(), 'MMM d')}
+              {currentBaby?.name || 'Timeline'}
             </Text>
             <Text style={[styles.headerSubtitle, { color: theme.text.secondary }]}>
-              {currentBaby?.name || 'Baby'} • {stats.today} today • {stats.achievements} 🏆
+              {format(new Date(), 'EEEE, MMM d')} • {stats.today} entries
             </Text>
           </Animated.View>
 
@@ -1732,6 +1742,39 @@ export default function EnhancedTimelineScreen() {
               entries={allEntries}
               onPress={(action) => navigation.navigate('AddEntry', { trackerId: action })} 
             />
+
+            {/* ── Latest 5 Entries Preview ── */}
+            {allEntries.length > 0 && (
+              <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(250)} style={{ marginHorizontal: 20, marginBottom: 12 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <Text style={[styles.sectionTitle, { color: theme.text.primary, fontSize: 16 }]}>Latest Entries</Text>
+                  <Text style={{ color: theme.text.muted, fontSize: 12, fontWeight: '600' }}>Last {Math.min(5, allEntries.length)} of {allEntries.total}</Text>
+                </View>
+                {allEntries.slice(0, 5).map((entry, idx) => {
+                  const t = getTracker(entry?.trackerId);
+                  const c = t?.gradient?.[0] || t?.color || theme.primary;
+                  return (
+                    <TouchableOpacity 
+                      key={entry?.id || idx} 
+                      style={[styles.latestEntryRow, { borderBottomColor: theme.surface.border }, idx === 0 && { borderTopWidth: 1, borderTopColor: theme.surface.border }]}
+                      onPress={() => handleEventPress(entry)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={[styles.latestEntryIcon, { backgroundColor: `${c}12` }]}>
+                        <Text style={{ fontSize: 16 }}>{t?.emoji || '📋'}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.latestEntryTitle, { color: theme.text.primary }]} numberOfLines={1}>{entry?.title || t?.name || 'Entry'}</Text>
+                        <Text style={[styles.latestEntryMeta, { color: theme.text.muted }]}>
+                          {entry?.timestamp ? format(entry.timestamp, 'MMM d, h:mm a') : ''}
+                        </Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={14} color={theme.text.muted} />
+                    </TouchableOpacity>
+                  );
+                })}
+              </Animated.View>
+            )}
 
             {/* Filter Chips */}
             <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(200)} style={styles.filterContainer}>
@@ -2153,6 +2196,7 @@ export default function EnhancedTimelineScreen() {
                 const count = entryCountByDay.get(key) || 0;
                 const isSelected = !!selectedDate && isSameDay(day, selectedDate);
                 const isToday = isSameDay(day, new Date());
+                const isWeekend = day.getDay() === 0 || day.getDay() === 6;
                 return (
                   <TouchableOpacity
                     key={key}
@@ -2163,15 +2207,23 @@ export default function EnhancedTimelineScreen() {
                     <View style={[
                       styles.calendarDayCircle,
                       isSelected && { backgroundColor: theme.primary },
-                      !isSelected && isToday && { borderWidth: 1.5, borderColor: theme.primary },
+                      !isSelected && isToday && { borderWidth: 2, borderColor: theme.primary, backgroundColor: `${theme.primary}10` },
+                      !isSelected && !isToday && count > 0 && { backgroundColor: `${theme.primary}08` },
                     ]}>
-                      <Text style={[styles.calendarDayText, { color: isSelected ? '#fff' : theme.text.primary }]}>
+                      <Text style={[
+                        styles.calendarDayText, 
+                        { color: isSelected ? '#fff' : isToday ? theme.primary : theme.text.primary },
+                        isWeekend && !isSelected && !isToday && { color: theme.text.muted }
+                      ]}>
                         {day.getDate()}
                       </Text>
+                      {count > 0 && (
+                        <View style={styles.calendarEntryIndicator}>
+                          <View style={[styles.calendarEntryDot, { backgroundColor: isSelected ? '#fff' : theme.primary }]} />
+                          {count > 1 && <Text style={[styles.calendarEntryCount, { color: isSelected ? '#fff' : theme.primary }]}>{count}</Text>}
+                        </View>
+                      )}
                     </View>
-                    {count > 0 && (
-                      <View style={[styles.calendarCountDot, { backgroundColor: isSelected ? '#fff' : theme.primary }]} />
-                    )}
                   </TouchableOpacity>
                 );
               })}
@@ -2744,10 +2796,25 @@ const styles = StyleSheet.create({
   calendarWeekRow: { flexDirection: 'row', marginBottom: 6 },
   calendarWeekLabel: { width: `${100 / 7}%`, textAlign: 'center', fontSize: 12, fontWeight: '700' },
   calendarGrid: { flexDirection: 'row', flexWrap: 'wrap' },
-  calendarCell: { width: `${100 / 7}%`, aspectRatio: 1, justifyContent: 'center', alignItems: 'center' },
-  calendarDayCircle: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
+  calendarCell: { width: `${100 / 7}%`, aspectRatio: 1, justifyContent: 'center', alignItems: 'center', padding: 2 },
+  calendarDayCircle: { 
+    width: 40, 
+    height: 40, 
+    borderRadius: 12, 
+    justifyContent: 'center', 
+    alignItems: 'center',
+    position: 'relative',
+  },
   calendarDayText: { fontSize: 14, fontWeight: '600' },
-  calendarCountDot: { position: 'absolute', bottom: 6, width: 5, height: 5, borderRadius: 2.5 },
+  calendarEntryIndicator: { 
+    position: 'absolute', 
+    bottom: 4, 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 2 
+  },
+  calendarEntryDot: { width: 4, height: 4, borderRadius: 2 },
+  calendarEntryCount: { fontSize: 8, fontWeight: '700' },
   calendarFooter: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 14 },
   calendarFooterBtn: { paddingHorizontal: 18, paddingVertical: 10 },
   calendarFooterBtnText: { fontSize: 14, fontWeight: '700' },
@@ -2777,6 +2844,20 @@ const styles = StyleSheet.create({
     zIndex: 50,
   },
   achievementInlineText: { fontSize: 11, fontWeight: '700' },
+    headerBabyImage: { width: 44, height: 44, borderRadius: 14, borderWidth: 2, marginBottom: 6 },
+  headerBabyPlaceholder: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginBottom: 6 },
+    // ── Latest Entries Preview ──
+  latestEntryRow: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 10, 
+    paddingVertical: 10, 
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+  },
+  latestEntryIcon: { width: 32, height: 32, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+  latestEntryTitle: { fontSize: 13, fontWeight: '700' },
+  latestEntryMeta: { fontSize: 10, fontWeight: '500', marginTop: 1 },
   // ── FAB ──
   fabContainer: { position: 'absolute', zIndex: 100 },
   fab: { width: 56, height: 56, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 6 },

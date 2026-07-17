@@ -56,7 +56,7 @@ import { useCustomization } from '../../hooks/useCustomization';
 import { useFamily } from '../../context/FamilyContext';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { useUser } from '../../context/UserContext';
-
+import { useTracker } from '../../context/TrackerContext';
 type FamilySharingScreenProps = NativeStackScreenProps<RootStackParamList, 'FamilySharing'>;
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1089,14 +1089,26 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
     { id: '3', type: 'milestone', title: 'First words milestone approaching', description: 'Baby is showing signs of verbal development. Be ready to record!', icon: '🗣️', color: '#f59e0b', actionLabel: 'Learn More', priority: 'medium' },
     { id: '4', type: 'health', title: 'Vaccination due in 3 days', description: '6-month vaccination appointment should be scheduled soon.', icon: '💉', color: '#ef4444', actionLabel: 'Schedule', priority: 'high' },
   ];
-
-  const timelineEvents: TimelineEvent[] = [
-    { id: '1', type: 'feed', title: 'Breastfeeding logged', description: '15 minutes • Left side', timestamp: Date.now() - 1800000, actorName: 'Sarah', actorRole: UserRole.PARENT_1 },
-    { id: '2', type: 'sleep', title: 'Nap started', description: 'Expected duration: 2 hours', timestamp: Date.now() - 3600000, actorName: 'Mike', actorRole: UserRole.PARENT_2 },
-    { id: '3', type: 'milestone', title: 'First rollover!', description: 'Baby rolled from tummy to back unassisted', timestamp: Date.now() - 86400000, actorName: 'Sarah', actorRole: UserRole.PARENT_1 },
-    { id: '4', type: 'growth', title: 'Height measured', description: '62.5cm • 75th percentile', timestamp: Date.now() - 172800000, actorName: 'Grandma', actorRole: UserRole.GUARDIAN },
-    { id: '5', type: 'photo_uploaded', title: 'New photo added', description: 'Monthly milestone photo', timestamp: Date.now() - 259200000, actorName: 'Mike', actorRole: UserRole.PARENT_2 },
-  ];
+  // Real timeline events — synced with Timeline screen via TrackerContext
+  const { entries: trackerEntries } = useTracker();
+  
+  const timelineEvents: TimelineEvent[] = useMemo(() => {
+    if (!trackerEntries || trackerEntries.length === 0) return [];
+    return trackerEntries
+      .filter((e: any) => e?.timestamp && e?.trackerId)
+      .slice(0, 15)
+      .map((e: any, i: number) => ({
+        id: e.id || `event-${i}`,
+        type: e.trackerId || 'note',
+        title: e.title || `${e.trackerId?.charAt(0)?.toUpperCase() + e.trackerId?.slice(1) || 'Activity'} logged`,
+        description: e.notes || e.details || '',
+        timestamp: e.timestamp,
+        actorName: e.loggedByName || 'You',
+        actorRole: UserRole.PARENT_1,
+        metadata: e.data || {},
+      }))
+      .sort((a: TimelineEvent, b: TimelineEvent) => b.timestamp - a.timestamp);
+  }, [trackerEntries]);
 
   const chatPreviews: ChatPreview[] = [
     { id: '1', name: 'Family Group', lastMessage: "Sarah: Just fed the baby, he's sleeping now 💤", timestamp: Date.now() - 300000, unreadCount: 3, isGroup: true, participants: 4 },
