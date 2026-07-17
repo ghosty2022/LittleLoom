@@ -1063,7 +1063,7 @@ export default function EnhancedTimelineScreen() {
     currentBabyId,
     currentBaby,
   } = useTracker();
-  const { success, confirm } = useSweetAlert();
+  const { success, confirm, error } = useSweetAlert();
 
   const { correlations: timelineCorrelations } = useTimelineCorrelations();
   const { reminders: predictiveReminders } = usePredictiveReminders();
@@ -1497,7 +1497,7 @@ export default function EnhancedTimelineScreen() {
           colors={theme.isDark ? [theme.bgColors[0], theme.bgColors[1]] : ['#f8fafc', '#e2e8f0']}
           style={styles.loadingGradient}
         >
-          <SafeAvatar size={64} fallbackIcon="person" borderColor={theme.primary} borderWidth={3} animated />
+          <SafeAvatar size={64} fallbackIcon="baby" borderColor={theme.primary} borderWidth={3} animated />
           <Text style={[styles.loadingText, { color: theme.primary }]}>LittleLoom</Text>
           <View style={styles.loadingDots}>
             <View style={[styles.dot, { backgroundColor: theme.primary, opacity: 0.4 }]} />
@@ -1551,16 +1551,19 @@ export default function EnhancedTimelineScreen() {
             <Ionicons name="arrow-back" size={24} color={theme.text.primary} />
           </TouchableOpacity>
 
-          <Animated.View style={[styles.headerCenter, titleAnimatedStyle]}>
+          <View style={styles.headerCenter}>
             {currentBaby?.avatar ? (
-              <Image 
-                source={{ uri: currentBaby.avatar }} 
-                style={[styles.headerBabyImage, { borderColor: theme.primary }]} 
-                resizeMode="cover"
+              <SafeAvatar
+                uri={currentBaby.avatar}
+                size={44}
+                fallbackIcon="baby"
+                borderColor={theme.primary}
+                borderWidth={2}
+                style={{ marginBottom: 6 }}
               />
             ) : (
               <View style={[styles.headerBabyPlaceholder, { backgroundColor: `${theme.primary}15` }]}>
-                <Ionicons name="baby-outline" size={28} color={theme.primary} />
+                <Ionicons name="baby" size={28} color={theme.primary} />
               </View>
             )}
             <Text style={[styles.headerTitle, { color: theme.text.primary }]}>
@@ -1569,7 +1572,7 @@ export default function EnhancedTimelineScreen() {
             <Text style={[styles.headerSubtitle, { color: theme.text.secondary }]}>
               {format(new Date(), 'EEEE, MMM d')} • {stats.today} entries
             </Text>
-          </Animated.View>
+          </View>
 
           <View style={styles.headerActions}>
             <TouchableOpacity
@@ -1592,7 +1595,9 @@ export default function EnhancedTimelineScreen() {
 
         <Animated.View style={[styles.stickyHeader, headerAnimatedStyle, { top: insets.top + 8 }]}>
           <BlurView intensity={theme.isDark ? 40 : 90} style={[styles.stickyBlur, { borderRadius: borderRadiusValue }]} tint={theme.isDark ? 'dark' : 'light'}>
-            <Text style={[styles.stickyTitle, { color: theme.text.primary }]}>🗓️ Timeline</Text>
+            <Text style={[styles.stickyTitle, { color: theme.text.primary }]}>
+              {currentBaby?.name ? `${currentBaby.name}'s Timeline` : '🗓️ Timeline'}
+            </Text>
             <Text style={[styles.stickySubtitle, { color: theme.text.secondary }]}>
               {stats.today} entries • {stats.achievements} achievements
             </Text>
@@ -1724,7 +1729,7 @@ export default function EnhancedTimelineScreen() {
               <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(250)} style={{ marginHorizontal: 20, marginBottom: 12 }}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                   <Text style={[styles.sectionTitle, { color: theme.text.primary, fontSize: 16 }]}>Latest Entries</Text>
-                  <Text style={{ color: theme.text.muted, fontSize: 12, fontWeight: '600' }}>Last {Math.min(5, allEntries.length)} of {allEntries.total}</Text>
+                  <Text style={{ color: theme.text.muted, fontSize: 12, fontWeight: '600' }}>Last {Math.min(5, allEntries.length)} of {allEntries.length}</Text>
                 </View>
                 {allEntries.slice(0, 5).map((entry, idx) => {
                   const t = getTracker(entry?.trackerId);

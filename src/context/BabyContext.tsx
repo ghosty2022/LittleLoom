@@ -698,6 +698,14 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         medicationLogs,
         activities,
       }));
+
+      // Also sync activities to the entries-compatible format for TrackerContext
+      try {
+        const { setCurrentBabyId } = await import('./TrackerContext');
+        // TrackerContext will pick up via its own refresh
+      } catch {
+        // TrackerContext may not be available, that's OK
+      }
     } catch (error) {
       console.error('Error loading baby data:', error);
       if (isMounted.current) {
@@ -896,6 +904,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
          logs from state whenever a second baby was added. */
       await loadAllBabyData(newCurrentId);
 
+      // Sync to TrackerContext via AsyncStorage so it picks up on next refresh
+      await AsyncStorage.setItem('@littleloom_current_baby', newCurrentId);
+
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       return newBaby.id;
     } catch (error) {
@@ -1003,6 +1014,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           currentBaby: mapDbBabyToProfile(baby, calculateAge),
         }));
       }
+
+      // Sync baby ID to AsyncStorage for TrackerContext to pick up
+      await AsyncStorage.setItem('@littleloom_current_baby', id);
 
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
       return true;

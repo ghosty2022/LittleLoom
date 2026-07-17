@@ -647,32 +647,34 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
   const loadEntries = useCallback(async (babyId: string): Promise<TrackerEntry[]> => {
     try {
       const rows = await getEntriesByBabyFromDb(babyId);
-      return rows.map(row => ({
-        id: row.id,
-        babyId: row.babyId,
-        trackerId: row.trackerId,
-        timestamp: row.timestamp,
-        title: row.title,
-        data: typeof row.data === 'string' ? JSON.parse(row.data) : row.data,
-        loggedBy: row.loggedBy || '',
-        loggedByName: row.loggedByName || '',
-        loggedByRole: (row.loggedByRole as any) || 'parent1',
-        notes: row.notes,
-        photoUris: row.photoUris ? safeParse<string[]>(row.photoUris as any, []) : undefined,
-                tags: row.tags ? safeParse<string[]>(row.tags as any, []) : undefined,
-        location: row.location ? { name: row.location } : undefined,
-        mood: row.mood,
-        notificationId: row.notificationId,
-        reminderScheduled: row.reminderScheduled,
-        syncedAt: row.syncedAt,
-        editedBy: row.editedBy,
-        editedAt: row.editedAt,
-        isDeleted: row.isDeleted || row.syncStatus === 'deleted',
-      }));
+      return rows
+        .filter(row => !row.isDeleted && row.syncStatus !== 'deleted')
+        .map(row => ({
+          id: row.id,
+          babyId: row.babyId,
+          trackerId: row.trackerId,
+          timestamp: row.timestamp,
+          title: row.title,
+          data: typeof row.data === 'string' ? JSON.parse(row.data) : row.data,
+          loggedBy: row.loggedBy || '',
+          loggedByName: row.loggedByName || '',
+          loggedByRole: (row.loggedByRole as any) || 'parent1',
+          notes: row.notes,
+          photoUris: row.photoUris ? safeParse<string[]>(row.photoUris as any, []) : undefined,
+          tags: row.tags ? safeParse<string[]>(row.tags as any, []) : undefined,
+          location: row.location ? { name: row.location } : undefined,
+          mood: row.mood,
+          notificationId: row.notificationId,
+          reminderScheduled: row.reminderScheduled,
+          syncedAt: row.syncedAt,
+          editedBy: row.editedBy,
+          editedAt: row.editedAt,
+          isDeleted: row.isDeleted || row.syncStatus === 'deleted',
+        }));
     } catch {
       return [];
     }
-  }, []);
+  }, [getEntriesByBabyFromDb]);
 
   const loadReminders = useCallback(async (): Promise<ReminderRule[]> => {
     try {
@@ -766,6 +768,33 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
 
     init();
   }, [detectCurrentBaby, loadCustomTrackers, loadEntries, loadReminders]);
+  /* ---- Listen for baby changes from BabyContext ---- */
+  useEffect(() => {
+    const checkBabyChange = async () => {
+      const storedBabyId = await AsyncStorage.getItem(BABY_CURRENT_KEY);
+      if (storedBabyId && storedBabyId !== state.currentBabyId) {
+        setCurrentBabyId(storedBabyId);
+      }
+    };
+    
+    // Check immediately and set up interval
+    checkBabyChange();
+    const interval = setInterval(checkBabyChange, 2000);
+    return () => clearInterval(interval);
+  }, [state.currentBabyId]);  /* ---- Listen for baby changes from BabyContext ---- */
+  useEffect(() => {
+    const checkBabyChange = async () => {
+      const storedBabyId = await AsyncStorage.getItem(BABY_CURRENT_KEY);
+      if (storedBabyId && storedBabyId !== state.currentBabyId) {
+        setCurrentBabyId(storedBabyId);
+      }
+    };
+    
+    // Check immediately and set up interval
+    checkBabyChange();
+    const interval = setInterval(checkBabyChange, 2000);
+    return () => clearInterval(interval);
+  }, [state.currentBabyId]);
 
   /* ---- Update progressive state when entries change ---- */
   useEffect(() => {
@@ -1574,33 +1603,41 @@ Alert.alert('Missing Information', `Please fill in: ${missingFields.join(', ')}`
 
   const refreshEntries = useCallback(async () => {
     if (!state.currentBabyId) return;
-    const entries = await loadEntries(state.currentBabyId);
-    const safeEntries = Array.isArray(entries) ? entries : [];
-    const entriesByTracker: Record<string, TrackerEntry[]> = {};
-    safeEntries.forEach(entry => {
-      if (!entriesByTracker[entry.trackerId]) {
-        entriesByTracker[entry.trackerId] = [];
-      }
-      entriesByTracker[entry.trackerId].push(entry);
-    });
-    setState(prev => ({ ...prev, entries: safeEntries, entriesByTracker }));
+    try {
+      const entries = await loadEntries(state.currentBabyId);
+      const safeEntries = Array.isArray(entries) ? entries : [];
+      const entriesByTracker: Record<string, TrackerEntry[]> = {};
+      safeEntries.forEach(entry => {
+        if (!entriesByTracker[entry.trackerId]) {
+          entriesByTracker[entry.trackerId] = [];
+        }
+        entriesByTracker[entry.trackerId].push(entry);
+      });
+      setState(prev => ({ ...prev, entries: safeEntries, entriesByTracker }));
+    } catch (err) {
+      console.error('[TrackerContext] refreshEntries failed:', err);
+    }
   }, [state.currentBabyId, loadEntries]);
 
   /* ---- Set current baby ---- */
-  const setCurrentBabyId = useCallback((babyId: string | null) => {
+  const setCurrentBabyId = useCallback(async (babyId: string | null) => {
+    if (babyId) {
+      await AsyncStorage.setItem(BABY_CURRENT_KEY, babyId);
+    } else {
+      await AsyncStorage.removeItem(BABY_CURRENT_KEY);
+    }
     setState(prev => ({ ...prev, currentBabyId: babyId }));
     if (babyId) {
-      loadEntries(babyId).then(entries => {
-        const safeEntries = Array.isArray(entries) ? entries : [];
-        const entriesByTracker: Record<string, TrackerEntry[]> = {};
-        safeEntries.forEach(entry => {
-          if (!entriesByTracker[entry.trackerId]) {
-            entriesByTracker[entry.trackerId] = [];
-          }
-          entriesByTracker[entry.trackerId].push(entry);
-        });
-        setState(prev => ({ ...prev, entries: safeEntries, entriesByTracker }));
+      const entries = await loadEntries(babyId);
+      const safeEntries = Array.isArray(entries) ? entries : [];
+      const entriesByTracker: Record<string, TrackerEntry[]> = {};
+      safeEntries.forEach(entry => {
+        if (!entriesByTracker[entry.trackerId]) {
+          entriesByTracker[entry.trackerId] = [];
+        }
+        entriesByTracker[entry.trackerId].push(entry);
       });
+      setState(prev => ({ ...prev, entries: safeEntries, entriesByTracker }));
     }
   }, [loadEntries]);
 

@@ -25,6 +25,7 @@ import { useCustomization } from '../../hooks/useCustomization';
 import { useAuth } from '../../context/AuthContext';
 import { useBaby } from '../../context/BabyContext';
 import { useActivity } from '../../context/ActivityContext';
+import { useTracker } from '../../context/TrackerContext';
 import { useSecurity } from '../../context/SecurityContext';
 import { useCommunity } from '../../context/CommunityContext';
 import { useAudio, SOUND_TRACKS } from '../../context/AudioContext';
@@ -1509,6 +1510,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   const { userProfile, signOut, isLoading: authLoading } = useAuth();
   const { currentBaby, loadBabies, getPottyStreak } = useBaby();
   const { entries: activities, getRecentTimelineEvents, getTodayCount, loadEntries: loadActivities, isLoading: activitiesLoading } = useActivity();
+    const { entries } = useTracker();
   const { lockApp } = useSecurity();
   const { getUnreadCount } = useCommunity();
   const media = useMedia();
@@ -1793,13 +1795,19 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
     };
   }, [activities, currentBaby]);
 
+  // Unified recent activity — syncs with Timeline screen
   const allTimelineEvents = useMemo(() => {
     if (!currentBaby) return [];
-    // Use activities from useActivity hook directly for real-time updates
-    const timelineEvents = getRecentTimelineEvents(50, currentBaby.id);
-    // Also include entries from useTracker if available
-    return timelineEvents.length > 0 ? timelineEvents : activities.slice(0, 50);
-  }, [currentBaby, getRecentTimelineEvents, activities]);
+    // Priority: TrackerContext entries (same as Timeline) > ActivityContext fallback
+    const trackerEntries = (entries || []).filter((e: any) => e?.timestamp).sort((a: any, b: any) => b.timestamp - a.timestamp);
+    const activityEvents = getRecentTimelineEvents(50, currentBaby.id);
+    // Merge and deduplicate by ID
+    const merged = [...trackerEntries];
+    activityEvents.forEach((ae: any) => {
+      if (!merged.find((me: any) => me.id === ae.id)) merged.push(ae);
+    });
+    return merged.slice(0, 50).sort((a: any, b: any) => (b?.timestamp || 0) - (a?.timestamp || 0));
+  }, [currentBaby, entries, getRecentTimelineEvents, activities]);
 
   const unreadCommunityCount = useMemo(() => getUnreadCount(), [getUnreadCount]);
 
