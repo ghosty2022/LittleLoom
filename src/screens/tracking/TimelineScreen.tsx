@@ -540,35 +540,43 @@ const HealthTrendCorrelation = ({ entries, theme }: { entries: TrackerEntry[]; t
    NEW FEATURE 5: Quick Action Suggestions
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const QuickActionSuggestions = ({ theme, onPress }: { theme: any; onPress: (action: string) => void }) => {
-  const suggestions = [
-    { id: 'feed', title: 'Log Feed', icon: 'nutrition-outline', color: '#f59e0b', desc: 'Last: 2h ago' },
-    { id: 'sleep', title: 'Log Sleep', icon: 'moon-outline', color: '#8b5cf6', desc: 'Last: 4h ago' },
-    { id: 'diaper', title: 'Log Diaper', icon: 'shirt-outline', color: '#10b981', desc: 'Last: 1h ago' },
-    { id: 'milestone', title: 'Milestone', icon: 'trophy-outline', color: '#ec4899', desc: 'New achievement!' },
-  ];
+const QuickActionSuggestions = ({ theme, onPress, entries }: { theme: any; onPress: (action: string) => void; entries: TrackerEntry[] }) => {
+  const getLastEntryTime = (trackerId: string): string => {
+    const lastEntry = entries
+      .filter(e => e?.trackerId === trackerId)
+      .sort((a, b) => (b?.timestamp || 0) - (a?.timestamp || 0))[0];
+    if (!lastEntry?.timestamp) return 'Not yet today';
+    const diff = Date.now() - lastEntry.timestamp;
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    if (minutes < 1) return 'Just now';
+    if (minutes < 60) return `${minutes}m ago`;
+    if (hours < 24) return `${hours}h ago`;
+    return `${Math.floor(hours / 24)}d ago`;
+  };
+
+  const suggestions = useMemo(() => [
+    { id: 'feed', title: 'Log Feed', icon: 'nutrition-outline', color: '#f59e0b', getDesc: () => getLastEntryTime('feed') },
+    { id: 'sleep', title: 'Log Sleep', icon: 'moon-outline', color: '#8b5cf6', getDesc: () => getLastEntryTime('sleep') },
+    { id: 'diaper', title: 'Log Diaper', icon: 'shirt-outline', color: '#10b981', getDesc: () => getLastEntryTime('diaper') },
+    { id: 'milestone', title: 'Milestone', icon: 'trophy-outline', color: '#ec4899', getDesc: () => 'Record win' },
+  ], [entries]);
 
   return (
     <Animated.View entering={FadeInUp.delay(400).springify()}>
       <View style={styles.suggestionsHeader}>
         <Text style={[styles.suggestionsTitle, { color: theme.text.primary }]}>Quick Actions</Text>
-        <Text style={[styles.suggestionsSubtitle, { color: theme.text.muted }]}>Frequently used</Text>
+        <Text style={[styles.suggestionsSubtitle, { color: theme.text.muted }]}>Tap to log instantly</Text>
       </View>
       
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.suggestionsScroll}>
         {suggestions.map((suggestion) => (
-          <TouchableOpacity key={suggestion.id} onPress={() => onPress(suggestion.id)} style={styles.suggestionCard}>
-            <LinearGradient
-              colors={[suggestion.color + '15', suggestion.color + '05']}
-              style={StyleSheet.absoluteFill}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            />
-            <View style={[styles.suggestionIconBg, { backgroundColor: suggestion.color + '20' }]}>
-              <Ionicons name={suggestion.icon as any} size={22} color={suggestion.color} />
+          <TouchableOpacity key={suggestion.id} onPress={() => onPress(suggestion.id)} style={styles.suggestionCard} activeOpacity={0.7}>
+            <View style={[styles.suggestionIconCircle, { borderColor: suggestion.color + '40' }]}>
+              <Ionicons name={suggestion.icon as any} size={24} color={suggestion.color} />
             </View>
             <Text style={[styles.suggestionTitle, { color: theme.text.primary }]}>{suggestion.title}</Text>
-            <Text style={[styles.suggestionCategory, { color: suggestion.color }]}>{suggestion.desc}</Text>
+            <Text style={[styles.suggestionTime, { color: theme.text.muted }]}>{suggestion.getDesc()}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -1396,13 +1404,30 @@ export default function EnhancedTimelineScreen() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const todayStart = today.getTime();
+    const yesterdayStart = todayStart - 86400000;
+    const weekAgo = todayStart - 7 * 86400000;
     const safeAchievementStats = achievementStats || {};
+    
+    const todayCount = allEntries.filter(e => e?.timestamp >= todayStart).length;
+    const yesterdayCount = allEntries.filter(e => e?.timestamp >= yesterdayStart && e?.timestamp < todayStart).length;
+    const weekTotal = allEntries.filter(e => e?.timestamp >= weekAgo).length;
+    const avgPerDay = weekTotal / 7;
+    
+    const todayTrend = yesterdayCount === 0 ? 100 : Math.round(((todayCount - yesterdayCount) / yesterdayCount) * 100);
+    const totalTrend = allEntries.length > 0 ? Math.min(100, Math.round((weekTotal / Math.max(allEntries.length, 1)) * 100)) : 0;
+    
     return {
-      today: allEntries.filter(e => e?.timestamp >= todayStart).length,
+      today: todayCount,
+      todayTrend,
       total: allEntries.length,
+      totalTrend,
+      weekTotal,
+      avgPerDay: Math.round(avgPerDay * 10) / 10,
       milestones: safeArray(getEntries('milestone')).length,
       achievements: safeNumber(safeAchievementStats.unlocked, 0),
+      achievementTrend: safeNumber(safeAchievementStats.recentUnlocked, 0),
       growthScore: safeNumber(growthIndex?.compositeIndex, 0),
+      growthTrend: safeNumber(growthIndex?.trend, 0),
     };
   }, [allEntries, getEntries, achievementStats, growthIndex]);
 
@@ -1518,13 +1543,14 @@ export default function EnhancedTimelineScreen() {
         style={styles.backgroundGradient}
       />
 
-      {/* Achievement Toast */}
-      {showAchievementToast && (
-        <AchievementToast
-          achievements={safeArray(achievements).filter(a => safeArray(newlyUnlocked).includes(a?.id))}
-          theme={theme}
-          onDismiss={() => setShowAchievementToast(false)}
-        />
+      {/* Achievement indicator — inline, non-intrusive */}
+      {safeArray(newlyUnlocked).length > 0 && (
+        <View style={[styles.achievementInlineBadge, { backgroundColor: `${theme.primary}12` }]}>
+          <Ionicons name="trophy" size={12} color={theme.primary} />
+          <Text style={[styles.achievementInlineText, { color: theme.primary }]}>
+            {safeArray(newlyUnlocked).length} new
+          </Text>
+        </View>
       )}
 
       {/* Header */}
@@ -1625,43 +1651,70 @@ export default function EnhancedTimelineScreen() {
           </Animated.View>
         )}
 
-        {/* Smart Stats Overview */}
+        {/* Smart Stats Overview — Clean KPI Cards, No Shadows */}
         <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(100)} style={styles.statsContainer}>
           <Animated.ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statsContent}>
-            <LinearGradient
-              colors={[theme.primary, theme.secondary]}
-              style={[styles.statCard, styles.primaryStatCard, { borderRadius: borderRadiusValue }]}
-            >
-              <Text style={styles.statEmoji}>📊</Text>
-              <Text style={[styles.primaryStatNumber, { fontSize: 36 * fontSizeMultiplier }]}>
-                {stats.today}
-              </Text>
-              <Text style={styles.primaryStatLabel}>Today</Text>
-            </LinearGradient>
-
-            <View style={[styles.statCard, styles.secondaryStatCard, { borderRadius: borderRadiusValue, backgroundColor: theme.surface.card, borderColor: theme.surface.border }]}>
-              <Text style={styles.statEmoji}>📁</Text>
-              <Text style={[styles.secondaryStatNumber, { color: theme.text.primary, fontSize: 24 * fontSizeMultiplier }]}>
-                {stats.total}
-              </Text>
-              <Text style={[styles.secondaryStatLabel, { color: theme.text.secondary }]}>Total</Text>
+            
+            {/* Today Card */}
+            <View style={[styles.kpiCard, { borderRadius: borderRadiusValue, borderColor: `${theme.primary}30`, backgroundColor: theme.isDark ? 'rgba(45,45,60,0.4)' : 'rgba(102,126,234,0.06)' }]}>
+              <View style={styles.kpiTop}>
+                <Ionicons name="today-outline" size={18} color={theme.primary} />
+                <View style={[styles.kpiTrendBadge, { backgroundColor: stats.todayTrend >= 0 ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)' }]}>
+                  <Ionicons name={stats.todayTrend >= 0 ? 'trending-up' : 'trending-down'} size={10} color={stats.todayTrend >= 0 ? '#10b981' : '#ef4444'} />
+                  <Text style={[styles.kpiTrendText, { color: stats.todayTrend >= 0 ? '#10b981' : '#ef4444' }]}>{Math.abs(stats.todayTrend)}%</Text>
+                </View>
+              </View>
+              <Text style={[styles.kpiValue, { color: theme.text.primary, fontSize: 28 * fontSizeMultiplier }]}>{stats.today}</Text>
+              <Text style={[styles.kpiLabel, { color: theme.text.muted }]}>Today</Text>
+              <Text style={[styles.kpiSub, { color: theme.text.secondary }]}>vs {stats.avgPerDay}/day avg</Text>
             </View>
 
-            <View style={[styles.statCard, styles.secondaryStatCard, { borderRadius: borderRadiusValue, backgroundColor: theme.surface.card, borderColor: theme.surface.border }]}>
-              <Text style={styles.statEmoji}>🏆</Text>
-              <Text style={[styles.secondaryStatNumber, { color: '#f59e0b', fontSize: 24 * fontSizeMultiplier }]}>
-                {stats.achievements}
-              </Text>
-              <Text style={[styles.secondaryStatLabel, { color: theme.text.secondary }]}>Achievements</Text>
+            {/* Total Card */}
+            <View style={[styles.kpiCard, { borderRadius: borderRadiusValue, borderColor: `${theme.secondary}30`, backgroundColor: theme.isDark ? 'rgba(45,45,60,0.4)' : 'rgba(250,112,154,0.06)' }]}>
+              <View style={styles.kpiTop}>
+                <Ionicons name="albums-outline" size={18} color={theme.secondary} />
+                <View style={[styles.kpiTrendBadge, { backgroundColor: 'rgba(59,130,246,0.12)' }]}>
+                  <Ionicons name="layers-outline" size={10} color="#3b82f6" />
+                  <Text style={[styles.kpiTrendText, { color: '#3b82f6' }]}>{stats.weekTotal}w</Text>
+                </View>
+              </View>
+              <Text style={[styles.kpiValue, { color: theme.text.primary, fontSize: 28 * fontSizeMultiplier }]}>{stats.total}</Text>
+              <Text style={[styles.kpiLabel, { color: theme.text.muted }]}>Total</Text>
+              <Text style={[styles.kpiSub, { color: theme.text.secondary }]}>{stats.totalTrend}% this week</Text>
             </View>
 
-            <View style={[styles.statCard, styles.secondaryStatCard, { borderRadius: borderRadiusValue, backgroundColor: theme.surface.card, borderColor: theme.surface.border }]}>
-              <Text style={styles.statEmoji}>🌱</Text>
-              <Text style={[styles.secondaryStatNumber, { color: '#10b981', fontSize: 24 * fontSizeMultiplier }]}>
-                {stats.growthScore}
-              </Text>
-              <Text style={[styles.secondaryStatLabel, { color: theme.text.secondary }]}>Growth</Text>
+            {/* Achievements Card */}
+            <View style={[styles.kpiCard, { borderRadius: borderRadiusValue, borderColor: 'rgba(245,158,11,0.3)', backgroundColor: theme.isDark ? 'rgba(45,45,60,0.4)' : 'rgba(245,158,11,0.06)' }]}>
+              <View style={styles.kpiTop}>
+                <Ionicons name="trophy-outline" size={18} color="#f59e0b" />
+                {stats.achievementTrend > 0 && (
+                  <View style={[styles.kpiTrendBadge, { backgroundColor: 'rgba(245,158,11,0.12)' }]}>
+                    <Ionicons name="add-circle" size={10} color="#f59e0b" />
+                    <Text style={[styles.kpiTrendText, { color: '#f59e0b' }]}>+{stats.achievementTrend}</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={[styles.kpiValue, { color: theme.text.primary, fontSize: 28 * fontSizeMultiplier }]}>{stats.achievements}</Text>
+              <Text style={[styles.kpiLabel, { color: theme.text.muted }]}>Achievements</Text>
+              <Text style={[styles.kpiSub, { color: theme.text.secondary }]}>Unlocked</Text>
             </View>
+
+            {/* Growth Card */}
+            <View style={[styles.kpiCard, { borderRadius: borderRadiusValue, borderColor: 'rgba(16,185,129,0.3)', backgroundColor: theme.isDark ? 'rgba(45,45,60,0.4)' : 'rgba(16,185,129,0.06)' }]}>
+              <View style={styles.kpiTop}>
+                <Ionicons name="trending-up-outline" size={18} color="#10b981" />
+                {stats.growthTrend !== 0 && (
+                  <View style={[styles.kpiTrendBadge, { backgroundColor: stats.growthTrend > 0 ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)' }]}>
+                    <Ionicons name={stats.growthTrend > 0 ? 'arrow-up' : 'arrow-down'} size={10} color={stats.growthTrend > 0 ? '#10b981' : '#ef4444'} />
+                    <Text style={[styles.kpiTrendText, { color: stats.growthTrend > 0 ? '#10b981' : '#ef4444' }]}>{Math.abs(stats.growthTrend)}</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={[styles.kpiValue, { color: theme.text.primary, fontSize: 28 * fontSizeMultiplier }]}>{stats.growthScore}</Text>
+              <Text style={[styles.kpiLabel, { color: theme.text.muted }]}>Growth</Text>
+              <Text style={[styles.kpiSub, { color: theme.text.secondary }]}>Composite Index</Text>
+            </View>
+
           </Animated.ScrollView>
         </Animated.View>
 
@@ -1673,9 +1726,10 @@ export default function EnhancedTimelineScreen() {
            ═════════════════════════════════════════════════════════════════ */}
         {activeTab === 'timeline' && (
           <>
-            {/* ── NEW FEATURE 5: Quick Action Suggestions ── */}
+            {/* ── Quick Action Suggestions — Accurate Timing ── */}
             <QuickActionSuggestions 
               theme={theme} 
+              entries={allEntries}
               onPress={(action) => navigation.navigate('AddEntry', { trackerId: action })} 
             />
 
@@ -2242,17 +2296,16 @@ const styles = StyleSheet.create({
   searchBlur: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 4, overflow: 'hidden' },
   searchInput: { flex: 1, marginLeft: 10, paddingVertical: 12 },
 
-  // ── Stats ──
+  // ── Stats — Clean KPI Cards, No Shadows ──
   statsContainer: { marginBottom: 16 },
-  statsContent: { paddingHorizontal: 20, gap: 12 },
-  statCard: { padding: 16, alignItems: 'center', justifyContent: 'center', gap: 6, ...DESIGN.shadow.sm },
-  statEmoji: { fontSize: 28 },
-  primaryStatCard: { width: 140, height: 140 },
-  primaryStatNumber: { fontSize: 36, fontWeight: '800', color: '#fff', letterSpacing: -1 },
-  primaryStatLabel: { fontSize: 13, color: 'rgba(255,255,255,0.9)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
-  secondaryStatCard: { width: 100, height: 140, borderWidth: 1 },
-  secondaryStatNumber: { fontSize: 24, fontWeight: '800', letterSpacing: -0.5 },
-  secondaryStatLabel: { fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
+  statsContent: { paddingHorizontal: 20, gap: 10 },
+  kpiCard: { width: 120, padding: 14, borderWidth: 1, borderRadius: 16 },
+  kpiTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  kpiTrendBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6 },
+  kpiTrendText: { fontSize: 10, fontWeight: '700' },
+  kpiValue: { fontWeight: '800', letterSpacing: -1, marginBottom: 2 },
+  kpiLabel: { fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
+  kpiSub: { fontSize: 10, fontWeight: '500', marginTop: 2 },
 
   // ── Tab Bar ──
   tabBar: { 
@@ -2522,28 +2575,28 @@ const styles = StyleSheet.create({
   correlationBarFill: { height: '100%', borderRadius: 2 },
   correlationValue: { fontSize: 12, fontWeight: '700' },
 
-  // ── Quick Action Suggestions ──
-  suggestionsHeader: { marginHorizontal: 20, marginBottom: 12, marginTop: 8 },
-  suggestionsTitle: { fontSize: 18, fontWeight: '800', letterSpacing: -0.3 },
+  // ── Quick Action Suggestions — No Backgrounds, Centered ──
+  suggestionsHeader: { marginHorizontal: 20, marginBottom: 10, marginTop: 4 },
+  suggestionsTitle: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3 },
   suggestionsSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2, opacity: 0.7 },
-  suggestionsScroll: { paddingHorizontal: 16, gap: 12, paddingBottom: 4 },
+  suggestionsScroll: { paddingHorizontal: 20, gap: 20, paddingBottom: 4, paddingTop: 4 },
   suggestionCard: { 
-    width: 140, 
-    padding: 14, 
-    borderRadius: 20, 
-    overflow: 'hidden', 
-    ...DESIGN.shadow.md 
+    width: 80, 
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  suggestionIconBg: { 
-    width: 44, 
-    height: 44, 
-    borderRadius: 14, 
+  suggestionIconCircle: { 
+    width: 56, 
+    height: 56, 
+    borderRadius: 28, 
+    borderWidth: 1.5,
     justifyContent: 'center', 
     alignItems: 'center', 
-    marginBottom: 10 
+    marginBottom: 8,
+    backgroundColor: 'transparent',
   },
-  suggestionTitle: { fontSize: 14, fontWeight: '700', marginBottom: 2 },
-  suggestionCategory: { fontSize: 11, fontWeight: '700', marginBottom: 6 },
+  suggestionTitle: { fontSize: 12, fontWeight: '700', textAlign: 'center', marginBottom: 2 },
+  suggestionTime: { fontSize: 10, fontWeight: '500', textAlign: 'center' },
 
   // ── Upcoming Events Timeline ──
   calendarTimeline: { marginHorizontal: 16, gap: 0 },
@@ -2710,7 +2763,20 @@ const styles = StyleSheet.create({
   calendarDayViewEmojiText: { fontSize: 15 },
   calendarDayViewRowTitle: { fontSize: 14, fontWeight: '700' },
   calendarDayViewRowMeta: { fontSize: 11, fontWeight: '500', marginTop: 1 },
-
+  // ── Inline Achievement Badge ──
+  achievementInlineBadge: { 
+    position: 'absolute', 
+    top: 100, 
+    right: 20, 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 4, 
+    paddingHorizontal: 10, 
+    paddingVertical: 5, 
+    borderRadius: 10,
+    zIndex: 50,
+  },
+  achievementInlineText: { fontSize: 11, fontWeight: '700' },
   // ── FAB ──
   fabContainer: { position: 'absolute', zIndex: 100 },
   fab: { width: 56, height: 56, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 6 },
