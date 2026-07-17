@@ -313,6 +313,18 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
       return;
     }
 
+    // ─── CRITICAL FIX: Pre-check if email already exists ─────────────
+    const { findUserByEmail } = await import('@/database/dbHelpers');
+    const existingUser = await findUserByEmail(email.trim());
+    
+    if (existingUser) {
+      showInfo('Account Exists', 'An account with this email already exists. Redirecting to sign in...');
+      setTimeout(() => {
+        navigation.navigate('Login');
+      }, 1500);
+      return;
+    }
+
     signUpAttempted.current = true;
     setIsProcessing(true);
     Keyboard.dismiss();
@@ -344,7 +356,7 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
     } finally {
       if (isMounted.current) setIsProcessing(false);
     }
-  }, [fullName, email, password, confirmPassword, signUp, isProcessing, authLoading, triggerHaptic, showError, showSuccess]);
+  }, [fullName, email, password, confirmPassword, signUp, isProcessing, authLoading, triggerHaptic, showError, showSuccess, showInfo, navigation]);
 
   // ─── JOIN FAMILY HANDLER ───
   const handleJoinFamily = useCallback(async () => {
@@ -430,7 +442,7 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
     } finally {
       if (isMounted.current) setIsProcessing(false);
     }
-  }, [inviteCode, codeValidated, joinFullName, joinEmail, joinPassword, joinConfirmPassword, signUpWithInviteCode, isProcessing, authLoading, triggerHaptic, showError, showSuccess]);
+  }, [inviteCode, codeValidated, joinFullName, joinEmail, joinPassword, joinConfirmPassword, signUpWithInviteCode, signIn, isProcessing, authLoading, triggerHaptic, showError, showSuccess, showInfo, navigation]);
 
   const isLoading = authLoading || isProcessing;
 

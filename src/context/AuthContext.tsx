@@ -128,6 +128,8 @@ interface AuthContextType extends AuthState {
     email: string,
     password: string
   ) => Promise<{ success: boolean; message: string }>;
+  // NEW: Expose user lookup for UI screens
+  findUserByEmail: (email: string) => Promise<{ userId: string; email: string; fullName: string; role: string } | null>;
 }
 
 const secureStorage = {
@@ -1017,12 +1019,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         secureStorage.getItem(SECURE_KEYS.BIOMETRIC_LOGIN_ENABLED),
       ]);
 
-      // ─── CRITICAL FIX: Only delete token, NOT profile data ────────────
+      // ─── CRITICAL FIX: Only delete token and session data ────────────
       // User registry stays in app_settings so they can sign back in
+      // We delete USER_PROFILE from SecureStore but it's restored from registry on next sign-in
       await Promise.all([
         secureStorage.deleteItem(SECURE_KEYS.AUTH_TOKEN),
-        // DO NOT delete USER_PROFILE — keep it for biometric login and data persistence
-        // secureStorage.deleteItem(SECURE_KEYS.USER_PROFILE), // REMOVED
+        secureStorage.deleteItem(SECURE_KEYS.USER_PROFILE),
         secureStorage.deleteItem(SECURE_KEYS.PIN_HASH),
         secureStorage.deleteItem(SECURE_KEYS.SOCIAL_PROVIDER),
         AsyncStorage.multiRemove([
@@ -1438,6 +1440,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [releaseSignInLock, releaseBiometricLock]);
 
   const getCurrentUserProfile = useCallback(() => state.userProfile, [state.userProfile]);
+  const findUserByEmailCallback = useCallback(async (email: string): Promise<{ userId: string; email: string; fullName: string; role: string } | null> => {
+    const user = await findUserByEmail(email);
+    return user ? { userId: user.userId, email: user.email, fullName: user.fullName, role: user.role } : null;
+  }, []);
 
   const value = React.useMemo(() => ({
     ...state,
@@ -1466,6 +1472,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     getBiometricTypeInfo,
     clearAllLocks,
     getCurrentUserProfile,
+    findUserByEmail: findUserByEmailCallback,
     updateCommunityProfile,
     getCommunityProfile,
     updateCommunityStats,
