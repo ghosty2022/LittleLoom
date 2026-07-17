@@ -1,37 +1,34 @@
-import { StyleSheet, Dimensions, ScrollView, Switch, Text, TouchableOpacity, View, StatusBar } from 'react-native';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { StyleSheet, Dimensions, Text, TouchableOpacity, View, StatusBar } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import { BlurView } from 'expo-blur';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, { FadeInUp, FadeIn, Layout, useSharedValue, useAnimatedStyle, withSpring, withTiming } from 'react-native-reanimated';
+import Animated, { FadeInUp, FadeIn, Layout } from 'react-native-reanimated';
 
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import type { RootStackParamList } from '../../types/navigation';
 
 import { SafeBabyAvatar } from '../../components/SafeAvatar';
-import { STORAGE_KEYS, useBaby } from '../../context/BabyContext';
+import { useBaby } from '../../context/BabyContext';
 import { useAuth } from '../../context/AuthContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useFamily } from '../../context/FamilyContext';
 import { useSweetAlert } from '../../components/SweetAlert';
 
 import { LiquidDots } from '../../components/UniversalSpinner'; // <-- IMPORT ADDED
-import { showAlert } from '@/utils/alert';;
+// Removed dead import - using useSweetAlert instead
 
 const { width } = Dimensions.get('window');
 
 type BabySelectorScreenProps = NativeStackScreenProps<RootStackParamList, 'SwitchBaby'>;
 
-const safeParse = <T,>(json: string | null, fallback: T): T => {
-  if (!json) return fallback;
-  try { return JSON.parse(json) as T; } catch { return fallback; }
-};
+// safeParse helper removed — not used in this screen
 
 const GlassmorphismCard: React.FC<{ children: React.ReactNode; style?: any; onPress?: () => void; intensity?: number; isDark?: boolean }> = ({ 
   children, style, onPress, intensity = 80, isDark = false 
@@ -61,7 +58,6 @@ export default function BabySelectorScreen({ navigation }: BabySelectorScreenPro
   const insets = useSafeAreaInsets();
 
   const { darkMode: isDark, themeColors, shouldReduceMotion } = useCustomization();
-  const { toast, error: showError, success: showSuccess } = useSweetAlert();
 
   const [isProcessing, setIsProcessing] = useState(false);
   const hasNavigated = useRef(false);
@@ -86,7 +82,7 @@ export default function BabySelectorScreen({ navigation }: BabySelectorScreenPro
 
       if (success) {
         await loadBabies();
-        showSuccess('Switched', 'Baby profile updated');
+        sweetAlert.success('Switched', 'Baby profile updated');
 
         setTimeout(() => {
           if (!hasNavigated.current && isMounted.current) {
@@ -95,16 +91,17 @@ export default function BabySelectorScreen({ navigation }: BabySelectorScreenPro
           }
         }, 500);
       } else {
-        showError('Error', 'Failed to switch baby profile');
+        sweetAlert.error('Error', 'Failed to switch baby profile');
         setIsProcessing(false);
       }
     } catch (error) {
-      showError('Error', 'An unexpected error occurred');
+      sweetAlert.error('Error', 'An unexpected error occurred');
       setIsProcessing(false);
     }
-  }, [currentBabyId, switchBaby, loadBabies, navigation, showError, showSuccess]);
+  }, [currentBabyId, switchBaby, loadBabies, navigation, sweetAlert]);
 
   const handleDeleteBaby = useCallback((babyId: string, babyName: string) => {
+    if (isProcessing) return;
     if (babies.length <= 1) {
       sweetAlert.alert('Cannot Delete', 'You must have at least one baby profile', 'warning');
       return;
@@ -112,20 +109,33 @@ export default function BabySelectorScreen({ navigation }: BabySelectorScreenPro
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
 
-sweetAlert.confirm(
+    sweetAlert.confirm(
       'Delete Profile?',
-      'Baby profile removed',
-      () => {
-        // TODO: Confirm action
+      `Are you sure you want to delete ${babyName}'s profile? This cannot be undone.`,
+      async () => {
+        setIsProcessing(true);
+        try {
+          const success = await deleteBaby(babyId);
+          if (success) {
+            await loadBabies();
+            sweetAlert.success('Deleted', `${babyName}'s profile has been removed`);
+          } else {
+            sweetAlert.error('Error', `Failed to delete ${babyName}'s profile`);
+          }
+        } catch (error) {
+          sweetAlert.error('Error', 'An unexpected error occurred');
+        } finally {
+          setIsProcessing(false);
+        }
       },
       () => {
-        // Cancel action
+        // Cancel action - do nothing
       },
-      'OK',
+      'Delete',
       'Cancel',
-      false
+      true
     );
-  }, [babies.length, deleteBaby, loadBabies, navigation, showError, showSuccess]);
+  }, [babies.length, deleteBaby, loadBabies, navigation, sweetAlert, isProcessing]);
 
   const handleAddBaby = useCallback(() => {
     navigation.navigate('CreateBabyProfile');

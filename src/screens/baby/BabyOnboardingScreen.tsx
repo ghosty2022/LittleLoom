@@ -57,7 +57,11 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
   useEffect(() => {
     const loadData = async () => {
       try {
-        setLocalLoading(true);
+        // Only show loading overlay on first mount, not on re-focus from navigation
+        const hasLoadedBefore = babies.length > 0;
+        if (!hasLoadedBefore) {
+          setLocalLoading(true);
+        }
         await loadBabies();
         if (isMountedRef.current) setLocalLoading(false);
       } catch (error) {
@@ -68,7 +72,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
       }
     };
     loadData();
-  }, [loadBabies]);
+  }, [loadBabies, babies.length]);
 
   const handleSkip = useCallback(async () => {
     triggerHaptic('light');
@@ -122,7 +126,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
         setLocalLoading(false);
       }
     }
-  }, [loadBabies]);
+  }, [loadBabies, babies.length]);
 
   const showLoading = localLoading || babyLoading;
   const hasExistingBabies = babies && babies.length > 0;
