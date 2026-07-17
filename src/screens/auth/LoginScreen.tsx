@@ -537,15 +537,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
           }
         }
       } else {
-        // ─── CRITICAL FIX: Distinguish unknown user from wrong password ─
-        const { findUserByEmail } = await import('@/database/dbHelpers');
-        const existing = await findUserByEmail(email.trim());
-        
-        if (!existing) {
-          showError('No Account Found', 'No account exists with this email. Please create an account first.');
-        } else {
-          showError('Login Failed', 'Invalid email or password');
-        }
+        showError('Login Failed', 'Invalid email or password');
         loginAttempted.current = false;
       }
     } catch (error) {

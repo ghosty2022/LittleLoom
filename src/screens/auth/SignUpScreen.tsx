@@ -55,7 +55,7 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [showSplash, setShowSplash] = useState(false);
 
-  const { signUp, signUpWithInviteCode, isLoading: authLoading, isAuthenticated } = useAuth();
+  const { signUp, signUpWithInviteCode, signIn, isLoading: authLoading, isAuthenticated } = useAuth();
   const { darkMode: isDark, themeColors, triggerHaptic } = useCustomization();
   const { toast, error: showError, success: showSuccess, info: showInfo } = useSweetAlert();
 
@@ -416,15 +416,8 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
       const existingUser = await findUserByEmail(joinEmail.trim());
       
       if (existingUser) {
-        showInfo('Account Exists', 'You already have an account. Signing you in...');
-        // Auto-sign in existing user
-        const success = await signIn(joinEmail.trim(), joinPassword);
-        if (success) {
-          showSuccess('Welcome Back!', 'Signed in with your existing account');
-        } else {
-          showError('Sign In Failed', 'Please try signing in manually');
-          setTimeout(() => navigation.navigate('Login'), 1500);
-        }
+        showInfo('Account Exists', 'You already have an account. Redirecting to sign in...');
+        setTimeout(() => navigation.navigate('Login'), 1500);
         return;
       }
 

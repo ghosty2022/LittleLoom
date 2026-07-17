@@ -635,13 +635,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await new Promise(resolve => setTimeout(resolve, 1500 - (now - lastSignInTime.current)));
     }
     try {
-      // ─── CRITICAL FIX: Reject sign-in for unknown emails ─────────────
-      const existingUser = await findUserByEmail(email);
-      if (!existingUser) {
-        console.warn('[Auth] Sign in rejected: no account found for', email);
-        return false; // Unknown user — don't create new account
-      }
-      
+      // Let performSignInInternal handle user lookup and restoration
       const success = await performSignInInternal(email, password, false);
       lastSignInTime.current = Date.now();
       return success;
