@@ -1497,7 +1497,7 @@ export default function EnhancedTimelineScreen() {
           colors={theme.isDark ? [theme.bgColors[0], theme.bgColors[1]] : ['#f8fafc', '#e2e8f0']}
           style={styles.loadingGradient}
         >
-          <SafeAvatar size={64} fallbackIcon="baby" borderColor={theme.primary} borderWidth={3} animated />
+          <SafeAvatar size={64} fallbackIcon="happy-outline" borderColor={theme.primary} borderWidth={3} animated />
           <Text style={[styles.loadingText, { color: theme.primary }]}>LittleLoom</Text>
           <View style={styles.loadingDots}>
             <View style={[styles.dot, { backgroundColor: theme.primary, opacity: 0.4 }]} />
@@ -1556,7 +1556,7 @@ export default function EnhancedTimelineScreen() {
               <SafeAvatar
                 uri={currentBaby.avatar}
                 size={44}
-                fallbackIcon="baby"
+                fallbackIcon="happy-outline"
                 borderColor={theme.primary}
                 borderWidth={2}
                 style={{ marginBottom: 6 }}

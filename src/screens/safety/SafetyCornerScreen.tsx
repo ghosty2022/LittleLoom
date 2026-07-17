@@ -52,9 +52,11 @@ const DESIGN = {
   radius: { xs: 8, sm: 12, md: 16, lg: 20, xl: 24, full: 999 },
   spacing: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32 },
   shadow: {
-    sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 2 },
-    md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 4 },
-    lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 24, elevation: 8 },
+    xs: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.02, shadowRadius: 2, elevation: 1 },
+    sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 6, elevation: 2 },
+    md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 16, elevation: 4 },
+    lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.1, shadowRadius: 32, elevation: 8 },
+    glow: { shadowColor: '#667eea', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 20, elevation: 6 },
   },
 };
 
@@ -82,14 +84,22 @@ const GlassCard = memo(({ children, style, onPress, active = false }: { children
   const theme = useUnifiedTrackerTheme();
   const Wrapper = onPress ? TouchableOpacity : View;
   return (
-    <Wrapper onPress={onPress} activeOpacity={onPress ? 0.85 : 1} style={[styles.glassCard, active && { borderColor: theme.primary, borderWidth: 2 }, style]}>
+    <Wrapper onPress={onPress} activeOpacity={onPress ? 0.85 : 1} style={[
+      styles.glassCard,
+      {
+        borderColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)',
+        backgroundColor: theme.isDark ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.85)',
+      },
+      active && { borderColor: theme.primary, borderWidth: 2 },
+      style
+    ]}>
       <LinearGradient
-        colors={theme.isDark ? ['rgba(45,45,60,0.85)', 'rgba(35,35,50,0.65)'] : ['rgba(255,255,255,0.92)', 'rgba(250,250,255,0.75)']}
+        colors={theme.isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.85)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.92)']}
         style={StyleSheet.absoluteFill}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       />
-      <View style={[styles.glassBorder, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.5)' }]} />
+      <View style={[styles.glassBorder, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.6)' }]} />
       <View style={styles.glassContent}>{children}</View>
     </Wrapper>
   );
@@ -145,8 +155,17 @@ const TabBar = memo(({ tabs, activeTab, onChange, theme }: { tabs: { key: Safety
 const KpiCard = memo(({ title, value, icon, color, onPress, theme, size = 'normal' }: any) => {
   const isLarge = size === 'large';
   return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={[styles.kpiCard, isLarge && styles.kpiCardLarge, { backgroundColor: theme.isDark ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.85)' }]}>
+    <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={[
+      styles.kpiCard,
+      isLarge && styles.kpiCardLarge,
+      {
+        backgroundColor: theme.isDark ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.85)',
+        borderColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)',
+        ...DESIGN.shadow.md,
+      }
+    ]}>
       <LinearGradient colors={[`${color}08`, `${color}02`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+      <View style={[styles.glassBorder, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.6)' }]} />
       <View style={styles.kpiInner}>
         <View style={styles.kpiTop}>
           <View style={[styles.kpiIconBg, { backgroundColor: `${color}15` }]}>
@@ -181,7 +200,7 @@ const SafetyScoreRing = memo(({ score, theme, onPress }: { score: number; theme:
 
   return (
     <Animated.View entering={FadeInUp.delay(100).springify()}>
-      <GlassCard onPress={onPress}>
+      <GlassCard onPress={onPress} style={{ marginBottom: DESIGN.spacing.lg }}>
         <View style={styles.scoreRingWrap}>
           <View style={[styles.scoreRingOuter, { borderColor: `${getColor()}30` }]}>
             <View style={[styles.scoreRingInner, { borderColor: getColor() }]}>
@@ -253,8 +272,16 @@ const EmergencyQuickDial = memo(({ contacts, onCall, onSOS, theme }: { contacts:
       {/* Emergency Contacts Grid */}
       <View style={styles.emergencyGrid}>
         {emergencyContacts.map(contact => (
-          <TouchableOpacity key={contact.id} onPress={() => onCall(contact)} style={styles.emergencyCard}>
+          <TouchableOpacity key={contact.id} onPress={() => onCall(contact)} style={[
+            styles.emergencyCard,
+            {
+              borderColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)',
+              backgroundColor: theme.isDark ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.85)',
+              ...DESIGN.shadow.md,
+            }
+          ]}>
             <LinearGradient colors={[`${contact.color}15`, `${contact.color}05`]} style={StyleSheet.absoluteFill} />
+            <View style={[styles.glassBorder, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.6)' }]} />
             <View style={[styles.emergencyIconBg, { backgroundColor: `${contact.color}20` }]}>
               <Ionicons name={contact.icon as any} size={22} color={contact.color} />
             </View>
@@ -268,7 +295,14 @@ const EmergencyQuickDial = memo(({ contacts, onCall, onSOS, theme }: { contacts:
       {familyContacts.length > 0 && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.familyScroll}>
           {familyContacts.map(contact => (
-            <TouchableOpacity key={contact.id} onPress={() => onCall(contact)} style={[styles.familyChip, { backgroundColor: theme.isDark ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.85)' }]}>
+            <TouchableOpacity key={contact.id} onPress={() => onCall(contact)} style={[
+              styles.familyChip,
+              {
+                backgroundColor: theme.isDark ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.85)',
+                borderColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)',
+                ...DESIGN.shadow.sm,
+              }
+            ]}>
               {contact.avatar ? (
                 <Image source={{ uri: contact.avatar }} style={styles.familyAvatar} />
               ) : (
@@ -308,8 +342,16 @@ const SafetyTopicGrid = memo(({ topics, onPress, theme }: { topics: SafetyTopic[
           const isCompleted = !!topic.completedAt;
           return (
             <Animated.View key={topic.id} entering={FadeInUp.delay(i * 60).springify()} style={styles.topicGridItem}>
-              <TouchableOpacity onPress={() => onPress(topic)} activeOpacity={0.85} style={[styles.topicCard, { backgroundColor: theme.isDark ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.85)' }]}>
+              <TouchableOpacity onPress={() => onPress(topic)} activeOpacity={0.85} style={[
+                styles.topicCard,
+                {
+                  backgroundColor: theme.isDark ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.85)',
+                  borderColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)',
+                  ...DESIGN.shadow.md,
+                }
+              ]}>
                 <LinearGradient colors={[`${color}08`, `${color}02`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+                <View style={[styles.glassBorder, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.6)' }]} />
                 <View style={styles.topicCardInner}>
                   <View style={[styles.topicIconBg, { backgroundColor: `${color}15` }]}>
                     <Ionicons name={topic.icon as any} size={24} color={color} />
@@ -560,10 +602,14 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
     { icon: 'medical', label: 'Hospitals', color: '#ef4444', onPress: findNearbyHospitals },
   ];
 
+  const bgColors = theme.isDark
+    ? [theme.bgColors?.[0] || '#0a0a0a', '#1a1a2e']
+    : [theme.bgColors?.[0] || '#f8fafc', '#e2e8f0'];
+
   return (
-    <View style={[styles.container, { backgroundColor: theme.bgColors[0] }]}>
+    <View style={[styles.container, { backgroundColor: bgColors[0] }]}>
       <StatusBar barStyle={theme.statusBar} />
-      <LinearGradient colors={theme.bgColors} style={StyleSheet.absoluteFill} />
+      <LinearGradient colors={bgColors} style={StyleSheet.absoluteFill} />
 
       {/* Sticky Header */}
       <Animated.View style={[styles.stickyHeader, { paddingTop: insets.top + 8 }, headerOpacity]}>
@@ -639,7 +685,14 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
               <SectionHeader title="Recent Topics" subtitle={`${topics.filter(t => t.completedAt).length} completed`} action={() => setActiveTab('topics')} theme={theme} />
               {topics.slice(0, 3).map((topic, i) => (
                 <Animated.View key={topic.id} entering={FadeInUp.delay(i * 60).springify()}>
-                  <TouchableOpacity onPress={() => handleTopicPress(topic)} style={[styles.topicListItem, { backgroundColor: theme.isDark ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.85)' }]}>
+                  <TouchableOpacity onPress={() => handleTopicPress(topic)} style={[
+                    styles.topicListItem,
+                    {
+                      backgroundColor: theme.isDark ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.85)',
+                      borderColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)',
+                      ...DESIGN.shadow.sm,
+                    }
+                  ]}>
                     <View style={[styles.topicListIcon, { backgroundColor: `${topic.color}15` }]}>
                       <Ionicons name={topic.icon as any} size={20} color={topic.color} />
                     </View>
@@ -682,7 +735,7 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
             <SectionHeader title="Safety Checklists" subtitle={`${checklists.length} checklists available`} theme={theme} />
             {checklists.map((checklist, i) => (
               <Animated.View key={checklist.id} entering={FadeInUp.delay(i * 60).springify()}>
-                <GlassCard onPress={() => setShowChecklistModal(true)}>
+                <GlassCard onPress={() => setShowChecklistModal(true)} style={{ marginBottom: DESIGN.spacing.md }}>
                   <View style={styles.checklistRow}>
                     <View style={[styles.checklistIcon, { backgroundColor: `${theme.primary}15` }]}>
                       <Ionicons name="list" size={22} color={theme.primary} />
@@ -829,7 +882,7 @@ const styles = StyleSheet.create({
     borderRadius: DESIGN.radius.lg,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: 'rgba(255,255,255,0.08)',
     ...DESIGN.shadow.md,
     marginHorizontal: DESIGN.spacing.lg,
     marginBottom: DESIGN.spacing.lg,
@@ -875,7 +928,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     overflow: 'hidden',
     padding: 14,
-    ...DESIGN.shadow.md,
+    borderWidth: 1,
   },
   kpiCardLarge: { padding: 16 },
   kpiInner: { flex: 1, justifyContent: 'space-between' },
@@ -956,7 +1009,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
     overflow: 'hidden',
-    ...DESIGN.shadow.sm,
+    borderWidth: 1,
   },
   emergencyIconBg: {
     width: 44,
@@ -976,7 +1029,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 20,
-    ...DESIGN.shadow.sm,
+    borderWidth: 1,
   },
   familyAvatar: { width: 28, height: 28, borderRadius: 14 },
   familyAvatarPlaceholder: {
@@ -1000,7 +1053,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     overflow: 'hidden',
     padding: 14,
-    ...DESIGN.shadow.md,
+    borderWidth: 1,
   },
   topicCardInner: { gap: 8 },
   topicIconBg: {
@@ -1043,7 +1096,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginBottom: 8,
     gap: 12,
-    ...DESIGN.shadow.sm,
+    borderWidth: 1,
   },
   topicListIcon: {
     width: 44,
