@@ -1276,8 +1276,8 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   /* ---- Feeding (Drizzle DB — trackerId 'feeding') ---- */
   const addFeedingLog = useCallback(async (log: Omit<FeedingLog, 'id' | 'createdAt'>): Promise<boolean> => {
     try {
-      if (log.amount !== undefined && (isNaN(log.amount) || log.amount < 0)) {
-             Alert.alert('Invalid Amount', 'Please enter a valid positive amount');
+      if (log.amount !== undefined && (typeof log.amount !== 'number' || isNaN(log.amount) || log.amount < 0)) {
+        Alert.alert('Invalid Amount', 'Please enter a valid positive amount');
         return false;
       }
 
@@ -1478,9 +1478,12 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
          which previously were dropped on write and lost after reload. */
       const entryData = extractEntryData(entry);
 
+      // Ensure trackerId is valid and normalized
+      const trackerId = entry.type;
+
       await createEntryInDb({
         id: newId,
-        trackerId: entry.type,
+        trackerId,
         babyId: entry.babyId,
         timestamp: entry.timestamp,
         title: entry.title,
@@ -1490,6 +1493,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         tags: entry.tags,
         loggedBy: entry.loggedBy,
         loggedByName: entry.loggedByName,
+        loggedByRole: entry.loggedByRole,
       });
 
       const newEntry: ActivityEntry = { ...entry, id: newId };

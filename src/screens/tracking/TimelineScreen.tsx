@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo, useState, useEffect } from 'react';
 import { EmptyState } from '../../components/EmptyState';
 import { useCustomization } from '../../hooks/useCustomization';
-import { Dimensions, Modal, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View, LayoutAnimation, UIManager, Platform } from 'react-native';
+import { Dimensions, Image, Modal, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View, LayoutAnimation, UIManager, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -978,38 +978,8 @@ const GrowthScoreCard: React.FC<{
   );
 };
 
-const AchievementToast: React.FC<{
-  achievements: any[];
-  theme: any;
-  onDismiss: () => void;
-}> = ({ achievements, theme, onDismiss }) => {
-  const safeAchievements = safeArray(achievements);
-  if (safeAchievements.length === 0) return null;
-
-  const first = safeAchievements[0] || {};
-
-  return (
-    <Animated.View entering={FadeInDown.springify()} exiting={FadeInUp} style={styles.achievementToast}>
-      <LinearGradient
-        colors={getRarityGradient(first?.rarity || 'common')}
-        style={styles.achievementToastGradient}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-      >
-        <Text style={styles.achievementToastEmoji}>🎉</Text>
-        <View style={styles.achievementToastContent}>
-          <Text style={styles.achievementToastTitle}>Achievement Unlocked!</Text>
-          <Text style={styles.achievementToastName}>
-            {first?.emoji || '🏆'} {first?.title || 'Achievement'}
-          </Text>
-        </View>
-        <TouchableOpacity onPress={onDismiss}>
-          <Ionicons name="close" size={20} color="#fff" />
-        </TouchableOpacity>
-      </LinearGradient>
-    </Animated.View>
-  );
-};
+// AchievementToast removed — replaced with silent haptic + inline badge
+// to avoid disruptive popups during tracking sessions
 
 const StreakBanner: React.FC<{
   streak: any;
@@ -1473,16 +1443,22 @@ export default function EnhancedTimelineScreen() {
       `Delete "${entry?.title || 'entry'}"? This cannot be undone.`,
       async () => {
         if (entry?.id) {
-          await deleteEntry(entry.id);
-          triggerHaptic('success');
-          success('Deleted', 'Entry removed');
+          try {
+            await deleteEntry(entry.id);
+            // Force refresh from database to ensure sync
+            await refreshEntries();
+            triggerHaptic('success');
+            success('Deleted', 'Entry removed from database');
+          } catch (err) {
+            error('Delete Failed', 'Could not remove entry. Please try again.');
+          }
         }
       },
       () => triggerHaptic('light'),
       'Delete',
       'Cancel'
     );
-  }, [deleteEntry, triggerHaptic, confirm, success]);
+  }, [deleteEntry, refreshEntries, triggerHaptic, confirm, success, error]);
 
   const handleEventPress = useCallback((entry: TrackerEntry) => {
     if (!entry?.id) return;
