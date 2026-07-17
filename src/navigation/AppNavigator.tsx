@@ -56,6 +56,7 @@ import SecurityCenterScreen from '../screens/security/SecurityCenterScreen';
 import UniversalTrackerHubScreen from '../screens/tracking/UniversalTrackerHubScreen';
 import CreateCustomTrackerScreen from '../screens/tracking/CreateCustomTrackerScreen';
 import VaccinationScheduleScreen from '../screens/tracking/VaccinationScheduleScreen';
+import InviteCodeScreen from '../screens/family/InviteCodeScreen';
 
 import LiquidGlassNavigation from '../components/LiquidGlassNavigation';
 import { UniversalSpinner } from '../components/UniversalSpinner';
@@ -497,6 +498,7 @@ function NavigationContent({
           <Stack.Screen name="BabyOptional" component={BabyOnboardingScreen} options={{ gestureEnabled: false }} />
           <Stack.Screen name="CreateBabyProfile" component={BabyProfileCreateScreen} options={{ gestureEnabled: false }} />
           <Stack.Screen name="AddParent" component={CoParentSetupScreen} />
+        <Stack.Screen name="InviteCodeScreen" component={InviteCodeScreen} options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
         </Stack.Group>
 
         {/* MAIN TAB (no header) */}

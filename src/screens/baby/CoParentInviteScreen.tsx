@@ -45,6 +45,11 @@ export default function CoParentInviteScreen({ navigation }: Props) {
     navigation.navigate('Parent2Setup');
   }, [navigation, triggerHaptic]);
 
+  const handleGenerateInviteCode = useCallback(() => {
+    triggerHaptic('medium');
+    navigation.navigate('InviteCodeScreen');
+  }, [navigation, triggerHaptic]);
+
   return (
     <View style={styles.container}>
       <LinearGradient
@@ -125,6 +130,17 @@ export default function CoParentInviteScreen({ navigation }: Props) {
                 <Ionicons name="person-add" size={24} color="#fff" />
                 <Text style={styles.primaryText}>Add Co-Parent</Text>
               </LinearGradient>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.secondaryButton, { borderColor: dynamicPrimary + '40' }]}
+              onPress={handleGenerateInviteCode}
+              activeOpacity={0.8}
+            >
+              <View style={styles.secondaryButtonInner}>
+                <Ionicons name="key-outline" size={22} color={dynamicPrimary} />
+                <Text style={[styles.secondaryText, { color: dynamicPrimary }]}>Generate Invite Code</Text>
+              </View>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.skipButton} onPress={handleSkip}>
@@ -254,6 +270,23 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: '#fff'
+  },
+  secondaryButton: {
+    borderRadius: 16,
+    borderWidth: 1.5,
+    overflow: 'hidden',
+    marginTop: 4,
+  },
+  secondaryButtonInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    gap: 10,
+  },
+  secondaryText: {
+    fontSize: 17,
+    fontWeight: '700',
   },
   skipButton: {
     alignItems: 'center',

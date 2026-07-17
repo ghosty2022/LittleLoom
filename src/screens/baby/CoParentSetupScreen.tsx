@@ -158,6 +158,11 @@ export default function CoParentSetupScreen({ navigation }: Props) {
     }
   }, [fullName, email, inviteMember, completeSetup, navigation, showToast, triggerHaptic]);
 
+  const handleGenerateInviteCode = useCallback(() => {
+    triggerHaptic('medium');
+    navigation.navigate('InviteCodeScreen');
+  }, [navigation, triggerHaptic]);
+
   const handleSkip = useCallback(() => {
     triggerHaptic('light');
     setConfirmModal({
@@ -299,6 +304,16 @@ export default function CoParentSetupScreen({ navigation }: Props) {
                       </>
                     )}
                   </LinearGradient>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.codeButton, { borderColor: dynamicPrimary + '40' }]}
+                  onPress={handleGenerateInviteCode}
+                >
+                  <Ionicons name="key-outline" size={18} color={dynamicPrimary} />
+                  <Text style={[styles.codeButtonText, { color: dynamicPrimary }]}>
+                    Or generate an invite code instead
+                  </Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.skipButton} onPress={handleSkip}>
@@ -504,6 +519,20 @@ const styles = StyleSheet.create({
     fontWeight: '700'
   },
 
+  codeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    marginBottom: 8,
+  },
+  codeButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
   skipButton: {
     alignItems: 'center',
     paddingVertical: 8

@@ -188,6 +188,7 @@ export type RootStackParamList = {
   SoundMixer: undefined;
   Customize: undefined;
   BabySelector: undefined;
+  InviteCodeScreen: undefined;
   SecurityLock: undefined;
   BiometricSetup: undefined;
   SecurityCenter: {
