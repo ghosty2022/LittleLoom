@@ -49,6 +49,10 @@ const DESIGN = {
     md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 4 },
     lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 24, elevation: 8 },
   },
+  // Smooth spring animations for consistent feel
+  spring: { damping: 15, stiffness: 120, mass: 1 },
+  // Timing presets
+  timing: { fast: 150, normal: 300, slow: 500 },
 };
 
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -278,7 +282,7 @@ const SmartSleepIntelligence = React.memo(({
               {rec.trackIds.slice(0, 3).map((tid, idx) => {
                 const track = ENHANCED_TRACKS.find(t => t.id === tid);
                 return track ? (
-                  <Image key={idx} source={{ uri: track.image }} style={styles.smartRecTrackImg} />
+                  <Image key={`${rec.id}-img-${idx}`} source={{ uri: track.image }} style={styles.smartRecTrackImg} />
                 ) : null;
               })}
               <View style={[styles.smartRecPlayBtn, { backgroundColor: rec.color }]}>
@@ -325,7 +329,7 @@ const NowPlayingHero = React.memo(({
             <View style={styles.nowPlayingWaveform}>
               {[0.3, 0.6, 0.9, 0.5, 0.8, 0.4, 0.7, 0.5].map((h, i) => (
                 <View 
-                  key={i} 
+                  key={`wave-${i}`} 
                   style={[
                     styles.waveformBar, 
                     { 
@@ -432,7 +436,7 @@ const SoundMixingStudio = React.memo(({
               const track = tracks.find(t => t.id === layer.trackId);
               if (!track) return null;
               return (
-                <View key={i} style={styles.mixLayerRow}>
+                <View key={`mix-layer-${layer.trackId}-${i}`} style={styles.mixLayerRow}>
                   <TouchableOpacity onPress={() => toggleLayer(i)} style={[styles.mixLayerToggle, layer.isActive && { backgroundColor: track.color + '30', borderColor: track.color }]}>
                     <Image source={{ uri: track.image }} style={styles.mixLayerImg} />
                     <View style={styles.mixLayerInfo}>
@@ -933,16 +937,23 @@ const SweetAlert = React.memo(({ visible, type, title, message, onClose }: any) 
   const scale = useSharedValue(0.8);
 
   useEffect(() => {
+    let timer: NodeJS.Timeout;
+    let closeTimer: NodeJS.Timeout;
+    
     if (visible) {
       opacity.value = withTiming(1, { duration: 300 });
       scale.value = withSpring(1, { damping: 12 });
-      const timer = setTimeout(() => {
+      timer = setTimeout(() => {
         opacity.value = withTiming(0, { duration: 300 });
         scale.value = withTiming(0.8, { duration: 300 });
-        setTimeout(onClose, 300);
+        closeTimer = setTimeout(onClose, 300);
       }, 3000);
-      return () => clearTimeout(timer);
     }
+    
+    return () => {
+      if (timer) clearTimeout(timer);
+      if (closeTimer) clearTimeout(closeTimer);
+    };
   }, [visible]);
 
   const style = useAnimatedStyle(() => ({
@@ -1209,6 +1220,15 @@ export default function SoundMixerScreen({ navigation }: SoundMixerScreenProps) 
   // ── Filtered tracks ──
   const filteredTracks = useMemo(() => {
     let tracks = [...ENHANCED_TRACKS, ...importedTracks];
+    
+    // Deduplicate by track id to prevent duplicate key warnings
+    const seen = new Set<string>();
+    tracks = tracks.filter(t => {
+      if (seen.has(t.id)) return false;
+      seen.add(t.id);
+      return true;
+    });
+    
     if (activeTab === 'favorites') tracks = tracks.filter(t => isFavorite(t.id));
     else if (activeTab === 'sleep') tracks = tracks.filter(t => ['White Noise', 'Brown Noise', 'Pink Noise', 'Womb Sounds', 'Heartbeat'].includes(t.title));
 

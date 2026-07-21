@@ -302,12 +302,15 @@ const saveToPhotoLibrary = async (uri: string): Promise<boolean> => {
   }
 };
 
+import { Image as RNImage } from 'react-native';
+
 const getImageDimensions = async (uri: string): Promise<{ width: number; height: number }> => {
   return new Promise((resolve, reject) => {
-    const img = new window.Image();
-    img.onload = () => resolve({ width: img.width, height: img.height });
-    img.onerror = reject;
-    img.src = uri;
+    RNImage.getSize(
+      uri,
+      (width, height) => resolve({ width, height }),
+      (error) => reject(error)
+    );
   });
 };
 
