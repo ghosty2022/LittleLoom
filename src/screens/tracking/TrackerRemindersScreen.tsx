@@ -2090,7 +2090,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.5)',
-    /* no shadow */,
+    /* no shadow */
     marginHorizontal: DESIGN.spacing.lg,
     marginBottom: DESIGN.spacing.lg,
     backgroundColor: 'rgba(255,255,255,0.7)',
@@ -2138,7 +2138,7 @@ const styles = StyleSheet.create({
   insightsScroll: { paddingHorizontal: 16, gap: 0 },
   insightCard: {
     width: width - 48, padding: 18, borderRadius: 20, marginRight: 12,
-    backgroundColor: 'rgba(255,255,255,0.85)', /* no shadow */,
+    backgroundColor: 'rgba(255,255,255,0.85)', /* no shadow */
     borderLeftWidth: 4,
   },
   insightRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
@@ -2198,7 +2198,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 6,
     paddingHorizontal: 14, paddingVertical: 10, borderRadius: 14,
     backgroundColor: 'rgba(255,255,255,0.7)', borderWidth: 1, borderColor: 'transparent',
-    /* no shadow */,
+    /* no shadow */
   },
   categoryPillLabel: { fontSize: 13, fontWeight: '600', color: '#64748b' },
   categoryPillBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginLeft: 4 },
@@ -2210,7 +2210,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.85)', borderRadius: 16,
     padding: 14, marginBottom: 10, marginHorizontal: 16,
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.5)',
-    /* no shadow */,
+    /* no shadow */
   },
   reminderItemNext: { borderColor: 'rgba(102,126,234,0.3)', borderWidth: 2 },
   reminderItemDisabled: { opacity: 0.55 },

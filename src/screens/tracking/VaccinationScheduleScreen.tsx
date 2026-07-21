@@ -1109,6 +1109,8 @@ const BabySwitcherModal = memo(({ visible, onClose, babies, currentBaby, onSwitc
 export default function VaccinationScheduleScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const { themeColors, triggerHaptic } = useCustomization();
+const colorScheme = useColorScheme();
+const isDark = colorScheme === 'dark';
   const { currentBaby, babies, switchBaby } = useBaby();
 
   const [doses, setDoses] = useState<VaccineDose[]>([]);
@@ -1630,7 +1632,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.5)',
-    /* no shadow */,
+    /* no shadow */
     marginHorizontal: DESIGN.spacing.lg,
     marginBottom: DESIGN.spacing.lg,
     backgroundColor: 'rgba(255,255,255,0.7)',
@@ -1775,7 +1777,7 @@ const styles = StyleSheet.create({
     borderRadius: 20, 
     overflow: 'hidden',
     borderWidth: 1,
-    /* no shadow */,
+    /* no shadow */
     backgroundColor: 'rgba(255,255,255,0.85)',
   },
   categoryIconBg: { 
@@ -1834,7 +1836,7 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 16,
     backgroundColor: 'rgba(255,255,255,0.85)',
-    /* no shadow */,
+    /* no shadow */
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.5)',
   },
@@ -1996,7 +1998,7 @@ const styles = StyleSheet.create({
     marginBottom: 8, 
     borderRadius: 16, 
     marginHorizontal: 16, 
-    /* no shadow */,
+    /* no shadow */
     backgroundColor: 'rgba(255,255,255,0.85)',
   },
   insightRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },

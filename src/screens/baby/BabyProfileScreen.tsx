@@ -207,7 +207,6 @@ const TabBar = React.memo(({ tabs, activeTab, onChange }: {
             styles.tabItem,
             isActive && { 
               backgroundColor: isDanger ? 'rgba(239,68,68,0.15)' : 'rgba(99,102,241,0.15)',
-              /* no shadow */,
             },
             isDanger && isActive && { borderColor: '#ef4444', borderWidth: 1 }
           ]}
@@ -1600,7 +1599,7 @@ const styles = StyleSheet.create({
   tabLabel: { fontSize: 12, fontWeight: '600' },
 
   // ── Glass Card ──
-  glassCard: { borderRadius: DESIGN.radius.lg, overflow: 'hidden', borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', marginHorizontal: 16, marginBottom: DESIGN.spacing.lg },
+  glassCard: { borderRadius: DESIGN.radius.lg, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', marginHorizontal: 16, marginBottom: DESIGN.spacing.lg },
   glassBorder: { position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.06)' },
   glassContent: { flex: 1 },
 
@@ -1613,7 +1612,7 @@ const styles = StyleSheet.create({
 
   // ── KPI Pills ──
   kpiPillRow: { flexDirection: 'row', gap: 10, marginHorizontal: 16, marginBottom: 16 },
-  kpiPill: { flex: 1, borderRadius: 20, overflow: 'hidden', padding: 14, /* no shadow */, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  kpiPill: { flex: 1, borderRadius: 20, overflow: 'hidden', padding: 14, /* no shadow */ flexDirection: 'row', alignItems: 'center', gap: 10 },
   kpiPillIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   kpiPillEmoji: { fontSize: 20 },
   kpiPillBody: { flex: 1 },

@@ -2495,7 +2495,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.08)',
-    /* no shadow */,
+    /* no shadow */
   },
   headerBtnDark: {
     backgroundColor: 'rgba(40,40,50,0.95)',
@@ -2547,7 +2547,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   modernTabActive: {
-    /* no shadow */,
+    /* no shadow */
   },
   modernTabText: {
     fontSize: 13,
@@ -2613,7 +2613,7 @@ const styles = StyleSheet.create({
     borderRadius: DESIGN.radius.lg,
     overflow: 'hidden',
     marginBottom: DESIGN.spacing.xl,
-    /* no shadow */,
+    /* no shadow */
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
   },
@@ -2702,7 +2702,7 @@ const styles = StyleSheet.create({
   goalCard: {
     borderRadius: DESIGN.radius.md,
     overflow: 'hidden',
-    /* no shadow */,
+    /* no shadow */
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
   },
@@ -2801,7 +2801,7 @@ const styles = StyleSheet.create({
     width: SCREEN_W * 0.75,
     borderRadius: DESIGN.radius.lg,
     overflow: 'hidden',
-    /* no shadow */,
+    /* no shadow */
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
   },
@@ -2906,7 +2906,7 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: DESIGN.radius.md,
     overflow: 'hidden',
-    /* no shadow */,
+    /* no shadow */
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
   },
@@ -2984,7 +2984,7 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: DESIGN.radius.md,
     overflow: 'hidden',
-    /* no shadow */,
+    /* no shadow */
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
     gap: 12,
@@ -3065,7 +3065,7 @@ const styles = StyleSheet.create({
   insightItem: {
     borderRadius: DESIGN.radius.md,
     overflow: 'hidden',
-    /* no shadow */,
+    /* no shadow */
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
     flexDirection: 'row',
@@ -3149,7 +3149,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
-    /* no shadow */,
+    /* no shadow */
   },
   memberCardDark: {
     borderColor: 'rgba(255,255,255,0.08)',
@@ -3289,7 +3289,7 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: DESIGN.spacing.md,
     overflow: 'hidden',
-    /* no shadow */,
+    /* no shadow */
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
   },
@@ -3362,7 +3362,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 12,
     overflow: 'hidden',
-    /* no shadow */,
+    /* no shadow */
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
   },
@@ -3429,7 +3429,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
     overflow: 'hidden',
-    /* no shadow */,
+    /* no shadow */
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
   },
@@ -3454,7 +3454,7 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 8,
     overflow: 'hidden',
-    /* no shadow */,
+    /* no shadow */
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
   },
@@ -3518,7 +3518,7 @@ const styles = StyleSheet.create({
     borderRadius: DESIGN.radius.xl,
     overflow: 'hidden',
     backgroundColor: '#fff',
-    /* no shadow */,
+    /* no shadow */
   },
   modalContentDark: {
     backgroundColor: '#1a1a2e',

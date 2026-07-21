@@ -1147,7 +1147,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     return (
       <View style={[styles.container, styles.centered]}>
         <StatusBar barStyle="light-content" />
-        {isDark ? (
+
         {isDark ? (
         <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={StyleSheet.absoluteFill} />
       ) : (
@@ -1165,7 +1165,6 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     return (
       <View style={[styles.container, styles.centered]}>
         <StatusBar barStyle="light-content" />
-        {isDark ? (
         {isDark ? (
         <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={StyleSheet.absoluteFill} />
       ) : (
@@ -1186,7 +1185,6 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
-      {isDark ? (
         {isDark ? (
         <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={StyleSheet.absoluteFill} />
       ) : (
@@ -1315,7 +1313,7 @@ const styles = StyleSheet.create({
   tabItem: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 12 },
   tabLabel: { fontSize: 12, fontWeight: '600' },
 
-  glassCard: { borderRadius: DESIGN.radius.lg, overflow: 'hidden', borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', marginHorizontal: 16, marginBottom: DESIGN.spacing.lg },
+  glassCard: { borderRadius: DESIGN.radius.lg, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', marginHorizontal: 16, marginBottom: DESIGN.spacing.lg },
   glassBorder: { position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.06)' },
   glassContent: { flex: 1 },
 
@@ -1326,7 +1324,7 @@ const styles = StyleSheet.create({
   sectionActionText: { fontSize: 13, fontWeight: '700', color: '#6366f1' },
 
   kpiPillRow: { flexDirection: 'row', gap: 10, marginHorizontal: 16, marginBottom: 16 },
-  kpiPill: { flex: 1, borderRadius: 20, overflow: 'hidden', padding: 14, /* no shadow */, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  kpiPill: { flex: 1, borderRadius: 20, overflow: 'hidden', padding: 14, /* no shadow */ flexDirection: 'row', alignItems: 'center', gap: 10 },
   kpiPillIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   kpiPillEmoji: { fontSize: 20 },
   kpiPillBody: { flex: 1 },
@@ -1426,7 +1424,7 @@ const styles = StyleSheet.create({
   comparisonNumbers: { fontSize: 11, fontWeight: '600', color: '#94a3b8' },
 
   streaksRow: { flexDirection: 'row', gap: 10, marginHorizontal: 16, marginBottom: 16 },
-  streakCard: { flex: 1, borderRadius: 20, padding: 14, alignItems: 'center', /* no shadow */, borderWidth: 1, backgroundColor: 'rgba(45,45,60,0.6)' },
+  streakCard: { flex: 1, borderRadius: 20, padding: 14, alignItems: 'center', /* no shadow */ borderWidth: 1, backgroundColor: 'rgba(45,45,60,0.6)' },
   streakIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
   streakValue: { fontSize: 22, fontWeight: '800' },
   streakLabel: { fontSize: 11, fontWeight: '600', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 2 },

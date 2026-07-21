@@ -140,7 +140,7 @@ const glassStyles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
-    /* no shadow */,
+    /* no shadow */
   },
   glassBorder: {
     position: 'absolute',

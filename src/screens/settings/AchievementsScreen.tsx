@@ -740,7 +740,7 @@ const TabBar = React.memo(({
             styles.tabItem,
             isActive && {
               backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : '#fff',
-              /* no shadow */,
+              /* no shadow */
             },
           ]}
         >
@@ -1450,7 +1450,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
-    /* no shadow */,
+    /* no shadow */
     marginHorizontal: DESIGN.spacing.lg,
     marginBottom: DESIGN.spacing.lg,
   },
@@ -1636,7 +1636,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     overflow: 'hidden',
     alignItems: 'center',
-    /* no shadow */,
+    /* no shadow */
   },
   rarityShowcaseIcon: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
   rarityShowcaseCount: { fontSize: 22, fontWeight: '800', marginBottom: 2 },
@@ -1653,7 +1653,7 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 16,
     overflow: 'hidden',
-    /* no shadow */,
+    /* no shadow */
   },
   predictorLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
   predictorEmojiBox: { width: 42, height: 42, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
@@ -1733,7 +1733,7 @@ const styles = StyleSheet.create({
     position: 'relative',
     marginBottom: 10,
     marginHorizontal: 16,
-    /* no shadow */,
+    /* no shadow */
   },
   newBadge: {
     position: 'absolute',

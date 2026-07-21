@@ -1201,7 +1201,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
-    /* no shadow */,
+    /* no shadow */
     marginHorizontal: DESIGN.spacing.lg,
     marginBottom: DESIGN.spacing.lg,
   },
@@ -1456,7 +1456,7 @@ const styles = StyleSheet.create({
     padding: 10,
     borderRadius: 16,
     gap: 12,
-    /* no shadow */,
+    /* no shadow */
   },
   listImage: {
     width: 80,
@@ -1534,7 +1534,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    /* no shadow */,
+    /* no shadow */
     zIndex: 100,
   },
   batchInfo: { flexDirection: 'row', alignItems: 'center', gap: 12 },

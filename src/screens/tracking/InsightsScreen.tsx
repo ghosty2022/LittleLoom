@@ -1095,7 +1095,7 @@ const styles = StyleSheet.create({
     padding: 14,
     alignItems: 'center',
     borderWidth: 1,
-    /* no shadow */,
+    /* no shadow */
   },
   statIconBg: {
     width: 36,
@@ -1134,7 +1134,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.04)',
-    /* no shadow */,
+    /* no shadow */
   },
   solidCardBorder: {
     position: 'absolute',
@@ -1202,7 +1202,7 @@ const styles = StyleSheet.create({
     padding: 14, 
     marginHorizontal: 20,
     borderWidth: 1,
-    /* no shadow */,
+    /* no shadow */
   },
   patternBars: { 
     flexDirection: 'row', 
@@ -1235,7 +1235,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     borderWidth: 1,
-    /* no shadow */,
+    /* no shadow */
   },
   emptyIconBg: {
     width: 64,
@@ -1261,7 +1261,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 16,
     borderWidth: 1,
-    /* no shadow */,
+    /* no shadow */
   },
   giScores: { gap: 12 },
   giScoreItem: { flexDirection: 'row', alignItems: 'center', gap: 10 },

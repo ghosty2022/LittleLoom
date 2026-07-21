@@ -664,6 +664,8 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
     likePost,
   } = useCommunity();
   const { themeColors, triggerHaptic } = useCustomization();
+const colorScheme = useColorScheme();
+const isDark = colorScheme === 'dark';
   const sweetAlert = useSweetAlert();
 
   const insets = useSafeAreaInsets();
@@ -863,7 +865,7 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
           </View>
           <View style={styles.profileInfo}>
             <View style={styles.nameRow}>
-              <Text style={styles.profileName}>{user.displayName}</Text>
+              <Text style={[styles.profileName, { color: isDark ? '#fff' : '#1e293b' }]}>{user.displayName}</Text>
               {user.isVerified && <View style={styles.verifiedBadge}><Ionicons name="checkmark" size={12} color="#fff" /></View>}
             </View>
             <Text style={styles.profileHandle}>{user.handle}</Text>
@@ -1118,7 +1120,7 @@ const styles = StyleSheet.create({
   onlineDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#10b981' },
   profileInfo: { alignItems: 'center' },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  profileName: { fontSize: 24, fontWeight: '800', color: isDark ? '#fff' : '#1e293b', letterSpacing: -0.5, textAlign: 'center' },
+  profileName: { fontSize: 24, fontWeight: '800', color: '#fff', letterSpacing: -0.5, textAlign: 'center' },
   verifiedBadge: { width: 20, height: 20, borderRadius: 10, backgroundColor: '#6366f1', justifyContent: 'center', alignItems: 'center' },
   profileHandle: { fontSize: 14, color: '#94a3b8', marginTop: 4, fontWeight: '600' },
   profileBio: { fontSize: 14, color: '#94a3b8', textAlign: 'center', marginTop: 8, paddingHorizontal: DESIGN.spacing.xl, lineHeight: 20, fontWeight: '500' },
@@ -1152,7 +1154,7 @@ const styles = StyleSheet.create({
   tabLabel: { fontSize: 12, fontWeight: '600' },
 
   // ── Glass Card ──
-  glassCard: { borderRadius: DESIGN.radius.lg, overflow: 'hidden', borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', marginHorizontal: 16, marginBottom: DESIGN.spacing.lg },
+  glassCard: { borderRadius: DESIGN.radius.lg, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', marginHorizontal: 16, marginBottom: DESIGN.spacing.lg },
   glassBorder: { position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.06)' },
   glassContent: { flex: 1 },
 

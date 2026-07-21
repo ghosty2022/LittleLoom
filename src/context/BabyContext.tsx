@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-
+ import { showAlert } from '@/utils/alert';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Alert } from 'react-native';
@@ -911,7 +911,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return newBaby.id;
     } catch (error) {
       console.error('Create baby error:', error);
-      import { showAlert } from '@/utils/alert';
+     
 // Then use:
 showAlert('Error', 'Failed to create baby profile');
       return null;
