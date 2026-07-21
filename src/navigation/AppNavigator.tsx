@@ -59,7 +59,7 @@ import VaccinationScheduleScreen from '../screens/tracking/VaccinationScheduleSc
 import InviteCodeScreen from '../screens/family/InviteCodeScreen';
 
 import LiquidGlassNavigation from '../components/LiquidGlassNavigation';
-import { UniversalSpinner } from '../components/UniversalSpinner';
+import { UniversalSpinner, InlineSpinner } from '../components/UniversalSpinner';
 import { useSecurity } from '../context/SecurityContext';
 import { useSafeApp, useSafeBaby, useSafeAuth } from '../hooks/useSafeContexts';
 import { statePersistence } from '../utils/statePersistence';
@@ -236,10 +236,7 @@ const AppLoadingScreen = React.memo(() => {
   const { colors } = useSafeApp();
   return (
     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors?.background || '#f8faff' }}>
-      <UniversalSpinner size={48} color={colors?.primary || '#667eea'} />
-      <Text style={{ marginTop: 24, fontSize: 16, color: colors?.text || '#1a1a1a', fontWeight: '500' }}>
-        Getting everything ready...
-      </Text>
+      <InlineSpinner size={48} color={colors?.primary || '#667eea'} section="main" variant="liquid" />
     </View>
   );
 });
