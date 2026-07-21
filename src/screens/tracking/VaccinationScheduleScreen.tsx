@@ -356,7 +356,7 @@ const TabBar = memo(({ tabs, activeTab, onChange, themeColors }: { tabs: { key: 
           onPress={() => onChange(tab.key)}
           style={[
             styles.tabItem,
-            isActive && { backgroundColor: '#fff', ...DESIGN.shadow.sm }
+            isActive && { backgroundColor: '#fff', /* no shadow */ }
           ]}
         >
           <Ionicons name={tab.icon as any} size={16} color={isActive ? themeColors.primary : '#64748b'} />
@@ -1630,7 +1630,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.5)',
-    ...DESIGN.shadow.md,
+    /* no shadow */,
     marginHorizontal: DESIGN.spacing.lg,
     marginBottom: DESIGN.spacing.lg,
     backgroundColor: 'rgba(255,255,255,0.7)',
@@ -1775,7 +1775,7 @@ const styles = StyleSheet.create({
     borderRadius: 20, 
     overflow: 'hidden',
     borderWidth: 1,
-    ...DESIGN.shadow.sm,
+    /* no shadow */,
     backgroundColor: 'rgba(255,255,255,0.85)',
   },
   categoryIconBg: { 
@@ -1834,7 +1834,7 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 16,
     backgroundColor: 'rgba(255,255,255,0.85)',
-    ...DESIGN.shadow.sm,
+    /* no shadow */,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.5)',
   },
@@ -1996,7 +1996,7 @@ const styles = StyleSheet.create({
     marginBottom: 8, 
     borderRadius: 16, 
     marginHorizontal: 16, 
-    ...DESIGN.shadow.sm,
+    /* no shadow */,
     backgroundColor: 'rgba(255,255,255,0.85)',
   },
   insightRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
@@ -2077,7 +2077,7 @@ const styles = StyleSheet.create({
     flex: 1, 
     borderRadius: 16, 
     overflow: 'hidden', 
-    ...DESIGN.shadow.md 
+    /* no shadow */ 
   },
   quickActionGradient: { 
     paddingVertical: 16, 
@@ -2147,14 +2147,14 @@ const styles = StyleSheet.create({
   createBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 
   // ── Modals ──
-  modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
+  modalOverlay: { flex: 1, justifyContent: 'flex-end', alignItems: 'center' },
   modalContent: { 
     width: '100%', 
     maxWidth: 400, 
     borderRadius: DESIGN.radius.xl, 
     padding: DESIGN.spacing.xxl, 
     overflow: 'hidden', 
-    ...DESIGN.shadow.lg 
+    /* no shadow */ 
   },
   modalHeader: { 
     flexDirection: 'row', 

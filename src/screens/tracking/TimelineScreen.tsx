@@ -215,7 +215,7 @@ const TabBar = ({ tabs, activeTab, onChange, theme }: { tabs: { key: TimelineTab
           onPress={() => onChange(tab.key)}
           style={[
             styles.tabItem,
-            isActive && { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.12)' : '#fff', ...DESIGN.shadow.sm }
+            isActive && { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.12)' : '#fff', /* no shadow */ }
           ]}
         >
           <Ionicons name={tab.icon as any} size={16} color={isActive ? theme.primary : theme.text.muted} />
@@ -2375,7 +2375,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
-    ...DESIGN.shadow.md,
+    /* no shadow */,
     marginHorizontal: DESIGN.spacing.lg,
     marginBottom: DESIGN.spacing.lg,
   },
@@ -2675,7 +2675,7 @@ const styles = StyleSheet.create({
     padding: 14, 
     borderRadius: 16, 
     marginBottom: 12, 
-    ...DESIGN.shadow.sm 
+    /* no shadow */ 
   },
   calendarHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 },
   calendarEmoji: { fontSize: 20 },
@@ -2712,7 +2712,7 @@ const styles = StyleSheet.create({
   eventCardContainer: { flex: 1, paddingBottom: 16 },
 
   // ── Timeline Entry Card — soft card borrowed from FamilySharing (no inner shadows) ──
-  timelineEntryCard: { flex: 1, overflow: 'hidden', borderWidth: 1, ...DESIGN.shadow.sm },
+  timelineEntryCard: { flex: 1, overflow: 'hidden', borderWidth: 1, /* no shadow */ },
   timelineEntryContent: { padding: 14, gap: 8 },
   timelineEntryHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   timelineEntryIconBg: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },

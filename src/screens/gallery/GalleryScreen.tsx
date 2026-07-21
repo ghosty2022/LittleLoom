@@ -190,7 +190,7 @@ const TabBar = React.memo(({ tabs, activeTab, onChange, theme }: { tabs: { key: 
         <TouchableOpacity
           key={tab.key}
           onPress={() => onChange(tab.key)}
-          style={[styles.tabItem, isActive && { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.12)' : '#fff', ...DESIGN.shadow.sm }]}
+          style={[styles.tabItem, isActive && { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.12)' : '#fff', /* no shadow */ }]}
         >
           <Ionicons name={tab.icon as any} size={16} color={isActive ? theme.primary : theme.text.muted} />
           <Text style={[styles.tabLabel, { color: isActive ? theme.primary : theme.text.muted }, isActive && { fontWeight: '700' }]}>
@@ -1201,7 +1201,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
-    ...DESIGN.shadow.md,
+    /* no shadow */,
     marginHorizontal: DESIGN.spacing.lg,
     marginBottom: DESIGN.spacing.lg,
   },
@@ -1456,7 +1456,7 @@ const styles = StyleSheet.create({
     padding: 10,
     borderRadius: 16,
     gap: 12,
-    ...DESIGN.shadow.sm,
+    /* no shadow */,
   },
   listImage: {
     width: 80,
@@ -1534,7 +1534,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    ...DESIGN.shadow.lg,
+    /* no shadow */,
     zIndex: 100,
   },
   batchInfo: { flexDirection: 'row', alignItems: 'center', gap: 12 },

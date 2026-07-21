@@ -207,7 +207,7 @@ const TabBar = React.memo(({ tabs, activeTab, onChange }: {
             styles.tabItem,
             isActive && { 
               backgroundColor: isDanger ? 'rgba(239,68,68,0.15)' : 'rgba(99,102,241,0.15)',
-              ...DESIGN.shadow.sm,
+              /* no shadow */,
             },
             isDanger && isActive && { borderColor: '#ef4444', borderWidth: 1 }
           ]}
@@ -1590,7 +1590,7 @@ const styles = StyleSheet.create({
   dockContainer: { marginHorizontal: 16, marginBottom: 20 },
   dock: { flexDirection: 'row', gap: 10, justifyContent: 'center' },
   dockItem: { alignItems: 'center', gap: 6, flex: 1 },
-  dockGradient: { width: 52, height: 52, borderRadius: 16, justifyContent: 'center', alignItems: 'center', ...DESIGN.shadow.md },
+  dockGradient: { width: 52, height: 52, borderRadius: 16, justifyContent: 'center', alignItems: 'center', /* no shadow */ },
   dockIcon: { fontSize: 24 },
   dockLabel: { fontSize: 11, fontWeight: '600', color: '#94a3b8' },
 
@@ -1600,12 +1600,12 @@ const styles = StyleSheet.create({
   tabLabel: { fontSize: 12, fontWeight: '600' },
 
   // ── Glass Card ──
-  glassCard: { borderRadius: DESIGN.radius.lg, overflow: 'hidden', borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', marginHorizontal: 0, marginBottom: DESIGN.spacing.lg },
+  glassCard: { borderRadius: DESIGN.radius.lg, overflow: 'hidden', borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', marginHorizontal: 16, marginBottom: DESIGN.spacing.lg },
   glassBorder: { position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.06)' },
   glassContent: { flex: 1 },
 
   // ── Section Header ──
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginHorizontal: 20, marginBottom: 12, marginTop: 8 },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginHorizontal: 16, marginBottom: 12, marginTop: 8 },
   sectionTitle: { fontSize: 18, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
   sectionSubtitle: { fontSize: 12, fontWeight: '500', color: '#94a3b8', marginTop: 2 },
   sectionAction: { flexDirection: 'row', alignItems: 'center', gap: 2 },
@@ -1613,7 +1613,7 @@ const styles = StyleSheet.create({
 
   // ── KPI Pills ──
   kpiPillRow: { flexDirection: 'row', gap: 10, marginHorizontal: 16, marginBottom: 16 },
-  kpiPill: { flex: 1, borderRadius: 20, overflow: 'hidden', padding: 14, ...DESIGN.shadow.md, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  kpiPill: { flex: 1, borderRadius: 20, overflow: 'hidden', padding: 14, /* no shadow */, flexDirection: 'row', alignItems: 'center', gap: 10 },
   kpiPillIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   kpiPillEmoji: { fontSize: 20 },
   kpiPillBody: { flex: 1 },
@@ -1621,8 +1621,8 @@ const styles = StyleSheet.create({
   kpiPillLabel: { fontSize: 11, fontWeight: '600', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 },
 
   // ── AI Insights ──
-  insightsList: { marginHorizontal: 16, gap: 8, marginBottom: 16 },
-  insightRow: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: 'rgba(45,45,60,0.6)', borderLeftWidth: 3, ...DESIGN.shadow.sm },
+  insightsList: { marginHorizontal: 0, gap: 8, marginBottom: 16 },
+  insightRow: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: 'rgba(45,45,60,0.6)', borderLeftWidth: 3, /* no shadow */ },
   insightIconBg: { width: 42, height: 42, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   insightEmoji: { fontSize: 20 },
   insightContent: { flex: 1, gap: 3 },
@@ -1704,7 +1704,7 @@ const styles = StyleSheet.create({
   familyHubSubtitle: { fontSize: 12, color: '#94a3b8', fontWeight: '500', marginTop: 1 },
 
   // ── Activity Tab ──
-  activitiesList: { gap: 8, marginHorizontal: 16 },
+  activitiesList: { gap: 8, marginHorizontal: 0 },
   activityCard: { padding: 0 },
   activityRow: { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12 },
   activityIcon: { width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
@@ -1781,8 +1781,8 @@ const styles = StyleSheet.create({
   tabPanel: { marginTop: 4, gap: 16 },
 
   // ── Modals ──
-  modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
-  modalContent: { width: '100%', maxWidth: 400, borderRadius: DESIGN.radius.xl, padding: DESIGN.spacing.xxl, overflow: 'hidden', ...DESIGN.shadow.lg },
+  modalOverlay: { flex: 1, justifyContent: 'flex-end', alignItems: 'center' },
+  modalContent: { width: '100%', maxWidth: 400, borderRadius: DESIGN.radius.xl, padding: DESIGN.spacing.xxl, overflow: 'hidden', /* no shadow */ },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   modalTitle: { fontSize: 20, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
   modalClose: { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.08)', justifyContent: 'center', alignItems: 'center' },

@@ -27,8 +27,12 @@ import ReportScreen from '../screens/community/ReportScreen';
 import CommunitySplashScreen from '../screens/community/CommunitySplashScreen';
 import CommunityOnboardingScreen from '../screens/community/CommunityOnboardingScreen';
 
-import { CommunityColors } from '../theme/CommunityTheme';
+import {
+  CommunityColors,
+  CommunityGradients,
+} from '../theme/CommunityTheme';
 import { InlineSpinner } from '../components/UniversalSpinner';
+import { LinearGradient } from 'expo-linear-gradient';
 import type { CommunityStackParamList } from '../types/navigation';
 
 const Stack = createNativeStackNavigator<CommunityStackParamList>();
@@ -161,8 +165,14 @@ const useAutomaticCountryDetection = () => {
 
 const InlineLoadingView = React.memo(({ text }: { text: string }) => (
   <View style={styles.inlineLoadingContainer}>
+    <LinearGradient
+      colors={CommunityGradients.header}
+      style={StyleSheet.absoluteFill}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+    />
     <View style={styles.inlineLoadingCard}>
-      <InlineSpinner size={32} color={CommunityColors.primary} />
+      <InlineSpinner size={36} color="#ffffff" section="community" variant="aurora" />
       <Text style={styles.inlineLoadingText}>{text}</Text>
     </View>
   </View>
@@ -320,7 +330,7 @@ const CommunityNavigator = React.memo(() => {
 
       if (!isOnboardingDone || !hasTopics) {
         setPhase('onboarding');
-      } else if (shouldShowSplash && !isDetectingCountry) {
+      } else if (shouldShowSplash) {
         setPhase('splash');
       } else {
         setPhase('main');
@@ -345,7 +355,7 @@ const CommunityNavigator = React.memo(() => {
   if (!isReady || phase === 'loading') {
     return (
       <InlineLoadingView
-        text={isDetectingCountry ? 'Detecting location...' : 'Loading community...'}
+        text={isDetectingCountry ? 'Finding your community...' : 'Connecting parents worldwide...'}
       />
     );
   }
@@ -432,18 +442,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 32,
     borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.9)',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.15,
     shadowRadius: 16,
     elevation: 8,
+    zIndex: 1,
   },
   inlineLoadingText: {
     marginTop: 16,
     fontSize: 15,
     fontWeight: '600',
-    color: '#1a1a1a',
+    color: '#ffffff',
   },
   placeholderContainer: {
     flex: 1,

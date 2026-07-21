@@ -647,7 +647,7 @@ const TabBar = React.memo(({ tabs, activeTab, onChange }: {
     {tabs.map((tab) => {
       const isActive = activeTab === tab.key;
       return (
-        <TouchableOpacity key={tab.key} onPress={() => onChange(tab.key)} style={[styles.tabItem, isActive && { backgroundColor: 'rgba(99,102,241,0.15)', ...DESIGN.shadow.sm }]}>
+        <TouchableOpacity key={tab.key} onPress={() => onChange(tab.key)} style={[styles.tabItem, isActive && { backgroundColor: 'rgba(99,102,241,0.15)', /* no shadow */ }]}>
           <Ionicons name={tab.icon as any} size={16} color={isActive ? '#6366f1' : '#94a3b8'} />
           <Text style={[styles.tabLabel, { color: isActive ? '#6366f1' : '#94a3b8' }, isActive && { fontWeight: '700' }]}>{tab.label}</Text>
         </TouchableOpacity>
@@ -1148,12 +1148,12 @@ const styles = StyleSheet.create({
   tabLabel: { fontSize: 12, fontWeight: '600' },
 
   // ── Glass Card ──
-  glassCard: { borderRadius: DESIGN.radius.lg, overflow: 'hidden', borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', marginHorizontal: 0, marginBottom: DESIGN.spacing.lg },
+  glassCard: { borderRadius: DESIGN.radius.lg, overflow: 'hidden', borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', marginHorizontal: 16, marginBottom: DESIGN.spacing.lg },
   glassBorder: { position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.06)' },
   glassContent: { flex: 1 },
 
   // ── Section Header ──
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginHorizontal: 20, marginBottom: 12, marginTop: 8 },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginHorizontal: 16, marginBottom: 12, marginTop: 8 },
   sectionTitle: { fontSize: 18, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
   sectionSubtitle: { fontSize: 12, fontWeight: '500', color: '#94a3b8', marginTop: 2 },
   sectionAction: { flexDirection: 'row', alignItems: 'center', gap: 2 },
@@ -1235,20 +1235,20 @@ const styles = StyleSheet.create({
 
   // ── Mutual Connections ──
   mutualScroll: { flexDirection: 'row', paddingHorizontal: 16, gap: 12, paddingBottom: 4 },
-  mutualCard: { width: 100, padding: 12, borderRadius: 16, overflow: 'hidden', alignItems: 'center', gap: 6, ...DESIGN.shadow.md },
+  mutualCard: { width: 100, padding: 12, borderRadius: 16, overflow: 'hidden', alignItems: 'center', gap: 6, /* no shadow */ },
   mutualName: { fontSize: 12, fontWeight: '700', color: '#fff', textAlign: 'center' },
   mutualCount: { fontSize: 10, fontWeight: '600', color: '#94a3b8' },
 
   // ── Smart Actions ──
   actionsGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, gap: 10, paddingBottom: 4 },
-  actionCard: { width: (SCREEN_W - 72) / 3, padding: 14, borderRadius: 16, overflow: 'hidden', alignItems: 'center', gap: 8, ...DESIGN.shadow.md },
+  actionCard: { width: (SCREEN_W - 72) / 3, padding: 14, borderRadius: 16, overflow: 'hidden', alignItems: 'center', gap: 8, /* no shadow */ },
   actionIconBg: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
   actionTitle: { fontSize: 13, fontWeight: '700', color: '#fff' },
   actionDesc: { fontSize: 10, fontWeight: '500', color: '#94a3b8', textAlign: 'center', lineHeight: 14 },
 
   // ── Parenting Tips ──
   tipsList: { marginHorizontal: 16, gap: 8, marginBottom: 16 },
-  tipCard: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: 'rgba(45,45,60,0.6)', borderLeftWidth: 3, ...DESIGN.shadow.sm },
+  tipCard: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: 'rgba(45,45,60,0.6)', borderLeftWidth: 3, /* no shadow */ },
   tipIconBg: { width: 42, height: 42, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   tipEmoji: { fontSize: 20 },
   tipContent: { flex: 1, marginLeft: 12, gap: 3 },

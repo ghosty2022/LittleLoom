@@ -1523,14 +1523,14 @@ const styles = StyleSheet.create({
   // ── Header ──
   headerContainer: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 },
   headerContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10 },
-  headerButton: { width: 42, height: 42, borderRadius: 14, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', ...DESIGN.shadow.sm },
+  headerButton: { width: 42, height: 42, borderRadius: 14, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', /* no shadow */ },
   headerActions: { flexDirection: 'row', gap: 8 },
   headerTitleWrap: { flex: 1, alignItems: 'center' },
   headerTitle: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3 },
   headerSubtitle: { fontSize: 12, fontWeight: '600', marginTop: 1 },
 
   // ── Hero ──
-  heroCard: { overflow: 'hidden', marginBottom: 16, marginHorizontal: 16, ...DESIGN.shadow.md },
+  heroCard: { overflow: 'hidden', marginBottom: 16, marginHorizontal: 16, /* no shadow */ },
   heroGradient: { padding: 20 },
   heroTopRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   heroEmojiBubble: { width: 60, height: 60, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)' },
@@ -1662,7 +1662,7 @@ const styles = StyleSheet.create({
   similarValueText: { fontSize: 12, fontWeight: '800' },
 
   // ── Card Inner ──
-  card: { overflow: 'hidden', marginBottom: 16, borderWidth: 1, ...DESIGN.shadow.sm },
+  card: { overflow: 'hidden', marginBottom: 16, borderWidth: 1, /* no shadow */ },
   cardInner: { padding: 16 },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
   cardHeaderIcon: { width: 28, height: 28, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },

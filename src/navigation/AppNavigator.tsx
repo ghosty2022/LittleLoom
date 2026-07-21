@@ -1,6 +1,7 @@
 // src/navigation/AppNavigator.tsx
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { View, Text, AppState, TouchableOpacity } from 'react-native';
+import { View, Text, AppState, TouchableOpacity, StyleSheet } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import {
   NavigationContainer, DefaultTheme, DarkTheme, NavigationContainerRef,
   getFocusedRouteNameFromRoute,
@@ -233,10 +234,21 @@ function getNavState(
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const AppLoadingScreen = React.memo(() => {
-  const { colors } = useSafeApp();
+  const { colors, isDark } = useSafeApp();
   return (
-    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors?.background || '#f8faff' }}>
-      <InlineSpinner size={48} color={colors?.primary || '#667eea'} section="main" variant="liquid" />
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+      <LinearGradient
+        colors={isDark ? ['#1a1a2e', '#16213e', '#0f3460'] : ['#667eea', '#764ba2', '#f093fb']}
+        style={StyleSheet.absoluteFill}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      />
+      <View style={{ alignItems: 'center', zIndex: 1 }}>
+        <InlineSpinner size={56} color="#ffffff" section="main" variant="liquid" />
+        <Text style={{ marginTop: 20, fontSize: 15, color: 'rgba(255,255,255,0.85)', fontWeight: '600', letterSpacing: 0.5 }}>
+          Preparing your baby's world...
+        </Text>
+      </View>
     </View>
   );
 });

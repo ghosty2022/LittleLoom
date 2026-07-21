@@ -809,7 +809,7 @@ const styles = StyleSheet.create({
   scrollContent: { paddingHorizontal: 24 },
 
   /* ---- Glass Card ---- */
-  glassCard: { borderRadius: DESIGN.radius.lg, overflow: 'hidden', borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', marginHorizontal: 0, marginBottom: DESIGN.spacing.lg },
+  glassCard: { borderRadius: DESIGN.radius.lg, overflow: 'hidden', borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', marginHorizontal: 16, marginBottom: DESIGN.spacing.lg },
   glassBorder: { position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.06)' },
   glassContent: { flex: 1 },
 

@@ -740,7 +740,7 @@ const TabBar = React.memo(({
             styles.tabItem,
             isActive && {
               backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : '#fff',
-              ...DESIGN.shadow.sm,
+              /* no shadow */,
             },
           ]}
         >
@@ -1450,7 +1450,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
-    ...DESIGN.shadow.md,
+    /* no shadow */,
     marginHorizontal: DESIGN.spacing.lg,
     marginBottom: DESIGN.spacing.lg,
   },
@@ -1636,7 +1636,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     overflow: 'hidden',
     alignItems: 'center',
-    ...DESIGN.shadow.sm,
+    /* no shadow */,
   },
   rarityShowcaseIcon: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
   rarityShowcaseCount: { fontSize: 22, fontWeight: '800', marginBottom: 2 },
@@ -1653,7 +1653,7 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 16,
     overflow: 'hidden',
-    ...DESIGN.shadow.sm,
+    /* no shadow */,
   },
   predictorLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
   predictorEmojiBox: { width: 42, height: 42, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
@@ -1674,7 +1674,7 @@ const styles = StyleSheet.create({
   timelineLine: { position: 'absolute', top: 0, bottom: 0, width: 2, left: 11 },
   timelineLineEnd: { position: 'absolute', top: 0, bottom: '50%', width: 2, left: 11, backgroundColor: 'transparent' },
   timelineDot: { width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: '#fff', zIndex: 1 },
-  timelineCard: { flex: 1, padding: 14, borderRadius: 16, marginBottom: 12, ...DESIGN.shadow.sm },
+  timelineCard: { flex: 1, padding: 14, borderRadius: 16, marginBottom: 12, /* no shadow */ },
   timelineHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   timelineEmoji: { fontSize: 20 },
   timelineMeta: { flex: 1, gap: 1 },
@@ -1733,7 +1733,7 @@ const styles = StyleSheet.create({
     position: 'relative',
     marginBottom: 10,
     marginHorizontal: 16,
-    ...DESIGN.shadow.sm,
+    /* no shadow */,
   },
   newBadge: {
     position: 'absolute',
@@ -1824,8 +1824,8 @@ const styles = StyleSheet.create({
   noBabyButtonText: { fontSize: 15, fontWeight: '700' },
 
   // ── Modal ──
-  modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
-  modal: { width: SCREEN_W - 60, borderRadius: 28, overflow: 'hidden', ...DESIGN.shadow.lg },
+  modalOverlay: { flex: 1, justifyContent: 'flex-end', alignItems: 'center' },
+  modal: { width: SCREEN_W - 60, borderRadius: 28, overflow: 'hidden', /* no shadow */ },
   modalHeaderGradient: { padding: 24, alignItems: 'center' },
   modalHeaderTitle: { fontSize: 22, fontWeight: '800', color: '#fff', marginTop: 12 },
   modalBody: { padding: 24, alignItems: 'center' },

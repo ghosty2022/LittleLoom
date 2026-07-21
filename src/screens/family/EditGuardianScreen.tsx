@@ -5,6 +5,7 @@ import {
   Image,
   Keyboard,
   LayoutAnimation,
+  Linking,
   Modal,
   Platform,
   RefreshControl,
@@ -164,7 +165,7 @@ const TabBar = React.memo(({ tabs, activeTab, onChange }: {
     {tabs.map((tab) => {
       const isActive = activeTab === tab.key;
       return (
-        <TouchableOpacity key={tab.key} onPress={() => onChange(tab.key)} style={[styles.tabItem, isActive && { backgroundColor: 'rgba(99,102,241,0.15)', ...DESIGN.shadow.sm }]}>
+        <TouchableOpacity key={tab.key} onPress={() => onChange(tab.key)} style={[styles.tabItem, isActive && { backgroundColor: 'rgba(99,102,241,0.15)', /* no shadow */ }]}>
           <Ionicons name={tab.icon as any} size={16} color={isActive ? '#6366f1' : '#94a3b8'} />
           <Text style={[styles.tabLabel, { color: isActive ? '#6366f1' : '#94a3b8' }, isActive && { fontWeight: '700' }]}>{tab.label}</Text>
         </TouchableOpacity>
@@ -477,15 +478,18 @@ const QuickActionsDock = React.memo(({ member, isCurrentUser, onMessage, onCall,
 const ActionModal = React.memo(({ visible, onClose, title, children }: any) => {
   if (!visible) return null;
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent presentationStyle="overFullScreen">
       <View style={styles.modalOverlay}>
-        <BlurView intensity={90} tint="dark" style={StyleSheet.absoluteFill} />
-        <Animated.View entering={FadeInUp.springify()} style={styles.modalContent}>
-          <LinearGradient colors={['rgba(50,50,70,0.95)', 'rgba(40,40,60,0.9)']} style={StyleSheet.absoluteFill} />
+        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
+        <BlurView intensity={90} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
+        <Animated.View entering={FadeInUp.springify()} style={[styles.modalContent, { backgroundColor: isDark ? '#1e1e2e' : '#ffffff' }]}>
+          <View style={styles.modalDragHandle}>
+            <View style={styles.dragIndicator} />
+          </View>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>{title}</Text>
+            <Text style={[styles.modalTitle, { color: isDark ? '#fff' : '#1e293b' }]}>{title}</Text>
             <TouchableOpacity onPress={onClose} style={styles.modalClose}>
-              <Ionicons name="close" size={20} color="#94a3b8" />
+              <Ionicons name="close" size={20} color={isDark ? '#94a3b8' : '#64748b'} />
             </TouchableOpacity>
           </View>
           {children}
@@ -508,8 +512,6 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
   const { userProfile } = useAuth();
   const { triggerHaptic } = useCustomization();
   const sweetAlert = useSweetAlert();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
@@ -820,11 +822,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
       <View style={[styles.container, styles.centered]}>
         <StatusBar barStyle="light-content" />
         {isDark ? (
-        {isDark ? (
         <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={StyleSheet.absoluteFill} />
-      ) : (
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#f8f9fc' }]} />
-      )}
       ) : (
         <View style={[StyleSheet.absoluteFill, { backgroundColor: '#f8f9fc' }]} />
       )}
@@ -838,11 +836,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
       <View style={[styles.container, styles.centered]}>
         <StatusBar barStyle="light-content" />
         {isDark ? (
-        {isDark ? (
         <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={StyleSheet.absoluteFill} />
-      ) : (
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#f8f9fc' }]} />
-      )}
       ) : (
         <View style={[StyleSheet.absoluteFill, { backgroundColor: '#f8f9fc' }]} />
       )}
@@ -867,11 +861,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
       {isDark ? (
-        {isDark ? (
         <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={StyleSheet.absoluteFill} />
-      ) : (
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#f8f9fc' }]} />
-      )}
       ) : (
         <View style={[StyleSheet.absoluteFill, { backgroundColor: '#f8f9fc' }]} />
       )}
@@ -1236,8 +1226,8 @@ const styles = StyleSheet.create({
   // ── Profile Hero ──
   profileHero: { flexDirection: 'row', alignItems: 'center', gap: 16, marginHorizontal: 16, marginBottom: 20 },
   profileInfo: { flex: 1, gap: 4 },
-  profileName: { fontSize: 24, fontWeight: '800', color: '#fff', letterSpacing: -0.5 },
-  profileMeta: { fontSize: 14, fontWeight: '500', color: '#94a3b8' },
+  profileName: { fontSize: 24, fontWeight: '800', color: isDark ? '#fff' : '#1e293b', letterSpacing: -0.5 },
+  profileMeta: { fontSize: 14, fontWeight: '500', color: isDark ? '#94a3b8' : '#64748b' },
   profileTags: { flexDirection: 'row', marginTop: 8, gap: 8 },
   profileTag: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, gap: 4 },
   profileTagText: { fontSize: 12, fontWeight: '700' },
@@ -1247,7 +1237,7 @@ const styles = StyleSheet.create({
   dockContainer: { marginHorizontal: 16, marginBottom: 20 },
   dock: { flexDirection: 'row', gap: 10, justifyContent: 'center' },
   dockItem: { alignItems: 'center', gap: 6, flex: 1 },
-  dockGradient: { width: 52, height: 52, borderRadius: 16, justifyContent: 'center', alignItems: 'center', ...DESIGN.shadow.md },
+  dockGradient: { width: 52, height: 52, borderRadius: 16, justifyContent: 'center', alignItems: 'center', /* no shadow */ },
   dockLabel: { fontSize: 11, fontWeight: '600', color: '#94a3b8' },
 
   // ── Tab Bar ──
@@ -1256,20 +1246,20 @@ const styles = StyleSheet.create({
   tabLabel: { fontSize: 12, fontWeight: '600' },
 
   // ── Glass Card ──
-  glassCard: { borderRadius: DESIGN.radius.lg, overflow: 'hidden', borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', marginHorizontal: 0, marginBottom: DESIGN.spacing.lg },
+  glassCard: { borderRadius: DESIGN.radius.lg, overflow: 'hidden', borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', marginHorizontal: 16, marginBottom: DESIGN.spacing.lg },
   glassBorder: { position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.06)' },
   glassContent: { flex: 1 },
 
   // ── Section Header ──
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginHorizontal: 20, marginBottom: 12, marginTop: 8 },
-  sectionTitle: { fontSize: 18, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
-  sectionSubtitle: { fontSize: 12, fontWeight: '500', color: '#94a3b8', marginTop: 2 },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginHorizontal: 16, marginBottom: 12, marginTop: 8 },
+  sectionTitle: { fontSize: 18, fontWeight: '800', color: isDark ? '#fff' : '#1e293b', letterSpacing: -0.3 },
+  sectionSubtitle: { fontSize: 12, fontWeight: '500', color: isDark ? '#94a3b8' : '#64748b', marginTop: 2 },
   sectionAction: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   sectionActionText: { fontSize: 13, fontWeight: '700', color: '#6366f1' },
 
   // ── KPI Pills ──
   kpiPillRow: { flexDirection: 'row', gap: 10, marginHorizontal: 16, marginBottom: 16 },
-  kpiPill: { flex: 1, borderRadius: 20, overflow: 'hidden', padding: 14, ...DESIGN.shadow.md, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  kpiPill: { flex: 1, borderRadius: 20, overflow: 'hidden', padding: 14, /* no shadow */, flexDirection: 'row', alignItems: 'center', gap: 10 },
   kpiPillIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   kpiPillEmoji: { fontSize: 20 },
   kpiPillBody: { flex: 1 },
@@ -1277,8 +1267,8 @@ const styles = StyleSheet.create({
   kpiPillLabel: { fontSize: 11, fontWeight: '600', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 },
 
   // ── AI Insights ──
-  insightsList: { marginHorizontal: 16, gap: 8, marginBottom: 16 },
-  insightRow: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: 'rgba(45,45,60,0.6)', borderLeftWidth: 3, ...DESIGN.shadow.sm },
+  insightsList: { marginHorizontal: 0, gap: 8, marginBottom: 16 },
+  insightRow: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: 'rgba(45,45,60,0.6)', borderLeftWidth: 3, /* no shadow */ },
   insightIconBg: { width: 42, height: 42, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   insightEmoji: { fontSize: 20 },
   insightContent: { flex: 1, gap: 3 },
@@ -1318,7 +1308,7 @@ const styles = StyleSheet.create({
   healthRingLabel: { fontSize: 9, fontWeight: '600', color: '#94a3b8' },
 
   // ── Smart Recommendations ──
-  recCard: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: 'rgba(45,45,60,0.6)', borderLeftWidth: 3, marginHorizontal: 16, marginBottom: 8, ...DESIGN.shadow.sm },
+  recCard: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: 'rgba(45,45,60,0.6)', borderLeftWidth: 3, marginHorizontal: 16, marginBottom: 8, /* no shadow */ },
   recIconBg: { width: 42, height: 42, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   recEmoji: { fontSize: 20 },
   recContent: { flex: 1, marginHorizontal: 12, gap: 4 },
@@ -1335,7 +1325,7 @@ const styles = StyleSheet.create({
   timelineLeft: { width: 24, alignItems: 'center', paddingTop: 16 },
   timelineLine: { position: 'absolute', top: 0, bottom: 0, width: 2, left: 11, backgroundColor: 'rgba(255,255,255,0.06)' },
   timelineDot: { width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: '#fff', zIndex: 1 },
-  timelineCard: { flex: 1, padding: 14, borderRadius: 16, backgroundColor: 'rgba(45,45,60,0.6)', marginBottom: 12, ...DESIGN.shadow.sm },
+  timelineCard: { flex: 1, padding: 14, borderRadius: 16, backgroundColor: 'rgba(45,45,60,0.6)', marginBottom: 12, /* no shadow */ },
   timelineHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 },
   timelineEmoji: { fontSize: 20 },
   timelineMeta: { flex: 1 },
@@ -1348,19 +1338,19 @@ const styles = StyleSheet.create({
   contactItem: { flexDirection: 'row', alignItems: 'center', padding: 10, gap: 12 },
   contactIcon: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   contactBody: { flex: 1, gap: 2 },
-  contactLabel: { fontSize: 12, fontWeight: '500', color: '#94a3b8' },
-  contactValue: { fontSize: 15, fontWeight: '600', color: '#fff' },
+  contactLabel: { fontSize: 12, fontWeight: '500', color: isDark ? '#94a3b8' : '#64748b' },
+  contactValue: { fontSize: 15, fontWeight: '600', color: isDark ? '#fff' : '#1e293b' },
 
   // ── Activity Tab ──
-  activitiesList: { gap: 8, marginHorizontal: 16 },
+  activitiesList: { gap: 8, marginHorizontal: 0 },
   activityCard: { padding: 0 },
   activityRow: { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12 },
   activityIcon: { width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   activityEmoji: { fontSize: 20 },
   activityContent: { flex: 1, gap: 2 },
-  activityTitle: { fontSize: 15, fontWeight: '700', color: '#fff' },
-  activityDetails: { fontSize: 13, color: '#94a3b8', marginTop: 2, lineHeight: 18 },
-  activityTime: { fontSize: 12, color: '#64748b', marginTop: 4, fontWeight: '500' },
+  activityTitle: { fontSize: 15, fontWeight: '700', color: isDark ? '#fff' : '#1e293b' },
+  activityDetails: { fontSize: 13, color: isDark ? '#94a3b8' : '#64748b', marginTop: 2, lineHeight: 18 },
+  activityTime: { fontSize: 12, color: isDark ? '#64748b' : '#94a3b8', marginTop: 4, fontWeight: '500' },
   activityTypeBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, marginLeft: 8 },
   activityTypeText: { fontSize: 11, fontWeight: '700' },
 
@@ -1372,14 +1362,14 @@ const styles = StyleSheet.create({
 
   // ── Permissions ──
   permissionGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, padding: 16 },
-  permissionChip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, borderWidth: 1, gap: 6 },
-  permissionChipText: { fontSize: 13, fontWeight: '600' },
+    permissionChipText: { fontSize: 13, fontWeight: '600' },
+  permissionNoteText: { fontSize: 13, color: isDark ? '#94a3b8' : '#64748b', flex: 1, lineHeight: 18 },
   permissionNote: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, padding: 12, borderRadius: 12, backgroundColor: 'rgba(99,102,241,0.08)', marginHorizontal: 16, marginBottom: 16 },
   permissionNoteText: { fontSize: 13, color: '#94a3b8', flex: 1, lineHeight: 18 },
 
   // ── Stats Grid ──
   statsGrid: { flexDirection: 'row', gap: 10, marginHorizontal: 16, marginBottom: 16 },
-  statCard: { flex: 1, borderRadius: 20, padding: 16, alignItems: 'center', justifyContent: 'center', ...DESIGN.shadow.md },
+  statCard: { flex: 1, borderRadius: 20, padding: 16, alignItems: 'center', justifyContent: 'center', /* no shadow */ },
   statCardValue: { fontSize: 24, fontWeight: '800', color: '#fff' },
   statCardLabel: { fontSize: 11, fontWeight: '600', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 4 },
 
@@ -1396,7 +1386,7 @@ const styles = StyleSheet.create({
   breakdownCount: { fontSize: 14, fontWeight: '700', minWidth: 20, textAlign: 'right' },
 
   // ── Manage Permissions Button ──
-  managePermissionsBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderRadius: 16, marginHorizontal: 16, marginTop: 8, ...DESIGN.shadow.sm },
+  managePermissionsBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderRadius: 16, marginHorizontal: 16, marginTop: 8, /* no shadow */ },
   managePermissionsText: { fontSize: 15, fontWeight: '700', flex: 1, marginLeft: 12 },
 
   // ── Settings / Inputs ──
@@ -1405,8 +1395,8 @@ const styles = StyleSheet.create({
   inputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 14, paddingHorizontal: 16, height: 52, borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)' },
   inputDisabled: { opacity: 0.5 },
   inputIcon: { marginRight: 12 },
-  inputField: { flex: 1, fontSize: 16, color: '#fff', fontWeight: '600' },
-  inputText: { flex: 1, fontSize: 16, color: '#fff', fontWeight: '600' },
+  inputField: { flex: 1, fontSize: 16, color: isDark ? '#fff' : '#1e293b', fontWeight: '600' },
+  inputText: { flex: 1, fontSize: 16, color: isDark ? '#fff' : '#1e293b', fontWeight: '600' },
   flexInput: { flex: 1 },
   ownedBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8, marginLeft: 8 },
   ownedBadgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
@@ -1434,8 +1424,8 @@ const styles = StyleSheet.create({
   dangerBtnText: { color: '#ef4444', fontSize: 13, fontWeight: '700' },
 
   // ── Modals ──
-  modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
-  modalContent: { width: '100%', maxWidth: 400, borderRadius: DESIGN.radius.xl, padding: DESIGN.spacing.xxl, overflow: 'hidden', ...DESIGN.shadow.lg },
+  modalOverlay: { flex: 1, justifyContent: 'flex-end', alignItems: 'center' },
+  modalContent: { width: '100%', maxWidth: 400, borderRadius: DESIGN.radius.xl, padding: DESIGN.spacing.xxl, overflow: 'hidden', /* no shadow */ },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   modalTitle: { fontSize: 20, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
   modalClose: { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.08)', justifyContent: 'center', alignItems: 'center' },
@@ -1455,13 +1445,14 @@ const styles = StyleSheet.create({
   roleOptionDesc: { fontSize: 13, color: '#94a3b8', fontWeight: '500' },
 
   // ── Emoji Picker ──
-  emojiPickerOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'flex-end', zIndex: 200 },
-  emojiPickerSheet: { backgroundColor: '#1e1e2e', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 40, shadowColor: '#000', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.15, shadowRadius: 20, elevation: 20 },
+  emojiPickerOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
+  emojiPickerSheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 40 },
   emojiPickerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  emojiPickerTitle: { fontSize: 18, fontWeight: '800', color: '#fff' },
+  emojiPickerTitle: { fontSize: 18, fontWeight: '800' },
   emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'center' },
-  emojiButton: { width: 52, height: 52, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.06)', alignItems: 'center', justifyContent: 'center' },
+  emojiButton: { width: 52, height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   emojiButtonText: { fontSize: 28 },
+  modalClose: { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(128,128,128,0.15)', justifyContent: 'center', alignItems: 'center' },
 
   // ── Retry ──
   retryButton: { marginTop: 20, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 14 },

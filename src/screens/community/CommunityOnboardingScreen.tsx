@@ -70,6 +70,7 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
   const [showRecommendations, setShowRecommendations] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [hasSavedData, setHasSavedData] = useState(false);
+  const [wasSkipped, setWasSkipped] = useState(false);
 
   const communityCtx = useCommunity();
   const { updateSelectedTopics: updateCommunityTopics, INITIAL_TOPICS: ctxTopics } = communityCtx || {};
@@ -134,6 +135,9 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
           }
           if (parsed.completed === true) {
             savedCompleted = true;
+          }
+          if (parsed.skipped === true) {
+            setWasSkipped(true);
           }
         }
 
@@ -281,9 +285,20 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
         <LinearGradient colors={CommunityGradients.header} style={StyleSheet.absoluteFill} />
-        <ActivityIndicator size="large" color="#fff" />
+        <View style={{ alignItems: 'center' }}>
+          <ActivityIndicator size="large" color="#fff" />
+          <Text style={{ marginTop: 16, fontSize: 15, color: 'rgba(255,255,255,0.85)', fontWeight: '600' }}>
+            Personalizing your experience...
+          </Text>
+        </View>
       </View>
     );
+  }
+
+  // If user previously skipped onboarding, auto-complete
+  if (wasSkipped && onComplete) {
+    onComplete();
+    return null;
   }
 
   return (

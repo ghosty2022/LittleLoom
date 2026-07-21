@@ -140,7 +140,7 @@ const glassStyles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
-    ...DESIGN.shadow.md,
+    /* no shadow */,
   },
   glassBorder: {
     position: 'absolute',
@@ -657,7 +657,7 @@ const ConfirmModal = memo<ConfirmModalProps>(({
 ConfirmModal.displayName = 'ConfirmModal';
 
 const modalStyles = StyleSheet.create({
-  modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
+  modalOverlay: { flex: 1, justifyContent: 'flex-end', alignItems: 'center' },
   modalContent: { width: '100%', maxHeight: '80%', overflow: 'hidden', elevation: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.25, shadowRadius: 30 },
   modalGradient: { padding: 24 },
   modalHeader: { alignItems: 'center', marginBottom: 20 },

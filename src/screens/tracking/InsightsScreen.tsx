@@ -214,7 +214,7 @@ const InsightCard: React.FC<{
         { 
           backgroundColor: isDark ? 'rgba(45,45,60,0.6)' : '#ffffff',
           borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-          ...DESIGN.shadow.sm
+          /* no shadow */
         }
       ]}
     >
@@ -317,7 +317,7 @@ const StatCard: React.FC<{
       { 
         backgroundColor: isDark ? 'rgba(45,45,60,0.6)' : '#ffffff',
         borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-        ...DESIGN.shadow.sm
+        /* no shadow */
       }
     ]}>
       <View style={[styles.statIconBg, { backgroundColor: `${color}12` }]}>
@@ -1061,7 +1061,7 @@ const styles = StyleSheet.create({
     borderRadius: 12, 
     justifyContent: 'center', 
     alignItems: 'center',
-    ...DESIGN.shadow.sm
+    /* no shadow */
   },
   headerTitleWrap: { flex: 1, alignItems: 'center' },
   headerTitle: { fontSize: 20, fontWeight: '800', letterSpacing: -0.5 },
@@ -1095,7 +1095,7 @@ const styles = StyleSheet.create({
     padding: 14,
     alignItems: 'center',
     borderWidth: 1,
-    ...DESIGN.shadow.sm,
+    /* no shadow */,
   },
   statIconBg: {
     width: 36,
@@ -1134,7 +1134,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.04)',
-    ...DESIGN.shadow.md,
+    /* no shadow */,
   },
   solidCardBorder: {
     position: 'absolute',
@@ -1202,7 +1202,7 @@ const styles = StyleSheet.create({
     padding: 14, 
     marginHorizontal: 20,
     borderWidth: 1,
-    ...DESIGN.shadow.sm,
+    /* no shadow */,
   },
   patternBars: { 
     flexDirection: 'row', 
@@ -1235,7 +1235,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     borderWidth: 1,
-    ...DESIGN.shadow.sm,
+    /* no shadow */,
   },
   emptyIconBg: {
     width: 64,
@@ -1261,7 +1261,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 16,
     borderWidth: 1,
-    ...DESIGN.shadow.sm,
+    /* no shadow */,
   },
   giScores: { gap: 12 },
   giScoreItem: { flexDirection: 'row', alignItems: 'center', gap: 10 },

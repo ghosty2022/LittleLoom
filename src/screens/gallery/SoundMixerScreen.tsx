@@ -1545,7 +1545,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden', 
     height: 140, 
     marginBottom: 20,
-    ...DESIGN.shadow.lg 
+    /* no shadow */ 
   },
   nowPlayingHeroBg: { ...StyleSheet.absoluteFillObject, borderRadius: 24 },
   nowPlayingHeroContent: { flex: 1, padding: 16, justifyContent: 'space-between' },
@@ -1558,7 +1558,7 @@ const styles = StyleSheet.create({
   nowPlayingHeroText: { flex: 1 },
   nowPlayingHeroTitle: { fontSize: 16, fontWeight: '800', color: '#fff' },
   nowPlayingHeroArtist: { fontSize: 12, color: '#94a3b8', fontWeight: '500', marginTop: 2 },
-  nowPlayingHeroBtn: { width: 48, height: 48, borderRadius: 14, justifyContent: 'center', alignItems: 'center', ...DESIGN.shadow.md },
+  nowPlayingHeroBtn: { width: 48, height: 48, borderRadius: 14, justifyContent: 'center', alignItems: 'center', /* no shadow */ },
   progressBarBg: { height: 3, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 2, marginTop: 8 },
   progressBarFill: { height: '100%', borderRadius: 2 },
 
@@ -1581,7 +1581,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10, 
     borderRadius: 12 
   },
-  tabItemActive: { backgroundColor: 'rgba(129,140,248,0.15)', ...DESIGN.shadow.sm },
+  tabItemActive: { backgroundColor: 'rgba(129,140,248,0.15)', /* no shadow */ },
   tabLabel: { fontSize: 12, fontWeight: '600', color: '#64748b' },
   tabLabelActive: { color: '#818cf8', fontWeight: '700' },
 
@@ -1591,7 +1591,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
-    ...DESIGN.shadow.md,
+    /* no shadow */,
     marginHorizontal: DESIGN.spacing.lg,
     marginBottom: DESIGN.spacing.lg,
   },
@@ -1622,7 +1622,7 @@ const styles = StyleSheet.create({
     padding: 14, 
     borderWidth: 1, 
     backgroundColor: 'rgba(45,45,60,0.4)',
-    ...DESIGN.shadow.md 
+    /* no shadow */ 
   },
   smartRecTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
   smartRecIconBg: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
@@ -1649,7 +1649,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden', 
     borderWidth: 1, 
     borderColor: 'rgba(255,255,255,0.06)',
-    ...DESIGN.shadow.md 
+    /* no shadow */ 
   },
   paletteItemImg: { width: '100%', height: '100%' },
   paletteItemOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 12 },
@@ -1677,7 +1677,7 @@ const styles = StyleSheet.create({
   // ── Playlist Cards ──
   playlistScroll: { paddingHorizontal: 20, gap: 12, paddingBottom: 4 },
   playlistGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: 20, gap: 12 },
-  playlistCard: { width: 170, borderRadius: 20, overflow: 'hidden', ...DESIGN.shadow.md },
+  playlistCard: { width: 170, borderRadius: 20, overflow: 'hidden', /* no shadow */ },
   playlistCardGradient: { width: '100%', aspectRatio: 0.85, borderRadius: 20, padding: 14, justifyContent: 'space-between', position: 'relative' },
   playlistCardCover: { ...StyleSheet.absoluteFillObject, opacity: 0.25, borderRadius: 20 },
   playlistCardOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: 20 },
@@ -1708,18 +1708,18 @@ const styles = StyleSheet.create({
   trackRowMoreBtn: { padding: 6, borderRadius: 16 },
 
   // ── Timer Quick Action ──
-  timerQuickAction: { borderRadius: 16, overflow: 'hidden', ...DESIGN.shadow.md },
+  timerQuickAction: { borderRadius: 16, overflow: 'hidden', /* no shadow */ },
   timerQuickGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, gap: 10 },
   timerQuickText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 
   // ── Import Modal ──
   importModalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
-  importModalContent: { width: '90%', maxWidth: 380, borderRadius: 28, padding: 24, overflow: 'hidden', ...DESIGN.shadow.lg },
+  importModalContent: { width: '90%', maxWidth: 380, borderRadius: 28, padding: 24, overflow: 'hidden', /* no shadow */ },
   importModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   importModalTitle: { fontSize: 22, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
   importModalClose: { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.06)', alignItems: 'center', justifyContent: 'center' },
   importModalSubtitle: { fontSize: 14, color: '#64748b', marginBottom: 20, fontWeight: '500' },
-  importOption: { marginBottom: 10, borderRadius: 18, overflow: 'hidden', ...DESIGN.shadow.md },
+  importOption: { marginBottom: 10, borderRadius: 18, overflow: 'hidden', /* no shadow */ },
   importOptionGradient: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 14 },
   importOptionText: { flex: 1 },
   importOptionTitle: { fontSize: 16, fontWeight: '700', color: '#fff', marginBottom: 2 },
@@ -1728,7 +1728,7 @@ const styles = StyleSheet.create({
 
   // ── Mix Modal ──
   mixModalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
-  mixModalContent: { width: '92%', maxHeight: '80%', borderRadius: 28, padding: 24, overflow: 'hidden', ...DESIGN.shadow.lg },
+  mixModalContent: { width: '92%', maxHeight: '80%', borderRadius: 28, padding: 24, overflow: 'hidden', /* no shadow */ },
   mixModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
   mixModalTitle: { fontSize: 20, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
   mixModalClose: { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.06)', alignItems: 'center', justifyContent: 'center' },
@@ -1752,7 +1752,7 @@ const styles = StyleSheet.create({
 
   // ── Timer Modal ──
   timerModalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
-  timerModalContent: { width: '90%', borderRadius: 28, padding: 24, overflow: 'hidden', ...DESIGN.shadow.lg },
+  timerModalContent: { width: '90%', borderRadius: 28, padding: 24, overflow: 'hidden', /* no shadow */ },
   timerModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   timerModalTitle: { fontSize: 20, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
   timerModalClose: { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.06)', alignItems: 'center', justifyContent: 'center' },

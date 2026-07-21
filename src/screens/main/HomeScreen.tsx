@@ -1086,7 +1086,7 @@ const FeatureCardsRow: React.FC<{
               { 
                 borderColor: `${item.color}20`,
                 backgroundColor: isDark ? 'rgba(45,45,60,0.6)' : '#ffffff',
-                ...DESIGN.shadow.sm
+                /* no shadow */
               }
             ]}>
               <View style={styles.featureCardTop}>
@@ -2253,7 +2253,7 @@ const styles = StyleSheet.create({
   safetyCornerGradient: { alignItems: 'center', justifyContent: 'center' },
 
   /* ── Glass Card (NO BLUR — solid gradients) ── */
-  glassCard: { overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', borderRadius: 20, ...DESIGN.shadow.md },
+  glassCard: { overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', borderRadius: 20, /* no shadow */ },
   glassBorder: { position: 'absolute', top: 0, left: 0, right: 0, height: 1 },
   glassContent: { flex: 1 },
 
