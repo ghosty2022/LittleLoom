@@ -1,5 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, AppStateStatus } from 'react-native'; // <-- add this line
+import { AppState, AppStateStatus } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system'; // <-- add this line
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getAppSetting, setAppSetting, deleteAppSetting } from '@/database/dbHelpers';
@@ -2223,6 +2225,86 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }));
 
     await syncUserProfileAcrossPosts(currentUser.id, { displayName: trimmed });
+  }, [syncUserProfileAcrossPosts]);
+
+  const COMMUNITY_AVATARS_DIR = FileSystem.documentDirectory + 'community_avatars/';
+
+  const persistCommunityAvatar = async (sourceUri: string, userId: string): Promise<string | null> => {
+    try {
+      const dirInfo = await FileSystem.getInfoAsync(COMMUNITY_AVATARS_DIR);
+      if (!dirInfo.exists) {
+        await FileSystem.makeDirectoryAsync(COMMUNITY_AVATARS_DIR, { intermediates: true });
+      }
+
+      const ext = sourceUri.split('.').pop()?.toLowerCase() || 'jpg';
+      const safeExt = ['jpg', 'jpeg', 'png', 'webp'].includes(ext) ? ext : 'jpg';
+      const processedUri = `${COMMUNITY_AVATARS_DIR}${userId}_${Date.now()}.${safeExt}`;
+
+      if (sourceUri.startsWith('content://')) {
+        const base64 = await FileSystem.readAsStringAsync(sourceUri, { encoding: FileSystem.EncodingType.Base64 });
+        await FileSystem.writeAsStringAsync(processedUri, base64, { encoding: FileSystem.EncodingType.Base64 });
+      } else if (sourceUri.startsWith('data:')) {
+        const base64Data = sourceUri.split(',')[1];
+        if (base64Data) {
+          await FileSystem.writeAsStringAsync(processedUri, base64Data, { encoding: FileSystem.EncodingType.Base64 });
+        } else {
+          throw new Error('Invalid data URI');
+        }
+      } else {
+        await FileSystem.copyAsync({ from: sourceUri, to: processedUri });
+      }
+
+      const fileInfo = await FileSystem.getInfoAsync(processedUri);
+      return fileInfo.exists ? processedUri : null;
+    } catch (error) {
+      console.error('[persistCommunityAvatar] Failed:', error);
+      return null;
+    }
+  };
+
+  const pickAndUploadAvatar = useCallback(async (): Promise<string | null> => {
+    const currentUser = stateRef.current.currentUser;
+    if (!currentUser) {
+      sweetAlert.alert('Sign In Required', 'Please sign in to update your avatar', 'warning');
+      return null;
+    }
+
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        sweetAlert.alert('Permission Required', 'Please allow access to your photo library', 'warning');
+        return null;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (result.canceled || !result.assets?.[0]?.uri) return null;
+
+      const permanentUri = await persistCommunityAvatar(result.assets[0].uri, currentUser.id);
+      if (!permanentUri) {
+        sweetAlert.alert('Error', 'Failed to save avatar', 'error');
+        return null;
+      }
+
+      const normalized = normalizeImageUri(permanentUri);
+
+      setState(prev => ({
+        ...prev,
+        currentUser: prev.currentUser ? { ...prev.currentUser, avatar: normalized } : null,
+      }));
+
+      await syncUserProfileAcrossPosts(currentUser.id, { avatar: normalized });
+      return normalized;
+    } catch (error) {
+      console.error('Avatar upload error:', error);
+      sweetAlert.alert('Error', 'Failed to upload avatar', 'error');
+      return null;
+    }
   }, [syncUserProfileAcrossPosts]);
 
   const updateAvatar = useCallback(async (avatarUri: string) => {

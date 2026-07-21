@@ -1794,7 +1794,9 @@ const styles = StyleSheet.create({
 
   // ── Emoji Picker ──
   emojiPickerOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'flex-end', zIndex: 200 },
-  emojiPickerSheet: { backgroundColor: '#1e1e2e', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 40, shadowColor: '#000', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.15, shadowRadius: 20, elevation: 20 },
+  emojiPickerSheet: { backgroundColor: isDark ? '#1e1e2e' : '#ffffff', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingTop: 12, paddingBottom: 40 },
+  modalDragHandle: { width: '100%', alignItems: 'center', paddingVertical: 8 },
+  dragIndicator: { width: 36, height: 4, borderRadius: 2, backgroundColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)' },
   emojiPickerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   emojiPickerTitle: { fontSize: 18, fontWeight: '800', color: '#fff' },
   emojiPickerClose: { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.08)', justifyContent: 'center', alignItems: 'center' },

@@ -475,14 +475,14 @@ const QuickActionsDock = React.memo(({ member, isCurrentUser, onMessage, onCall,
    MODALS
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const ActionModal = React.memo(({ visible, onClose, title, children }: any) => {
+const ActionModal = React.memo(({ visible, onClose, title, children, isDark: modalIsDark }: any) => {
   if (!visible) return null;
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent presentationStyle="overFullScreen">
       <View style={styles.modalOverlay}>
         <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
-        <BlurView intensity={90} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
-        <Animated.View entering={FadeInUp.springify()} style={[styles.modalContent, { backgroundColor: isDark ? '#1e1e2e' : '#ffffff' }]}>
+        <BlurView intensity={90} tint={modalIsDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
+        <Animated.View entering={FadeInUp.springify()} style={[styles.modalContent, { backgroundColor: modalIsDark ? '#1e1e2e' : '#ffffff' }]}>
           <View style={styles.modalDragHandle}>
             <View style={styles.dragIndicator} />
           </View>
@@ -810,6 +810,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     triggerHaptic('light');
   }, [triggerHaptic]);
 
+  const styles = useMemo(() => getDynamicStyles(isDark), [isDark]);
   const roleConfig = member ? ROLE_CONFIG[member.role] || ROLE_CONFIG[UserRole.VIEWER] : null;
   const currentUserId = userProfile?.id || userProfile?.uid || profile?.id;
   const isCurrentUser = member?.id === currentUserId;
@@ -826,7 +827,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
       ) : (
         <View style={[StyleSheet.absoluteFill, { backgroundColor: '#f8f9fc' }]} />
       )}
-        <UniversalSpinner visible={true} text="Loading profile..." size="medium" overlay={false} section="main" />
+        <InlineSpinner size={48} color="#6366f1" section="main" variant="liquid" />
       </View>
     );
   }
@@ -1148,7 +1149,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
       {/* Modals */}
       <UniversalSpinner visible={isSaving} text="Saving changes..." size="medium" overlay={true} blur={true} section="main" />
 
-      <ActionModal visible={showImagePicker} onClose={() => setShowImagePicker(false)} title="Change Profile Photo">
+      <ActionModal visible={showImagePicker} onClose={() => setShowImagePicker(false)} title="Change Profile Photo" isDark={isDark}>
         <View style={styles.imagePickerOptions}>
           <TouchableOpacity style={styles.imagePickerOption} onPress={handleImagePick}>
             <View style={[styles.imagePickerIcon, { backgroundColor: '#6366f120' }]}><Ionicons name="images-outline" size={28} color="#6366f1" /></View>
@@ -1165,7 +1166,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
         </View>
       </ActionModal>
 
-      <ActionModal visible={showRoleModal} onClose={() => setShowRoleModal(false)} title="Manage Role">
+      <ActionModal visible={showRoleModal} onClose={() => setShowRoleModal(false)} title="Manage Role" isDark={isDark}>
         <View style={styles.roleOptions}>
           {Object.entries(ROLE_CONFIG).map(([role, config]) => (
             <TouchableOpacity key={role} style={[styles.roleOption, member.role === role && { backgroundColor: `${config.color}15`, borderColor: config.color }]} onPress={() => handleRoleChange(role as UserRole)}>
@@ -1183,10 +1184,14 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
         animationType="slide"
         onRequestClose={() => setShowEmojiPicker(false)}
         statusBarTranslucent
+        presentationStyle="overFullScreen"
       >
         <View style={styles.emojiPickerOverlay}>
           <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setShowEmojiPicker(false)} activeOpacity={1} />
           <Animated.View entering={FadeInUp.springify()} style={[styles.emojiPickerSheet, { backgroundColor: isDark ? '#1e1e2e' : '#fff' }]}>
+            <View style={styles.modalDragHandle}>
+              <View style={styles.dragIndicator} />
+            </View>
             <View style={styles.emojiPickerHeader}>
               <Text style={[styles.emojiPickerTitle, { color: isDark ? '#fff' : '#1a1a2e' }]}>Pick an Emoji</Text>
               <TouchableOpacity onPress={() => setShowEmojiPicker(false)} style={styles.modalClose}>
@@ -1204,11 +1209,8 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
         </View>
       </Modal>
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   STYLES — Completely Redesigned to match GrowthDashboard quality
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const styles = StyleSheet.create({
+// ── Dynamic styles helper ──
+const getDynamicStyles = (isDark: boolean) => StyleSheet.create({
   container: { flex: 1 },
   centered: { justifyContent: 'center', alignItems: 'center' },
   scrollContent: { paddingBottom: 24 },
@@ -1237,7 +1239,7 @@ const styles = StyleSheet.create({
   dockContainer: { marginHorizontal: 16, marginBottom: 20 },
   dock: { flexDirection: 'row', gap: 10, justifyContent: 'center' },
   dockItem: { alignItems: 'center', gap: 6, flex: 1 },
-  dockGradient: { width: 52, height: 52, borderRadius: 16, justifyContent: 'center', alignItems: 'center', /* no shadow */ },
+  dockGradient: { width: 52, height: 52, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
   dockLabel: { fontSize: 11, fontWeight: '600', color: '#94a3b8' },
 
   // ── Tab Bar ──
@@ -1259,7 +1261,7 @@ const styles = StyleSheet.create({
 
   // ── KPI Pills ──
   kpiPillRow: { flexDirection: 'row', gap: 10, marginHorizontal: 16, marginBottom: 16 },
-  kpiPill: { flex: 1, borderRadius: 20, overflow: 'hidden', padding: 14, /* no shadow */, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  kpiPill: { flex: 1, borderRadius: 20, overflow: 'hidden', padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10 },
   kpiPillIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   kpiPillEmoji: { fontSize: 20 },
   kpiPillBody: { flex: 1 },
@@ -1268,7 +1270,7 @@ const styles = StyleSheet.create({
 
   // ── AI Insights ──
   insightsList: { marginHorizontal: 0, gap: 8, marginBottom: 16 },
-  insightRow: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: 'rgba(45,45,60,0.6)', borderLeftWidth: 3, /* no shadow */ },
+  insightRow: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: 'rgba(45,45,60,0.6)', borderLeftWidth: 3 },
   insightIconBg: { width: 42, height: 42, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   insightEmoji: { fontSize: 20 },
   insightContent: { flex: 1, gap: 3 },
@@ -1308,7 +1310,7 @@ const styles = StyleSheet.create({
   healthRingLabel: { fontSize: 9, fontWeight: '600', color: '#94a3b8' },
 
   // ── Smart Recommendations ──
-  recCard: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: 'rgba(45,45,60,0.6)', borderLeftWidth: 3, marginHorizontal: 16, marginBottom: 8, /* no shadow */ },
+  recCard: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: 'rgba(45,45,60,0.6)', borderLeftWidth: 3, marginHorizontal: 16, marginBottom: 8 },
   recIconBg: { width: 42, height: 42, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   recEmoji: { fontSize: 20 },
   recContent: { flex: 1, marginHorizontal: 12, gap: 4 },
@@ -1325,7 +1327,7 @@ const styles = StyleSheet.create({
   timelineLeft: { width: 24, alignItems: 'center', paddingTop: 16 },
   timelineLine: { position: 'absolute', top: 0, bottom: 0, width: 2, left: 11, backgroundColor: 'rgba(255,255,255,0.06)' },
   timelineDot: { width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: '#fff', zIndex: 1 },
-  timelineCard: { flex: 1, padding: 14, borderRadius: 16, backgroundColor: 'rgba(45,45,60,0.6)', marginBottom: 12, /* no shadow */ },
+  timelineCard: { flex: 1, padding: 14, borderRadius: 16, backgroundColor: 'rgba(45,45,60,0.6)', marginBottom: 12 },
   timelineHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 },
   timelineEmoji: { fontSize: 20 },
   timelineMeta: { flex: 1 },
@@ -1362,14 +1364,14 @@ const styles = StyleSheet.create({
 
   // ── Permissions ──
   permissionGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, padding: 16 },
-    permissionChipText: { fontSize: 13, fontWeight: '600' },
-  permissionNoteText: { fontSize: 13, color: isDark ? '#94a3b8' : '#64748b', flex: 1, lineHeight: 18 },
+  permissionChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, borderWidth: 1 },
+  permissionChipText: { fontSize: 13, fontWeight: '600' },
   permissionNote: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, padding: 12, borderRadius: 12, backgroundColor: 'rgba(99,102,241,0.08)', marginHorizontal: 16, marginBottom: 16 },
   permissionNoteText: { fontSize: 13, color: '#94a3b8', flex: 1, lineHeight: 18 },
 
   // ── Stats Grid ──
   statsGrid: { flexDirection: 'row', gap: 10, marginHorizontal: 16, marginBottom: 16 },
-  statCard: { flex: 1, borderRadius: 20, padding: 16, alignItems: 'center', justifyContent: 'center', /* no shadow */ },
+  statCard: { flex: 1, borderRadius: 20, padding: 16, alignItems: 'center', justifyContent: 'center' },
   statCardValue: { fontSize: 24, fontWeight: '800', color: '#fff' },
   statCardLabel: { fontSize: 11, fontWeight: '600', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 4 },
 
@@ -1386,7 +1388,7 @@ const styles = StyleSheet.create({
   breakdownCount: { fontSize: 14, fontWeight: '700', minWidth: 20, textAlign: 'right' },
 
   // ── Manage Permissions Button ──
-  managePermissionsBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderRadius: 16, marginHorizontal: 16, marginTop: 8, /* no shadow */ },
+  managePermissionsBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderRadius: 16, marginHorizontal: 16, marginTop: 8 },
   managePermissionsText: { fontSize: 15, fontWeight: '700', flex: 1, marginLeft: 12 },
 
   // ── Settings / Inputs ──
@@ -1425,7 +1427,7 @@ const styles = StyleSheet.create({
 
   // ── Modals ──
   modalOverlay: { flex: 1, justifyContent: 'flex-end', alignItems: 'center' },
-  modalContent: { width: '100%', maxWidth: 400, borderRadius: DESIGN.radius.xl, padding: DESIGN.spacing.xxl, overflow: 'hidden', /* no shadow */ },
+  modalContent: { width: '100%', maxWidth: 400, borderRadius: DESIGN.radius.xl, padding: DESIGN.spacing.xxl, overflow: 'hidden' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   modalTitle: { fontSize: 20, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
   modalClose: { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.08)', justifyContent: 'center', alignItems: 'center' },
@@ -1452,7 +1454,6 @@ const styles = StyleSheet.create({
   emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'center' },
   emojiButton: { width: 52, height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   emojiButtonText: { fontSize: 28 },
-  modalClose: { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(128,128,128,0.15)', justifyContent: 'center', alignItems: 'center' },
 
   // ── Retry ──
   retryButton: { marginTop: 20, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 14 },

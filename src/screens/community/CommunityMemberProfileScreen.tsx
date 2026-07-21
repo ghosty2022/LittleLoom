@@ -53,9 +53,9 @@ const DESIGN = {
   radius: { xs: 8, sm: 12, md: 16, lg: 20, xl: 24, full: 999 },
   spacing: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32 },
   shadow: {
-    sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 2 },
-    md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 4 },
-    lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 24, elevation: 8 },
+    sm: {},
+    md: {},
+    lg: {},
   },
 };
 
@@ -1056,7 +1056,11 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
   return (
     <View style={[styles.container, { flex: 1 }]}>
       <StatusBar barStyle="light-content" />
-      <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={styles.bg} />
+      {isDark ? (
+        <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={styles.bg} />
+      ) : (
+        <View style={[styles.bg, { backgroundColor: '#f8f9fc' }]} />
+      )}
       {renderStickyHeader()}
 
       <Animated.View entering={FadeInDown.springify()} style={[styles.topHeader, { paddingTop: insets.top + 12 }]}>
@@ -1114,7 +1118,7 @@ const styles = StyleSheet.create({
   onlineDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#10b981' },
   profileInfo: { alignItems: 'center' },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  profileName: { fontSize: 24, fontWeight: '800', color: '#fff', letterSpacing: -0.5, textAlign: 'center' },
+  profileName: { fontSize: 24, fontWeight: '800', color: isDark ? '#fff' : '#1e293b', letterSpacing: -0.5, textAlign: 'center' },
   verifiedBadge: { width: 20, height: 20, borderRadius: 10, backgroundColor: '#6366f1', justifyContent: 'center', alignItems: 'center' },
   profileHandle: { fontSize: 14, color: '#94a3b8', marginTop: 4, fontWeight: '600' },
   profileBio: { fontSize: 14, color: '#94a3b8', textAlign: 'center', marginTop: 8, paddingHorizontal: DESIGN.spacing.xl, lineHeight: 20, fontWeight: '500' },

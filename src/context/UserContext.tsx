@@ -2,6 +2,8 @@ import { useSweetAlert } from '../components/SweetAlert';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
 import { getAppSetting, setAppSetting } from '@/database/dbHelpers';
 import { deleteAppSetting } from '@/database/dbHelpers';
 import { useAuth } from './AuthContext';
@@ -456,6 +458,81 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       sweetAlert.alert('Error', 'Failed to update profile', 'warning');
     }
   }, [state.profile, state.permissions, updateAuthProfile]);
+
+  const COMMUNITY_AVATARS_DIR = FileSystem.documentDirectory + 'community_avatars/';
+
+  const persistPickedImage = async (sourceUri: string, userId: string): Promise<string | null> => {
+    try {
+      const dirInfo = await FileSystem.getInfoAsync(COMMUNITY_AVATARS_DIR);
+      if (!dirInfo.exists) {
+        await FileSystem.makeDirectoryAsync(COMMUNITY_AVATARS_DIR, { intermediates: true });
+      }
+
+      const ext = sourceUri.split('.').pop()?.toLowerCase() || 'jpg';
+      const safeExt = ['jpg', 'jpeg', 'png', 'webp'].includes(ext) ? ext : 'jpg';
+      const processedUri = `${COMMUNITY_AVATARS_DIR}${userId}_${Date.now()}.${safeExt}`;
+
+      if (sourceUri.startsWith('content://')) {
+        const base64 = await FileSystem.readAsStringAsync(sourceUri, { encoding: FileSystem.EncodingType.Base64 });
+        await FileSystem.writeAsStringAsync(processedUri, base64, { encoding: FileSystem.EncodingType.Base64 });
+      } else if (sourceUri.startsWith('data:')) {
+        const base64Data = sourceUri.split(',')[1];
+        if (base64Data) {
+          await FileSystem.writeAsStringAsync(processedUri, base64Data, { encoding: FileSystem.EncodingType.Base64 });
+        } else {
+          throw new Error('Invalid data URI');
+        }
+      } else {
+        await FileSystem.copyAsync({ from: sourceUri, to: processedUri });
+      }
+
+      const fileInfo = await FileSystem.getInfoAsync(processedUri);
+      if (!fileInfo.exists) return null;
+
+      return processedUri;
+    } catch (error) {
+      console.error('[persistPickedImage] Failed:', error);
+      return null;
+    }
+  };
+
+  const pickAndUploadAvatar = useCallback(async (): Promise<string | null> => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        sweetAlert.alert('Permission Required', 'Please allow access to your photo library', 'warning');
+        return null;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (result.canceled || !result.assets?.[0]?.uri) return null;
+
+      const userId = state.profile?.id || 'unknown';
+      const permanentUri = await persistPickedImage(result.assets[0].uri, userId);
+      
+      if (!permanentUri) {
+        sweetAlert.alert('Error', 'Failed to save image', 'error');
+        return null;
+      }
+
+      await updateProfile({ avatar: permanentUri });
+      if (state.communityProfile) {
+        await updateCommunityProfile({ avatar: permanentUri });
+      }
+
+      return permanentUri;
+    } catch (error) {
+      console.error('Avatar upload error:', error);
+      sweetAlert.alert('Error', 'Failed to upload avatar', 'error');
+      return null;
+    }
+  }, [state.profile, state.communityProfile, updateProfile, updateCommunityProfile]);
 
   const updateAvatar = useCallback(async (uri: string) => {
     await updateProfile({ avatar: uri });
