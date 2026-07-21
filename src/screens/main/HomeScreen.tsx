@@ -254,14 +254,14 @@ const GlassCard: React.FC<{ children: React.ReactNode; style?: any; onPress?: ()
     const Wrapper = onPress ? TouchableOpacity : View;
 
     return (
-      <Wrapper onPress={onPress} activeOpacity={0.85} style={[styles.glassCard, style]}>
+      <Wrapper onPress={onPress} activeOpacity={0.85} style={[styles.glassCard, { borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }, style]}>
         <LinearGradient 
           colors={isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.85)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.92)']} 
           style={StyleSheet.absoluteFill} 
           start={{ x: 0, y: 0 }} 
           end={{ x: 1, y: 1 }} 
         />
-        <View style={[styles.glassBorder, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.6)' }]} />
+        <View style={[styles.glassBorder, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]} />
         <View style={styles.glassContent}>{children}</View>
       </Wrapper>
     );
@@ -2228,7 +2228,7 @@ const styles = StyleSheet.create({
   /* ── Loading States ── */
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   loadingGradient: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center' },
-  loadingText: { fontWeight: '800', color: '#fff', marginBottom: 20 },
+  loadingText: { fontWeight: '800', marginBottom: 20 },
   loadingDots: { flexDirection: 'row', gap: 8 },
   dot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#fff' },
   dot1: { opacity: 0.4 },
@@ -2252,8 +2252,8 @@ const styles = StyleSheet.create({
   safetyCornerBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1 },
   safetyCornerGradient: { alignItems: 'center', justifyContent: 'center' },
 
-  /* ── Glass Card (NO BLUR — solid gradients) ── */
-  glassCard: { overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', borderRadius: 20, /* no shadow */ },
+  /* ── Glass Card (NO hardcoded colors — colors applied via props) ── */
+  glassCard: { overflow: 'hidden', borderWidth: 1, borderRadius: 20 },
   glassBorder: { position: 'absolute', top: 0, left: 0, right: 0, height: 1 },
   glassContent: { flex: 1 },
 
@@ -2264,7 +2264,7 @@ const styles = StyleSheet.create({
   greetingText: { fontWeight: '500', marginBottom: 1 },
   parentName: { fontWeight: '800', letterSpacing: -0.5 },
   parentMeta: { flexDirection: 'row', alignItems: 'center', marginTop: 5, gap: 10 },
-  verifiedBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(67,233,123,0.08)', paddingHorizontal: 8, paddingVertical: 3, gap: 3 },
+  verifiedBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 3, gap: 3 },
   verifiedText: { fontWeight: '600' },
   timeText: { fontWeight: '500' },
   parentQuickLinks: { flexDirection: 'row', gap: 6 },
@@ -2283,20 +2283,18 @@ const styles = StyleSheet.create({
   babyStatus: { flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 5 },
   babyStatusText: { fontWeight: '600' },
   streakBadge: { position: 'absolute', top: 16, right: 16, paddingHorizontal: 10, paddingVertical: 5, flexDirection: 'row', alignItems: 'center', gap: 3 },
-  streakText: { color: '#fff', fontWeight: '700' },
+  streakText: { fontWeight: '700' },
 
   /* ── No Baby Card ── */
   noBabyCard: { marginBottom: 14, overflow: 'hidden', marginTop: 16 },
   noBabyGradient: { padding: 28, alignItems: 'center' },
   noBabyEmoji: { marginBottom: 12 },
-  noBabyTitle: { fontWeight: '800', color: '#fff', marginBottom: 6 },
-  noBabyText: { color: 'rgba(255,255,255,0.9)', textAlign: 'center', marginBottom: 16 },
-  noBabyButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', paddingVertical: 12, paddingHorizontal: 20, gap: 6 },
-  noBabyButtonText: { color: '#667eea', fontWeight: '700' },
+  noBabyTitle: { fontWeight: '800', marginBottom: 6 },
+  noBabyText: { textAlign: 'center', marginBottom: 16 },
+  noBabyButton: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 20, gap: 6 },
+  noBabyButtonText: { fontWeight: '700', color: '#667eea' },
 
-  /* ═══════════════════════════════════════════════════════════════════
-     NEW FEATURE 1: DAILY SUMMARY WIDGET STYLES — Redesigned Grid
-     ═══════════════════════════════════════════════════════════════════ */
+  /* ── Daily Summary ── */
   dailySummaryContainer: { marginBottom: 0 },
   dailySummaryHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, paddingHorizontal: 2 },
   dailySummaryTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
@@ -2306,12 +2304,10 @@ const styles = StyleSheet.create({
   dailySummaryGrid: { flexDirection: 'row', gap: 8 },
   dailySummaryItem: { flex: 1, borderRadius: 16, overflow: 'hidden', aspectRatio: 0.85 },
   dailySummaryGradient: { padding: 12, alignItems: 'center', justifyContent: 'center', flex: 1 },
-  dailySummaryValue: { fontSize: 22, fontWeight: '800', color: '#fff', letterSpacing: -0.5, marginTop: 6 },
-  dailySummaryLabel: { fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.85)', marginTop: 3 },
+  dailySummaryValue: { fontSize: 22, fontWeight: '800', letterSpacing: -0.5, marginTop: 6 },
+  dailySummaryLabel: { fontSize: 11, fontWeight: '700', marginTop: 3 },
 
-  /* ═══════════════════════════════════════════════════════════════════
-     NEW FEATURE 2: SMART CONTEXT CARD STYLES — Compact Pill
-     ═══════════════════════════════════════════════════════════════════ */
+  /* ── Context Card ── */
   contextCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, borderRadius: 18, borderWidth: 1 },
   contextLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
   contextIconBg: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
@@ -2321,25 +2317,21 @@ const styles = StyleSheet.create({
   contextActionBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10 },
   contextActionText: { fontSize: 11, fontWeight: '700' },
 
-  /* ═══════════════════════════════════════════════════════════════════
-     NEW FEATURE 3: NEXT BEST ACTION STYLES — Floating Banner
-     ═══════════════════════════════════════════════════════════════════ */
+  /* ── Next Action ── */
   nextActionContainer: { borderRadius: 18, overflow: 'hidden' },
   nextActionGradient: { padding: 16 },
   nextActionContent: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  nextActionIconWrap: { width: 44, height: 44, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' },
+  nextActionIconWrap: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   nextActionText: { flex: 1 },
-  nextActionTitle: { fontSize: 16, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
-  nextActionSubtitle: { fontSize: 12, fontWeight: '500', color: 'rgba(255,255,255,0.85)', marginTop: 1 },
-  nextActionArrow: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center' },
+  nextActionTitle: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3 },
+  nextActionSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 1 },
+  nextActionArrow: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   nextActionUrgency: { position: 'absolute', top: 10, right: 10 },
-  urgencyPill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,255,255,0.15)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  urgencyPill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
   urgencyDot: { width: 5, height: 5, borderRadius: 3 },
-  urgencyText: { fontSize: 10, fontWeight: '700', color: '#fff' },
+  urgencyText: { fontSize: 10, fontWeight: '700' },
 
-  /* ═══════════════════════════════════════════════════════════════════
-     NEW FEATURE 4: WEEKLY PATTERN STYLES — Clean Bar Chart
-     ═══════════════════════════════════════════════════════════════════ */
+  /* ── Weekly Pattern ── */
   patternContainer: { borderRadius: 18, padding: 14, borderWidth: 1 },
   patternHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   patternTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
@@ -2348,14 +2340,12 @@ const styles = StyleSheet.create({
   patternSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 1 },
   patternBars: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', height: 90, gap: 6 },
   patternDay: { flex: 1, alignItems: 'center', gap: 4 },
-  patternBarContainer: { width: '100%', height: 60, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.02)', borderRadius: 6, overflow: 'hidden' },
+  patternBarContainer: { width: '100%', height: 60, justifyContent: 'flex-end', borderRadius: 6, overflow: 'hidden' },
   patternBar: { width: '100%', borderRadius: 6, minHeight: 3 },
   patternDayLabel: { fontSize: 10, fontWeight: '600' },
   patternDayCount: { fontSize: 9, fontWeight: '700' },
 
-  /* ═══════════════════════════════════════════════════════════════════
-     NEW FEATURE 5: CATEGORIZED QUICK ACTIONS STYLES — Smooth Grid
-     ═══════════════════════════════════════════════════════════════════ */
+  /* ── Quick Actions ── */
   categoryTabsScroll: { paddingHorizontal: 20, gap: 6, paddingBottom: 10 },
   categoryTab: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 },
   categoryTabText: { fontSize: 12, fontWeight: '600' },
@@ -2367,10 +2357,8 @@ const styles = StyleSheet.create({
   categorizedGridGradient: { width: '100%', aspectRatio: 1, borderRadius: 16, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.1, shadowRadius: 6, elevation: 3 },
   categorizedGridLabel: { fontSize: 10, fontWeight: '600', marginTop: 6, textAlign: 'center' },
 
-  /* ═══════════════════════════════════════════════════════════════════
-     NEW FEATURE 6: VACCINATION REMINDERS STYLES
-     ═══════════════════════════════════════════════════════════════════ */
-  vaccineContainer: { borderRadius: 18, padding: 14, borderWidth: 1, backgroundColor: 'rgba(255,255,255,0.03)' },
+  /* ── Vaccination ── */
+  vaccineContainer: { borderRadius: 18, padding: 14, borderWidth: 1 },
   vaccineHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
   vaccineTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   vaccineIconWrap: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
@@ -2387,9 +2375,7 @@ const styles = StyleSheet.create({
   vaccineBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
   vaccineBadgeText: { fontSize: 10, fontWeight: '700' },
 
-  /* ═══════════════════════════════════════════════════════════════════
-     NEW FEATURE 7: AI INSIGHTS STYLES
-     ═══════════════════════════════════════════════════════════════════ */
+  /* ── AI Insights ── */
   aiInsightsContainer: { borderRadius: 18, padding: 14, borderWidth: 1 },
   aiInsightsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
   aiInsightsTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
@@ -2402,27 +2388,27 @@ const styles = StyleSheet.create({
   aiInsightTitle: { fontSize: 13, fontWeight: '700' },
   aiInsightMessage: { fontSize: 11, fontWeight: '500', marginTop: 1, lineHeight: 16 },
 
-  /* ── Feature Cards Row (SOLID — NO BLUR) ── */
+  /* ── Feature Cards ── */
   featureCardsScroll: { paddingHorizontal: 20, gap: 10, paddingBottom: 4 },
   featureCardTouchable: { width: 150 },
   featureCard: { borderRadius: 18, padding: 14, borderWidth: 1 },
   featureCardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
   featureCardIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   featureCardBadge: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8, minWidth: 26, alignItems: 'center' },
-  featureCardBadgeText: { color: '#fff', fontSize: 9, fontWeight: 'bold' },
+  featureCardBadgeText: { fontSize: 9, fontWeight: 'bold' },
   featureCardLabel: { fontSize: 14, fontWeight: '700', marginBottom: 3, letterSpacing: -0.3 },
   featureCardDesc: { fontSize: 11, fontWeight: '500', lineHeight: 16, marginBottom: 8 },
   featureCardArrow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   featureCardArrowText: { fontSize: 11, fontWeight: '700' },
 
-  /* ── Smart Notifications ── */
+  /* ── Notifications ── */
   notificationPanel: { marginBottom: 0, marginTop: 0 },
   notificationPanelHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, paddingHorizontal: 2 },
   notificationPanelTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   notificationPanelIconWrap: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   notificationPanelTitle: { fontSize: 15, fontWeight: '800' },
   urgentBadge: { backgroundColor: '#ef4444', borderRadius: 8, minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
-  urgentBadgeText: { color: '#fff', fontSize: 10, fontWeight: 'bold' },
+  urgentBadgeText: { color: 'white', fontSize: 10, fontWeight: 'bold' },
   expandBtn: { paddingHorizontal: 6, paddingVertical: 2 },
   expandText: { fontSize: 12, fontWeight: '600' },
   smartNotificationCard: { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 14, marginBottom: 6 },
@@ -2443,35 +2429,27 @@ const styles = StyleSheet.create({
   soundMixerIconBg: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   soundMixerTitleText: { fontSize: 15, fontWeight: '800', letterSpacing: -0.3 },
   soundMixerSubtitle: { fontSize: 11, fontWeight: '500', marginTop: 1 },
-  playAllButton: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#1DB954', alignItems: 'center', justifyContent: 'center' },
+  playAllButton: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   playAllButtonActive: { backgroundColor: '#f59e0b' },
   trackCard: { width: 100, marginRight: 10 },
   trackImage: { width: 100, height: 100, borderRadius: 10, marginBottom: 6, overflow: 'hidden' },
   trackOverlay: { flex: 1, justifyContent: 'flex-end', padding: 6 },
-  trackPlayButton: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#1DB954', alignItems: 'center', justifyContent: 'center', alignSelf: 'flex-end' },
+  trackPlayButton: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', alignSelf: 'flex-end' },
   trackPlayButtonActive: { backgroundColor: '#f59e0b' },
   trackTitle: { fontSize: 12, fontWeight: '600', marginBottom: 1 },
   trackArtist: { fontSize: 10, fontWeight: '500' },
-  playingIndicator: { position: 'absolute', top: 6, left: 6, flexDirection: 'row', alignItems: 'flex-end', gap: 2, backgroundColor: 'rgba(0,0,0,0.5)', padding: 5, borderRadius: 6 },
-  bar: { width: 2.5, height: 10, backgroundColor: '#1DB954', borderRadius: 1 },
+  playingIndicator: { position: 'absolute', top: 6, left: 6, flexDirection: 'row', alignItems: 'flex-end', gap: 2, padding: 5, borderRadius: 6 },
+  bar: { width: 2.5, height: 10, borderRadius: 1 },
   barMiddle: { height: 16 },
 
-  /* ── Timeline Activity List (Borrowed from FamilySharing) ── */
+  /* ── Timeline ── */
   timelineContainer: { marginBottom: 0 },
   timelineItem: { flexDirection: 'row', gap: 12, marginBottom: 12 },
   timelineLeft: { width: 24, alignItems: 'center', paddingTop: 16 },
   timelineDot: { width: 12, height: 12, borderRadius: 6, borderWidth: 2, zIndex: 1 },
   timelineLine: { position: 'absolute', top: 0, bottom: -12, width: 2, left: 11 },
-  timelineCard: { 
-    flex: 1, 
-    borderRadius: 16, 
-    overflow: 'hidden', 
-    borderWidth: 1, 
-    borderColor: 'rgba(255,255,255,0.06)',
-  },
-  timelineCardDark: { 
-    borderColor: 'rgba(255,255,255,0.06)',
-  },
+  timelineCard: { flex: 1, borderRadius: 16, overflow: 'hidden', borderWidth: 1 },
+  timelineCardDark: {},
   timelineCardContent: { padding: 14, gap: 8 },
   timelineCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   timelineIconBg: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
@@ -2483,11 +2461,11 @@ const styles = StyleSheet.create({
   timelineTypeText: { fontSize: 10, fontWeight: '700' },
   timelineCardDesc: { fontSize: 12, fontWeight: '500', lineHeight: 17, marginLeft: 46 },
   emptyState: { alignItems: 'center', justifyContent: 'center', padding: 32 },
-  emptyStateDark: { backgroundColor: 'rgba(30,30,35,0.5)' },
+  emptyStateDark: {},
   emptyStateText: { fontSize: 14, fontWeight: '500', marginTop: 8 },
   addFirstActivityBtn: { marginTop: 16, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12 },
-  addFirstActivityText: { color: '#fff', fontSize: 14, fontWeight: '700' },
-  loadMoreButton: { marginTop: 14, borderRadius: 14, paddingVertical: 12, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6, backgroundColor: 'rgba(102,126,234,0.06)' },
+  addFirstActivityText: { fontSize: 14, fontWeight: '700' },
+  loadMoreButton: { marginTop: 14, borderRadius: 14, paddingVertical: 12, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 },
   loadMoreText: { fontSize: 13, fontWeight: '600' },
   viewAllButton: { marginTop: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10 },
   viewAllText: { fontSize: 13, fontWeight: '700' },
