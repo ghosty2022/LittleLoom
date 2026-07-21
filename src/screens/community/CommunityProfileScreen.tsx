@@ -27,6 +27,7 @@ import {
   View,
   Platform,
   UIManager,
+  useColorScheme,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -34,6 +35,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import type { CommunityStackParamList } from '../../types/navigation';
@@ -57,9 +59,9 @@ const DESIGN = {
   radius: { xs: 8, sm: 12, md: 16, lg: 20, xl: 24, full: 999 },
   spacing: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32 },
   shadow: {
-    sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 2 },
-    md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 4 },
-    lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 24, elevation: 8 },
+    sm: {},
+    md: {},
+    lg: {},
   },
 };
 
@@ -513,7 +515,8 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   const sweetAlert = useSweetAlert();
 
   const insets = useSafeAreaInsets();
-  const isDark = false; // This screen uses dark-first design, always dark
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
   const scrollY = useSharedValue(0);
 
   const [isEditing, setIsEditing] = useState(false);
@@ -695,20 +698,84 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     setIsSaving(false);
   };
 
+    /* Permanent storage for community profile images */
+  const COMMUNITY_IMAGES_DIR = FileSystem.documentDirectory + 'community_images/';
+
+  const persistCommunityImage = async (sourceUri: string): Promise<string | null> => {
+    try {
+      const dirInfo = await FileSystem.getInfoAsync(COMMUNITY_IMAGES_DIR);
+      if (!dirInfo.exists) {
+        await FileSystem.makeDirectoryAsync(COMMUNITY_IMAGES_DIR, { intermediates: true });
+      }
+      const ext = sourceUri.split('.').pop()?.toLowerCase() || 'jpg';
+      const safeExt = ['jpg', 'jpeg', 'png', 'webp'].includes(ext) ? ext : 'jpg';
+      const processedUri = `${COMMUNITY_IMAGES_DIR}avatar_${Date.now()}.${safeExt}`;
+      
+      if (sourceUri.startsWith('content://')) {
+        const base64 = await FileSystem.readAsStringAsync(sourceUri, { encoding: FileSystem.EncodingType.Base64 });
+        await FileSystem.writeAsStringAsync(processedUri, base64, { encoding: FileSystem.EncodingType.Base64 });
+      } else if (sourceUri.startsWith('data:')) {
+        const base64Data = sourceUri.split(',')[1];
+        if (base64Data) {
+          await FileSystem.writeAsStringAsync(processedUri, base64Data, { encoding: FileSystem.EncodingType.Base64 });
+        } else {
+          throw new Error('Invalid data URI');
+        }
+      } else {
+        await FileSystem.copyAsync({ from: sourceUri, to: processedUri });
+      }
+      
+      const fileInfo = await FileSystem.getInfoAsync(processedUri);
+      return fileInfo.exists ? processedUri : null;
+    } catch (error) {
+      console.error('[persistCommunityImage] Failed:', error);
+      return null;
+    }
+  };
+
   const handleImagePick = async () => {
     setShowImagePicker(false);
     try {
       triggerHaptic('light');
-      const uri = await pickImage({ allowsEditing: true, aspect: [1, 1], quality: 0.8 });
-      if (!uri) { sweetAlert.toast('No Image Selected', 'You did not select an image'); return; }
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        sweetAlert.alert('Permission Required', 'Please allow access to your photo library', 'warning');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+      if (result.canceled || !result.assets?.[0]?.uri) {
+        sweetAlert.toast('No Image Selected', 'You did not select an image');
+        return;
+      }
       setIsSaving(true);
-      let processedUri = uri;
-      try { processedUri = await compressImage(uri, 0.8); } catch (e) {}
-      try { processedUri = await cacheImage(processedUri); } catch (e) {}
-      setFormData(prev => ({ ...prev, avatar: processedUri }));
+      const rawUri = result.assets[0].uri;
+      let processedUri = rawUri;
+      try { processedUri = await compressImage(rawUri, 0.8); } catch (e) {}
+      const permanentUri = await persistCommunityImage(processedUri);
+      if (!permanentUri) {
+        sweetAlert.error('Error', 'Failed to save image permanently');
+        setIsSaving(false);
+        return;
+      }
+      setFormData(prev => ({ ...prev, avatar: permanentUri }));
+      /* Auto-save avatar to community profile immediately */
+      if (currentUser) {
+        await updateCommunityProfile({ avatar: permanentUri });
+        await updateUserContextProfile({ avatar: permanentUri });
+      }
       triggerHaptic('success');
-    } catch (error) { sweetAlert.error('Error', 'Failed to process image'); }
-    finally { setIsSaving(false); }
+      sweetAlert.success('Photo Updated', 'Profile picture saved');
+    } catch (error) {
+      console.error('[handleImagePick] Error:', error);
+      sweetAlert.error('Error', 'Failed to process image');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleTakePhoto = async () => {
@@ -716,17 +783,40 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     try {
       triggerHaptic('light');
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== 'granted') { sweetAlert.alert('Permission Required', 'Camera access is needed', 'warning'); return; }
-      const result = await ImagePicker.launchCameraAsync({ 
-        allowsEditing: true, 
-        aspect: [1, 1], 
+      if (status !== 'granted') {
+        sweetAlert.alert('Permission Required', 'Camera access is needed', 'warning');
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [1, 1],
         quality: 0.8,
         cameraType: ImagePicker.CameraType.front,
       });
-      if (!result.canceled && result.assets && result.assets[0]) { 
-        setFormData(prev => ({ ...prev, avatar: result.assets[0].uri })); 
+      if (result.canceled || !result.assets?.[0]?.uri) return;
+      
+      setIsSaving(true);
+      const rawUri = result.assets[0].uri;
+      const permanentUri = await persistCommunityImage(rawUri);
+      if (!permanentUri) {
+        sweetAlert.error('Error', 'Failed to save photo');
+        setIsSaving(false);
+        return;
       }
-    } catch (error) { sweetAlert.error('Error', 'Failed to take photo'); }
+      setFormData(prev => ({ ...prev, avatar: permanentUri }));
+      /* Auto-save to community profile */
+      if (currentUser) {
+        await updateCommunityProfile({ avatar: permanentUri });
+        await updateUserContextProfile({ avatar: permanentUri });
+      }
+      triggerHaptic('success');
+      sweetAlert.success('Photo Updated', 'Camera photo saved');
+    } catch (error) {
+      console.error('[handleTakePhoto] Error:', error);
+      sweetAlert.error('Error', 'Failed to take photo');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleRemoveAvatar = () => {
@@ -1057,7 +1147,15 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     return (
       <View style={[styles.container, styles.centered]}>
         <StatusBar barStyle="light-content" />
+        {isDark ? (
+        {isDark ? (
         <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={StyleSheet.absoluteFill} />
+      ) : (
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#f8f9fc' }]} />
+      )}
+      ) : (
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#f8f9fc' }]} />
+      )}
         <UniversalSpinner visible={true} text="Loading profile..." size="medium" overlay={false} section="main" />
       </View>
     );
@@ -1067,7 +1165,15 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     return (
       <View style={[styles.container, styles.centered]}>
         <StatusBar barStyle="light-content" />
+        {isDark ? (
+        {isDark ? (
         <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={StyleSheet.absoluteFill} />
+      ) : (
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#f8f9fc' }]} />
+      )}
+      ) : (
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#f8f9fc' }]} />
+      )}
         <Ionicons name="person-outline" size={64} color="#64748b" />
         <Text style={{ marginTop: 16, color: '#94a3b8', fontSize: 16, fontWeight: '600' }}>Not signed in</Text>
         <TouchableOpacity style={[styles.retryButton, { backgroundColor: themeColors.primary }]} onPress={() => navigation.goBack()}>
@@ -1080,7 +1186,15 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
-      <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={StyleSheet.absoluteFill} />
+      {isDark ? (
+        {isDark ? (
+        <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={StyleSheet.absoluteFill} />
+      ) : (
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#f8f9fc' }]} />
+      )}
+      ) : (
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#f8f9fc' }]} />
+      )}
       {renderStickyHeader()}
       <Animated.ScrollView
         contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 40 }]}
@@ -1141,26 +1255,32 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         </View>
       </ActionModal>
 
-      {showEmojiPicker && (
+      <Modal
+        visible={showEmojiPicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowEmojiPicker(false)}
+        statusBarTranslucent
+      >
         <View style={styles.emojiPickerOverlay}>
-          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setShowEmojiPicker(false)} />
-          <View style={styles.emojiPickerSheet}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setShowEmojiPicker(false)} activeOpacity={1} />
+          <Animated.View entering={FadeInUp.springify()} style={[styles.emojiPickerSheet, { backgroundColor: isDark ? '#1e1e2e' : '#fff' }]}>
             <View style={styles.emojiPickerHeader}>
-              <Text style={styles.emojiPickerTitle}>Pick an Emoji</Text>
-              <TouchableOpacity onPress={() => setShowEmojiPicker(false)}>
-                <Ionicons name="close" size={24} color="#fff" />
+              <Text style={[styles.emojiPickerTitle, { color: isDark ? '#fff' : '#1a1a2e' }]}>Pick an Emoji</Text>
+              <TouchableOpacity onPress={() => setShowEmojiPicker(false)} style={styles.modalClose}>
+                <Ionicons name="close" size={24} color={isDark ? '#fff' : '#1a1a2e'} />
               </TouchableOpacity>
             </View>
             <View style={styles.emojiGrid}>
               {EMOJI_OPTIONS.map((emoji) => (
-                <TouchableOpacity key={emoji} style={styles.emojiButton} onPress={() => handleEmojiSelect(emoji)}>
+                <TouchableOpacity key={emoji} style={[styles.emojiButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#f1f5f9' }]} onPress={() => handleEmojiSelect(emoji)}>
                   <Text style={styles.emojiButtonText}>{emoji}</Text>
                 </TouchableOpacity>
               ))}
             </View>
-          </View>
+          </Animated.View>
         </View>
-      )}
+      </Modal>
     </View>
   );
 }
@@ -1195,7 +1315,7 @@ const styles = StyleSheet.create({
   tabItem: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 12 },
   tabLabel: { fontSize: 12, fontWeight: '600' },
 
-  glassCard: { borderRadius: DESIGN.radius.lg, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', ...DESIGN.shadow.md, marginHorizontal: DESIGN.spacing.lg, marginBottom: DESIGN.spacing.lg },
+  glassCard: { borderRadius: DESIGN.radius.lg, overflow: 'hidden', borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', marginHorizontal: 0, marginBottom: DESIGN.spacing.lg },
   glassBorder: { position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.06)' },
   glassContent: { flex: 1 },
 
@@ -1395,13 +1515,14 @@ const styles = StyleSheet.create({
   imagePickerIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
   imagePickerLabel: { fontSize: 16, fontWeight: '600', color: '#fff', flex: 1 },
 
-  emojiPickerOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'flex-end', zIndex: 200 },
-  emojiPickerSheet: { backgroundColor: '#1e1e2e', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 40, shadowColor: '#000', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.15, shadowRadius: 20, elevation: 20 },
+  emojiPickerOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
+  emojiPickerSheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 40 },
   emojiPickerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  emojiPickerTitle: { fontSize: 18, fontWeight: '800', color: '#fff' },
+  emojiPickerTitle: { fontSize: 18, fontWeight: '800' },
   emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'center' },
-  emojiButton: { width: 52, height: 52, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.06)', alignItems: 'center', justifyContent: 'center' },
+  emojiButton: { width: 52, height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   emojiButtonText: { fontSize: 28 },
+  modalClose: { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(128,128,128,0.15)', justifyContent: 'center', alignItems: 'center' },
 
   modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
   modalContent: { width: '100%', maxWidth: 400, borderRadius: DESIGN.radius.xl, padding: DESIGN.spacing.xxl, overflow: 'hidden', ...DESIGN.shadow.lg },

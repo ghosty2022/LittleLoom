@@ -334,7 +334,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       await loadFamily();
 
-      Alert.alert('Invitation Sent', '');
+      sweetAlert.success('Invitation Sent', 'Family member has been invited');
 
       return true;
     } catch (error) {
@@ -383,7 +383,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const member = state.members.find(m => m.id === memberId);
     if (!member) return false;
 
-    Alert.alert('Invitation Resent', '');
+    sweetAlert.success('Invitation Resent', `New invitation sent to ${member.email || 'member'}`);
     return true;
   }, [state.members]);
 

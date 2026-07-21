@@ -5,7 +5,6 @@ import {
   Image,
   Keyboard,
   LayoutAnimation,
-  Linking,
   Modal,
   Platform,
   RefreshControl,
@@ -19,6 +18,7 @@ import {
   TouchableOpacity,
   UIManager,
   View,
+  useColorScheme,
 } from 'react-native';
 
 import { BlurView } from 'expo-blur';
@@ -71,9 +71,9 @@ const DESIGN = {
   radius: { xs: 8, sm: 12, md: 16, lg: 20, xl: 24, full: 999 },
   spacing: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32 },
   shadow: {
-    sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 2 },
-    md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 4 },
-    lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 24, elevation: 8 },
+    sm: {},
+    md: {},
+    lg: {},
   },
 };
 
@@ -508,6 +508,10 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
   const { userProfile } = useAuth();
   const { triggerHaptic } = useCustomization();
   const sweetAlert = useSweetAlert();
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
 
   const insets = useSafeAreaInsets();
   const scrollY = useSharedValue(0);
@@ -620,9 +624,12 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
       else sweetAlert.error('Error', 'Failed to remove family member');
     }, () => {}, 'Remove', 'Cancel');
   };
-const handleCameraCapture = async () => {
+  const handleCameraCapture = async () => {
     setShowImagePicker(false);
-    setIsSaving(true);
+    if (!member) {
+      sweetAlert.error('Error', 'No member selected');
+      return;
+    }
     try {
       triggerHaptic('light');
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -638,25 +645,23 @@ const handleCameraCapture = async () => {
       });
       if (result.canceled || !result.assets?.[0]?.uri) return;
 
+      setIsSaving(true);
       const rawUri = result.assets[0].uri;
-      const targetMemberId = member?.id || 'member';
-      const processedUri = await persistPickedImage(rawUri, targetMemberId);
+      const processedUri = await persistPickedImage(rawUri, member.id);
       if (!processedUri) {
         sweetAlert.error('Error', 'Failed to save photo');
+        setIsSaving(false);
         return;
       }
 
       setFormData(prev => ({ ...prev, avatar: processedUri }));
-      
-      if (member) {
-        const success = await updateGuardianProfile(member.id, { avatar: processedUri });
-        if (success) {
-          setMember(prev => prev ? { ...prev, avatar: processedUri } : null);
-          setOriginalData(prev => ({ ...prev, avatar: processedUri }));
-          sweetAlert.success('Photo Updated', 'Camera photo saved');
-        }
+      const success = await updateGuardianProfile(member.id, { avatar: processedUri });
+      if (success) {
+        setMember(prev => prev ? { ...prev, avatar: processedUri } : null);
+        setOriginalData(prev => ({ ...prev, avatar: processedUri }));
+        triggerHaptic('success');
+        sweetAlert.success('Photo Updated', 'Camera photo saved permanently');
       }
-      triggerHaptic('success');
     } catch (error) {
       console.error('[EditGuardian] Camera error:', error);
       sweetAlert.error('Error', 'Failed to capture photo');
@@ -667,7 +672,10 @@ const handleCameraCapture = async () => {
 
   const handleImagePick = async () => {
     setShowImagePicker(false);
-    setIsSaving(true);
+    if (!member) {
+      sweetAlert.error('Error', 'No member selected');
+      return;
+    }
     try {
       triggerHaptic('light');
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -684,29 +692,25 @@ const handleCameraCapture = async () => {
       });
       if (result.canceled || !result.assets?.[0]?.uri) return;
 
+      setIsSaving(true);
       const rawUri = result.assets[0].uri;
-      const targetMemberId = member?.id || 'member';
-      const processedUri = await persistPickedImage(rawUri, targetMemberId);
+      const processedUri = await persistPickedImage(rawUri, member.id);
       if (!processedUri) {
         sweetAlert.error('Error', 'Failed to save image to app storage');
+        setIsSaving(false);
         return;
       }
 
-      // Always update form state
       setFormData(prev => ({ ...prev, avatar: processedUri }));
-      
-      // ALWAYS save to DB when we have a member — the edit mode check was the bug
-      if (member) {
-        const success = await updateGuardianProfile(member.id, { avatar: processedUri });
-        if (success) { 
-          setMember(prev => prev ? { ...prev, avatar: processedUri } : null); 
-          setOriginalData(prev => ({ ...prev, avatar: processedUri })); 
-          sweetAlert.success('Photo Updated', 'Profile picture updated'); 
-        } else {
-          sweetAlert.error('Save Failed', 'Image saved locally but failed to update profile');
-        }
+      const success = await updateGuardianProfile(member.id, { avatar: processedUri });
+      if (success) { 
+        setMember(prev => prev ? { ...prev, avatar: processedUri } : null); 
+        setOriginalData(prev => ({ ...prev, avatar: processedUri })); 
+        triggerHaptic('success');
+        sweetAlert.success('Photo Updated', 'Profile picture saved permanently'); 
+      } else {
+        sweetAlert.error('Save Failed', 'Image saved locally but failed to update profile');
       }
-      triggerHaptic('success');
     } catch (error) { 
       console.error('[EditGuardian] Image pick error:', error);
       sweetAlert.error('Error', 'Failed to process image'); 
@@ -815,7 +819,15 @@ const handleCameraCapture = async () => {
     return (
       <View style={[styles.container, styles.centered]}>
         <StatusBar barStyle="light-content" />
+        {isDark ? (
+        {isDark ? (
         <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={StyleSheet.absoluteFill} />
+      ) : (
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#f8f9fc' }]} />
+      )}
+      ) : (
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#f8f9fc' }]} />
+      )}
         <UniversalSpinner visible={true} text="Loading profile..." size="medium" overlay={false} section="main" />
       </View>
     );
@@ -825,7 +837,15 @@ const handleCameraCapture = async () => {
     return (
       <View style={[styles.container, styles.centered]}>
         <StatusBar barStyle="light-content" />
+        {isDark ? (
+        {isDark ? (
         <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={StyleSheet.absoluteFill} />
+      ) : (
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#f8f9fc' }]} />
+      )}
+      ) : (
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#f8f9fc' }]} />
+      )}
         <Ionicons name="alert-circle-outline" size={64} color="#64748b" />
         <Text style={{ marginTop: 16, color: '#94a3b8', fontSize: 16, fontWeight: '600' }}>Member not found</Text>
         <TouchableOpacity style={[styles.retryButton, { backgroundColor: '#6366f1' }]} onPress={() => navigation.goBack()}>
@@ -846,7 +866,15 @@ const handleCameraCapture = async () => {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
-      <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={StyleSheet.absoluteFill} />
+      {isDark ? (
+        {isDark ? (
+        <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={StyleSheet.absoluteFill} />
+      ) : (
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#f8f9fc' }]} />
+      )}
+      ) : (
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#f8f9fc' }]} />
+      )}
 
       {/* Sticky Header */}
       <Animated.View style={[styles.stickyHeader, { paddingTop: insets.top + 8 }, headerOpacity]}>
@@ -1159,29 +1187,32 @@ const handleCameraCapture = async () => {
         </View>
       </ActionModal>
 
-      {/* Emoji Picker */}
-      {showEmojiPicker && (
+      <Modal
+        visible={showEmojiPicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowEmojiPicker(false)}
+        statusBarTranslucent
+      >
         <View style={styles.emojiPickerOverlay}>
-          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setShowEmojiPicker(false)} />
-          <View style={styles.emojiPickerSheet}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setShowEmojiPicker(false)} activeOpacity={1} />
+          <Animated.View entering={FadeInUp.springify()} style={[styles.emojiPickerSheet, { backgroundColor: isDark ? '#1e1e2e' : '#fff' }]}>
             <View style={styles.emojiPickerHeader}>
-              <Text style={styles.emojiPickerTitle}>Pick an Emoji</Text>
-              <TouchableOpacity onPress={() => setShowEmojiPicker(false)}><Ionicons name="close" size={24} color="#fff" /></TouchableOpacity>
+              <Text style={[styles.emojiPickerTitle, { color: isDark ? '#fff' : '#1a1a2e' }]}>Pick an Emoji</Text>
+              <TouchableOpacity onPress={() => setShowEmojiPicker(false)} style={styles.modalClose}>
+                <Ionicons name="close" size={24} color={isDark ? '#fff' : '#1a1a2e'} />
+              </TouchableOpacity>
             </View>
             <View style={styles.emojiGrid}>
               {EMOJI_OPTIONS.map((emoji) => (
-                <TouchableOpacity key={emoji} style={styles.emojiButton} onPress={() => { setFormData(prev => ({ ...prev, avatar: emoji })); setShowEmojiPicker(false); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); }}>
+                <TouchableOpacity key={emoji} style={[styles.emojiButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#f1f5f9' }]} onPress={() => { setFormData(prev => ({ ...prev, avatar: emoji })); setShowEmojiPicker(false); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); }}>
                   <Text style={styles.emojiButtonText}>{emoji}</Text>
                 </TouchableOpacity>
               ))}
             </View>
-          </View>
+          </Animated.View>
         </View>
-      )}
-    </View>
-  );
-}
-
+      </Modal>
 
 /* ═══════════════════════════════════════════════════════════════════════════
    STYLES — Completely Redesigned to match GrowthDashboard quality
@@ -1225,7 +1256,7 @@ const styles = StyleSheet.create({
   tabLabel: { fontSize: 12, fontWeight: '600' },
 
   // ── Glass Card ──
-  glassCard: { borderRadius: DESIGN.radius.lg, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', ...DESIGN.shadow.md, marginHorizontal: DESIGN.spacing.lg, marginBottom: DESIGN.spacing.lg },
+  glassCard: { borderRadius: DESIGN.radius.lg, overflow: 'hidden', borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', marginHorizontal: 0, marginBottom: DESIGN.spacing.lg },
   glassBorder: { position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.06)' },
   glassContent: { flex: 1 },
 
