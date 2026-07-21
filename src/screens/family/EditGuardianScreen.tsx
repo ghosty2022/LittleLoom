@@ -501,6 +501,263 @@ const ActionModal = React.memo(({ visible, onClose, title, children, isDark: mod
 
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   DYNAMIC STYLES
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const getDynamicStyles = (isDark: boolean) => StyleSheet.create({
+  container: { flex: 1 },
+  centered: { justifyContent: 'center', alignItems: 'center' },
+  scrollContent: { paddingBottom: 24 },
+
+
+  stickyTitle: { fontSize: 17, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
+  stickySubtitle: { fontSize: 12, fontWeight: '500', color: '#94a3b8', marginTop: 2 },
+
+  // ── Top Header ──
+  topHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 16, marginBottom: 16 },
+  backBtn: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.08)' },
+  editToggleBtn: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.08)' },
+
+  // ── Profile Hero ──
+  profileHero: { flexDirection: 'row', alignItems: 'center', gap: 16, marginHorizontal: 16, marginBottom: 20 },
+  profileInfo: { flex: 1, gap: 4 },
+  profileName: { fontSize: 24, fontWeight: '800', color: isDark ? '#fff' : '#1e293b', letterSpacing: -0.5 },
+  profileMeta: { fontSize: 14, fontWeight: '500', color: isDark ? '#94a3b8' : '#64748b' },
+  profileTags: { flexDirection: 'row', marginTop: 8, gap: 8 },
+  profileTag: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, gap: 4 },
+  profileTagText: { fontSize: 12, fontWeight: '700' },
+  editingDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#f59e0b' },
+
+  // ── Quick Actions Dock ──
+  dockContainer: { marginHorizontal: 16, marginBottom: 20 },
+  dock: { flexDirection: 'row', gap: 10, justifyContent: 'center' },
+  dockItem: { alignItems: 'center', gap: 6, flex: 1 },
+  dockGradient: { width: 52, height: 52, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
+  dockLabel: { fontSize: 11, fontWeight: '600', color: '#94a3b8' },
+
+  // ── Tab Bar ──
+  tabBar: { flexDirection: 'row', marginHorizontal: 16, marginBottom: 16, padding: 4, borderRadius: 16, gap: 2, backgroundColor: 'rgba(255,255,255,0.06)' },
+  tabItem: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 12 },
+  tabLabel: { fontSize: 12, fontWeight: '600' },
+
+  // ── Glass Card ──
+  glassCard: { borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', marginHorizontal: 16, marginBottom: 16 },
+  glassBorder: { position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.06)' },
+  glassContent: { flex: 1 },
+
+  // ── Section Header ──
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginHorizontal: 16, marginBottom: 12, marginTop: 8 },
+  sectionTitle: { fontSize: 18, fontWeight: '800', color: isDark ? '#fff' : '#1e293b', letterSpacing: -0.3 },
+  sectionSubtitle: { fontSize: 12, fontWeight: '500', color: isDark ? '#94a3b8' : '#64748b', marginTop: 2 },
+  sectionAction: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  sectionActionText: { fontSize: 13, fontWeight: '700', color: '#6366f1' },
+
+  // ── KPI Pills ──
+  kpiPillRow: { flexDirection: 'row', gap: 10, marginHorizontal: 16, marginBottom: 16 },
+  kpiPill: { flex: 1, borderRadius: 20, overflow: 'hidden', padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  kpiPillIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  kpiPillEmoji: { fontSize: 20 },
+  kpiPillBody: { flex: 1 },
+  kpiPillValue: { fontSize: 22, fontWeight: '800', letterSpacing: -0.5 },
+  kpiPillLabel: { fontSize: 11, fontWeight: '600', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 },
+
+  // ── AI Insights ──
+  insightsList: { marginHorizontal: 0, gap: 8, marginBottom: 16 },
+  insightRow: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: 'rgba(45,45,60,0.6)', borderLeftWidth: 3 },
+  insightIconBg: { width: 42, height: 42, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  insightEmoji: { fontSize: 20 },
+  insightContent: { flex: 1, gap: 3 },
+  insightHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  insightTitle: { fontSize: 14, fontWeight: '700', color: '#fff' },
+  insightDesc: { fontSize: 12, lineHeight: 17, fontWeight: '500', color: '#94a3b8' },
+  insightActionBadge: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, marginTop: 4 },
+  insightActionText: { fontSize: 11, fontWeight: '700' },
+  insightPriority: { width: 4, height: 36, borderRadius: 2 },
+
+  // ── Sparkline ──
+  sparklineHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', padding: 16, paddingBottom: 12 },
+  sparklineTitle: { fontSize: 16, fontWeight: '800', color: '#fff' },
+  sparklineSubtitle: { fontSize: 12, fontWeight: '500', color: '#94a3b8', marginTop: 2 },
+  sparklineTotal: { alignItems: 'flex-end' },
+  sparklineTotalValue: { fontSize: 24, fontWeight: '800', color: '#6366f1' },
+  sparklineTotalLabel: { fontSize: 11, fontWeight: '600', color: '#94a3b8' },
+  sparklineChart: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-end', paddingHorizontal: 16, paddingBottom: 16, height: 100 },
+  sparklineBar: { width: 8, borderRadius: 4 },
+  sparklineDay: { fontSize: 10, fontWeight: '600', color: '#64748b' },
+
+  // ── Health Score ──
+  healthContainer: { flexDirection: 'row', padding: 16, gap: 16 },
+  healthLeft: { flex: 1, gap: 4 },
+  healthTitle: { fontSize: 16, fontWeight: '800', color: '#fff' },
+  healthSubtitle: { fontSize: 12, fontWeight: '500', color: '#94a3b8', marginBottom: 8 },
+  healthMetrics: { flexDirection: 'row', gap: 16, marginTop: 4 },
+  healthMetric: { alignItems: 'center', gap: 2 },
+  healthMetricValue: { fontSize: 18, fontWeight: '800', color: '#fff' },
+  healthMetricLabel: { fontSize: 10, fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5 },
+  healthRingContainer: { justifyContent: 'center', alignItems: 'center' },
+  healthRing: { width: 80, height: 80, borderRadius: 40, justifyContent: 'center', alignItems: 'center' },
+  healthRingBg: { position: 'absolute', width: 80, height: 80, borderRadius: 40, borderWidth: 4, borderColor: 'rgba(255,255,255,0.06)' },
+  healthRingFill: { position: 'absolute', width: 80, height: 80, borderRadius: 40, borderWidth: 4, borderTopColor: 'transparent', borderRightColor: 'transparent', borderLeftColor: 'transparent' },
+  healthRingEmoji: { fontSize: 16 },
+  healthRingScore: { fontSize: 20, fontWeight: '800' },
+  healthRingLabel: { fontSize: 9, fontWeight: '600', color: '#94a3b8' },
+
+  // ── Smart Recommendations ──
+  recCard: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: 'rgba(45,45,60,0.6)', borderLeftWidth: 3, marginHorizontal: 16, marginBottom: 8 },
+  recIconBg: { width: 42, height: 42, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  recEmoji: { fontSize: 20 },
+  recContent: { flex: 1, marginHorizontal: 12, gap: 4 },
+  recTitle: { fontSize: 14, fontWeight: '700', color: '#fff' },
+  recReason: { fontSize: 12, fontWeight: '500', color: '#94a3b8' },
+  recConfidence: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
+  recBarBg: { flex: 1, height: 4, borderRadius: 2, overflow: 'hidden' },
+  recBarFill: { height: '100%', borderRadius: 2 },
+  recConfidenceText: { fontSize: 10, fontWeight: '700' },
+
+  // ── Timeline ──
+  timelineContainer: { marginHorizontal: 16, gap: 0 },
+  timelineItem: { flexDirection: 'row', gap: 12 },
+  timelineLeft: { width: 24, alignItems: 'center', paddingTop: 16 },
+  timelineLine: { position: 'absolute', top: 0, bottom: 0, width: 2, left: 11, backgroundColor: 'rgba(255,255,255,0.06)' },
+  timelineDot: { width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: '#fff', zIndex: 1 },
+  timelineCard: { flex: 1, padding: 14, borderRadius: 16, backgroundColor: 'rgba(45,45,60,0.6)', marginBottom: 12 },
+  timelineHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 },
+  timelineEmoji: { fontSize: 20 },
+  timelineMeta: { flex: 1 },
+  timelineTitle: { fontSize: 14, fontWeight: '700', color: '#fff' },
+  timelineDate: { fontSize: 11, fontWeight: '500', color: '#94a3b8', marginTop: 1 },
+  timelineDesc: { fontSize: 12, fontWeight: '500', color: '#94a3b8', lineHeight: 17 },
+
+  // ── Contact Info ──
+  contactList: { padding: 8 },
+  contactItem: { flexDirection: 'row', alignItems: 'center', padding: 10, gap: 12 },
+  contactIcon: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  contactBody: { flex: 1, gap: 2 },
+  contactLabel: { fontSize: 12, fontWeight: '500', color: isDark ? '#94a3b8' : '#64748b' },
+  contactValue: { fontSize: 15, fontWeight: '600', color: isDark ? '#fff' : '#1e293b' },
+
+  // ── Activity Tab ──
+  activitiesList: { gap: 8, marginHorizontal: 0 },
+  activityCard: { padding: 0 },
+  activityRow: { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12 },
+  activityIcon: { width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  activityEmoji: { fontSize: 20 },
+  activityContent: { flex: 1, gap: 2 },
+  activityTitle: { fontSize: 15, fontWeight: '700', color: isDark ? '#fff' : '#1e293b' },
+  activityDetails: { fontSize: 13, color: isDark ? '#94a3b8' : '#64748b', marginTop: 2, lineHeight: 18 },
+  activityTime: { fontSize: 12, color: isDark ? '#64748b' : '#94a3b8', marginTop: 4, fontWeight: '500' },
+  activityTypeBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, marginLeft: 8 },
+  activityTypeText: { fontSize: 11, fontWeight: '700' },
+
+  // ── Empty States ──
+  emptyCard: { padding: 40, alignItems: 'center', justifyContent: 'center' },
+  emptyStateIcon: { width: 64, height: 64, borderRadius: 20, backgroundColor: 'rgba(99,102,241,0.1)', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  emptyStateTitle: { fontSize: 16, fontWeight: '700', color: '#fff', textAlign: 'center', marginBottom: 8 },
+  emptyText: { fontSize: 14, color: '#64748b', textAlign: 'center', lineHeight: 20 },
+
+  // ── Permissions ──
+  permissionGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, padding: 16 },
+  permissionChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, borderWidth: 1 },
+  permissionChipText: { fontSize: 13, fontWeight: '600' },
+  permissionNote: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, padding: 12, borderRadius: 12, backgroundColor: 'rgba(99,102,241,0.08)', marginHorizontal: 16, marginBottom: 16 },
+  permissionNoteText: { fontSize: 13, color: '#94a3b8', flex: 1, lineHeight: 18 },
+
+  // ── Stats Grid ──
+  statsGrid: { flexDirection: 'row', gap: 10, marginHorizontal: 16, marginBottom: 16 },
+  statCard: { flex: 1, borderRadius: 20, padding: 16, alignItems: 'center', justifyContent: 'center' },
+  statCardValue: { fontSize: 24, fontWeight: '800', color: '#fff' },
+  statCardLabel: { fontSize: 11, fontWeight: '600', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 4 },
+
+  // ── Activity Breakdown ──
+  activityBreakdown: { marginTop: 16, marginHorizontal: 16 },
+  breakdownTitle: { fontSize: 16, fontWeight: '800', color: '#fff', marginBottom: 12 },
+  breakdownRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  breakdownLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  breakdownIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  breakdownLabel: { fontSize: 14, fontWeight: '600', color: '#fff' },
+  breakdownRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  breakdownBar: { width: 80, height: 6, borderRadius: 3, overflow: 'hidden' },
+  breakdownFill: { height: '100%', borderRadius: 3 },
+  breakdownCount: { fontSize: 14, fontWeight: '700', minWidth: 20, textAlign: 'right' },
+
+  // ── Manage Permissions Button ──
+  managePermissionsBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderRadius: 16, marginHorizontal: 16, marginTop: 8 },
+  managePermissionsText: { fontSize: 15, fontWeight: '700', flex: 1, marginLeft: 12 },
+
+  // ── Settings / Inputs ──
+  inputGroup: { marginBottom: 16, paddingHorizontal: 16 },
+  inputLabel: { fontSize: 12, fontWeight: '700', color: '#94a3b8', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+  inputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 14, paddingHorizontal: 16, height: 52, borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)' },
+  inputDisabled: { opacity: 0.5 },
+  inputIcon: { marginRight: 12 },
+  inputField: { flex: 1, fontSize: 16, color: isDark ? '#fff' : '#1e293b', fontWeight: '600' },
+  inputText: { flex: 1, fontSize: 16, color: isDark ? '#fff' : '#1e293b', fontWeight: '600' },
+  flexInput: { flex: 1 },
+  ownedBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8, marginLeft: 8 },
+  ownedBadgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+
+  // ── Preferences ──
+  preferenceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.06)' },
+  preferenceInfo: { flexDirection: 'row', alignItems: 'center', gap: 14, flex: 1 },
+  preferenceText: { gap: 2 },
+  preferenceTitle: { fontSize: 16, fontWeight: '700', color: '#fff' },
+  preferenceDesc: { fontSize: 13, color: '#94a3b8', fontWeight: '500' },
+
+  // ── Save Button ──
+  saveButton: { marginHorizontal: 16, marginTop: 8, borderRadius: 14, overflow: 'hidden' },
+  saveButtonGradient: { paddingVertical: 16, alignItems: 'center' },
+  saveButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+
+  // ── Danger Zone ──
+  dangerContent: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12 },
+  dangerIconWrap: {},
+  dangerIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  dangerText: { flex: 1, gap: 2 },
+  dangerTitle: { fontSize: 15, fontWeight: '700', color: '#ef4444' },
+  dangerDesc: { fontSize: 12, color: '#94a3b8', lineHeight: 17 },
+  dangerBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, backgroundColor: '#ef444420' },
+  dangerBtnText: { color: '#ef4444', fontSize: 13, fontWeight: '700' },
+
+  // ── Modals ──
+  modalOverlay: { flex: 1, justifyContent: 'flex-end', alignItems: 'center' },
+  modalContent: { width: '100%', maxWidth: 400, borderRadius: 24, padding: 24, overflow: 'hidden' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  modalTitle: { fontSize: 20, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
+  modalClose: { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.08)', justifyContent: 'center', alignItems: 'center' },
+
+  // ── Image Picker ──
+  imagePickerOptions: { padding: 8 },
+  imagePickerOption: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 14, marginBottom: 8 },
+  imagePickerIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
+  imagePickerLabel: { fontSize: 16, fontWeight: '600', color: '#fff', flex: 1 },
+
+  // ── Role Modal ──
+  roleOptions: { padding: 8 },
+  roleOption: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, marginBottom: 8, borderWidth: 1, borderColor: 'transparent' },
+  roleOptionIcon: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
+  roleOptionInfo: { flex: 1 },
+  roleOptionTitle: { fontSize: 16, fontWeight: '700', color: '#fff', marginBottom: 2 },
+  roleOptionDesc: { fontSize: 13, color: '#94a3b8', fontWeight: '500' },
+
+  // ── Emoji Picker ──
+  emojiPickerOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
+  emojiPickerSheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 40 },
+  emojiPickerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  emojiPickerTitle: { fontSize: 18, fontWeight: '800' },
+  emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'center' },
+  emojiButton: { width: 52, height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  emojiButtonText: { fontSize: 28 },
+
+  // ── Retry ──
+  retryButton: { marginTop: 20, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 14 },
+  retryButtonText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+
+  // ── Drag Handle ──
+  modalDragHandle: { alignItems: 'center', paddingVertical: 10 },
+  dragIndicator: { width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)' },
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
    MAIN SCREEN
    ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -1209,253 +1466,6 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
         </View>
       </Modal>
 
-// ── Dynamic styles helper ──
-const getDynamicStyles = (isDark: boolean) => StyleSheet.create({
-  container: { flex: 1 },
-  centered: { justifyContent: 'center', alignItems: 'center' },
-  scrollContent: { paddingBottom: 24 },
-
-  // ── Sticky Header ──
-  stickyHeader: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100, alignItems: 'center', paddingHorizontal: 20, paddingBottom: 10 },
-  stickyTitle: { fontSize: 17, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
-  stickySubtitle: { fontSize: 12, fontWeight: '500', color: '#94a3b8', marginTop: 2 },
-
-  // ── Top Header ──
-  topHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 16, marginBottom: 16 },
-  backBtn: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.08)' },
-  editToggleBtn: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.08)' },
-
-  // ── Profile Hero ──
-  profileHero: { flexDirection: 'row', alignItems: 'center', gap: 16, marginHorizontal: 16, marginBottom: 20 },
-  profileInfo: { flex: 1, gap: 4 },
-  profileName: { fontSize: 24, fontWeight: '800', color: isDark ? '#fff' : '#1e293b', letterSpacing: -0.5 },
-  profileMeta: { fontSize: 14, fontWeight: '500', color: isDark ? '#94a3b8' : '#64748b' },
-  profileTags: { flexDirection: 'row', marginTop: 8, gap: 8 },
-  profileTag: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, gap: 4 },
-  profileTagText: { fontSize: 12, fontWeight: '700' },
-  editingDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#f59e0b' },
-
-  // ── Quick Actions Dock ──
-  dockContainer: { marginHorizontal: 16, marginBottom: 20 },
-  dock: { flexDirection: 'row', gap: 10, justifyContent: 'center' },
-  dockItem: { alignItems: 'center', gap: 6, flex: 1 },
-  dockGradient: { width: 52, height: 52, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
-  dockLabel: { fontSize: 11, fontWeight: '600', color: '#94a3b8' },
-
-  // ── Tab Bar ──
-  tabBar: { flexDirection: 'row', marginHorizontal: 16, marginBottom: 16, padding: 4, borderRadius: 16, gap: 2, backgroundColor: 'rgba(255,255,255,0.06)' },
-  tabItem: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 12 },
-  tabLabel: { fontSize: 12, fontWeight: '600' },
-
-  // ── Glass Card ──
-  glassCard: { borderRadius: DESIGN.radius.lg, overflow: 'hidden', borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', marginHorizontal: 16, marginBottom: DESIGN.spacing.lg },
-  glassBorder: { position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.06)' },
-  glassContent: { flex: 1 },
-
-  // ── Section Header ──
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginHorizontal: 16, marginBottom: 12, marginTop: 8 },
-  sectionTitle: { fontSize: 18, fontWeight: '800', color: isDark ? '#fff' : '#1e293b', letterSpacing: -0.3 },
-  sectionSubtitle: { fontSize: 12, fontWeight: '500', color: isDark ? '#94a3b8' : '#64748b', marginTop: 2 },
-  sectionAction: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  sectionActionText: { fontSize: 13, fontWeight: '700', color: '#6366f1' },
-
-  // ── KPI Pills ──
-  kpiPillRow: { flexDirection: 'row', gap: 10, marginHorizontal: 16, marginBottom: 16 },
-  kpiPill: { flex: 1, borderRadius: 20, overflow: 'hidden', padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  kpiPillIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  kpiPillEmoji: { fontSize: 20 },
-  kpiPillBody: { flex: 1 },
-  kpiPillValue: { fontSize: 22, fontWeight: '800', letterSpacing: -0.5 },
-  kpiPillLabel: { fontSize: 11, fontWeight: '600', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 },
-
-  // ── AI Insights ──
-  insightsList: { marginHorizontal: 0, gap: 8, marginBottom: 16 },
-  insightRow: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: 'rgba(45,45,60,0.6)', borderLeftWidth: 3 },
-  insightIconBg: { width: 42, height: 42, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  insightEmoji: { fontSize: 20 },
-  insightContent: { flex: 1, gap: 3 },
-  insightHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  insightTitle: { fontSize: 14, fontWeight: '700', color: '#fff' },
-  insightDesc: { fontSize: 12, lineHeight: 17, fontWeight: '500', color: '#94a3b8' },
-  insightActionBadge: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, marginTop: 4 },
-  insightActionText: { fontSize: 11, fontWeight: '700' },
-  insightPriority: { width: 4, height: 36, borderRadius: 2 },
-
-  // ── Sparkline ──
-  sparklineHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', padding: 16, paddingBottom: 12 },
-  sparklineTitle: { fontSize: 16, fontWeight: '800', color: '#fff' },
-  sparklineSubtitle: { fontSize: 12, fontWeight: '500', color: '#94a3b8', marginTop: 2 },
-  sparklineTotal: { alignItems: 'flex-end' },
-  sparklineTotalValue: { fontSize: 24, fontWeight: '800', color: '#6366f1' },
-  sparklineTotalLabel: { fontSize: 11, fontWeight: '600', color: '#94a3b8' },
-  sparklineChart: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-end', paddingHorizontal: 16, paddingBottom: 16, height: 100 },
-  sparklineBar: { width: 8, borderRadius: 4 },
-  sparklineDay: { fontSize: 10, fontWeight: '600', color: '#64748b' },
-
-  // ── Health Score ──
-  healthContainer: { flexDirection: 'row', padding: 16, gap: 16 },
-  healthLeft: { flex: 1, gap: 4 },
-  healthTitle: { fontSize: 16, fontWeight: '800', color: '#fff' },
-  healthSubtitle: { fontSize: 12, fontWeight: '500', color: '#94a3b8', marginBottom: 8 },
-  healthMetrics: { flexDirection: 'row', gap: 16, marginTop: 4 },
-  healthMetric: { alignItems: 'center', gap: 2 },
-  healthMetricValue: { fontSize: 18, fontWeight: '800', color: '#fff' },
-  healthMetricLabel: { fontSize: 10, fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5 },
-  healthRingContainer: { justifyContent: 'center', alignItems: 'center' },
-  healthRing: { width: 80, height: 80, borderRadius: 40, justifyContent: 'center', alignItems: 'center' },
-  healthRingBg: { position: 'absolute', width: 80, height: 80, borderRadius: 40, borderWidth: 4, borderColor: 'rgba(255,255,255,0.06)' },
-  healthRingFill: { position: 'absolute', width: 80, height: 80, borderRadius: 40, borderWidth: 4, borderTopColor: 'transparent', borderRightColor: 'transparent', borderLeftColor: 'transparent' },
-  healthRingEmoji: { fontSize: 16 },
-  healthRingScore: { fontSize: 20, fontWeight: '800' },
-  healthRingLabel: { fontSize: 9, fontWeight: '600', color: '#94a3b8' },
-
-  // ── Smart Recommendations ──
-  recCard: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: 'rgba(45,45,60,0.6)', borderLeftWidth: 3, marginHorizontal: 16, marginBottom: 8 },
-  recIconBg: { width: 42, height: 42, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  recEmoji: { fontSize: 20 },
-  recContent: { flex: 1, marginHorizontal: 12, gap: 4 },
-  recTitle: { fontSize: 14, fontWeight: '700', color: '#fff' },
-  recReason: { fontSize: 12, fontWeight: '500', color: '#94a3b8' },
-  recConfidence: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
-  recBarBg: { flex: 1, height: 4, borderRadius: 2, overflow: 'hidden' },
-  recBarFill: { height: '100%', borderRadius: 2 },
-  recConfidenceText: { fontSize: 10, fontWeight: '700' },
-
-  // ── Timeline ──
-  timelineContainer: { marginHorizontal: 16, gap: 0 },
-  timelineItem: { flexDirection: 'row', gap: 12 },
-  timelineLeft: { width: 24, alignItems: 'center', paddingTop: 16 },
-  timelineLine: { position: 'absolute', top: 0, bottom: 0, width: 2, left: 11, backgroundColor: 'rgba(255,255,255,0.06)' },
-  timelineDot: { width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: '#fff', zIndex: 1 },
-  timelineCard: { flex: 1, padding: 14, borderRadius: 16, backgroundColor: 'rgba(45,45,60,0.6)', marginBottom: 12 },
-  timelineHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 },
-  timelineEmoji: { fontSize: 20 },
-  timelineMeta: { flex: 1 },
-  timelineTitle: { fontSize: 14, fontWeight: '700', color: '#fff' },
-  timelineDate: { fontSize: 11, fontWeight: '500', color: '#94a3b8', marginTop: 1 },
-  timelineDesc: { fontSize: 12, fontWeight: '500', color: '#94a3b8', lineHeight: 17 },
-
-  // ── Contact Info ──
-  contactList: { padding: 8 },
-  contactItem: { flexDirection: 'row', alignItems: 'center', padding: 10, gap: 12 },
-  contactIcon: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  contactBody: { flex: 1, gap: 2 },
-  contactLabel: { fontSize: 12, fontWeight: '500', color: isDark ? '#94a3b8' : '#64748b' },
-  contactValue: { fontSize: 15, fontWeight: '600', color: isDark ? '#fff' : '#1e293b' },
-
-  // ── Activity Tab ──
-  activitiesList: { gap: 8, marginHorizontal: 0 },
-  activityCard: { padding: 0 },
-  activityRow: { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12 },
-  activityIcon: { width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  activityEmoji: { fontSize: 20 },
-  activityContent: { flex: 1, gap: 2 },
-  activityTitle: { fontSize: 15, fontWeight: '700', color: isDark ? '#fff' : '#1e293b' },
-  activityDetails: { fontSize: 13, color: isDark ? '#94a3b8' : '#64748b', marginTop: 2, lineHeight: 18 },
-  activityTime: { fontSize: 12, color: isDark ? '#64748b' : '#94a3b8', marginTop: 4, fontWeight: '500' },
-  activityTypeBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, marginLeft: 8 },
-  activityTypeText: { fontSize: 11, fontWeight: '700' },
-
-  // ── Empty States ──
-  emptyCard: { padding: 40, alignItems: 'center', justifyContent: 'center' },
-  emptyStateIcon: { width: 64, height: 64, borderRadius: 20, backgroundColor: 'rgba(99,102,241,0.1)', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
-  emptyStateTitle: { fontSize: 16, fontWeight: '700', color: '#fff', textAlign: 'center', marginBottom: 8 },
-  emptyText: { fontSize: 14, color: '#64748b', textAlign: 'center', lineHeight: 20 },
-
-  // ── Permissions ──
-  permissionGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, padding: 16 },
-  permissionChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, borderWidth: 1 },
-  permissionChipText: { fontSize: 13, fontWeight: '600' },
-  permissionNote: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, padding: 12, borderRadius: 12, backgroundColor: 'rgba(99,102,241,0.08)', marginHorizontal: 16, marginBottom: 16 },
-  permissionNoteText: { fontSize: 13, color: '#94a3b8', flex: 1, lineHeight: 18 },
-
-  // ── Stats Grid ──
-  statsGrid: { flexDirection: 'row', gap: 10, marginHorizontal: 16, marginBottom: 16 },
-  statCard: { flex: 1, borderRadius: 20, padding: 16, alignItems: 'center', justifyContent: 'center' },
-  statCardValue: { fontSize: 24, fontWeight: '800', color: '#fff' },
-  statCardLabel: { fontSize: 11, fontWeight: '600', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 4 },
-
-  // ── Activity Breakdown ──
-  activityBreakdown: { marginTop: 16, marginHorizontal: 16 },
-  breakdownTitle: { fontSize: 16, fontWeight: '800', color: '#fff', marginBottom: 12 },
-  breakdownRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
-  breakdownLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  breakdownIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  breakdownLabel: { fontSize: 14, fontWeight: '600', color: '#fff' },
-  breakdownRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  breakdownBar: { width: 80, height: 6, borderRadius: 3, overflow: 'hidden' },
-  breakdownFill: { height: '100%', borderRadius: 3 },
-  breakdownCount: { fontSize: 14, fontWeight: '700', minWidth: 20, textAlign: 'right' },
-
-  // ── Manage Permissions Button ──
-  managePermissionsBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderRadius: 16, marginHorizontal: 16, marginTop: 8 },
-  managePermissionsText: { fontSize: 15, fontWeight: '700', flex: 1, marginLeft: 12 },
-
-  // ── Settings / Inputs ──
-  inputGroup: { marginBottom: 16, paddingHorizontal: 16 },
-  inputLabel: { fontSize: 12, fontWeight: '700', color: '#94a3b8', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
-  inputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 14, paddingHorizontal: 16, height: 52, borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)' },
-  inputDisabled: { opacity: 0.5 },
-  inputIcon: { marginRight: 12 },
-  inputField: { flex: 1, fontSize: 16, color: isDark ? '#fff' : '#1e293b', fontWeight: '600' },
-  inputText: { flex: 1, fontSize: 16, color: isDark ? '#fff' : '#1e293b', fontWeight: '600' },
-  flexInput: { flex: 1 },
-  ownedBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8, marginLeft: 8 },
-  ownedBadgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
-
-  // ── Preferences ──
-  preferenceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.06)' },
-  preferenceInfo: { flexDirection: 'row', alignItems: 'center', gap: 14, flex: 1 },
-  preferenceText: { gap: 2 },
-  preferenceTitle: { fontSize: 16, fontWeight: '700', color: '#fff' },
-  preferenceDesc: { fontSize: 13, color: '#94a3b8', fontWeight: '500' },
-
-  // ── Save Button ──
-  saveButton: { marginHorizontal: 16, marginTop: 8, borderRadius: 14, overflow: 'hidden' },
-  saveButtonGradient: { paddingVertical: 16, alignItems: 'center' },
-  saveButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-
-  // ── Danger Zone ──
-  dangerContent: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12 },
-  dangerIconWrap: {},
-  dangerIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  dangerText: { flex: 1, gap: 2 },
-  dangerTitle: { fontSize: 15, fontWeight: '700', color: '#ef4444' },
-  dangerDesc: { fontSize: 12, color: '#94a3b8', lineHeight: 17 },
-  dangerBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, backgroundColor: '#ef444420' },
-  dangerBtnText: { color: '#ef4444', fontSize: 13, fontWeight: '700' },
-
-  // ── Modals ──
-  modalOverlay: { flex: 1, justifyContent: 'flex-end', alignItems: 'center' },
-  modalContent: { width: '100%', maxWidth: 400, borderRadius: DESIGN.radius.xl, padding: DESIGN.spacing.xxl, overflow: 'hidden' },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  modalTitle: { fontSize: 20, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
-  modalClose: { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.08)', justifyContent: 'center', alignItems: 'center' },
-
-  // ── Image Picker ──
-  imagePickerOptions: { padding: 8 },
-  imagePickerOption: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 14, marginBottom: 8 },
-  imagePickerIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
-  imagePickerLabel: { fontSize: 16, fontWeight: '600', color: '#fff', flex: 1 },
-
-  // ── Role Modal ──
-  roleOptions: { padding: 8 },
-  roleOption: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, marginBottom: 8, borderWidth: 1, borderColor: 'transparent' },
-  roleOptionIcon: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
-  roleOptionInfo: { flex: 1 },
-  roleOptionTitle: { fontSize: 16, fontWeight: '700', color: '#fff', marginBottom: 2 },
-  roleOptionDesc: { fontSize: 13, color: '#94a3b8', fontWeight: '500' },
-
-  // ── Emoji Picker ──
-  emojiPickerOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
-  emojiPickerSheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 40 },
-  emojiPickerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  emojiPickerTitle: { fontSize: 18, fontWeight: '800' },
-  emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'center' },
-  emojiButton: { width: 52, height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  emojiButtonText: { fontSize: 28 },
-
-  // ── Retry ──
-  retryButton: { marginTop: 20, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 14 },
-  retryButtonText: { fontSize: 15, fontWeight: '700', color: '#fff' },
-});
+    </View>
+  );
+}
