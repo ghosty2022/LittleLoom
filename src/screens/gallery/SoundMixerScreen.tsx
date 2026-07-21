@@ -329,7 +329,7 @@ const NowPlayingHero = React.memo(({
             <View style={styles.nowPlayingWaveform}>
               {[0.3, 0.6, 0.9, 0.5, 0.8, 0.4, 0.7, 0.5].map((h, i) => (
                 <View 
-                  key={`wave-${i}`} 
+                  key={`np-wave-${i}`} 
                   style={[
                     styles.waveformBar, 
                     { 
@@ -713,14 +713,19 @@ const QuickSoundPalette = React.memo(({
         </TouchableOpacity>
       </ScrollView>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.paletteScroll}>
-        {filteredTracks.map((track) => {
+      <ScrollView 
+        horizontal 
+        showsHorizontalScrollIndicator={false} 
+        contentContainerStyle={styles.paletteScroll}
+        key={`palette-scroll-${activeCategory}`}
+      >
+        {filteredTracks.map((track, trackIndex) => {
           const isCurrent = currentTrack?.id === track.id;
           const isActive = isCurrent && isPlaying;
 
           return (
             <TouchableOpacity
-              key={track.id}
+              key={`qp-${activeCategory}-${trackIndex}-${track.id}`}
               onPress={() => onTrackPress(track)}
               style={[
                 styles.paletteItem,
@@ -735,9 +740,9 @@ const QuickSoundPalette = React.memo(({
 
               {isActive && (
                 <View style={styles.palettePlayingIndicator}>
-                  <View key={`${track.id}-wave-0`} style={[styles.paletteWaveBar, { height: 8, backgroundColor: track.color }]} />
-                  <View key={`${track.id}-wave-1`} style={[styles.paletteWaveBar, { height: 14, backgroundColor: track.color }]} />
-                  <View key={`${track.id}-wave-2`} style={[styles.paletteWaveBar, { height: 6, backgroundColor: track.color }]} />
+                  <View style={[styles.paletteWaveBar, { height: 8, backgroundColor: track.color }]} />
+                  <View style={[styles.paletteWaveBar, { height: 14, backgroundColor: track.color }]} />
+                  <View style={[styles.paletteWaveBar, { height: 6, backgroundColor: track.color }]} />
                 </View>
               )}
 
@@ -829,9 +834,9 @@ const TrackRow = React.memo(({
         {!isCurrentTrack && <Text style={styles.trackRowNumber}>{index + 1}</Text>}
         {isCurrentTrack && isPlaying && (
           <View style={styles.trackRowWaveform}>
-            <View key={`track-${track.id}-bar-0`} style={[styles.trackRowWaveBar, { height: 6 }]} />
-            <View key={`track-${track.id}-bar-1`} style={[styles.trackRowWaveBar, { height: 12 }]} />
-            <View key={`track-${track.id}-bar-2`} style={[styles.trackRowWaveBar, { height: 8 }]} />
+            <View style={[styles.trackRowWaveBar, { height: 6 }]} />
+            <View style={[styles.trackRowWaveBar, { height: 12 }]} />
+            <View style={[styles.trackRowWaveBar, { height: 8 }]} />
           </View>
         )}
         <Image source={{ uri: track.image }} style={styles.trackRowImage} />
@@ -1219,9 +1224,16 @@ export default function SoundMixerScreen({ navigation }: SoundMixerScreenProps) 
 
   // ── Filtered tracks ──
   const filteredTracks = useMemo(() => {
-    let tracks = [...ENHANCED_TRACKS, ...importedTracks];
+    let tracks = [...ENHANCED_TRACKS];
     
-    // Deduplicate by track id to prevent duplicate key warnings
+    // Only add imported tracks that don't conflict with enhanced tracks
+    importedTracks.forEach(t => {
+      if (!tracks.find(et => et.id === t.id)) {
+        tracks.push(t);
+      }
+    });
+    
+    // Extra safety deduplication
     const seen = new Set<string>();
     tracks = tracks.filter(t => {
       if (seen.has(t.id)) return false;
