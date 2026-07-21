@@ -620,13 +620,61 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
       else sweetAlert.error('Error', 'Failed to remove family member');
     }, () => {}, 'Remove', 'Cancel');
   };
+const handleCameraCapture = async () => {
+    setShowImagePicker(false);
+    setIsSaving(true);
+    try {
+      triggerHaptic('light');
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        sweetAlert.error('Permission Required', 'Please allow camera access');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+      if (result.canceled || !result.assets?.[0]?.uri) return;
+
+      const rawUri = result.assets[0].uri;
+      const targetMemberId = member?.id || 'member';
+      const processedUri = await persistPickedImage(rawUri, targetMemberId);
+      if (!processedUri) {
+        sweetAlert.error('Error', 'Failed to save photo');
+        return;
+      }
+
+      setFormData(prev => ({ ...prev, avatar: processedUri }));
+      
+      if (!isEditing && member) {
+        const success = await updateGuardianProfile(member.id, { avatar: processedUri });
+        if (success) {
+          setMember(prev => prev ? { ...prev, avatar: processedUri } : null);
+          setOriginalData(prev => ({ ...prev, avatar: processedUri }));
+          sweetAlert.success('Photo Updated', 'Camera photo saved');
+        }
+      }
+      triggerHaptic('success');
+    } catch (error) {
+      console.error('[EditGuardian] Camera error:', error);
+      sweetAlert.error('Error', 'Failed to capture photo');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const handleImagePick = async () => {
     setShowImagePicker(false);
+    setIsSaving(true);
     try {
       triggerHaptic('light');
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') { sweetAlert.error('Permission Required', 'Please allow access to your photo library'); return; }
+      if (status !== 'granted') { 
+        sweetAlert.error('Permission Required', 'Please allow access to your photo library'); 
+        return; 
+      }
 
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -636,21 +684,74 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
       });
       if (result.canceled || !result.assets?.[0]?.uri) return;
 
-      setIsSaving(true);
-      // Copy from the temporary picker cache into permanent app storage
-      const dirInfo = await FileSystem.getInfoAsync(GUARDIAN_IMAGES_DIR);
-      if (!dirInfo.exists) { await FileSystem.makeDirectoryAsync(GUARDIAN_IMAGES_DIR, { intermediates: true }); }
-      const processedUri = `${GUARDIAN_IMAGES_DIR}${member?.id || 'member'}_${Date.now()}.jpg`;
-      await FileSystem.copyAsync({ from: result.assets[0].uri, to: processedUri });
+      const rawUri = result.assets[0].uri;
+      const targetMemberId = member?.id || 'member';
+      const processedUri = await persistPickedImage(rawUri, targetMemberId);
+      if (!processedUri) {
+        sweetAlert.error('Error', 'Failed to save image to app storage');
+        return;
+      }
 
+      // Update form state
       setFormData(prev => ({ ...prev, avatar: processedUri }));
+      
+      // If not in edit mode, save immediately to DB
       if (!isEditing && member) {
         const success = await updateGuardianProfile(member.id, { avatar: processedUri });
-        if (success) { setMember(prev => prev ? { ...prev, avatar: processedUri } : null); setOriginalData(prev => ({ ...prev, avatar: processedUri })); sweetAlert.success('Photo Updated', 'Profile picture updated'); }
+        if (success) { 
+          setMember(prev => prev ? { ...prev, avatar: processedUri } : null); 
+          setOriginalData(prev => ({ ...prev, avatar: processedUri })); 
+          sweetAlert.success('Photo Updated', 'Profile picture updated'); 
+        } else {
+          sweetAlert.error('Save Failed', 'Image saved locally but failed to update profile');
+        }
       }
       triggerHaptic('success');
-    } catch (error) { sweetAlert.error('Error', 'Failed to process image'); }
-    finally { setIsSaving(false); }
+    } catch (error) { 
+      console.error('[EditGuardian] Image pick error:', error);
+      sweetAlert.error('Error', 'Failed to process image'); 
+    } finally { 
+      setIsSaving(false); 
+    }
+  };
+
+  /** 
+   * Persist a picked image from ImagePicker to permanent app storage.
+   * Handles both file:// URIs and content:// URIs (Android).
+   */
+  const persistPickedImage = async (sourceUri: string, memberId: string): Promise<string | null> => {
+    try {
+      // Ensure directory exists
+      const dirInfo = await FileSystem.getInfoAsync(GUARDIAN_IMAGES_DIR);
+      if (!dirInfo.exists) { 
+        await FileSystem.makeDirectoryAsync(GUARDIAN_IMAGES_DIR, { intermediates: true }); 
+      }
+
+      const ext = sourceUri.split('.').pop()?.toLowerCase() || 'jpg';
+      const safeExt = ['jpg', 'jpeg', 'png', 'webp'].includes(ext) ? ext : 'jpg';
+      const processedUri = `${GUARDIAN_IMAGES_DIR}${memberId}_${Date.now()}.${safeExt}`;
+
+      // Handle content:// URIs on Android by reading as base64 then writing
+      if (sourceUri.startsWith('content://')) {
+        const base64 = await FileSystem.readAsStringAsync(sourceUri, { encoding: FileSystem.EncodingType.Base64 });
+        await FileSystem.writeAsStringAsync(processedUri, base64, { encoding: FileSystem.EncodingType.Base64 });
+      } else {
+        // file:// URIs can use copyAsync directly
+        await FileSystem.copyAsync({ from: sourceUri, to: processedUri });
+      }
+
+      // Verify the file was written
+      const fileInfo = await FileSystem.getInfoAsync(processedUri);
+      if (!fileInfo.exists) {
+        console.error('[persistPickedImage] File not found after write:', processedUri);
+        return null;
+      }
+
+      return processedUri;
+    } catch (error) {
+      console.error('[persistPickedImage] Failed to persist image:', error);
+      return null;
+    }
   };
 
   const handleRoleChange = async (newRole: UserRole) => {
@@ -1026,6 +1127,10 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
           <TouchableOpacity style={styles.imagePickerOption} onPress={handleImagePick}>
             <View style={[styles.imagePickerIcon, { backgroundColor: '#6366f120' }]}><Ionicons name="images-outline" size={28} color="#6366f1" /></View>
             <Text style={styles.imagePickerLabel}>Choose from Library</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.imagePickerOption} onPress={handleCameraCapture}>
+            <View style={[styles.imagePickerIcon, { backgroundColor: '#10b98120' }]}><Ionicons name="camera-outline" size={28} color="#10b981" /></View>
+            <Text style={styles.imagePickerLabel}>Take Photo</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.imagePickerOption} onPress={() => { setShowImagePicker(false); setShowEmojiPicker(true); }}>
             <View style={[styles.imagePickerIcon, { backgroundColor: '#f59e0b20' }]}><Ionicons name="happy-outline" size={28} color="#f59e0b" /></View>

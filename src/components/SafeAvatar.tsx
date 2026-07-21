@@ -82,9 +82,27 @@ export const resolveAvatarSource = (avatar: AvatarSource): ImageSourcePropType |
     return avatar;
   }
   if (typeof avatar === 'string' && avatar.length > 0) {
+    // Handle file:// URIs (iOS & Android permanent storage)
     if (avatar.startsWith('file://')) {
       return { uri: avatar };
     }
+    // Handle content:// URIs (Android media library)
+    if (avatar.startsWith('content://')) {
+      return { uri: avatar };
+    }
+    // Handle data URIs
+    if (avatar.startsWith('data:')) {
+      return { uri: avatar };
+    }
+    // Handle http/https remote URLs
+    if (avatar.startsWith('http://') || avatar.startsWith('https://')) {
+      return { uri: avatar };
+    }
+    // Handle bare paths (treat as file://)
+    if (avatar.startsWith('/')) {
+      return { uri: `file://${avatar}` };
+    }
+    // Default: assume it's a URI string
     return { uri: avatar };
   }
   return null;
@@ -97,7 +115,11 @@ export const hasDisplayableImage = (avatar: AvatarSource, hasError: boolean): bo
   if (avatar == null || hasError) return false;
   if (typeof avatar === 'number') return true;
   if (typeof avatar === 'string') {
-    return isValidImageUri(avatar) && !isEmoji(avatar);
+    // Emoji avatars are displayable but not "images"
+    if (isEmoji(avatar)) return false; // Let emoji path handle it
+    // Valid image URIs: file://, content://, http(s)://, data:
+    const isValid = /^((file|content|https?):\/\/|data:image\/)/.test(avatar) || avatar.startsWith('/');
+    return isValid;
   }
   return false;
 };
