@@ -648,7 +648,7 @@ const handleCameraCapture = async () => {
 
       setFormData(prev => ({ ...prev, avatar: processedUri }));
       
-      if (!isEditing && member) {
+      if (member) {
         const success = await updateGuardianProfile(member.id, { avatar: processedUri });
         if (success) {
           setMember(prev => prev ? { ...prev, avatar: processedUri } : null);
@@ -677,7 +677,7 @@ const handleCameraCapture = async () => {
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.8,
@@ -692,11 +692,11 @@ const handleCameraCapture = async () => {
         return;
       }
 
-      // Update form state
+      // Always update form state
       setFormData(prev => ({ ...prev, avatar: processedUri }));
       
-      // If not in edit mode, save immediately to DB
-      if (!isEditing && member) {
+      // ALWAYS save to DB when we have a member — the edit mode check was the bug
+      if (member) {
         const success = await updateGuardianProfile(member.id, { avatar: processedUri });
         if (success) { 
           setMember(prev => prev ? { ...prev, avatar: processedUri } : null); 
@@ -735,8 +735,16 @@ const handleCameraCapture = async () => {
       if (sourceUri.startsWith('content://')) {
         const base64 = await FileSystem.readAsStringAsync(sourceUri, { encoding: FileSystem.EncodingType.Base64 });
         await FileSystem.writeAsStringAsync(processedUri, base64, { encoding: FileSystem.EncodingType.Base64 });
+      } else if (sourceUri.startsWith('data:')) {
+        // Handle data: URIs (base64 embedded)
+        const base64Data = sourceUri.split(',')[1];
+        if (base64Data) {
+          await FileSystem.writeAsStringAsync(processedUri, base64Data, { encoding: FileSystem.EncodingType.Base64 });
+        } else {
+          throw new Error('Invalid data URI');
+        }
       } else {
-        // file:// URIs can use copyAsync directly
+        // file:// URIs and https:// can use copyAsync directly
         await FileSystem.copyAsync({ from: sourceUri, to: processedUri });
       }
 

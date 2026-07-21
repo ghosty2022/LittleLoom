@@ -141,7 +141,7 @@ const pickImage = async (options?: PickImageOptions): Promise<string | null> => 
   }
 
   const result = await ImagePicker.launchImageLibraryAsync({
-    mediaTypes: options?.mediaTypes ?? ImagePicker.MediaTypeOptions.Images,
+    mediaTypes: options?.mediaTypes ?? ['images'],
     allowsEditing: options?.allowsEditing ?? false,
     aspect: options?.aspect,
     quality: options?.quality ?? DEFAULT_COMPRESS_QUALITY,
@@ -162,7 +162,7 @@ const pickMultipleImages = async (limit: number = 10): Promise<string[]> => {
   }
 
   const result = await ImagePicker.launchImageLibraryAsync({
-    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    mediaTypes: ['images'],
     allowsMultipleSelection: true,
     selectionLimit: limit,
     quality: DEFAULT_COMPRESS_QUALITY,
@@ -183,7 +183,7 @@ const takePhoto = async (): Promise<string | null> => {
   }
 
   const result = await ImagePicker.launchCameraAsync({
-    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    mediaTypes: ['images'],
     allowsEditing: false,
     quality: DEFAULT_COMPRESS_QUALITY,
   });

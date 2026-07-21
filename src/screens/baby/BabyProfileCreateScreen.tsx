@@ -43,7 +43,23 @@ const copyImageToPermanent = async (
   const permanentUri = getPermanentImagePath(babyId, prefix);
 
   try {
-    await FileSystem.copyAsync({ from: tempUri, to: permanentUri });
+    // Handle different URI types
+    if (tempUri.startsWith('content://')) {
+      // Android content:// URIs need base64 read/write
+      const base64 = await FileSystem.readAsStringAsync(tempUri, { encoding: FileSystem.EncodingType.Base64 });
+      await FileSystem.writeAsStringAsync(permanentUri, base64, { encoding: FileSystem.EncodingType.Base64 });
+    } else if (tempUri.startsWith('data:')) {
+      // Data URIs (base64 embedded)
+      const base64Data = tempUri.split(',')[1];
+      if (base64Data) {
+        await FileSystem.writeAsStringAsync(permanentUri, base64Data, { encoding: FileSystem.EncodingType.Base64 });
+      } else {
+        throw new Error('Invalid data URI');
+      }
+    } else {
+      // file:// URIs and other local paths can use copyAsync
+      await FileSystem.copyAsync({ from: tempUri, to: permanentUri });
+    }
 
     const fileInfo = await FileSystem.getInfoAsync(permanentUri);
     if (!fileInfo.exists) {

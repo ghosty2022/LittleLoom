@@ -834,7 +834,15 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
         setIsUploading(true);
         await ensureDirExists();
         const permanentUri = getPermanentImagePath(currentBabyData?.id || 'temp');
-        await FileSystem.copyAsync({ from: result.assets[0].uri, to: permanentUri });
+        const rawUri = result.assets[0].uri;
+        
+        // Handle content:// URIs on Android
+        if (rawUri.startsWith('content://')) {
+          const base64 = await FileSystem.readAsStringAsync(rawUri, { encoding: FileSystem.EncodingType.Base64 });
+          await FileSystem.writeAsStringAsync(permanentUri, base64, { encoding: FileSystem.EncodingType.Base64 });
+        } else {
+          await FileSystem.copyAsync({ from: rawUri, to: permanentUri });
+        }
         setBabyPhoto(permanentUri);
         setIsEditing(true);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -854,12 +862,20 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
       return;
     }
     try {
-      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [1, 1], quality: 0.8 });
-      if (!result.canceled && result.assets[0].uri) {
-        setIsUploading(true);
-        await ensureDirExists();
-        const permanentUri = getPermanentImagePath(currentBabyData?.id || 'temp');
-        await FileSystem.copyAsync({ from: result.assets[0].uri, to: permanentUri });
+              const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.8 });
+        if (!result.canceled && result.assets[0].uri) {
+          setIsUploading(true);
+          await ensureDirExists();
+          const permanentUri = getPermanentImagePath(currentBabyData?.id || 'temp');
+          const rawUri = result.assets[0].uri;
+          
+          // Handle content:// URIs on Android
+          if (rawUri.startsWith('content://')) {
+            const base64 = await FileSystem.readAsStringAsync(rawUri, { encoding: FileSystem.EncodingType.Base64 });
+            await FileSystem.writeAsStringAsync(permanentUri, base64, { encoding: FileSystem.EncodingType.Base64 });
+          } else {
+            await FileSystem.copyAsync({ from: rawUri, to: permanentUri });
+          }
         setBabyPhoto(permanentUri);
         setIsEditing(true);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
