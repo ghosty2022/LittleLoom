@@ -735,9 +735,9 @@ const QuickSoundPalette = React.memo(({
 
               {isActive && (
                 <View style={styles.palettePlayingIndicator}>
-                  <View style={[styles.paletteWaveBar, { height: 8, backgroundColor: track.color }]} />
-                  <View style={[styles.paletteWaveBar, { height: 14, backgroundColor: track.color }]} />
-                  <View style={[styles.paletteWaveBar, { height: 6, backgroundColor: track.color }]} />
+                  <View key={`${track.id}-wave-0`} style={[styles.paletteWaveBar, { height: 8, backgroundColor: track.color }]} />
+                  <View key={`${track.id}-wave-1`} style={[styles.paletteWaveBar, { height: 14, backgroundColor: track.color }]} />
+                  <View key={`${track.id}-wave-2`} style={[styles.paletteWaveBar, { height: 6, backgroundColor: track.color }]} />
                 </View>
               )}
 
@@ -829,9 +829,9 @@ const TrackRow = React.memo(({
         {!isCurrentTrack && <Text style={styles.trackRowNumber}>{index + 1}</Text>}
         {isCurrentTrack && isPlaying && (
           <View style={styles.trackRowWaveform}>
-            <View style={[styles.trackRowWaveBar, { height: 6 }]} />
-            <View style={[styles.trackRowWaveBar, { height: 12 }]} />
-            <View style={[styles.trackRowWaveBar, { height: 8 }]} />
+            <View key={`track-${track.id}-bar-0`} style={[styles.trackRowWaveBar, { height: 6 }]} />
+            <View key={`track-${track.id}-bar-1`} style={[styles.trackRowWaveBar, { height: 12 }]} />
+            <View key={`track-${track.id}-bar-2`} style={[styles.trackRowWaveBar, { height: 8 }]} />
           </View>
         )}
         <Image source={{ uri: track.image }} style={styles.trackRowImage} />
