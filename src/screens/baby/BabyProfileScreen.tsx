@@ -734,6 +734,7 @@ const EmojiPickerModal = React.memo(({ visible, onClose, onSelect }: { visible: 
 
 export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamilyCenterScreenProps) {
   const { mode = 'baby', babyId } = route.params || { mode: 'baby' };
+  const isDark = true; // or useColorScheme() === 'dark' / useNavigationContext().isDark
   const { userProfile } = useAuth();
   const { profile } = useUser();
   const {
@@ -1083,11 +1084,7 @@ ${changes.join('\n')}`,
     return (
       <View style={[styles.container, styles.centered]}>
         <StatusBar barStyle="light-content" />
-        {isDark ? (
         <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={StyleSheet.absoluteFill} />
-      ) : (
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#f8f9fc' }]} />
-      )}
         <UniversalSpinner visible={true} text="Loading profile..." size="medium" overlay={false} section="main" />
       </View>
     );
@@ -1106,11 +1103,7 @@ ${changes.join('\n')}`,
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
-      {isDark ? (
-        <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={StyleSheet.absoluteFill} />
-      ) : (
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#f8f9fc' }]} />
-      )}
+      <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={StyleSheet.absoluteFill} />
 
       {/* Sticky Header */}
       <Animated.View style={[styles.stickyHeader, { paddingTop: insets.top + 8 }, headerOpacity]}>
@@ -1793,9 +1786,9 @@ const styles = StyleSheet.create({
 
   // ── Emoji Picker ──
   emojiPickerOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'flex-end', zIndex: 200 },
-  emojiPickerSheet: { backgroundColor: isDark ? '#1e1e2e' : '#ffffff', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingTop: 12, paddingBottom: 40 },
+  emojiPickerSheet: { backgroundColor: '#1e1e2e', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingTop: 12, paddingBottom: 40 },
   modalDragHandle: { width: '100%', alignItems: 'center', paddingVertical: 8 },
-  dragIndicator: { width: 36, height: 4, borderRadius: 2, backgroundColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)' },
+  dragIndicator: { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)' },
   emojiPickerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   emojiPickerTitle: { fontSize: 18, fontWeight: '800', color: '#fff' },
   emojiPickerClose: { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.08)', justifyContent: 'center', alignItems: 'center' },
