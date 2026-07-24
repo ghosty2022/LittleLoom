@@ -259,7 +259,7 @@ export const DEFAULT_SETTINGS: CustomizationSettings = {
 
 const STORAGE_KEY = '@littleloom_customization_v3';
 
-// ─── FIX #7: Module-level cache for instant first read ─────────────────
+// ─── Module-level cache for instant first read ─────────────────
 let _settingsCache: CustomizationSettings | null = null;
 let _cacheInitialized = false;
 
@@ -347,10 +347,42 @@ export const getAnimationDuration = (speed: CustomizationSettings['animationSpee
 
 export type HapticType = 'light' | 'medium' | 'heavy' | 'success' | 'warning' | 'error' | 'selection';
 
-export function useCustomization() {
+// ═══════════════════════════════════════════════════════════════════════
+// EXPLICIT RETURN TYPE — ensures darkMode and all fields are typed
+// ═══════════════════════════════════════════════════════════════════════
+export interface UseCustomizationReturn {
+  settings: CustomizationSettings;
+  isLoaded: boolean;
+  themeColors: ThemeColors;
+  fullThemeColors: FullThemeColors;
+  avatar: string;
+  isDark: boolean;
+  isTrueBlack: boolean;
+  isPureWhite: boolean;
+  shouldReduceMotion: boolean;
+  fontSizeMultiplier: number;
+  borderRadiusValue: number;
+  animationDuration: number;
+  hapticFeedback: boolean;
+  soundEffects: boolean;
+  reduceMotion: boolean;
+  compactView: boolean;
+  darkMode: boolean;
+  useGradients: boolean;
+  useBlur: boolean;
+  showShadows: boolean;
+  highContrast: boolean;
+  boldText: boolean;
+  notifications: boolean;
+  updateSettings: (newSettings: Partial<CustomizationSettings>) => Promise<void>;
+  reset: () => Promise<void>;
+  triggerHaptic: (type: HapticType) => Promise<void>;
+}
+
+export function useCustomization(): UseCustomizationReturn {
   const systemColorScheme = useColorScheme();
 
-  // ─── FIX #8: Initialize from cache if available, else defaults ───────
+  // ─── Initialize from cache if available, else defaults ───────
   const [settings, setSettings] = useState<CustomizationSettings>(() => {
     return getCachedSettings() ?? DEFAULT_SETTINGS;
   });
@@ -467,22 +499,22 @@ export function useCustomization() {
     }
   }, [settings.hapticFeedback]);
 
-  return {
+  // ═══════════════════════════════════════════════════════════════════
+  // ALWAYS return a complete object — never undefined, never partial
+  // ═══════════════════════════════════════════════════════════════════
+  return useMemo(() => ({
     settings,
     isLoaded,
-
     themeColors,
     fullThemeColors,
     avatar,
     isDark,
     isTrueBlack,
     isPureWhite,
-
     shouldReduceMotion,
     fontSizeMultiplier,
     borderRadiusValue,
     animationDuration,
-
     hapticFeedback: settings.hapticFeedback,
     soundEffects: settings.soundEffects,
     reduceMotion: settings.reduceMotion,
@@ -494,11 +526,26 @@ export function useCustomization() {
     highContrast: settings.highContrast,
     boldText: settings.boldText,
     notifications: settings.notifications,
-
     updateSettings,
     reset,
     triggerHaptic,
-  };
+  }), [
+    settings,
+    isLoaded,
+    themeColors,
+    fullThemeColors,
+    avatar,
+    isDark,
+    isTrueBlack,
+    isPureWhite,
+    shouldReduceMotion,
+    fontSizeMultiplier,
+    borderRadiusValue,
+    animationDuration,
+    updateSettings,
+    reset,
+    triggerHaptic,
+  ]);
 }
 
 export default useCustomization;
