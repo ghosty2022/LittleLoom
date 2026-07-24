@@ -85,11 +85,12 @@ const useCustomizationSafe = () => {
     const c = useCustomization();
     return {
       themeColors: c?.themeColors ?? null,
+      darkMode: c?.darkMode ?? false,
       shouldReduceMotion: c?.shouldReduceMotion ?? false,
       error: false,
     };
   } catch {
-    return { themeColors: null, shouldReduceMotion: false, error: true };
+    return { themeColors: null, darkMode: false, shouldReduceMotion: false, error: true };
   }
 };
 
@@ -404,8 +405,8 @@ export const UniversalSpinner = memo<UniversalSpinnerProps>(({
   variant = 'liquid',
 }) => {
   const colorScheme = useColorScheme();
+  const { themeColors, darkMode, shouldReduceMotion } = useCustomizationSafe();
   const isDark = darkMode ?? (colorScheme === 'dark');
-  const { themeColors, shouldReduceMotion } = useCustomizationSafe();
 
   // ─── FIX #6: Stable Animated.Value, lazy init ────────────────────────
   const fadeAnim = useRef<RNAnimated.Value | null>(null);
@@ -581,8 +582,8 @@ export const SkeletonLoader = memo<{
   if (!pulseAnim.current) pulseAnim.current = new RNAnimated.Value(0.5);
 
   const colorScheme = useColorScheme();
+  const { darkMode, shouldReduceMotion } = useCustomizationSafe();
   const isDark = darkMode ?? (colorScheme === 'dark');
-  const { shouldReduceMotion } = useCustomizationSafe();
 
   useEffect(() => {
     if (shouldReduceMotion) return;
