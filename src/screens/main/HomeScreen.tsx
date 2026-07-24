@@ -88,7 +88,7 @@ const NAVIGATION_MAP: Record<string, { screen: keyof RootStackParamList; params?
   'Main': { screen: 'Main', params: {} },
   'Connect': { screen: 'Main', params: { screen: 'Connect' } },
   'More': { screen: 'Main', params: { screen: 'More' } },
-  
+
   // Auth & Setup
   'Onboarding': { screen: 'Onboarding', params: {} },
   'Login': { screen: 'Login', params: {} },
@@ -96,8 +96,9 @@ const NAVIGATION_MAP: Record<string, { screen: keyof RootStackParamList; params?
   'ForgotPassword': { screen: 'ForgotPassword', params: {} },
   'CreateBabyProfile': { screen: 'CreateBabyProfile', params: {} },
   'SwitchBaby': { screen: 'SwitchBaby', params: {} },
-  
-  // Main screens — FIXED: Keys now match actual screen names
+  'AddParent': { screen: 'AddParent', params: {} },
+
+  // Main screens
   'UniversalTrackerHub': { screen: 'UniversalTrackerHub', params: {} },
   'Timeline': { screen: 'Timeline', params: {} },
   'GrowthDashboard': { screen: 'GrowthDashboard', params: {} },
@@ -112,14 +113,27 @@ const NAVIGATION_MAP: Record<string, { screen: keyof RootStackParamList; params?
   'ContactSupport': { screen: 'ContactSupport', params: {} },
   'Profile': { screen: 'Profile', params: {} },
   'EditProfile': { screen: 'EditProfile', params: {} },
+  'EditGuardian': { screen: 'EditGuardian', params: {} },
   'VaccinationSchedule': { screen: 'VaccinationSchedule', params: {} },
   'Customize': { screen: 'Customize', params: {} },
-  
+  'SecurityCenter': { screen: 'SecurityCenter', params: {} },
+  'BiometricSetup': { screen: 'BiometricSetup', params: {} },
+  'BackupRestore': { screen: 'BackupRestore', params: {} },
+  'LanguageSettings': { screen: 'LanguageSettings', params: {} },
+  'UnitSettings': { screen: 'UnitSettings', params: {} },
+  'PrivacyPolicy': { screen: 'PrivacyPolicy', params: {} },
+  'TermsOfService': { screen: 'TermsOfService', params: {} },
+  'About': { screen: 'About', params: {} },
+  'EntryDetail': { screen: 'EntryDetail', params: {} },
+  'Insights': { screen: 'Insights', params: {} },
+  'CreateCustomTracker': { screen: 'CreateCustomTracker', params: {} },
+
   // Legacy aliases (keep for backward compatibility)
   'Settings': { screen: 'Customize', params: {} },
   'UniversalTracker': { screen: 'UniversalTrackerHub', params: {} },
   'Reminders': { screen: 'TrackerReminders', params: {} },
   'Grow': { screen: 'GrowthDashboard', params: {} },
+  'AchievementsScreen': { screen: 'Achievements', params: {} },
 };
 /* ═══════════════════════════════════════════════════════════════════════════
    TYPES
@@ -1655,8 +1669,12 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
     'FamilySharing', 'FamilyChatList', 'HelpCenter', 'ContactSupport',
     'Profile', 'SwitchBaby', 'CreateBabyProfile', 'EditProfile',
     'VaccinationSchedule', 'Customize', 'Main', 'Onboarding',
-    'Login', 'SignUp', 'ForgotPassword', 'AddEntry'
+    'Login', 'SignUp', 'ForgotPassword', 'AddEntry', 'AddParent',
+    'EditGuardian', 'SecurityCenter', 'BiometricSetup', 'BackupRestore',
+    'LanguageSettings', 'UnitSettings', 'PrivacyPolicy', 'TermsOfService',
+    'About', 'EntryDetail', 'Insights', 'CreateCustomTracker'
   ]);
+
   
   // If it's a direct screen name, navigate directly (most common case)
   if (directScreens.has(screenName)) {
@@ -1941,9 +1959,9 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
                 </View>
               </View>
               <View style={styles.parentQuickLinks}>
-                <TouchableOpacity 
-                  style={[styles.parentQuickLink, { backgroundColor: `${primary}12`, borderRadius: borderRadiusValue - 10 }]} 
-                  onPress={() => navigateToScreen('AchievementsScreen')}
+                <TouchableOpacity
+                  style={[styles.parentQuickLink, { backgroundColor: `${primary}12`, borderRadius: borderRadiusValue - 10 }]}
+                  onPress={() => navigateToScreen('Achievements')}
                 >
                   <Ionicons name="ribbon-outline" size={Math.round(16 * fontSizeMultiplier)} color={primary} />
                 </TouchableOpacity>
@@ -1965,7 +1983,7 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
           <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(40).springify()}>
             <GlassCard style={[styles.babyCard, { borderRadius: borderRadiusValue, marginHorizontal: settings.compactSpacing ? 16 : 20 }]}>
               <View style={[styles.babyHeader, { paddingHorizontal: settings.compactSpacing ? 14 : 18, paddingTop: settings.compactSpacing ? 10 : 14 }]}>
-                <TouchableOpacity style={styles.babySelector} onPress={() => navigateToScreen('SwitchBaby')}>
+                <TouchableOpacity style={styles.babySelector} onPress={() => navigateToScreen('SwitchBaby', { returnTo: 'Main' })}>
                   <Text style={[styles.babySelectorLabel, { color: theme.textMuted, fontSize: Math.round(11 * fontSizeMultiplier) }]}>
                     Current Baby
                   </Text>
