@@ -56,7 +56,10 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
   const [showSplash, setShowSplash] = useState(false);
 
   const { signUp, signUpWithInviteCode, signIn, isLoading: authLoading, isAuthenticated } = useAuth();
-  const { darkMode: isDark, themeColors, triggerHaptic } = useCustomization();
+  const customization = useCustomization();
+  const isDark = customization?.darkMode ?? false;
+  const themeColors = customization?.themeColors ?? { primary: '#667eea', secondary: '#764ba2' };
+  const triggerHaptic = customization?.triggerHaptic ?? (() => {});
   const { toast, error: showError, success: showSuccess, info: showInfo } = useSweetAlert();
 
   const insets = useSafeAreaInsets();

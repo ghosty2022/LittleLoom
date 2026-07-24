@@ -146,7 +146,6 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
 
   const { resetUnlockLock, forceUnlock } = useSecurity();
   
-  // FIX: Add safe fallback for useCustomization to prevent "darkMode doesn't exist" crash
   const customization = useCustomization();
   const isDark = customization?.darkMode ?? false;
   const themeColors = customization?.themeColors ?? { primary: '#667eea', secondary: '#764ba2' };
