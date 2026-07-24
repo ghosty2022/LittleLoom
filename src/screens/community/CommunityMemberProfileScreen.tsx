@@ -1095,7 +1095,7 @@ const isDark = darkMode ?? (colorScheme === 'dark');
 }
 
 
-const styles = StyleSheet.create({
+const getStyles = (isDark: boolean) => StyleSheet.create({
   container: { flex: 1 },
   bg: { ...StyleSheet.absoluteFillObject },
   centered: { justifyContent: 'center', alignItems: 'center' },

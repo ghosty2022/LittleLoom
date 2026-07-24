@@ -1274,7 +1274,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (isDark: boolean) => StyleSheet.create({
   container: { flex: 1 },
   centered: { justifyContent: 'center', alignItems: 'center' },
   scrollContent: { paddingBottom: 24 },

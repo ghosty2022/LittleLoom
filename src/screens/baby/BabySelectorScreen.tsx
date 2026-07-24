@@ -100,7 +100,13 @@ export default function BabySelectorScreen({ navigation, route }: BabySelectorSc
           if (!hasNavigated.current && isMounted.current) {
             hasNavigated.current = true;
             // Navigate back to the screen that opened us, passing babySwitched flag
-            navigation.navigate(getReturnTarget(route), { babySwitched: true } as any);
+            // Only pass params if there was a returnTo screen (i.e. called from inside the app)
+            const target = getReturnTarget(route);
+            if (route.params?.returnTo) {
+              navigation.navigate(target, { babySwitched: true } as any);
+            } else {
+              navigation.replace(target);
+            }
           }
         }, 500);
       } else {
@@ -148,7 +154,7 @@ export default function BabySelectorScreen({ navigation, route }: BabySelectorSc
       'Cancel',
       true
     );
-  }, [babies.length, deleteBaby, loadBabies, navigation, sweetAlert, isProcessing]);
+  }, [babies.length, deleteBaby, loadBabies, sweetAlert, isProcessing]);
 
   const handleAddBaby = useCallback(() => {
     navigation.navigate('CreateBabyProfile');
