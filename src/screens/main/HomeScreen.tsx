@@ -202,25 +202,7 @@ interface VaccinationReminder {
    THEME HELPERS
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const getFullThemeColors = (theme: string, appearance: string, isDarkMode: boolean) => {
-  return {
-    background: isDarkMode ? '#08080f' : '#f4f6fa',
-    surface: isDarkMode ? '#12121e' : '#ffffff',
-    surfaceElevated: isDarkMode ? '#1a1a2a' : '#ffffff',
-    surfaceGlass: isDarkMode ? 'rgba(26,26,42,0.88)' : 'rgba(255,255,255,0.94)',
-    text: isDarkMode ? '#f0f0f7' : '#111827',
-    textSecondary: isDarkMode ? '#9ca3af' : '#6b7280',
-    textMuted: isDarkMode ? '#6b7280' : '#9ca3af',
-    border: isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)',
-    borderLight: isDarkMode ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
-    glassBg: isDarkMode ? 'rgba(26,26,42,0.96)' : 'rgba(255,255,255,0.96)',
-    shadow: '#000',
-    error: '#ef4444',
-    success: '#10b981',
-    warning: '#f59e0b',
-    info: '#3b82f6',
-  };
-};
+
 
 /* ═══════════════════════════════════════════════════════════════════════════
    DATA — Refined Quick Actions with Categories
@@ -265,7 +247,7 @@ const FEATURE_CARDS: FeatureCard[] = [
 const GlassCard: React.FC<{ children: React.ReactNode; style?: any; onPress?: () => void; intensity?: number }> = 
   React.memo(({ children, style, onPress }) => {
     const colorScheme = useColorScheme();
-    const isDark = darkMode ?? (colorScheme === 'dark');
+    const isDark = colorScheme === 'dark';
     const Wrapper = onPress ? TouchableOpacity : View;
 
     return (
@@ -1508,10 +1490,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   const secondary = themeColors?.secondary || '#fa709a';
   const accent = themeColors?.accent || '#43e97b';
 
-  const fullThemeColors = useMemo(() =>
-    getFullThemeColors(settings.theme, settings.appearance, colorScheme === 'dark'),
-    [settings.theme, settings.appearance, colorScheme]
-  );
+
 
   const theme = useMemo(() => ({
     ...fullThemeColors,

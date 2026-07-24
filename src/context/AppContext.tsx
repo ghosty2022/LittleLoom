@@ -36,11 +36,11 @@ const LIGHT_COLORS: ThemeColors = {
 };
 
 const DARK_COLORS: ThemeColors = {
-  background: '#0f0f1e', surface: '#1a1a2e', card: '#16162a',
-  text: '#f1f5f9', textSecondary: '#94a3b8', border: 'rgba(255,255,255,0.08)',
+  background: '#08080f', surface: '#12121e', card: '#16162a',
+  text: '#f0f0f7', textSecondary: '#9ca3af', border: 'rgba(255,255,255,0.05)',
   primary: '#818cf8', primaryLight: '#a5b4fc', accent: '#fb7185',
-  success: '#4ade80', warning: '#fbbf24', error: '#f87171',
-  glassBackground: 'rgba(26,26,46,0.95)', glassBorder: 'rgba(255,255,255,0.1)',
+  success: '#10b981', warning: '#f59e0b', error: '#ef4444',
+  glassBackground: 'rgba(26,26,42,0.96)', glassBorder: 'rgba(255,255,255,0.1)',
   navBackground: '#1a1a2e', handleBar: 'rgba(255,255,255,0.25)', shadowColor: '#000000',
 };
 

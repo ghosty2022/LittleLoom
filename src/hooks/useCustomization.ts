@@ -16,76 +16,126 @@ export interface ThemeColors {
 export interface FullThemeColors extends ThemeColors {
   background: string;
   surface: string;
+  surfaceElevated: string;
+  surfaceGlass: string;
   card: string;
   text: string;
   textSecondary: string;
+  textMuted: string;
   border: string;
+  borderLight: string;
   success: string;
   warning: string;
   error: string;
+  info: string;
   glassBg: string;
+  glassBackground: string;
   glassBorder: string;
+  navBackground: string;
+  handleBar: string;
   shadow: string;
+  shadowColor: string;
+  primaryLight: string;
 }
 
 const LIGHT_BASE = {
-  background: '#f8faff',
+  background: '#f4f6fa',
   surface: '#ffffff',
+  surfaceElevated: '#ffffff',
+  surfaceGlass: 'rgba(255,255,255,0.94)',
   card: '#ffffff',
-  text: '#1a1a1a',
-  textSecondary: '#64748b',
-  border: '#e2e8f0',
-  success: '#22c55e',
+  text: '#111827',
+  textSecondary: '#6b7280',
+  textMuted: '#9ca3af',
+  border: 'rgba(0,0,0,0.04)',
+  borderLight: 'rgba(0,0,0,0.02)',
+  success: '#10b981',
   warning: '#f59e0b',
   error: '#ef4444',
-  glassBg: 'rgba(255,255,255,0.95)',
+  info: '#3b82f6',
+  glassBg: 'rgba(255,255,255,0.96)',
+  glassBackground: 'rgba(255,255,255,0.95)',
   glassBorder: 'rgba(255,255,255,0.5)',
-  shadow: '#667eea',
+  navBackground: '#ffffff',
+  handleBar: 'rgba(0,0,0,0.15)',
+  shadow: '#000',
+  shadowColor: '#667eea',
+  primaryLight: '#a3bffa',
 };
 
 const DARK_BASE = {
-  background: '#0f0f1e',
-  surface: '#1a1a2e',
+  background: '#08080f',
+  surface: '#12121e',
+  surfaceElevated: '#1a1a2a',
+  surfaceGlass: 'rgba(26,26,42,0.88)',
   card: '#16162a',
-  text: '#f1f5f9',
-  textSecondary: '#94a3b8',
-  border: 'rgba(255,255,255,0.08)',
-  success: '#4ade80',
-  warning: '#fbbf24',
-  error: '#f87171',
-  glassBg: 'rgba(26,26,46,0.95)',
+  text: '#f0f0f7',
+  textSecondary: '#9ca3af',
+  textMuted: '#6b7280',
+  border: 'rgba(255,255,255,0.05)',
+  borderLight: 'rgba(255,255,255,0.03)',
+  success: '#10b981',
+  warning: '#f59e0b',
+  error: '#ef4444',
+  info: '#3b82f6',
+  glassBg: 'rgba(26,26,42,0.96)',
+  glassBackground: 'rgba(26,26,46,0.95)',
   glassBorder: 'rgba(255,255,255,0.1)',
-  shadow: '#000000',
+  navBackground: '#1a1a2e',
+  handleBar: 'rgba(255,255,255,0.25)',
+  shadow: '#000',
+  shadowColor: '#000000',
+  primaryLight: '#818cf8',
 };
 
 const TRUE_BLACK_BASE = {
   background: '#000000',
   surface: '#0a0a0a',
+  surfaceElevated: '#0d0d0d',
+  surfaceGlass: 'rgba(10,10,10,0.88)',
   card: '#0d0d0d',
   text: '#ffffff',
   textSecondary: '#a0a0b0',
+  textMuted: '#6b7280',
   border: 'rgba(255,255,255,0.06)',
+  borderLight: 'rgba(255,255,255,0.03)',
   success: '#4ade80',
   warning: '#fbbf24',
   error: '#f87171',
-  glassBg: 'rgba(10,10,10,0.95)',
+  info: '#60a5fa',
+  glassBg: 'rgba(10,10,10,0.96)',
+  glassBackground: 'rgba(10,10,10,0.95)',
   glassBorder: 'rgba(255,255,255,0.08)',
-  shadow: '#000000',
+  navBackground: '#0a0a0a',
+  handleBar: 'rgba(255,255,255,0.25)',
+  shadow: '#000',
+  shadowColor: '#000000',
+  primaryLight: '#a3bffa',
 };
 
 const PURE_WHITE_BASE = {
   background: '#ffffff',
   surface: '#fafafa',
+  surfaceElevated: '#ffffff',
+  surfaceGlass: 'rgba(255,255,255,0.98)',
   card: '#ffffff',
   text: '#000000',
   textSecondary: '#525252',
+  textMuted: '#737373',
   border: '#e5e5e5',
+  borderLight: 'rgba(0,0,0,0.02)',
   success: '#16a34a',
   warning: '#d97706',
   error: '#dc2626',
+  info: '#2563eb',
   glassBg: 'rgba(255,255,255,0.98)',
+  glassBackground: 'rgba(255,255,255,0.98)',
   glassBorder: 'rgba(0,0,0,0.06)',
-  shadow: '#000000',
+  navBackground: '#ffffff',
+  handleBar: 'rgba(0,0,0,0.15)',
+  shadow: '#000',
+  shadowColor: '#000000',
+  primaryLight: '#818cf8',
 };
 
 export const THEME_MAP: Record<string, ThemeColors> = {
