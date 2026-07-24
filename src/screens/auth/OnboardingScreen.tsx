@@ -162,6 +162,7 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isNavigating, setIsNavigating] = useState(false);
   const [isAutoPlaying, setIsAutoPlaying] = useState(true);
+  const [isCheckingSeen, setIsCheckingSeen] = useState(true);
 
   const scrollX = useSharedValue(0);
   const slidesRef = useRef<FlatList<OnboardingSlide>>(null);
@@ -170,6 +171,32 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
   const autoPlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const resumeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isDark = false; // Onboarding always uses light theme for consistency
+
+  // FIX: Check AsyncStorage on mount. If onboarding already seen, skip immediately.
+  useEffect(() => {
+    const checkOnboardingStatus = async () => {
+      try {
+        const [complete, seen] = await Promise.all([
+          AsyncStorage.getItem(ONBOARDING_COMPLETE_KEY),
+          AsyncStorage.getItem(ONBOARDING_SEEN_KEY),
+        ]);
+        
+        if (isMounted.current) {
+          if (complete === 'true' || seen === 'true') {
+            // Already seen — skip to login immediately
+            navigation.replace('Login');
+            return;
+          }
+          setIsCheckingSeen(false);
+        }
+      } catch (e) {
+        console.warn('Failed to check onboarding status:', e);
+        if (isMounted.current) setIsCheckingSeen(false);
+      }
+    };
+
+    checkOnboardingStatus();
+  }, [navigation]);
 
   useEffect(() => {
     return () => {
@@ -186,7 +213,7 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
   }, []);
 
   useEffect(() => {
-    if (!isAutoPlaying || isNavigating || !isMounted.current) {
+    if (!isAutoPlaying || isNavigating || !isMounted.current || isCheckingSeen) {
       if (autoPlayTimerRef.current) clearTimeout(autoPlayTimerRef.current);
       return;
     }
@@ -212,7 +239,7 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
     return () => {
       if (autoPlayTimerRef.current) clearTimeout(autoPlayTimerRef.current);
     };
-  }, [currentIndex, isAutoPlaying, isNavigating]);
+  }, [currentIndex, isAutoPlaying, isNavigating, isCheckingSeen]);
 
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
@@ -315,6 +342,21 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
   const isLastSlide = currentIndex === ONBOARDING_DATA.length - 1;
   const currentSlide = ONBOARDING_DATA[currentIndex];
   const currentColors = currentSlide.colors;
+
+  // FIX: Show a brief loading state while checking AsyncStorage
+  if (isCheckingSeen) {
+    return (
+      <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <LinearGradient 
+          colors={['#f8faff', '#f0f4ff', '#e8eeff']} 
+          style={styles.background} 
+          start={{ x: 0, y: 0 }} 
+          end={{ x: 1, y: 1 }} 
+        />
+        <Text style={{ fontSize: 16, color: '#667eea', fontWeight: '600' }}>Loading...</Text>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>

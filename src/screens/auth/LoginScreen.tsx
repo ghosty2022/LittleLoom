@@ -145,7 +145,13 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
   } = useAuth();
 
   const { resetUnlockLock, forceUnlock } = useSecurity();
-  const { darkMode: isDark, themeColors, triggerHaptic } = useCustomization();
+  
+  // FIX: Add safe fallback for useCustomization to prevent "darkMode doesn't exist" crash
+  const customization = useCustomization();
+  const isDark = customization?.darkMode ?? false;
+  const themeColors = customization?.themeColors ?? { primary: '#667eea', secondary: '#764ba2' };
+  const triggerHaptic = customization?.triggerHaptic ?? (() => {});
+  
   const { toast, error: showError, success: showSuccess, confirm, info: showInfo } = useSweetAlert();
 
   const insets = useSafeAreaInsets();

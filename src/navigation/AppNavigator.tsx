@@ -224,6 +224,7 @@ function getNavState(
     }
     return 'MAIN';
   }
+  // FIX: Only show onboarding if it's truly the first open AND onboarding hasn't been seen
   if (firstOpen && !seenOnboarding) return 'ONBOARDING';
   if (!isAuth) return 'LOGIN';
   return 'MAIN';
@@ -307,7 +308,7 @@ function NavigationContent({
     [secSettings?.isPinEnabled, secSettings?.isBiometricEnabled]
   );
 
-  // FIX #1: Load isFirstOpen ONCE using ref guard
+  // FIX #1: Load isFirstOpen ONCE using ref guard — check AsyncStorage directly
   useEffect(() => {
     if (firstOpenChecked.current) return;
     firstOpenChecked.current = true;
@@ -315,7 +316,9 @@ function NavigationContent({
     AsyncStorage.getItem(ONBOARDING_COMPLETE_KEY).then(v => {
       const complete = v === 'true';
       AsyncStorage.getItem(ONBOARDING_SEEN_KEY).then(v2 => {
-        setIsFirstOpen(!(complete || v2 === 'true'));
+        const seen = v2 === 'true';
+        // isFirstOpen = true ONLY if neither complete nor seen
+        setIsFirstOpen(!(complete || seen));
       }).catch(() => setIsFirstOpen(false));
     }).catch(() => setIsFirstOpen(false));
   }, []);
@@ -443,6 +446,8 @@ function NavigationContent({
       hasShownSwitchBaby.current = true;
       setShouldShowSwitchBaby(false);
       if (currentRoute !== 'SwitchBaby') {
+        // FIX: When auto-showing SwitchBaby on first login, don't pass returnTo
+        // so the screen knows to go to Main after selection
         navRef.current.navigate('SwitchBaby' as never);
         return;
       }
