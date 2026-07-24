@@ -767,10 +767,10 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
   const { hasPermission, profile, updateProfile } = useUser();
   const { currentBaby, getRecentActivities, milestones } = useBaby();
   const { userProfile } = useAuth();
-  const { triggerHaptic } = useCustomization();
+  const { darkMode, triggerHaptic } = useCustomization();
   const sweetAlert = useSweetAlert();
   const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+  const isDark = darkMode ?? (colorScheme === 'dark');
 
   const insets = useSafeAreaInsets();
   const scrollY = useSharedValue(0);
@@ -1078,7 +1078,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
   if (isLoading) {
     return (
       <View style={[styles.container, styles.centered]}>
-        <StatusBar barStyle="light-content" />
+        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
         {isDark ? (
         <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={StyleSheet.absoluteFill} />
       ) : (
@@ -1092,7 +1092,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
   if (!member || !roleConfig) {
     return (
       <View style={[styles.container, styles.centered]}>
-        <StatusBar barStyle="light-content" />
+        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
         {isDark ? (
         <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={StyleSheet.absoluteFill} />
       ) : (
@@ -1117,7 +1117,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
       {isDark ? (
         <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={StyleSheet.absoluteFill} />
       ) : (

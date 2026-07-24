@@ -101,7 +101,7 @@ const SleepTimerModal = ({
 const FloatingBall = () => {
   const { currentTrack, isPlaying, expandPlayer } = useAudio();
   const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+  const isDark = darkMode ?? (colorScheme === 'dark');
 
   const ballPosition = useSharedValue({ x: width - 80, y: height - 200 });
 
@@ -164,7 +164,7 @@ const FloatingBall = () => {
 const MiniPlayer = () => {
   const { currentTrack, isPlaying, togglePlayback, expandPlayer, collapseToBall, progress } = useAudio();
   const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+  const isDark = darkMode ?? (colorScheme === 'dark');
 
   const slideAnim = useSharedValue(0);
 
@@ -257,7 +257,7 @@ const FullPlayer = () => {
 
   const { currentBaby } = useSafeBaby();
   const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+  const isDark = darkMode ?? (colorScheme === 'dark');
 
   const [showTimerModal, setShowTimerModal] = useState(false);
   const slideAnim = useSharedValue(0);

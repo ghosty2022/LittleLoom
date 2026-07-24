@@ -454,7 +454,7 @@ const SweetAlertModal: React.FC<ModalProps> = React.memo(({ config, isDark, them
       statusBarTranslucent
       onRequestClose={handleDismiss}
     >
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
       <Animated.View style={[styles.modalOverlay, overlayStyle]}>
         <TouchableWithoutFeedback onPress={config.type !== 'loading' ? handleDismiss : undefined}>
           <View style={StyleSheet.absoluteFill} />

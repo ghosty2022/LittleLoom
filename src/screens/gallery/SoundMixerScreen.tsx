@@ -1261,7 +1261,7 @@ export default function SoundMixerScreen({ navigation }: SoundMixerScreenProps) 
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
       <LinearGradient colors={['#0a0a1a', '#12122a', '#0f0f1e']} style={StyleSheet.absoluteFill} />
 
       {/* Sticky Header */}

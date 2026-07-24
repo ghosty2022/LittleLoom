@@ -303,7 +303,7 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
       <LinearGradient colors={CommunityGradients.header} style={StyleSheet.absoluteFill} />
 
       <ScrollView 

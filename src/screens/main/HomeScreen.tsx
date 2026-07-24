@@ -22,6 +22,7 @@ import {
 } from 'react-native';
 
 import { useCustomization } from '../../hooks/useCustomization';
+import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../../context/AuthContext';
 import { useBaby } from '../../context/BabyContext';
 import { useActivity } from '../../context/ActivityContext';
@@ -264,7 +265,7 @@ const FEATURE_CARDS: FeatureCard[] = [
 const GlassCard: React.FC<{ children: React.ReactNode; style?: any; onPress?: () => void; intensity?: number }> = 
   React.memo(({ children, style, onPress }) => {
     const colorScheme = useColorScheme();
-    const isDark = colorScheme === 'dark';
+    const isDark = darkMode ?? (colorScheme === 'dark');
     const Wrapper = onPress ? TouchableOpacity : View;
 
     return (
@@ -1648,10 +1649,18 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     return () => { clearInterval(timer); };
   }, []);
 
-  useEffect(() => {
+ useEffect(() => {
     loadBabies();
     loadActivities();
   }, [loadBabies, loadActivities]);
+
+  // Refresh data when screen comes into focus (e.g., after baby switch)
+  useFocusEffect(
+    useCallback(() => {
+      loadBabies();
+      loadActivities();
+    }, [loadBabies, loadActivities])
+  );
 
   // Scroll handler for header animation (GrowthDashboard pattern)
   const scrollHandler = useAnimatedScrollHandler({

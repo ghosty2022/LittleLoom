@@ -226,14 +226,14 @@ export default function CommunitySplashScreen({
   if (!isReady || !splashContent) {
     return (
       <View style={[styles.container, { backgroundColor: CommunityColors.background.main }]}>
-        <StatusBar barStyle="light-content" />
+        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
 
       <LinearGradient
         colors={CommunityGradients.header}

@@ -521,7 +521,11 @@ function NavigationContent({
         <Stack.Screen name="SleepTracker" component={TimelineScreen} />
 
         <Stack.Screen name="Profile" component={FamilyDashboardScreen} />
-        <Stack.Screen name="SwitchBaby" component={BabySelectorScreen} options={{ presentation: 'modal' }} />
+        <Stack.Screen
+          name="SwitchBaby"
+          component={BabySelectorScreen}
+          options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
+        />
         <Stack.Screen name="EditProfile" component={BabyProfileScreen} />
         <Stack.Screen name="EditGuardian" component={EditGuardianScreen} />
 

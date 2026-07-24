@@ -404,7 +404,7 @@ export const UniversalSpinner = memo<UniversalSpinnerProps>(({
   variant = 'liquid',
 }) => {
   const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+  const isDark = darkMode ?? (colorScheme === 'dark');
   const { themeColors, shouldReduceMotion } = useCustomizationSafe();
 
   // ─── FIX #6: Stable Animated.Value, lazy init ────────────────────────
@@ -581,7 +581,7 @@ export const SkeletonLoader = memo<{
   if (!pulseAnim.current) pulseAnim.current = new RNAnimated.Value(0.5);
 
   const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+  const isDark = darkMode ?? (colorScheme === 'dark');
   const { shouldReduceMotion } = useCustomizationSafe();
 
   useEffect(() => {

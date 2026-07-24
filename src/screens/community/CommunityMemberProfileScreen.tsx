@@ -663,9 +663,9 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
     isFollowing, blockUser, isUserBlocked, getFollowers, getFollowing,
     likePost,
   } = useCommunity();
-  const { themeColors, triggerHaptic } = useCustomization();
+  const { themeColors, darkMode, triggerHaptic } = useCustomization();
 const colorScheme = useColorScheme();
-const isDark = colorScheme === 'dark';
+const isDark = darkMode ?? (colorScheme === 'dark');
   const sweetAlert = useSweetAlert();
 
   const insets = useSafeAreaInsets();
@@ -1026,7 +1026,7 @@ const isDark = colorScheme === 'dark';
   if (isLoading) {
     return (
       <View style={[styles.container, styles.centered]}>
-        <StatusBar barStyle="light-content" />
+        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
         {isDark ? (
         <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={StyleSheet.absoluteFill} />
       ) : (
@@ -1040,7 +1040,7 @@ const isDark = colorScheme === 'dark';
   if (!user) {
     return (
       <View style={[styles.container, styles.centered]}>
-        <StatusBar barStyle="light-content" />
+        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
         {isDark ? (
         <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={StyleSheet.absoluteFill} />
       ) : (
@@ -1057,7 +1057,7 @@ const isDark = colorScheme === 'dark';
 
   return (
     <View style={[styles.container, { flex: 1 }]}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
       {isDark ? (
         <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={styles.bg} />
       ) : (

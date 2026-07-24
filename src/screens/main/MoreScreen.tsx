@@ -19,6 +19,7 @@ import { useMedia } from '../../context/MediaContext';
 import { useSecurity } from '../../context/SecurityContext';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { useUser } from '../../context/UserContext';
+import { useFocusEffect } from '@react-navigation/native';
 
 import Animated, {
   useSharedValue,
@@ -536,7 +537,8 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = React.memo(({
     if (safeBabies.length === 1 && currentBaby) {
       navigation.navigate('EditProfile', { mode: 'baby', babyId: currentBaby.id });
     } else if (safeBabies.length > 1) {
-      onShowBabyModal();
+      // Go to full baby selector screen instead of modal
+      navigation.navigate('SwitchBaby', { returnTo: 'Main' });
     } else {
       navigation.navigate('CreateBabyProfile');
     }
@@ -787,7 +789,7 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = React.memo(({
       {/* Switch Baby Row */}
       {hasMultipleBabies && (
         <PressableScale
-          onPress={() => navigation.navigate('SwitchBaby')}
+          onPress={() => navigation.navigate('SwitchBaby', { returnTo: 'Main' })}
           activeScale={0.98}
         >
           <View style={styles.switchBabyRow}>
@@ -822,6 +824,7 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
     isLoading: babyLoading,
     hasSkippedBaby,
     getBabyStats,
+    loadBabies,
   } = useBaby();
   const {
     settings: securitySettings,
@@ -954,6 +957,21 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
     setShowBabyModal(false);
     navigation.navigate('EditProfile', { mode: 'baby', babyId: baby.id });
   }, [navigation]);
+
+  // Refresh baby data when returning from SwitchBaby screen
+  useFocusEffect(
+    useCallback(() => {
+      loadBabies();
+    }, [loadBabies])
+  );
+
+  // Handle babySwitched param from SwitchBaby screen
+  useEffect(() => {
+    if (route.params?.babySwitched) {
+      loadBabies();
+      navigation.setParams({ babySwitched: undefined });
+    }
+  }, [route.params?.babySwitched, loadBabies, navigation]);
 
   const formatTimeout = useCallback((minutes: number) => {
     if (minutes < 60) return `${minutes} min`;

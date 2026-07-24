@@ -145,7 +145,7 @@ export const ModalProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.8)).current;
   const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+  const isDark = darkMode ?? (colorScheme === 'dark');
 
   const show = useCallback((newConfig: ModalConfig) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});

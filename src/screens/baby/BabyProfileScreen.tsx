@@ -1083,7 +1083,7 @@ ${changes.join('\n')}`,
   if (!currentBabyData) {
     return (
       <View style={[styles.container, styles.centered]}>
-        <StatusBar barStyle="light-content" />
+        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
         <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={StyleSheet.absoluteFill} />
         <UniversalSpinner visible={true} text="Loading profile..." size="medium" overlay={false} section="main" />
       </View>
@@ -1102,7 +1102,7 @@ ${changes.join('\n')}`,
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
       <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={StyleSheet.absoluteFill} />
 
       {/* Sticky Header */}

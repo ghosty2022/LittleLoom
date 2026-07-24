@@ -1110,7 +1110,7 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const { themeColors, triggerHaptic } = useCustomization();
 const colorScheme = useColorScheme();
-const isDark = colorScheme === 'dark';
+const isDark = darkMode ?? (colorScheme === 'dark');
   const { currentBaby, babies, switchBaby } = useBaby();
 
   const [doses, setDoses] = useState<VaccineDose[]>([]);

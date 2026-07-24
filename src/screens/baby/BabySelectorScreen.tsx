@@ -28,7 +28,14 @@ const { width } = Dimensions.get('window');
 
 type BabySelectorScreenProps = NativeStackScreenProps<RootStackParamList, 'SwitchBaby'>;
 
-// safeParse helper removed — not used in this screen
+// Helper to read return target from route params
+const getReturnTarget = (route: BabySelectorScreenProps['route']) => {
+  const returnTo = route.params?.returnTo;
+  if (returnTo && typeof returnTo === 'string') {
+    return returnTo as keyof RootStackParamList;
+  }
+  return 'Main' as keyof RootStackParamList;
+};
 
 const GlassmorphismCard: React.FC<{ children: React.ReactNode; style?: any; onPress?: () => void; intensity?: number; isDark?: boolean }> = ({ 
   children, style, onPress, intensity = 80, isDark = false 
@@ -50,7 +57,7 @@ const GlassmorphismCard: React.FC<{ children: React.ReactNode; style?: any; onPr
   );
 };
 
-export default function BabySelectorScreen({ navigation }: BabySelectorScreenProps) {
+export default function BabySelectorScreen({ navigation, route }: BabySelectorScreenProps) {
   const sweetAlert = useSweetAlert();
   const { babies, currentBabyId, switchBaby, deleteBaby, loadBabies, isLoading: babyLoading } = useBaby();
   const { userProfile } = useAuth();
@@ -70,7 +77,12 @@ export default function BabySelectorScreen({ navigation }: BabySelectorScreenPro
 
   const handleSwitchBaby = useCallback(async (babyId: string) => {
     if (babyId === currentBabyId) {
-      navigation.replace('Main');
+      // Same baby — just go back to where we came from
+      if (navigation.canGoBack()) {
+        navigation.goBack();
+      } else {
+        navigation.replace(getReturnTarget(route));
+      }
       return;
     }
 
@@ -87,7 +99,8 @@ export default function BabySelectorScreen({ navigation }: BabySelectorScreenPro
         setTimeout(() => {
           if (!hasNavigated.current && isMounted.current) {
             hasNavigated.current = true;
-            navigation.replace('Main');
+            // Navigate back to the screen that opened us, passing babySwitched flag
+            navigation.navigate(getReturnTarget(route), { babySwitched: true } as any);
           }
         }, 500);
       } else {
@@ -98,7 +111,7 @@ export default function BabySelectorScreen({ navigation }: BabySelectorScreenPro
       sweetAlert.error('Error', 'An unexpected error occurred');
       setIsProcessing(false);
     }
-  }, [currentBabyId, switchBaby, loadBabies, navigation, sweetAlert]);
+  }, [currentBabyId, switchBaby, loadBabies, navigation, sweetAlert, route]);
 
   const handleDeleteBaby = useCallback((babyId: string, babyName: string) => {
     if (isProcessing) return;
@@ -142,8 +155,12 @@ export default function BabySelectorScreen({ navigation }: BabySelectorScreenPro
   }, [navigation]);
 
   const handleContinue = useCallback(() => {
-    navigation.replace('Main');
-  }, [navigation]);
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      navigation.replace(getReturnTarget(route));
+    }
+  }, [navigation, route]);
 
   if (babyLoading && babies.length === 0) {
     return (

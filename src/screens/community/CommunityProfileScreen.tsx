@@ -510,13 +510,13 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     checkAndAwardAchievements,
   } = useCommunity();
   const { profile, updateCommunityProfile: updateUserContextProfile } = useUser();
-  const { themeColors, shouldReduceMotion, triggerHaptic } = useCustomization();
+  const { themeColors, darkMode, shouldReduceMotion, triggerHaptic } = useCustomization();
   const { compressImage, cacheImage, pickImage } = useMedia();
   const sweetAlert = useSweetAlert();
 
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+  const isDark = darkMode ?? (colorScheme === 'dark');
   const scrollY = useSharedValue(0);
 
   const [isEditing, setIsEditing] = useState(false);
@@ -1146,13 +1146,10 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   if (isLoading) {
     return (
       <View style={[styles.container, styles.centered]}>
-        <StatusBar barStyle="light-content" />
+        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
 
         {isDark ? (
         <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={StyleSheet.absoluteFill} />
-      ) : (
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#f8f9fc' }]} />
-      )}
       ) : (
         <View style={[StyleSheet.absoluteFill, { backgroundColor: '#f8f9fc' }]} />
       )}
@@ -1164,12 +1161,9 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   if (!currentUser) {
     return (
       <View style={[styles.container, styles.centered]}>
-        <StatusBar barStyle="light-content" />
+        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
         {isDark ? (
         <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={StyleSheet.absoluteFill} />
-      ) : (
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#f8f9fc' }]} />
-      )}
       ) : (
         <View style={[StyleSheet.absoluteFill, { backgroundColor: '#f8f9fc' }]} />
       )}
@@ -1184,12 +1178,9 @@ export default function CommunityProfileScreen({ navigation }: Props) {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
         {isDark ? (
         <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={StyleSheet.absoluteFill} />
-      ) : (
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#f8f9fc' }]} />
-      )}
       ) : (
         <View style={[StyleSheet.absoluteFill, { backgroundColor: '#f8f9fc' }]} />
       )}
