@@ -1478,6 +1478,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   const {
     settings,
     themeColors,
+    fullThemeColors,
     darkMode,
     triggerHaptic,
     fontSizeMultiplier,
