@@ -22,7 +22,7 @@ import type { RootStackParamList } from '../../types/navigation';
 
 import { useAuth } from '../../context/AuthContext';
 import { useCustomization } from '../../hooks/useCustomization';
-import { useSecurity } from '../../context/SecurityContext';
+import { useSecurity, hashAnswer } from '../../context/SecurityContext';
 import { useSweetAlert } from '../../components/SweetAlert';
 
 type SecurityLockScreenProps = NativeStackScreenProps<RootStackParamList, 'SecurityLock'>;
@@ -169,30 +169,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     }
   };
 
-const hashAnswer = async (answer: string): Promise<string> => {
-    const normalized = answer.toLowerCase().trim();
-    // React Native safe base64 encoding (btoa not available in all RN environments)
-    try {
-      return Buffer.from(normalized, 'utf8').toString('base64');
-    } catch {
-      // Fallback for environments without Buffer
-      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
-      let str = normalized;
-      let output = '';
-      for (
-        let block = 0, charCode, i = 0, map = chars;
-        str.charAt(i | 0) || ((map = '='), i % 1);
-        output += map.charAt(63 & (block >> (8 - (i % 1) * 8)))
-      ) {
-        charCode = str.charCodeAt((i += 3 / 4));
-        if (charCode > 0xff) {
-          throw new Error("'btoa' failed: The string to be encoded contains characters outside of the Latin1 range.");
-        }
-        block = (block << 8) | charCode;
-      }
-      return output;
-    }
-  };
+// Uses exported hashAnswer from SecurityContext to ensure consistency
 
   const verifySecurityAnswers = async () => {
     if (verifyAnswers.some(a => a.trim().length === 0)) {
@@ -209,7 +186,7 @@ const hashAnswer = async (answer: string): Promise<string> => {
         })
       );
 
-      if (allCorrect.every(Boolean)) {
+        if (allCorrect.every(Boolean)) {
         triggerHaptic('success');
         setShowForgotPin(false);
         toast('Verified!', 'Redirecting to PIN reset...', 'success');
@@ -329,13 +306,16 @@ const hashAnswer = async (answer: string): Promise<string> => {
       confirm(
         'Too Many Attempts',
         'For security purposes, you need to sign out and sign in again.',
-        () => signOut(),
+        async () => {
+          await forceUnlock?.();
+          signOut();
+        },
         undefined,
         'Sign Out',
         'Cancel'
       );
     }, 500);
-  }, [signOut, triggerHaptic, showError, confirm]);
+  }, [signOut, forceUnlock, triggerHaptic, showError, confirm]);
 
   const handlePinComplete = useCallback(
     async (completedPin: string) => {

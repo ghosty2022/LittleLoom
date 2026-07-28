@@ -173,7 +173,7 @@ const hashPin = async (pin: string): Promise<string> => {
   return await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, pin + 'littleloom_salt_v1');
 };
 
-const hashAnswer = async (answer: string): Promise<string> => {
+export const hashAnswer = async (answer: string): Promise<string> => {
   return await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, answer.toLowerCase().trim() + 'littleloom_sq_salt');
 };
 
@@ -209,6 +209,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
   const lastUnlockTimeRef = useRef<number>(0);
   const backgroundTimeRef = useRef<number>(0);
   const checkedThisCycleRef = useRef<boolean>(false);
+  const isAuthenticatedRef = useRef<boolean>(false);
 
   useEffect(() => { return () => { isMounted.current = false; }; }, []);
 
@@ -443,7 +444,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
 
   const checkSecurityOnResume = useCallback(async () => {
     if (securityCheckLockRef.current) { console.log('⚠️ Security check already in progress'); return; }
-    if (!isAuthenticated) { console.log('🔒 Not authenticated, skipping'); return; }
+    if (!isAuthenticatedRef.current) { console.log('🔒 Not authenticated, skipping'); return; }
     if (!setupComplete) { console.log('⏸️ Setup not complete, skipping'); return; }
     if (checkedThisCycleRef.current) { console.log('🔓 Already checked this cycle'); return; }
 
@@ -494,7 +495,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     } finally {
       securityCheckLockRef.current = false;
     }
-  }, [isAuthenticated, setupComplete, autoLockTimeout, lockApp]);
+  }, [isAuthenticated, setupComplete, state.settings.autoLockTimeout, lockApp]);
 
   const getBiometricTypeName = useCallback(() => state.settings.biometricTypeName, [state.settings.biometricTypeName]);
 
@@ -584,6 +585,16 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     return state.settings.hasSecurityQuestions && state.securityQuestions.length > 0;
   }, [state.settings.hasSecurityQuestions, state.securityQuestions]);
 
+  const clearPinOnly = useCallback(async () => {
+    await secureStorage.deleteItem(SECURE_KEYS.PIN_HASH);
+    if (isMounted.current) {
+      setState(prev => ({
+        ...prev,
+        settings: { ...prev.settings, isPinEnabled: false },
+      }));
+    }
+  }, []);
+
   const clearSecurityState = useCallback(async () => {
     await AsyncStorage.multiRemove([
       ASYNC_KEYS.SECURITY_LOCK, ASYNC_KEYS.LAST_ACTIVE,
@@ -635,6 +646,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     isSharingActive,
     getAvailableBiometricTypes,
     clearSecurityState,
+    clearPinOnly,
     resetUnlockLock,
     saveSecurityQuestions,
     verifySecurityAnswers,

@@ -140,6 +140,7 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     availableBiometricTypes,
     getBiometricTypeName,
     clearSecurityState,
+    clearPinOnly,
     resetUnlockLock,
   } = useSecurity();
 
@@ -302,7 +303,7 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
             'Deactivate PIN?',
             'You will only be able to use biometric unlock. Are you sure?',
             async () => {
-              await clearSecurityState();
+              await clearPinOnly();
               showSuccess('PIN Deactivated', 'Biometric is now your only unlock method');
               setActiveSection('dashboard');
             },

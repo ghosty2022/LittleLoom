@@ -1018,12 +1018,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signOut = useCallback(async (): Promise<void> => {
     if (signInLock.current) await new Promise(resolve => setTimeout(resolve, 1000));
     try {
-      const [hasParent2Str, hasBabyStr, setupComplete, hasSeenOnboarding, biometricLoginEnabled] = await Promise.all([
+      // Release any active security lock before clearing auth
+      await AsyncStorage.setItem('littleloom_security_lock', 'false');
+      
+      const [hasParent2Str, hasBabyStr, setupComplete, hasSeenOnboarding] = await Promise.all([
         AsyncStorage.getItem(ASYNC_KEYS.HAS_PARENT2),
         AsyncStorage.getItem(ASYNC_KEYS.HAS_BABY),
         AsyncStorage.getItem(ASYNC_KEYS.SETUP_COMPLETE),
         AsyncStorage.getItem(ASYNC_KEYS.HAS_SEEN_ONBOARDING),
-        secureStorage.getItem(SECURE_KEYS.BIOMETRIC_LOGIN_ENABLED),
       ]);
 
       // ─── CRITICAL FIX: Only delete token and session data ────────────
@@ -1032,12 +1034,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await Promise.all([
         secureStorage.deleteItem(SECURE_KEYS.AUTH_TOKEN),
         secureStorage.deleteItem(SECURE_KEYS.USER_PROFILE),
-        secureStorage.deleteItem(SECURE_KEYS.PIN_HASH),
         secureStorage.deleteItem(SECURE_KEYS.SOCIAL_PROVIDER),
+        secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_EMAIL),
+        secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_PASSWORD),
+        secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_LOGIN_ENABLED),
         AsyncStorage.multiRemove([
           ASYNC_KEYS.ONBOARDING_COMPLETE,
-          ASYNC_KEYS.BIOMETRIC_ENABLED,
           ASYNC_KEYS.NAVIGATION_LOCK,
+          'littleloom_security_lock',
         ]),
       ]);
 
@@ -1054,8 +1058,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // ─── FIX: Keep onboarding seen so user doesn't re-see it ─────
           onboardingComplete: hasSeenOnboarding === 'true',
           hasSeenOnboarding: hasSeenOnboarding === 'true',
-          isBiometricEnabled: false,
-          isBiometricLoginEnabled: biometricLoginEnabled === 'true',
+          isBiometricLoginEnabled: false,
           setupComplete: setupComplete === 'true',
           hasParent2,
           hasBaby,

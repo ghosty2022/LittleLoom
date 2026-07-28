@@ -810,7 +810,7 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = React.memo(({
   );
 });
 
-export default function SettingsScreen({ navigation }: SettingsScreenProps) {
+export default function SettingsScreen({ navigation, route }: SettingsScreenProps) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
     new Set(['security', 'preferences', 'family'])
   );
@@ -921,6 +921,8 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
   }, [availableMethods, lockApp, sweetAlert]);
 
   const [showTimeoutModal, setShowTimeoutModal] = useState(false);
+
+  // formatTimeout moved above handleAutoLockTimeout to fix TDZ
 
   const handleAutoLockTimeout = useCallback(() => {
     if (!securitySettings.isAppLockEnabled) {
