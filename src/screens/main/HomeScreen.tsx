@@ -46,8 +46,11 @@ import Animated, {
   useAnimatedStyle,
   withSpring,
   withTiming,
+  withRepeat,
+  withSequence,
   interpolate,
   Extrapolate,
+  Easing,
   useAnimatedScrollHandler,
   runOnJS,
 } from 'react-native-reanimated';
@@ -64,6 +67,8 @@ import type { RootStackParamList } from '../../types/navigation';
 const { width, height } = Dimensions.get('window');
 const SCREEN_W = width;
 const SCREEN_H = height;
+
+const littleLoomLogo = require('../../../assets/logo.png');
 
 /* ═══════════════════════════════════════════════════════════════════════════
    DESIGN SYSTEM — Ultra-Refined, Cohesive Tokens (GrowthDashboard DNA)
@@ -1380,9 +1385,25 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
   const badgeSize = Math.round(16 * fontSizeMultiplier);
   const avatarSize = Math.round(36 * fontSizeMultiplier);
 
-  const headerBg = isDark ? (fullTheme?.glassBg || 'rgba(26,26,42,0.96)') : (fullTheme?.glassBg || 'rgba(255,255,255,0.96)');
+    const headerBg = isDark ? (fullTheme?.glassBg || 'rgba(26,26,42,0.96)') : (fullTheme?.glassBg || 'rgba(255,255,255,0.96)');
   const borderColor = isDark ? (fullTheme?.border || 'rgba(255,255,255,0.06)') : 'rgba(0,0,0,0.04)';
   const textColor = isDark ? (fullTheme?.text || '#f0f0f7') : (fullTheme?.text || '#111827');
+
+  // Ethereal floating logo animation
+  const logoFloatY = useSharedValue(0);
+  useEffect(() => {
+    logoFloatY.value = withRepeat(
+      withSequence(
+        withTiming(-2.5, { duration: 2200, easing: Easing.inOut(Easing.ease) }),
+        withTiming(2.5, { duration: 2200, easing: Easing.inOut(Easing.ease) })
+      ),
+      -1,
+      true
+    );
+  }, []);
+  const logoFloatStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: logoFloatY.value }],
+  }));
 
   return (
     <Animated.View
@@ -1416,10 +1437,29 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
           </TouchableOpacity>
         </View>
 
-        {/* Center: Title */}
+          {/* Center: Floating Logo + Title */}
         <View style={styles.stickyHeaderCenter}>
-          <Text style={[styles.stickyHeaderTitle, { color: textColor, fontSize: titleSize }]}>LittleLoom</Text>
-          <View style={[styles.stickyHeaderUnderline, { backgroundColor: primaryColor, width: Math.round(28 * fontSizeMultiplier), height: Math.max(3, Math.round(3 * fontSizeMultiplier)), borderRadius: Math.max(1, Math.round(2 * fontSizeMultiplier)), marginTop: compactSpacing ? 2 : 3 }]} />
+          <Animated.View style={[styles.logoFloatWrap, logoFloatStyle]}>
+            <View style={[styles.logoGlowContainer, { width: Math.round(34 * fontSizeMultiplier), height: Math.round(34 * fontSizeMultiplier) }]}>
+              <Image 
+                source={littleLoomLogo} 
+                style={[
+                  styles.headerLogoImage, 
+                  { 
+                    width: Math.round(26 * fontSizeMultiplier), 
+                    height: Math.round(26 * fontSizeMultiplier),
+                    shadowColor: primaryColor,
+                  }
+                ]} 
+                resizeMode="contain" 
+              />
+              <View style={[styles.logoGlowAura, { shadowColor: primaryColor, backgroundColor: `${primaryColor}15` }]} />
+            </View>
+            <View style={styles.logoTextColumn}>
+              <Text style={[styles.stickyHeaderTitle, { color: textColor, fontSize: titleSize }]}>LittleLoom</Text>
+              <View style={[styles.stickyHeaderUnderline, { backgroundColor: primaryColor, width: Math.round(28 * fontSizeMultiplier), height: Math.max(3, Math.round(3 * fontSizeMultiplier)), borderRadius: Math.max(1, Math.round(2 * fontSizeMultiplier)), marginTop: compactSpacing ? 2 : 3 }]} />
+            </View>
+          </Animated.View>
         </View>
 
         {/* Right: Actions */}
@@ -2249,6 +2289,39 @@ const styles = StyleSheet.create({
   stickyHeaderCenter: { flex: 2, alignItems: 'center', justifyContent: 'center' },
   stickyHeaderTitle: { fontWeight: '900', letterSpacing: -0.3 },
   stickyHeaderUnderline: { alignSelf: 'center' },
+  logoFloatWrap: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 8,
+  },
+  logoGlowContainer: {
+    position: 'relative',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerLogoImage: {
+    zIndex: 2,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.22,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  logoGlowAura: {
+    position: 'absolute',
+    width: '150%',
+    height: '150%',
+    borderRadius: 999,
+    zIndex: 1,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 0,
+  },
+  logoTextColumn: {
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+  },
+
   stickyHeaderRight: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 8 },
   stickyHeaderIconBtn: { alignItems: 'center', justifyContent: 'center', position: 'relative' },
   stickyHeaderBadge: { position: 'absolute', top: 0, right: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ef4444', borderWidth: 2, borderColor: 'white' },

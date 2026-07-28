@@ -1368,7 +1368,7 @@ const GlassHeader = React.memo(({
     []
   );
 
-  const headerBgStyle = useAnimatedStyle(() => ({
+   const headerBgStyle = useAnimatedStyle(() => ({
     backgroundColor: interpolateColor(
       headerSolid.value,
       [0, 1],
@@ -1383,6 +1383,34 @@ const GlassHeader = React.memo(({
       ['transparent', isDark ? 'rgba(255,255,255,0.06)' : DS.gray200]
     ),
     borderBottomWidth: interpolate(headerSolid.value, [0, 1], [0, 1]),
+  }));
+
+  // Ethereal floating logo animation
+  const logoFloat = useSharedValue(0);
+  const logoGlow = useSharedValue(0.6);
+  useEffect(() => {
+    logoFloat.value = withRepeat(
+      withSequence(
+        withTiming(-3, { duration: 2500, easing: Easing.inOut(Easing.ease) }),
+        withTiming(3, { duration: 2500, easing: Easing.inOut(Easing.ease) })
+      ),
+      -1,
+      true
+    );
+    logoGlow.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 1500, easing: Easing.inOut(Easing.ease) }),
+        withTiming(0.5, { duration: 1500, easing: Easing.inOut(Easing.ease) })
+      ),
+      -1,
+      true
+    );
+  }, []);
+  const logoFloatStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: logoFloat.value }],
+  }));
+  const logoGlowStyle = useAnimatedStyle(() => ({
+    opacity: logoGlow.value,
   }));
 
   const blurOpacity = useAnimatedStyle(() => ({
@@ -1415,9 +1443,12 @@ const GlassHeader = React.memo(({
         </TouchableOpacity>
 
         <View style={styles.headerTitleWrap} pointerEvents="none">
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Image source={littleLoomLogo} style={styles.headerLogo} resizeMode="contain" />
-            <View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <Animated.View style={[styles.logoFloatContainer, logoFloatStyle]}>
+              <Image source={littleLoomLogo} style={[styles.headerLogo, { shadowColor: DS.primary }]} resizeMode="contain" />
+              <Animated.View style={[styles.logoGlowRing, logoGlowStyle, { shadowColor: DS.primary }]} pointerEvents="none" />
+            </Animated.View>
+            <View style={{ justifyContent: 'center' }}>
               <Text style={[styles.headerTitle, { color: isDark ? DS.white : DS.gray900 }]}>
                 LittleLoom
               </Text>
@@ -2322,14 +2353,33 @@ export default function CommunityScreen({ navigation }: Props) {
         fontWeight: '800',
         letterSpacing: -0.5,
       },
-        headerLogo: {
+        logoFloatContainer: {
+    position: 'relative',
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerLogo: {
     width: 36,
     height: 36,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.14,
-    shadowRadius: 8,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.22,
+    shadowRadius: 12,
+    elevation: 8,
+    zIndex: 2,
+  },
+  logoGlowRing: {
+    position: 'absolute',
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: 'rgba(99,102,241,0.08)',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    elevation: 0,
+    zIndex: 1,
   },
       headerSubtitleGradient: {
         paddingHorizontal: 10,
