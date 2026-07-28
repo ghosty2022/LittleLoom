@@ -1369,16 +1369,9 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
 }) => {
   const headerAnimatedStyle = useAnimatedStyle(() => {
     const currentY = scrollY.value;
-    // Header stays pinned — gains a subtle shadow when scrolled
-    const shadowOpacity = interpolate(currentY, [0, 60], [0, 0.08], Extrapolate.CLAMP);
-    const elevation = interpolate(currentY, [0, 60], [0, 4], Extrapolate.CLAMP);
-    return {
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity,
-      shadowRadius: 16,
-      elevation,
-    };
+    const translateY = interpolate(currentY, [0, 80, 140], [0, 0, -140], Extrapolate.CLAMP);
+    const opacity = interpolate(currentY, [0, 80, 140], [1, 1, 0], Extrapolate.CLAMP);
+    return { transform: [{ translateY }], opacity };
   });
 
   const headerPaddingTop = Platform.OS === 'ios' ? (compactSpacing ? 44 : 52) : (compactSpacing ? 28 : 36);
@@ -1926,21 +1919,6 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
         scrollEventThrottle={16}
       >
         {/* ═══════════════════════════════════════════════════════════════════
-            FLOATING LOGO — Soft shadow, no rounded borders, clean float
-           ═══════════════════════════════════════════════════════════════════ */}
-        <Animated.View entering={shouldReduceMotion ? undefined : FadeInDown.duration(600).springify()}>
-          <View style={styles.logoFloatContainer}>
-            <View style={styles.logoFloatWrap}>
-              <Image
-                source={require('../../../assets/logo.png')}
-                style={styles.logoFloatImage}
-                resizeMode="contain"
-              />
-            </View>
-          </View>
-        </Animated.View>
-
-        {/* ═══════════════════════════════════════════════════════════════════
             GREETING & PARENT CARD — Compact, Elegant
            ═══════════════════════════════════════════════════════════════════ */}
         <Animated.View entering={shouldReduceMotion ? undefined : FadeInDown.springify()}>
@@ -2241,96 +2219,6 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
 
         <View style={{ height: settings.compactSpacing ? 80 : 120 }} />
       </Animated.ScrollView>
-
-      {/* ═══════════════════════════════════════════════════════════════════
-          NOTIFICATION CHOOSER MODAL — Same behavior as CommunityScreen
-         ═══════════════════════════════════════════════════════════════════ */}
-      <Modal
-        visible={showNotificationChooser}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowNotificationChooser(false)}
-      >
-        <Pressable
-          style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.45)' }]}
-          onPress={() => setShowNotificationChooser(false)}
-        >
-          <View style={[styles.notificationModal, { backgroundColor: isDark ? 'rgba(26,26,46,0.96)' : 'rgba(255,255,255,0.96)' }]}>
-            <View style={styles.notificationModalHeader}>
-              <Text style={[styles.notificationModalTitle, { color: isDark ? '#fff' : '#1a1a1a' }]}>
-                Notifications
-              </Text>
-              <TouchableOpacity onPress={() => setShowNotificationChooser(false)} style={styles.modalCloseBtn}>
-                <Ionicons name="close" size={22} color={isDark ? '#fff' : '#1a1a1a'} />
-              </TouchableOpacity>
-            </View>
-
-            <TouchableOpacity
-              style={styles.notificationOption}
-              onPress={() => {
-                setShowNotificationChooser(false);
-                navigation.navigate('TrackerReminders');
-              }}
-            >
-              <View style={[styles.notificationIconWrap, { backgroundColor: `${primary}15` }]}>
-                <Ionicons name="notifications" size={20} color={primary} />
-              </View>
-              <View style={styles.notificationOptionTextWrap}>
-                <Text style={[styles.notificationOptionTitle, { color: isDark ? '#fff' : '#1a1a1a' }]}>
-                  All Notifications
-                </Text>
-                <Text style={[styles.notificationOptionDesc, { color: isDark ? '#888' : '#666' }]}>
-                  {unreadCommunityCount > 0 ? `${unreadCommunityCount} unread` : 'No new notifications'}
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={isDark ? '#666' : '#bbb'} />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.notificationOption}
-              onPress={() => {
-                setShowNotificationChooser(false);
-                navigation.navigate('FamilyChatList');
-              }}
-            >
-              <View style={[styles.notificationIconWrap, { backgroundColor: `${secondary}15` }]}>
-                <Ionicons name="mail" size={20} color={secondary} />
-              </View>
-              <View style={styles.notificationOptionTextWrap}>
-                <Text style={[styles.notificationOptionTitle, { color: isDark ? '#fff' : '#1a1a1a' }]}>
-                  Messages
-                </Text>
-                <Text style={[styles.notificationOptionDesc, { color: isDark ? '#888' : '#666' }]}>
-                  View your conversations
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={isDark ? '#666' : '#bbb'} />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.notificationOption}
-              onPress={() => {
-                setShowNotificationChooser(false);
-                markAllNotificationsRead();
-                success('Success', 'All notifications marked as read');
-              }}
-            >
-              <View style={[styles.notificationIconWrap, { backgroundColor: `${accent}15` }]}>
-                <Ionicons name="checkmark-done" size={20} color={accent} />
-              </View>
-              <View style={styles.notificationOptionTextWrap}>
-                <Text style={[styles.notificationOptionTitle, { color: isDark ? '#fff' : '#1a1a1a' }]}>
-                  Mark All as Read
-                </Text>
-                <Text style={[styles.notificationOptionDesc, { color: isDark ? '#888' : '#666' }]}>
-                  Clear all notification badges
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={isDark ? '#666' : '#bbb'} />
-            </TouchableOpacity>
-          </View>
-        </Pressable>
-      </Modal>
     </View>
   );
 }
@@ -2603,87 +2491,4 @@ const styles = StyleSheet.create({
   sectionHeaderSubtitle: { fontSize: 11, fontWeight: '500', marginTop: 1 },
   sectionHeaderAction: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   sectionHeaderActionText: { fontSize: 12, fontWeight: '700' },
-
-  /* ── Floating Logo ── */
-  logoFloatContainer: { alignItems: 'center', marginTop: 6, marginBottom: 2 },
-  logoFloatWrap: {
-    width: Math.min(width * 0.24, 96),
-    height: Math.min(width * 0.24, 96),
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.12,
-    shadowRadius: 24,
-    elevation: 12,
-  },
-  logoFloatImage: {
-    width: Math.min(width * 0.22, 88),
-    height: Math.min(width * 0.22, 88),
-  },
-
-  /* ── Notification Modal ── */
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-  },
-  notificationModal: {
-    width: '100%',
-    maxWidth: 360,
-    borderRadius: 28,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.2,
-    shadowRadius: 40,
-    elevation: 20,
-    overflow: 'hidden',
-  },
-  notificationModalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  notificationModalTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-  },
-  modalCloseBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    backgroundColor: 'rgba(0,0,0,0.05)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  notificationOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.04)',
-  },
-  notificationIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  notificationOptionTextWrap: {
-    flex: 1,
-  },
-  notificationOptionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  notificationOptionDesc: {
-    fontSize: 13,
-    fontWeight: '500',
-    marginTop: 2,
-  },
 });
