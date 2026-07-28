@@ -60,10 +60,9 @@ import VaccinationScheduleScreen from '../screens/tracking/VaccinationScheduleSc
 import InviteCodeScreen from '../screens/family/InviteCodeScreen';
 
 import LiquidGlassNavigation from '../components/LiquidGlassNavigation';
-import { UniversalSpinner, InlineSpinner } from '../components/UniversalSpinner';
+import { InlineSpinner } from '../components/UniversalSpinner';
 import { useSecurity } from '../context/SecurityContext';
 import { useSafeApp, useSafeBaby, useSafeAuth } from '../hooks/useSafeContexts';
-import { statePersistence } from '../utils/statePersistence';
 import { RootStackParamList, MainTabParamList, NavigationState } from '../types/navigation';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -310,6 +309,13 @@ function NavigationContent({
     [secSettings?.isPinEnabled, secSettings?.isBiometricEnabled]
   );
 
+  // FIX: Move ALL hooks BEFORE any conditional return
+  const stackScreenOptions = useMemo(() => ({
+    headerShown: false,
+    animation: 'slide_from_right' as const,
+    contentStyle: { backgroundColor: colors?.background || '#f8faff' },
+  }), [colors?.background]);
+
   // FIX #1: Load isFirstOpen ONCE using ref guard
   useEffect(() => {
     if (firstOpenChecked.current) return;
@@ -402,8 +408,6 @@ function NavigationContent({
       const current = AppState.currentState;
       const wasBg = current === 'background' || current === 'inactive';
 
-      // REMOVED redundant save logic — App.tsx handles background persistence
-
       if (wasBg && next === 'active' && isAuthenticated && setupComplete) {
         const currentRoute = navRef.current?.getCurrentRoute()?.name;
         if (currentRoute === 'SecurityLock') return;
@@ -468,7 +472,6 @@ function NavigationContent({
 
     const currentRoute = navRef.current.getCurrentRoute()?.name;
 
-    // Auto-show baby selector for multi-baby families (handled by separate effect)
     // Route map
     const routeMap: Record<NavigationState, keyof RootStackParamList> = {
       LOADING: 'Login',
@@ -534,14 +537,8 @@ function NavigationContent({
     }, 300);
   }, [navState, initialCheckDone, isNavReady, initialState]);
 
+  // Early return MUST come after ALL hooks
   if (authLoading || !initialCheckDone) return <AppLoadingScreen />;
-
-  // Memoize screen options to prevent Stack.Navigator re-configuration churn
-  const stackScreenOptions = useMemo(() => ({
-    headerShown: false,
-    animation: 'slide_from_right' as const,
-    contentStyle: { backgroundColor: colors?.background || '#f8faff' },
-  }), [colors?.background]);
 
   return (
     <NavigationContainer
