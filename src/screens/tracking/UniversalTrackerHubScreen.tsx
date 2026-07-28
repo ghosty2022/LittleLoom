@@ -1613,12 +1613,21 @@ export default function UniversalTrackerHubScreen() {
   }));
 
   const isMountedRef = useRef(true);
+  const hasInitializedRef = useRef(false);
+  const currentBabyRef = useRef(currentBaby);
+
+  // Keep ref in sync without causing effect re-runs
+  currentBabyRef.current = currentBaby;
 
   useEffect(() => {
     return () => { isMountedRef.current = false; };
   }, []);
 
+  // Mount-only init: break dependency on unstable showError reference
   useEffect(() => {
+    if (hasInitializedRef.current) return;
+    hasInitializedRef.current = true;
+
     const init = async () => {
       setIsRefreshing(true);
       try {
@@ -1634,16 +1643,21 @@ export default function UniversalTrackerHubScreen() {
       }
     };
     init();
-  }, [loadBabies, showError]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Poll using ref to avoid stale closure AND break the object-reference loop
+  // BabyContext returns a new currentBaby object on every refresh, so
+  // depending on it directly causes an infinite re-render cycle.
   useEffect(() => {
-    const refresh = async () => {
-      if (currentBaby) await refreshCurrentBaby();
+    const tick = async () => {
+      if (currentBabyRef.current && isMountedRef.current) {
+        await refreshCurrentBaby();
+      }
     };
-    refresh();
-    const interval = setInterval(refresh, 60000);
+    tick();
+    const interval = setInterval(tick, 60000);
     return () => clearInterval(interval);
-  }, [currentBaby, refreshCurrentBaby]);
+  }, [refreshCurrentBaby]); // Deliberately omit currentBaby
 
   const today = useMemo(() => startOfDay(new Date()).getTime(), []);
 
