@@ -1,6 +1,6 @@
 import { StyleSheet, Dimensions, Text, TouchableOpacity, View, StatusBar } from 'react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+// Removed stale lastRoute cache — navigation now uses sanitized goBack/replace
 
 import { BlurView } from 'expo-blur';
 
@@ -30,12 +30,43 @@ const { width } = Dimensions.get('window');
 type BabySelectorScreenProps = NativeStackScreenProps<RootStackParamList, 'SwitchBaby'>;
 
 // Helper to read return target from route params
-const getReturnTarget = (route: BabySelectorScreenProps['route']) => {
-  const returnTo = route.params?.returnTo;
-  if (returnTo && typeof returnTo === 'string') {
-    return returnTo as keyof RootStackParamList;
-  }
-  return 'Main' as keyof RootStackParamList;
+const VALID_ROOT_SCREENS = new Set<string>([
+  'Main', 'Onboarding', 'Login', 'SignUp', 'ForgotPassword', 
+  'CreateBabyProfile', 'SwitchBaby', 'AddParent', 'UniversalTrackerHub',
+  'Timeline', 'GrowthDashboard', 'Achievements', 'TrackerReminders',
+  'SafetyCorner', 'Gallery', 'SoundMixer', 'FamilySharing', 'FamilyChatList',
+  'HelpCenter', 'ContactSupport', 'Profile', 'EditProfile', 'EditGuardian',
+  'VaccinationSchedule', 'Customize', 'SecurityCenter', 'BiometricSetup',
+  'BackupRestore', 'LanguageSettings', 'UnitSettings', 'PrivacyPolicy',
+  'TermsOfService', 'About', 'EntryDetail', 'Insights', 'CreateCustomTracker',
+  'AddEntry', 'FamilyChat', 'SecurityLock', 'Parent2Optional', 'Parent2Setup',
+  'BabyOptional', 'InviteCodeScreen'
+]);
+
+const TAB_SCREEN_MAP: Record<string, keyof RootStackParamList> = {
+  Home: 'Main',
+  Track: 'Main',
+  Grow: 'Main',
+  Connect: 'Main',
+  More: 'Main',
+};
+
+const sanitizeRoute = (routeName: string | null | undefined): keyof RootStackParamList => {
+  if (!routeName || typeof routeName !== 'string') return 'Main';
+  if (VALID_ROOT_SCREENS.has(routeName)) return routeName as keyof RootStackParamList;
+  if (TAB_SCREEN_MAP[routeName]) return TAB_SCREEN_MAP[routeName];
+  return 'Main';
+};
+
+const getReturnTarget = (route: BabySelectorScreenProps['route']): keyof RootStackParamList => {
+  return sanitizeRoute(route.params?.returnTo);
+};
+
+const getReturnLabel = (route: BabySelectorScreenProps['route']): string => {
+  const raw = route.params?.returnTo;
+  if (!raw || typeof raw !== 'string' || raw === 'Main') return 'Home';
+  if (TAB_SCREEN_MAP[raw]) return raw; // Track, Grow, Connect, More
+  return raw;
 };
 
 const GlassmorphismCard: React.FC<{ children: React.ReactNode; style?: any; onPress?: () => void; intensity?: number; isDark?: boolean }> = ({ 
@@ -78,19 +109,11 @@ export default function BabySelectorScreen({ navigation, route }: BabySelectorSc
 
   const handleSwitchBaby = useCallback(async (babyId: string) => {
     if (babyId === currentBabyId) {
-      // Same baby — just go back to where we came from
+      // Same baby — just dismiss modal to return to caller
       if (navigation.canGoBack()) {
         navigation.goBack();
       } else {
-        AsyncStorage.getItem('@littleloom_last_route_name')
-          .then((lastRoute) => {
-            if (lastRoute && lastRoute !== 'SwitchBaby' && lastRoute !== 'Login') {
-              navigation.replace(lastRoute as keyof RootStackParamList);
-            } else {
-              navigation.replace(getReturnTarget(route));
-            }
-          })
-          .catch(() => navigation.replace(getReturnTarget(route)));
+        navigation.replace(getReturnTarget(route));
       }
       return;
     }
@@ -108,20 +131,11 @@ export default function BabySelectorScreen({ navigation, route }: BabySelectorSc
         setTimeout(() => {
           if (!hasNavigated.current && isMounted.current) {
             hasNavigated.current = true;
-            const target = getReturnTarget(route);
-            if (route.params?.returnTo) {
-              navigation.navigate(target, { babySwitched: true } as any);
+            // Dismiss modal — underlying screen refreshes via useFocusEffect
+            if (navigation.canGoBack()) {
+              navigation.goBack();
             } else {
-              // Restore the last active route if we have one; otherwise fallback to Main
-              AsyncStorage.getItem('@littleloom_last_route_name')
-                .then((lastRoute) => {
-                  if (lastRoute && lastRoute !== 'SwitchBaby' && lastRoute !== 'Login') {
-                    navigation.replace(lastRoute as keyof RootStackParamList);
-                  } else {
-                    navigation.replace(target);
-                  }
-                })
-                .catch(() => navigation.replace(target));
+              navigation.replace(getReturnTarget(route));
             }
           }
         }, 500);
@@ -344,7 +358,7 @@ export default function BabySelectorScreen({ navigation, route }: BabySelectorSc
             onPress={handleContinue}
           >
             <LinearGradient colors={[themeColors.primary, themeColors.secondary]} style={styles.continueGradient}>
-              <Text style={styles.continueText}>Continue to App</Text>
+              <Text style={styles.continueText}>Continue to {getReturnLabel(route)}</Text>
               <Ionicons name="arrow-forward" size={20} color="#fff" />
             </LinearGradient>
           </TouchableOpacity>
