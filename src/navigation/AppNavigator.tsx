@@ -151,21 +151,13 @@ const getScreenOptions = (colors: any, isDark: boolean) => ({
 
 /* ═══════════════════════════════════════════════════════════════════════════
    MAIN TABS — Route-based tab bar visibility (NO scroll hiding)
-   
-   ONLY Home tab shows the tab bar persistently.
-   All other tabs and nested screens hide it immediately.
    ═══════════════════════════════════════════════════════════════════════════ */
 
-// ONLY Home shows the tab bar. Everything else hides it.
 const VISIBLE_TAB_BAR_ROUTES = new Set(['Home']);
 
 function getTabBarVisibility(route: any): 'flex' | 'none' {
   const routeName = getFocusedRouteNameFromRoute(route) ?? '';
-  
-  // Only Home tab shows the tab bar
   if (VISIBLE_TAB_BAR_ROUTES.has(routeName)) return 'flex';
-  
-  // Everything else (Track, Grow, Connect, More, all nested screens) hides it
   return 'none';
 }
 
@@ -224,7 +216,6 @@ function getNavState(
     }
     return 'MAIN';
   }
-  // FIX: Only show onboarding if it's truly the first open AND onboarding hasn't been seen
   if (firstOpen && !seenOnboarding) return 'ONBOARDING';
   if (!isAuth) return 'LOGIN';
   return 'MAIN';
@@ -298,17 +289,28 @@ function NavigationContent({
   const stateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const babiesLoaded = useRef(false);
   const firstOpenChecked = useRef(false);
+  const pendingNavTarget = useRef<string | null>(null);
+  const processedNavState = useRef<NavigationState>('LOADING');
+  const processedSwitchBaby = useRef(false);
 
   // Refs to track current baby values without causing re-renders
   const babyCountRef = useRef(0);
   const hasSkippedBabyRef = useRef(false);
+
+  // FIX: Use refs for callbacks to keep AppState effect stable
+  const checkSecurityOnResumeRef = useRef(checkSecurityOnResume);
+  const loadBabiesRef = useRef(loadBabies);
+  useEffect(() => {
+    checkSecurityOnResumeRef.current = checkSecurityOnResume;
+    loadBabiesRef.current = loadBabies;
+  }, [checkSecurityOnResume, loadBabies]);
 
   const securityOn = useMemo(() =>
     !!(secSettings?.isPinEnabled || secSettings?.isBiometricEnabled),
     [secSettings?.isPinEnabled, secSettings?.isBiometricEnabled]
   );
 
-  // FIX #1: Load isFirstOpen ONCE using ref guard — check AsyncStorage directly
+  // FIX #1: Load isFirstOpen ONCE using ref guard
   useEffect(() => {
     if (firstOpenChecked.current) return;
     firstOpenChecked.current = true;
@@ -317,7 +319,6 @@ function NavigationContent({
       const complete = v === 'true';
       AsyncStorage.getItem(ONBOARDING_SEEN_KEY).then(v2 => {
         const seen = v2 === 'true';
-        // isFirstOpen = true ONLY if neither complete nor seen
         setIsFirstOpen(!(complete || seen));
       }).catch(() => setIsFirstOpen(false));
     }).catch(() => setIsFirstOpen(false));
@@ -341,7 +342,7 @@ function NavigationContent({
     }
   }, [babies?.length, hasSkippedBaby, isAuthenticated, setupComplete, isFirstOpen]);
 
-  // FIX #2: Compute navState with stable deps - REMOVED babies?.length and hasSkippedBaby
+  // FIX #2: Compute navState with stable deps
   useEffect(() => {
     if (authLoading || !firstOpenChecked.current) return;
 
@@ -385,36 +386,23 @@ function NavigationContent({
     hasBaby,
     hasSeenOnboarding,
     isFirstOpen,
-    // REMOVED: babies?.length, hasSkippedBaby — these change when loadBabies() runs
   ]);
 
-  // FIX #3: Load babies ONCE, no deps that change
+  // FIX #3: Load babies ONCE
   useEffect(() => {
     if (isAuthenticated && !authLoading && !babiesLoaded.current) {
       babiesLoaded.current = true;
       loadBabies();
     }
-  }, [isAuthenticated, authLoading]); // REMOVED: loadBabies
+  }, [isAuthenticated, authLoading]);
 
-  // FIX #4: AppState listener with correct deps
+  // FIX #4: AppState listener with STABLE deps (using refs for callbacks)
   useEffect(() => {
     const sub = AppState.addEventListener('change', async (next) => {
       const current = AppState.currentState;
       const wasBg = current === 'background' || current === 'inactive';
 
-      if (current === 'active' && (next === 'inactive' || next === 'background')) {
-        try {
-          const route = navRef.current?.getCurrentRoute();
-          const state = navRef.current?.getRootState();
-          if (route?.name !== 'SecurityLock' && state && route) {
-            await statePersistence.saveNavigationState(state, route.name, route.params);
-            await statePersistence.saveLastRoute(route.name, route.params);
-            await AsyncStorage.setItem('@littleloom_last_route_name', route.name).catch(() => {});
-          }
-        } catch (e) {
-          console.warn('Save state failed:', e);
-        }
-      }
+      // REMOVED redundant save logic — App.tsx handles background persistence
 
       if (wasBg && next === 'active' && isAuthenticated && setupComplete) {
         const currentRoute = navRef.current?.getCurrentRoute()?.name;
@@ -423,25 +411,20 @@ function NavigationContent({
 
         const now = Date.now();
         if (now - lastSecCheck.current < 3000) return;
-        await checkSecurityOnResume();
+        await checkSecurityOnResumeRef.current();
         lastSecCheck.current = now;
-        loadBabies();
+        loadBabiesRef.current();
       }
     });
     return () => sub.remove();
-  }, [isAuthenticated, setupComplete, checkSecurityOnResume, loadBabies]);
+  }, [isAuthenticated, setupComplete]);
 
+  // FIX: Deduplicated state change handler — forward ONLY to App.tsx prop
   const handleStateChange = useCallback((state: any) => {
     if (!state) return;
     if (stateTimer.current) clearTimeout(stateTimer.current);
     stateTimer.current = setTimeout(() => {
       onStateChange?.(state);
-      const route = navRef.current?.getCurrentRoute();
-      if (route && route.name !== 'SecurityLock') {
-        statePersistence.saveNavigationState(state, route.name, route.params);
-        statePersistence.saveLastRoute(route.name, route.params);
-        AsyncStorage.setItem('@littleloom_last_route_name', route.name).catch(() => {});
-      }
       stateTimer.current = null;
     }, 300);
   }, [onStateChange]);
@@ -452,38 +435,41 @@ function NavigationContent({
     };
   }, []);
 
-  const pendingNavTarget = useRef<string | null>(null);
+  /* ═══════════════════════════════════════════════════════════════════════════
+     SWITCH BABY NAVIGATION (isolated effect)
+     ═══════════════════════════════════════════════════════════════════════════ */
+  useEffect(() => {
+    if (!navRef.current?.isReady() || !isNavReady) return;
+    if (!shouldShowSwitchBaby || hasShownSwitchBaby.current) return;
+    if (processedSwitchBaby.current === shouldShowSwitchBaby) return;
 
+    processedSwitchBaby.current = shouldShowSwitchBaby;
+    hasShownSwitchBaby.current = true;
+    setShouldShowSwitchBaby(false);
+
+    const currentRoute = navRef.current.getCurrentRoute()?.name;
+    if (currentRoute !== 'SwitchBaby') {
+      navRef.current.navigate('SwitchBaby' as never);
+    }
+  }, [shouldShowSwitchBaby, isNavReady]);
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     MAIN NAVIGATION EFFECT (navState only)
+     ═══════════════════════════════════════════════════════════════════════════ */
   useEffect(() => {
     if (!navRef.current?.isReady() || !isNavReady || !initialCheckDone) return;
 
-    const isAuthToMain =
-      navState === 'MAIN' &&
-      (lastNavState.current === 'LOGIN' ||
-        lastNavState.current === 'ONBOARDING' ||
-        lastNavState.current === 'SECURITY_LOCK' ||
-        lastNavState.current === 'SETUP_PARENT2' ||
-        lastNavState.current === 'SETUP_BABY');
+    // Deduplicate: skip if we've already processed this navState
+    if (navState === processedNavState.current && !pendingNavTarget.current) return;
+    processedNavState.current = navState;
 
-    if (isNavigating.current && !isAuthToMain) return;
+    // Block concurrent navigation
+    if (isNavigating.current) return;
 
     const currentRoute = navRef.current.getCurrentRoute()?.name;
 
-    // Auto-show baby selector for multi-baby families
-    if (shouldShowSwitchBaby && !hasShownSwitchBaby.current) {
-      hasShownSwitchBaby.current = true;
-      setShouldShowSwitchBaby(false);
-      if (currentRoute !== 'SwitchBaby') {
-        pendingNavTarget.current = 'SwitchBaby';
-        navRef.current.navigate('SwitchBaby' as never);
-        setTimeout(() => {
-          isNavigating.current = false;
-          pendingNavTarget.current = null;
-        }, 300);
-        return;
-      }
-    }
-
+    // Auto-show baby selector for multi-baby families (handled by separate effect)
+    // Route map
     const routeMap: Record<NavigationState, keyof RootStackParamList> = {
       LOADING: 'Login',
       ONBOARDING: 'Onboarding',
@@ -505,23 +491,27 @@ function NavigationContent({
     // Already issued this navigation command and waiting for it to land
     if (pendingNavTarget.current === target) return;
 
+    // If we're already in a main flow screen and navState is MAIN, stay put
     if (navState === 'MAIN' && currentRoute && MAIN_FLOW_SCREENS.has(currentRoute)) {
       const fromNonMain =
         AUTH_FLOW_SCREENS.has(lastNavState.current) ||
         SETUP_FLOW_SCREENS.has(lastNavState.current) ||
         lastNavState.current === 'SECURITY_LOCK';
-      if (!fromNonMain) return;
+      if (!fromNonMain) {
+        pendingNavTarget.current = null;
+        return;
+      }
 
       // Single baby + restored state: let NavigationContainer's initialState do its job
       if (babyCountRef.current <= 1 && fromNonMain && initialState) {
-        lastNavState.current = navState;
         pendingNavTarget.current = null;
         return;
       }
     }
 
+    // Cooldown guard (800ms) — prevents rapid reset/navigate loops
     const now = Date.now();
-    if (now - lastNavTime.current < 800 && !isAuthToMain) return;
+    if (now - lastNavTime.current < 800) return;
 
     isNavigating.current = true;
     lastNavTime.current = now;
@@ -542,10 +532,16 @@ function NavigationContent({
       isNavigating.current = false;
       pendingNavTarget.current = null;
     }, 300);
-    lastNavState.current = navState;
-  }, [navState, initialCheckDone, shouldShowSwitchBaby, isNavReady, initialState]);
+  }, [navState, initialCheckDone, isNavReady, initialState]);
 
   if (authLoading || !initialCheckDone) return <AppLoadingScreen />;
+
+  // Memoize screen options to prevent Stack.Navigator re-configuration churn
+  const stackScreenOptions = useMemo(() => ({
+    headerShown: false,
+    animation: 'slide_from_right' as const,
+    contentStyle: { backgroundColor: colors?.background || '#f8faff' },
+  }), [colors?.background]);
 
   return (
     <NavigationContainer
@@ -556,7 +552,7 @@ function NavigationContent({
       onReady={() => setIsNavReady(true)}
     >
       <StatusBar style={isDark ? 'light' : 'dark'} />
-      <Stack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right', contentStyle: { backgroundColor: colors?.background || '#f8faff' } }}>
+      <Stack.Navigator screenOptions={stackScreenOptions}>
         {/* AUTH FLOW */}
         <Stack.Screen name="Onboarding" component={OnboardingScreen} options={{ animation: 'fade' }} />
         <Stack.Group screenOptions={{ animation: 'slide_from_bottom' }}>
@@ -572,13 +568,13 @@ function NavigationContent({
           <Stack.Screen name="BabyOptional" component={BabyOnboardingScreen} options={{ gestureEnabled: false }} />
           <Stack.Screen name="CreateBabyProfile" component={BabyProfileCreateScreen} options={{ gestureEnabled: false }} />
           <Stack.Screen name="AddParent" component={CoParentSetupScreen} />
-        <Stack.Screen name="InviteCodeScreen" component={InviteCodeScreen} options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
+          <Stack.Screen name="InviteCodeScreen" component={InviteCodeScreen} options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
         </Stack.Group>
 
-        {/* MAIN TAB (no header) */}
+        {/* MAIN TAB */}
         <Stack.Screen name="Main" component={MainTabs} options={{ animation: 'fade', gestureEnabled: false }} />
 
-        {/* MAIN SCREENS — NO HEADERS by default */}
+        {/* MAIN SCREENS */}
         <Stack.Screen name="Timeline" component={TimelineScreen} />
         <Stack.Screen name="EntryDetail" component={EntryDetailScreen} />
         <Stack.Screen name="PottyTracker" component={TimelineScreen} />
@@ -638,8 +634,6 @@ function NavigationContent({
 export default function AppNavigator({ isDark, initialState, onStateChange }: {
   isDark?: boolean; initialState?: any; onStateChange?: (state: any) => void;
 }) {
-  // REMOVED: SafeAreaProvider and GestureHandlerRootView wrapping
-  // These are already provided by App.tsx
   return (
     <NavigationContent isDark={isDark} initialState={initialState} onStateChange={onStateChange} />
   );

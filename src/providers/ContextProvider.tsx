@@ -1,5 +1,5 @@
 // src/providers/ContextProvider.tsx
-import React, { useEffect, useRef, useMemo, useState, useContext } from 'react';
+import React, { useEffect, useRef, useMemo, useContext } from 'react';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { UserProvider } from '@/context/UserContext';
 import { BabyProvider, useBaby } from '@/context/BabyContext';
@@ -12,7 +12,6 @@ import { CommunityProvider } from '@/context/CommunityContext';
 import { SafetyProvider } from '@/context/SafetyContext';
 import { AudioProvider } from '@/context/AudioContext';
 import { AppProvider, useTheme } from '@/context/AppContext';
-// FIX: Import only what exists - useTracker hook if available, not TrackerContext
 import { TrackerProvider } from '@/context/TrackerContext';
 import { SweetAlertProvider } from '@/components/SweetAlert';
 import useCustomization from '@/hooks/useCustomization';
@@ -62,20 +61,26 @@ const ActivitySyncBridge: React.FC<{ children: React.ReactNode }> = ({ children 
   return <>{children}</>;
 };
 
-// FIX: Safe tracker sync without requiring TrackerContext export
+// FIX: Safe tracker sync without creating a new context every render
 const TrackerBabySync: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { currentBabyId } = useBaby();
-  
-  // Use lazy context access to avoid crash if context doesn't exist
-  const trackerContext = useContext(
-    // @ts-ignore - handle missing context gracefully
-    require('@/context/TrackerContext').TrackerContext || React.createContext(null)
-  );
   const initRef = useRef(false);
+  
+  // FIX: Lazy require only once, never create a fallback context during render
+  const trackerCtxRef = useRef<any>(null);
+  if (trackerCtxRef.current === null) {
+    try {
+      trackerCtxRef.current = require('@/context/TrackerContext').TrackerContext || null;
+    } catch {
+      trackerCtxRef.current = null;
+    }
+  }
+  
+  const trackerContext = trackerCtxRef.current ? useContext(trackerCtxRef.current) : null;
 
   useEffect(() => {
     if (!currentBabyId || initRef.current) return;
-    if (!trackerContext) return; // Safe: skip if context not available
+    if (!trackerContext) return;
     
     initRef.current = true;
     if (trackerContext.setCurrentBabyId) {

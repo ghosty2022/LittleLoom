@@ -18,7 +18,6 @@ import * as Font from 'expo-font';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getAppSetting } from '@/database/dbHelpers';
 import { DatabaseProvider } from '@/context/DatabaseContext';
-import { Image } from 'react-native';
 
 import { AppProvider, useTheme } from '@/context/AppContext';
 import ContextProvider from '@/providers/ContextProvider';
@@ -151,6 +150,7 @@ export default function App(): JSX.Element | null {
   const [initError, setInitError] = useState<string | null>(null);
 
   const lastStateRef = useRef<object | undefined>(undefined);
+  const lastStateKeyRef = useRef<string>(''); // FIX: deduplication key
   const initStartedRef = useRef(false);
   const stateSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -258,8 +258,15 @@ export default function App(): JSX.Element | null {
     return () => sub.remove();
   }, []);
 
+  // FIX: Deduplicated onStateChange with 2s debounce
   const onStateChange = useCallback((state: object | undefined) => {
     if (!state) return;
+
+    // Deduplicate: skip if same state object already processed
+    const stateKey = (state as any)?.key || JSON.stringify((state as any)?.routes?.[(state as any)?.index]);
+    if (stateKey && stateKey === lastStateKeyRef.current) return;
+    if (stateKey) lastStateKeyRef.current = stateKey;
+
     lastStateRef.current = state;
 
     const parsed = state as any;
@@ -278,7 +285,7 @@ export default function App(): JSX.Element | null {
         });
         statePersistence.saveLastRoute(route.name, route.params);
         stateSaveTimerRef.current = null;
-      }, 1000);
+      }, 2000); // Increased to 2s to reduce I/O churn
     }
   }, []);
 
