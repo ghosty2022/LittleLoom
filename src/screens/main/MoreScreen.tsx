@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Dimensions, Modal, ScrollView, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { Dimensions, Image, Modal, ScrollView, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -1411,7 +1411,11 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
         {/* App Info Footer */}
         <Animated.View entering={FadeInUp.delay(400)} style={styles.appInfo}>
           <View style={[styles.appIconWrap, isDark && styles.appIconWrapDark]}>
-            <Text style={styles.appIcon}>🧵</Text>
+            <Image
+              source={require('../../../assets/logo.png')}
+              style={styles.appLogoImage}
+              resizeMode="contain"
+            />
           </View>
           <Text style={[styles.appVersion, isDark && styles.textMuted]}>
             LittleLoom v1.0.0
@@ -2009,18 +2013,25 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   appIconWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: 20,
+    width: 64,
+    height: 64,
+    borderRadius: 24,
     backgroundColor: 'rgba(0,0,0,0.04)',
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
   appIconWrapDark: {
     backgroundColor: 'rgba(255,255,255,0.06)',
   },
-  appIcon: {
-    fontSize: 28,
+  appLogoImage: {
+    width: 56,
+    height: 56,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 6,
   },
   appVersion: {
     fontSize: 14,

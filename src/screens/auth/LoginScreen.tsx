@@ -1137,7 +1137,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
         >
           {/* Logo */}
           <Animated.View style={[styles.logoContainer, logoStyle]}>
-            <View style={[styles.logoCircle, isDark && styles.logoCircleDark]}>
+            <View style={styles.logoFloatWrap}>
               <Image
                 source={require('../../../assets/logo.png')}
                 style={styles.logoImage}
@@ -1219,24 +1219,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 40,
   },
-  logoCircle: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+  logoFloatWrap: {
+    width: 110,
+    height: 110,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.3)',
-  },
-  logoCircleDark: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderColor: 'rgba(255,255,255,0.2)',
+    marginBottom: 12,
   },
   logoImage: {
-    width: 70,
-    height: 70,
+    width: 100,
+    height: 100,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 12,
   },
   logoText: {
     fontSize: 32,

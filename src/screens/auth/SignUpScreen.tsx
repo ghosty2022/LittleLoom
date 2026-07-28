@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Animated,{ FadeIn, FadeInUp, useAnimatedStyle, useSharedValue, withDelay, withSpring } from 'react-native-reanimated';
-import { ActivityIndicator, Dimensions, Keyboard, KeyboardAvoidingView, Platform, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Dimensions, Image, Keyboard, KeyboardAvoidingView, Platform, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -867,8 +867,12 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
         >
           {/* Logo Section */}
           <Animated.View style={[styles.logoContainer, logoStyle]}>
-            <View style={[styles.logoCircle, isDark && styles.logoCircleDark]}>
-              <Text style={styles.logoEmoji}>👶</Text>
+            <View style={styles.logoFloatWrap}>
+              <Image
+                source={require('../../../assets/logo.png')}
+                style={styles.logoImage}
+                resizeMode="contain"
+              />
             </View>
             <Text style={styles.logoText}>LittleLoom</Text>
             <Text style={styles.logoTagline}>Join our community of parents</Text>
@@ -947,23 +951,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 32,
   },
-  logoCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+  logoFloatWrap: {
+    width: 90,
+    height: 90,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.3)',
   },
-  logoCircleDark: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderColor: 'rgba(255,255,255,0.2)',
-  },
-  logoEmoji: {
-    fontSize: 40,
+  logoImage: {
+    width: 80,
+    height: 80,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 10,
   },
   logoText: {
     fontSize: 28,
