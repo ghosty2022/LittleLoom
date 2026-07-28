@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Animated, { FadeIn, FadeInUp, useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 import { useAuth } from '../../context/AuthContext';
-import { ActivityIndicator, Dimensions, Keyboard, KeyboardAvoidingView, Platform, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Dimensions, Image, Keyboard, KeyboardAvoidingView, Platform, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -1138,7 +1138,11 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
           {/* Logo */}
           <Animated.View style={[styles.logoContainer, logoStyle]}>
             <View style={[styles.logoCircle, isDark && styles.logoCircleDark]}>
-              <Text style={styles.logoEmoji}>🍼</Text>
+              <Image
+                source={require('../../../assets/logo.png')}
+                style={styles.logoImage}
+                resizeMode="contain"
+              />
             </View>
             <Text style={styles.logoText}>LittleLoom</Text>
             <Text style={styles.logoTagline}>Track every precious moment</Text>
@@ -1230,8 +1234,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.1)',
     borderColor: 'rgba(255,255,255,0.2)',
   },
-  logoEmoji: {
-    fontSize: 50,
+  logoImage: {
+    width: 70,
+    height: 70,
   },
   logoText: {
     fontSize: 32,
