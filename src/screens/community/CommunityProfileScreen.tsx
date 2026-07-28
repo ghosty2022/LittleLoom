@@ -1315,7 +1315,7 @@ const styles = StyleSheet.create({
 
   kpiPillRow: { flexDirection: 'row', gap: 10, marginHorizontal: 16, marginBottom: 16 },
   kpiPill: { flex: 1, borderRadius: 20, overflow: 'hidden', padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  kpiPillIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', align Items: 'center' },
+  kpiPillIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   kpiPillEmoji: { fontSize: 20 },
   kpiPillBody: { flex: 1 },
   kpiPillValue: { fontSize: 22, fontWeight: '800', letterSpacing: -0.5 },

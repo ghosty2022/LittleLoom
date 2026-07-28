@@ -15,7 +15,6 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  Pressable,
   useColorScheme,
   View,
   LayoutAnimation,
@@ -1369,16 +1368,9 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
 }) => {
   const headerAnimatedStyle = useAnimatedStyle(() => {
     const currentY = scrollY.value;
-    // Header stays pinned — gains a subtle shadow when scrolled
-    const shadowOpacity = interpolate(currentY, [0, 60], [0, 0.08], Extrapolate.CLAMP);
-    const elevation = interpolate(currentY, [0, 60], [0, 4], Extrapolate.CLAMP);
-    return {
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity,
-      shadowRadius: 16,
-      elevation,
-    };
+    const translateY = interpolate(currentY, [0, 80, 140], [0, 0, -140], Extrapolate.CLAMP);
+    const opacity = interpolate(currentY, [0, 80, 140], [1, 1, 0], Extrapolate.CLAMP);
+    return { transform: [{ translateY }], opacity };
   });
 
   const headerPaddingTop = Platform.OS === 'ios' ? (compactSpacing ? 44 : 52) : (compactSpacing ? 28 : 36);
@@ -1424,21 +1416,10 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
           </TouchableOpacity>
         </View>
 
-        {/* Center: Logo */}
+        {/* Center: Title */}
         <View style={styles.stickyHeaderCenter}>
-          <View style={styles.stickyHeaderLogoWrap}>
-            <Image
-              source={require('../../../assets/logo.png')}
-              style={[
-                styles.stickyHeaderLogo,
-                {
-                  width: Math.round(30 * fontSizeMultiplier),
-                  height: Math.round(30 * fontSizeMultiplier),
-                }
-              ]}
-              resizeMode="contain"
-            />
-          </View>
+          <Text style={[styles.stickyHeaderTitle, { color: textColor, fontSize: titleSize }]}>LittleLoom</Text>
+          <View style={[styles.stickyHeaderUnderline, { backgroundColor: primaryColor, width: Math.round(28 * fontSizeMultiplier), height: Math.max(3, Math.round(3 * fontSizeMultiplier)), borderRadius: Math.max(1, Math.round(2 * fontSizeMultiplier)), marginTop: compactSpacing ? 2 : 3 }]} />
         </View>
 
         {/* Right: Actions */}
@@ -1526,7 +1507,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   const { entries: activities, getRecentTimelineEvents, getTodayCount, loadEntries: loadActivities, isLoading: activitiesLoading } = useActivity();
     const { entries } = useTracker();
   const { lockApp } = useSecurity();
-  const { getUnreadCount, markAllNotificationsRead } = useCommunity();
+  const { getUnreadCount } = useCommunity();
   const media = useMedia();
 
   const { success, error, confirm, toast } = useSweetAlert();
