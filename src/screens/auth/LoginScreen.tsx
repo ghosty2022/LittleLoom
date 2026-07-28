@@ -206,6 +206,19 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     };
   }, []);
 
+  // Fallback: if auth succeeds but AppNavigator doesn't navigate, force Main
+  useEffect(() => {
+    if (isAuthenticated && !authLoading) {
+      const timer = setTimeout(() => {
+        if (isMounted.current) {
+          forceUnlock().catch(() => {});
+          navigation.replace('Main');
+        }
+      }, 1800);
+      return () => clearTimeout(timer);
+    }
+  }, [isAuthenticated, authLoading, navigation, forceUnlock]);
+
   useEffect(() => {
     logoScale.value = withSequence(
       withTiming(0.8, { duration: 0 }),

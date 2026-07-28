@@ -439,7 +439,14 @@ function NavigationContent({
   }, []);
 
   useEffect(() => {
-    if (!navRef.current?.isReady() || !isNavReady || isNavigating.current || !initialCheckDone) return;
+    if (!navRef.current?.isReady() || !isNavReady || !initialCheckDone) return;
+    // Always allow immediate navigation from auth/setup to Main
+    const isAuthToMain = navState === 'MAIN' && (lastNavState.current === 'LOGIN' || 
+                         lastNavState.current === 'ONBOARDING' || 
+                         lastNavState.current === 'SECURITY_LOCK' ||
+                         lastNavState.current === 'SETUP_PARENT2' ||
+                         lastNavState.current === 'SETUP_BABY');
+    if (isNavigating.current && !isAuthToMain) return;
 
     const currentRoute = navRef.current.getCurrentRoute()?.name;
     if (shouldShowSwitchBaby && !hasShownSwitchBaby.current) {
@@ -469,7 +476,7 @@ function NavigationContent({
     }
 
     const now = Date.now();
-    if (now - lastNavTime.current < 800) return;
+    if (now - lastNavTime.current < 800 && !isAuthToMain) return;
 
     isNavigating.current = true;
     lastNavTime.current = now;
@@ -481,7 +488,7 @@ function NavigationContent({
       navRef.current.navigate(target as never);
     }
 
-    setTimeout(() => { isNavigating.current = false; }, 600);
+    setTimeout(() => { isNavigating.current = false; }, 200);
     lastNavState.current = navState;
   }, [navState, initialCheckDone, shouldShowSwitchBaby, isNavReady]);
 

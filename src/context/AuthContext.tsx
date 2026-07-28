@@ -611,6 +611,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await AsyncStorage.setItem(ASYNC_KEYS.ONBOARDING_COMPLETE, 'true');
       await AsyncStorage.setItem(ASYNC_KEYS.HAS_SEEN_ONBOARDING, 'true');
 
+      // Reload setup state from storage so navigator routes correctly after sign-in
+      const [setupCompleteStr, hasParent2Str, hasBabyStr] = await Promise.all([
+        AsyncStorage.getItem(ASYNC_KEYS.SETUP_COMPLETE),
+        AsyncStorage.getItem(ASYNC_KEYS.PARENT2_COMPLETED),
+        AsyncStorage.getItem(ASYNC_KEYS.BABY_COMPLETED),
+      ]);
+      const isSetupComplete = setupCompleteStr === 'true' || (hasParent2Str !== null && hasBabyStr !== null);
+      const p2Done = hasParent2Str === 'true' ? true : hasParent2Str === 'skipped' ? 'skipped' : false;
+      const babyDone = hasBabyStr === 'true' ? true : hasBabyStr === 'skipped' ? 'skipped' : false;
+
       if (isMounted.current) {
         setState(prev => ({
           ...prev,
@@ -619,6 +629,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           userProfile,
           onboardingComplete: true,
           hasSeenOnboarding: true,
+          setupComplete: isSetupComplete,
+          hasParent2: p2Done,
+          hasBaby: babyDone,
         }));
       }
       return true;
