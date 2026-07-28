@@ -2322,11 +2322,15 @@ export default function CommunityScreen({ navigation }: Props) {
         fontWeight: '800',
         letterSpacing: -0.5,
       },
-      headerLogo: {
-        width: 32,
-        height: 32,
-        borderRadius: 8,
-      },
+        headerLogo: {
+    width: 36,
+    height: 36,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.14,
+    shadowRadius: 8,
+    elevation: 6,
+  },
       headerSubtitleGradient: {
         paddingHorizontal: 10,
         paddingVertical: 2,

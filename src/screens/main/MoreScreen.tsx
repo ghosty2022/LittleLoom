@@ -1412,7 +1412,7 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
 
         {/* App Info Footer */}
         <Animated.View entering={FadeInUp.delay(400)} style={styles.appInfo}>
-          <View style={[styles.appIconWrap, isDark && styles.appIconWrapDark]}>
+          <View style={styles.appLogoFloatWrap}>
             <Image
               source={require('../../../assets/logo.png')}
               style={styles.appLogoImage}
@@ -2014,26 +2014,22 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     gap: 10,
   },
-  appIconWrap: {
-    width: 64,
-    height: 64,
-    borderRadius: 24,
-    backgroundColor: 'rgba(0,0,0,0.04)',
+  appLogoFloatWrap: {
+    width: 140,
+    height: 140,
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  appIconWrapDark: {
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    marginBottom: 4,
+    // No background, no border, no borderRadius — the shadow does all the work
   },
   appLogoImage: {
-    width: 56,
-    height: 56,
+    width: 120,
+    height: 120,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.18,
+    shadowRadius: 28,
+    elevation: 14,
   },
   appVersion: {
     fontSize: 14,
