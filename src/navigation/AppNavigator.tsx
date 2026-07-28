@@ -323,11 +323,23 @@ function NavigationContent({
     }).catch(() => setIsFirstOpen(false));
   }, []);
 
-  // Keep refs in sync with current values
+  // Keep refs in sync + trigger switch-baby when babies load after MAIN is reached
   useEffect(() => {
-    babyCountRef.current = babies?.length || 0;
+    const newCount = babies?.length || 0;
+    babyCountRef.current = newCount;
     hasSkippedBabyRef.current = hasSkippedBaby;
-  });
+
+    if (
+      newCount > 1 &&
+      isAuthenticated &&
+      setupComplete &&
+      !isFirstOpen &&
+      !hasShownSwitchBaby.current &&
+      lastNavState.current === 'MAIN'
+    ) {
+      setShouldShowSwitchBaby(true);
+    }
+  }, [babies?.length, hasSkippedBaby, isAuthenticated, setupComplete, isFirstOpen]);
 
   // FIX #2: Compute navState with stable deps - REMOVED babies?.length and hasSkippedBaby
   useEffect(() => {
@@ -347,8 +359,8 @@ function NavigationContent({
       isFirstOpen,
     );
 
-    if (newState === 'MAIN' && lastNavState.current !== 'MAIN' &&
-        babyCountRef.current > 1 && !hasShownSwitchBaby.current &&
+    if (newState === 'MAIN' && babyCountRef.current > 1 &&
+        !hasShownSwitchBaby.current &&
         isAuthenticated && setupComplete && !isFirstOpen) {
       setShouldShowSwitchBaby(true);
     }
@@ -397,6 +409,7 @@ function NavigationContent({
           if (route?.name !== 'SecurityLock' && state && route) {
             await statePersistence.saveNavigationState(state, route.name, route.params);
             await statePersistence.saveLastRoute(route.name, route.params);
+            await AsyncStorage.setItem('@littleloom_last_route_name', route.name).catch(() => {});
           }
         } catch (e) {
           console.warn('Save state failed:', e);
@@ -427,6 +440,7 @@ function NavigationContent({
       if (route && route.name !== 'SecurityLock') {
         statePersistence.saveNavigationState(state, route.name, route.params);
         statePersistence.saveLastRoute(route.name, route.params);
+        AsyncStorage.setItem('@littleloom_last_route_name', route.name).catch(() => {});
       }
       stateTimer.current = null;
     }, 300);
@@ -438,41 +452,72 @@ function NavigationContent({
     };
   }, []);
 
+  const pendingNavTarget = useRef<string | null>(null);
+
   useEffect(() => {
     if (!navRef.current?.isReady() || !isNavReady || !initialCheckDone) return;
-    // Always allow immediate navigation from auth/setup to Main
-    const isAuthToMain = navState === 'MAIN' && (lastNavState.current === 'LOGIN' || 
-                         lastNavState.current === 'ONBOARDING' || 
-                         lastNavState.current === 'SECURITY_LOCK' ||
-                         lastNavState.current === 'SETUP_PARENT2' ||
-                         lastNavState.current === 'SETUP_BABY');
+
+    const isAuthToMain =
+      navState === 'MAIN' &&
+      (lastNavState.current === 'LOGIN' ||
+        lastNavState.current === 'ONBOARDING' ||
+        lastNavState.current === 'SECURITY_LOCK' ||
+        lastNavState.current === 'SETUP_PARENT2' ||
+        lastNavState.current === 'SETUP_BABY');
+
     if (isNavigating.current && !isAuthToMain) return;
 
     const currentRoute = navRef.current.getCurrentRoute()?.name;
+
+    // Auto-show baby selector for multi-baby families
     if (shouldShowSwitchBaby && !hasShownSwitchBaby.current) {
       hasShownSwitchBaby.current = true;
       setShouldShowSwitchBaby(false);
       if (currentRoute !== 'SwitchBaby') {
-        // FIX: When auto-showing SwitchBaby on first login, don't pass returnTo
-        // so the screen knows to go to Main after selection
+        pendingNavTarget.current = 'SwitchBaby';
         navRef.current.navigate('SwitchBaby' as never);
+        setTimeout(() => {
+          isNavigating.current = false;
+          pendingNavTarget.current = null;
+        }, 300);
         return;
       }
     }
 
     const routeMap: Record<NavigationState, keyof RootStackParamList> = {
-      LOADING: 'Login', ONBOARDING: 'Onboarding', LOGIN: 'Login',
-      SETUP_PARENT2: 'Parent2Optional', SETUP_BABY: 'BabyOptional',
-      SECURITY_LOCK: 'SecurityLock', MAIN: 'Main',
+      LOADING: 'Login',
+      ONBOARDING: 'Onboarding',
+      LOGIN: 'Login',
+      SETUP_PARENT2: 'Parent2Optional',
+      SETUP_BABY: 'BabyOptional',
+      SECURITY_LOCK: 'SecurityLock',
+      MAIN: 'Main',
     };
     const target = routeMap[navState];
-    if (currentRoute === target) return;
+    if (!target) return;
+
+    // Already at the target we want
+    if (currentRoute === target) {
+      pendingNavTarget.current = null;
+      return;
+    }
+
+    // Already issued this navigation command and waiting for it to land
+    if (pendingNavTarget.current === target) return;
 
     if (navState === 'MAIN' && currentRoute && MAIN_FLOW_SCREENS.has(currentRoute)) {
-      const fromNonMain = AUTH_FLOW_SCREENS.has(lastNavState.current) ||
-                          SETUP_FLOW_SCREENS.has(lastNavState.current) ||
-                          lastNavState.current === 'SECURITY_LOCK';
+      const fromNonMain =
+        AUTH_FLOW_SCREENS.has(lastNavState.current) ||
+        SETUP_FLOW_SCREENS.has(lastNavState.current) ||
+        lastNavState.current === 'SECURITY_LOCK';
       if (!fromNonMain) return;
+
+      // Single baby + restored state: let NavigationContainer's initialState do its job
+      if (babyCountRef.current <= 1 && fromNonMain && initialState) {
+        lastNavState.current = navState;
+        pendingNavTarget.current = null;
+        return;
+      }
     }
 
     const now = Date.now();
@@ -480,17 +525,25 @@ function NavigationContent({
 
     isNavigating.current = true;
     lastNavTime.current = now;
+    pendingNavTarget.current = target;
 
-    const shouldReset = navState === 'LOGIN' || navState === 'MAIN' || navState === 'SECURITY_LOCK' || navState === 'ONBOARDING';
+    const shouldReset =
+      navState === 'LOGIN' ||
+      navState === 'MAIN' ||
+      navState === 'SECURITY_LOCK' ||
+      navState === 'ONBOARDING';
     if (shouldReset) {
       navRef.current.reset({ index: 0, routes: [{ name: target }] });
     } else {
       navRef.current.navigate(target as never);
     }
 
-    setTimeout(() => { isNavigating.current = false; }, 200);
+    setTimeout(() => {
+      isNavigating.current = false;
+      pendingNavTarget.current = null;
+    }, 300);
     lastNavState.current = navState;
-  }, [navState, initialCheckDone, shouldShowSwitchBaby, isNavReady]);
+  }, [navState, initialCheckDone, shouldShowSwitchBaby, isNavReady, initialState]);
 
   if (authLoading || !initialCheckDone) return <AppLoadingScreen />;
 

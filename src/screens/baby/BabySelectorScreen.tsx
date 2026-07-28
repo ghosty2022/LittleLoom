@@ -1,5 +1,6 @@
 import { StyleSheet, Dimensions, Text, TouchableOpacity, View, StatusBar } from 'react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { BlurView } from 'expo-blur';
 
@@ -81,7 +82,15 @@ export default function BabySelectorScreen({ navigation, route }: BabySelectorSc
       if (navigation.canGoBack()) {
         navigation.goBack();
       } else {
-        navigation.replace(getReturnTarget(route));
+        AsyncStorage.getItem('@littleloom_last_route_name')
+          .then((lastRoute) => {
+            if (lastRoute && lastRoute !== 'SwitchBaby' && lastRoute !== 'Login') {
+              navigation.replace(lastRoute as keyof RootStackParamList);
+            } else {
+              navigation.replace(getReturnTarget(route));
+            }
+          })
+          .catch(() => navigation.replace(getReturnTarget(route)));
       }
       return;
     }
@@ -99,13 +108,20 @@ export default function BabySelectorScreen({ navigation, route }: BabySelectorSc
         setTimeout(() => {
           if (!hasNavigated.current && isMounted.current) {
             hasNavigated.current = true;
-            // Navigate back to the screen that opened us, passing babySwitched flag
-            // Only pass params if there was a returnTo screen (i.e. called from inside the app)
             const target = getReturnTarget(route);
             if (route.params?.returnTo) {
               navigation.navigate(target, { babySwitched: true } as any);
             } else {
-              navigation.replace(target);
+              // Restore the last active route if we have one; otherwise fallback to Main
+              AsyncStorage.getItem('@littleloom_last_route_name')
+                .then((lastRoute) => {
+                  if (lastRoute && lastRoute !== 'SwitchBaby' && lastRoute !== 'Login') {
+                    navigation.replace(lastRoute as keyof RootStackParamList);
+                  } else {
+                    navigation.replace(target);
+                  }
+                })
+                .catch(() => navigation.replace(target));
             }
           }
         }, 500);
