@@ -1095,7 +1095,7 @@ const isDark = darkMode ?? (colorScheme === 'dark');
 }
 
 
-const getStyles = (isDark: boolean) => StyleSheet.create({
+const styles = StyleSheet.create({
   container: { flex: 1 },
   bg: { ...StyleSheet.absoluteFillObject },
   centered: { justifyContent: 'center', alignItems: 'center' },
@@ -1206,7 +1206,6 @@ const getStyles = (isDark: boolean) => StyleSheet.create({
   influenceAvatarMore: { width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginLeft: -10 },
   influenceAvatarMoreText: { fontSize: 10, fontWeight: '800' },
 
-  // ── Content Highlights ──
   highlightsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, paddingBottom: 12 },
   highlightsTitle: { fontSize: 16, fontWeight: '800', color: '#fff' },
   highlightsBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10 },
@@ -1226,7 +1225,6 @@ const getStyles = (isDark: boolean) => StyleSheet.create({
   highlightsMetricValue: { fontSize: 18, fontWeight: '800' },
   highlightsMetricLabel: { fontSize: 11, fontWeight: '600', color: '#94a3b8' },
 
-  // ── Activity Pattern ──
   patternHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, paddingBottom: 12 },
   patternTitle: { fontSize: 16, fontWeight: '800', color: '#fff' },
   patternLiveBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: '#10b98115' },
@@ -1239,130 +1237,103 @@ const getStyles = (isDark: boolean) => StyleSheet.create({
   patternPostBadge: { paddingHorizontal: 5, paddingVertical: 2, borderRadius: 6, marginTop: 2 },
   patternPostBadgeText: { fontSize: 9, fontWeight: '700' },
 
-  // ── Mutual Connections ──
   mutualScroll: { flexDirection: 'row', paddingHorizontal: 16, gap: 12, paddingBottom: 4 },
-  mutualCard: { width: 100, padding: 12, borderRadius: 16, overflow: 'hidden', alignItems: 'center', gap: 6, /* no shadow */ },
+  mutualCard: { width: 100, padding: 12, borderRadius: 16, overflow: 'hidden', alignItems: 'center', gap: 6 },
   mutualName: { fontSize: 12, fontWeight: '700', color: '#fff', textAlign: 'center' },
   mutualCount: { fontSize: 10, fontWeight: '600', color: '#94a3b8' },
 
-  // ── Smart Actions ──
   actionsGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, gap: 10, paddingBottom: 4 },
-  actionCard: { width: (SCREEN_W - 72) / 3, padding: 14, borderRadius: 16, overflow: 'hidden', alignItems: 'center', gap: 8, /* no shadow */ },
+  actionCard: { width: (SCREEN_W - 72) / 3, padding: 14, borderRadius: 16, overflow: 'hidden', alignItems: 'center', gap: 8 },
   actionIconBg: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
   actionTitle: { fontSize: 13, fontWeight: '700', color: '#fff' },
   actionDesc: { fontSize: 10, fontWeight: '500', color: '#94a3b8', textAlign: 'center', lineHeight: 14 },
 
-  // ── Parenting Tips ──
   tipsList: { marginHorizontal: 16, gap: 8, marginBottom: 16 },
-  tipCard: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: 'rgba(45,45,60,0.6)', borderLeftWidth: 3, /* no shadow */ },
+  tipCard: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: 'rgba(45,45,60,0.6)', borderLeftWidth: 3 },
   tipIconBg: { width: 42, height: 42, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   tipEmoji: { fontSize: 20 },
   tipContent: { flex: 1, marginLeft: 12, gap: 3 },
   tipTitle: { fontSize: 14, fontWeight: '700', color: '#fff' },
   tipText: { fontSize: 12, lineHeight: 17, fontWeight: '500', color: '#94a3b8' },
 
-  // ── Topic Breakdown ──
   topicBreakdown: { padding: 16, gap: 12 },
   topicBreakdownRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   topicBreakdownLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   topicBreakdownDot: { width: 8, height: 8, borderRadius: 4 },
-  topicBreakdownLabel: { fontSize: 14, fontWeight: '600', color: '#fff' },
-  topicBreakdownRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  topicBreakdownBarBg: { width: 80, height: 6, borderRadius: 3, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.06)' },
+  topicBreakdownLabel: { fontSize: 13, fontWeight: '600', color: '#94a3b8' },
+  topicBreakdownRight: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+  topicBreakdownBarBg: { flex: 1, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.06)', overflow: 'hidden' },
   topicBreakdownBarFill: { height: '100%', borderRadius: 3 },
-  topicBreakdownCount: { fontSize: 14, fontWeight: '700', minWidth: 20, textAlign: 'right' },
+  topicBreakdownCount: { fontSize: 13, fontWeight: '700', width: 28, textAlign: 'right' },
 
-  // ── Heat Map ──
-  heatMapContainer: { padding: 16 },
-  heatMapRow: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-end', height: 70 },
+  heatMapContainer: { padding: 16, paddingBottom: 12 },
+  heatMapRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', height: 70 },
   heatMapCell: { alignItems: 'center', gap: 4, flex: 1 },
-  heatMapBar: { width: 8, borderRadius: 4 },
+  heatMapBar: { width: 12, borderRadius: 6 },
   heatMapLabel: { fontSize: 9, fontWeight: '600', color: '#64748b' },
   heatMapLegend: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 12 },
   heatMapLegendText: { fontSize: 10, fontWeight: '600', color: '#64748b' },
   heatMapLegendDot: { width: 8, height: 8, borderRadius: 4 },
 
-  // ── Contribution Streak ──
   streakHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, paddingBottom: 12 },
   streakTitle: { fontSize: 16, fontWeight: '800', color: '#fff' },
-  streakSubtitle: { fontSize: 12, fontWeight: '500', color: '#94a3b8', marginTop: 2 },
+  streakSubtitle: { fontSize: 12, fontWeight: '500', color: '#94a3b8' },
   streakNumbers: { flexDirection: 'row', gap: 16 },
   streakNumberItem: { alignItems: 'center' },
   streakNumberValue: { fontSize: 20, fontWeight: '800', color: '#fff' },
   streakNumberLabel: { fontSize: 10, fontWeight: '600', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 },
-  streakGrid: { flexDirection: 'row', paddingHorizontal: 16, paddingBottom: 16, gap: 4 },
-  streakCell: { flex: 1, height: 24, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.06)' },
+  streakGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: 16, paddingBottom: 16 },
+  streakCell: { width: 22, height: 22, borderRadius: 6, backgroundColor: 'rgba(255,255,255,0.06)' },
 
-  // ── Social Graph ──
-  socialGraph: { flexDirection: 'row', justifyContent: 'space-around', padding: 16, paddingBottom: 20, height: 140 },
-  socialGraphItem: { alignItems: 'center', gap: 6 },
+  socialGraph: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-end', paddingHorizontal: 16, paddingBottom: 16, height: 120 },
+  socialGraphItem: { alignItems: 'center', gap: 6, flex: 1 },
   socialGraphBarWrap: { height: 80, justifyContent: 'flex-end' },
   socialGraphBarBg: { width: 24, height: 80, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.06)', overflow: 'hidden', justifyContent: 'flex-end' },
   socialGraphBarFill: { width: '100%', borderRadius: 12 },
   socialGraphLabel: { fontSize: 11, fontWeight: '600', color: '#94a3b8' },
-  socialGraphValue: { fontSize: 12, fontWeight: '700' },
+  socialGraphValue: { fontSize: 13, fontWeight: '800' },
 
-  // ── Recent Interactions ──
-  recentList: { gap: 8, marginHorizontal: 16, marginBottom: 16 },
-  recentItem: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, overflow: 'hidden', gap: 12 },
-  recentDot: { width: 8, height: 8, borderRadius: 4 },
+  recentList: { marginHorizontal: 16, gap: 8, marginBottom: 16 },
+  recentItem: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: 'rgba(45,45,60,0.6)', overflow: 'hidden' },
+  recentDot: { width: 8, height: 8, borderRadius: 4, marginRight: 12 },
   recentContent: { flex: 1, gap: 2 },
   recentTopic: { fontSize: 13, fontWeight: '700', color: '#fff' },
-  recentText: { fontSize: 12, color: '#94a3b8', fontWeight: '500' },
+  recentText: { fontSize: 12, fontWeight: '500', color: '#94a3b8' },
   recentStats: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   recentStatText: { fontSize: 12, fontWeight: '600', color: '#64748b' },
 
-  // ── Achievement Badge ──
-  achievementBadge: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 14, marginBottom: 6 },
-  achievementIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  achievementEmoji: { fontSize: 22 },
-  achievementInfo: { flex: 1, gap: 2 },
-  achievementName: { fontSize: 14, fontWeight: '700' },
-  achievementDesc: { fontSize: 12, fontWeight: '500', color: '#94a3b8' },
-
-  // ── Post Card ──
-  postCard: { padding: 16 },
-  postHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  postCard: { marginHorizontal: 0, marginBottom: 12 },
+  postHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
   topicDot: { width: 8, height: 8, borderRadius: 4 },
   topicText: { fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5, flex: 1 },
   postTime: { fontSize: 12, color: '#94a3b8', fontWeight: '500' },
-  postContent: { fontSize: 15, fontWeight: '600', color: '#fff', lineHeight: 22, marginBottom: 12 },
-  postImageContainer: { borderRadius: DESIGN.radius.lg, overflow: 'hidden', marginBottom: 12 },
-  postImage: { width: '100%', height: 180, borderRadius: 16 },
+  postContent: { fontSize: 14, fontWeight: '600', color: '#fff', lineHeight: 20, marginBottom: 10 },
+  postImageContainer: { borderRadius: 12, overflow: 'hidden', marginBottom: 10, height: 180 },
+  postImage: { width: '100%', height: '100%' },
   postFooter: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   postStat: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   postStatText: { fontSize: 13, fontWeight: '600', color: '#94a3b8' },
 
-  // ── Empty State ──
-  emptyCard: { padding: 40, alignItems: 'center', justifyContent: 'center' },
-  emptyStateIcon: { width: 64, height: 64, borderRadius: 20, backgroundColor: 'rgba(99,102,241,0.1)', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
-  emptyStateSmall: { padding: 32, alignItems: 'center' },
-  emptyStateTitle: { fontSize: 16, fontWeight: '700', color: '#fff', textAlign: 'center', marginBottom: 8 },
-  emptyText: { fontSize: 14, color: '#94a3b8', textAlign: 'center', fontWeight: '500', lineHeight: 20 },
-
-  // ── About Tab ──
-  formCard: { padding: 0, marginBottom: 16 },
-  sectionLabel: { fontSize: 20, fontWeight: '800', color: '#fff', letterSpacing: -0.3, paddingHorizontal: DESIGN.spacing.xl, paddingTop: 20, marginBottom: 16 },
-  infoItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 20 },
-  infoIcon: { width: 40, height: 40, borderRadius: DESIGN.radius.md, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-  infoContent: { flex: 1 },
-  infoLabel: { fontSize: 12, fontWeight: '500', marginBottom: 2, color: '#94a3b8' },
-  infoValue: { fontSize: 15, fontWeight: '600', color: '#fff' },
-  infoDivider: { height: 1, marginHorizontal: 20, backgroundColor: 'rgba(255,255,255,0.06)' },
-
-  // ── Topics ──
-  topicsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: DESIGN.spacing.md, paddingHorizontal: DESIGN.spacing.xl, paddingBottom: 20 },
-  topicChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
+  formCard: { marginHorizontal: 0, marginBottom: 16 },
+  sectionLabel: { fontSize: 18, fontWeight: '800', color: '#fff', letterSpacing: -0.3, paddingHorizontal: 20, paddingTop: 20, marginBottom: 16 },
+  infoItem: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12 },
+  infoIcon: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 14 },
+  infoContent: { flex: 1, gap: 2 },
+  infoLabel: { fontSize: 12, fontWeight: '600', color: '#94a3b8' },
+  infoValue: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  infoDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.06)', marginHorizontal: 20 },
+  topicsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingHorizontal: 20, paddingBottom: 20 },
+  topicChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
   topicChipText: { fontSize: 13, fontWeight: '700' },
 
-  // ── Achievements ──
-  achievementsCard: { padding: 20, gap: 12 },
+  emptyCard: { padding: 40, alignItems: 'center', justifyContent: 'center' },
+  emptyStateIcon: { width: 64, height: 64, borderRadius: 20, backgroundColor: 'rgba(99,102,241,0.1)', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  emptyStateTitle: { fontSize: 16, fontWeight: '700', color: '#fff', textAlign: 'center', marginBottom: 8 },
+  emptyText: { fontSize: 14, color: '#64748b', fontWeight: '500', textAlign: 'center' },
 
-  // ── Tab Panel ──
-  tabPanel: { paddingBottom: 20 },
-  postsList: { gap: 10 },
+  achievementsCard: { padding: 16 },
+  emptyStateSmall: { padding: 32, alignItems: 'center' },
 
-  // ── Retry ──
   retryButton: { marginTop: 20, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 14 },
   retryButtonText: { fontSize: 15, fontWeight: '700', color: '#fff' },
 });

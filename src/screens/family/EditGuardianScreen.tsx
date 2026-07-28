@@ -123,384 +123,6 @@ type ProfileTab = 'overview' | 'activity' | 'permissions' | 'settings';
 
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   REFINED SUB-COMPONENTS — Borrowing GrowthDashboard patterns
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const GlassCard = React.memo(({ children, style, onPress, active = false, delay = 0 }: {
-  children: React.ReactNode; style?: any; onPress?: () => void; active?: boolean; delay?: number;
-}) => {
-  const Wrapper = onPress ? TouchableOpacity : View;
-  return (
-    <Animated.View entering={FadeInUp.delay(delay).springify()} style={[styles.glassCard, active && { borderColor: '#6366f1', borderWidth: 2 }, style]}>
-      <Wrapper onPress={onPress} activeOpacity={onPress ? 0.85 : 1} style={{ flex: 1 }}>
-        <LinearGradient colors={['rgba(45,45,60,0.85)', 'rgba(35,35,50,0.65)']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
-        <View style={styles.glassBorder} />
-        <View style={styles.glassContent}>{children}</View>
-      </Wrapper>
-    </Animated.View>
-  );
-});
-
-const SectionHeader = React.memo(({ title, subtitle, action, actionLabel }: {
-  title: string; subtitle?: string; action?: () => void; actionLabel?: string;
-}) => (
-  <View style={styles.sectionHeader}>
-    <View>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      {subtitle && <Text style={styles.sectionSubtitle}>{subtitle}</Text>}
-    </View>
-    {action && (
-      <TouchableOpacity onPress={action} style={styles.sectionAction}>
-        <Text style={styles.sectionActionText}>{actionLabel || 'See All'}</Text>
-        <Ionicons name="chevron-forward" size={14} color="#6366f1" />
-      </TouchableOpacity>
-    )}
-  </View>
-));
-const TabBar = React.memo(({ tabs, activeTab, onChange }: {
-  tabs: { key: ProfileTab; label: string; icon: string }[];
-  activeTab: ProfileTab; onChange: (t: ProfileTab) => void;
-}) => (
-  <View style={styles.tabBar}>
-    {tabs.map((tab) => {
-      const isActive = activeTab === tab.key;
-      return (
-        <TouchableOpacity key={tab.key} onPress={() => onChange(tab.key)} style={[styles.tabItem, isActive && { backgroundColor: 'rgba(99,102,241,0.15)', /* no shadow */ }]}>
-          <Ionicons name={tab.icon as any} size={16} color={isActive ? '#6366f1' : '#94a3b8'} />
-          <Text style={[styles.tabLabel, { color: isActive ? '#6366f1' : '#94a3b8' }, isActive && { fontWeight: '700' }]}>{tab.label}</Text>
-        </TouchableOpacity>
-      );
-    })}
-  </View>
-));
-
-const KpiPill = React.memo(({ icon, value, label, color, onPress }: any) => (
-  <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={styles.kpiPill}>
-    <LinearGradient colors={[`${color}15`, `${color}05`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
-    <View style={[styles.kpiPillIconBg, { backgroundColor: `${color}15` }]}>
-      <Text style={styles.kpiPillEmoji}>{icon}</Text>
-    </View>
-    <View style={styles.kpiPillBody}>
-      <Text style={[styles.kpiPillValue, { color }]}>{value}</Text>
-      <Text style={styles.kpiPillLabel}>{label}</Text>
-    </View>
-  </TouchableOpacity>
-));
-
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 1: AI Member Insights Card
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const AIMemberInsights = React.memo(({ member, activities }: any) => {
-  const insights = useMemo(() => {
-    const now = Date.now();
-    const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
-    const monthAgo = now - 30 * 24 * 60 * 60 * 1000;
-    const weekActs = activities.filter((a: any) => a.timestamp > weekAgo);
-    const monthActs = activities.filter((a: any) => a.timestamp > monthAgo);
-    const engagementScore = Math.min(100, Math.round((weekActs.length / 7) * 100));
-    const consistencyScore = monthActs.length > 0 ? Math.min(100, Math.round((monthActs.length / 30) * 100)) : 0;
-    const topType = activities.reduce((acc: any, a: any) => { acc[a.type] = (acc[a.type] || 0) + 1; return acc; }, {});
-    const topTypeKey = Object.entries(topType).sort(([,a], [,b]) => (b as number) - (a as number))[0]?.[0] || 'default';
-    const lastActive = activities[0]?.timestamp || 0;
-    const daysSince = lastActive ? Math.floor((now - lastActive) / (24 * 60 * 60 * 1000)) : 999;
-    const items = [];
-    if (engagementScore > 80) items.push({ emoji: '🔥', title: 'Super Active', desc: 'Top 10% of family contributors', color: '#f59e0b', priority: 'high' });
-    else if (engagementScore < 30) items.push({ emoji: '💤', title: 'Low Engagement', desc: 'Consider inviting to log entries', color: '#ef4444', priority: 'high', action: 'Send Reminder' });
-    if (consistencyScore > 70) items.push({ emoji: '📅', title: 'Consistent Logger', desc: 'Regular daily participation', color: '#10b981', priority: 'medium' });
-    if (daysSince > 7) items.push({ emoji: '⏰', title: `${daysSince} Days Inactive`, desc: `Last seen ${new Date(lastActive).toLocaleDateString()}`, color: '#ef4444', priority: 'high' });
-    if (topTypeKey && topTypeKey !== 'default') {
-      const config = ACTIVITY_CONFIG[topTypeKey] || ACTIVITY_CONFIG.default;
-      items.push({ emoji: config.emoji, title: `Prefers ${config.label}`, desc: 'Most frequent activity type', color: config.color, priority: 'low' });
-    }
-    return items.slice(0, 3);
-  }, [activities]);
-  if (insights.length === 0) return null;
-  return (
-    <Animated.View entering={FadeInUp.delay(200).springify()}>
-      <SectionHeader title="AI Insights" subtitle="Intelligence-powered analysis" />
-      <View style={styles.insightsList}>
-        {insights.map((insight: any, i: number) => (
-          <TouchableOpacity key={i} activeOpacity={0.85} style={[styles.insightRow, { borderLeftColor: insight.color }]}>
-            <View style={[styles.insightIconBg, { backgroundColor: `${insight.color}12` }]}>
-              <Text style={styles.insightEmoji}>{insight.emoji}</Text>
-            </View>
-            <View style={styles.insightContent}>
-              <View style={styles.insightHeader}>
-                <Text style={styles.insightTitle}>{insight.title}</Text>
-                {insight.action && (
-                  <View style={[styles.insightActionBadge, { backgroundColor: `${insight.color}15` }]}>
-                    <Text style={[styles.insightActionText, { color: insight.color }]}>{insight.action}</Text>
-                  </View>
-                )}
-              </View>
-              <Text style={styles.insightDesc}>{insight.desc}</Text>
-            </View>
-            <View style={[styles.insightPriority, { backgroundColor: insight.color }]} />
-          </TouchableOpacity>
-        ))}
-      </View>
-    </Animated.View>
-  );
-});
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 2: Activity Velocity Sparkline
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const ActivitySparkline = React.memo(({ activities }: { activities: ActivityEntry[] }) => {
-  const data = useMemo(() => {
-    const days: Record<string, number> = {};
-    const now = new Date();
-    for (let i = 6; i >= 0; i--) { const d = new Date(now); d.setDate(d.getDate() - i); days[d.toISOString().split('T')[0]] = 0; }
-    activities.forEach(a => { const d = new Date(a.timestamp).toISOString().split('T')[0]; if (days[d] !== undefined) days[d]++; });
-    return Object.values(days);
-  }, [activities]);
-  const maxVal = Math.max(...data, 1);
-  return (
-    <Animated.View entering={FadeInUp.delay(250).springify()}>
-      <GlassCard>
-        <View style={styles.sparklineHeader}>
-          <View>
-            <Text style={styles.sparklineTitle}>Activity This Week</Text>
-            <Text style={styles.sparklineSubtitle}>Daily entry count</Text>
-          </View>
-          <View style={styles.sparklineTotal}>
-            <Text style={styles.sparklineTotalValue}>{data.reduce((a, b) => a + b, 0)}</Text>
-            <Text style={styles.sparklineTotalLabel}>entries</Text>
-          </View>
-        </View>
-        <View style={styles.sparklineChart}>
-          {data.map((val, i) => {
-            const height = Math.max(4, (val / maxVal) * 60);
-            const isToday = i === data.length - 1;
-            return (
-              <View key={i} style={{ alignItems: 'center', gap: 4 }}>
-                <View style={[styles.sparklineBar, { height, backgroundColor: isToday ? '#6366f1' : val > 0 ? '#8b5cf6' : '#334155' }]} />
-                <Text style={[styles.sparklineDay, isToday && { color: '#6366f1', fontWeight: '700' }]}>{['M','T','W','T','F','S','S'][i]}</Text>
-              </View>
-            );
-          })}
-        </View>
-      </GlassCard>
-    </Animated.View>
-  );
-});
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 3: Relationship Health Score
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const RelationshipHealth = React.memo(({ member, activities }: any) => {
-  const health = useMemo(() => {
-    const now = Date.now();
-    const monthAgo = now - 30 * 24 * 60 * 60 * 1000;
-    const recent = activities.filter((a: any) => a.timestamp > monthAgo);
-    const frequency = Math.min(100, (recent.length / 10) * 100);
-    const recency = member?.lastActive ? Math.max(0, 100 - ((now - new Date(member.lastActive).getTime()) / (7 * 24 * 60 * 60 * 1000)) * 100) : 0;
-    const diversity = new Set(activities.map((a: any) => a.type)).size;
-    const diversityScore = Math.min(100, (diversity / 5) * 100);
-    const score = Math.round((frequency * 0.4) + (recency * 0.35) + (diversityScore * 0.25));
-    let status = { label: 'Excellent', color: '#10b981', emoji: '💚' };
-    if (score < 40) status = { label: 'Needs Attention', color: '#ef4444', emoji: '⚠️' };
-    else if (score < 70) status = { label: 'Good', color: '#f59e0b', emoji: '💛' };
-    else if (score < 90) status = { label: 'Great', color: '#6366f1', emoji: '💙' };
-    return { score, status, frequency, recency, diversityScore };
-  }, [member, activities]);
-  return (
-    <Animated.View entering={FadeInUp.delay(300).springify()}>
-      <GlassCard>
-        <View style={styles.healthContainer}>
-          <View style={styles.healthLeft}>
-            <Text style={styles.healthTitle}>Relationship Health</Text>
-            <Text style={styles.healthSubtitle}>Family integration score</Text>
-            <View style={styles.healthMetrics}>
-              <View style={styles.healthMetric}><Text style={styles.healthMetricValue}>{Math.round(health.frequency)}%</Text><Text style={styles.healthMetricLabel}>Frequency</Text></View>
-              <View style={styles.healthMetric}><Text style={styles.healthMetricValue}>{Math.round(health.recency)}%</Text><Text style={styles.healthMetricLabel}>Recency</Text></View>
-              <View style={styles.healthMetric}><Text style={styles.healthMetricValue}>{Math.round(health.diversityScore)}%</Text><Text style={styles.healthMetricLabel}>Diversity</Text></View>
-            </View>
-          </View>
-          <View style={styles.healthRingContainer}>
-            <View style={styles.healthRing}>
-              <View style={[StyleSheet.absoluteFill, { justifyContent: 'center', alignItems: 'center' }]}>
-                <Text style={styles.healthRingEmoji}>{health.status.emoji}</Text>
-                <Text style={[styles.healthRingScore, { color: health.status.color }]}>{health.score}</Text>
-                <Text style={styles.healthRingLabel}>{health.status.label}</Text>
-              </View>
-              <View style={[styles.healthRingBg, { borderColor: 'rgba(255,255,255,0.06)' }]} />
-              <View style={[styles.healthRingFill, { borderColor: health.status.color, transform: [{ rotate: `${(health.score / 100) * 360}deg` }] }]} />
-            </View>
-          </View>
-        </View>
-      </GlassCard>
-    </Animated.View>
-  );
-});
-
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 4: Smart Role Recommendations
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const SmartRoleRecommendations = React.memo(({ member, activities, onRoleChange, canManage }: any) => {
-  const recommendations = useMemo(() => {
-    const recs = [];
-    const now = Date.now();
-    const monthAgo = now - 30 * 24 * 60 * 60 * 1000;
-    const recent = activities.filter((a: any) => a.timestamp > monthAgo);
-    if (member?.role === UserRole.VIEWER && recent.length > 15) {
-      recs.push({ from: UserRole.VIEWER, to: UserRole.GUARDIAN, reason: 'High activity suggests they could contribute more', confidence: 85, emoji: '⬆️', color: '#10b981' });
-    }
-    if (member?.role === UserRole.GUARDIAN && recent.length < 3) {
-      recs.push({ from: UserRole.GUARDIAN, to: UserRole.VIEWER, reason: 'Low activity, viewer access may be more appropriate', confidence: 72, emoji: '⬇️', color: '#f59e0b' });
-    }
-    if (member?.role === UserRole.GUARDIAN && recent.length > 25) {
-      recs.push({ from: UserRole.GUARDIAN, to: UserRole.PARENT_2, reason: 'Exceptional contribution level detected', confidence: 68, emoji: '⭐', color: '#6366f1' });
-    }
-    return recs;
-  }, [member, activities]);
-  if (!canManage || recommendations.length === 0) return null;
-  return (
-    <Animated.View entering={FadeInUp.delay(350).springify()}>
-      <SectionHeader title="Smart Recommendations" subtitle="AI-suggested role adjustments" />
-      {recommendations.map((rec: any, i: number) => (
-        <TouchableOpacity key={i} onPress={() => onRoleChange(rec.to)} activeOpacity={0.85} style={[styles.recCard, { borderLeftColor: rec.color }]}>
-          <View style={[styles.recIconBg, { backgroundColor: `${rec.color}12` }]}>
-            <Text style={styles.recEmoji}>{rec.emoji}</Text>
-          </View>
-          <View style={styles.recContent}>
-            <Text style={styles.recTitle}>Promote to <Text style={{ color: rec.color }}>{ROLE_CONFIG[rec.to].label}</Text></Text>
-            <Text style={styles.recReason}>{rec.reason}</Text>
-            <View style={styles.recConfidence}>
-              <View style={[styles.recBarBg, { backgroundColor: `${rec.color}15` }]}>
-                <View style={[styles.recBarFill, { width: `${rec.confidence}%`, backgroundColor: rec.color }]} />
-              </View>
-              <Text style={[styles.recConfidenceText, { color: rec.color }]}>{rec.confidence}% match</Text>
-            </View>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color="#64748b" />
-        </TouchableOpacity>
-      ))}
-    </Animated.View>
-  );
-});
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 5: Engagement Timeline
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const EngagementTimeline = React.memo(({ member, activities, milestones }: any) => {
-  const timelineItems = useMemo(() => {
-    const items = [];
-    if (member?.addedAt) items.push({ date: member.addedAt, title: 'Joined Family', desc: `Added as ${ROLE_CONFIG[member.role]?.label || member.role}`, emoji: '👋', color: '#6366f1', type: 'join' });
-    const firstActivity = [...activities].sort((a, b) => a.timestamp - b.timestamp)[0];
-    if (firstActivity) { const config = ACTIVITY_CONFIG[firstActivity.type] || ACTIVITY_CONFIG.default; items.push({ date: new Date(firstActivity.timestamp).toISOString(), title: 'First Activity', desc: `Logged ${config.label}`, emoji: '🎯', color: '#10b981', type: 'first' }); }
-    const milestonesByMember = milestones?.filter((m: any) => m.loggedBy === member?.id || m.loggedByName === member?.fullName).slice(0, 2);
-    milestonesByMember?.forEach((m: any) => items.push({ date: m.achievedAt || m.timestamp, title: 'Milestone Logged', desc: m.title, emoji: '🏆', color: '#f59e0b', type: 'milestone' }));
-    const streakStart = member?.streak?.startedAt;
-    if (streakStart) items.push({ date: streakStart, title: 'Streak Started', desc: `${member.streak?.currentStreak || 0} day streak`, emoji: '🔥', color: '#ef4444', type: 'streak' });
-    return items.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()).slice(-4);
-  }, [member, activities, milestones]);
-  if (timelineItems.length === 0) return null;
-  return (
-    <Animated.View entering={FadeInUp.delay(400).springify()}>
-      <SectionHeader title="Engagement Timeline" subtitle="Key moments with this member" />
-      <View style={styles.timelineContainer}>
-        {timelineItems.map((item, i) => (
-          <View key={i} style={styles.timelineItem}>
-            <View style={styles.timelineLeft}>
-              <View style={[styles.timelineLine, i === 0 && { top: '50%' }, i === timelineItems.length - 1 && { bottom: '50%' }]} />
-              <View style={[styles.timelineDot, { backgroundColor: item.color, borderColor: item.color }]} />
-            </View>
-            <View style={styles.timelineCard}>
-              <View style={styles.timelineHeader}>
-                <Text style={styles.timelineEmoji}>{item.emoji}</Text>
-                <View style={styles.timelineMeta}>
-                  <Text style={styles.timelineTitle}>{item.title}</Text>
-                  <Text style={styles.timelineDate}>{new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</Text>
-                </View>
-              </View>
-              <Text style={styles.timelineDesc}>{item.desc}</Text>
-            </View>
-          </View>
-        ))}
-      </View>
-    </Animated.View>
-  );
-});
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 6: Quick Actions Dock
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const QuickActionsDock = React.memo(({ member, isCurrentUser, onMessage, onCall, onShare, onEdit }: any) => {
-  return (
-    <Animated.View entering={FadeInUp.delay(450).springify()} style={styles.dockContainer}>
-      <View style={styles.dock}>
-        {!isCurrentUser && (
-          <TouchableOpacity onPress={onMessage} style={styles.dockItem}>
-            <LinearGradient colors={['#6366f1', '#8b5cf6']} style={styles.dockGradient}>
-              <Ionicons name="chatbubble" size={20} color="#fff" />
-            </LinearGradient>
-            <Text style={styles.dockLabel}>Message</Text>
-          </TouchableOpacity>
-        )}
-        {!isCurrentUser && member?.phoneNumber && (
-          <TouchableOpacity onPress={onCall} style={styles.dockItem}>
-            <LinearGradient colors={['#10b981', '#34d399']} style={styles.dockGradient}>
-              <Ionicons name="call" size={20} color="#fff" />
-            </LinearGradient>
-            <Text style={styles.dockLabel}>Call</Text>
-          </TouchableOpacity>
-        )}
-        <TouchableOpacity onPress={onShare} style={styles.dockItem}>
-          <View style={[styles.dockGradient, { backgroundColor: 'rgba(255,255,255,0.08)' }]}>
-            <Ionicons name="share-outline" size={20} color="#fff" />
-          </View>
-          <Text style={styles.dockLabel}>Share</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={onEdit} style={styles.dockItem}>
-          <View style={[styles.dockGradient, { backgroundColor: 'rgba(255,255,255,0.08)' }]}>
-            <Ionicons name="create-outline" size={20} color="#fff" />
-          </View>
-          <Text style={styles.dockLabel}>Edit</Text>
-        </TouchableOpacity>
-      </View>
-    </Animated.View>
-  );
-});
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   MODALS
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const ActionModal = React.memo(({ visible, onClose, title, children, isDark: modalIsDark }: any) => {
-  if (!visible) return null;
-  return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent presentationStyle="overFullScreen">
-      <View style={styles.modalOverlay}>
-        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
-        <BlurView intensity={90} tint={modalIsDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
-        <Animated.View entering={FadeInUp.springify()} style={[styles.modalContent, { backgroundColor: modalIsDark ? '#1e1e2e' : '#ffffff' }]}>
-          <View style={styles.modalDragHandle}>
-            <View style={styles.dragIndicator} />
-          </View>
-          <View style={styles.modalHeader}>
-            <Text style={[styles.modalTitle, { color: isDark ? '#fff' : '#1e293b' }]}>{title}</Text>
-            <TouchableOpacity onPress={onClose} style={styles.modalClose}>
-              <Ionicons name="close" size={20} color={isDark ? '#94a3b8' : '#64748b'} />
-            </TouchableOpacity>
-          </View>
-          {children}
-        </Animated.View>
-      </View>
-    </Modal>
-  );
-});
-
-
-/* ═══════════════════════════════════════════════════════════════════════════
    DYNAMIC STYLES
    ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -509,7 +131,7 @@ const getDynamicStyles = (isDark: boolean) => StyleSheet.create({
   centered: { justifyContent: 'center', alignItems: 'center' },
   scrollContent: { paddingBottom: 24 },
 
-
+  stickyHeader: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100, alignItems: 'center', paddingHorizontal: 20, paddingBottom: 10 },
   stickyTitle: { fontSize: 17, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
   stickySubtitle: { fontSize: 12, fontWeight: '500', color: '#94a3b8', marginTop: 2 },
 
@@ -758,6 +380,399 @@ const getDynamicStyles = (isDark: boolean) => StyleSheet.create({
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   REFINED SUB-COMPONENTS — Borrowing GrowthDashboard patterns
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const GlassCard = React.memo(({ children, style, onPress, active = false, delay = 0, isDark }: {
+  children: React.ReactNode; style?: any; onPress?: () => void; active?: boolean; delay?: number; isDark: boolean;
+}) => {
+  const styles = useMemo(() => getDynamicStyles(isDark), [isDark]);
+  const Wrapper = onPress ? TouchableOpacity : View;
+  return (
+    <Animated.View entering={FadeInUp.delay(delay).springify()} style={[styles.glassCard, active && { borderColor: '#6366f1', borderWidth: 2 }, style]}>
+      <Wrapper onPress={onPress} activeOpacity={onPress ? 0.85 : 1} style={{ flex: 1 }}>
+        <LinearGradient colors={['rgba(45,45,60,0.85)', 'rgba(35,35,50,0.65)']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+        <View style={styles.glassBorder} />
+        <View style={styles.glassContent}>{children}</View>
+      </Wrapper>
+    </Animated.View>
+  );
+});
+
+const SectionHeader = React.memo(({ title, subtitle, action, actionLabel, isDark }: {
+  title: string; subtitle?: string; action?: () => void; actionLabel?: string; isDark: boolean;
+}) => {
+  const styles = useMemo(() => getDynamicStyles(isDark), [isDark]);
+  return (
+  <View style={styles.sectionHeader}>
+    <View>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      {subtitle && <Text style={styles.sectionSubtitle}>{subtitle}</Text>}
+    </View>
+    {action && (
+      <TouchableOpacity onPress={action} style={styles.sectionAction}>
+        <Text style={styles.sectionActionText}>{actionLabel || 'See All'}</Text>
+        <Ionicons name="chevron-forward" size={14} color="#6366f1" />
+      </TouchableOpacity>
+    )}
+  </View>
+  );
+});
+
+const TabBar = React.memo(({ tabs, activeTab, onChange, isDark }: {
+  tabs: { key: ProfileTab; label: string; icon: string }[];
+  activeTab: ProfileTab; onChange: (t: ProfileTab) => void; isDark: boolean;
+}) => {
+  const styles = useMemo(() => getDynamicStyles(isDark), [isDark]);
+  return (
+  <View style={styles.tabBar}>
+    {tabs.map((tab) => {
+      const isActive = activeTab === tab.key;
+      return (
+        <TouchableOpacity key={tab.key} onPress={() => onChange(tab.key)} style={[styles.tabItem, isActive && { backgroundColor: 'rgba(99,102,241,0.15)' }]}>
+          <Ionicons name={tab.icon as any} size={16} color={isActive ? '#6366f1' : '#94a3b8'} />
+          <Text style={[styles.tabLabel, { color: isActive ? '#6366f1' : '#94a3b8' }, isActive && { fontWeight: '700' }]}>{tab.label}</Text>
+        </TouchableOpacity>
+      );
+    })}
+  </View>
+  );
+});
+
+const KpiPill = React.memo(({ icon, value, label, color, onPress, isDark }: any) => {
+  const styles = useMemo(() => getDynamicStyles(isDark), [isDark]);
+  return (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={styles.kpiPill}>
+      <LinearGradient colors={[`${color}15`, `${color}05`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+      <View style={[styles.kpiPillIconBg, { backgroundColor: `${color}15` }]}>
+        <Text style={styles.kpiPillEmoji}>{icon}</Text>
+      </View>
+      <View style={styles.kpiPillBody}>
+        <Text style={[styles.kpiPillValue, { color }]}>{value}</Text>
+        <Text style={styles.kpiPillLabel}>{label}</Text>
+      </View>
+    </TouchableOpacity>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   NEW FEATURE 1: AI Member Insights Card
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const AIMemberInsights = React.memo(({ member, activities, isDark }: any) => {
+  const styles = useMemo(() => getDynamicStyles(isDark), [isDark]);
+  const insights = useMemo(() => {
+    const now = Date.now();
+    const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
+    const monthAgo = now - 30 * 24 * 60 * 60 * 1000;
+    const weekActs = activities.filter((a: any) => a.timestamp > weekAgo);
+    const monthActs = activities.filter((a: any) => a.timestamp > monthAgo);
+    const engagementScore = Math.min(100, Math.round((weekActs.length / 7) * 100));
+    const consistencyScore = monthActs.length > 0 ? Math.min(100, Math.round((monthActs.length / 30) * 100)) : 0;
+    const topType = activities.reduce((acc: any, a: any) => { acc[a.type] = (acc[a.type] || 0) + 1; return acc; }, {});
+    const topTypeKey = Object.entries(topType).sort(([,a], [,b]) => (b as number) - (a as number))[0]?.[0] || 'default';
+    const lastActive = activities[0]?.timestamp || 0;
+    const daysSince = lastActive ? Math.floor((now - lastActive) / (24 * 60 * 60 * 1000)) : 999;
+    const items = [];
+    if (engagementScore > 80) items.push({ emoji: '🔥', title: 'Super Active', desc: 'Top 10% of family contributors', color: '#f59e0b', priority: 'high' });
+    else if (engagementScore < 30) items.push({ emoji: '💤', title: 'Low Engagement', desc: 'Consider inviting to log entries', color: '#ef4444', priority: 'high', action: 'Send Reminder' });
+    if (consistencyScore > 70) items.push({ emoji: '📅', title: 'Consistent Logger', desc: 'Regular daily participation', color: '#10b981', priority: 'medium' });
+    if (daysSince > 7) items.push({ emoji: '⏰', title: `${daysSince} Days Inactive`, desc: `Last seen ${new Date(lastActive).toLocaleDateString()}`, color: '#ef4444', priority: 'high' });
+    if (topTypeKey && topTypeKey !== 'default') {
+      const config = ACTIVITY_CONFIG[topTypeKey] || ACTIVITY_CONFIG.default;
+      items.push({ emoji: config.emoji, title: `Prefers ${config.label}`, desc: 'Most frequent activity type', color: config.color, priority: 'low' });
+    }
+    return items.slice(0, 3);
+  }, [activities]);
+  if (insights.length === 0) return null;
+  return (
+    <Animated.View entering={FadeInUp.delay(200).springify()}>
+      <SectionHeader title="AI Insights" subtitle="Intelligence-powered analysis" isDark={isDark} />
+      <View style={styles.insightsList}>
+        {insights.map((insight: any, i: number) => (
+          <TouchableOpacity key={i} activeOpacity={0.85} style={[styles.insightRow, { borderLeftColor: insight.color }]}>
+            <View style={[styles.insightIconBg, { backgroundColor: `${insight.color}12` }]}>
+              <Text style={styles.insightEmoji}>{insight.emoji}</Text>
+            </View>
+            <View style={styles.insightContent}>
+              <View style={styles.insightHeader}>
+                <Text style={styles.insightTitle}>{insight.title}</Text>
+                {insight.action && (
+                  <View style={[styles.insightActionBadge, { backgroundColor: `${insight.color}15` }]}>
+                    <Text style={[styles.insightActionText, { color: insight.color }]}>{insight.action}</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={styles.insightDesc}>{insight.desc}</Text>
+            </View>
+            <View style={[styles.insightPriority, { backgroundColor: insight.color }]} />
+          </TouchableOpacity>
+        ))}
+      </View>
+    </Animated.View>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   NEW FEATURE 2: Activity Velocity Sparkline
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const ActivitySparkline = React.memo(({ activities, isDark }: { activities: ActivityEntry[]; isDark: boolean }) => {
+  const styles = useMemo(() => getDynamicStyles(isDark), [isDark]);
+  const data = useMemo(() => {
+    const days: Record<string, number> = {};
+    const now = new Date();
+    for (let i = 6; i >= 0; i--) { const d = new Date(now); d.setDate(d.getDate() - i); days[d.toISOString().split('T')[0]] = 0; }
+    activities.forEach(a => { const d = new Date(a.timestamp).toISOString().split('T')[0]; if (days[d] !== undefined) days[d]++; });
+    return Object.values(days);
+  }, [activities]);
+  const maxVal = Math.max(...data, 1);
+  return (
+    <Animated.View entering={FadeInUp.delay(250).springify()}>
+      <GlassCard isDark={isDark}>
+        <View style={styles.sparklineHeader}>
+          <View>
+            <Text style={styles.sparklineTitle}>Activity This Week</Text>
+            <Text style={styles.sparklineSubtitle}>Daily entry count</Text>
+          </View>
+          <View style={styles.sparklineTotal}>
+            <Text style={styles.sparklineTotalValue}>{data.reduce((a, b) => a + b, 0)}</Text>
+            <Text style={styles.sparklineTotalLabel}>entries</Text>
+          </View>
+        </View>
+        <View style={styles.sparklineChart}>
+          {data.map((val, i) => {
+            const height = Math.max(4, (val / maxVal) * 60);
+            const isToday = i === data.length - 1;
+            return (
+              <View key={i} style={{ alignItems: 'center', gap: 4 }}>
+                <View style={[styles.sparklineBar, { height, backgroundColor: isToday ? '#6366f1' : val > 0 ? '#8b5cf6' : '#334155' }]} />
+                <Text style={[styles.sparklineDay, isToday && { color: '#6366f1', fontWeight: '700' }]}>{['M','T','W','T','F','S','S'][i]}</Text>
+              </View>
+            );
+          })}
+        </View>
+      </GlassCard>
+    </Animated.View>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   NEW FEATURE 3: Relationship Health Score
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const RelationshipHealth = React.memo(({ member, activities, isDark }: any) => {
+  const styles = useMemo(() => getDynamicStyles(isDark), [isDark]);
+  const health = useMemo(() => {
+    const now = Date.now();
+    const monthAgo = now - 30 * 24 * 60 * 60 * 1000;
+    const recent = activities.filter((a: any) => a.timestamp > monthAgo);
+    const frequency = Math.min(100, (recent.length / 10) * 100);
+    const recency = member?.lastActive ? Math.max(0, 100 - ((now - new Date(member.lastActive).getTime()) / (7 * 24 * 60 * 60 * 1000)) * 100) : 0;
+    const diversity = new Set(activities.map((a: any) => a.type)).size;
+    const diversityScore = Math.min(100, (diversity / 5) * 100);
+    const score = Math.round((frequency * 0.4) + (recency * 0.35) + (diversityScore * 0.25));
+    let status = { label: 'Excellent', color: '#10b981', emoji: '💚' };
+    if (score < 40) status = { label: 'Needs Attention', color: '#ef4444', emoji: '⚠️' };
+    else if (score < 70) status = { label: 'Good', color: '#f59e0b', emoji: '💛' };
+    else if (score < 90) status = { label: 'Great', color: '#6366f1', emoji: '💙' };
+    return { score, status, frequency, recency, diversityScore };
+  }, [member, activities]);
+  return (
+    <Animated.View entering={FadeInUp.delay(300).springify()}>
+      <GlassCard isDark={isDark}>
+        <View style={styles.healthContainer}>
+          <View style={styles.healthLeft}>
+            <Text style={styles.healthTitle}>Relationship Health</Text>
+            <Text style={styles.healthSubtitle}>Family integration score</Text>
+            <View style={styles.healthMetrics}>
+              <View style={styles.healthMetric}><Text style={styles.healthMetricValue}>{Math.round(health.frequency)}%</Text><Text style={styles.healthMetricLabel}>Frequency</Text></View>
+              <View style={styles.healthMetric}><Text style={styles.healthMetricValue}>{Math.round(health.recency)}%</Text><Text style={styles.healthMetricLabel}>Recency</Text></View>
+              <View style={styles.healthMetric}><Text style={styles.healthMetricValue}>{Math.round(health.diversityScore)}%</Text><Text style={styles.healthMetricLabel}>Diversity</Text></View>
+            </View>
+          </View>
+          <View style={styles.healthRingContainer}>
+            <View style={styles.healthRing}>
+              <View style={[StyleSheet.absoluteFill, { justifyContent: 'center', alignItems: 'center' }]}>
+                <Text style={styles.healthRingEmoji}>{health.status.emoji}</Text>
+                <Text style={[styles.healthRingScore, { color: health.status.color }]}>{health.score}</Text>
+                <Text style={styles.healthRingLabel}>{health.status.label}</Text>
+              </View>
+              <View style={[styles.healthRingBg, { borderColor: 'rgba(255,255,255,0.06)' }]} />
+              <View style={[styles.healthRingFill, { borderColor: health.status.color, transform: [{ rotate: `${(health.score / 100) * 360}deg` }] }]} />
+            </View>
+          </View>
+        </View>
+      </GlassCard>
+    </Animated.View>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   NEW FEATURE 4: Smart Role Recommendations
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const SmartRoleRecommendations = React.memo(({ member, activities, onRoleChange, canManage, isDark }: any) => {
+  const styles = useMemo(() => getDynamicStyles(isDark), [isDark]);
+  const recommendations = useMemo(() => {
+    const recs = [];
+    const now = Date.now();
+    const monthAgo = now - 30 * 24 * 60 * 60 * 1000;
+    const recent = activities.filter((a: any) => a.timestamp > monthAgo);
+    if (member?.role === UserRole.VIEWER && recent.length > 15) {
+      recs.push({ from: UserRole.VIEWER, to: UserRole.GUARDIAN, reason: 'High activity suggests they could contribute more', confidence: 85, emoji: '⬆️', color: '#10b981' });
+    }
+    if (member?.role === UserRole.GUARDIAN && recent.length < 3) {
+      recs.push({ from: UserRole.GUARDIAN, to: UserRole.VIEWER, reason: 'Low activity, viewer access may be more appropriate', confidence: 72, emoji: '⬇️', color: '#f59e0b' });
+    }
+    if (member?.role === UserRole.GUARDIAN && recent.length > 25) {
+      recs.push({ from: UserRole.GUARDIAN, to: UserRole.PARENT_2, reason: 'Exceptional contribution level detected', confidence: 68, emoji: '⭐', color: '#6366f1' });
+    }
+    return recs;
+  }, [member, activities]);
+  if (!canManage || recommendations.length === 0) return null;
+  return (
+    <Animated.View entering={FadeInUp.delay(350).springify()}>
+      <SectionHeader title="Smart Recommendations" subtitle="AI-suggested role adjustments" isDark={isDark} />
+      {recommendations.map((rec: any, i: number) => (
+        <TouchableOpacity key={i} onPress={() => onRoleChange(rec.to)} activeOpacity={0.85} style={[styles.recCard, { borderLeftColor: rec.color }]}>
+          <View style={[styles.recIconBg, { backgroundColor: `${rec.color}12` }]}>
+            <Text style={styles.recEmoji}>{rec.emoji}</Text>
+          </View>
+          <View style={styles.recContent}>
+            <Text style={styles.recTitle}>Promote to <Text style={{ color: rec.color }}>{ROLE_CONFIG[rec.to].label}</Text></Text>
+            <Text style={styles.recReason}>{rec.reason}</Text>
+            <View style={styles.recConfidence}>
+              <View style={[styles.recBarBg, { backgroundColor: `${rec.color}15` }]}>
+                <View style={[styles.recBarFill, { width: `${rec.confidence}%`, backgroundColor: rec.color }]} />
+              </View>
+              <Text style={[styles.recConfidenceText, { color: rec.color }]}>{rec.confidence}% match</Text>
+            </View>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color="#64748b" />
+        </TouchableOpacity>
+      ))}
+    </Animated.View>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   NEW FEATURE 5: Engagement Timeline
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const EngagementTimeline = React.memo(({ member, activities, milestones, isDark }: any) => {
+  const styles = useMemo(() => getDynamicStyles(isDark), [isDark]);
+  const timelineItems = useMemo(() => {
+    const items = [];
+    if (member?.addedAt) items.push({ date: member.addedAt, title: 'Joined Family', desc: `Added as ${ROLE_CONFIG[member.role]?.label || member.role}`, emoji: '👋', color: '#6366f1', type: 'join' });
+    const firstActivity = [...activities].sort((a, b) => a.timestamp - b.timestamp)[0];
+    if (firstActivity) { const config = ACTIVITY_CONFIG[firstActivity.type] || ACTIVITY_CONFIG.default; items.push({ date: new Date(firstActivity.timestamp).toISOString(), title: 'First Activity', desc: `Logged ${config.label}`, emoji: '🎯', color: '#10b981', type: 'first' }); }
+    const milestonesByMember = milestones?.filter((m: any) => m.loggedBy === member?.id || m.loggedByName === member?.fullName).slice(0, 2);
+    milestonesByMember?.forEach((m: any) => items.push({ date: m.achievedAt || m.timestamp, title: 'Milestone Logged', desc: m.title, emoji: '🏆', color: '#f59e0b', type: 'milestone' }));
+    const streakStart = member?.streak?.startedAt;
+    if (streakStart) items.push({ date: streakStart, title: 'Streak Started', desc: `${member.streak?.currentStreak || 0} day streak`, emoji: '🔥', color: '#ef4444', type: 'streak' });
+    return items.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()).slice(-4);
+  }, [member, activities, milestones]);
+  if (timelineItems.length === 0) return null;
+  return (
+    <Animated.View entering={FadeInUp.delay(400).springify()}>
+      <SectionHeader title="Engagement Timeline" subtitle="Key moments with this member" isDark={isDark} />
+      <View style={styles.timelineContainer}>
+        {timelineItems.map((item, i) => (
+          <View key={i} style={styles.timelineItem}>
+            <View style={styles.timelineLeft}>
+              <View style={[styles.timelineLine, i === 0 && { top: '50%' }, i === timelineItems.length - 1 && { bottom: '50%' }]} />
+              <View style={[styles.timelineDot, { backgroundColor: item.color, borderColor: item.color }]} />
+            </View>
+            <View style={styles.timelineCard}>
+              <View style={styles.timelineHeader}>
+                <Text style={styles.timelineEmoji}>{item.emoji}</Text>
+                <View style={styles.timelineMeta}>
+                  <Text style={styles.timelineTitle}>{item.title}</Text>
+                  <Text style={styles.timelineDate}>{new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</Text>
+                </View>
+              </View>
+              <Text style={styles.timelineDesc}>{item.desc}</Text>
+            </View>
+          </View>
+        ))}
+      </View>
+    </Animated.View>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   NEW FEATURE 6: Quick Actions Dock
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const QuickActionsDock = React.memo(({ member, isCurrentUser, onMessage, onCall, onShare, onEdit, isDark }: any) => {
+  const styles = useMemo(() => getDynamicStyles(isDark), [isDark]);
+  return (
+    <Animated.View entering={FadeInUp.delay(450).springify()} style={styles.dockContainer}>
+      <View style={styles.dock}>
+        {!isCurrentUser && (
+          <TouchableOpacity onPress={onMessage} style={styles.dockItem}>
+            <LinearGradient colors={['#6366f1', '#8b5cf6']} style={styles.dockGradient}>
+              <Ionicons name="chatbubble" size={20} color="#fff" />
+            </LinearGradient>
+            <Text style={styles.dockLabel}>Message</Text>
+          </TouchableOpacity>
+        )}
+        {!isCurrentUser && member?.phoneNumber && (
+          <TouchableOpacity onPress={onCall} style={styles.dockItem}>
+            <LinearGradient colors={['#10b981', '#34d399']} style={styles.dockGradient}>
+              <Ionicons name="call" size={20} color="#fff" />
+            </LinearGradient>
+            <Text style={styles.dockLabel}>Call</Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity onPress={onShare} style={styles.dockItem}>
+          <View style={[styles.dockGradient, { backgroundColor: 'rgba(255,255,255,0.08)' }]}>
+            <Ionicons name="share-outline" size={20} color="#fff" />
+          </View>
+          <Text style={styles.dockLabel}>Share</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={onEdit} style={styles.dockItem}>
+          <View style={[styles.dockGradient, { backgroundColor: 'rgba(255,255,255,0.08)' }]}>
+            <Ionicons name="create-outline" size={20} color="#fff" />
+          </View>
+          <Text style={styles.dockLabel}>Edit</Text>
+        </TouchableOpacity>
+      </View>
+    </Animated.View>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MODALS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const ActionModal = React.memo(({ visible, onClose, title, children, isDark }: any) => {
+  const styles = useMemo(() => getDynamicStyles(isDark), [isDark]);
+  if (!visible) return null;
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent presentationStyle="overFullScreen">
+      <View style={styles.modalOverlay}>
+        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
+        <BlurView intensity={90} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
+        <Animated.View entering={FadeInUp.springify()} style={[styles.modalContent, { backgroundColor: isDark ? '#1e1e2e' : '#ffffff' }]}>
+          <View style={styles.modalDragHandle}>
+            <View style={styles.dragIndicator} />
+          </View>
+          <View style={styles.modalHeader}>
+            <Text style={[styles.modalTitle, { color: isDark ? '#fff' : '#1e293b' }]}>{title}</Text>
+            <TouchableOpacity onPress={onClose} style={styles.modalClose}>
+              <Ionicons name="close" size={20} color={isDark ? '#94a3b8' : '#64748b'} />
+            </TouchableOpacity>
+          </View>
+          {children}
+        </Animated.View>
+      </View>
+    </Modal>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
    MAIN SCREEN
    ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -883,6 +898,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
       else sweetAlert.error('Error', 'Failed to remove family member');
     }, () => {}, 'Remove', 'Cancel');
   };
+
   const handleCameraCapture = async () => {
     setShowImagePicker(false);
     if (!member) {
@@ -978,13 +994,8 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     }
   };
 
-  /** 
-   * Persist a picked image from ImagePicker to permanent app storage.
-   * Handles both file:// URIs and content:// URIs (Android).
-   */
   const persistPickedImage = async (sourceUri: string, memberId: string): Promise<string | null> => {
     try {
-      // Ensure directory exists
       const dirInfo = await FileSystem.getInfoAsync(GUARDIAN_IMAGES_DIR);
       if (!dirInfo.exists) { 
         await FileSystem.makeDirectoryAsync(GUARDIAN_IMAGES_DIR, { intermediates: true }); 
@@ -994,12 +1005,10 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
       const safeExt = ['jpg', 'jpeg', 'png', 'webp'].includes(ext) ? ext : 'jpg';
       const processedUri = `${GUARDIAN_IMAGES_DIR}${memberId}_${Date.now()}.${safeExt}`;
 
-      // Handle content:// URIs on Android by reading as base64 then writing
       if (sourceUri.startsWith('content://')) {
         const base64 = await FileSystem.readAsStringAsync(sourceUri, { encoding: FileSystem.EncodingType.Base64 });
         await FileSystem.writeAsStringAsync(processedUri, base64, { encoding: FileSystem.EncodingType.Base64 });
       } else if (sourceUri.startsWith('data:')) {
-        // Handle data: URIs (base64 embedded)
         const base64Data = sourceUri.split(',')[1];
         if (base64Data) {
           await FileSystem.writeAsStringAsync(processedUri, base64Data, { encoding: FileSystem.EncodingType.Base64 });
@@ -1007,11 +1016,9 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
           throw new Error('Invalid data URI');
         }
       } else {
-        // file:// URIs and https:// can use copyAsync directly
         await FileSystem.copyAsync({ from: sourceUri, to: processedUri });
       }
 
-      // Verify the file was written
       const fileInfo = await FileSystem.getInfoAsync(processedUri);
       if (!fileInfo.exists) {
         console.error('[persistPickedImage] File not found after write:', processedUri);
@@ -1037,7 +1044,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     }, () => setShowRoleModal(false), 'Change', 'Cancel');
   };
 
-  const handleCall = async () => {
+    const handleCall = async () => {
     if (!member?.phoneNumber) { sweetAlert.alert('No Phone Number', 'No phone number on file.', 'warning'); return; }
     const phoneUrl = `tel:${member.phoneNumber.replace(/\s/g, '')}`;
     if (await Linking.canOpenURL(phoneUrl)) { triggerHaptic('medium'); await Linking.openURL(phoneUrl); }
@@ -1174,27 +1181,27 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
         </Animated.View>
 
         {/* Quick Actions Dock */}
-        <QuickActionsDock member={member} isCurrentUser={isCurrentUser} onMessage={handleMessage} onCall={handleCall} onShare={handleShare} onEdit={() => setIsEditing(true)} />
+        <QuickActionsDock member={member} isCurrentUser={isCurrentUser} onMessage={handleMessage} onCall={handleCall} onShare={handleShare} onEdit={() => setIsEditing(true)} isDark={isDark} />
 
         {/* Tab Bar */}
-        <TabBar tabs={tabs} activeTab={activeTab} onChange={handleTabChange} />
+        <TabBar tabs={tabs} activeTab={activeTab} onChange={handleTabChange} isDark={isDark} />
 
         {/* TAB: OVERVIEW */}
         {activeTab === 'overview' && (
           <>
             <View style={styles.kpiPillRow}>
-              <KpiPill icon="📊" value={memberActivities.length} label="Activities" color="#6366f1" />
-              <KpiPill icon="🔥" value={member?.streak || 0} label="Day Streak" color="#f59e0b" />
-              <KpiPill icon="⭐" value={roleConfig.priority} label="Priority" color={roleConfig.color} />
+              <KpiPill icon="📊" value={memberActivities.length} label="Activities" color="#6366f1" isDark={isDark} />
+              <KpiPill icon="🔥" value={member?.streak || 0} label="Day Streak" color="#f59e0b" isDark={isDark} />
+              <KpiPill icon="⭐" value={roleConfig.priority} label="Priority" color={roleConfig.color} isDark={isDark} />
             </View>
-            <AIMemberInsights member={member} activities={memberActivities} />
-            <ActivitySparkline activities={memberActivities} />
-            <RelationshipHealth member={member} activities={memberActivities} />
-            <SmartRoleRecommendations member={member} activities={memberActivities} onRoleChange={handleRoleChange} canManage={canManagePermissions} />
-            <EngagementTimeline member={member} activities={memberActivities} milestones={milestones} />
+            <AIMemberInsights member={member} activities={memberActivities} isDark={isDark} />
+            <ActivitySparkline activities={memberActivities} isDark={isDark} />
+            <RelationshipHealth member={member} activities={memberActivities} isDark={isDark} />
+            <SmartRoleRecommendations member={member} activities={memberActivities} onRoleChange={handleRoleChange} canManage={canManagePermissions} isDark={isDark} />
+            <EngagementTimeline member={member} activities={memberActivities} milestones={milestones} isDark={isDark} />
             <Animated.View entering={FadeInUp.delay(500).springify()}>
-              <SectionHeader title="Contact Info" />
-              <GlassCard>
+              <SectionHeader title="Contact Info" isDark={isDark} />
+              <GlassCard isDark={isDark}>
                 <View style={styles.contactList}>
                   {member.email && (
                     <View style={styles.contactItem}>
@@ -1221,14 +1228,14 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
         {/* TAB: ACTIVITY */}
         {activeTab === 'activity' && (
           <>
-            <SectionHeader title="Recent Activity" subtitle={`${memberActivities.length} entries`} />
+            <SectionHeader title="Recent Activity" subtitle={`${memberActivities.length} entries`} isDark={isDark} />
             {isLoadingActivities ? (
-              <GlassCard style={styles.emptyCard}>
+              <GlassCard style={styles.emptyCard} isDark={isDark}>
                 <View style={styles.emptyStateIcon}><InlineSpinner size={24} color="#6366f1" section="main" /></View>
                 <Text style={styles.emptyStateTitle}>Loading activities...</Text>
               </GlassCard>
             ) : memberActivities.length === 0 ? (
-              <GlassCard style={styles.emptyCard}>
+              <GlassCard style={styles.emptyCard} isDark={isDark}>
                 <View style={styles.emptyStateIcon}><Ionicons name="time-outline" size={32} color="#6366f1" /></View>
                 <Text style={styles.emptyStateTitle}>{isCurrentUser ? "You haven't recorded any activities yet" : `${member.fullName} hasn't recorded any activities yet`}</Text>
                 <Text style={styles.emptyText}>Activities will appear here when {isCurrentUser ? 'you' : 'they'} log entries for {currentBaby?.name || 'the baby'}</Text>
@@ -1239,7 +1246,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
                   const config = ACTIVITY_CONFIG[activity.type] || ACTIVITY_CONFIG.default;
                   return (
                     <Animated.View key={activity.id} entering={FadeInUp.delay(index * 60).springify()}>
-                      <GlassCard style={styles.activityCard} delay={index * 60}>
+                      <GlassCard style={styles.activityCard} delay={index * 60} isDark={isDark}>
                         <View style={styles.activityRow}>
                           <View style={[styles.activityIcon, { backgroundColor: `${config.color}18` }]}><Text style={styles.activityEmoji}>{config.emoji}</Text></View>
                           <View style={styles.activityContent}>
@@ -1261,8 +1268,8 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
         {/* TAB: PERMISSIONS */}
         {activeTab === 'permissions' && (
           <>
-            <SectionHeader title="Access Permissions" subtitle={`${roleConfig.permissions.length} permissions`} />
-            <GlassCard>
+            <SectionHeader title="Access Permissions" subtitle={`${roleConfig.permissions.length} permissions`} isDark={isDark} />
+            <GlassCard isDark={isDark}>
               <View style={styles.permissionGrid}>
                 {roleConfig.permissions.map((permission, index) => (
                   <Animated.View key={permission} entering={FadeIn.delay(index * 50)} style={[styles.permissionChip, { backgroundColor: `${roleConfig.color}15`, borderColor: `${roleConfig.color}30` }]}>
@@ -1316,8 +1323,8 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
         {/* TAB: SETTINGS */}
         {activeTab === 'settings' && (
           <>
-            <SectionHeader title="Edit Profile" />
-            <GlassCard>
+            <SectionHeader title="Edit Profile" isDark={isDark} />
+            <GlassCard isDark={isDark}>
               <View style={styles.inputGroup}>
                 <Text style={styles.inputLabel}>Full Name</Text>
                 {isCurrentUser ? (
@@ -1378,8 +1385,8 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
             {/* Danger Zone - subtle, at bottom */}
             {canRemove && (
               <Animated.View entering={FadeInUp.delay(300).springify()}>
-                <SectionHeader title="Danger Zone" subtitle="Irreversible actions" />
-                <GlassCard>
+                <SectionHeader title="Danger Zone" subtitle="Irreversible actions" isDark={isDark} />
+                <GlassCard isDark={isDark}>
                   <View style={styles.dangerContent}>
                     <View style={styles.dangerIconWrap}>
                       <LinearGradient colors={['#ef4444', '#dc2626']} style={styles.dangerIcon}>

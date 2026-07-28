@@ -1424,21 +1424,10 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
           </TouchableOpacity>
         </View>
 
-        {/* Center: Logo */}
+        {/* Center: Title */}
         <View style={styles.stickyHeaderCenter}>
-          <View style={styles.stickyHeaderLogoWrap}>
-            <Image
-              source={require('../../../assets/logo.png')}
-              style={[
-                styles.stickyHeaderLogo,
-                {
-                  width: Math.round(30 * fontSizeMultiplier),
-                  height: Math.round(30 * fontSizeMultiplier),
-                }
-              ]}
-              resizeMode="contain"
-            />
-          </View>
+          <Text style={[styles.stickyHeaderTitle, { color: textColor, fontSize: titleSize }]}>LittleLoom</Text>
+          <View style={[styles.stickyHeaderUnderline, { backgroundColor: primaryColor, width: Math.round(28 * fontSizeMultiplier), height: Math.max(3, Math.round(3 * fontSizeMultiplier)), borderRadius: Math.max(1, Math.round(2 * fontSizeMultiplier)), marginTop: compactSpacing ? 2 : 3 }]} />
         </View>
 
         {/* Right: Actions */}
@@ -1936,7 +1925,20 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
         onScroll={scrollHandler}
         scrollEventThrottle={16}
       >
-        {/* Logo now lives in the sticky header */}
+        {/* ═══════════════════════════════════════════════════════════════════
+            FLOATING LOGO — Soft shadow, no rounded borders, clean float
+           ═══════════════════════════════════════════════════════════════════ */}
+        <Animated.View entering={shouldReduceMotion ? undefined : FadeInDown.duration(600).springify()}>
+          <View style={styles.logoFloatContainer}>
+            <View style={styles.logoFloatWrap}>
+              <Image
+                source={require('../../../assets/logo.png')}
+                style={styles.logoFloatImage}
+                resizeMode="contain"
+              />
+            </View>
+          </View>
+        </Animated.View>
 
         {/* ═══════════════════════════════════════════════════════════════════
             GREETING & PARENT CARD — Compact, Elegant
@@ -2602,17 +2604,22 @@ const styles = StyleSheet.create({
   sectionHeaderAction: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   sectionHeaderActionText: { fontSize: 12, fontWeight: '700' },
 
-  /* ── Sticky Header Logo ── */
-  stickyHeaderLogoWrap: {
+  /* ── Floating Logo ── */
+  logoFloatContainer: { alignItems: 'center', marginTop: 6, marginBottom: 2 },
+  logoFloatWrap: {
+    width: Math.min(width * 0.24, 96),
+    height: Math.min(width * 0.24, 96),
+    alignItems: 'center',
+    justifyContent: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
+    shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 6,
+    shadowRadius: 24,
+    elevation: 12,
   },
-  stickyHeaderLogo: {
-    width: 30,
-    height: 30,
+  logoFloatImage: {
+    width: Math.min(width * 0.22, 88),
+    height: Math.min(width * 0.22, 88),
   },
 
   /* ── Notification Modal ── */
