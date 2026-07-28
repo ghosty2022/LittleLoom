@@ -291,7 +291,7 @@ function NavigationContent({
   const firstOpenChecked = useRef(false);
   const pendingNavTarget = useRef<string | null>(null);
   const processedNavState = useRef<NavigationState>('LOADING');
-  const processedSwitchBaby = useRef(false);
+  // const processedSwitchBaby = useRef(false); // no longer needed
 
   // Refs to track current baby values without causing re-renders
   const babyCountRef = useRef(0);
@@ -359,11 +359,7 @@ function NavigationContent({
       isFirstOpen,
     );
 
-    if (newState === 'MAIN' && babyCountRef.current > 1 &&
-        !hasShownSwitchBaby.current &&
-        isAuthenticated && setupComplete && !isFirstOpen) {
-      setShouldShowSwitchBaby(true);
-    }
+    // Switch-baby is handled imperatively after Main navigation (no state)
 
     if (newState !== lastNavState.current) {
       if (lastNavState.current === 'SECURITY_LOCK' && newState === 'MAIN') {
@@ -531,6 +527,7 @@ function NavigationContent({
   // Early return MUST come after ALL hooks
   if (authLoading || !initialCheckDone) return <AppLoadingScreen />;
 
+  // FIX: Wrap in a non-collapsable View to prevent Reanimated index desync
   return (
     <NavigationContainer
       ref={navRef}
@@ -540,7 +537,8 @@ function NavigationContent({
       onReady={() => setIsNavReady(true)}
     >
       <StatusBar style={isDark ? 'light' : 'dark'} />
-      <Stack.Navigator screenOptions={stackScreenOptions}>
+      <View style={{ flex: 1 }} collapsable={false}>
+        <Stack.Navigator screenOptions={stackScreenOptions}>
         {/* AUTH FLOW */}
         <Stack.Screen name="Onboarding" component={OnboardingScreen} options={{ animation: 'fade' }} />
         <Stack.Group screenOptions={{ animation: 'slide_from_bottom' }}>
@@ -614,7 +612,8 @@ function NavigationContent({
 
         <Stack.Screen name="UniversalTrackerHub" component={UniversalTrackerHubScreen} />
         <Stack.Screen name="CreateCustomTracker" component={CreateCustomTrackerScreen} />
-      </Stack.Navigator>
+        </Stack.Navigator>
+      </View>
     </NavigationContainer>
   );
 }

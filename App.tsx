@@ -11,7 +11,8 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import Animated, { FadeIn } from 'react-native-reanimated';
+// Removed: Animated entering wrappers cause native crashes with NavigationContainer
+// import Animated, { FadeIn } from 'react-native-reanimated';
 import * as SplashScreen from 'expo-splash-screen';
 import * as SystemUI from 'expo-system-ui';
 import * as Font from 'expo-font';
@@ -99,7 +100,7 @@ const CustomSplashScreen = React.memo<CustomSplashScreenProps>(({ isDark, isTrue
         end={{ x: 1, y: 1 }}
       />
       <StatusBar style={colors.statusBar} />
-      <Animated.View entering={FadeIn.duration(300)} style={styles.splashContent}>
+      <View style={styles.splashContent}>
         <View style={[styles.splashLogoRing, { borderColor: colors.ring }]}>
           <Text style={styles.splashEmoji}>🍼</Text>
         </View>
@@ -112,7 +113,7 @@ const CustomSplashScreen = React.memo<CustomSplashScreenProps>(({ isDark, isTrue
         <View style={{ marginTop: 32 }}>
           <InlineSpinner size={28} color={colors.spinner} />
         </View>
-      </Animated.View>
+      </View>
     </View>
   );
 });
@@ -127,10 +128,10 @@ const InnerApp: React.FC<InnerAppProps> = React.memo(({ initialState, onStateCha
 
   return (
     <ModalProvider>
-      <Animated.View entering={FadeIn.duration(200)} style={styles.container}>
+      <View style={styles.container}>
         <AppNavigator initialState={initialState} onStateChange={onStateChange} />
         <GlobalAudioPlayer />
-      </Animated.View>
+      </View>
       <StatusBar style={isDark ? 'light' : 'dark'} />
     </ModalProvider>
   );
