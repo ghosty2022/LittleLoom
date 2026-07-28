@@ -486,11 +486,17 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
   }, []);
 
+  const lastSyncedProfileRef = useRef('');
+  
   useEffect(() => {
     if (authLoading) return;
     
     if (isAuthenticated && userProfile) {
-      syncWithAuthUser(userProfile);
+      const profileKey = userProfile.id + (userProfile.communityHandle || '');
+      if (lastSyncedProfileRef.current !== profileKey) {
+        lastSyncedProfileRef.current = profileKey;
+        syncWithAuthUser(userProfile);
+      }
     } else if (!isAuthenticated && state.currentUser) {
       setState(prev => ({
         ...prev,

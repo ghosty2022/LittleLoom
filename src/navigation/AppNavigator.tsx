@@ -274,7 +274,8 @@ function NavigationContent({
 
   const [navState, setNavState] = useState<NavigationState>('LOADING');
   const [initialCheckDone, setInitialCheckDone] = useState(false);
-  const [shouldShowSwitchBaby, setShouldShowSwitchBaby] = useState(false);
+  // Switch-baby navigation is now handled imperatively (no state)
+  // const [shouldShowSwitchBaby, setShouldShowSwitchBaby] = useState(false);
   const [isNavReady, setIsNavReady] = useState(false);
   const [isFirstOpen, setIsFirstOpen] = useState(false);
 
@@ -330,27 +331,19 @@ function NavigationContent({
     }).catch(() => setIsFirstOpen(false));
   }, []);
 
-  // Keep refs in sync + trigger switch-baby when babies load after MAIN is reached
+  // Keep refs in sync — switch-baby is handled imperatively after MAIN navigation
   useEffect(() => {
     const newCount = babies?.length || 0;
     babyCountRef.current = newCount;
     hasSkippedBabyRef.current = hasSkippedBaby;
-
-    if (
-      newCount > 1 &&
-      isAuthenticated &&
-      setupComplete &&
-      !isFirstOpen &&
-      !hasShownSwitchBaby.current &&
-      lastNavState.current === 'MAIN'
-    ) {
-      setShouldShowSwitchBaby(true);
-    }
   }, [babies?.length, hasSkippedBaby, isAuthenticated, setupComplete, isFirstOpen]);
 
   // FIX #2: Compute navState with stable deps
+  const computingNavState = useRef(false);
   useEffect(() => {
     if (authLoading || !firstOpenChecked.current) return;
+    if (computingNavState.current) return;
+    computingNavState.current = true;
 
     const newState = getNavState(
       authLoading,
@@ -382,6 +375,8 @@ function NavigationContent({
     }
 
     if (!initialCheckDone) setInitialCheckDone(true);
+    // Defer unlock so parallel setStates in this batch don't re-trigger
+    setTimeout(() => { computingNavState.current = false; }, 0);
   }, [
     authLoading,
     isAuthenticated,
@@ -440,22 +435,8 @@ function NavigationContent({
   }, []);
 
   /* ═══════════════════════════════════════════════════════════════════════════
-     SWITCH BABY NAVIGATION (isolated effect)
+     SWITCH BABY NAVIGATION — handled imperatively inside main nav effect
      ═══════════════════════════════════════════════════════════════════════════ */
-  useEffect(() => {
-    if (!navRef.current?.isReady() || !isNavReady) return;
-    if (!shouldShowSwitchBaby || hasShownSwitchBaby.current) return;
-    if (processedSwitchBaby.current === shouldShowSwitchBaby) return;
-
-    processedSwitchBaby.current = shouldShowSwitchBaby;
-    hasShownSwitchBaby.current = true;
-    setShouldShowSwitchBaby(false);
-
-    const currentRoute = navRef.current.getCurrentRoute()?.name;
-    if (currentRoute !== 'SwitchBaby') {
-      navRef.current.navigate('SwitchBaby' as never);
-    }
-  }, [shouldShowSwitchBaby, isNavReady]);
 
   /* ═══════════════════════════════════════════════════════════════════════════
      MAIN NAVIGATION EFFECT (navState only)
@@ -527,6 +508,16 @@ function NavigationContent({
       navState === 'ONBOARDING';
     if (shouldReset) {
       navRef.current.reset({ index: 0, routes: [{ name: target }] });
+
+      // Imperative switch-baby after landing on Main (no state updates)
+      if (target === 'Main' && babyCountRef.current > 1 && !hasShownSwitchBaby.current) {
+        hasShownSwitchBaby.current = true;
+        setTimeout(() => {
+          if (navRef.current?.getCurrentRoute()?.name !== 'SwitchBaby') {
+            navRef.current?.navigate('SwitchBaby' as never);
+          }
+        }, 600);
+      }
     } else {
       navRef.current.navigate(target as never);
     }

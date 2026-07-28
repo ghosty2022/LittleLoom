@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-# find_loop_v2.py — Precise infinite-loop detector for React Native
+# find_loop_v3.py — Surgical infinite-loop detector
 
-import os
 import re
 import sys
 from pathlib import Path
@@ -12,99 +11,52 @@ if not PROJECT_ROOT.exists():
     PROJECT_ROOT = Path.cwd() / "src"
 
 EXTS = {".tsx", ".ts", ".jsx", ".js"}
-
-# ── Patterns that ACTUALLY cause infinite loops ─────────────────────────
-
-# 1. useEffect / useLayoutEffect with NO dependency array at all
-#    useEffect(() => { setSomething(...) })   ← runs every render
-EFFECT_NO_DEPS = re.compile(
-    r'(useEffect|useLayoutEffect)\s*\(\s*(?:\(\)\s*=>|function)\s*[^{]*\{'
-    r'[^{}]*?(?:set\w+|dispatch|navigate|reset)\s*\('
-    r'[^{}]*?\}\s*\)(?!\s*,)',  # negative lookahead: no comma after the closing paren
-    re.DOTALL
-)
-
-# 2. useEffect with empty deps [] that still calls setState 
-#    (usually fine, but dangerous if combined with context/prop changes)
-EFFECT_EMPTY_DEPS_SETSTATE = re.compile(
-    r'(useEffect|useLayoutEffect)\s*\(\s*(?:\(\)\s*=>|function)\s*[^{]*\{'
-    r'[^{}]*?(?:set\w+|dispatch)\s*\('
-    r'[^{}]*?\}\s*,\s*\[\s*\]\s*\)',
-    re.DOTALL
-)
-
-# 3. useEffect where deps contain an inline object or array literal
-#    useEffect(..., [{foo}]) or useEffect(..., [someArray])
-EFFECT_INLINE_DEPS = re.compile(
-    r'(useEffect|useLayoutEffect)\s*\(\s*(?:\(\)\s*=>|function)\s*[^{]*\{'
-    r'[^{}]*?(?:set\w+|dispatch|navigate|reset)\s*\('
-    r'[^{}]*?\}\s*,\s*\[\s*[^\]]*?(?:\{[^\}]*\}|\[[^\]]*\])[^\]]*?\]\s*\)',
-    re.DOTALL
-)
-
-# 4. useEffect that sets state based on a prop or context value
-#    useEffect(() => { setX(props.foo) }, [props.foo])
-EFFECT_SETSTATE_FROM_PROP = re.compile(
-    r'(useEffect|useLayoutEffect)\s*\(\s*(?:\(\)\s*=>|function)\s*[^{]*\{'
-    r'[^{}]*?set\w+\s*\(\s*(?:[^)]*?props\.|[^)]*?context\.|[^)]*?use\w+\([^)]*\))'
-    r'[^{}]*?\}\s*,\s*\[',
-    re.DOTALL
-)
-
-# 5. Context Provider passing an inline object literal as value
-#    <MyContext.Provider value={{ state, setState }}>
-CONTEXT_INLINE_VALUE = re.compile(
-    r'<(\w+(?:Context)?\.Provider|\w+Provider)\s+value\s*=\s*\{\s*\{',
-    re.DOTALL
-)
-
-# 6. useState called with a function/expression that creates a new object every render
-#    const [x, setX] = useState({}) or useState([]) or useState(someExpression())
-USESTATE_INLINE_INIT = re.compile(
-    r'const\s+\[\s*\w+\s*,\s*set\w+\s*\]\s*=\s*useState\s*\(\s*(?:\{\s*\}|\[\s*\]|'
-    r'(?:\w+\(\)|new\s+\w+\(|Object\.|Array\.|JSON\.parse|JSON\.stringify))',
-    re.DOTALL
-)
-
-# 7. setState called directly in the render body (outside any hook/handler)
-#    Heuristic: line contains setX(...) but not inside useEffect, onPress, etc.
-SETSTATE_IN_RENDER = re.compile(
-    r'^\s*set\w+\s*\([^)]+\)',
-    re.MULTILINE
-)
-
-# 8. useEffect that calls navigate/reset with no deps or props-based deps
-EFFECT_NAVIGATE = re.compile(
-    r'(useEffect|useLayoutEffect)\s*\(\s*(?:\(\)\s*=>|function)\s*[^{]*\{'
-    r'[^{}]*?(?:navigate|reset)\s*\('
-    r'[^{}]*?\}\s*,\s*\[',
-    re.DOTALL
-)
-
 results = []
 file_scores = defaultdict(int)
+
+# ── Small brace/string parser ───────────────────────────────────────────
+
+def find_matching(text: str, start: int, open_ch: str, close_ch: str) -> int:
+    """Find index of matching close_ch, skipping strings and nested pairs."""
+    depth = 1
+    i = start + 1
+    in_string = False
+    esc = False
+    while i < len(text):
+        ch = text[i]
+        if in_string:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_string = False
+            i += 1
+            continue
+
+        if ch == '"':
+            in_string = True
+            i += 1
+            continue
+
+        if ch == open_ch:
+            depth += 1
+        elif ch == close_ch:
+            depth -= 1
+            if depth == 0:
+                return i
+        i += 1
+    return -1
 
 def get_line(text: str, pos: int) -> int:
     return text[:pos].count("\n") + 1
 
-def get_snippet(text: str, pos: int, length: int = 80) -> str:
-    start = max(0, pos - 20)
+def get_snippet(text: str, pos: int, length: int = 90) -> str:
+    start = max(0, pos - 10)
     end = min(len(text), pos + length)
-    snippet = text[start:end].replace("\n", " ").strip()
-    return snippet
+    return text[start:end].replace("\n", " ").strip()
 
 def add(file: Path, line: int, cat: str, snippet: str, weight: int):
-    # Filter out obvious false positives
-    snippet_clean = snippet.lower()
-    if "useref" in snippet_clean and cat == "effect_no_deps":
-        return
-    if "usecallback" in snippet_clean:
-        return
-    if "usememo" in snippet_clean:
-        return
-    if "console.log" in snippet_clean and weight < 50:
-        return
-    
     results.append({
         "file": str(file.relative_to(Path.cwd())),
         "line": line,
@@ -114,70 +66,142 @@ def add(file: Path, line: int, cat: str, snippet: str, weight: int):
     })
     file_scores[str(file)] += weight
 
+# ── Core scanner ────────────────────────────────────────────────────────
+
+def scan_effects(file: Path, text: str):
+    """Find useEffect / useLayoutEffect calls and analyse their deps."""
+    keywords = ("useEffect", "useLayoutEffect", "useFocusEffect")
+    for kw in keywords:
+        i = 0
+        while True:
+            idx = text.find(kw, i)
+            if idx == -1:
+                break
+
+            # Skip if part of a larger word
+            if idx > 0 and text[idx-1].isalnum():
+                i = idx + 1
+                continue
+
+            # Find opening paren
+            j = idx + len(kw)
+            while j < len(text) and text[j].isspace():
+                j += 1
+            if j >= len(text) or text[j] != "(":
+                i = idx + 1
+                continue
+
+            # Find the comma that separates arg1 from arg2 (or closing paren)
+            # We need to skip the arrow function's own parens/braces
+            k = j + 1
+            paren_depth = 1
+            in_string = False
+            esc = False
+            arg1_end = -1
+
+            while k < len(text) and paren_depth > 0:
+                ch = text[k]
+                if in_string:
+                    if esc:
+                        esc = False
+                    elif ch == "\\":
+                        esc = True
+                    elif ch == '"':
+                        in_string = False
+                    k += 1
+                    continue
+
+                if ch == '"':
+                    in_string = True
+                    k += 1
+                    continue
+
+                if ch == "(":
+                    paren_depth += 1
+                elif ch == ")":
+                    paren_depth -= 1
+                    if paren_depth == 0:
+                        arg1_end = k
+                        break
+
+                # Top-level comma separates arguments
+                if ch == "," and paren_depth == 1:
+                    arg1_end = k
+                    break
+                k += 1
+
+            if arg1_end == -1:
+                i = idx + 1
+                continue
+
+            arg1 = text[j+1:arg1_end]
+
+            # Check if arg1 body contains setState / dispatch / navigate / reset
+            has_mutation = bool(re.search(r'\b(set\w+|dispatch|navigate|reset)\s*\(', arg1))
+
+            # Determine if there is a dependency array
+            rest = text[arg1_end:].lstrip()
+            has_deps = rest.startswith(",")
+
+            line = get_line(text, idx)
+
+            if not has_deps:
+                if has_mutation:
+                    add(file, line, "🔥 EFFECT_NO_DEPS", get_snippet(text, idx), 100)
+                else:
+                    # Still suspicious if it does ANY work without deps
+                    add(file, line, "⚠️  EFFECT_NO_DEPS (no setState)", get_snippet(text, idx), 40)
+            else:
+                # Extract dependency array content
+                dep_start = arg1_end + 1
+                while dep_start < len(text) and text[dep_start].isspace():
+                    dep_start += 1
+                if dep_start < len(text) and text[dep_start] == "[":
+                    dep_end = find_matching(text, dep_start, "[", "]")
+                    if dep_end != -1:
+                        deps = text[dep_start+1:dep_end]
+
+                        # Empty deps [] — usually safe, but flag if it mutates state
+                        # (can cause stale-closure bugs, rarely infinite loops)
+                        if deps.strip() == "" and has_mutation:
+                            add(file, line, "⚠️  EFFECT_EMPTY_DEPS", get_snippet(text, idx), 50)
+
+                        # Inline object/array inside deps
+                        elif re.search(r'(?<!\.\.)\{', deps) or re.search(r'(?<!\.\.)\[', deps):
+                            if has_mutation:
+                                add(file, line, "🔥 EFFECT_INLINE_DEPS", get_snippet(text, idx), 95)
+
+                        # Deps reference a hook that returns objects (common culprit)
+                        elif re.search(r'\buse\w+\s*\(', deps) and has_mutation:
+                            add(file, line, "🔥 EFFECT_UNSTABLE_HOOK_DEP", get_snippet(text, idx), 85)
+
+            i = idx + 1
+
+def scan_context_providers(file: Path, text: str):
+    """Find <Provider value={{...}}> — inline object as value."""
+    # Simple regex is enough here; false positives are low
+    for m in re.finditer(r'<(\w+(?:Context)?\.Provider|\w+Provider)\s+value\s*=\s*\{\s*\{', text):
+        line = get_line(text, m.start())
+        add(file, line, "⚠️  CONTEXT_INLINE_VALUE", get_snippet(text, m.start()), 60)
+
 def scan_file(file: Path):
     try:
         text = file.read_text(encoding="utf-8")
     except Exception:
         return
 
-    # Skip test files and generated code
-    if "test" in file.name.lower() or "spec" in file.name.lower():
+    # Skip tests / generated
+    if any(k in file.name.lower() for k in ("test", "spec", ".d.ts")):
         return
 
-    # 1. Effect with no deps
-    for m in EFFECT_NO_DEPS.finditer(text):
-        line = get_line(text, m.start())
-        snippet = get_snippet(text, m.start())
-        if "useRef" not in snippet and "useMemo" not in snippet:
-            add(file, line, "🔥 EFFECT_NO_DEPS", snippet, 100)
+    scan_effects(file, text)
+    scan_context_providers(file, text)
 
-    # 2. Effect with [] that calls setState
-    for m in EFFECT_EMPTY_DEPS_SETSTATE.finditer(text):
-        line = get_line(text, m.start())
-        snippet = get_snippet(text, m.start())
-        add(file, line, "⚠️  EFFECT_EMPTY_SETSTATE", snippet, 60)
-
-    # 3. Effect with inline object/array deps
-    for m in EFFECT_INLINE_DEPS.finditer(text):
-        line = get_line(text, m.start())
-        snippet = get_snippet(text, m.start())
-        add(file, line, "🔥 EFFECT_INLINE_DEPS", snippet, 90)
-
-    # 4. Effect sets state from props/context
-    for m in EFFECT_SETSTATE_FROM_PROP.finditer(text):
-        line = get_line(text, m.start())
-        snippet = get_snippet(text, m.start())
-        add(file, line, "🔥 EFFECT_SETSTATE_FROM_PROP", snippet, 85)
-
-    # 5. Context inline value
-    for m in CONTEXT_INLINE_VALUE.finditer(text):
-        line = get_line(text, m.start())
-        snippet = get_snippet(text, m.start())
-        add(file, line, "⚠️  CONTEXT_INLINE_VALUE", snippet, 70)
-
-    # 6. useState with inline object/array init
-    for m in USESTATE_INLINE_INIT.finditer(text):
-        line = get_line(text, m.start())
-        snippet = get_snippet(text, m.start())
-        add(file, line, "⚠️  USESTATE_INLINE_INIT", snippet, 50)
-
-    # 7. setState in render body
-    for m in SETSTATE_IN_RENDER.finditer(text):
-        line = get_line(text, m.start())
-        snippet = get_snippet(text, m.start())
-        # Only flag if not inside a handler name
-        if not any(h in snippet.lower() for h in ["onpress", "onchange", "onsubmit", "handler", "callback"]):
-            add(file, line, "🔥 SETSTATE_IN_RENDER", snippet, 95)
-
-    # 8. Effect that navigates
-    for m in EFFECT_NAVIGATE.finditer(text):
-        line = get_line(text, m.start())
-        snippet = get_snippet(text, m.start())
-        add(file, line, "🔥 EFFECT_NAVIGATE", snippet, 90)
+# ── Main ────────────────────────────────────────────────────────────────
 
 def main():
     print("=" * 72)
-    print("  LITTLELOOM — Infinite Loop Detector v2 (Precision Mode)")
+    print("  LITTLELOOM — Infinite Loop Detector v3 (Surgical)")
     print("=" * 72)
 
     if not PROJECT_ROOT.exists():
@@ -192,26 +216,28 @@ def main():
             scan_file(f)
             files_scanned += 1
 
+    # Sort by weight, then deduplicate identical (file, line, cat)
     results.sort(key=lambda x: x["weight"], reverse=True)
+    seen = set()
+    unique_results = []
+    for r in results:
+        key = (r["file"], r["line"], r["cat"])
+        if key not in seen:
+            seen.add(key)
+            unique_results.append(r)
 
     print(f"\n📁  Scanned {files_scanned} files")
-    print(f"🎯  Found {len(results)} HIGH-CONFIDENCE issues\n")
+    print(f"🎯  Found {len(unique_results)} unique issues\n")
 
-    if not results:
+    if not unique_results:
         print("✅  No obvious infinite-loop patterns found.")
-        print("   The loop may be inside a 3rd-party library.")
         return
 
-    # Top individual hits
+    # Print top hits
     print("─" * 72)
     print("TOP CULPRITS (highest confidence first):")
     print("─" * 72)
-    seen = set()
-    for r in results[:20]:
-        key = (r["file"], r["line"], r["cat"])
-        if key in seen:
-            continue
-        seen.add(key)
+    for r in unique_results[:25]:
         bar = "█" * (r["weight"] // 10)
         print(f"\n  {bar}  {r['weight']} pts  {r['cat']}")
         print(f"       {r['file']}:{r['line']}")
@@ -221,40 +247,31 @@ def main():
     print("\n" + "─" * 72)
     print("FILES RANKED BY TOTAL DANGER:")
     print("─" * 72)
-    for f, score in sorted(file_scores.items(), key=lambda x: x[1], reverse=True)[:10]:
-        bar = "█" * min(score // 50, 20)
+    for f, score in sorted(file_scores.items(), key=lambda x: x[1], reverse=True)[:12]:
+        bar = "█" * min(score // 40, 20)
         print(f"  {bar}  {score:5d}  {Path(f).name}")
 
+    # Specific hint based on user's Metro logs
     print("\n" + "=" * 72)
-    print("🔍  QUICK DIAGNOSIS GUIDE:")
+    print("💡  DIAGNOSIS BASED ON YOUR METRO LOGS:")
     print("=" * 72)
     print("""
-  🔥 EFFECT_NO_DEPS
-     → useEffect(() => { setX(...) }) has NO dependency array.
-       FIX: Add [stableDep] or use useRef.
+  Your logs show:
+    🔓 Reset all security locks
+    🔓 Reset all security locks
+    🔓 Force unlocked
+    → Then "Maximum update depth exceeded"
 
-  🔥 EFFECT_INLINE_DEPS  
-     → useEffect(..., [{foo}]) or useEffect(..., [array]).
-       The object/array is recreated every render → effect runs forever.
-       FIX: useRef, or stringify the dep: JSON.stringify(obj).
+  This means the loop is in your SECURITY / AUTH flow.
 
-  🔥 EFFECT_SETSTATE_FROM_PROP
-     → useEffect(() => setX(props.foo), [props.foo])
-       If props.foo is unstable (new object every render), this loops.
-       FIX: Use useMemo for derived state, not useEffect + setState.
+  Check these files FIRST (from your v2 scan):
+    1. SecurityCenterScreen.tsx   (score: 6555)
+    2. CommunityContext.tsx       (score: 5035)
 
-  🔥 EFFECT_NAVIGATE
-     → useEffect(() => { navigate('X') }, [...])
-       If the effect re-triggers because navigation changes state...
-       FIX: Add a ref guard: if (hasNavigated.current) return;
-
-  🔥 SETSTATE_IN_RENDER
-     → setX(...) called directly during component render.
-       FIX: Move into useEffect, event handler, or use useState(fn).
-
-  ⚠️  CONTEXT_INLINE_VALUE
-     → <Provider value={{ state, setState }}> creates new object every render.
-       FIX: Wrap in useMemo: const value = useMemo(() => ({state, setState}), [state]);
+  Look for:
+    useEffect(() => {
+      setSecurityLocked(false);   // or setIsLocked, setPin, etc.
+    }, [someObjectThatChangesEveryRender])
     """)
     print("=" * 72)
 

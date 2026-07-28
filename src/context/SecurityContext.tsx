@@ -380,8 +380,13 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     if (isMounted.current) setState(prev => ({ ...prev, settings: { ...prev.settings, autoLockTimeout: minutes } }));
   }, []);
 
+  const isBiometricEnabled = state.settings.isBiometricEnabled;
+  const isPinEnabled = state.settings.isPinEnabled;
+  const isAppLockEnabled = state.settings.isAppLockEnabled;
+  const autoLockTimeout = state.settings.autoLockTimeout;
+
   const lockApp = useCallback(async () => {
-    const hasSecurity = state.settings.isBiometricEnabled || state.settings.isPinEnabled || state.settings.isAppLockEnabled;
+    const hasSecurity = isBiometricEnabled || isPinEnabled || isAppLockEnabled;
     if (!hasSecurity) { console.warn('No security enabled'); return; }
     manualLockTimeRef.current = Date.now();
     await AsyncStorage.setItem(ASYNC_KEYS.MANUAL_LOCK_TIME, manualLockTimeRef.current.toString());
@@ -389,7 +394,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     await AsyncStorage.setItem(ASYNC_KEYS.LAST_ACTIVE, Date.now().toString());
     if (isMounted.current) setState(prev => ({ ...prev, isSecurityLocked: true }));
     console.log('🔒 App manually locked');
-  }, [state.settings]);
+  }, [isBiometricEnabled, isPinEnabled, isAppLockEnabled]);
 
   const unlockApp = useCallback(async (method: 'biometric' | 'pin', data?: string): Promise<boolean> => {
     if (unlockInProgressRef.current) { console.log('⚠️ Unlock already in progress'); return false; }
@@ -489,7 +494,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     } finally {
       securityCheckLockRef.current = false;
     }
-  }, [isAuthenticated, setupComplete, state.settings.autoLockTimeout, lockApp]);
+  }, [isAuthenticated, setupComplete, autoLockTimeout, lockApp]);
 
   const getBiometricTypeName = useCallback(() => state.settings.biometricTypeName, [state.settings.biometricTypeName]);
 
