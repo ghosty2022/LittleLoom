@@ -160,7 +160,7 @@ const TabBar = React.memo(({ tabs, activeTab, onChange }: {
     {tabs.map((tab) => {
       const isActive = activeTab === tab.key;
       return (
-        <TouchableOpacity key={tab.key} onPress={() => onChange(tab.key)} style={[styles.tabItem, isActive && { backgroundColor: 'rgba(99,102,241,0.15)', /* no shadow */ }]}>
+        <TouchableOpacity key={tab.key} onPress={() => onChange(tab.key)} style={[styles.tabItem, isActive && { backgroundColor: 'rgba(99,102,241,0.15)' }]}>
           <Ionicons name={tab.icon as any} size={16} color={isActive ? '#6366f1' : '#94a3b8'} />
           <Text style={[styles.tabLabel, { color: isActive ? '#6366f1' : '#94a3b8' }, isActive && { fontWeight: '700' }]}>{tab.label}</Text>
         </TouchableOpacity>
@@ -184,7 +184,7 @@ const KpiPill = React.memo(({ icon, value, label, color, onPress }: any) => (
 
 const InfluenceDashboard = React.memo(({ metrics }: { metrics: InfluenceMetric[] }) => {
   return (
-    <Animated.View entering={FadeInUp.delay(100).springify()}>
+        <Animated.View entering={FadeInUp.delay(100).springify()}>
       <GlassCard>
         <View style={styles.influenceHeader}>
           <View style={[styles.influenceIconBg, { backgroundColor: `${TC.primary}15` }]}>
@@ -698,7 +698,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     setIsSaving(false);
   };
 
-    /* Permanent storage for community profile images */
+  /* Permanent storage for community profile images */
   const COMMUNITY_IMAGES_DIR = FileSystem.documentDirectory + 'community_images/';
 
   const persistCommunityImage = async (sourceUri: string): Promise<string | null> => {
@@ -1147,12 +1147,11 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     return (
       <View style={[styles.container, styles.centered]}>
         <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
-
         {isDark ? (
-        <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={StyleSheet.absoluteFill} />
-      ) : (
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#f8f9fc' }]} />
-      )}
+          <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={StyleSheet.absoluteFill} />
+        ) : (
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: '#f8f9fc' }]} />
+        )}
         <UniversalSpinner visible={true} text="Loading profile..." size="medium" overlay={false} section="main" />
       </View>
     );
@@ -1163,10 +1162,10 @@ export default function CommunityProfileScreen({ navigation }: Props) {
       <View style={[styles.container, styles.centered]}>
         <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
         {isDark ? (
-        <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={StyleSheet.absoluteFill} />
-      ) : (
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#f8f9fc' }]} />
-      )}
+          <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={StyleSheet.absoluteFill} />
+        ) : (
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: '#f8f9fc' }]} />
+        )}
         <Ionicons name="person-outline" size={64} color="#64748b" />
         <Text style={{ marginTop: 16, color: '#94a3b8', fontSize: 16, fontWeight: '600' }}>Not signed in</Text>
         <TouchableOpacity style={[styles.retryButton, { backgroundColor: themeColors.primary }]} onPress={() => navigation.goBack()}>
@@ -1179,7 +1178,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   return (
     <View style={styles.container}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
-        {isDark ? (
+      {isDark ? (
         <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={StyleSheet.absoluteFill} />
       ) : (
         <View style={[StyleSheet.absoluteFill, { backgroundColor: '#f8f9fc' }]} />
@@ -1274,7 +1273,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   );
 }
 
-const getStyles = (isDark: boolean) => StyleSheet.create({
+const styles = StyleSheet.create({
   container: { flex: 1 },
   centered: { justifyContent: 'center', alignItems: 'center' },
   scrollContent: { paddingBottom: 24 },
@@ -1315,8 +1314,8 @@ const getStyles = (isDark: boolean) => StyleSheet.create({
   sectionActionText: { fontSize: 13, fontWeight: '700', color: '#6366f1' },
 
   kpiPillRow: { flexDirection: 'row', gap: 10, marginHorizontal: 16, marginBottom: 16 },
-  kpiPill: { flex: 1, borderRadius: 20, overflow: 'hidden', padding: 14, /* no shadow */ flexDirection: 'row', alignItems: 'center', gap: 10 },
-  kpiPillIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  kpiPill: { flex: 1, borderRadius: 20, overflow: 'hidden', padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  kpiPillIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', align Items: 'center' },
   kpiPillEmoji: { fontSize: 20 },
   kpiPillBody: { flex: 1 },
   kpiPillValue: { fontSize: 22, fontWeight: '800', letterSpacing: -0.5 },
@@ -1517,7 +1516,6 @@ const getStyles = (isDark: boolean) => StyleSheet.create({
   modalContent: { width: '100%', maxWidth: 400, borderRadius: DESIGN.radius.xl, padding: DESIGN.spacing.xxl, overflow: 'hidden', /* no shadow */ },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   modalTitle: { fontSize: 20, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
-  modalClose: { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.08)', justifyContent: 'center', alignItems: 'center' },
 
   retryButton: { marginTop: 20, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 14 },
   retryButtonText: { fontSize: 15, fontWeight: '700', color: '#fff' },

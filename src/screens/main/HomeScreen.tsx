@@ -1369,9 +1369,16 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
 }) => {
   const headerAnimatedStyle = useAnimatedStyle(() => {
     const currentY = scrollY.value;
-    const translateY = interpolate(currentY, [0, 80, 140], [0, 0, -140], Extrapolate.CLAMP);
-    const opacity = interpolate(currentY, [0, 80, 140], [1, 1, 0], Extrapolate.CLAMP);
-    return { transform: [{ translateY }], opacity };
+    // Header stays pinned — gains a subtle shadow when scrolled
+    const shadowOpacity = interpolate(currentY, [0, 60], [0, 0.08], Extrapolate.CLAMP);
+    const elevation = interpolate(currentY, [0, 60], [0, 4], Extrapolate.CLAMP);
+    return {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity,
+      shadowRadius: 16,
+      elevation,
+    };
   });
 
   const headerPaddingTop = Platform.OS === 'ios' ? (compactSpacing ? 44 : 52) : (compactSpacing ? 28 : 36);
@@ -1417,10 +1424,21 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
           </TouchableOpacity>
         </View>
 
-        {/* Center: Title */}
+        {/* Center: Logo */}
         <View style={styles.stickyHeaderCenter}>
-          <Text style={[styles.stickyHeaderTitle, { color: textColor, fontSize: titleSize }]}>LittleLoom</Text>
-          <View style={[styles.stickyHeaderUnderline, { backgroundColor: primaryColor, width: Math.round(28 * fontSizeMultiplier), height: Math.max(3, Math.round(3 * fontSizeMultiplier)), borderRadius: Math.max(1, Math.round(2 * fontSizeMultiplier)), marginTop: compactSpacing ? 2 : 3 }]} />
+          <View style={styles.stickyHeaderLogoWrap}>
+            <Image
+              source={require('../../../assets/logo.png')}
+              style={[
+                styles.stickyHeaderLogo,
+                {
+                  width: Math.round(30 * fontSizeMultiplier),
+                  height: Math.round(30 * fontSizeMultiplier),
+                }
+              ]}
+              resizeMode="contain"
+            />
+          </View>
         </View>
 
         {/* Right: Actions */}
