@@ -281,6 +281,18 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
     }
   };
 
+  const handleTelegramSignUp = async () => {
+    triggerHaptic('light');
+    setIsProcessing(true);
+    try {
+      showInfo('Coming Soon', 'Telegram sign-up will be available shortly');
+    } catch (error) {
+      showError('Telegram Error', 'Could not open Telegram sign-up');
+    } finally {
+      if (isMounted.current) setIsProcessing(false);
+    }
+  };
+
   // ─── CREATE ACCOUNT HANDLER ───
   const handleSignUp = useCallback(async () => {
     if (signUpAttempted.current || isProcessing || authLoading) return;
@@ -497,7 +509,7 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
           disabled={isLoading}
           activeOpacity={0.8}
         >
-          <Ionicons name="logo-google" size={28} color="#DB4437" />
+          <Image source={require('../../../assets/social/google.png')} style={styles.socialIcon} resizeMode="contain" />
         </TouchableOpacity>
 
         {Platform.OS === 'ios' && (
@@ -507,7 +519,7 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
             disabled={isLoading}
             activeOpacity={0.8}
           >
-            <Ionicons name="logo-apple" size={28} color={isDark ? '#FFFFFF' : '#000000'} />
+            <Image source={require('../../../assets/social/apple.png')} style={[styles.socialIcon, isDark && { tintColor: '#FFFFFF' }]} resizeMode="contain" />
           </TouchableOpacity>
         )}
 
@@ -517,7 +529,16 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
           disabled={isLoading}
           activeOpacity={0.8}
         >
-          <Ionicons name="logo-facebook" size={28} color="#1877F2" />
+          <Image source={require('../../../assets/social/facebook.png')} style={styles.socialIcon} resizeMode="contain" />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.socialIconButton, { borderColor: 'rgba(0,136,204,0.2)' }]}
+          onPress={handleTelegramSignUp}
+          disabled={isLoading}
+          activeOpacity={0.8}
+        >
+          <Image source={require('../../../assets/social/telegram.png')} style={styles.socialIcon} resizeMode="contain" />
         </TouchableOpacity>
       </View>
 
@@ -952,20 +973,15 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   logoFloatWrap: {
-    width: 90,
-    height: 90,
+    width: Math.min(width * 0.38, 160),
+    height: Math.min(width * 0.38, 160),
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
+    marginBottom: 16,
   },
   logoImage: {
-    width: 80,
-    height: 80,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 10,
+    width: Math.min(width * 0.35, 140),
+    height: Math.min(width * 0.35, 140),
   },
   logoText: {
     fontSize: 28,
@@ -1077,11 +1093,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+  },
+  socialIcon: {
+    width: 28,
+    height: 28,
   },
   divider: {
     flexDirection: 'row',
@@ -1124,11 +1139,6 @@ const styles = StyleSheet.create({
   loginButton: {
     borderRadius: 16,
     overflow: 'hidden',
-    shadowColor: '#667eea',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 8,
     marginTop: 8,
   },
   loginButtonDisabled: {

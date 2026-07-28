@@ -6,7 +6,7 @@ export interface SocialUser {
   fullName: string;
   email: string;
   avatar?: string;
-  provider: 'google' | 'apple' | 'facebook';
+  provider: 'google' | 'apple' | 'facebook' | 'telegram';
 }
 
 export interface SocialAuthState {
@@ -86,6 +86,26 @@ Alert.alert('Sign In Error', 'Sign in failed. Please try again.');
     }
   }, []);
 
+  const signInWithTelegram = useCallback(async (): Promise<SocialUser | null> => {
+    setState(prev => ({ ...prev, isLoading: true, error: null }));
+    try {
+      const mockUser: SocialUser = {
+        id: `telegram_${Date.now()}`,
+        fullName: 'Telegram User',
+        email: 'user@telegram.org',
+        avatar: 'https://via.placeholder.com/100',
+        provider: 'telegram',
+      };
+      setState({ isLoading: false, isAuthenticated: true, socialUser: mockUser, error: null });
+      return mockUser;
+    } catch (error: any) {
+      const message = error?.message || 'Telegram sign-in failed';
+      setState(prev => ({ ...prev, isLoading: false, error: message }));
+      Alert.alert('Sign In Error', 'Sign in failed. Please try again.');
+      return null;
+    }
+  }, []);
+
   const signOut = useCallback(() => {
     setState({
       isLoading: false,
@@ -100,6 +120,7 @@ Alert.alert('Sign In Error', 'Sign in failed. Please try again.');
     signInWithGoogle,
     signInWithApple,
     signInWithFacebook,
+    signInWithTelegram,
     signOut,
   };
 };
