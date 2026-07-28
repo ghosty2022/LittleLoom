@@ -1045,13 +1045,43 @@ showAlert('Error', 'Failed to create baby profile');
 
       const babies = dbBabies.map(b => mapDbBabyToProfile(b, calculateAge));
 
-      setState(prev => ({
-        ...prev,
-        babies,
-        /* Keep the previous currentBaby if the row is momentarily
-           unavailable rather than blanking the UI. */
-        currentBaby: currentRow ? mapDbBabyToProfile(currentRow, calculateAge) : prev.currentBaby,
-      }));
+      setState(prev => {
+        const nextCurrentBaby = currentRow
+          ? mapDbBabyToProfile(currentRow, calculateAge)
+          : prev.currentBaby;
+
+        /* Guard against reference churn: only swap references when
+           meaningful fields actually changed. */
+        const babiesChanged =
+          babies.length !== prev.babies.length ||
+          babies.some(
+            (b, i) =>
+              b.id !== prev.babies[i]?.id ||
+              b.name !== prev.babies[i]?.name ||
+              b.birthDate !== prev.babies[i]?.birthDate ||
+              b.avatar !== prev.babies[i]?.avatar ||
+              b.gender !== prev.babies[i]?.gender
+          );
+
+        const currentBabyChanged =
+          !prev.currentBaby ||
+          !nextCurrentBaby ||
+          prev.currentBaby.id !== nextCurrentBaby.id ||
+          prev.currentBaby.name !== nextCurrentBaby.name ||
+          prev.currentBaby.birthDate !== nextCurrentBaby.birthDate ||
+          prev.currentBaby.avatar !== nextCurrentBaby.avatar ||
+          prev.currentBaby.gender !== nextCurrentBaby.gender;
+
+        if (!babiesChanged && !currentBabyChanged) {
+          return prev; // exact same state object → no re-renders
+        }
+
+        return {
+          ...prev,
+          babies: babiesChanged ? babies : prev.babies,
+          currentBaby: currentBabyChanged ? nextCurrentBaby : prev.currentBaby,
+        };
+      });
 
       await loadAllBabyData(state.currentBabyId);
     } catch (error) {

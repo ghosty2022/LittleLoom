@@ -176,13 +176,43 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         console.error('Error loading family members from DB:', error);
       }
 
-      setState({
-        isLoading: false,
-        members,
-        parent1: members.find(m => m.role === UserRole.PARENT_1) || null,
-        parent2: members.find(m => m.role === UserRole.PARENT_2) || null,
-        guardians: members.filter(m => m.role === UserRole.GUARDIAN || m.role === UserRole.VIEWER),
-        pendingInvites: members.filter(m => !m.lastActive && m.role !== UserRole.PARENT_1),
+      setState(prev => {
+        const nextParent1 = members.find(m => m.role === UserRole.PARENT_1) || null;
+        const nextParent2 = members.find(m => m.role === UserRole.PARENT_2) || null;
+        const nextGuardians = members.filter(m => m.role === UserRole.GUARDIAN || m.role === UserRole.VIEWER);
+        const nextPending = members.filter(m => !m.lastActive && m.role !== UserRole.PARENT_1);
+
+        /* Guard against reference churn: only swap if meaningful fields changed. */
+        const membersChanged =
+          members.length !== prev.members.length ||
+          members.some((m, i) => {
+            const p = prev.members[i];
+            return (
+              !p ||
+              m.id !== p.id ||
+              m.userId !== p.userId ||
+              m.fullName !== p.fullName ||
+              m.email !== p.email ||
+              m.avatar !== p.avatar ||
+              m.role !== p.role ||
+              m.relationship !== p.relationship ||
+              m.lastActive !== p.lastActive ||
+              m.notificationsEnabled !== p.notificationsEnabled
+            );
+          });
+
+        if (!membersChanged && !prev.isLoading) {
+          return prev; // exact same state object → no re-renders
+        }
+
+        return {
+          isLoading: false,
+          members,
+          parent1: nextParent1,
+          parent2: nextParent2,
+          guardians: nextGuardians,
+          pendingInvites: nextPending,
+        };
       });
     } catch (error) {
       console.error('Error loading family:', error);
