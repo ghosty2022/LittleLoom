@@ -429,17 +429,6 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
         }
       }
 
-      let setupSuccess = false;
-      try {
-        setupSuccess = await completeSetup('baby');
-      } catch (setupError) {
-        console.warn('completeSetup threw error:', setupError);
-      }
-
-      if (!setupSuccess) {
-        console.warn('completeSetup returned false, but baby profile was created — proceeding to Main');
-      }
-
       if (isMounted.current) {
         showSuccess(`${name.trim()}'s profile created successfully`);
       }
@@ -455,7 +444,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
            so verify against the DB. The legacy @littleloom_babies AsyncStorage
            key is no longer written and always failed this check */
 
-                   // Save the creator's relationship so FamilyContext can show "Father", "Mother", etc.
+        // Save the creator's relationship so FamilyContext can show "Father", "Mother", etc.
         try {
           await setAppSetting(`parent1_relationship_${babyId}`, creatorRelationship);
         } catch (e) {
@@ -482,10 +471,20 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
           console.warn('Failed to auto-switch to new baby:', switchErr);
         }
         
-        // AuthContext.completeSetup('baby') was already called above
+        // Call completeSetup LAST after everything is persisted and switched
         // This updates AuthContext state → AppNavigator navState → MAIN
         // DO NOT call navigation.replace() — causes flash/disappear bug
         // Screen will unmount automatically when nav state changes
+        let setupSuccess = false;
+        try {
+          setupSuccess = await completeSetup('baby');
+        } catch (setupError) {
+          console.warn('completeSetup threw error:', setupError);
+        }
+
+        if (!setupSuccess) {
+          console.warn('completeSetup returned false, but baby profile was created — proceeding to Main');
+        }
       } catch (navError) {
         console.error('Post-create error:', navError);
         if (isMounted.current) {
@@ -521,6 +520,8 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
     showError,
     showSuccess,
     triggerHaptic,
+    switchBaby,
+    creatorRelationship,
   ]);
 
   /* ---- Keyboard handling ---- */

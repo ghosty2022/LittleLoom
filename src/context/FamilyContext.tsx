@@ -10,6 +10,7 @@ import {
   softDeleteFamilyMemberInDb,
   getAppSetting,
 } from '../database/dbHelpers';
+import { familyMembers } from '../database/schema';
 
 import { useBaby } from './BabyContext';
 import { UserRole, Permission, ROLE_PERMISSIONS, FamilyMember } from '../types/roles';
@@ -249,21 +250,21 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     updates: Partial<Omit<FamilyMember, 'id' | 'userId' | 'role' | 'permissions' | 'addedAt' | 'addedBy' | 'canBeRemoved'>>
   ): Promise<boolean> => {
     if (!currentBaby?.parent2Id) {
-      sweetAlert.alert('Error', 'No Parent 2 found', 'info');
+      showAlert('Error', 'No Parent 2 found');
       return false;
     }
 
     const canManage = myPermissions?.manageFamily ?? false;
 
     if (!canManage) {
-      sweetAlert.alert('Error', 'You do not have permission to update family members', 'info');
+       showAlert('Error', 'You do not have permission to update family members');
       return false;
     }
 
     try {
       const parent2Member = await getFamilyMemberByIdFromDb(currentBaby.parent2Id);
       if (!parent2Member) {
-        sweetAlert.alert('Error', 'Parent 2 not found in database', 'info');
+        showAlert('Error', 'Parent 2 not found in database');
         return false;
       }
 
@@ -309,7 +310,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return true;
     } catch (error) {
       console.error('Error updating parent2 profile:', error);
-      sweetAlert.alert('Error', 'Failed to update Parent 2 profile', 'info');
+      showAlert('Error', 'Failed to update Parent 2 profile');
       return false;
     }
   }, [currentBaby, myPermissions, updateBaby]);
@@ -318,7 +319,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const canManage = myPermissions?.manageFamily ?? false;
 
     if (!canManage) {
-      sweetAlert.alert('Error', 'Permission denied', 'info');
+      showAlert('Error', 'Permission denied');
       return false;
     }
 
@@ -341,7 +342,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       return true;
     } catch (error) {
-      sweetAlert.alert('Error', 'Failed to update guardian', 'info');
+      showAlert('Error', 'Failed to update guardian');
       return false;
     }
   }, [currentBaby, myPermissions, loadFamily]);
@@ -353,7 +354,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     if (!EMAIL_REGEX.test(email)) {
-      sweetAlert.alert('Invalid Email', 'Please enter a valid email address', 'info');
+      showAlert('Invalid Email', 'Please enter a valid email address');
       return false;
     }
 
@@ -361,7 +362,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       // Check for duplicate email
       const existingInvite = await getFamilyMemberByEmailAndBabyFromDb(email.toLowerCase(), currentBaby.id);
       if (existingInvite) {
-        sweetAlert.alert('Duplicate Invite', 'An invitation has already been sent to this email', 'info');
+        showAlert('Duplicate Invite', 'An invitation has already been sent to this email');
         return false;
       }
 
@@ -390,12 +391,12 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       await loadFamily();
 
-      sweetAlert.success('Invitation Sent', 'Family member has been invited');
+      showAlert('Invitation Sent', 'Family member has been invited');
 
       return true;
     } catch (error) {
       console.error('Error sending invitation:', error);
-      sweetAlert.alert('Error', 'Failed to send invitation', 'info');
+      showAlert('Error', 'Failed to send invitation');
       return false;
     }
   }, [myPermissions, profile, currentBaby, updateBaby, loadFamily]);
@@ -406,7 +407,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (!canManage || !currentBaby) return false;
 
     if (profile?.id === memberId) {
-      sweetAlert.alert('Error', 'You cannot remove yourself from the family', 'info');
+      showAlert('Error', 'You cannot remove yourself from the family');
       return false;
     }
 
@@ -430,7 +431,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return true;
     } catch (error) {
       console.error('Error removing member:', error);
-      sweetAlert.alert('Error', 'Failed to remove member', 'info');
+      showAlert('Error', 'Failed to remove member');
       return false;
     }
   }, [myPermissions, currentBaby, updateBaby, state.parent2, profile]);
@@ -439,7 +440,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const member = state.members.find(m => m.id === memberId);
     if (!member) return false;
 
-    sweetAlert.success('Invitation Resent', `New invitation sent to ${member.email || 'member'}`);
+    showAlert('Invitation Resent', `New invitation sent to ${member.email || 'member'}`);
     return true;
   }, [state.members]);
 

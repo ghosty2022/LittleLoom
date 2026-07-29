@@ -251,7 +251,7 @@ export default function Parent2SetupScreen({ navigation }: Props) {
     if (!generatedCode) return;
     triggerHaptic('light');
     // Clipboard.setString(generatedCode); // Uncomment if you have Clipboard imported
-    showToast('success  const { completeSetup, skipSetup, userProfile } = useAuth();', 'Copied!', 'Invite code copied to clipboard');
+    showToast('success', 'Copied!', 'Invite code copied to clipboard');
   }, [generatedCode, triggerHaptic, showToast]);
 
   /* ─── Share via WhatsApp ─── */
