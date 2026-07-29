@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import Animated, { Extrapolation, interpolate, Layout, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
-import { BackHandler, Dimensions, FlatList, Platform, SafeAreaView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { BackHandler, Dimensions, FlatList, Image, Platform, SafeAreaView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useCustomization } from '../../hooks/useCustomization';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -170,7 +171,8 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
   const isMounted = useRef(true);
   const autoPlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const resumeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isDark = false; // Onboarding always uses light theme for consistency
+  const customization = useCustomization();
+  const isDark = customization?.darkMode ?? false;
 
   // FIX: Check AsyncStorage on mount. If onboarding already seen, skip immediately.
   useEffect(() => {
@@ -360,14 +362,26 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
 
-      <LinearGradient 
-        colors={['#f8faff', '#f0f4ff', '#e8eeff']} 
+     <LinearGradient 
+        colors={isDark ? ['#0f172a', '#1e293b', '#334155'] : ['#667eea', '#764ba2', '#f093fb']} 
         style={styles.background} 
         start={{ x: 0, y: 0 }} 
         end={{ x: 1, y: 1 }} 
       />
+
+      {/* Brand Logo Header */}
+      <View style={[styles.brandHeader, { top: insets.top + hp(1.5) }]}>
+        <View style={styles.logoFloatWrapSmall}>
+          <Image
+            source={require('../../../assets/logo.png')}
+            style={styles.logoImageSmall}
+            resizeMode="contain"
+          />
+        </View>
+        <Text style={styles.brandTitle}>LittleLoom</Text>
+      </View>
 
       {/* Skip Button */}
       {!isLastSlide && !isNavigating && (
@@ -384,7 +398,7 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
       )}
 
       {/* Progress Bar */}
-      <View style={[styles.progressContainer, { top: insets.top + hp(2) + 60 }]}>
+      <View style={[styles.progressContainer, { top: insets.top + hp(2) + 80 }]}>
         <View style={styles.progressBar}>
           <View style={[styles.progressFill, {
             width: `${((currentIndex + 1) / ONBOARDING_DATA.length) * 100}%`,
@@ -478,7 +492,34 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
 const styles = StyleSheet.create({
   container: { 
     flex: 1, 
-    backgroundColor: '#f8faff' 
+    backgroundColor: '#0a0a0a' 
+  },
+  brandHeader: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 20,
+  },
+  logoFloatWrapSmall: {
+    width: wp(14),
+    height: wp(14),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoImageSmall: {
+    width: wp(12),
+    height: wp(12),
+  },
+  brandTitle: {
+    fontSize: wp(4.5),
+    fontWeight: '800',
+    color: '#fff',
+    marginTop: 4,
+    letterSpacing: 1,
+    textShadowColor: 'rgba(0,0,0,0.2)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
   background: { 
     position: 'absolute', 
@@ -498,25 +539,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20, 
     paddingVertical: 12, 
     borderRadius: 24, 
-    backgroundColor: 'rgba(255,255,255,0.9)', 
+    backgroundColor: 'rgba(255,255,255,0.15)', 
     borderWidth: 1, 
-    borderColor: 'rgba(102,126,234,0.2)' 
+    borderColor: 'rgba(255,255,255,0.3)' 
   },
   skipText: { 
     fontSize: 14, 
     fontWeight: '700', 
-    color: '#667eea', 
-    letterSpacing: 0.5 
-  },
-  progressContainer: { 
+    color: '#fff', 
+    letterSpacing: 0.5,
+    textShadowColor: 'rgba(0,0,0,0.2)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },  progressContainer: { 
     position: 'absolute', 
     left: wp(5), 
     right: wp(5), 
     zIndex: 5 
   },
-  progressBar: { 
+   progressBar: { 
     height: 4, 
-    backgroundColor: 'rgba(0,0,0,0.08)', 
+    backgroundColor: 'rgba(255,255,255,0.2)', 
     borderRadius: 2, 
     overflow: 'hidden' 
   },
@@ -526,7 +569,7 @@ const styles = StyleSheet.create({
   },
   carouselContainer: { 
     flex: 1, 
-    marginTop: hp(15) 
+    marginTop: hp(18) 
   },
   slide: { 
     width: SCREEN_WIDTH, 
@@ -641,11 +684,14 @@ const styles = StyleSheet.create({
   pageIndicator: { 
     fontSize: 14, 
     fontWeight: '700', 
-    color: '#667eea' 
+    color: '#fff',
+    textShadowColor: 'rgba(0,0,0,0.2)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
   pageIndicatorTotal: { 
     fontWeight: '400', 
-    color: '#999' 
+    color: 'rgba(255,255,255,0.7)' 
   },
   floatingNextButton: { 
     position: 'absolute', 
@@ -673,7 +719,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', 
     alignItems: 'center', 
     zIndex: 99, 
-    backgroundColor: 'rgba(0,0,0,0.05)', 
+    backgroundColor: 'rgba(255,255,255,0.15)', 
     paddingHorizontal: 12, 
     paddingVertical: 6, 
     borderRadius: 20 
@@ -686,9 +732,9 @@ const styles = StyleSheet.create({
   },
   autoPlayText: { 
     fontSize: 12, 
-    color: '#666', 
+    color: 'rgba(255,255,255,0.8)', 
     fontWeight: '600' 
-  },
+  }
   footer: { 
     position: 'absolute', 
     bottom: 0, 
@@ -699,7 +745,7 @@ const styles = StyleSheet.create({
   },
   footerText: { 
     fontSize: 12, 
-    color: '#999', 
+    color: 'rgba(255,255,255,0.7)', 
     fontWeight: '500', 
     letterSpacing: 0.5 
   },
