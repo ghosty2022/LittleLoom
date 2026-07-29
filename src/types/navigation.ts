@@ -113,7 +113,7 @@ export type RootStackParamList = {
   BabyOptional: undefined;
   CreateBabyProfile: { fromSetup?: boolean } | undefined;
   AddParent: { fromSetup?: boolean } | undefined;
-  SwitchBaby: { returnTo?: keyof RootStackParamList } | undefined;
+  SwitchBaby: { returnTo?: keyof RootStackParamList; returnLabel?: string } | undefined;
   Main: undefined;
 
   UniversalTrackerHub: undefined;

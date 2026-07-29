@@ -538,7 +538,7 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = React.memo(({
       navigation.navigate('EditProfile', { mode: 'baby', babyId: currentBaby.id });
     } else if (safeBabies.length > 1) {
       // Go to full baby selector screen instead of modal
-      navigation.navigate('SwitchBaby', { returnTo: 'Main' });
+      navigation.navigate('SwitchBaby', { returnTo: 'Main', returnLabel: 'Settings' });
     } else {
       navigation.navigate('CreateBabyProfile');
     }
@@ -789,7 +789,7 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = React.memo(({
       {/* Switch Baby Row */}
       {hasMultipleBabies && (
         <PressableScale
-          onPress={() => navigation.navigate('SwitchBaby', { returnTo: 'Main' })}
+          onPress={() => navigation.navigate('SwitchBaby', { returnTo: 'Main', returnLabel: 'Settings' })}
           activeScale={0.98}
         >
           <View style={styles.switchBabyRow}>

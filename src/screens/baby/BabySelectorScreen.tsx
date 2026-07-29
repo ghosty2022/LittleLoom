@@ -63,6 +63,9 @@ const getReturnTarget = (route: BabySelectorScreenProps['route']): keyof RootSta
 };
 
 const getReturnLabel = (route: BabySelectorScreenProps['route']): string => {
+  const label = route.params?.returnLabel;
+  if (label && typeof label === 'string') return label;
+
   const raw = route.params?.returnTo;
   if (!raw || typeof raw !== 'string' || raw === 'Main') return 'Home';
   if (TAB_SCREEN_MAP[raw]) return raw; // Track, Grow, Connect, More
