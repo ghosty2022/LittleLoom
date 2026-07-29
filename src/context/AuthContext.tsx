@@ -6,7 +6,7 @@ import { getAppSetting, setAppSetting } from '@/database/dbHelpers';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { SocialUser } from '../hooks/useSocialAuth';
 import * as Crypto from 'expo-crypto';
-import { SocialUser } from '../hooks/useSocialAuth';
+
 
 // ─── SINGLE SOURCE OF TRUTH FOR ONBOARDING ─────────────────────────────
 export const ONBOARDING_KEY = '@littleloom_onboarding_complete_v3';

@@ -218,6 +218,32 @@ export const familyMembers = sqliteTable('family_members', {
 }));
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   INVITE CODES TABLE
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+export const inviteCodes = sqliteTable('invite_codes', {
+  code: text('code').primaryKey().notNull(),
+  familyId: text('family_id').notNull(),
+  role: text('role').notNull(),
+  createdBy: text('created_by').notNull(),
+  createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+  expiresAt: text('expires_at').notNull(),
+  maxUses: integer('max_uses').notNull().default(1),
+  usedCount: integer('used_count').notNull().default(0),
+  isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
+  relationship: text('relationship'),
+  inviteeName: text('invitee_name'),
+  inviteeEmail: text('invitee_email'),
+  inviteePhone: text('invitee_phone'),
+  usedBy: text('used_by', { mode: 'json' }).$type<string[]>().default(sql`'[]'`),
+}, (table) => ({
+  familyIdx: index('idx_invite_family').on(table.familyId),
+  activeIdx: index('idx_invite_active').on(table.isActive),
+  roleIdx: index('idx_invite_role').on(table.role),
+  familyActiveIdx: index('idx_invite_family_active').on(table.familyId, table.isActive),
+}));
+
+/* ═══════════════════════════════════════════════════════════════════════════
    TYPE EXPORTS (inferred from schema)
    ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -247,3 +273,6 @@ export type NewScanSession = typeof scanSessions.$inferInsert;
 
 export type FamilyMember = typeof familyMembers.$inferSelect;
 export type NewFamilyMember = typeof familyMembers.$inferInsert;
+
+export type InviteCodeRow = typeof inviteCodes.$inferSelect;
+export type NewInviteCode = typeof inviteCodes.$inferInsert;
