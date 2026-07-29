@@ -298,6 +298,7 @@ function NavigationContent({
   const firstOpenChecked = useRef(false);
   const pendingNavTarget = useRef<string | null>(null);
   const processedNavState = useRef<NavigationState>('LOADING');
+  const hasConsumedInitialState = useRef(false);
   // const processedSwitchBaby = useRef(false); // no longer needed
 
   // Refs to track current baby values without causing re-renders
@@ -450,6 +451,16 @@ function NavigationContent({
     // Deduplicate: skip if we've already processed this navState
     if (navState === processedNavState.current && !pendingNavTarget.current) return;
     processedNavState.current = navState;
+
+    // If we restored state from persistence, let NavigationContainer handle it
+    // on first boot. Don't override with a reset to Main.
+    if (initialState && !hasConsumedInitialState.current) {
+      hasConsumedInitialState.current = true;
+      if (navState === 'MAIN') {
+        pendingNavTarget.current = 'Main';
+        return;
+      }
+    }
 
     // Block concurrent navigation
     if (isNavigating.current) return;

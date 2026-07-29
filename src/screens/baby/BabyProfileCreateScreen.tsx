@@ -135,7 +135,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
   const insets = useSafeAreaInsets();
   const { darkMode: isDark, themeColors, triggerHaptic, shouldReduceMotion } = useCustomization();
   const { userProfile, completeSetup } = useAuth();
-  const { createBaby, updateBaby, calculateAge, loadBabies } = useBaby();
+  const { createBaby, updateBaby, calculateAge, loadBabies, switchBaby } = useBaby();
   const { error: showError, success: showSuccess } = useSweetAlert();
 
   /* ---- Form state ---- */
@@ -474,6 +474,13 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
         }
 
         console.log('✅ Baby profile verified in database:', persisted.id);
+        
+        // Make the new baby active so FamilyContext and the rest of the app see it immediately
+        try {
+          await switchBaby(babyId);
+        } catch (switchErr) {
+          console.warn('Failed to auto-switch to new baby:', switchErr);
+        }
         
         // AuthContext.completeSetup('baby') was already called above
         // This updates AuthContext state → AppNavigator navState → MAIN

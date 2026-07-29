@@ -214,7 +214,9 @@ export default function App(): JSX.Element | null {
             const setupCompleteStr = await AsyncStorage.getItem('littleloom_setup_complete');
             const hasParent2Str = await AsyncStorage.getItem('littleloom_parent2_completed');
             const hasBabyStr = await AsyncStorage.getItem('littleloom_baby_completed');
-            const setupDone = setupCompleteStr === 'true' || (hasParent2Str !== null && hasBabyStr !== null);
+            const hasParent2 = hasParent2Str === 'true' || hasParent2Str === 'skipped';
+            const hasBaby = hasBabyStr === 'true' || hasBabyStr === 'skipped';
+            const setupDone = setupCompleteStr === 'true' || (hasParent2 && hasBaby);
             
             if (!setupDone) {
               console.log('[App] Setup incomplete, clearing nav state');

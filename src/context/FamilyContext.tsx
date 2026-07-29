@@ -8,6 +8,7 @@ import {
   createFamilyMemberInDb,
   updateFamilyMemberInDb,
   softDeleteFamilyMemberInDb,
+  getAppSetting,
 } from '../database/dbHelpers';
 
 import { useBaby } from './BabyContext';
@@ -127,15 +128,22 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       const effectiveProfile = profile || authProfile;
 
+      // Load the relationship the creator chose in BabyProfileCreateScreen
+      let parent1Relationship = 'Parent';
+      try {
+        const savedRel = await getAppSetting(`parent1_relationship_${currentBaby.id}`);
+        if (savedRel) parent1Relationship = savedRel;
+      } catch (e) { /* ignore, fallback to 'Parent' */ }
+
       if (currentBaby.parent1Id && effectiveProfile) {
         members.push({
           id: currentBaby.parent1Id,
           userId: currentBaby.parent1Id,
-          fullName: currentBaby.parent1Id === effectiveProfile.id ? effectiveProfile.fullName || 'Parent' : 'Parent',
+          fullName: currentBaby.parent1Id === effectiveProfile.id ? effectiveProfile.fullName || parent1Relationship : parent1Relationship,
           email: effectiveProfile.email || '',
           avatar: effectiveProfile.avatar,
           role: UserRole.PARENT_1,
-          relationship: 'Parent',
+          relationship: parent1Relationship,
           permissions: ROLE_PERMISSIONS[UserRole.PARENT_1],
           addedAt: currentBaby.createdAt,
           addedBy: currentBaby.parent1Id,
@@ -151,7 +159,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           fullName: 'Loading...',
           email: '',
           role: UserRole.PARENT_1,
-          relationship: 'Parent',
+          relationship: parent1Relationship,
           permissions: ROLE_PERMISSIONS[UserRole.PARENT_1],
           addedAt: currentBaby.createdAt,
           addedBy: currentBaby.parent1Id,
