@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInUp, FadeInDown, SlideInRight } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import { useSecurity } from '../../context/SecurityContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
@@ -89,9 +90,9 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordScree
       return;
     }
 
-    navigation.navigate('SecurityCenter', { 
+    navigation.navigate('SecurityCenter', {
       mode: 'forgot',
-      fromForgotPassword: true 
+      fromForgotPassword: true,
     });
   };
 
@@ -210,8 +211,8 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordScree
                       </Text>
                     </View>
                     <Text style={[styles.sectionDesc, { color: isDark ? '#94a3b8' : '#64748b' }]}>
-                      {hasPin 
-                        ? hasSecurityQuestions 
+                      {hasPin
+                        ? hasSecurityQuestions
                           ? 'Reset your PIN using security questions'
                           : 'Security questions not set up — set them in Settings'
                         : 'No PIN set up yet'}
@@ -257,7 +258,7 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordScree
 
                 <Text style={[styles.successTitle, { color: isDark ? '#fff' : '#1e293b' }]}>Check Your Email!</Text>
                 <Text style={styles.successText}>
-                  We've sent password reset instructions to{"\n"}
+                  We've sent password reset instructions to{'\n'}
                   <Text style={[styles.successEmail, { color: themeColors.primary }]}>{email}</Text>
                 </Text>
 
@@ -272,7 +273,7 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordScree
           )}
         </Animated.ScrollView>
       </KeyboardAvoidingView>
-</View>
+    </View>
   );
 }
 
@@ -324,7 +325,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(30,41,59,0.8)',
   },
 
-   titleContainer: {
+  titleContainer: {
     alignItems: 'center',
     marginBottom: 30,
   },
