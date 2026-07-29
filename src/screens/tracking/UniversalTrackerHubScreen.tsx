@@ -1726,7 +1726,7 @@ export default function UniversalTrackerHubScreen() {
   const handleSwitchBaby = useCallback(() => {
     HAPTIC_LIGHT();
     if (babies.length > 1) {
-      navigation.navigate('SwitchBaby');
+      navigation.navigate('SwitchBaby', { returnTo: 'UniversalTrackerHub', returnLabel: 'Tracker Hub' });
     } else {
       showConfirm(
         'Switch Baby Profile',
