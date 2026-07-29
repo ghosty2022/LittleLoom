@@ -669,6 +669,7 @@ const TopicHeatmap = React.memo(({
               key={topic.id}
               entering={FadeIn.delay(index * 60).duration(300)}
             >
+              
               <Pressable
                 onPress={() => onSelect(isActive ? 'all' : topic.id)}
                 onLongPress={() => onNavigateToTopic?.(topic.id)}
@@ -679,9 +680,9 @@ const TopicHeatmap = React.memo(({
                   isActive && styles.heatmapCellActive,
                 ]}
               >
-                <Text style={styles.heatmapEmoji}>{topic.emoji}</Text>
+                <Text style={styles.heatmapEmoji}>{topic.emoji ?? ''}</Text>
                 <Text style={[styles.heatmapName, { color: isDark ? DS.white : DS.gray800 }]} numberOfLines={1}>
-                  {topic.name}
+                  {topic.name ?? ''}
                 </Text>
                 <View style={styles.heatmapBar}>
                   <View style={[
@@ -1081,11 +1082,11 @@ const PostCard = React.memo(({
                 </View>
                 <View style={styles.metaRow}>
                   <Text style={styles.handleText}>
-                    {post.isAnonymous ? '@anonymous' : post.author.handle}
+                    {post.isAnonymous ? '@anonymous' : (post.author?.handle ?? '')}
                   </Text>
                   <Text style={styles.dot}>·</Text>
-                  <Text style={styles.timeText}>{post.time}</Text>
-                  {post.author.onlineStatus === 'online' && (
+                  <Text style={styles.timeText}>{post.time ?? ''}</Text>
+                  {post.author?.onlineStatus === 'online' && (
                     <>
                       <Text style={styles.dot}>·</Text>
                       <View style={styles.onlineIndicator}>
@@ -1195,11 +1196,11 @@ const PostCard = React.memo(({
 
           <View style={styles.engagementBar}>
             <Text style={styles.engagementText}>
-              {post.likes > 0 && `${post.likes} like${post.likes > 1 ? 's' : ''}`}
-              {post.likes > 0 && post.commentsCount > 0 && ' · '}
-              {post.commentsCount > 0 && `${post.commentsCount} comment${post.commentsCount > 1 ? 's' : ''}`}
-              {((post.likes > 0 || post.commentsCount > 0) && post.reposts > 0) && ' · '}
-              {post.reposts > 0 && `${post.reposts} repost${post.reposts > 1 ? 's' : ''}`}
+              {(post.likes || 0) > 0 ? `${post.likes} like${post.likes > 1 ? 's' : ''}` : ''}
+              {(post.likes || 0) > 0 && (post.commentsCount || 0) > 0 ? ' · ' : ''}
+              {(post.commentsCount || 0) > 0 ? `${post.commentsCount} comment${post.commentsCount > 1 ? 's' : ''}` : ''}
+              {(((post.likes || 0) > 0 || (post.commentsCount || 0) > 0) && (post.reposts || 0) > 0) ? ' · ' : ''}
+              {(post.reposts || 0) > 0 ? `${post.reposts} repost${post.reposts > 1 ? 's' : ''}` : ''}
             </Text>
           </View>
 
@@ -1433,8 +1434,8 @@ const GlassHeader = React.memo(({
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <Animated.View style={[styles.logoFloatContainer, logoFloatStyle]}>
               <Image source={littleLoomLogo} style={[styles.headerLogo]} resizeMode="contain" />
-            </Animated.View>            <View style={{ justifyContent: 'center' }}>
-              <Text style={[styles.headerTitle, { color: isDark ? DS.white : DS.gray900 }]}>
+            </Animated.View>
+            <View style={{ justifyContent: 'center' }}>              <Text style={[styles.headerTitle, { color: isDark ? DS.white : DS.gray900 }]}>
                 LittleLoom
               </Text>
               <LinearGradient
@@ -1805,7 +1806,6 @@ export default function CommunityScreen({ navigation }: Props) {
             sweetAlert.alert('Sign In Required', 'Please sign in to post', 'warning');
             return;
           }
-          // Find a matching topic for the suggestion, or go to create post without topic
           const matchedTopic = topics.find(t => prompt && t.name.toLowerCase().includes(prompt.toLowerCase().split(' ')[0]));
           navigation.navigate(ROUTES.CREATE_POST, matchedTopic ? { topicId: matchedTopic.id } : undefined);
         }}
@@ -1832,7 +1832,7 @@ export default function CommunityScreen({ navigation }: Props) {
             activeOpacity={0.8}
           >
             <Text style={[styles.followPillValue, { color: isDark ? DS.white : DS.gray900 }]}>
-              {currentUser.stats?.followers ?? 0}
+              {(currentUser.stats?.followers ?? 0).toString()}
             </Text>
             <Text style={[styles.followPillLabel, { color: isDark ? DS.gray400 : DS.gray500 }]}>Followers</Text>
             <Ionicons name="chevron-forward" size={14} color={DS.gray400} />
@@ -1843,7 +1843,7 @@ export default function CommunityScreen({ navigation }: Props) {
             activeOpacity={0.8}
           >
             <Text style={[styles.followPillValue, { color: isDark ? DS.white : DS.gray900 }]}>
-              {currentUser.stats?.following ?? 0}
+              {(currentUser.stats?.following ?? 0).toString()}
             </Text>
             <Text style={[styles.followPillLabel, { color: isDark ? DS.gray400 : DS.gray500 }]}>Following</Text>
             <Ionicons name="chevron-forward" size={14} color={DS.gray400} />
@@ -1891,25 +1891,26 @@ export default function CommunityScreen({ navigation }: Props) {
         onNavigateToTopic={(topicId) => navigation.navigate(ROUTES.TOPICS, { topicId })}
         isDark={isDark}
       />
-          {/* Active Filter */}
-          {activeTopic !== 'all' && (
-            <Animated.View entering={FadeIn} style={[styles.filterBar, { backgroundColor: isDark ? DS.darkSurface : DS.white }]}>
-              <View style={[styles.filterInner, { backgroundColor: isDark ? 'rgba(99,102,241,0.15)' : `${DS.primary}10` }]}>
-                <Ionicons name="filter" size={12} color={DS.primary} />
-                <Text style={styles.filterText}>
-                  {topics.find(t => t.id === activeTopic)?.name}
-                </Text>
-                <TouchableOpacity onPress={() => setActiveTopic('all')}>
-                  <Ionicons name="close-circle" size={16} color={DS.primary} />
-                </TouchableOpacity>
-              </View>
-            </Animated.View>
-          )}
-        </View>
-      ), [
-        isDark, activeTopic, topics, composeSuggestions, weeklyStats, parentMatches, currentUser,
-        canInteract, handleConnectParent, handleDismissMatch, navigation, sweetAlert
-      ]);
+
+      {/* Active Filter */}
+      {activeTopic !== 'all' && (
+        <Animated.View entering={FadeIn} style={[styles.filterBar, { backgroundColor: isDark ? DS.darkSurface : DS.white }]}>
+          <View style={[styles.filterInner, { backgroundColor: isDark ? 'rgba(99,102,241,0.15)' : `${DS.primary}10` }]}>
+            <Ionicons name="filter" size={12} color={DS.primary} />
+            <Text style={styles.filterText}>
+              {topics.find(t => t.id === activeTopic)?.name ?? ''}
+            </Text>
+            <TouchableOpacity onPress={() => setActiveTopic('all')}>
+              <Ionicons name="close-circle" size={16} color={DS.primary} />
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
+      )}
+    </View>
+  ), [
+    isDark, activeTopic, topics, composeSuggestions, weeklyStats, parentMatches, currentUser,
+    canInteract, handleConnectParent, handleDismissMatch, navigation, sweetAlert
+  ]);
 
       const renderFooter = useCallback(() => {
         if (!loadingMore) return <View style={{ height: 120 }} />;

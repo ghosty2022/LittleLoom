@@ -18,7 +18,7 @@ import {
   UIManager,
 } from 'react-native';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-
+import { useApp } from '../../context/AppContext';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { format, differenceInDays, differenceInMonths } from 'date-fns';
@@ -734,7 +734,7 @@ const EmojiPickerModal = React.memo(({ visible, onClose, onSelect }: { visible: 
 
 export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamilyCenterScreenProps) {
   const { mode = 'baby', babyId } = route.params || { mode: 'baby' };
-  const isDark = true; // or useColorScheme() === 'dark' / useNavigationContext().isDark
+  const { isDark, colors: appColors } = useApp();
   const { userProfile } = useAuth();
   const { profile } = useUser();
   const {
