@@ -5,6 +5,7 @@ import {
   AppState,
   View,
   Text,
+  Image,
   useColorScheme,
   LogBox,
 } from 'react-native';

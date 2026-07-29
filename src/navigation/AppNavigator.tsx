@@ -547,10 +547,22 @@ function NavigationContent({
       <View style={{ flex: 1 }} collapsable={false}>
         <Stack.Navigator screenOptions={stackScreenOptions}>
         {/* AUTH FLOW */}
-        <Stack.Screen name="Onboarding" component={OnboardingScreen} options={{ animation: 'fade' }} />
+        <Stack.Screen 
+          name="Onboarding" 
+          component={OnboardingScreen} 
+          options={{ animation: 'fade', gestureEnabled: false }} 
+        />
         <Stack.Group screenOptions={{ animation: 'slide_from_bottom' }}>
-          <Stack.Screen name="Login" component={LoginScreen} />
-          <Stack.Screen name="SignUp" component={SignUpScreen} />
+          <Stack.Screen 
+            name="Login" 
+            component={LoginScreen}
+            options={{ gestureEnabled: false, animation: 'none' }}
+          />
+          <Stack.Screen 
+            name="SignUp" 
+            component={SignUpScreen}
+            options={{ gestureEnabled: false, animation: 'none' }}
+          />
           <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
         </Stack.Group>
 
