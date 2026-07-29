@@ -37,20 +37,6 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordScree
   const { darkMode: isDark, themeColors, triggerHaptic } = useCustomization();
   const { toast, error: showError, success: showSuccess } = useSweetAlert();
   const insets = useSafeAreaInsets();
-  
-type ForgotPasswordScreenProps = NativeStackScreenProps<RootStackParamList, 'ForgotPassword'>;
-
-export default function ForgotPasswordScreen({ navigation }: ForgotPasswordScreenProps) {
-  const [email, setEmail] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [sent, setSent] = useState(false);
-  const [hasPin, setHasPin] = useState(false);
-  const [hasSecurityQuestions, setHasSecurityQuestions] = useState(false);
-
-  const { resetUnlockLock, settings: securitySettings } = useSecurity();
-  const { darkMode: isDark, themeColors, triggerHaptic } = useCustomization();
-  const { toast, error: showError, success: showSuccess } = useSweetAlert();
-  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     resetUnlockLock();

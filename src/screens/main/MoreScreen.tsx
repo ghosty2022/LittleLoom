@@ -1159,15 +1159,15 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
               isDark={isDark}
               showArrow
             />
-            <MenuItem
-              icon="person-add"
-              title="Invite Co-Parent"
-              subtitle="Add another parent to your account"
-              onPress={() => navigation.navigate('AddParent')}
-              color="#11998e"
-              isDark={isDark}
-              showArrow
-            />
+                      <MenuItem
+            icon="person-add"
+            title="Invite Co-Parent"
+            subtitle="Add another parent to your account"
+            onPress={() => navigation.navigate('FamilySharing')}
+            color="#11998e"
+            isDark={isDark}
+            showArrow
+          />
             <MenuItem
               icon="share-outline"
               title="Export Data"

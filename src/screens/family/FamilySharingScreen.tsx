@@ -15,6 +15,7 @@ import {
   Platform,
   Share,
   ScrollView,
+  Clipboard,
 } from 'react-native';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
@@ -1458,7 +1459,7 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
   const handleSuggestionAction = (suggestion: SmartSuggestion) => {
     triggerHaptic('light');
     switch (suggestion.type) {
-      case 'invite': setShowInviteModal(true); break;
+      case 'invite': openInviteCodeModal(); break;
       case 'activity': navigation.navigate('AddEntry', { trackerId: 'tummy_time' } as never); break;
       case 'milestone': navigation.navigate('MilestoneDetail' as never); break;
       case 'health': navigation.navigate('VaccinationSchedule' as never); break;
@@ -1487,20 +1488,16 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
           )}
         </View>
 
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <TouchableOpacity
-            style={[styles.headerBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.95)', borderColor: themeColors.primary + '40', borderWidth: 1 }]}
-            onPress={openInviteCodeModal}
-          >
-            <Ionicons name="key-outline" size={18} color={themeColors.primary} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.headerBtn, styles.headerBtnAccent, { backgroundColor: themeColors.primary }]}
-            onPress={() => setShowInviteModal(true)}
-          >
-            <Ionicons name="person-add" size={18} color="#fff" />
-          </TouchableOpacity>
-        </View>
+        {isPrimaryParent && (
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity
+              style={[styles.headerBtn, styles.headerBtnAccent, { backgroundColor: themeColors.primary }]}
+              onPress={openInviteCodeModal}
+            >
+              <Ionicons name="person-add" size={18} color="#fff" />
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
 
       {/* Modern Tab Bar */}
@@ -1663,6 +1660,66 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
                 })}
               </View>
             </View>
+
+            {/* Active Invite Codes */}
+            {isPrimaryParent && activeCodes.length > 0 && (
+              <View style={styles.section}>
+                <View style={styles.sectionHeaderRow}>
+                  <View>
+                    <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Active Invite Codes</Text>
+                    <Text style={[styles.sectionSubtitle, isDark && styles.textMuted]}>{activeCodes.length} code(s) waiting to be used</Text>
+                  </View>
+                  <TouchableOpacity onPress={handleLoadActiveCodes} disabled={isLoadingCodes}>
+                    <Ionicons name="refresh" size={18} color={themeColors.primary} />
+                  </TouchableOpacity>
+                </View>
+
+                {activeCodes.map((code, index) => (
+                  <Animated.View
+                    key={code.code}
+                    entering={shouldReduceMotion ? undefined : FadeInUp.delay(index * 80).springify()}
+                    style={[styles.pendingCard, isDark && styles.pendingCardDark]}
+                  >
+                    <LinearGradient
+                      colors={isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.85)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.92)']}
+                      style={StyleSheet.absoluteFill}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                    />
+                    <View style={styles.pendingIcon}>
+                      <Ionicons name="key-outline" size={22} color={themeColors.primary} />
+                    </View>
+                    <View style={styles.pendingInfo}>
+                      <Text style={[styles.pendingEmail, isDark && styles.textDark]}>{code.code}</Text>
+                      <Text style={[styles.pendingRole, isDark && styles.textMuted]}>
+                        {code.role === 'parent2' ? 'Co-Parent' : code.role === 'guardian' ? 'Guardian' : 'Viewer'}
+                        {' • '}{code.relationship || 'Family Member'}
+                      </Text>
+                      <Text style={[styles.pendingSent, isDark && styles.textMuted]}>
+                        Expires {new Date(code.expiresAt).toLocaleDateString()}
+                      </Text>
+                    </View>
+                    <View style={styles.pendingActions}>
+                      <TouchableOpacity
+                        style={[styles.pendingAction, { backgroundColor: themeColors.primary + '10' }]}
+                        onPress={() => {
+                          Clipboard.setString(code.code);
+                          sweetAlert.toast('Copied', 'Invite code copied to clipboard', 'success');
+                        }}
+                      >
+                        <Ionicons name="copy-outline" size={18} color={themeColors.primary} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.pendingAction, { backgroundColor: '#ef444410' }]}
+                        onPress={() => handleRevokeCode(code.code)}
+                      >
+                        <Ionicons name="close" size={18} color="#ef4444" />
+                      </TouchableOpacity>
+                    </View>
+                  </Animated.View>
+                ))}
+              </View>
+            )}
           </View>
         );
 
@@ -1778,7 +1835,7 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
           {isPrimaryParent && title !== 'Primary Parent' && (
             <TouchableOpacity
               style={[styles.addFirstMemberBtn, { backgroundColor: themeColors.primary }]}
-              onPress={() => setShowInviteModal(true)}
+              onPress={openInviteCodeModal}
             >
               <Text style={styles.addFirstMemberText}>Add First Member</Text>
             </TouchableOpacity>
@@ -2322,12 +2379,73 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
               <Text style={[styles.codeDisplaySubtitle, isDark && styles.textMuted]}>
                 Share this code with your family member. They can enter it on the sign-up screen.
               </Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10, marginTop: 12 }}>
+                <TouchableOpacity
+                  style={[styles.shareCodeBtn, { backgroundColor: 'rgba(102,126,234,0.1)', minWidth: 72 }]}
+                  onPress={() => {
+                    Clipboard.setString(generatedCode);
+                    sweetAlert.toast('Copied', 'Code copied to clipboard', 'success');
+                  }}
+                >
+                  <Ionicons name="copy-outline" size={18} color="#667eea" />
+                  <Text style={[styles.shareCodeBtnText, { color: '#667eea' }]}>Copy</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.shareCodeBtn, { backgroundColor: 'rgba(37,211,102,0.1)', minWidth: 72 }]}
+                  onPress={() => {
+                    const url = `whatsapp://send?text=${encodeURIComponent(`Join me on LittleLoom! Use invite code: ${generatedCode}`)}`;
+                    Linking.canOpenURL(url).then(supported => supported ? Linking.openURL(url) : sweetAlert.toast('WhatsApp not found', 'Install WhatsApp to share', 'warning'));
+                  }}
+                >
+                  <Ionicons name="logo-whatsapp" size={18} color="#25d366" />
+                  <Text style={[styles.shareCodeBtnText, { color: '#25d366' }]}>WhatsApp</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.shareCodeBtn, { backgroundColor: 'rgba(59,130,246,0.1)', minWidth: 72 }]}
+                  onPress={() => {
+                    const url = `sms:?body=${encodeURIComponent(`Join me on LittleLoom! Use invite code: ${generatedCode}`)}`;
+                    Linking.openURL(url).catch(() => sweetAlert.toast('SMS unavailable', 'Could not open SMS', 'warning'));
+                  }}
+                >
+                  <Ionicons name="chatbubble-outline" size={18} color="#3b82f6" />
+                  <Text style={[styles.shareCodeBtnText, { color: '#3b82f6' }]}>SMS</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.shareCodeBtn, { backgroundColor: 'rgba(239,68,68,0.1)', minWidth: 72 }]}
+                  onPress={() => {
+                    const url = `mailto:?subject=${encodeURIComponent('LittleLoom Family Invite')}&body=${encodeURIComponent(`Join me on LittleLoom! Use invite code: ${generatedCode}`)}`;
+                    Linking.openURL(url).catch(() => sweetAlert.toast('Email unavailable', 'Could not open email client', 'warning'));
+                  }}
+                >
+                  <Ionicons name="mail-outline" size={18} color="#ef4444" />
+                  <Text style={[styles.shareCodeBtnText, { color: '#ef4444' }]}>Email</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.shareCodeBtn, { backgroundColor: 'rgba(100,100,100,0.1)', minWidth: 72 }]}
+                  onPress={() => handleShareCode(generatedCode)}
+                >
+                  <Ionicons name="share-outline" size={18} color="#64748b" />
+                  <Text style={[styles.shareCodeBtnText, { color: '#64748b' }]}>More</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.shareCodeBtn, { backgroundColor: 'rgba(239,68,68,0.1)', minWidth: 72 }]}
+                  onPress={() => handleRevokeCode(generatedCode)}
+                >
+                  <Ionicons name="trash-outline" size={18} color="#ef4444" />
+                  <Text style={[styles.shareCodeBtnText, { color: '#ef4444' }]}>Revoke</Text>
+                </TouchableOpacity>
+              </View>
+
               <TouchableOpacity
-                style={[styles.shareCodeBtn, { backgroundColor: themeColors.primary }]}
-                onPress={() => handleShareCode(generatedCode)}
+                style={{ marginTop: 16, alignSelf: 'center', padding: 8 }}
+                onPress={() => setGeneratedCode('')}
               >
-                <Ionicons name="share-outline" size={18} color="#fff" />
-                <Text style={styles.shareCodeBtnText}>Share Code</Text>
+                <Text style={{ color: themeColors.primary, fontWeight: '700', fontSize: 13 }}>Generate Another Code</Text>
               </TouchableOpacity>
             </Animated.View>
           ) : (

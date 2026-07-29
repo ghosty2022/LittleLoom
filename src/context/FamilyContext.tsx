@@ -80,6 +80,12 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const initRef = useRef(false);
 
+  // FIX: Account creator always has invite rights regardless of permission state
+  const isOwner = useMemo(() => {
+    if (!profile || !currentBaby) return false;
+    return profile.role === 'parent1' || profile.role === UserRole.PARENT_1 || currentBaby.parent1Id === profile.id;
+  }, [profile, currentBaby]);
+
   useEffect(() => {
     if (userLoading) return;
     if (!currentBaby) {
@@ -322,9 +328,10 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, [currentBaby, myPermissions, loadFamily]);
 
   const inviteMember = useCallback(async (email: string, role: UserRole, relationship: string) => {
-    const canManage = myPermissions?.manageFamily ?? false;
-
-    if (!canManage || !profile || !currentBaby) return false;
+    if (!isOwner || !profile || !currentBaby) {
+      showAlert('Permission Denied', 'Only the account creator can invite family members');
+      return false;
+    }
 
     if (!EMAIL_REGEX.test(email)) {
       sweetAlert.alert('Invalid Email', 'Please enter a valid email address', 'info');
@@ -430,10 +437,8 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     role: 'parent2' | 'guardian' | 'viewer',
     relationship?: string
   ): Promise<{ code: string; success: boolean; message: string }> => {
-    const canManage = myPermissions?.manageFamily ?? false;
-
-    if (!canManage || !profile || !currentBaby) {
-      return { code: '', success: false, message: 'You do not have permission to invite family members' };
+    if (!isOwner || !profile || !currentBaby) {
+      return { code: '', success: false, message: 'Only the account creator can invite family members' };
     }
 
     try {
@@ -466,8 +471,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, [currentBaby]);
 
   const revokeInviteCode = useCallback(async (code: string): Promise<boolean> => {
-    const canManage = myPermissions?.manageFamily ?? false;
-    if (!canManage) return false;
+    if (!isOwner) return false;
 
     try {
       const { deactivateInviteCode } = await import('@/database/dbHelpers');
