@@ -199,7 +199,7 @@ export default function App(): JSX.Element | null {
             .initialize()
             .catch((e) => console.warn('Notification init:', e)),
           ensureAllImageDirs().catch((e) => console.warn('Image dirs init:', e)),
-          SystemUI.setBackgroundColorAsync('#f8faff').catch(() => {}),
+          SystemUI.setBackgroundColorAsync(initialTheme.isTrueBlack ? '#000000' : initialTheme.isDark ? '#08080f' : '#f8faff').catch(() => {}),
         ]);
 
         const navRestorePromise = (async () => {

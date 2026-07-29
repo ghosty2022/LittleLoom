@@ -1399,32 +1399,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const completeSetup = useCallback(async (step: 'parent2' | 'baby'): Promise<boolean> => {
     try {
+      let p2Done = false;
+      let bDone = false;
+
       if (step === 'parent2') {
         await Promise.all([
           AsyncStorage.setItem(ASYNC_KEYS.HAS_PARENT2, 'true'),
           AsyncStorage.setItem(ASYNC_KEYS.PARENT2_COMPLETED, 'true'),
         ]);
+        p2Done = true;
+        // Read baby status from storage
+        const babyCompleted = await AsyncStorage.getItem(ASYNC_KEYS.BABY_COMPLETED);
+        bDone = babyCompleted !== null;
         if (isMounted.current) setState(prev => ({ ...prev, hasParent2: true }));
       } else if (step === 'baby') {
         await Promise.all([
           AsyncStorage.setItem(ASYNC_KEYS.HAS_BABY, 'true'),
           AsyncStorage.setItem(ASYNC_KEYS.BABY_COMPLETED, 'true'),
         ]);
+        bDone = true;
+        // Read parent2 status from storage
+        const p2Completed = await AsyncStorage.getItem(ASYNC_KEYS.PARENT2_COMPLETED);
+        p2Done = p2Completed !== null;
         if (isMounted.current) setState(prev => ({ ...prev, hasBaby: true }));
       }
 
-      // Re-read both keys fresh to determine if setup is truly complete
-      const [hasP2, hasB, setupCompleteStr] = await Promise.all([
-        AsyncStorage.getItem(ASYNC_KEYS.PARENT2_COMPLETED),
-        AsyncStorage.getItem(ASYNC_KEYS.BABY_COMPLETED),
-        AsyncStorage.getItem(ASYNC_KEYS.SETUP_COMPLETE),
-      ]);
-
-      const p2Done = hasP2 !== null;
-      const bDone = hasB !== null;
       const setupDone = p2Done && bDone;
 
-      if (setupDone && setupCompleteStr !== 'true') {
+      if (setupDone) {
         await AsyncStorage.setItem(ASYNC_KEYS.SETUP_COMPLETE, 'true');
       }
 
@@ -1432,7 +1434,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setState(prev => ({
           ...prev,
           setupComplete: setupDone,
-          // Also mark onboarding complete since setup is done
           onboardingComplete: setupDone ? true : prev.onboardingComplete,
         }));
       }

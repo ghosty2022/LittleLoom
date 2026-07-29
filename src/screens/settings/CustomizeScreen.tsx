@@ -5,7 +5,6 @@ import { Ionicons } from '@expo/vector-icons';
 import Animated, {
   FadeInUp,
   FadeIn,
-  Layout,
   useSharedValue,
   useAnimatedStyle,
   withTiming,
@@ -15,7 +14,7 @@ import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColorScheme } from 'react-native';
 
-import { useNavigationVisibility, useTheme } from '../../context/AppContext';
+import { useTheme } from '../../context/AppContext';
 import {
   useCustomization,
   THEME_MAP,
@@ -299,7 +298,7 @@ const SectionHeader = ({
 export default function CustomizeScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const systemColorScheme = useColorScheme();
-  const { setThemeMode, setAppearance } = useTheme();
+  const { setAppearance } = useTheme();
   const { sweetAlert } = useSweetAlert();
   const {
     settings,
@@ -311,9 +310,9 @@ export default function CustomizeScreen({ navigation }: Props) {
   } = useCustomization();
 
   const effectiveIsDark = useMemo(() => {
-    if (settings.appearance === 'system') return systemColorScheme === 'dark';
-    return settings.appearance === 'dark' || settings.appearance === 'trueBlack';
-  }, [settings.appearance, systemColorScheme]);
+    if (pending.appearance === 'system') return systemColorScheme === 'dark';
+    return pending.appearance === 'dark' || pending.appearance === 'trueBlack';
+  }, [pending.appearance, systemColorScheme]);
 
   const [pending, setPending] = useState<CustomizationSettings>(settings);
 
@@ -330,18 +329,9 @@ export default function CustomizeScreen({ navigation }: Props) {
     setPending(updated);
 
     if (newSettings.appearance) {
-      const appearance = newSettings.appearance;
-      await setAppearance(appearance);
-      
-      if (appearance === 'light' || appearance === 'pureWhite') {
-        await setThemeMode('light');
-      } else if (appearance === 'dark' || appearance === 'trueBlack') {
-        await setThemeMode('dark');
-      } else {
-        await setThemeMode('system');
-      }
+      await setAppearance(newSettings.appearance);
     }
-  }, [pending, setAppearance, setThemeMode]);
+  }, [pending, setAppearance]);
 
   const hapticLight = useCallback(() => {
     if (pending.hapticFeedback) {
@@ -433,7 +423,6 @@ export default function CustomizeScreen({ navigation }: Props) {
       onConfirm: async () => {
         await reset();
         await setAppearance('system');
-        await setThemeMode('system');
         setPending(DEFAULT_SETTINGS);
         hapticSuccess();
       },
@@ -1200,5 +1189,3 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
   },
 });
-
-export default CustomizeScreen;

@@ -176,9 +176,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const setAppearance = useCallback(async (newAppearance: AppearanceMode) => {
     setAppearanceState(newAppearance);
     _cachedAppearance = newAppearance;
+    
+    const nextTheme: ThemeMode = (newAppearance === 'light' || newAppearance === 'pureWhite') ? 'light'
+      : (newAppearance === 'dark' || newAppearance === 'trueBlack') ? 'dark' : 'system';
+    setThemeModeState(nextTheme);
+    _cachedThemeMode = nextTheme;
+    
     customization?.updateSettings?.({ appearance: newAppearance });
     const { setAppSetting } = await import('../database/dbHelpers');
     await setAppSetting(APPEARANCE_STORAGE_KEY, newAppearance).catch(() => {});
+    await setAppSetting(THEME_STORAGE_KEY, nextTheme).catch(() => {});
   }, [customization]);
 
   const toggleTheme = useCallback(() => {
