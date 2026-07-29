@@ -1133,38 +1133,7 @@ const AddMeasurementModal = memo(({ visible, onClose, onSave, type, previousValu
   );
 });
 
-const BabySwitcherModal = memo(({ visible, onClose, babies, currentBaby, onSwitch }: any) => {
-  const theme = useDashboardTheme();
-  if (!visible) return null;
-  
-  return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
-      <Pressable style={styles.modalOverlay} onPress={onClose}>
-        <Animated.View entering={FadeInUp.springify()} style={[styles.babySwitcherModal, { backgroundColor: theme.surface.bg }]}>
-          <LinearGradient 
-            colors={theme.isDark ? ['rgba(50,50,70,0.95)', 'rgba(40,40,60,0.9)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.95)']} 
-            style={StyleSheet.absoluteFill} 
-          />
-          <Text style={[styles.babySwitcherTitle, { color: theme.text.primary }]}>Select Baby</Text>
-          {babies.map((baby: BabyProfile) => (
-            <TouchableOpacity
-              key={baby.id}
-              onPress={() => { onSwitch(baby.id); onClose(); }}
-              style={[styles.babySwitcherItem, currentBaby?.id === baby.id && { backgroundColor: `${theme.primary}15` }]}
-            >
-              <SafeAvatar avatar={baby.avatar} size={44} fallbackIcon="person" borderColor={currentBaby?.id === baby.id ? theme.primary : theme.surface.border} borderWidth={2} />
-              <View style={styles.babySwitcherInfo}>
-                <Text style={[styles.babySwitcherName, { color: theme.text.primary }]}>{baby.name}</Text>
-                <Text style={[styles.babySwitcherMeta, { color: theme.text.secondary }]}>{safeFmt(baby.birthDate, 'MMM d, yyyy')} • {safeDiffMonths(new Date(), baby.birthDate)} months</Text>
-              </View>
-              {currentBaby?.id === baby.id && <Ionicons name="checkmark-circle" size={22} color={theme.primary} />}
-            </TouchableOpacity>
-          ))}
-        </Animated.View>
-      </Pressable>
-    </Modal>
-  );
-});
+
 
 /* ═══════════════════════════════════════════════════════════════════════════
    MAIN SCREEN — UNIFIED v5.0
@@ -1181,8 +1150,6 @@ export default function GrowthDashboardScreen({ navigation }: any) {
     growthData,
     milestones,
     addGrowthMeasurement,
-    babies,
-    switchBaby,
     getGrowthData,
   } = useBaby();
   const { userProfile } = useAuth();
@@ -1200,7 +1167,6 @@ export default function GrowthDashboardScreen({ navigation }: any) {
   const [timeRange, setTimeRange] = useState<TimeRange>('6m');
   const [chartMode, setChartMode] = useState<ChartMode>('trend');
   const [showAddModal, setShowAddModal] = useState(false);
-  const [showBabySwitcher, setShowBabySwitcher] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const scrollY = useSharedValue(0);
@@ -1512,7 +1478,7 @@ export default function GrowthDashboardScreen({ navigation }: any) {
             <Ionicons name="arrow-back" size={22} color={theme.text.secondary} />
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={() => setShowBabySwitcher(true)} style={styles.babyPill}>
+          <TouchableOpacity onPress={() => navigation.navigate('SwitchBaby', { returnTo: 'GrowthDashboard', returnLabel: 'Growth' })} style={styles.babyPill}>
             <LinearGradient
              
               colors={theme.isDark ? ['#2a2a4a', '#1a1a3e'] : ['#f0f4ff', '#e8eeff']}
@@ -2003,13 +1969,7 @@ export default function GrowthDashboardScreen({ navigation }: any) {
         previousValue={getPreviousValue()}
       />
 
-      <BabySwitcherModal
-        visible={showBabySwitcher}
-        onClose={() => setShowBabySwitcher(false)}
-        babies={babies}
-        currentBaby={currentBaby}
-        onSwitch={switchBaby}
-      />
+
     </View>
   );
 }

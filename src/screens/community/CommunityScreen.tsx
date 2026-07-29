@@ -152,7 +152,6 @@ const ROUTES = {
   FOLLOWERS: 'Followers',
   FOLLOWING: 'Following',
   SEARCH_USERS: 'SearchUsers',
-  TRACKER_REMINDERS: 'TrackerReminders',
 } as const;
 
 type Props = NativeStackScreenProps<CommunityStackParamList, 'CommunityMain'>;
@@ -1387,7 +1386,6 @@ const GlassHeader = React.memo(({
 
   // Ethereal floating logo animation
   const logoFloat = useSharedValue(0);
-  const logoGlow = useSharedValue(0.6);
   useEffect(() => {
     logoFloat.value = withRepeat(
       withSequence(
@@ -1397,20 +1395,9 @@ const GlassHeader = React.memo(({
       -1,
       true
     );
-    logoGlow.value = withRepeat(
-      withSequence(
-        withTiming(1, { duration: 1500, easing: Easing.inOut(Easing.ease) }),
-        withTiming(0.5, { duration: 1500, easing: Easing.inOut(Easing.ease) })
-      ),
-      -1,
-      true
-    );
   }, []);
   const logoFloatStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: logoFloat.value }],
-  }));
-  const logoGlowStyle = useAnimatedStyle(() => ({
-    opacity: logoGlow.value,
   }));
 
   const blurOpacity = useAnimatedStyle(() => ({
@@ -1445,10 +1432,8 @@ const GlassHeader = React.memo(({
         <View style={styles.headerTitleWrap} pointerEvents="none">
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <Animated.View style={[styles.logoFloatContainer, logoFloatStyle]}>
-              <Image source={littleLoomLogo} style={[styles.headerLogo, { shadowColor: DS.primary }]} resizeMode="contain" />
-              <Animated.View style={[styles.logoGlowRing, logoGlowStyle, { shadowColor: DS.primary }]} pointerEvents="none" />
-            </Animated.View>
-            <View style={{ justifyContent: 'center' }}>
+              <Image source={littleLoomLogo} style={[styles.headerLogo]} resizeMode="contain" />
+            </Animated.View>            <View style={{ justifyContent: 'center' }}>
               <Text style={[styles.headerTitle, { color: isDark ? DS.white : DS.gray900 }]}>
                 LittleLoom
               </Text>
@@ -2354,32 +2339,13 @@ export default function CommunityScreen({ navigation }: Props) {
         letterSpacing: -0.5,
       },
         logoFloatContainer: {
-    position: 'relative',
-    width: 40,
-    height: 40,
     justifyContent: 'center',
     alignItems: 'center',
   },
   headerLogo: {
-    width: 36,
-    height: 36,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.22,
-    shadowRadius: 12,
-    elevation: 8,
+    width: 44,
+    height: 44,
     zIndex: 2,
-  },
-  logoGlowRing: {
-    position: 'absolute',
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: 'rgba(99,102,241,0.08)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.4,
-    shadowRadius: 16,
-    elevation: 0,
-    zIndex: 1,
   },
       headerSubtitleGradient: {
         paddingHorizontal: 10,

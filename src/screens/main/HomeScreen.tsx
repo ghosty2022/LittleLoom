@@ -1373,10 +1373,8 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
   compactSpacing,
 }) => {
   const headerAnimatedStyle = useAnimatedStyle(() => {
-    const currentY = scrollY.value;
-    const translateY = interpolate(currentY, [0, 80, 140], [0, 0, -140], Extrapolate.CLAMP);
-    const opacity = interpolate(currentY, [0, 80, 140], [1, 1, 0], Extrapolate.CLAMP);
-    return { transform: [{ translateY }], opacity };
+    // Classic executive sticky header — stays visible, content scrolls underneath
+    return {};
   });
 
   const headerPaddingTop = Platform.OS === 'ios' ? (compactSpacing ? 44 : 52) : (compactSpacing ? 28 : 36);
@@ -1422,7 +1420,7 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
     >
       <BlurView intensity={isDark ? 90 : 95} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
 
-      <View style={[styles.stickyHeaderContent, { height: compactSpacing ? 40 : 48 }]}>
+      <View style={styles.stickyHeaderContent}>
         {/* Left: Safety */}
         <View style={styles.stickyHeaderLeft}>
           <TouchableOpacity
@@ -1441,21 +1439,17 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
           {/* Center: Floating Logo + Title */}
         <View style={styles.stickyHeaderCenter}>
             <Animated.View style={[styles.logoFloatWrap, logoFloatStyle]}>
-              <View style={[styles.logoGlowContainer, { width: Math.round(48 * fontSizeMultiplier), height: Math.round(48 * fontSizeMultiplier) }]}>
-                <Image 
-                  source={littleLoomLogo} 
-                  style={[
-                    styles.headerLogoImage, 
-                    { 
-                      width: Math.round(40 * fontSizeMultiplier), 
-                      height: Math.round(40 * fontSizeMultiplier),
-                      shadowColor: primaryColor,
-                    }
-                  ]} 
-                  resizeMode="contain" 
-                />
-                <View style={[styles.logoGlowAura, { shadowColor: primaryColor, backgroundColor: `${primaryColor}10` }]} />
-              </View>
+              <Image 
+                source={littleLoomLogo} 
+                style={[
+                  styles.headerLogoImage, 
+                  { 
+                    width: Math.round(52 * fontSizeMultiplier), 
+                    height: Math.round(52 * fontSizeMultiplier),
+                  }
+                ]} 
+                resizeMode="contain" 
+              />
             <View style={styles.logoTextColumn}>
               <Text style={[styles.stickyHeaderTitle, { color: textColor, fontSize: titleSize }]}>LittleLoom</Text>
               <View style={[styles.stickyHeaderUnderline, { backgroundColor: primaryColor, width: Math.round(28 * fontSizeMultiplier), height: Math.max(3, Math.round(3 * fontSizeMultiplier)), borderRadius: Math.max(1, Math.round(2 * fontSizeMultiplier)), marginTop: compactSpacing ? 2 : 3 }]} />
@@ -1734,10 +1728,7 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
     setShowNotificationChooser(true);
   }, [triggerHaptic]);
 
-  const handleNotificationSelect = useCallback((type: 'app' | 'community') => {
-    if (type === 'app') navigateToScreen('Reminders');
-    else navigateToScreen('Connect');
-  }, [navigateToScreen]);
+  // Notification options are handled inline in the modal below
 
   const handleSafetyCornerPress = useCallback(() => {
     triggerHaptic('medium');
@@ -1758,20 +1749,14 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
 
   const handleQuickAction = useCallback((action: QuickAction) => {
     triggerHaptic('medium');
-    const noBabyRequired = ['note', 'settings', 'family_chat', 'family_center', 'reminders', 'safety', 'gallery', 'sound'];
+    const noBabyRequired = ['note', 'settings', 'family_chat', 'reminders', 'safety', 'gallery', 'sound'];
     if (!currentBaby && !noBabyRequired.includes(action.id)) {
       error('No Baby Profile', 'Please create a baby profile first.');
       return;
     }
     navigateToScreen(action.screen, action.params);
-    
-    // Only toast "Logged" for actual tracker entries, not navigation-only features
-    const loggingActions = ['feed', 'sleep', 'diaper', 'potty', 'medication', 'temperature', 'note'];
-    if (loggingActions.includes(action.id)) {
-      success(`${action.label} Logged`, 'Activity recorded successfully!');
-    }
-  }, [currentBaby, navigateToScreen, success, error, triggerHaptic]);
-
+    // Intentionally no "Logged" toast here — the actual tracker screens confirm after a real save.
+  }, [currentBaby, navigateToScreen, error, triggerHaptic]);
   const handleFeaturePress = useCallback((item: FeatureCard) => {
     triggerHaptic('light');
     navigateToScreen(item.screen, item.params);
@@ -2373,33 +2358,10 @@ const styles = StyleSheet.create({
     alignItems: 'center', 
     gap: 8,
   },
-  logoGlowContainer: {
-    position: 'relative',
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'transparent',
-  },
   headerLogoImage: {
     zIndex: 2,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
-    elevation: 8,
     backgroundColor: 'transparent',
-  },
-  logoGlowAura: {
-    position: 'absolute',
-    width: '160%',
-    height: '160%',
-    borderRadius: 999,
-    zIndex: 1,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.25,
-    shadowRadius: 20,
-    elevation: 0,
-    backgroundColor: 'transparent',
-  },
-  logoTextColumn: {
+  },  logoTextColumn: {
     alignItems: 'flex-start',
     justifyContent: 'center',
   },
@@ -2661,8 +2623,8 @@ const styles = StyleSheet.create({
     padding: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.2,
-    shadowRadius: 24,
+    shadowOpacity: 0.15,
+    shadowRadius: 40,
     elevation: 12,
   },
   notificationModalHeader: {
@@ -2673,7 +2635,7 @@ const styles = StyleSheet.create({
   },
   notificationModalTitle: {
     fontSize: 20,
-    fontWeight: '800',
+    fontWeight: '700',
     letterSpacing: -0.3,
   },
   notificationModalOption: {
@@ -2685,8 +2647,8 @@ const styles = StyleSheet.create({
     borderBottomColor: 'rgba(0,0,0,0.05)',
   },
   notificationModalIconWrap: {
-    width: 44,
-    height: 44,
+    width: 40,
+    height: 40,
     borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
@@ -2696,7 +2658,7 @@ const styles = StyleSheet.create({
   },
   notificationModalOptionTitle: {
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   notificationModalOptionDesc: {
     fontSize: 13,
