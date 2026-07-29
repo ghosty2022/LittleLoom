@@ -708,6 +708,39 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
             </View>
           )}
 
+          {/* No Security Fallback */}
+          {!showForgotPin && !hasBiometric && !hasPin && !isLockedOut && (
+            <View style={styles.noSecurityContainer}>
+              <Ionicons name="lock-open-outline" size={48} color={colors.primary} />
+              <Text style={[styles.noSecurityTitle, { color: colors.text }]}>
+                No Security Enabled
+              </Text>
+              <Text style={[styles.noSecurityText, { color: colors.textSecondary }]}>
+                Tap below to unlock the app
+              </Text>
+              <TouchableOpacity
+                style={[styles.unlockButton, { backgroundColor: colors.primary }]}
+                onPress={() => {
+                  forceUnlock?.();
+                  toast('Unlocked', 'Welcome back!', 'success');
+                }}
+              >
+                <Text style={styles.unlockButtonText}>Unlock App</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.setupSecurityLink}
+                onPress={() => {
+                  forceUnlock?.();
+                  navigation.navigate('SecurityCenter', { mode: 'setup' });
+                }}
+              >
+                <Text style={[styles.setupSecurityText, { color: colors.primary }]}>
+                  Set Up Security Now
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
           {/* Forgot PIN Link */}
           {!showForgotPin && hasPin && !isLockedOut && (
             <TouchableOpacity
@@ -1003,5 +1036,49 @@ const styles = StyleSheet.create({
     borderRadius: 50,
     borderWidth: 2,
     borderStyle: 'dashed',
+  },
+
+  noSecurityContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+    gap: 12,
+  },
+  noSecurityTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    marginTop: 8,
+  },
+  noSecurityText: {
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 8,
+    paddingHorizontal: 20,
+  },
+  unlockButton: {
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 16,
+    marginTop: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 5,
+  },
+  unlockButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  setupSecurityLink: {
+    marginTop: 8,
+    paddingVertical: 8,
+  },
+  setupSecurityText: {
+    fontSize: 15,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
   },
 });

@@ -1541,7 +1541,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   const { currentBaby, loadBabies, getPottyStreak } = useBaby();
   const { entries: activities, getRecentTimelineEvents, getTodayCount, loadEntries: loadActivities, isLoading: activitiesLoading } = useActivity();
     const { entries } = useTracker();
-  const { lockApp } = useSecurity();
+  const { lockApp, getAvailableAuthMethods } = useSecurity();
   const { getUnreadCount } = useCommunity();
   const media = useMedia();
 
@@ -1551,6 +1551,9 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   const [greeting, setGreeting] = useState('Good morning');
   const [currentTime, setCurrentTime] = useState(new Date());
   const [showNotificationChooser, setShowNotificationChooser] = useState(false);
+const [showBabyRequiredModal, setShowBabyRequiredModal] = useState(false);
+const [showSecurityModal, setShowSecurityModal] = useState(false);
+const [pendingAction, setPendingAction] = useState<QuickAction | null>(null);
 
   // Smart notifications state
   const [smartNotifications, setSmartNotifications] = useState<SmartNotification[]>([]);
@@ -1751,12 +1754,12 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
     triggerHaptic('medium');
     const noBabyRequired = ['note', 'settings', 'family_chat', 'reminders', 'safety', 'gallery', 'sound'];
     if (!currentBaby && !noBabyRequired.includes(action.id)) {
-      error('No Baby Profile', 'Please create a baby profile first.');
+      setPendingAction(action);
+      setShowBabyRequiredModal(true);
       return;
     }
     navigateToScreen(action.screen, action.params);
-    // Intentionally no "Logged" toast here — the actual tracker screens confirm after a real save.
-  }, [currentBaby, navigateToScreen, error, triggerHaptic]);
+  }, [currentBaby, navigateToScreen, triggerHaptic]);
   const handleFeaturePress = useCallback((item: FeatureCard) => {
     triggerHaptic('light');
     navigateToScreen(item.screen, item.params);
@@ -1764,9 +1767,14 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
 
   const handleLockPress = useCallback(async () => {
     triggerHaptic('heavy');
+    const methods = getAvailableAuthMethods();
+    if (!methods.hasPin && !methods.hasBiometric) {
+      setShowSecurityModal(true);
+      return;
+    }
     await lockApp();
     toast('App Locked', 'LittleLoom has been secured.', 'info');
-  }, [lockApp, toast, triggerHaptic]);
+  }, [lockApp, getAvailableAuthMethods, toast, triggerHaptic]);
 
   const handleSmartNotifDismiss = useCallback((id: string) => {
     setSmartNotifications(prev => prev.map(n => n.id === id ? { ...n, dismissed: true } : n));
@@ -2322,6 +2330,90 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
           </View>
         </Pressable>
       </Modal>
+
+      {/* Baby Required Modal */}
+      <Modal
+        visible={showBabyRequiredModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowBabyRequiredModal(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowBabyRequiredModal(false)}
+        >
+          <View style={[styles.modalContent, { backgroundColor: isDark ? 'rgba(26,26,42,0.98)' : 'rgba(255,255,255,0.98)' }]}>
+            <View style={styles.modalIconWrap}>
+              <LinearGradient colors={[secondary, primary]} style={styles.modalIconGradient}>
+                <Ionicons name="baby-outline" size={32} color="#fff" />
+              </LinearGradient>
+            </View>
+            <Text style={[styles.modalTitle, { color: theme.text }]}>Baby Profile Needed</Text>
+            <Text style={[styles.modalDesc, { color: theme.textSecondary }]}>
+              Create a baby profile to start tracking {pendingAction?.label || 'activities'} and unlock all features.
+            </Text>
+            <TouchableOpacity
+              style={[styles.modalPrimaryBtn, { backgroundColor: primary }]}
+              onPress={() => {
+                setShowBabyRequiredModal(false);
+                navigateToScreen('CreateBabyProfile');
+              }}
+            >
+              <Text style={styles.modalPrimaryBtnText}>Create Baby Profile</Text>
+              <Ionicons name="arrow-forward" size={16} color="#fff" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.modalSecondaryBtn}
+              onPress={() => setShowBabyRequiredModal(false)}
+            >
+              <Text style={[styles.modalSecondaryBtnText, { color: theme.textMuted }]}>Maybe Later</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* Security Setup Modal */}
+      <Modal
+        visible={showSecurityModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowSecurityModal(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowSecurityModal(false)}
+        >
+          <View style={[styles.modalContent, { backgroundColor: isDark ? 'rgba(26,26,42,0.98)' : 'rgba(255,255,255,0.98)' }]}>
+            <View style={[styles.modalIconWrap, { backgroundColor: `${accent}15` }]}>
+              <Ionicons name="shield-outline" size={32} color={accent} />
+            </View>
+            <Text style={[styles.modalTitle, { color: theme.text }]}>No Security Enabled</Text>
+            <Text style={[styles.modalDesc, { color: theme.textSecondary }]}>
+              You haven't set up a PIN or biometric lock yet. You can still lock the app, but anyone can unlock it.
+            </Text>
+            <TouchableOpacity
+              style={[styles.modalPrimaryBtn, { backgroundColor: primary }]}
+              onPress={() => {
+                setShowSecurityModal(false);
+                navigateToScreen('SecurityCenter', { mode: 'setup' });
+              }}
+            >
+              <Text style={styles.modalPrimaryBtnText}>Set Up Security</Text>
+              <Ionicons name="arrow-forward" size={16} color="#fff" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modalSecondaryBtn, { borderColor: `${primary}30`, borderWidth: 1 }]}
+              onPress={async () => {
+                setShowSecurityModal(false);
+                await lockApp();
+                toast('App Locked', 'Locked without security. Tap unlock to enter.', 'warning');
+              }}
+            >
+              <Text style={[styles.modalSecondaryBtnText, { color: primary }]}>Lock Anyway</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -2664,5 +2756,84 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '500',
     marginTop: 2,
+  },
+
+  /* ── Reusable Modals ── */
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  modalContent: {
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: 28,
+    padding: 28,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.2,
+    shadowRadius: 40,
+    elevation: 12,
+  },
+  modalIconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 24,
+    marginBottom: 16,
+    overflow: 'hidden',
+  },
+  modalIconGradient: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    marginBottom: 8,
+    textAlign: 'center',
+    letterSpacing: -0.3,
+  },
+  modalDesc: {
+    fontSize: 15,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 24,
+    paddingHorizontal: 8,
+  },
+  modalPrimaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    paddingVertical: 16,
+    borderRadius: 18,
+    gap: 8,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  modalPrimaryBtnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  modalSecondaryBtn: {
+    width: '100%',
+    paddingVertical: 14,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalSecondaryBtnText: {
+    fontSize: 15,
+    fontWeight: '600',
   },
 });

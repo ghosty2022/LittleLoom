@@ -20,10 +20,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AnimatedReanimated, { FadeInUp } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAuth } from '../../context/AuthContext';
+import { useBaby } from '../../context/BabyContext';
 import type { RootStackParamList } from '../../types/navigation';
 import { useCustomization } from '../../hooks/useCustomization';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { useApp } from '../../context/AppContext';
+import { UserRole, ROLE_LABELS } from '../../types/roles';
 
 /* ═══════════════════════════════════════════════════════════════════════════
    TYPES
@@ -129,6 +131,9 @@ export default function Parent2SetupScreen({ navigation }: Props) {
   const [generatedCode, setGeneratedCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isGeneratingCode, setIsGeneratingCode] = useState(false);
+  const [inviteCodeRole, setInviteCodeRole] = useState<'parent2' | 'guardian' | 'viewer'>('parent2');
+  
+  const { currentBaby } = useBaby();
   const [alert, setAlert] = useState({ visible: false, type: 'success', title: '', message: '' });
   const [confirmModal, setConfirmModal] = useState({ visible: false, title: '', message: '', onConfirm: () => {}, type: 'default' });
 
@@ -162,19 +167,30 @@ export default function Parent2SetupScreen({ navigation }: Props) {
       showToast('error', 'Missing Info', 'Please specify the relationship');
       return;
     }
+    
+    // Invite codes are tied to a baby. If we haven't created one yet,
+    // we can't generate a code here. The user can invite from FamilySharing later.
+    if (!currentBaby?.id) {
+      showToast('info', 'Note', 'Create a baby profile first to generate invite codes. Family invites are available anytime from the Family tab.');
+      return;
+    }
 
     triggerHaptic('medium');
     setIsGeneratingCode(true);
 
     try {
-      const { generateInviteCode } = await import('@/database/dbHelpers');
-      const result = await generateInviteCode(
-        'parent2',
-        relationship.trim(),
-        fullName.trim() || undefined,
-        email.trim() || undefined,
-        phone.trim() || undefined
-      );
+      const { createInviteCode } = await import('@/database/dbHelpers');
+      const result = await createInviteCode({
+        familyId: currentBaby.id,
+        role: inviteCodeRole,
+        createdBy: userProfile?.id || '',
+        relationship: relationship.trim(),
+        inviteeName: fullName.trim() || undefined,
+        inviteeEmail: email.trim() || undefined,
+        inviteePhone: phone.trim() || undefined,
+        maxUses: 1,
+        expiresInDays: 7,
+      });
 
       if (result.success) {
         setGeneratedCode(result.code);
@@ -189,7 +205,7 @@ export default function Parent2SetupScreen({ navigation }: Props) {
     } finally {
       setIsGeneratingCode(false);
     }
-  }, [relationship, fullName, email, phone, triggerHaptic, showToast]);
+  }, [relationship, fullName, email, phone, currentBaby, userProfile, inviteCodeRole, triggerHaptic, showToast]);
 
   /* ─── Continue to Baby Setup ─── */
   const handleContinue = useCallback(async () => {
@@ -198,8 +214,6 @@ export default function Parent2SetupScreen({ navigation }: Props) {
     try {
       await completeSetup('parent2');
       showToast('success', 'Setup Complete!', 'Continuing to baby setup...');
-      // AuthContext state update → AppNavigator navState recomputes → auto-navigates
-      // DO NOT manually navigate — causes flash/disappear bug
       setTimeout(() => {
         if (isMountedRef.current) setIsLoading(false);
       }, 800);
@@ -210,37 +224,24 @@ export default function Parent2SetupScreen({ navigation }: Props) {
   }, [completeSetup, showToast, triggerHaptic]);
 
   /* ─── Skip ─── */
-  const handleAddParent = useCallback(async () => {
-    if (!email.trim()) {
-      showToast('error', 'Missing Email', 'Please enter an email address');
-      return;
-    }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      showToast('error', 'Invalid Email', 'Please enter a valid email address');
-      return;
-    }
-
-    triggerHaptic('medium');
-    setIsLoading(true);
-
-    try {
-      const success = await inviteMember(email.trim(), 'parent2', relationship.trim() || 'Co-Parent');
-      if (success) {
-        triggerHaptic('success');
-        showToast('success', 'Invitation Sent!', `An invitation has been sent to ${email.trim()}`);
-        setFullName('');
-        setEmail('');
-        setPhone('');
-      } else {
-        showToast('error', 'Error', 'Failed to send invitation. Please try again.');
+  const handleSkip = useCallback(() => {
+    triggerHaptic('light');
+    setConfirmModal({
+      visible: true,
+      title: 'Skip Adding Co-Parent?',
+      message: 'You can always add family members later from the Family tab after creating your baby profile.',
+      type: 'default',
+      onConfirm: async () => {
+        try {
+          await skipSetup('parent2');
+          showToast('info', 'Skipped', 'You can add family later');
+        } catch (error) {
+          showToast('error', 'Error', 'Could not continue');
+        }
+        setConfirmModal(prev => ({ ...prev, visible: false }));
       }
-    } catch (error) {
-      console.error('Invite error:', error);
-      showToast('error', 'Error', 'Failed to send invitation');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [email, relationship, inviteMember, triggerHaptic, showToast]);
+    });
+  }, [skipSetup, showToast, triggerHaptic]);
 
   const handleSkip = useCallback(() => {
     triggerHaptic('light');
@@ -344,12 +345,43 @@ export default function Parent2SetupScreen({ navigation }: Props) {
               <BlurView intensity={60} style={styles.glassCard}>
                 <Text style={[styles.formTitle, isDark && styles.textDark]}>Partner Details</Text>
 
+                {/* Role Selection */}
+                <Text style={[styles.formLabel, isDark && styles.textDark, { marginTop: 8 }]}>Invite As</Text>
+                <View style={styles.roleSelection}>
+                  {(['parent2', 'guardian', 'viewer'] as const).map((role) => {
+                    const config = 
+                      role === 'parent2' ? { label: 'Co-Parent', color: '#fa709a', icon: 'heart' as const }
+                      : role === 'guardian' ? { label: 'Guardian', color: '#11998e', icon: 'shield-checkmark' as const }
+                      : { label: 'Viewer', color: '#64748b', icon: 'eye' as const };
+                    const isSelected = inviteCodeRole === role;
+                    return (
+                      <TouchableOpacity
+                        key={role}
+                        style={[
+                          styles.roleOption,
+                          isSelected && { borderColor: config.color, backgroundColor: config.color + '10' },
+                          isDark && styles.roleOptionDark
+                        ]}
+                        onPress={() => setInviteCodeRole(role)}
+                      >
+                        <View style={[styles.roleOptionIcon, { backgroundColor: config.color }]}>
+                          <Ionicons name={config.icon} size={20} color="#fff" />
+                        </View>
+                        <View style={styles.roleOptionInfo}>
+                          <Text style={[styles.roleOptionTitle, isDark && styles.textDark]}>{config.label}</Text>
+                        </View>
+                        {isSelected && <Ionicons name="checkmark-circle" size={24} color={config.color} />}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
                 {/* Relationship */}
                 <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
                   <Ionicons name="heart-outline" size={20} color={dynamicPrimary} style={styles.inputIcon} />
                   <TextInput
                     style={[styles.input, isDark && styles.textDark]}
-                    placeholder="Relationship (e.g., Co-Parent, Partner)"
+                    placeholder="Their relationship to baby (e.g., Father, Grandma, Nanny)"
                     placeholderTextColor={isDark ? '#64748b' : dynamicPrimary + '99'}
                     value={relationship}
                     onChangeText={setRelationship}
