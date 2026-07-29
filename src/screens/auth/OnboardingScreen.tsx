@@ -431,6 +431,7 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
           </View>
         </Animated.View>
         <Text style={styles.brandTitle}>LittleLoom</Text>
+        <Text style={styles.brandSubtitle}>By Refresh</Text>
       </View>
 
       {/* Skip Button */}
@@ -513,12 +514,8 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
         </Text>
       </View>
 
-      {/* Footer */}
-      <View style={[styles.footer, { paddingBottom: insets.bottom + hp(3) }]}>
-        <Text style={styles.footerText}>
-          Crafted with <Text style={{ color: '#ff6b81' }}>♥</Text> by Refresh
-        </Text>
-      </View>
+      {/* Footer — kept for safe-area spacing, text removed */}
+      <View style={[styles.footer, { paddingBottom: insets.bottom + hp(3) }]} />
     </SafeAreaView>
   );
 }
@@ -554,6 +551,14 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0,0,0,0.2)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
+  },
+  brandSubtitle: {
+    fontSize: wp(3),
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.65)',
+    marginTop: 2,
+    letterSpacing: 2,
+    textTransform: 'uppercase',
   },
   background: { 
     position: 'absolute', 
