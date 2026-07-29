@@ -1,21 +1,43 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Dimensions, Image, KeyboardAvoidingView, Platform, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Dimensions,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInUp, FadeInDown, SlideInRight } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSecurity } from '../../context/SecurityContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import type { RootStackParamList } from '../../types/navigation';
 
-import AsyncStorage frconst { resetUnlockLock, settings: securitySettings } = useSecurity();
+type ForgotPasswordScreenProps = NativeStackScreenProps<RootStackParamList, 'ForgotPassword'>;
+
+export default function ForgotPasswordScreen({ navigation }: ForgotPasswordScreenProps) {
+  const [email, setEmail] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [hasPin, setHasPin] = useState(false);
+  const [hasSecurityQuestions, setHasSecurityQuestions] = useState(false);
+
+  const { resetUnlockLock, settings: securitySettings } = useSecurity();
   const { darkMode: isDark, themeColors, triggerHaptic } = useCustomization();
   const { toast, error: showError, success: showSuccess } = useSweetAlert();
-  const insets = useSafeAreaInsets();om '@react-native-async-storage/async-storage';
-
+  const insets = useSafeAreaInsets();
+  
 type ForgotPasswordScreenProps = NativeStackScreenProps<RootStackParamList, 'ForgotPassword'>;
 
 export default function ForgotPasswordScreen({ navigation }: ForgotPasswordScreenProps) {
