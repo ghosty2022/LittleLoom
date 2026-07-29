@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Dimensions, Image, KeyboardAvoidingView, Platform, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -116,13 +116,15 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordScree
           {!sent ? (
             <Animated.View entering={FadeInUp.delay(200)}>
               <View style={styles.titleContainer}>
-                <View style={[styles.iconCircle, isDark && styles.iconCircleDark]}>
-                  <Ionicons name="lock-open-outline" size={32} color={themeColors.primary} />
+                <View style={styles.logoFloatWrap}>
+                  <Image
+                    source={require('../../../assets/logo.png')}
+                    style={styles.logoImage}
+                    resizeMode="contain"
+                  />
                 </View>
-                <Text style={styles.title}>Account Recovery</Text>
-                <Text style={styles.subtitle}>
-                  Choose how you want to recover your account
-                </Text>
+                <Text style={styles.logoText}>LittleLoom</Text>
+                <Text style={styles.logoTagline}>Account Recovery</Text>
               </View>
 
               <View style={styles.formContainer}>
@@ -309,40 +311,36 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(30,41,59,0.8)',
   },
 
-  titleContainer: {
+   titleContainer: {
     alignItems: 'center',
     marginBottom: 30,
   },
-  iconCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+  logoFloatWrap: {
+    width: Math.min(Dimensions.get('window').width * 0.28, 120),
+    height: Math.min(Dimensions.get('window').width * 0.28, 120),
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 20,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.3)',
+    marginBottom: 16,
   },
-  iconCircleDark: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderColor: 'rgba(255,255,255,0.2)',
+  logoImage: {
+    width: Math.min(Dimensions.get('window').width * 0.25, 100),
+    height: Math.min(Dimensions.get('window').width * 0.25, 100),
   },
-  title: {
-    fontSize: 32,
+  logoText: {
+    fontSize: 28,
     fontWeight: '800',
     color: '#fff',
-    marginBottom: 12,
+    letterSpacing: 1,
+    marginBottom: 4,
     textAlign: 'center',
   },
-  subtitle: {
-    fontSize: 16,
+  logoTagline: {
+    fontSize: 14,
     color: 'rgba(255,255,255,0.8)',
     textAlign: 'center',
     paddingHorizontal: 20,
     lineHeight: 22,
   },
-
   formContainer: {
     width: '100%',
     maxWidth: 400,

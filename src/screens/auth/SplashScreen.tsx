@@ -230,8 +230,8 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   logoContainer: {
-    width: wp(35),
-    height: wp(35),
+    width: wp(38),
+    height: wp(38),
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 30,
@@ -241,7 +241,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: '100%',
     height: '100%',
-    borderRadius: wp(17.5),
+    borderRadius: wp(19),
     borderWidth: 2,
     borderColor: 'rgba(255,255,255,0.3)',
     overflow: 'hidden',
@@ -249,12 +249,13 @@ const styles = StyleSheet.create({
   logoRingGradient: {
     width: '100%',
     height: '100%',
-    borderRadius: wp(17.5),
+    borderRadius: wp(19),
   },
   logoImage: {
-    width: wp(20),
-    height: wp(20),
+    width: wp(32),
+    height: wp(32),
     zIndex: 10,
+    position: 'absolute',
   },
   brandName: {
     fontSize: wp(9),

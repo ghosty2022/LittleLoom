@@ -730,11 +730,11 @@ const styles = StyleSheet.create({
     borderRadius: 4, 
     marginRight: 8 
   },
-  autoPlayText: { 
+ autoPlayText: { 
     fontSize: 12, 
     color: 'rgba(255,255,255,0.8)', 
     fontWeight: '600' 
-  }
+  },
   footer: { 
     position: 'absolute', 
     bottom: 0, 
