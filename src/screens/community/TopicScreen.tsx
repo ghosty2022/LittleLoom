@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   StatusBar,
+  FlatList,
 } from 'react-native';
 import React, { useCallback, useEffect, useState } from 'react';
 

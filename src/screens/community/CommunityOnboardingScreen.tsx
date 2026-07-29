@@ -231,10 +231,6 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
       if (onComplete) {
         onComplete();
       }
-      
-      if (navigation && navigation.replace) {
-        navigation.navigate('CommunityMain' as never);
-      }
     } catch (error) {
       console.error('Error saving topics:', error);
       sweetAlert.alert('Error', 'Failed to save your preferences. Please try again.', 'warning');
@@ -261,10 +257,6 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
           
           if (onComplete) {
             onComplete();
-          }
-          
-          if (navigation && navigation.replace) {
-            navigation.navigate('CommunityMain' as never);
           }
         } catch (error) {
           console.error('Error skipping onboarding:', error);
