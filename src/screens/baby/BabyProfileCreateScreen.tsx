@@ -14,7 +14,7 @@ import * as FileSystem from 'expo-file-system';
 import { useAuth } from '../../context/AuthContext';
 import { useSweetAlert } from '../../hooks/useSweetAlert';
 import { useBaby } from '../../context/BabyContext';
-import { getBabyByIdFromDb } from '../../database/dbHelpers';
+import { getBabyByIdFromDb, setAppSetting } from '../../database/dbHelpers';
 import { useCustomization } from '../../hooks/useCustomization';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
@@ -153,6 +153,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
   const [isLoading, setIsLoading] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
+  const [creatorRelationship, setCreatorRelationship] = useState<'Father' | 'Mother' | 'Guardian'>('Mother');
 
   /* ---- CRASH FIX: Image picker request guard ---- */
   const imagePickerLock = useRef(false);
@@ -453,6 +454,14 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
         /* Babies are persisted to the SQLite/Drizzle database via BabyContext,
            so verify against the DB. The legacy @littleloom_babies AsyncStorage
            key is no longer written and always failed this check */
+
+                   // Save the creator's relationship so FamilyContext can show "Father", "Mother", etc.
+        try {
+          await setAppSetting(`parent1_relationship_${babyId}`, creatorRelationship);
+        } catch (e) {
+          console.warn('Failed to save creator relationship:', e);
+        }
+        
         const persisted = await getBabyByIdFromDb(babyId);
 
         if (!persisted) {
@@ -609,6 +618,44 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
         </TouchableOpacity>
 
         {renderDatePicker()}
+      </View>
+      <View style={styles.inputGroup}>
+        <Text style={[styles.label, isDark && styles.textDark]}>You are the baby&apos;s <Text style={{ color: '#ef4444' }}>*</Text></Text>
+        <View style={styles.genderContainer}>
+          {(['Father', 'Mother', 'Guardian'] as const).map((r) => (
+            <TouchableOpacity
+              key={r}
+              style={[
+                styles.genderButton,
+                creatorRelationship === r && {
+                  borderColor: themeColors.primary,
+                  backgroundColor: themeColors.primary + '1A',
+                },
+                isDark && styles.genderButtonDark,
+              ]}
+              onPress={() => {
+                setCreatorRelationship(r);
+                triggerHaptic('light');
+              }}
+              activeOpacity={0.7}
+              accessibilityLabel={`You are ${r}`}
+              accessibilityState={{ selected: creatorRelationship === r }}
+            >
+              <Text style={styles.genderEmoji}>
+                {r === 'Father' ? '👨' : r === 'Mother' ? '👩' : '🛡️'}
+              </Text>
+              <Text
+                style={[
+                  styles.genderText,
+                  creatorRelationship === r && { color: themeColors.primary, fontWeight: '700' },
+                  isDark && styles.textDark,
+                ]}
+              >
+                {r}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       </View>
 
       <View style={styles.inputGroup}>

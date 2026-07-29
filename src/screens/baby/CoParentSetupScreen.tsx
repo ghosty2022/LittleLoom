@@ -137,7 +137,7 @@ export default function Parent2SetupScreen({ navigation }: Props) {
   const [alert, setAlert] = useState({ visible: false, type: 'success', title: '', message: '' });
   const [confirmModal, setConfirmModal] = useState({ visible: false, title: '', message: '', onConfirm: () => {}, type: 'default' });
 
-  const { completeSetup, skipSetup } = useAuth();
+  const { completeSetup, skipSetup, userProfile } = useAuth();
   const insets = useSafeAreaInsets();
   const { isDark, colors } = useApp();
   const isMountedRef = useRef(true);
@@ -235,25 +235,6 @@ export default function Parent2SetupScreen({ navigation }: Props) {
         try {
           await skipSetup('parent2');
           showToast('info', 'Skipped', 'You can add family later');
-        } catch (error) {
-          showToast('error', 'Error', 'Could not continue');
-        }
-        setConfirmModal(prev => ({ ...prev, visible: false }));
-      }
-    });
-  }, [skipSetup, showToast, triggerHaptic]);
-
-  const handleSkip = useCallback(() => {
-    triggerHaptic('light');
-    setConfirmModal({
-      visible: true,
-      title: 'Skip Adding Co-Parent?',
-      message: 'You can always add a co-parent later from Family settings.',
-      type: 'default',
-      onConfirm: async () => {
-        try {
-          await skipSetup('parent2');
-          showToast('info', 'Skipped', 'You can add a co-parent later');
           // AuthContext state update → AppNavigator navState recomputes → auto-navigates
           // DO NOT call navigation.replace() — causes flash/disappear bug
         } catch (error) {
@@ -264,12 +245,13 @@ export default function Parent2SetupScreen({ navigation }: Props) {
     });
   }, [skipSetup, showToast, triggerHaptic]);
 
+
   /* ─── Copy Code ─── */
   const handleCopyCode = useCallback(() => {
     if (!generatedCode) return;
     triggerHaptic('light');
     // Clipboard.setString(generatedCode); // Uncomment if you have Clipboard imported
-    showToast('success', 'Copied!', 'Invite code copied to clipboard');
+    showToast('success  const { completeSetup, skipSetup, userProfile } = useAuth();', 'Copied!', 'Invite code copied to clipboard');
   }, [generatedCode, triggerHaptic, showToast]);
 
   /* ─── Share via WhatsApp ─── */

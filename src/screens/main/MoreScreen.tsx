@@ -914,11 +914,23 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
 
   const handleLockNow = useCallback(async () => {
     if (!availableMethods.hasPin && !availableMethods.hasBiometric) {
-      sweetAlert.error('No Security Enabled', 'Please enable PIN or Biometric authentication first.');
+      sweetAlert.confirm(
+        'No Security Enabled',
+        'You can lock the app without protection, or set up PIN / Biometric first.',
+        async () => {
+          await lockApp();
+          sweetAlert.toast('App Locked', 'Locked without security. Tap unlock to enter.', 'warning');
+        },
+        () => {
+          navigation.navigate('SecurityCenter', { mode: 'setup' });
+        },
+        'Lock Anyway',
+        'Set Up Security'
+      );
       return;
     }
     await lockApp();
-  }, [availableMethods, lockApp, sweetAlert]);
+  }, [availableMethods, lockApp, sweetAlert, navigation]);
 
   const [showTimeoutModal, setShowTimeoutModal] = useState(false);
 
