@@ -33,44 +33,44 @@ const ONBOARDING_DATA: OnboardingSlide[] = [
   {
     id: '1',
     title: 'Welcome to LittleLoom',
-    subtitle: "Your all-in-one companion for your baby's complete care journey",
-    emoji: '🍼',
+    subtitle: 'Your companion for every precious milestone.',
+    emoji: '',
     colors: ['#667eea', '#764ba2'],
     darkColors: ['#4c51bf', '#553c9a'],
     icon: 'heart-outline',
   },
   {
     id: '2',
-    title: 'Smart Care Tracking',
-    subtitle: 'Log feedings, diapers, sleep, and milestones with intelligent reminders',
-    emoji: '📊',
+    title: 'Effortless Tracking',
+    subtitle: 'Monitor feeds, sleep, growth, and milestones with intuitive precision.',
+    emoji: '',
     colors: ['#f093fb', '#f5576c'],
     darkColors: ['#d53f8c', '#c53030'],
     icon: 'analytics-outline',
   },
   {
     id: '3',
-    title: 'Soothing & Sleep',
-    subtitle: 'White noise, lullabies, and sleep tracking for better rest',
-    emoji: '🌙',
+    title: 'Restful Nights',
+    subtitle: 'Gentle sounds and smart sleep insights for peaceful dreams.',
+    emoji: '',
     colors: ['#4facfe', '#00f2fe'],
     darkColors: ['#2b6cb0', '#0987a0'],
     icon: 'moon-outline',
   },
   {
     id: '4',
-    title: 'Family Together',
-    subtitle: 'Share updates, coordinate care, and celebrate milestones together',
-    emoji: '👨‍👩‍👧‍👦',
+    title: 'Stay Connected',
+    subtitle: 'Invite loved ones to share and celebrate every little moment.',
+    emoji: '',
     colors: ['#43e97b', '#38f9d7'],
     darkColors: ['#276749', '#319795'],
     icon: 'people-outline',
   },
   {
     id: '5',
-    title: 'Ready to Begin?',
-    subtitle: "Let's create your baby's profile and start this beautiful journey",
-    emoji: '✨',
+    title: 'Begin the Journey',
+    subtitle: "Create your baby's profile and start capturing memories today.",
+    emoji: '',
     colors: ['#fa709a', '#fee140'],
     darkColors: ['#c53030', '#d69e2e'],
     icon: 'sparkles-outline',
@@ -136,9 +136,12 @@ const SlideItem = React.memo(({
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
           >
-            <View style={[styles.iconContainer, { backgroundColor: currentColors[0], shadowColor: currentColors[0] }]}>
-              <Ionicons name={item.icon} size={28} color="white" />
-            </View>
+            {/* Accent badge — hidden on slide 1 so the logo commands full attention */}
+            {index !== 0 && (
+              <View style={[styles.accentIconContainer, { backgroundColor: currentColors[0], shadowColor: currentColors[0] }]}>
+                <Ionicons name={item.icon} size={22} color="white" />
+              </View>
+            )}
 
             {index === 0 ? (
               <View style={styles.logoSlideContainer}>
@@ -149,8 +152,8 @@ const SlideItem = React.memo(({
                 />
               </View>
             ) : (
-              <View style={styles.emojiContainer}>
-                <Text style={styles.emoji}>{item.emoji}</Text>
+              <View style={[styles.heroIconContainer, { backgroundColor: currentColors[0] + '18' }]}>
+                <Ionicons name={item.icon} size={wp(18)} color={currentColors[0]} />
               </View>
             )}
 
@@ -511,9 +514,9 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
       </View>
 
       {/* Footer */}
-      <View style={[styles.footer, { paddingBottom: insets.bottom + hp(2) }]}>
+      <View style={[styles.footer, { paddingBottom: insets.bottom + hp(3) }]}>
         <Text style={styles.footerText}>
-          Crafted with <Text style={{ color: '#ff6b81' }}>♥</Text> by Refresh
+          Crafted with care for modern families
         </Text>
       </View>
     </SafeAreaView>
@@ -643,39 +646,43 @@ const styles = StyleSheet.create({
     alignItems: 'center', 
     position: 'relative' 
   },
-  iconContainer: { 
+  accentIconContainer: { 
     position: 'absolute', 
     top: 28, 
     right: 28, 
-    width: 56, 
-    height: 56, 
-    borderRadius: 18, 
+    width: 48, 
+    height: 48, 
+    borderRadius: 16, 
     justifyContent: 'center', 
     alignItems: 'center', 
     shadowOffset: { width: 0, height: 6 }, 
-    shadowOpacity: 0.4, 
+    shadowOpacity: 0.35, 
     shadowRadius: 12, 
     elevation: 10, 
     transform: [{ rotate: '-12deg' }], 
     zIndex: 10 
   },
-  emojiContainer: { 
-    shadowColor: '#000', 
-    shadowOffset: { width: 0, height: 4 }, 
-    shadowOpacity: 0.15, 
-    shadowRadius: 8, 
-    elevation: 5,
-  },
-  emoji: { 
-    fontSize: wp(26),
+  heroIconContainer: {
+    width: wp(34),
+    height: wp(34),
+    borderRadius: wp(9),
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: hp(2.5),
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    elevation: 6,
   },
   logoSlideContainer: {
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: hp(2.5),
   },
   logoSlideImage: {
-    width: wp(35),
-    height: wp(35),
+    width: wp(56),
+    height: wp(56),
   },
   decorCircle: { 
     position: 'absolute', 
@@ -781,17 +788,21 @@ const styles = StyleSheet.create({
   },
   footer: { 
     position: 'absolute', 
-    bottom: 0, 
+    bottom: hp(1), 
     left: 0, 
     right: 0, 
     alignItems: 'center', 
-    paddingTop: hp(1.5),
+    paddingTop: hp(1),
     paddingBottom: hp(1),
+    zIndex: 50,
   },
   footerText: { 
-    fontSize: 11, 
-    color: 'rgba(255,255,255,0.6)', 
-    fontWeight: '500', 
-    letterSpacing: 0.5,
+    fontSize: 12, 
+    color: 'rgba(255,255,255,0.85)', 
+    fontWeight: '600', 
+    letterSpacing: 0.6,
+    textShadowColor: 'rgba(0,0,0,0.35)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
 });
