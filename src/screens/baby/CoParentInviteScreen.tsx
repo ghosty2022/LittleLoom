@@ -47,7 +47,7 @@ export default function CoParentInviteScreen({ navigation }: Props) {
 
   const handleGenerateInviteCode = useCallback(() => {
     triggerHaptic('medium');
-    navigation.navigate('InviteCodeScreen');
+    navigation.navigate('Parent2Setup');  // FIX: Route to unified setup screen
   }, [navigation, triggerHaptic]);
 
   return (

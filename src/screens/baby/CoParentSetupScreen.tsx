@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Animated,        // ← ADD THIS
+  Animated,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -128,6 +128,9 @@ export default function CoParentSetupScreen({ navigation }: Props) {
     spinnerColor,
   } = useCustomization();
 
+  const [generatedCode, setGeneratedCode] = useState('');
+  const [isGeneratingCode, setIsGeneratingCode] = useState(false);
+  const [relationship, setRelationship] = useState('Co-Parent');
   const dynamicPrimary = themeColors.primary;
   const dynamicSecondary = themeColors.secondary;
   const dynamicGradient = [dynamicPrimary, dynamicSecondary] as [string, string];
@@ -136,32 +139,53 @@ export default function CoParentSetupScreen({ navigation }: Props) {
     setAlert({ visible: true, type, title, message });
   }, []);
 
-  const handleAddParent = useCallback(async () => {
-    if (!fullName.trim() || !email.trim()) {
-      showToast('error', 'Missing Info', 'Please enter name and email');
+  // ─── Modern invite code system matching FamilySharingScreen ───
+  const handleGenerateInviteCode = useCallback(async () => {
+    if (!relationship.trim()) {
+      showToast('error', 'Missing Info', 'Please specify the relationship');
       return;
     }
+    
+    triggerHaptic('medium');
+    setIsGeneratingCode(true);
+    
+    try {
+      const { generateInviteCode } = await import('@/database/dbHelpers');
+      const result = await generateInviteCode(
+        'parent2', 
+        relationship.trim(), 
+        fullName.trim() || undefined, 
+        email.trim() || undefined, 
+        phone.trim() || undefined
+      );
+      
+      if (result.success) {
+        setGeneratedCode(result.code);
+        triggerHaptic('success');
+        showToast('success', 'Code Generated! 🎉', `Share code: ${result.code}`);
+      } else {
+        showToast('error', 'Error', result.message || 'Failed to generate code');
+      }
+    } catch (error) {
+      console.error('Generate code error:', error);
+      showToast('error', 'Error', 'Failed to generate invite code');
+    } finally {
+      setIsGeneratingCode(false);
+    }
+  }, [relationship, fullName, email, phone, triggerHaptic, showToast]);
 
+  const handleContinue = useCallback(async () => {
     triggerHaptic('medium');
     setIsLoading(true);
-
     try {
-      await inviteMember(email.trim(), 'parent2' as any, 'Co-Parent');
       await completeSetup('parent2');
-
-      showToast('success', 'Invitation Sent! 🎉', 'Your co-parent will receive an email');
-
-      setTimeout(() => navigation.replace('BabyOptional'), 1500);
+      showToast('success', 'Setup Complete!', 'Continuing to baby setup...');
+      setTimeout(() => navigation.replace('BabyOptional'), 800);
     } catch (error) {
-      showToast('error', 'Error', 'Failed to send invitation');
+      showToast('error', 'Error', 'Could not continue');
       setIsLoading(false);
     }
-  }, [fullName, email, inviteMember, completeSetup, navigation, showToast, triggerHaptic]);
-
-  const handleGenerateInviteCode = useCallback(() => {
-    triggerHaptic('medium');
-    navigation.navigate('InviteCodeScreen');
-  }, [navigation, triggerHaptic]);
+  }, [completeSetup, navigation, showToast, triggerHaptic]);
 
   const handleSkip = useCallback(() => {
     triggerHaptic('light');

@@ -204,6 +204,19 @@ export default function App(): JSX.Element | null {
 
         const navRestorePromise = (async () => {
           try {
+            // ─── FIX: Don't restore nav state if setup isn't complete
+            // This prevents jumping to Main when user still needs setup
+            const setupCompleteStr = await AsyncStorage.getItem('littleloom_setup_complete');
+            const hasParent2Str = await AsyncStorage.getItem('littleloom_parent2_completed');
+            const hasBabyStr = await AsyncStorage.getItem('littleloom_baby_completed');
+            const setupDone = setupCompleteStr === 'true' || (hasParent2Str !== null && hasBabyStr !== null);
+            
+            if (!setupDone) {
+              console.log('[App] Setup incomplete, clearing nav state');
+              await statePersistence.clearNavigationState();
+              return;
+            }
+            
             const navState = await statePersistence.getNavigationState();
             if (navState?.state) {
               const routeName = navState.routeName as string;
@@ -219,6 +232,10 @@ export default function App(): JSX.Element | null {
         })();
 
         await Promise.all([fontPromise, servicesPromise, navRestorePromise]);
+        
+        // ─── FIX: Brief delay to let auth state settle before showing UI
+        // Prevents flash of wrong screen during init
+        await new Promise(resolve => setTimeout(resolve, 400));
 
         await SplashScreen.hideAsync();
         setReady(true);

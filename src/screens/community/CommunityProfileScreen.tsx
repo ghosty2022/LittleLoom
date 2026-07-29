@@ -46,6 +46,7 @@ import { useMedia } from '../../context/MediaContext';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { UniversalSpinner } from '../../components/UniversalSpinner';
+import { CommunityColors, CommunityShadows } from '../../theme/CommunityTheme';
 
 type Props = NativeStackScreenProps<CommunityStackParamList, 'CommunityProfile'>;
 
@@ -957,6 +958,29 @@ export default function CommunityProfileScreen({ navigation }: Props) {
           </View>
         </View>
       </GlassCard>
+
+       {/* Manage Your Topics */}
+      <TouchableOpacity
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          backgroundColor: CommunityColors.background.card,
+          paddingHorizontal: 16,
+          paddingVertical: 14,
+          borderRadius: 16,
+          marginHorizontal: 20,
+          marginVertical: 8,
+          gap: 12,
+          ...CommunityShadows.sm,
+        }}
+        onPress={() => navigation.navigate('CommunityOnboarding' as never, { editing: true } as never)}
+      >
+        <Ionicons name="pricetags-outline" size={22} color={CommunityColors.primary} />
+        <Text style={{ flex: 1, fontSize: 15, fontWeight: '600', color: CommunityColors.text.primary }}>
+          Manage Your Topics
+        </Text>
+        <Ionicons name="chevron-forward" size={18} color={CommunityColors.text.tertiary} />
+      </TouchableOpacity>
 
       <GlassCard delay={700}>
         <View style={styles.sectionHeaderWithEdit}>

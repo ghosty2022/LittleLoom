@@ -248,8 +248,12 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     if (!effectiveBiometricEnabled) return;
     if (!isBiometricHardwareAvailable || !isBiometricEnrolled) return;
     if (isLockedOut) return;
-    if (hasAutoPrompted.current) return;
     if (unlockInProgress.current) return;
+
+    // ─── FIX: Reset prompt flag on focus so biometric prompts on every resume
+    const unsubscribe = navigation.addListener('focus', () => {
+      hasAutoPrompted.current = false;
+    });
 
     autoPromptTimer.current = setTimeout(() => {
       if (
@@ -262,9 +266,10 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
         hasAutoPrompted.current = true;
         handleBiometricAuthRef.current();
       }
-    }, 600);
+    }, 800); // Slightly longer for stability
 
     return () => {
+      unsubscribe();
       if (autoPromptTimer.current) {
         clearTimeout(autoPromptTimer.current);
       }
@@ -274,6 +279,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     isBiometricHardwareAvailable,
     isBiometricEnrolled,
     isLockedOut,
+    navigation,
   ]);
 
   useEffect(() => {
