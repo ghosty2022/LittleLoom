@@ -210,6 +210,38 @@ export default function Parent2SetupScreen({ navigation }: Props) {
   }, [completeSetup, showToast, triggerHaptic]);
 
   /* ─── Skip ─── */
+  const handleAddParent = useCallback(async () => {
+    if (!email.trim()) {
+      showToast('error', 'Missing Email', 'Please enter an email address');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      showToast('error', 'Invalid Email', 'Please enter a valid email address');
+      return;
+    }
+
+    triggerHaptic('medium');
+    setIsLoading(true);
+
+    try {
+      const success = await inviteMember(email.trim(), 'parent2', relationship.trim() || 'Co-Parent');
+      if (success) {
+        triggerHaptic('success');
+        showToast('success', 'Invitation Sent!', `An invitation has been sent to ${email.trim()}`);
+        setFullName('');
+        setEmail('');
+        setPhone('');
+      } else {
+        showToast('error', 'Error', 'Failed to send invitation. Please try again.');
+      }
+    } catch (error) {
+      console.error('Invite error:', error);
+      showToast('error', 'Error', 'Failed to send invitation');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [email, relationship, inviteMember, triggerHaptic, showToast]);
+
   const handleSkip = useCallback(() => {
     triggerHaptic('light');
     setConfirmModal({

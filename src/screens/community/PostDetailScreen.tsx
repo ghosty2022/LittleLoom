@@ -1,4 +1,4 @@
-import { StyleSheet,ActivityIndicator, Alert ,Button, Dimensions, Image, KeyboardAvoidingView, Modal , StatusBar,Platform, ScrollView ,Share, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { StyleSheet,ActivityIndicator, Alert, Linking, ,Button, Dimensions, Image, KeyboardAvoidingView, Linking, Modal , StatusBar,Platform, ScrollView ,Share, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import React, { useCallback, useEffect, useState } from 'react';
 
 import { BlurView } from 'expo-blur';
@@ -27,24 +27,25 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
   const routeParams = route?.params ?? {};
   const postId = routeParams?.postId;
 
-  const {
-    getPostById,
-    likePost,
-    unlikePost,
-    repostPost,
-    unrepostPost,
-    bookmarkPost,
-    addComment,
-    likeComment,
-    voteHelpful,
-    currentUser,
-    followUser,
-    unfollowUser,
-    isFollowing,
-    deletePost,
-    blockUser,
-    isUserBlocked,
-  } = useCommunity();
+const {
+  getPostById,
+  likePost,
+  unlikePost,
+  repostPost,
+  unrepostPost,
+  bookmarkPost,
+  addComment,
+  likeComment,
+  voteHelpful,
+  votePoll,
+  currentUser,
+  followUser,
+  unfollowUser,
+  isFollowing,
+  deletePost,
+  blockUser,
+  isUserBlocked,
+} = useCommunity();
 
   const { shouldReduceMotion, triggerHaptic, spinnerColor } = useCustomization();
   const sweetAlert = useSweetAlert();
@@ -190,13 +191,13 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
       <View style={styles.imageGridWrapper}>
         {images.length === 1 ? (
           <View style={styles.singleImageContainer}>
-            <Image source={{ uri: images[0] }} style={styles.singleImage} resizeMode="cover" />
+            <SensitiveImage uri={images[0]} style={styles.singleImage} resizeMode="cover" />
           </View>
         ) : (
           <View style={styles.multiImageGrid}>
             {images.slice(0, 4).map((img, idx) => (
               <View key={idx} style={styles.gridImageItem}>
-                <Image source={{ uri: img }} style={styles.gridImage} resizeMode="cover" />
+                <SensitiveImage uri={img} style={styles.gridImage} resizeMode="cover" />
                 {idx === 3 && images.length > 4 && (
                   <View style={styles.gridMoreOverlay}>
                     <Text style={styles.gridMoreText}>+{images.length - 4}</Text>
@@ -209,6 +210,88 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
       </View>
     );
   };
+
+/* ─── Clickable Links ─── */
+const LinkifyText = ({ text, style, numberOfLines }: { text: string; style?: any; numberOfLines?: number }) => {
+  if (!text) return null;
+  const parts = text.split(/(https?:\/\/[^\s]+|www\.[^\s]+)/g);
+  return (
+    <Text style={style} numberOfLines={numberOfLines}>
+      {parts.map((part, i) => {
+        if (part.match(/^(https?:\/\/|www\.)/)) {
+          const url = part.startsWith('http') ? part : `https://${part}`;
+          return (
+            <Text key={i} style={{ color: '#6366f1', textDecorationLine: 'underline' }} onPress={() => Linking.openURL(url).catch(() => {})}>
+              {part}
+            </Text>
+          );
+        }
+        return <Text key={i}>{part}</Text>;
+      })}
+    </Text>
+  );
+};
+
+/* ─── Sensitive Image Blur ─── */
+const SensitiveImage = ({ uri, style, resizeMode = 'cover' }: { uri: string; style?: any; resizeMode?: any }) => {
+  const [revealed, setRevealed] = useState(false);
+  return (
+    <TouchableOpacity activeOpacity={0.9} onPress={() => setRevealed(true)} disabled={revealed} style={style}>
+      <Image source={{ uri }} style={[style, { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }]} resizeMode={resizeMode} />
+      {!revealed && (
+        <BlurView intensity={75} style={[StyleSheet.absoluteFill, { justifyContent: 'center', alignItems: 'center', zIndex: 10 }]} tint="dark">
+          <View style={{ alignItems: 'center', padding: 20 }}>
+            <Ionicons name="shield-checkmark" size={36} color="#fff" />
+            <Text style={{ color: '#fff', fontWeight: '800', marginTop: 10, fontSize: 15 }}>Sensitive Content Hidden</Text>
+            <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 13, marginTop: 6, textAlign: 'center' }}>Tap to reveal image</Text>
+            <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 11, marginTop: 12, textAlign: 'center', maxWidth: 220 }}>LittleLoom blurs photos by default to keep our community safe. Only tap if you expect this content.</Text>
+          </View>
+        </BlurView>
+      )}
+    </TouchableOpacity>
+  );
+};
+
+/* ─── Poll Widget (for Detail view) ─── */
+const PollWidgetDetail = ({ poll, postId }: { poll: any; postId: string }) => {
+  const [localPoll, setLocalPoll] = useState(poll);
+  
+  const handleVote = async (optionId: string) => {
+    if (localPoll.hasVoted || !votePoll) return;
+    await votePoll(postId, optionId);
+    setLocalPoll((prev: any) => ({
+      ...prev,
+      hasVoted: true,
+      votedOptionId: optionId,
+      totalVotes: prev.totalVotes + 1,
+      options: prev.options.map((o: any) => o.id === optionId ? { ...o, votes: o.votes + 1 } : o)
+    }));
+  };
+
+  return (
+    <View style={{ marginVertical: 12, backgroundColor: '#f8f9ff', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: 'rgba(102,126,234,0.1)' }}>
+      <Text style={{ fontSize: 15, fontWeight: '700', color: '#1c1917', marginBottom: 12 }}>{localPoll.question}</Text>
+      {localPoll.options.map((option: any) => {
+        const pct = localPoll.totalVotes > 0 ? Math.round((option.votes / localPoll.totalVotes) * 100) : 0;
+        const isSelected = localPoll.votedOptionId === option.id;
+        return (
+          <TouchableOpacity key={option.id} onPress={() => handleVote(option.id)} disabled={localPoll.hasVoted} style={{ marginBottom: 10 }}>
+            <View style={{ height: 40, borderRadius: 12, backgroundColor: '#e0e7ff', overflow: 'hidden', justifyContent: 'center' }}>
+              {localPoll.hasVoted && (
+                <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${pct}%`, backgroundColor: isSelected ? '#6366f1' : '#c7d2fe', borderRadius: 12 }} />
+              )}
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 14, alignItems: 'center' }}>
+                <Text style={{ fontSize: 14, fontWeight: isSelected ? '700' : '600', color: localPoll.hasVoted ? (isSelected ? '#fff' : '#4338ca') : '#4338ca' }}>{option.text}</Text>
+                {localPoll.hasVoted && <Text style={{ fontSize: 13, fontWeight: '800', color: isSelected ? '#fff' : '#4338ca' }}>{pct}%</Text>}
+              </View>
+            </View>
+          </TouchableOpacity>
+        );
+      })}
+      <Text style={{ fontSize: 12, color: '#78716c', marginTop: 4 }}>{localPoll.totalVotes} vote{localPoll.totalVotes !== 1 ? 's' : ''}{!localPoll.hasVoted ? ' · Tap to vote' : ''}</Text>
+    </View>
+  );
+};
 
   const ActionButton = ({
     icon,
@@ -504,13 +587,16 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
               )}
             </View>
 
-            {/* Content */}
-            <Text style={styles.postContent}>{post.content}</Text>
+                      {/* Content with clickable links */}
+          <LinkifyText text={post.content} style={styles.postContent} />
 
-            {/* Images - MODERN GRID */}
-            {post.images && post.images.length > 0 && (
-              <ImageGrid images={post.images} />
-            )}
+          {/* Poll */}
+          {post.poll && <PollWidgetDetail poll={post.poll} postId={post.id} />}
+
+          {/* Images - MODERN GRID (now privacy-protected) */}
+          {post.images && post.images.length > 0 && (
+            <ImageGrid images={post.images} />
+          )}
 
             {/* Helpful Votes */}
             {post.helpfulVotes > 0 && (

@@ -5,6 +5,7 @@ import {
   Dimensions,
   FlatList,
   Image,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -230,6 +231,46 @@ const WeaveScoreRing = React.memo(({
     </View>
   );
 });
+
+/* ─── Clickable Links ─── */
+const LinkifyText = ({ text, style, numberOfLines }: { text: string; style?: any; numberOfLines?: number }) => {
+  if (!text) return null;
+  const parts = text.split(/(https?:\/\/[^\s]+|www\.[^\s]+)/g);
+  return (
+    <Text style={style} numberOfLines={numberOfLines}>
+      {parts.map((part, i) => {
+        if (part.match(/^(https?:\/\/|www\.)/)) {
+          const url = part.startsWith('http') ? part : `https://${part}`;
+          return (
+            <Text key={i} style={{ color: '#6366f1', textDecorationLine: 'underline' }} onPress={() => Linking.openURL(url).catch(() => {})}>
+              {part}
+            </Text>
+          );
+        }
+        return <Text key={i}>{part}</Text>;
+      })}
+    </Text>
+  );
+};
+
+/* ─── Sensitive Image Blur ─── */
+const SensitiveImage = ({ uri, style, resizeMode = 'cover', isDark }: { uri: string; style?: any; resizeMode?: any; isDark: boolean }) => {
+  const [revealed, setRevealed] = useState(false);
+  return (
+    <TouchableOpacity activeOpacity={0.9} onPress={() => setRevealed(true)} disabled={revealed} style={style}>
+      <Image source={{ uri }} style={[style, { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }]} resizeMode={resizeMode} />
+      {!revealed && (
+        <BlurView intensity={isDark ? 50 : 70} style={[StyleSheet.absoluteFill, { justifyContent: 'center', alignItems: 'center', zIndex: 10 }]} tint={isDark ? 'dark' : 'light'}>
+          <View style={{ alignItems: 'center', padding: 16 }}>
+            <Ionicons name="eye-off" size={28} color={isDark ? '#fff' : '#44403c'} />
+            <Text style={{ color: isDark ? '#fff' : '#44403c', fontWeight: '700', marginTop: 8, fontSize: 13 }}>Sensitive Content</Text>
+            <Text style={{ color: isDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.5)', fontSize: 11, marginTop: 4 }}>Tap to view</Text>
+          </View>
+        </BlurView>
+      )}
+    </TouchableOpacity>
+  );
+};
 
 // Need to wrap Circle for animated props
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
@@ -1116,9 +1157,11 @@ const PostCard = React.memo(({
             activeOpacity={0.95}
             onPress={() => onNavigate(ROUTES.POST_DETAIL, { postId: post.id })}
           >
-            <Text style={[styles.postText, { color: isDark ? DS.gray300 : DS.gray700 }]} numberOfLines={isExpanded ? undefined : 5}>
-              {post.content}
-            </Text>
+            <LinkifyText 
+              text={post.content} 
+              style={[styles.postText, { color: isDark ? DS.gray300 : DS.gray700 }]} 
+              numberOfLines={isExpanded ? undefined : 5} 
+            />
             {post.content.length > 220 && !isExpanded && (
               <TouchableOpacity onPress={() => onExpand(post.id)}>
                 <Text style={styles.readMore}>Show more</Text>
@@ -1161,7 +1204,7 @@ const PostCard = React.memo(({
                     onPress={() => onNavigate(ROUTES.POST_DETAIL, { postId: post.id })}
                     activeOpacity={0.95}
                   >
-                    <Image source={{ uri: post.images![0] }} style={styles.singleImage} resizeMode="cover" />
+                    <SensitiveImage uri={post.images![0]} style={styles.singleImage} resizeMode="cover" isDark={isDark} />
                   </TouchableOpacity>
                 )
               ) : (
@@ -1181,7 +1224,7 @@ const PostCard = React.memo(({
                         post.images!.length === 3 && i === 0 && styles.gridItemLarge,
                       ]}
                     >
-                      <Image source={{ uri: img }} style={styles.gridImage} resizeMode="cover" />
+                      <SensitiveImage uri={img} style={styles.gridImage} resizeMode="cover" isDark={isDark} />
                       {i === 3 && post.images!.length > 4 && (
                         <View style={styles.gridOverlay}>
                           <Text style={styles.gridOverlayText}>+{post.images!.length - 4}</Text>

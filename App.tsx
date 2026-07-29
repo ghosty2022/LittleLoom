@@ -103,7 +103,11 @@ const CustomSplashScreen = React.memo<CustomSplashScreenProps>(({ isDark, isTrue
       <StatusBar style={colors.statusBar} />
       <View style={styles.splashContent}>
         <View style={[styles.splashLogoRing, { borderColor: colors.ring }]}>
-          <Text style={styles.splashEmoji}>🍼</Text>
+          <Image
+            source={require('./assets/logo.png')}
+            style={styles.splashLogoImage}
+            resizeMode="contain"
+          />
         </View>
         <Text style={[styles.splashBrand, { color: colors.text }]}>
           LittleLoom
@@ -377,6 +381,10 @@ const styles = StyleSheet.create({
   },
   splashEmoji: {
     fontSize: 56,
+  },
+  splashLogoImage: {
+    width: 72,
+    height: 72,
   },
   splashBrand: {
     fontSize: 32,
