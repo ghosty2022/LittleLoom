@@ -1,8 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 
-import { useCommunity } from '../../context/CommunityContext';
-import { EmptyState } from '../../components/EmptyState';
-import {  Alert, Button, Dimensions, FlatList, RefreshControl, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useCommunity, CommunityUser } from '../../context/CommunityContext';
+import { Dimensions, FlatList, RefreshControl, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,13 +9,12 @@ import Animated, { FadeInUp } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CommunityStackParamList } from '../../types/navigation';
 
-import { useUser } from '../../context/UserContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { InlineSpinner, CommunitySpinner } from '../../components/UniversalSpinner';
 
-import { CommunityColors, CommunitySpacing, CommunityBorderRadius, CommunityShadows } from '../../theme/CommunityTheme';
+import { CommunityColors, CommunitySpacing } from '../../theme/CommunityTheme';
 
 type FollowingScreenProps = NativeStackScreenProps<CommunityStackParamList, 'Following'>;
 
@@ -53,9 +51,9 @@ const generateDemoFollowing = (count: number, baseId: string): CommunityUser[] =
     'Megan Young', 'Kevin Allen', 'Rachel King', 'Eric Wright', 'Tiffany Lopez',
     'Steven Hill', 'Melissa Green', 'Jason Adams', 'Rebecca Baker', 'Daniel Nelson',
   ];
-  
+
   const avatars = ['👩', '👨', '👧', '👦', '👵', '👴', '👱‍♀️', '👱‍♂️', '🧑', '👳‍♀️', '👳‍♂️', '👲', '👮‍♀️', '👮‍♂️', '👷‍♀️', '👷‍♂️', '💂‍♀️', '💂‍♂️', '🕵️‍♀️', '🕵️‍♂️', '👩‍⚕️', '👨‍⚕️', '👩‍🌾', '👨‍🌾', '👩‍🍳', '👨‍🍳', '👩‍🎓', '👨‍🎓', '👩‍🎤', '👨‍🎤'];
-  
+
   const bios = [
     'Sharing parenting wins & fails 😅',
     'Mom of 3, barely surviving ☕',
@@ -95,9 +93,8 @@ const generateDemoFollowing = (count: number, baseId: string): CommunityUser[] =
 export default function FollowingScreen
   ({ navigation, route }: FollowingScreenProps) {
   const { userId } = route.params;
-  const { currentUser, followUser, unfollowUser, isFollowing, blockUser, isUserBlocked, getUserById, getFollowing } = useCommunity();
-  const { profile } = useUser();
-  
+  const { currentUser, unfollowUser, blockUser, isUserBlocked, getUserById, getFollowing } = useCommunity();
+
   const {
     shouldReduceMotion,
     triggerHaptic,
@@ -119,18 +116,10 @@ export default function FollowingScreen
     setLoading(true);
     try {
       await new Promise(resolve => setTimeout(resolve, 600));
-      
+
       let demoFollowing = [LITTLELOOM_TEAM];
-      
-      let actualFollowing: string[] = [];
-      try {
-        actualFollowing = await getFollowing(userId);
-      } catch (e) {
-        console.log('Could not load persisted following:', e);
-      }
-      
-            const targetUser = getUserById(userId);
-      // Get real following count from the community context
+
+      const targetUser = getUserById(userId);
       let realFollowing: string[] = [];
       try {
         realFollowing = await getFollowing(userId);
@@ -142,23 +131,23 @@ export default function FollowingScreen
       const additionalFollowing = generateDemoFollowing(Math.min(count, 30), userId);
 
       demoFollowing = [...demoFollowing, ...additionalFollowing];
-      
+
       const seen = new Set<string>();
       const uniqueFollowing = demoFollowing.filter((user) => {
         if (seen.has(user.id)) return false;
         seen.add(user.id);
         return true;
       });
-      
+
       setFollowingList(uniqueFollowing);
       setFilteredFollowing(uniqueFollowing);
     } catch (error) {
       console.error('Error loading following:', error);
-      sweetAlert.error('Load Failed', 'Failed to load following list');
+      sweetAlert.alert('Load Failed', 'Failed to load following list', 'error');
     } finally {
       setLoading(false);
     }
-  }, [userId, currentUser, getFollowing, getUserById, sweetAlert]);
+  }, [userId, getFollowing, getUserById, sweetAlert]);
 
   useEffect(() => {
     loadFollowing();
@@ -187,18 +176,18 @@ export default function FollowingScreen
   const handleUnfollow = async (user: CommunityUser) => {
     if (user.id === 'littleloom_team') {
       triggerHaptic('error');
-      sweetAlert.error('Cannot Unfollow', 'Cannot unfollow LittleLoom Team');
+      sweetAlert.alert('Cannot Unfollow', 'Cannot unfollow LittleLoom Team', 'error');
       return;
     }
-    
+
     if (unfollowLoading[user.id]) return;
-    
+
     setUnfollowLoading(prev => ({ ...prev, [user.id]: true }));
     triggerHaptic('light');
-    
+
     try {
       await unfollowUser(user.id);
-      
+
       if (isOwnProfile) {
         setFollowingList(prev => prev.filter(f => f.id !== user.id));
         setFilteredFollowing(prev => prev.filter(f => f.id !== user.id));
@@ -210,11 +199,11 @@ export default function FollowingScreen
           f.id === user.id ? { ...f, isFollowing: false } : f
         ));
       }
-      
-      sweetAlert.success('Unfollowed', 'You unfollowed ${user.displayName}');
+
+      sweetAlert.alert('Unfollowed', `You unfollowed ${user.displayName}`, 'success');
     } catch (error) {
       console.error('Unfollow error:', error);
-      sweetAlert.error('Action Failed', 'Failed to unfollow user');
+      sweetAlert.alert('Action Failed', 'Failed to unfollow user', 'error');
     } finally {
       setUnfollowLoading(prev => ({ ...prev, [user.id]: false }));
     }
@@ -230,7 +219,7 @@ export default function FollowingScreen
 
   const handleMoreOptions = (user: CommunityUser) => {
     const blocked = isUserBlocked(user.id);
-    
+
     sweetAlert.confirm(
       user.displayName,
       user.handle,
@@ -244,7 +233,7 @@ export default function FollowingScreen
             );
           })
           .catch(() => {
-            sweetAlert.error('Action Failed', 'Failed to block user');
+            sweetAlert.alert('Action Failed', 'Failed to block user', 'error');
           });
       },
       () => {}, // Cancel
@@ -257,7 +246,7 @@ export default function FollowingScreen
     const blocked = isUserBlocked(item.id);
     const isMe = item.id === currentUser?.id;
     const isTeam = item.id === 'littleloom_team';
-    
+
     return (
       <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(index * 30)}>
         <TouchableOpacity 
@@ -279,7 +268,7 @@ export default function FollowingScreen
               <View style={styles.onlineDot} />
             )}
           </View>
-          
+
           <View style={styles.userInfo}>
             <View style={styles.nameRow}>
               <Text style={styles.displayName} numberOfLines={1}>
@@ -299,7 +288,7 @@ export default function FollowingScreen
               <Text style={styles.bio} numberOfLines={1}>{item.bio}</Text>
             )}
           </View>
-          
+
           {!isMe && (
             <View style={styles.actions}>
               <TouchableOpacity
@@ -324,7 +313,7 @@ export default function FollowingScreen
                   </Text>
                 )}
               </TouchableOpacity>
-              
+
               <TouchableOpacity 
                 style={styles.moreBtn}
                 onPress={() => handleMoreOptions(item)}
@@ -333,7 +322,7 @@ export default function FollowingScreen
               </TouchableOpacity>
             </View>
           )}
-          
+
           {isMe && (
             <View style={styles.youBadge}>
               <Text style={styles.youText}>You</Text>
@@ -357,7 +346,7 @@ export default function FollowingScreen
       {isOwnProfile && (
         <TouchableOpacity 
           style={styles.exploreBtn}
-          onPress={() => navigation.navigate('CommunityMain')}
+          onPress={() => navigation.popToTop()}
         >
           <Text style={styles.exploreText}>Explore Community</Text>
         </TouchableOpacity>
@@ -367,8 +356,8 @@ export default function FollowingScreen
 
   return (
     <LinearGradient colors={CommunityColors.background.gradient} style={[styles.container]}>
-      <StatusBar style="dark" />
-      
+      <StatusBar barStyle="dark-content" />
+
       {/* Loading Spinner */}
       <CommunitySpinner
         visible={loading && followingList.length === 0}
@@ -387,12 +376,12 @@ export default function FollowingScreen
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
           <Ionicons name="arrow-back" size={24} color={CommunityColors.text.primary} />
         </TouchableOpacity>
-        
+
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Following</Text>
           <Text style={styles.headerSubtitle}>{(currentUser?.stats?.following ?? followingList.length).toLocaleString()}</Text>
         </View>
-        
+
         <View style={styles.headerButton} />
       </BlurView>
 

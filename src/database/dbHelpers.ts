@@ -2,7 +2,7 @@
 // Migration helpers: AsyncStorage → Drizzle SQLite
 
 import { db } from './db';
-import { babies, trackerEntries, appSettings, familyMembers } from './schema';
+import { babies, trackerEntries, appSettings, familyMembers, inviteCodes } from './schema';
 import { eq, and, desc, count } from 'drizzle-orm';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
@@ -31,6 +31,9 @@ export interface InviteCode {
   usedCount: number;
   isActive: boolean;
   relationship?: string;   // e.g., "Mother", "Father", "Grandparent"
+  inviteeName?: string;    // invited person's name
+  inviteeEmail?: string;   // invited person's email
+  inviteePhone?: string;   // invited person's phone
 }
 
 const INVITE_CODE_PREFIX = '@littleloom_invite_';
@@ -530,6 +533,9 @@ export async function createInviteCode(data: {
   role: 'parent2' | 'guardian' | 'viewer';
   createdBy: string;
   relationship?: string;
+  inviteeName?: string;
+  inviteeEmail?: string;
+  inviteePhone?: string;
   maxUses?: number;
   expiresInDays?: number;
 }): Promise<{ code: string; success: boolean; message: string }> {
@@ -570,7 +576,7 @@ export async function createInviteCode(data: {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + (data.expiresInDays || 7));
 
-    const inviteData: InviteCode = {
+    await db.insert(inviteCodes).values({
       code,
       familyId: data.familyId,
       role: data.role,
@@ -578,24 +584,22 @@ export async function createInviteCode(data: {
       createdAt: now.toISOString(),
       expiresAt: expiresAt.toISOString(),
       maxUses: data.maxUses || 1,
-      usedBy: [],
       usedCount: 0,
       isActive: true,
       relationship: data.relationship,
-    };
-
-    await setAppSetting(`${INVITE_CODE_PREFIX}${code}`, JSON.stringify(inviteData));
-
-    // Update index
-    const indexStr = await getAppSetting(INVITE_CODE_INDEX_KEY);
-    const index: string[] = indexStr ? JSON.parse(indexStr) : [];
-    if (!index.includes(code)) {
-      index.push(code);
-      await setAppSetting(INVITE_CODE_INDEX_KEY, JSON.stringify(index));
-    }
+      inviteeName: data.inviteeName,
+      inviteeEmail: data.inviteeEmail,
+      inviteePhone: data.inviteePhone,
+      usedBy: [],
+    }).run();
 
     return { code, success: true, message: 'Invite code created successfully' };
   } catch (error) {
+    const msg = String(error);
+    if (msg.includes('no such table') || msg.includes('prepareSync')) {
+      console.warn('[DB] Table not ready for createInviteCode, returning error');
+      return { code: '', success: false, message: 'Database table not ready. Please restart the app.' };
+    }
     console.error('Error creating invite code:', error);
     return { code: '', success: false, message: 'Failed to create invite code' };
   }
@@ -603,10 +607,31 @@ export async function createInviteCode(data: {
 
 export async function getInviteCodeFromDb(code: string): Promise<InviteCode | null> {
   try {
-    const data = await getAppSetting(`${INVITE_CODE_PREFIX}${code}`);
-    if (!data) return null;
-    return JSON.parse(data) as InviteCode;
+    const result = db.select().from(inviteCodes).where(eq(inviteCodes.code, code)).all();
+    const row = result[0];
+    if (!row) return null;
+    return {
+      code: row.code,
+      familyId: row.familyId,
+      role: row.role as 'parent2' | 'guardian' | 'viewer',
+      createdBy: row.createdBy,
+      createdAt: row.createdAt,
+      expiresAt: row.expiresAt,
+      maxUses: row.maxUses,
+      usedBy: row.usedBy || [],
+      usedCount: row.usedCount,
+      isActive: row.isActive,
+      relationship: row.relationship || undefined,
+      inviteeName: row.inviteeName || undefined,
+      inviteeEmail: row.inviteeEmail || undefined,
+      inviteePhone: row.inviteePhone || undefined,
+    };
   } catch (error) {
+    const msg = String(error);
+    if (msg.includes('no such table') || msg.includes('prepareSync')) {
+      console.warn(`[DB] Table not ready for getInviteCodeFromDb('${code}'), returning null`);
+      return null;
+    }
     console.error('Error getting invite code:', error);
     return null;
   }
@@ -657,16 +682,26 @@ export async function markInviteCodeUsed(code: string, userId: string): Promise<
     const invite = await getInviteCodeFromDb(code);
     if (!invite) return false;
 
-    invite.usedBy.push(userId);
-    invite.usedCount = invite.usedBy.length;
+    const newUsedBy = [...invite.usedBy, userId];
+    const newUsedCount = newUsedBy.length;
+    const newIsActive = newUsedCount < invite.maxUses;
 
-    if (invite.usedCount >= invite.maxUses) {
-      invite.isActive = false;
-    }
+    await db.update(inviteCodes)
+      .set({
+        usedBy: newUsedBy,
+        usedCount: newUsedCount,
+        isActive: newIsActive,
+      })
+      .where(eq(inviteCodes.code, code))
+      .run();
 
-    await setAppSetting(`${INVITE_CODE_PREFIX}${code}`, JSON.stringify(invite));
     return true;
   } catch (error) {
+    const msg = String(error);
+    if (msg.includes('no such table') || msg.includes('prepareSync')) {
+      console.warn(`[DB] Table not ready for markInviteCodeUsed, skipping`);
+      return false;
+    }
     console.error('Error marking invite code used:', error);
     return false;
   }
@@ -674,13 +709,20 @@ export async function markInviteCodeUsed(code: string, userId: string): Promise<
 
 export async function deactivateInviteCode(code: string): Promise<boolean> {
   try {
-    const invite = await getInviteCodeFromDb(code);
-    if (!invite) return false;
+    const existing = await getInviteCodeFromDb(code);
+    if (!existing) return false;
 
-    invite.isActive = false;
-    await setAppSetting(`${INVITE_CODE_PREFIX}${code}`, JSON.stringify(invite));
+    await db.update(inviteCodes)
+      .set({ isActive: false })
+      .where(eq(inviteCodes.code, code))
+      .run();
     return true;
   } catch (error) {
+    const msg = String(error);
+    if (msg.includes('no such table') || msg.includes('prepareSync')) {
+      console.warn(`[DB] Table not ready for deactivateInviteCode, skipping`);
+      return false;
+    }
     console.error('Error deactivating invite code:', error);
     return false;
   }
@@ -688,18 +730,32 @@ export async function deactivateInviteCode(code: string): Promise<boolean> {
 
 export async function getActiveInviteCodesForFamily(familyId: string): Promise<InviteCode[]> {
   try {
-    const indexStr = await getAppSetting(INVITE_CODE_INDEX_KEY);
-    const index: string[] = indexStr ? JSON.parse(indexStr) : [];
+    const rows = db.select().from(inviteCodes)
+      .where(eq(inviteCodes.familyId, familyId))
+      .all();
 
-    const codes: InviteCode[] = [];
-    for (const code of index) {
-      const invite = await getInviteCodeFromDb(code);
-      if (invite && invite.familyId === familyId) {
-        codes.push(invite);
-      }
-    }
-    return codes;
+    return rows.map(row => ({
+      code: row.code,
+      familyId: row.familyId,
+      role: row.role as 'parent2' | 'guardian' | 'viewer',
+      createdBy: row.createdBy,
+      createdAt: row.createdAt,
+      expiresAt: row.expiresAt,
+      maxUses: row.maxUses,
+      usedBy: row.usedBy || [],
+      usedCount: row.usedCount,
+      isActive: row.isActive,
+      relationship: row.relationship || undefined,
+      inviteeName: row.inviteeName || undefined,
+      inviteeEmail: row.inviteeEmail || undefined,
+      inviteePhone: row.inviteePhone || undefined,
+    }));
   } catch (error) {
+    const msg = String(error);
+    if (msg.includes('no such table') || msg.includes('prepareSync')) {
+      console.warn(`[DB] Table not ready for getActiveInviteCodesForFamily, returning []`);
+      return [];
+    }
     console.error('Error getting active invite codes:', error);
     return [];
   }
@@ -707,32 +763,29 @@ export async function getActiveInviteCodesForFamily(familyId: string): Promise<I
 
 export async function cleanupExpiredInviteCodes(): Promise<number> {
   try {
-    const indexStr = await getAppSetting(INVITE_CODE_INDEX_KEY);
-    const index: string[] = indexStr ? JSON.parse(indexStr) : [];
-
     const now = new Date();
+    
+    const allCodes = db.select().from(inviteCodes).all();
     let cleaned = 0;
-    const remaining: string[] = [];
 
-    for (const code of index) {
-      const invite = await getInviteCodeFromDb(code);
-      if (!invite) {
+    for (const row of allCodes) {
+      const expiresAt = new Date(row.expiresAt);
+      const isExpired = now > expiresAt;
+      const isOldInactive = !row.isActive && (now.getTime() - new Date(row.createdAt).getTime() > 30 * 24 * 60 * 60 * 1000);
+      
+      if (isExpired || isOldInactive) {
+        await db.delete(inviteCodes).where(eq(inviteCodes.code, row.code)).run();
         cleaned++;
-        continue;
-      }
-
-      const expiresAt = new Date(invite.expiresAt);
-      if (now > expiresAt || !invite.isActive) {
-        await deleteAppSetting(`${INVITE_CODE_PREFIX}${code}`);
-        cleaned++;
-      } else {
-        remaining.push(code);
       }
     }
 
-    await setAppSetting(INVITE_CODE_INDEX_KEY, JSON.stringify(remaining));
     return cleaned;
   } catch (error) {
+    const msg = String(error);
+    if (msg.includes('no such table') || msg.includes('prepareSync')) {
+      console.warn('[DB] Table not ready for cleanupExpiredInviteCodes, returning 0');
+      return 0;
+    }
     console.error('Error cleaning up invite codes:', error);
     return 0;
   }

@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { EmptyState } from '../../components/EmptyState';
-import { FlatList, Image, RefreshControl, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { FlatList, RefreshControl, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInUp } from 'react-native-reanimated';
@@ -9,7 +8,6 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CommunityStackParamList } from '../../types/navigation';
 import { useCommunity, Chat } from '../../context/CommunityContext';
 import { useApp } from '../../context/AppContext';
-import { useSweetAlert } from '../../components/SweetAlert';
 import { SafeAvatar } from '../../components/SafeAvatar';
 
 
@@ -63,7 +61,6 @@ type ChatListScreenProps = NativeStackScreenProps<CommunityStackParamList, 'Chat
 export default function ChatListScreen({ navigation }: ChatListScreenProps) {
   const { chats, currentUser } = useCommunity();
   const { isDark } = useApp();
-  const sweetAlert = useSweetAlert();
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
@@ -257,7 +254,7 @@ export default function ChatListScreen({ navigation }: ChatListScreenProps) {
               {searchQuery ? 'Try a different search term' : 'Start chatting with other parents in the community!'}
             </Text>
             {!searchQuery && (
-              <TouchableOpacity style={styles.exploreBtn} onPress={() => navigation.navigate('CommunityMain')} activeOpacity={0.85}>
+              <TouchableOpacity style={styles.exploreBtn} onPress={() => navigation.popToTop()} activeOpacity={0.85}>
                 <LinearGradient colors={[LL.primary, LL.primaryDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.exploreBtnGrad}>
                   <Text style={styles.exploreText}>Explore Community</Text>
                   <Ionicons name="arrow-forward" size={14} color={LL.white} />
