@@ -8,9 +8,13 @@ import Animated, { FadeInUp, FadeInDown, SlideInRight } from 'react-native-reani
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useSecurity } from '../../context/SecurityContext';
 import { useCustomization } from '../../hooks/useCustomization';
+import { useSweetAlert } from '../../components/SweetAlert';
 import type { RootStackParamList } from '../../types/navigation';
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage frconst { resetUnlockLock, settings: securitySettings } = useSecurity();
+  const { darkMode: isDark, themeColors, triggerHaptic } = useCustomization();
+  const { toast, error: showError, success: showSuccess } = useSweetAlert();
+  const insets = useSafeAreaInsets();om '@react-native-async-storage/async-storage';
 
 type ForgotPasswordScreenProps = NativeStackScreenProps<RootStackParamList, 'ForgotPassword'>;
 
@@ -23,6 +27,7 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordScree
 
   const { resetUnlockLock, settings: securitySettings } = useSecurity();
   const { darkMode: isDark, themeColors, triggerHaptic } = useCustomization();
+  const { toast, error: showError, success: showSuccess } = useSweetAlert();
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
@@ -84,7 +89,7 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordScree
 
   return (
     <View style={[styles.container, { backgroundColor: isDark ? '#0a0a0a' : '#f8faff' }]}>
-      <StatusBar barStyle={isDark ? 'light' : 'dark'} />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
       <LinearGradient
         colors={isDark ? ['#0f172a', '#1e293b', '#334155'] : [themeColors.primary, themeColors.secondary, '#f093fb']}
@@ -215,7 +220,7 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordScree
                       activeOpacity={0.8}
                     >
                       <LinearGradient
-                        colors={hasPin && hasSecurityQuestions ? [themeColors.secondary, themeColors.accent] : ['#94a3b8', '#64748b']}
+                        colors={hasPin && hasSecurityQuestions ? [themeColors.secondary, themeColors.accent || '#43e97b'] : ['#94a3b8', '#64748b']}
                         style={styles.pinResetGradient}
                         start={{ x: 0, y: 0 }}
                         end={{ x: 1, y: 1 }}

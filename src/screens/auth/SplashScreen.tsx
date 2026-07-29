@@ -33,6 +33,7 @@ export default function SplashScreen({
   const slideAnim = useRef(new Animated.Value(50)).current;
   const rotateAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const floatAnim = useRef(new Animated.Value(0)).current;
 
   const checkOnboardingAndNavigate = useCallback(async () => {
     try {
@@ -104,6 +105,21 @@ export default function SplashScreen({
       ])
     ).start();
 
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(floatAnim, {
+          toValue: -12,
+          duration: 2200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(floatAnim, {
+          toValue: 0,
+          duration: 2200,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+
     const timer = setTimeout(() => {
       Animated.parallel([
         Animated.timing(fadeAnim, {
@@ -169,32 +185,26 @@ export default function SplashScreen({
           },
         ]}
       >
-        {/* Logo Container */}
-        <View style={styles.logoContainer}>
-          <View style={styles.logoRing}>
-            <LinearGradient
-              colors={['rgba(255,255,255,0.3)', 'rgba(255,255,255,0.1)']}
-              style={styles.logoRingGradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
+        {/* Floating Logo */}
+        <Animated.View style={{ transform: [{ translateY: floatAnim }] }}>
+          <View style={styles.logoFloatWrap}>
+            <Image
+              source={require('../../../assets/logo.png')}
+              style={styles.logoImage}
+              resizeMode="contain"
             />
           </View>
-          <Image
-            source={require('../../../assets/logo.png')}
-            style={styles.logoImage}
-            resizeMode="contain"
-          />
-        </View>
+        </Animated.View>
 
         {/* Brand Name */}
         <Text style={styles.brandName}>LittleLoom</Text>
         <Text style={styles.tagline}>Gentle Care, Happy Baby</Text>
 
-        {/* TPM Solutions Credit */}
+        {/* Refresh Credit */}
         <View style={styles.developerContainer}>
-          <View style={styles.developerLine} />
-          <Text style={styles.developerText}>by TPM Solutions</Text>
-          <View style={styles.developerLine} />
+          <Text style={styles.developerText}>
+            Crafted with <Text style={{ color: '#ff6b81' }}>♥</Text> by Refresh
+          </Text>
         </View>
       </Animated.View>
 
@@ -229,35 +239,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 10,
   },
-  logoContainer: {
-    width: wp(38),
-    height: wp(38),
-    justifyContent: 'center',
+  logoFloatWrap: {
+    width: wp(48),
+    height: wp(48),
     alignItems: 'center',
-    marginBottom: 30,
-    position: 'relative',
-  },
-  logoRing: {
-    position: 'absolute',
-    width: '100%',
-    height: '100%',
-    borderRadius: wp(19),
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.3)',
-    overflow: 'hidden',
-  },
-  logoRingGradient: {
-    width: '100%',
-    height: '100%',
-    borderRadius: wp(19),
+    justifyContent: 'center',
+    marginBottom: 24,
   },
   logoImage: {
-    width: wp(32),
-    height: wp(32),
-    zIndex: 10,
-    position: 'absolute',
-  },
-  brandName: {
+    width: wp(42),
+    height: wp(42),
+  },  brandName: {
     fontSize: wp(9),
     fontWeight: '800',
     color: '#fff',
@@ -274,22 +266,15 @@ const styles = StyleSheet.create({
     marginBottom: 40,
     letterSpacing: 1,
   },
-  developerContainer: {
-    flexDirection: 'row',
+   developerContainer: {
+    marginTop: 8,
     alignItems: 'center',
-    gap: 12,
-  },
-  developerLine: {
-    width: 30,
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.4)',
   },
   developerText: {
-    fontSize: wp(3),
-    color: 'rgba(255,255,255,0.7)',
+    fontSize: wp(3.5),
+    color: 'rgba(255,255,255,0.85)',
     fontWeight: '600',
-    letterSpacing: 2,
-    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   bottomDecor: {
     position: 'absolute',
