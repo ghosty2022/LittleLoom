@@ -240,15 +240,15 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   logoFloatWrap: {
-    width: wp(48),
-    height: wp(48),
+    width: wp(54),
+    height: wp(54),
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 24,
   },
   logoImage: {
-    width: wp(42),
-    height: wp(42),
+    width: wp(48),
+    height: wp(48),
   },  brandName: {
     fontSize: wp(9),
     fontWeight: '800',

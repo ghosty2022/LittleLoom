@@ -138,8 +138,8 @@ const SlideItem = React.memo(({
           >
             {/* Accent badge — hidden on slide 1 so the logo commands full attention */}
             {index !== 0 && (
-              <View style={[styles.accentIconContainer, { backgroundColor: currentColors[0], shadowColor: currentColors[0] }]}>
-                <Ionicons name={item.icon} size={22} color="white" />
+              <View style={[styles.accentIconContainer, { backgroundColor: currentColors[0] }]}>
+                <Ionicons name={item.icon} size={20} color="white" />
               </View>
             )}
 
@@ -152,8 +152,8 @@ const SlideItem = React.memo(({
                 />
               </View>
             ) : (
-              <View style={[styles.heroIconContainer, { backgroundColor: currentColors[0] + '18' }]}>
-                <Ionicons name={item.icon} size={wp(18)} color={currentColors[0]} />
+              <View style={[styles.heroIconContainer, { borderColor: currentColors[0] + '45' }]}>
+                <Ionicons name={item.icon} size={wp(15)} color={currentColors[0]} />
               </View>
             )}
 
@@ -516,7 +516,7 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
       {/* Footer */}
       <View style={[styles.footer, { paddingBottom: insets.bottom + hp(3) }]}>
         <Text style={styles.footerText}>
-          Crafted with care for modern families
+          Crafted with <Text style={{ color: '#ff6b81' }}>♥</Text> by Refresh
         </Text>
       </View>
     </SafeAreaView>
@@ -619,25 +619,25 @@ const styles = StyleSheet.create({
     width: '100%' 
   },
   card: { 
-    width: wp(74), 
-    height: wp(74), 
-    borderRadius: 36, 
+    width: wp(76), 
+    height: wp(76), 
+    borderRadius: wp(20), 
     overflow: 'hidden', 
     marginBottom: hp(4), 
-    backgroundColor: 'rgba(255,255,255,0.7)', 
+    backgroundColor: 'rgba(255,255,255,0.8)', 
     shadowColor: '#667eea', 
-    shadowOffset: { width: 0, height: 20 }, 
-    shadowOpacity: 0.25, 
-    shadowRadius: 40, 
-    elevation: 20, 
+    shadowOffset: { width: 0, height: 12 }, 
+    shadowOpacity: 0.12, 
+    shadowRadius: 28, 
+    elevation: 8, 
     borderWidth: 1, 
-    borderColor: 'rgba(255,255,255,0.6)' 
+    borderColor: 'rgba(255,255,255,0.45)' 
   },
   cardDark: { 
-    backgroundColor: 'rgba(20,20,20,0.6)', 
-    borderColor: 'rgba(255,255,255,0.08)', 
+    backgroundColor: 'rgba(28,28,35,0.55)', 
+    borderColor: 'rgba(255,255,255,0.06)', 
     shadowColor: '#000', 
-    shadowOpacity: 0.5 
+    shadowOpacity: 0.3 
   },
   cardGradient: { 
     width: '100%', 
@@ -650,30 +650,23 @@ const styles = StyleSheet.create({
     position: 'absolute', 
     top: 28, 
     right: 28, 
-    width: 48, 
-    height: 48, 
-    borderRadius: 16, 
+    width: 44, 
+    height: 44, 
+    borderRadius: 22, 
     justifyContent: 'center', 
     alignItems: 'center', 
-    shadowOffset: { width: 0, height: 6 }, 
-    shadowOpacity: 0.35, 
-    shadowRadius: 12, 
-    elevation: 10, 
     transform: [{ rotate: '-12deg' }], 
-    zIndex: 10 
+    zIndex: 10,
   },
   heroIconContainer: {
-    width: wp(34),
-    height: wp(34),
-    borderRadius: wp(9),
+    width: wp(30),
+    height: wp(30),
+    borderRadius: wp(15),
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: hp(2.5),
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.08,
-    shadowRadius: 20,
-    elevation: 6,
+    backgroundColor: 'transparent',
+    borderWidth: 2,
   },
   logoSlideContainer: {
     alignItems: 'center',
@@ -681,8 +674,8 @@ const styles = StyleSheet.create({
     marginBottom: hp(2.5),
   },
   logoSlideImage: {
-    width: wp(56),
-    height: wp(56),
+    width: wp(60),
+    height: wp(60),
   },
   decorCircle: { 
     position: 'absolute', 

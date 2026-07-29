@@ -206,6 +206,19 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     };
   }, []);
 
+  // ─── FIX: Mount-time guard — if already authenticated (swipe-back), redirect immediately
+  useEffect(() => {
+    if (!authLoading && isAuthenticated) {
+      const timer = setTimeout(() => {
+        if (isMounted.current) {
+          forceUnlock().catch(() => {});
+          navigation.replace('Main');
+        }
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [authLoading, isAuthenticated, navigation, forceUnlock]);
+
   // Fallback: if auth succeeds but AppNavigator doesn't navigate, force Main
   useEffect(() => {
     if (isAuthenticated && !authLoading) {
@@ -523,7 +536,17 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
   };
 
   const handleLogin = useCallback(async () => {
-    if (loginAttempted.current || isProcessing || authLoading) {
+    // FIX: Reset stale flags from previous session (swipe-back edge case)
+    loginAttempted.current = false;
+
+    if (isProcessing || authLoading) {
+      return;
+    }
+
+    // FIX: If already authenticated, just go forward
+    if (isAuthenticated) {
+      forceUnlock().catch(() => {});
+      navigation.replace('Main');
       return;
     }
 
@@ -600,7 +623,17 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
 
   // ─── JOIN FAMILY HANDLER ───
   const handleJoinFamily = useCallback(async () => {
-    if (joinAttempted.current || isProcessing || authLoading) return;
+    // FIX: Reset stale flags from previous session
+    joinAttempted.current = false;
+
+    if (isProcessing || authLoading) return;
+
+    // FIX: If already authenticated, just go forward
+    if (isAuthenticated) {
+      forceUnlock().catch(() => {});
+      navigation.replace('Main');
+      return;
+    }
 
     // ─── CRITICAL FIX: Check if email already has an account ─────────
     const { findUserByEmail } = await import('@/database/dbHelpers');
@@ -680,8 +713,18 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
   }, [inviteCode, codeValidated, joinFullName, joinEmail, joinPassword, joinConfirmPassword, signUpWithInviteCode, isProcessing, authLoading, triggerHaptic, showError, showSuccess, forceUnlock]);
 
   const handleBiometricLogin = useCallback(async () => {
-    if (loginAttempted.current || isProcessing || authLoading) {
+    // FIX: Reset stale flags from previous session (swipe-back edge case)
+    loginAttempted.current = false;
+    
+    if (isProcessing || authLoading) {
       return false;
+    }
+
+    // FIX: If already authenticated, just go forward
+    if (isAuthenticated) {
+      forceUnlock().catch(() => {});
+      navigation.replace('Main');
+      return true;
     }
 
     resetUnlockLock();
