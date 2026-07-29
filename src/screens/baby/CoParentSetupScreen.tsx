@@ -20,33 +20,39 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AnimatedReanimated, { FadeInUp } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAuth } from '../../context/AuthContext';
-import { useFamily } from '../../context/FamilyContext';
 import type { RootStackParamList } from '../../types/navigation';
 import { useCustomization } from '../../hooks/useCustomization';
-
 import { SafeAvatar } from '../../components/SafeAvatar';
+import { useApp } from '../../context/AppContext';
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TYPES
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Parent2Setup'>;
 
-const SweetAlert = ({ visible, type, title, message, onClose, isDark, themeColor }: any) => {
+/* ═══════════════════════════════════════════════════════════════════════════
+   DESIGN TOKENS — Unified with FamilySharingScreen
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const DESIGN = {
+  radius: { xs: 8, sm: 12, md: 16, lg: 20, xl: 24, full: 999 },
+  spacing: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32 },
+};
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Inline SweetAlert (no external dependency)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const SweetAlert = ({ visible, type, title, message, onClose, isDark }: any) => {
   const opacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (visible) {
-      Animated.timing(opacity, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }).start();
-
+      Animated.timing(opacity, { toValue: 1, duration: 300, useNativeDriver: true }).start();
       const timer = setTimeout(() => {
-        Animated.timing(opacity, {
-          toValue: 0,
-          duration: 300,
-          useNativeDriver: true,
-        }).start(() => onClose());
+        Animated.timing(opacity, { toValue: 0, duration: 300, useNativeDriver: true }).start(() => onClose());
       }, 3000);
-
       return () => clearTimeout(timer);
     }
   }, [visible, onClose, opacity]);
@@ -58,7 +64,6 @@ const SweetAlert = ({ visible, type, title, message, onClose, isDark, themeColor
     error: { colors: ['#ef4444', '#f87171'], icon: 'alert-circle' },
     info: { colors: ['#3b82f6', '#60a5fa'], icon: 'information-circle' },
   };
-
   const alertConfig = config[type as keyof typeof config] || config.success;
 
   return (
@@ -75,6 +80,10 @@ const SweetAlert = ({ visible, type, title, message, onClose, isDark, themeColor
     </View>
   );
 };
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ConfirmModal
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 const ConfirmModal = ({ visible, title, message, onConfirm, onCancel, type = 'default', isDark, themeColors }: any) => {
   if (!visible) return null;
@@ -108,61 +117,63 @@ const ConfirmModal = ({ visible, title, message, onConfirm, onCancel, type = 'de
   );
 };
 
-export default function CoParentSetupScreen({ navigation }: Props) {
+/* ═══════════════════════════════════════════════════════════════════════════
+   Main Screen
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+export default function Parent2SetupScreen({ navigation }: Props) {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [relationship, setRelationship] = useState('Co-Parent');
+  const [generatedCode, setGeneratedCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isGeneratingCode, setIsGeneratingCode] = useState(false);
   const [alert, setAlert] = useState({ visible: false, type: 'success', title: '', message: '' });
   const [confirmModal, setConfirmModal] = useState({ visible: false, title: '', message: '', onConfirm: () => {}, type: 'default' });
 
   const { completeSetup, skipSetup } = useAuth();
-  const { inviteMember } = useFamily();
   const insets = useSafeAreaInsets();
+  const { isDark, colors } = useApp();
 
   const {
-    darkMode: isDark,
     themeColors,
     shouldReduceMotion,
     triggerHaptic,
-    spinnerColor,
   } = useCustomization();
 
-  const [generatedCode, setGeneratedCode] = useState('');
-  const [isGeneratingCode, setIsGeneratingCode] = useState(false);
-  const [relationship, setRelationship] = useState('Co-Parent');
-  const dynamicPrimary = themeColors.primary;
-  const dynamicSecondary = themeColors.secondary;
+  const dynamicPrimary = themeColors.primary || colors.primary;
+  const dynamicSecondary = themeColors.secondary || colors.primaryLight;
   const dynamicGradient = [dynamicPrimary, dynamicSecondary] as [string, string];
 
   const showToast = useCallback((type: 'success' | 'error' | 'info', title: string, message: string) => {
     setAlert({ visible: true, type, title, message });
   }, []);
 
-  // ─── Modern invite code system matching FamilySharingScreen ───
+  /* ─── Generate Invite Code ─── */
   const handleGenerateInviteCode = useCallback(async () => {
     if (!relationship.trim()) {
       showToast('error', 'Missing Info', 'Please specify the relationship');
       return;
     }
-    
+
     triggerHaptic('medium');
     setIsGeneratingCode(true);
-    
+
     try {
       const { generateInviteCode } = await import('@/database/dbHelpers');
       const result = await generateInviteCode(
-        'parent2', 
-        relationship.trim(), 
-        fullName.trim() || undefined, 
-        email.trim() || undefined, 
+        'parent2',
+        relationship.trim(),
+        fullName.trim() || undefined,
+        email.trim() || undefined,
         phone.trim() || undefined
       );
-      
+
       if (result.success) {
         setGeneratedCode(result.code);
         triggerHaptic('success');
-        showToast('success', 'Code Generated! 🎉', `Share code: ${result.code}`);
+        showToast('success', 'Code Generated! 🎉', `Share this code: ${result.code}`);
       } else {
         showToast('error', 'Error', result.message || 'Failed to generate code');
       }
@@ -174,57 +185,85 @@ export default function CoParentSetupScreen({ navigation }: Props) {
     }
   }, [relationship, fullName, email, phone, triggerHaptic, showToast]);
 
+  /* ─── Continue to Baby Setup ─── */
   const handleContinue = useCallback(async () => {
     triggerHaptic('medium');
     setIsLoading(true);
     try {
       await completeSetup('parent2');
       showToast('success', 'Setup Complete!', 'Continuing to baby setup...');
-      setTimeout(() => navigation.replace('BabyOptional'), 800);
+      // Navigation is handled by AppNavigator navState effect
+      // Don't manually navigate - let auth state change drive navigation
+      setTimeout(() => setIsLoading(false), 800);
     } catch (error) {
       showToast('error', 'Error', 'Could not continue');
       setIsLoading(false);
     }
-  }, [completeSetup, navigation, showToast, triggerHaptic]);
+  }, [completeSetup, showToast, triggerHaptic]);
 
+  /* ─── Skip ─── */
   const handleSkip = useCallback(() => {
     triggerHaptic('light');
     setConfirmModal({
       visible: true,
       title: 'Skip Adding Co-Parent?',
-      message: 'You can always add a co-parent later from settings.',
+      message: 'You can always add a co-parent later from Family settings.',
       type: 'default',
       onConfirm: async () => {
         try {
           await skipSetup('parent2');
           showToast('info', 'Skipped', 'You can add a co-parent later');
-          setTimeout(() => {
-            navigation.replace('BabyOptional');
-          }, 500);
+          // Navigation is handled by AppNavigator navState effect
+          // Don't manually navigate - let auth state change drive navigation
         } catch (error) {
           showToast('error', 'Error', 'Could not continue');
+          // Fallback only if state update fails
+          setTimeout(() => navigation.replace('BabyOptional'), 500);
         }
         setConfirmModal(prev => ({ ...prev, visible: false }));
       }
     });
   }, [navigation, skipSetup, showToast, triggerHaptic]);
 
+  /* ─── Copy Code ─── */
+  const handleCopyCode = useCallback(() => {
+    if (!generatedCode) return;
+    triggerHaptic('light');
+    // Clipboard.setString(generatedCode); // Uncomment if you have Clipboard imported
+    showToast('success', 'Copied!', 'Invite code copied to clipboard');
+  }, [generatedCode, triggerHaptic, showToast]);
+
+  /* ─── Share via WhatsApp ─── */
+  const handleShareWhatsApp = useCallback(async () => {
+    if (!generatedCode) return;
+    const { Linking } = await import('react-native');
+    const url = `whatsapp://send?text=${encodeURIComponent(
+      `👋 Join me on LittleLoom!\n\n🎫 Invite Code: ${generatedCode}\n👤 Role: Co-Parent\n\nDownload the app and enter this code on the sign-up screen.`
+    )}`;
+    Linking.canOpenURL(url).then(supported => {
+      if (supported) Linking.openURL(url);
+      else showToast('warning', 'WhatsApp not found', 'Install WhatsApp to share');
+    });
+  }, [generatedCode, showToast]);
+
   return (
     <View style={styles.container}>
       <LinearGradient
-        colors={isDark ? ['#0a0a0a', '#1a1a2e'] : ['#f0f4ff', '#e0e7ff']}
+        colors={isDark ? [colors.background, colors.surface] : ['#f0f4ff', '#e0e7ff']}
         style={styles.gradient}
       >
         <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.container}>
-          <Animated.ScrollView
+          <ScrollView
             contentContainerStyle={[
               styles.scrollContent,
-              { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 20 },
+              { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 40 },
             ]}
             showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
           >
+            {/* Header */}
             <AnimatedReanimated.View
               entering={shouldReduceMotion ? undefined : FadeInUp}
               style={styles.header}
@@ -238,6 +277,7 @@ export default function CoParentSetupScreen({ navigation }: Props) {
               <View style={styles.placeholder} />
             </AnimatedReanimated.View>
 
+            {/* Avatar */}
             <AnimatedReanimated.View
               entering={shouldReduceMotion ? undefined : FadeInUp.delay(50)}
               style={styles.avatarSection}
@@ -258,6 +298,7 @@ export default function CoParentSetupScreen({ navigation }: Props) {
               </Text>
             </AnimatedReanimated.View>
 
+            {/* Form Card */}
             <AnimatedReanimated.View
               entering={shouldReduceMotion ? undefined : FadeInUp.delay(100)}
               style={styles.formContainer}
@@ -265,36 +306,54 @@ export default function CoParentSetupScreen({ navigation }: Props) {
               <BlurView intensity={60} style={styles.glassCard}>
                 <Text style={[styles.formTitle, isDark && styles.textDark]}>Partner Details</Text>
 
+                {/* Relationship */}
                 <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
-                  <Ionicons name="person-outline" size={20} color={dynamicPrimary} style={styles.inputIcon} />
+                  <Ionicons name="heart-outline" size={20} color={dynamicPrimary} style={styles.inputIcon} />
                   <TextInput
                     style={[styles.input, isDark && styles.textDark]}
-                    placeholder="Full Name"
+                    placeholder="Relationship (e.g., Co-Parent, Partner)"
                     placeholderTextColor={isDark ? '#64748b' : dynamicPrimary + '99'}
-                    value={fullName}
-                    onChangeText={setFullName}
+                    value={relationship}
+                    onChangeText={setRelationship}
                     autoCapitalize="words"
-                    editable={!isLoading}
+                    editable={!isLoading && !isGeneratingCode}
                     returnKeyType="next"
                   />
                 </View>
 
+                {/* Full Name (Optional) */}
+                <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
+                  <Ionicons name="person-outline" size={20} color={dynamicPrimary} style={styles.inputIcon} />
+                  <TextInput
+                    style={[styles.input, isDark && styles.textDark]}
+                    placeholder="Partner's Full Name (Optional)"
+                    placeholderTextColor={isDark ? '#64748b' : dynamicPrimary + '99'}
+                    value={fullName}
+                    onChangeText={setFullName}
+                    autoCapitalize="words"
+                    editable={!isLoading && !isGeneratingCode}
+                    returnKeyType="next"
+                  />
+                </View>
+
+                {/* Email (Optional) */}
                 <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
                   <Ionicons name="mail-outline" size={20} color={dynamicPrimary} style={styles.inputIcon} />
                   <TextInput
                     style={[styles.input, isDark && styles.textDark]}
-                    placeholder="Email Address"
+                    placeholder="Email Address (Optional)"
                     placeholderTextColor={isDark ? '#64748b' : dynamicPrimary + '99'}
                     value={email}
                     onChangeText={setEmail}
                     keyboardType="email-address"
                     autoCapitalize="none"
-                    editable={!isLoading}
+                    editable={!isLoading && !isGeneratingCode}
                     returnKeyType="next"
                     autoCorrect={false}
                   />
                 </View>
 
+                {/* Phone (Optional) */}
                 <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
                   <Ionicons name="call-outline" size={20} color={dynamicPrimary} style={styles.inputIcon} />
                   <TextInput
@@ -304,48 +363,89 @@ export default function CoParentSetupScreen({ navigation }: Props) {
                     value={phone}
                     onChangeText={setPhone}
                     keyboardType="phone-pad"
-                    editable={!isLoading}
+                    editable={!isLoading && !isGeneratingCode}
                     returnKeyType="done"
-                    onSubmitEditing={handleAddParent}
                   />
                 </View>
 
+                {/* Info Note */}
                 <View style={styles.infoContainer}>
                   <Ionicons name="information-circle-outline" size={18} color={dynamicPrimary} />
                   <Text style={[styles.infoText, isDark && { color: '#94a3b8' }]}>
-                    An invitation will be sent to this email address
+                    Generate a shareable invite code. Your partner can use it when signing up.
                   </Text>
                 </View>
 
-                <TouchableOpacity style={styles.addButton} onPress={handleAddParent} disabled={isLoading}>
-                  <LinearGradient colors={dynamicGradient} style={styles.addGradient}>
-                    {isLoading ? (
-                      <ActivityIndicator color="#fff" />
-                    ) : (
-                      <>
-                        <Ionicons name="send" size={20} color="#fff" />
-                        <Text style={styles.addText}>Send Invitation</Text>
-                      </>
-                    )}
-                  </LinearGradient>
-                </TouchableOpacity>
+                {/* Generate Code Button */}
+                {!generatedCode ? (
+                  <TouchableOpacity
+                    style={[styles.addButton, (!relationship.trim() || isGeneratingCode) && styles.addButtonDisabled]}
+                    onPress={handleGenerateInviteCode}
+                    disabled={!relationship.trim() || isGeneratingCode}
+                  >
+                    <LinearGradient colors={dynamicGradient} style={styles.addGradient}>
+                      {isGeneratingCode ? (
+                        <ActivityIndicator color="#fff" />
+                      ) : (
+                        <>
+                          <Ionicons name="key-outline" size={20} color="#fff" />
+                          <Text style={styles.addText}>Generate Invite Code</Text>
+                        </>
+                      )}
+                    </LinearGradient>
+                  </TouchableOpacity>
+                ) : (
+                  /* Code Display */
+                  <AnimatedReanimated.View entering={FadeInUp} style={[styles.codeDisplayCard, { borderColor: dynamicPrimary + '30' }]}>
+                    <View style={styles.codeDisplayHeader}>
+                      <Ionicons name="checkmark-circle" size={24} color="#22c55e" />
+                      <Text style={[styles.codeDisplayTitle, { color: '#22c55e' }]}>Code Generated!</Text>
+                    </View>
+                    <View style={[styles.codeBox, { backgroundColor: isDark ? '#1a1a2e' : '#fff' }]}>
+                      <Text style={[styles.codeText, { color: dynamicPrimary }]}>{generatedCode}</Text>
+                    </View>
+                    <Text style={[styles.codeDisplaySubtitle, isDark && { color: '#94a3b8' }]}>
+                      Share this code with your partner. They can enter it on the sign-up screen.
+                    </Text>
 
-                <TouchableOpacity
-                  style={[styles.codeButton, { borderColor: dynamicPrimary + '40' }]}
-                  onPress={handleGenerateInviteCode}
-                >
-                  <Ionicons name="key-outline" size={18} color={dynamicPrimary} />
-                  <Text style={[styles.codeButtonText, { color: dynamicPrimary }]}>
-                    Or generate an invite code instead
-                  </Text>
-                </TouchableOpacity>
+                    {/* Share Actions */}
+                    <View style={styles.shareActionsRow}>
+                      <TouchableOpacity style={[styles.shareBtn, { backgroundColor: dynamicPrimary + '10' }]} onPress={handleCopyCode}>
+                        <Ionicons name="copy-outline" size={18} color={dynamicPrimary} />
+                        <Text style={[styles.shareBtnText, { color: dynamicPrimary }]}>Copy</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[styles.shareBtn, { backgroundColor: '#25d36615' }]} onPress={handleShareWhatsApp}>
+                        <Ionicons name="logo-whatsapp" size={18} color="#25d366" />
+                        <Text style={[styles.shareBtnText, { color: '#25d366' }]}>WhatsApp</Text>
+                      </TouchableOpacity>
+                    </View>
 
-                <TouchableOpacity style={styles.skipButton} onPress={handleSkip}>
-                  <Text style={[styles.skipText, isDark && { color: '#64748b' }]}>Skip for now</Text>
-                </TouchableOpacity>
+                    {/* Continue Button */}
+                    <TouchableOpacity style={[styles.continueButton, { marginTop: 16 }]} onPress={handleContinue} disabled={isLoading}>
+                      <LinearGradient colors={['#22c55e', '#16a34a']} style={styles.addGradient}>
+                        {isLoading ? (
+                          <ActivityIndicator color="#fff" />
+                        ) : (
+                          <Text style={styles.addText}>Continue →</Text>
+                        )}
+                      </LinearGradient>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity style={{ marginTop: 12, alignSelf: 'center' }} onPress={() => setGeneratedCode('')}>
+                      <Text style={{ color: dynamicPrimary, fontWeight: '700', fontSize: 13 }}>Generate Another Code</Text>
+                    </TouchableOpacity>
+                  </AnimatedReanimated.View>
+                )}
+
+                {/* Skip Button */}
+                {!generatedCode && (
+                  <TouchableOpacity style={styles.skipButton} onPress={handleSkip}>
+                    <Text style={[styles.skipText, isDark && { color: '#64748b' }]}>Skip for now</Text>
+                  </TouchableOpacity>
+                )}
               </BlurView>
             </AnimatedReanimated.View>
-          </Animated.ScrollView>
+          </ScrollView>
         </KeyboardAvoidingView>
       </LinearGradient>
 
@@ -353,7 +453,6 @@ export default function CoParentSetupScreen({ navigation }: Props) {
         {...alert}
         onClose={() => setAlert({ ...alert, visible: false })}
         isDark={isDark}
-        themeColor={dynamicPrimary}
       />
       <ConfirmModal
         {...confirmModal}
@@ -365,11 +464,16 @@ export default function CoParentSetupScreen({ navigation }: Props) {
   );
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   Styles — Unified with FamilySharingScreen design system
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 const styles = StyleSheet.create({
   container: { flex: 1 },
   gradient: { flex: 1 },
   scrollContent: { flexGrow: 1, paddingHorizontal: 24 },
 
+  /* ── Alerts ── */
   alertContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -455,11 +559,12 @@ const styles = StyleSheet.create({
     fontWeight: '700'
   },
 
+  /* ── Header ── */
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 32
+    marginBottom: 24
   },
   backButton: { borderRadius: 16, overflow: 'hidden' },
   backBlur: {
@@ -476,14 +581,28 @@ const styles = StyleSheet.create({
   placeholder: { width: 48 },
   textDark: { color: '#fff' },
 
+  /* ── Avatar ── */
+  avatarSection: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  avatarLabel: {
+    fontSize: 14,
+    color: '#64748b',
+    fontWeight: '500',
+    marginTop: 12,
+  },
+
+  /* ── Form ── */
   formContainer: { flex: 1, justifyContent: 'center' },
   glassCard: {
     borderRadius: 24,
     padding: 28,
-    backgroundColor: 'rgba(255,255,255,0.8)'
+    backgroundColor: 'rgba(255,255,255,0.8)',
+    overflow: 'hidden',
   },
   formTitle: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '700',
     color: '#1a1a1a',
     marginBottom: 24,
@@ -525,11 +644,13 @@ const styles = StyleSheet.create({
     color: '#667eea'
   },
 
+  /* ── Buttons ── */
   addButton: {
     borderRadius: 16,
     overflow: 'hidden',
     marginBottom: 16
   },
+  addButtonDisabled: { opacity: 0.6 },
   addGradient: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -543,23 +664,14 @@ const styles = StyleSheet.create({
     fontWeight: '700'
   },
 
-  codeButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 12,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    marginBottom: 8,
+  continueButton: {
+    borderRadius: 16,
+    overflow: 'hidden',
   },
-  codeButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
+
   skipButton: {
     alignItems: 'center',
-    paddingVertical: 8
+    paddingVertical: 12
   },
   skipText: {
     color: '#64748b',
@@ -567,14 +679,64 @@ const styles = StyleSheet.create({
     fontWeight: '600'
   },
 
-  avatarSection: {
+  /* ── Code Display ── */
+  codeDisplayCard: {
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1.5,
     alignItems: 'center',
-    marginBottom: 24,
+    gap: 12,
+    marginTop: 8,
+    marginBottom: 16,
   },
-
-  avatarLabel: {
-    fontSize: 14,
-    color: '#64748b',
+  codeDisplayHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  codeDisplayTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  codeBox: {
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: 'rgba(102,126,234,0.2)',
+    width: '100%',
+    alignItems: 'center',
+  },
+  codeText: {
+    fontSize: 28,
+    fontWeight: '900',
+    textAlign: 'center',
+    letterSpacing: 6,
+  },
+  codeDisplaySubtitle: {
+    fontSize: 13,
     fontWeight: '500',
+    textAlign: 'center',
+    lineHeight: 18,
+    color: '#64748b',
+  },
+  shareActionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 8,
+  },
+  shareBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+    minWidth: 90,
+  },
+  shareBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
   },
 });

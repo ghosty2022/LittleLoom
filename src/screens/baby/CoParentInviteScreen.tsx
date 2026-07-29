@@ -10,32 +10,35 @@ import { useAuth } from '../../context/AuthContext';
 import type { RootStackParamList } from '../../types/navigation';
 import { useCustomization } from '../../hooks/useCustomization';
 import { SafeAvatar } from '../../components/SafeAvatar';
+import { useApp } from '../../context/AppContext';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CoParentInviteScreen'>;
 
 export default function CoParentInviteScreen({ navigation }: Props) {
-  const { userProfile, skipSetup } = useAuth();
+  const { userProfile, skipSetup, hasParent2 } = useAuth();
   const insets = useSafeAreaInsets();
+  const { isDark, colors } = useApp();
 
   const {
-    darkMode: isDark,
     themeColors,
     shouldReduceMotion,
     triggerHaptic,
     avatar,
   } = useCustomization();
 
-  const dynamicPrimary = themeColors.primary;
-  const dynamicSecondary = themeColors.secondary;
+  const dynamicPrimary = themeColors.primary || colors.primary;
+  const dynamicSecondary = themeColors.secondary || colors.primaryLight;
   const dynamicGradient = [dynamicPrimary, dynamicSecondary] as [string, string];
 
   const handleSkip = useCallback(async () => {
     triggerHaptic('light');
     try {
       await skipSetup('parent2');
-      navigation.replace('BabyOptional');
+      // Navigation is handled by AppNavigator navState effect
+      // Don't manually navigate - let the auth state change drive navigation
     } catch (error) {
       console.error('Error skipping Parent2:', error);
+      // Fallback only if skipSetup fails to update state
       navigation.replace('BabyOptional');
     }
   }, [navigation, skipSetup, triggerHaptic]);
@@ -53,7 +56,7 @@ export default function CoParentInviteScreen({ navigation }: Props) {
   return (
     <View style={styles.container}>
       <LinearGradient
-        colors={isDark ? ['#0a0a0a', '#1a1a2e'] : ['#f0f4ff', '#e0e7ff']}
+        colors={isDark ? [colors.background, colors.surface] : ['#f0f4ff', '#e0e7ff']}
         style={styles.gradient}
       >
         <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
