@@ -1435,7 +1435,8 @@ const GlassHeader = React.memo(({
             <Animated.View style={[styles.logoFloatContainer, logoFloatStyle]}>
               <Image source={littleLoomLogo} style={[styles.headerLogo]} resizeMode="contain" />
             </Animated.View>
-            <View style={{ justifyContent: 'center' }}>              <Text style={[styles.headerTitle, { color: isDark ? DS.white : DS.gray900 }]}>
+            <View style={{ justifyContent: 'center' }}>
+              <Text style={[styles.headerTitle, { color: isDark ? DS.white : DS.gray900 }]}>
                 LittleLoom
               </Text>
               <LinearGradient
