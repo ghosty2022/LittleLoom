@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import Animated, { Extrapolation, interpolate, Layout, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
+import Animated, { Extrapolation, interpolate, Layout, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { BackHandler, Dimensions, FlatList, Image, Platform, SafeAreaView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useCustomization } from '../../hooks/useCustomization';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -166,6 +166,7 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
   const [isCheckingSeen, setIsCheckingSeen] = useState(true);
 
   const scrollX = useSharedValue(0);
+  const logoFloat = useSharedValue(0);
   const slidesRef = useRef<FlatList<OnboardingSlide>>(null);
   const insets = useSafeAreaInsets();
   const isMounted = useRef(true);
@@ -201,6 +202,11 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
   }, [navigation]);
 
   useEffect(() => {
+    logoFloat.value = withRepeat(
+      withTiming(-10, { duration: 2200 }),
+      -1,
+      true
+    );
     return () => {
       isMounted.current = false;
       if (autoPlayTimerRef.current) clearTimeout(autoPlayTimerRef.current);
@@ -341,6 +347,10 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
     }
   }, [currentIndex, isNavigating, handleComplete]);
 
+  const logoFloatStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: logoFloat.value }],
+  }));
+
   const isLastSlide = currentIndex === ONBOARDING_DATA.length - 1;
   const currentSlide = ONBOARDING_DATA[currentIndex];
   const currentColors = currentSlide.colors;
@@ -350,12 +360,12 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
     return (
       <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
         <LinearGradient 
-          colors={['#f8faff', '#f0f4ff', '#e8eeff']} 
+          colors={isDark ? ['#0f172a', '#1e293b', '#334155'] : ['#667eea', '#764ba2', '#f093fb']} 
           style={styles.background} 
           start={{ x: 0, y: 0 }} 
           end={{ x: 1, y: 1 }} 
         />
-        <Text style={{ fontSize: 16, color: '#667eea', fontWeight: '600' }}>Loading...</Text>
+        <Text style={{ fontSize: 16, color: '#fff', fontWeight: '600' }}>Loading...</Text>
       </SafeAreaView>
     );
   }
@@ -371,15 +381,17 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
         end={{ x: 1, y: 1 }} 
       />
 
-      {/* Brand Logo Header */}
+       {/* Brand Logo Header */}
       <View style={[styles.brandHeader, { top: insets.top + hp(1.5) }]}>
-        <View style={styles.logoFloatWrapSmall}>
-          <Image
-            source={require('../../../assets/logo.png')}
-            style={styles.logoImageSmall}
-            resizeMode="contain"
-          />
-        </View>
+        <Animated.View style={logoFloatStyle}>
+          <View style={styles.logoFloatWrap}>
+            <Image
+              source={require('../../../assets/logo.png')}
+              style={styles.logoImage}
+              resizeMode="contain"
+            />
+          </View>
+        </Animated.View>
         <Text style={styles.brandTitle}>LittleLoom</Text>
       </View>
 
@@ -398,7 +410,7 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
       )}
 
       {/* Progress Bar */}
-      <View style={[styles.progressContainer, { top: insets.top + hp(2) + 80 }]}>
+      <View style={[styles.progressContainer, { top: insets.top + hp(2) + 100 }]}>
         <View style={styles.progressBar}>
           <View style={[styles.progressFill, {
             width: `${((currentIndex + 1) / ONBOARDING_DATA.length) * 100}%`,
@@ -482,7 +494,7 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
       {/* Footer */}
       <View style={[styles.footer, { paddingBottom: insets.bottom + hp(2) }]}>
         <Text style={styles.footerText}>
-          Crafted with <Text style={{ color: '#e53e3e' }}>♥</Text> by LittleLoom
+          Crafted with <Text style={{ color: '#ff6b81' }}>♥</Text> by Refresh
         </Text>
       </View>
     </SafeAreaView>
@@ -501,15 +513,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 20,
   },
-  logoFloatWrapSmall: {
-    width: wp(14),
-    height: wp(14),
+  logoFloatWrap: {
+    width: wp(22),
+    height: wp(22),
     alignItems: 'center',
     justifyContent: 'center',
   },
-  logoImageSmall: {
-    width: wp(12),
-    height: wp(12),
+  logoImage: {
+    width: wp(20),
+    height: wp(20),
   },
   brandTitle: {
     fontSize: wp(4.5),
