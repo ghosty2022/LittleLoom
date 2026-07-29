@@ -15,6 +15,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  Pressable,
   useColorScheme,
   View,
   LayoutAnimation,
@@ -1439,22 +1440,22 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
 
           {/* Center: Floating Logo + Title */}
         <View style={styles.stickyHeaderCenter}>
-          <Animated.View style={[styles.logoFloatWrap, logoFloatStyle]}>
-            <View style={[styles.logoGlowContainer, { width: Math.round(34 * fontSizeMultiplier), height: Math.round(34 * fontSizeMultiplier) }]}>
-              <Image 
-                source={littleLoomLogo} 
-                style={[
-                  styles.headerLogoImage, 
-                  { 
-                    width: Math.round(26 * fontSizeMultiplier), 
-                    height: Math.round(26 * fontSizeMultiplier),
-                    shadowColor: primaryColor,
-                  }
-                ]} 
-                resizeMode="contain" 
-              />
-              <View style={[styles.logoGlowAura, { shadowColor: primaryColor, backgroundColor: `${primaryColor}15` }]} />
-            </View>
+            <Animated.View style={[styles.logoFloatWrap, logoFloatStyle]}>
+              <View style={[styles.logoGlowContainer, { width: Math.round(48 * fontSizeMultiplier), height: Math.round(48 * fontSizeMultiplier) }]}>
+                <Image 
+                  source={littleLoomLogo} 
+                  style={[
+                    styles.headerLogoImage, 
+                    { 
+                      width: Math.round(40 * fontSizeMultiplier), 
+                      height: Math.round(40 * fontSizeMultiplier),
+                      shadowColor: primaryColor,
+                    }
+                  ]} 
+                  resizeMode="contain" 
+                />
+                <View style={[styles.logoGlowAura, { shadowColor: primaryColor, backgroundColor: `${primaryColor}10` }]} />
+              </View>
             <View style={styles.logoTextColumn}>
               <Text style={[styles.stickyHeaderTitle, { color: textColor, fontSize: titleSize }]}>LittleLoom</Text>
               <View style={[styles.stickyHeaderUnderline, { backgroundColor: primaryColor, width: Math.round(28 * fontSizeMultiplier), height: Math.max(3, Math.round(3 * fontSizeMultiplier)), borderRadius: Math.max(1, Math.round(2 * fontSizeMultiplier)), marginTop: compactSpacing ? 2 : 3 }]} />
@@ -1763,7 +1764,12 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
       return;
     }
     navigateToScreen(action.screen, action.params);
-    success(`${action.label} Logged`, 'Activity recorded successfully!');
+    
+    // Only toast "Logged" for actual tracker entries, not navigation-only features
+    const loggingActions = ['feed', 'sleep', 'diaper', 'potty', 'medication', 'temperature', 'note'];
+    if (loggingActions.includes(action.id)) {
+      success(`${action.label} Logged`, 'Activity recorded successfully!');
+    }
   }, [currentBaby, navigateToScreen, success, error, triggerHaptic]);
 
   const handleFeaturePress = useCallback((item: FeatureCard) => {
@@ -2258,6 +2264,79 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
 
         <View style={{ height: settings.compactSpacing ? 80 : 120 }} />
       </Animated.ScrollView>
+
+      {/* Notification Chooser Modal — CommunityScreen-style */}
+      <Modal
+        visible={showNotificationChooser}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowNotificationChooser(false)}
+      >
+        <Pressable
+          style={styles.notificationModalOverlay}
+          onPress={() => setShowNotificationChooser(false)}
+        >
+          <View style={[styles.notificationModalContent, { backgroundColor: isDark ? 'rgba(26,26,42,0.98)' : 'rgba(255,255,255,0.98)' }]}>
+            <View style={styles.notificationModalHeader}>
+              <Text style={[styles.notificationModalTitle, { color: theme.text }]}>Notifications</Text>
+              <TouchableOpacity onPress={() => setShowNotificationChooser(false)}>
+                <Ionicons name="close" size={24} color={theme.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={styles.notificationModalOption}
+              onPress={() => {
+                setShowNotificationChooser(false);
+                navigateToScreen('TrackerReminders');
+              }}
+            >
+              <View style={[styles.notificationModalIconWrap, { backgroundColor: `${theme.primary}15` }]}>
+                <Ionicons name="notifications" size={20} color={theme.primary} />
+              </View>
+              <View style={styles.notificationModalTextWrap}>
+                <Text style={[styles.notificationModalOptionTitle, { color: theme.text }]}>App Reminders</Text>
+                <Text style={[styles.notificationModalOptionDesc, { color: theme.textMuted }]}>Your tracking reminders & alerts</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={theme.textMuted} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.notificationModalOption}
+              onPress={() => {
+                setShowNotificationChooser(false);
+                navigateToScreen('Connect');
+              }}
+            >
+              <View style={[styles.notificationModalIconWrap, { backgroundColor: `${theme.secondary}15` }]}>
+                <Ionicons name="people" size={20} color={theme.secondary} />
+              </View>
+              <View style={styles.notificationModalTextWrap}>
+                <Text style={[styles.notificationModalOptionTitle, { color: theme.text }]}>Community</Text>
+                <Text style={[styles.notificationModalOptionDesc, { color: theme.textMuted }]}>Loom mentions, replies & follows</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={theme.textMuted} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.notificationModalOption}
+              onPress={() => {
+                setShowNotificationChooser(false);
+                toast('Cleared', 'All notification badges reset', 'success');
+              }}
+            >
+              <View style={[styles.notificationModalIconWrap, { backgroundColor: `${theme.accent}15` }]}>
+                <Ionicons name="checkmark-done" size={20} color={theme.accent} />
+              </View>
+              <View style={styles.notificationModalTextWrap}>
+                <Text style={[styles.notificationModalOptionTitle, { color: theme.text }]}>Mark All as Read</Text>
+                <Text style={[styles.notificationModalOptionDesc, { color: theme.textMuted }]}>Clear all notification badges</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={theme.textMuted} />
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -2298,24 +2377,27 @@ const styles = StyleSheet.create({
     position: 'relative',
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: 'transparent',
   },
   headerLogoImage: {
     zIndex: 2,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.22,
-    shadowRadius: 8,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 8,
+    backgroundColor: 'transparent',
   },
   logoGlowAura: {
     position: 'absolute',
-    width: '150%',
-    height: '150%',
+    width: '160%',
+    height: '160%',
     borderRadius: 999,
     zIndex: 1,
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
     elevation: 0,
+    backgroundColor: 'transparent',
   },
   logoTextColumn: {
     alignItems: 'flex-start',
@@ -2563,4 +2645,62 @@ const styles = StyleSheet.create({
   sectionHeaderSubtitle: { fontSize: 11, fontWeight: '500', marginTop: 1 },
   sectionHeaderAction: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   sectionHeaderActionText: { fontSize: 12, fontWeight: '700' },
+
+  /* ── Notification Modal ── */
+  notificationModalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  notificationModalContent: {
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: 24,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.2,
+    shadowRadius: 24,
+    elevation: 12,
+  },
+  notificationModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  notificationModalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+  },
+  notificationModalOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
+  },
+  notificationModalIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  notificationModalTextWrap: {
+    flex: 1,
+  },
+  notificationModalOptionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  notificationModalOptionDesc: {
+    fontSize: 13,
+    fontWeight: '500',
+    marginTop: 2,
+  },
 });
