@@ -135,6 +135,12 @@ export default function Parent2SetupScreen({ navigation }: Props) {
   const { completeSetup, skipSetup } = useAuth();
   const insets = useSafeAreaInsets();
   const { isDark, colors } = useApp();
+  const isMountedRef = useRef(true);
+  
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => { isMountedRef.current = false; };
+  }, []);
 
   const {
     themeColors,
@@ -192,9 +198,11 @@ export default function Parent2SetupScreen({ navigation }: Props) {
     try {
       await completeSetup('parent2');
       showToast('success', 'Setup Complete!', 'Continuing to baby setup...');
-      // Navigation is handled by AppNavigator navState effect
-      // Don't manually navigate - let auth state change drive navigation
-      setTimeout(() => setIsLoading(false), 800);
+      // AuthContext state update → AppNavigator navState recomputes → auto-navigates
+      // DO NOT manually navigate — causes flash/disappear bug
+      setTimeout(() => {
+        if (isMountedRef.current) setIsLoading(false);
+      }, 800);
     } catch (error) {
       showToast('error', 'Error', 'Could not continue');
       setIsLoading(false);
@@ -213,17 +221,15 @@ export default function Parent2SetupScreen({ navigation }: Props) {
         try {
           await skipSetup('parent2');
           showToast('info', 'Skipped', 'You can add a co-parent later');
-          // Navigation is handled by AppNavigator navState effect
-          // Don't manually navigate - let auth state change drive navigation
+          // AuthContext state update → AppNavigator navState recomputes → auto-navigates
+          // DO NOT call navigation.replace() — causes flash/disappear bug
         } catch (error) {
           showToast('error', 'Error', 'Could not continue');
-          // Fallback only if state update fails
-          setTimeout(() => navigation.replace('BabyOptional'), 500);
         }
         setConfirmModal(prev => ({ ...prev, visible: false }));
       }
     });
-  }, [navigation, skipSetup, showToast, triggerHaptic]);
+  }, [skipSetup, showToast, triggerHaptic]);
 
   /* ─── Copy Code ─── */
   const handleCopyCode = useCallback(() => {

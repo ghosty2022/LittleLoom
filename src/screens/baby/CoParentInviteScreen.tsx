@@ -34,14 +34,15 @@ export default function CoParentInviteScreen({ navigation }: Props) {
     triggerHaptic('light');
     try {
       await skipSetup('parent2');
-      // Navigation is handled by AppNavigator navState effect
-      // Don't manually navigate - let the auth state change drive navigation
+      // AuthContext state update triggers AppNavigator navState effect
+      // which automatically navigates to BabyOptional or Main
+      // DO NOT call navigation.replace() here — causes race conditions
     } catch (error) {
       console.error('Error skipping Parent2:', error);
-      // Fallback only if skipSetup fails to update state
-      navigation.replace('BabyOptional');
+      // Only fallback if skipSetup completely failed
+      // But even then, let user retry rather than force navigate
     }
-  }, [navigation, skipSetup, triggerHaptic]);
+  }, [skipSetup, triggerHaptic]);
 
   const handleAddParent = useCallback(() => {
     triggerHaptic('medium');

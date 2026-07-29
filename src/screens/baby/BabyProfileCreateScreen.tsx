@@ -466,13 +466,14 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
 
         console.log('✅ Baby profile verified in database:', persisted.id);
         
-        if (isMounted.current) {
-          navigation.replace('Main');
-        }
+        // AuthContext.completeSetup('baby') was already called above
+        // This updates AuthContext state → AppNavigator navState → MAIN
+        // DO NOT call navigation.replace() — causes flash/disappear bug
+        // Screen will unmount automatically when nav state changes
       } catch (navError) {
-        console.error('Navigation error:', navError);
+        console.error('Post-create error:', navError);
         if (isMounted.current) {
-          showError('Could not navigate to main screen');
+          showError('Could not finalize setup');
           setIsLoading(false);
         }
       }

@@ -12,7 +12,7 @@ import type { RootStackParamList } from '../../types/navigation';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { SafeBabyAvatar } from '../../components/SafeAvatar';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+// REMOVED: AsyncStorage import — no longer needed, AuthContext handles all persistence
 
 const { width } = Dimensions.get('window');
 const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpacity);
@@ -80,20 +80,20 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
     setIsProcessing(true);
     try {
       await skipSetup('baby');
-      // ─── FIX: Mark onboarding complete since both setup steps are now addressed
-      await AsyncStorage.setItem('@littleloom_onboarding_complete_v3', 'true');
-      await AsyncStorage.setItem('littleloom_setup_complete', 'true');
+      // AuthContext.skipSetup already sets:
+      // - littleloom_has_baby = 'skipped'
+      // - littleloom_baby_completed = 'skipped'
+      // - littleloom_setup_complete = 'true' (if parent2 also done)
+      // AND updates AuthContext state which triggers AppNavigator navState
+      // DO NOT manually set AsyncStorage or call navigation.replace() here
       showInfo('Skipped', 'You can add a baby later from settings');
-      setTimeout(() => {
-        if (isMountedRef.current) {
-          navigation.replace('Main');
-        }
-      }, 1000);
+      // Let AppNavigator handle navigation based on auth state
+      // Screen will unmount automatically when nav state changes to MAIN
     } catch (error) {
       showError('Error', 'Could not skip baby setup');
       setIsProcessing(false);
     }
-  }, [skipSetup, navigation, showError, showInfo, triggerHaptic]);
+  }, [skipSetup, showError, showInfo, triggerHaptic]);
 
   const handleCreateBaby = useCallback(() => {
     triggerHaptic('medium');
@@ -107,16 +107,13 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
       await switchBaby(babyId);
       await completeSetup('baby');
       showSuccess('Welcome Back!', 'Baby profile selected');
-      setTimeout(() => {
-        if (isMountedRef.current) {
-          navigation.replace('Main');
-        }
-      }, 500);
+      // AuthContext.completeSetup updates state → AppNavigator navState → MAIN
+      // DO NOT call navigation.replace() — causes flash/disappear bug
     } catch (error) {
       showError('Error', 'Could not switch baby');
       setIsProcessing(false);
     }
-  }, [switchBaby, completeSetup, navigation, showError, showSuccess, triggerHaptic]);
+  }, [switchBaby, completeSetup, showError, showSuccess, triggerHaptic]);
 
   const handleRetry = useCallback(async () => {
     setLoadError(null);
