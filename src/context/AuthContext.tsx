@@ -1414,21 +1414,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       // Re-read both keys fresh to determine if setup is truly complete
-      const [hasP2, hasB] = await Promise.all([
+      const [hasP2, hasB, setupCompleteStr] = await Promise.all([
         AsyncStorage.getItem(ASYNC_KEYS.PARENT2_COMPLETED),
         AsyncStorage.getItem(ASYNC_KEYS.BABY_COMPLETED),
+        AsyncStorage.getItem(ASYNC_KEYS.SETUP_COMPLETE),
       ]);
 
       const p2Done = hasP2 !== null;
       const bDone = hasB !== null;
       const setupDone = p2Done && bDone;
 
-      if (setupDone) {
+      if (setupDone && setupCompleteStr !== 'true') {
         await AsyncStorage.setItem(ASYNC_KEYS.SETUP_COMPLETE, 'true');
-        if (isMounted.current) setState(prev => ({ ...prev, setupComplete: true }));
-        if (setupCompleteCallbackRef.current) {
-          try { await setupCompleteCallbackRef.current(); } catch (error) {}
-        }
+      }
+
+      if (isMounted.current) {
+        setState(prev => ({
+          ...prev,
+          setupComplete: setupDone,
+          // Also mark onboarding complete since setup is done
+          onboardingComplete: setupDone ? true : prev.onboardingComplete,
+        }));
+      }
+
+      if (setupDone && setupCompleteCallbackRef.current) {
+        try { await setupCompleteCallbackRef.current(); } catch (error) {}
       }
 
       return true;
@@ -1455,23 +1465,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       
       // After skipping, check if the OTHER step is also done
-      const [hasP2, hasB] = await Promise.all([
+      const [hasP2, hasB, setupCompleteStr] = await Promise.all([
         AsyncStorage.getItem(ASYNC_KEYS.PARENT2_COMPLETED),
         AsyncStorage.getItem(ASYNC_KEYS.BABY_COMPLETED),
+        AsyncStorage.getItem(ASYNC_KEYS.SETUP_COMPLETE),
       ]);
       
       const p2Done = hasP2 !== null;
       const bDone = hasB !== null;
+      const bothDone = p2Done && bDone;
       
-      if (p2Done && bDone) {
+      if (bothDone && setupCompleteStr !== 'true') {
         await AsyncStorage.setItem(ASYNC_KEYS.SETUP_COMPLETE, 'true');
-        if (isMounted.current) setState(prev => ({ ...prev, setupComplete: true }));
       }
       
-      if (setupCompleteCallbackRef.current) {
+      if (isMounted.current) {
+        setState(prev => ({
+          ...prev,
+          setupComplete: bothDone,
+          onboardingComplete: bothDone ? true : prev.onboardingComplete,
+        }));
+      }
+      
+      if (bothDone && setupCompleteCallbackRef.current) {
         try { await setupCompleteCallbackRef.current(); } catch (error) {}
       }
-    } catch (error) {}
+    } catch (error) { console.error('skipSetup error:', error); }
   }, []);
 
   const wasSetupCompleted = useCallback(async () => {

@@ -208,9 +208,16 @@ function getNavState(
   if (isAuth) {
     if (isLocked && securityOn && setupDone) return 'SECURITY_LOCK';
     if (!setupDone) {
-      if (hasP2 !== true && hasP2 !== 'skipped') return 'SETUP_PARENT2';
-      const babyDone = hasBaby === true || hasBaby === 'skipped' || babyCount > 0;
-      if (!babyDone) return 'SETUP_BABY';
+      // Check parent2 setup first - must be completed OR skipped
+      const p2Addressed = hasP2 === true || hasP2 === 'skipped';
+      if (!p2Addressed) return 'SETUP_PARENT2';
+      
+      // Then check baby setup - must be completed OR skipped OR have babies
+      const babyAddressed = hasBaby === true || hasBaby === 'skipped' || babyCount > 0;
+      if (!babyAddressed) return 'SETUP_BABY';
+      
+      // Both steps addressed but setupComplete flag might not be set yet
+      // Force it to main - the setup is effectively done
       return 'MAIN';
     }
     return 'MAIN';
