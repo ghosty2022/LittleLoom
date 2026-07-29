@@ -11,7 +11,7 @@ import type { RootStackParamList } from '../../types/navigation';
 import { useCustomization } from '../../hooks/useCustomization';
 import { SafeAvatar } from '../../components/SafeAvatar';
 
-type Props = NativeStackScreenProps<RootStackParamList, 'Parent2Optional'>;
+type Props = NativeStackScreenProps<RootStackParamList, 'CoParentInviteScreen'>;
 
 export default function CoParentInviteScreen({ navigation }: Props) {
   const { userProfile, skipSetup } = useAuth();

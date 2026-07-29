@@ -108,7 +108,7 @@ export type RootStackParamList = {
   Login: undefined;
   SignUp: undefined;
   ForgotPassword: undefined;
-  Parent2Optional: undefined;
+  CoParentInviteScreen: undefined;
   Parent2Setup: undefined;
   BabyOptional: undefined;
   CreateBabyProfile: { fromSetup?: boolean } | undefined;
@@ -208,7 +208,7 @@ export type RootStackParamList = {
 
 export type CommunityStackParamList = {
   CommunitySplash: undefined;
-  CommunityOnboarding: { onComplete?: () => void } | undefined;
+  CommunityOnboarding: { onComplete?: () => void; editing?: boolean } | undefined;
   CommunityMain: undefined;
   Topic: { topicId: string };
   CreatePost: { topicId?: string };

@@ -525,7 +525,7 @@ export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreen
   }, [navigation]);
 
   const handleNavigateParent2 = useCallback(() => {
-    navigation.navigate('Parent2Optional');
+    navigation.navigate('CoParentInviteScreen');
   }, [navigation]);
 
   const handleNavigateAddGuardian = useCallback(() => {

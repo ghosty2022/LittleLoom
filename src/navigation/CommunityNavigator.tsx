@@ -39,8 +39,8 @@ const Stack = createNativeStackNavigator<CommunityStackParamList>();
 
 const COUNTRY_CACHE_KEY = '@littleloom_country_detected_v2';
 const COUNTRY_CACHE_TTL = 7 * 24 * 60 * 60 * 1000;
-const COMMUNITY_ONBOARDING_KEY = '@littleloom_community_onboarding_done';
-const COMMUNITY_TOPICS_KEY = '@littleloom_community_topics_selected';
+const COMMUNITY_ONBOARDING_KEY = '@littleloom_community_onboarding_v3';
+const COMMUNITY_TOPICS_KEY = '@community_selected_topics_v2';
 
 const COUNTRY_MAP: Record<string, string> = {
   US: 'United States', GB: 'United Kingdom', CA: 'Canada', AU: 'Australia',
@@ -312,23 +312,15 @@ const CommunityNavigator = React.memo(() => {
     initDone.current = true;
 
     const initialize = async () => {
-      const [completed, selectedTopics, onboardingDone, topicsStored] = await Promise.all([
-        checkOnboardingStatus(),
-        getSelectedTopics(),
-        AsyncStorage.getItem(COMMUNITY_ONBOARDING_KEY),
-        AsyncStorage.getItem(COMMUNITY_TOPICS_KEY),
-      ]);
+      const onboardingStatus = await checkOnboardingStatus();
 
       if (!mounted) return;
 
-      const hasTopics = selectedTopics.length > 0 || (topicsStored ? JSON.parse(topicsStored).length > 0 : false);
-      const isOnboardingDone = completed || onboardingDone === 'true';
-
       if (__DEV__) {
-        console.log('[CommunityNavigator] Init - onboardingDone:', isOnboardingDone, 'hasTopics:', hasTopics);
+        console.log('[CommunityNavigator] Init - completed:', onboardingStatus.completed, 'hasTopics:', onboardingStatus.hasTopics);
       }
 
-      if (!isOnboardingDone || !hasTopics) {
+      if (!onboardingStatus.completed) {
         setPhase('onboarding');
       } else if (shouldShowSplash) {
         setPhase('splash');
@@ -416,9 +408,14 @@ const CommunityNavigator = React.memo(() => {
         <Stack.Screen name="ChatList" component={ChatListScreen} />
         <Stack.Screen name="Chat" component={ChatScreen} />
         <Stack.Screen name="Notifications" component={NotificationsScreen} />
-        <Stack.Screen
+         <Stack.Screen
           name="CommunityProfile"
           component={CommunityProfileScreen}
+          options={{ animation: 'slide_from_bottom', gestureEnabled: false }}
+        />
+        <Stack.Screen
+          name="CommunityOnboarding"
+          component={CommunityOnboardingScreen}
           options={{ animation: 'slide_from_bottom', gestureEnabled: false }}
         />
         <Stack.Screen name="TopicMembers" component={TopicMembersScreen} />

@@ -98,7 +98,7 @@ const MAIN_FLOW_SCREENS = new Set([
 ]);
 
 const AUTH_FLOW_SCREENS = new Set(['Onboarding', 'Login', 'SignUp', 'ForgotPassword']);
-const SETUP_FLOW_SCREENS = new Set(['Parent2Optional', 'Parent2Setup', 'BabyOptional', 'CreateBabyProfile', 'AddParent']);
+const SETUP_FLOW_SCREENS = new Set(['CoParentInviteScreen', 'Parent2Setup', 'BabyOptional', 'CreateBabyProfile', 'AddParent']);
 
 /* ═══════════════════════════════════════════════════════════════════════════
    HEADER COMPONENTS
@@ -454,7 +454,7 @@ function NavigationContent({
       LOADING: 'Login',
       ONBOARDING: 'Onboarding',
       LOGIN: 'Login',
-      SETUP_PARENT2: 'Parent2Optional',
+      SETUP_PARENT2: 'CoParentInviteScreen',
       SETUP_BABY: 'BabyOptional',
       SECURITY_LOCK: 'SecurityLock',
       MAIN: 'Main',
@@ -549,7 +549,7 @@ function NavigationContent({
 
         {/* SETUP FLOW */}
         <Stack.Group screenOptions={{ animation: 'slide_from_right' }}>
-          <Stack.Screen name="Parent2Optional" component={CoParentInviteScreen} options={{ gestureEnabled: false }} />
+          <Stack.Screen name="CoParentInviteScreen" component={CoParentInviteScreen} options={{ gestureEnabled: false }} />
           <Stack.Screen name="Parent2Setup" component={CoParentSetupScreen} options={{ gestureEnabled: false }} />
           <Stack.Screen name="BabyOptional" component={BabyOnboardingScreen} options={{ gestureEnabled: false }} />
           <Stack.Screen name="CreateBabyProfile" component={BabyProfileCreateScreen} options={{ gestureEnabled: false }} />

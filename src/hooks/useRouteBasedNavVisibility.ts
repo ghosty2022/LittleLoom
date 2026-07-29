@@ -35,7 +35,7 @@ const ALWAYS_HIDDEN_ROUTES = new Set([
   // Auth
   'Onboarding', 'Login', 'SignUp', 'ForgotPassword',
   // Setup
-  'Parent2Optional', 'Parent2Setup', 'BabyOptional', 'CreateBabyProfile', 'AddParent',
+  'CoParentInviteScreen', 'Parent2Setup', 'BabyOptional', 'CreateBabyProfile', 'AddParent',
   // Security
   'SecurityLock', 'BiometricSetup', 'SecurityCenter',
   // Community sub-screens

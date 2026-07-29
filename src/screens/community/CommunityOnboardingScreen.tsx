@@ -61,6 +61,7 @@ const FALLBACK_TOPICS = [
 ];
 
 export default function CommunityOnboardingScreen({ navigation, route, onComplete }: CommunityOnboardingScreenProps) {
+  const isEditing = route?.params?.editing === true;
   const sweetAlert = useSweetAlert();
   useRouteBasedNavVisibility();
   const insets = useSafeAreaInsets();
@@ -222,6 +223,11 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
         triggerHaptic('success');
       }
       
+      if (isEditing) {
+        navigation?.goBack?.();
+        return;
+      }
+      
       if (onComplete) {
         onComplete();
       }
@@ -236,8 +242,8 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
   };
 
   const handleSkip = async () => {
-    sweetAlert.confirm(
-      'Skip Topic Selection?',
+    if (isEditing) return;
+    sweetAlert.confirm(      'Skip Topic Selection?',
       'Selecting topics helps us show you relevant content. You can always change this later in your profile.',
       async () => {
         try {
@@ -295,12 +301,11 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
     );
   }
 
-  // If user previously skipped onboarding, auto-complete
-  if (wasSkipped && onComplete) {
+  // If user previously skipped onboarding, auto-complete (only during initial onboarding)
+  if (!isEditing && wasSkipped && onComplete) {
     onComplete();
     return null;
   }
-
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
@@ -316,9 +321,11 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
       >
         <Animated.View entering={FadeIn} style={styles.header}>
           <Text style={styles.emoji}>👋</Text>
-          <Text style={styles.title}>Welcome to Community</Text>
+          <Text style={styles.title}>{isEditing ? 'Your Topics' : 'Welcome to Community'}</Text>
           <Text style={styles.subtitle}>
-            Pick up to 5 topics you're interested in to personalize your feed
+            {isEditing 
+              ? 'Update the topics you want to see in your feed. Pick up to 5.'
+              : 'Pick up to 5 topics you\'re interested in to personalize your feed'}
           </Text>
 
           <View style={styles.counterContainer}>
@@ -407,9 +414,11 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
         isDark && styles.bottomBarDark,
         { paddingBottom: Math.max(insets.bottom, bottomBarHeight) + 10 + tabBarHeight }
       ]}>
-        <TouchableOpacity onPress={handleSkip} style={styles.skipButton}>
-          <Text style={styles.skipText}>Skip for now</Text>
-        </TouchableOpacity>
+        {!isEditing && (
+          <TouchableOpacity onPress={handleSkip} style={styles.skipButton}>
+            <Text style={styles.skipText}>Skip for now</Text>
+          </TouchableOpacity>
+        )}
 
         <TouchableOpacity 
           style={[

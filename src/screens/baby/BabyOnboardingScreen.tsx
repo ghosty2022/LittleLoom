@@ -12,6 +12,7 @@ import type { RootStackParamList } from '../../types/navigation';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { SafeBabyAvatar } from '../../components/SafeAvatar';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width } = Dimensions.get('window');
 const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpacity);
@@ -79,6 +80,9 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
     setIsProcessing(true);
     try {
       await skipSetup('baby');
+      // ─── FIX: Mark onboarding complete since both setup steps are now addressed
+      await AsyncStorage.setItem('@littleloom_onboarding_complete_v3', 'true');
+      await AsyncStorage.setItem('littleloom_setup_complete', 'true');
       showInfo('Skipped', 'You can add a baby later from settings');
       setTimeout(() => {
         if (isMountedRef.current) {

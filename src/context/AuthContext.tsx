@@ -395,9 +395,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const bDone = babyCompleted !== null;
         const isSetupComplete = setupComplete === 'true' || (p2Done && bDone);
 
-        // ─── CRITICAL: Onboarding is "complete" if user has seen it OR has a token ──
-        // This prevents returning to onboarding for logged-in users
-        const isOnboardingDone = onboardingComplete === 'true' || hasSeenOnboarding === 'true' || !!token;
+        // ─── FIX: Onboarding is complete only if explicitly marked OR setup is fully done
+        // New users with token but no setup MUST still go through setup flow
+        const isOnboardingDone = onboardingComplete === 'true' || hasSeenOnboarding === 'true';
+        
+        // ─── FIX: Setup complete requires BOTH steps addressed (completed OR skipped)
+        const explicitSetupComplete = setupComplete === 'true';
+        const bothStepsAddressed = p2Done && bDone;
+        const shouldBeSetupComplete = explicitSetupComplete || bothStepsAddressed;
+        
+        // Only skip onboarding if setup is actually done
+        const effectiveOnboardingComplete = isOnboardingDone && shouldBeSetupComplete;
 
         if (isMounted.current) {
           setState({
@@ -405,12 +413,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             isAuthenticated: !!token,
             userToken: token,
             userProfile,
-            onboardingComplete: isOnboardingDone,
+            onboardingComplete: effectiveOnboardingComplete,
             hasSeenOnboarding: hasSeenOnboarding === 'true' || !!token,
             isBiometricAvailable: biometricAvailable,
             isBiometricEnabled: biometricEnabled === 'true',
             isBiometricLoginEnabled: biometricLoginEnabled === 'true',
-            setupComplete: isSetupComplete,
+            setupComplete: shouldBeSetupComplete,
             hasParent2,
             hasBaby,
             availableBiometricTypes: availableTypes,
@@ -612,19 +620,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return false;
       }
 
-      // ─── CRITICAL: Mark onboarding as complete on sign in ──────────────
-      await AsyncStorage.setItem(ASYNC_KEYS.ONBOARDING_COMPLETE, 'true');
+      // ─── FIX: Only mark onboarding seen, NOT complete until setup is done
       await AsyncStorage.setItem(ASYNC_KEYS.HAS_SEEN_ONBOARDING, 'true');
 
-      // Reload setup state from storage so navigator routes correctly after sign-in
+      // Check existing setup state
       const [setupCompleteStr, hasParent2Str, hasBabyStr] = await Promise.all([
         AsyncStorage.getItem(ASYNC_KEYS.SETUP_COMPLETE),
         AsyncStorage.getItem(ASYNC_KEYS.PARENT2_COMPLETED),
         AsyncStorage.getItem(ASYNC_KEYS.BABY_COMPLETED),
       ]);
-      const isSetupComplete = setupCompleteStr === 'true' || (hasParent2Str !== null && hasBabyStr !== null);
+      
       const p2Done = hasParent2Str === 'true' ? true : hasParent2Str === 'skipped' ? 'skipped' : false;
       const babyDone = hasBabyStr === 'true' ? true : hasBabyStr === 'skipped' ? 'skipped' : false;
+      const bothStepsAddressed = hasParent2Str !== null && hasBabyStr !== null;
+      const isSetupComplete = setupCompleteStr === 'true' || bothStepsAddressed;
+      
+      // Only mark onboarding complete if setup is actually done
+      if (isSetupComplete) {
+        await AsyncStorage.setItem(ASYNC_KEYS.ONBOARDING_COMPLETE, 'true');
+      }
 
       if (isMounted.current) {
         setState(prev => ({
@@ -632,7 +646,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           isAuthenticated: true,
           userToken: token,
           userProfile,
-          onboardingComplete: true,
+          onboardingComplete: isSetupComplete,  // FIX: false until setup done
           hasSeenOnboarding: true,
           setupComplete: isSetupComplete,
           hasParent2: p2Done,
@@ -748,13 +762,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await registerUser(registryEntry);
       }
 
+      // ─── FIX: Don't auto-complete onboarding for new social users
       await Promise.all([
         secureStorage.setItem(SECURE_KEYS.AUTH_TOKEN, token),
         secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(userProfile)),
         secureStorage.setItem(SECURE_KEYS.SOCIAL_PROVIDER, socialUser.provider),
-        AsyncStorage.setItem(ASYNC_KEYS.ONBOARDING_COMPLETE, 'true'),
         AsyncStorage.setItem(ASYNC_KEYS.HAS_SEEN_ONBOARDING, 'true'),
       ]);
+
+      // Check if setup was previously completed
+      const [setupCompleteStr, hasParent2Str, hasBabyStr] = await Promise.all([
+        AsyncStorage.getItem(ASYNC_KEYS.SETUP_COMPLETE),
+        AsyncStorage.getItem(ASYNC_KEYS.PARENT2_COMPLETED),
+        AsyncStorage.getItem(ASYNC_KEYS.BABY_COMPLETED),
+      ]);
+      const isSetupComplete = setupCompleteStr === 'true' || (hasParent2Str !== null && hasBabyStr !== null);
+      const p2Done = hasParent2Str === 'true' ? true : hasParent2Str === 'skipped' ? 'skipped' : false;
+      const babyDone = hasBabyStr === 'true' ? true : hasBabyStr === 'skipped' ? 'skipped' : false;
+      
+      if (isSetupComplete) {
+        await AsyncStorage.setItem(ASYNC_KEYS.ONBOARDING_COMPLETE, 'true');
+      }
 
       if (isMounted.current) {
         setState(prev => ({
@@ -762,8 +790,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           isAuthenticated: true,
           userToken: token,
           userProfile,
-          onboardingComplete: true,
+          onboardingComplete: isSetupComplete,
           hasSeenOnboarding: true,
+          setupComplete: isSetupComplete,
+          hasParent2: p2Done,
+          hasBaby: babyDone,
         }));
       }
 
@@ -831,21 +862,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await Promise.all([
         secureStorage.setItem(SECURE_KEYS.AUTH_TOKEN, token),
         secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(userProfile)),
-        AsyncStorage.setItem(ASYNC_KEYS.ONBOARDING_COMPLETE, 'true'),
         AsyncStorage.setItem(ASYNC_KEYS.HAS_SEEN_ONBOARDING, 'true'),
         setAppSetting(ASYNC_KEYS.COMMUNITY_USERNAME, fullName),
         setAppSetting(ASYNC_KEYS.COMMUNITY_HANDLE, handle),
         setAppSetting(ASYNC_KEYS.COMMUNITY_DISPLAY_NAME, fullName),
       ]);
 
+      // ─── FIX: New signups MUST go through Parent2 + Baby setup
       if (isMounted.current) {
         setState(prev => ({
           ...prev,
           isAuthenticated: true,
           userToken: token,
           userProfile,
-          onboardingComplete: true,
+          onboardingComplete: false,   // Force through setup
           hasSeenOnboarding: true,
+          setupComplete: false,
+          hasParent2: false,
+          hasBaby: false,
         }));
       }
 

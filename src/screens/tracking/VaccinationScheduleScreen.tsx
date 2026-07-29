@@ -47,6 +47,7 @@ import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useBaby, BabyProfile } from '../../context/BabyContext';
 import { useCustomization } from '../../hooks/useCustomization';
+import { useTheme } from '../../context/AppContext';
 import { SafeAvatar } from '../../components/SafeAvatar';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
@@ -1109,8 +1110,7 @@ const BabySwitcherModal = memo(({ visible, onClose, babies, currentBaby, onSwitc
 export default function VaccinationScheduleScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const { themeColors, triggerHaptic } = useCustomization();
-const colorScheme = useColorScheme();
-const isDark = darkMode ?? (colorScheme === 'dark');
+  const { isDark, colors: appColors } = useTheme();
   const { currentBaby, babies, switchBaby } = useBaby();
 
   const [doses, setDoses] = useState<VaccineDose[]>([]);
@@ -1333,7 +1333,14 @@ const isDark = darkMode ?? (colorScheme === 'dark');
     return (
       <View style={[styles.container, styles.center]}>
         <StatusBar barStyle="dark-content" />
-        <LinearGradient colors={['#f8fafc', '#e0e7ff', '#ddd6fe']} style={StyleSheet.absoluteFill} />
+        <LinearGradient
+  colors={
+    isDark
+      ? [appColors.background, appColors.surface, appColors.card]
+      : ['#f8fafc', '#e0e7ff', '#ddd6fe']
+  }
+  style={StyleSheet.absoluteFill}
+/>
         <Ionicons name="medical" size={64} color="#667eea" style={{ marginBottom: 16 }} />
         <Text style={styles.noDataTitle}>No Baby Profile Selected</Text>
         <Text style={styles.noDataText}>Select a baby profile to view vaccination schedule</Text>
@@ -1350,7 +1357,14 @@ const isDark = darkMode ?? (colorScheme === 'dark');
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
-      <LinearGradient colors={['#f8fafc', '#e0e7ff', '#ddd6fe']} style={StyleSheet.absoluteFill} />
+      <LinearGradient
+  colors={
+    isDark
+      ? [appColors.background, appColors.surface, appColors.card]
+      : ['#f8fafc', '#e0e7ff', '#ddd6fe']
+  }
+  style={StyleSheet.absoluteFill}
+/>
 
       {/* Sticky Header */}
       <Animated.View style={[styles.stickyHeader, { paddingTop: insets.top + 8 }, headerOpacity]}>

@@ -9,6 +9,7 @@ import {
   LogBox,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 // Removed: Animated entering wrappers cause native crashes with NavigationContainer

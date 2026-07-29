@@ -511,12 +511,11 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const syncWithAuthUser = async (authProfile: any) => {
     try {
       const savedTopicsKey = `${STORAGE_KEYS.SELECTED_TOPICS}_${authProfile.id}`;
-      const savedTopicsData = await getAppSetting(savedTopicsKey);
+      const savedTopicsData = await AsyncStorage.getItem(savedTopicsKey);
       const savedTopics = savedTopicsData ? JSON.parse(savedTopicsData) : [];
       
-      const globalTopicsData = await getAppSetting(STORAGE_KEYS.SELECTED_TOPICS);
+      const globalTopicsData = await AsyncStorage.getItem(STORAGE_KEYS.SELECTED_TOPICS);
       const globalTopics = globalTopicsData ? JSON.parse(globalTopicsData) : [];
-      
       const mergedTopics = savedTopics.length > 0 ? savedTopics : (authProfile.communitySelectedTopics || globalTopics);
       
       const validTopics = validateTopicIds(mergedTopics);
@@ -688,9 +687,9 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         AsyncStorage.getItem(STORAGE_KEYS.NOTIFICATIONS),
         AsyncStorage.getItem(STORAGE_KEYS.MESSAGES),
         AsyncStorage.getItem(STORAGE_KEYS.BLOCKED_USERS),
-        currentUserId 
-          ? getAppSetting(`${STORAGE_KEYS.SELECTED_TOPICS}_${currentUserId}`)
-          : Promise.resolve(null),
+       currentUserId 
+          ? AsyncStorage.getItem(`${STORAGE_KEYS.SELECTED_TOPICS}_${currentUserId}`)
+          : AsyncStorage.getItem(STORAGE_KEYS.SELECTED_TOPICS),
         AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING),
         AsyncStorage.getItem(STORAGE_KEYS.LIKES),
         AsyncStorage.getItem(STORAGE_KEYS.BOOKMARKS),
@@ -699,7 +698,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         AsyncStorage.getItem(STORAGE_KEYS.TRENDING_TOPICS),
       ]);
 
-      const globalTopicsData = await getAppSetting(STORAGE_KEYS.SELECTED_TOPICS);
+      const globalTopicsData = await AsyncStorage.getItem(STORAGE_KEYS.SELECTED_TOPICS);
 
       let loadedPosts: Post[] = postsData ? JSON.parse(postsData) : [];
       const loadedTopics = topicsData ? JSON.parse(topicsData) : INITIAL_TOPICS;

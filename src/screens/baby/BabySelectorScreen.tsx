@@ -39,7 +39,7 @@ const VALID_ROOT_SCREENS = new Set<string>([
   'VaccinationSchedule', 'Customize', 'SecurityCenter', 'BiometricSetup',
   'BackupRestore', 'LanguageSettings', 'UnitSettings', 'PrivacyPolicy',
   'TermsOfService', 'About', 'EntryDetail', 'Insights', 'CreateCustomTracker',
-  'AddEntry', 'FamilyChat', 'SecurityLock', 'Parent2Optional', 'Parent2Setup',
+  'AddEntry', 'FamilyChat', 'SecurityLock', 'CoParentInviteScreen', 'Parent2Setup',
   'BabyOptional', 'InviteCodeScreen'
 ]);
 
