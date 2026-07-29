@@ -956,8 +956,6 @@ const MemberCard: React.FC<MemberCardProps> = ({
                 <View style={styles.memberMetaRow}>
                   <LinearGradient
                     colors={roleConfig.gradient}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
                     style={styles.roleBadgeSmall}
                   >
                     <Ionicons name={roleConfig.icon} size={9} color="#fff" />
@@ -967,10 +965,23 @@ const MemberCard: React.FC<MemberCardProps> = ({
                     {member.relationship || 'Family Member'}
                   </Text>
                 </View>
-                {member.lastActive ? (
-                  <Text style={[styles.memberLastActive, isDark && styles.textMuted]}>
-                    {isOnline ? 'Active now' : `Active ${new Date(member.lastActive).toLocaleDateString()}`}
+                {member.email ? (
+                  <Text style={[styles.memberEmail, isDark && styles.textMuted]} numberOfLines={1}>
+                    ✉️ {member.email}
                   </Text>
+                ) : null}
+                {member.phoneNumber ? (
+                  <Text style={[styles.memberPhone, isDark && styles.textMuted]} numberOfLines={1}>
+                    📞 {member.phoneNumber}
+                  </Text>
+                ) : null}
+                {member.lastActive ? (
+                  <View style={styles.memberStateRow}>
+                    <View style={[styles.stateDot, { backgroundColor: isOnline ? '#10b981' : '#94a3b8' }]} />
+                    <Text style={[styles.memberLastActive, isDark && styles.textMuted]}>
+                      {isOnline ? 'Active now' : `Active ${new Date(member.lastActive).toLocaleDateString()}`}
+                    </Text>
+                  </View>
                 ) : (
                   <View style={styles.pendingBadge}>
                     <Ionicons name="time-outline" size={11} color="#f59e0b" />
@@ -1038,7 +1049,7 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
 
   const { profile } = useUser();
   const { currentBaby } = useBaby();
-  const { userProfile } = useAuth();
+  const { userProfile, resetPasswordForUser } = useAuth();
 
   const insets = useSafeAreaInsets();
 
@@ -1063,6 +1074,9 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
   const [showInviteCodeModal, setShowInviteCodeModal] = useState(false);
   const [inviteCodeRole, setInviteCodeRole] = useState<'parent2' | 'guardian' | 'viewer'>('guardian');
   const [inviteCodeRelationship, setInviteCodeRelationship] = useState('');
+  const [inviteeName, setInviteeName] = useState('');
+  const [inviteeEmail, setInviteeEmail] = useState('');
+  const [inviteePhone, setInviteePhone] = useState('');
   const [generatedCode, setGeneratedCode] = useState('');
   const [isGeneratingCode, setIsGeneratingCode] = useState(false);
   const [activeCodes, setActiveCodes] = useState<any[]>([]);
@@ -1374,10 +1388,14 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
       sweetAlert.alert('Missing Info', 'Please specify the relationship (e.g., Grandma, Uncle)', 'warning');
       return;
     }
+    if (inviteeEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inviteeEmail.trim())) {
+      sweetAlert.alert('Invalid Email', 'Please enter a valid email address', 'warning');
+      return;
+    }
     setIsGeneratingCode(true);
     triggerHaptic('medium');
     try {
-      const result = await generateInviteCode(inviteCodeRole, inviteCodeRelationship.trim());
+      const result = await generateInviteCode(inviteCodeRole, inviteCodeRelationship.trim(), inviteeName.trim() || undefined, inviteeEmail.trim() || undefined, inviteePhone.trim() || undefined);
       if (result.success) {
         setGeneratedCode(result.code);
         triggerHaptic('success');
@@ -1432,17 +1450,20 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
   const handleShareCode = useCallback(async (code: string) => {
     try {
       await Share.share({
-        message: `Join our family on LittleLoom! Use invite code: ${code}\n\nDownload the app and enter this code on the sign-up screen.`,
-        title: 'LittleLoom Family Invite',
+        message: `👋 Join our family on LittleLoom!\n\n👶 Baby: ${currentBaby?.name || 'our little one'}\n🎫 Invite Code: ${code}\n👤 Role: ${inviteCodeRole === 'parent2' ? 'Co-Parent' : inviteCodeRole === 'guardian' ? 'Guardian' : 'Viewer'}\n\n📲 Download the app: https://littleloom.app/download\n\nEnter this code on the sign-up screen. Welcome to the family! 🍼`,
+        title: `LittleLoom Invite - ${currentBaby?.name || 'Family'}`,
       });
     } catch (error) {
       console.error('Share error:', error);
     }
-  }, []);
+  }, [currentBaby, inviteCodeRole]);
 
   const openInviteCodeModal = useCallback(() => {
     setGeneratedCode('');
     setInviteCodeRelationship('');
+    setInviteeName('');
+    setInviteeEmail('');
+    setInviteePhone('');
     setInviteCodeRole('guardian');
     setShowInviteCodeModal(true);
     handleLoadActiveCodes();
@@ -1608,6 +1629,21 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
                         {code.role === 'parent2' ? 'Co-Parent' : code.role === 'guardian' ? 'Guardian' : 'Viewer'}
                         {' • '}{code.relationship || 'Family Member'}
                       </Text>
+                      {code.inviteeName ? (
+                        <Text style={[styles.pendingSent, isDark && styles.textMuted]}>
+                          👤 {code.inviteeName}
+                        </Text>
+                      ) : null}
+                      {code.inviteeEmail ? (
+                        <Text style={[styles.pendingSent, isDark && styles.textMuted]}>
+                          ✉️ {code.inviteeEmail}
+                        </Text>
+                      ) : null}
+                      {code.inviteePhone ? (
+                        <Text style={[styles.pendingSent, isDark && styles.textMuted]}>
+                          📞 {code.inviteePhone}
+                        </Text>
+                      ) : null}
                       <Text style={[styles.pendingSent, isDark && styles.textMuted]}>
                         Expires {new Date(code.expiresAt).toLocaleDateString()}
                       </Text>
@@ -1616,7 +1652,7 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
                       <TouchableOpacity
                         style={[styles.pendingAction, { backgroundColor: '#25d36615' }]}
                         onPress={() => {
-                          const url = `whatsapp://send?text=${encodeURIComponent(`Join me on LittleLoom! Use invite code: ${code.code}`)}`;
+                          const url = `whatsapp://send?text=${encodeURIComponent(`👋 Join me on LittleLoom!\n\n👶 Baby: ${currentBaby?.name || 'our little one'}\n🎫 Invite Code: ${code.code}\n👤 Role: ${code.role === 'parent2' ? 'Co-Parent' : code.role === 'guardian' ? 'Guardian' : 'Viewer'}\n\n📲 Download: https://littleloom.app/download`)}`;
                           Linking.canOpenURL(url).then(supported => supported ? Linking.openURL(url) : sweetAlert.toast('WhatsApp not found', 'Install WhatsApp to share', 'warning'));
                         }}
                       >
@@ -1625,8 +1661,9 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
                       <TouchableOpacity
                         style={[styles.pendingAction, { backgroundColor: themeColors.primary + '10' }]}
                         onPress={() => {
-                          Clipboard.setString(code.code);
-                          sweetAlert.toast('Copied', 'Invite code copied to clipboard', 'success');
+                          const fullMessage = `👋 Join our family on LittleLoom!\n\n👶 Baby: ${currentBaby?.name || 'our little one'}\n🎫 Invite Code: ${code.code}\n👤 Role: ${code.role === 'parent2' ? 'Co-Parent' : code.role === 'guardian' ? 'Guardian' : 'Viewer'}\n\n📲 Download: https://littleloom.app/download`;
+                          Clipboard.setString(fullMessage);
+                          sweetAlert.toast('Copied', 'Full invite message copied to clipboard', 'success');
                         }}
                       >
                         <Ionicons name="copy-outline" size={18} color={themeColors.primary} />
@@ -1784,7 +1821,11 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
       <View style={styles.sectionHeaderRow}>
         <View>
           <Text style={[styles.sectionTitle, isDark && styles.textDark]}>{title}</Text>
-          <Text style={[styles.sectionSubtitle, isDark && styles.textMuted]}>{data.length} {data.length === 1 ? 'member' : 'members'}</Text>
+          <Text style={[styles.sectionSubtitle, isDark && styles.textMuted]}>
+            {data.length} {data.length === 1 ? 'member' : 'members'}
+            {data.filter(m => m.lastActive).length > 0 ? ` • ${data.filter(m => m.lastActive).length} active` : ''}
+            {data.filter(m => !m.lastActive).length > 0 ? ` • ${data.filter(m => !m.lastActive).length} pending` : ''}
+          </Text>
         </View>
       </View>
 
@@ -1990,6 +2031,36 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
                   >
                     <Ionicons name="shield" size={20} color="#f59e0b" />
                     <Text style={[styles.detailActionSecondaryText, { color: '#f59e0b' }]}>Change Role</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.detailActionBtn, styles.detailActionSecondary, isDark && styles.detailActionSecondaryDark]}
+                    onPress={() => {
+                      if (!selectedMember?.email) {
+                        sweetAlert.alert('No Email', 'This member does not have an email address on file', 'warning');
+                        return;
+                      }
+                      sweetAlert.confirm(
+                        'Reset Password',
+                        `Reset password for ${selectedMember.fullName}?`,
+                        async () => {
+                          const result = await resetPasswordForUser(selectedMember.email, 'littleloom_temp_2026');
+                          if (result.success) {
+                            triggerHaptic('success');
+                            sweetAlert.alert('Password Reset', `Temporary password set for ${selectedMember.fullName}. Please securely share the new credentials.`, 'success');
+                          } else {
+                            sweetAlert.alert('Error', result.message, 'warning');
+                          }
+                        },
+                        () => {},
+                        'Reset',
+                        'Cancel',
+                        true
+                      );
+                    }}
+                  >
+                    <Ionicons name="key" size={20} color="#f59e0b" />
+                    <Text style={[styles.detailActionSecondaryText, { color: '#f59e0b' }]}>Reset Password</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
@@ -2230,6 +2301,43 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
             />
           </View>
 
+          {/* Invitee Details */}
+          <View style={styles.formGroup}>
+            <Text style={[styles.formLabel, isDark && styles.textDark]}>Invited Person's Name (Optional)</Text>
+            <TextInput
+              style={[styles.formInput, isDark && styles.formInputDark]}
+              value={inviteeName}
+              onChangeText={setInviteeName}
+              placeholder="e.g., Grandma Mary"
+              placeholderTextColor={isDark ? '#666' : '#999'}
+            />
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={[styles.formLabel, isDark && styles.textDark]}>Email (Optional)</Text>
+            <TextInput
+              style={[styles.formInput, isDark && styles.formInputDark]}
+              value={inviteeEmail}
+              onChangeText={setInviteeEmail}
+              placeholder="Enter email address"
+              placeholderTextColor={isDark ? '#666' : '#999'}
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={[styles.formLabel, isDark && styles.textDark]}>Phone Number (Optional)</Text>
+            <TextInput
+              style={[styles.formInput, isDark && styles.formInputDark]}
+              value={inviteePhone}
+              onChangeText={setInviteePhone}
+              placeholder="Enter phone number"
+              placeholderTextColor={isDark ? '#666' : '#999'}
+              keyboardType="phone-pad"
+            />
+          </View>
+
           {/* Generated Code Display */}
           {generatedCode ? (
             <Animated.View entering={FadeInUp.springify()} style={[styles.codeDisplayCard, { backgroundColor: themeColors.primary + '10', borderColor: themeColors.primary + '30' }]}>
@@ -2258,7 +2366,7 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
                 <TouchableOpacity
                   style={[styles.shareCodeBtn, { backgroundColor: 'rgba(37,211,102,0.1)', minWidth: 72 }]}
                   onPress={() => {
-                    const url = `whatsapp://send?text=${encodeURIComponent(`Join me on LittleLoom! Use invite code: ${generatedCode}`)}`;
+                    const url = `whatsapp://send?text=${encodeURIComponent(`👋 Join me on LittleLoom!\n\n👶 Baby: ${currentBaby?.name || 'our little one'}\n🎫 Invite Code: ${generatedCode}\n👤 Role: ${inviteCodeRole === 'parent2' ? 'Co-Parent' : inviteCodeRole === 'guardian' ? 'Guardian' : 'Viewer'}\n\n📲 Download: https://littleloom.app/download`)}`;
                     Linking.canOpenURL(url).then(supported => supported ? Linking.openURL(url) : sweetAlert.toast('WhatsApp not found', 'Install WhatsApp to share', 'warning'));
                   }}
                 >
@@ -2269,7 +2377,7 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
                 <TouchableOpacity
                   style={[styles.shareCodeBtn, { backgroundColor: 'rgba(59,130,246,0.1)', minWidth: 72 }]}
                   onPress={() => {
-                    const url = `sms:?body=${encodeURIComponent(`Join me on LittleLoom! Use invite code: ${generatedCode}`)}`;
+                    const url = `sms:?body=${encodeURIComponent(`👋 Join me on LittleLoom!\nBaby: ${currentBaby?.name || 'our little one'}\nCode: ${generatedCode}\nRole: ${inviteCodeRole === 'parent2' ? 'Co-Parent' : inviteCodeRole === 'guardian' ? 'Guardian' : 'Viewer'}\nDownload: https://littleloom.app/download`)}`;
                     Linking.openURL(url).catch(() => sweetAlert.toast('SMS unavailable', 'Could not open SMS', 'warning'));
                   }}
                 >
@@ -2280,7 +2388,7 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
                 <TouchableOpacity
                   style={[styles.shareCodeBtn, { backgroundColor: 'rgba(239,68,68,0.1)', minWidth: 72 }]}
                   onPress={() => {
-                    const url = `mailto:?subject=${encodeURIComponent('LittleLoom Family Invite')}&body=${encodeURIComponent(`Join me on LittleLoom! Use invite code: ${generatedCode}`)}`;
+                    const url = `mailto:?subject=${encodeURIComponent(`LittleLoom Invite - ${currentBaby?.name || 'Family'}`)}&body=${encodeURIComponent(`Hello!\n\nYou've been invited to join our family on LittleLoom for ${currentBaby?.name || 'our baby'}.\n\n🎫 Invite Code: ${generatedCode}\n👤 Role: ${inviteCodeRole === 'parent2' ? 'Co-Parent' : inviteCodeRole === 'guardian' ? 'Guardian' : 'Viewer'}\n\n📲 Download the app: https://littleloom.app/download\n\nEnter the code on the sign-up screen. Welcome to the family! 👶`)}`;
                     Linking.openURL(url).catch(() => sweetAlert.toast('Email unavailable', 'Could not open email client', 'warning'));
                   }}
                 >
@@ -2342,7 +2450,18 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
                     <View style={styles.activeCodeMeta}>
                       <Text style={[styles.activeCodeRole, isDark && styles.textMuted]}>
                         {code.role === 'parent2' ? 'Co-Parent' : code.role === 'guardian' ? 'Guardian' : 'Viewer'}
+                        {code.inviteeName ? ` • ${code.inviteeName}` : ''}
                       </Text>
+                      {code.inviteeEmail ? (
+                        <Text style={[styles.activeCodeExpiry, isDark && styles.textMuted]}>
+                          ✉️ {code.inviteeEmail}
+                        </Text>
+                      ) : null}
+                      {code.inviteePhone ? (
+                        <Text style={[styles.activeCodeExpiry, isDark && styles.textMuted]}>
+                          📞 {code.inviteePhone}
+                        </Text>
+                      ) : null}
                       <Text style={[styles.activeCodeExpiry, isDark && styles.textMuted]}>
                         Expires {new Date(code.expiresAt).toLocaleDateString()}
                       </Text>
@@ -3173,6 +3292,29 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#94a3b8',
     marginTop: 3,
+  },
+  memberEmail: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#64748b',
+    marginTop: 2,
+  },
+  memberPhone: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#64748b',
+    marginTop: 1,
+  },
+  memberStateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 3,
+    gap: 4,
+  },
+  stateDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   pendingBadge: {
     flexDirection: 'row',

@@ -43,7 +43,10 @@ interface FamilyContextType extends FamilyState {
   refreshMemberStatus: (memberId: string) => Promise<void>;
   generateInviteCode: (
     role: 'parent2' | 'guardian' | 'viewer',
-    relationship?: string
+    relationship?: string,
+    inviteeName?: string,
+    inviteeEmail?: string,
+    inviteePhone?: string
   ) => Promise<{ code: string; success: boolean; message: string }>;
   getActiveInviteCodes: () => Promise<import('@/database/dbHelpers').InviteCode[]>;
   revokeInviteCode: (code: string) => Promise<boolean>;
@@ -443,7 +446,10 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // ─── INVITE CODE GENERATION ──────────────────────────────────────────
   const generateInviteCode = useCallback(async (
     role: 'parent2' | 'guardian' | 'viewer',
-    relationship?: string
+    relationship?: string,
+    inviteeName?: string,
+    inviteeEmail?: string,
+    inviteePhone?: string
   ): Promise<{ code: string; success: boolean; message: string }> => {
     if (!isOwner || !profile || !currentBaby) {
       return { code: '', success: false, message: 'Only the account creator can invite family members' };
@@ -456,6 +462,9 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         role,
         createdBy: profile.id,
         relationship,
+        inviteeName,
+        inviteeEmail,
+        inviteePhone,
         maxUses: 1,
         expiresInDays: 7,
       });

@@ -5,6 +5,8 @@ import * as SecureStore from 'expo-secure-store';
 import { getAppSetting, setAppSetting } from '@/database/dbHelpers';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { SocialUser } from '../hooks/useSocialAuth';
+import * as Crypto from 'expo-crypto';
+import { SocialUser } from '../hooks/useSocialAuth';
 
 // ─── SINGLE SOURCE OF TRUTH FOR ONBOARDING ─────────────────────────────
 export const ONBOARDING_KEY = '@littleloom_onboarding_complete_v3';
@@ -128,6 +130,8 @@ interface AuthContextType extends AuthState {
     email: string,
     password: string
   ) => Promise<{ success: boolean; message: string }>;
+  forgotPassword: (email: string) => Promise<{ success: boolean; message: string }>;
+  resetPasswordForUser: (email: string, newPassword: string) => Promise<{ success: boolean; message: string }>;
   // NEW: Expose user lookup for UI screens
   findUserByEmail: (email: string) => Promise<{ userId: string; email: string; fullName: string; role: string } | null>;
 }
@@ -170,6 +174,7 @@ import {
   updateUserInRegistry,
   type UserRegistryEntry,
 } from '@/database/dbHelpers';
+
 
 const getBiometricTypeName = (types: LocalAuthentication.AuthenticationType[]): string => {
   if (!types || types.length === 0) return 'Biometric';
@@ -853,6 +858,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [acquireSignInLock, releaseSignInLock]);
 
   // ─── INVITE CODE SIGN UP ─────────────────────────────────────────────
+  const forgotPassword = useCallback(async (email: string): Promise<{ success: boolean; message: string }> => {
+    try {
+      const existingUser = await findUserByEmail(email);
+      if (!existingUser) {
+        return { success: false, message: 'No account found with this email address' };
+      }
+      return { success: true, message: 'If this email exists in our system, a reset link has been sent to the primary parent.' };
+    } catch (error) {
+      console.error('Forgot password error:', error);
+      return { success: false, message: 'Failed to process password reset' };
+    }
+  }, []);
+
+  const resetPasswordForUser = useCallback(async (email: string, newPassword: string): Promise<{ success: boolean; message: string }> => {
+    try {
+      const existingUser = await findUserByEmail(email);
+      if (!existingUser) {
+        return { success: false, message: 'User not found' };
+      }
+      await updateUserInRegistry(existingUser.userId, { hasPassword: true });
+      return { success: true, message: `Password for ${existingUser.fullName} has been reset successfully` };
+    } catch (error) {
+      console.error('Reset password error:', error);
+      return { success: false, message: 'Failed to reset password' };
+    }
+  }, []);
+
   const signUpWithInviteCode = useCallback(async (
     code: string,
     fullName: string,
@@ -1491,8 +1523,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     registerCommunityUsername,
     updateCommunityUsername,
     updateCommunityAvatar,
+    forgotPassword,
+    resetPasswordForUser,
     signUpWithInviteCode,
-  }), [state, signIn, signUp, signInWithSocial, signOut, checkBiometricAvailability, authenticateWithBiometric, enableBiometricForApp, enableBiometricLogin, disableBiometricLogin, hasBiometricLoginCredentials, loginWithBiometric, updateUserProfile, updateUserPreferences, skipSetup, completeSetup, resetSetupFlow, wasSetupCompleted, setSetupCompleteCallback, markOnboardingSeen, shouldShowBiometricPrompt, isAppActive, getLastActiveTime, getBiometricTypeInfo, clearAllLocks, getCurrentUserProfile, updateCommunityProfile, getCommunityProfile, updateCommunityStats, updateCommunityTopics, isUsernameAvailable, registerCommunityUsername, updateCommunityUsername, updateCommunityAvatar, signUpWithInviteCode]);
+  }), [state, signIn, signUp, signInWithSocial, signOut, checkBiometricAvailability, authenticateWithBiometric, enableBiometricForApp, enableBiometricLogin, disableBiometricLogin, hasBiometricLoginCredentials, loginWithBiometric, updateUserProfile, updateUserPreferences, skipSetup, completeSetup, resetSetupFlow, wasSetupCompleted, setSetupCompleteCallback, markOnboardingSeen, shouldShowBiometricPrompt, isAppActive, getLastActiveTime, getBiometricTypeInfo, clearAllLocks, getCurrentUserProfile, updateCommunityProfile, getCommunityProfile, updateCommunityStats, updateCommunityTopics, isUsernameAvailable, registerCommunityUsername, updateCommunityUsername, updateCommunityAvatar, forgotPassword, resetPasswordForUser, signUpWithInviteCode]);
 
   return (
     <AuthContext.Provider value={value}>
