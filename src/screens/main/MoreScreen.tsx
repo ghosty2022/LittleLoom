@@ -1162,8 +1162,8 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
                       <MenuItem
             icon="person-add"
             title="Invite Co-Parent"
-            subtitle="Add another parent to your account"
-            onPress={() => navigation.navigate('FamilySharing')}
+            subtitle="Generate an invite code for family members"
+            onPress={() => navigation.navigate('FamilySharing', { openInvite: true })}
             color="#11998e"
             isDark={isDark}
             showArrow

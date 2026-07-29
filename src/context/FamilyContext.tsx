@@ -13,6 +13,7 @@ import {
 import { useBaby } from './BabyContext';
 import { UserRole, Permission, ROLE_PERMISSIONS, FamilyMember } from '../types/roles';
 import { useUser } from './UserContext';
+import { useAuth } from './AuthContext';
 
 export type { FamilyMember } from '../types/roles';
 
@@ -81,10 +82,13 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const initRef = useRef(false);
 
   // FIX: Account creator always has invite rights regardless of permission state
+  const { userProfile: authProfile } = useAuth();
   const isOwner = useMemo(() => {
-    if (!profile || !currentBaby) return false;
-    return profile.role === 'parent1' || profile.role === UserRole.PARENT_1 || currentBaby.parent1Id === profile.id;
-  }, [profile, currentBaby]);
+    if (!currentBaby) return false;
+    const effectiveProfile = profile || authProfile;
+    if (!effectiveProfile) return false;
+    return effectiveProfile.role === 'parent1' || effectiveProfile.role === UserRole.PARENT_1 || currentBaby.parent1Id === effectiveProfile.id || currentBaby.parent1Id === authProfile?.id;
+  }, [profile, authProfile, currentBaby]);
 
   useEffect(() => {
     if (userLoading) return;
@@ -118,23 +122,26 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     try {
       const members: FamilyMember[] = [];
 
-      if (currentBaby.parent1Id && profile) {
+      const effectiveProfile = profile || authProfile;
+
+      if (currentBaby.parent1Id && effectiveProfile) {
         members.push({
           id: currentBaby.parent1Id,
           userId: currentBaby.parent1Id,
-          fullName: profile.fullName || 'Parent',
-          email: profile.email || '',
-          avatar: profile.avatar,
+          fullName: currentBaby.parent1Id === effectiveProfile.id ? effectiveProfile.fullName || 'Parent' : 'Parent',
+          email: effectiveProfile.email || '',
+          avatar: effectiveProfile.avatar,
           role: UserRole.PARENT_1,
           relationship: 'Parent',
           permissions: ROLE_PERMISSIONS[UserRole.PARENT_1],
           addedAt: currentBaby.createdAt,
           addedBy: currentBaby.parent1Id,
           canBeRemoved: false,
-          phoneNumber: profile.phoneNumber,
+          phoneNumber: effectiveProfile.phoneNumber,
           notificationsEnabled: true,
+          lastActive: new Date().toISOString(),
         });
-      } else if (currentBaby.parent1Id && !profile) {
+      } else if (currentBaby.parent1Id && !effectiveProfile) {
         members.push({
           id: currentBaby.parent1Id,
           userId: currentBaby.parent1Id,
@@ -147,6 +154,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           addedBy: currentBaby.parent1Id,
           canBeRemoved: false,
           notificationsEnabled: true,
+          lastActive: new Date().toISOString(),
         });
       }
 

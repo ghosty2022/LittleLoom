@@ -1020,28 +1020,24 @@ const MemberCard: React.FC<MemberCardProps> = ({
 // MAIN SCREEN
 // ═══════════════════════════════════════════════════════════════════════════
 
-export default function FamilySharingScreen({ navigation }: FamilySharingScreenProps) {
+export default function FamilySharingScreen({ navigation, route }: FamilySharingScreenProps) {
   const sweetAlert = useSweetAlert();
   const {
     members,
     guardians,
     parent1,
     parent2,
-    pendingInvites,
     loadFamily,
-    inviteMember,
     removeMember,
     updateGuardianProfile,
     updateParent2Profile,
-    resendInvite,
-    cancelInvite,
     generateInviteCode,
     getActiveInviteCodes,
     revokeInviteCode,
   } = useFamily();
 
   const { profile } = useUser();
-  const { currentBaby, babies, switchBaby } = useBaby();
+  const { currentBaby } = useBaby();
   const { userProfile } = useAuth();
 
   const insets = useSafeAreaInsets();
@@ -1059,10 +1055,8 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedMember, setSelectedMember] = useState<FamilyMember | null>(null);
   const [showMemberModal, setShowMemberModal] = useState(false);
-  const [showInviteModal, setShowInviteModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showRoleModal, setShowRoleModal] = useState(false);
-  const [showBabySelector, setShowBabySelector] = useState(false);
   const [activeTab, setActiveTab] = useState<'members' | 'activity' | 'analytics'>('members');
 
   // ── Invite Code State ──
@@ -1074,9 +1068,7 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
   const [activeCodes, setActiveCodes] = useState<any[]>([]);
   const [isLoadingCodes, setIsLoadingCodes] = useState(false);
 
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteRole, setInviteRole] = useState<UserRole>(UserRole.GUARDIAN);
-  const [inviteRelationship, setInviteRelationship] = useState('');
+  // Email invite removed — using invite codes only
 
   const [editForm, setEditForm] = useState({
     fullName: '',
@@ -1142,10 +1134,10 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
 
   const isPrimaryParent = useMemo(() => {
     if (!currentUserId) return false;
-    return parent1?.id === currentUserId || members.some(m =>
+    return parent1?.id === currentUserId || userProfile?.role === 'parent1' || profile?.role === 'parent1' || members.some(m =>
       m.role === UserRole.PARENT_1 && (m.id === currentUserId || m.userId === currentUserId)
     );
-  }, [parent1, members, currentUserId]);
+  }, [parent1, members, currentUserId, userProfile, profile]);
 
   useEffect(() => {
     loadFamily();
@@ -1456,6 +1448,17 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
     handleLoadActiveCodes();
   }, [handleLoadActiveCodes]);
 
+  // Auto-open invite modal when navigated from Settings
+  useEffect(() => {
+    if (route.params?.openInvite) {
+      const timer = setTimeout(() => {
+        openInviteCodeModal();
+        navigation.setParams({ openInvite: undefined });
+      }, 600);
+      return () => clearTimeout(timer);
+    }
+  }, [route.params?.openInvite, openInviteCodeModal, navigation]);
+
   const handleSuggestionAction = (suggestion: SmartSuggestion) => {
     triggerHaptic('light');
     switch (suggestion.type) {
@@ -1479,7 +1482,7 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
           {currentBaby && (
             <TouchableOpacity
               style={[styles.babySelectorChip, { backgroundColor: themeColors.colors[0] }]}
-              onPress={() => setShowBabySelector(true)}
+              onPress={() => navigation.navigate('SwitchBaby', { returnTo: 'FamilySharing', returnLabel: 'Family' })}
             >
               <Text style={[styles.babySelectorText, { color: themeColors.primary }]}>
                 {currentBaby.name} ▼
@@ -1571,21 +1574,23 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
             {renderMemberSection('Guardians', members.filter(m => m.role === UserRole.GUARDIAN), 'No guardians added')}
             {renderMemberSection('Viewers', members.filter(m => m.role === UserRole.VIEWER), 'No viewers added')}
 
-            {/* Pending Invites */}
-            {pendingInvites.length > 0 && (
+            {/* Pending Invites (Invite Codes) */}
+            {isPrimaryParent && activeCodes.length > 0 && (
               <View style={styles.section}>
                 <View style={styles.sectionHeaderRow}>
                   <View>
                     <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Pending Invites</Text>
-                    <Text style={[styles.sectionSubtitle, isDark && styles.textMuted]}>{pendingInvites.length} awaiting response</Text>
+                    <Text style={[styles.sectionSubtitle, isDark && styles.textMuted]}>{activeCodes.length} invite code(s) ready to share</Text>
                   </View>
+                  <TouchableOpacity onPress={handleLoadActiveCodes} disabled={isLoadingCodes}>
+                    <Ionicons name="refresh" size={18} color={themeColors.primary} />
+                  </TouchableOpacity>
                 </View>
 
-                {pendingInvites.map((invite, index) => (
+                {activeCodes.map((code, index) => (
                   <Animated.View
-                    key={invite.id}
-                    entering={shouldReduceMotion ? undefined : FadeInUp.delay(index * 100).springify()}
-                    layout={shouldReduceMotion ? undefined : Layout.springify()}
+                    key={code.code}
+                    entering={shouldReduceMotion ? undefined : FadeInUp.delay(index * 80).springify()}
                     style={[styles.pendingCard, isDark && styles.pendingCardDark]}
                   >
                     <LinearGradient
@@ -1595,27 +1600,40 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
                       end={{ x: 1, y: 1 }}
                     />
                     <View style={styles.pendingIcon}>
-                      <Ionicons name="mail-outline" size={22} color="#f59e0b" />
+                      <Ionicons name="key-outline" size={22} color={themeColors.primary} />
                     </View>
                     <View style={styles.pendingInfo}>
-                      <Text style={[styles.pendingEmail, isDark && styles.textDark]}>{invite.email}</Text>
+                      <Text style={[styles.pendingEmail, isDark && styles.textDark, { letterSpacing: 2, fontSize: 18 }]}>{code.code}</Text>
                       <Text style={[styles.pendingRole, isDark && styles.textMuted]}>
-                        {ROLE_LABELS[invite.role]} • {invite.relationship}
+                        {code.role === 'parent2' ? 'Co-Parent' : code.role === 'guardian' ? 'Guardian' : 'Viewer'}
+                        {' • '}{code.relationship || 'Family Member'}
                       </Text>
                       <Text style={[styles.pendingSent, isDark && styles.textMuted]}>
-                        Sent {new Date(invite.addedAt).toLocaleDateString()}
+                        Expires {new Date(code.expiresAt).toLocaleDateString()}
                       </Text>
                     </View>
                     <View style={styles.pendingActions}>
                       <TouchableOpacity
-                        style={[styles.pendingAction, { backgroundColor: themeColors.primary + '10' }]}
-                        onPress={() => resendInvite(invite.id)}
+                        style={[styles.pendingAction, { backgroundColor: '#25d36615' }]}
+                        onPress={() => {
+                          const url = `whatsapp://send?text=${encodeURIComponent(`Join me on LittleLoom! Use invite code: ${code.code}`)}`;
+                          Linking.canOpenURL(url).then(supported => supported ? Linking.openURL(url) : sweetAlert.toast('WhatsApp not found', 'Install WhatsApp to share', 'warning'));
+                        }}
                       >
-                        <Ionicons name="refresh" size={18} color={themeColors.primary} />
+                        <Ionicons name="logo-whatsapp" size={18} color="#25d366" />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.pendingAction, { backgroundColor: themeColors.primary + '10' }]}
+                        onPress={() => {
+                          Clipboard.setString(code.code);
+                          sweetAlert.toast('Copied', 'Invite code copied to clipboard', 'success');
+                        }}
+                      >
+                        <Ionicons name="copy-outline" size={18} color={themeColors.primary} />
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={[styles.pendingAction, { backgroundColor: '#ef444410' }]}
-                        onPress={() => cancelInvite(invite.id)}
+                        onPress={() => handleRevokeCode(code.code)}
                       >
                         <Ionicons name="close" size={18} color="#ef4444" />
                       </TouchableOpacity>
@@ -1661,65 +1679,7 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
               </View>
             </View>
 
-            {/* Active Invite Codes */}
-            {isPrimaryParent && activeCodes.length > 0 && (
-              <View style={styles.section}>
-                <View style={styles.sectionHeaderRow}>
-                  <View>
-                    <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Active Invite Codes</Text>
-                    <Text style={[styles.sectionSubtitle, isDark && styles.textMuted]}>{activeCodes.length} code(s) waiting to be used</Text>
-                  </View>
-                  <TouchableOpacity onPress={handleLoadActiveCodes} disabled={isLoadingCodes}>
-                    <Ionicons name="refresh" size={18} color={themeColors.primary} />
-                  </TouchableOpacity>
-                </View>
-
-                {activeCodes.map((code, index) => (
-                  <Animated.View
-                    key={code.code}
-                    entering={shouldReduceMotion ? undefined : FadeInUp.delay(index * 80).springify()}
-                    style={[styles.pendingCard, isDark && styles.pendingCardDark]}
-                  >
-                    <LinearGradient
-                      colors={isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.85)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.92)']}
-                      style={StyleSheet.absoluteFill}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                    />
-                    <View style={styles.pendingIcon}>
-                      <Ionicons name="key-outline" size={22} color={themeColors.primary} />
-                    </View>
-                    <View style={styles.pendingInfo}>
-                      <Text style={[styles.pendingEmail, isDark && styles.textDark]}>{code.code}</Text>
-                      <Text style={[styles.pendingRole, isDark && styles.textMuted]}>
-                        {code.role === 'parent2' ? 'Co-Parent' : code.role === 'guardian' ? 'Guardian' : 'Viewer'}
-                        {' • '}{code.relationship || 'Family Member'}
-                      </Text>
-                      <Text style={[styles.pendingSent, isDark && styles.textMuted]}>
-                        Expires {new Date(code.expiresAt).toLocaleDateString()}
-                      </Text>
-                    </View>
-                    <View style={styles.pendingActions}>
-                      <TouchableOpacity
-                        style={[styles.pendingAction, { backgroundColor: themeColors.primary + '10' }]}
-                        onPress={() => {
-                          Clipboard.setString(code.code);
-                          sweetAlert.toast('Copied', 'Invite code copied to clipboard', 'success');
-                        }}
-                      >
-                        <Ionicons name="copy-outline" size={18} color={themeColors.primary} />
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.pendingAction, { backgroundColor: '#ef444410' }]}
-                        onPress={() => handleRevokeCode(code.code)}
-                      >
-                        <Ionicons name="close" size={18} color="#ef4444" />
-                      </TouchableOpacity>
-                    </View>
-                  </Animated.View>
-                ))}
-              </View>
-            )}
+            {/* Active invite codes now shown in Pending Invites above */}
           </View>
         );
 
@@ -2159,103 +2119,7 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
         </View>
       </ActionModal>
 
-      {/* Invite Member Modal */}
-      <ActionModal
-        visible={showInviteModal}
-        onClose={() => setShowInviteModal(false)}
-        title="Invite Family Member"
-        isDark={isDark}
-        primaryColor={themeColors.primary}
-      >
-        <View style={styles.inviteForm}>
-          <Text style={[styles.inviteDescription, isDark && styles.textMuted]}>
-            Invite someone to join your family and help track {currentBaby?.name || 'your baby'}.
-          </Text>
-
-          <View style={styles.formGroup}>
-            <Text style={[styles.formLabel, isDark && styles.textDark]}>Email Address</Text>
-            <TextInput
-              style={[styles.formInput, isDark && styles.formInputDark]}
-              value={inviteEmail}
-              onChangeText={setInviteEmail}
-              placeholder="Enter email address"
-              placeholderTextColor={isDark ? '#666' : '#999'}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </View>
-
-          <View style={styles.formGroup}>
-            <Text style={[styles.formLabel, isDark && styles.textDark]}>Relationship to Baby</Text>
-            <TextInput
-              style={[styles.formInput, isDark && styles.formInputDark]}
-              value={inviteRelationship}
-              onChangeText={setInviteRelationship}
-              placeholder="e.g., Grandma, Uncle, Babysitter"
-              placeholderTextColor={isDark ? '#666' : '#999'}
-            />
-          </View>
-
-          <Text style={[styles.formLabel, isDark && styles.textDark, { marginTop: 8 }]}>Select Role</Text>
-
-          <View style={styles.roleSelection}>
-            {[UserRole.PARENT_2, UserRole.GUARDIAN, UserRole.VIEWER].map((role) => {
-              const config = ROLE_CONFIG[role];
-              const isSelected = inviteRole === role;
-              const currentCount = members.filter(m => m.role === role).length;
-              const isDisabled = currentCount >= config.maxCount;
-
-              return (
-                <TouchableOpacity
-                  key={role}
-                  style={[
-                    styles.roleOption,
-                    isSelected && { borderColor: config.color, backgroundColor: config.color + '10' },
-                    isDisabled && styles.roleOptionDisabled,
-                    isDark && styles.roleOptionDark
-                  ]}
-                  onPress={() => !isDisabled && setInviteRole(role)}
-                  disabled={isDisabled}
-                >
-                  <LinearGradient colors={config.gradient} style={styles.roleOptionIcon}>
-                    <Ionicons name={config.icon} size={20} color="#fff" />
-                  </LinearGradient>
-                  <View style={styles.roleOptionInfo}>
-                    <Text style={[styles.roleOptionTitle, isDark && styles.textDark, isDisabled && styles.textDisabled]}>
-                      {config.label}
-                    </Text>
-                    <Text style={[styles.roleOptionDesc, isDark && styles.textMuted, isDisabled && styles.textDisabled]}>
-                      {config.description}
-                    </Text>
-                    <Text style={[styles.roleOptionLimit, { color: isDisabled ? '#ef4444' : config.color }]}>
-                      {currentCount}/{config.maxCount} used
-                    </Text>
-                  </View>
-                  {isSelected && <Ionicons name="checkmark-circle" size={24} color={config.color} />}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          <TouchableOpacity
-            style={[styles.inviteButton, !inviteEmail.trim() && styles.inviteButtonDisabled]}
-            onPress={handleInvite}
-            disabled={isLoading || !inviteEmail.trim()}
-          >
-            <LinearGradient colors={[themeColors.primary, themeColors.secondary]} style={styles.inviteButtonGradient}>
-              {isLoading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <>
-                  <Ionicons name="paper-plane" size={20} color="#fff" style={{ marginRight: 8 }} />
-                  <Text style={styles.inviteButtonText}>Send Invitation</Text>
-                </>
-              )}
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
-      </ActionModal>
+      {/* Email invite modal removed — invite codes only */}
 
       {/* Change Role Modal */}
       <ActionModal
@@ -2503,55 +2367,7 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
         </View>
       </ActionModal>
 
-      {/* Baby Selector Modal */}
-      <ActionModal
-        visible={showBabySelector}
-        onClose={() => setShowBabySelector(false)}
-        title="Select Baby"
-        isDark={isDark}
-        primaryColor={themeColors.primary}
-      >
-        <View style={styles.babySelectorContent}>
-          {babies.map((baby) => (
-            <TouchableOpacity
-              key={baby.id}
-              style={[
-                styles.babyOption,
-                currentBaby?.id === baby.id && [styles.babyOptionActive, { borderColor: themeColors.primary, backgroundColor: themeColors.colors[0] }],
-                isDark && styles.babyOptionDark
-              ]}
-              onPress={() => {
-                switchBaby(baby.id);
-                setShowBabySelector(false);
-              }}
-            >
-              <View style={[styles.babyOptionIcon, { backgroundColor: currentBaby?.id === baby.id ? themeColors.primary : isDark ? '#333' : '#e2e8f0' }]}>
-                <Text style={styles.babyOptionEmoji}>👶</Text>
-              </View>
-              <View style={styles.babyOptionInfo}>
-                <Text style={[styles.babyOptionName, isDark && styles.textDark]}>{baby.name}</Text>
-                <Text style={[styles.babyOptionMeta, isDark && styles.textMuted]}>
-                  {new Date(baby.dateOfBirth).toLocaleDateString()} • {baby.gender || 'Baby'}
-                </Text>
-              </View>
-              {currentBaby?.id === baby.id && <Ionicons name="checkmark" size={24} color={themeColors.primary} />}
-            </TouchableOpacity>
-          ))}
-
-          <TouchableOpacity
-            style={[styles.addBabyOption, isDark && styles.addBabyOptionDark]}
-            onPress={() => {
-              setShowBabySelector(false);
-              navigation.navigate('CreateBabyProfile' as never);
-            }}
-          >
-            <View style={[styles.addBabyIcon, { backgroundColor: themeColors.colors[0] }]}>
-              <Ionicons name="add" size={24} color={themeColors.primary} />
-            </View>
-            <Text style={[styles.addBabyText, isDark && styles.textDark, { color: themeColors.primary }]}>Add New Baby</Text>
-          </TouchableOpacity>
-        </View>
-      </ActionModal>
+      {/* Baby selector now routes to SwitchBaby screen */}
     </View>
   );
 }
