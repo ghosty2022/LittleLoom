@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import Animated, { Extrapolation, interpolate, Layout, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { BackHandler, Dimensions, FlatList, Image, Platform, SafeAreaView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useCustomization } from '../../hooks/useCustomization';
@@ -140,9 +140,19 @@ const SlideItem = React.memo(({
               <Ionicons name={item.icon} size={28} color="white" />
             </View>
 
-            <View style={styles.emojiContainer}>
-              <Text style={styles.emoji}>{item.emoji}</Text>
-            </View>
+            {index === 0 ? (
+              <View style={styles.logoSlideContainer}>
+                <Image
+                  source={require('../../../assets/logo.png')}
+                  style={styles.logoSlideImage}
+                  resizeMode="contain"
+                />
+              </View>
+            ) : (
+              <View style={styles.emojiContainer}>
+                <Text style={styles.emoji}>{item.emoji}</Text>
+              </View>
+            )}
 
             <View style={[styles.decorCircle, { backgroundColor: currentColors[0] + '20', top: 30, left: 30, width: 50, height: 50 }]} />
             <View style={[styles.decorCircle, { backgroundColor: currentColors[1] + '15', bottom: 40, right: 40, width: 70, height: 70 }]} />
@@ -654,10 +664,18 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 }, 
     shadowOpacity: 0.15, 
     shadowRadius: 8, 
-    elevation: 5 
+    elevation: 5,
   },
   emoji: { 
-    fontSize: wp(26) 
+    fontSize: wp(26),
+  },
+  logoSlideContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoSlideImage: {
+    width: wp(35),
+    height: wp(35),
   },
   decorCircle: { 
     position: 'absolute', 
