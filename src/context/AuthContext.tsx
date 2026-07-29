@@ -1451,44 +1451,46 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const skipSetup = useCallback(async (step: 'parent2' | 'baby') => {
     try {
+      let p2Done = false;
+      let bDone = false;
+
       if (step === 'parent2') {
         await Promise.all([
           AsyncStorage.setItem(ASYNC_KEYS.HAS_PARENT2, 'skipped'),
           AsyncStorage.setItem(ASYNC_KEYS.PARENT2_COMPLETED, 'skipped'),
         ]);
+        p2Done = true;
+        // Read baby status from storage
+        const babyCompleted = await AsyncStorage.getItem(ASYNC_KEYS.BABY_COMPLETED);
+        bDone = babyCompleted !== null;
         if (isMounted.current) setState(prev => ({ ...prev, hasParent2: 'skipped' }));
       } else if (step === 'baby') {
         await Promise.all([
           AsyncStorage.setItem(ASYNC_KEYS.HAS_BABY, 'skipped'),
           AsyncStorage.setItem(ASYNC_KEYS.BABY_COMPLETED, 'skipped'),
         ]);
+        bDone = true;
+        // Read parent2 status from storage
+        const p2Completed = await AsyncStorage.getItem(ASYNC_KEYS.PARENT2_COMPLETED);
+        p2Done = p2Completed !== null;
         if (isMounted.current) setState(prev => ({ ...prev, hasBaby: 'skipped' }));
       }
-      
-      // After skipping, check if the OTHER step is also done
-      const [hasP2, hasB, setupCompleteStr] = await Promise.all([
-        AsyncStorage.getItem(ASYNC_KEYS.PARENT2_COMPLETED),
-        AsyncStorage.getItem(ASYNC_KEYS.BABY_COMPLETED),
-        AsyncStorage.getItem(ASYNC_KEYS.SETUP_COMPLETE),
-      ]);
-      
-      const p2Done = hasP2 !== null;
-      const bDone = hasB !== null;
-      const bothDone = p2Done && bDone;
-      
-      if (bothDone && setupCompleteStr !== 'true') {
+
+      const setupDone = p2Done && bDone;
+
+      if (setupDone) {
         await AsyncStorage.setItem(ASYNC_KEYS.SETUP_COMPLETE, 'true');
       }
-      
+
       if (isMounted.current) {
         setState(prev => ({
           ...prev,
-          setupComplete: bothDone,
-          onboardingComplete: bothDone ? true : prev.onboardingComplete,
+          setupComplete: setupDone,
+          onboardingComplete: setupDone ? true : prev.onboardingComplete,
         }));
       }
-      
-      if (bothDone && setupCompleteCallbackRef.current) {
+
+      if (setupDone && setupCompleteCallbackRef.current) {
         try { await setupCompleteCallbackRef.current(); } catch (error) {}
       }
     } catch (error) { console.error('skipSetup error:', error); }

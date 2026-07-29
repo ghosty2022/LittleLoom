@@ -321,6 +321,31 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
     }, USER_INACTIVITY_RESUME);
   }, [isNavigating]);
 
+  // FIX: Memoized FlatList props for smoother scroll performance
+  const flatListProps = useMemo(() => ({
+    data: ONBOARDING_DATA,
+    keyExtractor: (item: OnboardingSlide) => item.id,
+    horizontal: true,
+    showsHorizontalScrollIndicator: false,
+    pagingEnabled: true,
+    bounces: false,
+    scrollEnabled: !isNavigating,
+    onScroll: scrollHandler,
+    onViewableItemsChanged: onViewableItemsChanged,
+    viewabilityConfig: viewConfig,
+    scrollEventThrottle: 16,
+    onTouchStart: handleManualScroll,
+    getItemLayout: (_: any, index: number) => ({ length: SCREEN_WIDTH, offset: SCREEN_WIDTH * index, index }),
+    decelerationRate: "fast" as const,
+    snapToInterval: SCREEN_WIDTH,
+    snapToAlignment: "center" as const,
+    maintainVisibleContentPosition: { minIndexForVisible: 0 },
+    maxToRenderPerBatch: 3,
+    windowSize: 3,
+    initialNumToRender: 3,
+    removeClippedSubviews: true,
+  }), [isNavigating, scrollHandler, onViewableItemsChanged, viewConfig, handleManualScroll]);
+
   const handleNext = useCallback(() => {
     if (isNavigating) return;
 
@@ -420,29 +445,13 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
       </View>
 
       {/* Carousel */}
-      <View style={styles.carouselContainer}>
+      <View style={[styles.carouselContainer, { marginTop: insets.top + hp(14) }]}>
         <Animated.FlatList
-          data={ONBOARDING_DATA}
-          renderItem={({ item, index }) => (
+          {...flatListProps}
+          renderItem={({ item, index }: { item: OnboardingSlide; index: number }) => (
             <SlideItem item={item} index={index} scrollX={scrollX} isDark={isDark} />
           )}
-          keyExtractor={(item) => item.id}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          pagingEnabled
-          bounces={false}
-          scrollEnabled={!isNavigating}
-          onScroll={scrollHandler}
-          onViewableItemsChanged={onViewableItemsChanged}
-          viewabilityConfig={viewConfig}
           ref={slidesRef as any}
-          scrollEventThrottle={16}
-          onTouchStart={handleManualScroll}
-          getItemLayout={(_, index) => ({ length: SCREEN_WIDTH, offset: SCREEN_WIDTH * index, index })}
-          decelerationRate="fast"
-          snapToInterval={SCREEN_WIDTH}
-          snapToAlignment="center"
-          maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
         />
       </View>
 
@@ -469,7 +478,7 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
 
       {/* Floating Next Button */}
       <TouchableOpacity
-        style={[styles.floatingNextButton, { bottom: insets.bottom + hp(3) + 90 }]}
+        style={[styles.floatingNextButton, { bottom: insets.bottom + hp(3) + 72 }]}
         onPress={isLastSlide ? handleComplete : handleNext}
         activeOpacity={0.8}
         disabled={isNavigating}
@@ -481,7 +490,7 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
       </TouchableOpacity>
 
       {/* Auto-play indicator */}
-      <View style={[styles.autoPlayIndicator, { bottom: insets.bottom + hp(3) + 170 }]}>
+      <View style={[styles.autoPlayIndicator, { bottom: insets.bottom + hp(3) + 142 }]}>
         <View style={[styles.pulseDot, {
           backgroundColor: isAutoPlaying ? currentColors[0] : '#666',
           opacity: isAutoPlaying ? 0.8 : 0.3,
@@ -567,21 +576,23 @@ const styles = StyleSheet.create({
     position: 'absolute', 
     left: wp(5), 
     right: wp(5), 
-    zIndex: 5 
+    top: hp(10), 
+    zIndex: 5,
   },
-   progressBar: { 
+  progressBar: { 
     height: 4, 
     backgroundColor: 'rgba(255,255,255,0.2)', 
     borderRadius: 2, 
-    overflow: 'hidden' 
+    overflow: 'hidden',
   },
   progressFill: { 
     height: '100%', 
     borderRadius: 2,
   },
   carouselContainer: { 
-    flex: 1, 
-    marginTop: hp(18) 
+    flex: 1,
+    marginTop: hp(12),
+    marginBottom: hp(2),
   },
   slide: { 
     width: SCREEN_WIDTH, 
@@ -680,7 +691,8 @@ const styles = StyleSheet.create({
   },
   paginationContainer: { 
     alignItems: 'center', 
-    marginBottom: hp(2) 
+    marginBottom: hp(1.5),
+    paddingVertical: 4,
   },
   pagination: { 
     flexDirection: 'row', 
@@ -708,16 +720,17 @@ const styles = StyleSheet.create({
   floatingNextButton: { 
     position: 'absolute', 
     right: wp(6), 
-    width: 70, 
-    height: 70, 
-    borderRadius: 35, 
+    bottom: hp(3) + 80, 
+    width: 64, 
+    height: 64, 
+    borderRadius: 32, 
     overflow: 'hidden', 
     shadowColor: '#667eea', 
-    shadowOffset: { width: 0, height: 10 }, 
-    shadowOpacity: 0.4, 
-    shadowRadius: 20, 
-    elevation: 15, 
-    zIndex: 100 
+    shadowOffset: { width: 0, height: 8 }, 
+    shadowOpacity: 0.35, 
+    shadowRadius: 16, 
+    elevation: 12, 
+    zIndex: 100,
   },
   floatingNextGradient: { 
     width: '100%', 
@@ -728,13 +741,14 @@ const styles = StyleSheet.create({
   autoPlayIndicator: { 
     position: 'absolute', 
     right: wp(6), 
+    bottom: hp(3) + 148, 
     flexDirection: 'row', 
     alignItems: 'center', 
     zIndex: 99, 
     backgroundColor: 'rgba(255,255,255,0.15)', 
     paddingHorizontal: 12, 
     paddingVertical: 6, 
-    borderRadius: 20 
+    borderRadius: 20,
   },
   pulseDot: { 
     width: 8, 
@@ -753,12 +767,13 @@ const styles = StyleSheet.create({
     left: 0, 
     right: 0, 
     alignItems: 'center', 
-    paddingTop: hp(2) 
+    paddingTop: hp(1.5),
+    paddingBottom: hp(1),
   },
   footerText: { 
-    fontSize: 12, 
-    color: 'rgba(255,255,255,0.7)', 
+    fontSize: 11, 
+    color: 'rgba(255,255,255,0.6)', 
     fontWeight: '500', 
-    letterSpacing: 0.5 
+    letterSpacing: 0.5,
   },
 });
