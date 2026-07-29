@@ -159,19 +159,7 @@ export default function SplashScreen({
       <StatusBar style="light" />
 
       {/* Animated background circles */}
-      <Animated.View
-        style={[
-          styles.gradientCircle,
-          { transform: [{ rotate: spin }, { scale: pulseAnim }] }
-        ]}
-      >
-        <LinearGradient
-          colors={['rgba(255,255,255,0.15)', 'transparent']}
-          style={styles.circleGradient}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        />
-      </Animated.View>
+
 
       <Animated.View
         style={[
@@ -224,32 +212,22 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  gradientCircle: {
-    position: 'absolute',
-    width: wp(120),
-    height: wp(120),
-    borderRadius: wp(60),
-  },
-  circleGradient: {
-    width: '100%',
-    height: '100%',
-    borderRadius: wp(60),
-  },
+
   content: {
     alignItems: 'center',
     zIndex: 10,
   },
   logoFloatWrap: {
-    width: wp(54),
-    height: wp(54),
+    width: wp(68),
+    height: wp(68),
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 24,
   },
   logoImage: {
-    width: wp(48),
-    height: wp(48),
-  },  brandName: {
+    width: wp(60),
+    height: wp(60),
+  }  brandName: {
     fontSize: wp(9),
     fontWeight: '800',
     color: '#fff',
