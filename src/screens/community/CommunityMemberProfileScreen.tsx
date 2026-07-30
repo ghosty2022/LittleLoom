@@ -98,7 +98,7 @@ const GlassCard = React.memo(({ children, style, onPress, active = false, delay 
   return (
     <Animated.View entering={FadeInUp.delay(delay).springify()} style={[styles.glassCard, active && { borderColor: TC.primary, borderWidth: 2 }, style]}>
       <Wrapper onPress={onPress} activeOpacity={onPress ? 0.85 : 1} style={{ flex: 1 }}>
-        <LinearGradient colors={['rgba(45,45,60,0.85)', 'rgba(35,35,50,0.65)']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+        <LinearGradient colors={['rgba(45,45,60,0.6)', 'rgba(35,35,50,0.4)']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
         <View style={styles.glassBorder} />
         <View style={styles.glassContent}>{children}</View>
       </Wrapper>
@@ -121,19 +121,18 @@ const SectionHeader = React.memo(({ title, subtitle, action, actionLabel }: any)
   </View>
 ));
 
-const StatPill = React.memo(({ icon, value, label, color }: any) => (
-  <View style={styles.statPill}>
+const KpiPill = React.memo(({ icon, value, label, color, onPress }: any) => (
+  <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={styles.kpiPill}>
     <LinearGradient colors={[`${color}15`, `${color}05`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
-    <View style={[styles.statPillIconBg, { backgroundColor: `${color}15` }]}>
-      <Text style={styles.statPillEmoji}>{icon}</Text>
+    <View style={[styles.kpiPillIconBg, { backgroundColor: `${color}15` }]}>
+      <Text style={styles.kpiPillEmoji}>{icon}</Text>
     </View>
-    <View style={styles.statPillText}>
-      <Text style={[styles.statPillValue, { color }]}>{value}</Text>
-      <Text style={styles.statPillLabel}>{label}</Text>
+    <View style={styles.kpiPillBody}>
+      <Text style={[styles.kpiPillValue, { color }]}>{value}</Text>
+      <Text style={styles.kpiPillLabel}>{label}</Text>
     </View>
-  </View>
+  </TouchableOpacity>
 ));
-
 const EngagementInsightsCard = React.memo(({ insights }: any) => (
   <Animated.View entering={FadeInUp.delay(100).springify()}>
     <GlassCard>
@@ -1027,11 +1026,7 @@ const isDark = darkMode ?? (colorScheme === 'dark');
     return (
       <View style={[styles.container, styles.centered]}>
         <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
-        {isDark ? (
         <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={StyleSheet.absoluteFill} />
-      ) : (
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#f8f9fc' }]} />
-      )}
         <UniversalSpinner visible={true} text="Loading profile..." size="medium" overlay={false} section="main" />
       </View>
     );
@@ -1041,11 +1036,7 @@ const isDark = darkMode ?? (colorScheme === 'dark');
     return (
       <View style={[styles.container, styles.centered]}>
         <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
-        {isDark ? (
         <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={StyleSheet.absoluteFill} />
-      ) : (
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#f8f9fc' }]} />
-      )}
         <Ionicons name="person-outline" size={64} color="#64748b" />
         <Text style={{ marginTop: 16, color: '#94a3b8', fontSize: 16, fontWeight: '600' }}>User not found</Text>
         <TouchableOpacity style={[styles.retryButton, { backgroundColor: '#6366f1' }]} onPress={() => navigation.goBack()}>

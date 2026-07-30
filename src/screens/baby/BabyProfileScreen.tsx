@@ -58,11 +58,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 const DESIGN = {
   radius: { xs: 8, sm: 12, md: 16, lg: 20, xl: 24, full: 999 },
   spacing: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32 },
-  shadow: {
-    sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 2 },
-    md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 4 },
-    lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 24, elevation: 8 },
-  },
+  shadow: { sm: {}, md: {}, lg: {} },
 };
 
 const isImageUri = (value: string | undefined | null): boolean => {
@@ -971,29 +967,8 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     };
   }, [currentBabyData, babyMilestones.length, recentActivities.length]);
 
-  const familyMembers = useMemo(() => {
-    const membersList: FamilyMember[] = [];
-    if (userProfile) {
-      membersList.push({ 
-        id: userProfile.id, 
-        userId: userProfile.id, 
-        fullName: userProfile.fullName || profile?.fullName || 'Parent', 
-        email: userProfile.email || profile?.email || '', 
-        avatar: userProfile.avatar || profile?.avatar || '', 
-        role: 'parent1', 
-        relationship: 'Parent', 
-        permissions: { read: true, write: true, delete: true, manageFamily: true, manageSecurity: true, exportData: true }, 
-        addedAt: currentBabyData?.createdAt || new Date().toISOString(), 
-        addedBy: userProfile.id, 
-        canBeRemoved: false, 
-        phoneNumber: userProfile.phoneNumber || profile?.phoneNumber, 
-        notificationsEnabled: true 
-      } as FamilyMember);
-    }
-    if (parent2) membersList.push(parent2);
-    if (guardians && guardians.length > 0) membersList.push(...guardians);
-    return membersList;
-  }, [userProfile, profile, parent2, guardians, currentBabyData?.createdAt]);
+   // Use the authoritative members list from FamilyContext (includes parent1, parent2, guardians, viewers)
+  const familyMembers = useMemo(() => members, [members]);
 
   const checkForChanges = useCallback(() => {
     if (!currentBabyData) return [];
@@ -1615,9 +1590,9 @@ const styles = StyleSheet.create({
 
   // ── Avatar ──
   avatarWrapper: { position: 'relative' },
-  avatarGradient: { alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 8, elevation: 5 },
+  avatarGradient: { alignItems: 'center', justifyContent: 'center' },
   avatarEmoji: {},
-  editAvatarBtn: { position: 'absolute', width: 28, height: 28, borderRadius: 14, overflow: 'hidden', borderWidth: 2, borderColor: '#fff', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4 },
+  editAvatarBtn: { position: 'absolute', width: 28, height: 28, borderRadius: 14, overflow: 'hidden', borderWidth: 2, borderColor: '#fff' },
   editAvatarGradient: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' },
 
   // ── Quick Actions Dock ──
@@ -1757,12 +1732,12 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: 14, color: '#64748b', textAlign: 'center', lineHeight: 20 },
 
   // ── Milestones ──
-  addMilestoneBtn: { borderRadius: 18, overflow: 'hidden', marginBottom: 8, marginHorizontal: 16, shadowColor: '#f59e0b', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 6 },
+  addMilestoneBtn: { borderRadius: 18, overflow: 'hidden', marginBottom: 8, marginHorizontal: 16 },
   addMilestoneGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 16, gap: 10 },
   addMilestoneText: { color: '#fff', fontSize: 16, fontWeight: '800' },
   milestoneCard: { padding: 0, marginBottom: 12, borderRadius: 20 },
   milestoneRow: { flexDirection: 'row', alignItems: 'center', padding: 16 },
-  milestoneIcon: { width: 50, height: 50, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginRight: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
+  milestoneIcon: { width: 50, height: 50, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginRight: 16 },
   milestoneContent: { flex: 1 },
   milestoneTitle: { fontSize: 16, fontWeight: '800', color: '#fff', marginBottom: 3 },
   milestoneCategory: { fontSize: 13, fontWeight: '700', textTransform: 'capitalize', marginBottom: 3 },
