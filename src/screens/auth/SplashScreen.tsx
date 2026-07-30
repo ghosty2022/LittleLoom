@@ -227,7 +227,8 @@ const styles = StyleSheet.create({
   logoImage: {
     width: wp(60),
     height: wp(60),
-  }  brandName: {
+  }, 
+  brandName: {
     fontSize: wp(9),
     fontWeight: '800',
     color: '#fff',
