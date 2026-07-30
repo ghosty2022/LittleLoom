@@ -309,12 +309,12 @@ export default function CustomizeScreen({ navigation }: Props) {
     reset,
   } = useCustomization();
 
+  const [pending, setPending] = useState<CustomizationSettings>(settings);
+
   const effectiveIsDark = useMemo(() => {
     if (pending.appearance === 'system') return systemColorScheme === 'dark';
     return pending.appearance === 'dark' || pending.appearance === 'trueBlack';
   }, [pending.appearance, systemColorScheme]);
-
-  const [pending, setPending] = useState<CustomizationSettings>(settings);
 
   useEffect(() => {
     if (isLoaded) setPending(settings);
@@ -427,7 +427,7 @@ export default function CustomizeScreen({ navigation }: Props) {
         hapticSuccess();
       },
     });
-  }, [reset, setAppearance, setThemeMode, hapticSuccess, sweetAlert]);
+  }, [reset, setAppearance, hapticSuccess, sweetAlert]);
 
   const handleBack = useCallback(() => {
     if (hasChanges) {

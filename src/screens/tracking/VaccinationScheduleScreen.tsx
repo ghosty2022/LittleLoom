@@ -46,6 +46,7 @@ import {
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useBaby, BabyProfile } from '../../context/BabyContext';
+import { useFocusEffect } from '@react-navigation/native';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useTheme } from '../../context/AppContext';
 import { SafeAvatar } from '../../components/SafeAvatar';
@@ -1074,34 +1075,7 @@ const VaccineDetailModal = memo(({ visible, series, onClose }: { visible: boolea
   );
 });
 
-const BabySwitcherModal = memo(({ visible, onClose, babies, currentBaby, onSwitch, themeColors }: any) => {
-  if (!visible) return null;
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
-      <TouchableOpacity style={styles.modalOverlay} onPress={onClose} activeOpacity={1}>
-        <BlurView intensity={95} tint="dark" style={StyleSheet.absoluteFill} />
-        <Animated.View entering={FadeInUp.springify()} style={styles.babySwitcherModal}>
-          <LinearGradient colors={['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.95)']} style={StyleSheet.absoluteFill} />
-          <Text style={styles.babySwitcherTitle}>Select Baby</Text>
-          {babies.map((baby: BabyProfile) => (
-            <TouchableOpacity
-              key={baby.id}
-              onPress={() => { onSwitch(baby.id); onClose(); }}
-              style={[styles.babySwitcherItem, currentBaby?.id === baby.id && { backgroundColor: `${themeColors.primary}15` }]}
-            >
-              <SafeAvatar avatar={baby.avatar} size={44} fallbackIcon="person" borderColor={currentBaby?.id === baby.id ? themeColors.primary : '#e2e8f0'} borderWidth={2} />
-              <View style={styles.babySwitcherInfo}>
-                <Text style={styles.babySwitcherName}>{baby.name}</Text>
-                <Text style={styles.babySwitcherMeta}>{safeFmt(baby.birthDate, 'MMM d, yyyy')} • {safeDiffMonths(new Date(), baby.birthDate)} months</Text>
-              </View>
-              {currentBaby?.id === baby.id && <Ionicons name="checkmark-circle" size={22} color={themeColors.primary} />}
-            </TouchableOpacity>
-          ))}
-        </Animated.View>
-      </TouchableOpacity>
-    </Modal>
-  );
-});
+
 
 /* ═══════════════════════════════════════════════════════════════════════════
    MAIN SCREEN — REDESIGNED WITH TABS & GROWTHDASHBOARD STYLE
@@ -1121,7 +1095,6 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
   const [selectedSeries, setSelectedSeries] = useState<VaccineSeries | null>(null);
   const [showRecordModal, setShowRecordModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
-  const [showBabySwitcher, setShowBabySwitcher] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const scrollY = useSharedValue(0);
@@ -1141,6 +1114,12 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
   useEffect(() => {
     loadRecords();
   }, [currentBaby?.id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadRecords();
+    }, [loadRecords])
+  );
 
   const loadRecords = async () => {
     if (!currentBaby) return;
@@ -1389,7 +1368,7 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
             <Ionicons name="arrow-back" size={22} color="#1e293b" />
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={() => setShowBabySwitcher(true)} style={styles.babyChip}>
+          <TouchableOpacity onPress={() => navigation.navigate('SwitchBaby', { returnTo: 'Main', returnLabel: 'Vaccines' })} style={styles.babyChip}>
             <SafeAvatar avatar={currentBaby.avatar} size={36} fallbackIcon="person" borderColor={themeColors.primary} borderWidth={2} />
             <View style={styles.babyChipText}>
               <Text style={styles.babyChipName}>{currentBaby.name}</Text>
@@ -1618,14 +1597,7 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
         onClose={() => { setShowDetailModal(false); setSelectedSeries(null); }}
       />
 
-      <BabySwitcherModal
-        visible={showBabySwitcher}
-        onClose={() => setShowBabySwitcher(false)}
-        babies={babies}
-        currentBaby={currentBaby}
-        onSwitch={switchBaby}
-        themeColors={themeColors}
-      />
+      {/* Baby switching handled via SwitchBaby screen */}
     </View>
   );
 }
