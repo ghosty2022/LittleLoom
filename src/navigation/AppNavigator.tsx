@@ -2,10 +2,10 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { View, Text, AppState, TouchableOpacity, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import {
-  NavigationContainer, DefaultTheme, DarkTheme, NavigationContainerRef,
+import { NavigationContainer, DefaultTheme, DarkTheme, NavigationContainerRef,
   getFocusedRouteNameFromRoute,
 } from '@react-navigation/native';
+import { navigationRef } from './navigationRef';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -287,7 +287,8 @@ function NavigationContent({
   const [isNavReady, setIsNavReady] = useState(false);
   const [isFirstOpen, setIsFirstOpen] = useState(false);
 
-  const navRef = useRef<NavigationContainerRef<RootStackParamList>>(null);
+  // Shared ref so useAppLock() in App.tsx can navigate imperatively to SecurityLock
+  const navRef = navigationRef;
   const lastNavState = useRef<NavigationState>('LOADING');
   const appState = useRef(AppState.currentState);
   const isNavigating = useRef(false);
