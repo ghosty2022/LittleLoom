@@ -18,6 +18,7 @@ import { useFamily } from '../../context/FamilyContext';
 import { useMedia } from '../../context/MediaContext';
 import { useSecurity } from '../../context/SecurityContext';
 import { useSweetAlert } from '../../components/SweetAlert';
+import { UniversalSpinner } from '../../components/UniversalSpinner';
 import { useUser } from '../../context/UserContext';
 import { useFocusEffect } from '@react-navigation/native';
 
@@ -810,7 +811,7 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = React.memo(({
   );
 });
 
-export default function SettingsScreen({ navigation, route }: SettingsScreenProps) {
+function SettingsScreen({ navigation, route }: SettingsScreenProps) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
     new Set(['security', 'preferences', 'family'])
   );
@@ -937,6 +938,8 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
 
   // formatTimeout moved above handleAutoLockTimeout to fix TDZ
 
+
+
   const handleAutoLockTimeout = useCallback(() => {
     if (!securitySettings.isAppLockEnabled) {
       sweetAlert.toast('Enable App Lock first', 'Turn on Auto-Lock App to set a timeout', 'warning');
@@ -988,10 +991,7 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
     }
   }, [route.params?.babySwitched, loadBabies, navigation]);
 
-  const formatTimeout = useCallback((minutes: number) => {
-    if (minutes < 60) return `${minutes} min`;
-    return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
-  }, []);
+
 
   const bgColors = useMemo(() => {
     if (isDark) {
@@ -1356,17 +1356,21 @@ export default function SettingsScreen({ navigation, route }: SettingsScreenProp
     );
   }, [expandedSections, secondary, isDark, toggleSection, navigation]);
 
-  if (authLoading || babyLoading) {
+  // Only block the UI on initial load. Background refreshes (e.g. useFocusEffect)
+  // should not flash the spinner over already-loaded data.
+  const isInitialLoading = authLoading || (babyLoading && safeBabies.length === 0);
+
+  if (isInitialLoading) {
     return (
       <LinearGradient colors={bgColors} style={styles.container}>
-        <View style={[styles.loadingContainer, isDark && styles.loadingContainerDark]}>
-          <View style={[styles.loadingSpinner, { borderColor: primary }]}>
-            <Ionicons name="settings-outline" size={40} color={primary} />
-          </View>
-          <Text style={[styles.loadingText, isDark && styles.textMuted]}>
-            Loading your settings...
-          </Text>
-        </View>
+        <UniversalSpinner
+          visible={true}
+          text="Loading your settings..."
+          overlay={false}
+          size="medium"
+          section="settings"
+          variant="liquid"
+        />
       </LinearGradient>
     );
   }
@@ -2245,4 +2249,4 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1a1a1a',
   },
-});
+});export default React.memo(SettingsScreen);
