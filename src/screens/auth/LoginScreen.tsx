@@ -589,6 +589,16 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
         showSuccess(`Welcome Back${userName !== 'there' ? `, ${userName}` : ''}!`, 'Successfully signed in');
         forceUnlock().catch(() => {});
 
+        // If setup is incomplete, push to setup flow immediately
+        if (!setupComplete) {
+          if (!hasParent2) {
+            navigation.replace('CoParentInviteScreen');
+          } else if (!hasBaby) {
+            navigation.replace('BabyOptional');
+          }
+          return;
+        }
+
         if (hasSeenOnboarding) {
           const shouldPrompt = await shouldShowBiometricPrompt();
           if (shouldPrompt) {
@@ -615,9 +625,14 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     signIn,
     isProcessing,
     authLoading,
+    isAuthenticated,
+    setupComplete,
+    hasParent2,
+    hasBaby,
     shouldShowBiometricPrompt,
     hasSeenOnboarding,
     forceUnlock,
+    navigation,
     userName,
     triggerHaptic,
     showError,
@@ -712,7 +727,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     } finally {
       if (isMounted.current) setIsProcessing(false);
     }
-  }, [inviteCode, codeValidated, joinFullName, joinEmail, joinPassword, joinConfirmPassword, signUpWithInviteCode, isProcessing, authLoading, triggerHaptic, showError, showSuccess, forceUnlock]);
+  }, [inviteCode, codeValidated, joinFullName, joinEmail, joinPassword, joinConfirmPassword, signUpWithInviteCode, findUserByEmail, isProcessing, authLoading, isAuthenticated, setupComplete, triggerHaptic, showError, showSuccess, showInfo, forceUnlock, navigation]);
 
   const handleBiometricLogin = useCallback(async () => {
     // FIX: Reset stale flags from previous session (swipe-back edge case)
@@ -759,8 +774,11 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     loginWithBiometric,
     isProcessing,
     authLoading,
+    isAuthenticated,
+    setupComplete,
     resetUnlockLock,
     forceUnlock,
+    navigation,
     userName,
     triggerHaptic,
     showError,

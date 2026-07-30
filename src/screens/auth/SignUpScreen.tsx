@@ -349,6 +349,8 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
 
       if (success && isMounted.current) {
         showSuccess(`Welcome, ${fullName.trim()}!`, 'Your account has been created successfully');
+        // Push user into setup flow immediately — don't wait for AppNavigator reactive routing
+        navigation.replace('CoParentInviteScreen');
       } else {
         // ─── CRITICAL FIX: Check if email already exists ───────────────
         const { findUserByEmail } = await import('@/database/dbHelpers');
@@ -370,7 +372,7 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
     } finally {
       if (isMounted.current) setIsProcessing(false);
     }
-  }, [fullName, email, password, confirmPassword, signUp, isProcessing, authLoading, triggerHaptic, showError, showSuccess, showInfo, navigation]);
+  }, [fullName, email, password, confirmPassword, signUp, findUserByEmail, isProcessing, authLoading, triggerHaptic, showError, showSuccess, showInfo, navigation]);
 
   // ─── JOIN FAMILY HANDLER ───
   const handleJoinFamily = useCallback(async () => {
@@ -448,7 +450,7 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
     } finally {
       if (isMounted.current) setIsProcessing(false);
     }
-  }, [inviteCode, codeValidated, joinFullName, joinEmail, joinPassword, joinConfirmPassword, signUpWithInviteCode, signIn, isProcessing, authLoading, triggerHaptic, showError, showSuccess, showInfo, navigation]);
+  }, [inviteCode, codeValidated, joinFullName, joinEmail, joinPassword, joinConfirmPassword, signUpWithInviteCode, findUserByEmail, isProcessing, authLoading, triggerHaptic, showError, showSuccess, showInfo, navigation]);
 
   const isLoading = authLoading || isProcessing;
 

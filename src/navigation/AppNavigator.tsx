@@ -574,8 +574,10 @@ function NavigationContent({
   }, [navState, initialCheckDone, isNavReady, initialState]);
 
   // Early return MUST come after ALL hooks
-  // Keep showing loading until auth + firstOpen + babies (if authenticated) are all resolved
-  if (authLoading || !initialCheckDone || (isAuthenticated && !babiesReady)) {
+  // Keep showing loading until auth + firstOpen are resolved
+  // NOTE: Removed babiesReady check to prevent NavigationContainer remount
+  // which resets isNavReady and can block post-auth navigation to setup flow
+  if (authLoading || !initialCheckDone) {
     return <AppLoadingScreen />;
   }
 
