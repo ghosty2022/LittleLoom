@@ -116,7 +116,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     initRef.current = true;
     loadFamily();
-  }, [currentBaby?.id, userLoading, profile]);
+  }, [currentBaby?.id, userLoading, profile, authProfile]);
 
   const loadFamily = useCallback(async () => {
     if (!currentBaby) return;
@@ -244,7 +244,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       console.error('Error loading family:', error);
       setState(prev => ({ ...prev, isLoading: false }));
     }
-  }, [currentBaby, profile, userLoading]);
+  }, [currentBaby, profile, userLoading, authProfile]);
 
   const updateParent2Profile = useCallback(async (
     updates: Partial<Omit<FamilyMember, 'id' | 'userId' | 'role' | 'permissions' | 'addedAt' | 'addedBy' | 'canBeRemoved'>>
