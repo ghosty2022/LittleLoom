@@ -9,6 +9,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  BackHandler,
 } from 'react-native';
 
 import * as LocalAuthentication from 'expo-local-authentication';
@@ -117,7 +118,6 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
   } = useSecurity();
   const biometricEnabled = isBiometricEnabled ?? false;
   
-  // Fallback for older SecurityContext versions
   const effectiveBiometricEnabled = isBiometricEnabled ?? false;
 
   const { darkMode: isDark, themeColors, triggerHaptic } = useCustomization();
@@ -152,6 +152,26 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
   const handleBiometricAuthRef = useRef<(() => Promise<void>) | null>(null);
   const lastUnlockAttemptRef = useRef<number>(0);
 
+  // ─── CRITICAL: dismiss lock screen after successful unlock ───────────
+  const dismissLockScreen = useCallback(() => {
+    setTimeout(() => {
+      if (navigation.canGoBack()) {
+        navigation.goBack();
+      } else {
+        navigation.replace('Main' as never);
+      }
+    }, 250);
+  }, [navigation]);
+
+  // Prevent hardware back button on Android while locked
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (!isLockedOut) return true; // Block back
+      return false;
+    });
+    return () => backHandler.remove();
+  }, [isLockedOut]);
+
   useEffect(() => {
     loadSecurityQuestions();
   }, []);
@@ -169,8 +189,6 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     }
   };
 
-// Uses exported hashAnswer from SecurityContext to ensure consistency
-
   const verifySecurityAnswers = async () => {
     if (verifyAnswers.some(a => a.trim().length === 0)) {
       showError('Incomplete', 'Please answer all questions');
@@ -186,7 +204,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
         })
       );
 
-        if (allCorrect.every(Boolean)) {
+      if (allCorrect.every(Boolean)) {
         triggerHaptic('success');
         setShowForgotPin(false);
         toast('Verified!', 'Redirecting to PIN reset...', 'success');
@@ -250,7 +268,6 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     if (isLockedOut) return;
     if (unlockInProgress.current) return;
 
-    // ─── FIX: Reset prompt flag on focus so biometric prompts on every resume
     const unsubscribe = navigation.addListener('focus', () => {
       hasAutoPrompted.current = false;
     });
@@ -266,7 +283,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
         hasAutoPrompted.current = true;
         handleBiometricAuthRef.current();
       }
-    }, 800); // Slightly longer for stability
+    }, 900);
 
     return () => {
       unsubscribe();
@@ -353,8 +370,8 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
           setAttempts(0);
           triggerHaptic('success');
           toast('Welcome Back!', `Good to see you, ${userName}`, 'success');
-          // Ensure security lock is fully released
-          forceUnlock?.();
+          await forceUnlock?.();
+          dismissLockScreen();
         }
       } catch (error) {
         shake();
@@ -366,7 +383,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
         }
       }
     },
-    [unlockApp, shake, attempts, isLockedOut, handleLockout, triggerHaptic, userName, toast, showError]
+    [unlockApp, shake, attempts, isLockedOut, handleLockout, triggerHaptic, userName, toast, showError, forceUnlock, dismissLockScreen]
   );
 
   const handleNumberPress = useCallback(
@@ -415,8 +432,8 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
       if (success) {
         triggerHaptic('success');
         toast('Welcome Back!', `Good to see you, ${userName}`, 'success');
-        // Ensure security lock is fully released
-        forceUnlock?.();
+        await forceUnlock?.();
+        dismissLockScreen();
       } else {
         triggerHaptic('error');
         shake();
@@ -440,6 +457,8 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     triggerHaptic,
     userName,
     toast,
+    forceUnlock,
+    dismissLockScreen,
   ]);
 
   useEffect(() => {
@@ -677,10 +696,8 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
             )}
           </View>
 
-          {/* Forgot PIN Overlay */}
           {showForgotPin && renderForgotPin()}
 
-          {/* Biometric Section */}
           {!showForgotPin && hasBiometric && !isLockedOut && (
             <View style={styles.biometricSection}>
               <TouchableOpacity
@@ -697,7 +714,6 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
             </View>
           )}
 
-          {/* PIN Section */}
           {!showForgotPin && hasPin && (
             <View style={styles.pinSection}>
               {renderPinDots()}
@@ -708,7 +724,6 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
             </View>
           )}
 
-          {/* No Security Fallback */}
           {!showForgotPin && !hasBiometric && !hasPin && !isLockedOut && (
             <View style={styles.noSecurityContainer}>
               <Ionicons name="lock-open-outline" size={48} color={colors.primary} />
@@ -720,9 +735,10 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
               </Text>
               <TouchableOpacity
                 style={[styles.unlockButton, { backgroundColor: colors.primary }]}
-                onPress={() => {
-                  forceUnlock?.();
+                onPress={async () => {
+                  await forceUnlock?.();
                   toast('Unlocked', 'Welcome back!', 'success');
+                  dismissLockScreen();
                 }}
               >
                 <Text style={styles.unlockButtonText}>Unlock App</Text>
@@ -741,7 +757,6 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
             </View>
           )}
 
-          {/* Forgot PIN Link */}
           {!showForgotPin && hasPin && !isLockedOut && (
             <TouchableOpacity
               style={styles.forgotPinLink}
@@ -780,12 +795,8 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  gradient: {
-    flex: 1,
-  },
+  container: { flex: 1 },
+  gradient: { flex: 1 },
   content: {
     flex: 1,
     paddingHorizontal: 24,
@@ -807,9 +818,7 @@ const styles = StyleSheet.create({
     shadowRadius: 24,
     elevation: 8,
   },
-  avatarText: {
-    fontSize: 40,
-  },
+  avatarText: { fontSize: 40 },
   title: {
     fontSize: 28,
     fontWeight: '700',
@@ -876,9 +885,7 @@ const styles = StyleSheet.create({
     borderRadius: 9,
     borderWidth: 2,
   },
-  loadingIndicator: {
-    marginBottom: 20,
-  },
+  loadingIndicator: { marginBottom: 20 },
   keypadContainer: {
     width: '100%',
     maxWidth: 340,
@@ -909,9 +916,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0,
     elevation: 0,
   },
-  keypadButtonDisabled: {
-    opacity: 0.3,
-  },
+  keypadButtonDisabled: { opacity: 0.3 },
   keypadButtonText: {
     fontSize: 28,
     fontWeight: '600',
@@ -958,9 +963,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
-  questionCard: {
-    marginBottom: 16,
-  },
+  questionCard: { marginBottom: 16 },
   questionText: {
     fontSize: 14,
     fontWeight: '600',
@@ -1037,7 +1040,6 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderStyle: 'dashed',
   },
-
   noSecurityContainer: {
     alignItems: 'center',
     justifyContent: 'center',
