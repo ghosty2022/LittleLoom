@@ -421,7 +421,9 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
   }, [isBiometricAvailable, hasBiometricLoginCredentials]);
 
   useEffect(() => {
+    // CRITICAL FIX: Don't auto-login if setup is not complete — user must go through setup flow
     if (isAuthenticated || autoLoginAttempted.current || !biometricCheckComplete.current || !authInitialized) return;
+    if (!setupComplete) return; // Don't auto-login during setup flow
 
     const attemptAutoLogin = async () => {
       const hasCreds = await hasBiometricLoginCredentials();
@@ -437,7 +439,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     };
 
     attemptAutoLogin();
-  }, [isAuthenticated, isBiometricAvailable, authInitialized]);
+  }, [isAuthenticated, isBiometricAvailable, authInitialized, setupComplete]);
 
   useEffect(() => {
     resetUnlockLock();

@@ -205,25 +205,24 @@ function getNavState(
   firstOpen: boolean,
 ): NavigationState {
   if (authLoading) return 'LOADING';
-  if (isAuth) {
-    if (isLocked && securityOn && setupDone) return 'SECURITY_LOCK';
-    if (!setupDone) {
-      // Check parent2 setup first - must be completed OR skipped
-      const p2Addressed = hasP2 === true || hasP2 === 'skipped';
-      if (!p2Addressed) return 'SETUP_PARENT2';
-      
-      // Then check baby setup - must be completed OR skipped OR have babies
-      const babyAddressed = hasBaby === true || hasBaby === 'skipped' || babyCount > 0;
-      if (!babyAddressed) return 'SETUP_BABY';
-      
-      // Both steps addressed but setupComplete flag might not be set yet
-      // Force it to main - the setup is effectively done
-      return 'MAIN';
-    }
-    return 'MAIN';
+  if (!isAuth) {
+    if (firstOpen && !seenOnboarding) return 'ONBOARDING';
+    return 'LOGIN';
   }
-  if (firstOpen && !seenOnboarding) return 'ONBOARDING';
-  if (!isAuth) return 'LOGIN';
+  
+  // isAuth === true from here on
+  if (isLocked && securityOn && setupDone) return 'SECURITY_LOCK';
+  
+  if (!setupDone) {
+    // Check parent2 setup first - must be completed OR skipped
+    const p2Addressed = hasP2 === true || hasP2 === 'skipped';
+    if (!p2Addressed) return 'SETUP_PARENT2';
+    
+    // Then check baby setup - must be completed OR skipped OR have babies
+    const babyAddressed = hasBaby === true || hasBaby === 'skipped' || babyCount > 0;
+    if (!babyAddressed) return 'SETUP_BABY';
+  }
+  
   return 'MAIN';
 }
 
@@ -401,26 +400,43 @@ function NavigationContent({
     }
   }, [isAuthenticated, authLoading]);
 
-  // FIX #4: AppState listener with STABLE deps (using refs for callbacks)
+  // FIX #4: AppState listener — check security on EVERY resume when authenticated
   useEffect(() => {
     const sub = AppState.addEventListener('change', async (next) => {
-      const current = AppState.currentState;
-      const wasBg = current === 'background' || current === 'inactive';
-
-      if (wasBg && next === 'active' && isAuthenticated && setupComplete) {
+      const previous = appState.current;
+      appState.current = next;
+      
+      // Only trigger when coming BACK to active from background/inactive
+      if ((previous === 'background' || previous === 'inactive') && next === 'active') {
+        // Small delay to let React Native settle
+        await new Promise(r => setTimeout(r, 100));
+        
         const currentRoute = navRef.current?.getCurrentRoute()?.name;
+        
+        // Don't re-trigger if already on security lock
         if (currentRoute === 'SecurityLock') return;
-        if (wasOnSecurityLock.current) { wasOnSecurityLock.current = false; return; }
+        
+        // Skip if we just came from security lock (handled by the unlock flow)
+        if (wasOnSecurityLock.current) {
+          wasOnSecurityLock.current = false;
+          return;
+        }
 
         const now = Date.now();
-        if (now - lastSecCheck.current < 3000) return;
-        await checkSecurityOnResumeRef.current();
+        if (now - lastSecCheck.current < 2000) return;
+        
+        // ALWAYS check security when authenticated, regardless of setup state
+        // (but security lock only shows if setup is done AND security is enabled)
+        if (isAuthenticated) {
+          await checkSecurityOnResumeRef.current();
+        }
+        
         lastSecCheck.current = now;
         loadBabiesRef.current();
       }
     });
     return () => sub.remove();
-  }, [isAuthenticated, setupComplete]);
+  }, [isAuthenticated]);
 
   // FIX: Deduplicated state change handler — forward ONLY to App.tsx prop
   const handleStateChange = useCallback((state: any) => {

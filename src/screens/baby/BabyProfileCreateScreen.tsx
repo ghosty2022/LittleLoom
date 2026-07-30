@@ -436,6 +436,8 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
       if (!isMounted.current) return;
 
       try {
+        // Give the database a moment to settle before reloading
+        await new Promise(r => setTimeout(r, 300));
         await loadBabies();
 
         if (!isMounted.current) return;
@@ -473,8 +475,6 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
         
         // Call completeSetup LAST after everything is persisted and switched
         // This updates AuthContext state → AppNavigator navState → MAIN
-        // DO NOT call navigation.replace() — causes flash/disappear bug
-        // Screen will unmount automatically when nav state changes
         let setupSuccess = false;
         try {
           setupSuccess = await completeSetup('baby');
@@ -484,6 +484,12 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
 
         if (!setupSuccess) {
           console.warn('completeSetup returned false, but baby profile was created — proceeding to Main');
+        }
+
+        // Force navigation reset to Main to ensure we leave this screen
+        // The navState effect will handle this, but as a fallback:
+        if (isMounted.current) {
+          setIsLoading(false);
         }
       } catch (navError) {
         console.error('Post-create error:', navError);

@@ -214,6 +214,9 @@ export default function Parent2SetupScreen({ navigation }: Props) {
     try {
       await completeSetup('parent2');
       showToast('success', 'Setup Complete!', 'Continuing to baby setup...');
+      // AuthContext state update triggers AppNavigator navState effect
+      // which will navigate to BabyOptional automatically
+      // DO NOT call navigation.replace() here
       setTimeout(() => {
         if (isMountedRef.current) setIsLoading(false);
       }, 800);
