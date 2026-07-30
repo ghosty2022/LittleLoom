@@ -169,7 +169,6 @@ const secureStorage = {
 
 // Import user registry functions from dbHelpers
 import { 
-  findUserByEmail, 
   registerUser, 
   updateUserInRegistry,
   type UserRegistryEntry,
@@ -390,13 +389,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                        hasBabyStr === 'true' ? true :
                        hasBabyStr === 'skipped' ? 'skipped' : false;
 
-        // Setup is complete if BOTH steps have been addressed (completed OR skipped)
-        const p2Done = parent2Completed !== null;
-        const bDone = babyCompleted !== null;
+
         const isSetupComplete = setupComplete === 'true' || (p2Done && bDone);
 
         // ─── CRITICAL FIX: Setup complete requires BOTH steps addressed (completed OR skipped)
-        const p2Done = parent2Completed !== null;  // 'true', 'skipped', or null
+        const p2Done = parent2Completed !== null;
         const bDone = babyCompleted !== null;
         const explicitSetupComplete = setupComplete === 'true';
         const bothStepsAddressed = p2Done && bDone;
@@ -475,7 +472,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return await LocalAuthentication.authenticateAsync({
         promptMessage: promptMessage || `Authenticate with LittleLoom`,
         fallbackLabel: 'Use Password',
-        disableDeviceFallback: false,
         cancelLabel: 'Cancel',
       });
     } catch (error) { return { success: false, error: 'unknown' }; }

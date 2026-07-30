@@ -287,6 +287,7 @@ function NavigationContent({
 
   const navRef = useRef<NavigationContainerRef<RootStackParamList>>(null);
   const lastNavState = useRef<NavigationState>('LOADING');
+  const appState = useRef(AppState.currentState);
   const isNavigating = useRef(false);
   const lastNavTime = useRef(0);
   const hasShownSwitchBaby = useRef(false);

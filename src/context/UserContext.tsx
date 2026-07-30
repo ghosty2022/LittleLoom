@@ -1,4 +1,3 @@
-import { useSweetAlert } from '../components/SweetAlert';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -185,6 +184,7 @@ const UserContext = createContext<UserContextType>(createDefaultContextValue());
 
 export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, isLoading: authLoading, userProfile: authProfile, updateUserProfile: updateAuthProfile, getCurrentUserProfile } = useAuth();
+  const { alert: sweetAlert } = useSweetAlert();
 
   const [state, setState] = useState<UserState>(DEFAULT_USER_STATE);
   const [isReady, setIsReady] = useState(false);

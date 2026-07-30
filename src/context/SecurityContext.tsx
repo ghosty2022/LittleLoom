@@ -211,7 +211,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
   const lastUnlockTimeRef = useRef<number>(0);
   const backgroundTimeRef = useRef<number>(0);
   const checkedThisCycleRef = useRef<boolean>(false);
-  const isAuthenticatedRef = useRef<boolean>(false);
+
 
   useEffect(() => { return () => { isMounted.current = false; }; }, []);
   
@@ -332,7 +332,6 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
       const result = await LocalAuthentication.authenticateAsync({
         promptMessage: promptMessage || `Authenticate with ${state.settings.biometricTypeName}`,
         fallbackLabel: 'Use PIN',
-        disableDeviceFallback: false,
         cancelLabel: 'Cancel',
       });
       return result;
