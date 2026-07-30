@@ -23,7 +23,7 @@ import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { DynamicTrackerForm } from './DynamicTrackerForm';
 import type { UnifiedTrackerConfig } from '../../types/trackers';
-import { SafeAvatar } from '../../components/SafeAvatar';
+// import { SafeAvatar } from '../../components/SafeAvatar'; // UNUSED -- removed
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
@@ -42,7 +42,7 @@ export const SmartTrackerScreen: React.FC<SmartTrackerScreenProps> = ({ tracker,
     shouldReduceMotion,
     triggerHaptic,
   } = useCustomization();
-  const { success, info, confirm } = useSweetAlert();
+  const { success } = useSweetAlert();
   const {
     addEntry,
     linkEntries,

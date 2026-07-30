@@ -26,11 +26,11 @@ import {
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import {
-  TrackerProgressiveState, 
-  ProgressiveSuggestion,
-  ProgressiveTrend,
+TrackerProgressiveState,
+ProgressiveSuggestion,
+ProgressiveTrend,
 } from '../../hooks/useTrackerProgressive';
-
+import { MOOD_EMOJIS } from './trackerConstants';
 const { width: SCREEN_W } = Dimensions.get('window');
 
 interface DynamicTrackerFormProps {
@@ -52,7 +52,7 @@ interface DynamicTrackerFormProps {
   quickMode?: boolean;
 }
 
-const MOOD_EMOJIS = ['😭', '😟', '😐', '🙂', '😄'];
+
 const TREND_ICONS = { up: 'trending-up-outline', down: 'trending-down-outline', same: 'remove-outline' };
 
 const StreakBadge: React.FC<{ streak: TrackerProgressiveState['streak']; color: string }> = ({ streak, color }) => {

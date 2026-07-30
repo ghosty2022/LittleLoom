@@ -197,6 +197,7 @@ export const useTrackerProgressive = (trackerId: string) => {
   } = useTracker();
 
   const { currentBaby, growthData } = useBaby();
+
   let growthIndex = null;
   let predictiveReminders: any[] = [];
   let timelineCorrelations: any[] = [];
@@ -790,11 +791,13 @@ export const useTrackerProgressive = (trackerId: string) => {
      ACTIONS
      ═══════════════════════════════════════════════════════════ */
 
-  const applyAllYesterday = useCallback(() => {
-    const yesterday = getYesterdayData(trackerId);
-    return yesterday || {};
-  }, [getYesterdayData, trackerId]);
-
+ const getAllYesterday = useCallback(() => {
+const yesterday = getYesterdayData(trackerId);
+return yesterday || {};
+}, [getYesterdayData, trackerId]);
+// NOTE: Renamed from applyAllYesterday -> getAllYesterday because this
+// function returns data; it does NOT mutate state. The caller must
+// use setData() or similar to actually apply the values.
   const dismissInsightById = useCallback(
     (insightId: string) => {
       dismissInsight(insightId);
@@ -810,7 +813,7 @@ export const useTrackerProgressive = (trackerId: string) => {
 
   return {
     ...state,
-    applyAllYesterday,
+    getAllYesterday, // renamed from applyAllYesterday -- returns data, caller applies
     dismissInsight: dismissInsightById,
     refresh,
     todayEntries,

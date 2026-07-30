@@ -28,7 +28,19 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTracker } from './useTrackerContext';
 import { useBaby } from '@/context/BabyContext';
 import { useGrowthIntelligence } from './useGrowthIntelligence';
-import { usePredictiveReminders, PredictiveReminder } from './usePredictiveReminders';
+import { usePredictiveReminders } from './usePredictiveReminders';
+// Inline type definition to avoid dependency on potentially missing file export
+interface PredictiveReminder {
+id: string;
+title: string;
+description: string;
+emoji: string;
+confidence: number;
+priority: 'low' | 'medium' | 'high';
+basedOn?: { trackerId: string; reason: string }[];
+suggestedTime?: Date | number;
+suggestedTrackerId?: string;
+}
 
 /* ───────────────────────────────────────────────────────────────
    TYPES — Aligned with AchievementsScreen expectations

@@ -186,7 +186,8 @@ const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(
 
 export const useGrowthIntelligence = () => {
   const { entries, getEntries } = useTracker();
-  const { currentBaby, growthData, milestones, getMilestones } = useBaby();
+  const { currentBaby, growthData, milestones } = useBaby();
+// NOTE: getMilestones was destructured but never used -- removed.
 
   const ageInMonths = useMemo(() => {
     if (!currentBaby?.birthDate) return 0;
@@ -349,7 +350,10 @@ export const useGrowthIntelligence = () => {
     const birthDate = safeParseDate(currentBaby?.birthDate);
 
     if (heightData[0]) {
-      const ageAtMeasurement = Math.max(0, differenceInMonths(new Date(heightData[0].date), birthDate || new Date()));
+      const measurementDate = safeParseDate(heightData[0].date);
+const ageAtMeasurement = measurementDate
+? Math.max(0, differenceInMonths(measurementDate, birthDate || new Date()))
+: 0;
       const rawPercentile = calculatePercentilePrecise(
         safeNumber(heightData[0].value, 0),
         Number.isFinite(ageAtMeasurement) ? ageAtMeasurement : 0,
@@ -359,7 +363,10 @@ export const useGrowthIntelligence = () => {
       heightPercentile = safePercentile(rawPercentile);
     }
     if (weightData[0]) {
-      const ageAtMeasurement = Math.max(0, differenceInMonths(new Date(weightData[0].date), birthDate || new Date()));
+      const measurementDate = safeParseDate(weightData[0].date);
+const ageAtMeasurement = measurementDate
+? Math.max(0, differenceInMonths(measurementDate, birthDate || new Date()))
+: 0;
       const rawPercentile = calculatePercentilePrecise(
         safeNumber(weightData[0].value, 0),
         Number.isFinite(ageAtMeasurement) ? ageAtMeasurement : 0,

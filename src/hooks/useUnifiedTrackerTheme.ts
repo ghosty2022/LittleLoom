@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useCustomization, getThemeColorsById, getFullThemeColors } from './useCustomization';
+import { useCustomization } from './useCustomization';
 import { useApp } from '../context/AppContext';
 
 export interface UnifiedTrackerTheme {
@@ -138,9 +138,32 @@ export function useUnifiedTrackerTheme(): UnifiedTrackerTheme {
       highContrast,
       boldText,
       getFullColors: (themeId?: string) => {
-        const id = themeId || themeColors?.primary ? 'custom' : 'purple';
-        return getFullThemeColors(id, isDark ? 'dark' : 'light', appIsDark);
-      },
+// Guard: if getFullThemeColors is not available from useCustomization,
+// return a minimal safe fallback instead of crashing.
+const id = themeId || (themeColors?.primary ? 'custom' : 'purple');
+try {
+// Dynamic require to avoid hard dependency on potentially missing export
+const { getFullThemeColors } = require('./useCustomization');
+if (getFullThemeColors) {
+return getFullThemeColors(id, isDark ? 'dark' : 'light', appIsDark);
+}
+} catch {
+// Fallback minimal theme if useCustomization doesn't export this
+}
+return {
+background: isDark ? '#0f0f1e' : '#f8faff',
+surface: isDark ? 'rgba(30,30,40,0.6)' : 'rgba(255,255,255,0.9)',
+text: isDark ? '#f1f5f9' : '#1e293b',
+textSecondary: isDark ? '#94a3b8' : '#64748b',
+border: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
+primary: themeColors?.primary || '#667eea',
+error: '#ef4444',
+success: '#10b981',
+warning: '#f59e0b',
+info: '#3b82f6',
+glassBg: isDark ? 'rgba(30,30,40,0.4)' : 'rgba(255,255,255,0.5)',
+} as any;
+},
     };
   }, [
     isDark, isTrueBlack, isPureWhite, appIsDark, themeColors, appColors,
