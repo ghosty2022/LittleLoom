@@ -6,6 +6,7 @@ import * as FileSystem from 'expo-file-system';
 import { getAppSetting, setAppSetting } from '@/database/dbHelpers';
 import { deleteAppSetting } from '@/database/dbHelpers';
 import { useAuth } from './AuthContext';
+import { useSweetAlert } from '@/components/SweetAlert';
 import { UserRole, Permission, ROLE_PERMISSIONS } from '../types/roles';
 
 const ASYNC_KEYS = {
