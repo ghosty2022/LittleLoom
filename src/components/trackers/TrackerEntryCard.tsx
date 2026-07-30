@@ -6,6 +6,7 @@ import { useTracker } from '../../context/TrackerContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { SafeAvatar, SafeBabyAvatar } from '../../components/SafeAvatar';
 import { useSweetAlert } from '../../components/SweetAlert';
+import { formatTimeShort, formatDateShort } from '@/utils/time';
 
 interface TrackerEntryCardProps {
   entry: TrackerEntry;
@@ -34,23 +35,8 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
   const { confirm, success } = useSweetAlert();
   const tracker = getTracker(entry.trackerId);
 
-  const timeString = useMemo(() => {
-    const date = new Date(entry.timestamp);
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  }, [entry.timestamp]);
-
-  const dateString = useMemo(() => {
-    const date = new Date(entry.timestamp);
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const entryDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    const diffDays = Math.floor((today.getTime() - entryDay.getTime()) / (1000 * 60 * 60 * 24));
-
-    if (diffDays === 0) return 'Today';
-    if (diffDays === 1) return 'Yesterday';
-    if (diffDays < 7) return date.toLocaleDateString([], { weekday: 'long' });
-    return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
-  }, [entry.timestamp]);
+  const timeString = useMemo(() => formatTimeShort(entry.timestamp), [entry.timestamp]);
+  const dateString = useMemo(() => formatDateShort(entry.timestamp), [entry.timestamp]);
 
   const handleDelete = () => {
     if (!onDelete) return;

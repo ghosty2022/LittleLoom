@@ -31,6 +31,7 @@ ProgressiveSuggestion,
 ProgressiveTrend,
 } from '../../hooks/useTrackerProgressive';
 import { MOOD_EMOJIS } from './trackerConstants';
+import { isFieldVisible } from '@/utils/form';
 const { width: SCREEN_W } = Dimensions.get('window');
 
 interface DynamicTrackerFormProps {
@@ -701,17 +702,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     });
   }, [prefillData, suggestions, initialData, appliedPrefill]);
 
-  const isFieldVisible = useCallback((field: FieldConfig): boolean => {
-    if (!field.showIf) return true;
-    const { field: targetField, equals, notEquals, contains } = field.showIf;
-    const targetValue = data[targetField];
-    if (equals !== undefined) return targetValue === equals;
-    if (notEquals !== undefined) return targetValue !== notEquals;
-    if (contains !== undefined) {
-      return Array.isArray(targetValue) && targetValue.includes(contains);
-    }
-    return true;
-  }, [data]);
+  // isFieldVisible imported from @/utils/form
 
   const validate = useCallback((): boolean => {
     const newErrors: Record<string, string> = {};
@@ -727,7 +718,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     });
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
-  }, [tracker.fields, data, isFieldVisible]);
+  }, [tracker.fields, data]);
 
   const handleSubmit = useCallback(async () => {
     if (isSubmitting) return;
@@ -1000,7 +991,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
       case 'temperature': return animatedWrapper(renderTemperatureField(field), field.id);
       default: return animatedWrapper(<SmartTextField {...commonProps} />, field.id);
     }
-  }, [data, errors, isFieldVisible, tracker, fullThemeColors, borderRadiusValue, fontSizeMultiplier, shouldReduceMotion, getFieldSuggestion, getYesterdayValue, getFieldTrend, timeContext, updateField, renderMultiselectField, renderToggleField, renderRatingField, renderTextareaField, renderSliderField, renderPhotoField, renderTemperatureField]);
+  }, [data, errors, tracker, fullThemeColors, borderRadiusValue, fontSizeMultiplier, shouldReduceMotion, getFieldSuggestion, getYesterdayValue, getFieldTrend, timeContext, updateField, renderMultiselectField, renderToggleField, renderRatingField, renderTextareaField, renderSliderField, renderPhotoField, renderTemperatureField]);
 
   const visibleInsights = insights.filter(i => !dismissedInsights.has(i.id));
   const visibleCorrelations = correlations.filter(c => !dismissedCorrelations.has(c.id));
