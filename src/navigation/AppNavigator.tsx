@@ -211,7 +211,8 @@ function getNavState(
   }
   
   // isAuth === true from here on
-  if (isLocked && securityOn && setupDone) return 'SECURITY_LOCK';
+  // Show security lock whenever the context says we're locked (regardless of how we got there)
+  if (isLocked && setupDone) return 'SECURITY_LOCK';
   
   if (!setupDone) {
     // Check parent2 setup first - must be completed OR skipped
@@ -314,8 +315,8 @@ function NavigationContent({
   }, [checkSecurityOnResume, loadBabies]);
 
   const securityOn = useMemo(() =>
-    !!(secSettings?.isPinEnabled || secSettings?.isBiometricEnabled),
-    [secSettings?.isPinEnabled, secSettings?.isBiometricEnabled]
+    !!(secSettings?.isPinEnabled || secSettings?.isBiometricEnabled || secSettings?.isAppLockEnabled),
+    [secSettings?.isPinEnabled, secSettings?.isBiometricEnabled, secSettings?.isAppLockEnabled]
   );
 
   // FIX: Move ALL hooks BEFORE any conditional return

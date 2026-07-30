@@ -19,6 +19,7 @@ import Animated, {
 
 import { useTracker } from '../../context/TrackerContext';
 import { useTrackerProgressive } from '../../hooks/useTrackerProgressive';
+import { formatTimeShort, formatDateShort } from '@/utils/time';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { DynamicTrackerForm } from './DynamicTrackerForm';
@@ -68,12 +69,16 @@ export const SmartTrackerScreen: React.FC<SmartTrackerScreenProps> = ({ tracker,
     recentEntries,
     isLoading,
     lastUpdated,
-    applyAllYesterday,
+    // NOTE: applyAllYesterday was renamed to getAllYesterday. It returns data; caller applies via setFormPreset().
+    // getAllYesterday
     dismissInsight,
     refresh,
   } = useTrackerProgressive(tracker.id);
 
   const [mode, setMode] = useState<'dashboard' | 'form' | 'history' | 'insights'>('dashboard');
+  // NOTE: linkedEntryId is reserved for future correlation-driven linking.
+  // When a correlation suggests linking to a specific entry, call:
+  //   setLinkedEntryId(correlation.relatedEntry.id);
   const [linkedEntryId, setLinkedEntryId] = useState<string | undefined>(undefined);
   // One-shot override merged over prefillData when opening the form from a
   // template or correlation action. Cleared on plain quick-log and after save.
@@ -229,7 +234,7 @@ export const SmartTrackerScreen: React.FC<SmartTrackerScreenProps> = ({ tracker,
                     </Text>
                     {reminder.dueAt && (
                       <Text style={[styles.reminderDue, { color: tracker.color }]}>
-                        Due {new Date(reminder.dueAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        Due {formatTimeShort(reminder.dueAt)}
                       </Text>
                     )}
                   </View>
@@ -296,7 +301,7 @@ export const SmartTrackerScreen: React.FC<SmartTrackerScreenProps> = ({ tracker,
                   borderRadius: borderRadiusValue,
                 }]}>
                   <Text style={[styles.entryTime, { color: fullThemeColors.textSecondary }]}>
-                    {new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {formatTimeShort(entry.timestamp)}
                   </Text>
                   <Text style={[styles.entryTitle, { color: fullThemeColors.text }]} numberOfLines={1}>
                     {entry.title}
@@ -522,7 +527,7 @@ export const SmartTrackerScreen: React.FC<SmartTrackerScreenProps> = ({ tracker,
             }]}>
               <View style={styles.historyCardHeader}>
                 <Text style={[styles.historyDate, { color: fullThemeColors.textSecondary }]}>
-                  {new Date(entry.timestamp).toLocaleDateString()} • {new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  {formatDateShort(entry.timestamp)} • {formatTimeShort(entry.timestamp)}
                 </Text>
                 {entry.loggedByRole === 'parent2' && (
                   <View style={[styles.partnerBadge, { backgroundColor: `${tracker.color}20` }]}>

@@ -166,6 +166,7 @@ export type RootStackParamList = {
   } | undefined;
 
   FamilySharing: { openInvite?: boolean } | undefined;
+  FamilySettings: undefined;
   EditProfile: { 
     mode: 'baby' | 'parent';
     babyId?: string;

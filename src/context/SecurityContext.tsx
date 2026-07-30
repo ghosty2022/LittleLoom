@@ -390,9 +390,9 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
   const isAppLockEnabled = state.settings.isAppLockEnabled;
   const autoLockTimeout = state.settings.autoLockTimeout;
 
-  const lockApp = useCallback(async () => {
+  const lockApp = useCallback(async (force = false) => {
     const hasSecurity = isBiometricEnabled || isPinEnabled || isAppLockEnabled;
-    if (!hasSecurity) { console.warn('No security enabled'); return; }
+    if (!hasSecurity && !force) { console.warn('No security enabled'); return; }
     manualLockTimeRef.current = Date.now();
     await AsyncStorage.setItem(ASYNC_KEYS.MANUAL_LOCK_TIME, manualLockTimeRef.current.toString());
     await AsyncStorage.setItem(ASYNC_KEYS.SECURITY_LOCK, 'true');

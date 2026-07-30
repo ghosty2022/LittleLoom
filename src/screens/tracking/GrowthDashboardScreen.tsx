@@ -1384,8 +1384,13 @@ export default function GrowthDashboardScreen({ navigation }: any) {
   // ── Handlers ──
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await new Promise(r => setTimeout(r, 800));
-    setRefreshing(false);
+    try {
+      // TODO: wire up actual refresh from BabyContext if you expose one
+      // e.g. await refreshBabyData?.();
+      await new Promise(r => setTimeout(r, 400));
+    } finally {
+      setRefreshing(false);
+    }
   }, []);
 
   const handleAddMeasurement = useCallback(async (data: Partial<GrowthMeasurement>) => {
