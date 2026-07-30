@@ -4,9 +4,10 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { useTracker } from '../../context/TrackerContext';
 import { useCustomization } from '../../hooks/useCustomization';
-import { SafeAvatar, SafeBabyAvatar } from '../../components/SafeAvatar';
+import { SafeAvatar } from '../../components/SafeAvatar';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { formatTimeShort, formatDateShort } from '@/utils/time';
+import type { TrackerEntry } from '../../types/trackers';
 
 interface TrackerEntryCardProps {
   entry: TrackerEntry;
@@ -55,7 +56,7 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
   };
 
   const renderDataPreview = () => {
-    if (!tracker || !entry.data) return null;
+    if (!tracker || !entry.data || typeof entry.data !== 'object' || Array.isArray(entry.data)) return null;
 
     const previewFields = tracker.fields.slice(0, 3);
     return (

@@ -508,6 +508,10 @@ export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreen
     navigation.navigate('FamilySharing');
   }, [navigation]);
 
+  const handleNavigateFamilySettings = useCallback(() => {
+    navigation.navigate('FamilySettings');
+  }, [navigation]);
+
   const handleNavigateTimeline = useCallback(() => {
     navigation.navigate('Timeline');
   }, [navigation]);
@@ -633,9 +637,9 @@ export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreen
           <Ionicons name="trending-up" size={24} color={themeColors.primary} />
           <Text style={[styles.iconActionLabel, isDark && styles.textMuted]}>Growth</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.iconAction} onPress={handleNavigateFamily}>
+        <TouchableOpacity style={styles.iconAction} onPress={handleNavigateFamilySettings}>
           <Ionicons name="settings" size={24} color="#8b5cf6" />
-          <Text style={[styles.iconActionLabel, isDark && styles.textMuted]}>Settings</Text>
+          <Text style={[styles.iconActionLabel, isDark && styles.textMuted]}>Family Settings</Text>
         </TouchableOpacity>
       </View>
 

@@ -23,7 +23,7 @@ import { formatTimeShort, formatDateShort } from '@/utils/time';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { DynamicTrackerForm } from './DynamicTrackerForm';
-import type { UnifiedTrackerConfig } from '../../types/trackers';
+import type { UnifiedTrackerConfig, TrackerEntry } from '../../types/trackers';
 // import { SafeAvatar } from '../../components/SafeAvatar'; // UNUSED -- removed
 
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -49,32 +49,32 @@ export const SmartTrackerScreen: React.FC<SmartTrackerScreenProps> = ({ tracker,
     linkEntries,
   } = useTracker();
 
+  const progressive = useTrackerProgressive(tracker.id);
   const {
-    prefillData,
-    suggestions,
+    prefillData = {},
+    suggestions = [],
     streak,
     isAtRisk,
     hoursUntilBreak,
     streakMessage,
-    insights,
+    insights = [],
     hasNewInsights,
-    correlations,
-    activeReminders,
+    correlations = [],
+    activeReminders = [],
     hasUrgentReminders,
-    templates,
-    trends,
+    templates = [],
+    trends = {},
     timeContext,
-    todayEntries,
-    yesterdayEntries,
-    recentEntries,
+    todayEntries = [],
+    yesterdayEntries = [],
+    recentEntries = [],
     isLoading,
     lastUpdated,
-    // NOTE: applyAllYesterday was renamed to getAllYesterday. It returns data; caller applies via setFormPreset().
-    // getAllYesterday
+    applyAllYesterday,
     dismissInsight,
     refresh,
-  } = useTrackerProgressive(tracker.id);
-
+  } = progressive || {};
+  
   const [mode, setMode] = useState<'dashboard' | 'form' | 'history' | 'insights'>('dashboard');
   // NOTE: linkedEntryId is reserved for future correlation-driven linking.
   // When a correlation suggests linking to a specific entry, call:

@@ -1035,6 +1035,7 @@ export default function SoundMixerScreen({ navigation }: SoundMixerScreenProps) 
   } = useAudio();
 
   const { themeColors, avatar: customSettings, isLoaded: customLoaded } = useCustomization();
+  const isDark = true;
 
   // ── State ──
   const [activeTab, setActiveTab] = useState<TabType>('discover');

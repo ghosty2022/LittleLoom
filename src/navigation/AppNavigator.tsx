@@ -41,6 +41,7 @@ import InsightsScreen from '../screens/tracking/InsightsScreen';
 import EntryDetailScreen from '../screens/tracking/EntryDetailScreen';
 import TrackerRemindersScreen from '../screens/tracking/TrackerRemindersScreen';
 import FamilySharingScreen from '../screens/family/FamilySharingScreen';
+import FamilySettingsScreen from '../screens/family/FamilySettingsScreen';
 import FamilyDashboardScreen from '../screens/baby/FamilyDashboardScreen';
 import BabyProfileScreen from '../screens/baby/BabyProfileScreen';
 import EditGuardianScreen from '../screens/family/EditGuardianScreen';
@@ -648,6 +649,7 @@ function NavigationContent({
           <Stack.Screen name="Insights" component={InsightsScreen} />
           <Stack.Screen name="TrackerReminders" component={TrackerRemindersScreen} />
           <Stack.Screen name="FamilySharing" component={FamilySharingScreen} />
+          <Stack.Screen name="FamilySettings" component={FamilySettingsScreen} options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="SoundMixer" component={SoundMixerScreen} />
           <Stack.Screen name="Customize" component={CustomizeScreen} />
         </Stack.Group>
