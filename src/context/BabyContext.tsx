@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
  import { showAlert } from '@/utils/alert';
+import { useAuth } from './AuthContext';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Alert } from 'react-native';
@@ -572,6 +573,7 @@ const extractEntryData = (entry: Partial<ActivityEntry>): Record<string, unknown
 /*  Provider                                                           */
 /* ------------------------------------------------------------------ */
 export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { userProfile: authProfile } = useAuth();
 
   const [state, setState] = useState<BabyState>({
     isLoading: false,
@@ -855,7 +857,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         gender: data.gender === 'boy' ? 'male' : data.gender === 'girl' ? 'female' : 'other',
         bloodType: data.bloodType,
         medicalNotes: data.medicalNotes,
-        parent1Id: data.parent1Id || 'default',
+        parent1Id: data.parent1Id || authProfile?.id || 'default',
       });
 
       /* Read-back verification: createBabyInDb swallows "table not ready"
@@ -872,7 +874,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const newBaby: BabyProfile = {
         ...data,
         id: newId,
-        parent1Id: data.parent1Id || 'default',
+        parent1Id: data.parent1Id || authProfile?.id || 'default',
         streak: 0,
         milestones: 0,
         photos: 0,

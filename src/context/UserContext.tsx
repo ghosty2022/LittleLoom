@@ -216,7 +216,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setIsReady(false);
       initRef.current = false;
     }
-   }, [isAuthenticated, authLoading, isReady, loadUser]);;
+  }, [isAuthenticated, authLoading, isReady, authProfile]);
 
   const saveCommunityProfile = async (profile: CommunityProfile): Promise<void> => {
     const profileStr = JSON.stringify(profile);

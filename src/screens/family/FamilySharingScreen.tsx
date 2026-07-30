@@ -1047,7 +1047,7 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
     revokeInviteCode,
   } = useFamily();
 
-  const { profile } = useUser();
+  const { profile, updateProfile } = useUser();
   const { currentBaby } = useBaby();
   const { userProfile, resetPasswordForUser } = useAuth();
 
@@ -1197,6 +1197,20 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
         phoneNumber: editForm.phoneNumber,
         avatar: editForm.avatar,
       });
+    } else if (selectedMember.role === UserRole.PARENT_1) {
+      // Parent 1 is not stored in family_members table; update through Auth/User context
+      try {
+        await updateProfile({
+          fullName: editForm.fullName,
+          email: editForm.email,
+          phoneNumber: editForm.phoneNumber,
+          avatar: editForm.avatar,
+        });
+        success = true;
+      } catch (e) {
+        console.error('Failed to update parent1 profile:', e);
+        success = false;
+      }
     } else {
       success = await updateGuardianProfile(selectedMember.id, {
         fullName: editForm.fullName,
