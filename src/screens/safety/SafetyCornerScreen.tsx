@@ -2047,6 +2047,5 @@ const styles = StyleSheet.create({
   scoreEmoji: { fontSize: 20 },
   scoreBarContainer: { height: 6, backgroundColor: 'rgba(0,0,0,0.04)', borderRadius: 3, overflow: 'hidden' },
   scoreBar: { height: '100%', borderRadius: 3 },
-  scoreValue: { fontSize: 14, fontWeight: '800' },
   scoreLabel: { fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
 });
