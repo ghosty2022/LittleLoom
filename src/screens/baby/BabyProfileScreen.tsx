@@ -553,38 +553,79 @@ const NextMilestoneCountdown = React.memo(({ baby, milestones }: { baby: any; mi
   );
 });
 
-const FamilyConnectionHub = React.memo(({ members, onManage }: { members: FamilyMember[]; onManage: () => void }) => {
+const FamilyConnectionHub = React.memo(({ members, onManage, babyName }: { members: FamilyMember[]; onManage: () => void; babyName?: string }) => {
+  const parents = members.filter(m => m.role === 'parent1' || m.role === 'parent2');
+  const others = members.filter(m => !parents.find(p => p.id === m.id));
+  
+  const renderAvatar = (member: FamilyMember, size: number = 48) => {
+    const hasImage = member.avatar && (member.avatar.startsWith('http') || member.avatar.startsWith('file://') || member.avatar.startsWith('data:') || member.avatar.startsWith('ph://'));
+    return (
+      <View style={[styles.familyHubAvatar, { width: size, height: size, borderRadius: size/2, backgroundColor: hasImage ? 'transparent' : '#6366f1', borderColor: '#1a1a2e', borderWidth: 2 }]}>
+        {hasImage ? (
+          <Image source={{ uri: member.avatar }} style={{ width: size, height: size, borderRadius: size/2 }} resizeMode="cover" />
+        ) : (
+          <Text style={[styles.familyHubAvatarText, { fontSize: size * 0.4 }]}>{member.fullName?.charAt(0) || '?'}</Text>
+        )}
+      </View>
+    );
+  };
+
   return (
     <Animated.View entering={FadeInUp.delay(350).springify()}>
-      <SectionHeader title="Family" subtitle={`${members.length} connected`} action={onManage} actionLabel="Manage" />
+      <SectionHeader title="Family Tree" subtitle={`${members.length} connected`} action={onManage} actionLabel="Manage" />
       <GlassCard onPress={onManage}>
-        <View style={styles.familyHubRow}>
-          <View style={styles.familyHubAvatars}>
-            {members.slice(0, 4).map((member, idx) => (
-              <View key={member.id} style={[styles.familyHubAvatar, { 
-                marginLeft: idx > 0 ? -10 : 0, 
-                zIndex: 4 - idx,
-                backgroundColor: member.avatar ? 'transparent' : '#6366f1',
-                borderColor: '#1a1a2e',
-              }]}>
-                {member.avatar ? (
-                  <Image source={{ uri: member.avatar }} style={{ width: 40, height: 40, borderRadius: 20 }} />
-                ) : (
-                  <Text style={styles.familyHubAvatarText}>{member.fullName?.charAt(0) || '?'}</Text>
-                )}
+        <View style={{ padding: 16, alignItems: 'center' }}>
+          {/* Parents Row */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 16, marginBottom: 8 }}>
+            {parents.map((parent) => (
+              <View key={parent.id} style={{ alignItems: 'center', gap: 6 }}>
+                {renderAvatar(parent, 56)}
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#fff' }}>{parent.fullName || 'Parent'}</Text>
+                <View style={{ backgroundColor: 'rgba(99,102,241,0.15)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
+                  <Text style={{ fontSize: 10, fontWeight: '700', color: '#6366f1' }}>{parent.relationship || 'Parent'}</Text>
+                </View>
               </View>
             ))}
-            {members.length > 4 && (
-              <View style={[styles.familyHubAvatar, styles.familyHubAvatarMore, { marginLeft: -10, borderColor: '#1a1a2e' }]}>
-                <Text style={styles.familyHubAvatarMoreText}>+{members.length - 4}</Text>
-              </View>
+            {parents.length === 1 && (
+              <TouchableOpacity onPress={onManage} style={{ alignItems: 'center', gap: 6, opacity: 0.6 }}>
+                <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'rgba(255,255,255,0.1)', borderStyle: 'dashed' }}>
+                  <Ionicons name="add" size={24} color="#94a3b8" />
+                </View>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#94a3b8' }}>Add Co-Parent</Text>
+              </TouchableOpacity>
             )}
           </View>
-          <View style={styles.familyHubContent}>
-            <Text style={styles.familyHubTitle}>Family Members</Text>
-            <Text style={styles.familyHubSubtitle}>Tap to manage access</Text>
+          
+          {/* Connector */}
+          <View style={{ width: 2, height: 20, backgroundColor: 'rgba(99,102,241,0.4)', marginVertical: 4 }} />
+          
+          {/* Baby Node */}
+          <View style={{ alignItems: 'center', marginBottom: 12 }}>
+            <View style={{ backgroundColor: 'rgba(99,102,241,0.15)', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(99,102,241,0.3)' }}>
+              <Text style={{ fontSize: 14, fontWeight: '800', color: '#6366f1' }}>👶 {babyName || 'Baby'}</Text>
+            </View>
           </View>
-          <Ionicons name="chevron-forward" size={20} color="#6366f1" />
+          
+          {/* Connector down */}
+          {others.length > 0 && <View style={{ width: 2, height: 16, backgroundColor: 'rgba(255,255,255,0.1)', marginBottom: 8 }} />}
+          
+          {/* Guardians / Others */}
+          {others.length > 0 && (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 12 }}>
+              {others.map((member) => (
+                <View key={member.id} style={{ alignItems: 'center', gap: 4 }}>
+                  {renderAvatar(member, 40)}
+                  <Text style={{ fontSize: 11, fontWeight: '600', color: '#94a3b8' }}>{member.fullName?.split(' ')[0] || 'Member'}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+          
+          {/* Manage CTA */}
+          <TouchableOpacity onPress={onManage} style={{ marginTop: 16, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(99,102,241,0.1)', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12 }}>
+            <Ionicons name="people-outline" size={16} color="#6366f1" />
+            <Text style={{ fontSize: 13, fontWeight: '700', color: '#6366f1' }}>Manage Family Access</Text>
+          </TouchableOpacity>
         </View>
       </GlassCard>
     </Animated.View>
@@ -936,23 +977,23 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
       membersList.push({ 
         id: userProfile.id, 
         userId: userProfile.id, 
-        fullName: userProfile.fullName, 
-        email: userProfile.email, 
-        avatar: userProfile.avatar, 
+        fullName: userProfile.fullName || profile?.fullName || 'Parent', 
+        email: userProfile.email || profile?.email || '', 
+        avatar: userProfile.avatar || profile?.avatar || '', 
         role: 'parent1', 
         relationship: 'Parent', 
         permissions: { read: true, write: true, delete: true, manageFamily: true, manageSecurity: true, exportData: true }, 
         addedAt: currentBabyData?.createdAt || new Date().toISOString(), 
         addedBy: userProfile.id, 
         canBeRemoved: false, 
-        phoneNumber: userProfile.phoneNumber, 
+        phoneNumber: userProfile.phoneNumber || profile?.phoneNumber, 
         notificationsEnabled: true 
       } as FamilyMember);
     }
     if (parent2) membersList.push(parent2);
     if (guardians && guardians.length > 0) membersList.push(...guardians);
     return membersList;
-  }, [userProfile, parent2, guardians, currentBabyData?.createdAt]);
+  }, [userProfile, profile, parent2, guardians, currentBabyData?.createdAt]);
 
   const checkForChanges = useCallback(() => {
     if (!currentBabyData) return [];
@@ -1194,6 +1235,7 @@ ${changes.join('\n')}`,
             <FamilyConnectionHub 
               members={familyMembers} 
               onManage={() => navigation.navigate('FamilySharing' as never)} 
+              babyName={currentBabyData?.name}
             />
 
             <Animated.View entering={FadeInUp.delay(500).springify()}>

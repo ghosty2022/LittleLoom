@@ -624,6 +624,9 @@ export async function createInviteCode(data: {
           if (new Date(existingForRole.expiresAt) > now2) {
             return { code: existingForRole.code, success: true, message: 'Existing code still valid' };
           }
+          // Remove expired code so we don't bloat storage
+          const expiredIdx = codes.findIndex(c => c.code === existingForRole.code);
+          if (expiredIdx >= 0) codes.splice(expiredIdx, 1);
         }
         let code = generateInviteCode();
         let attempts = 0;
@@ -755,8 +758,9 @@ export async function markInviteCodeUsed(code: string, userId: string): Promise<
         codes[idx].usedCount = codes[idx].usedBy.length;
         codes[idx].isActive = codes[idx].usedCount < codes[idx].maxUses;
         await saveAsyncInviteCodes(codes);
+        return true;
       }
-      return true;
+      return false;
     }
     console.error('Error marking invite code used:', error);
     return false;
