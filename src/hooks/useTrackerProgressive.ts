@@ -812,14 +812,16 @@ return yesterday || {};
   }, []);
 
   return {
-    ...state,
-    getAllYesterday, // renamed from applyAllYesterday -- returns data, caller applies
-    dismissInsight: dismissInsightById,
-    refresh,
-    todayEntries,
-    yesterdayEntries,
-    recentEntries,
-  };
+...state,
+// NOTE: We intentionally do NOT spread raw dismissInsight from useTracker.
+// The wrapped dismissInsightById below handles refresh token invalidation.
+getAllYesterday, // renamed from applyAllYesterday -- returns data, caller applies
+dismissInsight: dismissInsightById,
+refresh,
+todayEntries,
+yesterdayEntries,
+recentEntries,
+};
 };
 
 export default useTrackerProgressive;

@@ -16,7 +16,8 @@ import {
 import { useCustomization } from '../../hooks/useCustomization';
 import { useAuth } from '../../context/AuthContext';
 import { useBaby } from '../../context/BabyContext';
-import { useActivity } from '../../context/ActivityContext';
+// REMOVED: useActivity — useTracker is the single source of truth across all screens
+// import { useActivity } from '../../context/ActivityContext';
 import { useTracker } from '../../context/TrackerContext';
 import { useGrowthIntelligence } from '../../hooks/useGrowthIntelligence';
 import { useTimelineCorrelations } from '../../hooks/useTimelineCorrelations';
