@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { navigationRef } from './navigation/navigationRef';
-import { useAppLock } from './hooks/useAppLock';
+import { useAppLock } from '@/hooks/useAppLock';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
