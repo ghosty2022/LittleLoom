@@ -871,10 +871,10 @@ const isDark = darkMode ?? (colorScheme === 'dark');
             {user.bio && <Text style={styles.profileBio} numberOfLines={2}>{user.bio}</Text>}
             {user.country && <View style={styles.locationRow}><Ionicons name="location-outline" size={14} color="#94a3b8" /><Text style={styles.locationText}>{user.country}</Text></View>}
             <View style={styles.statsPillsRow}>
-              <StatPill icon="📝" value={userPosts.length} label="Posts" color={TC.primary} />
-              <StatPill icon="👥" value={followerCount} label="Followers" color={TC.secondary} />
-              <StatPill icon="👤" value={followingCount} label="Following" color={TC.info} />
-              <StatPill icon="💙" value={user.stats?.helpful || 0} label="Helpful" color={TC.success} />
+              <KpiPill icon="📝" value={userPosts.length} label="Posts" color={TC.primary} />
+              <KpiPill icon="👥" value={followerCount} label="Followers" color={TC.secondary} />
+              <KpiPill icon="👤" value={followingCount} label="Following" color={TC.info} />
+              <KpiPill icon="💙" value={user.stats?.helpful || 0} label="Helpful" color={TC.success} />
             </View>
             {!isOwnProfile && (
               <View style={styles.actionButtons}>
@@ -1120,13 +1120,12 @@ const styles = StyleSheet.create({
 
   // ── Stats Pills ──
   statsPillsRow: { flexDirection: 'row', justifyContent: 'space-around', width: '100%', marginTop: 16, paddingHorizontal: 8 },
-  statPill: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 14, overflow: 'hidden' },
-  statPillIconBg: { width: 32, height: 32, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-  statPillEmoji: { fontSize: 16 },
-  statPillText: { gap: 0 },
-  statPillValue: { fontSize: 16, fontWeight: '800' },
-  statPillLabel: { fontSize: 10, color: '#94a3b8', fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
-
+  kpiPill: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 16, overflow: 'hidden' },
+  kpiPillIconBg: { width: 36, height: 36, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  kpiPillEmoji: { fontSize: 18 },
+  kpiPillBody: { gap: 1 },
+  kpiPillValue: { fontSize: 18, fontWeight: '800' },
+  kpiPillLabel: { fontSize: 10, color: '#94a3b8', fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
   // ── Action Buttons ──
   actionButtons: { flexDirection: 'row', gap: DESIGN.spacing.lg, marginTop: 20, width: '100%', paddingHorizontal: 20 },
   followBtn: { flex: 1, backgroundColor: '#6366f1', borderRadius: DESIGN.radius.md, paddingVertical: 12, alignItems: 'center', justifyContent: 'center' },
