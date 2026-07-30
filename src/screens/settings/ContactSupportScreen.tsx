@@ -32,14 +32,15 @@ const CATEGORIES: CategoryItem[] = [
     id: 'account',
     label: 'Account & Security',
     icon: 'lock-closed-outline',
-    route: 'SecurityLock',
+    route: 'SecurityCenter',
     helpText: 'Check your PIN, biometric, and security settings',
   },
   {
     id: 'password',
     label: 'Change Password/PIN',
     icon: 'key-outline',
-    route: 'ChangePin',
+    route: 'SecurityCenter',
+    params: { mode: 'change' },
     helpText: 'Update your app PIN code',
   },
   {
@@ -81,15 +82,14 @@ const CATEGORIES: CategoryItem[] = [
     id: 'track',
     label: 'Tracking Issues',
     icon: 'timer-outline',
-    route: 'UniversalTracker',
-    params: { type: 'general' },
+    route: 'UniversalTrackerHub',
     helpText: 'Check feeding, sleep, and potty tracking',
   },
   {
     id: 'reminders',
     label: 'Reminders',
     icon: 'alarm-outline',
-    route: 'Reminders',
+    route: 'TrackerReminders',
     helpText: 'Manage your notification reminders',
   },
   {
@@ -103,7 +103,7 @@ const CATEGORIES: CategoryItem[] = [
     id: 'growth',
     label: 'Growth Charts',
     icon: 'trending-up-outline',
-    route: 'Grow',
+    route: 'GrowthDashboard',
     helpText: 'Check height, weight, and milestone charts',
   },
   {
@@ -224,13 +224,17 @@ export default function ContactSupportScreen({ navigation }: Props) {
     setCategory(cat.id);
     if (cat.route) {
       sweetAlert.confirm(
-        'Alert',
-        '',
+        `Go to ${cat.label}?`,
+        `We'll take you to the ${cat.label} screen where you can find help with this topic.`,
         () => {
-          // TODO: Confirm action
+          if (cat.params) {
+            navigation.navigate(cat.route as any, cat.params as any);
+          } else {
+            navigation.navigate(cat.route as any);
+          }
         },
         () => {
-          // Cancel action
+          // User chose to stay on Contact Support
         },
         'Go There',
         'Stay Here',
