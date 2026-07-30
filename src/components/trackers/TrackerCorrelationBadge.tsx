@@ -48,8 +48,10 @@ export const TrackerCorrelationBadge: React.FC<TrackerCorrelationBadgeProps> = (
         onPress={() => {
           // 'Timeline' is a tab screen, not a stack route in this project — open the
           // correlated tracker in the universal hub instead (same param shape as InsightsScreen).
+          const trackerId = correlation?.primaryEntry?.trackerId;
+          if (!trackerId) return;
           (navigation as any).navigate('UniversalTrackerHub', {
-            type: correlation.primaryEntry.trackerId,
+            type: trackerId,
           });
         }}
         activeOpacity={0.8}

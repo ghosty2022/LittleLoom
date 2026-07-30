@@ -75,7 +75,17 @@ export const GrowthIndexCard: React.FC = () => {
     return ['#EE5A24', '#FF6B6B']; // Red
   };
 
-  const [gradientStart, gradientEnd] = getIndexColor(growthIndex.compositeIndex);
+  if (!growthIndex) {
+    return (
+      <View style={[styles.container, { borderRadius: borderRadiusValue * 1.5, justifyContent: 'center', alignItems: 'center', minHeight: 200 }]}>
+        <Text style={{ color: fullThemeColors.textSecondary, fontSize: 14 * fontSizeMultiplier }}>
+          Loading growth data...
+        </Text>
+      </View>
+    );
+  }
+
+  const [gradientStart, gradientEnd] = getIndexColor(growthIndex.compositeIndex ?? 0);
 
   return (
     <Animated.View entering={FadeInUp} style={[styles.container, { borderRadius: borderRadiusValue * 1.5 }]}>
@@ -91,7 +101,7 @@ export const GrowthIndexCard: React.FC = () => {
             🧬 Growth Index
           </Text>
           <Text style={[styles.subtitle, { color: fullThemeColors.textSecondary, fontSize: 13 * fontSizeMultiplier }]}>
-            Last updated: {new Date(growthIndex.lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            Last updated: {growthIndex.lastUpdated ? new Date(growthIndex.lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
           </Text>
         </View>
         <View style={[styles.scoreCircle, { borderColor: gradientStart }]}>
@@ -119,23 +129,23 @@ export const GrowthIndexCard: React.FC = () => {
         <View style={styles.velocityRow}>
           <VelocityPill 
             label="Height" 
-            value={growthIndex.velocityTrends.height.perMonth} 
+            value={growthIndex.velocityTrends?.height?.perMonth} 
             unit="cm/mo" 
-            percentile={growthIndex.velocityTrends.height.percentile}
+            percentile={growthIndex.velocityTrends?.height?.percentile}
             color="#667eea"
           />
           <VelocityPill 
             label="Weight" 
-            value={growthIndex.velocityTrends.weight.perMonth} 
+            value={growthIndex.velocityTrends?.weight?.perMonth} 
             unit="kg/mo" 
-            percentile={growthIndex.velocityTrends.weight.percentile}
+            percentile={growthIndex.velocityTrends?.weight?.percentile}
             color="#fa709a"
           />
           <VelocityPill 
             label="Head" 
-            value={growthIndex.velocityTrends.head.perMonth} 
+            value={growthIndex.velocityTrends?.head?.perMonth} 
             unit="cm/mo" 
-            percentile={growthIndex.velocityTrends.head.percentile}
+            percentile={growthIndex.velocityTrends?.head?.percentile}
             color="#11998e"
           />
         </View>
@@ -183,7 +193,7 @@ export const GrowthIndexCard: React.FC = () => {
       <View style={[styles.checkupCard, { backgroundColor: `${themeColors.primary}10`, borderRadius: borderRadiusValue }]}>
         <Ionicons name="calendar" size={20} color={themeColors.primary} />
         <Text style={[styles.checkupText, { color: fullThemeColors.text, fontSize: 13 * fontSizeMultiplier }]}>
-          Next checkup suggested: {growthIndex.predictedNextCheckup.toLocaleDateString()}
+          Next checkup suggested: {growthIndex.predictedNextCheckup ? growthIndex.predictedNextCheckup.toLocaleDateString() : '—'}
         </Text>
       </View>
     </Animated.View>

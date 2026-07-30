@@ -46,7 +46,9 @@ export const AchievementBadge: React.FC<AchievementBadgeProps> = ({ achievement,
     );
   }
 
-  const progressPercent = (achievement.progress / achievement.maxProgress) * 100;
+  const progressPercent = achievement.maxProgress > 0 
+    ? (achievement.progress / achievement.maxProgress) * 100 
+    : 0;
 
   return (
     <Animated.View entering={FadeInUp.delay(index * 100)} style={[
@@ -106,7 +108,7 @@ export const AchievementBadge: React.FC<AchievementBadgeProps> = ({ achievement,
         <View style={[styles.rewardBadge, { backgroundColor: `${colors[0]}15` }]}>
           <Ionicons name="star" size={14} color={colors[0]} />
           <Text style={[styles.rewardText, { color: colors[0] }]}>
-            +{achievement.points} points
+            +{achievement.points ?? 0} points
           </Text>
         </View>
       )}

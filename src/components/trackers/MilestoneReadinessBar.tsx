@@ -64,7 +64,7 @@ export const MilestoneReadinessBar: React.FC<MilestoneReadinessBarProps> = ({ re
               {readiness.category.charAt(0).toUpperCase() + readiness.category.slice(1)} Milestone
             </Text>
             <Text style={[styles.windowText, { color: fullThemeColors.textSecondary }]}>
-              Window: {readiness.expectedWindow.start}-{readiness.expectedWindow.end} mo • Now: {readiness.currentAge}mo
+              Window: {readiness.expectedWindow?.start ?? 0}-{readiness.expectedWindow?.end ?? 0} mo • Now: {readiness.currentAge ?? 0}mo
             </Text>
           </View>
           <View style={[styles.percentBadge, { backgroundColor: `${colors[0]}20` }]}>
@@ -94,7 +94,7 @@ export const MilestoneReadinessBar: React.FC<MilestoneReadinessBarProps> = ({ re
             💡 Suggested Activities:
           </Text>
           <View style={styles.activitiesList}>
-            {readiness.suggestedActivities.map((activity, idx) => (
+                            {(readiness.suggestedActivities || []).map((activity, idx) => (
               <View key={idx} style={[styles.activityChip, { backgroundColor: `${colors[0]}12` }]}>
                 <Ionicons name="checkmark-circle" size={14} color={colors[0]} />
                 <Text style={[styles.activityText, { color: colors[0], fontSize: 12 * fontSizeMultiplier }]}>
@@ -107,7 +107,7 @@ export const MilestoneReadinessBar: React.FC<MilestoneReadinessBarProps> = ({ re
 
         {/* Related Trackers */}
         <View style={styles.trackersRow}>
-          {readiness.relatedTrackerIds.map((trackerId) => (
+          {(readiness.relatedTrackerIds || []).map((trackerId) => (
             <TouchableOpacity
               key={trackerId}
               style={[styles.trackerChip, { backgroundColor: `${colors[0]}15` }]}

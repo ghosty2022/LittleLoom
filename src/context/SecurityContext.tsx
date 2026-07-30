@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
@@ -82,7 +82,7 @@ interface SecurityContextType extends SecurityState {
   changePin: (oldPin: string, newPin: string) => Promise<boolean>;
   toggleAppLock: (enabled: boolean) => Promise<void>;
   updateAutoLockTimeout: (minutes: number) => Promise<void>;
-  lockApp: () => Promise<void>;
+  lockApp: (force?: boolean) => Promise<void>;
   unlockApp: (method: 'biometric' | 'pin', data?: string) => Promise<boolean>;
   checkSecurityOnResume: () => Promise<void>;
   getBiometricTypeName: () => string;
@@ -97,7 +97,9 @@ interface SecurityContextType extends SecurityState {
   verifySecurityAnswers: (answers: string[]) => Promise<boolean>;
   loadSecurityQuestions: () => Promise<SecurityQuestion[]>;
   clearSecurityQuestions: () => Promise<void>;
-  hasSecurityQuestions: () => boolean;
+  checkHasSecurityQuestions: () => boolean;
+  clearPinOnly: () => Promise<void>;
+  isAppLocked: boolean;
 }
 
 const SecurityContext = createContext<SecurityContextType | null>(null);
@@ -116,7 +118,6 @@ const defaultSettings: SecuritySettings = {
 const getBiometricConfigs = (types: LocalAuthentication.AuthenticationType[]): BiometricTypeConfig[] => {
   const configs: BiometricTypeConfig[] = [];
   if (!types || !Array.isArray(types)) return configs;
-  // Sort by priority: Face > Fingerprint > Iris for consistent ordering
   types.forEach(type => {
     switch (type) {
       case LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION:
@@ -168,7 +169,6 @@ const getPrimaryBiometricName = (types: LocalAuthentication.AuthenticationType[]
   return 'Biometric';
 };
 
-// ─── Hashing Utilities (top-level, no hook dependency) ─────────────────
 const hashPin = async (pin: string): Promise<string> => {
   return await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, pin + 'littleloom_salt_v1');
 };
@@ -212,12 +212,11 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
   const backgroundTimeRef = useRef<number>(0);
   const checkedThisCycleRef = useRef<boolean>(false);
 
-
   useEffect(() => { return () => { isMounted.current = false; }; }, []);
-  
   useEffect(() => { isAuthenticatedRef.current = isAuthenticated; }, [isAuthenticated]);
   useEffect(() => { setupCompleteRef.current = setupComplete; }, [setupComplete]);
 
+  // ─── INIT: load saved security state ─────────────────────────────────
   useEffect(() => {
     const initSecurity = async () => {
       try {
@@ -272,20 +271,34 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     else if (isMounted.current) setState(prev => ({ ...prev, isLoading: false }));
   }, [isAuthenticated]);
 
+  // ─── APP STATE: background tracking + foreground lock check ──────────
   useEffect(() => {
     const subscription = AppState.addEventListener('change', async (nextAppState) => {
       const previousState = appState.current;
+
+      // Going to background
       if (nextAppState.match(/inactive|background/) && previousState === 'active') {
         backgroundTimeRef.current = Date.now();
         lastActiveRef.current = Date.now();
         checkedThisCycleRef.current = false;
         await AsyncStorage.setItem(ASYNC_KEYS.LAST_ACTIVE, lastActiveRef.current.toString());
       }
+
+      // Returning to foreground → CRITICAL: check if we should lock
+      if (previousState.match(/inactive|background/) && nextAppState === 'active') {
+        checkedThisCycleRef.current = false;
+        // Small delay to let the app fully resume and JS thread settle
+        setTimeout(() => {
+          checkSecurityOnResume();
+        }, 600);
+      }
+
       appState.current = nextAppState;
     });
     return () => subscription.remove();
-  }, []);
+  }, [checkSecurityOnResume]);
 
+  // Keep lastActive updated while app is open
   useEffect(() => {
     const interval = setInterval(async () => {
       if (isAuthenticated && !state.isSecurityLocked && appState.current === 'active' && !sharingActiveRef.current) {
@@ -398,7 +411,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     await AsyncStorage.setItem(ASYNC_KEYS.SECURITY_LOCK, 'true');
     await AsyncStorage.setItem(ASYNC_KEYS.LAST_ACTIVE, Date.now().toString());
     if (isMounted.current) setState(prev => ({ ...prev, isSecurityLocked: true }));
-    console.log('🔒 App manually locked');
+    console.log('🔒 App locked');
   }, [isBiometricEnabled, isPinEnabled, isAppLockEnabled]);
 
   const unlockApp = useCallback(async (method: 'biometric' | 'pin', data?: string): Promise<boolean> => {
@@ -420,6 +433,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
         checkedThisCycleRef.current = true;
         await AsyncStorage.removeItem(ASYNC_KEYS.MANUAL_LOCK_TIME);
         if (isMounted.current) setState(prev => ({ ...prev, isSecurityLocked: false }));
+        console.log('🔓 Unlocked via', method);
         return true;
       }
       return false;
@@ -448,8 +462,8 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
 
   const checkSecurityOnResume = useCallback(async () => {
     if (securityCheckLockRef.current) { console.log('⚠️ Security check already in progress'); return; }
-    if (!isAuthenticatedRef.current) { console.log('🔒 Not authenticated, skipping'); return; }
-    if (!setupCompleteRef.current) { console.log('⏸️ Setup not complete, skipping'); return; }
+    if (!isAuthenticatedRef.current) { console.log('🔒 Not authenticated, skipping lock check'); return; }
+    if (!setupCompleteRef.current) { console.log('⏸️ Setup not complete, skipping lock check'); return; }
     if (checkedThisCycleRef.current) { console.log('🔓 Already checked this cycle'); return; }
 
     securityCheckLockRef.current = true;
@@ -472,7 +486,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
       if (!hasSecurityEnabled) { console.log('🔒 No security enabled'); checkedThisCycleRef.current = true; return; }
 
       if (isLocked === 'true') {
-        console.log('🔒 Already locked');
+        console.log('🔒 Already locked from storage');
         if (isMounted.current) setState(prev => ({ ...prev, isSecurityLocked: true }));
         checkedThisCycleRef.current = true;
         return;
@@ -585,7 +599,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     }));
   }, []);
 
-  const hasSecurityQuestions = useCallback((): boolean => {
+  const checkHasSecurityQuestions = useCallback((): boolean => {
     return state.settings.hasSecurityQuestions && state.securityQuestions.length > 0;
   }, [state.settings.hasSecurityQuestions, state.securityQuestions]);
 
@@ -623,14 +637,13 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
   }, []);
 
   const value = React.useMemo(() => ({
-    // Direct boolean exports for convenience
     isBiometricEnabled: state.settings.isBiometricEnabled,
     isPinEnabled: state.settings.isPinEnabled,
     isAppLockEnabled: state.settings.isAppLockEnabled,
     autoLockTimeout: state.settings.autoLockTimeout,
     hasSecurityQuestions: state.settings.hasSecurityQuestions,
     biometricTypeName: state.settings.biometricTypeName,
-    // Spread state last so explicit exports take precedence
+    isAppLocked: state.isSecurityLocked,
     ...state,
     checkBiometricCapabilities,
     authenticateWithBiometric,
@@ -656,8 +669,8 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     verifySecurityAnswers,
     loadSecurityQuestions,
     clearSecurityQuestions,
-    hasSecurityQuestions,
-  }), [state, checkBiometricCapabilities, authenticateWithBiometric, toggleBiometric, setupPin, verifyPin, changePin, toggleAppLock, updateAutoLockTimeout, lockApp, unlockApp, checkSecurityOnResume, getBiometricTypeName, getAvailableAuthMethods, forceUnlock, setSharingActive, isSharingActive, getAvailableBiometricTypes, clearSecurityState, resetUnlockLock, saveSecurityQuestions, verifySecurityAnswers, loadSecurityQuestions, clearSecurityQuestions, hasSecurityQuestions]);
+    checkHasSecurityQuestions,
+  }), [state, checkBiometricCapabilities, authenticateWithBiometric, toggleBiometric, setupPin, verifyPin, changePin, toggleAppLock, updateAutoLockTimeout, lockApp, unlockApp, checkSecurityOnResume, getBiometricTypeName, getAvailableAuthMethods, forceUnlock, setSharingActive, isSharingActive, getAvailableBiometricTypes, clearSecurityState, resetUnlockLock, saveSecurityQuestions, verifySecurityAnswers, loadSecurityQuestions, clearSecurityQuestions, checkHasSecurityQuestions]);
 
   return (
     <SecurityContext.Provider value={value}>

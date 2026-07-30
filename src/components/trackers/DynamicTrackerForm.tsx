@@ -707,7 +707,11 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
   const validate = useCallback((): boolean => {
     const newErrors: Record<string, string> = {};
     tracker.fields.forEach(field => {
-      if (!isFieldVisible(field)) return;
+      try {
+        if (typeof isFieldVisible === 'function' && !isFieldVisible(field)) return;
+      } catch {
+        // Continue validation if visibility check fails
+      }
       if (field.required) {
         const value = data[field.id];
         if (value === undefined || value === '' || value === null || 
@@ -733,14 +737,12 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     triggerHaptic('success');
     
     try {
-      onSubmit(data, {
+      await Promise.resolve(onSubmit(data, {
         notes: notes || undefined,
         tags: selectedTags.length > 0 ? selectedTags : undefined,
         photoUris: photoUris.length > 0 ? photoUris : undefined,
         linkedEntryId,
-      });
-      
-      success('Saved!', `${tracker.emoji} ${tracker.name} logged successfully.`);
+      }));
     } catch (err) {
       error('Error', 'Failed to save entry. Please try again.');
     } finally {
@@ -949,7 +951,11 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
   ), [data, errors, fullThemeColors, tracker.color, borderRadiusValue, fontSizeMultiplier, updateField]);
 
   const renderField = useCallback((field: FieldConfig) => {
-    if (!isFieldVisible(field)) return null;
+    try {
+      if (typeof isFieldVisible === 'function' && !isFieldVisible(field)) return null;
+    } catch {
+      // If isFieldVisible is missing or throws, render the field anyway
+    }
     
     const suggestion = getFieldSuggestion(field.id);
     const yesterdayValue = getYesterdayValue(field.id);

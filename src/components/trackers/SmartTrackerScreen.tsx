@@ -74,7 +74,7 @@ export const SmartTrackerScreen: React.FC<SmartTrackerScreenProps> = ({ tracker,
     dismissInsight,
     refresh,
   } = progressive || {};
-  
+
   const [mode, setMode] = useState<'dashboard' | 'form' | 'history' | 'insights'>('dashboard');
   // NOTE: linkedEntryId is reserved for future correlation-driven linking.
   // When a correlation suggests linking to a specific entry, call:
@@ -85,7 +85,7 @@ export const SmartTrackerScreen: React.FC<SmartTrackerScreenProps> = ({ tracker,
   const [formPreset, setFormPreset] = useState<Record<string, unknown> | null>(null);
 
   useEffect(() => {
-    if (mode === 'dashboard') {
+    if (mode === 'dashboard' && typeof refresh === 'function') {
       refresh();
     }
   }, [mode]);
