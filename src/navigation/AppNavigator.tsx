@@ -286,6 +286,7 @@ function NavigationContent({
   // const [shouldShowSwitchBaby, setShouldShowSwitchBaby] = useState(false);
   const [isNavReady, setIsNavReady] = useState(false);
   const [isFirstOpen, setIsFirstOpen] = useState(false);
+  const [babiesReady, setBabiesReady] = useState(false);
 
   // Shared ref so useAppLock() in App.tsx can navigate imperatively to SecurityLock
   const navRef = navigationRef;
@@ -293,7 +294,7 @@ function NavigationContent({
   const appState = useRef(AppState.currentState);
   const isNavigating = useRef(false);
   const lastNavTime = useRef(0);
-  const hasShownSwitchBaby = useRef(false);
+  // const hasShownSwitchBaby = useRef(false); // no longer needed — routed directly
   const wasOnSecurityLock = useRef(false);
   const lastSecCheck = useRef(0);
   const stateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -303,6 +304,7 @@ function NavigationContent({
   const processedNavState = useRef<NavigationState>('LOADING');
   const hasConsumedInitialState = useRef(false);
   // const processedSwitchBaby = useRef(false); // no longer needed
+  const isMounted = useRef(true);
 
   // Refs to track current baby values without causing re-renders
   const babyCountRef = useRef(0);
@@ -349,11 +351,13 @@ function NavigationContent({
     hasSkippedBabyRef.current = hasSkippedBaby;
   }, [babies?.length, hasSkippedBaby, isAuthenticated, setupComplete, isFirstOpen]);
 
-  // FIX #2: Compute navState with stable deps
+  // FIX #2: Compute navState with stable deps — wait for babies if authenticated
   const computingNavState = useRef(false);
   useEffect(() => {
     if (authLoading || !firstOpenChecked.current) return;
     if (computingNavState.current) return;
+    // For authenticated users, wait until baby list is loaded so we route correctly
+    if (isAuthenticated && !babiesReady) return;
     computingNavState.current = true;
 
     const newState = getNavState(
@@ -394,13 +398,23 @@ function NavigationContent({
     hasBaby,
     hasSeenOnboarding,
     isFirstOpen,
+    babiesReady,
   ]);
 
-  // FIX #3: Load babies ONCE
+  useEffect(() => {
+    return () => { isMounted.current = false; };
+  }, []);
+
+  // FIX #3: Load babies ONCE and track readiness
   useEffect(() => {
     if (isAuthenticated && !authLoading && !babiesLoaded.current) {
       babiesLoaded.current = true;
-      loadBabies();
+      loadBabies().finally(() => {
+        // Allow one tick for BabyContext state to propagate
+        setTimeout(() => {
+          if (isMounted.current) setBabiesReady(true);
+        }, 50);
+      });
     }
   }, [isAuthenticated, authLoading]);
 
@@ -497,7 +511,12 @@ function NavigationContent({
       SECURITY_LOCK: 'SecurityLock',
       MAIN: 'Main',
     };
-    const target = routeMap[navState];
+    let target = routeMap[navState];
+
+    // Cold-start optimisation: go straight to baby selector instead of flashing Main
+    if (navState === 'MAIN' && babyCountRef.current > 1) {
+      target = 'SwitchBaby';
+    }
     if (!target) return;
 
     // Already at the target we want
@@ -543,15 +562,7 @@ function NavigationContent({
     if (shouldReset) {
       navRef.current.reset({ index: 0, routes: [{ name: target }] });
 
-      // Imperative switch-baby after landing on Main (no state updates)
-      if (target === 'Main' && babyCountRef.current > 1 && !hasShownSwitchBaby.current) {
-        hasShownSwitchBaby.current = true;
-        setTimeout(() => {
-          if (navRef.current?.getCurrentRoute()?.name !== 'SwitchBaby') {
-            navRef.current?.navigate('SwitchBaby' as never);
-          }
-        }, 600);
-      }
+      // SwitchBaby is now routed directly via target above — no imperative flash
     } else {
       navRef.current.navigate(target as never);
     }
@@ -563,7 +574,10 @@ function NavigationContent({
   }, [navState, initialCheckDone, isNavReady, initialState]);
 
   // Early return MUST come after ALL hooks
-  if (authLoading || !initialCheckDone) return <AppLoadingScreen />;
+  // Keep showing loading until auth + firstOpen + babies (if authenticated) are all resolved
+  if (authLoading || !initialCheckDone || (isAuthenticated && !babiesReady)) {
+    return <AppLoadingScreen />;
+  }
 
   // FIX: Wrap in a non-collapsable View to prevent Reanimated index desync
   return (

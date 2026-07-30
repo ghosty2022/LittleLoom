@@ -116,7 +116,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     initRef.current = true;
     loadFamily();
-  }, [currentBaby?.id, userLoading, profile?.id]);
+  }, [currentBaby?.id, userLoading, profile]);
 
   const loadFamily = useCallback(async () => {
     if (!currentBaby) return;

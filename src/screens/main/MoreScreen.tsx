@@ -936,9 +936,10 @@ function SettingsScreen({ navigation, route }: SettingsScreenProps) {
 
   const [showTimeoutModal, setShowTimeoutModal] = useState(false);
 
-  // formatTimeout moved above handleAutoLockTimeout to fix TDZ
-
-
+  const formatTimeout = useCallback((minutes: number) => {
+    if (minutes < 60) return `${minutes} min`;
+    return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+  }, []);
 
   const handleAutoLockTimeout = useCallback(() => {
     if (!securitySettings.isAppLockEnabled) {

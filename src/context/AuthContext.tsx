@@ -379,6 +379,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         } catch (bioError) { biometricAvailable = false; }
 
+        // ─── CRITICAL FIX: Setup complete requires BOTH steps addressed (completed OR skipped)
+        const p2Done = parent2Completed !== null;
+        const bDone = babyCompleted !== null;
+        const explicitSetupComplete = setupComplete === 'true';
+        const bothStepsAddressed = p2Done && bDone;
+        const shouldBeSetupComplete = explicitSetupComplete || bothStepsAddressed;
+
         const hasParent2 = parent2Completed === 'true' ? true : 
                           parent2Completed === 'skipped' ? 'skipped' :
                           hasParent2Str === 'true' ? true :
@@ -389,18 +396,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                        hasBabyStr === 'true' ? true :
                        hasBabyStr === 'skipped' ? 'skipped' : false;
 
-
-        const isSetupComplete = setupComplete === 'true' || (p2Done && bDone);
-
-        // ─── CRITICAL FIX: Setup complete requires BOTH steps addressed (completed OR skipped)
-        const p2Done = parent2Completed !== null;
-        const bDone = babyCompleted !== null;
-        const explicitSetupComplete = setupComplete === 'true';
-        const bothStepsAddressed = p2Done && bDone;
-        const shouldBeSetupComplete = explicitSetupComplete || bothStepsAddressed;
-        
         // ─── CRITICAL FIX: Onboarding is ONLY complete when setup is fully done
-        // hasSeenOnboarding alone is NOT enough — user MUST complete both setup steps
         const isOnboardingDone = onboardingComplete === 'true';
         const effectiveOnboardingComplete = isOnboardingDone || shouldBeSetupComplete;
 

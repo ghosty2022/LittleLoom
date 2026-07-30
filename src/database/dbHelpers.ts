@@ -38,6 +38,21 @@ export interface InviteCode {
 
 const INVITE_CODE_PREFIX = '@littleloom_invite_';
 const INVITE_CODE_INDEX_KEY = '@littleloom_invite_codes_index';
+const INVITE_CODE_ASYNC_KEY = '@littleloom_invite_codes_fallback';
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   INVITE CODE ASYNC STORAGE FALLBACK
+   ═══════════════════════════════════════════════════════════════════════════ */
+async function getAsyncInviteCodes(): Promise<InviteCode[]> {
+  try {
+    const data = await AsyncStorage.getItem(INVITE_CODE_ASYNC_KEY);
+    return data ? JSON.parse(data) : [];
+  } catch { return []; }
+}
+
+async function saveAsyncInviteCodes(codes: InviteCode[]): Promise<void> {
+  await AsyncStorage.setItem(INVITE_CODE_ASYNC_KEY, JSON.stringify(codes));
+}
 
 export async function isMigrationComplete(): Promise<boolean> {
   const flag = await AsyncStorage.getItem(MIGRATION_KEY);
@@ -597,8 +612,42 @@ export async function createInviteCode(data: {
   } catch (error) {
     const msg = String(error);
     if (msg.includes('no such table') || msg.includes('prepareSync')) {
-      console.warn('[DB] Table not ready for createInviteCode, returning error');
-      return { code: '', success: false, message: 'Database table not ready. Please restart the app.' };
+      /* FALLBACK: Store in AsyncStorage so invites work even when the
+         Drizzle table hasn't been created on older installs. */
+      try {
+        const codes = await getAsyncInviteCodes();
+        const existingForRole = codes.find(
+          c => c.familyId === data.familyId && c.role === data.role && c.createdBy === data.createdBy && c.isActive
+        );
+        if (existingForRole) {
+          const now2 = new Date();
+          if (new Date(existingForRole.expiresAt) > now2) {
+            return { code: existingForRole.code, success: true, message: 'Existing code still valid' };
+          }
+        }
+        let code = generateInviteCode();
+        let attempts = 0;
+        while (codes.find(c => c.code === code) && attempts < 10) {
+          code = generateInviteCode();
+          attempts++;
+        }
+        const now = new Date();
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + (data.expiresInDays || 7));
+        codes.push({
+          code, familyId: data.familyId, role: data.role, createdBy: data.createdBy,
+          createdAt: now.toISOString(), expiresAt: expiresAt.toISOString(),
+          maxUses: data.maxUses || 1, usedCount: 0, isActive: true,
+          relationship: data.relationship, inviteeName: data.inviteeName,
+          inviteeEmail: data.inviteeEmail, inviteePhone: data.inviteePhone,
+          usedBy: [],
+        });
+        await saveAsyncInviteCodes(codes);
+        return { code, success: true, message: 'Invite code created successfully' };
+      } catch (asyncErr) {
+        console.error('AsyncStorage invite fallback failed:', asyncErr);
+        return { code: '', success: false, message: 'Storage not ready. Please try again.' };
+      }
     }
     console.error('Error creating invite code:', error);
     return { code: '', success: false, message: 'Failed to create invite code' };
@@ -629,8 +678,8 @@ export async function getInviteCodeFromDb(code: string): Promise<InviteCode | nu
   } catch (error) {
     const msg = String(error);
     if (msg.includes('no such table') || msg.includes('prepareSync')) {
-      console.warn(`[DB] Table not ready for getInviteCodeFromDb('${code}'), returning null`);
-      return null;
+      const codes = await getAsyncInviteCodes();
+      return codes.find(c => c.code === code) || null;
     }
     console.error('Error getting invite code:', error);
     return null;
@@ -699,8 +748,15 @@ export async function markInviteCodeUsed(code: string, userId: string): Promise<
   } catch (error) {
     const msg = String(error);
     if (msg.includes('no such table') || msg.includes('prepareSync')) {
-      console.warn(`[DB] Table not ready for markInviteCodeUsed, skipping`);
-      return false;
+      const codes = await getAsyncInviteCodes();
+      const idx = codes.findIndex(c => c.code === code);
+      if (idx >= 0) {
+        codes[idx].usedBy = [...codes[idx].usedBy, userId];
+        codes[idx].usedCount = codes[idx].usedBy.length;
+        codes[idx].isActive = codes[idx].usedCount < codes[idx].maxUses;
+        await saveAsyncInviteCodes(codes);
+      }
+      return true;
     }
     console.error('Error marking invite code used:', error);
     return false;
@@ -720,7 +776,13 @@ export async function deactivateInviteCode(code: string): Promise<boolean> {
   } catch (error) {
     const msg = String(error);
     if (msg.includes('no such table') || msg.includes('prepareSync')) {
-      console.warn(`[DB] Table not ready for deactivateInviteCode, skipping`);
+      const codes = await getAsyncInviteCodes();
+      const idx = codes.findIndex(c => c.code === code);
+      if (idx >= 0) {
+        codes[idx].isActive = false;
+        await saveAsyncInviteCodes(codes);
+        return true;
+      }
       return false;
     }
     console.error('Error deactivating invite code:', error);
@@ -753,8 +815,8 @@ export async function getActiveInviteCodesForFamily(familyId: string): Promise<I
   } catch (error) {
     const msg = String(error);
     if (msg.includes('no such table') || msg.includes('prepareSync')) {
-      console.warn(`[DB] Table not ready for getActiveInviteCodesForFamily, returning []`);
-      return [];
+      const codes = await getAsyncInviteCodes();
+      return codes.filter(c => c.familyId === familyId);
     }
     console.error('Error getting active invite codes:', error);
     return [];
@@ -783,8 +845,16 @@ export async function cleanupExpiredInviteCodes(): Promise<number> {
   } catch (error) {
     const msg = String(error);
     if (msg.includes('no such table') || msg.includes('prepareSync')) {
-      console.warn('[DB] Table not ready for cleanupExpiredInviteCodes, returning 0');
-      return 0;
+      const codes = await getAsyncInviteCodes();
+      const now = new Date();
+      const before = codes.length;
+      const filtered = codes.filter(c => {
+        const isExpired = now > new Date(c.expiresAt);
+        const isOldInactive = !c.isActive && (now.getTime() - new Date(c.createdAt).getTime() > 30 * 24 * 60 * 60 * 1000);
+        return !isExpired && !isOldInactive;
+      });
+      await saveAsyncInviteCodes(filtered);
+      return before - filtered.length;
     }
     console.error('Error cleaning up invite codes:', error);
     return 0;

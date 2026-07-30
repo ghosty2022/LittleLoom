@@ -206,9 +206,9 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     };
   }, []);
 
-  // ─── FIX: Mount-time guard — if already authenticated (swipe-back), redirect immediately
+  // ─── FIX: Mount-time guard — ONLY redirect if fully set up
   useEffect(() => {
-    if (!authLoading && isAuthenticated) {
+    if (!authLoading && isAuthenticated && setupComplete) {
       const timer = setTimeout(() => {
         if (isMounted.current) {
           forceUnlock().catch(() => {});
@@ -217,11 +217,11 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
       }, 100);
       return () => clearTimeout(timer);
     }
-  }, [authLoading, isAuthenticated, navigation, forceUnlock]);
+  }, [authLoading, isAuthenticated, setupComplete, navigation, forceUnlock]);
 
-  // Fallback: if auth succeeds but AppNavigator doesn't navigate, force Main
+  // Fallback: only force Main if setup is actually done
   useEffect(() => {
-    if (isAuthenticated && !authLoading) {
+    if (isAuthenticated && !authLoading && setupComplete) {
       const timer = setTimeout(() => {
         if (isMounted.current) {
           forceUnlock().catch(() => {});
@@ -230,7 +230,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
       }, 1800);
       return () => clearTimeout(timer);
     }
-  }, [isAuthenticated, authLoading, navigation, forceUnlock]);
+  }, [isAuthenticated, authLoading, setupComplete, navigation, forceUnlock]);
 
   useEffect(() => {
     logoScale.value = withSequence(
@@ -545,8 +545,8 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
       return;
     }
 
-    // FIX: If already authenticated, just go forward
-    if (isAuthenticated) {
+    // FIX: If already authenticated and setup complete, just go forward
+    if (isAuthenticated && setupComplete) {
       forceUnlock().catch(() => {});
       navigation.replace('Main');
       return;
@@ -630,8 +630,8 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
 
     if (isProcessing || authLoading) return;
 
-    // FIX: If already authenticated, just go forward
-    if (isAuthenticated) {
+    // FIX: If already authenticated and setup complete, just go forward
+    if (isAuthenticated && setupComplete) {
       forceUnlock().catch(() => {});
       navigation.replace('Main');
       return;
@@ -722,8 +722,8 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
       return false;
     }
 
-    // FIX: If already authenticated, just go forward
-    if (isAuthenticated) {
+    // FIX: If already authenticated and setup complete, just go forward
+    if (isAuthenticated && setupComplete) {
       forceUnlock().catch(() => {});
       navigation.replace('Main');
       return true;
