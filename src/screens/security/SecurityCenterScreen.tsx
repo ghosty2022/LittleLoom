@@ -120,6 +120,7 @@ const SectionHeader: React.FC<{ title: string; isDark: boolean }> = ({ title, is
 );
 
 export default function SecurityCenterScreen({ navigation, route }: SecurityCenterScreenProps) {
+  const { mode, fromForgotPassword } = route.params || {};
   const {
     settings: securitySettings,
     isBiometricEnabled,
@@ -135,7 +136,7 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     verifySecurityAnswers,
     loadSecurityQuestions,
     clearSecurityQuestions,
-    hasSecurityQuestions,
+    checkHasSecurityQuestions,
     authenticateWithBiometric,
     availableBiometricTypes,
     getBiometricTypeName,
@@ -178,6 +179,16 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     const unsub = navigation.addListener('focus', () => resetUnlockLock());
     return unsub;
   }, [navigation, resetUnlockLock]);
+
+  // Auto-navigate to PIN reset when coming from forgot PIN flow
+  useEffect(() => {
+    if (mode === 'reset' && fromForgotPassword) {
+      setActiveSection('pin');
+      setPinMode('create');
+      setPinStep('input');
+      resetPinState();
+    }
+  }, [mode, fromForgotPassword]);
 
   useEffect(() => {
     setSelectedTimeout(securitySettings.autoLockTimeout);
@@ -278,7 +289,7 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
               showSuccess('PIN Set', 'Your PIN is now active');
               setPinMode('verify');
               setPinStep('success');
-              if (!hasSecurityQuestions()) {
+              if (!checkHasSecurityQuestions()) {
                 setTimeout(() => {
                   setActiveSection('questions');
                   setQuestionStep('select');

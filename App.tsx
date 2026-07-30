@@ -10,6 +10,8 @@ import {
   LogBox,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { navigationRef } from './navigation/navigationRef';
+import { useAppLock } from './hooks/useAppLock';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -131,6 +133,7 @@ interface InnerAppProps {
 
 const InnerApp: React.FC<InnerAppProps> = React.memo(({ initialState, onStateChange }) => {
   const { isDark } = useTheme();
+  useAppLock(); // Auto-pushes SecurityLock when isSecurityLocked becomes true
 
   return (
     <ModalProvider>
@@ -220,6 +223,14 @@ export default function App(): JSX.Element | null {
             
             if (!setupDone) {
               console.log('[App] Setup incomplete, clearing nav state');
+              await statePersistence.clearNavigationState();
+              return;
+            }
+
+            // Don't restore nav state if app was locked when killed
+            const wasLocked = await AsyncStorage.getItem('littleloom_security_lock');
+            if (wasLocked === 'true') {
+              console.log('[App] App was locked, clearing nav state to force lock screen');
               await statePersistence.clearNavigationState();
               return;
             }

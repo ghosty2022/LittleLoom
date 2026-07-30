@@ -2405,7 +2405,7 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
               style={[styles.modalSecondaryBtn, { borderColor: `${primary}30`, borderWidth: 1 }]}
               onPress={async () => {
                 setShowSecurityModal(false);
-                await lockApp();
+                await lockApp(true);
                 toast('App Locked', 'Locked without security. Tap unlock to enter.', 'warning');
               }}
             >

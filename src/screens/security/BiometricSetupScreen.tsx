@@ -295,7 +295,7 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
           style={styles.gradient}
         />
         <View style={[styles.content, { paddingTop: insets.top + 40, justifyContent: 'center', alignItems: 'center' }]}>
-          <ActivityIndicator size="large" color={themeColors.spinnerColor} />
+          <ActivityIndicator size="large" color={themeColors.spinnerColor || themeColors.primary} />
           <Text style={[styles.loadingText, { color: isDark ? '#94a3b8' : '#fff' }]}>
             Checking biometric availability...
           </Text>
