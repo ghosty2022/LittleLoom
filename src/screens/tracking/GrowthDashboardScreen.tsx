@@ -1143,7 +1143,7 @@ export default function GrowthDashboardScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const theme = useDashboardTheme();
   const { triggerHaptic } = useCustomization();
-  const sweetAlert = useSweetAlert();
+
 
   const {
     currentBaby,

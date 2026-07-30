@@ -1,7 +1,8 @@
 import React, { useCallback, useMemo, useState, useEffect } from 'react';
-import { EmptyState } from '../../components/EmptyState';
+
 import { useCustomization } from '../../hooks/useCustomization';
-import { Dimensions, Image, Modal, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View, LayoutAnimation, UIManager, Platform } from 'react-native';
+import { Dimensions, Modal, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View, LayoutAnimation, UIManager, Platform } from 'react-native';
+// REMOVED: Image — unused in this screen
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -1092,7 +1093,7 @@ export default function EnhancedTimelineScreen() {
 
   useEffect(() => {
     if (route.params?.filter) setSelectedFilter(route.params.filter);
-  }, [route.params]);
+  }, [route.params?.filter]); // FIXED: depend on primitive, not object reference
 
   // ── Live refresh: reload entries every time this screen gains focus, so
   //    newly logged activity appears instantly (same as FamilySharing) ──

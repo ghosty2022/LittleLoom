@@ -29,6 +29,7 @@ import { useTracker } from './useTrackerContext';
 import { useBaby } from '@/context/BabyContext';
 import { useGrowthIntelligence } from './useGrowthIntelligence';
 import { usePredictiveReminders } from './usePredictiveReminders';
+import { computeStreak } from '@/utils/streak';
 // Inline type definition to avoid dependency on potentially missing file export
 interface PredictiveReminder {
 id: string;
@@ -80,15 +81,7 @@ export interface Achievement {
   triggeredByReminder?: PredictiveReminder;
 }
 
-export interface StreakData {
-  currentStreak: number;
-  longestStreak: number;
-  lastActivity: string | null;
-  streakAtRisk: boolean;
-  hoursUntilBreak: number;
-  /** Which tracker is driving the current streak */
-  streakTrackerId: string | null;
-}
+// StreakData imported from @/utils/streak
 
 export interface AchievementStats {
   total: number;
@@ -156,56 +149,7 @@ const CATEGORY_META: Record<AchievementCategory, { label: string; icon: string; 
    STREAK ENGINE
    ─────────────────────────────────────────────────────────────── */
 
-const computeStreak = (entries: any[], trackerId?: string): StreakData => {
-  const now = new Date();
-  const filtered = trackerId
-    ? entries.filter((e) => e.trackerId === trackerId && !e.isDeleted)
-    : entries.filter((e) => !e.isDeleted);
-
-  const days = new Set(
-    filtered.map((e) => new Date(e.timestamp).toISOString().split('T')[0])
-  );
-
-  let current = 0;
-  let longest = 0;
-  let temp = 0;
-
-  for (let i = 0; i < 365; i++) {
-    const check = new Date(now);
-    check.setDate(check.getDate() - i);
-    const key = check.toISOString().split('T')[0];
-    if (days.has(key)) {
-      temp++;
-      longest = Math.max(longest, temp);
-      if (i === 0) current = temp;
-    } else {
-      if (i === 0) current = 0;
-      temp = 0;
-    }
-  }
-
-  const lastEntry = filtered.sort((a, b) => b.timestamp - a.timestamp)[0];
-  const lastActivity = lastEntry ? new Date(lastEntry.timestamp).toISOString() : null;
-
-  let streakAtRisk = false;
-  let hoursUntilBreak = 0;
-  if (lastActivity) {
-    const hoursSince = differenceInHours(now, new Date(lastActivity));
-    if (hoursSince > 20 && current > 0) {
-      streakAtRisk = true;
-      hoursUntilBreak = Math.max(0, 24 - hoursSince);
-    }
-  }
-
-  return {
-    currentStreak: current,
-    longestStreak: longest,
-    lastActivity,
-    streakAtRisk,
-    hoursUntilBreak,
-    streakTrackerId: trackerId || null,
-  };
-};
+// Extracted to utils/streak.ts — shared streak computation
 
 /* ───────────────────────────────────────────────────────────────
    MAIN HOOK

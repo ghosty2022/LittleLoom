@@ -385,14 +385,15 @@ const CategoryFilter: React.FC<{
 
 export default function InsightsScreen({ navigation }: InsightsScreenProps) {
   const insets = useSafeAreaInsets();
-  const { triggerHaptic, themeColors, darkMode, fontSizeMultiplier } = useCustomization();
+  const { triggerHaptic, themeColors, darkMode } = useCustomization();
+  // REMOVED fontSizeMultiplier — unused in this screen
   const { userProfile } = useAuth();
   const { currentBaby, growthData, milestones, babies, getGrowthData } = useBaby();
-  const { entries: trackerEntries, getRecentTimelineEvents } = useActivity();
+  const { entries: getRecentTimelineEvents } = useActivity();
   const { growthIndex } = useGrowthIntelligence();
   const { correlations: timelineCorrelations } = useTimelineCorrelations();
   const { achievements, newlyUnlocked, streak: globalStreak } = useTrackerAchievements();
-  const { getInsights: getEngineInsights, getEntries: getTrackerEntries, refreshEntries } = useTracker();
+  const { getInsights: getEngineInsights, getEntries: getTrackerEntries, refreshEntries, entries: trackerEntries } = useTracker();
   const { getPercentile, getStatus } = useWHOGrowthCalculator();
   const sweetAlert = useSweetAlert();
 

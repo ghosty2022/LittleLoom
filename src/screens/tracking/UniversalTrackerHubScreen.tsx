@@ -1815,7 +1815,9 @@ export default function UniversalTrackerHubScreen() {
 
   const handleDayPress = useCallback((day: string) => {
     HAPTIC_LIGHT();
-    navigation.navigate('Timeline', { filter: day });
+    // FIXED: TimelineScreen interprets 'filter' as a trackerId (e.g. 'feed', 'sleep').
+    // Passing a day name like 'Mon' breaks the filter. Navigate clean instead.
+    navigation.navigate('Timeline');
   }, [navigation]);
 
   const onRefresh = useCallback(async () => {

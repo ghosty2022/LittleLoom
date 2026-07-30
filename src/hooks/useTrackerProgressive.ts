@@ -198,30 +198,16 @@ export const useTrackerProgressive = (trackerId: string) => {
 
   const { currentBaby, growthData } = useBaby();
 
-  let growthIndex = null;
-  let predictiveReminders: any[] = [];
-  let timelineCorrelations: any[] = [];
+  // FIX: Hooks must be called unconditionally at top level per React Rules of Hooks.
+  // The try/catch safety is moved INTO each hook or handled via safe wrapper hooks.
+  const gi = useGrowthIntelligence();
+  const growthIndex = gi?.growthIndex ?? null;
   
-  try {
-    const gi = useGrowthIntelligence();
-    growthIndex = gi.growthIndex;
-  } catch {
-    growthIndex = null;
-  }
+  const pr = usePredictiveReminders();
+  const predictiveReminders = pr?.reminders ?? [];
   
-  try {
-    const pr = usePredictiveReminders();
-    predictiveReminders = pr.reminders;
-  } catch {
-    predictiveReminders = [];
-  }
-  
-  try {
-    const tc = useTimelineCorrelations();
-    timelineCorrelations = tc.correlations;
-  } catch {
-    timelineCorrelations = [];
-  }
+  const tc = useTimelineCorrelations();
+  const timelineCorrelations = tc?.correlations ?? [];
 
   const [isLoading, setIsLoading] = useState(true);
   const [refreshToken, setRefreshToken] = useState(0);

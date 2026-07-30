@@ -388,7 +388,10 @@ const ageAtMeasurement = measurementDate
 
     const velocityTrend = heightData.length >= 2 ? 
       (safeNumber(heightData[0].value, 0) - safeNumber(heightData[1].value, 0)) / 
-      Math.max(differenceInMonths(new Date(heightData[0].date), new Date(heightData[1].date)), 1) : 0;
+      Math.max(differenceInMonths(
+        safeParseDate(heightData[0].date) || new Date(),
+        safeParseDate(heightData[1].date) || new Date()
+      ), 1) : 0;
     const expectedVelocity = 1.5;
     const velocityBonus = velocityTrend > expectedVelocity * 0.8 ? 10 : 0;
 
@@ -530,11 +533,17 @@ const ageAtMeasurement = measurementDate
 
     const calcVelocity = (data: typeof heightData, type: 'height' | 'weight' | 'head') => {
       if (data.length < 2) return { perMonth: 0, percentile: 50 };
-      const months = Math.max(1, differenceInMonths(new Date(data[0].date), new Date(data[data.length - 1].date)));
+      const months = Math.max(1, differenceInMonths(
+        safeParseDate(data[0].date) || new Date(),
+        safeParseDate(data[data.length - 1].date) || new Date()
+      ));
       const totalGrowth = safeNumber(data[0].value, 0) - safeNumber(data[data.length - 1].value, 0);
       const perMonth = safeVelocity(totalGrowth / months);
 
-      const ageAtMeasurement = Math.max(0, differenceInMonths(new Date(data[0].date), birthDate || new Date()));
+      const ageAtMeasurement = Math.max(0, differenceInMonths(
+        safeParseDate(data[0].date) || new Date(),
+        birthDate || new Date()
+      ));
       const rawPercentile = calculatePercentilePrecise(
         safeNumber(data[0].value, 0),
         Number.isFinite(ageAtMeasurement) ? ageAtMeasurement : 0,
@@ -671,7 +680,11 @@ const ageAtMeasurement = measurementDate
     if (!key) return null;
     const dimScores = { nutritionScore, restScore, physicalScore, cognitiveScore, healthStability };
     const thirtyDaysAgo = subDays(new Date(), 30).getTime();
-    const entries30d = (getEntries(trackerId, 200) || []).filter(e => e.timestamp > thirtyDaysAgo).length;
+    // FIX: Guard getEntries -- it may be undefined if TrackerContext is not ready
+    // FIX: Guard getEntries — it may be undefined if TrackerContext is not ready
+    const entries30d = typeof getEntries === 'function'
+      ? (getEntries(trackerId, 200) || []).filter(e => e.timestamp > thirtyDaysAgo).length
+      : 0;
     // 60% dimension score + 40% logging consistency (14+ logs/month saturates)
     const score = Math.round(dimScores[key].value * 0.6 + Math.min(100, (entries30d / 14) * 100) * 0.4);
     return { trackerId, dimension: key, score: Math.max(0, Math.min(100, score)), entries30d };
