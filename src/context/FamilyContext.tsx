@@ -142,7 +142,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           userId: currentBaby.parent1Id,
           fullName: currentBaby.parent1Id === effectiveProfile.id ? effectiveProfile.fullName || parent1Relationship : parent1Relationship,
           email: effectiveProfile.email || '',
-          avatar: effectiveProfile.avatar,
+          avatar: effectiveProfile.avatar || effectiveProfile.communityAvatar,
           role: UserRole.PARENT_1,
           relationship: parent1Relationship,
           permissions: ROLE_PERMISSIONS[UserRole.PARENT_1],
@@ -483,7 +483,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       console.error('Error generating invite code:', error);
       return { code: '', success: false, message: 'Failed to generate invite code' };
     }
-  }, [myPermissions, profile, currentBaby]);
+  }, [isOwner, profile, currentBaby]);
 
   const getActiveInviteCodes = useCallback(async (): Promise<import('@/database/dbHelpers').InviteCode[]> => {
     if (!currentBaby) return [];
@@ -506,7 +506,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       console.error('Error revoking invite code:', error);
       return false;
     }
-  }, [myPermissions]);
+  }, [isOwner]);
 
   const getEffectivePermissions = useCallback((userId?: string): Permission => {
     const targetId = userId || profile?.id;

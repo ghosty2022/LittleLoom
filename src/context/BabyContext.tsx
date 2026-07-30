@@ -830,7 +830,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   /* ---- Create baby ---- */
   const createBaby = useCallback(async (
-    data: Omit<BabyProfile, 'id' | 'streak' | 'milestones' | 'photos' | 'createdAt' | 'age' | 'lastUpdated' | 'parent1Id'>
+    data: Omit<BabyProfile, 'id' | 'streak' | 'milestones' | 'photos' | 'createdAt' | 'age' | 'lastUpdated'> & { parent1Id?: string }
   ): Promise<string | null> => {
     const birthDate = new Date(data.birthDate);
     const now = new Date();
@@ -855,7 +855,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         gender: data.gender === 'boy' ? 'male' : data.gender === 'girl' ? 'female' : 'other',
         bloodType: data.bloodType,
         medicalNotes: data.medicalNotes,
-        parent1Id: 'default',
+        parent1Id: data.parent1Id || 'default',
       });
 
       /* Read-back verification: createBabyInDb swallows "table not ready"
@@ -872,7 +872,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const newBaby: BabyProfile = {
         ...data,
         id: newId,
-        parent1Id: 'default',
+        parent1Id: data.parent1Id || 'default',
         streak: 0,
         milestones: 0,
         photos: 0,

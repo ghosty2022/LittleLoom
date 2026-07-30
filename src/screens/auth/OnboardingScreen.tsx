@@ -1,4 +1,10 @@
-import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import React, {
+  useEffect,
+  useRef,
+  useState,
+  useCallback,
+  useMemo,
+} from 'react';
 import Animated, {
   Extrapolation,
   interpolate,
@@ -41,6 +47,10 @@ const USER_INACTIVITY_RESUME = 8000;
 
 const ONBOARDING_COMPLETE_KEY = '@littleloom_onboarding_complete_v3';
 const ONBOARDING_SEEN_KEY = '@littleloom_onboarding_seen_v3';
+
+/* ------------------------------------------------------------------ */
+/*  Types & Data                                                       */
+/* ------------------------------------------------------------------ */
 
 interface OnboardingSlide {
   id: string;
@@ -155,36 +165,38 @@ const ONBOARDING_DATA: OnboardingSlide[] = [
 ];
 
 /* ------------------------------------------------------------------ */
-/*  Animated Outline Components                                        */
+/*  Animated Sub-components (each with stable hook counts)             */
 /* ------------------------------------------------------------------ */
 
-const RotatingGradientBorder = ({ colors, isDark }: { colors: [string, string]; isDark: boolean }) => {
-  const rotation = useSharedValue(0);
-  useEffect(() => {
-    rotation.value = withRepeat(
-      withTiming(360, { duration: 8000, easing: Easing.linear }),
-      -1,
-      false
+const RotatingGradientBorder = React.memo(
+  ({ colors }: { colors: [string, string] }) => {
+    const rotation = useSharedValue(0);
+    useEffect(() => {
+      rotation.value = withRepeat(
+        withTiming(360, { duration: 8000, easing: Easing.linear }),
+        -1,
+        false
+      );
+    }, [rotation]);
+
+    const animatedStyle = useAnimatedStyle(() => ({
+      transform: [{ rotate: `${rotation.value}deg` }],
+    }));
+
+    return (
+      <Animated.View style={[styles.rotatingBorderContainer, animatedStyle]}>
+        <LinearGradient
+          colors={[`${colors[0]}60`, `${colors[1]}60`, `${colors[0]}60`]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+      </Animated.View>
     );
-  }, []);
+  }
+);
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${rotation.value}deg` }],
-  }));
-
-  return (
-    <Animated.View style={[styles.rotatingBorderContainer, animatedStyle]}>
-      <LinearGradient
-        colors={[colors[0] + '60', colors[1] + '60', colors[0] + '60']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={StyleSheet.absoluteFill}
-      />
-    </Animated.View>
-  );
-};
-
-const PulsingCorners = ({ color }: { color: string }) => {
+const PulsingCorners = React.memo(({ color }: { color: string }) => {
   const pulse = useSharedValue(1);
   useEffect(() => {
     pulse.value = withRepeat(
@@ -195,38 +207,36 @@ const PulsingCorners = ({ color }: { color: string }) => {
       -1,
       true
     );
-  }, []);
+  }, [pulse]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: pulse.value }],
     opacity: interpolate(pulse.value, [1, 1.4], [0.8, 0.3], Extrapolation.CLAMP),
   }));
 
-  const cornerPositions = [
-    { top: -4, left: -4 },
-    { top: -4, right: -4 },
-    { bottom: -4, left: -4 },
-    { bottom: -4, right: -4 },
-  ];
+  const corners = useMemo(
+    () => [
+      { top: -4, left: -4 },
+      { top: -4, right: -4 },
+      { bottom: -4, left: -4 },
+      { bottom: -4, right: -4 },
+    ],
+    []
+  );
 
   return (
     <>
-      {cornerPositions.map((pos, i) => (
+      {corners.map((pos, i) => (
         <Animated.View
           key={i}
-          style={[
-            styles.cornerDot,
-            { backgroundColor: color },
-            pos,
-            animatedStyle,
-          ]}
+          style={[styles.cornerDot, { backgroundColor: color }, pos, animatedStyle]}
         />
       ))}
     </>
   );
-};
+});
 
-const DashedBorder = ({ color }: { color: string }) => {
+const DashedBorder = React.memo(({ color }: { color: string }) => {
   const dashOffset = useSharedValue(0);
   useEffect(() => {
     dashOffset.value = withRepeat(
@@ -234,7 +244,7 @@ const DashedBorder = ({ color }: { color: string }) => {
       -1,
       false
     );
-  }, []);
+  }, [dashOffset]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     opacity: interpolate(
@@ -247,175 +257,152 @@ const DashedBorder = ({ color }: { color: string }) => {
 
   return (
     <Animated.View
+      style={[styles.dashedBorder, { borderColor: `${color}40` }, animatedStyle]}
+    />
+  );
+});
+
+/* ------------------------------------------------------------------ */
+/*  FIXED: Orb is now its own component — hooks are top-level          */
+/* ------------------------------------------------------------------ */
+
+interface OrbDef {
+  delay: number;
+  x: number;
+  y: number;
+  size: number;
+  duration: number;
+  color: string;
+  index: number;
+}
+
+const Orb = React.memo(({ orb }: { orb: OrbDef }) => {
+  const orbAnim = useSharedValue(0);
+  useEffect(() => {
+    orbAnim.value = withDelay(
+      orb.delay,
+      withRepeat(
+        withTiming(1, { duration: orb.duration, easing: Easing.inOut(Easing.sin) }),
+        -1,
+        true
+      )
+    );
+  }, [orbAnim, orb.delay, orb.duration]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        translateY: interpolate(orbAnim.value, [0, 1], [0, -15], Extrapolation.CLAMP),
+      },
+      {
+        translateX: interpolate(
+          orbAnim.value,
+          [0, 1],
+          [0, 8 * (orb.index % 2 === 0 ? 1 : -1)],
+          Extrapolation.CLAMP
+        ),
+      },
+    ],
+    opacity: interpolate(orbAnim.value, [0, 0.5, 1], [0.4, 0.9, 0.4], Extrapolation.CLAMP),
+  }));
+
+  return (
+    <Animated.View
       style={[
-        styles.dashedBorder,
-        { borderColor: color + '40' },
+        styles.floatingOrb,
+        {
+          width: orb.size,
+          height: orb.size,
+          backgroundColor: orb.color,
+          left: orb.x,
+          top: orb.y,
+        },
         animatedStyle,
       ]}
     />
   );
-};
+});
 
-const FloatingOrbs = ({ colors }: { colors: [string, string] }) => {
-  const orbs = useMemo(
+const FloatingOrbs = React.memo(({ colors }: { colors: [string, string] }) => {
+  const orbs = useMemo<OrbDef[]>(
     () => [
-      { delay: 0, x: wp(60), y: hp(15), size: 6, duration: 4000 },
-      { delay: 800, x: wp(15), y: hp(25), size: 4, duration: 3500 },
-      { delay: 1600, x: wp(70), y: hp(35), size: 5, duration: 4500 },
-      { delay: 2400, x: wp(25), y: hp(10), size: 3, duration: 3800 },
-      { delay: 1200, x: wp(50), y: hp(40), size: 4, duration: 4200 },
+      { delay: 0, x: wp(60), y: hp(15), size: 6, duration: 4000, color: colors[0], index: 0 },
+      { delay: 800, x: wp(15), y: hp(25), size: 4, duration: 3500, color: colors[1], index: 1 },
+      { delay: 1600, x: wp(70), y: hp(35), size: 5, duration: 4500, color: colors[0], index: 2 },
+      { delay: 2400, x: wp(25), y: hp(10), size: 3, duration: 3800, color: colors[1], index: 3 },
+      { delay: 1200, x: wp(50), y: hp(40), size: 4, duration: 4200, color: colors[0], index: 4 },
     ],
-    []
+    [colors]
   );
 
   return (
     <>
-      {orbs.map((orb, i) => {
-        const orbAnim = useSharedValue(0);
-        useEffect(() => {
-          orbAnim.value = withDelay(
-            orb.delay,
-            withRepeat(
-              withTiming(1, { duration: orb.duration, easing: Easing.inOut(Easing.sin) }),
-              -1,
-              true
-            )
-          );
-        }, []);
-
-        const animatedStyle = useAnimatedStyle(() => ({
-          transform: [
-            {
-              translateY: interpolate(
-                orbAnim.value,
-                [0, 1],
-                [0, -15],
-                Extrapolation.CLAMP
-              ),
-            },
-            {
-              translateX: interpolate(
-                orbAnim.value,
-                [0, 1],
-                [0, 8 * (i % 2 === 0 ? 1 : -1)],
-                Extrapolation.CLAMP
-              ),
-            },
-          ],
-          opacity: interpolate(
-            orbAnim.value,
-            [0, 0.5, 1],
-            [0.4, 0.9, 0.4],
-            Extrapolation.CLAMP
-          ),
-        }));
-
-        return (
-          <Animated.View
-            key={i}
-            style={[
-              styles.floatingOrb,
-              {
-                width: orb.size,
-                height: orb.size,
-                backgroundColor: i % 2 === 0 ? colors[0] : colors[1],
-                left: orb.x,
-                top: orb.y,
-              },
-              animatedStyle,
-            ]}
-          />
-        );
-      })}
+      {orbs.map((orb) => (
+        <Orb key={orb.index} orb={orb} />
+      ))}
     </>
   );
-};
+});
 
-const FeatureChips = ({ features, color }: { features: string[]; color: string }) => {
-  return (
-    <View style={styles.featureChipsContainer}>
-      {features.map((feature, i) => (
-        <View
-          key={i}
-          style={[
-            styles.featureChip,
-            {
-              backgroundColor: color + '18',
-              borderColor: color + '30',
-            },
-          ]}
-        >
-          <Ionicons name="checkmark-circle" size={12} color={color} />
-          <Text style={[styles.featureChipText, { color }]}>{feature}</Text>
-        </View>
-      ))}
-    </View>
-  );
-};
+const FeatureChips = React.memo(
+  ({ features, color }: { features: string[]; color: string }) => {
+    return (
+      <View style={styles.featureChipsContainer}>
+        {features.map((feature, i) => (
+          <View
+            key={i}
+            style={[
+              styles.featureChip,
+              { backgroundColor: `${color}18`, borderColor: `${color}30` },
+            ]}
+          >
+            <Ionicons name="checkmark-circle" size={12} color={color} />
+            <Text style={[styles.featureChipText, { color }]}>{feature}</Text>
+          </View>
+        ))}
+      </View>
+    );
+  }
+);
 
 /* ------------------------------------------------------------------ */
-/*  Slide Item                                                         */
+/*  Slide Item — memoized, only re-renders when isDark actually flips  */
 /* ------------------------------------------------------------------ */
 
-const SlideItem = React.memo(({
-  item,
-  index,
-  scrollX,
-  isDark,
-}: {
+interface SlideItemProps {
   item: OnboardingSlide;
   index: number;
   scrollX: Animated.SharedValue<number>;
   isDark: boolean;
-}) => {
-  const inputRange = [
-    (index - 1) * SCREEN_WIDTH,
-    index * SCREEN_WIDTH,
-    (index + 1) * SCREEN_WIDTH,
-  ];
+}
+
+const SlideItem = React.memo(({ item, index, scrollX, isDark }: SlideItemProps) => {
+  const inputRange = useMemo(
+    () => [(index - 1) * SCREEN_WIDTH, index * SCREEN_WIDTH, (index + 1) * SCREEN_WIDTH],
+    [index]
+  );
 
   const animatedStyle = useAnimatedStyle(() => {
     'worklet';
-    const scale = interpolate(
-      scrollX.value,
-      inputRange,
-      [0.82, 1, 0.82],
-      Extrapolation.CLAMP
-    );
-    const opacity = interpolate(
-      scrollX.value,
-      inputRange,
-      [0.35, 1, 0.35],
-      Extrapolation.CLAMP
-    );
+    const scale = interpolate(scrollX.value, inputRange, [0.82, 1, 0.82], Extrapolation.CLAMP);
+    const opacity = interpolate(scrollX.value, inputRange, [0.35, 1, 0.35], Extrapolation.CLAMP);
     const translateX = interpolate(
       scrollX.value,
       inputRange,
       [SCREEN_WIDTH * 0.18, 0, -SCREEN_WIDTH * 0.18],
       Extrapolation.CLAMP
     );
-    const rotateY = interpolate(
-      scrollX.value,
-      inputRange,
-      [15, 0, -15],
-      Extrapolation.CLAMP
-    );
+    const rotateY = interpolate(scrollX.value, inputRange, [15, 0, -15], Extrapolation.CLAMP);
 
     return {
       opacity,
-      transform: [
-        { perspective: 1000 },
-        { scale },
-        { translateX },
-        { rotateY: `${rotateY}deg` },
-      ],
+      transform: [{ perspective: 1000 }, { scale }, { translateX }, { rotateY: `${rotateY}deg` }],
     };
   });
 
   const currentColors = isDark && item.darkColors ? item.darkColors : item.colors;
   const isLogoSlide = index === 0;
 
-  // Logo-only first slide
   if (isLogoSlide) {
     return (
       <View style={styles.slide}>
@@ -432,7 +419,9 @@ const SlideItem = React.memo(({
             <Text style={[styles.title, isDark && styles.titleDark, { fontSize: wp(8) }]}>
               {item.title}
             </Text>
-            <Text style={[styles.subtitle, isDark && styles.subtitleDark, { fontSize: wp(4.5) }]}>
+            <Text
+              style={[styles.subtitle, isDark && styles.subtitleDark, { fontSize: wp(4.5) }]}
+            >
               {item.subtitle}
             </Text>
             <Text style={[styles.description, isDark && styles.descriptionDark]}>
@@ -447,103 +436,56 @@ const SlideItem = React.memo(({
   return (
     <View style={styles.slide}>
       <Animated.View style={[styles.slideContent, animatedStyle]}>
-        {/* Multi-layer animated card */}
         <View style={[styles.card, isDark && styles.cardDark]}>
-          {/* Layer 1: Rotating gradient border */}
-          <RotatingGradientBorder colors={currentColors} isDark={isDark} />
-
-          {/* Layer 2: Pulsing corner dots */}
+          <RotatingGradientBorder colors={currentColors} />
           <PulsingCorners color={currentColors[0]} />
-
-          {/* Layer 3: Animated dashed border */}
           <DashedBorder color={currentColors[1]} />
-
-          {/* Layer 4: Floating orbs */}
           <FloatingOrbs colors={currentColors} />
 
-          {/* Card content */}
           <LinearGradient
             colors={
               isDark
                 ? ['rgba(255,255,255,0.06)', 'rgba(255,255,255,0.02)']
-                : [currentColors[0] + '12', currentColors[1] + '12']
+                : [`${currentColors[0]}12`, `${currentColors[1]}12`]
             }
             style={styles.cardGradient}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
           >
-            {/* Accent badge */}
             <View
-              style={[
-                styles.accentIconContainer,
-                { backgroundColor: currentColors[0] },
-              ]}
+              style={[styles.accentIconContainer, { backgroundColor: currentColors[0] }]}
             >
               <Ionicons name={item.icon} size={20} color="white" />
             </View>
 
-            {/* Hero icon */}
-            <View
-              style={[
-                styles.heroIconContainer,
-                { borderColor: currentColors[0] + '45' },
-              ]}
-            >
-              <Ionicons
-                name={item.icon}
-                size={wp(14)}
-                color={currentColors[0]}
-              />
+            <View style={[styles.heroIconContainer, { borderColor: `${currentColors[0]}45` }]}>
+              <Ionicons name={item.icon} size={wp(14)} color={currentColors[0]} />
             </View>
 
-            {/* Decorative circles */}
             <View
               style={[
                 styles.decorCircle,
-                {
-                  backgroundColor: currentColors[0] + '18',
-                  top: 25,
-                  left: 25,
-                  width: 45,
-                  height: 45,
-                },
+                { backgroundColor: `${currentColors[0]}18`, top: 25, left: 25, width: 45, height: 45 },
               ]}
             />
             <View
               style={[
                 styles.decorCircle,
-                {
-                  backgroundColor: currentColors[1] + '12',
-                  bottom: 35,
-                  right: 35,
-                  width: 65,
-                  height: 65,
-                },
+                { backgroundColor: `${currentColors[1]}12`, bottom: 35, right: 35, width: 65, height: 65 },
               ]}
             />
             <View
               style={[
                 styles.decorCircle,
-                {
-                  backgroundColor: currentColors[0] + '08',
-                  top: '55%',
-                  left: '12%',
-                  width: 25,
-                  height: 25,
-                },
+                { backgroundColor: `${currentColors[0]}08`, top: '55%', left: '12%', width: 25, height: 25 },
               ]}
             />
           </LinearGradient>
         </View>
 
-        {/* Text content */}
         <View style={styles.textContainer}>
-          <Text style={[styles.title, isDark && styles.titleDark]}>
-            {item.title}
-          </Text>
-          <Text style={[styles.subtitle, isDark && styles.subtitleDark]}>
-            {item.subtitle}
-          </Text>
+          <Text style={[styles.title, isDark && styles.titleDark]}>{item.title}</Text>
+          <Text style={[styles.subtitle, isDark && styles.subtitleDark]}>{item.subtitle}</Text>
           <Text style={[styles.description, isDark && styles.descriptionDark]}>
             {item.description}
           </Text>
@@ -576,16 +518,16 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
   const customization = useCustomization();
   const isDark = customization?.darkMode ?? false;
 
-  // Check AsyncStorage on mount. If onboarding already seen, skip immediately.
+  /* -- Check AsyncStorage -- */
   useEffect(() => {
+    let cancelled = false;
     const checkOnboardingStatus = async () => {
       try {
         const [complete, seen] = await Promise.all([
           AsyncStorage.getItem(ONBOARDING_COMPLETE_KEY),
           AsyncStorage.getItem(ONBOARDING_SEEN_KEY),
         ]);
-
-        if (isMounted.current) {
+        if (!cancelled) {
           if (complete === 'true' || seen === 'true') {
             navigation.replace('Login');
             return;
@@ -594,32 +536,33 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
         }
       } catch (e) {
         console.warn('Failed to check onboarding status:', e);
-        if (isMounted.current) setIsCheckingSeen(false);
+        if (!cancelled) setIsCheckingSeen(false);
       }
     };
-
     checkOnboardingStatus();
+    return () => {
+      cancelled = true;
+    };
   }, [navigation]);
 
+  /* -- Logo float + cleanup -- */
   useEffect(() => {
-    logoFloat.value = withRepeat(
-      withTiming(-10, { duration: 2200 }),
-      -1,
-      true
-    );
+    logoFloat.value = withRepeat(withTiming(-10, { duration: 2200 }), -1, true);
     return () => {
       isMounted.current = false;
       if (autoPlayTimerRef.current) clearTimeout(autoPlayTimerRef.current);
       if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
     };
-  }, []);
+  }, [logoFloat]);
 
+  /* -- Back handler -- */
   useEffect(() => {
     const onBackPress = () => true;
     BackHandler.addEventListener('hardwareBackPress', onBackPress);
     return () => BackHandler.removeEventListener('hardwareBackPress', onBackPress);
   }, []);
 
+  /* -- Auto-play -- */
   useEffect(() => {
     if (!isAutoPlaying || isNavigating || !isMounted.current || isCheckingSeen) {
       if (autoPlayTimerRef.current) clearTimeout(autoPlayTimerRef.current);
@@ -628,13 +571,9 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
 
     autoPlayTimerRef.current = setTimeout(() => {
       if (!isMounted.current || isNavigating) return;
-
       const nextIndex = currentIndex + 1;
       if (nextIndex < ONBOARDING_DATA.length) {
-        slidesRef.current?.scrollToIndex({
-          index: nextIndex,
-          animated: true,
-        });
+        slidesRef.current?.scrollToIndex({ index: nextIndex, animated: true });
         setCurrentIndex(nextIndex);
         if (Platform.OS !== 'web') {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -649,6 +588,7 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
     };
   }, [currentIndex, isAutoPlaying, isNavigating, isCheckingSeen]);
 
+  /* -- Scroll handler (worklet) -- */
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
       'worklet';
@@ -656,62 +596,58 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
     },
   });
 
-  const onViewableItemsChanged = useRef(
+  /* -- Viewability -- */
+  const onViewableItemsChanged = useCallback(
     ({ viewableItems }: { viewableItems: Array<{ index: number | undefined }> }) => {
       if (viewableItems[0]?.index !== undefined) {
         const newIndex = viewableItems[0].index;
-        if (newIndex !== currentIndex) {
-          setCurrentIndex(newIndex);
-          if (Platform.OS !== 'web') {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        setCurrentIndex((prev) => {
+          if (newIndex !== prev) {
+            if (Platform.OS !== 'web') {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+            }
+            return newIndex;
           }
-        }
+          return prev;
+        });
       }
-    }
-  ).current;
+    },
+    []
+  );
 
   const viewConfig = useRef({
     viewAreaCoveragePercentThreshold: 50,
     minimumViewTime: 200,
   }).current;
 
+  /* -- Actions -- */
   const handleComplete = useCallback(async () => {
     if (isNavigating || !isMounted.current) return;
-
     setIsNavigating(true);
     setIsAutoPlaying(false);
-
     if (autoPlayTimerRef.current) clearTimeout(autoPlayTimerRef.current);
     if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
 
     try {
       await AsyncStorage.setItem(ONBOARDING_SEEN_KEY, 'true');
       await AsyncStorage.setItem(ONBOARDING_COMPLETE_KEY, 'true');
-
       if (Platform.OS !== 'web') {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       }
     } catch (e) {
       console.warn('Failed to persist onboarding state:', e);
     }
-
     navigation.replace('Login');
   }, [isNavigating, navigation]);
 
   const handleSkip = useCallback(() => {
     if (isNavigating) return;
-
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     }
-
     setIsAutoPlaying(false);
     if (autoPlayTimerRef.current) clearTimeout(autoPlayTimerRef.current);
-
-    slidesRef.current?.scrollToIndex({
-      index: ONBOARDING_DATA.length - 1,
-      animated: true,
-    });
+    slidesRef.current?.scrollToIndex({ index: ONBOARDING_DATA.length - 1, animated: true });
     setCurrentIndex(ONBOARDING_DATA.length - 1);
   }, [isNavigating]);
 
@@ -723,54 +659,16 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
     }, USER_INACTIVITY_RESUME);
   }, [isNavigating]);
 
-  const flatListProps = useMemo(
-    () => ({
-      data: ONBOARDING_DATA,
-      keyExtractor: (item: OnboardingSlide) => item.id,
-      horizontal: true,
-      showsHorizontalScrollIndicator: false,
-      pagingEnabled: true,
-      bounces: false,
-      scrollEnabled: !isNavigating,
-      onScroll: scrollHandler,
-      onViewableItemsChanged: onViewableItemsChanged,
-      viewabilityConfig: viewConfig,
-      scrollEventThrottle: 16,
-      onTouchStart: handleManualScroll,
-      getItemLayout: (_: any, index: number) => ({
-        length: SCREEN_WIDTH,
-        offset: SCREEN_WIDTH * index,
-        index,
-      }),
-      decelerationRate: 'fast' as const,
-      snapToInterval: SCREEN_WIDTH,
-      snapToAlignment: 'center' as const,
-      maintainVisibleContentPosition: { minIndexForVisible: 0 },
-      maxToRenderPerBatch: 3,
-      windowSize: 3,
-      initialNumToRender: 3,
-      removeClippedSubviews: true,
-    }),
-    [isNavigating, scrollHandler, onViewableItemsChanged, viewConfig, handleManualScroll]
-  );
-
   const handleNext = useCallback(() => {
     if (isNavigating) return;
-
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     }
-
     setIsAutoPlaying(false);
-
     const nextIndex = currentIndex + 1;
     if (nextIndex < ONBOARDING_DATA.length) {
-      slidesRef.current?.scrollToIndex({
-        index: nextIndex,
-        animated: true,
-      });
+      slidesRef.current?.scrollToIndex({ index: nextIndex, animated: true });
       setCurrentIndex(nextIndex);
-
       if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
       resumeTimerRef.current = setTimeout(() => {
         if (!isNavigating && isMounted.current) setIsAutoPlaying(true);
@@ -780,6 +678,15 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
     }
   }, [currentIndex, isNavigating, handleComplete]);
 
+  /* -- FIXED: Stable renderItem via useCallback -- */
+  const renderItem = useCallback(
+    ({ item, index }: { item: OnboardingSlide; index: number }) => (
+      <SlideItem item={item} index={index} scrollX={scrollX} isDark={isDark} />
+    ),
+    [scrollX, isDark]
+  );
+
+  /* -- Derived state -- */
   const logoFloatStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: logoFloat.value }],
   }));
@@ -791,57 +698,34 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
 
   if (isCheckingSeen) {
     return (
-      <SafeAreaView
-        style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}
-      >
+      <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
         <LinearGradient
-          colors={
-            isDark
-              ? ['#0f172a', '#1e293b', '#334155']
-              : ['#667eea', '#764ba2', '#f093fb']
-          }
+          colors={isDark ? ['#0f172a', '#1e293b', '#334155'] : ['#667eea', '#764ba2', '#f093fb']}
           style={styles.background}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
         />
-        <Text style={{ fontSize: 16, color: '#fff', fontWeight: '600' }}>
-          Loading...
-        </Text>
+        <Text style={{ fontSize: 16, color: '#fff', fontWeight: '600' }}>Loading...</Text>
       </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar
-        barStyle={isDark ? 'light-content' : 'dark-content'}
-        backgroundColor="transparent"
-        translucent
-      />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
 
       <LinearGradient
-        colors={
-          isDark
-            ? ['#0f172a', '#1e293b', '#334155']
-            : ['#667eea', '#764ba2', '#f093fb']
-        }
+        colors={isDark ? ['#0f172a', '#1e293b', '#334155'] : ['#667eea', '#764ba2', '#f093fb']}
         style={styles.background}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       />
 
-      {/* Brand Logo Header — HIDDEN on first slide */}
       {!isFirstSlide && (
-        <View
-          style={[styles.brandHeader, { top: insets.top + hp(1.5) }]}
-        >
+        <View style={[styles.brandHeader, { top: insets.top + hp(1.5) }]}>
           <Animated.View style={logoFloatStyle}>
             <View style={styles.logoFloatWrap}>
-              <Image
-                source={require('../../../assets/logo.png')}
-                style={styles.logoImage}
-                resizeMode="contain"
-              />
+              <Image source={require('../../../assets/logo.png')} style={styles.logoImage} resizeMode="contain" />
             </View>
           </Animated.View>
           <Text style={styles.brandTitle}>LittleLoom</Text>
@@ -849,7 +733,6 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
         </View>
       )}
 
-      {/* Skip Button */}
       {!isLastSlide && !isNavigating && (
         <TouchableOpacity
           style={[styles.skipButton, { top: insets.top + hp(2) }]}
@@ -863,13 +746,7 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
         </TouchableOpacity>
       )}
 
-      {/* Progress Bar */}
-      <View
-        style={[
-          styles.progressContainer,
-          { top: insets.top + hp(2) + (isFirstSlide ? 0 : 100) },
-        ]}
-      >
+      <View style={[styles.progressContainer, { top: insets.top + hp(2) + (isFirstSlide ? 0 : 100) }]}>
         <View style={styles.progressBar}>
           <View
             style={[
@@ -883,27 +760,38 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
         </View>
       </View>
 
-      {/* Carousel */}
-      <View
-        style={[
-          styles.carouselContainer,
-          { marginTop: insets.top + (isFirstSlide ? hp(8) : hp(14)) },
-        ]}
-      >
+      <View style={[styles.carouselContainer, { marginTop: insets.top + (isFirstSlide ? hp(8) : hp(14)) }]}>
         <Animated.FlatList
-          {...flatListProps}
-          renderItem={({
-            item,
+          data={ONBOARDING_DATA}
+          keyExtractor={(item: OnboardingSlide) => item.id}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          pagingEnabled
+          bounces={false}
+          scrollEnabled={!isNavigating}
+          onScroll={scrollHandler}
+          onViewableItemsChanged={onViewableItemsChanged}
+          viewabilityConfig={viewConfig}
+          scrollEventThrottle={16}
+          onTouchStart={handleManualScroll}
+          getItemLayout={(_: any, index: number) => ({
+            length: SCREEN_WIDTH,
+            offset: SCREEN_WIDTH * index,
             index,
-          }: {
-            item: OnboardingSlide;
-            index: number;
-          }) => <SlideItem item={item} index={index} scrollX={scrollX} isDark={isDark} />}
+          })}
+          decelerationRate="fast"
+          snapToInterval={SCREEN_WIDTH}
+          snapToAlignment="center"
+          maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+          maxToRenderPerBatch={2}
+          windowSize={2}
+          initialNumToRender={2}
+          removeClippedSubviews={true}
+          renderItem={renderItem}
           ref={slidesRef as any}
         />
       </View>
 
-      {/* Pagination */}
       <View style={styles.paginationContainer}>
         <View style={styles.pagination}>
           {ONBOARDING_DATA.map((_, index) => {
@@ -926,18 +814,12 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
 
         <Text style={styles.pageIndicator}>
           {currentIndex + 1}
-          <Text style={styles.pageIndicatorTotal}>
-            / {ONBOARDING_DATA.length}
-          </Text>
+          <Text style={styles.pageIndicatorTotal}>/{ONBOARDING_DATA.length}</Text>
         </Text>
       </View>
 
-      {/* Floating Next Button */}
       <TouchableOpacity
-        style={[
-          styles.floatingNextButton,
-          { bottom: insets.bottom + hp(3) + 72 },
-        ]}
+        style={[styles.floatingNextButton, { bottom: insets.bottom + hp(3) + 72 }]}
         onPress={isLastSlide ? handleComplete : handleNext}
         activeOpacity={0.8}
         disabled={isNavigating}
@@ -949,21 +831,11 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
         >
-          <Ionicons
-            name={isLastSlide ? 'checkmark' : 'arrow-forward'}
-            size={28}
-            color="white"
-          />
+          <Ionicons name={isLastSlide ? 'checkmark' : 'arrow-forward'} size={28} color="white" />
         </LinearGradient>
       </TouchableOpacity>
 
-      {/* Auto-play indicator */}
-      <View
-        style={[
-          styles.autoPlayIndicator,
-          { bottom: insets.bottom + hp(3) + 142 },
-        ]}
-      >
+      <View style={[styles.autoPlayIndicator, { bottom: insets.bottom + hp(3) + 142 }]}>
         <View
           style={[
             styles.pulseDot,
@@ -973,15 +845,10 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
             },
           ]}
         />
-        <Text style={styles.autoPlayText}>
-          {isAutoPlaying ? 'Auto-playing' : 'Paused'}
-        </Text>
+        <Text style={styles.autoPlayText}>{isAutoPlaying ? 'Auto-playing' : 'Paused'}</Text>
       </View>
 
-      {/* Footer */}
-      <View
-        style={[styles.footer, { paddingBottom: insets.bottom + hp(3) }]}
-      />
+      <View style={[styles.footer, { paddingBottom: insets.bottom + hp(3) }]} />
     </SafeAreaView>
   );
 }
@@ -991,27 +858,10 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
 /* ------------------------------------------------------------------ */
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0a0a0a',
-  },
-  brandHeader: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    zIndex: 20,
-  },
-  logoFloatWrap: {
-    width: wp(22),
-    height: wp(22),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  logoImage: {
-    width: wp(20),
-    height: wp(20),
-  },
+  container: { flex: 1, backgroundColor: '#0a0a0a' },
+  brandHeader: { position: 'absolute', left: 0, right: 0, alignItems: 'center', zIndex: 20 },
+  logoFloatWrap: { width: wp(22), height: wp(22), alignItems: 'center', justifyContent: 'center' },
+  logoImage: { width: wp(20), height: wp(20) },
   brandTitle: {
     fontSize: wp(4.5),
     fontWeight: '800',
@@ -1030,20 +880,8 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
     textTransform: 'uppercase',
   },
-  background: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
-  },
-  skipButton: {
-    position: 'absolute',
-    right: wp(5),
-    zIndex: 10,
-    borderRadius: 24,
-    overflow: 'hidden',
-  },
+  background: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 },
+  skipButton: { position: 'absolute', right: wp(5), zIndex: 10, borderRadius: 24, overflow: 'hidden' },
   skipBlur: {
     paddingHorizontal: 20,
     paddingVertical: 12,
@@ -1061,40 +899,13 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
   },
-  progressContainer: {
-    position: 'absolute',
-    left: wp(5),
-    right: wp(5),
-    zIndex: 5,
-  },
-  progressBar: {
-    height: 4,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 2,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 2,
-  },
-  carouselContainer: {
-    flex: 1,
-    marginTop: hp(12),
-    marginBottom: hp(2),
-  },
-  slide: {
-    width: SCREEN_WIDTH,
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: wp(6),
-  },
-  slideContent: {
-    alignItems: 'center',
-    width: '100%',
-  },
+  progressContainer: { position: 'absolute', left: wp(5), right: wp(5), zIndex: 5 },
+  progressBar: { height: 4, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 2, overflow: 'hidden' },
+  progressFill: { height: '100%', borderRadius: 2 },
+  carouselContainer: { flex: 1, marginTop: hp(12), marginBottom: hp(2) },
+  slide: { width: SCREEN_WIDTH, flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: wp(6) },
+  slideContent: { alignItems: 'center', width: '100%' },
 
-  /* ---- Logo-only first slide ---- */
   logoOnlyContainer: {
     width: wp(70),
     height: wp(70),
@@ -1102,11 +913,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: hp(5),
   },
-  logoOnlyImage: {
-    width: wp(55),
-    height: wp(55),
-    zIndex: 2,
-  },
+  logoOnlyImage: { width: wp(55), height: wp(55), zIndex: 2 },
   logoGlow: {
     position: 'absolute',
     width: wp(60),
@@ -1117,7 +924,6 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
 
-  /* ---- Multi-layer card ---- */
   card: {
     width: wp(76),
     height: wp(76),
@@ -1141,16 +947,8 @@ const styles = StyleSheet.create({
     shadowColor: '#000',
     shadowOpacity: 0.35,
   },
-  cardGradient: {
-    width: '100%',
-    height: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
-    position: 'relative',
-    borderRadius: wp(20),
-  },
+  cardGradient: { width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center', position: 'relative', borderRadius: wp(20) },
 
-  /* ---- Animated outlines ---- */
   rotatingBorderContainer: {
     position: 'absolute',
     width: wp(80),
@@ -1160,13 +958,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
     zIndex: 0,
   },
-  cornerDot: {
-    position: 'absolute',
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    zIndex: 2,
-  },
+  cornerDot: { position: 'absolute', width: 10, height: 10, borderRadius: 5, zIndex: 2 },
   dashedBorder: {
     position: 'absolute',
     width: wp(74),
@@ -1176,13 +968,8 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
     zIndex: 1,
   },
-  floatingOrb: {
-    position: 'absolute',
-    borderRadius: 100,
-    zIndex: 1,
-  },
+  floatingOrb: { position: 'absolute', borderRadius: 100, zIndex: 1 },
 
-  /* ---- Card internals ---- */
   accentIconContainer: {
     position: 'absolute',
     top: 24,
@@ -1211,17 +998,9 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     zIndex: 5,
   },
-  decorCircle: {
-    position: 'absolute',
-    borderRadius: 100,
-    zIndex: 1,
-  },
+  decorCircle: { position: 'absolute', borderRadius: 100, zIndex: 1 },
 
-  /* ---- Text ---- */
-  textContainer: {
-    alignItems: 'center',
-    paddingHorizontal: wp(6),
-  },
+  textContainer: { alignItems: 'center', paddingHorizontal: wp(6) },
   title: {
     fontSize: wp(7.2),
     fontWeight: '800',
@@ -1233,9 +1012,7 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 5,
   },
-  titleDark: {
-    color: '#ffffff',
-  },
+  titleDark: { color: '#ffffff' },
   subtitle: {
     fontSize: wp(4.2),
     color: '#ffffff',
@@ -1247,9 +1024,7 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
   },
-  subtitleDark: {
-    color: '#ffffff',
-  },
+  subtitleDark: { color: '#ffffff' },
   description: {
     fontSize: wp(3.6),
     color: 'rgba(255,255,255,0.95)',
@@ -1262,50 +1037,15 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
   },
-  descriptionDark: {
-    color: 'rgba(255,255,255,0.95)',
-  },
+  descriptionDark: { color: 'rgba(255,255,255,0.95)' },
 
-  /* ---- Feature chips ---- */
-  featureChipsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    marginTop: hp(1.8),
-    gap: 8,
-  },
-  featureChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    borderWidth: 1,
-    gap: 4,
-  },
-  featureChipText: {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.3,
-  },
+  featureChipsContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', marginTop: hp(1.8), gap: 8 },
+  featureChip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, gap: 4 },
+  featureChipText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.3 },
 
-  /* ---- Pagination ---- */
-  paginationContainer: {
-    alignItems: 'center',
-    marginBottom: hp(1.5),
-    paddingVertical: 4,
-  },
-  pagination: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  dot: {
-    height: 8,
-    borderRadius: 4,
-    marginHorizontal: 4,
-  },
+  paginationContainer: { alignItems: 'center', marginBottom: hp(1.5), paddingVertical: 4 },
+  pagination: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
+  dot: { height: 8, borderRadius: 4, marginHorizontal: 4 },
   pageIndicator: {
     fontSize: 14,
     fontWeight: '700',
@@ -1314,12 +1054,8 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
   },
-  pageIndicatorTotal: {
-    fontWeight: '400',
-    color: 'rgba(255,255,255,0.7)',
-  },
+  pageIndicatorTotal: { fontWeight: '400', color: 'rgba(255,255,255,0.7)' },
 
-  /* ---- Floating next ---- */
   floatingNextButton: {
     position: 'absolute',
     right: wp(6),
@@ -1335,14 +1071,8 @@ const styles = StyleSheet.create({
     elevation: 12,
     zIndex: 100,
   },
-  floatingNextGradient: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  floatingNextGradient: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' },
 
-  /* ---- Auto-play ---- */
   autoPlayIndicator: {
     position: 'absolute',
     right: wp(6),
@@ -1355,25 +1085,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 20,
   },
-  pulseDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 8,
-  },
-  autoPlayText: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.8)',
-    fontWeight: '600',
-  },
-  footer: {
-    position: 'absolute',
-    bottom: hp(1),
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    paddingTop: hp(1),
-    paddingBottom: hp(1),
-    zIndex: 50,
-  },
+  pulseDot: { width: 8, height: 8, borderRadius: 4, marginRight: 8 },
+  autoPlayText: { fontSize: 12, color: 'rgba(255,255,255,0.8)', fontWeight: '600' },
+  footer: { position: 'absolute', bottom: hp(1), left: 0, right: 0, alignItems: 'center', paddingTop: hp(1), paddingBottom: hp(1), zIndex: 50 },
 });

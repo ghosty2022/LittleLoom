@@ -1179,29 +1179,7 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
     setIsRefreshing(false);
   }, [loadFamily]);
 
-  const handleInvite = async () => {
-    if (!inviteEmail.trim()) {
-      sweetAlert.alert('Error', 'Please enter an email address', 'warning');
-      return;
-    }
-    if (!inviteRelationship.trim()) {
-      sweetAlert.alert('Error', 'Please specify the relationship', 'warning');
-      return;
-    }
-    setIsLoading(true);
-    triggerHaptic('medium');
-    const success = await inviteMember(inviteEmail, inviteRole, inviteRelationship);
-    if (success) {
-      triggerHaptic('success');
-      setShowInviteModal(false);
-      setInviteEmail('');
-      setInviteRelationship('');
-      sweetAlert.alert('Success', `Invitation sent to ${inviteEmail}`, 'success');
-    } else {
-      triggerHaptic('error');
-    }
-    setIsLoading(false);
-  };
+
 
   const handleUpdateMember = async () => {
     if (!selectedMember) return;

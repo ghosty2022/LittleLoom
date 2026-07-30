@@ -930,6 +930,14 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
       }
 
       setFormData(prev => ({ ...prev, avatar: processedUri }));
+      
+      /* FIX: Parent1 is not in family_members DB table — sync to Auth/User profile */
+      const currentUserId = userProfile?.id || userProfile?.uid || profile?.id;
+      const isCurrentUser = member.id === currentUserId;
+      if (isCurrentUser) {
+        try { await updateProfile({ avatar: processedUri }); } catch (e) {}
+      }
+      
       const success = await updateGuardianProfile(member.id, { avatar: processedUri });
       if (success) {
         setMember(prev => prev ? { ...prev, avatar: processedUri } : null);
@@ -976,16 +984,25 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
         return;
       }
 
-      setFormData(prev => ({ ...prev, avatar: processedUri }));
+            setFormData(prev => ({ ...prev, avatar: processedUri }));
+      
+      /* FIX: Parent1 is not in family_members DB table — sync to Auth/User profile */
+      const currentUserId = userProfile?.id || userProfile?.uid || profile?.id;
+      const isCurrentUser = member.id === currentUserId;
+      if (isCurrentUser) {
+        try { await updateProfile({ avatar: processedUri }); } catch (e) {}
+      }
+      
       const success = await updateGuardianProfile(member.id, { avatar: processedUri });
-      if (success) { 
-        setMember(prev => prev ? { ...prev, avatar: processedUri } : null); 
-        setOriginalData(prev => ({ ...prev, avatar: processedUri })); 
+      if (success) {
+        setMember(prev => prev ? { ...prev, avatar: processedUri } : null);
+        setOriginalData(prev => ({ ...prev, avatar: processedUri }));
         triggerHaptic('success');
-        sweetAlert.success('Photo Updated', 'Profile picture saved permanently'); 
+        sweetAlert.success('Photo Updated', 'Profile picture saved permanently');
       } else {
         sweetAlert.error('Save Failed', 'Image saved locally but failed to update profile');
       }
+
     } catch (error) { 
       console.error('[EditGuardian] Image pick error:', error);
       sweetAlert.error('Error', 'Failed to process image'); 
