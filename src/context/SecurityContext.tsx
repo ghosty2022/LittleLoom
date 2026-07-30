@@ -202,6 +202,8 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
   const isMounted = useRef(true);
   const lastActiveRef = useRef<number>(Date.now());
   const sharingActiveRef = useRef<boolean>(false);
+  const isAuthenticatedRef = useRef<boolean>(isAuthenticated);
+  const setupCompleteRef = useRef<boolean>(setupComplete);
   const unlockInProgressRef = useRef<boolean>(false);
   const securityCheckLockRef = useRef<boolean>(false);
   const manualLockTimeRef = useRef<number>(0);
@@ -212,6 +214,9 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
   const isAuthenticatedRef = useRef<boolean>(false);
 
   useEffect(() => { return () => { isMounted.current = false; }; }, []);
+  
+  useEffect(() => { isAuthenticatedRef.current = isAuthenticated; }, [isAuthenticated]);
+  useEffect(() => { setupCompleteRef.current = setupComplete; }, [setupComplete]);
 
   useEffect(() => {
     const initSecurity = async () => {
@@ -445,7 +450,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
   const checkSecurityOnResume = useCallback(async () => {
     if (securityCheckLockRef.current) { console.log('⚠️ Security check already in progress'); return; }
     if (!isAuthenticatedRef.current) { console.log('🔒 Not authenticated, skipping'); return; }
-    if (!setupComplete) { console.log('⏸️ Setup not complete, skipping'); return; }
+    if (!setupCompleteRef.current) { console.log('⏸️ Setup not complete, skipping'); return; }
     if (checkedThisCycleRef.current) { console.log('🔓 Already checked this cycle'); return; }
 
     securityCheckLockRef.current = true;
@@ -495,7 +500,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     } finally {
       securityCheckLockRef.current = false;
     }
-  }, [isAuthenticated, setupComplete, state.settings.autoLockTimeout, lockApp]);
+  }, [state.settings.autoLockTimeout, lockApp]);
 
   const getBiometricTypeName = useCallback(() => state.settings.biometricTypeName, [state.settings.biometricTypeName]);
 

@@ -395,17 +395,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const bDone = babyCompleted !== null;
         const isSetupComplete = setupComplete === 'true' || (p2Done && bDone);
 
-        // ─── FIX: Onboarding is complete only if explicitly marked OR setup is fully done
-        // New users with token but no setup MUST still go through setup flow
-        const isOnboardingDone = onboardingComplete === 'true' || hasSeenOnboarding === 'true';
-        
-        // ─── FIX: Setup complete requires BOTH steps addressed (completed OR skipped)
+        // ─── CRITICAL FIX: Setup complete requires BOTH steps addressed (completed OR skipped)
+        const p2Done = parent2Completed !== null;  // 'true', 'skipped', or null
+        const bDone = babyCompleted !== null;
         const explicitSetupComplete = setupComplete === 'true';
         const bothStepsAddressed = p2Done && bDone;
         const shouldBeSetupComplete = explicitSetupComplete || bothStepsAddressed;
         
-        // Only skip onboarding if setup is actually done
-        const effectiveOnboardingComplete = isOnboardingDone && shouldBeSetupComplete;
+        // ─── CRITICAL FIX: Onboarding is ONLY complete when setup is fully done
+        // hasSeenOnboarding alone is NOT enough — user MUST complete both setup steps
+        const isOnboardingDone = onboardingComplete === 'true';
+        const effectiveOnboardingComplete = isOnboardingDone || shouldBeSetupComplete;
 
         if (isMounted.current) {
           setState({
@@ -868,14 +868,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setAppSetting(ASYNC_KEYS.COMMUNITY_DISPLAY_NAME, fullName),
       ]);
 
-      // ─── FIX: New signups MUST go through Parent2 + Baby setup
+      // ─── CRITICAL FIX: New signups MUST go through Parent2 + Baby setup
+      // Clear any stale setup flags from previous sessions
+      await AsyncStorage.multiRemove([
+        ASYNC_KEYS.SETUP_COMPLETE,
+        ASYNC_KEYS.HAS_PARENT2,
+        ASYNC_KEYS.HAS_BABY,
+        ASYNC_KEYS.PARENT2_COMPLETED,
+        ASYNC_KEYS.BABY_COMPLETED,
+      ]);
+
       if (isMounted.current) {
         setState(prev => ({
           ...prev,
           isAuthenticated: true,
           userToken: token,
           userProfile,
-          onboardingComplete: false,   // Force through setup
+          onboardingComplete: false,
           hasSeenOnboarding: true,
           setupComplete: false,
           hasParent2: false,
@@ -1399,42 +1408,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const completeSetup = useCallback(async (step: 'parent2' | 'baby'): Promise<boolean> => {
     try {
-      let p2Done = false;
-      let bDone = false;
-
       if (step === 'parent2') {
         await Promise.all([
           AsyncStorage.setItem(ASYNC_KEYS.HAS_PARENT2, 'true'),
           AsyncStorage.setItem(ASYNC_KEYS.PARENT2_COMPLETED, 'true'),
         ]);
-        p2Done = true;
-        // Read baby status from storage
-        const babyCompleted = await AsyncStorage.getItem(ASYNC_KEYS.BABY_COMPLETED);
-        bDone = babyCompleted !== null;
-        if (isMounted.current) setState(prev => ({ ...prev, hasParent2: true }));
       } else if (step === 'baby') {
         await Promise.all([
           AsyncStorage.setItem(ASYNC_KEYS.HAS_BABY, 'true'),
           AsyncStorage.setItem(ASYNC_KEYS.BABY_COMPLETED, 'true'),
         ]);
-        bDone = true;
-        // Read parent2 status from storage
-        const p2Completed = await AsyncStorage.getItem(ASYNC_KEYS.PARENT2_COMPLETED);
-        p2Done = p2Completed !== null;
-        if (isMounted.current) setState(prev => ({ ...prev, hasBaby: true }));
       }
 
+      // Re-read BOTH statuses from storage to determine if setup is truly complete
+      const [p2Completed, babyCompleted] = await Promise.all([
+        AsyncStorage.getItem(ASYNC_KEYS.PARENT2_COMPLETED),
+        AsyncStorage.getItem(ASYNC_KEYS.BABY_COMPLETED),
+      ]);
+
+      const p2Done = p2Completed !== null; // 'true' or 'skipped' both count as addressed
+      const bDone = babyCompleted !== null;
       const setupDone = p2Done && bDone;
+
+      const hasParent2Val = p2Completed === 'true' ? true : p2Completed === 'skipped' ? 'skipped' : false;
+      const hasBabyVal = babyCompleted === 'true' ? true : babyCompleted === 'skipped' ? 'skipped' : false;
 
       if (setupDone) {
         await AsyncStorage.setItem(ASYNC_KEYS.SETUP_COMPLETE, 'true');
+        await AsyncStorage.setItem(ASYNC_KEYS.ONBOARDING_COMPLETE, 'true');
       }
 
       if (isMounted.current) {
         setState(prev => ({
           ...prev,
           setupComplete: setupDone,
-          onboardingComplete: setupDone ? true : prev.onboardingComplete,
+          onboardingComplete: setupDone,
+          hasParent2: hasParent2Val,
+          hasBaby: hasBabyVal,
         }));
       }
 
@@ -1451,42 +1461,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const skipSetup = useCallback(async (step: 'parent2' | 'baby') => {
     try {
-      let p2Done = false;
-      let bDone = false;
-
       if (step === 'parent2') {
         await Promise.all([
           AsyncStorage.setItem(ASYNC_KEYS.HAS_PARENT2, 'skipped'),
           AsyncStorage.setItem(ASYNC_KEYS.PARENT2_COMPLETED, 'skipped'),
         ]);
-        p2Done = true;
-        // Read baby status from storage
-        const babyCompleted = await AsyncStorage.getItem(ASYNC_KEYS.BABY_COMPLETED);
-        bDone = babyCompleted !== null;
-        if (isMounted.current) setState(prev => ({ ...prev, hasParent2: 'skipped' }));
       } else if (step === 'baby') {
         await Promise.all([
           AsyncStorage.setItem(ASYNC_KEYS.HAS_BABY, 'skipped'),
           AsyncStorage.setItem(ASYNC_KEYS.BABY_COMPLETED, 'skipped'),
         ]);
-        bDone = true;
-        // Read parent2 status from storage
-        const p2Completed = await AsyncStorage.getItem(ASYNC_KEYS.PARENT2_COMPLETED);
-        p2Done = p2Completed !== null;
-        if (isMounted.current) setState(prev => ({ ...prev, hasBaby: 'skipped' }));
       }
 
+      // Re-read BOTH statuses from storage
+      const [p2Completed, babyCompleted] = await Promise.all([
+        AsyncStorage.getItem(ASYNC_KEYS.PARENT2_COMPLETED),
+        AsyncStorage.getItem(ASYNC_KEYS.BABY_COMPLETED),
+      ]);
+
+      const p2Done = p2Completed !== null;
+      const bDone = babyCompleted !== null;
       const setupDone = p2Done && bDone;
+
+      const hasParent2Val = p2Completed === 'true' ? true : p2Completed === 'skipped' ? 'skipped' : false;
+      const hasBabyVal = babyCompleted === 'true' ? true : babyCompleted === 'skipped' ? 'skipped' : false;
 
       if (setupDone) {
         await AsyncStorage.setItem(ASYNC_KEYS.SETUP_COMPLETE, 'true');
+        await AsyncStorage.setItem(ASYNC_KEYS.ONBOARDING_COMPLETE, 'true');
       }
 
       if (isMounted.current) {
         setState(prev => ({
           ...prev,
           setupComplete: setupDone,
-          onboardingComplete: setupDone ? true : prev.onboardingComplete,
+          onboardingComplete: setupDone,
+          hasParent2: hasParent2Val,
+          hasBaby: hasBabyVal,
         }));
       }
 
