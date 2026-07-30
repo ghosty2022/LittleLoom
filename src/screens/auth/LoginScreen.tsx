@@ -142,6 +142,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     hasBaby,
     hasSeenOnboarding,
     userProfile,
+    findUserByEmail,
   } = useAuth();
 
   const { resetUnlockLock, forceUnlock } = useSecurity();
@@ -638,7 +639,6 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     }
 
     // ─── CRITICAL FIX: Check if email already has an account ─────────
-    const { findUserByEmail } = await import('@/database/dbHelpers');
     const existingUser = await findUserByEmail(joinEmail.trim());
     
     if (existingUser) {

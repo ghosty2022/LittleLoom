@@ -55,7 +55,7 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [showSplash, setShowSplash] = useState(false);
 
-  const { signUp, signUpWithInviteCode, signIn, isLoading: authLoading, isAuthenticated } = useAuth();
+  const { signUp, signUpWithInviteCode, signIn, isLoading: authLoading, isAuthenticated, findUserByEmail } = useAuth();
   const customization = useCustomization();
   const isDark = customization?.darkMode ?? false;
   const themeColors = customization?.themeColors ?? { primary: '#667eea', secondary: '#764ba2' };
@@ -329,7 +329,6 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
     }
 
     // ─── CRITICAL FIX: Pre-check if email already exists ─────────────
-    const { findUserByEmail } = await import('@/database/dbHelpers');
     const existingUser = await findUserByEmail(email.trim());
     
     if (existingUser) {
@@ -427,7 +426,6 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
 
     try {
       // ─── CRITICAL FIX: Prevent duplicate accounts ────────────────────
-      const { findUserByEmail } = await import('@/database/dbHelpers');
       const existingUser = await findUserByEmail(joinEmail.trim());
       
       if (existingUser) {
@@ -896,7 +894,7 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
               />
             </View>
             <Text style={styles.logoText}>LittleLoom</Text>
-            <Text style={styles.logoTagline}>Join our community of parents</Text>
+            <Text style={styles.logoTagline}>Begin weaving precious memories</Text>
           </Animated.View>
 
           {/* Glass Card Form */}

@@ -171,6 +171,7 @@ const secureStorage = {
 import { 
   registerUser, 
   updateUserInRegistry,
+  findUserByEmail,
   type UserRegistryEntry,
 } from '@/database/dbHelpers';
 

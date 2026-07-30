@@ -186,7 +186,7 @@ export default function SplashScreen({
 
         {/* Brand Name */}
         <Text style={styles.brandName}>LittleLoom</Text>
-        <Text style={styles.tagline}>Gentle Care, Happy Baby</Text>
+        <Text style={styles.tagline}>Little Threads. Big Memories. Woven Forever.</Text>
 
         {/* Refresh Credit */}
         <View style={styles.developerContainer}>
