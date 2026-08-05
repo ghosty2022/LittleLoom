@@ -532,8 +532,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const token = `auth_token_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       
-      // ─── CRITICAL FIX: Check if user already exists by email ─────────
-      const existingUser = await findUserByEmail(email);
+      // ─── CRITICAL FIX: Check if user already exists by identifier ────
+      const existingUser = await findUserByEmail(email) 
+        // fallback for non-email identifiers during internal biometric login
+        ?? await import('@/database/dbHelpers').then(m => m.findUserByIdentifier(email));
       
       let userProfile: UserProfile;
       let userId: string;

@@ -400,21 +400,22 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
   };
 
   useEffect(() => {
-    if (biometricCheckComplete.current || !isBiometricAvailable) return;
+    if (biometricCheckComplete.current) return;
 
     const checkBiometricStatus = async () => {
       try {
-        const hasCreds = await hasBiometricLoginCredentials();
-        if (hasCreds && isMounted.current) {
-          setShowBiometricButton(true);
-          biometricScale.value = withSpring(1, { damping: 12, delay: 400 });
+        if (isBiometricAvailable) {
+          const hasCreds = await hasBiometricLoginCredentials();
+          if (hasCreds && isMounted.current) {
+            setShowBiometricButton(true);
+            biometricScale.value = withSpring(1, { damping: 12, delay: 400 });
+          }
         }
-        biometricCheckComplete.current = true;
-        setAuthInitialized(true);
       } catch (error) {
         console.error('Error checking biometric status:', error);
+      } finally {
         biometricCheckComplete.current = true;
-        setAuthInitialized(true);
+        if (isMounted.current) setAuthInitialized(true);
       }
     };
 
