@@ -172,6 +172,7 @@ import {
   registerUser, 
   updateUserInRegistry,
   findUserByEmail,
+  getUserRegistry,
   type UserRegistryEntry,
 } from '@/database/dbHelpers';
 
@@ -532,10 +533,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const token = `auth_token_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       
-      // ─── CRITICAL FIX: Check if user already exists by identifier ────
-      const existingUser = await findUserByEmail(email) 
-        // fallback for non-email identifiers during internal biometric login
-        ?? await import('@/database/dbHelpers').then(m => m.findUserByIdentifier(email));
+      // ─── CRITICAL FIX: Check if user already exists by identifier ─────────
+      let existingUser = await findUserByEmail(email);
+      
+      // If not found by email, try username/handle lookup
+      if (!existingUser) {
+        const registry = await getUserRegistry();
+        const searchKey = email.toLowerCase().trim().replace(/^@/, '');
+        for (const entry of Object.values(registry)) {
+          const handle = (entry.communityHandle || '').toLowerCase().replace(/^@/, '');
+          const username = (entry.communityUsername || '').toLowerCase();
+          if (handle === searchKey || username === searchKey) {
+            existingUser = entry;
+            break;
+          }
+        }
+      }
       
       let userProfile: UserProfile;
       let userId: string;

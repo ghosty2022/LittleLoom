@@ -101,6 +101,16 @@ const isValidEmail = (email: string): boolean => {
   return re.test(email.trim().toLowerCase());
 };
 
+const isValidPhone = (phone: string): boolean => {
+  const re = /^[\+]?[(]?[0-9]{3}[)]?[-\s\.]?[0-9]{3}[-\s\.]?[0-9]{4,6}$/im;
+  return re.test(phone.trim());
+};
+
+const isValidUsername = (username: string): boolean => {
+  const trimmed = username.trim();
+  return trimmed.length >= 3 && /^[a-zA-Z0-9_.]+$/.test(trimmed);
+};
+
 export default function LoginScreen({ navigation }: LoginScreenProps) {
   // ─── TAB STATE ───
   const [activeTab, setActiveTab] = useState<'signin' | 'join'>('signin');
@@ -402,20 +412,25 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
   useEffect(() => {
     if (biometricCheckComplete.current) return;
 
+    if (!isBiometricAvailable) {
+      biometricCheckComplete.current = true;
+      setAuthInitialized(true);
+      return;
+    }
+
     const checkBiometricStatus = async () => {
       try {
-        if (isBiometricAvailable) {
-          const hasCreds = await hasBiometricLoginCredentials();
-          if (hasCreds && isMounted.current) {
-            setShowBiometricButton(true);
-            biometricScale.value = withSpring(1, { damping: 12, delay: 400 });
-          }
+        const hasCreds = await hasBiometricLoginCredentials();
+        if (hasCreds && isMounted.current) {
+          setShowBiometricButton(true);
+          biometricScale.value = withSpring(1, { damping: 12, delay: 400 });
         }
+        biometricCheckComplete.current = true;
+        setAuthInitialized(true);
       } catch (error) {
         console.error('Error checking biometric status:', error);
-      } finally {
         biometricCheckComplete.current = true;
-        if (isMounted.current) setAuthInitialized(true);
+        setAuthInitialized(true);
       }
     };
 
@@ -560,8 +575,12 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
       return;
     }
 
-    if (!isValidEmail(email)) {
-      showError('Invalid Email', 'Please enter a valid email address');
+    const isEmail = isValidEmail(email);
+    const isPhone = isValidPhone(email);
+    const isUsername = isValidUsername(email);
+
+    if (!isEmail && !isPhone && !isUsername) {
+      showError('Invalid Input', 'Please enter a valid email, phone number, or username');
       triggerHaptic('error');
       return;
     }
@@ -930,11 +949,12 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
         <Ionicons name="mail-outline" size={20} color="#667eea" style={styles.inputIcon} />
         <TextInput
           style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
-          placeholder="Email address"
+          placeholder="Email, username, or phone"
           placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
           value={email}
           onChangeText={setEmail}
           keyboardType="email-address"
+          autoComplete="username"
           autoCapitalize="none"
           autoCorrect={false}
           editable={!isLoading}
