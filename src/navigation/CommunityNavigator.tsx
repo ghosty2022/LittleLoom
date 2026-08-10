@@ -21,6 +21,7 @@ import ChatScreen from '../screens/community/ChatScreen';
 import ChatListScreen from '../screens/community/ChatListScreen';
 import NotificationsScreen from '../screens/community/NotificationsScreen';
 import CommunityProfileScreen from '../screens/community/CommunityProfileScreen';
+import CommunityVerificationScreen from '../screens/community/CommunityVerificationScreen';
 import FollowersScreen from '../screens/community/FollowersScreen';
 import FollowingScreen from '../screens/community/FollowingScreen';
 import ReportScreen from '../screens/community/ReportScreen';
@@ -386,6 +387,11 @@ const CommunityNavigator = React.memo(() => {
          <Stack.Screen
           name="CommunityProfile"
           component={CommunityProfileScreen}
+          options={{ animation: 'slide_from_bottom', gestureEnabled: false }}
+        />
+        <Stack.Screen
+          name="CommunityVerification"
+          component={CommunityVerificationScreen}
           options={{ animation: 'slide_from_bottom', gestureEnabled: false }}
         />
         <Stack.Screen

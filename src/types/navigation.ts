@@ -222,6 +222,7 @@ export type CommunityStackParamList = {
   Notifications: undefined;
   
   CommunityProfile: { userId?: string } | undefined;
+  CommunityVerification: undefined;
   
   TopicMembers: { topicId: string };
   Followers: { userId: string };

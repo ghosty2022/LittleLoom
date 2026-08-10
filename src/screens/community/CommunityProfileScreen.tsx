@@ -604,7 +604,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
       suggestions.push({
         id: 'verify', type: 'verify', title: 'Get Verified',
         description: 'Verify your identity to unlock exclusive features',
-        emoji: '✅', color: TC.success, action: () => sweetAlert.toast('Verification', 'Coming soon!'),
+        emoji: '✅', color: TC.success, action: () => navigation.navigate('CommunityVerification' as never),
       });
     }
     return suggestions;
