@@ -159,7 +159,7 @@ const GlassCard = React.memo(({ children, style, onPress, active = false, delay 
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   const Wrapper = onPress ? TouchableOpacity : View;
   return (
-    <Animated.View entering={FadeInUp.delay(delay).springify()} style={[styles.glassCard, active && { borderColor: colors.primary, borderWidth: 2 }, style]}>
+    <Animated.View entering={FadeInUp.delay(delay).springify()} style={[styles.glassCard, active && { borderColor: colors?.primary || '#6366f1', borderWidth: 2 }, style]}>
       <Wrapper onPress={onPress} activeOpacity={onPress ? 0.85 : 1} style={{ flex: 1 }}>
         <LinearGradient colors={isDark ? ['rgba(45,45,60,0.85)', 'rgba(35,35,50,0.65)'] : ['rgba(255,255,255,0.92)', 'rgba(248,250,255,0.85)']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
         <View style={styles.glassBorder} />
@@ -260,13 +260,13 @@ const SafeBabyAvatar = React.memo(({ avatar, gender = 'other', size = 72, showEd
   const genderOption = GENDER_OPTIONS.find(g => g.value === gender);
   const gradientColors = genderOption?.gradient || ['#6366f1', '#8b5cf6'];
 
-    const imageSource = useMemo(() => {
-      if (!avatar) return null;
-      if (avatar.startsWith('http') || avatar.startsWith('file://') || avatar.startsWith('ph://') || avatar.startsWith('assets-library://') || avatar.startsWith('data:')) {
-        return { uri: avatar };
-      }
-      return null;
-    }, [avatar]);
+  const imageSource = useMemo(() => {
+    if (!avatar) return null;
+    if (avatar.startsWith('http') || avatar.startsWith('file://') || avatar.startsWith('ph://') || avatar.startsWith('assets-library://')) {
+      return { uri: avatar };
+    }
+    return null;
+  }, [avatar]);
 
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   return (
@@ -928,7 +928,7 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
       return;
     }
     try {
-              const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.8 });
+              const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [1, 1], quality: 0.8 });
         if (!result.canceled && result.assets[0].uri) {
           setIsUploading(true);
           await ensureDirExists();
@@ -1232,6 +1232,17 @@ ${changes.join('\n')}`,
             <KpiPill icon="🌟" value={babyStats?.milestones || 0} label="Milestones" color="#ec4899" isDark={isDark} colors={themeColors} />
             <KpiPill icon="📝" value={babyStats?.entries || 0} label="Entries" color="#6366f1" isDark={isDark} colors={themeColors} />
             </View>
+
+            <TouchableOpacity onPress={() => setShowDatePicker(true)} style={{ marginHorizontal: 16, marginBottom: 16, flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', padding: 14, borderRadius: 16 }}>
+              <Ionicons name="calendar-outline" size={20} color="#6366f1" />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: themeColors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 }}>Birth Date</Text>
+                <Text style={{ fontSize: 15, fontWeight: '600', color: themeColors.text, marginTop: 2 }}>{format(birthDate, 'MMMM d, yyyy')}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={themeColors.textSecondary} />
+            </TouchableOpacity>
+
+
 
             <SmartHealthInsights baby={currentBabyData} stats={babyStats} recentActivities={recentActivities} isDark={isDark} colors={themeColors} />
             <ActivitySparkline activities={recentActivities} isDark={isDark} colors={themeColors} />
@@ -1587,6 +1598,51 @@ ${changes.join('\n')}`,
         </View>
       </ActionModal>
 
+      <ActionModal visible={showAddMilestone} onClose={() => setShowAddMilestone(false)} title="Record Milestone" isDark={isDark} colors={themeColors}>
+        <View style={{ gap: 16 }}>
+          <View>
+            <Text style={{ color: themeColors.textSecondary, fontSize: 12, fontWeight: '700', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Title</Text>
+            <TextInput
+              style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', borderRadius: 14, paddingHorizontal: 16, height: 52, color: themeColors.text, fontWeight: '600', fontSize: 16 }}
+              value={newMilestone.title}
+              onChangeText={(text) => setNewMilestone(prev => ({ ...prev, title: text }))}
+              placeholder="e.g., First Steps"
+              placeholderTextColor="#666"
+            />
+          </View>
+          <View>
+            <Text style={{ color: themeColors.textSecondary, fontSize: 12, fontWeight: '700', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Category</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {MILESTONE_CATEGORIES.map(cat => (
+                <TouchableOpacity
+                  key={cat.id}
+                  onPress={() => setNewMilestone(prev => ({ ...prev, category: cat.id as Milestone['category'] }))}
+                  style={{ paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, backgroundColor: newMilestone.category === cat.id ? `${cat.color}20` : isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', borderWidth: 1, borderColor: newMilestone.category === cat.id ? cat.color : 'transparent' }}
+                >
+                  <Text style={{ color: newMilestone.category === cat.id ? cat.color : themeColors.text, fontWeight: '700', fontSize: 13 }}>{cat.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+          <View>
+            <Text style={{ color: themeColors.textSecondary, fontSize: 12, fontWeight: '700', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Description</Text>
+            <TextInput
+              style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', borderRadius: 14, paddingHorizontal: 16, paddingTop: 14, height: 80, color: themeColors.text, fontWeight: '500', fontSize: 16, textAlignVertical: 'top' }}
+              value={newMilestone.description}
+              onChangeText={(text) => setNewMilestone(prev => ({ ...prev, description: text }))}
+              placeholder="Optional details..."
+              placeholderTextColor="#666"
+              multiline
+            />
+          </View>
+          <TouchableOpacity onPress={handleAddMilestone} style={{ borderRadius: 14, overflow: 'hidden', marginTop: 8 }}>
+            <LinearGradient colors={['#f59e0b', '#f97316']} style={{ paddingVertical: 16, alignItems: 'center' }}>
+              <Text style={{ color: '#fff', fontSize: 16, fontWeight: '800' }}>Save Milestone</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+      </ActionModal>
+
       <EmojiPickerModal 
         visible={showEmojiPicker} 
         onClose={() => setShowEmojiPicker(false)} 
@@ -1594,11 +1650,23 @@ ${changes.join('\n')}`,
         isDark={isDark}
         colors={themeColors}
       />
+
+      {showDatePicker && (
+        <DateTimePicker
+          value={birthDate}
+          mode="date"
+          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          onChange={onDateChange}
+          maximumDate={new Date()}
+        />
+      )}
     </View>
   );
 }
 
-const getStyles = (isDarkMode: boolean, colors: any) => StyleSheet.create({
+const getStyles = (isDarkMode: boolean, colors: any) => {
+  if (!colors) colors = {};
+  return StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   centered: { justifyContent: 'center', alignItems: 'center' },
   scrollContent: { flexGrow: 1, paddingBottom: 24, minHeight: SCREEN_H },
@@ -1849,4 +1917,5 @@ const getStyles = (isDarkMode: boolean, colors: any) => StyleSheet.create({
   emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'center' },
   emojiButton: { width: 52, height: 52, borderRadius: 14, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', alignItems: 'center', justifyContent: 'center' },
   emojiButtonText: { fontSize: 28 },
-});
+  });
+};
