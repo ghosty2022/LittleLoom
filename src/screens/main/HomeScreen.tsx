@@ -773,11 +773,12 @@ const CategorizedQuickActions: React.FC<{
             entering={FadeInUp.delay(index * 30).springify()}
             style={[styles.categorizedGridItem, { width: itemWidth }]}
           >
-            <TouchableOpacity
+           <TouchableOpacity
               onPress={() => onPress(action)}
               activeOpacity={1}
               style={styles.categorizedGridTouchable}
-            >              <LinearGradient
+            >
+              <LinearGradient
                 colors={action.gradient}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}

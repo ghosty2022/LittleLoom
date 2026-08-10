@@ -626,7 +626,8 @@ function NavigationContent({
         <Stack.Screen name="FeedTracker" component={TimelineScreen} options={{ animation: 'none' }} />
         <Stack.Screen name="SleepTracker" component={TimelineScreen} options={{ animation: 'none' }} />
 
-        <Stack.Screen name="Profile" component={FamilyDashboardScreen} options={{ animation: 'none' }} />        <Stack.Screen
+        <Stack.Screen name="Profile" component={FamilyDashboardScreen} options={{ animation: 'none' }} />
+        <Stack.Screen
           name="SwitchBaby"
           component={BabySelectorScreen}
           options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
