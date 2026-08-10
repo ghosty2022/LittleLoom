@@ -245,7 +245,7 @@ export type MainTabParamList = {
   Track: undefined;
   Grow: undefined;
   Connect: undefined;
-  Gallery: undefined;
+  More: undefined;
   SafetyCorner: undefined;  
 };
 

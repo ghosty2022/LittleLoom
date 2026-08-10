@@ -94,7 +94,7 @@ const NAVIGATION_MAP: Record<string, { screen: keyof RootStackParamList; params?
   // Tab roots
   'Main': { screen: 'Main', params: {} },
   'Connect': { screen: 'Main', params: { screen: 'Connect' } },
-  'Gallery': { screen: 'Main', params: { screen: 'Gallery' } },
+  'More': { screen: 'Main', params: { screen: 'More' } },
 
   // Auth & Setup
   'Onboarding': { screen: 'Onboarding', params: {} },
@@ -1995,9 +1995,9 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
                 </TouchableOpacity>
                 <TouchableOpacity 
                   style={[styles.parentQuickLink, { backgroundColor: `${secondary}12`, borderRadius: borderRadiusValue - 10 }]} 
-                  onPress={() => navigateToScreen('Customize')}
+                  onPress={() => navigateToScreen('Connect')}
                 >
-                  <Ionicons name="settings-outline" size={Math.round(16 * fontSizeMultiplier)} color={secondary} />
+                  <Ionicons name="sparkles-outline" size={Math.round(16 * fontSizeMultiplier)} color={secondary} />
                 </TouchableOpacity>
               </View>
             </View>
