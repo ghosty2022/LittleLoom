@@ -535,13 +535,13 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   } = useCommunity();
   const { profile, updateCommunityProfile: updateUserContextProfile } = useUser();
   const { themeColors, fullThemeColors, darkMode, shouldReduceMotion, triggerHaptic } = useCustomization();
-  const styles = useMemo(() => getStyles(isDark, fullThemeColors), [isDark, fullThemeColors]);
   const { compressImage, cacheImage, pickImage } = useMedia();
   const sweetAlert = useSweetAlert();
 
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const isDark = darkMode ?? (colorScheme === 'dark');
+  const styles = useMemo(() => getStyles(isDark, fullThemeColors), [isDark, fullThemeColors]);
   const scrollY = useSharedValue(0);
 
   const [isEditing, setIsEditing] = useState(false);

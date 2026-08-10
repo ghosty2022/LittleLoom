@@ -94,7 +94,7 @@ const ROLE_CONFIG: Record<UserRole, {
     canEdit: true, canRemove: true, badge: 'Guardian', priority: 3,
   },
   [UserRole.VIEWER]: {
-    label: 'Viewer', color: isDark ? '#64748b' : '#94a3b8', gradient: ['#64748b', '#94a3b8'], icon: 'eye',
+    label: 'Viewer', color: '#94a3b8', gradient: ['#64748b', '#94a3b8'], icon: 'eye',
     description: 'View only access, cannot add or modify data', permissions: ['Read Only'],
     canEdit: true, canRemove: true, badge: 'Viewer', priority: 4,
   },
