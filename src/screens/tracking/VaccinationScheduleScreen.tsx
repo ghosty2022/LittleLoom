@@ -1096,6 +1096,7 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
   const [showRecordModal, setShowRecordModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [showBabyRequiredModal, setShowBabyRequiredModal] = useState(false);
 
   const scrollY = useSharedValue(0);
   const scrollHandler = useAnimatedScrollHandler({
@@ -1110,6 +1111,9 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
     transform: [{ translateY: interpolate(scrollY.value, [0, 80], [-10, 0], Extrapolation.CLAMP) }],
   }));
 
+  const currentBabyRef = useRef(currentBaby);
+  currentBabyRef.current = currentBaby;
+
   /* ── Load/Save vaccination records ── */
   useEffect(() => {
     loadRecords();
@@ -1121,13 +1125,25 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
     }, [loadRecords])
   );
 
-  const loadRecords = async () => {
-    if (!currentBaby) return;
+  // Auto-prompt to create baby profile when none exists
+  useEffect(() => {
+    if (!currentBaby) {
+      const timer = setTimeout(() => setShowBabyRequiredModal(true), 400);
+      return () => clearTimeout(timer);
+    }
+  }, [currentBaby]);
+
+  const loadRecords = useCallback(async () => {
+    const baby = currentBabyRef.current;
+    if (!baby) {
+      setDoses([]);
+      return;
+    }
     try {
-      const stored = await AsyncStorage.getItem(`${STORAGE_KEY}_${currentBaby.id}`);
+      const stored = await AsyncStorage.getItem(`${STORAGE_KEY}_${baby.id}`);
       const records: Record<string, { completedDate: string; notes: string; sideEffects: string[]; batchNumber?: string; location?: string }> = stored ? JSON.parse(stored) : {};
 
-      const birthDate = safeParseDate(currentBaby.birthDate) || new Date();
+      const birthDate = safeParseDate(baby.birthDate) || new Date();
       const generatedDoses: VaccineDose[] = [];
 
       VACCINE_SERIES.forEach(series => {
@@ -1179,7 +1195,7 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
     } catch (error) {
       console.error('Error loading vaccination records:', error);
     }
-  };
+  }, [currentBabyRef]);
 
   const saveRecord = async (doseId: string, data: { date: string; notes: string; sideEffects: string[]; batchNumber?: string; location?: string }) => {
     if (!currentBaby) return;
@@ -1222,9 +1238,14 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadRecords();
-    setRefreshing(false);
-  }, [currentBaby]);
+    try {
+      await loadRecords();
+    } catch (e) {
+      console.warn('Refresh failed', e);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadRecords]);
 
   const handleTabChange = useCallback((tab: VaccineTab) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -1308,30 +1329,7 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
     { key: 'records' as VaccineTab, label: 'Records', icon: 'document-text-outline' },
   ];
 
-  if (!currentBaby) {
-    return (
-      <View style={[styles.container, styles.center]}>
-        <StatusBar barStyle="dark-content" />
-        <LinearGradient
-  colors={
-    isDark
-      ? [appColors.background, appColors.surface, appColors.card]
-      : ['#f8fafc', '#e0e7ff', '#ddd6fe']
-  }
-  style={StyleSheet.absoluteFill}
-/>
-        <Ionicons name="medical" size={64} color="#667eea" style={{ marginBottom: 16 }} />
-        <Text style={styles.noDataTitle}>No Baby Profile Selected</Text>
-        <Text style={styles.noDataText}>Select a baby profile to view vaccination schedule</Text>
-        <TouchableOpacity
-          style={[styles.createBtn, { backgroundColor: themeColors.primary }]}
-          onPress={() => navigation.navigate('SwitchBaby')}
-        >
-          <Text style={styles.createBtnText}>Select Baby Profile</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
+  
 
   return (
     <View style={styles.container}>
@@ -1348,8 +1346,8 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
       {/* Sticky Header */}
       <Animated.View style={[styles.stickyHeader, { paddingTop: insets.top + 8 }, headerOpacity]}>
         <BlurView intensity={80} tint="light" style={StyleSheet.absoluteFill} />
-        <Text style={styles.stickyTitle}>{currentBaby.name}'s Vaccines</Text>
-        <Text style={styles.stickySubtitle}>{ageMonths} months • {stats.completed}/{stats.total} doses</Text>
+        <Text style={styles.stickyTitle}>{currentBaby ? `${currentBaby.name}'s Vaccines` : 'Vaccines'}</Text>
+        <Text style={styles.stickySubtitle}>{currentBaby ? `${ageMonths} months • ${stats.completed}/${stats.total} doses` : 'Select a baby profile'}</Text>
       </Animated.View>
 
       {/* Main Scroll */}
@@ -1368,16 +1366,33 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
             <Ionicons name="arrow-back" size={22} color="#1e293b" />
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={() => navigation.navigate('SwitchBaby', { returnTo: 'Main', returnLabel: 'Vaccines' })} style={styles.babyChip}>
-            <SafeAvatar avatar={currentBaby.avatar} size={36} fallbackIcon="person" borderColor={themeColors.primary} borderWidth={2} />
-            <View style={styles.babyChipText}>
-              <Text style={styles.babyChipName}>{currentBaby.name}</Text>
-              <Text style={styles.babyChipAge}>{ageMonths}mo</Text>
-            </View>
-            <Ionicons name="chevron-down" size={16} color="#94a3b8" />
-          </TouchableOpacity>
+          {currentBaby ? (
+            <TouchableOpacity onPress={() => navigation.navigate('SwitchBaby', { returnTo: 'Main', returnLabel: 'Vaccines' })} style={styles.babyChip}>
+              <SafeAvatar avatar={currentBaby.avatar} size={36} fallbackIcon="person" borderColor={themeColors.primary} borderWidth={2} />
+              <View style={styles.babyChipText}>
+                <Text style={styles.babyChipName}>{currentBaby.name}</Text>
+                <Text style={styles.babyChipAge}>{ageMonths}mo</Text>
+              </View>
+              <Ionicons name="chevron-down" size={16} color="#94a3b8" />
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity onPress={() => navigation.navigate('CreateBabyProfile')} style={[styles.babyChip, { justifyContent: 'flex-start', gap: 10 }]}>
+              <View style={{ width: 36, height: 36, borderRadius: 12, justifyContent: 'center', alignItems: 'center', backgroundColor: `${themeColors.primary}15` }}>
+                <Ionicons name="add-circle" size={28} color={themeColors.primary} />
+              </View>
+              <View style={styles.babyChipText}>
+                <Text style={styles.babyChipName}>Add Baby</Text>
+                <Text style={styles.babyChipAge}>Tap to create profile</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color="#94a3b8" style={{ marginLeft: 'auto' }} />
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity onPress={() => {
+            if (!currentBaby) {
+              setShowBabyRequiredModal(true);
+              return;
+            }
             const nextDue = doses.find(d => d.status === 'due' || d.status === 'overdue');
             if (nextDue) handleComplete(nextDue);
           }} style={[styles.addBtn, { backgroundColor: themeColors.primary }]}>
@@ -1581,6 +1596,47 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
 
         <View style={{ height: insets.bottom + 40 }} />
       </Animated.ScrollView>
+
+      {/* Baby Required Modal */}
+      <Modal
+        visible={showBabyRequiredModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowBabyRequiredModal(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowBabyRequiredModal(false)}
+        >
+          <View style={styles.modalContent}>
+            <View style={styles.modalIconWrap}>
+              <LinearGradient colors={[themeColors.secondary, themeColors.primary]} style={styles.modalIconGradient}>
+                <Ionicons name="people-outline" size={32} color="#fff" />
+              </LinearGradient>
+            </View>
+            <Text style={styles.modalTitle}>Baby Profile Needed</Text>
+            <Text style={styles.modalDesc}>
+              Create a baby profile to start tracking vaccinations and unlock all features.
+            </Text>
+            <TouchableOpacity
+              style={[styles.modalPrimaryBtn, { backgroundColor: themeColors.primary }]}
+              onPress={() => {
+                setShowBabyRequiredModal(false);
+                navigation.navigate('CreateBabyProfile');
+              }}
+            >
+              <Text style={styles.modalPrimaryBtnText}>Create Baby Profile</Text>
+              <Ionicons name="arrow-forward" size={16} color="#fff" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.modalSecondaryBtn}
+              onPress={() => setShowBabyRequiredModal(false)}
+            >
+              <Text style={styles.modalSecondaryBtnText}>Maybe Later</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
 
       {/* ── MODALS ── */}
       <RecordVaccineModal

@@ -75,10 +75,10 @@ const TC = {
 };
 
 const ROLE_CONFIG = {
-  parent: { label: 'Parent', color: '#6366f1', gradient: ['#6366f1', '#8b5cf6'] as [string, string], icon: 'shield' },
-  verified: { label: 'Verified', color: '#10b981', gradient: ['#10b981', '#34d399'] as [string, string], icon: 'checkmark-circle' },
-  contributor: { label: 'Contributor', color: '#ec4899', gradient: ['#ec4899', '#f43f5e'] as [string, string], icon: 'heart' },
-  member: { label: 'Member', color: '#94a3b8', gradient: ['#64748b', '#94a3b8'] as [string, string], icon: 'person' },
+  parent: { label: 'Parent', color: '#6366f1', icon: 'shield', gradient: ['#6366f1', '#8b5cf6'] as [string, string] },
+  verified: { label: 'Verified', color: '#10b981', icon: 'checkmark-circle', gradient: ['#10b981', '#34d399'] as [string, string] },
+  contributor: { label: 'Contributor', color: '#ec4899', icon: 'heart', gradient: ['#ec4899', '#f43f5e'] as [string, string] },
+  member: { label: 'Member', color: colors.textMuted, icon: 'person', gradient: ['#64748b', '#94a3b8'] as [string, string] },
 };
 
 const EMOJI_OPTIONS = ['👤','👩','👨','👵','👴','👶','👧','👦','🧑','👮','👩‍⚕️','👨‍⚕️','👩‍🏫','👨‍🏫','👩‍🍳','👨‍🍳','👩‍⚖️','👨‍⚖️','👩‍🌾','👨‍🌾'];
@@ -116,15 +116,14 @@ interface TopicAffinity { topicId: string; topicName: string; emoji: string; col
 interface PeerComparison { metric: string; userValue: number; avgValue: number; percentile: number; icon: string; color: string; }
 interface ContentStreak { type: string; current: number; best: number; color: string; icon: string; }
 
-const GlassCard = React.memo(({ children, style, onPress, active = false, delay = 0, isDark = true, colors }: {
-  children: React.ReactNode; style?: any; onPress?: () => void; active?: boolean; delay?: number; isDark?: boolean; colors?: any;
+const GlassCard = React.memo(({ children, style, onPress, active = false, delay = 0, isDark: cardDark = true }: {
+  children: React.ReactNode; style?: any; onPress?: () => void; active?: boolean; delay?: number; isDark?: boolean;
 }) => {
-  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   const Wrapper = onPress ? TouchableOpacity : View;
   return (
-    <Animated.View entering={FadeInUp.delay(delay).springify()} style={[styles.glassCard, active && { borderColor: colors.primary, borderWidth: 2 }, style]}>
+    <Animated.View entering={FadeInUp.delay(delay).springify()} style={[styles.glassCard, active && { borderColor: themeColors.primary, borderWidth: 2 }, style]}>
       <Wrapper onPress={onPress} activeOpacity={onPress ? 0.85 : 1} style={{ flex: 1 }}>
-        <LinearGradient colors={isDark ? ['rgba(45,45,60,0.6)', 'rgba(35,35,50,0.4)'] : ['rgba(255,255,255,0.92)', 'rgba(248,250,255,0.85)']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+        <LinearGradient colors={cardDark ? ['rgba(45,45,60,0.6)', 'rgba(35,35,50,0.4)'] : ['rgba(255,255,255,0.92)', 'rgba(248,250,255,0.85)']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
         <View style={styles.glassBorder} />
         <View style={styles.glassContent}>{children}</View>
       </Wrapper>

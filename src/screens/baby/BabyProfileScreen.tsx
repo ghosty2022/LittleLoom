@@ -146,19 +146,21 @@ interface DevelopmentStage {
   progress: number;
 }
 
-const GlassCard = React.memo(({ children, style, onPress, active = false, delay = 0, isDark: cardDark = true }: { 
+const GlassCard = React.memo(({ children, style, onPress, active = false, delay = 0, isDark = true, colors }: { 
   children: React.ReactNode; 
   style?: any; 
   onPress?: () => void; 
   active?: boolean;
   delay?: number;
   isDark?: boolean;
+  colors?: any;
 }) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   const Wrapper = onPress ? TouchableOpacity : View;
   return (
-    <Animated.View entering={FadeInUp.delay(delay).springify()} style={[styles.glassCard, active && { borderColor: themeColors.primary, borderWidth: 2 }, style]}>
+    <Animated.View entering={FadeInUp.delay(delay).springify()} style={[styles.glassCard, active && { borderColor: colors.primary, borderWidth: 2 }, style]}>
       <Wrapper onPress={onPress} activeOpacity={onPress ? 0.85 : 1} style={{ flex: 1 }}>
-        <LinearGradient colors={cardDark ? ['rgba(45,45,60,0.85)', 'rgba(35,35,50,0.65)'] : ['rgba(255,255,255,0.92)', 'rgba(248,250,255,0.85)']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+        <LinearGradient colors={isDark ? ['rgba(45,45,60,0.85)', 'rgba(35,35,50,0.65)'] : ['rgba(255,255,255,0.92)', 'rgba(248,250,255,0.85)']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
         <View style={styles.glassBorder} />
         <View style={styles.glassContent}>{children}</View>
       </Wrapper>
@@ -499,7 +501,8 @@ const ActivitySparkline = React.memo(({ activities }: { activities: any[] }) => 
   );
 });
 
-const NextMilestoneCountdown = React.memo(({ baby, milestones }: { baby: any; milestones: any[] }) => {
+const NextMilestoneCountdown = React.memo(({ baby, milestones, isDark, colors }: { baby: any; milestones: any[]; isDark?: boolean; colors?: any }) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   const ageMonths = safeDiffMonths(new Date(), baby?.birthDate);
 
   const nextMilestone = useMemo(() => {
@@ -540,7 +543,7 @@ const NextMilestoneCountdown = React.memo(({ baby, milestones }: { baby: any; mi
           </View>
         </View>
         <View style={styles.countdownProgress}>
-          <View style={[styles.countdownProgressBg, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
+          <View style={[styles.countdownProgressBg, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
             <View style={[styles.countdownProgressFill, { width: `${progressPercent}%`, backgroundColor: '#6366f1' }]} />
           </View>
         </View>
@@ -549,7 +552,8 @@ const NextMilestoneCountdown = React.memo(({ baby, milestones }: { baby: any; mi
   );
 });
 
-const FamilyConnectionHub = React.memo(({ members, onManage, babyName }: { members: FamilyMember[]; onManage: () => void; babyName?: string }) => {
+const FamilyConnectionHub = React.memo(({ members, onManage, babyName, isDark, colors }: { members: FamilyMember[]; onManage: () => void; babyName?: string; isDark?: boolean; colors?: any }) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   const parents = members.filter(m => m.role === 'parent1' || m.role === 'parent2');
   const others = members.filter(m => !parents.find(p => p.id === m.id));
   
