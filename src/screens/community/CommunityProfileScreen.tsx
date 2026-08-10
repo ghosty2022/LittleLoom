@@ -510,15 +510,19 @@ const ActionModal = React.memo(({ visible, onClose, title, children, isDark = tr
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   if (!visible) return null;
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent presentationStyle="overFullScreen">
       <View style={styles.modalOverlay}>
-        <BlurView intensity={90} tint="dark" style={StyleSheet.absoluteFill} />
+        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
+        <BlurView intensity={90} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
         <Animated.View entering={FadeInUp.springify()} style={styles.modalContent}>
-          <LinearGradient colors={['rgba(50,50,70,0.95)', 'rgba(40,40,60,0.9)']} style={StyleSheet.absoluteFill} />
+          <LinearGradient colors={isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.9)'] : ['rgba(255,255,255,0.98)', 'rgba(248,250,255,0.95)']} style={StyleSheet.absoluteFill} />
+          <View style={styles.modalDragHandle}>
+            <View style={styles.dragIndicator} />
+          </View>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>{title}</Text>
+            <Text style={[styles.modalTitle, { color: isDark ? '#fff' : '#1e293b' }]}>{title}</Text>
             <TouchableOpacity onPress={onClose} style={styles.modalClose}>
-              <Ionicons name="close" size={20} color="#94a3b8" />
+              <Ionicons name="close" size={20} color={isDark ? '#94a3b8' : '#64748b'} />
             </TouchableOpacity>
           </View>
           {children}
@@ -996,7 +1000,6 @@ export default function CommunityProfileScreen({ navigation }: Props) {
           marginHorizontal: 20,
           marginVertical: 8,
           gap: 12,
-          ...(CommunityShadows?.sm || {}),
         }}
         onPress={() => navigation.navigate('CommunityOnboarding' as never, { editing: true } as never)}
       >
@@ -1285,17 +1288,23 @@ export default function CommunityProfileScreen({ navigation }: Props) {
       <Modal
         visible={showEmojiPicker}
         transparent
-        animationType="slide"
+        animationType="fade"
         onRequestClose={() => setShowEmojiPicker(false)}
         statusBarTranslucent
+        presentationStyle="overFullScreen"
       >
         <View style={styles.emojiPickerOverlay}>
           <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setShowEmojiPicker(false)} activeOpacity={1} />
-          <Animated.View entering={FadeInUp.springify()} style={[styles.emojiPickerSheet, { backgroundColor: isDark ? '#1e1e2e' : '#fff' }]}>
+          <BlurView intensity={90} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
+          <Animated.View entering={FadeInUp.springify()} style={styles.emojiPickerSheet}>
+            <LinearGradient colors={isDark ? ['rgba(45,45,60,0.98)', 'rgba(35,35,50,0.95)'] : ['rgba(255,255,255,0.98)', 'rgba(248,250,255,0.95)']} style={StyleSheet.absoluteFill} />
+            <View style={styles.modalDragHandle}>
+              <View style={styles.dragIndicator} />
+            </View>
             <View style={styles.emojiPickerHeader}>
-              <Text style={[styles.emojiPickerTitle, { color: isDark ? '#fff' : '#1a1a2e' }]}>Pick an Emoji</Text>
+              <Text style={[styles.emojiPickerTitle, { color: isDark ? '#fff' : '#1e293b' }]}>Pick an Emoji</Text>
               <TouchableOpacity onPress={() => setShowEmojiPicker(false)} style={styles.modalClose}>
-                <Ionicons name="close" size={24} color={isDark ? '#fff' : '#1a1a2e'} />
+                <Ionicons name="close" size={24} color={isDark ? '#94a3b8' : '#64748b'} />
               </TouchableOpacity>
             </View>
             <View style={styles.emojiGrid}>
@@ -1501,9 +1510,9 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
   badgeText: { fontSize: 12, fontWeight: '700' },
-  emptyCard: { padding: 40, alignItems: 'center', justifyContent: 'center' },
+  emptyCard: { padding: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 20, overflow: 'hidden' },
   emptyStateIcon: { width: 64, height: 64, borderRadius: 20, backgroundColor: 'rgba(99,102,241,0.1)', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
-  emptyStateSmall: { padding: 32, alignItems: 'center' },
+  emptyStateSmall: { padding: 32, alignItems: 'center', borderRadius: 20, overflow: 'hidden' },
   emptyStateTitle: { fontSize: 16, fontWeight: '700', color: colors.text, textAlign: 'center', marginBottom: 8 },
   createPostBtn: { marginTop: 16, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 14, alignSelf: 'center' },
   createPostBtnText: { color: colors.text, fontSize: 15, fontWeight: '700' },
@@ -1542,20 +1551,21 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   imagePickerIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
   imagePickerLabel: { fontSize: 16, fontWeight: '600', color: colors.text, flex: 1 },
 
-  emojiPickerOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
-  emojiPickerSheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 40 },
+  emojiPickerOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 },
+  emojiPickerSheet: { width: '100%', maxWidth: 400, borderRadius: 24, padding: 20, paddingBottom: 40, overflow: 'hidden' },
   emojiPickerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   emojiPickerTitle: { fontSize: 18, fontWeight: '800' },
   emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'center' },
   emojiButton: { width: 52, height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   emojiButtonText: { fontSize: 28 },
-  modalClose: { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(128,128,128,0.15)', justifyContent: 'center', alignItems: 'center' },
-
-  modalOverlay: { flex: 1, justifyContent: 'flex-end', alignItems: 'center' },
-  modalContent: { width: '100%', maxWidth: 400, borderRadius: DESIGN.radius.xl, padding: DESIGN.spacing.xxl, overflow: 'hidden' },
+  
+  modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 },
+  modalContent: { width: '100%', maxWidth: 400, borderRadius: 24, padding: 24, overflow: 'hidden' },
+  modalDragHandle: { width: '100%', alignItems: 'center', paddingVertical: 8 },
+  dragIndicator: { width: 40, height: 4, borderRadius: 2, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.15)' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  modalTitle: { fontSize: 20, fontWeight: '800', color: colors.text, letterSpacing: -0.3 },
-
+  modalTitle: { fontSize: 20, fontWeight: '800', letterSpacing: -0.3 },
+  modalClose: { width: 36, height: 36, borderRadius: 10, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', justifyContent: 'center', alignItems: 'center' },
   retryButton: { marginTop: 20, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 14 },
   retryButtonText: { fontSize: 15, fontWeight: '700', color: colors.text },
 });

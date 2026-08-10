@@ -771,22 +771,26 @@ const EmojiPickerModal = React.memo(({ visible, onClose, onSelect, isDark, color
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   if (!visible) return null;
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent presentationStyle="overFullScreen">
       <View style={styles.emojiPickerOverlay}>
         <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
+        <BlurView intensity={95} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
         <Animated.View entering={FadeInUp.springify()} style={styles.emojiPickerSheet}>
-          <BlurView intensity={95} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
+          <LinearGradient colors={isDark ? ['rgba(45,45,60,0.98)', 'rgba(35,35,50,0.95)'] : ['rgba(255,255,255,0.98)', 'rgba(248,250,255,0.95)']} style={StyleSheet.absoluteFill} />
+          <View style={styles.modalDragHandle}>
+            <View style={styles.dragIndicator} />
+          </View>
           <View style={styles.emojiPickerHeader}>
-            <Text style={styles.emojiPickerTitle}>Pick an Emoji</Text>
-            <TouchableOpacity onPress={onClose} style={styles.emojiPickerClose}>
-              <Ionicons name="close" size={24} color="#fff" />
+            <Text style={[styles.emojiPickerTitle, { color: isDark ? '#fff' : '#1e293b' }]}>Pick an Emoji</Text>
+            <TouchableOpacity onPress={onClose} style={styles.modalClose}>
+              <Ionicons name="close" size={24} color={isDark ? '#94a3b8' : '#64748b'} />
             </TouchableOpacity>
           </View>
           <View style={styles.emojiGrid}>
             {EMOJI_OPTIONS.map((emoji) => (
               <TouchableOpacity
                 key={emoji}
-                style={styles.emojiButton}
+                style={[styles.emojiButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#f1f5f9' }]}
                 onPress={() => { onSelect(emoji); onClose(); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); }}
               >
                 <Text style={styles.emojiButtonText}>{emoji}</Text>
@@ -1824,7 +1828,7 @@ const getStyles = (isDarkMode: boolean, colors: any) => {
   activityTypeText: { fontSize: 11, fontWeight: '700' },
 
   // ── Empty States ──
-  emptyCard: { padding: 40, alignItems: 'center', justifyContent: 'center' },
+  emptyCard: { padding: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 20, overflow: 'hidden' },
   emptyStateIcon: { width: 64, height: 64, borderRadius: 20, backgroundColor: 'rgba(99,102,241,0.1)', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
   emptyStateTitle: { fontSize: 16, fontWeight: '700', color: colors.text, textAlign: 'center', marginBottom: 8 },
   emptyText: { fontSize: 14, color: colors.textMuted, textAlign: 'center', lineHeight: 20 },
@@ -1902,15 +1906,12 @@ const getStyles = (isDarkMode: boolean, colors: any) => {
   imagePickerLabel: { fontSize: 16, fontWeight: '600', color: colors.text, flex: 1 },
 
   // ── Emoji Picker ──
-  emojiPickerOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'flex-end', zIndex: 200 },
-  emojiPickerSheet: { backgroundColor: '#1e1e2e', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingTop: 12, paddingBottom: 40 },
-  modalDragHandle: { width: '100%', alignItems: 'center', paddingVertical: 8 },
-  dragIndicator: { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)' },
+  emojiPickerOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 },
+  emojiPickerSheet: { width: '100%', maxWidth: 400, borderRadius: 24, padding: 20, paddingBottom: 40, overflow: 'hidden' },
   emojiPickerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  emojiPickerTitle: { fontSize: 18, fontWeight: '800', color: colors.text },
-  emojiPickerClose: { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.08)', justifyContent: 'center', alignItems: 'center' },
+  emojiPickerTitle: { fontSize: 18, fontWeight: '800' },
   emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'center' },
-  emojiButton: { width: 52, height: 52, borderRadius: 14, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', alignItems: 'center', justifyContent: 'center' },
+  emojiButton: { width: 52, height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   emojiButtonText: { fontSize: 28 },
   });
 };
