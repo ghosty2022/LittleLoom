@@ -132,9 +132,11 @@ const GlassCard = React.memo(({ children, style, onPress, active = false, delay 
   );
 });
 
-const SectionHeader = React.memo(({ title, subtitle, action, actionLabel }: {
-  title: string; subtitle?: string; action?: () => void; actionLabel?: string;
-}) => (
+const SectionHeader = React.memo(({ title, subtitle, action, actionLabel, isDark = true, colors }: {
+  title: string; subtitle?: string; action?: () => void; actionLabel?: string; isDark?: boolean; colors?: any;
+}) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
+  return (
   <View style={styles.sectionHeader}>
     <View>
       <Text style={styles.sectionTitle}>{title}</Text>
@@ -147,12 +149,15 @@ const SectionHeader = React.memo(({ title, subtitle, action, actionLabel }: {
       </TouchableOpacity>
     )}
   </View>
-));
+  );
+});
 
-const TabBar = React.memo(({ tabs, activeTab, onChange }: {
+const TabBar = React.memo(({ tabs, activeTab, onChange, isDark = true, colors }: {
   tabs: { key: ProfileTab; label: string; icon: string }[];
-  activeTab: ProfileTab; onChange: (t: ProfileTab) => void;
-}) => (
+  activeTab: ProfileTab; onChange: (t: ProfileTab) => void; isDark?: boolean; colors?: any;
+}) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
+  return (
   <View style={styles.tabBar}>
     {tabs.map((tab) => {
       const isActive = activeTab === tab.key;
@@ -164,9 +169,12 @@ const TabBar = React.memo(({ tabs, activeTab, onChange }: {
       );
     })}
   </View>
-));
+  );
+});
 
-const KpiPill = React.memo(({ icon, value, label, color, onPress }: any) => (
+const KpiPill = React.memo(({ icon, value, label, color, onPress, isDark = true, colors }: any) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
+  return (
   <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={styles.kpiPill}>
     <LinearGradient colors={[`${color}15`, `${color}05`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
     <View style={[styles.kpiPillIconBg, { backgroundColor: `${color}15` }]}>
@@ -177,12 +185,14 @@ const KpiPill = React.memo(({ icon, value, label, color, onPress }: any) => (
       <Text style={styles.kpiPillLabel}>{label}</Text>
     </View>
   </TouchableOpacity>
-));
+  );
+});
 
-const InfluenceDashboard = React.memo(({ metrics }: { metrics: InfluenceMetric[] }) => {
+const InfluenceDashboard = React.memo(({ metrics, isDark = true, colors }: { metrics: InfluenceMetric[]; isDark?: boolean; colors?: any }) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   return (
         <Animated.View entering={FadeInUp.delay(100).springify()}>
-      <GlassCard>
+      <GlassCard isDark={isDark} colors={colors}>
         <View style={styles.influenceHeader}>
           <View style={[styles.influenceIconBg, { backgroundColor: `${TC.primary}15` }]}>
             <Ionicons name="analytics" size={20} color={TC.primary} />
@@ -207,7 +217,7 @@ const InfluenceDashboard = React.memo(({ metrics }: { metrics: InfluenceMetric[]
                 <Text style={[styles.influenceItemLabel, { color: metric.color }]}>{metric.label}</Text>
                 <Text style={[styles.influenceItemValue, { color: metric.color }]}>{metric.value}%</Text>
               </View>
-              <View style={[styles.influenceBarBg, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
+              <View style={[styles.influenceBarBg, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
                 <Animated.View entering={FadeInRight.delay(200 + i * 80).springify()} style={[styles.influenceBarFill, { width: `${metric.value}%`, backgroundColor: metric.color }]} />
               </View>
             </View>
@@ -253,9 +263,11 @@ const WeeklyImpactCard = React.memo(({ impact }: { impact: WeeklyImpact }) => {
   );
 });
 
-const CommunityStandingCard = React.memo(({ standing }: { standing: CommunityStanding }) => (
+const CommunityStandingCard = React.memo(({ standing, isDark = true, colors }: { standing: CommunityStanding; isDark?: boolean; colors?: any }) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
+  return (
   <Animated.View entering={FadeInUp.delay(200).springify()}>
-    <GlassCard>
+    <GlassCard isDark={isDark} colors={colors}>
       <View style={styles.standingHeader}>
         <View style={[styles.standingIconBg, { backgroundColor: `${TC.purple}15` }]}>
           <Ionicons name="trophy" size={20} color={TC.purple} />
@@ -274,16 +286,18 @@ const CommunityStandingCard = React.memo(({ standing }: { standing: CommunitySta
             <Text style={styles.standingProgressLabel}>Next: {standing.nextMilestone}</Text>
             <Text style={[styles.standingProgressValue, { color: TC.purple }]}>{standing.progressToNext}%</Text>
           </View>
-          <View style={[styles.standingProgressBarBg, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
+          <View style={[styles.standingProgressBarBg, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
             <Animated.View entering={FadeInRight.delay(300).springify()} style={[styles.standingProgressBarFill, { width: `${standing.progressToNext}%`, backgroundColor: TC.purple }]} />
           </View>
         </View>
       </View>
     </GlassCard>
   </Animated.View>
-));
+  );
+});
 
-const ContentBreakdownCard = React.memo(({ breakdown }: { breakdown: ContentBreakdown }) => {
+const ContentBreakdownCard = React.memo(({ breakdown, isDark = true, colors }: { breakdown: ContentBreakdown; isDark?: boolean; colors?: any }) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   const total = breakdown.posts + breakdown.comments + breakdown.reactions + breakdown.shares;
   const items = [
     { label: 'Posts', value: breakdown.posts, color: TC.primary, icon: 'document-text' },
@@ -314,11 +328,12 @@ const ContentBreakdownCard = React.memo(({ breakdown }: { breakdown: ContentBrea
   );
 });
 
-const EngagementSparkline = React.memo(({ data }: { data: EngagementPoint[] }) => {
+const EngagementSparkline = React.memo(({ data, isDark = true, colors }: { data: EngagementPoint[]; isDark?: boolean; colors?: any }) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   const maxVal = Math.max(...data.map(d => d.value), 1);
   return (
     <Animated.View entering={FadeInUp.delay(300).springify()}>
-      <GlassCard>
+      <GlassCard isDark={isDark} colors={colors}>
         <View style={styles.sparklineHeader}>
           <View>
             <Text style={styles.sparklineTitle}>7-Day Activity</Text>
@@ -349,11 +364,12 @@ const EngagementSparkline = React.memo(({ data }: { data: EngagementPoint[] }) =
   );
 });
 
-const SmartSuggestions = React.memo(({ suggestions }: { suggestions: SmartSuggestion[] }) => {
+const SmartSuggestions = React.memo(({ suggestions, isDark = true, colors }: { suggestions: SmartSuggestion[]; isDark?: boolean; colors?: any }) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   if (suggestions.length === 0) return null;
   return (
     <Animated.View entering={FadeInUp.delay(350).springify()}>
-      <SectionHeader title="Smart Suggestions" subtitle="Personalized for you" />
+      <SectionHeader title="Smart Suggestions" subtitle="Personalized for you" isDark={isDark} colors={colors} />
       <View style={styles.suggestionsScroll}>
         {suggestions.map((suggestion) => (
           <TouchableOpacity key={suggestion.id} onPress={suggestion.action} style={styles.suggestionCard}>
@@ -373,12 +389,13 @@ const SmartSuggestions = React.memo(({ suggestions }: { suggestions: SmartSugges
   );
 });
 
-const TopicAffinityCard = React.memo(({ affinities }: { affinities: TopicAffinity[] }) => {
+const TopicAffinityCard = React.memo(({ affinities, isDark = true, colors }: { affinities: TopicAffinity[]; isDark?: boolean; colors?: any }) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   if (affinities.length === 0) return null;
   const maxAffinity = Math.max(...affinities.map(a => a.affinity), 1);
   return (
     <Animated.View entering={FadeInUp.delay(400).springify()}>
-      <SectionHeader title="Topic Affinity" subtitle="Where you contribute most" />
+      <SectionHeader title="Topic Affinity" subtitle="Where you contribute most" isDark={isDark} colors={colors} />
       <View style={styles.affinityList}>
         {affinities.map((item, i) => (
           <View key={item.topicId} style={styles.affinityRow}>
@@ -390,7 +407,7 @@ const TopicAffinityCard = React.memo(({ affinities }: { affinities: TopicAffinit
                 <Text style={styles.affinityName}>{item.topicName}</Text>
                 <Text style={[styles.affinityValue, { color: item.color }]}>{item.posts} posts</Text>
               </View>
-              <View style={[styles.affinityBarBg, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
+              <View style={[styles.affinityBarBg, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
                 <Animated.View entering={FadeInRight.delay(200 + i * 60).springify()} style={[styles.affinityBarFill, { width: `${(item.affinity / maxAffinity) * 100}%`, backgroundColor: item.color }]} />
               </View>
             </View>
@@ -401,9 +418,11 @@ const TopicAffinityCard = React.memo(({ affinities }: { affinities: TopicAffinit
   );
 });
 
-const PeerComparisonCard = React.memo(({ comparisons }: { comparisons: PeerComparison[] }) => (
+const PeerComparisonCard = React.memo(({ comparisons, isDark = true, colors }: { comparisons: PeerComparison[]; isDark?: boolean; colors?: any }) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
+  return (
   <Animated.View entering={FadeInUp.delay(450).springify()}>
-    <SectionHeader title="Peer Comparison" subtitle="How you compare to community average" />
+    <SectionHeader title="Peer Comparison" subtitle="How you compare to community average" isDark={isDark} colors={colors} />
     <View style={styles.comparisonList}>
       {comparisons.map((comp, i) => (
         <View key={comp.metric} style={styles.comparisonRow}>
@@ -416,7 +435,7 @@ const PeerComparisonCard = React.memo(({ comparisons }: { comparisons: PeerCompa
               <Text style={[styles.comparisonPercentile, { color: comp.color }]}>Top {comp.percentile}%</Text>
             </View>
             <View style={styles.comparisonBarRow}>
-              <View style={[styles.comparisonBarBg, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
+              <View style={[styles.comparisonBarBg, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
                 <Animated.View entering={FadeInRight.delay(200 + i * 60).springify()} style={[styles.comparisonBarFill, { width: `${Math.min((comp.userValue / Math.max(comp.avgValue, 1)) * 100, 100)}%`, backgroundColor: comp.color }]} />
               </View>
               <Text style={styles.comparisonNumbers}>{comp.userValue} vs {comp.avgValue} avg</Text>
@@ -426,11 +445,14 @@ const PeerComparisonCard = React.memo(({ comparisons }: { comparisons: PeerCompa
       ))}
     </View>
   </Animated.View>
-));
+  );
+});
 
-const ContentStreaks = React.memo(({ streaks }: { streaks: ContentStreak[] }) => (
+const ContentStreaks = React.memo(({ streaks, isDark = true, colors }: { streaks: ContentStreak[]; isDark?: boolean; colors?: any }) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
+  return (
   <Animated.View entering={FadeInUp.delay(500).springify()}>
-    <SectionHeader title="Streaks" subtitle="Consistency tracking" />
+    <SectionHeader title="Streaks" subtitle="Consistency tracking" isDark={isDark} colors={colors} />
     <View style={styles.streaksRow}>
       {streaks.map((streak) => (
         <View key={streak.type} style={[styles.streakCard, { borderColor: `${streak.color}30` }]}>
@@ -444,9 +466,12 @@ const ContentStreaks = React.memo(({ streaks }: { streaks: ContentStreak[] }) =>
       ))}
     </View>
   </Animated.View>
-));
+  );
+});
 
-const QuickActionsDock = React.memo(({ onMessage, onShare, onEdit, onSettings }: any) => (
+const QuickActionsDock = React.memo(({ onMessage, onShare, onEdit, onSettings, isDark = true, colors }: any) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
+  return (
   <Animated.View entering={FadeInUp.delay(550).springify()} style={styles.dockContainer}>
     <View style={styles.dock}>
       <TouchableOpacity onPress={onMessage} style={styles.dockItem}>
@@ -475,11 +500,13 @@ const QuickActionsDock = React.memo(({ onMessage, onShare, onEdit, onSettings }:
       </TouchableOpacity>
     </View>
   </Animated.View>
-));
+  );
+});
 
-const ActionModal = React.memo(({ visible, onClose, title, children }: {
-  visible: boolean; onClose: () => void; title: string; children: React.ReactNode;
+const ActionModal = React.memo(({ visible, onClose, title, children, isDark = true, colors }: {
+  visible: boolean; onClose: () => void; title: string; children: React.ReactNode; isDark?: boolean; colors?: any;
 }) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   if (!visible) return null;
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
