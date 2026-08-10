@@ -43,7 +43,7 @@ import Animated, {
 import type { RootStackParamList } from '../../types/navigation';
 import { FamilyMember, useFamily } from '../../context/FamilyContext';
 import { Milestone, useBaby } from '../../context/BabyContext';
-import { showConfirmModal, showErrorModal, showSuccessModal } from '../../utils/modal';
+import { useSweetAlert } from '../../components/SweetAlert';
 import { useActivity } from '../../context/ActivityContext';
 import { useAuth } from '../../context/AuthContext';
 import { useUser } from '../../context/UserContext';
@@ -741,19 +741,23 @@ const BabyHealthScore = React.memo(({ baby, stats, recentActivities, isDark, col
   );
 });
 
-const ActionModal = React.memo(({ visible, onClose, title, children, isDark, colors }: any) => {
+const ActionModal = React.memo(({ visible, onClose, title, children, isDark = true, colors }: any) => {
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   if (!visible) return null;
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent presentationStyle="overFullScreen">
       <View style={styles.modalOverlay}>
-        <BlurView intensity={90} tint="dark" style={StyleSheet.absoluteFill} />
+        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
+        <BlurView intensity={90} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
         <Animated.View entering={FadeInUp.springify()} style={styles.modalContent}>
-          <LinearGradient colors={['rgba(50,50,70,0.95)', 'rgba(40,40,60,0.9)']} style={StyleSheet.absoluteFill} />
+          <LinearGradient colors={isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.9)'] : ['rgba(255,255,255,0.98)', 'rgba(248,250,255,0.95)']} style={StyleSheet.absoluteFill} />
+          <View style={styles.modalDragHandle}>
+            <View style={styles.dragIndicator} />
+          </View>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>{title}</Text>
+            <Text style={[styles.modalTitle, { color: isDark ? '#fff' : '#1e293b' }]}>{title}</Text>
             <TouchableOpacity onPress={onClose} style={styles.modalClose}>
-              <Ionicons name="close" size={20} color="#94a3b8" />
+              <Ionicons name="close" size={20} color={isDark ? '#94a3b8' : '#64748b'} />
             </TouchableOpacity>
           </View>
           {children}
@@ -771,7 +775,7 @@ const EmojiPickerModal = React.memo(({ visible, onClose, onSelect, isDark, color
       <View style={styles.emojiPickerOverlay}>
         <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
         <Animated.View entering={FadeInUp.springify()} style={styles.emojiPickerSheet}>
-          <BlurView intensity={95} tint="dark" style={StyleSheet.absoluteFill} />
+          <BlurView intensity={95} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
           <View style={styles.emojiPickerHeader}>
             <Text style={styles.emojiPickerTitle}>Pick an Emoji</Text>
             <TouchableOpacity onPress={onClose} style={styles.emojiPickerClose}>
@@ -803,6 +807,7 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
   const styles = useMemo(() => getStyles(isDark, themeColors), [isDark, themeColors]);
   const { userProfile } = useAuth();
   const { profile } = useUser();
+  const sweetAlert = useSweetAlert();
   const {
     babies, updateBaby, currentBaby, currentBabyId, addMilestone, deleteMilestone,
     loadBabies, switchBaby, deleteBaby, milestones, calculateAge,
@@ -891,7 +896,7 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
   const handleTakePhoto = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
-      showErrorModal({ title: 'Permission Required', message: 'Please allow access to your camera.' });
+      sweetAlert.error('Permission Required', 'Please allow access to your camera.');
       return;
     }
     try {
@@ -913,18 +918,18 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
         setIsEditing(true);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setIsUploading(false);
-        showSuccessModal({ title: 'Photo Saved!', message: 'Profile picture updated.' });
+        sweetAlert.success('Photo Saved!', 'Profile picture updated.');
       }
     } catch (error) {
       setIsUploading(false);
-      showErrorModal({ title: 'Error', message: 'Failed to save photo' });
+      sweetAlert.error('Error', 'Failed to save photo');
     }
   };
 
   const handlePickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      showErrorModal({ title: 'Permission Required', message: 'Please allow access to your photo library.' });
+      sweetAlert.error('Permission Required', 'Please allow access to your photo library.');
       return;
     }
     try {
@@ -946,11 +951,11 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
         setIsEditing(true);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setIsUploading(false);
-        showSuccessModal({ title: 'Photo Saved!', message: 'Profile picture updated.' });
+        sweetAlert.success('Photo Saved!', 'Profile picture updated.');
       }
     } catch (error) {
       setIsUploading(false);
-      showErrorModal({ title: 'Error', message: 'Failed to save photo' });
+      sweetAlert.error('Error', 'Failed to save photo');
     }
   };
 
@@ -1018,16 +1023,12 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
   const handleSavePress = () => {
     const changes = checkForChanges();
     if (changes.length === 0) {
-      showErrorModal({ title: 'No Changes', message: 'No modifications detected.' });
+      sweetAlert.toast('No Changes', 'No modifications detected');
       return;
     }
-    showConfirmModal({
-      title: 'Save Changes?',
-      message: `You are about to update:
-${changes.join('\n')}`,
-      onConfirm: handleSave,
-      onCancel: () => {},
-    });
+    sweetAlert.confirm('Save Changes?', `You are about to update:\n${changes.join('\n')}`, async () => {
+      await handleSave();
+    }, () => {}, 'Save', 'Cancel');
   };
 
   const handleSave = async () => {
@@ -1053,9 +1054,9 @@ ${changes.join('\n')}`,
       await updateBaby(currentBabyData.id, babyUpdates);
       setIsEditing(false);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      showSuccessModal({ title: 'Profile Saved!', message: `${babyName}'s profile has been updated successfully.` });
+      sweetAlert.success('Profile Saved!', `${babyName}'s profile has been updated successfully.`);
     } catch (error) {
-      showErrorModal({ title: 'Error', message: 'Failed to update profile' });
+      sweetAlert.error('Error', 'Failed to update profile');
     } finally {
       setIsSaving(false);
     }
@@ -1084,29 +1085,21 @@ ${changes.join('\n')}`,
   };
 
   const handleDeleteMilestone = (milestoneId: string) => {
-    showConfirmModal({
-      title: 'Delete Milestone',
-      message: 'Are you sure you want to delete this milestone?',
-      onConfirm: async () => {
-        await deleteMilestone(milestoneId);
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        showSuccessModal({ title: 'Deleted', message: 'Milestone has been removed.' });
-      },
-    });
+    sweetAlert.confirm('Delete Milestone', 'Are you sure you want to delete this milestone?', async () => {
+      await deleteMilestone(milestoneId);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      sweetAlert.success('Deleted', 'Milestone has been removed.');
+    }, () => {}, 'Delete', 'Cancel');
   };
 
   const handleDeleteBaby = async () => {
-    showConfirmModal({
-      title: 'Delete Profile?',
-      message: `This will permanently delete ${currentBabyData?.name}'s profile and all associated data. This action cannot be undone.`,
-      onConfirm: async () => {
-        if (currentBabyData) {
-          await deleteBaby(currentBabyData.id);
-          showSuccessModal({ title: 'Profile Deleted', message: 'Baby profile has been removed.' });
-          setTimeout(() => navigation.goBack(), 1500);
-        }
-      },
-    });
+    sweetAlert.confirm('Delete Profile?', `This will permanently delete ${currentBabyData?.name}'s profile and all associated data. This action cannot be undone.`, async () => {
+      if (currentBabyData) {
+        await deleteBaby(currentBabyData.id);
+        sweetAlert.success('Profile Deleted', 'Baby profile has been removed.');
+        setTimeout(() => navigation.goBack(), 1500);
+      }
+    }, () => {}, 'Delete', 'Cancel');
   };
 
   const onDateChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
