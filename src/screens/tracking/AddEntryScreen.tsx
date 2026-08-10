@@ -994,13 +994,13 @@ function TrackerContent({
       const t = e.timestamp;
       return t >= todayStart && t <= todayEnd;
     }).length;
-  }, [tracker, getEntries]);
+  }, [tracker, getEntries, currentBaby]);
 
   const lastEntryTime = useMemo(() => {
     if (!tracker || !currentBaby) return null;
     const entries = getEntries(tracker.id).sort((a: any, b: any) => b.timestamp - a.timestamp);
     return entries.length > 0 ? new Date(entries[0].timestamp) : null;
-  }, [tracker, getEntries]);
+  }, [tracker, getEntries, currentBaby]);
 
   const quickTemplates = useMemo((): QuickTemplate[] => {
     if (!tracker) return [];
@@ -1062,7 +1062,7 @@ function TrackerContent({
     return items;
   }, [tracker, suggestions, pendingData]);
 
-  const contextInsights = useMemo((): ContextInsight[] => {
+   const contextInsights = useMemo((): ContextInsight[] => {
     if (!tracker || !currentBaby) return [];
     const items: ContextInsight[] = [];
     if (entriesToday === 0) {
@@ -1078,8 +1078,7 @@ function TrackerContent({
       items.push({ id: 'feeding-count', type: 'trend', message: `${entriesToday} feeds today \u2014 on track for healthy intake`, emoji: '\uD83D\uDCC8', color: '#10b981', priority: 'low' });
     }
     return items;
-  }, [tracker, entriesToday, isAtRisk, streak, hoursUntilBreak, timeContext]);
-
+  }, [tracker, currentBaby, entriesToday, isAtRisk, streak, hoursUntilBreak, timeContext]);
   // ─── Effects ───────────────────────────────────────────────────
 
   useEffect(() => {
@@ -1108,10 +1107,11 @@ function TrackerContent({
         title: entry.title,
       }));
     setYesterdayEntries(filtered);
-  }, [tracker, getEntries, editEntryId, setYesterdayEntries]);
+  }, [tracker, getEntries, editEntryId, currentBaby, setYesterdayEntries]);
 
   useEffect(() => {
     if (!tracker) return;
+    let didApplyCorrelation = false;
     setPendingData((prev: any) => {
       const newData = { ...prev };
       let hasChanges = false;
@@ -1132,12 +1132,14 @@ function TrackerContent({
           newData[key] = value;
           hasChanges = true;
         });
-        // Note: setAppliedCorrelationPrefill(null) should be handled by parent
+        didApplyCorrelation = true;
       }
       return hasChanges ? newData : prev;
     });
-  }, [prefillData, suggestions, appliedCorrelationPrefill, tracker, setPendingData]);
-
+    if (didApplyCorrelation) {
+      setAppliedCorrelationPrefill(null);
+    }
+  }, [prefillData, suggestions, appliedCorrelationPrefill, tracker, setPendingData, setAppliedCorrelationPrefill]);
   useEffect(() => {
     if (!editEntryId || !tracker) return;
     const entry = getEntries(tracker.id).find((e: any) => e.id === editEntryId);
@@ -1673,62 +1675,42 @@ export default function AddEntryScreen() {
     );
   }
 
-  // ─── Render: Full Tracker Content ──────────────────────────────
+ // ─── Render: Full Tracker Content ──────────────────────────────
   return (
     <View style={{ flex: 1 }}>
-      {showPicker ? (
-        <View style={[styles.container, { backgroundColor: fullThemeColors.background }]}>
-          <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-          <TimelinePicker
-            visible={showPicker}
-            onClose={handlePickerClose}
-            onSelect={handleTrackerSelect}
-            currentBabyName={currentBaby?.name}
-            currentBabyAvatar={currentBaby?.avatar}
-          />
-        </View>
-      ) : !tracker ? (
-        <View style={[styles.container, { justifyContent: 'center', alignItems: 'center', backgroundColor: fullThemeColors.background }]}>
-          <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-          <Ionicons name="alert-circle-outline" size={48} color={fullThemeColors.textSecondary} />
-          <Text style={[styles.errorText, { color: fullThemeColors.textSecondary, fontSize: 18 }]}>Tracker not found</Text>
-        </View>
-      ) : (
-        <TrackerContent
-          tracker={tracker}
-          selectedTrackerId={selectedTrackerId}
-          date={date}
-          setDate={setDate}
-          pendingData={pendingData}
-          setPendingData={setPendingData}
-          pendingOptions={pendingOptions}
-          setPendingOptions={setPendingOptions}
-          showConfirm={showConfirm}
-          setShowConfirm={setShowConfirm}
-          showYesterdayModal={showYesterdayModal}
-          setShowYesterdayModal={setShowYesterdayModal}
-          yesterdayEntries={yesterdayEntries}
-          setYesterdayEntries={setYesterdayEntries}
-          errors={errors}
-          setErrors={setErrors}
-          dismissedCorrelations={dismissedCorrelations}
-          setDismissedCorrelations={setDismissedCorrelations}
-          dismissedReminders={dismissedReminders}
-          setDismissedReminders={setDismissedReminders}
-          appliedCorrelationPrefill={appliedCorrelationPrefill}
-          setAppliedCorrelationPrefill={setAppliedCorrelationPrefill}
-          appliedSuggestions={appliedSuggestions}
-          setAppliedSuggestions={setAppliedSuggestions}
-          editEntryId={editEntryId}
-          route={route}
-          navigation={navigation}
-          showPicker={showPicker}
-          setShowPicker={setShowPicker}
-          handleTrackerSelect={handleTrackerSelect}
-          handlePickerClose={handlePickerClose}
-        />
-      )}
-
+      <TrackerContent
+        tracker={tracker}
+        selectedTrackerId={selectedTrackerId}
+        date={date}
+        setDate={setDate}
+        pendingData={pendingData}
+        setPendingData={setPendingData}
+        pendingOptions={pendingOptions}
+        setPendingOptions={setPendingOptions}
+        showConfirm={showConfirm}
+        setShowConfirm={setShowConfirm}
+        showYesterdayModal={showYesterdayModal}
+        setShowYesterdayModal={setShowYesterdayModal}
+        yesterdayEntries={yesterdayEntries}
+        setYesterdayEntries={setYesterdayEntries}
+        errors={errors}
+        setErrors={setErrors}
+        dismissedCorrelations={dismissedCorrelations}
+        setDismissedCorrelations={setDismissedCorrelations}
+        dismissedReminders={dismissedReminders}
+        setDismissedReminders={setDismissedReminders}
+        appliedCorrelationPrefill={appliedCorrelationPrefill}
+        setAppliedCorrelationPrefill={setAppliedCorrelationPrefill}
+        appliedSuggestions={appliedSuggestions}
+        setAppliedSuggestions={setAppliedSuggestions}
+        editEntryId={editEntryId}
+        route={route}
+        navigation={navigation}
+        showPicker={showPicker}
+        setShowPicker={setShowPicker}
+        handleTrackerSelect={handleTrackerSelect}
+        handlePickerClose={handlePickerClose}
+      />
       {/* Baby Required Modal */}
       <Modal
         visible={showBabyRequiredModal}
