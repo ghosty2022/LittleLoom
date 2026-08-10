@@ -19,7 +19,10 @@ import { useCustomization } from '../../hooks/useCustomization';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
 
-import { SafeBabyAvatar } from '../../components/SafeAvatar';const { width } = Dimensions.get('window');
+import { SafeBabyAvatar } from '../../components/SafeAvatar';
+import { useMeasurementSuggestions, getAgeInMonths } from '../../hooks/useMeasurementSuggestions';
+
+const { width } = Dimensions.get('window');
 
 const BABY_IMAGES_DIR = FileSystem.documentDirectory + 'baby_images/';
 
@@ -135,7 +138,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
   const insets = useSafeAreaInsets();
   const { darkMode: isDark, themeColors, triggerHaptic, shouldReduceMotion } = useCustomization();
   const { userProfile, completeSetup } = useAuth();
-  const { createBaby, updateBaby, calculateAge, loadBabies, switchBaby } = useBaby();
+  const { createBaby, updateBaby, calculateAge, loadBabies, switchBaby, babies } = useBaby();
   const { error: showError, success: showSuccess } = useSweetAlert();
 
   /* ---- Form state ---- */
@@ -157,6 +160,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
 
   /* ---- CRASH FIX: Image picker request guard ---- */
   const imagePickerLock = useRef(false);
+  const isCreatingRef = useRef(false);
   const isMounted = useRef(true);
 
   /* ---- Refs ---- */
@@ -165,6 +169,8 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
 
   /* ---- Derived / Memoized ---- */
   const ageDisplay = useMemo(() => calculateAge(birthDate.toISOString()), [birthDate, calculateAge]);
+  const ageMonths = useMemo(() => getAgeInMonths(birthDate.toISOString()), [birthDate]);
+  const suggestions = useMeasurementSuggestions(gender, ageMonths);
 
   /* FIX #1: Safely resolve gradient colors with fallback for undefined secondary */
   const gradientColors = useMemo<[string, string, string]>(() => {
@@ -381,9 +387,23 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
 
   /* ---- Profile creation ---- */
   /* FIX #2: Remove setTimeout race condition, use proper async/await flow */
-  const handleCreateProfile = useCallback(async () => {
+  const handleCreateProfile = useCallback(async (andContinue = false) => {
+    if (isCreatingRef.current) {
+      showError('A profile is already being created');
+      return;
+    }
     if (!validateStep1() || !validateStep2()) return;
 
+    // Duplicate guard
+    const trimmedName = name.trim();
+    const birthIso = birthDate.toISOString();
+    const duplicate = babies.find(b => b.name === trimmedName && b.birthDate === birthIso);
+    if (duplicate) {
+      showError('A baby with this name and birth date already exists');
+      return;
+    }
+
+    isCreatingRef.current = true;
     setIsLoading(true);
     triggerHaptic('medium');
 
@@ -394,8 +414,8 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
       const avatarToSave = hasCustomImage ? '👶' : avatar;
 
       babyId = await createBaby({
-        name: name.trim(),
-        birthDate: birthDate.toISOString(),
+        name: trimmedName,
+        birthDate: birthIso,
         gender,
         skinTone,
         avatar: avatarToSave,
@@ -409,7 +429,6 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
       if (!babyId) {
         if (isMounted.current) {
           showError('Failed to create profile. Please try again.');
-          setIsLoading(false);
         }
         return;
       }
@@ -430,23 +449,16 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
       }
 
       if (isMounted.current) {
-        showSuccess(`${name.trim()}'s profile created successfully`);
+        showSuccess(`${trimmedName}'s profile created successfully`);
       }
 
       if (!isMounted.current) return;
 
       try {
-        // Give the database a moment to settle before reloading
-        await new Promise(r => setTimeout(r, 300));
         await loadBabies();
 
         if (!isMounted.current) return;
 
-        /* Babies are persisted to the SQLite/Drizzle database via BabyContext,
-           so verify against the DB. The legacy @littleloom_babies AsyncStorage
-           key is no longer written and always failed this check */
-
-        // Save the creator's relationship so FamilyContext can show "Father", "Mother", etc.
         try {
           await setAppSetting(`parent1_relationship_${babyId}`, creatorRelationship);
         } catch (e) {
@@ -459,49 +471,65 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
           console.error('CRITICAL: Baby profile was not persisted to the database!');
           if (isMounted.current) {
             showError('Profile could not be saved. Please try again.');
-            setIsLoading(false);
           }
           return;
         }
 
         console.log('✅ Baby profile verified in database:', persisted.id);
 
-        // Make the new baby active so FamilyContext and the rest of the app see it immediately
         try {
           await switchBaby(babyId);
         } catch (switchErr) {
           console.warn('Failed to auto-switch to new baby:', switchErr);
         }
 
-        // Call completeSetup LAST after everything is persisted and switched
-        // This updates AuthContext state → AppNavigator navState → MAIN
-        let setupSuccess = false;
-        try {
-          setupSuccess = await completeSetup('baby');
-        } catch (setupError) {
-          console.warn('completeSetup threw error:', setupError);
+        // Only mark setup complete if this is the very first baby
+        if (babies.length === 0) {
+          try {
+            await completeSetup('baby');
+          } catch (setupError) {
+            console.warn('completeSetup threw error:', setupError);
+          }
         }
 
-        if (!setupSuccess) {
-          console.warn('completeSetup returned false, but baby profile was created — proceeding to Main');
-        }
-
-        // Force navigation reset to Main to ensure we leave this screen
-        // The navState effect will handle this, but as a fallback:
-        if (isMounted.current) {
-          setIsLoading(false);
+        if (andContinue) {
+          if (navigation.canGoBack()) {
+            navigation.goBack();
+          } else {
+            navigation.replace('Main');
+          }
+        } else {
+          // Reset form for adding another baby
+          setName('');
+          setBirthDate(new Date());
+          setGender('boy');
+          setSkinTone(0);
+          setAvatar('👶');
+          setWeight('');
+          setHeight('');
+          setBloodType('');
+          setAllergies('');
+          setMedicalNotes('');
+          setCurrentStep(1);
+          scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+          if (isMounted.current) {
+            showSuccess('You can add another baby now, or tap Continue when done');
+          }
         }
       } catch (navError) {
         console.error('Post-create error:', navError);
         if (isMounted.current) {
           showError('Could not finalize setup');
-          setIsLoading(false);
         }
       }
     } catch (error) {
       console.error('Create baby error:', error);
       if (isMounted.current) {
         showError('An unexpected error occurred. Please try again.');
+      }
+    } finally {
+      isCreatingRef.current = false;
+      if (isMounted.current) {
         setIsLoading(false);
       }
     }
@@ -516,6 +544,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
     bloodType,
     allergies,
     medicalNotes,
+    babies,
     createBaby,
     updateBaby,
     loadBabies,
@@ -533,6 +562,34 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
   /* ---- Keyboard handling ---- */
   const kbBehavior = Platform.OS === 'ios' ? 'padding' : undefined;
   const kbEnabled = Platform.OS === 'ios';
+
+  /* ---- WHO Suggestion Pill ---- */
+  const SuggestionPill = ({
+    label,
+    low,
+    median,
+    high,
+    unit,
+    onUseMedian,
+  }: {
+    label: string;
+    low: number;
+    median: number;
+    high: number;
+    unit: string;
+    onUseMedian?: () => void;
+  }) => (
+    <View style={styles.pill}>
+      <Text style={styles.pillLabel}>{label}</Text>
+      <Text style={styles.pillValue}>{low}–{high}</Text>
+      <Text style={styles.pillUnit}>{unit}</Text>
+      {onUseMedian && (
+        <TouchableOpacity onPress={onUseMedian} style={styles.useMedianBtn}>
+          <Text style={styles.useMedianText}>Use {median}</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
 
   /* ---- Render helpers ---- */
   const renderDatePicker = () => {
@@ -815,6 +872,43 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
         Optional Health Information
       </Text>
 
+      {suggestions && (
+        <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(120)} style={styles.suggestionsCard}>
+          <BlurView intensity={80} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
+          <View style={styles.suggestionHeader}>
+            <Ionicons name="information-circle" size={18} color={themeColors.primary} />
+            <Text style={[styles.suggestionTitle, isDark && styles.textDark]}>
+              WHO Growth Reference ({ageMonths === 0 ? 'Newborn' : `${ageMonths} mo`})
+            </Text>
+          </View>
+          <View style={styles.suggestionRow}>
+            <SuggestionPill
+              label="Weight"
+              low={suggestions.weight.low}
+              median={suggestions.weight.median}
+              high={suggestions.weight.high}
+              unit="kg"
+              onUseMedian={() => setWeight(String(suggestions.weight.median))}
+            />
+            <SuggestionPill
+              label="Height"
+              low={suggestions.height.low}
+              median={suggestions.height.median}
+              high={suggestions.height.high}
+              unit="cm"
+              onUseMedian={() => setHeight(String(suggestions.height.median))}
+            />
+            <SuggestionPill
+              label="Head"
+              low={suggestions.head.low}
+              median={suggestions.head.median}
+              high={suggestions.head.high}
+              unit="cm"
+            />
+          </View>
+        </Animated.View>
+      )}
+
       <View style={styles.inputGroup}>
         <Text style={[styles.label, isDark && styles.textDark]}>Weight (kg)</Text>
         <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
@@ -1032,16 +1126,15 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    style={[styles.createButton, isLoading && styles.buttonDisabled]}
-                    onPress={handleCreateProfile}
+                    style={[styles.createButton, { flex: 1.5 }, isLoading && styles.buttonDisabled]}
+                    onPress={() => handleCreateProfile(false)}
                     disabled={isLoading}
                     activeOpacity={0.8}
-                    accessibilityLabel="Create profile"
+                    accessibilityLabel="Create profile and add another"
                     accessibilityRole="button"
                     accessibilityState={{ disabled: isLoading }}
                   >
                     <LinearGradient
-                      /* FIX #1: Use resolved secondaryColor instead of themeColors.secondary */
                       colors={[themeColors.primary, secondaryColor]}
                       style={styles.buttonGradient}
                       start={{ x: 0, y: 0 }}
@@ -1051,8 +1144,34 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
                         <ActivityIndicator color="#fff" />
                       ) : (
                         <>
-                          <Text style={styles.buttonText}>Create Profile</Text>
-                          <Ionicons name="checkmark" size={20} color="#fff" />
+                          <Ionicons name="add-circle" size={20} color="#fff" />
+                          <Text style={styles.buttonText}>Create & Add Another</Text>
+                        </>
+                      )}
+                    </LinearGradient>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.createButton, { flex: 1.5 }, isLoading && styles.buttonDisabled]}
+                    onPress={() => handleCreateProfile(true)}
+                    disabled={isLoading}
+                    activeOpacity={0.8}
+                    accessibilityLabel="Create profile and continue"
+                    accessibilityRole="button"
+                    accessibilityState={{ disabled: isLoading }}
+                  >
+                    <LinearGradient
+                      colors={['#10b981', '#059669']}
+                      style={styles.buttonGradient}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                    >
+                      {isLoading ? (
+                        <ActivityIndicator color="#fff" />
+                      ) : (
+                        <>
+                          <Text style={styles.buttonText}>Create & Continue</Text>
+                          <Ionicons name="arrow-forward" size={20} color="#fff" />
                         </>
                       )}
                     </LinearGradient>
@@ -1329,4 +1448,30 @@ const styles = StyleSheet.create({
   backStepText: { fontSize: 16, fontWeight: '700' },
   createButton: { flex: 2, borderRadius: 16, overflow: 'hidden' },
   buttonDisabled: { opacity: 0.6 },
+
+  /* WHO Suggestions */
+  suggestionsCard: {
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(102,126,234,0.2)',
+    backgroundColor: 'rgba(255,255,255,0.5)',
+  },
+  suggestionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  suggestionTitle: { fontSize: 14, fontWeight: '800', color: '#1e293b', flex: 1 },
+  suggestionRow: { flexDirection: 'row', gap: 10 },
+  pill: {
+    flex: 1,
+    backgroundColor: 'rgba(102,126,234,0.08)',
+    borderRadius: 14,
+    padding: 12,
+    alignItems: 'center',
+  },
+  pillLabel: { fontSize: 12, fontWeight: '700', color: '#64748b', marginBottom: 4 },
+  pillValue: { fontSize: 13, fontWeight: '800', color: '#1e293b' },
+  pillUnit: { fontSize: 11, color: '#94a3b8', marginTop: 2 },
+  useMedianBtn: { marginTop: 6, paddingHorizontal: 8, paddingVertical: 4, backgroundColor: 'rgba(102,126,234,0.15)', borderRadius: 8 },
+  useMedianText: { fontSize: 11, color: '#667eea', fontWeight: '700' },
 });
