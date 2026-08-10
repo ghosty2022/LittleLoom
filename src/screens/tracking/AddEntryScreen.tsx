@@ -23,6 +23,7 @@ import { useCustomization } from '../../hooks/useCustomization';
 import { useUnifiedTrackerTheme } from '../../hooks/useUnifiedTrackerTheme';
 
 import { useTracker } from '../../context/TrackerContext';
+import { useBaby } from '../../context/BabyContext';
 import { UnifiedTrackerConfig } from '../../types/trackers';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { useSweetAlert } from '../../components/SweetAlert';
@@ -940,7 +941,8 @@ function TrackerContent({
     shouldReduceMotion,
   } = useCustomization();
   const { success, error } = useSweetAlert();
-  const { getEntries, currentBaby, addEntry } = useTracker();
+  const { getEntries, addEntry } = useTracker();
+  const { currentBaby } = useBaby();
   const insets = useSafeAreaInsets();
 
   // ═══════════════════════════════════════════════════════════════
@@ -967,7 +969,10 @@ function TrackerContent({
   } = progressive;
 
   // ─── Derived State ─────────────────────────────────────────────
-  const recentEntries = useMemo(() => tracker ? getEntries(tracker.id, 3) : [], [tracker, getEntries]);
+  const recentEntries = useMemo(() => {
+    if (!tracker || !currentBaby) return [];
+    return getEntries(tracker.id, 3);
+  }, [tracker, getEntries, currentBaby]);
 
   const visibleCorrelations = useMemo(() =>
     correlations.filter((c: any) => !dismissedCorrelations.has(c.id)),
@@ -982,7 +987,7 @@ function TrackerContent({
   const hasYesterdayEntries = yesterdayEntries.length > 0;
 
   const entriesToday = useMemo(() => {
-    if (!tracker) return 0;
+    if (!tracker || !currentBaby) return 0;
     const todayStart = startOfDay(new Date()).getTime();
     const todayEnd = endOfDay(new Date()).getTime();
     return getEntries(tracker.id).filter((e: any) => {
@@ -992,7 +997,7 @@ function TrackerContent({
   }, [tracker, getEntries]);
 
   const lastEntryTime = useMemo(() => {
-    if (!tracker) return null;
+    if (!tracker || !currentBaby) return null;
     const entries = getEntries(tracker.id).sort((a: any, b: any) => b.timestamp - a.timestamp);
     return entries.length > 0 ? new Date(entries[0].timestamp) : null;
   }, [tracker, getEntries]);
@@ -1058,7 +1063,7 @@ function TrackerContent({
   }, [tracker, suggestions, pendingData]);
 
   const contextInsights = useMemo((): ContextInsight[] => {
-    if (!tracker) return [];
+    if (!tracker || !currentBaby) return [];
     const items: ContextInsight[] = [];
     if (entriesToday === 0) {
       items.push({ id: 'first-entry', type: 'tip', message: `First ${tracker.name.toLowerCase()} of the day. Great time to log!`, emoji: '\u2728', color: '#10b981', priority: 'low' });
@@ -1084,7 +1089,7 @@ function TrackerContent({
   }, [selectedTrackerId, refreshProgressive]);
 
   useEffect(() => {
-    if (!tracker || editEntryId) return;
+    if (!tracker || editEntryId || !currentBaby) return;
     const yesterday = subDays(new Date(), 1);
     const yesterdayStart = startOfDay(yesterday).getTime();
     const yesterdayEnd = endOfDay(yesterday).getTime();
@@ -1597,6 +1602,16 @@ export default function AddEntryScreen() {
     photoUris?: string[];
   }>({});
 
+  const [showBabyRequiredModal, setShowBabyRequiredModal] = useState(false);
+
+  // ─── Auto baby-profile prompt ───────────────────────────────────
+  useEffect(() => {
+    if (!babyLoading && !currentBaby) {
+      const timer = setTimeout(() => setShowBabyRequiredModal(true), 400);
+      return () => clearTimeout(timer);
+    }
+  }, [babyLoading, currentBaby]);
+
   // ─── Derived (no hooks inside) ──────────────────────────────────
   const tracker = useMemo(() =>
     selectedTrackerId ? getTracker(selectedTrackerId) : undefined,
@@ -1659,39 +1674,101 @@ export default function AddEntryScreen() {
 
   // ─── Render: Full Tracker Content ──────────────────────────────
   return (
-    <TrackerContent
-      tracker={tracker}
-      selectedTrackerId={selectedTrackerId}
-      date={date}
-      setDate={setDate}
-      pendingData={pendingData}
-      setPendingData={setPendingData}
-      pendingOptions={pendingOptions}
-      setPendingOptions={setPendingOptions}
-      showConfirm={showConfirm}
-      setShowConfirm={setShowConfirm}
-      showYesterdayModal={showYesterdayModal}
-      setShowYesterdayModal={setShowYesterdayModal}
-      yesterdayEntries={yesterdayEntries}
-      setYesterdayEntries={setYesterdayEntries}
-      errors={errors}
-      setErrors={setErrors}
-      dismissedCorrelations={dismissedCorrelations}
-      setDismissedCorrelations={setDismissedCorrelations}
-      dismissedReminders={dismissedReminders}
-      setDismissedReminders={setDismissedReminders}
-      appliedCorrelationPrefill={appliedCorrelationPrefill}
-      setAppliedCorrelationPrefill={setAppliedCorrelationPrefill}
-      appliedSuggestions={appliedSuggestions}
-      setAppliedSuggestions={setAppliedSuggestions}
-      editEntryId={editEntryId}
-      route={route}
-      navigation={navigation}
-      showPicker={showPicker}
-      setShowPicker={setShowPicker}
-      handleTrackerSelect={handleTrackerSelect}
-      handlePickerClose={handlePickerClose}
-    />
+    <View style={{ flex: 1 }}>
+      {showPicker ? (
+        <View style={[styles.container, { backgroundColor: fullThemeColors.background }]}>
+          <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+          <TimelinePicker
+            visible={showPicker}
+            onClose={handlePickerClose}
+            onSelect={handleTrackerSelect}
+            currentBabyName={currentBaby?.name}
+            currentBabyAvatar={currentBaby?.avatar}
+          />
+        </View>
+      ) : !tracker ? (
+        <View style={[styles.container, { justifyContent: 'center', alignItems: 'center', backgroundColor: fullThemeColors.background }]}>
+          <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+          <Ionicons name="alert-circle-outline" size={48} color={fullThemeColors.textSecondary} />
+          <Text style={[styles.errorText, { color: fullThemeColors.textSecondary, fontSize: 18 }]}>Tracker not found</Text>
+        </View>
+      ) : (
+        <TrackerContent
+          tracker={tracker}
+          selectedTrackerId={selectedTrackerId}
+          date={date}
+          setDate={setDate}
+          pendingData={pendingData}
+          setPendingData={setPendingData}
+          pendingOptions={pendingOptions}
+          setPendingOptions={setPendingOptions}
+          showConfirm={showConfirm}
+          setShowConfirm={setShowConfirm}
+          showYesterdayModal={showYesterdayModal}
+          setShowYesterdayModal={setShowYesterdayModal}
+          yesterdayEntries={yesterdayEntries}
+          setYesterdayEntries={setYesterdayEntries}
+          errors={errors}
+          setErrors={setErrors}
+          dismissedCorrelations={dismissedCorrelations}
+          setDismissedCorrelations={setDismissedCorrelations}
+          dismissedReminders={dismissedReminders}
+          setDismissedReminders={setDismissedReminders}
+          appliedCorrelationPrefill={appliedCorrelationPrefill}
+          setAppliedCorrelationPrefill={setAppliedCorrelationPrefill}
+          appliedSuggestions={appliedSuggestions}
+          setAppliedSuggestions={setAppliedSuggestions}
+          editEntryId={editEntryId}
+          route={route}
+          navigation={navigation}
+          showPicker={showPicker}
+          setShowPicker={setShowPicker}
+          handleTrackerSelect={handleTrackerSelect}
+          handlePickerClose={handlePickerClose}
+        />
+      )}
+
+      {/* Baby Required Modal */}
+      <Modal
+        visible={showBabyRequiredModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowBabyRequiredModal(false)}
+      >
+        <Pressable
+          style={styles.babyModalOverlay}
+          onPress={() => setShowBabyRequiredModal(false)}
+        >
+          <View style={[styles.babyModalContent, { backgroundColor: isDark ? 'rgba(26,26,42,0.98)' : 'rgba(255,255,255,0.98)' }]}>
+            <View style={styles.babyModalIconWrap}>
+              <LinearGradient colors={[(themeColors?.secondary || '#fa709a'), (themeColors?.primary || '#667eea')]} style={styles.babyModalIconGradient}>
+                <Ionicons name="people-outline" size={32} color="#fff" />
+              </LinearGradient>
+            </View>
+            <Text style={[styles.babyModalTitle, { color: fullThemeColors?.text || '#1a1a1a' }]}>Baby Profile Needed</Text>
+            <Text style={[styles.babyModalDesc, { color: fullThemeColors?.textSecondary || '#64748b' }]}>
+              Create a baby profile to start tracking activities and unlock all features.
+            </Text>
+            <TouchableOpacity
+              style={[styles.babyModalPrimaryBtn, { backgroundColor: themeColors?.primary || '#667eea' }]}
+              onPress={() => {
+                setShowBabyRequiredModal(false);
+                navigation.navigate('CreateBabyProfile');
+              }}
+            >
+              <Text style={styles.babyModalPrimaryBtnText}>Create Baby Profile</Text>
+              <Ionicons name="arrow-forward" size={16} color="#fff" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.babyModalSecondaryBtn}
+              onPress={() => setShowBabyRequiredModal(false)}
+            >
+              <Text style={[styles.babyModalSecondaryBtnText, { color: fullThemeColors?.textMuted || '#94a3b8' }]}>Maybe Later</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
+    </View>
   );
 }
 
@@ -1820,4 +1897,73 @@ const styles = StyleSheet.create({
 
   formWrapper: { marginTop: 8, paddingHorizontal: 16 },
   bottomPadding: { height: 100 },
+
+  // ── Baby Required Modal ──
+  babyModalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  babyModalContent: {
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: 28,
+    padding: 28,
+    alignItems: 'center',
+  },
+  babyModalIconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 24,
+    marginBottom: 16,
+    overflow: 'hidden',
+  },
+  babyModalIconGradient: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  babyModalTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    marginBottom: 8,
+    textAlign: 'center',
+    letterSpacing: -0.3,
+  },
+  babyModalDesc: {
+    fontSize: 15,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 24,
+    paddingHorizontal: 8,
+  },
+  babyModalPrimaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    paddingVertical: 16,
+    borderRadius: 18,
+    gap: 8,
+    marginBottom: 12,
+  },
+  babyModalPrimaryBtnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  babyModalSecondaryBtn: {
+    width: '100%',
+    paddingVertical: 14,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  babyModalSecondaryBtnText: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
 });
