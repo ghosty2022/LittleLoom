@@ -841,7 +841,7 @@ function SettingsScreen({ navigation, route }: SettingsScreenProps) {
   } = useSecurity();
   const { profile: userContextProfile } = useUser();
   const { guardians, parent2: parent2Profile } = useFamily();
-  const { entries } = useActivity();
+  const { entries, loadEntries } = useActivity();
   const { pickImage } = useMedia();
   const sweetAlert = useSweetAlert();
   const { isNavVisible, showNav } = useApp();
@@ -977,11 +977,12 @@ function SettingsScreen({ navigation, route }: SettingsScreenProps) {
     navigation.navigate('EditProfile', { mode: 'baby', babyId: baby.id });
   }, [navigation]);
 
-  // Refresh baby data when returning from SwitchBaby screen
+  // Refresh all dynamic data instantly every time this screen comes into focus
   useFocusEffect(
     useCallback(() => {
       loadBabies();
-    }, [loadBabies])
+      loadEntries?.();
+    }, [loadBabies, loadEntries])
   );
 
   // Handle babySwitched param from SwitchBaby screen

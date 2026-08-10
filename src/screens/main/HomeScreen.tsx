@@ -1666,12 +1666,7 @@ const [pendingAction, setPendingAction] = useState<QuickAction | null>(null);
     return () => { clearInterval(timer); };
   }, []);
 
- useEffect(() => {
-    loadBabies();
-    loadActivities();
-  }, [loadBabies, loadActivities]);
-
-  // Refresh data when screen comes into focus (e.g., after baby switch)
+  // Refresh instantly every time the tab/screen comes into focus
   useFocusEffect(
     useCallback(() => {
       loadBabies();

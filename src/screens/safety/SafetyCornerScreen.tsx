@@ -25,6 +25,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import * as Contacts from 'expo-contacts';
 import * as Notifications from 'expo-notifications';
 import * as DocumentPicker from 'expo-document-picker';
@@ -1035,6 +1036,15 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
   const [activeTab, setActiveTab] = useState<SafetyTab>('overview');
   const [selectedTopic, setSelectedTopic] = useState<SafetyTopic | null>(null);
   const [showTopicModal, setShowTopicModal] = useState(false);
+
+  // Refresh instantly every time this tab becomes active
+  useFocusEffect(
+    useCallback(() => {
+      // Add your safety-context refreshers here if available:
+      // e.g. refreshSafetyData?.(); refreshChecklists?.(); refreshGrowth?.();
+      // If those methods don't exist yet, wire them into your hooks/contexts.
+    }, [])
+  );
   const [showChecklistModal, setShowChecklistModal] = useState(false);
   const [showContactModal, setShowContactModal] = useState(false);
   const [showReminderModal, setShowReminderModal] = useState(false);
