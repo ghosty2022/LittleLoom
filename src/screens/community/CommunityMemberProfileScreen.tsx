@@ -1,3 +1,4 @@
+// src/screens/community/CommunityMemberProfileScreen.tsx
 import {
   StyleSheet,
   Dimensions,
@@ -106,117 +107,128 @@ const SectionHeader = React.memo(({ title, subtitle, action, actionLabel, isDark
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   return (
     <View style={styles.sectionHeader}>
-    <View>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      {subtitle && <Text style={styles.sectionSubtitle}>{subtitle}</Text>}
+      <View>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        {subtitle && <Text style={styles.sectionSubtitle}>{subtitle}</Text>}
+      </View>
+      {action && (
+        <TouchableOpacity onPress={action} style={styles.sectionAction}>
+          <Text style={styles.sectionActionText}>{actionLabel || 'See All'}</Text>
+          <Ionicons name="chevron-forward" size={14} color="#6366f1" />
+        </TouchableOpacity>
+      )}
     </View>
-    {action && (
-      <TouchableOpacity onPress={action} style={styles.sectionAction}>
-        <Text style={styles.sectionActionText}>{actionLabel || 'See All'}</Text>
-        <Ionicons name="chevron-forward" size={14} color="#6366f1" />
-      </TouchableOpacity>
-    )}
-  </View>
+  );
 });
+
 const KpiPill = React.memo(({ icon, value, label, color, onPress, isDark, colors }: any) => {
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={styles.kpiPill}>
-    <LinearGradient colors={[`${color}15`, `${color}05`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
-    <View style={[styles.kpiPillIconBg, { backgroundColor: `${color}15` }]}>
-      <Text style={styles.kpiPillEmoji}>{icon}</Text>
-    </View>
-    <View style={styles.kpiPillBody}>
-      <Text style={[styles.kpiPillValue, { color }]}>{value}</Text>
-      <Text style={styles.kpiPillLabel}>{label}</Text>
-    </View>
-  </TouchableOpacity>
-));
-const EngagementInsightsCard = React.memo(({ insights }: any) => (
-  <Animated.View entering={FadeInUp.delay(100).springify()}>
-    <GlassCard>
-      <View style={styles.insightsHeader}>
-        <View style={[styles.insightsIconBg, { backgroundColor: `${TC.primary}15` }]}>
-          <Ionicons name="analytics" size={20} color={TC.primary} />
-        </View>
-        <View style={styles.insightsTitleWrap}>
-          <Text style={styles.insightsTitle}>Engagement Insights</Text>
-          <Text style={styles.insightsSubtitle}>How this parent connects</Text>
-        </View>
+      <LinearGradient colors={[`${color}15`, `${color}05`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+      <View style={[styles.kpiPillIconBg, { backgroundColor: `${color}15` }]}>
+        <Text style={styles.kpiPillEmoji}>{icon}</Text>
       </View>
-      <View style={styles.insightsGrid}>
-        {insights.map((insight: any, i: number) => (
-          <View key={insight.label} style={[styles.insightItem, i < insights.length - 1 && { borderRightWidth: 1, borderRightColor: 'rgba(255,255,255,0.06)' }]}>
-            <Text style={styles.insightItemIcon}>{insight.icon}</Text>
-            <Text style={[styles.insightItemValue, { color: insight.color }]}>{insight.value}</Text>
-            <Text style={styles.insightItemLabel}>{insight.label}</Text>
-            <View style={styles.insightTrendRow}>
-              <Ionicons name={insight.trend >= 0 ? 'trending-up' : 'trending-down'} size={12} color={insight.trend >= 0 ? '#10b981' : '#ef4444'} />
-              <Text style={[styles.insightTrendText, { color: insight.trend >= 0 ? '#10b981' : '#ef4444' }]}>
-                {insight.trend > 0 ? '+' : ''}{insight.trend}%
-              </Text>
-            </View>
-          </View>
-        ))}
+      <View style={styles.kpiPillBody}>
+        <Text style={[styles.kpiPillValue, { color }]}>{value}</Text>
+        <Text style={styles.kpiPillLabel}>{label}</Text>
       </View>
-    </GlassCard>
-  </Animated.View>
-));
+    </TouchableOpacity>
+  );
+});
 
-const CommunityInfluenceCard = React.memo(({ influence }: any) => (
-  <Animated.View entering={FadeInUp.delay(150).springify()}>
-    <GlassCard>
-      <View style={styles.influenceHeader}>
-        <View style={[styles.influenceIconBg, { backgroundColor: `${TC.purple}15` }]}>
-          <Ionicons name="trophy" size={20} color={TC.purple} />
-        </View>
-        <View style={styles.influenceTitleWrap}>
-          <Text style={styles.influenceTitle}>Community Influence</Text>
-          <Text style={styles.influenceSubtitle}>Top {influence.percentile}% of members</Text>
-        </View>
-        <View style={[styles.influenceScoreBadge, { backgroundColor: `${TC.purple}12` }]}>
-          <Text style={[styles.influenceScoreText, { color: TC.purple }]}>{influence.score}</Text>
-        </View>
-      </View>
-      <View style={styles.influenceRankRow}>
-        <View style={[styles.influenceRankBadge, { backgroundColor: `${TC.purple}12` }]}>
-          <Text style={[styles.influenceRankText, { color: TC.purple }]}>{influence.rank}</Text>
-        </View>
-        <View style={styles.influenceProgressWrap}>
-          <View style={styles.influenceProgressLabelRow}>
-            <Text style={styles.influenceProgressLabel}>Next rank</Text>
-            <Text style={[styles.influenceProgressValue, { color: TC.purple }]}>{influence.percentile}%</Text>
+const EngagementInsightsCard = React.memo(({ insights, isDark, colors }: any) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
+  return (
+    <Animated.View entering={FadeInUp.delay(100).springify()}>
+      <GlassCard isDark={isDark} colors={colors}>
+        <View style={styles.insightsHeader}>
+          <View style={[styles.insightsIconBg, { backgroundColor: `${TC.primary}15` }]}>
+            <Ionicons name="analytics" size={20} color={TC.primary} />
           </View>
-          <View style={styles.influenceProgressBarBg}>
-            <Animated.View entering={FadeInRight.delay(300).springify()} style={[styles.influenceProgressBarFill, { width: `${influence.percentile}%`, backgroundColor: TC.purple }]} />
+          <View style={styles.insightsTitleWrap}>
+            <Text style={styles.insightsTitle}>Engagement Insights</Text>
+            <Text style={styles.insightsSubtitle}>How this parent connects</Text>
           </View>
         </View>
-      </View>
-      {influence.topContributors.length > 0 && (
-        <View style={styles.influenceContributors}>
-          <Text style={styles.influenceContributorsLabel}>Connected with</Text>
-          <View style={styles.influenceAvatarStack}>
-            {influence.topContributors.map((c: any, i: number) => (
-              <View key={c.id} style={[styles.influenceAvatar, { marginLeft: i > 0 ? -10 : 0, zIndex: influence.topContributors.length - i }]}>
-                <SafeAvatar avatar={c.avatar} size={28} fallbackIcon="person" fallbackColor={TC.purple} />
+        <View style={styles.insightsGrid}>
+          {insights.map((insight: any, i: number) => (
+            <View key={insight.label} style={[styles.insightItem, i < insights.length - 1 && { borderRightWidth: 1, borderRightColor: 'rgba(255,255,255,0.06)' }]}>
+              <Text style={styles.insightItemIcon}>{insight.icon}</Text>
+              <Text style={[styles.insightItemValue, { color: insight.color }]}>{insight.value}</Text>
+              <Text style={styles.insightItemLabel}>{insight.label}</Text>
+              <View style={styles.insightTrendRow}>
+                <Ionicons name={insight.trend >= 0 ? 'trending-up' : 'trending-down'} size={12} color={insight.trend >= 0 ? '#10b981' : '#ef4444'} />
+                <Text style={[styles.insightTrendText, { color: insight.trend >= 0 ? '#10b981' : '#ef4444' }]}>
+                  {insight.trend > 0 ? '+' : ''}{insight.trend}%
+                </Text>
               </View>
-            ))}
-            <View style={[styles.influenceAvatarMore, { backgroundColor: `${TC.purple}20` }]}>
-              <Text style={[styles.influenceAvatarMoreText, { color: TC.purple }]}>+{influence.topContributors.length}</Text>
+            </View>
+          ))}
+        </View>
+      </GlassCard>
+    </Animated.View>
+  );
+});
+
+const CommunityInfluenceCard = React.memo(({ influence, isDark, colors }: any) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
+  return (
+    <Animated.View entering={FadeInUp.delay(150).springify()}>
+      <GlassCard isDark={isDark} colors={colors}>
+        <View style={styles.influenceHeader}>
+          <View style={[styles.influenceIconBg, { backgroundColor: `${TC.purple}15` }]}>
+            <Ionicons name="trophy" size={20} color={TC.purple} />
+          </View>
+          <View style={styles.influenceTitleWrap}>
+            <Text style={styles.influenceTitle}>Community Influence</Text>
+            <Text style={styles.influenceSubtitle}>Top {influence.percentile}% of members</Text>
+          </View>
+          <View style={[styles.influenceScoreBadge, { backgroundColor: `${TC.purple}12` }]}>
+            <Text style={[styles.influenceScoreText, { color: TC.purple }]}>{influence.score}</Text>
+          </View>
+        </View>
+        <View style={styles.influenceRankRow}>
+          <View style={[styles.influenceRankBadge, { backgroundColor: `${TC.purple}12` }]}>
+            <Text style={[styles.influenceRankText, { color: TC.purple }]}>{influence.rank}</Text>
+          </View>
+          <View style={styles.influenceProgressWrap}>
+            <View style={styles.influenceProgressLabelRow}>
+              <Text style={styles.influenceProgressLabel}>Next rank</Text>
+              <Text style={[styles.influenceProgressValue, { color: TC.purple }]}>{influence.percentile}%</Text>
+            </View>
+            <View style={styles.influenceProgressBarBg}>
+              <Animated.View entering={FadeInRight.delay(300).springify()} style={[styles.influenceProgressBarFill, { width: `${influence.percentile}%`, backgroundColor: TC.purple }]} />
             </View>
           </View>
         </View>
-      )}
-    </GlassCard>
-  </Animated.View>
-));
+        {influence.topContributors.length > 0 && (
+          <View style={styles.influenceContributors}>
+            <Text style={styles.influenceContributorsLabel}>Connected with</Text>
+            <View style={styles.influenceAvatarStack}>
+              {influence.topContributors.map((c: any, i: number) => (
+                <View key={c.id} style={[styles.influenceAvatar, { marginLeft: i > 0 ? -10 : 0, zIndex: influence.topContributors.length - i }]}>
+                  <SafeAvatar avatar={c.avatar} size={28} fallbackIcon="person" fallbackColor={TC.purple} />
+                </View>
+              ))}
+              <View style={[styles.influenceAvatarMore, { backgroundColor: `${TC.purple}20` }]}>
+                <Text style={[styles.influenceAvatarMoreText, { color: TC.purple }]}>+{influence.topContributors.length}</Text>
+              </View>
+            </View>
+          </View>
+        )}
+      </GlassCard>
+    </Animated.View>
+  );
+});
 
-const ContentHighlightsCard = React.memo(({ highlights, onPostPress }: any) => {
+const ContentHighlightsCard = React.memo(({ highlights, onPostPress, isDark, colors }: any) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   if (!highlights.topPost) return null;
   const topicColor = TOPIC_COLORS[highlights.topPost.topicId] || TC.primary;
   return (
     <Animated.View entering={FadeInUp.delay(200).springify()}>
-      <GlassCard>
+      <GlassCard isDark={isDark} colors={colors}>
         <View style={styles.highlightsHeader}>
           <Text style={styles.highlightsTitle}>Content Highlights</Text>
           <View style={[styles.highlightsBadge, { backgroundColor: `${topicColor}12` }]}>
@@ -265,11 +277,12 @@ const ContentHighlightsCard = React.memo(({ highlights, onPostPress }: any) => {
   );
 });
 
-const ActivityPatternGraph = React.memo(({ data }: any) => {
+const ActivityPatternGraph = React.memo(({ data, isDark, colors }: any) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   const maxVal = Math.max(...data.map((d: any) => d.activity), 1);
   return (
     <Animated.View entering={FadeInUp.delay(250).springify()}>
-      <GlassCard>
+      <GlassCard isDark={isDark} colors={colors}>
         <View style={styles.patternHeader}>
           <Text style={styles.patternTitle}>Activity Pattern</Text>
           <View style={styles.patternLiveBadge}>
@@ -298,11 +311,12 @@ const ActivityPatternGraph = React.memo(({ data }: any) => {
   );
 });
 
-const MutualConnections = React.memo(({ connections, onPress }: any) => {
+const MutualConnections = React.memo(({ connections, onPress, isDark, colors }: any) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   if (connections.length === 0) return null;
   return (
     <Animated.View entering={FadeInUp.delay(300).springify()}>
-      <SectionHeader title="Mutual Connections" subtitle="Parents you both know" />
+      <SectionHeader title="Mutual Connections" subtitle="Parents you both know" isDark={isDark} colors={colors} />
       <View style={styles.mutualScroll}>
         {connections.map((conn: any) => (
           <TouchableOpacity key={conn.id} onPress={() => onPress(conn.id)} style={styles.mutualCard}>
@@ -317,11 +331,12 @@ const MutualConnections = React.memo(({ connections, onPress }: any) => {
   );
 });
 
-const SmartActions = React.memo(({ actions }: any) => {
+const SmartActions = React.memo(({ actions, isDark, colors }: any) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   if (actions.length === 0) return null;
   return (
     <Animated.View entering={FadeInUp.delay(350).springify()}>
-      <SectionHeader title="Smart Actions" subtitle="Quick ways to connect" />
+      <SectionHeader title="Smart Actions" subtitle="Quick ways to connect" isDark={isDark} colors={colors} />
       <View style={styles.actionsGrid}>
         {actions.map((action: any) => (
           <TouchableOpacity key={action.id} onPress={action.action} style={styles.actionCard}>
@@ -338,7 +353,8 @@ const SmartActions = React.memo(({ actions }: any) => {
   );
 });
 
-const ParentingTipsEngine = React.memo(({ userPosts, member }: any) => {
+const ParentingTipsEngine = React.memo(({ userPosts, member, isDark, colors }: any) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   const tips = useMemo(() => {
     const items: ParentingTip[] = [];
     const topicCounts = userPosts.reduce((acc: any, p: any) => { acc[p.topicId] = (acc[p.topicId] || 0) + 1; return acc; }, {});
@@ -356,7 +372,7 @@ const ParentingTipsEngine = React.memo(({ userPosts, member }: any) => {
   if (tips.length === 0) return null;
   return (
     <Animated.View entering={FadeInUp.delay(400).springify()}>
-      <SectionHeader title="Parenting Insights" subtitle="Personalized for this parent" />
+      <SectionHeader title="Parenting Insights" subtitle="Personalized for this parent" isDark={isDark} colors={colors} />
       <View style={styles.tipsList}>
         {tips.map((tip) => (
           <View key={tip.id} style={[styles.tipCard, { borderLeftColor: tip.color }]}>
@@ -374,7 +390,8 @@ const ParentingTipsEngine = React.memo(({ userPosts, member }: any) => {
   );
 });
 
-const TopicBreakdown = React.memo(({ userPosts }: any) => {
+const TopicBreakdown = React.memo(({ userPosts, isDark, colors }: any) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   const topics = useMemo(() => {
     const counts = userPosts.reduce((acc: any, p: any) => { acc[p.topicId] = (acc[p.topicId] || 0) + 1; return acc; }, {});
     const total = userPosts.length;
@@ -390,8 +407,8 @@ const TopicBreakdown = React.memo(({ userPosts }: any) => {
   if (topics.length === 0) return null;
   return (
     <Animated.View entering={FadeInUp.delay(450).springify()}>
-      <SectionHeader title="Topic Breakdown" subtitle="What they talk about most" />
-      <GlassCard>
+      <SectionHeader title="Topic Breakdown" subtitle="What they talk about most" isDark={isDark} colors={colors} />
+      <GlassCard isDark={isDark} colors={colors}>
         <View style={styles.topicBreakdown}>
           {topics.map((topic: PostTopic) => (
             <View key={topic.topicId} style={styles.topicBreakdownRow}>
@@ -413,7 +430,8 @@ const TopicBreakdown = React.memo(({ userPosts }: any) => {
   );
 });
 
-const InteractionHeatMap = React.memo(({ userPosts }: any) => {
+const InteractionHeatMap = React.memo(({ userPosts, isDark, colors }: any) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   const heatData = useMemo(() => {
     const hours: Record<number, number> = {};
     for (let i = 0; i < 24; i++) hours[i] = 0;
@@ -432,8 +450,8 @@ const InteractionHeatMap = React.memo(({ userPosts }: any) => {
   if (heatData.length === 0 || userPosts.length === 0) return null;
   return (
     <Animated.View entering={FadeInUp.delay(500).springify()}>
-      <SectionHeader title="Active Hours" subtitle="When they engage most" />
-      <GlassCard>
+      <SectionHeader title="Active Hours" subtitle="When they engage most" isDark={isDark} colors={colors} />
+      <GlassCard isDark={isDark} colors={colors}>
         <View style={styles.heatMapContainer}>
           <View style={styles.heatMapRow}>
             {heatData.map((item) => (
@@ -459,7 +477,8 @@ const InteractionHeatMap = React.memo(({ userPosts }: any) => {
   );
 });
 
-const ContributionStreakCard = React.memo(({ userPosts }: any) => {
+const ContributionStreakCard = React.memo(({ userPosts, isDark, colors }: any) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   const streak = useMemo(() => {
     const now = new Date();
     const weeks: boolean[] = [];
@@ -489,7 +508,7 @@ const ContributionStreakCard = React.memo(({ userPosts }: any) => {
 
   return (
     <Animated.View entering={FadeInUp.delay(550).springify()}>
-      <GlassCard>
+      <GlassCard isDark={isDark} colors={colors}>
         <View style={styles.streakHeader}>
           <View>
             <Text style={styles.streakTitle}>Contribution Streak</Text>
@@ -516,7 +535,8 @@ const ContributionStreakCard = React.memo(({ userPosts }: any) => {
   );
 });
 
-const SocialGraphCard = React.memo(({ userPosts, user }: any) => {
+const SocialGraphCard = React.memo(({ userPosts, user, isDark, colors }: any) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   const data = useMemo(() => {
     const likes = userPosts.reduce((s: number, p: any) => s + p.likes, 0);
     const comments = userPosts.reduce((s: number, p: any) => s + p.commentsCount, 0);
@@ -533,13 +553,13 @@ const SocialGraphCard = React.memo(({ userPosts, user }: any) => {
 
   return (
     <Animated.View entering={FadeInUp.delay(600).springify()}>
-      <SectionHeader title="Social Graph" subtitle="Engagement distribution" />
-      <GlassCard>
+      <SectionHeader title="Social Graph" subtitle="Engagement distribution" isDark={isDark} colors={colors} />
+      <GlassCard isDark={isDark} colors={colors}>
         <View style={styles.socialGraph}>
           {data.map((item) => (
             <View key={item.name} style={styles.socialGraphItem}>
               <View style={styles.socialGraphBarWrap}>
-                <View style={[styles.socialGraphBarBg]}>
+                <View style={styles.socialGraphBarBg}>
                   <View style={[styles.socialGraphBarFill, { height: `${item.value}%`, backgroundColor: item.color }]} />
                 </View>
               </View>
@@ -553,12 +573,13 @@ const SocialGraphCard = React.memo(({ userPosts, user }: any) => {
   );
 });
 
-const RecentInteractions = React.memo(({ userPosts, onPostPress }: any) => {
+const RecentInteractions = React.memo(({ userPosts, onPostPress, isDark, colors }: any) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   const recent = useMemo(() => userPosts.slice(0, 3), [userPosts]);
   if (recent.length === 0) return null;
   return (
     <Animated.View entering={FadeInUp.delay(650).springify()}>
-      <SectionHeader title="Recent Interactions" subtitle="Latest activity" />
+      <SectionHeader title="Recent Interactions" subtitle="Latest activity" isDark={isDark} colors={colors} />
       <View style={styles.recentList}>
         {recent.map((post: Post, i: number) => {
           const topicColor = TOPIC_COLORS[post.topicId] || TC.primary;
@@ -582,7 +603,8 @@ const RecentInteractions = React.memo(({ userPosts, onPostPress }: any) => {
   );
 });
 
-const AchievementBadge = React.memo(({ achievement }: any) => {
+const AchievementBadge = React.memo(({ achievement, isDark, colors }: any) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   const badge = ACHIEVEMENTS[achievement] || { emoji: '🏅', name: achievement, color: TC.primary, desc: '' };
   return (
     <View style={[styles.achievementBadge, { backgroundColor: `${badge.color}08` }]}>
@@ -598,10 +620,11 @@ const AchievementBadge = React.memo(({ achievement }: any) => {
   );
 });
 
-const PostCard = React.memo(({ post, index, onPress }: any) => {
+const PostCard = React.memo(({ post, index, onPress, isDark, colors }: any) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   const topicColor = TOPIC_COLORS[post.topicId] || TC.primary;
   return (
-    <GlassCard style={styles.postCard} delay={index * 50} onPress={onPress}>
+    <GlassCard style={styles.postCard} delay={index * 50} onPress={onPress} isDark={isDark} colors={colors}>
       <View style={styles.postHeader}>
         <View style={[styles.topicDot, { backgroundColor: topicColor }]} />
         <Text style={[styles.topicText, { color: topicColor }]}>{post.topic}</Text>
@@ -637,22 +660,25 @@ const PostCard = React.memo(({ post, index, onPress }: any) => {
 
 type ProfileTab = 'posts' | 'about' | 'achievements' | 'insights';
 
-const TabBar = React.memo(({ tabs, activeTab, onChange }: {
+const TabBar = React.memo(({ tabs, activeTab, onChange, isDark, colors }: {
   tabs: { key: ProfileTab; label: string; icon: string }[];
-  activeTab: ProfileTab; onChange: (t: ProfileTab) => void;
-}) => (
-  <View style={styles.tabBar}>
-    {tabs.map((tab) => {
-      const isActive = activeTab === tab.key;
-      return (
-        <TouchableOpacity key={tab.key} onPress={() => onChange(tab.key)} style={[styles.tabItem, isActive && { backgroundColor: 'rgba(99,102,241,0.15)', /* no shadow */ }]}>
-          <Ionicons name={tab.icon as any} size={16} color={isActive ? '#6366f1' : '#94a3b8'} />
-          <Text style={[styles.tabLabel, { color: isActive ? '#6366f1' : '#94a3b8' }, isActive && { fontWeight: '700' }]}>{tab.label}</Text>
-        </TouchableOpacity>
-      );
-    })}
-  </View>
-));
+  activeTab: ProfileTab; onChange: (t: ProfileTab) => void; isDark?: boolean; colors?: any;
+}) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
+  return (
+    <View style={styles.tabBar}>
+      {tabs.map((tab) => {
+        const isActive = activeTab === tab.key;
+        return (
+          <TouchableOpacity key={tab.key} onPress={() => onChange(tab.key)} style={[styles.tabItem, isActive && { backgroundColor: 'rgba(99,102,241,0.15)' }]}>
+            <Ionicons name={tab.icon as any} size={16} color={isActive ? '#6366f1' : '#94a3b8'} />
+            <Text style={[styles.tabLabel, { color: isActive ? '#6366f1' : '#94a3b8' }, isActive && { fontWeight: '700' }]}>{tab.label}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+});
 
 export default function CommunityMemberProfileScreen({ navigation, route }: Props) {
   const { userId } = route.params;
@@ -864,17 +890,17 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
           </View>
           <View style={styles.profileInfo}>
             <View style={styles.nameRow}>
-              <Text style={[styles.profileName, { color: colors.text }]}>{user.displayName}</Text>
+              <Text style={[styles.profileName, { color: fullThemeColors.text }]}>{user.displayName}</Text>
               {user.isVerified && <View style={styles.verifiedBadge}><Ionicons name="checkmark" size={12} color="#fff" /></View>}
             </View>
             <Text style={styles.profileHandle}>{user.handle}</Text>
             {user.bio && <Text style={styles.profileBio} numberOfLines={2}>{user.bio}</Text>}
             {user.country && <View style={styles.locationRow}><Ionicons name="location-outline" size={14} color="#94a3b8" /><Text style={styles.locationText}>{user.country}</Text></View>}
             <View style={styles.statsPillsRow}>
-              <KpiPill icon="📝" value={userPosts.length} label="Posts" color={TC.primary} />
-              <KpiPill icon="👥" value={followerCount} label="Followers" color={TC.secondary} />
-              <KpiPill icon="👤" value={followingCount} label="Following" color={TC.info} />
-              <KpiPill icon="💙" value={user.stats?.helpful || 0} label="Helpful" color={TC.success} />
+              <KpiPill icon="📝" value={userPosts.length} label="Posts" color={TC.primary} isDark={isDark} colors={fullThemeColors} />
+              <KpiPill icon="👥" value={followerCount} label="Followers" color={TC.secondary} isDark={isDark} colors={fullThemeColors} />
+              <KpiPill icon="👤" value={followingCount} label="Following" color={TC.info} isDark={isDark} colors={fullThemeColors} />
+              <KpiPill icon="💙" value={user.stats?.helpful || 0} label="Helpful" color={TC.success} isDark={isDark} colors={fullThemeColors} />
             </View>
             {!isOwnProfile && (
               <View style={styles.actionButtons}>
@@ -883,7 +909,7 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.messageBtn, isBlocked && styles.messageBtnDisabled]} onPress={handleMessage} disabled={isBlocked}>
                   <Ionicons name="mail-outline" size={16} color={isBlocked ? '#94a3b8' : TC.primary} />
-                  <Text style={[styles.messageBtnText, isBlocked && { color: colors.textSecondary }]}>Message</Text>
+                  <Text style={[styles.messageBtnText, isBlocked && { color: fullThemeColors.textSecondary }]}>Message</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -892,21 +918,20 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
       </Animated.View>
     );
   };
-
-  const renderPostsTab = () => (
+    const renderPostsTab = () => (
     <Animated.View entering={FadeInUp.springify()} style={styles.tabPanel}>
-      <EngagementInsightsCard insights={engagementInsights} />
-      <CommunityInfluenceCard influence={communityInfluence} />
-      <ContentHighlightsCard highlights={contentHighlights} onPostPress={(post: Post) => navigation.navigate('PostDetail' as never, { postId: post.id })} />
-      <ActivityPatternGraph data={activityPattern} />
-      <MutualConnections connections={mutualConnections} onPress={(id: string) => navigation.navigate('CommunityMemberProfile' as never, { userId: id })} />
-      <SmartActions actions={smartActions} />
-      <ParentingTipsEngine userPosts={userPosts} member={user} />
-      <TopicBreakdown userPosts={userPosts} />
-      <InteractionHeatMap userPosts={userPosts} />
-      <ContributionStreakCard userPosts={userPosts} />
-      <SocialGraphCard userPosts={userPosts} user={user} />
-      <RecentInteractions userPosts={userPosts} onPostPress={(post: Post) => navigation.navigate('PostDetail' as never, { postId: post.id })} />
+      <EngagementInsightsCard insights={engagementInsights} isDark={isDark} colors={fullThemeColors} />
+      <CommunityInfluenceCard influence={communityInfluence} isDark={isDark} colors={fullThemeColors} />
+      <ContentHighlightsCard highlights={contentHighlights} onPostPress={(post: Post) => navigation.navigate('PostDetail' as never, { postId: post.id })} isDark={isDark} colors={fullThemeColors} />
+      <ActivityPatternGraph data={activityPattern} isDark={isDark} colors={fullThemeColors} />
+      <MutualConnections connections={mutualConnections} onPress={(id: string) => navigation.navigate('CommunityMemberProfile' as never, { userId: id })} isDark={isDark} colors={fullThemeColors} />
+      <SmartActions actions={smartActions} isDark={isDark} colors={fullThemeColors} />
+      <ParentingTipsEngine userPosts={userPosts} member={user} isDark={isDark} colors={fullThemeColors} />
+      <TopicBreakdown userPosts={userPosts} isDark={isDark} colors={fullThemeColors} />
+      <InteractionHeatMap userPosts={userPosts} isDark={isDark} colors={fullThemeColors} />
+      <ContributionStreakCard userPosts={userPosts} isDark={isDark} colors={fullThemeColors} />
+      <SocialGraphCard userPosts={userPosts} user={user} isDark={isDark} colors={fullThemeColors} />
+      <RecentInteractions userPosts={userPosts} onPostPress={(post: Post) => navigation.navigate('PostDetail' as never, { postId: post.id })} isDark={isDark} colors={fullThemeColors} />
       <View style={styles.sectionHeader}>
         <View style={styles.sectionTitleRow}>
           <Ionicons name="document-text" size={20} color={TC.primary} />
@@ -917,7 +942,7 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
         </View>
       </View>
       {userPosts.length === 0 ? (
-        <GlassCard style={styles.emptyCard} delay={100}>
+        <GlassCard style={styles.emptyCard} delay={100} isDark={isDark} colors={fullThemeColors}>
           <View style={styles.emptyStateIcon}><Ionicons name="document-text-outline" size={32} color={TC.primary} /></View>
           <Text style={styles.emptyStateTitle}>No threads yet</Text>
           <Text style={styles.emptyText}>This parent has not shared any stories yet.</Text>
@@ -925,7 +950,7 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
       ) : (
         <View style={styles.postsList}>
           {userPosts.map((post, index) => (
-            <PostCard key={post.id} post={post} index={index} onPress={() => navigation.navigate('PostDetail' as never, { postId: post.id })} />
+            <PostCard key={post.id} post={post} index={index} onPress={() => navigation.navigate('PostDetail' as never, { postId: post.id })} isDark={isDark} colors={fullThemeColors} />
           ))}
         </View>
       )}
@@ -936,7 +961,7 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
     if (!user) return null;
     return (
       <Animated.View entering={FadeInUp.springify()} style={styles.tabPanel}>
-        <GlassCard style={styles.formCard} delay={100}>
+        <GlassCard style={styles.formCard} delay={100} isDark={isDark} colors={fullThemeColors}>
           <Text style={styles.sectionLabel}>About</Text>
           <View style={styles.infoItem}>
             <View style={[styles.infoIcon, { backgroundColor: `${TC.primary}20` }]}><Ionicons name="time-outline" size={20} color={TC.primary} /></View>
@@ -971,7 +996,7 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
           </View>
         </GlassCard>
         {user.selectedTopics && user.selectedTopics.length > 0 && (
-          <GlassCard style={styles.formCard} delay={200}>
+          <GlassCard style={styles.formCard} delay={200} isDark={isDark} colors={fullThemeColors}>
             <Text style={styles.sectionLabel}>Interested In</Text>
             <View style={styles.topicsWrap}>
               {user.selectedTopics.map((topicId) => (
@@ -997,9 +1022,9 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
           <Text style={[styles.badgeText, { color: themeColors.primary }]}>{user?.achievements?.length || 0} earned</Text>
         </View>
       </View>
-      <GlassCard style={styles.achievementsCard} delay={100}>
+      <GlassCard style={styles.achievementsCard} delay={100} isDark={isDark} colors={fullThemeColors}>
         {user?.achievements && user.achievements.length > 0 ? (
-          user.achievements.map((achievement) => <AchievementBadge key={achievement} achievement={achievement} />)
+          user.achievements.map((achievement) => <AchievementBadge key={achievement} achievement={achievement} isDark={isDark} colors={fullThemeColors} />)
         ) : (
           <View style={styles.emptyStateSmall}>
             <Ionicons name="trophy-outline" size={40} color={TC.primary} />
@@ -1013,12 +1038,12 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
 
   const renderInsightsTab = () => (
     <Animated.View entering={FadeInUp.springify()} style={styles.tabPanel}>
-      <ParentingTipsEngine userPosts={userPosts} member={user} />
-      <TopicBreakdown userPosts={userPosts} />
-      <InteractionHeatMap userPosts={userPosts} />
-      <ContributionStreakCard userPosts={userPosts} />
-      <SocialGraphCard userPosts={userPosts} user={user} />
-      <RecentInteractions userPosts={userPosts} onPostPress={(post: Post) => navigation.navigate('PostDetail' as never, { postId: post.id })} />
+      <ParentingTipsEngine userPosts={userPosts} member={user} isDark={isDark} colors={fullThemeColors} />
+      <TopicBreakdown userPosts={userPosts} isDark={isDark} colors={fullThemeColors} />
+      <InteractionHeatMap userPosts={userPosts} isDark={isDark} colors={fullThemeColors} />
+      <ContributionStreakCard userPosts={userPosts} isDark={isDark} colors={fullThemeColors} />
+      <SocialGraphCard userPosts={userPosts} user={user} isDark={isDark} colors={fullThemeColors} />
+      <RecentInteractions userPosts={userPosts} onPostPress={(post: Post) => navigation.navigate('PostDetail' as never, { postId: post.id })} isDark={isDark} colors={fullThemeColors} />
     </Animated.View>
   );
 
@@ -1038,7 +1063,7 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
         <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
         <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={StyleSheet.absoluteFill} />
         <Ionicons name="person-outline" size={64} color="#64748b" />
-        <Text style={{ marginTop: 16, color: colors.textSecondary, fontSize: 16, fontWeight: '600' }}>User not found</Text>
+        <Text style={{ marginTop: 16, color: fullThemeColors.textSecondary, fontSize: 16, fontWeight: '600' }}>User not found</Text>
         <TouchableOpacity style={[styles.retryButton, { backgroundColor: '#6366f1' }]} onPress={() => navigation.goBack()}>
           <Text style={styles.retryButtonText}>Go Back</Text>
         </TouchableOpacity>
@@ -1049,7 +1074,7 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
   return (
     <View style={[styles.container, { flex: 1 }]}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
-      <View style={[styles.bg, { backgroundColor: colors.background }]} />
+      <View style={[styles.bg, { backgroundColor: fullThemeColors.background }]} />
       {renderStickyHeader()}
 
       <Animated.View entering={FadeInDown.springify()} style={[styles.topHeader, { paddingTop: insets.top + 12 }]}>
@@ -1069,7 +1094,7 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
         scrollEventThrottle={16}
       >
         {renderProfileHero()}
-        <TabBar tabs={tabs} activeTab={activeTab} onChange={handleTabChange} />
+        <TabBar tabs={tabs} activeTab={activeTab} onChange={handleTabChange} isDark={isDark} colors={fullThemeColors} />
         <View style={{ paddingHorizontal: 16 }}>
           {activeTab === 'posts' && renderPostsTab()}
           {activeTab === 'about' && renderAboutTab()}
@@ -1081,29 +1106,25 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
   );
 }
 
-
 const getStyles = (isDarkMode: boolean, colors: any) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   bg: { ...StyleSheet.absoluteFillObject },
   centered: { justifyContent: 'center', alignItems: 'center' },
   scrollContent: { flexGrow: 1, minHeight: SCREEN_H },
 
-  // ── Sticky Header ──
   stickyHeader: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100, alignItems: 'center', paddingHorizontal: 20, paddingBottom: 10 },
   stickyTitle: { fontSize: 17, fontWeight: '800', color: colors.text, letterSpacing: -0.3 },
   stickySubtitle: { fontSize: 12, fontWeight: '500', color: colors.textSecondary, marginTop: 2 },
 
-  // ── Top Header ──
   topHeader: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 50, flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 16 },
   backBtn: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.08)' },
 
-  // ── Profile Hero ──
   profileHero: { paddingHorizontal: DESIGN.spacing.xl, paddingBottom: 20 },
   banner: { height: 120, borderRadius: DESIGN.radius.xl, marginBottom: -50, marginHorizontal: -20, marginTop: -20 },
   profileHeroContent: { position: 'relative', zIndex: 2 },
   avatarSection: { alignItems: 'center', marginBottom: 12 },
   avatarWrapper: { position: 'relative' },
-  onlineIndicator: { position: 'absolute', bottom: 4, right: 4, width: 24, height: 24, borderRadius: DESIGN.radius.md, backgroundcolor: colors.text, borderWidth: 3, bordercolor: colors.text, justifyContent: 'center', alignItems: 'center' },
+  onlineIndicator: { position: 'absolute', bottom: 4, right: 4, width: 24, height: 24, borderRadius: DESIGN.radius.md, backgroundColor: colors.background, borderWidth: 3, borderColor: colors.background, justifyContent: 'center', alignItems: 'center' },
   onlineDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#10b981' },
   profileInfo: { alignItems: 'center' },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
@@ -1114,7 +1135,6 @@ const getStyles = (isDarkMode: boolean, colors: any) => StyleSheet.create({
   locationRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8 },
   locationText: { fontSize: 13, color: colors.textSecondary, fontWeight: '500' },
 
-  // ── Stats Pills ──
   statsPillsRow: { flexDirection: 'row', justifyContent: 'space-around', width: '100%', marginTop: 16, paddingHorizontal: 8 },
   kpiPill: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 16, overflow: 'hidden' },
   kpiPillIconBg: { width: 36, height: 36, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
@@ -1122,7 +1142,7 @@ const getStyles = (isDarkMode: boolean, colors: any) => StyleSheet.create({
   kpiPillBody: { gap: 1 },
   kpiPillValue: { fontSize: 18, fontWeight: '800' },
   kpiPillLabel: { fontSize: 10, color: colors.textSecondary, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
-  // ── Action Buttons ──
+
   actionButtons: { flexDirection: 'row', gap: DESIGN.spacing.lg, marginTop: 20, width: '100%', paddingHorizontal: 20 },
   followBtn: { flex: 1, backgroundColor: '#6366f1', borderRadius: DESIGN.radius.md, paddingVertical: 12, alignItems: 'center', justifyContent: 'center' },
   followingBtn: { backgroundColor: '#f1f5f9', borderWidth: 1, borderColor: '#e2e8f0' },
@@ -1134,18 +1154,14 @@ const getStyles = (isDarkMode: boolean, colors: any) => StyleSheet.create({
   messageBtnDisabled: { opacity: 0.5 },
   messageBtnText: { fontSize: 15, fontWeight: '700', color: '#6366f1' },
 
-  // ── Tab Bar ──
   tabBar: { flexDirection: 'row', marginHorizontal: 16, marginBottom: 16, padding: 4, borderRadius: 16, gap: 2, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
   tabItem: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 12 },
   tabLabel: { fontSize: 12, fontWeight: '600' },
 
-  // ── Glass Card ──
-  glassCard: { borderRadius: DESIGN.radius.lg, overflow: 'hidden', borderWidth: 1, borderColor: colors.border
-, marginHorizontal: 16, marginBottom: DESIGN.spacing.lg },
+  glassCard: { borderRadius: DESIGN.radius.lg, overflow: 'hidden', borderWidth: 1, borderColor: colors.border, marginHorizontal: 16, marginBottom: DESIGN.spacing.lg },
   glassBorder: { position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
   glassContent: { flex: 1 },
 
-  // ── Section Header ──
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginHorizontal: 16, marginBottom: 12, marginTop: 8 },
   sectionTitle: { fontSize: 18, fontWeight: '800', color: colors.text, letterSpacing: -0.3 },
   sectionSubtitle: { fontSize: 12, fontWeight: '500', color: colors.textSecondary, marginTop: 2 },
@@ -1155,7 +1171,6 @@ const getStyles = (isDarkMode: boolean, colors: any) => StyleSheet.create({
   badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
   badgeText: { fontSize: 12, fontWeight: '700' },
 
-  // ── Engagement Insights ──
   insightsHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, paddingBottom: 12 },
   insightsIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   insightsTitleWrap: { flex: 1 },
@@ -1169,7 +1184,6 @@ const getStyles = (isDarkMode: boolean, colors: any) => StyleSheet.create({
   insightTrendRow: { flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 2 },
   insightTrendText: { fontSize: 11, fontWeight: '700' },
 
-  // ── Community Influence ──
   influenceHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, paddingBottom: 12 },
   influenceIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   influenceTitleWrap: { flex: 1 },
@@ -1189,7 +1203,7 @@ const getStyles = (isDarkMode: boolean, colors: any) => StyleSheet.create({
   influenceContributors: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 16 },
   influenceContributorsLabel: { fontSize: 12, fontWeight: '600', color: colors.textSecondary },
   influenceAvatarStack: { flexDirection: 'row', alignItems: 'center' },
-  influenceAvatar: { borderRadius: 14, borderWidth: 2, bordercolor: colors.text },
+  influenceAvatar: { borderRadius: 14, borderWidth: 2, borderColor: colors.background },
   influenceAvatarMore: { width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginLeft: -10 },
   influenceAvatarMoreText: { fontSize: 10, fontWeight: '800' },
 

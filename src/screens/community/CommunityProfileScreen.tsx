@@ -54,7 +54,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-const { width: SCREEN_W } = Dimensions.get('window');
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
 const DESIGN = {
   radius: { xs: 8, sm: 12, md: 16, lg: 20, xl: 24, full: 999 },
@@ -137,18 +137,18 @@ const SectionHeader = React.memo(({ title, subtitle, action, actionLabel, isDark
 }) => {
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   return (
-  <View style={styles.sectionHeader}>
-    <View>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      {subtitle && <Text style={styles.sectionSubtitle}>{subtitle}</Text>}
+    <View style={styles.sectionHeader}>
+      <View>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        {subtitle && <Text style={styles.sectionSubtitle}>{subtitle}</Text>}
+      </View>
+      {action && (
+        <TouchableOpacity onPress={action} style={styles.sectionAction}>
+          <Text style={styles.sectionActionText}>{actionLabel || 'See All'}</Text>
+          <Ionicons name="chevron-forward" size={14} color="#6366f1" />
+        </TouchableOpacity>
+      )}
     </View>
-    {action && (
-      <TouchableOpacity onPress={action} style={styles.sectionAction}>
-        <Text style={styles.sectionActionText}>{actionLabel || 'See All'}</Text>
-        <Ionicons name="chevron-forward" size={14} color="#6366f1" />
-      </TouchableOpacity>
-    )}
-  </View>
   );
 });
 
@@ -158,40 +158,40 @@ const TabBar = React.memo(({ tabs, activeTab, onChange, isDark = true, colors }:
 }) => {
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   return (
-  <View style={styles.tabBar}>
-    {tabs.map((tab) => {
-      const isActive = activeTab === tab.key;
-      return (
-        <TouchableOpacity key={tab.key} onPress={() => onChange(tab.key)} style={[styles.tabItem, isActive && { backgroundColor: 'rgba(99,102,241,0.15)' }]}>
-          <Ionicons name={tab.icon as any} size={16} color={isActive ? '#6366f1' : '#94a3b8'} />
-          <Text style={[styles.tabLabel, { color: isActive ? '#6366f1' : '#94a3b8' }, isActive && { fontWeight: '700' }]}>{tab.label}</Text>
-        </TouchableOpacity>
-      );
-    })}
-  </View>
+    <View style={styles.tabBar}>
+      {tabs.map((tab) => {
+        const isActive = activeTab === tab.key;
+        return (
+          <TouchableOpacity key={tab.key} onPress={() => onChange(tab.key)} style={[styles.tabItem, isActive && { backgroundColor: 'rgba(99,102,241,0.15)' }]}>
+            <Ionicons name={tab.icon as any} size={16} color={isActive ? '#6366f1' : '#94a3b8'} />
+            <Text style={[styles.tabLabel, { color: isActive ? '#6366f1' : '#94a3b8' }, isActive && { fontWeight: '700' }]}>{tab.label}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
   );
 });
 
 const KpiPill = React.memo(({ icon, value, label, color, onPress, isDark = true, colors }: any) => {
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   return (
-  <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={styles.kpiPill}>
-    <LinearGradient colors={[`${color}15`, `${color}05`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
-    <View style={[styles.kpiPillIconBg, { backgroundColor: `${color}15` }]}>
-      <Text style={styles.kpiPillEmoji}>{icon}</Text>
-    </View>
-    <View style={styles.kpiPillBody}>
-      <Text style={[styles.kpiPillValue, { color }]}>{value}</Text>
-      <Text style={styles.kpiPillLabel}>{label}</Text>
-    </View>
-  </TouchableOpacity>
+    <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={styles.kpiPill}>
+      <LinearGradient colors={[`${color}15`, `${color}05`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+      <View style={[styles.kpiPillIconBg, { backgroundColor: `${color}15` }]}>
+        <Text style={styles.kpiPillEmoji}>{icon}</Text>
+      </View>
+      <View style={styles.kpiPillBody}>
+        <Text style={[styles.kpiPillValue, { color }]}>{value}</Text>
+        <Text style={styles.kpiPillLabel}>{label}</Text>
+      </View>
+    </TouchableOpacity>
   );
 });
 
 const InfluenceDashboard = React.memo(({ metrics, isDark = true, colors }: { metrics: InfluenceMetric[]; isDark?: boolean; colors?: any }) => {
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   return (
-        <Animated.View entering={FadeInUp.delay(100).springify()}>
+    <Animated.View entering={FadeInUp.delay(100).springify()}>
       <GlassCard isDark={isDark} colors={colors}>
         <View style={styles.influenceHeader}>
           <View style={[styles.influenceIconBg, { backgroundColor: `${TC.primary}15` }]}>
@@ -266,33 +266,33 @@ const WeeklyImpactCard = React.memo(({ impact }: { impact: WeeklyImpact }) => {
 const CommunityStandingCard = React.memo(({ standing, isDark = true, colors }: { standing: CommunityStanding; isDark?: boolean; colors?: any }) => {
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   return (
-  <Animated.View entering={FadeInUp.delay(200).springify()}>
-    <GlassCard isDark={isDark} colors={colors}>
-      <View style={styles.standingHeader}>
-        <View style={[styles.standingIconBg, { backgroundColor: `${TC.purple}15` }]}>
-          <Ionicons name="trophy" size={20} color={TC.purple} />
-        </View>
-        <View style={styles.standingTitleWrap}>
-          <Text style={styles.standingTitle}>Community Standing</Text>
-          <Text style={styles.standingSubtitle}>Top {standing.percentile}% of members</Text>
-        </View>
-      </View>
-      <View style={styles.standingRankRow}>
-        <View style={[styles.standingRankBadge, { backgroundColor: `${TC.purple}12` }]}>
-          <Text style={[styles.standingRankText, { color: TC.purple }]}>{standing.rank}</Text>
-        </View>
-        <View style={styles.standingProgressWrap}>
-          <View style={styles.standingProgressLabelRow}>
-            <Text style={styles.standingProgressLabel}>Next: {standing.nextMilestone}</Text>
-            <Text style={[styles.standingProgressValue, { color: TC.purple }]}>{standing.progressToNext}%</Text>
+    <Animated.View entering={FadeInUp.delay(200).springify()}>
+      <GlassCard isDark={isDark} colors={colors}>
+        <View style={styles.standingHeader}>
+          <View style={[styles.standingIconBg, { backgroundColor: `${TC.purple}15` }]}>
+            <Ionicons name="trophy" size={20} color={TC.purple} />
           </View>
-          <View style={[styles.standingProgressBarBg, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
-            <Animated.View entering={FadeInRight.delay(300).springify()} style={[styles.standingProgressBarFill, { width: `${standing.progressToNext}%`, backgroundColor: TC.purple }]} />
+          <View style={styles.standingTitleWrap}>
+            <Text style={styles.standingTitle}>Community Standing</Text>
+            <Text style={styles.standingSubtitle}>Top {standing.percentile}% of members</Text>
           </View>
         </View>
-      </View>
-    </GlassCard>
-  </Animated.View>
+        <View style={styles.standingRankRow}>
+          <View style={[styles.standingRankBadge, { backgroundColor: `${TC.purple}12` }]}>
+            <Text style={[styles.standingRankText, { color: TC.purple }]}>{standing.rank}</Text>
+          </View>
+          <View style={styles.standingProgressWrap}>
+            <View style={styles.standingProgressLabelRow}>
+              <Text style={styles.standingProgressLabel}>Next: {standing.nextMilestone}</Text>
+              <Text style={[styles.standingProgressValue, { color: TC.purple }]}>{standing.progressToNext}%</Text>
+            </View>
+            <View style={[styles.standingProgressBarBg, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
+              <Animated.View entering={FadeInRight.delay(300).springify()} style={[styles.standingProgressBarFill, { width: `${standing.progressToNext}%`, backgroundColor: TC.purple }]} />
+            </View>
+          </View>
+        </View>
+      </GlassCard>
+    </Animated.View>
   );
 });
 
@@ -421,85 +421,85 @@ const TopicAffinityCard = React.memo(({ affinities, isDark = true, colors }: { a
 const PeerComparisonCard = React.memo(({ comparisons, isDark = true, colors }: { comparisons: PeerComparison[]; isDark?: boolean; colors?: any }) => {
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   return (
-  <Animated.View entering={FadeInUp.delay(450).springify()}>
-    <SectionHeader title="Peer Comparison" subtitle="How you compare to community average" isDark={isDark} colors={colors} />
-    <View style={styles.comparisonList}>
-      {comparisons.map((comp, i) => (
-        <View key={comp.metric} style={styles.comparisonRow}>
-          <View style={[styles.comparisonIconBg, { backgroundColor: `${comp.color}12` }]}>
-            <Ionicons name={comp.icon as any} size={16} color={comp.color} />
-          </View>
-          <View style={styles.comparisonContent}>
-            <View style={styles.comparisonTop}>
-              <Text style={styles.comparisonMetric}>{comp.metric}</Text>
-              <Text style={[styles.comparisonPercentile, { color: comp.color }]}>Top {comp.percentile}%</Text>
+    <Animated.View entering={FadeInUp.delay(450).springify()}>
+      <SectionHeader title="Peer Comparison" subtitle="How you compare to community average" isDark={isDark} colors={colors} />
+      <View style={styles.comparisonList}>
+        {comparisons.map((comp, i) => (
+          <View key={comp.metric} style={styles.comparisonRow}>
+            <View style={[styles.comparisonIconBg, { backgroundColor: `${comp.color}12` }]}>
+              <Ionicons name={comp.icon as any} size={16} color={comp.color} />
             </View>
-            <View style={styles.comparisonBarRow}>
-              <View style={[styles.comparisonBarBg, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
-                <Animated.View entering={FadeInRight.delay(200 + i * 60).springify()} style={[styles.comparisonBarFill, { width: `${Math.min((comp.userValue / Math.max(comp.avgValue, 1)) * 100, 100)}%`, backgroundColor: comp.color }]} />
+            <View style={styles.comparisonContent}>
+              <View style={styles.comparisonTop}>
+                <Text style={styles.comparisonMetric}>{comp.metric}</Text>
+                <Text style={[styles.comparisonPercentile, { color: comp.color }]}>Top {comp.percentile}%</Text>
               </View>
-              <Text style={styles.comparisonNumbers}>{comp.userValue} vs {comp.avgValue} avg</Text>
+              <View style={styles.comparisonBarRow}>
+                <View style={[styles.comparisonBarBg, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
+                  <Animated.View entering={FadeInRight.delay(200 + i * 60).springify()} style={[styles.comparisonBarFill, { width: `${Math.min((comp.userValue / Math.max(comp.avgValue, 1)) * 100, 100)}%`, backgroundColor: comp.color }]} />
+                </View>
+                <Text style={styles.comparisonNumbers}>{comp.userValue} vs {comp.avgValue} avg</Text>
+              </View>
             </View>
           </View>
-        </View>
-      ))}
-    </View>
-  </Animated.View>
+        ))}
+      </View>
+    </Animated.View>
   );
 });
 
 const ContentStreaks = React.memo(({ streaks, isDark = true, colors }: { streaks: ContentStreak[]; isDark?: boolean; colors?: any }) => {
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   return (
-  <Animated.View entering={FadeInUp.delay(500).springify()}>
-    <SectionHeader title="Streaks" subtitle="Consistency tracking" isDark={isDark} colors={colors} />
-    <View style={styles.streaksRow}>
-      {streaks.map((streak) => (
-        <View key={streak.type} style={[styles.streakCard, { borderColor: `${streak.color}30` }]}>
-          <View style={[styles.streakIconBg, { backgroundColor: `${streak.color}12` }]}>
-            <Ionicons name={streak.icon as any} size={18} color={streak.color} />
+    <Animated.View entering={FadeInUp.delay(500).springify()}>
+      <SectionHeader title="Streaks" subtitle="Consistency tracking" isDark={isDark} colors={colors} />
+      <View style={styles.streaksRow}>
+        {streaks.map((streak) => (
+          <View key={streak.type} style={[styles.streakCard, { borderColor: `${streak.color}30` }]}>
+            <View style={[styles.streakIconBg, { backgroundColor: `${streak.color}12` }]}>
+              <Ionicons name={streak.icon as any} size={18} color={streak.color} />
+            </View>
+            <Text style={[styles.streakValue, { color: streak.color }]}>{streak.current}</Text>
+            <Text style={styles.streakLabel}>{streak.type}</Text>
+            <Text style={styles.streakBest}>Best: {streak.best}</Text>
           </View>
-          <Text style={[styles.streakValue, { color: streak.color }]}>{streak.current}</Text>
-          <Text style={styles.streakLabel}>{streak.type}</Text>
-          <Text style={styles.streakBest}>Best: {streak.best}</Text>
-        </View>
-      ))}
-    </View>
-  </Animated.View>
+        ))}
+      </View>
+    </Animated.View>
   );
 });
 
 const QuickActionsDock = React.memo(({ onMessage, onShare, onEdit, onSettings, isDark = true, colors }: any) => {
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   return (
-  <Animated.View entering={FadeInUp.delay(550).springify()} style={styles.dockContainer}>
-    <View style={styles.dock}>
-      <TouchableOpacity onPress={onMessage} style={styles.dockItem}>
-        <LinearGradient colors={['#6366f1', '#8b5cf6']} style={styles.dockGradient}>
-          <Ionicons name="chatbubbles" size={20} color="#fff" />
-        </LinearGradient>
-        <Text style={styles.dockLabel}>Messages</Text>
-      </TouchableOpacity>
-      <TouchableOpacity onPress={onShare} style={styles.dockItem}>
-        <View style={[styles.dockGradient, { backgroundColor: 'rgba(255,255,255,0.08)' }]}>
-          <Ionicons name="share-outline" size={20} color="#fff" />
-        </View>
-        <Text style={styles.dockLabel}>Share</Text>
-      </TouchableOpacity>
-      <TouchableOpacity onPress={onEdit} style={styles.dockItem}>
-        <View style={[styles.dockGradient, { backgroundColor: 'rgba(255,255,255,0.08)' }]}>
-          <Ionicons name="create-outline" size={20} color="#fff" />
-        </View>
-        <Text style={styles.dockLabel}>Edit</Text>
-      </TouchableOpacity>
-      <TouchableOpacity onPress={onSettings} style={styles.dockItem}>
-        <View style={[styles.dockGradient, { backgroundColor: 'rgba(255,255,255,0.08)' }]}>
-          <Ionicons name="settings-outline" size={20} color="#fff" />
-        </View>
-        <Text style={styles.dockLabel}>Settings</Text>
-      </TouchableOpacity>
-    </View>
-  </Animated.View>
+    <Animated.View entering={FadeInUp.delay(550).springify()} style={styles.dockContainer}>
+      <View style={styles.dock}>
+        <TouchableOpacity onPress={onMessage} style={styles.dockItem}>
+          <LinearGradient colors={['#6366f1', '#8b5cf6']} style={styles.dockGradient}>
+            <Ionicons name="chatbubbles" size={20} color="#fff" />
+          </LinearGradient>
+          <Text style={styles.dockLabel}>Messages</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={onShare} style={styles.dockItem}>
+          <View style={[styles.dockGradient, { backgroundColor: 'rgba(255,255,255,0.08)' }]}>
+            <Ionicons name="share-outline" size={20} color="#fff" />
+          </View>
+          <Text style={styles.dockLabel}>Share</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={onEdit} style={styles.dockItem}>
+          <View style={[styles.dockGradient, { backgroundColor: 'rgba(255,255,255,0.08)' }]}>
+            <Ionicons name="create-outline" size={20} color="#fff" />
+          </View>
+          <Text style={styles.dockLabel}>Edit</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={onSettings} style={styles.dockItem}>
+          <View style={[styles.dockGradient, { backgroundColor: 'rgba(255,255,255,0.08)' }]}>
+            <Ionicons name="settings-outline" size={20} color="#fff" />
+          </View>
+          <Text style={styles.dockLabel}>Settings</Text>
+        </TouchableOpacity>
+      </View>
+    </Animated.View>
   );
 });
 
@@ -735,7 +735,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
       const ext = sourceUri.split('.').pop()?.toLowerCase() || 'jpg';
       const safeExt = ['jpg', 'jpeg', 'png', 'webp'].includes(ext) ? ext : 'jpg';
       const processedUri = `${COMMUNITY_IMAGES_DIR}avatar_${Date.now()}.${safeExt}`;
-      
+
       if (sourceUri.startsWith('content://')) {
         const base64 = await FileSystem.readAsStringAsync(sourceUri, { encoding: FileSystem.EncodingType.Base64 });
         await FileSystem.writeAsStringAsync(processedUri, base64, { encoding: FileSystem.EncodingType.Base64 });
@@ -749,7 +749,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
       } else {
         await FileSystem.copyAsync({ from: sourceUri, to: processedUri });
       }
-      
+
       const fileInfo = await FileSystem.getInfoAsync(processedUri);
       return fileInfo.exists ? processedUri : null;
     } catch (error) {
@@ -819,7 +819,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         cameraType: ImagePicker.CameraType.front,
       });
       if (result.canceled || !result.assets?.[0]?.uri) return;
-      
+
       setIsSaving(true);
       const rawUri = result.assets[0].uri;
       const permanentUri = await persistCommunityImage(rawUri);
@@ -924,22 +924,22 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   const renderOverviewTab = () => (
     <Animated.View entering={FadeInUp.springify()} style={styles.tabPanel}>
       <View style={styles.kpiPillRow}>
-        <KpiPill icon="📝" value={userPosts.length} label="Posts" color={TC.primary} />
-        <KpiPill icon="👥" value={followerCount} label="Followers" color={TC.secondary} />
-        <KpiPill icon="🔥" value={currentUser?.stats?.streakDays || 0} label="Streak" color={TC.accent} />
+        <KpiPill icon="📝" value={userPosts.length} label="Posts" color={TC.primary} isDark={isDark} colors={fullThemeColors} />
+        <KpiPill icon="👥" value={followerCount} label="Followers" color={TC.secondary} isDark={isDark} colors={fullThemeColors} />
+        <KpiPill icon="🔥" value={currentUser?.stats?.streakDays || 0} label="Streak" color={TC.accent} isDark={isDark} colors={fullThemeColors} />
       </View>
 
-      <InfluenceDashboard metrics={influenceMetrics} />
+      <InfluenceDashboard metrics={influenceMetrics} isDark={isDark} colors={fullThemeColors} />
       <WeeklyImpactCard impact={weeklyImpact} />
-      <CommunityStandingCard standing={communityStanding} />
-      <ContentBreakdownCard breakdown={contentBreakdown} />
-      <EngagementSparkline data={engagementData} />
-      <SmartSuggestions suggestions={smartSuggestions} />
-      <TopicAffinityCard affinities={topicAffinities} />
-      <PeerComparisonCard comparisons={peerComparisons} />
-      <ContentStreaks streaks={contentStreaks} />
+      <CommunityStandingCard standing={communityStanding} isDark={isDark} colors={fullThemeColors} />
+      <ContentBreakdownCard breakdown={contentBreakdown} isDark={isDark} colors={fullThemeColors} />
+      <EngagementSparkline data={engagementData} isDark={isDark} colors={fullThemeColors} />
+      <SmartSuggestions suggestions={smartSuggestions} isDark={isDark} colors={fullThemeColors} />
+      <TopicAffinityCard affinities={topicAffinities} isDark={isDark} colors={fullThemeColors} />
+      <PeerComparisonCard comparisons={peerComparisons} isDark={isDark} colors={fullThemeColors} />
+      <ContentStreaks streaks={contentStreaks} isDark={isDark} colors={fullThemeColors} />
 
-      <GlassCard delay={600}>
+      <GlassCard delay={600} isDark={isDark} colors={fullThemeColors}>
         <View style={styles.sectionHeaderWithEdit}>
           <Text style={styles.sectionLabel}>About Me</Text>
           {!isEditing ? (
@@ -961,7 +961,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
             <Text style={styles.bioText}>{formData.bio || 'No bio yet. Tap edit to add one!'}</Text>
           </View>
         )}
-        <View style={[styles.infoDivider, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]} />
+        <View style={[styles.infoDivider, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]} />
         <View style={styles.inputGroup}>
           <Text style={styles.inputLabel}>Location</Text>
           <View style={[styles.inputContainer, !isEditing && styles.inputDisabled]}>
@@ -1006,7 +1006,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         <Ionicons name="chevron-forward" size={18} color={CommunityColors.text.tertiary} />
       </TouchableOpacity>
 
-      <GlassCard delay={700}>
+      <GlassCard delay={700} isDark={isDark} colors={fullThemeColors}>
         <View style={styles.sectionHeaderWithEdit}>
           <Text style={styles.sectionLabel}>Interested Topics</Text>
           <TouchableOpacity style={styles.editIconBtn} onPress={() => setShowTopicSelector(true)}>
@@ -1035,6 +1035,8 @@ export default function CommunityProfileScreen({ navigation }: Props) {
           onShare={handleShareProfile}
           onEdit={() => setIsEditing(true)}
           onSettings={() => setActiveTab('settings')}
+          isDark={isDark}
+          colors={fullThemeColors}
         />
       )}
     </Animated.View>
@@ -1052,7 +1054,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         </View>
       </View>
       {userPosts.length === 0 ? (
-        <GlassCard style={styles.emptyCard} delay={100}>
+        <GlassCard style={styles.emptyCard} delay={100} isDark={isDark} colors={fullThemeColors}>
           <View style={styles.emptyStateIcon}>
             <Ionicons name="document-text-outline" size={32} color="#6366f1" />
           </View>
@@ -1065,7 +1067,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
       ) : (
         <View style={styles.activitiesList}>
           {userPosts.slice(0, 10).map((post, index) => (
-            <GlassCard key={post.id} style={styles.activityItemCard} delay={index * 50}>
+            <GlassCard key={post.id} style={styles.activityItemCard} delay={index * 50} isDark={isDark} colors={fullThemeColors}>
               {(() => {
                 const topic = INITIAL_TOPICS.find(t => t.id === post.topicId);
                 const topicColor = topic?.color || TOPIC_COLORS[post.topicId] || '#6366f1';
@@ -1102,7 +1104,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
           <Text style={[styles.badgeText, { color: dynamicPrimaryColor }]}>{currentUser?.achievements?.length || 0} earned</Text>
         </View>
       </View>
-      <GlassCard delay={100}>
+      <GlassCard delay={100} isDark={isDark} colors={fullThemeColors}>
         {currentUser?.achievements && currentUser.achievements.length > 0 ? (
           currentUser.achievements.map((achievement) => (
             <View key={achievement} style={[styles.achievementBadge, { backgroundColor: `${ACHIEVEMENTS[achievement]?.color || TC.primary}08` }]}>
@@ -1124,7 +1126,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
           </View>
         )}
       </GlassCard>
-      <GlassCard delay={200}>
+      <GlassCard delay={200} isDark={isDark} colors={fullThemeColors}>
         <Text style={styles.sectionLabel}>Progress</Text>
         <View style={styles.progressRow}>
           <View style={styles.progressItem}>
@@ -1148,7 +1150,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
 
   const renderSettingsTab = () => (
     <Animated.View entering={FadeInUp.springify()} style={styles.tabPanel}>
-      <GlassCard delay={100}>
+      <GlassCard delay={100} isDark={isDark} colors={fullThemeColors}>
         <Text style={styles.sectionLabel}>Privacy & Preferences</Text>
         {[
           { key: 'isPublic', icon: 'globe', label: 'Public Profile', desc: 'Allow others to find and view your profile' },
@@ -1167,11 +1169,11 @@ export default function CommunityProfileScreen({ navigation }: Props) {
               </View>
               <Switch value={formData[pref.key as keyof typeof formData] as boolean} onValueChange={(val) => setFormData(prev => ({ ...prev, [pref.key]: val }))} trackColor={{ false: '#334155', true: dynamicPrimaryColor }} thumbColor="#fff" />
             </View>
-            {i < arr.length - 1 && <View style={[styles.infoDivider, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]} />}
+            {i < arr.length - 1 && <View style={[styles.infoDivider, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]} />}
           </View>
         ))}
       </GlassCard>
-      <GlassCard delay={200} style={styles.dangerCard}>
+      <GlassCard delay={200} style={styles.dangerCard} isDark={isDark} colors={fullThemeColors}>
         <View style={styles.dangerIconContainer}>
           <LinearGradient colors={['#ef4444', '#dc2626']} style={styles.dangerIcon}>
             <Ionicons name="warning" size={28} color="#fff" />
@@ -1215,7 +1217,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
           <View style={[StyleSheet.absoluteFill, { backgroundColor: '#f8f9fc' }]} />
         )}
         <Ionicons name="person-outline" size={64} color="#64748b" />
-        <Text style={{ marginTop: 16, color: colors.textSecondary, fontSize: 16, fontWeight: '600' }}>Not signed in</Text>
+        <Text style={{ marginTop: 16, color: fullThemeColors.textSecondary, fontSize: 16, fontWeight: '600' }}>Not signed in</Text>
         <TouchableOpacity style={[styles.retryButton, { backgroundColor: themeColors.primary }]} onPress={() => navigation.goBack()}>
           <Text style={styles.retryButtonText}>Go Back</Text>
         </TouchableOpacity>
@@ -1245,7 +1247,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         </Animated.View>
 
         {renderProfileHero()}
-        <TabBar tabs={tabs} activeTab={activeTab} onChange={handleTabChange} />
+        <TabBar tabs={tabs} activeTab={activeTab} onChange={handleTabChange} isDark={isDark} colors={fullThemeColors} />
         <View style={{ paddingHorizontal: 16 }}>
           {activeTab === 'overview' && renderOverviewTab()}
           {activeTab === 'posts' && renderPostsTab()}
@@ -1256,7 +1258,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
 
       <UniversalSpinner visible={isSaving} text="Saving changes..." size="medium" overlay={true} blur={true} section="main" />
 
-      <ActionModal visible={showImagePicker} onClose={() => setShowImagePicker(false)} title="Change Profile Photo">
+      <ActionModal visible={showImagePicker} onClose={() => setShowImagePicker(false)} title="Change Profile Photo" isDark={isDark} colors={fullThemeColors}>
         <View style={styles.imagePickerOptions}>
           <TouchableOpacity style={styles.imagePickerOption} onPress={handleImagePick}>
             <View style={[styles.imagePickerIcon, { backgroundColor: '#6366f120' }]}>
@@ -1426,7 +1428,7 @@ const getStyles = (isDarkMode: boolean, colors: any) => StyleSheet.create({
   sparklineDay: { fontSize: 10, fontWeight: '600', color: colors.textMuted },
 
   suggestionsScroll: { flexDirection: 'row', paddingHorizontal: 16, gap: 12, paddingBottom: 4 },
-  suggestionCard: { width: 160, padding: 14, borderRadius: 20, overflow: 'hidden', /* no shadow */ },
+  suggestionCard: { width: 160, padding: 14, borderRadius: 20, overflow: 'hidden' },
   suggestionIconBg: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
   suggestionEmoji: { fontSize: 22 },
   suggestionTitle: { fontSize: 14, fontWeight: '700', color: colors.text, marginBottom: 4 },
@@ -1435,7 +1437,7 @@ const getStyles = (isDarkMode: boolean, colors: any) => StyleSheet.create({
   suggestionActionText: { fontSize: 11, fontWeight: '700' },
 
   affinityList: { marginHorizontal: 16, gap: 8, marginBottom: 16 },
-  affinityRow: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: isDarkMode ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.75)', /* no shadow */ },
+  affinityRow: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: isDarkMode ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.75)' },
   affinityIconBg: { width: 42, height: 42, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   affinityEmoji: { fontSize: 20 },
   affinityContent: { flex: 1, marginLeft: 12, gap: 6 },
@@ -1446,7 +1448,7 @@ const getStyles = (isDarkMode: boolean, colors: any) => StyleSheet.create({
   affinityBarFill: { height: '100%', borderRadius: 2 },
 
   comparisonList: { marginHorizontal: 16, gap: 8, marginBottom: 16 },
-  comparisonRow: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: isDarkMode ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.75)', /* no shadow */ },
+  comparisonRow: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: isDarkMode ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.75)' },
   comparisonIconBg: { width: 42, height: 42, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   comparisonContent: { flex: 1, marginLeft: 12, gap: 6 },
   comparisonTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
@@ -1458,7 +1460,7 @@ const getStyles = (isDarkMode: boolean, colors: any) => StyleSheet.create({
   comparisonNumbers: { fontSize: 11, fontWeight: '600', color: colors.textSecondary },
 
   streaksRow: { flexDirection: 'row', gap: 10, marginHorizontal: 16, marginBottom: 16 },
-  streakCard: { flex: 1, borderRadius: 20, padding: 14, alignItems: 'center', /* no shadow */ borderWidth: 1, backgroundColor: isDarkMode ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.75)' },
+  streakCard: { flex: 1, borderRadius: 20, padding: 14, alignItems: 'center', borderWidth: 1, backgroundColor: isDarkMode ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.75)' },
   streakIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
   streakValue: { fontSize: 22, fontWeight: '800' },
   streakLabel: { fontSize: 11, fontWeight: '600', color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 2 },
@@ -1467,7 +1469,7 @@ const getStyles = (isDarkMode: boolean, colors: any) => StyleSheet.create({
   dockContainer: { marginHorizontal: 16, marginBottom: 20 },
   dock: { flexDirection: 'row', gap: 10, justifyContent: 'center' },
   dockItem: { alignItems: 'center', gap: 6, flex: 1 },
-  dockGradient: { width: 52, height: 52, borderRadius: 16, justifyContent: 'center', alignItems: 'center', /* no shadow */ },
+  dockGradient: { width: 52, height: 52, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
   dockLabel: { fontSize: 11, fontWeight: '600', color: colors.textSecondary },
 
   achievementBadge: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 14, marginBottom: 6 },
@@ -1557,7 +1559,7 @@ const getStyles = (isDarkMode: boolean, colors: any) => StyleSheet.create({
   modalClose: { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(128,128,128,0.15)', justifyContent: 'center', alignItems: 'center' },
 
   modalOverlay: { flex: 1, justifyContent: 'flex-end', alignItems: 'center' },
-  modalContent: { width: '100%', maxWidth: 400, borderRadius: DESIGN.radius.xl, padding: DESIGN.spacing.xxl, overflow: 'hidden', /* no shadow */ },
+  modalContent: { width: '100%', maxWidth: 400, borderRadius: DESIGN.radius.xl, padding: DESIGN.spacing.xxl, overflow: 'hidden' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   modalTitle: { fontSize: 20, fontWeight: '800', color: colors.text, letterSpacing: -0.3 },
 
