@@ -163,6 +163,7 @@ function MainTabs() {
       tabBar={(props) => <LiquidGlassNavigation {...props} />}
       screenOptions={({ route }) => ({
         headerShown: false,
+        lazy: true,
         tabBarStyle: { 
           backgroundColor: colors?.navBackground || '#ffffff', 
           borderTopWidth: 0, 
@@ -174,9 +175,9 @@ function MainTabs() {
     >
       <Tab.Screen name="Home" component={HomeScreen} />
       <Tab.Screen name="Track" component={TrackScreen} />
+      <Tab.Screen name="Timeline" component={TimelineScreen} />
       <Tab.Screen name="Grow" component={GrowthDashboardScreen} />
       <Tab.Screen name="Connect" component={CommunityNavigator} />
-      <Tab.Screen name="Timeline" component={TimelineScreen} />
     </Tab.Navigator>
   );
 }
@@ -345,13 +346,10 @@ function NavigationContent({
   }, [babies?.length, hasSkippedBaby, isAuthenticated, setupComplete, isFirstOpen]);
 
   // FIX #2: Compute navState with stable deps — wait for babies if authenticated
-  const computingNavState = useRef(false);
   useEffect(() => {
     if (authLoading || !firstOpenChecked.current) return;
-    if (computingNavState.current) return;
     // For authenticated users, wait until baby list is loaded so we route correctly
     if (isAuthenticated && !babiesReady) return;
-    computingNavState.current = true;
 
     const newState = getNavState(
       authLoading,
@@ -379,8 +377,6 @@ function NavigationContent({
     }
 
     if (!initialCheckDone) setInitialCheckDone(true);
-    // Defer unlock so parallel setStates in this batch don't re-trigger
-    setTimeout(() => { computingNavState.current = false; }, 0);
   }, [
     authLoading,
     isAuthenticated,
@@ -394,6 +390,7 @@ function NavigationContent({
     babiesReady,
   ]);
 
+
   useEffect(() => {
     return () => { isMounted.current = false; };
   }, []);
@@ -403,10 +400,7 @@ function NavigationContent({
     if (isAuthenticated && !authLoading && !babiesLoaded.current) {
       babiesLoaded.current = true;
       loadBabies().finally(() => {
-        // Allow one tick for BabyContext state to propagate
-        setTimeout(() => {
-          if (isMounted.current) setBabiesReady(true);
-        }, 50);
+        if (isMounted.current) setBabiesReady(true);
       });
     }
   }, [isAuthenticated, authLoading]);
@@ -419,8 +413,8 @@ function NavigationContent({
       
       // Only trigger when coming BACK to active from background/inactive
       if ((previous === 'background' || previous === 'inactive') && next === 'active') {
-        // Small delay to let React Native settle
-        await new Promise(r => setTimeout(r, 100));
+       // Minimal delay to let React Native settle
+        await new Promise(r => setTimeout(r, 30));
         
         const currentRoute = navRef.current?.getCurrentRoute()?.name;
         
@@ -456,7 +450,7 @@ function NavigationContent({
     stateTimer.current = setTimeout(() => {
       onStateChange?.(state);
       stateTimer.current = null;
-    }, 300);
+    }, 80);
   }, [onStateChange]);
 
   useEffect(() => {
@@ -479,12 +473,12 @@ function NavigationContent({
     if (navState === processedNavState.current && !pendingNavTarget.current) return;
     processedNavState.current = navState;
 
-    // If we restored state from persistence, let NavigationContainer handle it
+     // If we restored state from persistence, let NavigationContainer handle it
     // on first boot. Don't override with a reset to Main.
     if (initialState && !hasConsumedInitialState.current) {
       hasConsumedInitialState.current = true;
       if (navState === 'MAIN') {
-        pendingNavTarget.current = 'Main';
+        pendingNavTarget.current = null;
         return;
       }
     }
@@ -539,9 +533,9 @@ function NavigationContent({
       }
     }
 
-    // Cooldown guard (800ms) — prevents rapid reset/navigate loops
+     // Cooldown guard (300ms) — prevents rapid reset/navigate loops while staying responsive
     const now = Date.now();
-    if (now - lastNavTime.current < 800) return;
+    if (now - lastNavTime.current < 300) return;
 
     isNavigating.current = true;
     lastNavTime.current = now;

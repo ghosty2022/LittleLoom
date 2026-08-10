@@ -27,7 +27,6 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { useTheme } from '../context/AppContext';
-import { HomeIcon, TrackIcon, GrowIcon, ConnectIcon, AddLogIcon } from './TabIcons';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouteBasedNavVisibility } from '../hooks/useRouteBasedNavVisibility';
 
@@ -42,10 +41,27 @@ interface TabItem {
   Icon: React.FC<any>;
 }
 
+// Modern outline icon wrappers — clean, consistent, awesome
+const HomeIcon: React.FC<any> = ({ size, color }) => (
+  <Ionicons name="home-outline" size={size} color={color} />
+);
+const TrackIcon: React.FC<any> = ({ size, color }) => (
+  <Ionicons name="flash-outline" size={size} color={color} />
+);
 const TimelineIcon: React.FC<any> = ({ size, color }) => (
-  <Ionicons name="time-outline" size={size} color={color} />
+  <Ionicons name="albums-outline" size={size} color={color} />
+);
+const GrowIcon: React.FC<any> = ({ size, color }) => (
+  <Ionicons name="trending-up-outline" size={size} color={color} />
+);
+const ConnectIcon: React.FC<any> = ({ size, color }) => (
+  <Ionicons name="planet-outline" size={size} color={color} />
+);
+const AddLogIcon: React.FC<any> = ({ size, color }) => (
+  <Ionicons name="add-outline" size={size} color={color} />
 );
 
+// Modern UX order: Home → Track → Timeline → Grow → Connect
 const TABS: TabItem[] = [
   { 
     name: 'Home', 
@@ -64,6 +80,14 @@ const TABS: TabItem[] = [
     Icon: TrackIcon 
   },
   { 
+    name: 'Timeline', 
+    route: 'Timeline', 
+    color: '#8b5cf6', 
+    gradient: ['#8b5cf6', '#a78bfa'] as const,
+    hapticStyle: Haptics.ImpactFeedbackStyle.Light, 
+    Icon: TimelineIcon 
+  },
+  { 
     name: 'Grow', 
     route: 'Grow', 
     color: '#fa709a', 
@@ -79,16 +103,7 @@ const TABS: TabItem[] = [
     hapticStyle: Haptics.ImpactFeedbackStyle.Light, 
     Icon: ConnectIcon 
   },
-  { 
-    name: 'Timeline', 
-    route: 'Timeline', 
-    color: '#8b5cf6', 
-    gradient: ['#8b5cf6', '#a78bfa'] as const,
-    hapticStyle: Haptics.ImpactFeedbackStyle.Light, 
-    Icon: TimelineIcon 
-  },
 ];
-
 const PILL_WIDTH = Math.min(SCREEN_WIDTH - 32, 360);
 const PILL_HEIGHT = 64;
 const BOTTOM_MARGIN = 12;
@@ -443,18 +458,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     width: '100%',
   },
-  pillContainer: {
+ pillContainer: {
     width: PILL_WIDTH,
     height: PILL_HEIGHT,
     borderRadius: PILL_HEIGHT / 2,
     overflow: 'hidden',
     borderWidth: 1.2,
     position: 'relative',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.15,
-    shadowRadius: 28,
-    elevation: 14,
   } as ViewStyle,
 
    /* ── Clean pill: border accents removed for modern seamless look ── */
@@ -567,11 +577,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(17, 153, 142, 0.25)',
-    shadowColor: '#11998e',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 8,
     minWidth: 110,
     minHeight: 50,
   },

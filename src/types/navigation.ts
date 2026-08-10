@@ -188,7 +188,6 @@ export type RootStackParamList = {
   } | undefined;
   SoundMixer: undefined;
   Customize: undefined;
-  BabySelector: undefined;
   InviteCodeScreen: undefined;
   SecurityLock: undefined;
   BiometricSetup: undefined;
@@ -244,10 +243,9 @@ export type CommunityStackParamList = {
 export type MainTabParamList = {
   Home: undefined;
   Track: undefined;
+  Timeline: undefined;
   Grow: undefined;
   Connect: undefined;
-  Timeline: undefined;
-  SafetyCorner: undefined;  
 };
 
 export type RootStackScreenProps<T extends keyof RootStackParamList> = 
