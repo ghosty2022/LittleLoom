@@ -260,13 +260,13 @@ const SafeBabyAvatar = React.memo(({ avatar, gender = 'other', size = 72, showEd
   const genderOption = GENDER_OPTIONS.find(g => g.value === gender);
   const gradientColors = genderOption?.gradient || ['#6366f1', '#8b5cf6'];
 
-  const imageSource = useMemo(() => {
-    if (!avatar) return null;
-    if (avatar.startsWith('http') || avatar.startsWith('file://') || avatar.startsWith('ph://') || avatar.startsWith('assets-library://')) {
-      return { uri: avatar };
-    }
-    return null;
-  }, [avatar]);
+    const imageSource = useMemo(() => {
+      if (!avatar) return null;
+      if (avatar.startsWith('http') || avatar.startsWith('file://') || avatar.startsWith('ph://') || avatar.startsWith('assets-library://') || avatar.startsWith('data:')) {
+        return { uri: avatar };
+      }
+      return null;
+    }, [avatar]);
 
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   return (
@@ -590,7 +590,7 @@ const FamilyConnectionHub = React.memo(({ members, onManage, babyName, isDark, c
 
   return (
     <Animated.View entering={FadeInUp.delay(350).springify()}>
-      <SectionHeader title="Family Tree" subtitle={`${members.length} connected`} action={onManage} actionLabel="Manage" />
+      <SectionHeader title="Family Tree" subtitle={`${members.length} connected`} action={onManage} actionLabel="Manage" isDark={isDark} colors={colors} />
       <GlassCard onPress={onManage} isDark={isDark} colors={colors}>
         <View style={{ padding: 16, alignItems: 'center' }}>
           {/* Parents Row */}
