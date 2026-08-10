@@ -1572,8 +1572,8 @@ export default function AddEntryScreen() {
   const navigation = useNavigation<AddEntryNavigationProp>();
   const route = useRoute<AddEntryRouteProp>();
 
-  const { fullThemeColors, isDark } = useCustomization();
-  const { getTracker, currentBaby } = useTracker();
+  const { fullThemeColors, themeColors, isDark } = useCustomization();  const { getTracker } = useTracker();
+  const { currentBaby, babyLoading } = useBaby();
 
   // ─── State (all unconditional) ────────────────────────────────
   const [selectedTrackerId, setSelectedTrackerId] = useState<string | null>(
@@ -1606,10 +1606,11 @@ export default function AddEntryScreen() {
 
   // ─── Auto baby-profile prompt ───────────────────────────────────
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
     if (!babyLoading && !currentBaby) {
-      const timer = setTimeout(() => setShowBabyRequiredModal(true), 400);
-      return () => clearTimeout(timer);
+      timer = setTimeout(() => setShowBabyRequiredModal(true), 400);
     }
+    return () => clearTimeout(timer);
   }, [babyLoading, currentBaby]);
 
   // ─── Derived (no hooks inside) ──────────────────────────────────

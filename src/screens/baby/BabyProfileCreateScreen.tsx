@@ -338,15 +338,15 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
   const validateStep2 = useCallback((): boolean => {
     if (weight.trim()) {
       const w = parseFloat(weight.trim());
-      if (isNaN(w) || w <= 0 || w > 30) {
-        showError('Please enter a valid weight (0.1–30 kg)');
+      if (isNaN(w) || w <= 0 || w > 60) {
+        showError('Please enter a valid weight (0.1–60 kg)');
         return false;
       }
     }
     if (height.trim()) {
       const h = parseFloat(height.trim());
-      if (isNaN(h) || h <= 0 || h > 200) {
-        showError('Please enter a valid height (1–200 cm)');
+      if (isNaN(h) || h < 20 || h > 220) {
+        showError('Please enter a valid height (20–220 cm)');
         return false;
       }
     }
@@ -452,7 +452,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
         } catch (e) {
           console.warn('Failed to save creator relationship:', e);
         }
-        
+
         const persisted = await getBabyByIdFromDb(babyId);
 
         if (!persisted) {
@@ -465,14 +465,14 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
         }
 
         console.log('✅ Baby profile verified in database:', persisted.id);
-        
+
         // Make the new baby active so FamilyContext and the rest of the app see it immediately
         try {
           await switchBaby(babyId);
         } catch (switchErr) {
           console.warn('Failed to auto-switch to new baby:', switchErr);
         }
-        
+
         // Call completeSetup LAST after everything is persisted and switched
         // This updates AuthContext state → AppNavigator navState → MAIN
         let setupSuccess = false;
@@ -816,7 +816,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
       </Text>
 
       <View style={styles.inputGroup}>
-        <Text style={[styles.label, isDark && styles.textDark]}>Birth Weight (kg)</Text>
+        <Text style={[styles.label, isDark && styles.textDark]}>Weight (kg)</Text>
         <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
           <Ionicons name="scale-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
           <TextInput
@@ -828,28 +828,28 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
               const formatted = parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : cleaned;
               setWeight(formatted);
             }}
-            placeholder="e.g., 3.5"
+            placeholder="e.g., 3.5 (newborn) or 12 (toddler)"
             placeholderTextColor={isDark ? '#64748b' : '#999'}
             keyboardType="decimal-pad"
             maxLength={5}
-            accessibilityLabel="Birth weight in kilograms"
+            accessibilityLabel="Weight in kilograms"
           />
         </View>
       </View>
 
       <View style={styles.inputGroup}>
-        <Text style={[styles.label, isDark && styles.textDark]}>Birth Height (cm)</Text>
+        <Text style={[styles.label, isDark && styles.textDark]}>Height (cm)</Text>
         <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
           <Ionicons name="resize-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
           <TextInput
             style={[styles.input, isDark && styles.textDark]}
             value={height}
             onChangeText={(text) => setHeight(text.replace(/[^0-9]/g, '').slice(0, 3))}
-            placeholder="e.g., 50"
+            placeholder="e.g., 50 (newborn) or 85 (toddler)"
             placeholderTextColor={isDark ? '#64748b' : '#999'}
             keyboardType="number-pad"
             maxLength={3}
-            accessibilityLabel="Birth height in centimeters"
+            accessibilityLabel="Height in centimeters"
           />
         </View>
       </View>

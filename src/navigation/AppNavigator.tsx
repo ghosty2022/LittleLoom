@@ -205,21 +205,22 @@ function getNavState(
     if (firstOpen && !seenOnboarding) return 'ONBOARDING';
     return 'LOGIN';
   }
-  
+
   // isAuth === true from here on
   // Show security lock whenever the context says we're locked (regardless of how we got there)
   if (isLocked && setupDone) return 'SECURITY_LOCK';
-  
+
   if (!setupDone) {
-    // Check parent2 setup first - must be completed OR skipped
-    const p2Addressed = hasP2 === true || hasP2 === 'skipped';
-    if (!p2Addressed) return 'SETUP_PARENT2';
-    
-    // Then check baby setup - must be completed OR skipped OR have babies
+    // Baby MUST exist (or be skipped) before we can invite a co-parent,
+    // because invite codes are tied to a baby/familyId.
     const babyAddressed = hasBaby === true || hasBaby === 'skipped' || babyCount > 0;
     if (!babyAddressed) return 'SETUP_BABY';
+
+    // Then check parent2 setup - must be completed OR skipped
+    const p2Addressed = hasP2 === true || hasP2 === 'skipped';
+    if (!p2Addressed) return 'SETUP_PARENT2';
   }
-  
+
   return 'MAIN';
 }
 
@@ -411,17 +412,17 @@ function NavigationContent({
     const sub = AppState.addEventListener('change', async (next) => {
       const previous = appState.current;
       appState.current = next;
-      
+
       // Only trigger when coming BACK to active from background/inactive
       if ((previous === 'background' || previous === 'inactive') && next === 'active') {
        // Minimal delay to let React Native settle
         await new Promise(r => setTimeout(r, 30));
-        
+
         const currentRoute = navRef.current?.getCurrentRoute()?.name;
-        
+
         // Don't re-trigger if already on security lock
         if (currentRoute === 'SecurityLock') return;
-        
+
         // Skip if we just came from security lock (handled by the unlock flow)
         if (wasOnSecurityLock.current) {
           wasOnSecurityLock.current = false;
@@ -430,13 +431,13 @@ function NavigationContent({
 
         const now = Date.now();
         if (now - lastSecCheck.current < 2000) return;
-        
+
         // ALWAYS check security when authenticated, regardless of setup state
         // (but security lock only shows if setup is done AND security is enabled)
         if (isAuthenticated) {
           await checkSecurityOnResumeRef.current();
         }
-        
+
         lastSecCheck.current = now;
         loadBabiesRef.current();
       }

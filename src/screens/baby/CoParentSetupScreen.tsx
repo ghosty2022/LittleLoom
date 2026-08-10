@@ -132,7 +132,7 @@ export default function Parent2SetupScreen({ navigation }: Props) {
   const [isLoading, setIsLoading] = useState(false);
   const [isGeneratingCode, setIsGeneratingCode] = useState(false);
   const [inviteCodeRole, setInviteCodeRole] = useState<'parent2' | 'guardian' | 'viewer'>('parent2');
-  
+
   const { currentBaby } = useBaby();
   const [alert, setAlert] = useState({ visible: false, type: 'success', title: '', message: '' });
   const [confirmModal, setConfirmModal] = useState({ visible: false, title: '', message: '', onConfirm: () => {}, type: 'default' });
@@ -141,7 +141,7 @@ export default function Parent2SetupScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const { isDark, colors } = useApp();
   const isMountedRef = useRef(true);
-  
+
   useEffect(() => {
     isMountedRef.current = true;
     return () => { isMountedRef.current = false; };
@@ -167,7 +167,7 @@ export default function Parent2SetupScreen({ navigation }: Props) {
       showToast('error', 'Missing Info', 'Please specify the relationship');
       return;
     }
-    
+
     // Invite codes are tied to a baby. If we haven't created one yet,
     // we can't generate a code here. The user can invite from FamilySharing later.
     if (!currentBaby?.id) {
@@ -213,10 +213,9 @@ export default function Parent2SetupScreen({ navigation }: Props) {
     setIsLoading(true);
     try {
       await completeSetup('parent2');
-      showToast('success', 'Setup Complete!', 'Continuing to baby setup...');
+      showToast('success', 'Setup Complete!', 'Opening your family dashboard...');
       // AuthContext state update triggers AppNavigator navState effect
       // which will navigate to BabyOptional automatically
-      // DO NOT call navigation.replace() here
       setTimeout(() => {
         if (isMountedRef.current) setIsLoading(false);
       }, 800);
@@ -232,7 +231,7 @@ export default function Parent2SetupScreen({ navigation }: Props) {
     setConfirmModal({
       visible: true,
       title: 'Skip Adding Co-Parent?',
-      message: 'You can always add family members later from the Family tab after creating your baby profile.',
+      message: 'You can always add a co-parent later from the Family tab.',
       type: 'default',
       onConfirm: async () => {
         try {
@@ -262,7 +261,12 @@ export default function Parent2SetupScreen({ navigation }: Props) {
     if (!generatedCode) return;
     const { Linking } = await import('react-native');
     const url = `whatsapp://send?text=${encodeURIComponent(
-      `👋 Join me on LittleLoom!\n\n🎫 Invite Code: ${generatedCode}\n👤 Role: Co-Parent\n\nDownload the app and enter this code on the sign-up screen.`
+      `👋 Join me on LittleLoom!
+
+🎫 Invite Code: ${generatedCode}
+👤 Role: Co-Parent
+
+Download the app and enter this code on the sign-up screen.`
     )}`;
     Linking.canOpenURL(url).then(supported => {
       if (supported) Linking.openURL(url);

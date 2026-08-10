@@ -89,10 +89,12 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // FIX: Account creator always has invite rights regardless of permission state
   const { userProfile: authProfile } = useAuth();
   const isOwner = useMemo(() => {
-    if (!currentBaby) return false;
     const effectiveProfile = profile || authProfile;
     if (!effectiveProfile) return false;
-    return effectiveProfile.role === 'parent1' || effectiveProfile.role === UserRole.PARENT_1 || currentBaby.parent1Id === effectiveProfile.id || currentBaby.parent1Id === authProfile?.id;
+    // Global parent1 role always grants owner rights, even if currentBaby metadata hasn't hydrated yet
+    if (effectiveProfile.role === 'parent1' || effectiveProfile.role === UserRole.PARENT_1) return true;
+    if (!currentBaby) return false;
+    return currentBaby.parent1Id === effectiveProfile.id || currentBaby.parent1Id === authProfile?.id;
   }, [profile, authProfile, currentBaby]);
 
   useEffect(() => {
@@ -173,11 +175,11 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       // Load all family members from Drizzle DB
       try {
         const dbMembers = await getFamilyMembersByBabyFromDb(currentBaby.id);
-        
+
         for (const dbMember of dbMembers) {
           // Skip if this is parent1 (we already added from profile)
           if (dbMember.role === 'parent1') continue;
-          
+
           const member: FamilyMember = {
             id: dbMember.id,
             userId: dbMember.userId || dbMember.id,
