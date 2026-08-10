@@ -94,7 +94,7 @@ const NAVIGATION_MAP: Record<string, { screen: keyof RootStackParamList; params?
   // Tab roots
   'Main': { screen: 'Main', params: {} },
   'Connect': { screen: 'Main', params: { screen: 'Connect' } },
-  'More': { screen: 'Main', params: { screen: 'More' } },
+  'More': { screen: 'More', params: {} },
 
   // Auth & Setup
   'Onboarding': { screen: 'Onboarding', params: {} },
@@ -1350,6 +1350,7 @@ interface StickyAppHeaderProps {
   unreadCount: number;
   scrollY: Animated.SharedValue<number>;
   onSafetyCornerPress: () => void;
+  onSettingsPress: () => void;
   primaryColor: string;
   fullTheme: any;
   fontSizeMultiplier: number;
@@ -1367,6 +1368,7 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
   unreadCount,
   scrollY,
   onSafetyCornerPress,
+  onSettingsPress,
   primaryColor,
   fullTheme,
   fontSizeMultiplier,
@@ -1471,6 +1473,13 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
                 </Text>
               </View>
             )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.stickyHeaderIconBtn, { width: avatarSize + 2, height: avatarSize + 2, borderRadius: (avatarSize + 2) / 2 }]}
+            onPress={onSettingsPress}
+          >
+            <Ionicons name="settings-outline" size={iconSize} color={isDark ? '#fff' : primaryColor} />
           </TouchableOpacity>
 
           {currentBaby ? (
@@ -1699,7 +1708,7 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
     'Login', 'SignUp', 'ForgotPassword', 'AddEntry', 'AddParent',
     'EditGuardian', 'SecurityCenter', 'BiometricSetup', 'BackupRestore',
     'LanguageSettings', 'UnitSettings', 'PrivacyPolicy', 'TermsOfService',
-    'About', 'EntryDetail', 'Insights', 'CreateCustomTracker'
+    'About', 'EntryDetail', 'Insights', 'CreateCustomTracker', 'More'
   ]);
 
   
@@ -1752,7 +1761,7 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
 
   const handleQuickAction = useCallback((action: QuickAction) => {
     triggerHaptic('medium');
-    const noBabyRequired = ['note', 'settings', 'family_chat', 'reminders', 'safety', 'gallery', 'sound'];
+    const noBabyRequired = ['settings'];
     if (!currentBaby && !noBabyRequired.includes(action.id)) {
       setPendingAction(action);
       setShowBabyRequiredModal(true);
@@ -1936,6 +1945,7 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
         unreadCount={unreadCommunityCount}
         scrollY={scrollY}
         onSafetyCornerPress={handleSafetyCornerPress}
+        onSettingsPress={() => navigateToScreen('More')}
         primaryColor={primary}
         fullTheme={fullThemeColors}
         fontSizeMultiplier={fontSizeMultiplier}
@@ -2345,7 +2355,7 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
           <View style={[styles.modalContent, { backgroundColor: isDark ? 'rgba(26,26,42,0.98)' : 'rgba(255,255,255,0.98)' }]}>
             <View style={styles.modalIconWrap}>
               <LinearGradient colors={[secondary, primary]} style={styles.modalIconGradient}>
-                <Ionicons name="baby-outline" size={32} color="#fff" />
+                <Ionicons name="people-outline" size={32} color="#fff" />
               </LinearGradient>
             </View>
             <Text style={[styles.modalTitle, { color: theme.text }]}>Baby Profile Needed</Text>

@@ -27,7 +27,8 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { useTheme } from '../context/AppContext';
-import { HomeIcon, TrackIcon, GrowIcon, ConnectIcon, MoreIcon, AddLogIcon } from './TabIcons';
+import { HomeIcon, TrackIcon, GrowIcon, ConnectIcon, AddLogIcon } from './TabIcons';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouteBasedNavVisibility } from '../hooks/useRouteBasedNavVisibility';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -40,6 +41,10 @@ interface TabItem {
   hapticStyle: Haptics.ImpactFeedbackStyle;
   Icon: React.FC<any>;
 }
+
+const TimelineIcon: React.FC<any> = ({ size, color }) => (
+  <Ionicons name="time-outline" size={size} color={color} />
+);
 
 const TABS: TabItem[] = [
   { 
@@ -75,12 +80,12 @@ const TABS: TabItem[] = [
     Icon: ConnectIcon 
   },
   { 
-    name: 'More', 
-    route: 'More', 
-    color: '#64748b', 
-    gradient: ['#64748b', '#94a3b8'] as const,
+    name: 'Timeline', 
+    route: 'Timeline', 
+    color: '#8b5cf6', 
+    gradient: ['#8b5cf6', '#a78bfa'] as const,
     hapticStyle: Haptics.ImpactFeedbackStyle.Light, 
-    Icon: MoreIcon 
+    Icon: TimelineIcon 
   },
 ];
 

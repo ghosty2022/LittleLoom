@@ -153,13 +153,7 @@ const getScreenOptions = (colors: any, isDark: boolean) => ({
    MAIN TABS — Route-based tab bar visibility (NO scroll hiding)
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const VISIBLE_TAB_BAR_ROUTES = new Set(['Home']);
-
-function getTabBarVisibility(route: any): 'flex' | 'none' {
-  const routeName = getFocusedRouteNameFromRoute(route) ?? '';
-  if (VISIBLE_TAB_BAR_ROUTES.has(routeName)) return 'flex';
-  return 'none';
-}
+// Tab bar visibility is handled internally by LiquidGlassNavigation
 
 function MainTabs() {
   const { isDark, colors } = useSafeApp();
@@ -174,7 +168,6 @@ function MainTabs() {
           borderTopWidth: 0, 
           elevation: 0, 
           shadowOpacity: 0,
-          display: getTabBarVisibility(route),
         },
         sceneStyle: { backgroundColor: colors?.background || '#f8faff' },
       })}
@@ -183,7 +176,7 @@ function MainTabs() {
       <Tab.Screen name="Track" component={TrackScreen} />
       <Tab.Screen name="Grow" component={GrowthDashboardScreen} />
       <Tab.Screen name="Connect" component={CommunityNavigator} />
-      <Tab.Screen name="More" component={MoreScreen} />
+      <Tab.Screen name="Timeline" component={TimelineScreen} />
     </Tab.Navigator>
   );
 }
@@ -679,6 +672,7 @@ function NavigationContent({
 
         <Stack.Screen name="UniversalTrackerHub" component={UniversalTrackerHubScreen} />
         <Stack.Screen name="CreateCustomTracker" component={CreateCustomTrackerScreen} />
+        <Stack.Screen name="More" component={MoreScreen} />
         </Stack.Navigator>
       </View>
     </NavigationContainer>

@@ -205,6 +205,7 @@ export type RootStackParamList = {
   About: undefined;
   LanguageSettings: undefined;
   UnitSettings: undefined;
+  More: undefined;
 };
 
 export type CommunityStackParamList = {
@@ -245,7 +246,7 @@ export type MainTabParamList = {
   Track: undefined;
   Grow: undefined;
   Connect: undefined;
-  More: undefined;
+  Timeline: undefined;
   SafetyCorner: undefined;  
 };
 
