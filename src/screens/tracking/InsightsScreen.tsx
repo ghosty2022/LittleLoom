@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Dimensions,
   FlatList,
+  Modal,
+  Pressable,
   RefreshControl,
   ScrollView,
   StatusBar,
@@ -388,7 +390,7 @@ export default function InsightsScreen({ navigation }: InsightsScreenProps) {
   const { triggerHaptic, themeColors, darkMode } = useCustomization();
   // REMOVED fontSizeMultiplier — unused in this screen
   const { userProfile } = useAuth();
-  const { currentBaby, growthData, milestones, babies, getGrowthData } = useBaby();
+  const { currentBaby, growthData, milestones, babies, getGrowthData, loadBabies } = useBaby();
   const { entries: getRecentTimelineEvents } = useActivity();
   const { growthIndex } = useGrowthIntelligence();
   const { correlations: timelineCorrelations } = useTimelineCorrelations();
@@ -417,6 +419,7 @@ export default function InsightsScreen({ navigation }: InsightsScreenProps) {
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [refreshing, setRefreshing] = useState(false);
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
+  const [showBabyRequiredModal, setShowBabyRequiredModal] = useState(false);
 
   const scrollY = useSharedValue(0);
   const scrollHandler = useAnimatedScrollHandler({
@@ -441,6 +444,16 @@ export default function InsightsScreen({ navigation }: InsightsScreenProps) {
       }
     });
   }, []);
+
+  /* ── Baby required modal ── */
+  useEffect(() => {
+    if (!currentBaby) {
+      const timer = setTimeout(() => setShowBabyRequiredModal(true), 400);
+      return () => clearTimeout(timer);
+    } else {
+      setShowBabyRequiredModal(false);
+    }
+  }, [currentBaby]);
 
   const saveDismissed = useCallback((ids: Set<string>) => {
     AsyncStorage.setItem('@littleloom_dismissed_insights', JSON.stringify([...ids])).catch(() => {});
@@ -795,10 +808,11 @@ export default function InsightsScreen({ navigation }: InsightsScreenProps) {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await refreshEntries(); // re-reads entries from the DB; BabyContext data re-reads on its own provider cycle
+      await loadBabies();
+      await refreshEntries();
     } catch { /* keep the spinner honest even on failure */ }
     setRefreshing(false);
-  }, [refreshEntries]);
+  }, [refreshEntries, loadBabies]);
 
   const handleInsightPress = useCallback((insight: InsightItem) => {
     triggerHaptic('light');
@@ -862,7 +876,11 @@ export default function InsightsScreen({ navigation }: InsightsScreenProps) {
             </Text>
           </View>
 
-          <View style={{ width: 40 }} />
+          {!currentBaby ? (
+            <TouchableOpacity onPress={() => navigation.navigate('CreateBabyProfile')} style={[styles.backBtn, { backgroundColor: theme.surface }]}>
+              <Ionicons name="add-circle" size={22} color={theme.primary} />
+            </TouchableOpacity>
+          ) : <View style={{ width: 40 }} />}
         </Animated.View>
 
         {/* ── STATS ROW ── */}
@@ -1037,6 +1055,47 @@ export default function InsightsScreen({ navigation }: InsightsScreenProps) {
 
         <View style={{ height: insets.bottom + 40 }} />
       </Animated.ScrollView>
+
+      {/* Baby Required Modal */}
+      <Modal
+        visible={showBabyRequiredModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowBabyRequiredModal(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowBabyRequiredModal(false)}
+        >
+          <View style={[styles.modalContent, { backgroundColor: isDark ? 'rgba(26,26,42,0.98)' : 'rgba(255,255,255,0.98)' }]}>
+            <View style={styles.modalIconWrap}>
+              <LinearGradient colors={[secondary, primary]} style={styles.modalIconGradient}>
+                <Ionicons name="people-outline" size={32} color="#fff" />
+              </LinearGradient>
+            </View>
+            <Text style={[styles.modalTitle, { color: theme.text }]}>Baby Profile Needed</Text>
+            <Text style={[styles.modalDesc, { color: theme.textSecondary }]}>
+              Create a baby profile to start tracking activities and unlock all features.
+            </Text>
+            <TouchableOpacity
+              style={[styles.modalPrimaryBtn, { backgroundColor: primary }]}
+              onPress={() => {
+                setShowBabyRequiredModal(false);
+                navigation.navigate('CreateBabyProfile');
+              }}
+            >
+              <Text style={styles.modalPrimaryBtnText}>Create Baby Profile</Text>
+              <Ionicons name="arrow-forward" size={16} color="#fff" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.modalSecondaryBtn}
+              onPress={() => setShowBabyRequiredModal(false)}
+            >
+              <Text style={[styles.modalSecondaryBtnText, { color: theme.textMuted }]}>Maybe Later</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -1278,4 +1337,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   giActionText: { fontSize: 13, fontWeight: '700' },
+
+  /* ── Baby Required Modal ── */
+  modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24, backgroundColor: 'rgba(0,0,0,0.5)' },
+  modalContent: { width: '100%', maxWidth: 360, borderRadius: 28, padding: 28, alignItems: 'center' },
+  modalIconWrap: { width: 64, height: 64, borderRadius: 24, marginBottom: 16, overflow: 'hidden' },
+  modalIconGradient: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' },
+  modalTitle: { fontSize: 22, fontWeight: '800', marginBottom: 8, textAlign: 'center', letterSpacing: -0.3 },
+  modalDesc: { fontSize: 15, textAlign: 'center', lineHeight: 22, marginBottom: 24, paddingHorizontal: 8 },
+  modalPrimaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', width: '100%', paddingVertical: 16, borderRadius: 18, gap: 8, marginBottom: 12 },
+  modalPrimaryBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  modalSecondaryBtn: { width: '100%', paddingVertical: 14, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  modalSecondaryBtnText: { fontSize: 15, fontWeight: '600' },
 });

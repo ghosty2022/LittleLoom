@@ -5,6 +5,7 @@ import {
   LayoutAnimation,
   Modal,
   Platform,
+  Pressable,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -1079,6 +1080,7 @@ export default function RemindersScreen({ navigation, route }: Props) {
   const [showSearch, setShowSearch] = useState(false);
   const [analytics, setAnalytics] = useState<any>({});
   const [dailyInsights, setDailyInsights] = useState<DailyInsight[]>([]);
+  const [showBabyRequiredModal, setShowBabyRequiredModal] = useState(false);
 
   const [formTitle, setFormTitle] = useState('');
   const [formCategory, setFormCategory] = useState<CategoryType>('custom');
@@ -1116,11 +1118,12 @@ export default function RemindersScreen({ navigation, route }: Props) {
   /* ---- Focus effect ---- */
   useFocusEffect(
     useCallback(() => {
+      loadBabies();
       loadData();
       checkStreakStatus();
       generateSmartSuggestions();
       generateDailyInsights();
-    }, [baby?.id])
+    }, [baby?.id, loadBabies])
   );
 
   /* ---- Initial load ---- */
@@ -1151,6 +1154,16 @@ export default function RemindersScreen({ navigation, route }: Props) {
     });
     return () => subscription.remove();
   }, [navigation]);
+
+  /* ---- Baby required modal ---- */
+  useEffect(() => {
+    if (!baby) {
+      const timer = setTimeout(() => setShowBabyRequiredModal(true), 400);
+      return () => clearTimeout(timer);
+    } else {
+      setShowBabyRequiredModal(false);
+    }
+  }, [baby]);
 
   /* ---- Data loading ---- */
   const loadData = async () => {
@@ -1689,15 +1702,56 @@ export default function RemindersScreen({ navigation, route }: Props) {
         <View style={styles.centerContent}>
           <GlassCard intensity={90}>
             <LinearGradient colors={['#667eea', '#764ba2']} style={styles.noBabyGradient}>
-              <Text style={styles.noBabyEmoji}>⏰</Text>
-              <Text style={styles.noBabyTitle}>No Baby Selected</Text>
-              <Text style={styles.noBabySubtitle}>Select a baby profile to manage reminders</Text>
-              <TouchableOpacity style={styles.noBabyButton} onPress={() => navigation.navigate('SwitchBaby')}>
-                <Text style={[styles.noBabyButtonText, { color: '#667eea' }]}>Select Baby</Text>
+              <Ionicons name="add-circle" size={56} color="#fff" />
+              <Text style={styles.noBabyTitle}>Baby Profile Needed</Text>
+              <Text style={styles.noBabySubtitle}>Create a baby profile to manage reminders</Text>
+              <TouchableOpacity style={styles.noBabyButton} onPress={() => navigation.navigate('CreateBabyProfile')}>
+                <Text style={[styles.noBabyButtonText, { color: '#667eea' }]}>Create Baby Profile</Text>
               </TouchableOpacity>
             </LinearGradient>
           </GlassCard>
         </View>
+
+        {/* Baby Required Modal */}
+        <Modal
+          visible={showBabyRequiredModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowBabyRequiredModal(false)}
+        >
+          <Pressable
+            style={styles.modalOverlay}
+            onPress={() => setShowBabyRequiredModal(false)}
+          >
+            <View style={[styles.modalContent, { backgroundColor: isDark ? 'rgba(26,26,42,0.98)' : 'rgba(255,255,255,0.98)' }]}>
+              <View style={styles.modalIconWrap}>
+                <LinearGradient colors={[(themeColors?.secondary || '#fa709a'), (themeColors?.primary || '#667eea')]} style={styles.modalIconGradient}>
+                  <Ionicons name="people-outline" size={32} color="#fff" />
+                </LinearGradient>
+              </View>
+              <Text style={[styles.modalTitle, { color: isDark ? '#fff' : '#1a1a1a' }]}>Baby Profile Needed</Text>
+              <Text style={[styles.modalDesc, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+                Create a baby profile to start tracking activities and unlock all features.
+              </Text>
+              <TouchableOpacity
+                style={[styles.modalPrimaryBtn, { backgroundColor: themeColors?.primary || '#667eea' }]}
+                onPress={() => {
+                  setShowBabyRequiredModal(false);
+                  navigation.navigate('CreateBabyProfile');
+                }}
+              >
+                <Text style={styles.modalPrimaryBtnText}>Create Baby Profile</Text>
+                <Ionicons name="arrow-forward" size={16} color="#fff" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalSecondaryBtn}
+                onPress={() => setShowBabyRequiredModal(false)}
+              >
+                <Text style={[styles.modalSecondaryBtnText, { color: isDark ? '#94a3b8' : '#94a3b8' }]}>Maybe Later</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Modal>
       </View>
     );
   }
@@ -2376,4 +2430,73 @@ const styles = StyleSheet.create({
   alertTextContainer: { flex: 1 },
   alertTitle: { fontSize: 16, fontWeight: '700', marginBottom: 2 },
   alertMessage: { fontSize: 13, color: '#64748b' },
+
+  /* ── Baby Required Modal ── */
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  modalContent: {
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: 28,
+    padding: 28,
+    alignItems: 'center',
+  },
+  modalIconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 24,
+    marginBottom: 16,
+    overflow: 'hidden',
+  },
+  modalIconGradient: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    marginBottom: 8,
+    textAlign: 'center',
+    letterSpacing: -0.3,
+  },
+  modalDesc: {
+    fontSize: 15,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 24,
+    paddingHorizontal: 8,
+  },
+  modalPrimaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    paddingVertical: 16,
+    borderRadius: 18,
+    gap: 8,
+    marginBottom: 12,
+  },
+  modalPrimaryBtnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  modalSecondaryBtn: {
+    width: '100%',
+    paddingVertical: 14,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalSecondaryBtnText: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
 });

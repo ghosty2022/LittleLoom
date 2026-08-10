@@ -47,7 +47,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 type Props = NativeStackScreenProps<CommunityStackParamList, 'CommunityMemberProfile'>;
 
-const { width: SCREEN_W } = Dimensions.get('window');
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
 const DESIGN = {
   radius: { xs: 8, sm: 12, md: 16, lg: 20, xl: 24, full: 999 },
@@ -88,12 +88,13 @@ interface SmartAction { id: string; title: string; description: string; icon: st
 interface ParentingTip { id: string; emoji: string; title: string; tip: string; color: string; }
 interface PostTopic { topicId: string; count: number; color: string; label: string; percentage: number; }
 
-const GlassCard = React.memo(({ children, style, onPress, active = false, delay = 0, isDark: cardDark = true }: any) => {
+const GlassCard = React.memo(({ children, style, onPress, active = false, delay = 0, isDark = true, colors }: any) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   const Wrapper = onPress ? TouchableOpacity : View;
   return (
-    <Animated.View entering={FadeInUp.delay(delay).springify()} style={[styles.glassCard, active && { borderColor: themeColors.primary, borderWidth: 2 }, style]}>
+    <Animated.View entering={FadeInUp.delay(delay).springify()} style={[styles.glassCard, active && { borderColor: colors.primary, borderWidth: 2 }, style]}>
       <Wrapper onPress={onPress} activeOpacity={onPress ? 0.85 : 1} style={{ flex: 1 }}>
-        <LinearGradient colors={cardDark ? ['rgba(45,45,60,0.6)', 'rgba(35,35,50,0.4)'] : ['rgba(255,255,255,0.92)', 'rgba(248,250,255,0.85)']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+        <LinearGradient colors={isDark ? ['rgba(45,45,60,0.6)', 'rgba(35,35,50,0.4)'] : ['rgba(255,255,255,0.92)', 'rgba(248,250,255,0.85)']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
         <View style={styles.glassBorder} />
         <View style={styles.glassContent}>{children}</View>
       </Wrapper>
@@ -101,8 +102,10 @@ const GlassCard = React.memo(({ children, style, onPress, active = false, delay 
   );
 });
 
-const SectionHeader = React.memo(({ title, subtitle, action, actionLabel }: any) => (
-  <View style={styles.sectionHeader}>
+const SectionHeader = React.memo(({ title, subtitle, action, actionLabel, isDark, colors }: any) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
+  return (
+    <View style={styles.sectionHeader}>
     <View>
       <Text style={styles.sectionTitle}>{title}</Text>
       {subtitle && <Text style={styles.sectionSubtitle}>{subtitle}</Text>}
@@ -114,10 +117,11 @@ const SectionHeader = React.memo(({ title, subtitle, action, actionLabel }: any)
       </TouchableOpacity>
     )}
   </View>
-));
-
-const KpiPill = React.memo(({ icon, value, label, color, onPress }: any) => (
-  <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={styles.kpiPill}>
+});
+const KpiPill = React.memo(({ icon, value, label, color, onPress, isDark, colors }: any) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
+  return (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={styles.kpiPill}>
     <LinearGradient colors={[`${color}15`, `${color}05`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
     <View style={[styles.kpiPillIconBg, { backgroundColor: `${color}15` }]}>
       <Text style={styles.kpiPillEmoji}>{icon}</Text>
@@ -633,11 +637,14 @@ const PostCard = React.memo(({ post, index, onPress }: any) => {
 
 type ProfileTab = 'posts' | 'about' | 'achievements' | 'insights';
 
-const TabBar = React.memo(({ tabs, activeTab, onChange }: {
+const TabBar = React.memo(({ tabs, activeTab, onChange, isDark, colors }: {
   tabs: { key: ProfileTab; label: string; icon: string }[];
   activeTab: ProfileTab; onChange: (t: ProfileTab) => void;
-}) => (
-  <View style={styles.tabBar}>
+  isDark?: boolean; colors?: any;
+}) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
+  return (
+    <View style={styles.tabBar}>
     {tabs.map((tab) => {
       const isActive = activeTab === tab.key;
       return (

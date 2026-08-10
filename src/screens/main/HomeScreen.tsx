@@ -158,6 +158,8 @@ interface QuickAction {
   screen: keyof RootStackParamList;
   params?: Record<string, any>;
   category: 'daily' | 'health' | 'family' | 'tools';
+  badgeCount?: number;
+  badgeLabel?: string;
 }
 
 interface FeatureCard {
@@ -308,7 +310,8 @@ const DailySummaryWidget: React.FC<{
   isDark: boolean;
   theme: any;
   onPress: (type: string) => void;
-}> = React.memo(({ summary, isDark, theme, onPress }) => {
+  streakDays: number;
+}> = React.memo(({ summary, isDark, theme, onPress, streakDays }) => {
   const items = [
     {
       id: 'feeds',
@@ -340,8 +343,8 @@ const DailySummaryWidget: React.FC<{
     {
       id: 'streak',
       label: 'Streak',
-      value: '7d',
-      sublabel: 'Keep it up!',
+      value: streakDays + 'd',
+      sublabel: streakDays > 0 ? 'Keep it up!' : 'Start tracking!',
       icon: 'flame-outline',
       color: '#f59e0b',
       gradient: ['#f59e0b', '#fbbf24'] as [string, string],
@@ -778,14 +781,26 @@ const CategorizedQuickActions: React.FC<{
               activeOpacity={1}
               style={styles.categorizedGridTouchable}
             >
-              <LinearGradient
-                colors={action.gradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.categorizedGridGradient}
-              >
-                <Ionicons name={action.iconName as any} size={22} color="#fff" />
-              </LinearGradient>
+              <View style={{ width: '100%', aspectRatio: 1, position: 'relative' }}>
+                <LinearGradient
+                  colors={action.gradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={[styles.categorizedGridGradient, { width: '100%', height: '100%' }]}
+                >
+                  <Ionicons name={action.iconName as any} size={22} color="#fff" />
+                </LinearGradient>
+                {action.badgeCount !== undefined && action.badgeCount > 0 && (
+                  <View style={[styles.actionBadge, { borderColor: action.color }]}>
+                    <Text style={[styles.actionBadgeText, { color: action.color }]}>{action.badgeCount}</Text>
+                  </View>
+                )}
+                {action.badgeLabel && (
+                  <View style={styles.actionBadgeLabel}>
+                    <Text style={styles.actionBadgeLabelText}>{action.badgeLabel}</Text>
+                  </View>
+                )}
+              </View>
               <Text style={[styles.categorizedGridLabel, { color: theme.text }]}>{action.label}</Text>
             </TouchableOpacity>
           </Animated.View>
@@ -1537,7 +1552,18 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   const scrollY = useSharedValue(0);
 
   const { userProfile, signOut, isLoading: authLoading } = useAuth();
-  const { currentBaby, loadBabies, getPottyStreak } = useBaby();
+  const {
+  currentBaby,
+  loadBabies,
+  getPottyStreak,
+  growthData,
+  milestones,
+  getGrowthData,
+  getLatestMeasurements,
+  getTodaySleepCount,
+  getTodayFeedCount,
+  getTodayPottyCount,
+} = useBaby();
   const { entries: activities, getRecentTimelineEvents, getTodayCount, loadEntries: loadActivities, isLoading: activitiesLoading } = useActivity();
     const { entries } = useTracker();
   const { lockApp, getAvailableAuthMethods } = useSecurity();
@@ -1869,6 +1895,39 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
     };
   }, [activities, currentBaby]);
 
+  /* ── Growth KPI Stats (GrowthDashboard-style) ── */
+  const growthStats = useMemo(() => {
+    if (!currentBaby) return null;
+    const result: Record<string, any> = {};
+    const types = ['height', 'weight', 'head'] as const;
+
+    types.forEach((type) => {
+      const data = getGrowthData(type as any).sort(
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+      );
+      const current = data[0];
+      const prev = data[1];
+      if (current) {
+        result[type] = {
+          value: Number(current.value).toFixed(1),
+          unit: current.unit,
+          change: prev ? Number(current.value - prev.value).toFixed(1) : undefined,
+          date: current.date,
+        };
+      }
+    });
+
+    if (result.height && result.weight) {
+      const h = parseFloat(result.height.value) / 100;
+      const w = parseFloat(result.weight.value);
+      result.bmi = {
+        value: (w / (h * h)).toFixed(1),
+        unit: '',
+      };
+    }
+    return result;
+  }, [growthData, currentBaby, getGrowthData]);
+
   // Unified recent activity — syncs with Timeline screen
   const allTimelineEvents = useMemo(() => {
     if (!currentBaby) return [];
@@ -2103,6 +2162,97 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
         )}
 
         {/* ═══════════════════════════════════════════════════════════════════
+            GROWTH SNAPSHOT KPIs — GrowthDashboard-style
+           ═══════════════════════════════════════════════════════════════════ */}
+        {currentBaby && growthStats && (
+          <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(50).springify()}>
+            <View style={[styles.sectionHeader, { paddingHorizontal: settings.compactSpacing ? 16 : 20, marginTop: 6 }]}>
+              <View style={styles.sectionTitleRow}>
+                <Ionicons name="pulse-outline" size={Math.round(18 * fontSizeMultiplier)} color={primary} />
+                <Text style={[styles.sectionTitle, { color: theme.text, fontSize: Math.round(16 * fontSizeMultiplier) }]}>
+                  Growth Snapshot
+                </Text>
+              </View>
+              <TouchableOpacity style={styles.seeAllButton} onPress={() => navigateToScreen('GrowthDashboard')}>
+                <Text style={[styles.seeAllText, { color: primary, fontSize: Math.round(13 * fontSizeMultiplier) }]}>Full Dashboard</Text>
+                <Ionicons name="arrow-forward-outline" size={Math.round(13 * fontSizeMultiplier)} color={primary} />
+              </TouchableOpacity>
+            </View>
+            <View style={[styles.kpiGrid, { paddingHorizontal: settings.compactSpacing ? 16 : 20, marginBottom: 14 }]}>
+              {[
+                { key: 'height', title: 'Height', icon: '📏', color: '#6366f1', unit: 'cm' },
+                { key: 'weight', title: 'Weight', icon: '⚖️', color: '#ec4899', unit: 'kg' },
+                { key: 'head', title: 'Head', icon: '🧠', color: '#06b6d4', unit: 'cm' },
+                { key: 'bmi', title: 'BMI', icon: '📊', color: '#f59e0b', unit: '' },
+              ].map((m) => {
+                const s = growthStats?.[m.key];
+                if (!s) return null;
+                const changeNum = s.change ? parseFloat(s.change) : 0;
+                return (
+                  <TouchableOpacity
+                    key={m.key}
+                    onPress={() => navigateToScreen('GrowthDashboard')}
+                    activeOpacity={0.85}
+                    style={[
+                      styles.kpiHomeCard,
+                      {
+                        backgroundColor: isDark ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.85)',
+                        borderColor: m.color + '20',
+                      },
+                    ]}
+                  >
+                    <View style={[styles.kpiHomeIconBg, { backgroundColor: m.color + '12' }]}>
+                      <Text style={{ fontSize: 20 }}>{m.icon}</Text>
+                    </View>
+                    <View style={styles.kpiHomeBody}>
+                      <Text
+                        style={[styles.kpiHomeValue, { color: theme.text, fontSize: Math.round(20 * fontSizeMultiplier) }]}
+                        numberOfLines={1}
+                      >
+                        {s.value}
+                      </Text>
+                      <Text style={[styles.kpiHomeUnit, { color: m.color, fontSize: Math.round(11 * fontSizeMultiplier) }]}>
+                        {m.unit || '—'}
+                      </Text>
+                    </View>
+                    <Text
+                      style={[
+                        styles.kpiHomeTitle,
+                        { color: theme.textSecondary, fontSize: Math.round(11 * fontSizeMultiplier) },
+                      ]}
+                    >
+                      {m.title}
+                    </Text>
+                    {s.change !== undefined && (
+                      <View style={styles.kpiHomeChangeRow}>
+                        <Ionicons
+                          name={changeNum >= 0 ? 'trending-up' : 'trending-down'}
+                          size={10}
+                          color={changeNum >= 0 ? '#10b981' : '#ef4444'}
+                        />
+                        <Text
+                          style={[
+                            styles.kpiHomeChange,
+                            {
+                              color: changeNum >= 0 ? '#10b981' : '#ef4444',
+                              fontSize: Math.round(10 * fontSizeMultiplier),
+                            },
+                          ]}
+                        >
+                          {changeNum > 0 ? '+' : ''}
+                          {s.change}
+                          {m.unit}
+                        </Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </Animated.View>
+        )}
+
+        {/* ═══════════════════════════════════════════════════════════════════
             NEW FEATURE 1: DAILY SUMMARY WIDGET — Redesigned
            ═══════════════════════════════════════════════════════════════════ */}
         {currentBaby && (
@@ -2112,6 +2262,7 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
               isDark={isDark}
               theme={theme}
               onPress={handleDailySummaryPress}
+              streakDays={getPottyStreak()}
             />
           </View>
         )}
@@ -2215,7 +2366,17 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
             </View>
           </View>
           <CategorizedQuickActions
-            actions={QUICK_ACTIONS}
+            actions={QUICK_ACTIONS.map((a) => {
+              let badgeCount: number | undefined;
+              let badgeLabel: string | undefined;
+              if (a.id === 'feed') badgeCount = getTodayFeedCount();
+              if (a.id === 'sleep') badgeCount = getTodaySleepCount();
+              if (a.id === 'diaper') badgeCount = getTodayPottyCount();
+              if (a.id === 'potty') badgeCount = getTodayPottyCount();
+              if (a.id === 'growth' && growthStats?.height) badgeLabel = growthStats.height.value + 'cm';
+              if (a.id === 'growth' && growthStats?.weight && !badgeLabel) badgeLabel = growthStats.weight.value + 'kg';
+              return { ...a, badgeCount, badgeLabel };
+            })}
             onPress={handleQuickAction}
             isDark={isDark}
             theme={theme}
@@ -2235,7 +2396,15 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
             </View>
           </View>
           <FeatureCardsRow
-            items={FEATURE_CARDS}
+            items={FEATURE_CARDS.map((f) => {
+              if (f.id === 'growth' && growthStats?.height) return { ...f, badge: growthStats.height.value + 'cm', badgeColor: '#10b981' };
+              if (f.id === 'milestones') return { ...f, badge: milestones.length + ' Total', badgeColor: '#ec4899' };
+              if (f.id === 'vaccine') return { ...f, badge: vaccinationReminders.filter((r) => r.status !== 'completed').length + ' Due', badgeColor: '#e11d48' };
+              if (f.id === 'gallery') return { ...f, badge: (currentBaby?.photos || 0) + '', badgeColor: '#8b5cf6' };
+              if (f.id === 'chat') return { ...f, badge: unreadCommunityCount > 0 ? unreadCommunityCount + ' New' : undefined, badgeColor: '#06b6d4' };
+              if (f.id === 'sound') return { ...f, badge: undefined, badgeColor: undefined };
+              return f;
+            })}
             onPress={handleFeaturePress}
             isDark={isDark}
             theme={theme}
@@ -2870,4 +3039,57 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
+
+  /* ── Growth Snapshot KPIs ── */
+  kpiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  kpiHomeCard: {
+    width: (width - 56) / 2,
+    borderRadius: 20,
+    padding: 14,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  kpiHomeIconBg: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
+  kpiHomeBody: { flexDirection: 'row', alignItems: 'baseline', gap: 4, marginBottom: 2 },
+  kpiHomeValue: { fontWeight: '800', letterSpacing: -0.5 },
+  kpiHomeUnit: { fontWeight: '700' },
+  kpiHomeTitle: { fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
+  kpiHomeChangeRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 6 },
+  kpiHomeChange: { fontWeight: '700' },
+
+  /* ── Quick Action Badges ── */
+  actionBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#fff',
+    borderWidth: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  actionBadgeText: { fontSize: 10, fontWeight: '800' },
+  actionBadgeLabel: {
+    position: 'absolute',
+    bottom: 4,
+    left: 4,
+    right: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 6,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    alignItems: 'center',
+  },
+  actionBadgeLabelText: { color: '#fff', fontSize: 9, fontWeight: '700' },
 });
