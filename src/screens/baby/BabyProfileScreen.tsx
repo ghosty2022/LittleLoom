@@ -48,6 +48,7 @@ import { useActivity } from '../../context/ActivityContext';
 import { useAuth } from '../../context/AuthContext';
 import { useUser } from '../../context/UserContext';
 import { UniversalSpinner, InlineSpinner } from '../../components/UniversalSpinner';
+import { useCustomization } from '../../hooks/useCustomization';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -545,7 +546,7 @@ const NextMilestoneCountdown = React.memo(({ baby, milestones, isDark, colors }:
 
   return (
     <Animated.View entering={FadeInUp.delay(300).springify()}>
-      <GlassCard>
+      <GlassCard isDark={isDark} colors={colors}>
         <View style={styles.countdownRow}>
           <View style={[styles.countdownIconBg, { backgroundColor: '#6366f115' }]}>
             <Text style={styles.countdownEmoji}>{nextMilestone.emoji}</Text>
@@ -590,7 +591,7 @@ const FamilyConnectionHub = React.memo(({ members, onManage, babyName, isDark, c
   return (
     <Animated.View entering={FadeInUp.delay(350).springify()}>
       <SectionHeader title="Family Tree" subtitle={`${members.length} connected`} action={onManage} actionLabel="Manage" />
-      <GlassCard onPress={onManage}>
+      <GlassCard onPress={onManage} isDark={isDark} colors={colors}>
         <View style={{ padding: 16, alignItems: 'center' }}>
           {/* Parents Row */}
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 16, marginBottom: 8 }}>
@@ -1255,7 +1256,7 @@ ${changes.join('\n')}`,
                 colors={themeColors}
               />
               {recentActivities.length === 0 ? (
-                <GlassCard style={styles.emptyCard}>
+                <GlassCard style={styles.emptyCard} isDark={isDark} colors={themeColors}>
                   <View style={styles.emptyStateIcon}>
                     <Ionicons name="time-outline" size={32} color="#6366f1" />
                   </View>
@@ -1268,7 +1269,7 @@ ${changes.join('\n')}`,
                     const config = ACTIVITY_CONFIG[activity.type] || ACTIVITY_CONFIG.default;
                     return (
                       <Animated.View key={activity.id || index} entering={FadeInUp.delay(index * 60).springify()}>
-                        <GlassCard style={styles.activityCard} delay={index * 60}>
+                        <GlassCard style={styles.activityCard} delay={index * 60} isDark={isDark} colors={themeColors}>
                           <View style={styles.activityRow}>
                             <View style={[styles.activityIcon, { backgroundColor: `${config.color}18` }]}>
                               <Text style={styles.activityEmoji}>{config.emoji}</Text>
@@ -1306,7 +1307,7 @@ ${changes.join('\n')}`,
               babyMilestones.map((milestone, index) => {
                 const category = MILESTONE_CATEGORIES.find(c => c.id === milestone.category);
                 return (
-                  <GlassCard key={milestone.id} style={styles.milestoneCard} delay={index * 100}>
+                  <GlassCard key={milestone.id} style={styles.milestoneCard} delay={index * 100} isDark={isDark} colors={themeColors}>
                     <View style={styles.milestoneRow}>
                       <View style={[styles.milestoneIcon, { backgroundColor: `${category?.color || '#6366f1'}20` }]}>
                         <Ionicons name={category?.icon as any || 'star'} size={24} color={category?.color || '#6366f1'} />
@@ -1329,7 +1330,7 @@ ${changes.join('\n')}`,
                 );
               })
             ) : (
-              <GlassCard style={styles.emptyCard} delay={100}>
+              <GlassCard style={styles.emptyCard} delay={100} isDark={isDark} colors={themeColors}>
                 <View style={styles.emptyStateIcon}>
                   <Ionicons name="trophy-outline" size={32} color="#f59e0b" />
                 </View>
@@ -1343,7 +1344,7 @@ ${changes.join('\n')}`,
         {/* TAB: HEALTH */}
         {activeTab === 'health' && (
           <>
-            <GlassCard style={styles.formCard} delay={100}>
+            <GlassCard style={styles.formCard} delay={100} isDark={isDark} colors={themeColors}>
               <View style={styles.sectionHeaderWithEdit}>
                 <Text style={styles.sectionLabel}>Health Information</Text>
                 {!isEditing ? (
@@ -1439,7 +1440,7 @@ ${changes.join('\n')}`,
               </View>
             </GlassCard>
 
-            <GlassCard style={styles.formCard} delay={200}>
+            <GlassCard style={styles.formCard} delay={200} isDark={isDark} colors={themeColors}>
               <View style={styles.sectionHeaderWithEdit}>
                 <Text style={styles.sectionLabel}>Emergency & Pediatrician</Text>
               </View>
@@ -1478,7 +1479,7 @@ ${changes.join('\n')}`,
               </View>
             </GlassCard>
 
-            <GlassCard style={styles.formCard} delay={300}>
+            <GlassCard style={styles.formCard} delay={300} isDark={isDark} colors={themeColors}>
               <View style={styles.sectionHeaderWithEdit}>
                 <Text style={styles.sectionLabel}>Preferences</Text>
               </View>
@@ -1514,7 +1515,7 @@ ${changes.join('\n')}`,
         {/* TAB: DANGER */}
         {activeTab === 'danger' && (
           <Animated.View entering={FadeInUp} style={styles.tabPanel}>
-            <GlassCard style={styles.dangerCard} delay={100}>
+            <GlassCard style={styles.dangerCard} delay={100} isDark={isDark} colors={themeColors}>
               <View style={styles.dangerIconContainer}>
                 <LinearGradient colors={['#ef4444', '#dc2626']} style={styles.dangerIcon}>
                   <Ionicons name="warning" size={32} color="#fff" />
@@ -1590,6 +1591,8 @@ ${changes.join('\n')}`,
         visible={showEmojiPicker} 
         onClose={() => setShowEmojiPicker(false)} 
         onSelect={handleEmojiSelect}
+        isDark={isDark}
+        colors={themeColors}
       />
     </View>
   );

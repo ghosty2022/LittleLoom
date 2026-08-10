@@ -122,7 +122,7 @@ const GlassCard = React.memo(({ children, style, onPress, active = false, delay 
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   const Wrapper = onPress ? TouchableOpacity : View;
   return (
-    <Animated.View entering={FadeInUp.delay(delay).springify()} style={[styles.glassCard, active && { borderColor: colors.primary, borderWidth: 2 }, style]}>
+    <Animated.View entering={FadeInUp.delay(delay).springify()} style={[styles.glassCard, active && { borderColor: colors?.primary, borderWidth: 2 }, style]}>
       <Wrapper onPress={onPress} activeOpacity={onPress ? 0.85 : 1} style={{ flex: 1 }}>
         <LinearGradient colors={isDark ? ['rgba(45,45,60,0.6)', 'rgba(35,35,50,0.4)'] : ['rgba(255,255,255,0.92)', 'rgba(248,250,255,0.85)']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
         <View style={styles.glassBorder} />
@@ -237,7 +237,7 @@ const WeeklyImpactCard = React.memo(({ impact, isDark = true, colors }: { impact
   ];
   return (
     <Animated.View entering={FadeInUp.delay(150).springify()}>
-      <GlassCard>
+      <GlassCard isDark={isDark} colors={colors}>
         <View style={styles.impactHeader}>
           <Text style={styles.impactTitle}>This Week</Text>
           <View style={[styles.impactTrendBadge, {
@@ -308,7 +308,7 @@ const ContentBreakdownCard = React.memo(({ breakdown, isDark = true, colors }: {
   ];
   return (
     <Animated.View entering={FadeInUp.delay(250).springify()}>
-      <GlassCard>
+      <GlassCard isDark={isDark} colors={colors}>
         <View style={styles.breakdownHeader}>
           <Text style={styles.breakdownTitle}>Content Breakdown</Text>
           <Text style={styles.breakdownTotal}>{total} total</Text>
@@ -542,7 +542,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const isDark = darkMode ?? (colorScheme === 'dark');
-  const styles = useMemo(() => getStyles(isDark, fullThemeColors), [isDark, fullThemeColors]);
+  const styles = useMemo(() => getStyles(isDark, fullThemeColors || {}), [isDark, fullThemeColors]);
   const scrollY = useSharedValue(0);
 
   const [isEditing, setIsEditing] = useState(false);
@@ -769,7 +769,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.8,
@@ -989,22 +989,22 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         style={{
           flexDirection: 'row',
           alignItems: 'center',
-          backgroundColor: CommunityColors.background.card,
+          backgroundColor: CommunityColors?.background?.card || (isDark ? 'rgba(45,45,60,0.6)' : '#ffffff'),
           paddingHorizontal: 16,
           paddingVertical: 14,
           borderRadius: 16,
           marginHorizontal: 20,
           marginVertical: 8,
           gap: 12,
-          ...CommunityShadows.sm,
+          ...(CommunityShadows?.sm || {}),
         }}
         onPress={() => navigation.navigate('CommunityOnboarding' as never, { editing: true } as never)}
       >
-        <Ionicons name="pricetags-outline" size={22} color={CommunityColors.primary} />
-        <Text style={{ flex: 1, fontSize: 15, fontWeight: '600', color: CommunityColors.text.primary }}>
+        <Ionicons name="pricetags-outline" size={22} color={CommunityColors?.primary || '#6366f1'} />
+        <Text style={{ flex: 1, fontSize: 15, fontWeight: '600',color: CommunityColors?.text?.primary || (isDark ? '#ffffff' : '#1a1a2e') }}>
           Manage Your Topics
         </Text>
-        <Ionicons name="chevron-forward" size={18} color={CommunityColors.text.tertiary} />
+        <Ionicons name="chevron-forward" size={18} color={CommunityColors?.text?.tertiary || '#94a3b8'} />
       </TouchableOpacity>
 
       <GlassCard delay={700} isDark={isDark} colors={fullThemeColors}>
@@ -1198,11 +1198,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     return (
       <View style={[styles.container, styles.centered]}>
         <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
-        {isDark ? (
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: fullThemeColors.background }]} />
-        ) : (
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: '#f8f9fc' }]} />
-        )}
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: fullThemeColors?.background || (isDark ? '#0f0f1a' : '#f8f9fc') }]} />
         <UniversalSpinner visible={true} text="Loading profile..." size="medium" overlay={false} section="main" />
       </View>
     );
@@ -1212,14 +1208,10 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     return (
       <View style={[styles.container, styles.centered]}>
         <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
-        {isDark ? (
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: fullThemeColors.background }]} />
-        ) : (
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: '#f8f9fc' }]} />
-        )}
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: fullThemeColors?.background || (isDark ? '#0f0f1a' : '#f8f9fc') }]} />
         <Ionicons name="person-outline" size={64} color="#64748b" />
         <Text style={{ marginTop: 16, color: fullThemeColors.textSecondary, fontSize: 16, fontWeight: '600' }}>Not signed in</Text>
-        <TouchableOpacity style={[styles.retryButton, { backgroundColor: themeColors.primary }]} onPress={() => navigation.goBack()}>
+        <TouchableOpacity style={[styles.retryButton, { backgroundColor: themeColors?.primary || '#6366f1' }]} onPress={() => navigation.goBack()}>
           <Text style={styles.retryButtonText}>Go Back</Text>
         </TouchableOpacity>
       </View>
@@ -1320,7 +1312,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   );
 }
 
-const getStyles = (isDarkMode: boolean, colors: any) => StyleSheet.create({
+const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   centered: { justifyContent: 'center', alignItems: 'center' },
   scrollContent: { flexGrow: 1, paddingBottom: 24, minHeight: SCREEN_H },
