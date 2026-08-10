@@ -236,7 +236,7 @@ const getDynamicStyles = (isDark: boolean) => StyleSheet.create({
   timelineItem: { flexDirection: 'row', gap: 12 },
   timelineLeft: { width: 24, alignItems: 'center', paddingTop: 16 },
   timelineLine: { position: 'absolute', top: 0, bottom: 0, width: 2, left: 11, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
-  timelineDot: { width: 12, height: 12, borderRadius: 6, borderWidth: 2, bordercolor: isDark ? '#fff' : '#1e293b', zIndex: 1 },
+  timelineDot: { width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: isDark ? '#fff' : '#1e293b', zIndex: 1 },
   timelineCard: { flex: 1, padding: 14, borderRadius: 16, backgroundColor: isDark ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.75)', marginBottom: 12 },
   timelineHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 },
   timelineEmoji: { fontSize: 20 },
@@ -378,7 +378,7 @@ const getDynamicStyles = (isDark: boolean) => StyleSheet.create({
    REFINED SUB-COMPONENTS — Borrowing GrowthDashboard patterns
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const GlassCard = React.memo(({ children, style, onPress, active = false, delay = 0, isDark }: {
+const GlassCard = React.memo(({ children, style, onPress, active = false, delay = 0, isDark, colors }: {
   children: React.ReactNode; style?: any; onPress?: () => void; active?: boolean; delay?: number; isDark: boolean;
 }) => {
   const styles = useMemo(() => getDynamicStyles(isDark), [isDark]);

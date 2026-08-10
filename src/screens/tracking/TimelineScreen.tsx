@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo, useState, useEffect } from 'react';
 
 import { useCustomization } from '../../hooks/useCustomization';
-import { Dimensions, Modal, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View, LayoutAnimation, UIManager, Platform } from 'react-native';
+import { Dimensions, Modal, Pressable, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View, LayoutAnimation, UIManager, Platform } from 'react-native';
 // REMOVED: Image — unused in this screen
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';

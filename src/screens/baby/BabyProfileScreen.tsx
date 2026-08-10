@@ -168,79 +168,92 @@ const GlassCard = React.memo(({ children, style, onPress, active = false, delay 
   );
 });
 
-const SectionHeader = React.memo(({ title, subtitle, action, actionLabel }: { 
+const SectionHeader = React.memo(({ title, subtitle, action, actionLabel, isDark, colors }: { 
   title: string; 
   subtitle?: string; 
   action?: () => void; 
   actionLabel?: string; 
-}) => (
-  <View style={styles.sectionHeader}>
-    <View>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      {subtitle && <Text style={styles.sectionSubtitle}>{subtitle}</Text>}
+  isDark?: boolean;
+  colors?: any;
+}) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
+  return (
+    <View style={styles.sectionHeader}>
+      <View>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        {subtitle && <Text style={styles.sectionSubtitle}>{subtitle}</Text>}
+      </View>
+      {action && (
+        <TouchableOpacity onPress={action} style={styles.sectionAction}>
+          <Text style={styles.sectionActionText}>{actionLabel || 'See All'}</Text>
+          <Ionicons name="chevron-forward" size={14} color="#6366f1" />
+        </TouchableOpacity>
+      )}
     </View>
-    {action && (
-      <TouchableOpacity onPress={action} style={styles.sectionAction}>
-        <Text style={styles.sectionActionText}>{actionLabel || 'See All'}</Text>
-        <Ionicons name="chevron-forward" size={14} color="#6366f1" />
-      </TouchableOpacity>
-    )}
-  </View>
-));
+  );
+});
 
-const TabBar = React.memo(({ tabs, activeTab, onChange }: { 
+const TabBar = React.memo(({ tabs, activeTab, onChange, isDark, colors }: { 
   tabs: { key: ProfileTab; label: string; icon: string }[]; 
   activeTab: ProfileTab; 
   onChange: (t: ProfileTab) => void; 
-}) => (
-  <View style={styles.tabBar}>
-    {tabs.map((tab) => {
-      const isActive = activeTab === tab.key;
-      const isDanger = tab.key === 'danger';
-      return (
-        <TouchableOpacity
-          key={tab.key}
-          onPress={() => onChange(tab.key)}
-          style={[
-            styles.tabItem,
-            isActive && { 
-              backgroundColor: isDanger ? 'rgba(239,68,68,0.15)' : 'rgba(99,102,241,0.15)',
-            },
-            isDanger && isActive && { borderColor: '#ef4444', borderWidth: 1 }
-          ]}
-        >
-          <Ionicons 
-            name={tab.icon as any} 
-            size={16} 
-            color={isActive ? (isDanger ? '#ef4444' : '#6366f1') : '#94a3b8'} 
-          />
-          <Text style={[
-            styles.tabLabel,
-            { color: isActive ? (isDanger ? '#ef4444' : '#6366f1') : '#94a3b8' },
-            isActive && { fontWeight: '700' },
-          ]}>
-            {tab.label}
-          </Text>
-        </TouchableOpacity>
-      );
-    })}
-  </View>
-));
-
-const KpiPill = React.memo(({ icon, value, label, color, onPress }: any) => (
-  <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={styles.kpiPill}>
-    <LinearGradient colors={[`${color}15`, `${color}05`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
-    <View style={[styles.kpiPillIconBg, { backgroundColor: `${color}15` }]}>
-      <Text style={styles.kpiPillEmoji}>{icon}</Text>
+  isDark?: boolean;
+  colors?: any;
+}) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
+  return (
+    <View style={styles.tabBar}>
+      {tabs.map((tab) => {
+        const isActive = activeTab === tab.key;
+        const isDanger = tab.key === 'danger';
+        return (
+          <TouchableOpacity
+            key={tab.key}
+            onPress={() => onChange(tab.key)}
+            style={[
+              styles.tabItem,
+              isActive && { 
+                backgroundColor: isDanger ? 'rgba(239,68,68,0.15)' : 'rgba(99,102,241,0.15)',
+              },
+              isDanger && isActive && { borderColor: '#ef4444', borderWidth: 1 }
+            ]}
+          >
+            <Ionicons 
+              name={tab.icon as any} 
+              size={16} 
+              color={isActive ? (isDanger ? '#ef4444' : '#6366f1') : '#94a3b8'} 
+            />
+            <Text style={[
+              styles.tabLabel,
+              { color: isActive ? (isDanger ? '#ef4444' : '#6366f1') : '#94a3b8' },
+              isActive && { fontWeight: '700' },
+            ]}>
+              {tab.label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
     </View>
-    <View style={styles.kpiPillBody}>
-      <Text style={[styles.kpiPillValue, { color }]}>{value}</Text>
-      <Text style={styles.kpiPillLabel}>{label}</Text>
-    </View>
-  </TouchableOpacity>
-));
+  );
+});
 
-const SafeBabyAvatar = React.memo(({ avatar, gender = 'other', size = 72, showEditButton = false, onEdit }: any) => {
+const KpiPill = React.memo(({ icon, value, label, color, onPress, isDark, colors }: any) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
+  return (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={styles.kpiPill}>
+      <LinearGradient colors={[`${color}15`, `${color}05`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+      <View style={[styles.kpiPillIconBg, { backgroundColor: `${color}15` }]}>
+        <Text style={styles.kpiPillEmoji}>{icon}</Text>
+      </View>
+      <View style={styles.kpiPillBody}>
+        <Text style={[styles.kpiPillValue, { color }]}>{value}</Text>
+        <Text style={styles.kpiPillLabel}>{label}</Text>
+      </View>
+    </TouchableOpacity>
+  );
+});
+
+const SafeBabyAvatar = React.memo(({ avatar, gender = 'other', size = 72, showEditButton = false, onEdit, isDark, colors }: any) => {
   const hasImage = isImageUri(avatar);
   const hasEmoji = isEmoji(avatar);
   const genderOption = GENDER_OPTIONS.find(g => g.value === gender);
@@ -254,6 +267,7 @@ const SafeBabyAvatar = React.memo(({ avatar, gender = 'other', size = 72, showEd
     return null;
   }, [avatar]);
 
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   return (
     <View style={[styles.avatarWrapper, { width: size, height: size }]}>
       <LinearGradient
@@ -281,7 +295,7 @@ const SafeBabyAvatar = React.memo(({ avatar, gender = 'other', size = 72, showEd
   );
 });
 
-const DevelopmentStageTracker = React.memo(({ baby }: { baby: any }) => {
+const DevelopmentStageTracker = React.memo(({ baby, isDark, colors }: { baby: any; isDark?: boolean; colors?: any }) => {
   const ageMonths = safeDiffMonths(new Date(), baby?.birthDate);
 
   const stages = useMemo((): DevelopmentStage[] => {
@@ -308,9 +322,10 @@ const DevelopmentStageTracker = React.memo(({ baby }: { baby: any }) => {
 
   const currentStage = stages.find(s => s.progress > 0 && s.progress < 100) || stages.filter(s => s.progress === 100).pop() || stages[0];
 
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   return (
     <Animated.View entering={FadeInUp.delay(200).springify()}>
-      <GlassCard>
+      <GlassCard isDark={isDark} colors={colors}>
         <View style={styles.stageHeader}>
           <View style={[styles.stageIconBg, { backgroundColor: `${currentStage.color}15` }]}>
             <Text style={styles.stageEmoji}>{currentStage.emoji}</Text>
@@ -348,7 +363,7 @@ const DevelopmentStageTracker = React.memo(({ baby }: { baby: any }) => {
   );
 });
 
-const SmartHealthInsights = React.memo(({ baby, stats, recentActivities }: { baby: any; stats: any; recentActivities: any[] }) => {
+const SmartHealthInsights = React.memo(({ baby, stats, recentActivities, isDark, colors }: { baby: any; stats: any; recentActivities: any[]; isDark?: boolean; colors?: any }) => {
   const insights = useMemo((): HealthInsight[] => {
     const items: HealthInsight[] = [];
     const ageMonths = safeDiffMonths(new Date(), baby?.birthDate);
@@ -424,9 +439,10 @@ const SmartHealthInsights = React.memo(({ baby, stats, recentActivities }: { bab
 
   if (insights.length === 0) return null;
 
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   return (
     <Animated.View entering={FadeInUp.delay(150).springify()}>
-      <SectionHeader title="AI Insights" subtitle="Intelligence-powered analysis" />
+      <SectionHeader title="AI Insights" subtitle="Intelligence-powered analysis" isDark={isDark} colors={colors} />
       <View style={styles.insightsList}>
         {insights.map((insight, i) => (
           <TouchableOpacity key={insight.id} activeOpacity={0.85} style={[styles.insightRow, { borderLeftColor: insight.color }]}>
@@ -452,7 +468,7 @@ const SmartHealthInsights = React.memo(({ baby, stats, recentActivities }: { bab
   );
 });
 
-const ActivitySparkline = React.memo(({ activities }: { activities: any[] }) => {
+const ActivitySparkline = React.memo(({ activities, isDark, colors }: { activities: any[]; isDark?: boolean; colors?: any }) => {
   const data = useMemo(() => {
     const days: Record<string, number> = {};
     const now = new Date();
@@ -471,9 +487,10 @@ const ActivitySparkline = React.memo(({ activities }: { activities: any[] }) => 
   const maxVal = Math.max(...data, 1);
   const total = data.reduce((a, b) => a + b, 0);
 
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   return (
     <Animated.View entering={FadeInUp.delay(250).springify()}>
-      <GlassCard>
+      <GlassCard isDark={isDark} colors={colors}>
         <View style={styles.sparklineHeader}>
           <View>
             <Text style={styles.sparklineTitle}>Activity This Week</Text>
@@ -632,7 +649,7 @@ const FamilyConnectionHub = React.memo(({ members, onManage, babyName, isDark, c
   );
 });
 
-const QuickActionDock = React.memo(({ onAction }: { onAction: (screen: string, params?: any) => void }) => {
+const QuickActionDock = React.memo(({ onAction, isDark, colors }: { onAction: (screen: string, params?: any) => void; isDark?: boolean; colors?: any }) => {
   const actions = [
     { icon: '📏', label: 'Measure', screen: 'GrowthDashboard', color: '#6366f1', gradient: ['#6366f1', '#8b5cf6'] as [string, string] },
     { icon: '🍼', label: 'Feed', screen: 'AddEntry', params: { trackerId: 'feed' }, color: '#f59e0b', gradient: ['#f59e0b', '#fbbf24'] as [string, string] },
@@ -641,6 +658,7 @@ const QuickActionDock = React.memo(({ onAction }: { onAction: (screen: string, p
     { icon: '🌟', label: 'Milestone', screen: 'AddEntry', params: { trackerId: 'milestone' }, color: '#10b981', gradient: ['#10b981', '#34d399'] as [string, string] },
   ];
 
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   return (
     <Animated.View entering={FadeInUp.delay(450).springify()} style={styles.dockContainer}>
       <View style={styles.dock}>
@@ -662,7 +680,7 @@ const QuickActionDock = React.memo(({ onAction }: { onAction: (screen: string, p
   );
 });
 
-const BabyHealthScore = React.memo(({ baby, stats, recentActivities }: { baby: any; stats: any; recentActivities: any[] }) => {
+const BabyHealthScore = React.memo(({ baby, stats, recentActivities, isDark, colors }: { baby: any; stats: any; recentActivities: any[]; isDark?: boolean; colors?: any }) => {
   const health = useMemo(() => {
     const ageMonths = safeDiffMonths(new Date(), baby?.birthDate);
 
@@ -682,9 +700,10 @@ const BabyHealthScore = React.memo(({ baby, stats, recentActivities }: { baby: a
     return { score, status, frequency, recency, diversityScore };
   }, [baby, stats, recentActivities]);
 
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   return (
     <Animated.View entering={FadeInUp.delay(400).springify()}>
-      <GlassCard>
+      <GlassCard isDark={isDark} colors={colors}>
         <View style={styles.healthContainer}>
           <View style={styles.healthLeft}>
             <Text style={styles.healthTitle}>Tracking Health</Text>
@@ -721,7 +740,8 @@ const BabyHealthScore = React.memo(({ baby, stats, recentActivities }: { baby: a
   );
 });
 
-const ActionModal = React.memo(({ visible, onClose, title, children }: any) => {
+const ActionModal = React.memo(({ visible, onClose, title, children, isDark, colors }: any) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   if (!visible) return null;
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
@@ -742,7 +762,8 @@ const ActionModal = React.memo(({ visible, onClose, title, children }: any) => {
   );
 });
 
-const EmojiPickerModal = React.memo(({ visible, onClose, onSelect }: { visible: boolean; onClose: () => void; onSelect: (emoji: string) => void }) => {
+const EmojiPickerModal = React.memo(({ visible, onClose, onSelect, isDark, colors }: { visible: boolean; onClose: () => void; onSelect: (emoji: string) => void; isDark?: boolean; colors?: any }) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   if (!visible) return null;
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
@@ -1165,7 +1186,9 @@ ${changes.join('\n')}`,
               gender={selectedGender} 
               size={100} 
               showEditButton 
-              onEdit={showPhotoOptions} 
+              onEdit={showPhotoOptions}
+              isDark={isDark}
+              colors={themeColors}
             />
             {isUploading && (
               <View style={styles.uploadingOverlay}>
@@ -1195,29 +1218,31 @@ ${changes.join('\n')}`,
         </Animated.View>
 
         {/* Quick Actions Dock */}
-        <QuickActionDock onAction={handleQuickAction} />
+        <QuickActionDock onAction={handleQuickAction} isDark={isDark} colors={themeColors} />
 
         {/* Tab Bar */}
-        <TabBar tabs={tabs} activeTab={activeTab} onChange={handleTabChange} />
+        <TabBar tabs={tabs} activeTab={activeTab} onChange={handleTabChange} isDark={isDark} colors={themeColors} />
 
         {/* TAB: OVERVIEW */}
         {activeTab === 'overview' && (
           <>
             <View style={styles.kpiPillRow}>
-              <KpiPill icon="🔥" value={babyStats?.streak || 0} label="Day Streak" color="#f59e0b" />
-              <KpiPill icon="🌟" value={babyStats?.milestones || 0} label="Milestones" color="#ec4899" />
-              <KpiPill icon="📝" value={babyStats?.entries || 0} label="Entries" color="#6366f1" />
+                          <KpiPill icon="🔥" value={babyStats?.streak || 0} label="Day Streak" color="#f59e0b" isDark={isDark} colors={themeColors} />
+            <KpiPill icon="🌟" value={babyStats?.milestones || 0} label="Milestones" color="#ec4899" isDark={isDark} colors={themeColors} />
+            <KpiPill icon="📝" value={babyStats?.entries || 0} label="Entries" color="#6366f1" isDark={isDark} colors={themeColors} />
             </View>
 
-            <SmartHealthInsights baby={currentBabyData} stats={babyStats} recentActivities={recentActivities} />
-            <ActivitySparkline activities={recentActivities} />
-            <BabyHealthScore baby={currentBabyData} stats={babyStats} recentActivities={recentActivities} />
-            <DevelopmentStageTracker baby={currentBabyData} />
-            <NextMilestoneCountdown baby={currentBabyData} milestones={babyMilestones} />
+            <SmartHealthInsights baby={currentBabyData} stats={babyStats} recentActivities={recentActivities} isDark={isDark} colors={themeColors} />
+            <ActivitySparkline activities={recentActivities} isDark={isDark} colors={themeColors} />
+            <BabyHealthScore baby={currentBabyData} stats={babyStats} recentActivities={recentActivities} isDark={isDark} colors={themeColors} />
+            <DevelopmentStageTracker baby={currentBabyData} isDark={isDark} colors={themeColors} />
+            <NextMilestoneCountdown baby={currentBabyData} milestones={babyMilestones} isDark={isDark} colors={themeColors} />
             <FamilyConnectionHub 
               members={familyMembers} 
               onManage={() => navigation.navigate('FamilySharing' as never)} 
               babyName={currentBabyData?.name}
+              isDark={isDark}
+              colors={themeColors}
             />
 
             <Animated.View entering={FadeInUp.delay(500).springify()}>
@@ -1226,6 +1251,8 @@ ${changes.join('\n')}`,
                 subtitle={`${recentActivities.length} entries`}
                 action={() => navigation.navigate('Timeline' as never, { babyId: currentBabyData?.id } as never)}
                 actionLabel="See All"
+                isDark={isDark}
+                colors={themeColors}
               />
               {recentActivities.length === 0 ? (
                 <GlassCard style={styles.emptyCard}>
@@ -1536,7 +1563,7 @@ ${changes.join('\n')}`,
       {/* Modals */}
       <UniversalSpinner visible={isSaving} text="Saving changes..." size="medium" overlay={true} blur={true} section="main" />
 
-      <ActionModal visible={showImagePicker} onClose={() => setShowImagePicker(false)} title="Change Profile Photo">
+      <ActionModal visible={showImagePicker} onClose={() => setShowImagePicker(false)} title="Change Profile Photo" isDark={isDark} colors={themeColors}>
         <View style={styles.imagePickerOptions}>
           <TouchableOpacity style={styles.imagePickerOption} onPress={handlePickImage}>
             <View style={[styles.imagePickerIcon, { backgroundColor: '#6366f120' }]}>
@@ -1599,7 +1626,7 @@ const getStyles = (isDarkMode: boolean, colors: any) => StyleSheet.create({
   avatarWrapper: { position: 'relative' },
   avatarGradient: { alignItems: 'center', justifyContent: 'center' },
   avatarEmoji: {},
-  editAvatarBtn: { position: 'absolute', width: 28, height: 28, borderRadius: 14, overflow: 'hidden', borderWidth: 2, bordercolor: colors.text },
+  editAvatarBtn: { position: 'absolute', width: 28, height: 28, borderRadius: 14, overflow: 'hidden', borderWidth: 2, borderColor: colors.text },
   editAvatarGradient: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' },
 
   // ── Quick Actions Dock ──
@@ -1713,7 +1740,7 @@ const getStyles = (isDarkMode: boolean, colors: any) => StyleSheet.create({
   familyHubAvatars: { flexDirection: 'row' },
   familyHubAvatar: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', borderWidth: 2, overflow: 'hidden' },
   familyHubAvatarText: { color: colors.text, fontSize: 14, fontWeight: '800' },
-  familyHubAvatarMore: { backgroundcolor: colors.textMuted },
+  familyHubAvatarMore: { backgroundColor: colors.textMuted },
   familyHubAvatarMoreText: { color: colors.text, fontSize: 11, fontWeight: '800' },
   familyHubContent: { flex: 1 },
   familyHubTitle: { fontSize: 15, fontWeight: '800', color: colors.text },

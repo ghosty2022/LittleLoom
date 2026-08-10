@@ -228,7 +228,8 @@ const InfluenceDashboard = React.memo(({ metrics, isDark = true, colors }: { met
   );
 });
 
-const WeeklyImpactCard = React.memo(({ impact }: { impact: WeeklyImpact }) => {
+const WeeklyImpactCard = React.memo(({ impact, isDark = true, colors }: { impact: WeeklyImpact; isDark?: boolean; colors?: any }) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   const items = [
     { icon: '📝', label: 'Posts', value: impact.postsThisWeek, color: TC.primary },
     { icon: '💙', label: 'Helpful', value: impact.helpfulVotes, color: TC.success },
@@ -930,7 +931,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
       </View>
 
       <InfluenceDashboard metrics={influenceMetrics} isDark={isDark} colors={fullThemeColors} />
-      <WeeklyImpactCard impact={weeklyImpact} />
+      <WeeklyImpactCard impact={weeklyImpact} isDark={isDark} colors={fullThemeColors} />
       <CommunityStandingCard standing={communityStanding} isDark={isDark} colors={fullThemeColors} />
       <ContentBreakdownCard breakdown={contentBreakdown} isDark={isDark} colors={fullThemeColors} />
       <EngagementSparkline data={engagementData} isDark={isDark} colors={fullThemeColors} />
