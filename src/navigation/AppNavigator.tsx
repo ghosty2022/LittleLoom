@@ -390,6 +390,7 @@ function NavigationContent({
     hasSeenOnboarding,
     isFirstOpen,
     babiesReady,
+    babies?.length, // <-- REACT to baby count changes so SETUP_BABY → MAIN/SETUP_PARENT2 works
   ]);
 
 
@@ -510,6 +511,15 @@ function NavigationContent({
 
     // Already at the target we want
     if (currentRoute === target) {
+      pendingNavTarget.current = null;
+      return;
+    }
+
+        // If we just created a baby and we're on the creation screen, let the screen handle dismissal
+    // instead of auto-navigating away while the user might want to add more babies.
+    if (currentRoute === 'CreateBabyProfile' && target !== 'CreateBabyProfile' && navState !== 'SETUP_BABY') {
+      // Don't force-leave the creation screen; the user taps Continue when ready.
+      // But if they explicitly go back, the underlying nav state will route correctly.
       pendingNavTarget.current = null;
       return;
     }
@@ -671,7 +681,19 @@ function NavigationContent({
         </Stack.Navigator>
       </View>
     </NavigationContainer>
-  );
+  );  }, [
+    authLoading,
+    isAuthenticated,
+    isSecurityLocked,
+    securityOn,
+    setupComplete,
+    hasParent2,
+    hasBaby,
+    hasSeenOnboarding,
+    isFirstOpen,
+    babiesReady,
+    babies?.length, // <-- REACT to baby count changes so SETUP_BABY → MAIN/SETUP_PARENT2 works
+  ]);
 }
 
 export default function AppNavigator({ isDark, initialState, onStateChange }: {

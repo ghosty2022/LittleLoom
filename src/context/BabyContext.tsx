@@ -597,7 +597,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   /* FIX #5: isMounted ref for all async operations */
   const isMounted = useRef(true);
-
+  const isCreatingRef = useRef(false);
   /* ---- Age calculation ---- */
   const calculateAge = useCallback((birthDate: string): string => {
     const birth = new Date(birthDate);
@@ -834,6 +834,12 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const createBaby = useCallback(async (
     data: Omit<BabyProfile, 'id' | 'streak' | 'milestones' | 'photos' | 'createdAt' | 'age' | 'lastUpdated'> & { parent1Id?: string }
   ): Promise<string | null> => {
+    if (isCreatingRef.current) {
+      Alert.alert('Please wait', 'A baby profile is already being created.');
+      return null;
+    }
+    isCreatingRef.current = true;
+
     const birthDate = new Date(data.birthDate);
     const now = new Date();
     if (birthDate > now) {
@@ -847,6 +853,13 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     try {
       const existingBabies = await getAllBabiesFromDb();
+          // Duplicate guard: same name + birth date
+    const duplicate = existingBabies.find(b => b.name === data.name && b.dateOfBirth === data.birthDate);
+    if (duplicate) {
+      isCreatingRef.current = false;
+      Alert.alert('Duplicate Profile', 'A baby with this name and birth date already exists.');
+      return null;
+    }
       const newId = generateId();
 
       await createBabyInDb({
@@ -910,7 +923,17 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await AsyncStorage.setItem('@littleloom_current_baby', newCurrentId);
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+            // Ensure navigator picks up the new count immediately
+      await loadBabies();
+
+      isCreatingRef.current = false;
       return newBaby.id;
+    } catch (error) {
+      isCreatingRef.current = false;
+      console.error('Create baby error:', error);
+      showAlert('Error', 'Failed to create baby profile');
+      return null;
+    }
     } catch (error) {
       console.error('Create baby error:', error);
      
