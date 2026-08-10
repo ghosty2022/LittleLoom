@@ -230,7 +230,7 @@ const QUICK_ACTIONS: QuickAction[] = [
   { id: 'reminders', label: 'Reminders', icon: '⏰', iconName: 'alarm-outline', color: '#ef4444', gradient: ['#ef4444', '#f87171'], screen: 'TrackerReminders', params: {}, category: 'tools' },
   { id: 'sound', label: 'Sounds', icon: '🎵', iconName: 'musical-notes-outline', color: '#1DB954', gradient: ['#1DB954', '#1ed760'], screen: 'SoundMixer', params: {}, category: 'tools' },
   { id: 'safety', label: 'Safety', icon: '🛡️', iconName: 'shield-checkmark-outline', color: '#dc2626', gradient: ['#dc2626', '#ef4444'], screen: 'SafetyCorner', params: {}, category: 'tools' },
-  { id: 'settings', label: 'Settings', icon: '⚙️', iconName: 'settings-outline', color: '#64748b', gradient: ['#64748b', '#94a3b8'], screen: 'Customize', params: {}, category: 'tools' },
+  { id: 'settings', label: 'More', icon: '⚙️', iconName: 'apps-outline', color: '#64748b', gradient: ['#64748b', '#94a3b8'], screen: 'More', params: {}, category: 'tools' },
 ];
 
 const FEATURE_CARDS: FeatureCard[] = [
