@@ -30,6 +30,7 @@ export type FieldType =
   | 'datetime'
   | 'temperature'
   | 'measurement'
+  | 'quantity'
   | 'counter'
   | 'slider'
   | 'checkbox'

@@ -474,21 +474,25 @@ const SmartDurationField: React.FC<SmartFieldProps> = ({
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [timerSeconds, setTimerSeconds] = useState(seconds);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  
+  const secondsRef = useRef(seconds);
+  const onChangeRef = useRef(onChange);
+
+  secondsRef.current = seconds;
+  onChangeRef.current = onChange;
+
   useEffect(() => {
     if (isTimerRunning) {
       timerRef.current = setInterval(() => {
-        setTimerSeconds(prev => {
-          const next = prev + 1;
-          onChange(next);
-          return next;
-        });
+        const next = secondsRef.current + 1;
+        secondsRef.current = next;
+        setTimerSeconds(next);
+        onChangeRef.current(next);
       }, 1000);
     } else {
       if (timerRef.current) clearInterval(timerRef.current);
     }
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [isTimerRunning, onChange]);
+  }, [isTimerRunning]);
   
   const suggestedDuration = suggestion?.value ? Number(suggestion.value) : null;
   const yesterdayDuration = yesterdayValue ? Number(yesterdayValue) : null;
@@ -976,6 +980,56 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
       timeContext,
     };
     
+      const renderQuantityField = useCallback((field: FieldConfig) => {
+    const unitKey = `${field.id}_unit`;
+    const unitOptions = (field as any).unitOptions || [
+      { id: 'ml', label: 'ml' },
+      { id: 'oz', label: 'oz' },
+    ];
+    const selectedUnit = (data[unitKey] as string) || unitOptions[0].id;
+
+    return (
+      <View key={field.id} style={styles.fieldContainer}>
+        <Text style={[styles.label, { color: fullThemeColors.text, fontSize: 15 * fontSizeMultiplier }]}>
+          {field.label}
+          {field.required && <Text style={[styles.required, { color: fullThemeColors.error }]}> *</Text>}
+        </Text>
+
+        <View style={[styles.numberRow, {
+          borderColor: errors[field.id] ? fullThemeColors.error : fullThemeColors.border,
+          borderRadius: borderRadiusValue,
+          backgroundColor: errors[field.id] ? `${fullThemeColors.error}10` : fullThemeColors.surface,
+        }]}>
+          <TextInput
+            style={[styles.numberInput, { color: fullThemeColors.text, fontSize: 16 * fontSizeMultiplier }]}
+            keyboardType="numeric"
+            placeholder={field.placeholder || '0'}
+            placeholderTextColor={fullThemeColors.textSecondary}
+            value={String(data[field.id] || '')}
+            onChangeText={text => {
+              const num = parseFloat(text);
+              updateField(field.id, isNaN(num) ? text : num);
+            }}
+          />
+          <View style={[styles.tempUnitToggle, { backgroundColor: fullThemeColors.border, borderRadius: borderRadiusValue / 2 }]}>
+            {unitOptions.map((u: any) => (
+              <TouchableOpacity
+                key={u.id}
+                style={[styles.tempUnitBtn, selectedUnit === u.id && { backgroundColor: tracker.color, borderRadius: borderRadiusValue / 3 }]}
+                onPress={() => updateField(unitKey, u.id)}
+              >
+                <Text style={[styles.tempUnitText, { color: selectedUnit === u.id ? '#fff' : fullThemeColors.textSecondary }]}>
+                  {u.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        {errors[field.id] && <Text style={[styles.errorText, { color: fullThemeColors.error }]}>{errors[field.id]}</Text>}
+      </View>
+    );
+  }, [data, errors, fullThemeColors, tracker.color, borderRadiusValue, fontSizeMultiplier, updateField]);
     const animatedWrapper = (children: React.ReactNode, key?: string) => (
       <Animated.View key={key} entering={shouldReduceMotion ? undefined : FadeInUp.delay(50)}>
         {children}
@@ -995,6 +1049,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
       case 'slider': return animatedWrapper(renderSliderField(field), field.id);
       case 'photo': return animatedWrapper(renderPhotoField(field), field.id);
       case 'temperature': return animatedWrapper(renderTemperatureField(field), field.id);
+      case 'quantity': return animatedWrapper(renderQuantityField(field), field.id);
       default: return animatedWrapper(<SmartTextField {...commonProps} />, field.id);
     }
   }, [data, errors, tracker, fullThemeColors, borderRadiusValue, fontSizeMultiplier, shouldReduceMotion, getFieldSuggestion, getYesterdayValue, getFieldTrend, timeContext, updateField, renderMultiselectField, renderToggleField, renderRatingField, renderTextareaField, renderSliderField, renderPhotoField, renderTemperatureField]);

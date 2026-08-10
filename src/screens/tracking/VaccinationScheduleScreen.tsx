@@ -1604,7 +1604,8 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
         animationType="fade"
         onRequestClose={() => setShowBabyRequiredModal(false)}
       >
-        <Pressable
+        <TouchableOpacity
+          activeOpacity={1}
           style={styles.modalOverlay}
           onPress={() => setShowBabyRequiredModal(false)}
         >
@@ -1635,7 +1636,7 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
               <Text style={styles.modalSecondaryBtnText}>Maybe Later</Text>
             </TouchableOpacity>
           </View>
-        </Pressable>
+        </TouchableOpacity>
       </Modal>
 
       {/* ── MODALS ── */}
