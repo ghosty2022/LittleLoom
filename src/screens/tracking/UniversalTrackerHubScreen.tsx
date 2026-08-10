@@ -62,6 +62,7 @@ import { useBaby, type BabyProfile } from '../../context/BabyContext';
 import { useTrackerAchievements } from '../../hooks/useTrackerAchievements';
 import { SafeBabyAvatar } from '../../components/SafeAvatar';
 import { useSweetAlert } from '../../components/SweetAlert';
+import { TimelinePicker } from '../../components/trackers/TimelinePicker';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -1490,6 +1491,31 @@ const BabySwitcherPill = React.memo(({ baby, onPress }: { baby: BabyProfile | nu
   const { isDark } = useCustomization();
   const age = useMemo(() => getBabyAge(baby?.birthDate), [baby?.birthDate]);
 
+  if (!baby) {
+    return (
+      <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={styles.babyPill}>
+        <LinearGradient
+          colors={isDark ? ['#2a2a4a', '#1a1a3e'] : ['#f0f4ff', '#e8eeff']}
+          style={StyleSheet.absoluteFill}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        />
+        <View style={[styles.babyPillNoBabyIcon, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(102,126,234,0.1)' }]}>
+          <Ionicons name="add-circle" size={28} color={isDark ? '#a3bffa' : '#667eea'} />
+        </View>
+        <View style={styles.babyPillText}>
+          <Text style={[styles.babyPillName, { color: isDark ? '#fff' : '#1e293b' }]} numberOfLines={1}>
+            Add Baby
+          </Text>
+          <Text style={[styles.babyPillAge, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+            Tap to create profile
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={16} color={isDark ? '#94a3b8' : '#64748b'} />
+      </TouchableOpacity>
+    );
+  }
+
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={styles.babyPill}>
       <LinearGradient
@@ -1597,6 +1623,7 @@ export default function UniversalTrackerHubScreen() {
 
   const [selectedTrackerId, setSelectedTrackerId] = useState<string | null>(null);
   const [showActionModal, setShowActionModal] = useState(false);
+  const [showBabyRequiredModal, setShowBabyRequiredModal] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const scrollY = useSharedValue(0);
@@ -1622,6 +1649,14 @@ export default function UniversalTrackerHubScreen() {
   useEffect(() => {
     return () => { isMountedRef.current = false; };
   }, []);
+
+  // Auto-prompt to create baby profile when none exists
+  useEffect(() => {
+    if (!babyLoading && !currentBaby && isMountedRef.current) {
+      const timer = setTimeout(() => setShowBabyRequiredModal(true), 400);
+      return () => clearTimeout(timer);
+    }
+  }, [babyLoading, currentBaby]);
 
   // Mount-only init: break dependency on unstable showError reference
   useEffect(() => {
@@ -1661,12 +1696,13 @@ export default function UniversalTrackerHubScreen() {
 
   const today = useMemo(() => startOfDay(new Date()).getTime(), []);
 
-  const todayCount = useMemo(() =>
-    entries.filter((e: any) => e?.timestamp >= today).length,
-    [entries, today]
-  );
+  const todayCount = useMemo(() => {
+    if (!currentBaby) return 0;
+    return entries.filter((e: any) => e?.timestamp >= today).length;
+  }, [entries, today, currentBaby]);
 
   const trackerCards = useMemo(() => {
+    if (!currentBaby) return [];
     const sourceTrackers = trackers?.length > 0
       ? trackers
       : Object.keys(TRACKER_CONFIGS).map(id => ({
@@ -2022,6 +2058,59 @@ export default function UniversalTrackerHubScreen() {
         onClose={() => setShowActionModal(false)}
         onSelect={handleSubActionSelect}
       />
+
+      {/* Timeline Picker */}
+      <TimelinePicker
+        visible={showTimelinePicker}
+        onClose={() => setShowTimelinePicker(false)}
+        onSelect={(trackerId: string) => {
+          setShowTimelinePicker(false);
+          setTimeout(() => navigation.navigate('AddEntry', { trackerId }), 50);
+        }}
+        currentBabyName={currentBaby?.name}
+        currentBabyAvatar={currentBaby?.avatar}
+      />
+
+      {/* Baby Required Modal */}
+      <Modal
+        visible={showBabyRequiredModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowBabyRequiredModal(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowBabyRequiredModal(false)}
+        >
+          <View style={[styles.modalContent, { backgroundColor: isDark ? 'rgba(26,26,42,0.98)' : 'rgba(255,255,255,0.98)' }]}>
+            <View style={styles.modalIconWrap}>
+              <LinearGradient colors={[(themeColors?.secondary || '#fa709a'), (themeColors?.primary || '#667eea')]} style={styles.modalIconGradient}>
+                <Ionicons name="people-outline" size={32} color="#fff" />
+              </LinearGradient>
+            </View>
+            <Text style={[styles.modalTitle, { color: fullThemeColors?.text || '#1a1a1a' }]}>Baby Profile Needed</Text>
+            <Text style={[styles.modalDesc, { color: fullThemeColors?.textSecondary || '#64748b' }]}>
+              Create a baby profile to start tracking activities and unlock all features.
+            </Text>
+            <TouchableOpacity
+              style={[styles.modalPrimaryBtn, { backgroundColor: themeColors?.primary || '#667eea' }]}
+              onPress={() => {
+                setShowBabyRequiredModal(false);
+                navigation.navigate('CreateBabyProfile');
+              }}
+            >
+              <Text style={styles.modalPrimaryBtnText}>Create Baby Profile</Text>
+              <Ionicons name="arrow-forward" size={16} color="#fff" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.modalSecondaryBtn}
+              onPress={() => setShowBabyRequiredModal(false)}
+            >
+              <Text style={[styles.modalSecondaryBtnText, { color: fullThemeColors?.textMuted || '#94a3b8' }]}>Maybe Later</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -2674,4 +2763,82 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   subActionLabel: { fontWeight: '700', textAlign: 'center', fontSize: 13 },
+
+  // ── Baby Pill No-Baby Icon ──
+  babyPillNoBabyIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // ── Reusable Modals ──
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  modalContent: {
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: 28,
+    padding: 28,
+    alignItems: 'center',
+  },
+  modalIconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 24,
+    marginBottom: 16,
+    overflow: 'hidden',
+  },
+  modalIconGradient: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    marginBottom: 8,
+    textAlign: 'center',
+    letterSpacing: -0.3,
+  },
+  modalDesc: {
+    fontSize: 15,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 24,
+    paddingHorizontal: 8,
+  },
+  modalPrimaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    paddingVertical: 16,
+    borderRadius: 18,
+    gap: 8,
+    marginBottom: 12,
+  },
+  modalPrimaryBtnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  modalSecondaryBtn: {
+    width: '100%',
+    paddingVertical: 14,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalSecondaryBtnText: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
 });

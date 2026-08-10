@@ -1090,6 +1090,7 @@ export default function EnhancedTimelineScreen() {
   const [dismissedInsights, setDismissedInsights] = useState<Set<string>>(new Set());
   const [dismissedReminders, setDismissedReminders] = useState<Set<string>>(new Set());
   const [showAchievementToast, setShowAchievementToast] = useState(false);
+  const [showBabyRequiredModal, setShowBabyRequiredModal] = useState(false);
 
   useEffect(() => {
     if (route.params?.filter) setSelectedFilter(route.params.filter);
@@ -1113,10 +1114,18 @@ export default function EnhancedTimelineScreen() {
     }
   }, [newlyUnlocked, triggerHaptic]);
 
+  // Auto-prompt to create baby profile when none exists
+  useEffect(() => {
+    if (!isLoading && !currentBaby) {
+      const timer = setTimeout(() => setShowBabyRequiredModal(true), 400);
+      return () => clearTimeout(timer);
+    }
+  }, [isLoading, currentBaby]);
+
   const allEntries = useMemo(() => {
-    if (!Array.isArray(entries)) return [];
+    if (!currentBaby || !Array.isArray(entries)) return [];
     return [...entries].sort((a, b) => b.timestamp - a.timestamp);
-  }, [entries]);
+  }, [entries, currentBaby]);
 
   const { insights: allInsights, dismissInsight } = useTrackerProgressive(
     selectedFilter === 'all' ? 'feed' : selectedFilter
@@ -1379,6 +1388,9 @@ export default function EnhancedTimelineScreen() {
   }, [allEntries, selectedDate]);
 
   const stats = useMemo(() => {
+    if (!currentBaby) {
+      return { today: 0, todayTrend: 0, total: 0, totalTrend: 0, weekTotal: 0, avgPerDay: 0, milestones: 0, achievements: 0, achievementTrend: 0, growthScore: 0, growthTrend: 0 };
+    }
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const todayStart = today.getTime();
@@ -1570,17 +1582,17 @@ export default function EnhancedTimelineScreen() {
                 </Text>
               </>
             ) : (
-              <>
+              <TouchableOpacity onPress={() => navigation.navigate('CreateBabyProfile')} style={{ alignItems: 'center' }}>
                 <View style={[styles.headerBabyPlaceholder, { backgroundColor: `${theme.primary}15` }]}>
-                  <Ionicons name="happy-outline" size={28} color={theme.primary} />
+                  <Ionicons name="add-circle" size={28} color={theme.primary} />
                 </View>
                 <Text style={[styles.headerTitle, { color: theme.text.primary }]}>
-                  Timeline
+                  Add Baby
                 </Text>
                 <Text style={[styles.headerSubtitle, { color: theme.text.secondary }]}>
-                  {format(new Date(), 'EEEE, MMM d')} • {stats.today} entries
+                  Tap to create profile
                 </Text>
-              </>
+              </TouchableOpacity>
             )}
           </View>
 
@@ -2299,6 +2311,46 @@ export default function EnhancedTimelineScreen() {
           </View>
         </View>
       </Modal>
+      {/* Baby Required Modal */}
+      <Modal
+        visible={showBabyRequiredModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowBabyRequiredModal(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowBabyRequiredModal(false)}
+        >
+          <View style={[styles.modalContent, { backgroundColor: theme.isDark ? 'rgba(26,26,42,0.98)' : 'rgba(255,255,255,0.98)' }]}>
+            <View style={styles.modalIconWrap}>
+              <LinearGradient colors={[theme.secondary, theme.primary]} style={styles.modalIconGradient}>
+                <Ionicons name="people-outline" size={32} color="#fff" />
+              </LinearGradient>
+            </View>
+            <Text style={[styles.modalTitle, { color: theme.text.primary }]}>Baby Profile Needed</Text>
+            <Text style={[styles.modalDesc, { color: theme.text.secondary }]}>
+              Create a baby profile to start tracking activities and unlock all features.
+            </Text>
+            <TouchableOpacity
+              style={[styles.modalPrimaryBtn, { backgroundColor: theme.primary }]}
+              onPress={() => {
+                setShowBabyRequiredModal(false);
+                navigation.navigate('CreateBabyProfile');
+              }}
+            >
+              <Text style={styles.modalPrimaryBtnText}>Create Baby Profile</Text>
+              <Ionicons name="arrow-forward" size={16} color="#fff" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.modalSecondaryBtn}
+              onPress={() => setShowBabyRequiredModal(false)}
+            >
+              <Text style={[styles.modalSecondaryBtnText, { color: theme.text.muted }]}>Maybe Later</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -2852,5 +2904,74 @@ const styles = StyleSheet.create({
   // ── FAB ──
   fabContainer: { position: 'absolute', zIndex: 100 },
   fab: { width: 56, height: 56, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 6 },
+
+  // ── Reusable Modals ──
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  modalContent: {
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: 28,
+    padding: 28,
+    alignItems: 'center',
+  },
+  modalIconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 24,
+    marginBottom: 16,
+    overflow: 'hidden',
+  },
+  modalIconGradient: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    marginBottom: 8,
+    textAlign: 'center',
+    letterSpacing: -0.3,
+  },
+  modalDesc: {
+    fontSize: 15,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 24,
+    paddingHorizontal: 8,
+  },
+  modalPrimaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    paddingVertical: 16,
+    borderRadius: 18,
+    gap: 8,
+    marginBottom: 12,
+  },
+  modalPrimaryBtnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  modalSecondaryBtn: {
+    width: '100%',
+    paddingVertical: 14,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalSecondaryBtnText: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
 });
                 

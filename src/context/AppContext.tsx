@@ -23,7 +23,6 @@ export interface ThemeColors {
   glassBorder: string;
   navBackground: string;
   handleBar: string;
-  shadowColor: string;
 }
 
 const LIGHT_COLORS: ThemeColors = {
