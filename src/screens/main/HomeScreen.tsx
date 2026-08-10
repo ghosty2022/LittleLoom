@@ -771,15 +771,13 @@ const CategorizedQuickActions: React.FC<{
           <Animated.View
             key={action.id}
             entering={FadeInUp.delay(index * 30).springify()}
-            layout={Layout.springify()}
             style={[styles.categorizedGridItem, { width: itemWidth }]}
           >
             <TouchableOpacity
               onPress={() => onPress(action)}
-              activeOpacity={0.8}
+              activeOpacity={1}
               style={styles.categorizedGridTouchable}
-            >
-              <LinearGradient
+            >              <LinearGradient
                 colors={action.gradient}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
@@ -1390,21 +1388,7 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
   const borderColor = isDark ? (fullTheme?.border || 'rgba(255,255,255,0.06)') : 'rgba(0,0,0,0.04)';
   const textColor = isDark ? (fullTheme?.text || '#f0f0f7') : (fullTheme?.text || '#111827');
 
-  // Ethereal floating logo animation
-  const logoFloatY = useSharedValue(0);
-  useEffect(() => {
-    logoFloatY.value = withRepeat(
-      withSequence(
-        withTiming(-2.5, { duration: 2200, easing: Easing.inOut(Easing.ease) }),
-        withTiming(2.5, { duration: 2200, easing: Easing.inOut(Easing.ease) })
-      ),
-      -1,
-      true
-    );
-  }, []);
-  const logoFloatStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: logoFloatY.value }],
-  }));
+  // Fixed logo — no floating animation for stable executive header
 
   return (
     <Animated.View
@@ -1431,44 +1415,44 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
           >
             <LinearGradient
               colors={['#dc2626', '#ef4444']}
-              style={[styles.safetyCornerGradient, { width: 34, height: 34, borderRadius: 10 }]}
+              style={[styles.safetyCornerGradient, { width: Math.round(30 * fontSizeMultiplier), height: Math.round(30 * fontSizeMultiplier), borderRadius: 10 }]}
             >
-              <Ionicons name="shield-half-outline" size={16} color="#fff" />
+              <Ionicons name="shield-checkmark-outline" size={Math.round(14 * fontSizeMultiplier)} color="#fff" />
             </LinearGradient>
           </TouchableOpacity>
         </View>
 
           {/* Center: Floating Logo + Title */}
         <View style={styles.stickyHeaderCenter}>
-            <Animated.View style={[styles.logoFloatWrap, logoFloatStyle]}>
+             <View style={styles.logoFloatWrap}>
               <Image 
                 source={littleLoomLogo} 
                 style={[
                   styles.headerLogoImage, 
                   { 
-                    width: Math.round(52 * fontSizeMultiplier), 
-                    height: Math.round(52 * fontSizeMultiplier),
+                    width: Math.round(44 * fontSizeMultiplier), 
+                    height: Math.round(44 * fontSizeMultiplier),
                   }
                 ]} 
                 resizeMode="contain" 
               />
-            <View style={styles.logoTextColumn}>
-              <Text style={[styles.stickyHeaderTitle, { color: textColor, fontSize: titleSize }]}>LittleLoom</Text>
-              <View style={[styles.stickyHeaderUnderline, { backgroundColor: primaryColor, width: Math.round(28 * fontSizeMultiplier), height: Math.max(3, Math.round(3 * fontSizeMultiplier)), borderRadius: Math.max(1, Math.round(2 * fontSizeMultiplier)), marginTop: compactSpacing ? 2 : 3 }]} />
+              <View style={styles.logoTextColumn}>
+                <Text style={[styles.stickyHeaderTitle, { color: textColor, fontSize: titleSize }]}>LittleLoom</Text>
+                <View style={[styles.stickyHeaderUnderline, { backgroundColor: primaryColor, width: Math.round(24 * fontSizeMultiplier), height: Math.max(2, Math.round(2 * fontSizeMultiplier)), borderRadius: Math.max(1, Math.round(1 * fontSizeMultiplier)), marginTop: compactSpacing ? 2 : 3 }]} />
+              </View>
             </View>
-          </Animated.View>
         </View>
 
         {/* Right: Actions */}
-        <View style={styles.stickyHeaderRight}>
+       <View style={[styles.stickyHeaderRight, { gap: 10 }]}>
           <TouchableOpacity
-            style={[styles.stickyHeaderIconBtn, { width: avatarSize + 2, height: avatarSize + 2, borderRadius: (avatarSize + 2) / 2 }]}
+            style={[styles.stickyHeaderIconBtn, { width: Math.round(32 * fontSizeMultiplier), height: Math.round(32 * fontSizeMultiplier), borderRadius: Math.round(16 * fontSizeMultiplier) }]}
             onPress={onNotificationPress}
           >
-            <Ionicons name="notifications-outline" size={iconSize} color={isDark ? '#fff' : primaryColor} />
+            <Ionicons name="notifications-outline" size={Math.round(17 * fontSizeMultiplier)} color={isDark ? '#fff' : primaryColor} />
             {unreadCount > 0 && (
-              <View style={[styles.stickyHeaderBadge, { minWidth: badgeSize, height: badgeSize, borderRadius: badgeSize / 2 }]}>
-                <Text style={[styles.stickyHeaderBadgeText, { fontSize: Math.round(10 * fontSizeMultiplier) }]}>
+              <View style={[styles.stickyHeaderBadge, { minWidth: Math.round(14 * fontSizeMultiplier), height: Math.round(14 * fontSizeMultiplier), borderRadius: Math.round(7 * fontSizeMultiplier) }]}>
+                <Text style={[styles.stickyHeaderBadgeText, { fontSize: Math.round(9 * fontSizeMultiplier) }]}>
                   {unreadCount > 9 ? '9+' : unreadCount}
                 </Text>
               </View>
@@ -1476,34 +1460,34 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.stickyHeaderIconBtn, { width: avatarSize + 2, height: avatarSize + 2, borderRadius: (avatarSize + 2) / 2 }]}
+            style={[styles.stickyHeaderIconBtn, { width: Math.round(32 * fontSizeMultiplier), height: Math.round(32 * fontSizeMultiplier), borderRadius: Math.round(16 * fontSizeMultiplier) }]}
             onPress={onSettingsPress}
           >
-            <Ionicons name="settings-outline" size={iconSize} color={isDark ? '#fff' : primaryColor} />
+            <Ionicons name="settings-outline" size={Math.round(17 * fontSizeMultiplier)} color={isDark ? '#fff' : primaryColor} />
           </TouchableOpacity>
 
           {currentBaby ? (
             <TouchableOpacity 
-              style={[styles.stickyHeaderBaby, { width: avatarSize, height: avatarSize, borderRadius: avatarSize / 2 }]} 
+              style={[styles.stickyHeaderBaby, { width: Math.round(30 * fontSizeMultiplier), height: Math.round(30 * fontSizeMultiplier), borderRadius: Math.round(15 * fontSizeMultiplier) }]} 
               onPress={onBabyPress}
             >
-              <SafeBabyAvatar avatar={currentBaby.avatar} gender={currentBaby.gender} size={avatarSize} />
+              <SafeBabyAvatar avatar={currentBaby.avatar} gender={currentBaby.gender} size={Math.round(30 * fontSizeMultiplier)} />
             </TouchableOpacity>
           ) : (
             <TouchableOpacity 
-              style={[styles.stickyHeaderIconBtn, { width: avatarSize + 2, height: avatarSize + 2, borderRadius: (avatarSize + 2) / 2 }]} 
+              style={[styles.stickyHeaderIconBtn, { width: Math.round(32 * fontSizeMultiplier), height: Math.round(32 * fontSizeMultiplier), borderRadius: Math.round(16 * fontSizeMultiplier) }]} 
               onPress={onAddBabyPress}
             >
-              <Ionicons name="add-circle-outline" size={iconSize + 2} color={primaryColor} />
+              <Ionicons name="add-circle-outline" size={Math.round(19 * fontSizeMultiplier)} color={primaryColor} />
             </TouchableOpacity>
           )}
 
           <TouchableOpacity style={styles.stickyHeaderLockBtn} onPress={onLockPress}>
             <LinearGradient
               colors={['#ff6b6b', '#ee5a5a']}
-              style={[styles.stickyHeaderLockGradient, { width: avatarSize - 4, height: avatarSize - 4, borderRadius: (avatarSize - 4) / 2 }]}
+              style={[styles.stickyHeaderLockGradient, { width: Math.round(28 * fontSizeMultiplier), height: Math.round(28 * fontSizeMultiplier), borderRadius: Math.round(14 * fontSizeMultiplier) }]}
             >
-              <Ionicons name="lock-closed-outline" size={Math.round(14 * fontSizeMultiplier)} color="#fff" />
+              <Ionicons name="lock-closed-outline" size={Math.round(12 * fontSizeMultiplier)} color="#fff" />
             </LinearGradient>
           </TouchableOpacity>
         </View>
@@ -1771,8 +1755,26 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
   }, [currentBaby, navigateToScreen, triggerHaptic]);
   const handleFeaturePress = useCallback((item: FeatureCard) => {
     triggerHaptic('light');
+    const babyRequiredFeatures = new Set([
+      'growth', 'milestones', 'reminders', 'family', 'gallery', 'chat', 'vaccine', 'sound'
+    ]);
+    if (!currentBaby && babyRequiredFeatures.has(item.id)) {
+      setPendingAction({
+        id: item.id,
+        label: item.label,
+        icon: '',
+        iconName: item.icon,
+        color: item.color,
+        gradient: [item.color, item.color] as [string, string],
+        screen: item.screen,
+        params: item.params,
+        category: 'tools',
+      });
+      setShowBabyRequiredModal(true);
+      return;
+    }
     navigateToScreen(item.screen, item.params);
-  }, [navigateToScreen, triggerHaptic]);
+  }, [currentBaby, navigateToScreen, triggerHaptic]);
 
   const handleLockPress = useCallback(async () => {
     triggerHaptic('heavy');
@@ -1797,6 +1799,11 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
   }, [navigateToScreen, triggerHaptic]);
 
   const handleDailySummaryPress = useCallback((type: string) => {
+    if (!currentBaby) {
+      setPendingAction({ id: 'summary', label: 'Daily Summary', icon: '', iconName: 'today-outline', color: '#667eea', gradient: ['#667eea', '#667eea'] as [string, string], screen: 'UniversalTrackerHub', params: {}, category: 'daily' });
+      setShowBabyRequiredModal(true);
+      return;
+    }
     const typeMap: Record<string, string> = {
       feeds: 'feed',
       sleep: 'sleep',
@@ -1804,9 +1811,13 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
       streak: 'potty',
     };
     navigateToScreen('UniversalTrackerHub', { type: typeMap[type] || type });
-  }, [navigateToScreen]);
-
-  const handleContextPress = useCallback(() => {
+  }, [currentBaby, navigateToScreen]);
+   const handleContextPress = useCallback(() => {
+    if (!currentBaby) {
+      setPendingAction({ id: 'context', label: 'Smart Context', icon: '', iconName: 'partly-sunny-outline', color: '#f59e0b', gradient: ['#f59e0b', '#f59e0b'] as [string, string], screen: 'UniversalTrackerHub', params: {}, category: 'daily' });
+      setShowBabyRequiredModal(true);
+      return;
+    }
     const hour = new Date().getHours();
     if (hour >= 5 && hour < 9) navigateToScreen('UniversalTrackerHub', { type: 'feed' });
     else if (hour >= 9 && hour < 12) navigateToScreen('UniversalTrackerHub', { type: 'play' });
@@ -1814,15 +1825,25 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
     else if (hour >= 15 && hour < 18) navigateToScreen('UniversalTrackerHub', { type: 'walk' });
     else if (hour >= 18 && hour < 21) navigateToScreen('UniversalTrackerHub', { type: 'sleep' });
     else navigateToScreen('UniversalTrackerHub', { type: 'feed' });
-  }, [navigateToScreen]);
+  }, [currentBaby, navigateToScreen]);
 
   const handleNextAction = useCallback((screen: string, params?: any) => {
+    if (!currentBaby) {
+      setPendingAction({ id: 'next-action', label: 'Next Best Action', icon: '', iconName: 'flash-outline', color: '#fa709a', gradient: ['#fa709a', '#fa709a'] as [string, string], screen: screen as any, params: params || {}, category: 'daily' });
+      setShowBabyRequiredModal(true);
+      return;
+    }
     navigateToScreen(screen, params);
-  }, [navigateToScreen]);
+  }, [currentBaby, navigateToScreen]);
 
-  const handleActivityPress = useCallback((activity: any) => {
+ const handleActivityPress = useCallback((activity: any) => {
+    if (!currentBaby) {
+      setPendingAction({ id: 'activity', label: 'Activity Details', icon: '', iconName: 'time-outline', color: secondary, gradient: [secondary, secondary] as [string, string], screen: 'Timeline', params: { type: activity.type }, category: 'daily' });
+      setShowBabyRequiredModal(true);
+      return;
+    }
     navigation.navigate('Timeline', { type: activity.type });
-  }, [navigation]);
+  }, [currentBaby, navigation, secondary]);
 
   // Compute daily summary
   const dailySummary = useMemo((): DailySummary => {
@@ -2135,7 +2156,14 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
               reminders={vaccinationReminders}
               isDark={isDark}
               theme={theme}
-              onPress={() => navigateToScreen('VaccinationSchedule')}
+             onPress={() => {
+                if (!currentBaby) {
+                  setPendingAction({ id: 'vaccine', label: 'Vaccination Schedule', icon: '', iconName: 'medical-outline', color: '#e11d48', gradient: ['#e11d48', '#e11d48'] as [string, string], screen: 'VaccinationSchedule', params: {}, category: 'health' });
+                  setShowBabyRequiredModal(true);
+                  return;
+                }
+                navigateToScreen('VaccinationSchedule');
+              }}
             />
           </View>
         )}
@@ -2150,8 +2178,14 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
               theme={theme}
               currentBaby={currentBaby}
               activities={allTimelineEvents}
-              onPress={() => navigateToScreen('GrowthDashboard')}
-            />
+             onPress={() => {
+                if (!currentBaby) {
+                  setPendingAction({ id: 'insights', label: 'AI Insights', icon: '', iconName: 'sparkles', color: theme.primary, gradient: [theme.primary, theme.primary] as [string, string], screen: 'GrowthDashboard', params: {}, category: 'tools' });
+                  setShowBabyRequiredModal(true);
+                  return;
+                }
+                navigateToScreen('GrowthDashboard');
+              }}            />
           </View>
         )}
 
@@ -2259,7 +2293,14 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
               activities={allTimelineEvents}
               isDark={isDark}
               theme={theme}
-              onViewAll={() => navigateToScreen('Timeline', { type: 'all' })}
+              onViewAll={() => {
+                if (!currentBaby) {
+                  setPendingAction({ id: 'timeline', label: 'Timeline', icon: '', iconName: 'time-outline', color: secondary, gradient: [secondary, secondary] as [string, string], screen: 'Timeline', params: { type: 'all' }, category: 'daily' });
+                  setShowBabyRequiredModal(true);
+                  return;
+                }
+                navigateToScreen('Timeline', { type: 'all' });
+              }}
               onActivityPress={handleActivityPress}
             />
           </View>
