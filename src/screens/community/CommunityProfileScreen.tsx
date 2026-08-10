@@ -59,11 +59,6 @@ const { width: SCREEN_W } = Dimensions.get('window');
 const DESIGN = {
   radius: { xs: 8, sm: 12, md: 16, lg: 20, xl: 24, full: 999 },
   spacing: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32 },
-  shadow: {
-    sm: {},
-    md: {},
-    lg: {},
-  },
 };
 
 const TC = {
@@ -83,7 +78,7 @@ const ROLE_CONFIG = {
   parent: { label: 'Parent', color: '#6366f1', icon: 'shield', gradient: ['#6366f1', '#8b5cf6'] as [string, string] },
   verified: { label: 'Verified', color: '#10b981', icon: 'checkmark-circle', gradient: ['#10b981', '#34d399'] as [string, string] },
   contributor: { label: 'Contributor', color: '#ec4899', icon: 'heart', gradient: ['#ec4899', '#f43f5e'] as [string, string] },
-  member: { label: 'Member', color: '#64748b', icon: 'person', gradient: ['#64748b', '#94a3b8'] as [string, string] },
+  member: { label: 'Member', color: colors.textMuted, icon: 'person', gradient: ['#64748b', '#94a3b8'] as [string, string] },
 };
 
 const EMOJI_OPTIONS = ['👤','👩','👨','👵','👴','👶','👧','👦','🧑','👮','👩‍⚕️','👨‍⚕️','👩‍🏫','👨‍🏫','👩‍🍳','👨‍🍳','👩‍⚖️','👨‍⚖️','👩‍🌾','👨‍🌾'];
@@ -121,14 +116,14 @@ interface TopicAffinity { topicId: string; topicName: string; emoji: string; col
 interface PeerComparison { metric: string; userValue: number; avgValue: number; percentile: number; icon: string; color: string; }
 interface ContentStreak { type: string; current: number; best: number; color: string; icon: string; }
 
-const GlassCard = React.memo(({ children, style, onPress, active = false, delay = 0 }: {
-  children: React.ReactNode; style?: any; onPress?: () => void; active?: boolean; delay?: number;
+const GlassCard = React.memo(({ children, style, onPress, active = false, delay = 0, isDark: cardDark = true }: {
+  children: React.ReactNode; style?: any; onPress?: () => void; active?: boolean; delay?: number; isDark?: boolean;
 }) => {
   const Wrapper = onPress ? TouchableOpacity : View;
   return (
-    <Animated.View entering={FadeInUp.delay(delay).springify()} style={[styles.glassCard, active && { borderColor: TC.primary, borderWidth: 2 }, style]}>
+    <Animated.View entering={FadeInUp.delay(delay).springify()} style={[styles.glassCard, active && { borderColor: themeColors.primary, borderWidth: 2 }, style]}>
       <Wrapper onPress={onPress} activeOpacity={onPress ? 0.85 : 1} style={{ flex: 1 }}>
-        <LinearGradient colors={['rgba(45,45,60,0.6)', 'rgba(35,35,50,0.4)']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+        <LinearGradient colors={cardDark ? ['rgba(45,45,60,0.6)', 'rgba(35,35,50,0.4)'] : ['rgba(255,255,255,0.92)', 'rgba(248,250,255,0.85)']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
         <View style={styles.glassBorder} />
         <View style={styles.glassContent}>{children}</View>
       </Wrapper>
@@ -211,7 +206,7 @@ const InfluenceDashboard = React.memo(({ metrics }: { metrics: InfluenceMetric[]
                 <Text style={[styles.influenceItemLabel, { color: metric.color }]}>{metric.label}</Text>
                 <Text style={[styles.influenceItemValue, { color: metric.color }]}>{metric.value}%</Text>
               </View>
-              <View style={[styles.influenceBarBg, { backgroundColor: 'rgba(255,255,255,0.06)' }]}>
+              <View style={[styles.influenceBarBg, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
                 <Animated.View entering={FadeInRight.delay(200 + i * 80).springify()} style={[styles.influenceBarFill, { width: `${metric.value}%`, backgroundColor: metric.color }]} />
               </View>
             </View>
@@ -278,7 +273,7 @@ const CommunityStandingCard = React.memo(({ standing }: { standing: CommunitySta
             <Text style={styles.standingProgressLabel}>Next: {standing.nextMilestone}</Text>
             <Text style={[styles.standingProgressValue, { color: TC.purple }]}>{standing.progressToNext}%</Text>
           </View>
-          <View style={[styles.standingProgressBarBg, { backgroundColor: 'rgba(255,255,255,0.06)' }]}>
+          <View style={[styles.standingProgressBarBg, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
             <Animated.View entering={FadeInRight.delay(300).springify()} style={[styles.standingProgressBarFill, { width: `${standing.progressToNext}%`, backgroundColor: TC.purple }]} />
           </View>
         </View>
@@ -394,7 +389,7 @@ const TopicAffinityCard = React.memo(({ affinities }: { affinities: TopicAffinit
                 <Text style={styles.affinityName}>{item.topicName}</Text>
                 <Text style={[styles.affinityValue, { color: item.color }]}>{item.posts} posts</Text>
               </View>
-              <View style={[styles.affinityBarBg, { backgroundColor: 'rgba(255,255,255,0.06)' }]}>
+              <View style={[styles.affinityBarBg, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
                 <Animated.View entering={FadeInRight.delay(200 + i * 60).springify()} style={[styles.affinityBarFill, { width: `${(item.affinity / maxAffinity) * 100}%`, backgroundColor: item.color }]} />
               </View>
             </View>
@@ -420,7 +415,7 @@ const PeerComparisonCard = React.memo(({ comparisons }: { comparisons: PeerCompa
               <Text style={[styles.comparisonPercentile, { color: comp.color }]}>Top {comp.percentile}%</Text>
             </View>
             <View style={styles.comparisonBarRow}>
-              <View style={[styles.comparisonBarBg, { backgroundColor: 'rgba(255,255,255,0.06)' }]}>
+              <View style={[styles.comparisonBarBg, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
                 <Animated.View entering={FadeInRight.delay(200 + i * 60).springify()} style={[styles.comparisonBarFill, { width: `${Math.min((comp.userValue / Math.max(comp.avgValue, 1)) * 100, 100)}%`, backgroundColor: comp.color }]} />
               </View>
               <Text style={styles.comparisonNumbers}>{comp.userValue} vs {comp.avgValue} avg</Text>
@@ -511,7 +506,8 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     checkAndAwardAchievements,
   } = useCommunity();
   const { profile, updateCommunityProfile: updateUserContextProfile } = useUser();
-  const { themeColors, darkMode, shouldReduceMotion, triggerHaptic } = useCustomization();
+  const { themeColors, fullThemeColors, darkMode, shouldReduceMotion, triggerHaptic } = useCustomization();
+  const styles = useMemo(() => getStyles(isDark, fullThemeColors), [isDark, fullThemeColors]);
   const { compressImage, cacheImage, pickImage } = useMedia();
   const sweetAlert = useSweetAlert();
 
@@ -937,7 +933,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
             <Text style={styles.bioText}>{formData.bio || 'No bio yet. Tap edit to add one!'}</Text>
           </View>
         )}
-        <View style={[styles.infoDivider, { backgroundColor: 'rgba(255,255,255,0.06)' }]} />
+        <View style={[styles.infoDivider, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]} />
         <View style={styles.inputGroup}>
           <Text style={styles.inputLabel}>Location</Text>
           <View style={[styles.inputContainer, !isEditing && styles.inputDisabled]}>
@@ -1143,7 +1139,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
               </View>
               <Switch value={formData[pref.key as keyof typeof formData] as boolean} onValueChange={(val) => setFormData(prev => ({ ...prev, [pref.key]: val }))} trackColor={{ false: '#334155', true: dynamicPrimaryColor }} thumbColor="#fff" />
             </View>
-            {i < arr.length - 1 && <View style={[styles.infoDivider, { backgroundColor: 'rgba(255,255,255,0.06)' }]} />}
+            {i < arr.length - 1 && <View style={[styles.infoDivider, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]} />}
           </View>
         ))}
       </GlassCard>
@@ -1172,7 +1168,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
       <View style={[styles.container, styles.centered]}>
         <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
         {isDark ? (
-          <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={StyleSheet.absoluteFill} />
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: fullThemeColors.background }]} />
         ) : (
           <View style={[StyleSheet.absoluteFill, { backgroundColor: '#f8f9fc' }]} />
         )}
@@ -1186,12 +1182,12 @@ export default function CommunityProfileScreen({ navigation }: Props) {
       <View style={[styles.container, styles.centered]}>
         <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
         {isDark ? (
-          <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={StyleSheet.absoluteFill} />
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: fullThemeColors.background }]} />
         ) : (
           <View style={[StyleSheet.absoluteFill, { backgroundColor: '#f8f9fc' }]} />
         )}
         <Ionicons name="person-outline" size={64} color="#64748b" />
-        <Text style={{ marginTop: 16, color: '#94a3b8', fontSize: 16, fontWeight: '600' }}>Not signed in</Text>
+        <Text style={{ marginTop: 16, color: colors.textSecondary, fontSize: 16, fontWeight: '600' }}>Not signed in</Text>
         <TouchableOpacity style={[styles.retryButton, { backgroundColor: themeColors.primary }]} onPress={() => navigation.goBack()}>
           <Text style={styles.retryButtonText}>Go Back</Text>
         </TouchableOpacity>
@@ -1202,7 +1198,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   return (
     <View style={styles.container}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
-      <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={StyleSheet.absoluteFill} />
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: fullThemeColors.background }]} />
       {renderStickyHeader()}
       <Animated.ScrollView
         contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 40 }]}
@@ -1293,43 +1289,43 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1 },
+const getStyles = (isDarkMode: boolean, colors: any) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
   centered: { justifyContent: 'center', alignItems: 'center' },
-  scrollContent: { paddingBottom: 24 },
+  scrollContent: { flexGrow: 1, paddingBottom: 24, minHeight: SCREEN_H },
 
   stickyHeader: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100, alignItems: 'center', paddingHorizontal: 20, paddingBottom: 10 },
-  stickyTitle: { fontSize: 17, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
-  stickySubtitle: { fontSize: 12, fontWeight: '500', color: '#94a3b8', marginTop: 2 },
+  stickyTitle: { fontSize: 17, fontWeight: '800', color: colors.text, letterSpacing: -0.3 },
+  stickySubtitle: { fontSize: 12, fontWeight: '500', color: colors.textSecondary, marginTop: 2 },
 
   topHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 16, marginBottom: 16 },
   backBtn: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.08)' },
   saveBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12, backgroundColor: '#6366f1', minWidth: 60, alignItems: 'center' },
   saveBtnDisabled: { backgroundColor: 'rgba(100,116,139,0.2)' },
-  saveBtnText: { fontSize: 14, fontWeight: '800', color: '#fff' },
-  saveBtnTextDisabled: { color: '#94a3b8' },
+  saveBtnText: { fontSize: 14, fontWeight: '800', color: colors.text },
+  saveBtnTextDisabled: { color: colors.textSecondary },
 
   profileHero: { flexDirection: 'row', alignItems: 'center', gap: 16, marginHorizontal: 16, marginBottom: 20 },
   profileInfo: { flex: 1, gap: 4 },
-  profileName: { fontSize: 24, fontWeight: '800', color: '#fff', letterSpacing: -0.5 },
-  profileMeta: { fontSize: 14, fontWeight: '500', color: '#94a3b8' },
+  profileName: { fontSize: 24, fontWeight: '800', color: colors.text, letterSpacing: -0.5 },
+  profileMeta: { fontSize: 14, fontWeight: '500', color: colors.textSecondary },
   profileTags: { flexDirection: 'row', marginTop: 8, gap: 8 },
   profileTag: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, gap: 4 },
   profileTagText: { fontSize: 12, fontWeight: '700' },
   editingDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#f59e0b' },
   editToggleBtn: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' },
 
-  tabBar: { flexDirection: 'row', marginHorizontal: 16, marginBottom: 16, padding: 4, borderRadius: 16, gap: 2, backgroundColor: 'rgba(255,255,255,0.06)' },
+  tabBar: { flexDirection: 'row', marginHorizontal: 16, marginBottom: 16, padding: 4, borderRadius: 16, gap: 2, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
   tabItem: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 12 },
   tabLabel: { fontSize: 12, fontWeight: '600' },
 
-  glassCard: { borderRadius: DESIGN.radius.lg, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', marginHorizontal: 16, marginBottom: DESIGN.spacing.lg },
-  glassBorder: { position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.06)' },
+  glassCard: { borderRadius: DESIGN.radius.lg, overflow: 'hidden', borderWidth: 1, borderColor: colors.border, marginHorizontal: 16, marginBottom: DESIGN.spacing.lg },
+  glassBorder: { position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
   glassContent: { flex: 1 },
 
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginHorizontal: 16, marginBottom: 12, marginTop: 8 },
-  sectionTitle: { fontSize: 18, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
-  sectionSubtitle: { fontSize: 12, fontWeight: '500', color: '#94a3b8', marginTop: 2 },
+  sectionTitle: { fontSize: 18, fontWeight: '800', color: colors.text, letterSpacing: -0.3 },
+  sectionSubtitle: { fontSize: 12, fontWeight: '500', color: colors.textSecondary, marginTop: 2 },
   sectionAction: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   sectionActionText: { fontSize: 13, fontWeight: '700', color: '#6366f1' },
 
@@ -1339,13 +1335,13 @@ const styles = StyleSheet.create({
   kpiPillEmoji: { fontSize: 20 },
   kpiPillBody: { flex: 1 },
   kpiPillValue: { fontSize: 22, fontWeight: '800', letterSpacing: -0.5 },
-  kpiPillLabel: { fontSize: 11, fontWeight: '600', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 },
+  kpiPillLabel: { fontSize: 11, fontWeight: '600', color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 },
 
   influenceHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, paddingBottom: 12 },
   influenceIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   influenceTitleWrap: { flex: 1 },
-  influenceTitle: { fontSize: 16, fontWeight: '800', color: '#fff' },
-  influenceSubtitle: { fontSize: 12, fontWeight: '500', color: '#94a3b8', marginTop: 2 },
+  influenceTitle: { fontSize: 16, fontWeight: '800', color: colors.text },
+  influenceSubtitle: { fontSize: 12, fontWeight: '500', color: colors.textSecondary, marginTop: 2 },
   influenceOverallBadge: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12 },
   influenceOverallText: { fontSize: 20, fontWeight: '800' },
   influenceGrid: { paddingHorizontal: 16, paddingBottom: 16, gap: 10 },
@@ -1358,124 +1354,124 @@ const styles = StyleSheet.create({
   influenceBarFill: { height: '100%', borderRadius: 3 },
 
   impactHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, paddingBottom: 12 },
-  impactTitle: { fontSize: 16, fontWeight: '800', color: '#fff' },
+  impactTitle: { fontSize: 16, fontWeight: '800', color: colors.text },
   impactTrendBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10 },
   impactTrendText: { fontSize: 12, fontWeight: '700' },
   impactGrid: { flexDirection: 'row', paddingHorizontal: 16, paddingBottom: 16 },
   impactItem: { flex: 1, alignItems: 'center', gap: 4 },
   impactItemIcon: { fontSize: 20 },
   impactItemValue: { fontSize: 20, fontWeight: '800' },
-  impactItemLabel: { fontSize: 11, fontWeight: '600', color: '#94a3b8' },
+  impactItemLabel: { fontSize: 11, fontWeight: '600', color: colors.textSecondary },
 
   standingHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, paddingBottom: 12 },
   standingIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   standingTitleWrap: { flex: 1 },
-  standingTitle: { fontSize: 16, fontWeight: '800', color: '#fff' },
-  standingSubtitle: { fontSize: 12, fontWeight: '500', color: '#94a3b8', marginTop: 2 },
+  standingTitle: { fontSize: 16, fontWeight: '800', color: colors.text },
+  standingSubtitle: { fontSize: 12, fontWeight: '500', color: colors.textSecondary, marginTop: 2 },
   standingRankRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingBottom: 16 },
   standingRankBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
   standingRankText: { fontSize: 13, fontWeight: '800' },
   standingProgressWrap: { flex: 1, gap: 6 },
   standingProgressLabelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  standingProgressLabel: { fontSize: 12, fontWeight: '600', color: '#94a3b8' },
+  standingProgressLabel: { fontSize: 12, fontWeight: '600', color: colors.textSecondary },
   standingProgressValue: { fontSize: 12, fontWeight: '700' },
   standingProgressBarBg: { height: 6, borderRadius: 3, overflow: 'hidden' },
   standingProgressBarFill: { height: '100%', borderRadius: 3 },
 
   breakdownHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, paddingBottom: 12 },
-  breakdownTitle: { fontSize: 16, fontWeight: '800', color: '#fff' },
-  breakdownTotal: { fontSize: 12, fontWeight: '600', color: '#94a3b8' },
+  breakdownTitle: { fontSize: 16, fontWeight: '800', color: colors.text },
+  breakdownTotal: { fontSize: 12, fontWeight: '600', color: colors.textSecondary },
   breakdownGrid: { flexDirection: 'row', paddingHorizontal: 16, paddingBottom: 16 },
   breakdownItem: { flex: 1, alignItems: 'center', gap: 6 },
   breakdownIconBg: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
   breakdownValue: { fontSize: 18, fontWeight: '800' },
-  breakdownLabel: { fontSize: 11, fontWeight: '600', color: '#94a3b8' },
+  breakdownLabel: { fontSize: 11, fontWeight: '600', color: colors.textSecondary },
 
   sparklineHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', padding: 16, paddingBottom: 12 },
-  sparklineTitle: { fontSize: 16, fontWeight: '800', color: '#fff' },
-  sparklineSubtitle: { fontSize: 12, fontWeight: '500', color: '#94a3b8', marginTop: 2 },
+  sparklineTitle: { fontSize: 16, fontWeight: '800', color: colors.text },
+  sparklineSubtitle: { fontSize: 12, fontWeight: '500', color: colors.textSecondary, marginTop: 2 },
   sparklineTotal: { alignItems: 'flex-end' },
   sparklineTotalValue: { fontSize: 24, fontWeight: '800', color: '#6366f1' },
-  sparklineTotalLabel: { fontSize: 11, fontWeight: '600', color: '#94a3b8' },
+  sparklineTotalLabel: { fontSize: 11, fontWeight: '600', color: colors.textSecondary },
   sparklineChart: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-end', paddingHorizontal: 16, paddingBottom: 16, height: 100 },
   sparklineBar: { width: 8, borderRadius: 4 },
-  sparklineDay: { fontSize: 10, fontWeight: '600', color: '#64748b' },
+  sparklineDay: { fontSize: 10, fontWeight: '600', color: colors.textMuted },
 
   suggestionsScroll: { flexDirection: 'row', paddingHorizontal: 16, gap: 12, paddingBottom: 4 },
   suggestionCard: { width: 160, padding: 14, borderRadius: 20, overflow: 'hidden', /* no shadow */ },
   suggestionIconBg: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
   suggestionEmoji: { fontSize: 22 },
-  suggestionTitle: { fontSize: 14, fontWeight: '700', color: '#fff', marginBottom: 4 },
-  suggestionDesc: { fontSize: 11, fontWeight: '500', lineHeight: 15, color: '#94a3b8', marginBottom: 10 },
+  suggestionTitle: { fontSize: 14, fontWeight: '700', color: colors.text, marginBottom: 4 },
+  suggestionDesc: { fontSize: 11, fontWeight: '500', lineHeight: 15, color: colors.textSecondary, marginBottom: 10 },
   suggestionActionBadge: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
   suggestionActionText: { fontSize: 11, fontWeight: '700' },
 
   affinityList: { marginHorizontal: 16, gap: 8, marginBottom: 16 },
-  affinityRow: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: 'rgba(45,45,60,0.6)', /* no shadow */ },
+  affinityRow: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: isDarkMode ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.75)', /* no shadow */ },
   affinityIconBg: { width: 42, height: 42, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   affinityEmoji: { fontSize: 20 },
   affinityContent: { flex: 1, marginLeft: 12, gap: 6 },
   affinityTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  affinityName: { fontSize: 14, fontWeight: '700', color: '#fff' },
+  affinityName: { fontSize: 14, fontWeight: '700', color: colors.text },
   affinityValue: { fontSize: 12, fontWeight: '700' },
   affinityBarBg: { height: 4, borderRadius: 2, overflow: 'hidden' },
   affinityBarFill: { height: '100%', borderRadius: 2 },
 
   comparisonList: { marginHorizontal: 16, gap: 8, marginBottom: 16 },
-  comparisonRow: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: 'rgba(45,45,60,0.6)', /* no shadow */ },
+  comparisonRow: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: isDarkMode ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.75)', /* no shadow */ },
   comparisonIconBg: { width: 42, height: 42, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   comparisonContent: { flex: 1, marginLeft: 12, gap: 6 },
   comparisonTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  comparisonMetric: { fontSize: 14, fontWeight: '700', color: '#fff' },
+  comparisonMetric: { fontSize: 14, fontWeight: '700', color: colors.text },
   comparisonPercentile: { fontSize: 12, fontWeight: '700' },
   comparisonBarRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   comparisonBarBg: { flex: 1, height: 4, borderRadius: 2, overflow: 'hidden' },
   comparisonBarFill: { height: '100%', borderRadius: 2 },
-  comparisonNumbers: { fontSize: 11, fontWeight: '600', color: '#94a3b8' },
+  comparisonNumbers: { fontSize: 11, fontWeight: '600', color: colors.textSecondary },
 
   streaksRow: { flexDirection: 'row', gap: 10, marginHorizontal: 16, marginBottom: 16 },
-  streakCard: { flex: 1, borderRadius: 20, padding: 14, alignItems: 'center', /* no shadow */ borderWidth: 1, backgroundColor: 'rgba(45,45,60,0.6)' },
+  streakCard: { flex: 1, borderRadius: 20, padding: 14, alignItems: 'center', /* no shadow */ borderWidth: 1, backgroundColor: isDarkMode ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.75)' },
   streakIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
   streakValue: { fontSize: 22, fontWeight: '800' },
-  streakLabel: { fontSize: 11, fontWeight: '600', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 2 },
-  streakBest: { fontSize: 10, fontWeight: '500', color: '#64748b', marginTop: 2 },
+  streakLabel: { fontSize: 11, fontWeight: '600', color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 2 },
+  streakBest: { fontSize: 10, fontWeight: '500', color: colors.textMuted, marginTop: 2 },
 
   dockContainer: { marginHorizontal: 16, marginBottom: 20 },
   dock: { flexDirection: 'row', gap: 10, justifyContent: 'center' },
   dockItem: { alignItems: 'center', gap: 6, flex: 1 },
   dockGradient: { width: 52, height: 52, borderRadius: 16, justifyContent: 'center', alignItems: 'center', /* no shadow */ },
-  dockLabel: { fontSize: 11, fontWeight: '600', color: '#94a3b8' },
+  dockLabel: { fontSize: 11, fontWeight: '600', color: colors.textSecondary },
 
   achievementBadge: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 14, marginBottom: 6 },
   achievementIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   achievementEmoji: { fontSize: 22 },
   achievementInfo: { flex: 1, gap: 2 },
   achievementName: { fontSize: 14, fontWeight: '700' },
-  achievementDesc: { fontSize: 12, fontWeight: '500', color: '#94a3b8' },
+  achievementDesc: { fontSize: 12, fontWeight: '500', color: colors.textSecondary },
 
   sectionHeaderWithEdit: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 20, marginBottom: 16 },
-  sectionLabel: { fontSize: 18, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
+  sectionLabel: { fontSize: 18, fontWeight: '800', color: colors.text, letterSpacing: -0.3 },
   editIconBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(99,102,241,0.1)', alignItems: 'center', justifyContent: 'center' },
   editingBadge: { backgroundColor: '#f59e0b', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10 },
-  editingBadgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  editingBadgeText: { color: colors.text, fontSize: 11, fontWeight: '700' },
   inputGroup: { marginBottom: 16, paddingHorizontal: 20 },
-  inputLabel: { fontSize: 12, fontWeight: '700', color: '#94a3b8', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
-  inputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 14, paddingHorizontal: 16, height: 52, borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)' },
+  inputLabel: { fontSize: 12, fontWeight: '700', color: colors.textSecondary, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+  inputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', borderRadius: 14, paddingHorizontal: 16, height: 52, borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)' },
   inputDisabled: { opacity: 0.5 },
   inputIcon: { marginRight: 12 },
-  input: { flex: 1, fontSize: 16, color: '#fff', fontWeight: '600' },
+  input: { flex: 1, fontSize: 16, color: colors.text, fontWeight: '600' },
   flexInput: { flex: 1 },
   copyBtn: { padding: 6, borderRadius: 8, backgroundColor: 'rgba(99,102,241,0.1)' },
-  textArea: { height: 100, textAlignVertical: 'top', paddingTop: 14, backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 14, paddingHorizontal: 16, fontSize: 16, color: '#fff', fontWeight: '500', borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)', marginHorizontal: 20 },
-  charCount: { fontSize: 12, textAlign: 'right', marginTop: 4, marginHorizontal: 20, color: '#94a3b8', fontWeight: '500' },
+  textArea: { height: 100, textAlignVertical: 'top', paddingTop: 14, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', borderRadius: 14, paddingHorizontal: 16, fontSize: 16, color: colors.text, fontWeight: '500', borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)', marginHorizontal: 20 },
+  charCount: { fontSize: 12, textAlign: 'right', marginTop: 4, marginHorizontal: 20, color: colors.textSecondary, fontWeight: '500' },
   bioDisplay: { paddingHorizontal: 20, paddingBottom: 16 },
-  bioText: { fontSize: 15, color: '#94a3b8', lineHeight: 22, fontWeight: '500' },
+  bioText: { fontSize: 15, color: colors.textSecondary, lineHeight: 22, fontWeight: '500' },
   infoDivider: { height: 1, marginHorizontal: 20 },
 
   topicsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: DESIGN.spacing.md, paddingHorizontal: 20, paddingBottom: 20 },
   topicChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
   topicChipText: { fontSize: 13, fontWeight: '700' },
-  emptyText: { fontSize: 14, color: '#64748b', fontWeight: '500' },
+  emptyText: { fontSize: 14, color: colors.textMuted, fontWeight: '500' },
 
   tabPanel: { paddingBottom: 20 },
 
@@ -1485,43 +1481,43 @@ const styles = StyleSheet.create({
   emptyCard: { padding: 40, alignItems: 'center', justifyContent: 'center' },
   emptyStateIcon: { width: 64, height: 64, borderRadius: 20, backgroundColor: 'rgba(99,102,241,0.1)', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
   emptyStateSmall: { padding: 32, alignItems: 'center' },
-  emptyStateTitle: { fontSize: 16, fontWeight: '700', color: '#fff', textAlign: 'center', marginBottom: 8 },
+  emptyStateTitle: { fontSize: 16, fontWeight: '700', color: colors.text, textAlign: 'center', marginBottom: 8 },
   createPostBtn: { marginTop: 16, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 14, alignSelf: 'center' },
-  createPostBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  createPostBtnText: { color: colors.text, fontSize: 15, fontWeight: '700' },
   activitiesList: { gap: 10 },
   activityItemCard: { flexDirection: 'row', alignItems: 'center', padding: 14 },
   activityIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
   activityContent: { flex: 1 },
-  activityTitle: { fontSize: 15, fontWeight: '700', color: '#fff', lineHeight: 20 },
-  activityTime: { fontSize: 12, color: '#64748b', marginTop: 4, fontWeight: '500' },
+  activityTitle: { fontSize: 15, fontWeight: '700', color: colors.text, lineHeight: 20 },
+  activityTime: { fontSize: 12, color: colors.textMuted, marginTop: 4, fontWeight: '500' },
   postStats: { flexDirection: 'row', gap: DESIGN.spacing.lg, marginTop: 6 },
-  postStat: { fontSize: 12, color: '#64748b', fontWeight: '600' },
+  postStat: { fontSize: 12, color: colors.textMuted, fontWeight: '600' },
 
   progressRow: { flexDirection: 'row', gap: 16, paddingHorizontal: 20, paddingBottom: 20 },
   progressItem: { flex: 1 },
-  progressValue: { fontSize: 22, fontWeight: '800', color: '#fff' },
-  progressLabel: { fontSize: 12, color: '#94a3b8', marginTop: 2, fontWeight: '600' },
+  progressValue: { fontSize: 22, fontWeight: '800', color: colors.text },
+  progressLabel: { fontSize: 12, color: colors.textSecondary, marginTop: 2, fontWeight: '600' },
   progressBar: { height: 6, borderRadius: 3, backgroundColor: 'rgba(100,116,139,0.15)', marginTop: 8, overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: 3 },
 
   preferenceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14 },
   preferenceInfo: { flexDirection: 'row', alignItems: 'center', gap: 14, flex: 1 },
   preferenceText: { gap: 2 },
-  preferenceTitle: { fontSize: 16, fontWeight: '700', color: '#fff' },
-  preferenceDesc: { fontSize: 13, color: '#94a3b8', fontWeight: '500' },
+  preferenceTitle: { fontSize: 16, fontWeight: '700', color: colors.text },
+  preferenceDesc: { fontSize: 13, color: colors.textSecondary, fontWeight: '500' },
 
   dangerCard: { padding: 20, alignItems: 'center' },
   dangerIconContainer: { marginBottom: 14 },
   dangerIcon: { width: 56, height: 56, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   dangerTitle: { fontSize: 18, fontWeight: '800', color: '#ef4444', marginBottom: 6 },
-  dangerDescription: { fontSize: 13, color: '#94a3b8', textAlign: 'center', lineHeight: 18, marginBottom: 16 },
+  dangerDescription: { fontSize: 13, color: colors.textSecondary, textAlign: 'center', lineHeight: 18, marginBottom: 16 },
   dangerActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, width: '100%', marginTop: 6 },
   dangerActionText: { fontSize: 14, fontWeight: '700', color: '#ef4444' },
 
   imagePickerOptions: { padding: 8 },
   imagePickerOption: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 14, marginBottom: 8 },
   imagePickerIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
-  imagePickerLabel: { fontSize: 16, fontWeight: '600', color: '#fff', flex: 1 },
+  imagePickerLabel: { fontSize: 16, fontWeight: '600', color: colors.text, flex: 1 },
 
   emojiPickerOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
   emojiPickerSheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 40 },
@@ -1535,8 +1531,8 @@ const styles = StyleSheet.create({
   modalOverlay: { flex: 1, justifyContent: 'flex-end', alignItems: 'center' },
   modalContent: { width: '100%', maxWidth: 400, borderRadius: DESIGN.radius.xl, padding: DESIGN.spacing.xxl, overflow: 'hidden', /* no shadow */ },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  modalTitle: { fontSize: 20, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
+  modalTitle: { fontSize: 20, fontWeight: '800', color: colors.text, letterSpacing: -0.3 },
 
   retryButton: { marginTop: 20, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 14 },
-  retryButtonText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  retryButtonText: { fontSize: 15, fontWeight: '700', color: colors.text },
 });

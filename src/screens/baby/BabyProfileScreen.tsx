@@ -58,7 +58,6 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 const DESIGN = {
   radius: { xs: 8, sm: 12, md: 16, lg: 20, xl: 24, full: 999 },
   spacing: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32 },
-  shadow: { sm: {}, md: {}, lg: {} },
 };
 
 const isImageUri = (value: string | undefined | null): boolean => {
@@ -147,18 +146,19 @@ interface DevelopmentStage {
   progress: number;
 }
 
-const GlassCard = React.memo(({ children, style, onPress, active = false, delay = 0 }: { 
+const GlassCard = React.memo(({ children, style, onPress, active = false, delay = 0, isDark: cardDark = true }: { 
   children: React.ReactNode; 
   style?: any; 
   onPress?: () => void; 
   active?: boolean;
   delay?: number;
+  isDark?: boolean;
 }) => {
   const Wrapper = onPress ? TouchableOpacity : View;
   return (
-    <Animated.View entering={FadeInUp.delay(delay).springify()} style={[styles.glassCard, active && { borderColor: '#6366f1', borderWidth: 2 }, style]}>
+    <Animated.View entering={FadeInUp.delay(delay).springify()} style={[styles.glassCard, active && { borderColor: themeColors.primary, borderWidth: 2 }, style]}>
       <Wrapper onPress={onPress} activeOpacity={onPress ? 0.85 : 1} style={{ flex: 1 }}>
-        <LinearGradient colors={['rgba(45,45,60,0.85)', 'rgba(35,35,50,0.65)']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+        <LinearGradient colors={cardDark ? ['rgba(45,45,60,0.85)', 'rgba(35,35,50,0.65)'] : ['rgba(255,255,255,0.92)', 'rgba(248,250,255,0.85)']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
         <View style={styles.glassBorder} />
         <View style={styles.glassContent}>{children}</View>
       </Wrapper>
@@ -540,7 +540,7 @@ const NextMilestoneCountdown = React.memo(({ baby, milestones }: { baby: any; mi
           </View>
         </View>
         <View style={styles.countdownProgress}>
-          <View style={[styles.countdownProgressBg, { backgroundColor: 'rgba(255,255,255,0.06)' }]}>
+          <View style={[styles.countdownProgressBg, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
             <View style={[styles.countdownProgressFill, { width: `${progressPercent}%`, backgroundColor: '#6366f1' }]} />
           </View>
         </View>
@@ -576,7 +576,7 @@ const FamilyConnectionHub = React.memo(({ members, onManage, babyName }: { membe
             {parents.map((parent) => (
               <View key={parent.id} style={{ alignItems: 'center', gap: 6 }}>
                 {renderAvatar(parent, 56)}
-                <Text style={{ fontSize: 13, fontWeight: '700', color: '#fff' }}>{parent.fullName || 'Parent'}</Text>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>{parent.fullName || 'Parent'}</Text>
                 <View style={{ backgroundColor: 'rgba(99,102,241,0.15)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
                   <Text style={{ fontSize: 10, fontWeight: '700', color: '#6366f1' }}>{parent.relationship || 'Parent'}</Text>
                 </View>
@@ -584,10 +584,10 @@ const FamilyConnectionHub = React.memo(({ members, onManage, babyName }: { membe
             ))}
             {parents.length === 1 && (
               <TouchableOpacity onPress={onManage} style={{ alignItems: 'center', gap: 6, opacity: 0.6 }}>
-                <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'rgba(255,255,255,0.1)', borderStyle: 'dashed' }}>
+                <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: colors.border, borderStyle: 'dashed' }}>
                   <Ionicons name="add" size={24} color="#94a3b8" />
                 </View>
-                <Text style={{ fontSize: 13, fontWeight: '700', color: '#94a3b8' }}>Add Co-Parent</Text>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textSecondary }}>Add Co-Parent</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -611,7 +611,7 @@ const FamilyConnectionHub = React.memo(({ members, onManage, babyName }: { membe
               {others.map((member) => (
                 <View key={member.id} style={{ alignItems: 'center', gap: 4 }}>
                   {renderAvatar(member, 40)}
-                  <Text style={{ fontSize: 11, fontWeight: '600', color: '#94a3b8' }}>{member.fullName?.split(' ')[0] || 'Member'}</Text>
+                  <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textSecondary }}>{member.fullName?.split(' ')[0] || 'Member'}</Text>
                 </View>
               ))}
             </View>
@@ -772,6 +772,9 @@ const EmojiPickerModal = React.memo(({ visible, onClose, onSelect }: { visible: 
 export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamilyCenterScreenProps) {
   const { mode = 'baby', babyId } = route.params || { mode: 'baby' };
   const { isDark, colors: appColors } = useApp();
+  const { fullThemeColors } = useCustomization();
+  const themeColors = appColors || fullThemeColors;
+  const styles = useMemo(() => getStyles(isDark, themeColors), [isDark, themeColors]);
   const { userProfile } = useAuth();
   const { profile } = useUser();
   const {
@@ -1100,7 +1103,7 @@ ${changes.join('\n')}`,
     return (
       <View style={[styles.container, styles.centered]}>
         <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
-        <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={StyleSheet.absoluteFill} />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: themeColors.background }]} />
         <UniversalSpinner visible={true} text="Loading profile..." size="medium" overlay={false} section="main" />
       </View>
     );
@@ -1119,7 +1122,7 @@ ${changes.join('\n')}`,
   return (
     <View style={styles.container}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
-      <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={StyleSheet.absoluteFill} />
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: themeColors.background }]} />
 
       {/* Sticky Header */}
       <Animated.View style={[styles.stickyHeader, { paddingTop: insets.top + 8 }, headerOpacity]}>
@@ -1561,15 +1564,15 @@ ${changes.join('\n')}`,
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1 },
+const getStyles = (isDarkMode: boolean, colors: any) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
   centered: { justifyContent: 'center', alignItems: 'center' },
-  scrollContent: { paddingBottom: 24 },
+  scrollContent: { flexGrow: 1, paddingBottom: 24, minHeight: SCREEN_H },
 
   // ── Sticky Header ──
   stickyHeader: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100, alignItems: 'center', paddingHorizontal: 20, paddingBottom: 10 },
-  stickyTitle: { fontSize: 17, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
-  stickySubtitle: { fontSize: 12, fontWeight: '500', color: '#94a3b8', marginTop: 2 },
+  stickyTitle: { fontSize: 17, fontWeight: '800', color: colors.text, letterSpacing: -0.3 },
+  stickySubtitle: { fontSize: 12, fontWeight: '500', color: colors.textSecondary, marginTop: 2 },
 
   // ── Top Header ──
   topHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 16, marginBottom: 16 },
@@ -1581,8 +1584,8 @@ const styles = StyleSheet.create({
   avatarSection: { position: 'relative' },
   uploadingOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 33, alignItems: 'center', justifyContent: 'center' },
   profileInfo: { flex: 1, gap: 4 },
-  profileName: { fontSize: 24, fontWeight: '800', color: '#fff', letterSpacing: -0.5 },
-  profileMeta: { fontSize: 14, fontWeight: '500', color: '#94a3b8' },
+  profileName: { fontSize: 24, fontWeight: '800', color: colors.text, letterSpacing: -0.5 },
+  profileMeta: { fontSize: 14, fontWeight: '500', color: colors.textSecondary },
   profileTags: { flexDirection: 'row', marginTop: 8, gap: 8 },
   profileTag: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, gap: 4 },
   profileTagText: { fontSize: 12, fontWeight: '700' },
@@ -1592,7 +1595,7 @@ const styles = StyleSheet.create({
   avatarWrapper: { position: 'relative' },
   avatarGradient: { alignItems: 'center', justifyContent: 'center' },
   avatarEmoji: {},
-  editAvatarBtn: { position: 'absolute', width: 28, height: 28, borderRadius: 14, overflow: 'hidden', borderWidth: 2, borderColor: '#fff' },
+  editAvatarBtn: { position: 'absolute', width: 28, height: 28, borderRadius: 14, overflow: 'hidden', borderWidth: 2, bordercolor: colors.text },
   editAvatarGradient: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' },
 
   // ── Quick Actions Dock ──
@@ -1601,22 +1604,22 @@ const styles = StyleSheet.create({
   dockItem: { alignItems: 'center', gap: 6, flex: 1 },
   dockGradient: { width: 52, height: 52, borderRadius: 16, justifyContent: 'center', alignItems: 'center', /* no shadow */ },
   dockIcon: { fontSize: 24 },
-  dockLabel: { fontSize: 11, fontWeight: '600', color: '#94a3b8' },
+  dockLabel: { fontSize: 11, fontWeight: '600', color: colors.textSecondary },
 
   // ── Tab Bar ──
-  tabBar: { flexDirection: 'row', marginHorizontal: 16, marginBottom: 16, padding: 4, borderRadius: 16, gap: 2, backgroundColor: 'rgba(255,255,255,0.06)' },
+  tabBar: { flexDirection: 'row', marginHorizontal: 16, marginBottom: 16, padding: 4, borderRadius: 16, gap: 2, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
   tabItem: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 12 },
   tabLabel: { fontSize: 12, fontWeight: '600' },
 
   // ── Glass Card ──
-  glassCard: { borderRadius: DESIGN.radius.lg, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', marginHorizontal: 16, marginBottom: DESIGN.spacing.lg },
-  glassBorder: { position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.06)' },
+  glassCard: { borderRadius: DESIGN.radius.lg, overflow: 'hidden', borderWidth: 1, borderColor: colors.border, marginHorizontal: 16, marginBottom: DESIGN.spacing.lg },
+  glassBorder: { position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
   glassContent: { flex: 1 },
 
   // ── Section Header ──
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginHorizontal: 16, marginBottom: 12, marginTop: 8 },
-  sectionTitle: { fontSize: 18, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
-  sectionSubtitle: { fontSize: 12, fontWeight: '500', color: '#94a3b8', marginTop: 2 },
+  sectionTitle: { fontSize: 18, fontWeight: '800', color: colors.text, letterSpacing: -0.3 },
+  sectionSubtitle: { fontSize: 12, fontWeight: '500', color: colors.textSecondary, marginTop: 2 },
   sectionAction: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   sectionActionText: { fontSize: 13, fontWeight: '700', color: '#6366f1' },
 
@@ -1627,56 +1630,56 @@ const styles = StyleSheet.create({
   kpiPillEmoji: { fontSize: 20 },
   kpiPillBody: { flex: 1 },
   kpiPillValue: { fontSize: 22, fontWeight: '800', letterSpacing: -0.5 },
-  kpiPillLabel: { fontSize: 11, fontWeight: '600', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 },
+  kpiPillLabel: { fontSize: 11, fontWeight: '600', color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 },
 
   // ── AI Insights ──
   insightsList: { marginHorizontal: 0, gap: 8, marginBottom: 16 },
-  insightRow: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: 'rgba(45,45,60,0.6)', borderLeftWidth: 3, /* no shadow */ },
+  insightRow: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: isDarkMode ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.75)', borderLeftWidth: 3, /* no shadow */ },
   insightIconBg: { width: 42, height: 42, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   insightEmoji: { fontSize: 20 },
   insightContent: { flex: 1, gap: 3 },
   insightHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  insightTitle: { fontSize: 14, fontWeight: '700', color: '#fff' },
-  insightDesc: { fontSize: 12, lineHeight: 17, fontWeight: '500', color: '#94a3b8' },
+  insightTitle: { fontSize: 14, fontWeight: '700', color: colors.text },
+  insightDesc: { fontSize: 12, lineHeight: 17, fontWeight: '500', color: colors.textSecondary },
   insightActionBadge: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, marginTop: 4 },
   insightActionText: { fontSize: 11, fontWeight: '700', color: '#6366f1' },
   insightPriority: { width: 4, height: 36, borderRadius: 2 },
 
   // ── Sparkline ──
   sparklineHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', padding: 16, paddingBottom: 12 },
-  sparklineTitle: { fontSize: 16, fontWeight: '800', color: '#fff' },
-  sparklineSubtitle: { fontSize: 12, fontWeight: '500', color: '#94a3b8', marginTop: 2 },
+  sparklineTitle: { fontSize: 16, fontWeight: '800', color: colors.text },
+  sparklineSubtitle: { fontSize: 12, fontWeight: '500', color: colors.textSecondary, marginTop: 2 },
   sparklineTotal: { alignItems: 'flex-end' },
   sparklineTotalValue: { fontSize: 24, fontWeight: '800', color: '#6366f1' },
-  sparklineTotalLabel: { fontSize: 11, fontWeight: '600', color: '#94a3b8' },
+  sparklineTotalLabel: { fontSize: 11, fontWeight: '600', color: colors.textSecondary },
   sparklineChart: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-end', paddingHorizontal: 16, paddingBottom: 16, height: 100 },
   sparklineBar: { width: 8, borderRadius: 4 },
-  sparklineDay: { fontSize: 10, fontWeight: '600', color: '#64748b' },
+  sparklineDay: { fontSize: 10, fontWeight: '600', color: colors.textMuted },
 
   // ── Health Score ──
   healthContainer: { flexDirection: 'row', padding: 16, gap: 16 },
   healthLeft: { flex: 1, gap: 4 },
-  healthTitle: { fontSize: 16, fontWeight: '800', color: '#fff' },
-  healthSubtitle: { fontSize: 12, fontWeight: '500', color: '#94a3b8', marginBottom: 8 },
+  healthTitle: { fontSize: 16, fontWeight: '800', color: colors.text },
+  healthSubtitle: { fontSize: 12, fontWeight: '500', color: colors.textSecondary, marginBottom: 8 },
   healthMetrics: { flexDirection: 'row', gap: 16, marginTop: 4 },
   healthMetric: { alignItems: 'center', gap: 2 },
-  healthMetricValue: { fontSize: 18, fontWeight: '800', color: '#fff' },
-  healthMetricLabel: { fontSize: 10, fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5 },
+  healthMetricValue: { fontSize: 18, fontWeight: '800', color: colors.text },
+  healthMetricLabel: { fontSize: 10, fontWeight: '600', color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
   healthRingContainer: { justifyContent: 'center', alignItems: 'center' },
   healthRing: { width: 80, height: 80, borderRadius: 40, justifyContent: 'center', alignItems: 'center' },
   healthRingBg: { position: 'absolute', width: 80, height: 80, borderRadius: 40, borderWidth: 4, borderColor: 'rgba(255,255,255,0.06)' },
   healthRingFill: { position: 'absolute', width: 80, height: 80, borderRadius: 40, borderWidth: 4, borderTopColor: 'transparent', borderRightColor: 'transparent', borderLeftColor: 'transparent' },
   healthRingEmoji: { fontSize: 16 },
   healthRingScore: { fontSize: 20, fontWeight: '800' },
-  healthRingLabel: { fontSize: 9, fontWeight: '600', color: '#94a3b8' },
+  healthRingLabel: { fontSize: 9, fontWeight: '600', color: colors.textSecondary },
 
   // ── Development Stage ──
   stageHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, paddingBottom: 12 },
   stageIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   stageEmoji: { fontSize: 22 },
   stageTitleWrap: { flex: 1 },
-  stageTitle: { fontSize: 16, fontWeight: '800', color: '#fff' },
-  stageSubtitle: { fontSize: 12, fontWeight: '500', color: '#94a3b8', marginTop: 2 },
+  stageTitle: { fontSize: 16, fontWeight: '800', color: colors.text },
+  stageSubtitle: { fontSize: 12, fontWeight: '500', color: colors.textSecondary, marginTop: 2 },
   stageBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10 },
   stageBadgeText: { fontSize: 12, fontWeight: '800' },
   stageProgressBar: { paddingHorizontal: 16, paddingBottom: 12 },
@@ -1685,17 +1688,17 @@ const styles = StyleSheet.create({
   stageTimeline: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 16 },
   stageTimelineItem: { alignItems: 'center', gap: 6 },
   stageDot: { width: 10, height: 10, borderRadius: 5, borderWidth: 2 },
-  stageTimelineLabel: { fontSize: 10, fontWeight: '600', color: '#64748b' },
+  stageTimelineLabel: { fontSize: 10, fontWeight: '600', color: colors.textMuted },
 
   // ── Next Milestone Countdown ──
   countdownRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, paddingBottom: 8 },
   countdownIconBg: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
   countdownEmoji: { fontSize: 22 },
   countdownContent: { flex: 1 },
-  countdownTitle: { fontSize: 15, fontWeight: '800', color: '#fff' },
-  countdownSubtitle: { fontSize: 12, fontWeight: '500', color: '#94a3b8', marginTop: 1 },
+  countdownTitle: { fontSize: 15, fontWeight: '800', color: colors.text },
+  countdownSubtitle: { fontSize: 12, fontWeight: '500', color: colors.textSecondary, marginTop: 1 },
   countdownBadge: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#6366f1', width: 48, height: 48, borderRadius: 14 },
-  countdownBadgeValue: { fontSize: 18, fontWeight: '800', color: '#fff' },
+  countdownBadgeValue: { fontSize: 18, fontWeight: '800', color: colors.text },
   countdownBadgeLabel: { fontSize: 10, fontWeight: '600', color: 'rgba(255,255,255,0.8)' },
   countdownProgress: { paddingHorizontal: 16, paddingBottom: 16 },
   countdownProgressBg: { height: 6, borderRadius: 3, overflow: 'hidden' },
@@ -1705,12 +1708,12 @@ const styles = StyleSheet.create({
   familyHubRow: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 14 },
   familyHubAvatars: { flexDirection: 'row' },
   familyHubAvatar: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', borderWidth: 2, overflow: 'hidden' },
-  familyHubAvatarText: { color: '#fff', fontSize: 14, fontWeight: '800' },
-  familyHubAvatarMore: { backgroundColor: '#64748b' },
-  familyHubAvatarMoreText: { color: '#fff', fontSize: 11, fontWeight: '800' },
+  familyHubAvatarText: { color: colors.text, fontSize: 14, fontWeight: '800' },
+  familyHubAvatarMore: { backgroundcolor: colors.textMuted },
+  familyHubAvatarMoreText: { color: colors.text, fontSize: 11, fontWeight: '800' },
   familyHubContent: { flex: 1 },
-  familyHubTitle: { fontSize: 15, fontWeight: '800', color: '#fff' },
-  familyHubSubtitle: { fontSize: 12, color: '#94a3b8', fontWeight: '500', marginTop: 1 },
+  familyHubTitle: { fontSize: 15, fontWeight: '800', color: colors.text },
+  familyHubSubtitle: { fontSize: 12, color: colors.textSecondary, fontWeight: '500', marginTop: 1 },
 
   // ── Activity Tab ──
   activitiesList: { gap: 8, marginHorizontal: 0 },
@@ -1719,72 +1722,72 @@ const styles = StyleSheet.create({
   activityIcon: { width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   activityEmoji: { fontSize: 20 },
   activityContent: { flex: 1, gap: 2 },
-  activityTitle: { fontSize: 15, fontWeight: '700', color: '#fff' },
-  activityDetails: { fontSize: 13, color: '#94a3b8', marginTop: 2, lineHeight: 18 },
-  activityTime: { fontSize: 12, color: '#64748b', marginTop: 4, fontWeight: '500' },
+  activityTitle: { fontSize: 15, fontWeight: '700', color: colors.text },
+  activityDetails: { fontSize: 13, color: colors.textSecondary, marginTop: 2, lineHeight: 18 },
+  activityTime: { fontSize: 12, color: colors.textMuted, marginTop: 4, fontWeight: '500' },
   activityTypeBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, marginLeft: 8 },
   activityTypeText: { fontSize: 11, fontWeight: '700' },
 
   // ── Empty States ──
   emptyCard: { padding: 40, alignItems: 'center', justifyContent: 'center' },
   emptyStateIcon: { width: 64, height: 64, borderRadius: 20, backgroundColor: 'rgba(99,102,241,0.1)', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
-  emptyStateTitle: { fontSize: 16, fontWeight: '700', color: '#fff', textAlign: 'center', marginBottom: 8 },
-  emptyText: { fontSize: 14, color: '#64748b', textAlign: 'center', lineHeight: 20 },
+  emptyStateTitle: { fontSize: 16, fontWeight: '700', color: colors.text, textAlign: 'center', marginBottom: 8 },
+  emptyText: { fontSize: 14, color: colors.textMuted, textAlign: 'center', lineHeight: 20 },
 
   // ── Milestones ──
   addMilestoneBtn: { borderRadius: 18, overflow: 'hidden', marginBottom: 8, marginHorizontal: 16 },
   addMilestoneGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 16, gap: 10 },
-  addMilestoneText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  addMilestoneText: { color: colors.text, fontSize: 16, fontWeight: '800' },
   milestoneCard: { padding: 0, marginBottom: 12, borderRadius: 20 },
   milestoneRow: { flexDirection: 'row', alignItems: 'center', padding: 16 },
   milestoneIcon: { width: 50, height: 50, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginRight: 16 },
   milestoneContent: { flex: 1 },
-  milestoneTitle: { fontSize: 16, fontWeight: '800', color: '#fff', marginBottom: 3 },
+  milestoneTitle: { fontSize: 16, fontWeight: '800', color: colors.text, marginBottom: 3 },
   milestoneCategory: { fontSize: 13, fontWeight: '700', textTransform: 'capitalize', marginBottom: 3 },
-  milestoneDate: { fontSize: 13, color: '#94a3b8', fontWeight: '500' },
-  milestoneDescription: { fontSize: 14, color: '#64748b', marginTop: 10, lineHeight: 20, fontWeight: '500', paddingHorizontal: 16, paddingBottom: 16 },
+  milestoneDate: { fontSize: 13, color: colors.textSecondary, fontWeight: '500' },
+  milestoneDescription: { fontSize: 14, color: colors.textMuted, marginTop: 10, lineHeight: 20, fontWeight: '500', paddingHorizontal: 16, paddingBottom: 16 },
   deleteEntryBtn: { padding: 6, width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(239,68,68,0.1)', alignItems: 'center', justifyContent: 'center' },
 
   // ── Health Form ──
   formCard: { padding: 0, marginBottom: 16 },
   sectionHeaderWithEdit: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 20, marginBottom: 16 },
-  sectionLabel: { fontSize: 20, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
+  sectionLabel: { fontSize: 20, fontWeight: '800', color: colors.text, letterSpacing: -0.3 },
   editIconBtn: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(99,102,241,0.1)', alignItems: 'center', justifyContent: 'center' },
   editingBadge: { backgroundColor: '#f59e0b', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
-  editingBadgeText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  editingBadgeText: { color: colors.text, fontSize: 12, fontWeight: '700' },
 
   inputGroup: { marginBottom: 20, paddingHorizontal: 20 },
-  inputLabel: { fontSize: 13, fontWeight: '700', color: '#94a3b8', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
-  inputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 14, paddingHorizontal: 16, height: 52, borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)' },
+  inputLabel: { fontSize: 13, fontWeight: '700', color: colors.textSecondary, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
+  inputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', borderRadius: 14, paddingHorizontal: 16, height: 52, borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)' },
   inputDisabled: { opacity: 0.5 },
   inputIcon: { marginRight: 12 },
-  inputField: { flex: 1, fontSize: 16, color: '#fff', fontWeight: '600' },
-  textArea: { height: 110, textAlignVertical: 'top', paddingTop: 18, backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 14, paddingHorizontal: 16, fontSize: 16, color: '#fff', fontWeight: '500', borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)' },
+  inputField: { flex: 1, fontSize: 16, color: colors.text, fontWeight: '600' },
+  textArea: { height: 110, textAlignVertical: 'top', paddingTop: 18, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', borderRadius: 14, paddingHorizontal: 16, fontSize: 16, color: colors.text, fontWeight: '500', borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)' },
 
   preferenceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16 },
   preferenceInfo: { flexDirection: 'row', alignItems: 'center', gap: 14, flex: 1 },
   preferenceText: { gap: 2 },
-  preferenceTitle: { fontSize: 16, fontWeight: '700', color: '#fff' },
-  preferenceDesc: { fontSize: 13, color: '#94a3b8', fontWeight: '500' },
+  preferenceTitle: { fontSize: 16, fontWeight: '700', color: colors.text },
+  preferenceDesc: { fontSize: 13, color: colors.textSecondary, fontWeight: '500' },
 
   saveButton: { marginHorizontal: 16, marginTop: 8, borderRadius: 14, overflow: 'hidden' },
   saveButtonGradient: { paddingVertical: 16, alignItems: 'center' },
-  saveButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  saveButtonText: { color: colors.text, fontSize: 16, fontWeight: '700' },
 
   // ── Danger Zone ──
   dangerCard: { padding: 24, alignItems: 'center', borderColor: '#ef4444', borderWidth: 2, borderRadius: 24 },
   dangerIconContainer: { marginBottom: 16 },
   dangerIcon: { width: 80, height: 80, borderRadius: 40, alignItems: 'center', justifyContent: 'center' },
   dangerTitle: { fontSize: 24, fontWeight: '800', color: '#ef4444', marginBottom: 8 },
-  dangerDescription: { fontSize: 15, color: '#94a3b8', textAlign: 'center', lineHeight: 22, marginBottom: 20 },
+  dangerDescription: { fontSize: 15, color: colors.textSecondary, textAlign: 'center', lineHeight: 22, marginBottom: 20 },
   dangerStats: { flexDirection: 'row', gap: 20, marginBottom: 24 },
   dangerStat: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  dangerStatText: { fontSize: 14, color: '#94a3b8', fontWeight: '500' },
+  dangerStatText: { fontSize: 14, color: colors.textSecondary, fontWeight: '500' },
   deleteButton: { width: '100%', borderRadius: 16, overflow: 'hidden' },
   deleteGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 16, gap: 8 },
-  deleteButtonText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  deleteButtonText: { color: colors.text, fontSize: 16, fontWeight: '800' },
   dangerNote: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 16, gap: 6 },
-  dangerNoteText: { fontSize: 13, color: '#94a3b8' },
+  dangerNoteText: { fontSize: 13, color: colors.textSecondary },
 
   // ── Tab Panel ──
   tabPanel: { marginTop: 4, gap: 16 },
@@ -1793,13 +1796,13 @@ const styles = StyleSheet.create({
   modalOverlay: { flex: 1, justifyContent: 'flex-end', alignItems: 'center' },
   modalContent: { width: '100%', maxWidth: 400, borderRadius: DESIGN.radius.xl, padding: DESIGN.spacing.xxl, overflow: 'hidden', /* no shadow */ },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  modalTitle: { fontSize: 20, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
+  modalTitle: { fontSize: 20, fontWeight: '800', color: colors.text, letterSpacing: -0.3 },
   modalClose: { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.08)', justifyContent: 'center', alignItems: 'center' },
 
   imagePickerOptions: { padding: 8 },
   imagePickerOption: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 14, marginBottom: 8 },
   imagePickerIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
-  imagePickerLabel: { fontSize: 16, fontWeight: '600', color: '#fff', flex: 1 },
+  imagePickerLabel: { fontSize: 16, fontWeight: '600', color: colors.text, flex: 1 },
 
   // ── Emoji Picker ──
   emojiPickerOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'flex-end', zIndex: 200 },
@@ -1807,9 +1810,9 @@ const styles = StyleSheet.create({
   modalDragHandle: { width: '100%', alignItems: 'center', paddingVertical: 8 },
   dragIndicator: { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)' },
   emojiPickerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  emojiPickerTitle: { fontSize: 18, fontWeight: '800', color: '#fff' },
+  emojiPickerTitle: { fontSize: 18, fontWeight: '800', color: colors.text },
   emojiPickerClose: { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.08)', justifyContent: 'center', alignItems: 'center' },
   emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'center' },
-  emojiButton: { width: 52, height: 52, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.06)', alignItems: 'center', justifyContent: 'center' },
+  emojiButton: { width: 52, height: 52, borderRadius: 14, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', alignItems: 'center', justifyContent: 'center' },
   emojiButtonText: { fontSize: 28 },
 });
