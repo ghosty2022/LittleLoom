@@ -284,7 +284,7 @@ const SectionHeader: React.FC<{
 }> = React.memo(({ title, subtitle, action, actionLabel, icon, theme }) => (
   <View style={styles.sectionHeader}>
     <View style={styles.sectionHeaderLeft}>
-      {icon && <Ionicons name={icon as any} size={18} color={theme.primary} style={{ marginRight: 10 }} />}
+      {icon && <Ionicons name={icon as any} size={20} color={theme.primary} style={{ marginRight: 10 }} />}
       <View>
         <Text style={[styles.sectionHeaderTitle, { color: theme.text }]}>{title}</Text>
         {subtitle && <Text style={[styles.sectionHeaderSubtitle, { color: theme.textMuted }]}>{subtitle}</Text>}
@@ -377,7 +377,7 @@ const DailySummaryWidget: React.FC<{
                 end={{ x: 1, y: 1 }}
                 style={styles.dailySummaryGradient}
               >
-                <Ionicons name={item.icon as any} size={18} color="#fff" style={{ opacity: 0.9 }} />
+                <Ionicons name={item.icon as any} size={20} color="#fff" style={{ opacity: 0.9 }} />
                 <Text style={styles.dailySummaryValue}>{item.value}</Text>
                 <Text style={styles.dailySummaryLabel}>{item.label}</Text>
               </LinearGradient>
@@ -814,7 +814,7 @@ const VaccinationReminders: React.FC<{
         <View style={styles.vaccineHeader}>
           <View style={styles.vaccineTitleRow}>
             <View style={[styles.vaccineIconWrap, { backgroundColor: '#e11d4815' }]}>
-              <Ionicons name="medical-outline" size={16} color="#e11d48" />
+              <Ionicons name="medical-outline" size={20} color="#e11d48" />
             </View>
             <View>
               <Text style={[styles.vaccineTitle, { color: theme.text }]}>Vaccination Schedule</Text>
@@ -929,7 +929,7 @@ const AIInsightsCard: React.FC<{
         <View style={styles.aiInsightsHeader}>
           <View style={styles.aiInsightsTitleRow}>
             <View style={[styles.aiInsightsIconWrap, { backgroundColor: `${theme.primary}12` }]}>
-              <Ionicons name="sparkles" size={16} color={theme.primary} />
+              <Ionicons name="sparkles" size={20} color={theme.primary} />
             </View>
             <Text style={[styles.aiInsightsTitle, { color: theme.text }]}>AI Insights</Text>
           </View>
@@ -989,7 +989,7 @@ const SmartNotificationPanel: React.FC<{
         <View style={styles.notificationPanelHeader}>
           <View style={styles.notificationPanelTitleRow}>
             <View style={[styles.notificationPanelIconWrap, { backgroundColor: `${theme.primary}12` }]}>
-              <Ionicons name="notifications-outline" size={16} color={theme.primary} />
+              <Ionicons name="notifications-outline" size={20} color={theme.primary} />
             </View>
             <Text style={[styles.notificationPanelTitle, { color: theme.text }]}>Smart Alerts</Text>
             {urgentCount > 0 && (
@@ -1093,7 +1093,7 @@ const FeatureCardsRow: React.FC<{
             ]}>
               <View style={styles.featureCardTop}>
                 <View style={[styles.featureCardIcon, { backgroundColor: item.color }]}>
-                  <Ionicons name={item.icon as any} size={18} color="#fff" />
+                  <Ionicons name={item.icon as any} size={20} color="#fff" />
                 </View>
                 {item.badge && (
                   <View style={[styles.featureCardBadge, { backgroundColor: item.badgeColor || item.color }]}>
@@ -1380,10 +1380,10 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
 
   const headerPaddingTop = Platform.OS === 'ios' ? (compactSpacing ? 44 : 52) : (compactSpacing ? 28 : 36);
   const headerPaddingBottom = compactSpacing ? 8 : 12;
-  const iconSize = Math.round(20 * fontSizeMultiplier);
-  const titleSize = Math.round(18 * fontSizeMultiplier);
-  const badgeSize = Math.round(16 * fontSizeMultiplier);
-  const avatarSize = Math.round(36 * fontSizeMultiplier);
+  const iconSize = Math.round(22 * fontSizeMultiplier);
+  const titleSize = Math.round(22 * fontSizeMultiplier);
+  const badgeSize = Math.round(18 * fontSizeMultiplier);
+  const avatarSize = Math.round(40 * fontSizeMultiplier);
 
     const headerBg = isDark ? (fullTheme?.glassBg || 'rgba(26,26,42,0.96)') : (fullTheme?.glassBg || 'rgba(255,255,255,0.96)');
   const borderColor = isDark ? (fullTheme?.border || 'rgba(255,255,255,0.06)') : 'rgba(0,0,0,0.04)';
@@ -1416,7 +1416,7 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
           >
             <LinearGradient
               colors={['#dc2626', '#ef4444']}
-              style={[styles.safetyCornerGradient, { width: Math.round(30 * fontSizeMultiplier), height: Math.round(30 * fontSizeMultiplier), borderRadius: 10 }]}
+              style={[styles.safetyCornerGradient, { width: Math.round(34 * fontSizeMultiplier), height: Math.round(34 * fontSizeMultiplier), borderRadius: 12 }]}
             >
               <Ionicons name="shield-checkmark-outline" size={Math.round(14 * fontSizeMultiplier)} color="#fff" />
             </LinearGradient>
@@ -1431,23 +1431,23 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
                 style={[
                   styles.headerLogoImage, 
                   { 
-                    width: Math.round(44 * fontSizeMultiplier), 
-                    height: Math.round(44 * fontSizeMultiplier),
+                    width: Math.round(56 * fontSizeMultiplier), 
+                    height: Math.round(56 * fontSizeMultiplier),
                   }
                 ]} 
                 resizeMode="contain" 
               />
               <View style={styles.logoTextColumn}>
                 <Text style={[styles.stickyHeaderTitle, { color: textColor, fontSize: titleSize }]}>LittleLoom</Text>
-                <View style={[styles.stickyHeaderUnderline, { backgroundColor: primaryColor, width: Math.round(24 * fontSizeMultiplier), height: Math.max(2, Math.round(2 * fontSizeMultiplier)), borderRadius: Math.max(1, Math.round(1 * fontSizeMultiplier)), marginTop: compactSpacing ? 2 : 3 }]} />
+                                <View style={[styles.stickyHeaderUnderline, { backgroundColor: primary, width: Math.round(34 * fontSizeMultiplier), height: Math.max(3, Math.round(3 * fontSizeMultiplier)), borderRadius: Math.max(2, Math.round(2 * fontSizeMultiplier)), marginTop: compactSpacing ? 3 : 4 }]} />
               </View>
             </View>
         </View>
 
         {/* Right: Actions */}
        <View style={[styles.stickyHeaderRight, { gap: 10 }]}>
-          <TouchableOpacity
-            style={[styles.stickyHeaderIconBtn, { width: Math.round(32 * fontSizeMultiplier), height: Math.round(32 * fontSizeMultiplier), borderRadius: Math.round(16 * fontSizeMultiplier) }]}
+                    <TouchableOpacity
+            style={[styles.stickyHeaderIconBtn, { width: Math.round(36 * fontSizeMultiplier), height: Math.round(36 * fontSizeMultiplier), borderRadius: Math.round(18 * fontSizeMultiplier) }]}
             onPress={onNotificationPress}
           >
             <Ionicons name="notifications-outline" size={Math.round(17 * fontSizeMultiplier)} color={isDark ? '#fff' : primaryColor} />
@@ -1460,16 +1460,16 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
             )}
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.stickyHeaderIconBtn, { width: Math.round(32 * fontSizeMultiplier), height: Math.round(32 * fontSizeMultiplier), borderRadius: Math.round(16 * fontSizeMultiplier) }]}
+                    <TouchableOpacity
+            style={[styles.stickyHeaderIconBtn, { width: Math.round(36 * fontSizeMultiplier), height: Math.round(36 * fontSizeMultiplier), borderRadius: Math.round(18 * fontSizeMultiplier) }]}
             onPress={onSettingsPress}
           >
             <Ionicons name="settings-outline" size={Math.round(17 * fontSizeMultiplier)} color={isDark ? '#fff' : primaryColor} />
           </TouchableOpacity>
 
           {currentBaby ? (
-            <TouchableOpacity 
-              style={[styles.stickyHeaderBaby, { width: Math.round(30 * fontSizeMultiplier), height: Math.round(30 * fontSizeMultiplier), borderRadius: Math.round(15 * fontSizeMultiplier) }]} 
+                        <TouchableOpacity 
+              style={[styles.stickyHeaderBaby, { width: Math.round(36 * fontSizeMultiplier), height: Math.round(36 * fontSizeMultiplier), borderRadius: Math.round(18 * fontSizeMultiplier) }]} 
               onPress={onBabyPress}
             >
               <SafeBabyAvatar avatar={currentBaby.avatar} gender={currentBaby.gender} size={Math.round(30 * fontSizeMultiplier)} />
@@ -1484,9 +1484,9 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
           )}
 
           <TouchableOpacity style={styles.stickyHeaderLockBtn} onPress={onLockPress}>
-            <LinearGradient
+                        <LinearGradient
               colors={['#ff6b6b', '#ee5a5a']}
-              style={[styles.stickyHeaderLockGradient, { width: Math.round(28 * fontSizeMultiplier), height: Math.round(28 * fontSizeMultiplier), borderRadius: Math.round(14 * fontSizeMultiplier) }]}
+              style={[styles.stickyHeaderLockGradient, { width: Math.round(32 * fontSizeMultiplier), height: Math.round(32 * fontSizeMultiplier), borderRadius: Math.round(16 * fontSizeMultiplier) }]}
             >
               <Ionicons name="lock-closed-outline" size={Math.round(12 * fontSizeMultiplier)} color="#fff" />
             </LinearGradient>
@@ -1682,23 +1682,20 @@ const [pendingAction, setPendingAction] = useState<QuickAction | null>(null);
     },
   });
 
-const navigateToScreen = useCallback((screenName: string, params?: Record<string, any>) => {
-  // Direct screen names that exist in RootStackParamList
-  const directScreens = new Set([
-    'UniversalTrackerHub', 'Timeline', 'GrowthDashboard', 'Achievements',
-    'TrackerReminders', 'SafetyCorner', 'Gallery', 'SoundMixer',
-    'FamilySharing', 'FamilyChatList', 'HelpCenter', 'ContactSupport',
-    'Profile', 'SwitchBaby', 'CreateBabyProfile', 'EditProfile',
-    'VaccinationSchedule', 'Customize', 'Main', 'Onboarding',
-    'Login', 'SignUp', 'ForgotPassword', 'AddEntry', 'AddParent',
-    'EditGuardian', 'SecurityCenter', 'BiometricSetup', 'BackupRestore',
-    'LanguageSettings', 'UnitSettings', 'PrivacyPolicy', 'TermsOfService',
-    'About', 'EntryDetail', 'Insights', 'CreateCustomTracker', 'More'
-  ]);
+const DIRECT_SCREENS = new Set([
+  'UniversalTrackerHub', 'Timeline', 'GrowthDashboard', 'Achievements',
+  'TrackerReminders', 'SafetyCorner', 'Gallery', 'SoundMixer',
+  'FamilySharing', 'FamilyChatList', 'HelpCenter', 'ContactSupport',
+  'Profile', 'SwitchBaby', 'CreateBabyProfile', 'EditProfile',
+  'VaccinationSchedule', 'Customize', 'Main', 'Onboarding',
+  'Login', 'SignUp', 'ForgotPassword', 'AddEntry', 'AddParent',
+  'EditGuardian', 'SecurityCenter', 'BiometricSetup', 'BackupRestore',
+  'LanguageSettings', 'UnitSettings', 'PrivacyPolicy', 'TermsOfService',
+  'About', 'EntryDetail', 'Insights', 'CreateCustomTracker', 'More'
+]);
 
-  
-  // If it's a direct screen name, navigate directly (most common case)
-  if (directScreens.has(screenName)) {
+const navigateToScreen = useCallback((screenName: string, params?: Record<string, any>) => {
+  if (DIRECT_SCREENS.has(screenName)) {
     navigation.navigate(screenName as any, params || {});
     return;
   }
@@ -2521,7 +2518,7 @@ const styles = StyleSheet.create({
   safetyCornerGradient: { alignItems: 'center', justifyContent: 'center' },
 
   /* ── Glass Card (NO hardcoded colors — colors applied via props) ── */
-  glassCard: { overflow: 'hidden', borderWidth: 1, borderRadius: 20 },
+  glassCard: { overflow: 'hidden', borderWidth: 1, borderRadius: 24 },
   glassBorder: { position: 'absolute', top: 0, left: 0, right: 0, height: 1 },
   glassContent: { flex: 1 },
 
@@ -2570,13 +2567,13 @@ const styles = StyleSheet.create({
   dailySummaryTitle: { fontSize: 15, fontWeight: '800', letterSpacing: -0.3 },
   dailySummaryDate: { fontSize: 12, fontWeight: '500' },
   dailySummaryGrid: { flexDirection: 'row', gap: 8 },
-  dailySummaryItem: { flex: 1, borderRadius: 16, overflow: 'hidden', aspectRatio: 0.85 },
+  dailySummaryItem: { flex: 1, borderRadius: 20, overflow: 'hidden', aspectRatio: 0.85 },
   dailySummaryGradient: { padding: 12, alignItems: 'center', justifyContent: 'center', flex: 1 },
   dailySummaryValue: { fontSize: 22, fontWeight: '800', letterSpacing: -0.5, marginTop: 6 },
   dailySummaryLabel: { fontSize: 11, fontWeight: '700', marginTop: 3 },
 
   /* ── Context Card ── */
-  contextCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, borderRadius: 18, borderWidth: 1 },
+  contextCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, borderRadius: 22, borderWidth: 1 },
   contextLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
   contextIconBg: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   contextText: { flex: 1 },
@@ -2586,7 +2583,7 @@ const styles = StyleSheet.create({
   contextActionText: { fontSize: 11, fontWeight: '700' },
 
   /* ── Next Action ── */
-  nextActionContainer: { borderRadius: 18, overflow: 'hidden' },
+  nextActionContainer: { borderRadius: 22, overflow: 'hidden' },
   nextActionGradient: { padding: 16 },
   nextActionContent: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   nextActionIconWrap: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
@@ -2600,7 +2597,7 @@ const styles = StyleSheet.create({
   urgencyText: { fontSize: 10, fontWeight: '700' },
 
   /* ── Weekly Pattern ── */
-  patternContainer: { borderRadius: 18, padding: 14, borderWidth: 1 },
+  patternContainer: { borderRadius: 22, padding: 14, borderWidth: 1 },
   patternHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   patternTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   patternIconWrap: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
@@ -2622,11 +2619,11 @@ const styles = StyleSheet.create({
   categorizedGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start', width: '100%', paddingBottom: 6 },
   categorizedGridItem: { alignItems: 'center', marginBottom: 10 },
   categorizedGridTouchable: { alignItems: 'center', width: '100%' },
-  categorizedGridGradient: { width: '100%', aspectRatio: 1, borderRadius: 16, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.1, shadowRadius: 6, elevation: 3 },
+  categorizedGridGradient: { width: '100%', aspectRatio: 1, borderRadius: 20, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.1, shadowRadius: 6, elevation: 3 },
   categorizedGridLabel: { fontSize: 10, fontWeight: '600', marginTop: 6, textAlign: 'center' },
 
   /* ── Vaccination ── */
-  vaccineContainer: { borderRadius: 18, padding: 14, borderWidth: 1 },
+  vaccineContainer: { borderRadius: 22, padding: 14, borderWidth: 1 },
   vaccineHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
   vaccineTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   vaccineIconWrap: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
@@ -2644,7 +2641,7 @@ const styles = StyleSheet.create({
   vaccineBadgeText: { fontSize: 10, fontWeight: '700' },
 
   /* ── AI Insights ── */
-  aiInsightsContainer: { borderRadius: 18, padding: 14, borderWidth: 1 },
+  aiInsightsContainer: { borderRadius: 22, padding: 14, borderWidth: 1 },
   aiInsightsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
   aiInsightsTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   aiInsightsIconWrap: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
@@ -2659,7 +2656,7 @@ const styles = StyleSheet.create({
   /* ── Feature Cards ── */
   featureCardsScroll: { paddingHorizontal: 20, gap: 10, paddingBottom: 4 },
   featureCardTouchable: { width: 150 },
-  featureCard: { borderRadius: 18, padding: 14, borderWidth: 1 },
+  featureCard: { borderRadius: 22, padding: 14, borderWidth: 1 },
   featureCardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
   featureCardIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   featureCardBadge: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8, minWidth: 26, alignItems: 'center' },
@@ -2679,7 +2676,7 @@ const styles = StyleSheet.create({
   urgentBadgeText: { color: 'white', fontSize: 10, fontWeight: 'bold' },
   expandBtn: { paddingHorizontal: 6, paddingVertical: 2 },
   expandText: { fontSize: 12, fontWeight: '600' },
-  smartNotificationCard: { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 14, marginBottom: 6 },
+  smartNotificationCard: { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 18, marginBottom: 6 },
   smartNotifIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
   smartNotifContent: { flex: 1 },
   smartNotifTitle: { fontSize: 13, fontWeight: '700', marginBottom: 1 },
@@ -2691,7 +2688,7 @@ const styles = StyleSheet.create({
   dismissBtn: { padding: 3, marginLeft: 3 },
 
   /* ── Sound Mixer ── */
-  soundMixerContainer: { borderRadius: 22, padding: 14, marginBottom: 6, marginHorizontal: 20, borderWidth: 1 },
+  soundMixerContainer: { borderRadius: 26, padding: 14, marginBottom: 6, marginHorizontal: 20, borderWidth: 1 },
   soundMixerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
   soundMixerTitle: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   soundMixerIconBg: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
@@ -2716,7 +2713,7 @@ const styles = StyleSheet.create({
   timelineLeft: { width: 24, alignItems: 'center', paddingTop: 16 },
   timelineDot: { width: 12, height: 12, borderRadius: 6, borderWidth: 2, zIndex: 1 },
   timelineLine: { position: 'absolute', top: 0, bottom: -12, width: 2, left: 11 },
-  timelineCard: { flex: 1, borderRadius: 16, overflow: 'hidden', borderWidth: 1 },
+  timelineCard: { flex: 1, borderRadius: 20, overflow: 'hidden', borderWidth: 1 },
   timelineCardDark: {},
   timelineCardContent: { padding: 14, gap: 8 },
   timelineCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
@@ -2743,7 +2740,7 @@ const styles = StyleSheet.create({
   sectionFullWidth: { marginTop: 6, width: '100%' },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, marginTop: 20 },
   sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  sectionTitle: { fontWeight: '800', letterSpacing: -0.3 },
+  sectionTitle: { fontWeight: '900', letterSpacing: -0.5 },
   seeAllButton: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   seeAllText: { fontWeight: '600' },
   sectionHeaderLeft: { flexDirection: 'row', alignItems: 'center' },

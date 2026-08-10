@@ -585,7 +585,7 @@ function NavigationContent({
     >
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <View style={{ flex: 1 }} collapsable={false}>
-        <Stack.Navigator screenOptions={stackScreenOptions}>
+        <Stack.Navigator screenOptions={stackScreenOptions} screenListeners={{ focus: () => {} }}>
         {/* AUTH FLOW */}
         <Stack.Screen 
           name="Onboarding" 
