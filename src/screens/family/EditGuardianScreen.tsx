@@ -2,8 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Dimensions,
-  Image,
-  Keyboard,
   LayoutAnimation,
   Linking,
   Modal,
@@ -24,7 +22,7 @@ import {
 
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   FadeIn,
@@ -386,7 +384,7 @@ const GlassCard = React.memo(({ children, style, onPress, active = false, delay 
   return (
     <Animated.View entering={FadeInUp.delay(delay).springify()} style={[styles.glassCard, active && { borderColor: '#6366f1', borderWidth: 2 }, style]}>
       <Wrapper onPress={onPress} activeOpacity={onPress ? 0.85 : 1} style={{ flex: 1 }}>
-        <LinearGradient colors={['rgba(45,45,60,0.85)', 'rgba(35,35,50,0.65)']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+        <LinearGradient colors={isDark ? ['rgba(45,45,60,0.85)', 'rgba(35,35,50,0.65)'] : ['rgba(255,255,255,0.92)', 'rgba(248,250,255,0.85)']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
         <View style={styles.glassBorder} />
         <View style={styles.glassContent}>{children}</View>
       </Wrapper>
@@ -833,7 +831,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
         const initialData = { fullName: found.fullName || '', email: found.email || '', phoneNumber: found.phoneNumber || '', relationship: found.relationship || '', avatar: found.avatar || '', notificationsEnabled: found.notificationsEnabled ?? true };
         setFormData(initialData);
         setOriginalData(initialData);
-        if (currentBaby) await loadMemberActivities(found.id, found.userId);
+        if (currentBaby) await loadMemberActivities(found.id, found.userId, found.fullName);
       } else {
         sweetAlert.error('Member Not Found', 'The requested family member could not be found.');
       }
@@ -842,7 +840,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     findMember();
   }, [members, guardianId, currentBaby, userProfile, profile, sweetAlert]);
 
-  const loadMemberActivities = useCallback(async (memberId: string, memberUserId?: string) => {
+  const loadMemberActivities = useCallback(async (memberId: string, memberUserId?: string, memberName?: string) => {
     if (!currentBaby) return;
     setIsLoadingActivities(true);
     try {
@@ -850,7 +848,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
       const memberActs = allActivities.filter(a => {
         if (a.loggedBy === memberId) return true;
         if (memberUserId && a.loggedBy === memberUserId) return true;
-        if (member && a.loggedByName === member.fullName) return true;
+        if (memberName && a.loggedByName === memberName) return true;
         return false;
       });
       setMemberActivities(memberActs.sort((a, b) => b.timestamp - a.timestamp).slice(0, 30));
@@ -963,7 +961,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.8,
@@ -1076,7 +1074,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await loadFamily();
-    if (member && currentBaby) await loadMemberActivities(member.id, member.userId);
+    if (member && currentBaby) await loadMemberActivities(member.id, member.userId, member.fullName);
     setRefreshing(false);
   }, [loadFamily, member, currentBaby, loadMemberActivities]);
 
@@ -1133,7 +1131,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
 
       {/* Sticky Header */}
       <Animated.View style={[styles.stickyHeader, { paddingTop: insets.top + 8 }, headerOpacity]}>
-        <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
+        <BlurView intensity={40} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
         <Text style={styles.stickyTitle}>{member.fullName}</Text>
         <Text style={styles.stickySubtitle}>{roleConfig.label}</Text>
       </Animated.View>
