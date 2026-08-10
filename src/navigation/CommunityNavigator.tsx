@@ -344,14 +344,6 @@ const CommunityNavigator = React.memo(() => {
     markSplashShown();
   }, [markSplashShown]);
 
-  if (!isReady || phase === 'loading') {
-    return (
-      <InlineLoadingView
-        text={isDetectingCountry ? 'Finding your community...' : 'Connecting parents worldwide...'}
-      />
-    );
-  }
-
   if (phase === 'onboarding') {
     return (
       <Stack.Navigator
@@ -370,24 +362,7 @@ const CommunityNavigator = React.memo(() => {
     );
   }
 
-  if (phase === 'splash') {
-    return (
-      <Stack.Navigator
-        initialRouteName="CommunitySplash"
-        screenOptions={SPLASH_SCREEN_OPTIONS}
-      >
-        <Stack.Screen name="CommunitySplash">
-          {(props) => (
-            <CommunitySplashScreen
-              {...props}
-              onAnimationComplete={handleSplashComplete}
-              userName={userProfile?.fullName || currentUser?.displayName || 'Parent'}
-            />
-          )}
-        </Stack.Screen>
-      </Stack.Navigator>
-    );
-  }
+  {/* Splash removed for instant navigation — CommunityMain renders immediately */}
 
   return (
     <>

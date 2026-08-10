@@ -620,14 +620,13 @@ function NavigationContent({
         <Stack.Screen name="Main" component={MainTabs} options={{ animation: 'fade', gestureEnabled: false }} />
 
         {/* MAIN SCREENS */}
-        <Stack.Screen name="Timeline" component={TimelineScreen} />
-        <Stack.Screen name="EntryDetail" component={EntryDetailScreen} />
-        <Stack.Screen name="PottyTracker" component={TimelineScreen} />
-        <Stack.Screen name="FeedTracker" component={TimelineScreen} />
-        <Stack.Screen name="SleepTracker" component={TimelineScreen} />
+        <Stack.Screen name="Timeline" component={TimelineScreen} options={{ animation: 'none' }} />
+        <Stack.Screen name="EntryDetail" component={EntryDetailScreen} options={{ animation: 'none' }} />
+        <Stack.Screen name="PottyTracker" component={TimelineScreen} options={{ animation: 'none' }} />
+        <Stack.Screen name="FeedTracker" component={TimelineScreen} options={{ animation: 'none' }} />
+        <Stack.Screen name="SleepTracker" component={TimelineScreen} options={{ animation: 'none' }} />
 
-        <Stack.Screen name="Profile" component={FamilyDashboardScreen} />
-        <Stack.Screen
+        <Stack.Screen name="Profile" component={FamilyDashboardScreen} options={{ animation: 'none' }} />        <Stack.Screen
           name="SwitchBaby"
           component={BabySelectorScreen}
           options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
@@ -640,17 +639,16 @@ function NavigationContent({
         <Stack.Screen name="FamilyChatList" component={FamilyChatListScreen} />
         <Stack.Screen name="FamilyChat" component={FamilyChatScreen} />
 
-        <Stack.Screen name="BackupRestore" component={BackupRestoreScreen} />
-        <Stack.Screen name="HelpCenter" component={HelpCenterScreen} />
-        <Stack.Screen name="ContactSupport" component={ContactSupportScreen} />
-        <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
-        <Stack.Screen name="TermsOfService" component={TermsOfServiceScreen} />
-        <Stack.Screen name="About" component={AboutScreen} />
-        <Stack.Screen name="LanguageSettings" component={LanguageSettingsScreen} />
-        <Stack.Screen name="UnitSettings" component={UnitSettingsScreen} />
-
-        <Stack.Screen name="SafetyCorner" component={SafetyCornerScreen} />
-        <Stack.Screen name="VaccinationSchedule" component={VaccinationScheduleScreen} />
+        <Stack.Screen name="BackupRestore" component={BackupRestoreScreen} options={{ animation: 'none' }} />
+        <Stack.Screen name="HelpCenter" component={HelpCenterScreen} options={{ animation: 'none' }} />
+        <Stack.Screen name="ContactSupport" component={ContactSupportScreen} options={{ animation: 'none' }} />
+        <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} options={{ animation: 'none' }} />
+        <Stack.Screen name="TermsOfService" component={TermsOfServiceScreen} options={{ animation: 'none' }} />
+        <Stack.Screen name="About" component={AboutScreen} options={{ animation: 'none' }} />
+        <Stack.Screen name="LanguageSettings" component={LanguageSettingsScreen} options={{ animation: 'none' }} />
+        <Stack.Screen name="UnitSettings" component={UnitSettingsScreen} options={{ animation: 'none' }} />
+       <Stack.Screen name="SafetyCorner" component={SafetyCornerScreen} options={{ animation: 'none' }} />
+        <Stack.Screen name="VaccinationSchedule" component={VaccinationScheduleScreen} options={{ animation: 'none' }} />
 
         <Stack.Group screenOptions={{ presentation: 'modal', animation: 'slide_from_bottom' }}>
           <Stack.Screen name="AddEntry" component={AddEntryScreen} />
@@ -672,7 +670,7 @@ function NavigationContent({
 
         <Stack.Screen name="UniversalTrackerHub" component={UniversalTrackerHubScreen} />
         <Stack.Screen name="CreateCustomTracker" component={CreateCustomTrackerScreen} />
-        <Stack.Screen name="More" component={MoreScreen} />
+        <Stack.Screen name="More" component={MoreScreen} options={{ animation: 'none' }} />
         </Stack.Navigator>
       </View>
     </NavigationContainer>

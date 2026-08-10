@@ -132,15 +132,15 @@ const TabButton: React.FC<TabButtonProps> = React.memo(({
   const labelTranslateY = useSharedValue(0);
 
   useEffect(() => {
-    scale.value = withSpring(isActive ? 1.12 : 1, { 
-      damping: 18, stiffness: 400, mass: 0.5 
+    scale.value = withSpring(isActive ? 1.06 : 1, { 
+      damping: 25, stiffness: 500, mass: 0.3 
     });
-    glowOpacity.value = withTiming(isActive ? 0.25 : 0, { duration: 300 });
+    glowOpacity.value = withTiming(isActive ? 0.12 : 0, { duration: 180 });
     indicatorScale.value = withSpring(isActive ? 1 : 0, { 
-      damping: 20, stiffness: 450, mass: 0.4 
+      damping: 25, stiffness: 600, mass: 0.3 
     });
-    labelTranslateY.value = withSpring(isActive ? -2 : 0, { 
-      damping: 20, stiffness: 300 
+    labelTranslateY.value = withSpring(isActive ? -1 : 0, { 
+      damping: 25, stiffness: 400 
     });
   }, [isActive]);
 
@@ -165,20 +165,13 @@ const TabButton: React.FC<TabButtonProps> = React.memo(({
   const inactiveColor = isDark ? 'rgba(148, 163, 184, 0.4)' : 'rgba(100, 116, 139, 0.4)';
   const activeLabelColor = isDark ? '#f8fafc' : '#1e293b';
 
-  const handlePressIn = useCallback(() => {
-    scale.value = withTiming(0.88, { duration: 50 });
-  }, [scale]);
-
-  const handlePressOut = useCallback(() => {
-    scale.value = withSpring(1, { damping: 15, stiffness: 400 });
-  }, [scale]);
+// REPLACE WITH
+  // Press scale removed for instant, clean navigation feel
 
   return (
     <Pressable
       style={styles.tabButton}
       onPress={onPress}
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
       accessibilityRole="button"
       accessibilityLabel={tab.name}
       accessibilityState={{ selected: isActive }}
@@ -281,21 +274,21 @@ const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({ state, descriptors
   useEffect(() => {
     if (isFullyHidden) {
       translateY.value = withTiming(HIDDEN_TRANSLATE_Y, { 
-        duration: 350,
-        easing: Easing.bezier(0.32, 0.72, 0, 1),
+        duration: 200,
+        easing: Easing.out(Easing.ease),
       });
-      opacity.value = withTiming(0, { duration: 250 });
-      scale.value = withTiming(0.9, { duration: 300 });
-      pillScale.value = withTiming(0.94, { duration: 300 });
-      blurIntensity.value = withTiming(0, { duration: 200 });
+      opacity.value = withTiming(0, { duration: 150 });
+      scale.value = withTiming(0.95, { duration: 200 });
+      pillScale.value = withTiming(0.97, { duration: 200 });
+      blurIntensity.value = withTiming(0, { duration: 150 });
     } else {
       translateY.value = withSpring(0, { 
-        damping: 20, stiffness: 300, mass: 0.6 
+        damping: 25, stiffness: 400, mass: 0.4 
       });
-      opacity.value = withTiming(1, { duration: 350 });
-      scale.value = withSpring(1, { damping: 20, stiffness: 300, mass: 0.6 });
-      pillScale.value = withSpring(1, { damping: 20, stiffness: 300, mass: 0.6 });
-      blurIntensity.value = withTiming(60, { duration: 350 });
+      opacity.value = withTiming(1, { duration: 200 });
+      scale.value = withSpring(1, { damping: 25, stiffness: 400, mass: 0.4 });
+      pillScale.value = withSpring(1, { damping: 25, stiffness: 400, mass: 0.4 });
+      blurIntensity.value = withTiming(60, { duration: 200 });
     }
   }, [isFullyHidden]);
 
@@ -396,26 +389,7 @@ const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({ state, descriptors
           borderColor: pillBorder,
         }]}>
 
-          <LinearGradient
-            colors={borderGradientColors}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={[styles.gradientBorderTop, { opacity: 0.7 }]}
-          />
-          <LinearGradient
-            colors={borderGradientColors.slice(0, 2)}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 0, y: 1 }}
-            style={[styles.gradientBorderLeft, { opacity: 0.5 }]}
-          />
-          <LinearGradient
-            colors={borderGradientColors.slice(2, 4)}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 0, y: 1 }}
-            style={[styles.gradientBorderRight, { opacity: 0.5 }]}
-          />
-
-          <View style={[styles.outerBorderTop, { borderColor: pillBorderTop }]} />
+          {/* Clean modern pill — no hard outline borders */}
 
           <Animated.View style={[styles.blurBackground, blurStyle]}>
             <BlurView
@@ -483,45 +457,7 @@ const styles = StyleSheet.create({
     elevation: 14,
   } as ViewStyle,
 
-  gradientBorderTop: {
-    position: 'absolute',
-    top: 0,
-    left: 8,
-    right: 8,
-    height: 2,
-    borderRadius: 1,
-    zIndex: 4,
-  },
-  gradientBorderLeft: {
-    position: 'absolute',
-    top: 8,
-    left: 0,
-    width: 2,
-    bottom: 8,
-    borderRadius: 1,
-    zIndex: 4,
-  },
-  gradientBorderRight: {
-    position: 'absolute',
-    top: 8,
-    right: 0,
-    width: 2,
-    bottom: 8,
-    borderRadius: 1,
-    zIndex: 4,
-  },
-
-  outerBorderTop: {
-    position: 'absolute',
-    top: 0,
-    left: 12,
-    right: 12,
-    height: 1.2,
-    borderTopWidth: 1,
-    borderRadius: 1,
-    zIndex: 3,
-    opacity: 0.8,
-  },
+   /* ── Clean pill: border accents removed for modern seamless look ── */
   blurBackground: {
     flex: 1,
     borderRadius: PILL_HEIGHT / 2,
