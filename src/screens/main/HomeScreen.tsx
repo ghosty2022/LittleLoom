@@ -269,7 +269,7 @@ const GlassCard: React.FC<{ children: React.ReactNode; style?: any; onPress?: ()
       </Wrapper>
     );
   });
-
+(GlassCard as any).displayName = 'GlassCard';
 /* ═══════════════════════════════════════════════════════════════════════════
    SECTION HEADER COMPONENT — Clean, Minimal (GrowthDashboard Style)
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -298,7 +298,7 @@ const SectionHeader: React.FC<{
     )}
   </View>
 ));
-
+(SectionHeader as any).displayName = 'SectionHeader';
 /* ═══════════════════════════════════════════════════════════════════════════
    NEW FEATURE 1: AI DAILY SUMMARY WIDGET — Redesigned as Sleek Horizontal Strip
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -1439,7 +1439,7 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
               />
               <View style={styles.logoTextColumn}>
                 <Text style={[styles.stickyHeaderTitle, { color: textColor, fontSize: titleSize }]}>LittleLoom</Text>
-                                <View style={[styles.stickyHeaderUnderline, { backgroundColor: primary, width: Math.round(34 * fontSizeMultiplier), height: Math.max(3, Math.round(3 * fontSizeMultiplier)), borderRadius: Math.max(2, Math.round(2 * fontSizeMultiplier)), marginTop: compactSpacing ? 3 : 4 }]} />
+                                <View style={[styles.stickyHeaderUnderline, { backgroundColor: primaryColor, width: Math.round(34 * fontSizeMultiplier), height: Math.max(3, Math.round(3 * fontSizeMultiplier)), borderRadius: Math.max(2, Math.round(2 * fontSizeMultiplier)), marginTop: compactSpacing ? 3 : 4 }]} />
               </View>
             </View>
         </View>
@@ -1523,11 +1523,16 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 
 
   const theme = useMemo(() => ({
-    ...fullThemeColors,
+    text: isDark ? '#f0f0f7' : '#1a1a1a',
+    textSecondary: isDark ? '#a0a0b0' : '#4b5563',
+    textMuted: isDark ? '#888' : '#6b7280',
+    background: isDark ? '#0a0a0a' : '#f8faff',
+    border: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+    ...((fullThemeColors && typeof fullThemeColors === 'object') ? fullThemeColors : {}),
     primary,
     secondary,
     accent,
-  }), [fullThemeColors, primary, secondary, accent]);
+  }), [fullThemeColors, primary, secondary, accent, isDark]);
 
   const scrollY = useSharedValue(0);
 
@@ -1966,7 +1971,7 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
         onSafetyCornerPress={handleSafetyCornerPress}
         onSettingsPress={() => navigateToScreen('More')}
         primaryColor={primary}
-        fullTheme={fullThemeColors}
+        fullTheme={fullThemeColors || {}}
         fontSizeMultiplier={fontSizeMultiplier}
         compactSpacing={settings.compactSpacing}
       />
@@ -2762,11 +2767,6 @@ const styles = StyleSheet.create({
     maxWidth: 360,
     borderRadius: 24,
     padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.15,
-    shadowRadius: 40,
-    elevation: 12,
   },
   notificationModalHeader: {
     flexDirection: 'row',
@@ -2815,17 +2815,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     backgroundColor: 'rgba(0,0,0,0.5)',
   },
-  modalContent: {
+   modalContent: {
     width: '100%',
     maxWidth: 360,
     borderRadius: 28,
     padding: 28,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.2,
-    shadowRadius: 40,
-    elevation: 12,
   },
   modalIconWrap: {
     width: 64,
@@ -2863,11 +2858,6 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     gap: 8,
     marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 4,
   },
   modalPrimaryBtnText: {
     color: '#fff',
