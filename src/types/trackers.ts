@@ -62,6 +62,7 @@ export interface FieldConfig {
   placeholder?: string;
   required?: boolean;
   unit?: string;
+  unitOptions?: { id: string; label: string }[];
   min?: number;
   max?: number;
   step?: number;

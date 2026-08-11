@@ -31,6 +31,9 @@ const f = {
   measurement: (id: string, label: string, unit: string, opts?: Partial<FieldConfig>): FieldConfig => ({
     id, label, type: 'measurement', unit, ...opts,
   }),
+  quantity: (id: string, label: string, opts?: Partial<FieldConfig>): FieldConfig => ({
+    id, label, type: 'quantity', ...opts,
+  }),
   mood: (id: string, label: string, opts?: Partial<FieldConfig>): FieldConfig => ({
     id, label, type: 'mood_emoji', ...opts,
   }),
@@ -77,10 +80,13 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         { id: 'snack', label: 'Snack', emoji: '🍌' },
         { id: 'water', label: 'Water', emoji: '💧' },
       ], { required: true }),
-      f.number('amount', 'Amount', 'ml', { showIf: { field: 'feedType', equals: 'bottle' } }),
-      f.select('unit', 'Unit', [
-        { id: 'ml', label: 'ml' }, { id: 'oz', label: 'oz' },
-      ], { showIf: { field: 'feedType', equals: 'bottle' } }),
+      f.quantity('amount', 'Amount', {
+        showIf: { field: 'feedType', equals: 'bottle' },
+        unitOptions: [
+          { id: 'ml', label: 'ml' },
+          { id: 'oz', label: 'oz' },
+        ],
+      }),
       f.select('side', 'Side', [
         { id: 'left', label: 'Left', emoji: '⬅️' },
         { id: 'right', label: 'Right', emoji: '➡️' },
@@ -206,7 +212,13 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         { id: 'right', label: 'Right', emoji: '➡️' },
         { id: 'both', label: 'Both', emoji: '↔️' },
       ], { required: true }),
-      f.number('amount', 'Amount', 'ml', { required: true }),
+      f.quantity('amount', 'Amount', {
+        required: true,
+        unitOptions: [
+          { id: 'ml', label: 'ml' },
+          { id: 'oz', label: 'oz' },
+        ],
+      }),
       f.duration('duration', 'Duration'),
       f.rating('comfort', 'Comfort Level', 5),
       f.textarea('notes', 'Notes'),
@@ -226,12 +238,16 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         { id: 'weight', label: 'Weight', emoji: '⚖️' },
         { id: 'head', label: 'Head Circumference', emoji: '🧠' },
       ], { required: true }),
-      f.number('value', 'Value', '', { required: true }),
-      f.select('unit', 'Unit', [
-        { id: 'cm', label: 'cm' }, { id: 'in', label: 'in' },
-        { id: 'kg', label: 'kg' }, { id: 'lb', label: 'lb' },
-        { id: 'oz', label: 'oz' },
-      ], { required: true }),
+      f.quantity('value', 'Value', {
+        required: true,
+        unitOptions: [
+          { id: 'cm', label: 'cm' },
+          { id: 'in', label: 'in' },
+          { id: 'kg', label: 'kg' },
+          { id: 'lb', label: 'lb' },
+          { id: 'oz', label: 'oz' },
+        ],
+      }),
       f.number('percentile', 'Percentile', '%', { min: 0, max: 100 }),
       f.textarea('notes', 'Notes'),
     ],
@@ -971,7 +987,14 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         { id: 'finger', label: 'Finger Food', emoji: '👆' },
         { id: 'table', label: 'Table Food', emoji: '🍽️' },
       ]),
-      f.number('amount', 'Amount', 'tbsp'),
+      f.quantity('amount', 'Amount', {
+        unitOptions: [
+          { id: 'g', label: 'g' },
+          { id: 'oz', label: 'oz' },
+          { id: 'servings', label: 'servings' },
+          { id: 'tbsp', label: 'tbsp' },
+        ],
+      }),
       f.rating('acceptance', 'Acceptance', 5),
       f.toggle('allergicReaction', 'Any reaction?'),
       f.textarea('reactionDetails', 'Reaction Details', { showIf: { field: 'allergicReaction', equals: true } }),
@@ -986,7 +1009,13 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     category: 'nutrition', isCustom: false, createdAt: 0, updatedAt: 0,
     permissions: defaultPerms,
     fields: [
-      f.number('amount', 'Amount', 'ml', { required: true }),
+      f.quantity('amount', 'Amount', {
+        required: true,
+        unitOptions: [
+          { id: 'ml', label: 'ml' },
+          { id: 'oz', label: 'oz' },
+        ],
+      }),
       f.select('vessel', 'From', [
         { id: 'bottle', label: 'Bottle', emoji: '🍼' },
         { id: 'sippy', label: 'Sippy Cup', emoji: '🥤' },
@@ -1039,7 +1068,14 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         { id: 'sesame', label: 'Sesame', emoji: '🫘' },
       ], { required: true }),
       f.text('food', 'Specific Food', { placeholder: 'e.g., Peanut butter powder' }),
-      f.number('amount', 'Amount', 'tsp'),
+      f.quantity('amount', 'Amount', {
+        unitOptions: [
+          { id: 'tsp', label: 'tsp' },
+          { id: 'tbsp', label: 'tbsp' },
+          { id: 'g', label: 'g' },
+          { id: 'oz', label: 'oz' },
+        ],
+      }),
       f.select('method', 'Method', [
         { id: 'mix', label: 'Mixed with food', emoji: '🥣' },
         { id: 'thin', label: 'Thinned out', emoji: '💧' },
