@@ -572,13 +572,20 @@ const NextMilestoneCountdown = React.memo(({ baby, milestones, isDark, colors }:
 
 const FamilyConnectionHub = React.memo(({ members, onManage, babyName, isDark, colors }: { members: FamilyMember[]; onManage: () => void; babyName?: string; isDark?: boolean; colors?: any }) => {
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
-  const parents = members.filter(m => m.role === 'parent1' || m.role === 'parent2');
-  const others = members.filter(m => !parents.find(p => p.id === m.id));
   
-  const renderAvatar = (member: FamilyMember, size: number = 48) => {
+  const isPending = (m: FamilyMember) => (m as any).status === 'pending' || !m.lastActive || m.fullName === 'Pending Invitation';
+  
+  const parents = members.filter(m => m.role === 'parent1' || m.role === 'parent2');
+  const confirmedParents = parents.filter(m => !isPending(m));
+  const pendingParents = parents.filter(m => isPending(m));
+  const others = members.filter(m => !parents.find(p => p.id === m.id));
+  const confirmedOthers = others.filter(m => !isPending(m));
+  const pendingOthers = others.filter(m => isPending(m));
+  
+  const renderAvatar = (member: FamilyMember, size: number = 48, pending: boolean = false) => {
     const hasImage = member.avatar && (member.avatar.startsWith('http') || member.avatar.startsWith('file://') || member.avatar.startsWith('data:') || member.avatar.startsWith('ph://'));
     return (
-      <View style={[styles.familyHubAvatar, { width: size, height: size, borderRadius: size/2, backgroundColor: hasImage ? 'transparent' : '#6366f1', borderColor: '#1a1a2e', borderWidth: 2 }]}>
+      <View style={[styles.familyHubAvatar, { width: size, height: size, borderRadius: size/2, backgroundColor: hasImage ? 'transparent' : '#6366f1', borderColor: pending ? '#94a3b8' : '#1a1a2e', borderWidth: 2, opacity: pending ? 0.5 : 1 }]}>
         {hasImage ? (
           <Image source={{ uri: member.avatar }} style={{ width: size, height: size, borderRadius: size/2 }} resizeMode="cover" />
         ) : (
@@ -588,23 +595,33 @@ const FamilyConnectionHub = React.memo(({ members, onManage, babyName, isDark, c
     );
   };
 
+  const renderStatusBadge = (text: string, color: string = '#94a3b8') => (
+    <View style={{ backgroundColor: `${color}20`, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginTop: 2 }}>
+      <Text style={{ fontSize: 9, fontWeight: '700', color }}>{text}</Text>
+    </View>
+  );
+
   return (
     <Animated.View entering={FadeInUp.delay(350).springify()}>
-      <SectionHeader title="Family Tree" subtitle={`${members.length} connected`} action={onManage} actionLabel="Manage" isDark={isDark} colors={colors} />
+      <SectionHeader title="Family Tree" subtitle={`${confirmedParents.length + confirmedOthers.length} active · ${pendingParents.length + pendingOthers.length} pending`} action={onManage} actionLabel="Manage" isDark={isDark} colors={colors} />
       <GlassCard onPress={onManage} isDark={isDark} colors={colors}>
         <View style={{ padding: 16, alignItems: 'center' }}>
           {/* Parents Row */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 16, marginBottom: 8 }}>
-            {parents.map((parent) => (
-              <View key={parent.id} style={{ alignItems: 'center', gap: 6 }}>
-                {renderAvatar(parent, 56)}
-                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>{parent.fullName || 'Parent'}</Text>
-                <View style={{ backgroundColor: 'rgba(99,102,241,0.15)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
-                  <Text style={{ fontSize: 10, fontWeight: '700', color: '#6366f1' }}>{parent.relationship || 'Parent'}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 16, marginBottom: 8, flexWrap: 'wrap' }}>
+            {parents.map((parent) => {
+              const pending = isPending(parent);
+              return (
+                <View key={parent.id} style={{ alignItems: 'center', gap: 6, opacity: pending ? 0.55 : 1 }}>
+                  {renderAvatar(parent, 56, pending)}
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>{parent.fullName || 'Parent'}</Text>
+                  <View style={{ backgroundColor: pending ? 'rgba(148,163,184,0.15)' : 'rgba(99,102,241,0.15)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: pending ? '#94a3b8' : '#6366f1' }}>{parent.relationship || 'Parent'}</Text>
+                  </View>
+                  {pending && renderStatusBadge('Invited', '#94a3b8')}
                 </View>
-              </View>
-            ))}
-            {parents.length === 1 && (
+              );
+            })}
+            {confirmedParents.length < 2 && pendingParents.length === 0 && (
               <TouchableOpacity onPress={onManage} style={{ alignItems: 'center', gap: 6, opacity: 0.6 }}>
                 <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: colors.border, borderStyle: 'dashed' }}>
                   <Ionicons name="add" size={24} color="#94a3b8" />
@@ -612,9 +629,17 @@ const FamilyConnectionHub = React.memo(({ members, onManage, babyName, isDark, c
                 <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textSecondary }}>Add Co-Parent</Text>
               </TouchableOpacity>
             )}
+            {pendingParents.length > 0 && confirmedParents.length < 2 && (
+              <View style={{ alignItems: 'center', gap: 6, opacity: 0.45 }}>
+                <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(255,255,255,0.04)', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: colors.border, borderStyle: 'dashed' }}>
+                  <Ionicons name="time-outline" size={24} color="#94a3b8" />
+                </View>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textSecondary }}>Awaiting Response</Text>
+              </View>
+            )}
           </View>
           
-          {/* Connector */}
+                    {/* Connector */}
           <View style={{ width: 2, height: 20, backgroundColor: 'rgba(99,102,241,0.4)', marginVertical: 4 }} />
           
           {/* Baby Node */}
@@ -625,18 +650,44 @@ const FamilyConnectionHub = React.memo(({ members, onManage, babyName, isDark, c
           </View>
           
           {/* Connector down */}
-          {others.length > 0 && <View style={{ width: 2, height: 16, backgroundColor: 'rgba(255,255,255,0.1)', marginBottom: 8 }} />}
+          {(confirmedOthers.length > 0 || pendingOthers.length > 0) && <View style={{ width: 2, height: 16, backgroundColor: 'rgba(255,255,255,0.1)', marginBottom: 8 }} />}
           
-          {/* Guardians / Others */}
-          {others.length > 0 && (
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 12 }}>
-              {others.map((member) => (
+          {/* Guardians / Others — Confirmed */}
+          {confirmedOthers.length > 0 && (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 12, marginBottom: pendingOthers.length > 0 ? 10 : 0 }}>
+              {confirmedOthers.map((member) => (
                 <View key={member.id} style={{ alignItems: 'center', gap: 4 }}>
-                  {renderAvatar(member, 40)}
+                  {renderAvatar(member, 40, false)}
                   <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textSecondary }}>{member.fullName?.split(' ')[0] || 'Member'}</Text>
+                  <View style={{ backgroundColor: 'rgba(99,102,241,0.15)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                    <Text style={{ fontSize: 9, fontWeight: '700', color: '#6366f1' }}>{member.relationship || 'Guardian'}</Text>
+                  </View>
                 </View>
               ))}
             </View>
+          )}
+          
+          {/* Guardians / Others — Pending (dimmed) */}
+          {pendingOthers.length > 0 && (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 12 }}>
+              {pendingOthers.map((member) => (
+                <View key={member.id} style={{ alignItems: 'center', gap: 4, opacity: 0.45 }}>
+                  {renderAvatar(member, 40, true)}
+                  <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textSecondary }}>{member.fullName?.split(' ')[0] || 'Invited'}</Text>
+                  {renderStatusBadge('Invited', '#94a3b8')}
+                </View>
+              ))}
+            </View>
+          )}
+          
+          {/* Empty guardian slot CTA */}
+          {confirmedOthers.length === 0 && pendingOthers.length === 0 && (
+            <TouchableOpacity onPress={onManage} style={{ alignItems: 'center', gap: 6, opacity: 0.5, marginTop: 4 }}>
+              <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.06)', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: colors.border, borderStyle: 'dashed' }}>
+                <Ionicons name="add" size={20} color="#94a3b8" />
+              </View>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary }}>Add Guardian</Text>
+            </TouchableOpacity>
           )}
           
           {/* Manage CTA */}
