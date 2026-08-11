@@ -10,11 +10,15 @@ if (-not (Test-Path $trackersFile)) {
 }
 
 $dtContent = Get-Content $trackersFile -Raw
+
+# Normalize to LF so CRLF vs LF never breaks our matches
+$dtContent = $dtContent -replace "`r`n", "`n"
+
 $fixed = $false
 
 # ── 1. Add household to emojiMap (if missing) ───────────────────────────────
 if ($dtContent -notmatch "household:\s*'🏠'") {
-    $dtContent = $dtContent -replace "special_needs:\s*'♿',\s*custom:\s*'✨',", "special_needs: '♿',`r`n    household: '🏠',`r`n    custom: '✨',"
+    $dtContent = $dtContent -replace "special_needs:\s*'♿',\s*custom:\s*'✨',", "special_needs: '♿',`n    household: '🏠',`n    custom: '✨',"
     Write-Host "Fixed: Added 'household' to emojiMap" -ForegroundColor Green
     $fixed = $true
 } else {
@@ -86,7 +90,7 @@ if ($dtContent -notmatch "id:\s*'dream_feed'") {
     category: 'health', isCustom: false, createdAt: 0, updatedAt: 0,
     permissions: defaultPerms,
     fields: [
-      f.number('bilirubin', 'Bilirubin Level', { suffix: 'mg/dL' }),
+      f.number('bilirubin', 'Bilirubin Level', 'mg/dL'),
       f.select('zone', 'Zone', [
         { id: 'low', label: 'Low Risk', emoji: '🟢' },
         { id: 'medium', label: 'Medium Risk', emoji: '🟡' },
@@ -600,7 +604,7 @@ if ($dtContent -notmatch "id:\s*'dream_feed'") {
     permissions: defaultPerms,
     fields: [
       f.text('item', 'Item/Service', { required: true, placeholder: 'e.g., Diapers' }),
-      f.number('cost', 'Cost', { prefix: '$', required: true }),
+      f.number('cost', 'Cost', '$', { required: true }),
       f.select('category', 'Category', [
         { id: 'diapers', label: 'Diapers', emoji: '👶' },
         { id: 'formula', label: 'Formula/Food', emoji: '🍼' },
@@ -645,28 +649,15 @@ if ($dtContent -notmatch "id:\s*'dream_feed'") {
   },
 "@
 
-    $find = @"
-  },
-];
-
-export const DEFAULT_TRACKER_IDS
-"@
-
-    $replace = @"
-  },
-},
-$newTrackers
-];
-
-export const DEFAULT_TRACKER_IDS
-"@
-
-    if ($dtContent.Contains($find)) {
-        $dtContent = $dtContent.Replace($find, $replace)
+    # Robust regex: find the last tracker close (},) then ]; then export const DEFAULT_TRACKER_IDS
+    $pattern = '(?s)(\s*\},\s*)(\];)(\s*export const DEFAULT_TRACKER_IDS)'
+    
+    if ($dtContent -match $pattern) {
+        $dtContent = $dtContent -replace $pattern, "`$1`n$newTrackers`n`n`$2`n`n`$3"
         Write-Host "Fixed: Inserted 24 tracker configs into DEFAULT_TRACKERS" -ForegroundColor Green
         $fixed = $true
     } else {
-        Write-Error "Could not find the DEFAULT_TRACKERS insertion point. Manual fix required."
+        Write-Error "Could not find DEFAULT_TRACKERS array end. Manual fix required."
         exit 1
     }
 } else {
