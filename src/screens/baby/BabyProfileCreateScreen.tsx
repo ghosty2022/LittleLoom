@@ -479,6 +479,11 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
 
         try {
           await switchBaby(babyId);
+          // Force family context to rebuild the tree for this new baby
+          const { loadFamily } = await import('../../context/FamilyContext').then(m => ({ loadFamily: m.useFamily })).catch(() => ({ loadFamily: null }));
+          if (typeof (loadFamily as any)?.loadFamily === 'function') {
+            await (loadFamily as any).loadFamily();
+          }
         } catch (switchErr) {
           console.warn('Failed to auto-switch to new baby:', switchErr);
         }

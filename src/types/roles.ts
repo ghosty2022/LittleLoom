@@ -78,4 +78,5 @@ export interface FamilyMember {
   canBeRemoved: boolean;
   phoneNumber?: string;
   notificationsEnabled?: boolean;
+  status?: 'active' | 'pending' | 'rejected';
 }

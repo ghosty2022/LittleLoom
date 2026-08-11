@@ -139,37 +139,39 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       } catch (e) { /* ignore, fallback to 'Parent' */ }
 
       if (currentBaby.parent1Id && effectiveProfile) {
-        members.push({
-          id: currentBaby.parent1Id,
-          userId: currentBaby.parent1Id,
-          fullName: currentBaby.parent1Id === effectiveProfile.id ? effectiveProfile.fullName || parent1Relationship : parent1Relationship,
-          email: effectiveProfile.email || '',
-          avatar: effectiveProfile.avatar || effectiveProfile.communityAvatar,
-          role: UserRole.PARENT_1,
-          relationship: parent1Relationship,
-          permissions: ROLE_PERMISSIONS[UserRole.PARENT_1],
-          addedAt: currentBaby.createdAt,
-          addedBy: currentBaby.parent1Id,
-          canBeRemoved: false,
-          phoneNumber: effectiveProfile.phoneNumber,
-          notificationsEnabled: true,
-          lastActive: new Date().toISOString(),
-        });
+                  members.push({
+            id: currentBaby.parent1Id,
+            userId: currentBaby.parent1Id,
+            fullName: currentBaby.parent1Id === effectiveProfile.id ? effectiveProfile.fullName || parent1Relationship : parent1Relationship,
+            email: effectiveProfile.email || '',
+            avatar: effectiveProfile.avatar || effectiveProfile.communityAvatar,
+            role: UserRole.PARENT_1,
+            relationship: parent1Relationship,
+            permissions: ROLE_PERMISSIONS[UserRole.PARENT_1],
+            addedAt: currentBaby.createdAt,
+            addedBy: currentBaby.parent1Id,
+            canBeRemoved: false,
+            phoneNumber: effectiveProfile.phoneNumber,
+            notificationsEnabled: true,
+            lastActive: new Date().toISOString(),
+            status: 'active',
+          });
       } else if (currentBaby.parent1Id && !effectiveProfile) {
-        members.push({
-          id: currentBaby.parent1Id,
-          userId: currentBaby.parent1Id,
-          fullName: 'Loading...',
-          email: '',
-          role: UserRole.PARENT_1,
-          relationship: parent1Relationship,
-          permissions: ROLE_PERMISSIONS[UserRole.PARENT_1],
-          addedAt: currentBaby.createdAt,
-          addedBy: currentBaby.parent1Id,
-          canBeRemoved: false,
-          notificationsEnabled: true,
-          lastActive: new Date().toISOString(),
-        });
+                  members.push({
+            id: currentBaby.parent1Id,
+            userId: currentBaby.parent1Id,
+            fullName: 'Loading...',
+            email: '',
+            role: UserRole.PARENT_1,
+            relationship: parent1Relationship,
+            permissions: ROLE_PERMISSIONS[UserRole.PARENT_1],
+            addedAt: currentBaby.createdAt,
+            addedBy: currentBaby.parent1Id,
+            canBeRemoved: false,
+            notificationsEnabled: true,
+            lastActive: new Date().toISOString(),
+            status: 'active',
+          });
       }
 
       // Load all family members from Drizzle DB
@@ -197,6 +199,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             lastActive: dbMember.lastActive || undefined,
             phoneNumber: dbMember.phoneNumber || undefined,
             notificationsEnabled: dbMember.notificationsEnabled,
+            status: (dbMember as any).status || (dbMember.lastActive ? 'active' : 'pending'),
           };
           members.push(member);
         }
