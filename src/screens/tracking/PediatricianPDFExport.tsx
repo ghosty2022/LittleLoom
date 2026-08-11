@@ -15,7 +15,7 @@ import * as FileSystem from 'expo-file-system';
 import { useCustomization } from '@/hooks/useCustomization';
 import { useSweetAlert } from '@/hooks/useSweetAlert';
 import { Ionicons } from '@expo/vector-icons';
-import { useTrackers } from '@/hooks/useTrackers';
+import { useTracker } from '@/context/TrackerContext';
 import { useBaby } from '@/context/BabyContext';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -108,7 +108,7 @@ export const PediatricianPDFExport: React.FC = () => {
   const { theme, glass, borderRadius, spacing } = useCustomization();
   const { sweetAlert } = useSweetAlert();
   const { currentBaby } = useBaby();
-  const { entries, trackers } = useTrackers();
+  const { entries, trackers } = useTracker();
 
   const [generating, setGenerating] = useState(false);
   const [dateRange, setDateRange] = useState<'7d' | '30d' | '90d' | 'all'>('30d');

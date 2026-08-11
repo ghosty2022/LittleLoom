@@ -2027,6 +2027,7 @@ const [showTimelinePicker, setShowTimelinePicker] = useState(false);
               { label: 'Growth', icon: 'trending-up-outline', screen: 'GrowthDashboard' as const, color: '#43e97b' },
               { label: 'Gallery', icon: 'images-outline', screen: 'Gallery' as const, color: '#10b981' },
               { label: 'Family', icon: 'people-outline', screen: 'FamilySharing' as const, color: '#8b5cf6' },
+              { label: 'Report', icon: 'document-text-outline', screen: 'PediatricianPDFExport' as const, color: '#ef4444' },
               { label: 'Settings', icon: 'settings-outline', screen: 'BackupRestore' as const, color: '#64748b' },
             ].map((link) => (
               <TouchableOpacity

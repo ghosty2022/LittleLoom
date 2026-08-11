@@ -118,6 +118,8 @@ export type RootStackParamList = {
 
   UniversalTrackerHub: undefined;
 
+  PediatricianPDFExport: { babyId?: string } | undefined;
+
   Timeline: { trackerId?: string; type?: string; babyId?: string; filter?: string } | undefined;
 
   PottyTracker: { babyId?: string; trackerId?: string } | undefined;

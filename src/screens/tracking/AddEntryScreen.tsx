@@ -29,6 +29,7 @@ import { SafeAvatar } from '../../components/SafeAvatar';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { TimelinePicker } from '../../components/trackers/TimelinePicker';
 import { DynamicTrackerForm } from '../../components/trackers/DynamicTrackerForm';
+import { SmartPhotoField } from '../../components/trackers/SmartPhotoField';
 import { useTrackerProgressive } from '../../hooks/useTrackerProgressive';
 import type { ProgressiveCorrelation, ProgressiveReminder } from '../../hooks/useTrackerProgressive';
 
@@ -1248,7 +1249,10 @@ function TrackerContent({
 
   const handleFormSubmit = useCallback((data: Record<string, unknown>, options: { title?: string; notes?: string; photoUris?: string[]; tags?: string[] }) => {
     setPendingData(data);
-    setPendingOptions(options);
+    setPendingOptions((prev: any) => ({
+      ...options,
+      photoUris: prev?.photoUris?.length > 0 ? prev.photoUris : options?.photoUris,
+    }));
     setShowConfirm(true);
   }, [setPendingData, setPendingOptions, setShowConfirm]);
 
@@ -1531,6 +1535,26 @@ function TrackerContent({
               ))}
             </Animated.View>
           )}
+
+          {/* Smart Photo Documentation */}
+          <View style={[styles.sectionMargin, { marginBottom: DESIGN.spacing.lg }]}>
+            <SmartPhotoField
+              value={pendingOptions.photoUris?.[pendingOptions.photoUris.length - 1]}
+              onChange={() => {
+                // Individual selection changes are synced via onPhotosChange
+              }}
+              onPhotosChange={(photos) => {
+                const uris = photos.map((p: any) => p.uri);
+                setPendingOptions((prev: any) => ({ ...prev, photoUris: uris }));
+              }}
+              initialPhotoUris={pendingOptions.photoUris}
+              label="Photo Documentation"
+              trackerContext={tracker.id}
+              allowAnnotation={true}
+              allowCompare={true}
+              maxPhotos={3}
+            />
+          </View>
 
           {/* Form */}
           <View style={styles.formWrapper}>

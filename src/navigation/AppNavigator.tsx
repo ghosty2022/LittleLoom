@@ -58,6 +58,7 @@ import SecurityCenterScreen from '../screens/security/SecurityCenterScreen';
 import UniversalTrackerHubScreen from '../screens/tracking/UniversalTrackerHubScreen';
 import CreateCustomTrackerScreen from '../screens/tracking/CreateCustomTrackerScreen';
 import VaccinationScheduleScreen from '../screens/tracking/VaccinationScheduleScreen';
+import PediatricianPDFExport from '../screens/tracking/PediatricianPDFExport';
 import InviteCodeScreen from '../screens/family/InviteCodeScreen';
 
 import LiquidGlassNavigation from '../components/LiquidGlassNavigation';
@@ -654,9 +655,9 @@ function NavigationContent({
         <Stack.Screen name="About" component={AboutScreen} options={{ animation: 'none' }} />
         <Stack.Screen name="LanguageSettings" component={LanguageSettingsScreen} options={{ animation: 'none' }} />
         <Stack.Screen name="UnitSettings" component={UnitSettingsScreen} options={{ animation: 'none' }} />
-       <Stack.Screen name="SafetyCorner" component={SafetyCornerScreen} options={{ animation: 'none' }} />
         <Stack.Screen name="VaccinationSchedule" component={VaccinationScheduleScreen} options={{ animation: 'none' }} />
-
+        <Stack.Screen name="PediatricianPDFExport" component={PediatricianPDFExport} options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="SafetyCorner" component={SafetyCornerScreen} options={{ animation: 'none' }} />
         <Stack.Group screenOptions={{ presentation: 'modal', animation: 'slide_from_bottom' }}>
           <Stack.Screen name="AddEntry" component={AddEntryScreen} />
           <Stack.Screen name="Achievements" component={AchievementsScreen} />
