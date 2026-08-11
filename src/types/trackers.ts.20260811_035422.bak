@@ -12,8 +12,7 @@ export type TrackerCategory =
   | 'parental'
   | 'travel'
   | 'special_needs'
-  
-  | 'household'| 'custom';
+  | 'custom';
 
 export type FieldType =
   | 'text'

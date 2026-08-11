@@ -18,9 +18,8 @@ export const TRACKER_CATEGORIES: {
   { id: 'schedule', emoji: '⏰', label: 'Schedule & Routine', color: '#0984e3', priority: 8, description: 'Sleep & daily schedule' },
   { id: 'parental', emoji: '👨‍👩‍👧', label: 'Parental Care', color: '#6c5ce7', priority: 9, description: 'Notes & memories' },
   { id: 'travel', emoji: '✈️', label: 'Travel & Outings', color: '#00cec9', priority: 10, description: 'Trips & activities' },
-    { id: 'special_needs', emoji: '♿', label: 'Special Needs', color: '#e17055', priority: 11, description: 'Special care tracking' },
-  { id: 'household',     emoji: '🏠', label: 'Household',     color: '#8E44AD', priority: 12, description: 'Home logistics & supplies' },
-  { id: 'custom',        emoji: '✨', label: 'Custom Trackers', color: '#fd79a8', priority: 13, description: 'Your custom trackers' },
+  { id: 'special_needs', emoji: '♿', label: 'Special Needs', color: '#e17055', priority: 11, description: 'Special care tracking' },
+  { id: 'custom', emoji: '✨', label: 'Custom Trackers', color: '#fd79a8', priority: 12, description: 'Your custom trackers' },
 ];
 
 export const CATEGORY_CONFIG: Record<TrackerCategory, { emoji: string; label: string; color: string; priority: number; description: string }> = 

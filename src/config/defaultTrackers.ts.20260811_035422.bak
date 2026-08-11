@@ -1718,7 +1718,6 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     ],
     quickTags: ['Day 3+', 'Relieved', 'Prune helped', 'Doctor called'],
   },
-  
   {
     id: 'diarrhea', name: 'Diarrhea', emoji: '💩', icon: 'water-outline',
     color: '#1DD1A1', gradient: ['#1DD1A1', '#48DBFB'],
