@@ -1816,8 +1816,53 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
   },
 ];
 
+export const DEFAULT_TRACKER_IDS = [
+  // Essential
+  'feed', 'sleep', 'diaper', 'potty', 'bath', 'pumping',
+  // Health
+  'growth', 'temperature', 'medication', 'symptom', 'vaccine', 'doctor_visit',
+  'teething', 'allergy', 'skin_condition', 'immunization',
+  // Development
+  'milestone', 'play', 'tummy_time', 'reading', 'music', 'outdoor', 'sensory', 'speech',
+  // Emotional
+  'mood', 'attachment', 'social', 'crying', 'soothing',
+  // Physical
+  'nail_care', 'hair_care', 'skin_care', 'sunscreen', 'insect_repellent', 'oral_hygiene', 'ear_care', 'nose_care',
+  // Nutrition
+  'solid_food', 'water', 'vitamin', 'allergen_intro', 'feeding_reaction', 'breastfeeding',
+  // Safety
+  'accident', 'injury', 'choking', 'car_seat', 'babyproofing',
+  // Schedule
+  'wake_time', 'bedtime', 'nap', 'screen_time', 'outdoor_time',
+  // Parental
+  'note', 'photo', 'video', 'voice_memo', 'journal',
+  // Travel
+  'trip', 'travel', 'daycare', 'babysitter',
+  // Special Needs
+  'reflux', 'colic', 'gas', 'constipation', 'diarrhea', 'eczema', 'cradle_cap',
+  // ── New Essential ──
+  'dream_feed', 'burp',
+  // ── Household ──
+  'supply_inventory', 'pumping_inventory', 'expenses', 'cleaning',
+  // ── New Health ──
+  'jaundice', 'tongue_tie', 'dental_visit', 'feeding_pain',
+  // ── New Development ──
+  'school', 'fine_motor', 'gross_motor', 'pretend_play',
+  // ── New Emotional ──
+  'tantrum', 'time_out', 'sibling_interaction',
+  // ── New Nutrition ──
+  'snack', 'meal_plan', 'bottle_weaning',
+  // ── New Safety ──
+  'swim_lessons', 'fire_drill',
+  // ── New Parental ──
+  'postpartum_recovery',
+  // ── New Special Needs ──
+  'therapy',
+] as const;
+
 /**
  * Creates a new custom tracker configuration
+
  * Parents and guardians can call this to build their own trackers
  */
 export const createCustomTracker = (

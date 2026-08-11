@@ -1157,6 +1157,10 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
           <TouchableOpacity onPress={() => setShowChecklistModal(true)} style={[styles.iconBtn, { backgroundColor: `${theme.primary}12` }]}>
             <Ionicons name="list" size={22} color={theme.primary} />
           </TouchableOpacity>
+
+          <TouchableOpacity onPress={() => navigation.navigate('PediatricianPDFExport')} style={[styles.iconBtn, { backgroundColor: `${theme.primary}12` }]}>
+            <Ionicons name="document-text" size={22} color={theme.primary} />
+          </TouchableOpacity>
         </Animated.View>
 
         {/* ── TAB BAR ── */}

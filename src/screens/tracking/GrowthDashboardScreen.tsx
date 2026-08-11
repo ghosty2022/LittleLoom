@@ -1499,6 +1499,10 @@ export default function GrowthDashboardScreen({ navigation }: any) {
             <Ionicons name="chevron-down" size={16} color={theme.text.muted} />
           </TouchableOpacity>
 
+          <TouchableOpacity onPress={() => navigation.navigate('PediatricianPDFExport')} style={[styles.pdfBtn, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' }]}>
+            <Ionicons name="document-text" size={22} color={theme.primary} />
+          </TouchableOpacity>
+
           <TouchableOpacity onPress={() => setShowAddModal(true)} style={[styles.addBtn, { backgroundColor: theme.primary }]}>
             <Ionicons name="add" size={24} color="#fff" />
           </TouchableOpacity>
@@ -2078,6 +2082,13 @@ const styles = StyleSheet.create({
   babyPillName: { fontSize: 15, fontWeight: '700', maxWidth: 140 },
   babyPillAge: { fontSize: 12, fontWeight: '600' },
   addBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pdfBtn: {
     width: 44,
     height: 44,
     borderRadius: RADIUS.md,

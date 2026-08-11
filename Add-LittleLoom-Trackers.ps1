@@ -1,52 +1,31 @@
 #Requires -Version 5.1
-<#
-.SYNOPSIS
-    Adds 24+ new trackers + 'household' category to LittleLoom.
-.DESCRIPTION
-    Patches three files in your LittleLoom React Native app:
-      - src/types/trackers.ts          → adds 'household' to TrackerCategory
-      - src/components/trackers/trackerConstants.ts → adds household to TRACKER_CATEGORIES
-      - src/config/defaultTrackers.ts  → adds tracker configs, DEFAULT_TRACKER_IDS, emojiMap
-    Creates .bak backups before modifying anything.
-.PARAMETER ProjectRoot
-    Path to your LittleLoom project root (default: current directory).
-.EXAMPLE
-    .\Add-LittleLoom-Trackers.ps1
-    .\Add-LittleLoom-Trackers.ps1 -ProjectRoot "C:\Users\You\LittleLoom"
-#>
-
-param(
-    [string]$ProjectRoot = "."
-)
+param([string]$ProjectRoot = ".")
 
 $ErrorActionPreference = "Stop"
+$trackersFile = Join-Path $ProjectRoot "src\config\defaultTrackers.ts"
 
-# ── Resolve file paths ────────────────────────────────────────────────────────
-$typesFile      = Join-Path $ProjectRoot "src\types\trackers.ts"
-$constantsFile  = Join-Path $ProjectRoot "src\components\trackers\trackerConstants.ts"
-$trackersFile   = Join-Path $ProjectRoot "src\config\defaultTrackers.ts"
-
-$files = @($typesFile, $constantsFile, $trackersFile)
-foreach ($f in $files) {
-    if (-not (Test-Path $f)) {
-        Write-Error "Missing required file: $f"
-        exit 1
-    }
+if (-not (Test-Path $trackersFile)) {
+    Write-Error "File not found: $trackersFile"
+    exit 1
 }
 
-# ── Backup ────────────────────────────────────────────────────────────────────
-$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-Copy-Item $typesFile      "$typesFile.$timestamp.bak"      -Force
-Copy-Item $constantsFile  "$constantsFile.$timestamp.bak"  -Force
-Copy-Item $trackersFile   "$trackersFile.$timestamp.bak"   -Force
-Write-Host "Backups created with suffix .$timestamp.bak" -ForegroundColor Cyan
+$dtContent = Get-Content $trackersFile -Raw
+$fixed = $false
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  NEW TRACKER CONFIGS (drop into DEFAULT_TRACKERS array)
-# ══════════════════════════════════════════════════════════════════════════════
-$newTrackers = @"
+# ── 1. Add household to emojiMap (if missing) ───────────────────────────────
+if ($dtContent -notmatch "household:\s*'🏠'") {
+    $dtContent = $dtContent -replace "special_needs:\s*'♿',\s*custom:\s*'✨',", "special_needs: '♿',`r`n    household: '🏠',`r`n    custom: '✨',"
+    Write-Host "Fixed: Added 'household' to emojiMap" -ForegroundColor Green
+    $fixed = $true
+} else {
+    Write-Host "OK: emojiMap already contains household" -ForegroundColor Cyan
+}
 
-  // ── Essential ──────────────────────────────────────────────
+# ── 2. Insert 24 missing tracker configs into DEFAULT_TRACKERS (if missing) ─
+if ($dtContent -notmatch "id:\s*'dream_feed'") {
+
+    $newTrackers = @"
+  // ── New Essential ──────────────────────────────────────────────
   {
     id: 'dream_feed', name: 'Dream Feed', emoji: '🌙', icon: 'moon-outline',
     color: '#5F27CD', gradient: ['#5F27CD', '#341F97'],
@@ -666,113 +645,40 @@ $newTrackers = @"
   },
 "@
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  NEW DEFAULT_TRACKER_IDS
-# ══════════════════════════════════════════════════════════════════════════════
-$newIds = @"
-  // Essential Additions
-  'dream_feed', 'burp',
-  // Household
-  'supply_inventory', 'pumping_inventory', 'expenses', 'cleaning',
-  // Health Additions
-  'jaundice', 'tongue_tie', 'dental_visit', 'feeding_pain',
-  // Development Additions
-  'school', 'fine_motor', 'gross_motor', 'pretend_play',
-  // Emotional Additions
-  'tantrum', 'time_out', 'sibling_interaction',
-  // Nutrition Additions
-  'snack', 'meal_plan', 'bottle_weaning',
-  // Safety Additions
-  'swim_lessons', 'fire_drill',
-  // Parental Additions
-  'postpartum_recovery',
-  // Special Needs Additions
-  'therapy',
+    $find = @"
+  },
+];
+
+export const DEFAULT_TRACKER_IDS
 "@
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  PATCH 1: src/types/trackers.ts  → add 'household' to TrackerCategory
-# ══════════════════════════════════════════════════════════════════════════════
-Write-Host "Patching $typesFile ..." -ForegroundColor Yellow
-$typesContent = Get-Content $typesFile -Raw
+    $replace = @"
+  },
+},
+$newTrackers
+];
 
-$catMatch = [regex]::Match($typesContent, "(\|\s*'special_needs'\s*)(\|\s*'custom';)")
-if ($catMatch.Success) {
-    $typesContent = $typesContent.Substring(0, $catMatch.Groups[1].Index + $catMatch.Groups[1].Length) +
-                    "`n  | 'household'" +
-                    $typesContent.Substring($catMatch.Groups[2].Index)
-    Set-Content $typesFile $typesContent -NoNewline
-    Write-Host "  Added 'household' to TrackerCategory" -ForegroundColor Green
+export const DEFAULT_TRACKER_IDS
+"@
+
+    if ($dtContent.Contains($find)) {
+        $dtContent = $dtContent.Replace($find, $replace)
+        Write-Host "Fixed: Inserted 24 tracker configs into DEFAULT_TRACKERS" -ForegroundColor Green
+        $fixed = $true
+    } else {
+        Write-Error "Could not find the DEFAULT_TRACKERS insertion point. Manual fix required."
+        exit 1
+    }
 } else {
-    Write-Warning "  Could not find TrackerCategory insertion point. Skipped."
-}
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  PATCH 2: src/components/trackers/trackerConstants.ts
-# ══════════════════════════════════════════════════════════════════════════════
-Write-Host "Patching $constantsFile ..." -ForegroundColor Yellow
-$tcContent = Get-Content $constantsFile -Raw
-
-# Replace the special_needs + custom block with special_needs + household + custom
-$tcOld = [regex]::Match($tcContent, "\{\s*id:\s*'special_needs'.*?'Special care tracking'\s*\},\s*\{\s*id:\s*'custom'.*?'Your custom trackers'\s*\},")
-if ($tcOld.Success) {
-    $tcNew = "  { id: 'special_needs', emoji: '♿', label: 'Special Needs', color: '#e17055', priority: 11, description: 'Special care tracking' },`n" +
-             "  { id: 'household',     emoji: '🏠', label: 'Household',     color: '#8E44AD', priority: 12, description: 'Home logistics & supplies' },`n" +
-             "  { id: 'custom',        emoji: '✨', label: 'Custom Trackers', color: '#fd79a8', priority: 13, description: 'Your custom trackers' },"
-    $tcContent = $tcContent.Substring(0, $tcOld.Index) + $tcNew + $tcContent.Substring($tcOld.Index + $tcOld.Length)
-    Set-Content $constantsFile $tcContent -NoNewline
-    Write-Host "  Added 'household' to TRACKER_CATEGORIES" -ForegroundColor Green
-} else {
-    Write-Warning "  Could not find TRACKER_CATEGORIES insertion point. Skipped."
-}
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  PATCH 3: src/config/defaultTrackers.ts
-# ══════════════════════════════════════════════════════════════════════════════
-Write-Host "Patching $trackersFile ..." -ForegroundColor Yellow
-$dtContent = Get-Content $trackersFile -Raw
-
-# 3a ── Insert new tracker configs into DEFAULT_TRACKERS array ────────────────
-$trackerMatch = [regex]::Match($dtContent, "(quickTags:\s*\['New',\s*'Spreading',\s*'Improving',\s*'Cleared'\],\s*\},)(\s*\];)")
-if ($trackerMatch.Success) {
-    $dtContent = $dtContent.Substring(0, $trackerMatch.Groups[1].Index + $trackerMatch.Groups[1].Length) +
-                 "`n" + $newTrackers + "`n" +
-                 $dtContent.Substring($trackerMatch.Groups[2].Index)
-    Write-Host "  Inserted 24 new tracker configs into DEFAULT_TRACKERS" -ForegroundColor Green
-} else {
-    Write-Warning "  Could not find DEFAULT_TRACKERS insertion point. Skipped trackers."
-}
-
-# 3b ── Append new IDs to DEFAULT_TRACKER_IDS ─────────────────────────────────
-$idsMatch = [regex]::Match($dtContent, "('cradle_cap',\s*)(\]\s*as\s*const;)")
-if ($idsMatch.Success) {
-    $dtContent = $dtContent.Substring(0, $idsMatch.Groups[1].Index + $idsMatch.Groups[1].Length) +
-                 "`n" + $newIds + "`n" +
-                 $dtContent.Substring($idsMatch.Groups[2].Index)
-    Write-Host "  Added 24 new IDs to DEFAULT_TRACKER_IDS" -ForegroundColor Green
-} else {
-    Write-Warning "  Could not find DEFAULT_TRACKER_IDS insertion point. Skipped IDs."
-}
-
-# 3c ── Add household to emojiMap in getCategorySummary ───────────────────────
-$emojiMatch = [regex]::Match($dtContent, "(special_needs:\s*'♿',\s*)(custom:\s*'✨',)")
-if ($emojiMatch.Success) {
-    $dtContent = $dtContent.Substring(0, $emojiMatch.Groups[1].Index + $emojiMatch.Groups[1].Length) +
-                 "`n    household: '🏠', " +
-                 $dtContent.Substring($emojiMatch.Groups[2].Index)
-    Write-Host "  Added household emoji to getCategorySummary" -ForegroundColor Green
-} else {
-    Write-Warning "  Could not find emojiMap insertion point. Skipped emoji."
+    Write-Host "OK: Tracker configs already present" -ForegroundColor Cyan
 }
 
 Set-Content $trackersFile $dtContent -NoNewline
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  DONE
-# ══════════════════════════════════════════════════════════════════════════════
-Write-Host "`nAll patches applied successfully!" -ForegroundColor Cyan
-Write-Host "Next steps:" -ForegroundColor White
-Write-Host "  1. Review the patched files for any TS errors." -ForegroundColor White
-Write-Host "  2. Run: npx tsc --noEmit  (to catch type issues)" -ForegroundColor White
-Write-Host "  3. Run: npx expo start --clear" -ForegroundColor White
-Write-Host "  4. If anything breaks, restore from .bak backups." -ForegroundColor White
+if ($fixed) {
+    Write-Host "`nDone. Next steps:" -ForegroundColor Cyan
+    Write-Host "  1. npx tsc --noEmit" -ForegroundColor White
+    Write-Host "  2. npx expo start --clear" -ForegroundColor White
+} else {
+    Write-Host "`nNothing needed fixing." -ForegroundColor Cyan
+}

@@ -1388,6 +1388,10 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
             </TouchableOpacity>
           )}
 
+          <TouchableOpacity onPress={() => navigation.navigate('PediatricianPDFExport')} style={[styles.pdfBtn, { backgroundColor: 'rgba(255,255,255,0.6)' }]}>
+            <Ionicons name="document-text" size={22} color={themeColors.primary} />
+          </TouchableOpacity>
+
           <TouchableOpacity onPress={() => {
             if (!currentBaby) {
               setShowBabyRequiredModal(true);
@@ -1718,6 +1722,13 @@ const styles = StyleSheet.create({
   babyChipName: { fontSize: 16, fontWeight: '800', color: '#1e293b', letterSpacing: -0.3 },
   babyChipAge: { fontSize: 12, fontWeight: '600', color: '#64748b', marginTop: 1 },
   addBtn: { 
+    width: 44, 
+    height: 44, 
+    borderRadius: 14, 
+    justifyContent: 'center', 
+    alignItems: 'center' 
+  },
+  pdfBtn: { 
     width: 44, 
     height: 44, 
     borderRadius: 14, 

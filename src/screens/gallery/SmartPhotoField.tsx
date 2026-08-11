@@ -60,6 +60,8 @@ interface SmartPhotoFieldProps {
   allowAnnotation?: boolean;
   allowCompare?: boolean;
   maxPhotos?: number;
+  onPhotosChange?: (photos: PhotoMeta[]) => void;
+  initialPhotoUris?: string[];
 }
 
 // ── Mock AI Analysis Engine ──────────────────────────────────────────────────
@@ -150,6 +152,29 @@ export const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
   const canvasRef = useRef<any>(null);
   const paths = useRef<any[]>([]);
   const currentPath = useRef<any>(null);
+  const hasInitializedPhotos = useRef(false);
+
+  // ── Sync initial photos (edit mode) ───────────────────────────────────────
+  useEffect(() => {
+    if (hasInitializedPhotos.current) return;
+    if (!initialPhotoUris || initialPhotoUris.length === 0) return;
+    hasInitializedPhotos.current = true;
+
+    const metas = initialPhotoUris.map((uri) => ({
+      uri,
+      width: 0,
+      height: 0,
+      timestamp: new Date().toISOString(),
+      type: 'image/jpeg',
+    }));
+    setPhotos(metas);
+    setCurrentUri(metas[metas.length - 1]?.uri || null);
+  }, [initialPhotoUris]);
+
+  // ── Notify parent of photo array changes ───────────────────────────────────
+  useEffect(() => {
+    onPhotosChange?.(photos);
+  }, [photos, onPhotosChange]);
 
   // ── Permissions ────────────────────────────────────────────────────────────
   useEffect(() => {
