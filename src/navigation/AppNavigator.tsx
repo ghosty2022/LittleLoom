@@ -682,19 +682,7 @@ function NavigationContent({
         </Stack.Navigator>
       </View>
     </NavigationContainer>
-  );  }, [
-    authLoading,
-    isAuthenticated,
-    isSecurityLocked,
-    securityOn,
-    setupComplete,
-    hasParent2,
-    hasBaby,
-    hasSeenOnboarding,
-    isFirstOpen,
-    babiesReady,
-    babies?.length, // <-- REACT to baby count changes so SETUP_BABY → MAIN/SETUP_PARENT2 works
-  ]);
+  );
 }
 
 export default function AppNavigator({ isDark, initialState, onStateChange }: {

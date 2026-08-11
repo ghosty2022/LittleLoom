@@ -934,13 +934,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       showAlert('Error', 'Failed to create baby profile');
       return null;
     }
-    } catch (error) {
-      console.error('Create baby error:', error);
-     
-// Then use:
-showAlert('Error', 'Failed to create baby profile');
-      return null;
-    }
   }, [calculateAge, clearSkipBaby, loadAllBabyData, state.currentBabyId, state.babies]);
 
   /* ---- Update baby ---- */
