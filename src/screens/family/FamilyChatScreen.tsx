@@ -1587,6 +1587,8 @@ export default function FamilyChatScreen({
     getTypingUsers,
     getMessageById,
     resendMessage,
+    blockUser,
+    isUserBlocked,
   } = useFamilyChat();
   const { members } = useFamily();
   const { userProfile } = useAuth();
@@ -1714,6 +1716,11 @@ export default function FamilyChatScreen({
 
   const handleSend = useCallback(async () => {
     if (!inputText.trim() || !chatId) return;
+    const otherId = chatInfo?.participants?.find((p: string) => p !== userProfile?.id);
+    if (otherId && isUserBlocked(otherId)) {
+      showSweetAlert('warning', 'Blocked', 'You have blocked this user. Unblock to send messages.');
+      return;
+    }
     if (!userProfile) {
       showSweetAlert('error', 'Error', 'Please sign in to send messages');
       return;
@@ -2191,8 +2198,12 @@ export default function FamilyChatScreen({
               },
             ]}
             onPress={() => {
-              // TODO: Replace with proper action sheet for multiple options
-              showSweetAlert('info', 'Chat Options', 'Clear Chat, Export Chat, and more options coming soon');
+              const otherId = chatInfo?.participants?.find((p: string) => p !== userProfile?.id);
+              if (otherId) {
+                blockUser(otherId);
+                const nowBlocked = isUserBlocked(otherId);
+                showSweetAlert(nowBlocked ? 'warning' : 'success', nowBlocked ? 'Blocked' : 'Unblocked', nowBlocked ? 'User blocked' : 'User unblocked');
+              }
             }}
           >
             <Ionicons

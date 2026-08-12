@@ -6,7 +6,9 @@ import Animated, { FadeInUp } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CommunityStackParamList } from '../../types/navigation';
-import { useCommunity, Chat } from '../../context/CommunityContext';
+import { useCommunity } from '../../context/CommunityContext';
+import { useFamilyChat, FamilyChat } from '../../context/FamilyChatContext';
+import { useAuth } from '../../context/AuthContext';
 import { useApp } from '../../context/AppContext';
 import { SafeAvatar } from '../../components/SafeAvatar';
 
@@ -59,7 +61,10 @@ const LL = {
 type ChatListScreenProps = NativeStackScreenProps<CommunityStackParamList, 'ChatList'>;
 
 export default function ChatListScreen({ navigation }: ChatListScreenProps) {
-  const { chats, currentUser } = useCommunity();
+  const { getUserById } = useCommunity();
+  const { chats, getUnreadCount } = useFamilyChat();
+  const { userProfile } = useAuth();
+  const currentUserId = userProfile?.id || '';
   const { isDark } = useApp();
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -70,7 +75,8 @@ export default function ChatListScreen({ navigation }: ChatListScreenProps) {
     setTimeout(() => setRefreshing(false), 1000);
   };
 
-  const sortedChats = [...chats].sort(
+  const directChats = chats.filter((c: FamilyChat) => c.type === 'direct');
+  const sortedChats = [...directChats].sort(
     (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
   );
 
@@ -78,11 +84,16 @@ export default function ChatListScreen({ navigation }: ChatListScreenProps) {
   const filteredChats = useMemo(() => {
     if (!searchQuery.trim()) return sortedChats;
     const q = searchQuery.toLowerCase();
-    return sortedChats.filter(c => 
-      c.participant.displayName.toLowerCase().includes(q) ||
-      (c.lastMessage?.content || '').toLowerCase().includes(q)
-    );
-  }, [sortedChats, searchQuery]);
+    return sortedChats.filter((c: FamilyChat) => {
+      const otherId = c.participants.find(p => p !== currentUserId);
+      const participant = otherId ? getUserById(otherId) : null;
+      const name = participant?.displayName || c.name || '';
+      return (
+        name.toLowerCase().includes(q) ||
+        (c.lastMessage?.content || '').toLowerCase().includes(q)
+      );
+    });
+  }, [sortedChats, searchQuery, currentUserId, getUserById]);
 
   const totalUnread = chats.reduce((sum, chat) => sum + chat.unreadCount, 0);
 
@@ -97,9 +108,11 @@ export default function ChatListScreen({ navigation }: ChatListScreenProps) {
     return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
   };
 
-  const renderChat = ({ item, index }: { item: Chat; index: number }) => {
+  const renderChat = ({ item, index }: { item: FamilyChat; index: number }) => {
     const lastMessage = item.lastMessage;
-    const isMyMessage = lastMessage?.senderId === currentUser?.id;
+    const otherId = item.participants.find(p => p !== currentUserId);
+    const participant = otherId ? getUserById(otherId) : null;
+    const isMyMessage = lastMessage?.senderId === currentUserId;
 
     return (
       <Animated.View entering={FadeInUp.delay(index * 50).duration(400).springify()}>
@@ -114,21 +127,21 @@ export default function ChatListScreen({ navigation }: ChatListScreenProps) {
           ]}
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            navigation.navigate('Chat', { userId: item.participantId });
+            if (otherId) navigation.navigate('Chat', { userId: otherId });
           }}
           activeOpacity={0.8}
         >
           <View style={styles.avatarContainer}>
             <SafeAvatar
-              avatar={item.participant.avatar}
+              avatar={participant?.avatar}
               size={52}
               fallbackIcon="person"
               fallbackColor={LL.primary}
               fallbackBgColor={`${LL.primary}15`}
-              borderWidth={item.participant.onlineStatus === 'online' ? 2 : 0}
+              borderWidth={participant?.onlineStatus === 'online' ? 2 : 0}
               borderColor={LL.success}
             />
-            {item.participant.onlineStatus === 'online' && (
+            {participant?.onlineStatus === 'online' && (
               <View style={[styles.onlineDot, { backgroundColor: LL.success, borderColor: isDark ? LL.darkCard : LL.white }]} />
             )}
           </View>
@@ -136,7 +149,7 @@ export default function ChatListScreen({ navigation }: ChatListScreenProps) {
           <View style={styles.chatInfo}>
             <View style={styles.nameRow}>
               <Text style={[styles.name, { color: isDark ? LL.white : LL.gray800 }]}>
-                {item.participant.displayName}
+                {participant?.displayName || item.name}
               </Text>
               <Text style={[styles.time, { color: isDark ? LL.gray500 : LL.gray400 }]}>
                 {formatTime(item.updatedAt)}

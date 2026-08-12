@@ -263,7 +263,10 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     try {
       const savedCode = await AsyncStorage.getItem(STORAGE_KEYS.FAMILY_CODE);
       if (savedCode) {
-        setState(prev => ({ ...prev, familyCode: savedCode }));
+        const blockedKey = `@littleloom_blocked_${savedCode}`;
+        const savedBlocked = await AsyncStorage.getItem(blockedKey);
+        const blockedUsers = savedBlocked ? JSON.parse(savedBlocked) : [];
+        setState(prev => ({ ...prev, familyCode: savedCode, blockedUsers }));
       } else if (babyContext) {
         const newCode = `FAM-${babyContext.id.slice(0, 6).toUpperCase()}`;
         await AsyncStorage.setItem(STORAGE_KEYS.FAMILY_CODE, newCode);
@@ -1117,6 +1120,10 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const updated = isBlocked
         ? prev.blockedUsers.filter(id => id !== userId)
         : [...prev.blockedUsers, userId];
+      if (state.familyCode) {
+        const blockedKey = `@littleloom_blocked_${state.familyCode}`;
+        AsyncStorage.setItem(blockedKey, JSON.stringify(updated)).catch(console.error);
+      }
       return { ...prev, blockedUsers: updated };
     });
     Haptics.notificationAsync(

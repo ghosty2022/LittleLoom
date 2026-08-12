@@ -5,7 +5,7 @@ import { Easing, FadeIn, FadeInUp, FadeOut, interpolate, Layout, useAnimatedStyl
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { useCommunity } from '../../context/CommunityContext';
 
-
+import { useFamilyChat, FamilyMessage } from '../../context/FamilyChatContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -156,7 +156,7 @@ const TypingDots = React.memo(({ isDark }: { isDark: boolean }) => {
 // ═══════════════════════════════════════════════════════════
 // DELIVERY STATUS COMPONENT
 // ═══════════════════════════════════════════════════════════
-const DeliveryStatus = React.memo(({ status }: { status: Message['deliveryStatus'] }) => {
+const DeliveryStatus = React.memo(({ status }: { status: FamilyMessage['deliveryStatus'] }) => {
   if (status === 'sending') {
     return <ActivityIndicator size={12} color={LL.gray400} style={{ marginLeft: 4 }} />;
   }
@@ -238,7 +238,7 @@ const ImagePreviewModal = React.memo(({
 // MESSAGE BUBBLE COMPONENT
 // ═══════════════════════════════════════════════════════════
 const MessageBubble = React.memo(({
-  message,
+    message: FamilyMessage;
   isMe,
   user,
   showAvatar,
@@ -251,7 +251,7 @@ const MessageBubble = React.memo(({
   onFilePress,
   onResend,
 }: {
-  message: Message;
+  message: FamilyMessage;
   isMe: boolean;
   user: any;
   showAvatar: boolean;
@@ -450,28 +450,35 @@ const DateSeparator = React.memo(({ date, isDark }: { date: string; isDark: bool
 // MAIN CHAT SCREEN
 // ═══════════════════════════════════════════════════════════
 export default function ChatScreen({ navigation, route }: ChatScreenProps) {
-  const { userId } = route.params;
+  const { chatId } = route.params;
   const {
     getUserById,
+    currentUser: communityUser,
+    updateOnlineStatus,
+  } = useCommunity();
+  const {
+    getOrCreateDirectChat,
     getChatMessages,
     sendMessage,
     editMessage,
     markChatRead,
     setTypingStatus,
-    getTypingStatus,
-    currentUser,
-    updateOnlineStatus,
+    getTypingUsers,
     deleteChat,
     blockUser,
     isUserBlocked,
     resendMessage,
-  } = useCommunity();
+    addReaction,
+    deleteMessage,
+  } = useFamilyChat();
   const { isDark } = useApp();
-  const { profile } = useUser();
+  const { userProfile } = useAuth();
   const sweetAlert = useSweetAlert();
+
+  const [chatId, setChatId] = useState<string>('');
   const insets = useSafeAreaInsets();
 
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<FamilyMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [user, setUser] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -482,7 +489,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
-  const [pinnedMessage, setPinnedMessage] = useState<Message | null>(null);
+  const [pinnedMessage, setPinnedMessage] = useState<FamilyMessage | null>(null);
 
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -490,28 +497,46 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   // Initialize chat
   useEffect(() => {
     initializeChat();
+  }, [chatId]);
+
+  useEffect(() => {
+    if (!chatId) return;
     const interval = setInterval(() => refreshMessages(), 2000);
     return () => {
       clearInterval(interval);
-      setTypingStatus(userId, false);
+      setTypingStatus(chatId, false);
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     };
-  }, [userId]);
+  }, [chatId]);
 
   const initializeChat = async () => {
     setIsLoading(true);
-    const chatUser = getUserById(userId);
-    const chatMessages = getChatMessages(userId);
+    const chatUser = getUserById(chatId);
     setUser(chatUser);
-    setMessages(chatMessages);
-    setIsBlocked(isUserBlocked(userId));
+
+    const memberInfo = chatUser
+      ? {
+          id: chatId,
+          fullName: chatUser.displayName,
+          avatar: chatUser.avatar,
+          role: 'guardian' as const,
+        }
+      : undefined;
+
+    const newChatId = await getOrCreateDirectChat(chatId, memberInfo);
+    setChatId(newChatId);
+
+    const msgs = getChatMessages(newChatId);
+    setMessages(msgs);
+    setIsBlocked(isUserBlocked(chatId));
     setIsLoading(false);
-    markChatRead(userId);
+    markChatRead(newChatId);
     updateOnlineStatus('online');
   };
 
   const refreshMessages = () => {
-    const fresh = getChatMessages(userId);
+    if (!chatId) return;
+    const fresh = getChatMessages(chatId);
     setMessages(fresh);
   };
 
@@ -520,7 +545,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   // ═══════════════════════════════════════════════════════════
   const handleSend = useCallback(async () => {
     if (!inputText.trim() || isBlocked) return;
-    if (!currentUser) {
+    if (!userProfile) {
       sweetAlert.alert('Sign In Required', 'Please sign in to send messages', 'warning');
       return;
     }
@@ -529,27 +554,27 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     setInputText('');
 
     if (editingMessage) {
-      await editMessage(userId, editingMessage, content);
+      await editMessage(chatId, editingMessage, content);
       setEditingMessage(null);
     } else {
-      await sendMessage(userId, content, 'text', undefined, undefined, replyingTo?.id);
+      await sendMessage(chatId, content, 'text', undefined, undefined, replyingTo?.id);
     }
 
     setReplyingTo(null);
-    setTypingStatus(userId, false);
+    setTypingStatus(chatId, false);
     refreshMessages();
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }, [inputText, userId, currentUser, isBlocked, editingMessage, replyingTo, sendMessage, editMessage, setTypingStatus]);
+  }, [inputText, chatId, currentUser, isBlocked, editingMessage, replyingTo, sendMessage, editMessage, setTypingStatus]);
 
   const handleInputChange = (text: string) => {
     setInputText(text);
     if (text.length > 0) {
-      setTypingStatus(userId, true);
+      setTypingStatus(chatId, true);
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-      typingTimeoutRef.current = setTimeout(() => setTypingStatus(userId, false), 3000);
+      typingTimeoutRef.current = setTimeout(() => setTypingStatus(chatId, false), 3000);
     } else {
-      setTypingStatus(userId, false);
+      setTypingStatus(chatId, false);
     }
   };
 
@@ -577,7 +602,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
         await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
         const permanentUri = dir + fileName;
         await FileSystem.copyAsync({ from: uri, to: permanentUri });
-        await sendMessage(userId, '📷 Photo', 'image', permanentUri);
+        await sendMessage(chatId, '📷 Photo', 'image', permanentUri);
         refreshMessages();
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
@@ -608,7 +633,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
         uri: permanentUri,
       };
 
-      await sendMessage(userId, `📎 ${asset.name}`, 'file', permanentUri, fileMeta);
+      await sendMessage(chatId, `📎 ${asset.name}`, 'file', permanentUri, fileMeta);
       refreshMessages();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
@@ -642,18 +667,18 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
       title: 'Delete Message',
       message: 'Are you sure? This cannot be undone.',
       onConfirm: () => {
-        // TODO: Implement delete in CommunityContext
+        await deleteMessage(chatId, messageId);
         refreshMessages();
       },
     });
   };
 
-  const handleEdit = (message: Message) => {
+  const handleEdit = (message: FamilyMessage) => {
     setEditingMessage(message.id);
     setInputText(message.content);
   };
 
-  const handleReply = (message: Message) => {
+  const handleReply = (message: FamilyMessage) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setReplyingTo({
       id: message.id,
@@ -678,7 +703,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   };
 
   const handleResend = async (messageId: string) => {
-    await resendMessage(userId, messageId);
+    await resendMessage(chatId, messageId);
     refreshMessages();
   };
 
@@ -692,7 +717,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
         ? 'Unblock this user to receive messages from them again?'
         : 'Block this user? You will no longer receive messages from them.',
       onConfirm: () => {
-        blockUser(userId);
+        blockUser(chatId);
         setIsBlocked(!isBlocked);
         setShowOptions(false);
         sweetAlert.toast(isBlocked ? 'Unblocked' : 'Blocked', isBlocked ? 'User unblocked' : 'User blocked', isBlocked ? 'success' : 'warning');
@@ -706,7 +731,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
       title: 'Delete Chat',
       message: 'This will delete the entire conversation. This cannot be undone.',
       onConfirm: () => {
-        deleteChat(userId);
+        deleteChat(chatId);
         navigation.goBack();
         sweetAlert.toast('Deleted', 'Chat deleted', 'success');
       },
@@ -719,7 +744,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     setShowOptions(false);
   };
 
-  const handlePinMessage = (message: Message) => {
+  const handlePinMessage = (message: FamilyMessage) => {
     setPinnedMessage(pinnedMessage?.id === message.id ? null : message);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
@@ -741,7 +766,8 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   const getStatusText = () => {
     if (!user) return '';
     if (isBlocked) return 'Blocked';
-    if (getTypingStatus(userId)) return 'typing...';
+    const typing = getTypingUsers(chatId).some(t => t.chatId !== userProfile?.id);
+    if (typing) return 'typing...';
     if (user.onlineStatus === 'online') return 'Online';
     if (user.onlineStatus === 'away') return 'Away';
     const lastActive = new Date(user.lastActive);
@@ -767,8 +793,8 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   // ═══════════════════════════════════════════════════════════
   // RENDER MESSAGE
   // ═══════════════════════════════════════════════════════════
-  const renderMessage = ({ item, index }: { item: Message; index: number }) => {
-    const isMe = item.senderId === currentUser?.id;
+  const renderMessage = ({ item, index }: { item: FamilyMessage; index: number }) => {
+    const isMe = item.senderId === userProfile?.id;
     const showAvatar = !isMe && (index === 0 || messages[index - 1]?.senderId !== item.senderId);
     const showDate = index === 0 || getMessageDate(item.timestamp) !== getMessageDate(messages[index - 1]?.timestamp);
 
@@ -890,7 +916,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
           <Ionicons name="arrow-back" size={22} color={isDark ? LL.white : LL.gray800} />
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.userInfo} onPress={() => navigation.navigate('CommunityMemberProfile', { userId: user.id })}>
+        <TouchableOpacity style={styles.userInfo} onPress={() => navigation.navigate('CommunityMemberProfile', { chatId: user.id })}>
           <View style={styles.avatarWrap}>
             <SafeAvatar avatar={user.avatar} size={42} fallbackIcon="person" fallbackColor={LL.primary} fallbackBgColor={`${LL.primary}15`} borderWidth={user.onlineStatus === 'online' && !isBlocked ? 2 : 0} borderColor={LL.success} />
             {!isBlocked && user.onlineStatus === 'online' && (
@@ -911,7 +937,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
             <Text style={[
               styles.userStatus,
               { color: isBlocked ? LL.error : (isDark ? LL.gray500 : LL.gray400) },
-              getTypingStatus(userId) && { color: LL.primary, fontStyle: 'italic', fontWeight: '700' },
+              getTypingStatus(chatId) && { color: LL.primary, fontStyle: 'italic', fontWeight: '700' },
             ]}>
               {getStatusText()}
             </Text>
@@ -957,7 +983,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
       />
 
       {/* ── Typing Indicator ── */}
-      {getTypingStatus(userId) && !isBlocked && (
+      {getTypingStatus(chatId) && !isBlocked && (
         <Animated.View entering={FadeIn.duration(300)} style={styles.typingContainer}>
           <View style={[styles.typingBubble, { backgroundColor: isDark ? LL.darkCard : LL.white, borderColor: isDark ? LL.darkBorder : LL.gray200, borderWidth: 1 }]}>
             <Text style={[styles.typingLabel, { color: isDark ? LL.gray400 : LL.gray500 }]}>{user.displayName} is typing</Text>
@@ -1039,7 +1065,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
               <Ionicons name="trash" size={22} color={LL.error} />
               <Text style={[styles.optionText, { color: LL.error }]}>Delete Chat</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.optionItem, styles.optionItemLast]} onPress={() => { setShowOptions(false); navigation.navigate('CommunityMemberProfile', { userId: user.id }); }}>
+            <TouchableOpacity style={[styles.optionItem, styles.optionItemLast]} onPress={() => { setShowOptions(false); navigation.navigate('CommunityMemberProfile', { chatId: user.id }); }}>
               <Ionicons name="person" size={22} color={LL.primary} />
               <Text style={[styles.optionText, { color: isDark ? LL.white : LL.gray800 }]}>View Profile</Text>
             </TouchableOpacity>
