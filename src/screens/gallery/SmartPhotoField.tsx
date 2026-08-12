@@ -135,8 +135,14 @@ export const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
   allowAnnotation = true,
   allowCompare = true,
   maxPhotos = 5,
+  onPhotosChange,
+  initialPhotoUris,
 }) => {
-  const { theme, glass, borderRadius, spacing } = useCustomization();
+  const customization = useCustomization() || {};
+  const theme = customization.theme || { text: { primary: '#1a1a1a', secondary: '#666666', tertiary: '#999999' }, primary: '#007AFF', surface: '#ffffff', background: '#f2f2f2' };
+  const glass = customization.glass || { bg: 'rgba(255,255,255,0.8)', border: 'rgba(0,0,0,0.1)' };
+  const borderRadius = customization.borderRadius || { lg: 16, md: 12, xl: 24 };
+  const spacing = customization.spacing || { md: 16, sm: 12 };
   const { sweetAlert } = useSweetAlert();
 
   const [photos, setPhotos] = useState<PhotoMeta[]>([]);
