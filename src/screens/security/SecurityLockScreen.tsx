@@ -10,6 +10,7 @@ import {
   TouchableOpacity,
   View,
   BackHandler,
+  Image,
 } from 'react-native';
 
 import * as LocalAuthentication from 'expo-local-authentication';
@@ -663,9 +664,15 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
           ]}
         >
           <View style={styles.header}>
-            <View style={[styles.iconContainer, { backgroundColor: colors.surface }]}>
+                      <View style={[styles.iconContainer, { backgroundColor: colors.surface }]}>
+            {typeof userAvatar === 'number' ? (
+              <Image source={userAvatar} style={styles.avatarImage} resizeMode="cover" />
+            ) : typeof userAvatar === 'string' && (userAvatar.startsWith('file://') || userAvatar.startsWith('http://') || userAvatar.startsWith('https://') || userAvatar.startsWith('data:')) ? (
+              <Image source={{ uri: userAvatar }} style={styles.avatarImage} resizeMode="cover" />
+            ) : (
               <Text style={styles.avatarText}>{userAvatar}</Text>
-            </View>
+            )}
+          </View>
 
             <Text style={[styles.title, { color: colors.text }]}>
               {isLockedOut ? 'Locked Out' : showForgotPin ? 'PIN Recovery' : `Welcome, ${userName}`}
@@ -819,6 +826,7 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   avatarText: { fontSize: 40 },
+  avatarImage: { width: 80, height: 80, borderRadius: 24 },
   title: {
     fontSize: 28,
     fontWeight: '700',

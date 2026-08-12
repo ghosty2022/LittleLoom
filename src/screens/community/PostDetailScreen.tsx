@@ -45,6 +45,7 @@ const {
   deletePost,
   blockUser,
   isUserBlocked,
+  sharePost,
 } = useCommunity();
 
   const { shouldReduceMotion, triggerHaptic, spinnerColor } = useCustomization();
@@ -132,10 +133,11 @@ const {
       await Share.share({
         message: `${post.author.displayName} on LittleLoom: "${post.content.substring(0, 100)}..."`,
       });
+      await sharePost(post.id);
     } catch (error) {
       console.error('Share error:', error);
     }
-  }, [post]);
+  }, [post, sharePost]);
 
   const navigateToUserProfile = useCallback((userId: string) => {
     triggerHaptic('light');

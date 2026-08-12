@@ -44,53 +44,7 @@ const LITTLELOOM_TEAM: CommunityUser = {
   isFollowing: true,
 };
 
-const generateDemoFollowers = (count: number, baseId: string): CommunityUser[] => {
-  const names = [
-    'Sarah Johnson', 'Mike Chen', 'Emma Wilson', 'David Park', 'Lisa Brown',
-    'James Miller', 'Anna Garcia', 'Robert Taylor', 'Jennifer Lee', 'Chris Davis',
-    'Maria Rodriguez', 'Kevin White', 'Amanda Martinez', 'Daniel Anderson', 'Rachel Kim',
-    'Thomas Wright', 'Laura Thompson', 'Ryan Jackson', 'Sophie Clark', 'Alex Turner',
-    'Nina Patel', 'Jordan Brooks', 'Maya Singh', 'Leo Fernandez', 'Zoe Mitchell',
-    'Ethan Cooper', 'Chloe Adams', 'Lucas Rivera', 'Isabella Nguyen', 'Mason Phillips',
-  ];
-
-  const avatars = ['👩', '👨', '👧', '👦', '👵', '👴', '👱‍♀️', '👱‍♂️', '🧑', '👳‍♀️', '👳‍♂️', '👲', '👮‍♀️', '👮‍♂️', '👷‍♀️', '👷‍♂️', '💂‍♀️', '💂‍♂️', '🕵️‍♀️', '🕵️‍♂️', '👩‍⚕️', '👨‍⚕️', '👩‍🌾', '👨‍🌾', '👩‍🍳', '👨‍🍳', '👩‍🎓', '👨‍🎓', '👩‍🎤', '👨‍🎤'];
-
-  const bios = [
-    'Proud parent of two 👶👶',
-    'First-time mom sharing my journey',
-    'Dad blogger & coffee enthusiast ☕',
-    'Parenting tips & toddler life 🧸',
-    'Working mom, making it work 💪',
-    'Stay-at-home dad adventures',
-    'Newborn photographer & mom 📸',
-    'Twin mom, double the love 💕',
-    'Homeschooling parent 🎓',
-    'Organic living & parenting 🌱',
-  ];
-
-  return Array.from({ length: count }, (_, i) => ({
-    id: `follower_${baseId}_${i}`,
-    displayName: names[i % names.length],
-    handle: `@${names[i % names.length].toLowerCase().replace(/\s+/g, '_')}_${Math.floor(Math.random() * 999)}`,
-    avatar: avatars[i % avatars.length],
-    isVerified: i % 7 === 0,
-    bio: bios[i % bios.length],
-    country: ['USA', 'UK', 'Canada', 'Australia', 'Germany', 'France', 'Japan', 'India'][i % 8],
-    onlineStatus: i % 3 === 0 ? 'online' : i % 5 === 0 ? 'away' : 'offline',
-    lastActive: new Date(Date.now() - Math.random() * 86400000 * 30).toISOString(),
-    stats: {
-      posts: Math.floor(Math.random() * 500),
-      followers: Math.floor(Math.random() * 5000),
-      following: Math.floor(Math.random() * 1000),
-      helpful: Math.floor(Math.random() * 200),
-      streakDays: Math.floor(Math.random() * 60),
-      lastStreakDate: new Date().toISOString(),
-    },
-    achievements: [],
-    isFollowing: i % 4 === 0,
-  }));
-};
+// Demo generator removed — now resolving real follower IDs from storage
 
 export default function FollowersScreen
   ({ navigation, route }: FollowersScreenProps) {
@@ -112,42 +66,29 @@ export default function FollowersScreen
   const loadFollowers = useCallback(async () => {
     setLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 600));
-
-      let demoFollowers = [LITTLELOOM_TEAM];
-
-      let actualFollowers: string[] = [];
-      try {
-        actualFollowers = await getFollowers(userId);
-      } catch (e) {
-        console.log('Could not load persisted followers:', e);
-      }
-
-      const targetUser = getUserById(userId);
-      // Get real follower count from the community context
-      let realFollowers: string[] = [];
-      try {
-        realFollowers = await getFollowers(userId);
-      } catch (e) {
-        console.log('Could not load real followers:', e);
-      }
-      const count = realFollowers.length > 0 ? realFollowers.length : (targetUser?.stats?.followers || Math.floor(Math.random() * 50) + 10);
-
-      const additionalFollowers = generateDemoFollowers(Math.min(count, 30), userId);
-
-      demoFollowers = [...demoFollowers, ...additionalFollowers];
+      const followerIds: string[] = await getFollowers(userId);
+      const resolved: CommunityUser[] = [];
       const seen = new Set<string>();
-      const uniqueFollowers = demoFollowers.filter((user) => {
-        if (seen.has(user.id)) return false;
-        seen.add(user.id);
-        return true;
-      });
 
-      setFollowers(uniqueFollowers);
-      setFilteredFollowers(uniqueFollowers);
+      for (const id of followerIds) {
+        if (seen.has(id)) continue;
+        seen.add(id);
+
+        if (id === 'littleloom_team') {
+          resolved.push(LITTLELOOM_TEAM);
+        } else if (id === currentUser?.id && currentUser) {
+          resolved.push(currentUser);
+        } else {
+          const user = getUserById(id);
+          if (user) resolved.push(user);
+        }
+      }
+
+      setFollowers(resolved);
+      setFilteredFollowers(resolved);
     } catch (error) {
       console.error('Error loading followers:', error);
-      sweetAlert.error('Load Failed', 'Failed to load followers list');
+      sweetAlert.alert('Load Failed', 'Failed to load followers list', 'error');
     } finally {
       setLoading(false);
     }
@@ -370,7 +311,7 @@ export default function FollowersScreen
 
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Followers</Text>
-          <Text style={styles.headerSubtitle}>{(currentUser?.stats?.followers ?? followers.length).toLocaleString()}</Text>
+          <Text style={styles.headerSubtitle}>{followers.length.toLocaleString()}</Text>
         </View>
 
         <View style={styles.headerButton} />

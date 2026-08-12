@@ -42,53 +42,7 @@ const LITTLELOOM_TEAM: CommunityUser = {
   isFollowing: true,
 };
 
-const generateDemoFollowing = (count: number, baseId: string): CommunityUser[] => {
-  const names = [
-    'Jessica White', 'Andrew Kim', 'Michelle Lee', 'Brandon Scott', 'Stephanie Cruz',
-    'Marcus Johnson', 'Olivia Martinez', 'Tyler Brown', 'Samantha Davis', 'Nicholas Wilson',
-    'Ashley Taylor', 'Christopher Anderson', 'Brittany Thomas', 'Joshua Garcia', 'Amanda Robinson',
-    'Matthew Clark', 'Lauren Rodriguez', 'Justin Lewis', 'Nicole Walker', 'Ryan Hall',
-    'Megan Young', 'Kevin Allen', 'Rachel King', 'Eric Wright', 'Tiffany Lopez',
-    'Steven Hill', 'Melissa Green', 'Jason Adams', 'Rebecca Baker', 'Daniel Nelson',
-  ];
-
-  const avatars = ['👩', '👨', '👧', '👦', '👵', '👴', '👱‍♀️', '👱‍♂️', '🧑', '👳‍♀️', '👳‍♂️', '👲', '👮‍♀️', '👮‍♂️', '👷‍♀️', '👷‍♂️', '💂‍♀️', '💂‍♂️', '🕵️‍♀️', '🕵️‍♂️', '👩‍⚕️', '👨‍⚕️', '👩‍🌾', '👨‍🌾', '👩‍🍳', '👨‍🍳', '👩‍🎓', '👨‍🎓', '👩‍🎤', '👨‍🎤'];
-
-  const bios = [
-    'Sharing parenting wins & fails 😅',
-    'Mom of 3, barely surviving ☕',
-    'Dad jokes & dad life 👨‍👧‍👦',
-    'Montessori mom & educator 📚',
-    'Traveling with toddlers ✈️',
-    'Sleep training survivor 🛌',
-    'Breastfeeding advocate 🤱',
-    'Special needs parent warrior 💙',
-    'Foster parent, spreading love 🏠',
-    'Single dad, doing my best 💪',
-  ];
-
-  return Array.from({ length: count }, (_, i) => ({
-    id: `following_${baseId}_${i}`,
-    displayName: names[i % names.length],
-    handle: `@${names[i % names.length].toLowerCase().replace(/\s+/g, '_')}_${Math.floor(Math.random() * 999)}`,
-    avatar: avatars[i % avatars.length],
-    isVerified: i % 5 === 0,
-    bio: bios[i % bios.length],
-    country: ['USA', 'UK', 'Canada', 'Australia', 'Germany', 'France', 'Japan', 'India'][i % 8],
-    onlineStatus: i % 4 === 0 ? 'online' : i % 6 === 0 ? 'away' : 'offline',
-    lastActive: new Date(Date.now() - Math.random() * 86400000 * 30).toISOString(),
-    stats: {
-      posts: Math.floor(Math.random() * 500),
-      followers: Math.floor(Math.random() * 5000),
-      following: Math.floor(Math.random() * 1000),
-      helpful: Math.floor(Math.random() * 200),
-      streakDays: Math.floor(Math.random() * 60),
-      lastStreakDate: new Date().toISOString(),
-    },
-    achievements: [],
-    isFollowing: true,
-  }));
-};
+// Demo generator removed — now resolving real following IDs from storage
 
 export default function FollowingScreen
   ({ navigation, route }: FollowingScreenProps) {
@@ -115,39 +69,33 @@ export default function FollowingScreen
   const loadFollowing = useCallback(async () => {
     setLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 600));
-
-      let demoFollowing = [LITTLELOOM_TEAM];
-
-      const targetUser = getUserById(userId);
-      let realFollowing: string[] = [];
-      try {
-        realFollowing = await getFollowing(userId);
-      } catch (e) {
-        console.log('Could not load real following:', e);
-      }
-      const count = realFollowing.length > 0 ? realFollowing.length : (targetUser?.stats?.following || Math.floor(Math.random() * 40) + 5);
-
-      const additionalFollowing = generateDemoFollowing(Math.min(count, 30), userId);
-
-      demoFollowing = [...demoFollowing, ...additionalFollowing];
-
+      const followingIds: string[] = await getFollowing(userId);
+      const resolved: CommunityUser[] = [];
       const seen = new Set<string>();
-      const uniqueFollowing = demoFollowing.filter((user) => {
-        if (seen.has(user.id)) return false;
-        seen.add(user.id);
-        return true;
-      });
 
-      setFollowingList(uniqueFollowing);
-      setFilteredFollowing(uniqueFollowing);
+      for (const id of followingIds) {
+        if (seen.has(id)) continue;
+        seen.add(id);
+
+        if (id === 'littleloom_team') {
+          resolved.push(LITTLELOOM_TEAM);
+        } else if (id === currentUser?.id && currentUser) {
+          resolved.push(currentUser);
+        } else {
+          const user = getUserById(id);
+          if (user) resolved.push(user);
+        }
+      }
+
+      setFollowingList(resolved);
+      setFilteredFollowing(resolved);
     } catch (error) {
       console.error('Error loading following:', error);
       sweetAlert.alert('Load Failed', 'Failed to load following list', 'error');
     } finally {
       setLoading(false);
     }
-  }, [userId, getFollowing, getUserById, sweetAlert]);
+  }, [userId, currentUser, getFollowing, getUserById, sweetAlert]);
 
   useEffect(() => {
     loadFollowing();
@@ -379,7 +327,7 @@ export default function FollowingScreen
 
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Following</Text>
-          <Text style={styles.headerSubtitle}>{(currentUser?.stats?.following ?? followingList.length).toLocaleString()}</Text>
+          <Text style={styles.headerSubtitle}>{followingList.length.toLocaleString()}</Text>
         </View>
 
         <View style={styles.headerButton} />

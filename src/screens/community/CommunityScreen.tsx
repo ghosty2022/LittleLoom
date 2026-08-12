@@ -57,7 +57,7 @@ import {
 } from '../../theme/CommunityTheme';
 import type { CommunityStackParamList } from '../../types/navigation';
 import type { Post, PostMood, Poll, CommunityUser } from '../../context/CommunityContext';
-import SafeAvatar from '../../components/SafeAvatar';
+import { SafeAvatar } from '../../components/SafeAvatar';
 import { useAuth } from '../../context/AuthContext';
 import { useRouteBasedNavVisibility } from '../../hooks/useRouteBasedNavVisibility';
 import { useCustomization } from '../../hooks/useCustomization';
@@ -1583,14 +1583,20 @@ export default function CommunityScreen({ navigation }: Props) {
   const sweetAlert = useSweetAlert();
   useRouteBasedNavVisibility();
 
+  const community = useCommunity();
   const {
     posts, topics, currentUser, likePost, unlikePost, repostPost, unrepostPost,
     bookmarkPost, deletePost, addComment, likeComment, replyToComment, voteHelpful,
     followUser, unfollowUser, isFollowing, refreshFeed, loadMorePosts, getFeedPosts,
     getUnreadCount, incrementViewCount, isAuthenticated: checkIsAuth,
-   getAllUsers, votePoll, getUserStats, markAllNotificationsRead,
+    getAllUsers, votePoll, getUserStats, markAllNotificationsRead,
     getUserById,
-  } = useCommunity();
+  } = community;
+
+  // Defensive: if metro cache is stale and sharePost is missing, no-op instead of crash
+  const sharePost = community.sharePost || (async () => {
+    console.warn('[Community] sharePost missing from context — run: npx expo start --clear');
+  });
   const { profile, communityProfile } = useUser();
   const { isAuthenticated: authIsAuth } = useAuth();
   const { triggerHaptic } = useCustomization();
@@ -3459,9 +3465,9 @@ export default function CommunityScreen({ navigation }: Props) {
 
       // Hero Banner
       heroBanner: {
-        marginHorizontal: DS.space.lg,
-        marginTop: HEADER_TOTAL_HEIGHT + DS.space.md,
-        marginBottom: DS.space.md,
+    marginHorizontal: DS.space.lg,
+    marginTop: DS.space.md, // FIXED: was HEADER_TOTAL_HEIGHT + DS.space.md (FlatList paddingTop already clears the header)
+    marginBottom: DS.space.md,
         borderRadius: DS.radius.xl,
         padding: DS.space.lg,
         overflow: 'hidden',
