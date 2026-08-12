@@ -208,7 +208,7 @@ interface CommunityState {
   posts: Post[];
   topics: Topic[];
   notifications: Notification[];
-  chats: Chat[];
+  // NOTE: All chat state moved to FamilyChatContext
   currentUser: CommunityUser | null;
   isLoading: boolean;
   onlineUsers: string[];

@@ -86,6 +86,7 @@ interface FamilyChatState {
   familyCode: string | null;
   currentUserTyping: boolean;
   pendingSync: string[];
+  blockedUsers: string[];
 }
 
 interface FamilyChatContextType extends FamilyChatState {
@@ -126,7 +127,51 @@ interface FamilyChatContextType extends FamilyChatState {
   syncFamilyData: () => Promise<void>;
   searchMessages: (chatId: string, query: string) => FamilyMessage[];
   getMessageById: (chatId: string, messageId: string) => FamilyMessage | undefined;
+  blockUser: (userId: string) => Promise<void>;
+  isUserBlocked: (userId: string) => boolean;
 }
+
+// ═══════════════════════════════════════════════════════════
+// ENCRYPTION HELPERS (XOR + SHA256 key derivation)
+// ═══════════════════════════════════════════════════════════
+const ENCRYPTION_SALT = 'littleloom_chat_v1';
+
+const deriveKey = async (seed: string): Promise<string> => {
+  return await Crypto.digestStringAsync(
+    Crypto.CryptoDigestAlgorithm.SHA256,
+    seed + ENCRYPTION_SALT
+  );
+};
+
+const xorEncrypt = (text: string, key: string): string => {
+  let result = '';
+  for (let i = 0; i < text.length; i++) {
+    result += String.fromCharCode(text.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+  }
+  return result;
+};
+
+const toHex = (str: string): string => {
+  return Array.from(str).map(c => c.charCodeAt(0).toString(16).padStart(2, '0')).join('');
+};
+
+const fromHex = (hex: string): string => {
+  let str = '';
+  for (let i = 0; i < hex.length; i += 2) {
+    str += String.fromCharCode(parseInt(hex.substr(i, 2), 16));
+  }
+  return str;
+};
+
+const encryptData = async (data: string, familyCode: string): Promise<string> => {
+  const key = await deriveKey(familyCode || 'default');
+  return toHex(xorEncrypt(data, key));
+};
+
+const decryptData = async (encrypted: string, familyCode: string): Promise<string> => {
+  const key = await deriveKey(familyCode || 'default');
+  return xorEncrypt(fromHex(encrypted), key);
+};
 
 const STORAGE_KEYS = {
   CHATS: (familyCode: string) => `@littleloom_family_chats_${familyCode}`,
@@ -195,6 +240,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     familyCode: null,
     currentUserTyping: false,
     pendingSync: [],
+    blockedUsers: [],
   });
 
   const deviceIdRef = useRef<string>('');
@@ -309,12 +355,22 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     try {
       const key = STORAGE_KEYS.MESSAGES(state.familyCode, chatId);
       const existing = await AsyncStorage.getItem(key);
-      const allMessages: FamilyMessage[] = existing ? JSON.parse(existing) : [];
+      let allMessages: FamilyMessage[] = [];
+      
+      if (existing) {
+        try {
+          const decrypted = await decryptData(existing, state.familyCode);
+          allMessages = JSON.parse(decrypted);
+        } catch {
+          // Legacy unencrypted fallback
+          allMessages = JSON.parse(existing);
+        }
+      }
       
       const mergedMap = new Map<string, FamilyMessage>();
       [...allMessages, ...newMessages].forEach(msg => {
-        const existing = mergedMap.get(msg.syncId);
-        if (!existing || msg.version > existing.version) {
+        const prev = mergedMap.get(msg.syncId);
+        if (!prev || msg.version > prev.version) {
           mergedMap.set(msg.syncId, msg);
         }
       });
@@ -322,7 +378,8 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const merged = Array.from(mergedMap.values());
       merged.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
       
-      await AsyncStorage.setItem(key, JSON.stringify(merged));
+      const encrypted = await encryptData(JSON.stringify(merged), state.familyCode);
+      await AsyncStorage.setItem(key, encrypted);
     } catch (error) {
       console.error('Error saving messages:', error);
     }
@@ -333,7 +390,14 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     try {
       const key = STORAGE_KEYS.MESSAGES(state.familyCode, chatId);
       const saved = await AsyncStorage.getItem(key);
-      return saved ? JSON.parse(saved) : [];
+      if (!saved) return [];
+      try {
+        const decrypted = await decryptData(saved, state.familyCode);
+        return JSON.parse(decrypted);
+      } catch {
+        // Legacy unencrypted fallback
+        return JSON.parse(saved);
+      }
     } catch (error) {
       return [];
     }
@@ -464,6 +528,15 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const chat = state.chats.find(c => c.id === chatId);
     if (!chat) return;
     
+    // Block guard for direct/community chats
+    if (chat.type === 'direct') {
+      const otherId = chat.participants.find(p => p !== userProfile.id);
+      if (otherId && state.blockedUsers.includes(otherId)) {
+        sweetAlert.alert('Blocked', 'You have blocked this user. Unblock to send messages.', 'warning');
+        return;
+      }
+    }
+    
     const syncId = Crypto.randomUUID();
     const now = new Date().toISOString();
     
@@ -498,14 +571,23 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       deliveryStatus: 'sending',
     };
     
-    setState(prev => ({
-      ...prev,
-      messages: {
-        ...prev.messages,
-        [chatId]: [...(prev.messages[chatId] || []), newMessage],
-      },
-      pendingSync: [...prev.pendingSync, syncId],
-    }));
+    setState(prev => {
+      const updatedChats = prev.chats.map(c => {
+        if (c.id === chatId) {
+          return { ...c, lastMessage: newMessage, updatedAt: now };
+        }
+        return c;
+      });
+      return {
+        ...prev,
+        chats: updatedChats,
+        messages: {
+          ...prev.messages,
+          [chatId]: [...(prev.messages[chatId] || []), newMessage],
+        },
+        pendingSync: [...prev.pendingSync, syncId],
+      };
+    });
     
     try {
       await new Promise(resolve => setTimeout(resolve, 300));
@@ -1029,6 +1111,25 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     await initializeFamilyChat();
   };
 
+  const blockUser = async (userId: string): Promise<void> => {
+    setState(prev => {
+      const isBlocked = prev.blockedUsers.includes(userId);
+      const updated = isBlocked
+        ? prev.blockedUsers.filter(id => id !== userId)
+        : [...prev.blockedUsers, userId];
+      return { ...prev, blockedUsers: updated };
+    });
+    Haptics.notificationAsync(
+      state.blockedUsers.includes(userId)
+        ? Haptics.NotificationFeedbackType.Success
+        : Haptics.NotificationFeedbackType.Warning
+    );
+  };
+
+  const isUserBlocked = (userId: string): boolean => {
+    return state.blockedUsers.includes(userId);
+  };
+
 const value = useMemo<FamilyChatContextType>(() => ({
   ...state,
   createFamilyGroup,
@@ -1062,6 +1163,8 @@ const value = useMemo<FamilyChatContextType>(() => ({
   syncFamilyData,
   searchMessages,
   getMessageById,
+  blockUser,
+  isUserBlocked,
 }), [
   state,
   createFamilyGroup,
