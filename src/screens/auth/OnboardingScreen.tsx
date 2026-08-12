@@ -1,22 +1,4 @@
-import React, {
-  useEffect,
-  useRef,
-  useState,
-  useCallback,
-  useMemo,
-} from 'react';
-import Animated, {
-  Extrapolation,
-  interpolate,
-  useAnimatedScrollHandler,
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withTiming,
-  withSequence,
-  withDelay,
-  Easing,
-} from 'react-native-reanimated';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   BackHandler,
   Dimensions,
@@ -30,6 +12,18 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import Animated, {
+  Extrapolation,
+  interpolate,
+  runOnJS,
+  useAnimatedReaction,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+  Easing,
+} from 'react-native-reanimated';
 import { useCustomization } from '../../hooks/useCustomization';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -165,26 +159,24 @@ const ONBOARDING_DATA: OnboardingSlide[] = [
 ];
 
 /* ------------------------------------------------------------------ */
-/*  Animated Sub-components (each with stable hook counts)             */
+/*  Single Global Time Driver                                          */
+/*  All ambient decorations read from this one shared value.           */
+/* ------------------------------------------------------------------ */
+
+type SharedValue<T> = Animated.SharedValue<T>;
+
+/* ------------------------------------------------------------------ */
+/*  Optimized Decorations (no useEffect, no withRepeat)                */
 /* ------------------------------------------------------------------ */
 
 const RotatingGradientBorder = React.memo(
-  ({ colors }: { colors: [string, string] }) => {
-    const rotation = useSharedValue(0);
-    useEffect(() => {
-      rotation.value = withRepeat(
-        withTiming(360, { duration: 8000, easing: Easing.linear }),
-        -1,
-        false
-      );
-    }, [rotation]);
-
-    const animatedStyle = useAnimatedStyle(() => ({
-      transform: [{ rotate: `${rotation.value}deg` }],
+  ({ colors, globalTime }: { colors: [string, string]; globalTime: SharedValue<number> }) => {
+    const style = useAnimatedStyle(() => ({
+      transform: [{ rotate: `${globalTime.value * 360}deg` }],
     }));
 
     return (
-      <Animated.View style={[styles.rotatingBorderContainer, animatedStyle]}>
+      <Animated.View style={[styles.rotatingBorderContainer, style]}>
         <LinearGradient
           colors={[`${colors[0]}60`, `${colors[1]}60`, `${colors[0]}60`]}
           start={{ x: 0, y: 0 }}
@@ -196,153 +188,114 @@ const RotatingGradientBorder = React.memo(
   }
 );
 
-const PulsingCorners = React.memo(({ color }: { color: string }) => {
-  const pulse = useSharedValue(1);
-  useEffect(() => {
-    pulse.value = withRepeat(
-      withSequence(
-        withTiming(1.4, { duration: 1000, easing: Easing.out(Easing.ease) }),
-        withTiming(1, { duration: 1000, easing: Easing.in(Easing.ease) })
-      ),
-      -1,
-      true
+const PulsingCorners = React.memo(
+  ({ color, globalTime }: { color: string; globalTime: SharedValue<number> }) => {
+    const style = useAnimatedStyle(() => {
+      const s = 1 + 0.4 * Math.sin(globalTime.value * Math.PI * 4);
+      const o = 0.8 - 0.5 * Math.abs(Math.sin(globalTime.value * Math.PI * 4));
+      return { transform: [{ scale: s }], opacity: o };
+    });
+
+    const positions = useMemo(
+      () => [
+        { top: -4, left: -4 },
+        { top: -4, right: -4 },
+        { bottom: -4, left: -4 },
+        { bottom: -4, right: -4 },
+      ],
+      []
     );
-  }, [pulse]);
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: pulse.value }],
-    opacity: interpolate(pulse.value, [1, 1.4], [0.8, 0.3], Extrapolation.CLAMP),
-  }));
-
-  const corners = useMemo(
-    () => [
-      { top: -4, left: -4 },
-      { top: -4, right: -4 },
-      { bottom: -4, left: -4 },
-      { bottom: -4, right: -4 },
-    ],
-    []
-  );
-
-  return (
-    <>
-      {corners.map((pos, i) => (
-        <Animated.View
-          key={i}
-          style={[styles.cornerDot, { backgroundColor: color }, pos, animatedStyle]}
-        />
-      ))}
-    </>
-  );
-});
-
-const DashedBorder = React.memo(({ color }: { color: string }) => {
-  const dashOffset = useSharedValue(0);
-  useEffect(() => {
-    dashOffset.value = withRepeat(
-      withTiming(20, { duration: 3000, easing: Easing.linear }),
-      -1,
-      false
+    return (
+      <>
+        {positions.map((pos, i) => (
+          <Animated.View
+            key={i}
+            style={[styles.cornerDot, { backgroundColor: color }, pos, style]}
+          />
+        ))}
+      </>
     );
-  }, [dashOffset]);
+  }
+);
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(
-      Math.sin(dashOffset.value * 0.3),
-      [-1, 1],
-      [0.3, 0.7],
-      Extrapolation.CLAMP
-    ),
-  }));
+const DashedBorder = React.memo(
+  ({ color, globalTime }: { color: string; globalTime: SharedValue<number> }) => {
+    const style = useAnimatedStyle(() => ({
+      opacity: 0.3 + 0.4 * Math.sin(globalTime.value * Math.PI * 2),
+    }));
 
-  return (
-    <Animated.View
-      style={[styles.dashedBorder, { borderColor: `${color}40` }, animatedStyle]}
-    />
-  );
-});
-
-/* ------------------------------------------------------------------ */
-/*  FIXED: Orb is now its own component — hooks are top-level          */
-/* ------------------------------------------------------------------ */
+    return (
+      <Animated.View
+        style={[styles.dashedBorder, { borderColor: `${color}40` }, style]}
+      />
+    );
+  }
+);
 
 interface OrbDef {
-  delay: number;
+  phase: number;
   x: number;
   y: number;
   size: number;
-  duration: number;
   color: string;
   index: number;
 }
 
-const Orb = React.memo(({ orb }: { orb: OrbDef }) => {
-  const orbAnim = useSharedValue(0);
-  useEffect(() => {
-    orbAnim.value = withDelay(
-      orb.delay,
-      withRepeat(
-        withTiming(1, { duration: orb.duration, easing: Easing.inOut(Easing.sin) }),
-        -1,
-        true
-      )
+const Orb = React.memo(
+  ({ globalTime, orb }: { globalTime: SharedValue<number>; orb: OrbDef }) => {
+    const style = useAnimatedStyle(() => {
+      const t = globalTime.value * Math.PI * 4;
+      return {
+        transform: [
+          { translateY: Math.sin(t + orb.phase) * 12 },
+          {
+            translateX:
+              Math.cos(t * 0.7 + orb.phase) * 6 * (orb.index % 2 === 0 ? 1 : -1),
+          },
+        ],
+        opacity: 0.4 + 0.4 * Math.sin(t + orb.phase),
+      };
+    });
+
+    return (
+      <Animated.View
+        style={[
+          styles.floatingOrb,
+          {
+            width: orb.size,
+            height: orb.size,
+            backgroundColor: orb.color,
+            left: orb.x,
+            top: orb.y,
+          },
+          style,
+        ]}
+      />
     );
-  }, [orbAnim, orb.delay, orb.duration]);
+  }
+);
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [
-      {
-        translateY: interpolate(orbAnim.value, [0, 1], [0, -15], Extrapolation.CLAMP),
-      },
-      {
-        translateX: interpolate(
-          orbAnim.value,
-          [0, 1],
-          [0, 8 * (orb.index % 2 === 0 ? 1 : -1)],
-          Extrapolation.CLAMP
-        ),
-      },
-    ],
-    opacity: interpolate(orbAnim.value, [0, 0.5, 1], [0.4, 0.9, 0.4], Extrapolation.CLAMP),
-  }));
+const FloatingOrbs = React.memo(
+  ({ colors, globalTime }: { colors: [string, string]; globalTime: SharedValue<number> }) => {
+    const orbs = useMemo<OrbDef[]>(
+      () => [
+        { phase: 0, x: wp(60), y: hp(18), size: 6, color: colors[0], index: 0 },
+        { phase: 2.5, x: wp(18), y: hp(28), size: 4, color: colors[1], index: 1 },
+        { phase: 5, x: wp(66), y: hp(38), size: 5, color: colors[0], index: 2 },
+      ],
+      [colors]
+    );
 
-  return (
-    <Animated.View
-      style={[
-        styles.floatingOrb,
-        {
-          width: orb.size,
-          height: orb.size,
-          backgroundColor: orb.color,
-          left: orb.x,
-          top: orb.y,
-        },
-        animatedStyle,
-      ]}
-    />
-  );
-});
-
-const FloatingOrbs = React.memo(({ colors }: { colors: [string, string] }) => {
-  const orbs = useMemo<OrbDef[]>(
-    () => [
-      { delay: 0, x: wp(60), y: hp(15), size: 6, duration: 4000, color: colors[0], index: 0 },
-      { delay: 800, x: wp(15), y: hp(25), size: 4, duration: 3500, color: colors[1], index: 1 },
-      { delay: 1600, x: wp(70), y: hp(35), size: 5, duration: 4500, color: colors[0], index: 2 },
-      { delay: 2400, x: wp(25), y: hp(10), size: 3, duration: 3800, color: colors[1], index: 3 },
-      { delay: 1200, x: wp(50), y: hp(40), size: 4, duration: 4200, color: colors[0], index: 4 },
-    ],
-    [colors]
-  );
-
-  return (
-    <>
-      {orbs.map((orb) => (
-        <Orb key={orb.index} orb={orb} />
-      ))}
-    </>
-  );
-});
+    return (
+      <>
+        {orbs.map((orb) => (
+          <Orb key={orb.index} orb={orb} globalTime={globalTime} />
+        ))}
+      </>
+    );
+  }
+);
 
 const FeatureChips = React.memo(
   ({ features, color }: { features: string[]; color: string }) => {
@@ -366,137 +319,232 @@ const FeatureChips = React.memo(
 );
 
 /* ------------------------------------------------------------------ */
-/*  Slide Item — memoized, only re-renders when isDark actually flips  */
+/*  UI-Thread Pagination Dot                                           */
+/* ------------------------------------------------------------------ */
+
+const PaginationDot = React.memo(
+  ({ index, scrollX }: { index: number; scrollX: SharedValue<number> }) => {
+    const style = useAnimatedStyle(() => {
+      const input = [
+        (index - 1) * SCREEN_WIDTH,
+        index * SCREEN_WIDTH,
+        (index + 1) * SCREEN_WIDTH,
+      ];
+      const width = interpolate(scrollX.value, input, [8, 28, 8], Extrapolation.CLAMP);
+      const opacity = interpolate(scrollX.value, input, [0.4, 1, 0.4], Extrapolation.CLAMP);
+      return { width, opacity };
+    });
+
+    return <Animated.View style={[styles.dot, style]} />;
+  }
+);
+
+/* ------------------------------------------------------------------ */
+/*  Slide Item — memoized, hooks are stable                            */
 /* ------------------------------------------------------------------ */
 
 interface SlideItemProps {
   item: OnboardingSlide;
   index: number;
-  scrollX: Animated.SharedValue<number>;
+  scrollX: SharedValue<number>;
   isDark: boolean;
+  globalTime: SharedValue<number>;
 }
 
-const SlideItem = React.memo(({ item, index, scrollX, isDark }: SlideItemProps) => {
-  const inputRange = useMemo(
-    () => [(index - 1) * SCREEN_WIDTH, index * SCREEN_WIDTH, (index + 1) * SCREEN_WIDTH],
-    [index]
-  );
-
-  const animatedStyle = useAnimatedStyle(() => {
-    'worklet';
-    const scale = interpolate(scrollX.value, inputRange, [0.82, 1, 0.82], Extrapolation.CLAMP);
-    const opacity = interpolate(scrollX.value, inputRange, [0.35, 1, 0.35], Extrapolation.CLAMP);
-    const translateX = interpolate(
-      scrollX.value,
-      inputRange,
-      [SCREEN_WIDTH * 0.18, 0, -SCREEN_WIDTH * 0.18],
-      Extrapolation.CLAMP
+const SlideItem = React.memo(
+  ({ item, index, scrollX, isDark, globalTime }: SlideItemProps) => {
+    const inputRange = useMemo(
+      () => [
+        (index - 1) * SCREEN_WIDTH,
+        index * SCREEN_WIDTH,
+        (index + 1) * SCREEN_WIDTH,
+      ],
+      [index]
     );
-    const rotateY = interpolate(scrollX.value, inputRange, [15, 0, -15], Extrapolation.CLAMP);
 
-    return {
-      opacity,
-      transform: [{ perspective: 1000 }, { scale }, { translateX }, { rotateY: `${rotateY}deg` }],
-    };
-  });
+    const animatedStyle = useAnimatedStyle(() => {
+      const scale = interpolate(
+        scrollX.value,
+        inputRange,
+        [0.82, 1, 0.82],
+        Extrapolation.CLAMP
+      );
+      const opacity = interpolate(
+        scrollX.value,
+        inputRange,
+        [0.35, 1, 0.35],
+        Extrapolation.CLAMP
+      );
+      const translateX = interpolate(
+        scrollX.value,
+        inputRange,
+        [SCREEN_WIDTH * 0.18, 0, -SCREEN_WIDTH * 0.18],
+        Extrapolation.CLAMP
+      );
+      const rotateY = interpolate(
+        scrollX.value,
+        inputRange,
+        [15, 0, -15],
+        Extrapolation.CLAMP
+      );
 
-  const currentColors = isDark && item.darkColors ? item.darkColors : item.colors;
-  const isLogoSlide = index === 0;
+      return {
+        opacity,
+        transform: [
+          { perspective: 1000 },
+          { scale },
+          { translateX },
+          { rotateY: `${rotateY}deg` },
+        ],
+      };
+    });
 
-  if (isLogoSlide) {
+    const currentColors = isDark && item.darkColors ? item.darkColors : item.colors;
+    const isLogoSlide = index === 0;
+
+    if (isLogoSlide) {
+      return (
+        <View style={styles.slide}>
+          <Animated.View style={[styles.slideContent, animatedStyle]}>
+            <View style={styles.logoOnlyContainer}>
+              <Image
+                source={require('../../../assets/logo.png')}
+                style={styles.logoOnlyImage}
+                resizeMode="contain"
+              />
+              <View style={styles.logoGlow} />
+            </View>
+            <View style={styles.textContainer}>
+              <Text
+                style={[
+                  styles.title,
+                  isDark && styles.titleDark,
+                  { fontSize: wp(8) },
+                ]}
+              >
+                {item.title}
+              </Text>
+              <Text
+                style={[
+                  styles.subtitle,
+                  isDark && styles.subtitleDark,
+                  { fontSize: wp(4.5) },
+                ]}
+              >
+                {item.subtitle}
+              </Text>
+              <Text
+                style={[styles.description, isDark && styles.descriptionDark]}
+              >
+                {item.description}
+              </Text>
+            </View>
+          </Animated.View>
+        </View>
+      );
+    }
+
     return (
       <View style={styles.slide}>
         <Animated.View style={[styles.slideContent, animatedStyle]}>
-          <View style={styles.logoOnlyContainer}>
-            <Image
-              source={require('../../../assets/logo.png')}
-              style={styles.logoOnlyImage}
-              resizeMode="contain"
-            />
-            <View style={styles.logoGlow} />
+          <View style={[styles.card, isDark && styles.cardDark]}>
+            <RotatingGradientBorder colors={currentColors} globalTime={globalTime} />
+            <PulsingCorners color={currentColors[0]} globalTime={globalTime} />
+            <DashedBorder color={currentColors[1]} globalTime={globalTime} />
+            <FloatingOrbs colors={currentColors} globalTime={globalTime} />
+
+            <LinearGradient
+              colors={
+                isDark
+                  ? ['rgba(255,255,255,0.06)', 'rgba(255,255,255,0.02)']
+                  : [`${currentColors[0]}12`, `${currentColors[1]}12`]
+              }
+              style={styles.cardGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <View
+                style={[
+                  styles.accentIconContainer,
+                  { backgroundColor: currentColors[0] },
+                ]}
+              >
+                <Ionicons name={item.icon} size={20} color="white" />
+              </View>
+
+              <View
+                style={[
+                  styles.heroIconContainer,
+                  { borderColor: `${currentColors[0]}45` },
+                ]}
+              >
+                <Ionicons
+                  name={item.icon}
+                  size={wp(14)}
+                  color={currentColors[0]}
+                />
+              </View>
+
+              <View
+                style={[
+                  styles.decorCircle,
+                  {
+                    backgroundColor: `${currentColors[0]}18`,
+                    top: 25,
+                    left: 25,
+                    width: 45,
+                    height: 45,
+                  },
+                ]}
+              />
+              <View
+                style={[
+                  styles.decorCircle,
+                  {
+                    backgroundColor: `${currentColors[1]}12`,
+                    bottom: 35,
+                    right: 35,
+                    width: 65,
+                    height: 65,
+                  },
+                ]}
+              />
+              <View
+                style={[
+                  styles.decorCircle,
+                  {
+                    backgroundColor: `${currentColors[0]}08`,
+                    top: '55%',
+                    left: '12%',
+                    width: 25,
+                    height: 25,
+                  },
+                ]}
+              />
+            </LinearGradient>
           </View>
+
           <View style={styles.textContainer}>
-            <Text style={[styles.title, isDark && styles.titleDark, { fontSize: wp(8) }]}>
+            <Text style={[styles.title, isDark && styles.titleDark]}>
               {item.title}
             </Text>
-            <Text
-              style={[styles.subtitle, isDark && styles.subtitleDark, { fontSize: wp(4.5) }]}
-            >
+            <Text style={[styles.subtitle, isDark && styles.subtitleDark]}>
               {item.subtitle}
             </Text>
-            <Text style={[styles.description, isDark && styles.descriptionDark]}>
+            <Text
+              style={[styles.description, isDark && styles.descriptionDark]}
+            >
               {item.description}
             </Text>
+            {item.featureList && (
+              <FeatureChips features={item.featureList} color={currentColors[0]} />
+            )}
           </View>
         </Animated.View>
       </View>
     );
   }
-
-  return (
-    <View style={styles.slide}>
-      <Animated.View style={[styles.slideContent, animatedStyle]}>
-        <View style={[styles.card, isDark && styles.cardDark]}>
-          <RotatingGradientBorder colors={currentColors} />
-          <PulsingCorners color={currentColors[0]} />
-          <DashedBorder color={currentColors[1]} />
-          <FloatingOrbs colors={currentColors} />
-
-          <LinearGradient
-            colors={
-              isDark
-                ? ['rgba(255,255,255,0.06)', 'rgba(255,255,255,0.02)']
-                : [`${currentColors[0]}12`, `${currentColors[1]}12`]
-            }
-            style={styles.cardGradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          >
-            <View
-              style={[styles.accentIconContainer, { backgroundColor: currentColors[0] }]}
-            >
-              <Ionicons name={item.icon} size={20} color="white" />
-            </View>
-
-            <View style={[styles.heroIconContainer, { borderColor: `${currentColors[0]}45` }]}>
-              <Ionicons name={item.icon} size={wp(14)} color={currentColors[0]} />
-            </View>
-
-            <View
-              style={[
-                styles.decorCircle,
-                { backgroundColor: `${currentColors[0]}18`, top: 25, left: 25, width: 45, height: 45 },
-              ]}
-            />
-            <View
-              style={[
-                styles.decorCircle,
-                { backgroundColor: `${currentColors[1]}12`, bottom: 35, right: 35, width: 65, height: 65 },
-              ]}
-            />
-            <View
-              style={[
-                styles.decorCircle,
-                { backgroundColor: `${currentColors[0]}08`, top: '55%', left: '12%', width: 25, height: 25 },
-              ]}
-            />
-          </LinearGradient>
-        </View>
-
-        <View style={styles.textContainer}>
-          <Text style={[styles.title, isDark && styles.titleDark]}>{item.title}</Text>
-          <Text style={[styles.subtitle, isDark && styles.subtitleDark]}>{item.subtitle}</Text>
-          <Text style={[styles.description, isDark && styles.descriptionDark]}>
-            {item.description}
-          </Text>
-          {item.featureList && (
-            <FeatureChips features={item.featureList} color={currentColors[0]} />
-          )}
-        </View>
-      </Animated.View>
-    </View>
-  );
-});
+);
 
 /* ------------------------------------------------------------------ */
 /*  Main Screen                                                        */
@@ -509,14 +557,26 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
   const [isCheckingSeen, setIsCheckingSeen] = useState(true);
 
   const scrollX = useSharedValue(0);
-  const logoFloat = useSharedValue(0);
+  const currentIndexSV = useSharedValue(0);
+  const globalTime = useSharedValue(0);
+  const isAutoPlayingSV = useSharedValue(true);
+  const isNavigatingSV = useSharedValue(false);
+
   const slidesRef = useRef<FlatList<OnboardingSlide>>(null);
-  const insets = useSafeAreaInsets();
-  const isMounted = useRef(true);
   const autoPlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const resumeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const insets = useSafeAreaInsets();
   const customization = useCustomization();
   const isDark = customization?.darkMode ?? false;
+
+  /* -- Global ambient time driver (one animation to rule them all) -- */
+  useEffect(() => {
+    globalTime.value = withRepeat(
+      withTiming(1, { duration: 10000, easing: Easing.linear }),
+      -1,
+      false
+    );
+  }, [globalTime]);
 
   /* -- Check AsyncStorage -- */
   useEffect(() => {
@@ -545,16 +605,6 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
     };
   }, [navigation]);
 
-  /* -- Logo float + cleanup -- */
-  useEffect(() => {
-    logoFloat.value = withRepeat(withTiming(-10, { duration: 2200 }), -1, true);
-    return () => {
-      isMounted.current = false;
-      if (autoPlayTimerRef.current) clearTimeout(autoPlayTimerRef.current);
-      if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
-    };
-  }, [logoFloat]);
-
   /* -- Back handler -- */
   useEffect(() => {
     const onBackPress = () => true;
@@ -562,19 +612,28 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
     return () => BackHandler.removeEventListener('hardwareBackPress', onBackPress);
   }, []);
 
-  /* -- Auto-play -- */
+  /* -- Sync shared values with React state -- */
   useEffect(() => {
-    if (!isAutoPlaying || isNavigating || !isMounted.current || isCheckingSeen) {
+    isAutoPlayingSV.value = isAutoPlaying;
+  }, [isAutoPlaying, isAutoPlayingSV]);
+
+  useEffect(() => {
+    isNavigatingSV.value = isNavigating;
+  }, [isNavigating, isNavigatingSV]);
+
+  /* -- Auto-play (React side) -- */
+  useEffect(() => {
+    if (!isAutoPlaying || isNavigating || isCheckingSeen) {
       if (autoPlayTimerRef.current) clearTimeout(autoPlayTimerRef.current);
       return;
     }
 
     autoPlayTimerRef.current = setTimeout(() => {
-      if (!isMounted.current || isNavigating) return;
+      if (isNavigatingSV.value) return;
       const nextIndex = currentIndex + 1;
       if (nextIndex < ONBOARDING_DATA.length) {
         slidesRef.current?.scrollToIndex({ index: nextIndex, animated: true });
-        setCurrentIndex(nextIndex);
+        // Index update comes from scroll reaction, not here
         if (Platform.OS !== 'web') {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
         }
@@ -586,7 +645,7 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
     return () => {
       if (autoPlayTimerRef.current) clearTimeout(autoPlayTimerRef.current);
     };
-  }, [currentIndex, isAutoPlaying, isNavigating, isCheckingSeen]);
+  }, [currentIndex, isAutoPlaying, isNavigating, isCheckingSeen, isNavigatingSV]);
 
   /* -- Scroll handler (worklet) -- */
   const scrollHandler = useAnimatedScrollHandler({
@@ -596,33 +655,24 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
     },
   });
 
-  /* -- Viewability -- */
-  const onViewableItemsChanged = useCallback(
-    ({ viewableItems }: { viewableItems: Array<{ index: number | undefined }> }) => {
-      if (viewableItems[0]?.index !== undefined) {
-        const newIndex = viewableItems[0].index;
-        setCurrentIndex((prev) => {
-          if (newIndex !== prev) {
-            if (Platform.OS !== 'web') {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-            }
-            return newIndex;
-          }
-          return prev;
-        });
+  /* -- Derive index from scroll position (worklet -> JS) -- */
+  useAnimatedReaction(
+    () => Math.round(scrollX.value / SCREEN_WIDTH),
+    (nextIndex, prevIndex) => {
+      if (nextIndex !== prevIndex && nextIndex >= 0 && nextIndex < ONBOARDING_DATA.length) {
+        runOnJS(setCurrentIndex)(nextIndex);
+        currentIndexSV.value = nextIndex;
+        if (Platform.OS !== 'web') {
+          runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Light);
+        }
       }
     },
     []
   );
 
-  const viewConfig = useRef({
-    viewAreaCoveragePercentThreshold: 50,
-    minimumViewTime: 200,
-  }).current;
-
   /* -- Actions -- */
   const handleComplete = useCallback(async () => {
-    if (isNavigating || !isMounted.current) return;
+    if (isNavigating) return;
     setIsNavigating(true);
     setIsAutoPlaying(false);
     if (autoPlayTimerRef.current) clearTimeout(autoPlayTimerRef.current);
@@ -647,17 +697,18 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
     }
     setIsAutoPlaying(false);
     if (autoPlayTimerRef.current) clearTimeout(autoPlayTimerRef.current);
-    slidesRef.current?.scrollToIndex({ index: ONBOARDING_DATA.length - 1, animated: true });
-    setCurrentIndex(ONBOARDING_DATA.length - 1);
+    const lastIndex = ONBOARDING_DATA.length - 1;
+    slidesRef.current?.scrollToIndex({ index: lastIndex, animated: true });
+    // Index will update via useAnimatedReaction
   }, [isNavigating]);
 
   const handleManualScroll = useCallback(() => {
     setIsAutoPlaying(false);
     if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
     resumeTimerRef.current = setTimeout(() => {
-      if (!isNavigating && isMounted.current) setIsAutoPlaying(true);
+      if (!isNavigatingSV.value) setIsAutoPlaying(true);
     }, USER_INACTIVITY_RESUME);
-  }, [isNavigating]);
+  }, [isNavigatingSV]);
 
   const handleNext = useCallback(() => {
     if (isNavigating) return;
@@ -668,29 +719,50 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
     const nextIndex = currentIndex + 1;
     if (nextIndex < ONBOARDING_DATA.length) {
       slidesRef.current?.scrollToIndex({ index: nextIndex, animated: true });
-      setCurrentIndex(nextIndex);
       if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
       resumeTimerRef.current = setTimeout(() => {
-        if (!isNavigating && isMounted.current) setIsAutoPlaying(true);
+        if (!isNavigatingSV.value) setIsAutoPlaying(true);
       }, USER_INACTIVITY_RESUME);
     } else {
       handleComplete();
     }
-  }, [currentIndex, isNavigating, handleComplete]);
+  }, [currentIndex, isNavigating, handleComplete, isNavigatingSV]);
 
-  /* -- FIXED: Stable renderItem via useCallback -- */
+  /* -- Stable renderItem -- */
   const renderItem = useCallback(
     ({ item, index }: { item: OnboardingSlide; index: number }) => (
-      <SlideItem item={item} index={index} scrollX={scrollX} isDark={isDark} />
+      <SlideItem
+        item={item}
+        index={index}
+        scrollX={scrollX}
+        isDark={isDark}
+        globalTime={globalTime}
+      />
     ),
-    [scrollX, isDark]
+    [scrollX, isDark, globalTime]
   );
 
-  /* -- Derived state -- */
+  /* -- Logo float (single animation) -- */
+  const logoFloat = useSharedValue(0);
+  useEffect(() => {
+    logoFloat.value = withRepeat(
+      withTiming(-10, { duration: 2200, easing: Easing.inOut(Easing.sin) }),
+      -1,
+      true
+    );
+  }, [logoFloat]);
+
   const logoFloatStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: logoFloat.value }],
   }));
 
+  /* -- Progress bar (UI thread) -- */
+  const progressStyle = useAnimatedStyle(() => {
+    const progress = (currentIndexSV.value + 1) / ONBOARDING_DATA.length;
+    return { width: `${progress * 100}%` };
+  });
+
+  /* -- Derived state -- */
   const isLastSlide = currentIndex === ONBOARDING_DATA.length - 1;
   const currentSlide = ONBOARDING_DATA[currentIndex];
   const currentColors = currentSlide.colors;
@@ -712,7 +784,11 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
+      <StatusBar
+        barStyle={isDark ? 'light-content' : 'dark-content'}
+        backgroundColor="transparent"
+        translucent
+      />
 
       <LinearGradient
         colors={isDark ? ['#0f172a', '#1e293b', '#334155'] : ['#667eea', '#764ba2', '#f093fb']}
@@ -725,7 +801,11 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
         <View style={[styles.brandHeader, { top: insets.top + hp(1.5) }]}>
           <Animated.View style={logoFloatStyle}>
             <View style={styles.logoFloatWrap}>
-              <Image source={require('../../../assets/logo.png')} style={styles.logoImage} resizeMode="contain" />
+              <Image
+                source={require('../../../assets/logo.png')}
+                style={styles.logoImage}
+                resizeMode="contain"
+              />
             </View>
           </Animated.View>
           <Text style={styles.brandTitle}>LittleLoom</Text>
@@ -748,19 +828,22 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
 
       <View style={[styles.progressContainer, { top: insets.top + hp(2) + (isFirstSlide ? 0 : 100) }]}>
         <View style={styles.progressBar}>
-          <View
+          <Animated.View
             style={[
               styles.progressFill,
-              {
-                width: `${((currentIndex + 1) / ONBOARDING_DATA.length) * 100}%`,
-                backgroundColor: currentColors[0],
-              },
+              { backgroundColor: currentColors[0] },
+              progressStyle,
             ]}
           />
         </View>
       </View>
 
-      <View style={[styles.carouselContainer, { marginTop: insets.top + (isFirstSlide ? hp(8) : hp(14)) }]}>
+      <View
+        style={[
+          styles.carouselContainer,
+          { marginTop: insets.top + (isFirstSlide ? hp(8) : hp(14)) },
+        ]}
+      >
         <Animated.FlatList
           data={ONBOARDING_DATA}
           keyExtractor={(item: OnboardingSlide) => item.id}
@@ -770,8 +853,6 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
           bounces={false}
           scrollEnabled={!isNavigating}
           onScroll={scrollHandler}
-          onViewableItemsChanged={onViewableItemsChanged}
-          viewabilityConfig={viewConfig}
           scrollEventThrottle={16}
           onTouchStart={handleManualScroll}
           getItemLayout={(_: any, index: number) => ({
@@ -782,34 +863,25 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
           decelerationRate="fast"
           snapToInterval={SCREEN_WIDTH}
           snapToAlignment="center"
-          maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
-          maxToRenderPerBatch={2}
-          windowSize={2}
           initialNumToRender={2}
-          removeClippedSubviews={true}
+          maxToRenderPerBatch={3}
+          windowSize={3}
           renderItem={renderItem}
           ref={slidesRef as any}
+          onScrollToIndexFailed={(info) => {
+            // Safety fallback if layout isn't ready
+            setTimeout(() => {
+              slidesRef.current?.scrollToIndex({ index: info.index, animated: true });
+            }, 100);
+          }}
         />
       </View>
 
       <View style={styles.paginationContainer}>
         <View style={styles.pagination}>
-          {ONBOARDING_DATA.map((_, index) => {
-            const isActive = index === currentIndex;
-            return (
-              <View
-                key={index}
-                style={[
-                  styles.dot,
-                  {
-                    width: isActive ? 28 : 8,
-                    backgroundColor: isActive ? currentColors[0] : '#d1d5db',
-                    opacity: isActive ? 1 : 0.5,
-                  },
-                ]}
-              />
-            );
-          })}
+          {ONBOARDING_DATA.map((_, index) => (
+            <PaginationDot key={index} index={index} scrollX={scrollX} />
+          ))}
         </View>
 
         <Text style={styles.pageIndicator}>
@@ -819,7 +891,10 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
       </View>
 
       <TouchableOpacity
-        style={[styles.floatingNextButton, { bottom: insets.bottom + hp(3) + 72 }]}
+        style={[
+          styles.floatingNextButton,
+          { bottom: insets.bottom + hp(3) + 72 },
+        ]}
         onPress={isLastSlide ? handleComplete : handleNext}
         activeOpacity={0.8}
         disabled={isNavigating}
@@ -831,11 +906,20 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
         >
-          <Ionicons name={isLastSlide ? 'checkmark' : 'arrow-forward'} size={28} color="white" />
+          <Ionicons
+            name={isLastSlide ? 'checkmark' : 'arrow-forward'}
+            size={28}
+            color="white"
+          />
         </LinearGradient>
       </TouchableOpacity>
 
-      <View style={[styles.autoPlayIndicator, { bottom: insets.bottom + hp(3) + 142 }]}>
+      <View
+        style={[
+          styles.autoPlayIndicator,
+          { bottom: insets.bottom + hp(3) + 142 },
+        ]}
+      >
         <View
           style={[
             styles.pulseDot,
@@ -845,7 +929,9 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
             },
           ]}
         />
-        <Text style={styles.autoPlayText}>{isAutoPlaying ? 'Auto-playing' : 'Paused'}</Text>
+        <Text style={styles.autoPlayText}>
+          {isAutoPlaying ? 'Auto-playing' : 'Paused'}
+        </Text>
       </View>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + hp(3) }]} />
@@ -859,8 +945,19 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0a0a0a' },
-  brandHeader: { position: 'absolute', left: 0, right: 0, alignItems: 'center', zIndex: 20 },
-  logoFloatWrap: { width: wp(22), height: wp(22), alignItems: 'center', justifyContent: 'center' },
+  brandHeader: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 20,
+  },
+  logoFloatWrap: {
+    width: wp(22),
+    height: wp(22),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   logoImage: { width: wp(20), height: wp(20) },
   brandTitle: {
     fontSize: wp(4.5),
@@ -881,7 +978,13 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   background: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 },
-  skipButton: { position: 'absolute', right: wp(5), zIndex: 10, borderRadius: 24, overflow: 'hidden' },
+  skipButton: {
+    position: 'absolute',
+    right: wp(5),
+    zIndex: 10,
+    borderRadius: 24,
+    overflow: 'hidden',
+  },
   skipBlur: {
     paddingHorizontal: 20,
     paddingVertical: 12,
@@ -899,11 +1002,31 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
   },
-  progressContainer: { position: 'absolute', left: wp(5), right: wp(5), zIndex: 5 },
-  progressBar: { height: 4, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 2, overflow: 'hidden' },
+  progressContainer: {
+    position: 'absolute',
+    left: wp(5),
+    right: wp(5),
+    zIndex: 5,
+  },
+  progressBar: {
+    height: 4,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
   progressFill: { height: '100%', borderRadius: 2 },
-  carouselContainer: { flex: 1, marginTop: hp(12), marginBottom: hp(2) },
-  slide: { width: SCREEN_WIDTH, flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: wp(6) },
+  carouselContainer: {
+    flex: 1,
+    marginTop: hp(12),
+    marginBottom: hp(2),
+  },
+  slide: {
+    width: SCREEN_WIDTH,
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: wp(6),
+  },
   slideContent: { alignItems: 'center', width: '100%' },
 
   logoOnlyContainer: {
@@ -947,7 +1070,14 @@ const styles = StyleSheet.create({
     shadowColor: '#000',
     shadowOpacity: 0.35,
   },
-  cardGradient: { width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center', position: 'relative', borderRadius: wp(20) },
+  cardGradient: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+    borderRadius: wp(20),
+  },
 
   rotatingBorderContainer: {
     position: 'absolute',
@@ -958,7 +1088,13 @@ const styles = StyleSheet.create({
     opacity: 0.6,
     zIndex: 0,
   },
-  cornerDot: { position: 'absolute', width: 10, height: 10, borderRadius: 5, zIndex: 2 },
+  cornerDot: {
+    position: 'absolute',
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    zIndex: 2,
+  },
   dashedBorder: {
     position: 'absolute',
     width: wp(74),
@@ -1039,13 +1175,45 @@ const styles = StyleSheet.create({
   },
   descriptionDark: { color: 'rgba(255,255,255,0.95)' },
 
-  featureChipsContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', marginTop: hp(1.8), gap: 8 },
-  featureChip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, gap: 4 },
-  featureChipText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.3 },
+  featureChipsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    marginTop: hp(1.8),
+    gap: 8,
+  },
+  featureChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: 4,
+  },
+  featureChipText: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
 
-  paginationContainer: { alignItems: 'center', marginBottom: hp(1.5), paddingVertical: 4 },
-  pagination: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
-  dot: { height: 8, borderRadius: 4, marginHorizontal: 4 },
+  paginationContainer: {
+    alignItems: 'center',
+    marginBottom: hp(1.5),
+    paddingVertical: 4,
+  },
+  pagination: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  dot: {
+    height: 8,
+    borderRadius: 4,
+    marginHorizontal: 4,
+    backgroundColor: '#fff',
+  },
   pageIndicator: {
     fontSize: 14,
     fontWeight: '700',
@@ -1054,7 +1222,10 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
   },
-  pageIndicatorTotal: { fontWeight: '400', color: 'rgba(255,255,255,0.7)' },
+  pageIndicatorTotal: {
+    fontWeight: '400',
+    color: 'rgba(255,255,255,0.7)',
+  },
 
   floatingNextButton: {
     position: 'absolute',
@@ -1071,7 +1242,12 @@ const styles = StyleSheet.create({
     elevation: 12,
     zIndex: 100,
   },
-  floatingNextGradient: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' },
+  floatingNextGradient: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
   autoPlayIndicator: {
     position: 'absolute',
@@ -1086,6 +1262,19 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
   pulseDot: { width: 8, height: 8, borderRadius: 4, marginRight: 8 },
-  autoPlayText: { fontSize: 12, color: 'rgba(255,255,255,0.8)', fontWeight: '600' },
-  footer: { position: 'absolute', bottom: hp(1), left: 0, right: 0, alignItems: 'center', paddingTop: hp(1), paddingBottom: hp(1), zIndex: 50 },
+  autoPlayText: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.8)',
+    fontWeight: '600',
+  },
+  footer: {
+    position: 'absolute',
+    bottom: hp(1),
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    paddingTop: hp(1),
+    paddingBottom: hp(1),
+    zIndex: 50,
+  },
 });
