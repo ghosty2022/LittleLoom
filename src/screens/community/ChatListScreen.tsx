@@ -127,7 +127,7 @@ export default function ChatListScreen({ navigation }: ChatListScreenProps) {
           ]}
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            if (otherId) navigation.navigate('Chat', { userId: otherId });
+            if (otherId) navigation.navigate('Chat', { chatId: otherId });
           }}
           activeOpacity={0.8}
         >

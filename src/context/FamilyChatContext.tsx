@@ -6,6 +6,7 @@ import * as FileSystem from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Share } from 'react-native';
 
 import { useAuth } from './AuthContext';
 import { useBaby } from './BabyContext';
@@ -38,6 +39,7 @@ export interface FamilyMessage {
   type: MessageType;
   imageUrl?: string;
   fileUrl?: string;
+  voiceUrl?: string;
   fileMetadata?: FileMetadata;
   timestamp: string;
   read: boolean;
@@ -565,6 +567,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       type,
       imageUrl: type === 'image' ? mediaData : undefined,
       fileUrl: type === 'file' ? mediaData : undefined,
+      voiceUrl: type === 'voice' ? mediaData : undefined,
       fileMetadata: type === 'file' ? fileMeta : undefined,
       timestamp: now,
       read: false,
@@ -1117,19 +1120,21 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const blockUser = async (userId: string): Promise<void> => {
+    let wasBlocked = false;
     setState(prev => {
       const isBlocked = prev.blockedUsers.includes(userId);
+      wasBlocked = isBlocked;
       const updated = isBlocked
         ? prev.blockedUsers.filter(id => id !== userId)
         : [...prev.blockedUsers, userId];
-      if (state.familyCode) {
-        const blockedKey = `@littleloom_blocked_${state.familyCode}`;
+      if (prev.familyCode) {
+        const blockedKey = `@littleloom_blocked_${prev.familyCode}`;
         AsyncStorage.setItem(blockedKey, JSON.stringify(updated)).catch(console.error);
       }
       return { ...prev, blockedUsers: updated };
     });
     Haptics.notificationAsync(
-      state.blockedUsers.includes(userId)
+      wasBlocked
         ? Haptics.NotificationFeedbackType.Success
         : Haptics.NotificationFeedbackType.Warning
     );

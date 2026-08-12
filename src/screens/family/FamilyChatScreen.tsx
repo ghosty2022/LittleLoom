@@ -31,11 +31,10 @@ import Animated, {
   withSpring, 
   useSharedValue, 
   runOnJS, 
-  FadeInDown, 
-  FadeInRight 
+  FadeInDown
 } from 'react-native-reanimated';  // FIXED: Removed Layout
 
-import { AudioModule } from 'expo-audio';
+import { AudioModule, useAudioRecorder, RecordingOptions } from 'expo-audio';
 type FamilyChatScreenProps = NativeStackScreenProps<RootStackParamList, 'FamilyChat'>;
 
 const { width, height } = Dimensions.get('window');
@@ -1594,8 +1593,8 @@ export default function FamilyChatScreen({
   const { userProfile } = useAuth();
   const { takePhoto, pickImage } = useMedia();
   const { themeColors, darkMode } = useCustomization();
-  const insets = useSafeAreaInsets();
-
+   const insets = useSafeAreaInsets();
+  const audioRecorder = useAudioRecorder(RecordingOptions.Presets.HIGH_QUALITY);
   const theme: ChatTheme = useMemo(() => {
     const isDark = darkMode;
     return {
@@ -1880,6 +1879,8 @@ export default function FamilyChatScreen({
         return;
       }
 
+      await audioRecorder.prepareToRecordAsync();
+      audioRecorder.record();
       setIsRecording(true);
       setRecordingDuration(0);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -1896,8 +1897,18 @@ export default function FamilyChatScreen({
     if (recordingInterval.current) clearInterval(recordingInterval.current);
     setIsRecording(false);
     setRecordingDuration(0);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    showSweetAlert('success', 'Voice Message', 'Voice message feature coming soon!');
+    try {
+      await audioRecorder.stop();
+      const uri = audioRecorder.uri;
+      if (uri && chatId) {
+        await sendMessage(chatId, '🎤 Voice message', 'voice', uri);
+        refreshMessages();
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    } catch (error) {
+      console.error('Stop recording error:', error);
+      showSweetAlert('error', 'Error', 'Failed to send voice message');
+    }
   };
 
   const getMemberById = (id: string): any | undefined => {

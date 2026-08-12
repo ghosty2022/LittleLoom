@@ -21,6 +21,7 @@ import { showConfirmModal } from '../../utils/modal';
 import { useApp } from '../../context/AppContext';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { useUser } from '../../context/UserContext';
+import { useAuth } from '../../context/AuthContext';
 import { showAlert } from '@/utils/alert';
 import Animated, {
   withSequence,
@@ -252,7 +253,6 @@ const MessageBubble = React.memo(({
   onResend,
 }: {
   message: FamilyMessage;
-  message: FamilyMessage;
   isMe: boolean;
   user: any;
   showAvatar: boolean;
@@ -292,7 +292,7 @@ const MessageBubble = React.memo(({
       style={[styles.messageContainer, isMe ? styles.myMessage : styles.theirMessage]}
     >
       {!isMe && showAvatar && (
-        <TouchableOpacity onPress={() => user && sweetAlert.alert('Alert', '', 'info')} style={styles.avatarSmall}>
+        <TouchableOpacity onPress={() => {}} style={styles.avatarSmall}>
           <SafeAvatar avatar={user?.avatar} size={32} fallbackIcon="person" fallbackColor={LL.primary} fallbackBgColor={`${LL.primary}15`} />
         </TouchableOpacity>
       )}
@@ -566,7 +566,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     refreshMessages();
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }, [inputText, chatId, currentUser, isBlocked, editingMessage, replyingTo, sendMessage, editMessage, setTypingStatus]);
+  }, [inputText, chatId, userProfile, isBlocked, editingMessage, replyingTo, sendMessage, editMessage, setTypingStatus]);
 
   const handleInputChange = (text: string) => {
     setInputText(text);
@@ -667,7 +667,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     showConfirmModal({
       title: 'Delete Message',
       message: 'Are you sure? This cannot be undone.',
-      onConfirm: () => {
+      onConfirm: async () => {
         await deleteMessage(chatId, messageId);
         refreshMessages();
       },
@@ -684,7 +684,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     setReplyingTo({
       id: message.id,
       content: message.content || (message.type === 'image' ? '📷 Photo' : message.type === 'file' ? '📎 File' : '...'),
-      senderName: message.senderId === currentUser?.id ? 'You' : user?.displayName || 'User',
+      senderName: message.senderId === userProfile?.id ? 'You' : user?.displayName || 'User',
     });
   };
 
@@ -938,7 +938,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
             <Text style={[
               styles.userStatus,
               { color: isBlocked ? LL.error : (isDark ? LL.gray500 : LL.gray400) },
-              getTypingStatus(chatId) && { color: LL.primary, fontStyle: 'italic', fontWeight: '700' },
+              getTypingUsers(chatId).length > 0 && { color: LL.primary, fontStyle: 'italic', fontWeight: '700' },
             ]}>
               {getStatusText()}
             </Text>
@@ -984,7 +984,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
       />
 
       {/* ── Typing Indicator ── */}
-      {getTypingStatus(chatId) && !isBlocked && (
+      {getTypingUsers(chatId).length > 0 && !isBlocked && (
         <Animated.View entering={FadeIn.duration(300)} style={styles.typingContainer}>
           <View style={[styles.typingBubble, { backgroundColor: isDark ? LL.darkCard : LL.white, borderColor: isDark ? LL.darkBorder : LL.gray200, borderWidth: 1 }]}>
             <Text style={[styles.typingLabel, { color: isDark ? LL.gray400 : LL.gray500 }]}>{user.displayName} is typing</Text>
