@@ -117,6 +117,7 @@ export type RootStackParamList = {
   Main: undefined;
 
   UniversalTrackerHub: undefined;
+  AllTrackers: undefined;
 
   PediatricianPDFExport: { babyId?: string } | undefined;
 
