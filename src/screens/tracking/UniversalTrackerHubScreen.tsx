@@ -1716,187 +1716,6 @@ const TodaySummaryBar = React.memo(({ todayCount, entries }: any) => {
 TodaySummaryBar.displayName = 'TodaySummaryBar';
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   TRACKER BROWSER MODAL
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const TrackerBrowserModal = React.memo(({
-  visible,
-  trackerCards,
-  pinnedIds,
-  hiddenIds,
-  onClose,
-  onTrackerPress,
-  onPinToggle,
-  onHideToggle,
-  onCustomPress,
-}: any) => {
-  const theme = useHubTheme();
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-
-  if (!visible) return null;
-
-  const categories = [...new Set(trackerCards.map((t: any) => t.category))];
-  
-  const filtered = trackerCards.filter((t: any) => {
-    const matchesSearch = !searchQuery || t.title.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCat = !selectedCategory || t.category === selectedCategory;
-    return matchesSearch && matchesCat;
-  });
-
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
-      <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.4)' }]}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-        <View style={[
-          styles.browserModalContent,
-          { backgroundColor: theme.isDark ? '#1e1e2e' : '#ffffff' }
-        ]}>
-          {/* Header */}
-          <View style={[
-            styles.browserHeader,
-            { borderBottomColor: theme.surface.border }
-          ]}>
-            <View>
-              <Text style={[styles.browserTitle, { color: theme.text.primary }]}>
-                All Trackers
-              </Text>
-              <Text style={[styles.browserSubtitle, { color: theme.text.muted }]}>
-                {trackerCards.length} trackers · {pinnedIds.length} pinned
-              </Text>
-            </View>
-            <TouchableOpacity onPress={onClose} style={[
-              styles.browserCloseBtn,
-              { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }
-            ]}>
-              <Ionicons name="close" size={20} color={theme.text.secondary} />
-            </TouchableOpacity>
-          </View>
-
-          {/* Search */}
-          <View style={[
-            styles.browserSearchWrap,
-            { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }
-          ]}>
-            <Ionicons name="search" size={16} color={theme.text.muted} />
-            <TextInput
-              style={[styles.browserSearchInput, { color: theme.text.primary }]}
-              placeholder="Search trackers..."
-              placeholderTextColor={theme.text.muted}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-            />
-            {searchQuery.length > 0 && (
-              <TouchableOpacity onPress={() => setSearchQuery('')}>
-                <Ionicons name="close-circle" size={16} color={theme.text.muted} />
-              </TouchableOpacity>
-            )}
-          </View>
-
-          {/* Category filter */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.browserCategoryScroll}>
-            <TouchableOpacity
-              onPress={() => setSelectedCategory(null)}
-              style={[
-                styles.browserCategoryChip,
-                { 
-                  backgroundColor: !selectedCategory ? `${theme.primary}20` : (theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'),
-                }
-              ]}
-            >
-              <Text style={[
-                styles.browserCategoryText,
-                { color: !selectedCategory ? theme.primary : theme.text.muted }
-              ]}>All</Text>
-            </TouchableOpacity>
-            {categories.map((cat: string) => (
-              <TouchableOpacity
-                key={cat}
-                onPress={() => setSelectedCategory(cat === selectedCategory ? null : cat)}
-                style={[
-                  styles.browserCategoryChip,
-                  { 
-                    backgroundColor: selectedCategory === cat ? `${CATEGORY_COLORS[cat] || theme.primary}20` : (theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'),
-                  }
-                ]}
-              >
-                <Text style={[
-                  styles.browserCategoryText,
-                  { color: selectedCategory === cat ? (CATEGORY_COLORS[cat] || theme.primary) : theme.text.muted }
-                ]}>
-                  {cat.charAt(0).toUpperCase() + cat.slice(1).replace('_', ' ')}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-
-          {/* Grid */}
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.browserGrid}>
-            {filtered.map((tracker: any) => {
-              const isPinned = pinnedIds.includes(tracker.id);
-              const isHidden = hiddenIds.includes(tracker.id);
-              return (
-                <TouchableOpacity
-                  key={tracker.id}
-                  onPress={() => onTrackerPress(tracker.id, tracker.hasSubActions)}
-                  style={[
-                    styles.browserCard,
-                    { 
-                      backgroundColor: theme.isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)',
-                      borderColor: isPinned ? `${tracker.color}40` : theme.surface.border,
-                    }
-                  ]}
-                >
-                  <View style={[styles.browserCardIcon, { backgroundColor: `${tracker.color}12` }]}>
-                    <Text style={{ fontSize: 22 }}>{tracker.emoji}</Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.browserCardTitle, { color: theme.text.primary }]}>{tracker.title}</Text>
-                    <Text style={[styles.browserCardDesc, { color: theme.text.muted }]}>
-                      {tracker.count} entries · {tracker.category}
-                    </Text>
-                  </View>
-                  <TouchableOpacity
-                    onPress={() => onPinToggle(tracker.id)}
-                    style={[
-                      styles.browserActionBtn,
-                      { backgroundColor: isPinned ? `${tracker.color}15` : (theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)') }
-                    ]}
-                  >
-                    <Ionicons name={isPinned ? "pin" : "pin-outline"} size={18} color={isPinned ? tracker.color : theme.text.muted} />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => onHideToggle(tracker.id)}
-                    style={[
-                      styles.browserActionBtn,
-                      { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }
-                    ]}
-                  >
-                    <Ionicons name={isHidden ? "eye-off" : "eye-outline"} size={18} color={isHidden ? '#ef4444' : theme.text.muted} />
-                  </TouchableOpacity>
-                </TouchableOpacity>
-              );
-            })}
-
-            <TouchableOpacity
-              onPress={onCustomPress}
-              style={[
-                styles.browserCustomBtn,
-                { borderColor: theme.surface.border }
-              ]}
-            >
-              <Ionicons name="add" size={20} color={theme.primary} />
-              <Text style={{ color: theme.primary, fontWeight: '700', fontSize: 14 }}>Create Custom Tracker</Text>
-            </TouchableOpacity>
-          </ScrollView>
-        </View>
-      </View>
-    </Modal>
-  );
-});
-TrackerBrowserModal.displayName = 'TrackerBrowserModal';
-
-/* ═══════════════════════════════════════════════════════════════════════════
    MAIN SCREEN — PRODUCTION-READY v4.0
    No bottom tabs. Single scroll with sticky header. All navigation safe.
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -1921,7 +1740,6 @@ export default function UniversalTrackerHubScreen() {
   const [showBabyRequiredModal, setShowBabyRequiredModal] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showTimelinePicker, setShowTimelinePicker] = useState(false);
-  const [showTrackerBrowser, setShowTrackerBrowser] = useState(false);
   const [pinnedTrackerIds, setPinnedTrackerIds] = useState<string[]>([]);
   const [hiddenTrackerIds, setHiddenTrackerIds] = useState<string[]>([]);
   const scrollY = useSharedValue(0);
@@ -2174,13 +1992,10 @@ export default function UniversalTrackerHubScreen() {
 
   const handleBrowseAll = useCallback(() => {
     HAPTIC_LIGHT();
-    setShowTrackerBrowser(true);
-  }, []);
+    navigation.navigate('AllTrackers');
+  }, [navigation]);
 
-  const handleHideToggle = useCallback((id: string) => {
-    HAPTIC_LIGHT();
-    setHiddenTrackerIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-  }, []);
+
 
   const onRefresh = useCallback(async () => {
     setIsRefreshing(true);
@@ -2390,21 +2205,7 @@ export default function UniversalTrackerHubScreen() {
         onSelect={handleSubActionSelect}
       />
 
-      {/* Tracker Browser */}
-      <TrackerBrowserModal
-        visible={showTrackerBrowser}
-        trackerCards={trackerCards}
-        pinnedIds={pinnedTrackerIds}
-        hiddenIds={hiddenTrackerIds}
-        onClose={() => setShowTrackerBrowser(false)}
-        onTrackerPress={(id, hasSub) => {
-          setShowTrackerBrowser(false);
-          setTimeout(() => handleTrackerPress(id, hasSub), 100);
-        }}
-        onPinToggle={handlePinToggle}
-        onHideToggle={handleHideToggle}
-        onCustomPress={handleCreateCustom}
-      />
+
 
       {/* Timeline Picker */}
       <TimelinePicker
