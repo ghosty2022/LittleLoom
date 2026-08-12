@@ -108,9 +108,13 @@ export interface Post {
   commentsCount: number;
   reposts: number;
   repostedBy: string[];
+  shares: number;
+  sharedBy: string[];
   isLiked: boolean;
   isReposted: boolean;
   isBookmarked: boolean;
+  bookmarks: number;
+  bookmarkedBy: string[];
   time: string;
   timestamp: string;
   isAnonymous?: boolean;
@@ -223,6 +227,7 @@ interface CommunityContextType extends CommunityState {
   repostPost: (postId: string) => Promise<void>;
   unrepostPost: (postId: string) => Promise<void>;
   bookmarkPost: (postId: string) => Promise<void>;
+  sharePost: (postId: string) => Promise<void>;
   deletePost: (postId: string) => Promise<void>;
   getPostById: (postId: string) => Post | undefined;
   voteHelpful: (postId: string) => Promise<void>;
@@ -391,9 +396,13 @@ We're so glad you're here. 💙`,
     commentsCount: 0,
     reposts: 342,
     repostedBy: [],
+    shares: 0,
+    sharedBy: [],
     isLiked: false,
     isReposted: false,
     isBookmarked: false,
+    bookmarks: 0,
+    bookmarkedBy: [],
     time: formatTimeAgo(timestamp),
     timestamp,
     isAnonymous: false,
@@ -890,9 +899,13 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       commentsCount: 0,
       reposts: 0,
       repostedBy: [],
+      shares: 0,
+      sharedBy: [],
       isLiked: false,
       isReposted: false,
       isBookmarked: false,
+      bookmarks: 0,
+      bookmarkedBy: [],
       time: 'Just now',
       timestamp,
       isAnonymous,
@@ -1195,7 +1208,15 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setState(prev => {
       const updatedPosts = prev.posts.map(post => {
         if (post.id === postId) {
-          return { ...post, isBookmarked: !post.isBookmarked };
+          const wasBookmarked = post.isBookmarked;
+          return {
+            ...post,
+            isBookmarked: !wasBookmarked,
+            bookmarks: wasBookmarked ? Math.max(0, (post.bookmarks || 0) - 1) : (post.bookmarks || 0) + 1,
+            bookmarkedBy: wasBookmarked
+              ? (post.bookmarkedBy || []).filter(id => id !== currentUser.id)
+              : [...(post.bookmarkedBy || []), currentUser.id],
+          };
         }
         return post;
       });
@@ -1207,7 +1228,6 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       return { ...prev, posts: updatedPosts };
     });
   }, []);
-
   const voteHelpful = useCallback(async (postId: string) => {
     const currentUser = stateRef.current.currentUser;
     if (!currentUser) return;
@@ -1236,6 +1256,24 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (totalHelpful >= 50) awardAchievement('helpful_parent');
       if (totalHelpful >= 100) awardAchievement('top_contributor');
 
+      return { ...prev, posts: updatedPosts };
+    });
+  }, []);
+
+   const sharePost = useCallback(async (postId: string) => {
+    const currentUser = stateRef.current.currentUser;
+    setState(prev => {
+      const updatedPosts = prev.posts.map(post => {
+        if (post.id === postId) {
+          return {
+            ...post,
+            shares: (post.shares || 0) + 1,
+            sharedBy: currentUser ? [...(post.sharedBy || []), currentUser.id] : (post.sharedBy || []),
+          };
+        }
+        return post;
+      });
+      AsyncStorage.setItem(STORAGE_KEYS.POSTS, JSON.stringify(updatedPosts)).catch(console.error);
       return { ...prev, posts: updatedPosts };
     });
   }, []);
@@ -2099,6 +2137,25 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     const currentUser = stateRef.current.currentUser;
 
+    // Auto-join any newly selected topics so they appear in the user's feed immediately
+    if (currentUser) {
+      setState(prev => {
+        const updatedTopics = prev.topics.map(topic => {
+          if (validTopics.includes(topic.id) && !topic.joinedBy.includes(currentUser.id)) {
+            return {
+              ...topic,
+              isJoined: true,
+              members: topic.members + 1,
+              joinedBy: [...topic.joinedBy, currentUser.id],
+            };
+          }
+          return topic;
+        });
+        AsyncStorage.setItem(STORAGE_KEYS.TOPICS, JSON.stringify(updatedTopics)).catch(console.error);
+        return { ...prev, topics: updatedTopics };
+      });
+    }
+
     await AsyncStorage.setItem(STORAGE_KEYS.SELECTED_TOPICS, JSON.stringify(validTopics));
 
     if (currentUser?.id) {
@@ -2141,10 +2198,11 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const getFeedPosts = useCallback((): Post[] => {
     const currentUser = stateRef.current.currentUser;
-    const allPosts = stateRef.current.posts;
+    const allPosts = [...stateRef.current.posts].sort(
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
     
     if (!currentUser) return allPosts;
-
     const userTopics = currentUser.selectedTopics || [];
     
     if (userTopics.length === 0) {
@@ -2354,6 +2412,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     repostPost,
     unrepostPost,
     bookmarkPost,
+    sharePost,
     deletePost,
     getPostById,
     voteHelpful,
@@ -2422,6 +2481,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     repostPost,
     unrepostPost,
     bookmarkPost,
+    sharePost,
     deletePost,
     getPostById,
     voteHelpful,
