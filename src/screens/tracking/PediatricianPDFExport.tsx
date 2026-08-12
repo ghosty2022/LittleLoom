@@ -370,7 +370,7 @@ const DevelopmentalRedFlagsCard = ({ entries, baby }: { entries: TrackerEntry[];
 
   return (
     <Animated.View entering={FadeInUp.delay(160).springify()}>
-      <SectionHeader title="Developmental Check" icon="brain-outline" subtitle={`${analysis.met.length}/${analysis.total} milestones on track`} />
+      <SectionHeader title="Developmental Check" icon="school-outline" subtitle={`${analysis.met.length}/${analysis.total} milestones on track`} />
       <GlassCard>
         {analysis.flags.length > 0 && (
           <View style={[styles.redFlagBanner, { backgroundColor: '#fef2f2', borderColor: '#fecaca' }]}>
