@@ -29,6 +29,7 @@ import Animated, {
   withSpring,
   withSequence,
   withTiming,
+  withRepeat,
   interpolate,
 } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -172,6 +173,7 @@ const Toast = ({ message, type, visible, onHide }: {
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none" zIndex={999}>
+      <View style={[StyleSheet.absoluteFill, { zIndex: 999 }]} pointerEvents="none"></View>
       <RNAnimated.View style={[styles.toast, { opacity, backgroundColor: colors.bg }]}>
         <Ionicons name={colors.icon as any} size={18} color="#fff" />
         <Text style={styles.toastText}>{message}</Text>
@@ -281,18 +283,7 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
     setIsGenerating(true);
 
     try {
-      const { createInviteCode } = await import('@/database/dbHelpers');
-      const result = await createInviteCode({
-        familyId: currentBaby.id,
-        role,
-        createdBy: userProfile?.id || '',
-        relationship: relationship.trim(),
-        inviteeName: fullName.trim() || undefined,
-        inviteeEmail: email.trim() || undefined,
-        inviteePhone: phone.trim() || undefined,
-        maxUses: 1,
-        expiresInDays: 7,
-      });
+      const result = await generateInviteCode(role, relationship.trim(), fullName.trim() || undefined, email.trim() || undefined, phone.trim() || undefined);
 
       if (result.success && result.code) {
         setGeneratedCode(result.code);
@@ -309,7 +300,7 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
     } finally {
       setIsGenerating(false);
     }
-  }, [relationship, fullName, email, phone, currentBaby, userProfile, role, triggerHaptic, showToast, triggerSuccessAnim]);
+  }, [relationship, fullName, email, phone, currentBaby, userProfile, role, triggerHaptic, showToast, triggerSuccessAnim, generateInviteCode]);
 
   const handleShare = useCallback(async (method: 'copy' | 'whatsapp' | 'sms' | 'email' | 'native') => {
     if (!generatedCode) return;

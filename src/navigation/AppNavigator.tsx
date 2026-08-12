@@ -18,7 +18,7 @@ import LoginScreen from '../screens/auth/LoginScreen';
 import SignUpScreen from '../screens/auth/SignUpScreen';
 import ForgotPasswordScreen from '../screens/auth/ForgotPasswordScreen';
 import CoParentInviteScreen from '../screens/baby/CoParentInviteScreen';
-import CoParentSetupScreen from '../screens/baby/CoParentSetupScreen';
+
 import BabyOnboardingScreen from '../screens/baby/BabyOnboardingScreen';
 import BabyProfileCreateScreen from '../screens/baby/BabyProfileCreateScreen';
 import HomeScreen from '../screens/main/HomeScreen';
@@ -59,7 +59,7 @@ import UniversalTrackerHubScreen from '../screens/tracking/UniversalTrackerHubSc
 import CreateCustomTrackerScreen from '../screens/tracking/CreateCustomTrackerScreen';
 import VaccinationScheduleScreen from '../screens/tracking/VaccinationScheduleScreen';
 import PediatricianPDFExport from '../screens/tracking/PediatricianPDFExport';
-import InviteCodeScreen from '../screens/family/InviteCodeScreen';
+
 
 import LiquidGlassNavigation from '../components/LiquidGlassNavigation';
 import { InlineSpinner } from '../components/UniversalSpinner';
@@ -101,7 +101,7 @@ const MAIN_FLOW_SCREENS = new Set([
 ]);
 
 const AUTH_FLOW_SCREENS = new Set(['Onboarding', 'Login', 'SignUp', 'ForgotPassword']);
-const SETUP_FLOW_SCREENS = new Set(['CoParentInviteScreen', 'Parent2Setup', 'BabyOptional', 'CreateBabyProfile', 'AddParent']);
+const SETUP_FLOW_SCREENS = new Set(['CoParentInviteScreen', 'BabyOptional', 'CreateBabyProfile']);
 
 /* ═══════════════════════════════════════════════════════════════════════════
    HEADER COMPONENTS
@@ -616,11 +616,10 @@ function NavigationContent({
         {/* SETUP FLOW */}
         <Stack.Group screenOptions={{ animation: 'slide_from_right' }}>
           <Stack.Screen name="CoParentInviteScreen" component={CoParentInviteScreen} options={{ gestureEnabled: false }} />
-          <Stack.Screen name="Parent2Setup" component={CoParentSetupScreen} options={{ gestureEnabled: false }} />
+          
           <Stack.Screen name="BabyOptional" component={BabyOnboardingScreen} options={{ gestureEnabled: false }} />
           <Stack.Screen name="CreateBabyProfile" component={BabyProfileCreateScreen} options={{ gestureEnabled: false }} />
-          <Stack.Screen name="AddParent" component={CoParentSetupScreen} />
-          <Stack.Screen name="InviteCodeScreen" component={InviteCodeScreen} options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
+          
         </Stack.Group>
 
         {/* MAIN TAB */}

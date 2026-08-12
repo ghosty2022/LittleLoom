@@ -109,10 +109,10 @@ export type RootStackParamList = {
   SignUp: undefined;
   ForgotPassword: undefined;
   CoParentInviteScreen: undefined;
-  Parent2Setup: undefined;
+  
   BabyOptional: undefined;
   CreateBabyProfile: { fromSetup?: boolean } | undefined;
-  AddParent: { fromSetup?: boolean } | undefined;
+  
   SwitchBaby: { returnTo?: keyof RootStackParamList; returnLabel?: string } | undefined;
   Main: undefined;
 
@@ -190,7 +190,7 @@ export type RootStackParamList = {
   } | undefined;
   SoundMixer: undefined;
   Customize: undefined;
-  InviteCodeScreen: undefined;
+  
   SecurityLock: undefined;
   BiometricSetup: undefined;
   SecurityCenter: {

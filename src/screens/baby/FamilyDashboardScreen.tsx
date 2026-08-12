@@ -528,12 +528,8 @@ export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreen
     navigation.navigate('CreateBabyProfile');
   }, [navigation]);
 
-  const handleNavigateParent2 = useCallback(() => {
+  const handleNavigateInvite = useCallback(() => {
     navigation.navigate('CoParentInviteScreen');
-  }, [navigation]);
-
-  const handleNavigateAddGuardian = useCallback(() => {
-    navigation.navigate('AddParent');
   }, [navigation]);
 
   const displayMembers = useMemo(() => {
@@ -876,7 +872,7 @@ export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreen
 
       {/* Add Co-Parent Button */}
       {!parent2 && (
-        <TouchableOpacity style={styles.addBtn} onPress={handleNavigateParent2}>
+        <TouchableOpacity style={styles.addBtn} onPress={handleNavigateInvite}>
           <LinearGradient colors={['#fa709a', '#fee140']} style={styles.addBtnGradient}>
             <Ionicons name="person-add" size={20} color="#fff" />
             <Text style={styles.addBtnText}>Add Co-Parent</Text>
@@ -885,7 +881,7 @@ export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreen
       )}
 
       {/* Add Guardian Button */}
-      <TouchableOpacity style={styles.addGuardianBtn} onPress={handleNavigateAddGuardian}>
+      <TouchableOpacity style={styles.addGuardianBtn} onPress={handleNavigateInvite}>
         <View style={[styles.addGuardianInner, isDark && { borderColor: '#475569' }]}>
           <Ionicons name="add-circle" size={22} color={themeColors.primary} />
           <Text style={[styles.addGuardianText, isDark && styles.textDark]}>Add Guardian</Text>

@@ -564,7 +564,7 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = React.memo(({
         fromChat: false,
       });
     } else {
-      navigation.navigate('AddParent');
+      navigation.navigate('CoParentInviteScreen');
     }
   }, [parent2Profile, hapticFeedback, triggerHaptic, navigation]);
 
@@ -1178,7 +1178,7 @@ function SettingsScreen({ navigation, route }: SettingsScreenProps) {
             icon="person-add"
             title="Invite Co-Parent"
             subtitle="Generate an invite code for family members"
-            onPress={() => navigation.navigate('FamilySharing', { openInvite: true })}
+            onPress={() => navigation.navigate('CoParentInviteScreen')}
             color="#11998e"
             isDark={isDark}
             showArrow
