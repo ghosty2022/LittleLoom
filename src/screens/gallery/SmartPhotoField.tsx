@@ -138,12 +138,25 @@ export const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
   onPhotosChange,
   initialPhotoUris,
 }) => {
-  const customization = useCustomization() || {};
-  const theme = customization.theme || { text: { primary: '#1a1a1a', secondary: '#666666', tertiary: '#999999' }, primary: '#007AFF', surface: '#ffffff', background: '#f2f2f2' };
-  const glass = customization.glass || { bg: 'rgba(255,255,255,0.8)', border: 'rgba(0,0,0,0.1)' };
-  const borderRadius = customization.borderRadius || { lg: 16, md: 12, xl: 24 };
-  const spacing = customization.spacing || { md: 16, sm: 12 };
-  const { sweetAlert } = useSweetAlert();
+  // ── Defensive hooks (never crash if provider is missing) ──────────────────
+  const customizationRaw = useCustomization?.();
+  const customization = customizationRaw ?? {};
+  
+  const theme = customization?.theme ?? {
+    text: { primary: '#1a1a1a', secondary: '#666666', tertiary: '#999999' },
+    primary: '#007AFF',
+    surface: '#ffffff',
+    background: '#f2f2f2',
+  };
+  const glass = customization?.glass ?? { bg: 'rgba(255,255,255,0.8)', border: 'rgba(0,0,0,0.1)' };
+  const borderRadius = customization?.borderRadius ?? { lg: 16, md: 12, xl: 24 };
+  const spacing = customization?.spacing ?? { md: 16, sm: 12 };
+
+  const sweetAlertRaw = useSweetAlert?.();
+  const sweetAlert = sweetAlertRaw?.sweetAlert ?? { 
+    alert: (_t?: string, _m?: string) => {}, 
+    confirm: (_t?: string, _m?: string, _onOk?: () => void) => {} 
+  };
 
   const [photos, setPhotos] = useState<PhotoMeta[]>([]);
   const [currentUri, setCurrentUri] = useState<string | null>(value || null);
