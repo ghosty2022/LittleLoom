@@ -1031,6 +1031,7 @@ const PostCard = React.memo(({
   onReply: (pid: string, cid: string) => void;
   onLikeComment: (pid: string, cid: string) => void;
   onVotePoll: (postId: string, optionId: string) => void;
+  getUserById: (userId: string) => import('../../context/CommunityContext').CommunityUser | undefined;
   topics: any[];
   currentUser: any;
   canInteract: boolean;
@@ -1239,12 +1240,47 @@ const PostCard = React.memo(({
 
           <View style={styles.engagementBar}>
             <Text style={styles.engagementText}>
-              {(post.likes || 0) > 0 ? `${post.likes} like${post.likes > 1 ? 's' : ''}` : ''}
+              {(post.likes || 0) > 0 ? `${post.likes} like${post.likes !== 1 ? 's' : ''}` : ''}
               {(post.likes || 0) > 0 && (post.commentsCount || 0) > 0 ? ' · ' : ''}
-              {(post.commentsCount || 0) > 0 ? `${post.commentsCount} comment${post.commentsCount > 1 ? 's' : ''}` : ''}
+              {(post.commentsCount || 0) > 0 ? `${post.commentsCount} comment${post.commentsCount !== 1 ? 's' : ''}` : ''}
               {(((post.likes || 0) > 0 || (post.commentsCount || 0) > 0) && (post.reposts || 0) > 0) ? ' · ' : ''}
-              {(post.reposts || 0) > 0 ? `${post.reposts} repost${post.reposts > 1 ? 's' : ''}` : ''}
+              {(post.reposts || 0) > 0 ? `${post.reposts} repost${post.reposts !== 1 ? 's' : ''}` : ''}
+              {(((post.likes || 0) > 0 || (post.commentsCount || 0) > 0 || (post.reposts || 0) > 0) && (post.helpfulVotes || 0) > 0) ? ' · ' : ''}
+              {(post.helpfulVotes || 0) > 0 ? `${post.helpfulVotes} helpful` : ''}
+              {(((post.likes || 0) > 0 || (post.commentsCount || 0) > 0 || (post.reposts || 0) > 0 || (post.helpfulVotes || 0) > 0) && (post.shares || 0) > 0) ? ' · ' : ''}
+              {(post.shares || 0) > 0 ? `${post.shares} share${post.shares !== 1 ? 's' : ''}` : ''}
+              {(((post.likes || 0) > 0 || (post.commentsCount || 0) > 0 || (post.reposts || 0) > 0 || (post.helpfulVotes || 0) > 0 || (post.shares || 0) > 0) && (post.bookmarks || 0) > 0) ? ' · ' : ''}
+              {(post.bookmarks || 0) > 0 ? `${post.bookmarks} bookmark${post.bookmarks !== 1 ? 's' : ''}` : ''}
             </Text>
+
+            {/* X / Twitter-style overlapping liker avatars */}
+            {post.likedBy?.length > 0 && (
+              <View style={styles.likersRow}>
+                <View style={styles.likerAvatars}>
+                  {post.likedBy.slice(0, 3).map((likerId, i) => {
+                    const liker = getUserById(likerId);
+                    return liker ? (
+                      <View key={likerId} style={[styles.likerAvatarWrap, { marginLeft: i > 0 ? -8 : 0, zIndex: 3 - i, borderColor: isDark ? DS.darkCard : DS.white }]}>
+                        <SafeAvatar
+                          avatar={liker.avatar}
+                          size={16}
+                          fallbackIcon="heart"
+                          fallbackColor={DS.accent}
+                          fallbackBgColor={`${DS.accent}20`}
+                        />
+                      </View>
+                    ) : null;
+                  })}
+                </View>
+                <Text style={styles.likersText} numberOfLines={1}>
+                  {post.likedBy.length === 1
+                    ? `${getUserById(post.likedBy[0])?.displayName || 'Someone'} liked this`
+                    : post.likedBy.length === 2
+                    ? `${getUserById(post.likedBy[0])?.displayName || 'Someone'} and ${getUserById(post.likedBy[1])?.displayName || '1 other'} liked this`
+                    : `${getUserById(post.likedBy[0])?.displayName || 'Someone'} and ${post.likedBy.length - 1} others liked this`}
+                </Text>
+              </View>
+            )}
           </View>
 
           <ReactionBar
@@ -1552,9 +1588,9 @@ export default function CommunityScreen({ navigation }: Props) {
     bookmarkPost, deletePost, addComment, likeComment, replyToComment, voteHelpful,
     followUser, unfollowUser, isFollowing, refreshFeed, loadMorePosts, getFeedPosts,
     getUnreadCount, incrementViewCount, isAuthenticated: checkIsAuth,
-    getAllUsers, votePoll, getUserStats, markAllNotificationsRead,
+   getAllUsers, votePoll, getUserStats, markAllNotificationsRead,
+    getUserById,
   } = useCommunity();
-
   const { profile, communityProfile } = useUser();
   const { isAuthenticated: authIsAuth } = useAuth();
   const { triggerHaptic } = useCustomization();
@@ -1645,7 +1681,7 @@ export default function CommunityScreen({ navigation }: Props) {
     setPage(1);
   }, [posts, activeTopic, searchQuery, getFilteredPosts]);
 
-  useEffect(() => {
+   useEffect(() => {
     if (prevPostsRef.current.length > 0 && posts.length > prevPostsRef.current.length) {
       const count = posts.length - prevPostsRef.current.length;
       setNewPostsCount(count);
@@ -1654,8 +1690,22 @@ export default function CommunityScreen({ navigation }: Props) {
     prevPostsRef.current = posts;
   }, [posts]);
 
+  // Auto-scroll to top when new threads arrive so the user sees them without tapping
+  useEffect(() => {
+    if (showBanner && newPostsCount > 0) {
+      const timer = setTimeout(() => {
+        listRef.current?.scrollToOffset({ offset: 0, animated: true });
+        setShowBanner(false);
+        setNewPostsCount(0);
+      }, 1600);
+      return () => clearTimeout(timer);
+    }
+  }, [showBanner, newPostsCount]);
+
   const getFilteredPosts = useCallback(() => {
     let filtered = getFeedPosts();
+    // Ensure latest posts surface first
+    filtered.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     // Pin the default welcome post to the top if it exists
     const welcomePost = filtered.find(p => p.isPinned || p.authorId === 'littleloom_team');
     if (welcomePost) {
@@ -1747,8 +1797,9 @@ export default function CommunityScreen({ navigation }: Props) {
       await Share.share({
         message: `${post.author.displayName} on LittleLoom: "${post.content.substring(0, 100)}..."`,
       });
+      await sharePost(post.id);
     } catch (e) { console.error(e); }
-  }, []);
+  }, [sharePost]);
 
   const handleDelete = useCallback((postId: string) => {
     sweetAlert.confirm(
@@ -1834,6 +1885,7 @@ export default function CommunityScreen({ navigation }: Props) {
       onReply={(pid, cid) => setReplyingTo({ postId: pid, commentId: cid })}
       onLikeComment={likeComment}
       onVotePoll={handleVotePoll}
+      getUserById={getUserById}
       topics={topics}
       currentUser={currentUser}
       canInteract={canInteract}
@@ -1843,6 +1895,25 @@ export default function CommunityScreen({ navigation }: Props) {
 
   const renderHeader = useCallback(() => (
     <View>
+      {/* Community Hero Banner */}
+      <View style={[styles.heroBanner, { backgroundColor: isDark ? DS.darkSurface : DS.white }]}>
+        <LinearGradient
+          colors={isDark ? ['#4f46e520', '#ec489920'] : ['#6366f110', '#ec489910']}
+          style={StyleSheet.absoluteFill}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        />
+        <View style={styles.heroContent}>
+          <Text style={[styles.heroTitle, { color: isDark ? DS.white : DS.gray900 }]}>
+            The Loom
+          </Text>
+          <Text style={[styles.heroSubtitle, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+            Weave stories, share wisdom, grow together.
+          </Text>
+        </View>
+        <Ionicons name="people-circle" size={48} color={`${DS.primary}40`} style={styles.heroIcon} />
+      </View>
+
       {/* Smart Compose Bar */}
       <SmartComposeBar
         onCompose={(prompt) => {
@@ -2411,11 +2482,10 @@ export default function CommunityScreen({ navigation }: Props) {
         alignItems: 'center',
         gap: DS.space.sm,
       },
-      headerIconBtn: {
-        width: 42,
-        height: 42,
-        borderRadius: DS.radius.full,
-        overflow: 'hidden',
+       headerIconBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: DS.radius.full,
       },
       headerIconInner: {
         width: '100%',
@@ -2456,9 +2526,9 @@ export default function CommunityScreen({ navigation }: Props) {
 
       // Smart Compose Bar
       composeBar: {
-        marginHorizontal: DS.space.lg,
-        marginTop: HEADER_TOTAL_HEIGHT + DS.space.md,
-        marginBottom: DS.space.md,
+    marginHorizontal: DS.space.lg,
+    marginTop: DS.space.md,
+    marginBottom: DS.space.md,
         borderRadius: DS.radius.xl,
         padding: DS.space.lg,
         ...DS.shadow.md,
@@ -3386,6 +3456,55 @@ export default function CommunityScreen({ navigation }: Props) {
       },
 
 
+
+      // Hero Banner
+      heroBanner: {
+        marginHorizontal: DS.space.lg,
+        marginTop: HEADER_TOTAL_HEIGHT + DS.space.md,
+        marginBottom: DS.space.md,
+        borderRadius: DS.radius.xl,
+        padding: DS.space.lg,
+        overflow: 'hidden',
+        ...DS.shadow.md,
+      },
+      heroContent: { zIndex: 1 },
+      heroTitle: {
+        fontSize: DS.text.xl.size,
+        fontWeight: '800',
+        marginBottom: 2,
+      },
+      heroSubtitle: {
+        fontSize: DS.text.sm.size,
+      },
+      heroIcon: {
+        position: 'absolute',
+        right: DS.space.lg,
+        top: '50%',
+        marginTop: -24,
+        opacity: 0.5,
+      },
+
+      // Likers row (X/Twitter style)
+      likersRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: DS.space.sm,
+        gap: DS.space.sm,
+      },
+      likerAvatars: {
+        flexDirection: 'row',
+        alignItems: 'center',
+      },
+      likerAvatarWrap: {
+        borderRadius: 8,
+        borderWidth: 2,
+      },
+      likersText: {
+        fontSize: DS.text.xs.size,
+        color: DS.gray400,
+        fontWeight: '500',
+        flex: 1,
+      },
 
       // Search Bar
       searchBarContainer: {
