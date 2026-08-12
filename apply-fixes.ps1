@@ -1,3 +1,281 @@
+$base = "C:\Users\ondie\Desktop\LittleLoom\src"
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 1. UNIVERSAL TRACKER HUB — Surgical string replacements
+# ═══════════════════════════════════════════════════════════════════════════
+$hubPath = "$base\screens\tracking\UniversalTrackerHubScreen.tsx"
+$hub = Get-Content -Raw -Path $hubPath
+
+# 1a. Remove TrackerBrowserModal component block entirely
+$browserMarker = $hub.IndexOf('TRACKER BROWSER MODAL')
+$browserStart = $hub.LastIndexOf('/* ', $browserMarker)
+$browserEnd   = $hub.IndexOf("TrackerBrowserModal.displayName = 'TrackerBrowserModal';", $browserMarker)
+$browserEnd   = $hub.IndexOf("`n", $browserEnd) + 1
+$hub = $hub.Remove($browserStart, $browserEnd - $browserStart)
+
+# 1b. Replace TrackerActionModal with smoother, rounded version
+$actionMarker = $hub.IndexOf('TRACKER ACTION MODAL')
+$actionStart  = $hub.LastIndexOf('/* ', $actionMarker)
+$actionEnd    = $hub.IndexOf("TrackerActionModal.displayName = 'TrackerActionModal';", $actionMarker)
+$actionEnd    = $hub.IndexOf("`n", $actionEnd) + 1
+
+$newActionModal = @'
+/* ═══════════════════════════════════════════════════════════════════════════
+   TRACKER ACTION MODAL — Smoother, rounded, with drag handle
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const TrackerActionModal = React.memo(({
+  visible, trackerId, onClose, onSelect,
+}: {
+  visible: boolean;
+  trackerId: string | null;
+  onClose: () => void;
+  onSelect: (trackerId: string, subAction: TrackerSubAction) => void;
+}) => {
+  const { fullThemeColors, isDark, borderRadiusValue } = useCustomization();
+  const theme = useHubTheme();
+  const scale = useSharedValue(0.95);
+  const opacity = useSharedValue(0);
+
+  useEffect(() => {
+    if (visible) {
+      scale.value = withSpring(1, { damping: 12, stiffness: 200, mass: 0.8 });
+      opacity.value = withTiming(1, { duration: 280 });
+    } else {
+      scale.value = withTiming(0.95, { duration: 200 });
+      opacity.value = withTiming(0, { duration: 200 });
+    }
+  }, [visible, scale, opacity]);
+
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+    opacity: opacity.value,
+  }));
+
+  if (!visible || !trackerId) return null;
+
+  const config = TRACKER_CONFIGS[trackerId] || {
+    emoji: '📋',
+    color: '#667eea',
+    gradient: ['#667eea', '#764ba2'] as [string, string],
+    description: 'Track activity',
+    category: 'essential',
+    subActions: [{ id: 'default', label: 'Add Entry', icon: 'add-circle-outline' as const, color: '#667eea' }],
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+      <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.35)' }]}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        <Animated.View
+          style={[
+            styles.modalContent, 
+            animStyle, 
+            { 
+              borderRadius: Math.max(28, borderRadiusValue * 2.5),
+              backgroundColor: fullThemeColors?.surface || (isDark ? '#1e1e2e' : '#ffffff'),
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 20 },
+              shadowOpacity: 0.2,
+              shadowRadius: 40,
+              elevation: 20,
+            }
+          ]}
+          onStartShouldSetResponder={() => true}
+          onTouchEnd={(e) => e.stopPropagation()}
+        >
+          <View style={styles.modalDragHandle}>
+            <View style={[styles.modalDragPill, { backgroundColor: isDark ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.15)' }]} />
+          </View>
+
+          <LinearGradient
+            colors={config.gradient}
+            style={[styles.modalHeader, {
+              borderTopLeftRadius: Math.max(28, borderRadiusValue * 2.5),
+              borderTopRightRadius: Math.max(28, borderRadiusValue * 2.5),
+            }]}
+          >
+            <View style={styles.modalHeaderContent}>
+              <Text style={styles.modalEmoji}>{config.emoji}</Text>
+              <Text style={styles.modalTitle}>{trackerId.charAt(0).toUpperCase() + trackerId.slice(1)}</Text>
+              <Text style={styles.modalDescription}>{config.description}</Text>
+            </View>
+            <TouchableOpacity style={styles.modalCloseBtn} onPress={onClose}>
+              <Ionicons name="close" size={24} color="#fff" />
+            </TouchableOpacity>
+          </LinearGradient>
+
+          <View style={[styles.modalBody, { backgroundColor: fullThemeColors?.surface || (isDark ? '#1e1e2e' : '#ffffff') }]}>
+            <Text style={[styles.modalSectionTitle, { color: fullThemeColors?.textSecondary || '#64748b' }]}>
+              WHAT WOULD YOU LIKE TO LOG?
+            </Text>
+            <View style={styles.subActionsGrid}>
+              {config.subActions.map((action, index) => (
+                <Animated.View
+                  key={action.id}
+                  entering={FadeInUp.delay(index * 60).springify()}
+                  style={{ width: '50%', padding: 6 }}
+                >
+                  <TouchableOpacity
+                    style={[
+                      styles.subActionCard,
+                      {
+                        backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.9)',
+                        borderColor: `${action.color}40`,
+                        borderRadius: Math.max(16, borderRadiusValue),
+                        borderWidth: 1.5,
+                      }
+                    ]}
+                    onPress={() => onSelect(trackerId, action)}
+                    activeOpacity={0.8}
+                  >
+                    <View style={[styles.subActionIcon, { backgroundColor: `${action.color}12` }]}>
+                      <Ionicons name={action.icon} size={28} color={action.color} />
+                    </View>
+                    <Text style={[styles.subActionLabel, { color: fullThemeColors?.text || (isDark ? '#fff' : '#1a1a1a') }]}>
+                      {action.label}
+                    </Text>
+                  </TouchableOpacity>
+                </Animated.View>
+              ))}
+            </View>
+          </View>
+        </Animated.View>
+      </View>
+    </Modal>
+  );
+});
+TrackerActionModal.displayName = 'TrackerActionModal';
+'@
+
+$hub = $hub.Remove($actionStart, $actionEnd - $actionStart)
+$hub = $hub.Insert($actionStart, $newActionModal)
+
+# 1c. Remove showTrackerBrowser state
+$hub = $hub -replace "  const \[showTrackerBrowser, setShowTrackerBrowser\] = useState\(false\);\r?\n", ""
+
+# 1d. Add handleBrowseAll + fix solid-food presetData serialization (deep clone + longer delay)
+$hub = $hub.Replace(@'
+  const handleTrackerPress = useCallback((trackerId: string, hasSubActions: boolean) => {
+    HAPTIC_LIGHT();
+    if (hasSubActions) {
+      setSelectedTrackerId(trackerId);
+      setShowActionModal(true);
+    } else {
+      navigation.navigate('AddEntry', { trackerId });
+    }
+  }, [navigation]);
+
+  const handleSubActionSelect = useCallback((trackerId: string, action: TrackerSubAction) => {
+    HAPTIC_MEDIUM();
+    setShowActionModal(false);
+    setTimeout(() => navigation.navigate('AddEntry', { trackerId, presetData: action.presetData }), 100);
+  }, [navigation]);
+'@, @'
+  const handleTrackerPress = useCallback((trackerId: string, hasSubActions: boolean) => {
+    HAPTIC_LIGHT();
+    if (hasSubActions) {
+      setSelectedTrackerId(trackerId);
+      setShowActionModal(true);
+    } else {
+      navigation.navigate('AddEntry', { trackerId });
+    }
+  }, [navigation]);
+
+  const handleBrowseAll = useCallback(() => {
+    HAPTIC_LIGHT();
+    navigation.navigate('AllTrackers' as never);
+  }, [navigation]);
+
+  const handleSubActionSelect = useCallback((trackerId: string, action: TrackerSubAction) => {
+    HAPTIC_MEDIUM();
+    setShowActionModal(false);
+    const cleanPreset = action.presetData ? JSON.parse(JSON.stringify(action.presetData)) : undefined;
+    setTimeout(() => navigation.navigate('AddEntry', { trackerId, presetData: cleanPreset }), 250);
+  }, [navigation]);
+'@)
+
+# 1e. Remove TrackerBrowserModal JSX
+$hub = $hub.Replace(@'
+      {/* ── MODALS ── */}
+      <TrackerBrowserModal
+        visible={showTrackerBrowser}
+        trackerCards={trackerCards}
+        pinnedIds={pinnedTrackerIds}
+        hiddenIds={hiddenTrackerIds}
+        onClose={() => setShowTrackerBrowser(false)}
+        onTrackerPress={(id, hasSub) => {
+          setShowTrackerBrowser(false);
+          setTimeout(() => handleTrackerPress(id, hasSub), 100);
+        }}
+        onPinToggle={handlePinToggle}
+        onHideToggle={handleHideToggle}
+        onCustomPress={handleCreateCustom}
+      />
+'@, @'
+      {/* ── MODALS ── */}
+'@)
+
+# 1f. Wire Browse All to the new screen
+$hub = $hub.Replace('onBrowseAll={() => setShowTrackerBrowser(true)}', 'onBrowseAll={handleBrowseAll}')
+
+# 1g. Update modal styles (rounded, shadow, drag handle)
+$hub = $hub.Replace(@'
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  modalContent: {
+    width: SCREEN_WIDTH - 40,
+    maxHeight: SCREEN_HEIGHT * 0.7,
+    overflow: 'hidden',
+    backgroundColor: '#fff',
+  },
+'@, @'
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingBottom: 20,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
+  modalContent: {
+    width: '100%',
+    maxWidth: 400,
+    maxHeight: SCREEN_HEIGHT * 0.72,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.2,
+    shadowRadius: 40,
+    elevation: 20,
+  },
+  modalDragHandle: {
+    position: 'absolute',
+    top: 10,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  modalDragPill: {
+    width: 40,
+    height: 5,
+    borderRadius: 3,
+  },
+'@)
+
+Set-Content -Path $hubPath -Value $hub -Encoding UTF8
+Write-Host "✅ UniversalTrackerHubScreen.tsx patched"
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 2. TRACK SCREEN — Complete rewrite as All Trackers screen
+# ═══════════════════════════════════════════════════════════════════════════
+$trackScreen = @'
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   View,
@@ -854,3 +1132,32 @@ const styles = StyleSheet.create({
   },
   subActionLabel: { fontWeight: '700', textAlign: 'center', fontSize: 13 },
 });
+'@
+
+Set-Content -Path "$base\screens\main\TrackScreen.tsx" -Value $trackScreen -Encoding UTF8
+Write-Host "✅ TrackScreen.tsx written (All Trackers screen)"
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 3. APP NAVIGATOR — Wire the new screen and repurpose Track tab
+# ═══════════════════════════════════════════════════════════════════════════
+$navPath = "$base\navigation\AppNavigator.tsx"
+$nav = Get-Content -Raw -Path $navPath
+
+# Make Track tab render the Hub directly (TrackScreen is now the stack screen)
+$nav = $nav.Replace(
+    '<Tab.Screen name="Track" component={TrackScreen} />',
+    '<Tab.Screen name="Track" component={UniversalTrackerHubScreen} />'
+)
+
+# Add AllTrackers as a stack screen
+$nav = $nav.Replace(
+    '<Stack.Screen name="UniversalTrackerHub" component={UniversalTrackerHubScreen} />',
+    "<Stack.Screen name=`"UniversalTrackerHub`" component={UniversalTrackerHubScreen} />`r`n        <Stack.Screen name=`"AllTrackers`" component={TrackScreen} options={{ animation: 'slide_from_right' }} />"
+)
+
+Set-Content -Path $navPath -Value $nav -Encoding UTF8
+Write-Host "✅ AppNavigator.tsx patched"
+
+Write-Host "`n🚀 All fixes applied. Add this to your RootStackParamList if TS complains:"
+Write-Host "   AllTrackers: undefined;"
+Write-Host "Then restart your Expo dev server (clear cache if needed)."

@@ -13,9 +13,9 @@ import {
   RefreshControl,
   StatusBar,
   Platform,
-  Share,
+
   ScrollView,
-  Clipboard,
+
 } from 'react-native';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
@@ -1042,9 +1042,6 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
     removeMember,
     updateGuardianProfile,
     updateParent2Profile,
-    generateInviteCode,
-    getActiveInviteCodes,
-    revokeInviteCode,
   } = useFamily();
 
   const { profile, updateProfile } = useUser();
@@ -1069,18 +1066,6 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
   const [showEditModal, setShowEditModal] = useState(false);
   const [showRoleModal, setShowRoleModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'members' | 'activity' | 'analytics'>('members');
-
-  // ── Invite Code State ──
-  const [showInviteCodeModal, setShowInviteCodeModal] = useState(false);
-  const [inviteCodeRole, setInviteCodeRole] = useState<'parent2' | 'guardian' | 'viewer'>('guardian');
-  const [inviteCodeRelationship, setInviteCodeRelationship] = useState('');
-  const [inviteeName, setInviteeName] = useState('');
-  const [inviteeEmail, setInviteeEmail] = useState('');
-  const [inviteePhone, setInviteePhone] = useState('');
-  const [generatedCode, setGeneratedCode] = useState('');
-  const [isGeneratingCode, setIsGeneratingCode] = useState(false);
-  const [activeCodes, setActiveCodes] = useState<any[]>([]);
-  const [isLoadingCodes, setIsLoadingCodes] = useState(false);
 
   // Email invite removed — using invite codes only
 
@@ -1374,114 +1359,6 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
     triggerHaptic('light');
   };
 
-  // ── Invite Code Handlers ──
-  const handleGenerateCode = useCallback(async () => {
-    if (!inviteCodeRelationship.trim()) {
-      sweetAlert.alert('Missing Info', 'Please specify the relationship (e.g., Grandma, Uncle)', 'warning');
-      return;
-    }
-    if (inviteeEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inviteeEmail.trim())) {
-      sweetAlert.alert('Invalid Email', 'Please enter a valid email address', 'warning');
-      return;
-    }
-    setIsGeneratingCode(true);
-    triggerHaptic('medium');
-    try {
-      const result = await generateInviteCode(inviteCodeRole, inviteCodeRelationship.trim(), inviteeName.trim() || undefined, inviteeEmail.trim() || undefined, inviteePhone.trim() || undefined);
-      if (result.success) {
-        setGeneratedCode(result.code);
-        triggerHaptic('success');
-        sweetAlert.alert('Code Generated!', `Share this code: ${result.code}`, 'success');
-        // Refresh active codes
-        const codes = await getActiveInviteCodes();
-        setActiveCodes(codes);
-      } else {
-        sweetAlert.alert('Error', result.message, 'warning');
-      }
-    } catch (error) {
-      console.error('Generate code error:', error);
-      sweetAlert.alert('Error', 'Failed to generate invite code', 'warning');
-    } finally {
-      setIsGeneratingCode(false);
-    }
-  }, [inviteCodeRole, inviteCodeRelationship, generateInviteCode, getActiveInviteCodes, triggerHaptic, sweetAlert]);
-
-  const handleLoadActiveCodes = useCallback(async () => {
-    setIsLoadingCodes(true);
-    try {
-      const codes = await getActiveInviteCodes();
-      setActiveCodes(codes);
-    } catch (error) {
-      console.error('Load codes error:', error);
-    } finally {
-      setIsLoadingCodes(false);
-    }
-  }, [getActiveInviteCodes]);
-
-  const handleRevokeCode = useCallback(async (code: string) => {
-    sweetAlert.confirm(
-      'Revoke Invite Code',
-      `Are you sure you want to revoke code ${code}?`,
-      async () => {
-        const success = await revokeInviteCode(code);
-        if (success) {
-          triggerHaptic('success');
-          sweetAlert.alert('Revoked', 'Invite code has been deactivated', 'success');
-          handleLoadActiveCodes();
-        } else {
-          sweetAlert.alert('Error', 'Failed to revoke code', 'warning');
-        }
-      },
-      () => {},
-      'Revoke',
-      'Cancel',
-      true
-    );
-  }, [revokeInviteCode, handleLoadActiveCodes, triggerHaptic, sweetAlert]);
-
-  const handleShareCode = useCallback(async (code: string) => {
-    try {
-      await Share.share({
-        message: `👋 Join our family on LittleLoom!\n\n👶 Baby: ${currentBaby?.name || 'our little one'}\n🎫 Invite Code: ${code}\n👤 Role: ${inviteCodeRole === 'parent2' ? 'Co-Parent' : inviteCodeRole === 'guardian' ? 'Guardian' : 'Viewer'}\n\n📲 Download the app: https://littleloom.app/download\n\nEnter this code on the sign-up screen. Welcome to the family! 🍼`,
-        title: `LittleLoom Invite - ${currentBaby?.name || 'Family'}`,
-      });
-    } catch (error) {
-      console.error('Share error:', error);
-    }
-  }, [currentBaby, inviteCodeRole]);
-
-  const openInviteCodeModal = useCallback(() => {
-    setGeneratedCode('');
-    setInviteCodeRelationship('');
-    setInviteeName('');
-    setInviteeEmail('');
-    setInviteePhone('');
-    setInviteCodeRole('guardian');
-    setShowInviteCodeModal(true);
-    handleLoadActiveCodes();
-  }, [handleLoadActiveCodes]);
-
-  // Auto-open invite modal when navigated from Settings
-  useEffect(() => {
-    if (route.params?.openInvite) {
-      const timer = setTimeout(() => {
-        openInviteCodeModal();
-        navigation.setParams({ openInvite: undefined });
-      }, 600);
-      return () => clearTimeout(timer);
-    }
-  }, [route.params?.openInvite, openInviteCodeModal, navigation]);
-
-  const handleSuggestionAction = (suggestion: SmartSuggestion) => {
-    triggerHaptic('light');
-    switch (suggestion.type) {
-      case 'invite': openInviteCodeModal(); break;
-      case 'activity': navigation.navigate('AddEntry', { trackerId: 'tummy_time' } as never); break;
-      case 'milestone': navigation.navigate('MilestoneDetail' as never); break;
-      case 'health': navigation.navigate('VaccinationSchedule' as never); break;
-    }
-  };
-
   // ── RENDER HEADER ──
   const renderHeader = () => (
     <Animated.View style={[styles.headerContainer, { paddingTop: insets.top }, headerAnimatedStyle]}>
@@ -1508,7 +1385,7 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <TouchableOpacity
               style={[styles.headerBtn, styles.headerBtnAccent, { backgroundColor: themeColors.primary }]}
-              onPress={openInviteCodeModal}
+              onPress={() => navigation.navigate('CoParentInviteScreen')}
             >
               <Ionicons name="person-add" size={18} color="#fff" />
             </TouchableOpacity>
@@ -1828,7 +1705,7 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
           {isPrimaryParent && title !== 'Primary Parent' && (
             <TouchableOpacity
               style={[styles.addFirstMemberBtn, { backgroundColor: themeColors.primary }]}
-              onPress={openInviteCodeModal}
+              onPress={() => navigation.navigate('CoParentInviteScreen')}
             >
               <Text style={styles.addFirstMemberText}>Add First Member</Text>
             </TouchableOpacity>
@@ -2236,245 +2113,6 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
                 </TouchableOpacity>
               );
             })}
-        </View>
-      </ActionModal>
-
-      {/* Invite Code Modal */}
-      <ActionModal
-        visible={showInviteCodeModal}
-        onClose={() => setShowInviteCodeModal(false)}
-        title="Invite Code"
-        isDark={isDark}
-        primaryColor={themeColors.primary}
-      >
-        <View style={styles.inviteForm}>
-          <Text style={[styles.inviteDescription, isDark && styles.textMuted]}>
-            Generate a shareable 6-character code for family members to join instantly.
-          </Text>
-
-          {/* Role Selection */}
-          <Text style={[styles.formLabel, isDark && styles.textDark, { marginTop: 8 }]}>Select Role</Text>
-          <View style={styles.roleSelection}>
-            {(['parent2', 'guardian', 'viewer'] as const).map((role) => {
-              const config = ROLE_CONFIG[role === 'parent2' ? UserRole.PARENT_2 : role === 'guardian' ? UserRole.GUARDIAN : UserRole.VIEWER];
-              const isSelected = inviteCodeRole === role;
-              return (
-                <TouchableOpacity
-                  key={role}
-                  style={[
-                    styles.roleOption,
-                    isSelected && { borderColor: config.color, backgroundColor: config.color + '10' },
-                    isDark && styles.roleOptionDark
-                  ]}
-                  onPress={() => setInviteCodeRole(role)}
-                >
-                  <LinearGradient colors={config.gradient} style={styles.roleOptionIcon}>
-                    <Ionicons name={config.icon} size={20} color="#fff" />
-                  </LinearGradient>
-                  <View style={styles.roleOptionInfo}>
-                    <Text style={[styles.roleOptionTitle, isDark && styles.textDark]}>{config.label}</Text>
-                    <Text style={[styles.roleOptionDesc, isDark && styles.textMuted]}>{config.description}</Text>
-                  </View>
-                  {isSelected && <Ionicons name="checkmark-circle" size={24} color={config.color} />}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          {/* Relationship Input */}
-          <View style={styles.formGroup}>
-            <Text style={[styles.formLabel, isDark && styles.textDark]}>Relationship to Baby</Text>
-            <TextInput
-              style={[styles.formInput, isDark && styles.formInputDark]}
-              value={inviteCodeRelationship}
-              onChangeText={setInviteCodeRelationship}
-              placeholder="e.g., Grandma, Uncle, Babysitter"
-              placeholderTextColor={isDark ? '#666' : '#999'}
-            />
-          </View>
-
-          {/* Invitee Details */}
-          <View style={styles.formGroup}>
-            <Text style={[styles.formLabel, isDark && styles.textDark]}>Invited Person's Name (Optional)</Text>
-            <TextInput
-              style={[styles.formInput, isDark && styles.formInputDark]}
-              value={inviteeName}
-              onChangeText={setInviteeName}
-              placeholder="e.g., Grandma Mary"
-              placeholderTextColor={isDark ? '#666' : '#999'}
-            />
-          </View>
-
-          <View style={styles.formGroup}>
-            <Text style={[styles.formLabel, isDark && styles.textDark]}>Email (Optional)</Text>
-            <TextInput
-              style={[styles.formInput, isDark && styles.formInputDark]}
-              value={inviteeEmail}
-              onChangeText={setInviteeEmail}
-              placeholder="Enter email address"
-              placeholderTextColor={isDark ? '#666' : '#999'}
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
-          </View>
-
-          <View style={styles.formGroup}>
-            <Text style={[styles.formLabel, isDark && styles.textDark]}>Phone Number (Optional)</Text>
-            <TextInput
-              style={[styles.formInput, isDark && styles.formInputDark]}
-              value={inviteePhone}
-              onChangeText={setInviteePhone}
-              placeholder="Enter phone number"
-              placeholderTextColor={isDark ? '#666' : '#999'}
-              keyboardType="phone-pad"
-            />
-          </View>
-
-          {/* Generated Code Display */}
-          {generatedCode ? (
-            <Animated.View entering={FadeInUp.springify()} style={[styles.codeDisplayCard, { backgroundColor: themeColors.primary + '10', borderColor: themeColors.primary + '30' }]}>
-              <View style={styles.codeDisplayHeader}>
-                <Ionicons name="checkmark-circle" size={24} color="#22c55e" />
-                <Text style={[styles.codeDisplayTitle, { color: '#22c55e' }]}>Code Generated!</Text>
-              </View>
-              <View style={[styles.codeBox, { backgroundColor: isDark ? '#1a1a2e' : '#fff' }]}>
-                <Text style={[styles.codeText, { color: themeColors.primary, letterSpacing: 8 }]}>{generatedCode}</Text>
-              </View>
-              <Text style={[styles.codeDisplaySubtitle, isDark && styles.textMuted]}>
-                Share this code with your family member. They can enter it on the sign-up screen.
-              </Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10, marginTop: 12 }}>
-                <TouchableOpacity
-                  style={[styles.shareCodeBtn, { backgroundColor: 'rgba(102,126,234,0.1)', minWidth: 72 }]}
-                  onPress={() => {
-                    Clipboard.setString(generatedCode);
-                    sweetAlert.toast('Copied', 'Code copied to clipboard', 'success');
-                  }}
-                >
-                  <Ionicons name="copy-outline" size={18} color="#667eea" />
-                  <Text style={[styles.shareCodeBtnText, { color: '#667eea' }]}>Copy</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.shareCodeBtn, { backgroundColor: 'rgba(37,211,102,0.1)', minWidth: 72 }]}
-                  onPress={() => {
-                    const url = `whatsapp://send?text=${encodeURIComponent(`👋 Join me on LittleLoom!\n\n👶 Baby: ${currentBaby?.name || 'our little one'}\n🎫 Invite Code: ${generatedCode}\n👤 Role: ${inviteCodeRole === 'parent2' ? 'Co-Parent' : inviteCodeRole === 'guardian' ? 'Guardian' : 'Viewer'}\n\n📲 Download: https://littleloom.app/download`)}`;
-                    Linking.canOpenURL(url).then(supported => supported ? Linking.openURL(url) : sweetAlert.toast('WhatsApp not found', 'Install WhatsApp to share', 'warning'));
-                  }}
-                >
-                  <Ionicons name="logo-whatsapp" size={18} color="#25d366" />
-                  <Text style={[styles.shareCodeBtnText, { color: '#25d366' }]}>WhatsApp</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.shareCodeBtn, { backgroundColor: 'rgba(59,130,246,0.1)', minWidth: 72 }]}
-                  onPress={() => {
-                    const url = `sms:?body=${encodeURIComponent(`👋 Join me on LittleLoom!\nBaby: ${currentBaby?.name || 'our little one'}\nCode: ${generatedCode}\nRole: ${inviteCodeRole === 'parent2' ? 'Co-Parent' : inviteCodeRole === 'guardian' ? 'Guardian' : 'Viewer'}\nDownload: https://littleloom.app/download`)}`;
-                    Linking.openURL(url).catch(() => sweetAlert.toast('SMS unavailable', 'Could not open SMS', 'warning'));
-                  }}
-                >
-                  <Ionicons name="chatbubble-outline" size={18} color="#3b82f6" />
-                  <Text style={[styles.shareCodeBtnText, { color: '#3b82f6' }]}>SMS</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.shareCodeBtn, { backgroundColor: 'rgba(239,68,68,0.1)', minWidth: 72 }]}
-                  onPress={() => {
-                    const url = `mailto:?subject=${encodeURIComponent(`LittleLoom Invite - ${currentBaby?.name || 'Family'}`)}&body=${encodeURIComponent(`Hello!\n\nYou've been invited to join our family on LittleLoom for ${currentBaby?.name || 'our baby'}.\n\n🎫 Invite Code: ${generatedCode}\n👤 Role: ${inviteCodeRole === 'parent2' ? 'Co-Parent' : inviteCodeRole === 'guardian' ? 'Guardian' : 'Viewer'}\n\n📲 Download the app: https://littleloom.app/download\n\nEnter the code on the sign-up screen. Welcome to the family! 👶`)}`;
-                    Linking.openURL(url).catch(() => sweetAlert.toast('Email unavailable', 'Could not open email client', 'warning'));
-                  }}
-                >
-                  <Ionicons name="mail-outline" size={18} color="#ef4444" />
-                  <Text style={[styles.shareCodeBtnText, { color: '#ef4444' }]}>Email</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.shareCodeBtn, { backgroundColor: 'rgba(100,100,100,0.1)', minWidth: 72 }]}
-                  onPress={() => handleShareCode(generatedCode)}
-                >
-                  <Ionicons name="share-outline" size={18} color="#64748b" />
-                  <Text style={[styles.shareCodeBtnText, { color: '#64748b' }]}>More</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.shareCodeBtn, { backgroundColor: 'rgba(239,68,68,0.1)', minWidth: 72 }]}
-                  onPress={() => handleRevokeCode(generatedCode)}
-                >
-                  <Ionicons name="trash-outline" size={18} color="#ef4444" />
-                  <Text style={[styles.shareCodeBtnText, { color: '#ef4444' }]}>Revoke</Text>
-                </TouchableOpacity>
-              </View>
-
-              <TouchableOpacity
-                style={{ marginTop: 16, alignSelf: 'center', padding: 8 }}
-                onPress={() => setGeneratedCode('')}
-              >
-                <Text style={{ color: themeColors.primary, fontWeight: '700', fontSize: 13 }}>Generate Another Code</Text>
-              </TouchableOpacity>
-            </Animated.View>
-          ) : (
-            <TouchableOpacity
-              style={[styles.inviteButton, (!inviteCodeRelationship.trim() || isGeneratingCode) && styles.inviteButtonDisabled]}
-              onPress={handleGenerateCode}
-              disabled={!inviteCodeRelationship.trim() || isGeneratingCode}
-            >
-              <LinearGradient colors={[themeColors.primary, themeColors.secondary]} style={styles.inviteButtonGradient}>
-                {isGeneratingCode ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <>
-                    <Ionicons name="key" size={20} color="#fff" style={{ marginRight: 8 }} />
-                    <Text style={styles.inviteButtonText}>Generate Invite Code</Text>
-                  </>
-                )}
-              </LinearGradient>
-            </TouchableOpacity>
-          )}
-
-          {/* Active Codes List */}
-          {activeCodes.length > 0 && (
-            <View style={{ marginTop: 20 }}>
-              <Text style={[styles.formLabel, isDark && styles.textDark]}>Active Codes</Text>
-              {activeCodes.map((code) => (
-                <View key={code.code} style={[styles.activeCodeRow, isDark && styles.activeCodeRowDark]}>
-                  <View style={styles.activeCodeLeft}>
-                    <Text style={[styles.activeCodeText, { color: themeColors.primary, letterSpacing: 4 }]}>{code.code}</Text>
-                    <View style={styles.activeCodeMeta}>
-                      <Text style={[styles.activeCodeRole, isDark && styles.textMuted]}>
-                        {code.role === 'parent2' ? 'Co-Parent' : code.role === 'guardian' ? 'Guardian' : 'Viewer'}
-                        {code.inviteeName ? ` • ${code.inviteeName}` : ''}
-                      </Text>
-                      {code.inviteeEmail ? (
-                        <Text style={[styles.activeCodeExpiry, isDark && styles.textMuted]}>
-                          ✉️ {code.inviteeEmail}
-                        </Text>
-                      ) : null}
-                      {code.inviteePhone ? (
-                        <Text style={[styles.activeCodeExpiry, isDark && styles.textMuted]}>
-                          📞 {code.inviteePhone}
-                        </Text>
-                      ) : null}
-                      <Text style={[styles.activeCodeExpiry, isDark && styles.textMuted]}>
-                        Expires {new Date(code.expiresAt).toLocaleDateString()}
-                      </Text>
-                    </View>
-                  </View>
-                  <TouchableOpacity
-                    style={[styles.revokeCodeBtn, { backgroundColor: '#ef444415' }]}
-                    onPress={() => handleRevokeCode(code.code)}
-                  >
-                    <Ionicons name="close" size={18} color="#ef4444" />
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </View>
-          )}
-
-          {isLoadingCodes && (
-            <View style={{ alignItems: 'center', padding: 20 }}>
-              <ActivityIndicator color={themeColors.primary} />
-            </View>
-          )}
         </View>
       </ActionModal>
 

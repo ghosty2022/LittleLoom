@@ -176,7 +176,7 @@ function MainTabs() {
       })}
     >
       <Tab.Screen name="Home" component={HomeScreen} />
-      <Tab.Screen name="Track" component={TrackScreen} />
+      <Tab.Screen name="Track" component={UniversalTrackerHubScreen} />
       <Tab.Screen name="Timeline" component={TimelineScreen} />
       <Tab.Screen name="Grow" component={GrowthDashboardScreen} />
       <Tab.Screen name="Connect" component={CommunityNavigator} />
@@ -676,6 +676,7 @@ function NavigationContent({
         </Stack.Group>
 
         <Stack.Screen name="UniversalTrackerHub" component={UniversalTrackerHubScreen} />
+        <Stack.Screen name="AllTrackers" component={TrackScreen} options={{ animation: 'slide_from_right' }} />
         <Stack.Screen name="CreateCustomTracker" component={CreateCustomTrackerScreen} />
         <Stack.Screen name="More" component={MoreScreen} options={{ animation: 'none' }} />
         </Stack.Navigator>

@@ -451,7 +451,7 @@ const DateSeparator = React.memo(({ date, isDark }: { date: string; isDark: bool
 // MAIN CHAT SCREEN
 // ═══════════════════════════════════════════════════════════
 export default function ChatScreen({ navigation, route }: ChatScreenProps) {
-  const { chatId } = route.params;
+  const { chatId: otherUserId } = route.params;
   const {
     getUserById,
     currentUser: communityUser,
@@ -512,24 +512,24 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
 
   const initializeChat = async () => {
     setIsLoading(true);
-    const chatUser = getUserById(chatId);
+    const chatUser = getUserById(otherUserId);
     setUser(chatUser);
 
     const memberInfo = chatUser
       ? {
-          id: chatId,
+          id: otherUserId,
           fullName: chatUser.displayName,
           avatar: chatUser.avatar,
           role: 'guardian' as const,
         }
       : undefined;
 
-    const newChatId = await getOrCreateDirectChat(chatId, memberInfo);
+    const newChatId = await getOrCreateDirectChat(otherUserId, memberInfo);
     setChatId(newChatId);
 
     const msgs = getChatMessages(newChatId);
     setMessages(msgs);
-    setIsBlocked(isUserBlocked(chatId));
+    setIsBlocked(isUserBlocked(otherUserId));
     setIsLoading(false);
     markChatRead(newChatId);
     updateOnlineStatus('online');
@@ -718,7 +718,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
         ? 'Unblock this user to receive messages from them again?'
         : 'Block this user? You will no longer receive messages from them.',
       onConfirm: () => {
-        blockUser(chatId);
+        blockUser(otherUserId);
         setIsBlocked(!isBlocked);
         setShowOptions(false);
         sweetAlert.toast(isBlocked ? 'Unblocked' : 'Blocked', isBlocked ? 'User unblocked' : 'User blocked', isBlocked ? 'success' : 'warning');

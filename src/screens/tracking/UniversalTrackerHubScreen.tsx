@@ -1471,7 +1471,7 @@ const RecentActivityList = React.memo(({
 RecentActivityList.displayName = 'RecentActivityList';
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   TRACKER ACTION MODAL (Redesigned)
+   TRACKER ACTION MODAL — Smoother, rounded, with drag handle
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const TrackerActionModal = React.memo(({
@@ -1483,15 +1483,16 @@ const TrackerActionModal = React.memo(({
   onSelect: (trackerId: string, subAction: TrackerSubAction) => void;
 }) => {
   const { fullThemeColors, isDark, borderRadiusValue } = useCustomization();
-  const scale = useSharedValue(0.9);
+  const theme = useHubTheme();
+  const scale = useSharedValue(0.95);
   const opacity = useSharedValue(0);
 
   useEffect(() => {
     if (visible) {
-      scale.value = withSpring(1, SPRING_CONFIG);
-      opacity.value = withTiming(1, { duration: 200 });
+      scale.value = withSpring(1, { damping: 12, stiffness: 200, mass: 0.8 });
+      opacity.value = withTiming(1, { duration: 280 });
     } else {
-      scale.value = withTiming(0.9, { duration: 200 });
+      scale.value = withTiming(0.95, { duration: 200 });
       opacity.value = withTiming(0, { duration: 200 });
     }
   }, [visible, scale, opacity]);
@@ -1513,18 +1514,35 @@ const TrackerActionModal = React.memo(({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
-      <Pressable style={styles.modalOverlay} onPress={onClose}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+      <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.35)' }]}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <Animated.View
-          style={[styles.modalContent, animStyle, { borderRadius: borderRadiusValue * 2 }]}
+          style={[
+            styles.modalContent, 
+            animStyle, 
+            { 
+              borderRadius: Math.max(28, borderRadiusValue * 2.5),
+              backgroundColor: fullThemeColors?.surface || (isDark ? '#1e1e2e' : '#ffffff'),
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 20 },
+              shadowOpacity: 0.2,
+              shadowRadius: 40,
+              elevation: 20,
+            }
+          ]}
           onStartShouldSetResponder={() => true}
           onTouchEnd={(e) => e.stopPropagation()}
         >
+          <View style={styles.modalDragHandle}>
+            <View style={[styles.modalDragPill, { backgroundColor: isDark ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.15)' }]} />
+          </View>
+
           <LinearGradient
             colors={config.gradient}
             style={[styles.modalHeader, {
-              borderTopLeftRadius: borderRadiusValue * 2,
-              borderTopRightRadius: borderRadiusValue * 2,
+              borderTopLeftRadius: Math.max(28, borderRadiusValue * 2.5),
+              borderTopRightRadius: Math.max(28, borderRadiusValue * 2.5),
             }]}
           >
             <View style={styles.modalHeaderContent}>
@@ -1537,7 +1555,7 @@ const TrackerActionModal = React.memo(({
             </TouchableOpacity>
           </LinearGradient>
 
-          <View style={[styles.modalBody, { backgroundColor: fullThemeColors?.surface || '#fff' }]}>
+          <View style={[styles.modalBody, { backgroundColor: fullThemeColors?.surface || (isDark ? '#1e1e2e' : '#ffffff') }]}>
             <Text style={[styles.modalSectionTitle, { color: fullThemeColors?.textSecondary || '#64748b' }]}>
               WHAT WOULD YOU LIKE TO LOG?
             </Text>
@@ -1549,19 +1567,22 @@ const TrackerActionModal = React.memo(({
                   style={{ width: '50%', padding: 6 }}
                 >
                   <TouchableOpacity
-                    style={[styles.subActionCard, {
-                      backgroundColor: fullThemeColors?.glassBg || 'rgba(255,255,255,0.8)',
-                      borderColor: `${action.color}30`,
-                      borderRadius: borderRadiusValue,
-                      borderWidth: 1.5,
-                    }]}
+                    style={[
+                      styles.subActionCard,
+                      {
+                        backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.9)',
+                        borderColor: `${action.color}40`,
+                        borderRadius: Math.max(16, borderRadiusValue),
+                        borderWidth: 1.5,
+                      }
+                    ]}
                     onPress={() => onSelect(trackerId, action)}
                     activeOpacity={0.8}
                   >
-                    <View style={[styles.subActionIcon, { backgroundColor: `${action.color}15` }]}>
+                    <View style={[styles.subActionIcon, { backgroundColor: `${action.color}12` }]}>
                       <Ionicons name={action.icon} size={28} color={action.color} />
                     </View>
-                    <Text style={[styles.subActionLabel, { color: fullThemeColors?.text || '#1a1a1a' }]}>
+                    <Text style={[styles.subActionLabel, { color: fullThemeColors?.text || (isDark ? '#fff' : '#1a1a1a') }]}>
                       {action.label}
                     </Text>
                   </TouchableOpacity>
@@ -1570,192 +1591,11 @@ const TrackerActionModal = React.memo(({
             </View>
           </View>
         </Animated.View>
-      </Pressable>
+      </View>
     </Modal>
   );
 });
 TrackerActionModal.displayName = 'TrackerActionModal';
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   TRACKER BROWSER MODAL — Search, filter, pin & hide
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const TrackerBrowserModal = React.memo(({
-  visible, trackerCards, pinnedIds, hiddenIds, onClose, onTrackerPress, onPinToggle, onHideToggle, onCustomPress
-}: {
-  visible: boolean;
-  trackerCards: any[];
-  pinnedIds: string[];
-  hiddenIds: string[];
-  onClose: () => void;
-  onTrackerPress: (id: string, hasSub: boolean) => void;
-  onPinToggle: (id: string) => void;
-  onHideToggle: (id: string) => void;
-  onCustomPress: () => void;
-}) => {
-  const theme = useHubTheme();
-  const { borderRadiusValue, isDark, fullThemeColors } = useCustomization();
-  const [searchQuery, setSearchQuery] = useState('');
-  const [activeCategory, setActiveCategory] = useState<string | null>(null);
-  const scale = useSharedValue(0.95);
-  const opacity = useSharedValue(0);
-
-  useEffect(() => {
-    if (visible) {
-      scale.value = withSpring(1, SPRING_CONFIG);
-      opacity.value = withTiming(1, { duration: 250 });
-    } else {
-      scale.value = withTiming(0.95, { duration: 200 });
-      opacity.value = withTiming(0, { duration: 200 });
-    }
-  }, [visible, scale, opacity]);
-
-  const animStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-    opacity: opacity.value,
-  }));
-
-  const categories = useMemo(() => {
-    const cats = [...new Set(trackerCards.map(t => t.category))];
-    return cats.sort();
-  }, [trackerCards]);
-
-  const filtered = useMemo(() => {
-    let res = trackerCards;
-    if (activeCategory) res = res.filter(t => t.category === activeCategory);
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      res = res.filter(t => 
-        t.title.toLowerCase().includes(q) || 
-        t.category.toLowerCase().includes(q) ||
-        (TRACKER_CONFIGS[t.id]?.description || '').toLowerCase().includes(q)
-      );
-    }
-    return res;
-  }, [trackerCards, activeCategory, searchQuery]);
-
-  if (!visible) return null;
-
-  return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
-      <Pressable style={styles.modalOverlay} onPress={onClose}>
-        <Animated.View
-          style={[styles.browserModalContent, animStyle, { backgroundColor: fullThemeColors?.surface || '#fff', borderRadius: borderRadiusValue * 2 }]}
-          onStartShouldSetResponder={() => true}
-          onTouchEnd={(e) => e.stopPropagation()}
-        >
-          <View style={[styles.browserHeader, { borderBottomColor: theme.surface.border }]}>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.browserTitle, { color: theme.text.primary }]}>All Trackers</Text>
-              <Text style={[styles.browserSubtitle, { color: theme.text.muted }]}>
-                {trackerCards.length} trackers • {hiddenIds.length} hidden
-              </Text>
-            </View>
-            <TouchableOpacity onPress={onClose} style={[styles.browserCloseBtn, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}>
-              <Ionicons name="close" size={22} color={theme.text.secondary} />
-            </TouchableOpacity>
-          </View>
-
-          <View style={[styles.browserSearchWrap, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
-            <Ionicons name="search" size={18} color={theme.text.muted} />
-            <TextInput
-              style={[styles.browserSearchInput, { color: theme.text.primary }]}
-              placeholder="Search trackers..."
-              placeholderTextColor={theme.text.muted}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-            />
-            {searchQuery.length > 0 && (
-              <TouchableOpacity onPress={() => setSearchQuery('')}>
-                <Ionicons name="close-circle" size={18} color={theme.text.muted} />
-              </TouchableOpacity>
-            )}
-          </View>
-
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.browserCategoryScroll}>
-            <TouchableOpacity
-              onPress={() => setActiveCategory(null)}
-              style={[styles.browserCategoryChip, activeCategory === null && { backgroundColor: theme.primary }]}
-            >
-              <Text style={[styles.browserCategoryText, activeCategory === null && { color: '#fff' }]}>All</Text>
-            </TouchableOpacity>
-            {categories.map(cat => (
-              <TouchableOpacity
-                key={cat}
-                onPress={() => setActiveCategory(activeCategory === cat ? null : cat)}
-                style={[
-                  styles.browserCategoryChip, 
-                  activeCategory === cat && { backgroundColor: CATEGORY_COLORS[cat] || theme.primary }
-                ]}
-              >
-                <Text style={[styles.browserCategoryText, activeCategory === cat && { color: '#fff' }]}>
-                  {cat.charAt(0).toUpperCase() + cat.slice(1).replace('_', ' ')}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.browserGrid}>
-            {filtered.map((tracker) => {
-              const isPinned = pinnedIds.includes(tracker.id);
-              const isHidden = hiddenIds.includes(tracker.id);
-              return (
-                <View key={tracker.id} style={[styles.browserCard, { borderColor: theme.surface.border, backgroundColor: theme.isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)' }]}>
-                  <TouchableOpacity
-                    onPress={() => { onTrackerPress(tracker.id, tracker.hasSubActions); }}
-                    style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 }}
-                    activeOpacity={0.8}
-                  >
-                    <View style={[styles.browserCardIcon, { backgroundColor: `${tracker.color}15` }]}>
-                      <Text style={{ fontSize: 22 }}>{tracker.emoji}</Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.browserCardTitle, { color: theme.text.primary }]} numberOfLines={1}>{tracker.title}</Text>
-                      <Text style={[styles.browserCardDesc, { color: theme.text.muted }]} numberOfLines={1}>
-                        {TRACKER_CONFIGS[tracker.id]?.description || tracker.category}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                  
-                  <View style={{ flexDirection: 'row', gap: 4, alignItems: 'center' }}>
-                    <TouchableOpacity
-                      onPress={() => onPinToggle(tracker.id)}
-                      style={[styles.browserActionBtn, isPinned && { backgroundColor: `${theme.primary}15` }]}
-                    >
-                      <Ionicons name={isPinned ? "pin" : "pin-outline"} size={18} color={isPinned ? theme.primary : theme.text.muted} />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => onHideToggle(tracker.id)}
-                      style={[styles.browserActionBtn, isHidden && { backgroundColor: `${theme.text.muted}15` }]}
-                    >
-                      <Ionicons name={isHidden ? "eye-off" : "eye-outline"} size={18} color={isHidden ? theme.text.muted : theme.text.muted} />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              );
-            })}
-            
-            {filtered.length === 0 && (
-              <View style={{ alignItems: 'center', padding: 40 }}>
-                <Ionicons name="search-outline" size={40} color={theme.text.muted} />
-                <Text style={{ color: theme.text.muted, marginTop: 12, fontWeight: '600' }}>No trackers found</Text>
-              </View>
-            )}
-            
-            <TouchableOpacity
-              onPress={() => { onClose(); setTimeout(onCustomPress, 300); }}
-              style={[styles.browserCustomBtn, { borderColor: `${theme.primary}30` }]}
-            >
-              <Ionicons name="add-circle" size={20} color={theme.primary} />
-              <Text style={{ color: theme.primary, fontWeight: '700', fontSize: 14 }}>Create Custom Tracker</Text>
-            </TouchableOpacity>
-          </ScrollView>
-        </Animated.View>
-      </Pressable>
-    </Modal>
-  );
-});
-TrackerBrowserModal.displayName = 'TrackerBrowserModal';
 
 /* ═══════════════════════════════════════════════════════════════════════════
    BABY SWITCHER PILL (Redesigned)
@@ -1900,7 +1740,6 @@ export default function UniversalTrackerHubScreen() {
   const [showBabyRequiredModal, setShowBabyRequiredModal] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showTimelinePicker, setShowTimelinePicker] = useState(false);
-  const [showTrackerBrowser, setShowTrackerBrowser] = useState(false);
   const [pinnedTrackerIds, setPinnedTrackerIds] = useState<string[]>([]);
   const [hiddenTrackerIds, setHiddenTrackerIds] = useState<string[]>([]);
   const scrollY = useSharedValue(0);
@@ -2308,7 +2147,7 @@ export default function UniversalTrackerHubScreen() {
           onTrackerPress={handleTrackerPress}
           onCustomPress={handleCreateCustom}
           onPinToggle={handlePinToggle}
-          onBrowseAll={() => setShowTrackerBrowser(true)}
+          onBrowseAll={handleBrowseAll}
         />
 
         {/* ── QUICK LOG STRIP ── */}
