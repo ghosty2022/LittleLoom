@@ -1007,6 +1007,7 @@ const PostCard = React.memo(({
   onReply,
   onLikeComment,
   onVotePoll,
+  getUserById,
   topics,
   currentUser,
   canInteract,
@@ -1590,8 +1591,29 @@ export default function CommunityScreen({ navigation }: Props) {
     followUser, unfollowUser, isFollowing, refreshFeed, loadMorePosts, getFeedPosts,
     getUnreadCount, incrementViewCount, isAuthenticated: checkIsAuth,
     getAllUsers, votePoll, getUserStats, markAllNotificationsRead,
-    getUserById,
+    getUserById: contextGetUserById,
   } = community;
+
+  // Defensive: if metro cache is stale and getUserById is missing from context
+  const getUserById = useCallback((userId: string) => {
+    if (contextGetUserById) return contextGetUserById(userId);
+    if (userId === currentUser?.id) return currentUser;
+    if (userId === 'littleloom_team') {
+      return {
+        id: 'littleloom_team',
+        displayName: 'LittleLoom Team',
+        handle: '@littleloom',
+        avatar: '🧸',
+        isVerified: true,
+        onlineStatus: 'online',
+        lastActive: new Date().toISOString(),
+        stats: { posts: 1, followers: 9999, following: 0, helpful: 999, streakDays: 999, lastStreakDate: new Date().toISOString() },
+        achievements: [],
+      } as any;
+    }
+    const foundPost = posts.find(p => p.authorId === userId);
+    return foundPost?.author;
+  }, [contextGetUserById, currentUser, posts]);
 
   // Defensive: if metro cache is stale and sharePost is missing, no-op instead of crash
   const sharePost = community.sharePost || (async () => {
@@ -1897,7 +1919,7 @@ export default function CommunityScreen({ navigation }: Props) {
       canInteract={canInteract}
       isDark={isDark}
     />
-  ), [visiblePostIds, expandedPostId, commentInputs, replyingTo, topics, currentUser, canInteract, isDark, handleLike, handleRepost, handleBookmark, handleShare, handleDelete, handleCommentSubmit, likeComment, voteHelpful, handleVotePoll, navigation]);
+  ), [visiblePostIds, expandedPostId, commentInputs, replyingTo, topics, currentUser, canInteract, isDark, handleLike, handleRepost, handleBookmark, handleShare, handleDelete, handleCommentSubmit, likeComment, voteHelpful, handleVotePoll, getUserById, navigation]);
 
   const renderHeader = useCallback(() => (
     <View>
@@ -1927,8 +1949,36 @@ export default function CommunityScreen({ navigation }: Props) {
             sweetAlert.alert('Sign In Required', 'Please sign in to post', 'warning');
             return;
           }
-          const matchedTopic = topics.find(t => prompt && t.name.toLowerCase().includes(prompt.toLowerCase().split(' ')[0]));
-          navigation.navigate(ROUTES.CREATE_POST, matchedTopic ? { topicId: matchedTopic.id } : undefined);
+          // Intelligent topic matching based on prompt keywords
+          let matchedTopic = undefined;
+          if (prompt) {
+            const promptLower = prompt.toLowerCase();
+            const keywordMap: Record<string, string[]> = {
+              'topic_1': ['potty', 'toilet', 'pee', 'poop', 'diaper'],
+              'topic_2': ['sleep', 'nap', 'bedtime', 'night', 'insomnia', 'tired'],
+              'topic_3': ['feed', 'food', 'eat', 'milk', 'breast', 'formula', 'solid', 'nutrition'],
+              'topic_4': ['milestone', 'first', 'walk', 'talk', 'word', 'step', 'crawl'],
+              'topic_5': ['sick', 'fever', 'doctor', 'health', 'medicine', 'vaccine', 'ill'],
+              'topic_6': ['hack', 'tip', 'trick', 'advice', 'idea', 'help'],
+              'topic_7': ['name', 'baby name', 'naming', 'call'],
+              'topic_8': ['work', 'job', 'career', 'balance', 'office', 'working'],
+              'topic_9': ['tantrum', 'cry', 'scream', 'meltdown', 'angry', 'behavior'],
+              'topic_10': ['school', 'learn', 'education', 'teach', 'read', 'homework'],
+              'topic_11': ['single', 'alone', 'divorce', 'solo', 'widow'],
+              'topic_12': ['special', 'autism', 'adhd', 'disability', 'therapy', 'needs'],
+            };
+            matchedTopic = topics.find(t => {
+              const keywords = keywordMap[t.id] || [];
+              return keywords.some(kw => promptLower.includes(kw));
+            });
+            if (!matchedTopic) {
+              matchedTopic = topics.find(t => promptLower.includes(t.name.toLowerCase()));
+            }
+          }
+          navigation.navigate(ROUTES.CREATE_POST, { 
+            topicId: matchedTopic?.id,
+            initialContent: prompt 
+          });
         }}
         suggestions={composeSuggestions}
         isDark={isDark}

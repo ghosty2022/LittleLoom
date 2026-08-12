@@ -214,7 +214,7 @@ export type CommunityStackParamList = {
   CommunityOnboarding: { onComplete?: () => void; editing?: boolean } | undefined;
   CommunityMain: undefined;
   Topic: { topicId: string };
-  CreatePost: { topicId?: string };
+  CreatePost: { topicId?: string; initialContent?: string };
   PostDetail: { postId: string };
   
   CommunityMemberProfile: { userId: string };

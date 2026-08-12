@@ -12,6 +12,7 @@ import { useBaby } from './BabyContext';
 import { useFamily } from './FamilyContext';
 import type { FamilyMember } from './FamilyContext';
 import { showAlert } from '@/utils/alert';
+import { useSweetAlert } from '../components/SweetAlert';
 
 export type MessageType = 'text' | 'image' | 'voice' | 'system' | 'file';
 
@@ -230,6 +231,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const { members, parent1, parent2, guardians, currentBaby } = useFamily();
   const { userProfile } = useAuth();
   const { currentBaby: babyContext } = useBaby();
+  const sweetAlert = useSweetAlert();
   
   const [state, setState] = useState<FamilyChatState>({
     chats: [],

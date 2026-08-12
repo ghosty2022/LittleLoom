@@ -7,6 +7,7 @@ import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
+import * as Location from 'expo-location';
 import Animated, { FadeInUp, FadeIn } from 'react-native-reanimated';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -123,6 +124,7 @@ const ToolButton = ({ icon, label, color, bgColor, onPress, badge }: ToolButtonP
 export default function CreatePostScreen({ navigation, route }: CreatePostScreenProps) {
   const routeParams = route?.params ?? {};
   const topicId = routeParams?.topicId;
+  const initialContent = routeParams?.initialContent;
 
   const { 
     topics, 
@@ -144,7 +146,7 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
 
   const sweetAlert = useSweetAlert();
 
-  const [content, setContent] = useState('');
+  const [content, setContent] = useState(initialContent || '');
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
   const [images, setImages] = useState<string[]>([]);
   const [isAnonymous, setIsAnonymous] = useState(false);
@@ -163,6 +165,35 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
   const [pollQuestion, setPollQuestion] = useState('');
   const [pollOptions, setPollOptions] = useState<string[]>(['', '']);
   const [showMoodPicker, setShowMoodPicker] = useState(false);
+
+  // Auto-detect device location on mount
+  useEffect(() => {
+    let isMounted = true;
+    const detectLocation = async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') return;
+        
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Low });
+        const addresses = await Location.reverseGeocodeAsync({
+          latitude: loc.coords.latitude,
+          longitude: loc.coords.longitude,
+        });
+        
+        if (addresses && addresses.length > 0 && isMounted) {
+          const country = addresses[0].country;
+          if (country) {
+            setSelectedCountry(country);
+            await updateUserLocation(country);
+          }
+        }
+      } catch (err) {
+        console.warn('Auto-location failed:', err);
+      }
+    };
+    detectLocation();
+    return () => { isMounted = false; };
+  }, [updateUserLocation]);
 
   useEffect(() => {
     const loadSelectedTopics = async () => {
@@ -404,7 +435,7 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
     setSelectedCountry(country.name);
     await updateUserLocation(country.name);
     setShowCountryPicker(false);
-    sweetAlert.toast('Location Updated', 'Set to ${country.flag} ${country.name}', 'success');
+    sweetAlert.toast('Location Updated', `Set to ${country.flag} ${country.name}`, 'success');
   };
 
   const handleTopicSelect = (topic: Topic) => {

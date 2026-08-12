@@ -5,7 +5,7 @@ import { Easing, FadeIn, FadeInUp, FadeOut, interpolate, Layout, useAnimatedStyl
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { useCommunity } from '../../context/CommunityContext';
 
-import { useFamilyChat, FamilyMessage } from '../../context/FamilyChatContext';
+import { useFamilyChat, FamilyMessage, FileMetadata } from '../../context/FamilyChatContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -238,7 +238,7 @@ const ImagePreviewModal = React.memo(({
 // MESSAGE BUBBLE COMPONENT
 // ═══════════════════════════════════════════════════════════
 const MessageBubble = React.memo(({
-    message: FamilyMessage;
+  message,
   isMe,
   user,
   showAvatar,
@@ -251,6 +251,7 @@ const MessageBubble = React.memo(({
   onFilePress,
   onResend,
 }: {
+  message: FamilyMessage;
   message: FamilyMessage;
   isMe: boolean;
   user: any;
