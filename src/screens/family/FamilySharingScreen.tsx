@@ -1586,6 +1586,14 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
                       <Text style={[styles.pendingSent, isDark && styles.textMuted]}>
                         Expires {new Date(code.expiresAt).toLocaleDateString()}
                       </Text>
+                      <Image
+                        source={{ uri: `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`littleloom://invite?code=${code.code}`)}` }}
+                        style={{ width: 130, height: 130, marginTop: 10, borderRadius: 12, alignSelf: 'center' }}
+                        resizeMode="contain"
+                      />
+                      <Text style={[styles.pendingSent, isDark && styles.textMuted, { textAlign: 'center', marginTop: 4 }]}>
+                        Scan with secondary device
+                      </Text>
                     </View>
                     <View style={styles.pendingActions}>
                       <TouchableOpacity

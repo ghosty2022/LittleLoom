@@ -950,11 +950,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!acquireSignInLock()) return { success: false, message: 'Another operation in progress' };
 
     try {
-      const { validateInviteCode, markInviteCodeUsed } = await import('@/utils/portableInvite');
-      const validation = await validateInviteCode(code);
+      let validation: { valid: boolean; invite?: any; message?: string } = { valid: false };
+      try {
+        const { validateInviteCode } = await import('@/utils/portableInvite');
+        validation = await validateInviteCode(code);
+      } catch {
+        // Fallback validation from AsyncStorage
+        const raw = await AsyncStorage.getItem('littleloom_invite_codes');
+        const codes = raw ? JSON.parse(raw) : {};
+        const invite = codes[code];
+        if (!invite) {
+          return { success: false, message: 'Invalid or expired invite code' };
+        }
+        if (invite.used) {
+          return { success: false, message: 'This invite code has already been used' };
+        }
+        if (Date.now() > invite.expiresAt) {
+          return { success: false, message: 'This invite code has expired' };
+        }
+        validation = { valid: true, invite };
+      }
 
       if (!validation.valid || !validation.invite) {
-        return { success: false, message: validation.message };
+        return { success: false, message: validation.message || 'Invalid invite code' };
       }
 
       const invite = validation.invite;
@@ -1051,7 +1069,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.error('Family member creation error:', famError);
       }
 
-      await markInviteCodeUsed(code);
+      try {
+        const { markInviteCodeUsed } = await import('@/utils/portableInvite');
+        await markInviteCodeUsed(code);
+      } catch {
+        // Fallback: mark as used in AsyncStorage
+        const raw = await AsyncStorage.getItem('littleloom_invite_codes');
+        const codes = raw ? JSON.parse(raw) : {};
+        if (codes[code]) {
+          codes[code].used = true;
+          await AsyncStorage.setItem('littleloom_invite_codes', JSON.stringify(codes));
+        }
+      }
 
       await Promise.all([
         AsyncStorage.setItem(ASYNC_KEYS.HAS_PARENT2, 'true'),
