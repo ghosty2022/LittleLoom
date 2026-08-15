@@ -260,9 +260,9 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     if (activeTab !== 'join') return;
     if (codeDebounceTimer.current) clearTimeout(codeDebounceTimer.current);
 
-    const trimmed = inviteCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const trimmed = inviteCode.trim();
 
-    if (trimmed.length !== 6) {
+    if (trimmed.length < 10) {
       setCodeValidated(false);
       setCodeInfo(null);
       return;
@@ -683,10 +683,10 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
       return;
     }
 
-    const trimmedCode = inviteCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const trimmedCode = inviteCode.trim();
 
-    if (trimmedCode.length !== 6) {
-      showError('Invalid Code', 'Please enter a valid 6-character invite code');
+    if (trimmedCode.length < 10) {
+      showError('Invalid Code', 'Please paste the full invite code');
       triggerHaptic('error');
       return;
     }
@@ -1060,11 +1060,24 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
       ]}>
         <Ionicons name="key-outline" size={20} color={codeValidated ? '#22c55e' : '#667eea'} style={styles.inputIcon} />
         <TextInput
-          style={[styles.input, { color: isDark ? '#fff' : '#1e293b', letterSpacing: 4, fontWeight: '700', fontSize: 18, textTransform: 'uppercase' }]}
-          placeholder="INVITE CODE"
+          style={[styles.input, { color: isDark ? '#fff' : '#1e293b', letterSpacing: 2, fontWeight: '600', fontSize: 16 }]}
+          placeholder="Paste invite code here"
           placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
           value={inviteCode}
-          onChangeText={(text) => setInviteCode(text.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))}
+          onChangeText={setInviteCode}
+          autoCapitalize="none"
+          autoCorrect={false}
+          editable=        <TextInput
+          style={[styles.input, { color: isDark ? '#fff' : '#1e293b', letterSpacing: 2, fontWeight: '600', fontSize: 16 }]}
+          placeholder="Paste invite code here"
+          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+          value={inviteCode}
+          onChangeText={setInviteCode}
+          autoCapitalize="none"
+          autoCorrect={false}
+          editable={!isLoading}
+          returnKeyType="next"
+        />
           autoCapitalize="characters"
           autoCorrect={false}
           editable={!isLoading}

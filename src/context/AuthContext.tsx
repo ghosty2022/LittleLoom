@@ -950,8 +950,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!acquireSignInLock()) return { success: false, message: 'Another operation in progress' };
 
     try {
-      // Validate the invite code
-      const { validateInviteCode, markInviteCodeUsed, getBabyByIdFromDb, createFamilyMemberInDb, updateBabyInDb } = await import('@/database/dbHelpers');
+      const { validateInviteCode, markInviteCodeUsed } = await import('@/utils/portableInvite');
       const validation = await validateInviteCode(code);
 
       if (!validation.valid || !validation.invite) {
@@ -959,12 +958,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       const invite = validation.invite;
-
-      // Check if baby exists
-      const baby = await getBabyByIdFromDb(invite.familyId);
-      if (!baby) {
-        return { success: false, message: 'Family not found. The baby profile may have been deleted.' };
-      }
 
       await new Promise(resolve => setTimeout(resolve, 800));
 
@@ -990,7 +983,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         communitySelectedTopics: [],
       };
 
-      // ─── CRITICAL FIX: Register user in persistent registry ──────────
       const registryEntry: UserRegistryEntry = {
         userId,
         email,
@@ -1008,46 +1000,66 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
       await registerUser(registryEntry);
 
-      // Save auth
       await Promise.all([
         secureStorage.setItem(SECURE_KEYS.AUTH_TOKEN, token),
         secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(userProfile)),
-        AsyncStorage.setItem(ASYNC_KEYS.ONBOARDING_COMPLETE, 'true'),
         AsyncStorage.setItem(ASYNC_KEYS.HAS_SEEN_ONBOARDING, 'true'),
       ]);
 
-      // Create family member entry
-      const memberId = `fam_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      await createFamilyMemberInDb({
-        id: memberId,
-        babyId: invite.familyId,
-        userId: userId,
-        email: email.toLowerCase(),
-        fullName: fullName,
-        role: invite.role,
-        relationship: invite.relationship || (invite.role === 'parent2' ? 'Parent' : 'Guardian'),
-        permissions: {},
-        addedBy: invite.createdBy,
-        canBeRemoved: true,
-        notificationsEnabled: true,
-        status: 'active',
-      });
+      // Ensure baby exists on this device (critical for Phone B)
+      try {
+        const { getBabyByIdFromDb, createBabyInDb, updateBabyInDb } = await import('@/database/dbHelpers');
+        let baby = await getBabyByIdFromDb(invite.familyId);
 
-      // Link to baby
-      if (invite.role === 'parent2') {
-        await updateBabyInDb(invite.familyId, { parent2Id: userId });
+        if (!baby) {
+          baby = await createBabyInDb({
+            id: invite.familyId,
+            name: invite.babyName,
+            dateOfBirth: invite.babyDob || new Date().toISOString(),
+            gender: invite.babyGender || 'unknown',
+            parent1Id: invite.creatorId,
+            parent1Name: invite.creatorName,
+            createdAt: new Date().toISOString(),
+          });
+        }
+        if (invite.role === 'parent2') {
+          await updateBabyInDb(invite.familyId, { parent2Id: userId });
+        }
+      } catch (dbError) {
+        console.error('Baby setup error (non-fatal):', dbError);
       }
 
-      // Mark code as used
-      await markInviteCodeUsed(code, userId);
+      // Create family member entry
+      try {
+        const { createFamilyMemberInDb } = await import('@/database/dbHelpers');
+        const memberId = `fam_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        await createFamilyMemberInDb({
+          id: memberId,
+          babyId: invite.familyId,
+          userId,
+          email: email.toLowerCase(),
+          fullName,
+          role: invite.role,
+          relationship: invite.relationship || (invite.role === 'parent2' ? 'Parent' : 'Guardian'),
+          permissions: {},
+          addedBy: invite.creatorId,
+          canBeRemoved: true,
+          notificationsEnabled: true,
+          status: 'active',
+        });
+      } catch (famError) {
+        console.error('Family member creation error:', famError);
+      }
 
-      // Mark setup as complete (skip parent2/baby setup since joining existing)
+      await markInviteCodeUsed(code);
+
       await Promise.all([
         AsyncStorage.setItem(ASYNC_KEYS.HAS_PARENT2, 'true'),
         AsyncStorage.setItem(ASYNC_KEYS.HAS_BABY, 'true'),
         AsyncStorage.setItem(ASYNC_KEYS.PARENT2_COMPLETED, 'true'),
         AsyncStorage.setItem(ASYNC_KEYS.BABY_COMPLETED, 'true'),
         AsyncStorage.setItem(ASYNC_KEYS.SETUP_COMPLETE, 'true'),
+        AsyncStorage.setItem(ASYNC_KEYS.ONBOARDING_COMPLETE, 'true'),
       ]);
 
       if (isMounted.current) {

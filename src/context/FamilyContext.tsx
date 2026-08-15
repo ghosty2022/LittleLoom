@@ -470,43 +470,43 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     try {
-      const { createInviteCode } = await import('@/database/dbHelpers');
-      const result = await createInviteCode({
+      const { generateInviteCode: genCode, storeInviteCode } = await import('@/utils/portableInvite');
+      const payload = {
         familyId: currentBaby.id,
+        babyName: currentBaby.name,
+        babyDob: (currentBaby as any).dateOfBirth,
+        babyGender: (currentBaby as any).gender,
+        creatorId: profile.id,
+        creatorName: profile.fullName,
         role,
-        createdBy: profile.id,
         relationship,
-        inviteeName,
-        inviteeEmail,
-        inviteePhone,
-        maxUses: 1,
+        createdAt: Date.now(),
         expiresInDays: 7,
-      });
-
-      return result;
+      };
+      const code = genCode(payload);
+      await storeInviteCode(code, payload);
+      return { code, success: true, message: 'Invite code generated successfully' };
     } catch (error) {
       console.error('Error generating invite code:', error);
       return { code: '', success: false, message: 'Failed to generate invite code' };
     }
   }, [isOwner, profile, currentBaby]);
 
-  const getActiveInviteCodes = useCallback(async (): Promise<import('@/database/dbHelpers').InviteCode[]> => {
-    if (!currentBaby) return [];
+  const getActiveInviteCodes = useCallback(async () => {
     try {
-      const { getActiveInviteCodesForFamily } = await import('@/database/dbHelpers');
-      return await getActiveInviteCodesForFamily(currentBaby.id);
+      const { getActiveInvites } = await import('@/utils/portableInvite');
+      return await getActiveInvites();
     } catch (error) {
       console.error('Error getting active invite codes:', error);
       return [];
     }
-  }, [currentBaby]);
+  }, []);
 
   const revokeInviteCode = useCallback(async (code: string): Promise<boolean> => {
     if (!isOwner) return false;
-
     try {
-      const { deactivateInviteCode } = await import('@/database/dbHelpers');
-      return await deactivateInviteCode(code);
+      const { revokeInviteCode: doRevoke } = await import('@/utils/portableInvite');
+      return await doRevoke(code);
     } catch (error) {
       console.error('Error revoking invite code:', error);
       return false;

@@ -1561,7 +1561,9 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
                       <Ionicons name="key-outline" size={22} color={themeColors.primary} />
                     </View>
                     <View style={styles.pendingInfo}>
-                      <Text style={[styles.pendingEmail, isDark && styles.textDark, { letterSpacing: 2, fontSize: 18 }]}>{code.code}</Text>
+                      <Text style={[styles.pendingEmail, isDark && styles.textDark, { fontSize: 13, fontFamily: 'monospace' }]} numberOfLines={1}>
+                        {code.code}
+                      </Text>
                       <Text style={[styles.pendingRole, isDark && styles.textMuted]}>
                         {code.role === 'parent2' ? 'Co-Parent' : code.role === 'guardian' ? 'Guardian' : 'Viewer'}
                         {' • '}{code.relationship || 'Family Member'}
@@ -1589,7 +1591,7 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
                       <TouchableOpacity
                         style={[styles.pendingAction, { backgroundColor: '#25d36615' }]}
                         onPress={() => {
-                          const url = `whatsapp://send?text=${encodeURIComponent(`👋 Join me on LittleLoom!\n\n👶 Baby: ${currentBaby?.name || 'our little one'}\n🎫 Invite Code: ${code.code}\n👤 Role: ${code.role === 'parent2' ? 'Co-Parent' : code.role === 'guardian' ? 'Guardian' : 'Viewer'}\n\n📲 Download: https://littleloom.app/download`)}`;
+                          const url = `whatsapp://send?text=${encodeURIComponent(`👋 Join me on LittleLoom!\n\n👶 Baby: ${currentBaby?.name || 'our little one'}\n🎫 Invite Code:\n${code.code}\n\n👤 Role: ${code.role === 'parent2' ? 'Co-Parent' : code.role === 'guardian' ? 'Guardian' : 'Viewer'}\n\n📲 Download: https://littleloom.app/download`)}`;
                           Linking.canOpenURL(url).then(supported => supported ? Linking.openURL(url) : sweetAlert.toast('WhatsApp not found', 'Install WhatsApp to share', 'warning'));
                         }}
                       >
@@ -1598,7 +1600,7 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
                       <TouchableOpacity
                         style={[styles.pendingAction, { backgroundColor: themeColors.primary + '10' }]}
                         onPress={() => {
-                          const fullMessage = `👋 Join our family on LittleLoom!\n\n👶 Baby: ${currentBaby?.name || 'our little one'}\n🎫 Invite Code: ${code.code}\n👤 Role: ${code.role === 'parent2' ? 'Co-Parent' : code.role === 'guardian' ? 'Guardian' : 'Viewer'}\n\n📲 Download: https://littleloom.app/download`;
+                          const fullMessage = `👋 Join our family on LittleLoom!\n\n👶 Baby: ${currentBaby?.name || 'our little one'}\n🎫 Invite Code:\n${code.code}\n\n👤 Role: ${code.role === 'parent2' ? 'Co-Parent' : code.role === 'guardian' ? 'Guardian' : 'Viewer'}\n\n📲 Download: https://littleloom.app/download`;
                           Clipboard.setString(fullMessage);
                           sweetAlert.toast('Copied', 'Full invite message copied to clipboard', 'success');
                         }}

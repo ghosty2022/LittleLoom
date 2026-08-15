@@ -104,11 +104,12 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
 
   // ─── CODE VALIDATION WITH DEBOUNCE ───
   useEffect(() => {
+    if (activeTab !== 'join') return;
     if (codeDebounceTimer.current) clearTimeout(codeDebounceTimer.current);
 
-    const trimmed = inviteCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const trimmed = inviteCode.trim();
 
-    if (trimmed.length !== 6) {
+    if (trimmed.length < 10) {
       setCodeValidated(false);
       setCodeInfo(null);
       return;
@@ -117,7 +118,7 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
     setIsValidatingCode(true);
     codeDebounceTimer.current = setTimeout(async () => {
       try {
-        const { validateInviteCode } = await import('@/database/dbHelpers');
+        const { validateInviteCode } = await import('@/utils/portableInvite');
         const result = await validateInviteCode(trimmed);
 
         if (isMounted.current) {
@@ -139,7 +140,7 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
         if (isMounted.current) setIsValidatingCode(false);
       }
     }, 500);
-  }, [inviteCode]);
+  }, [inviteCode, activeTab]);
 
   useEffect(() => {
     if (googleResponse?.type === 'success') {
@@ -378,10 +379,10 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
   const handleJoinFamily = useCallback(async () => {
     if (joinAttempted.current || isProcessing || authLoading) return;
 
-    const trimmedCode = inviteCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const trimmedCode = inviteCode.trim();
 
-    if (trimmedCode.length !== 6) {
-      showError('Invalid Code', 'Please enter a valid 6-character invite code');
+    if (trimmedCode.length < 10) {
+      showError('Invalid Code', 'Please paste the full invite code');
       triggerHaptic('error');
       return;
     }
@@ -687,17 +688,16 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
         !codeValidated && inviteCode.length >= 6 && styles.inputContainerError,
       ]}>
         <Ionicons name="key-outline" size={20} color={codeValidated ? '#22c55e' : '#667eea'} style={styles.inputIcon} />
-        <TextInput
-          style={[styles.input, { color: isDark ? '#fff' : '#1e293b', letterSpacing: 4, fontWeight: '700', fontSize: 18, textTransform: 'uppercase' }]}
-          placeholder="INVITE CODE"
+               <TextInput
+          style={[styles.input, { color: isDark ? '#fff' : '#1e293b', letterSpacing: 2, fontWeight: '600', fontSize: 16 }]}
+          placeholder="Paste invite code here"
           placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
           value={inviteCode}
-          onChangeText={(text) => setInviteCode(text.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))}
-          autoCapitalize="characters"
+          onChangeText={setInviteCode}
+          autoCapitalize="none"
           autoCorrect={false}
           editable={!isLoading}
           returnKeyType="next"
-          maxLength={6}
         />
         {isValidatingCode && (
           <ActivityIndicator size="small" color="#667eea" style={{ marginLeft: 8 }} />
