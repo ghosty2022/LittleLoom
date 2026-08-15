@@ -15,6 +15,7 @@ import {
   Platform,
 
   ScrollView,
+  Clipboard,
 
 } from 'react-native';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -1042,6 +1043,8 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
     removeMember,
     updateGuardianProfile,
     updateParent2Profile,
+    getActiveInviteCodes,
+    revokeInviteCode,
   } = useFamily();
 
   const { profile, updateProfile } = useUser();
@@ -1066,6 +1069,8 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
   const [showEditModal, setShowEditModal] = useState(false);
   const [showRoleModal, setShowRoleModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'members' | 'activity' | 'analytics'>('members');
+  const [activeCodes, setActiveCodes] = useState<any[]>([]);
+  const [isLoadingCodes, setIsLoadingCodes] = useState(false);
 
   // Email invite removed — using invite codes only
 
@@ -1381,6 +1386,46 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
         sweetAlert.toast('Coming Soon', 'This feature is coming soon', 'info');
     }
   };
+
+  const handleLoadActiveCodes = useCallback(async () => {
+    if (!currentBaby) return;
+    setIsLoadingCodes(true);
+    try {
+      const codes = await getActiveInviteCodes();
+      setActiveCodes(codes || []);
+    } catch (e) {
+      console.error('Failed to load active codes:', e);
+    } finally {
+      setIsLoadingCodes(false);
+    }
+  }, [currentBaby, getActiveInviteCodes]);
+
+  const handleRevokeCode = useCallback(async (code: string) => {
+    sweetAlert.confirm(
+      'Revoke Invite',
+      'Are you sure you want to revoke this invite code?',
+      async () => {
+        const success = await revokeInviteCode(code);
+        if (success) {
+          sweetAlert.toast('Revoked', 'Invite code has been revoked', 'success');
+          handleLoadActiveCodes();
+        } else {
+          sweetAlert.alert('Error', 'Failed to revoke invite code', 'warning');
+        }
+      },
+      () => {},
+      'Revoke',
+      'Cancel',
+      true
+    );
+  }, [revokeInviteCode, handleLoadActiveCodes, sweetAlert]);
+
+  // Auto-load active codes when tab opens
+  useEffect(() => {
+    if (isPrimaryParent && currentBaby) {
+      handleLoadActiveCodes();
+    }
+  }, [isPrimaryParent, currentBaby, handleLoadActiveCodes]);
 
   // ── RENDER HEADER ──
   const renderHeader = () => (
