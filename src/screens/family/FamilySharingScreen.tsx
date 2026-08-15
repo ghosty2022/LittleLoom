@@ -1359,6 +1359,29 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
     triggerHaptic('light');
   };
 
+  const handleSuggestionAction = (suggestion: SmartSuggestion) => {
+    triggerHaptic('medium');
+    switch (suggestion.type) {
+      case 'invite':
+        navigation.navigate('CoParentInviteScreen');
+        break;
+      case 'activity':
+        sweetAlert.toast('Coming Soon', 'Activity scheduling will be available soon', 'info');
+        break;
+      case 'milestone':
+        sweetAlert.toast('Milestone', 'Navigate to milestones to learn more', 'info');
+        break;
+      case 'health':
+        sweetAlert.toast('Health', 'Check the health tracker for details', 'info');
+        break;
+      case 'reminder':
+        sweetAlert.toast('Reminder Set', 'You will be reminded about this', 'success');
+        break;
+      default:
+        sweetAlert.toast('Coming Soon', 'This feature is coming soon', 'info');
+    }
+  };
+
   // ── RENDER HEADER ──
   const renderHeader = () => (
     <Animated.View style={[styles.headerContainer, { paddingTop: insets.top }, headerAnimatedStyle]}>
