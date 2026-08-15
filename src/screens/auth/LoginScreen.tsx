@@ -111,7 +111,7 @@ const isValidUsername = (username: string): boolean => {
   return trimmed.length >= 3 && /^[a-zA-Z0-9_.]+$/.test(trimmed);
 };
 
-export default function LoginScreen({ navigation }: LoginScreenProps) {
+export default function LoginScreen({ navigation, route }: LoginScreenProps) {
   // ─── TAB STATE ───
   const [activeTab, setActiveTab] = useState<'signin' | 'join'>('signin');
 
@@ -177,6 +177,15 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
   const biometricCheckComplete = useRef(false);
   const socialAuthInProgress = useRef(false);
   const codeDebounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Auto-fill invite code from QR scan
+  useEffect(() => {
+    const code = (route.params as any)?.inviteCode;
+    if (code) {
+      if (activeTab !== 'join') setActiveTab('join');
+      setInviteCode(code.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6));
+    }
+  }, [route.params]);
 
   const userName = userProfile?.fullName || 'there';
 
@@ -262,7 +271,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
 
     const trimmed = inviteCode.trim();
 
-    if (trimmed.length < 10) {
+    if (trimmed.length !== 6) {
       setCodeValidated(false);
       setCodeInfo(null);
       return;
@@ -685,8 +694,8 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
 
     const trimmedCode = inviteCode.trim();
 
-    if (trimmedCode.length < 10) {
-      showError('Invalid Code', 'Please paste the full invite code');
+    if (trimmedCode.length !== 6) {
+      showError('Invalid Code', 'Invite code must be exactly 6 characters');
       triggerHaptic('error');
       return;
     }
@@ -1056,28 +1065,15 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
         styles.inputContainer,
         isDark && styles.inputContainerDark,
         codeValidated && styles.inputContainerSuccess,
-        !codeValidated && inviteCode.length >= 6 && !isValidatingCode && styles.inputContainerError,
+        !codeValidated && inviteCode.length === 6 && !isValidatingCode && styles.inputContainerError,
       ]}>
         <Ionicons name="key-outline" size={20} color={codeValidated ? '#22c55e' : '#667eea'} style={styles.inputIcon} />
         <TextInput
-          style={[styles.input, { color: isDark ? '#fff' : '#1e293b', letterSpacing: 2, fontWeight: '600', fontSize: 16 }]}
+          style={[styles.input, { color: isDark ? '#fff' : '#1e293b', letterSpacing: 3, fontWeight: '700', fontSize: 18, textAlign: 'center' }]}
           placeholder="Paste invite code here"
           placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
           value={inviteCode}
-          onChangeText={setInviteCode}
-          autoCapitalize="none"
-          autoCorrect={false}
-          editable=        <TextInput
-          style={[styles.input, { color: isDark ? '#fff' : '#1e293b', letterSpacing: 2, fontWeight: '600', fontSize: 16 }]}
-          placeholder="Paste invite code here"
-          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
-          value={inviteCode}
-          onChangeText={setInviteCode}
-          autoCapitalize="none"
-          autoCorrect={false}
-          editable={!isLoading}
-          returnKeyType="next"
-        />
+          onChangeText={(text) => setInviteCode(text.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
           autoCapitalize="characters"
           autoCorrect={false}
           editable={!isLoading}
@@ -1091,6 +1087,20 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
           <Ionicons name="checkmark-circle" size={22} color="#22c55e" />
         )}
       </View>
+
+      <TouchableOpacity
+        style={[styles.socialButton, { borderColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(102,126,234,0.15)', marginTop: 8 }]}
+        onPress={() => navigation.navigate('QRScanner' as never)}
+        disabled={isLoading}
+        activeOpacity={0.85}
+      >
+        <View style={styles.socialButtonInner}>
+          <Ionicons name="qr-code-outline" size={22} color="#667eea" />
+          <Text style={[styles.socialButtonText, { color: isDark ? '#fff' : '#1e293b' }]}>
+            Scan QR Code Instead
+          </Text>
+        </View>
+      </TouchableOpacity>
 
       {codeValidated && codeInfo && (
         <View style={[styles.codeInfoCard, { backgroundColor: isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)' }]}>

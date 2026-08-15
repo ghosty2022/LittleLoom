@@ -28,7 +28,7 @@ const isValidEmail = (email: string): boolean => {
   return re.test(email.trim().toLowerCase());
 };
 
-export default function SignUpScreen({ navigation }: SignUpScreenProps) {
+export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
   // ─── TAB STATE ───
   const [activeTab, setActiveTab] = useState<'create' | 'join'>('create');
 
@@ -72,6 +72,15 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
   const joinAttempted = useRef(false);
   const codeDebounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Auto-fill invite code from QR scan
+  useEffect(() => {
+    const code = (route.params as any)?.inviteCode;
+    if (code) {
+      if (activeTab !== 'join') setActiveTab('join');
+      setInviteCode(code.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6));
+    }
+  }, [route.params]);
+
   const [googleRequest, googleResponse, googlePromptAsync] = AuthSession.useAuthRequest(
     {
       clientId: GOOGLE_CLIENT_ID,
@@ -109,7 +118,7 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
 
     const trimmed = inviteCode.trim();
 
-    if (trimmed.length < 10) {
+    if (trimmed.length !== 6) {
       setCodeValidated(false);
       setCodeInfo(null);
       return;
@@ -381,8 +390,8 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
 
     const trimmedCode = inviteCode.trim();
 
-    if (trimmedCode.length < 10) {
-      showError('Invalid Code', 'Please paste the full invite code');
+    if (trimmedCode.length !== 6) {
+      showError('Invalid Code', 'Invite code must be exactly 6 characters');
       triggerHaptic('error');
       return;
     }
@@ -685,19 +694,20 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
         styles.inputContainer,
         isDark && styles.inputContainerDark,
         codeValidated && styles.inputContainerSuccess,
-        !codeValidated && inviteCode.length >= 6 && styles.inputContainerError,
+        !codeValidated && inviteCode.length === 6 && !isValidatingCode && styles.inputContainerError,
       ]}>
         <Ionicons name="key-outline" size={20} color={codeValidated ? '#22c55e' : '#667eea'} style={styles.inputIcon} />
                <TextInput
-          style={[styles.input, { color: isDark ? '#fff' : '#1e293b', letterSpacing: 2, fontWeight: '600', fontSize: 16 }]}
+          style={[styles.input, { color: isDark ? '#fff' : '#1e293b', letterSpacing: 3, fontWeight: '700', fontSize: 18, textAlign: 'center' }]}
           placeholder="Paste invite code here"
           placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
           value={inviteCode}
-          onChangeText={setInviteCode}
-          autoCapitalize="none"
+          onChangeText={(text) => setInviteCode(text.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+          autoCapitalize="characters"
           autoCorrect={false}
           editable={!isLoading}
           returnKeyType="next"
+          maxLength={6}
         />
         {isValidatingCode && (
           <ActivityIndicator size="small" color="#667eea" style={{ marginLeft: 8 }} />
@@ -706,6 +716,28 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
           <Ionicons name="checkmark-circle" size={22} color="#22c55e" />
         )}
       </View>
+
+      <TouchableOpacity
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 14,
+          borderRadius: 16,
+          borderWidth: 1,
+          borderColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(102,126,234,0.15)',
+          backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(102,126,234,0.05)',
+          marginTop: 8,
+          gap: 8,
+        }}
+        onPress={() => navigation.navigate('QRScanner' as never)}
+        disabled={isLoading}
+      >
+        <Ionicons name="qr-code-outline" size={22} color="#667eea" />
+        <Text style={{ color: isDark ? '#fff' : '#1e293b', fontWeight: '600', fontSize: 15 }}>
+          Scan QR Code Instead
+        </Text>
+      </TouchableOpacity>
 
       {codeValidated && codeInfo && (
         <View style={[styles.codeInfoCard, { backgroundColor: isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)' }]}>
