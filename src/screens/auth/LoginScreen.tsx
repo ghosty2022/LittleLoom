@@ -519,30 +519,8 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
   };
 
   const handleAppleLogin = async () => {
-    if (socialAuthInProgress.current) return;
     triggerHaptic('light');
-
-    try {
-      const { AppleAuthentication } = await import('expo-apple-authentication');
-
-      const credential = await AppleAuthentication.signInAsync({
-        requestedScopes: [
-          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
-          AppleAuthentication.AppleAuthenticationScope.EMAIL,
-        ],
-      });
-
-      if (credential.identityToken && credential.email) {
-        await handleSocialLogin('apple', credential.email, credential.fullName?.givenName || 'Apple User');
-      } else if (credential.identityToken) {
-        toast('Apple Sign-In', 'Please use password login for this account', 'info');
-      }
-    } catch (error: any) {
-      if (error.code === 'ERR_CANCELED') {
-        return;
-      }
-      showError('Apple Error', 'Apple Sign-In failed');
-    }
+    showInfo('Coming Soon', 'Apple Sign-In will be available shortly');
   };
 
   const handleFacebookLogin = async () => {
@@ -559,22 +537,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     }
   };
 
-  const handleTelegramLogin = async () => {
-    if (socialAuthInProgress.current) return;
-    socialAuthInProgress.current = true;
-    triggerHaptic('light');
-    setIsProcessing(true);
-    try {
-      showInfo('Coming Soon', 'Telegram login will be available shortly');
-    } catch (error) {
-      showError('Telegram Error', 'Could not open Telegram sign-in');
-    } finally {
-      if (isMounted.current) {
-        setIsProcessing(false);
-        socialAuthInProgress.current = false;
-      }
-    }
-  };
+
 
   const handleLogin = useCallback(async () => {
     // FIX: Reset stale flags from previous session (swipe-back edge case)
@@ -925,14 +888,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
           <Image source={require('../../../assets/social/facebook.png')} style={styles.socialIcon} resizeMode="contain" />
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.socialIconButton, { borderColor: 'rgba(0,136,204,0.2)' }]}
-          onPress={handleTelegramLogin}
-          disabled={isLoading}
-          activeOpacity={0.8}
-        >
-          <Image source={require('../../../assets/social/telegram.png')} style={styles.socialIcon} resizeMode="contain" />
-        </TouchableOpacity>
+
       </View>
 
       <View style={styles.divider}>

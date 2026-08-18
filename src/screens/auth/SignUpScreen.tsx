@@ -381,32 +381,8 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
   };
 
   const handleAppleSignUp = async () => {
-    if (socialAuthInProgress.current) return;
     triggerHaptic('light');
-
-    try {
-      const { AppleAuthentication } = await import('expo-apple-authentication');
-
-      const credential = await AppleAuthentication.signInAsync({
-        requestedScopes: [
-          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
-          AppleAuthentication.AppleAuthenticationScope.EMAIL,
-        ],
-      });
-
-      if (credential.identityToken && credential.email) {
-        await handleSocialSignUp(
-          'apple',
-          credential.email,
-          credential.fullName?.givenName || 'Apple User'
-        );
-      } else if (credential.identityToken) {
-        toast('Apple Sign-Up', 'Please use email sign-up for this account', 'info');
-      }
-    } catch (error: any) {
-      if (error.code === 'ERR_CANCELED') return;
-      showError('Apple Error', 'Apple Sign-Up failed');
-    }
+    showInfo('Coming Soon', 'Apple Sign-Up will be available shortly');
   };
 
   const handleFacebookSignUp = async () => {
@@ -423,22 +399,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
     }
   };
 
-  const handleTelegramSignUp = async () => {
-    if (socialAuthInProgress.current) return;
-    socialAuthInProgress.current = true;
-    triggerHaptic('light');
-    setIsProcessing(true);
-    try {
-      showInfo('Coming Soon', 'Telegram sign-up will be available shortly');
-    } catch (error) {
-      showError('Telegram Error', 'Could not open Telegram sign-up');
-    } finally {
-      if (isMounted.current) {
-        setIsProcessing(false);
-        socialAuthInProgress.current = false;
-      }
-    }
-  };
+
 
   // ─── CREATE ACCOUNT HANDLER ───
   const handleSignUp = useCallback(async () => {
@@ -766,18 +727,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
           />
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.socialIconButton, { borderColor: 'rgba(0,136,204,0.2)' }]}
-          onPress={handleTelegramSignUp}
-          disabled={isLoading}
-          activeOpacity={0.8}
-        >
-          <Image
-            source={require('../../../assets/social/telegram.png')}
-            style={styles.socialIcon}
-            resizeMode="contain"
-          />
-        </TouchableOpacity>
+
       </View>
 
       <View style={styles.divider}>

@@ -6,7 +6,7 @@ export interface SocialUser {
   fullName: string;
   email: string;
   avatar?: string;
-  provider: 'google' | 'apple' | 'facebook' | 'telegram';
+  provider: 'google' | 'apple' | 'facebook';
 }
 
 export interface SocialAuthState {
@@ -27,6 +27,8 @@ export const useSocialAuth = () => {
   const signInWithGoogle = useCallback(async (): Promise<SocialUser | null> => {
     setState(prev => ({ ...prev, isLoading: true, error: null }));
     try {
+      // This hook is currently a thin wrapper / mock.
+      // Real Google flow lives in LoginScreen / SignUpScreen via AuthSession.
       const mockUser: SocialUser = {
         id: `google_${Date.now()}`,
         fullName: 'Google User',
@@ -39,30 +41,15 @@ export const useSocialAuth = () => {
     } catch (error: any) {
       const message = error?.message || 'Google sign-in failed';
       setState(prev => ({ ...prev, isLoading: false, error: message }));
-
-Alert.alert('Sign In Error', 'Sign in failed. Please try again.');
+      Alert.alert('Sign In Error', 'Sign in failed. Please try again.');
       return null;
     }
   }, []);
 
   const signInWithApple = useCallback(async (): Promise<SocialUser | null> => {
-    setState(prev => ({ ...prev, isLoading: true, error: null }));
-    try {
-      const mockUser: SocialUser = {
-        id: `apple_${Date.now()}`,
-        fullName: 'Apple User',
-        email: 'user@icloud.com',
-        provider: 'apple',
-      };
-      setState({ isLoading: false, isAuthenticated: true, socialUser: mockUser, error: null });
-      return mockUser;
-    } catch (error: any) {
-      const message = error?.message || 'Apple sign-in failed';
-      setState(prev => ({ ...prev, isLoading: false, error: message }));
-
-Alert.alert('Sign In Error', 'Sign in failed. Please try again.');
-      return null;
-    }
+    // Apple is intentionally disabled for now
+    Alert.alert('Coming Soon', 'Apple Sign-In will be available shortly.');
+    return null;
   }, []);
 
   const signInWithFacebook = useCallback(async (): Promise<SocialUser | null> => {
@@ -79,27 +66,6 @@ Alert.alert('Sign In Error', 'Sign in failed. Please try again.');
       return mockUser;
     } catch (error: any) {
       const message = error?.message || 'Facebook sign-in failed';
-      setState(prev => ({ ...prev, isLoading: false, error: message }));
-
-Alert.alert('Sign In Error', 'Sign in failed. Please try again.');
-      return null;
-    }
-  }, []);
-
-  const signInWithTelegram = useCallback(async (): Promise<SocialUser | null> => {
-    setState(prev => ({ ...prev, isLoading: true, error: null }));
-    try {
-      const mockUser: SocialUser = {
-        id: `telegram_${Date.now()}`,
-        fullName: 'Telegram User',
-        email: 'user@telegram.org',
-        avatar: 'https://via.placeholder.com/100',
-        provider: 'telegram',
-      };
-      setState({ isLoading: false, isAuthenticated: true, socialUser: mockUser, error: null });
-      return mockUser;
-    } catch (error: any) {
-      const message = error?.message || 'Telegram sign-in failed';
       setState(prev => ({ ...prev, isLoading: false, error: message }));
       Alert.alert('Sign In Error', 'Sign in failed. Please try again.');
       return null;
@@ -120,7 +86,6 @@ Alert.alert('Sign In Error', 'Sign in failed. Please try again.');
     signInWithGoogle,
     signInWithApple,
     signInWithFacebook,
-    signInWithTelegram,
     signOut,
   };
 };
