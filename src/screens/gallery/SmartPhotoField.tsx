@@ -16,9 +16,7 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
-import { Ionicons as ExpoIonicons } from '@expo/vector-icons';
-
-const Ionicons = ExpoIonicons;
+import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import Animated, {
   useSharedValue,
@@ -102,16 +100,18 @@ interface SmartPhotoFieldProps {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const formatBytes = (bytes?: number) => {
-  if (!bytes) return '—';
+  if (!bytes || bytes === undefined || bytes === null || isNaN(bytes)) return '—';
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 };
 
 const formatDate = (iso?: string) => {
-  if (!iso) return '—';
+  if (!iso || iso === undefined || iso === null || iso === '') return '—';
   try {
-    return new Date(iso).toLocaleString('en-US', {
+    const date = new Date(iso);
+    if (isNaN(date.getTime())) return '—';
+    return date.toLocaleString('en-US', {
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
@@ -122,50 +122,31 @@ const formatDate = (iso?: string) => {
   }
 };
 
-const safeAlert = (title?: string, message?: string) => {
-  const safeTitle = typeof title === 'string' && title.trim()
-    ? title
-    : 'Notice';
-
-  const safeMessage = typeof message === 'string' && message.trim()
-    ? message
-    : 'Something went wrong.';
-
-  Alert.alert(safeTitle, safeMessage);
-};
-
-const safeConfirm = (
-  title: string | undefined,
-  message: string | undefined,
-  onOk: () => void
-) => {
-  const safeTitle =
-    typeof title === 'string' && title.trim()
-      ? title
-      : 'Confirm';
-
-  const safeMessage =
-    typeof message === 'string' && message.trim()
-      ? message
-      : 'Are you sure?';
-
-  Alert.alert(
-    safeTitle,
-    safeMessage,
-    [
-      {
-        text: 'Cancel',
-        style: 'cancel',
-      },
-      {
-        text: 'OK',
-        onPress: onOk,
-      },
-    ],
-    {
-      cancelable: true,
+const sweetAlert = {
+  alert: (title: string, message: string) => {
+    if (!title || !message) return;
+    try {
+      Alert.alert(title, message);
+    } catch (e) {
+      console.warn('Alert error:', e);
     }
-  );
+  },
+  confirm: (title: string, message: string, onOk: () => void) => {
+    if (!title || !message || !onOk) return;
+    try {
+      Alert.alert(
+        title, 
+        message, 
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'OK', onPress: onOk },
+        ],
+        { cancelable: true }
+      );
+    } catch (e) {
+      console.warn('Confirm error:', e);
+    }
+  },
 };
 
 // ── Mock AI Analysis Engine ──────────────────────────────────────────────────
@@ -254,6 +235,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
   const [showZoom, setShowZoom] = useState(false);
   const [annotationColor, setAnnotationColor] = useState('#ef4444');
   const [analysisHistory, setAnalysisHistory] = useState<Record<string, AIAnalysis>>({});
+  const [error, setError] = useState<string | null>(null);
 
   const paths = useRef<any[]>([]);
   const currentPath = useRef<any>(null);
@@ -261,32 +243,45 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
 
   // ── Init photos (edit mode) ───────────────────────────────────────────────
   useEffect(() => {
-    if (hasInitializedPhotos.current) return;
-    if (!initialPhotoUris || initialPhotoUris.length === 0) return;
-    hasInitializedPhotos.current = true;
+    try {
+      if (hasInitializedPhotos.current) return;
+      if (!initialPhotoUris || initialPhotoUris.length === 0) return;
+      hasInitializedPhotos.current = true;
 
-    const metas = initialPhotoUris.map((uri) => ({
-      uri,
-      width: 0,
-      height: 0,
-      timestamp: new Date().toISOString(),
-      type: 'image/jpeg',
-    }));
-    setPhotos(metas);
-    setCurrentUri(metas[metas.length - 1]?.uri || null);
+      const metas = initialPhotoUris.map((uri) => ({
+        uri,
+        width: 0,
+        height: 0,
+        timestamp: new Date().toISOString(),
+        type: 'image/jpeg',
+      }));
+      setPhotos(metas);
+      setCurrentUri(metas[metas.length - 1]?.uri || null);
+    } catch (e) {
+      console.error('Init photos error:', e);
+      setError('Failed to initialize photos');
+    }
   }, [initialPhotoUris]);
 
   useEffect(() => {
-    onPhotosChange?.(photos);
+    try {
+      onPhotosChange?.(photos);
+    } catch (e) {
+      console.error('onPhotosChange error:', e);
+    }
   }, [photos, onPhotosChange]);
 
   // ── Permissions ────────────────────────────────────────────────────────────
   useEffect(() => {
     (async () => {
-      const { status: cam } = await ImagePicker.requestCameraPermissionsAsync();
-      const { status: lib } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (cam !== 'granted' || lib !== 'granted') {
-        safeAlert('Permissions Required', 'Camera and photo library access are needed for this feature.');
+      try {
+        const { status: cam } = await ImagePicker.requestCameraPermissionsAsync();
+        const { status: lib } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (cam !== 'granted' || lib !== 'granted') {
+          sweetAlert.alert('Permissions Required', 'Camera and photo library access are needed for this feature.');
+        }
+      } catch (e) {
+        console.error('Permissions error:', e);
       }
     })();
   }, []);
@@ -294,63 +289,54 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
   // ── Photo Capture ──────────────────────────────────────────────────────────
   const processPhoto = useCallback(
     async (uri: string, exif: any) => {
-  if (!uri || typeof uri !== 'string') {
-    safeAlert('Photo Error', 'The selected photo is invalid.');
-    return;
-  }
-
-  if (photos.some((p) => p && p.uri === uri)) {
-        safeAlert('Duplicate', 'This photo is already added.');
-        return;
-      }
-      if (photos.length >= maxPhotos) {
-        safeAlert('Limit Reached', `Maximum ${maxPhotos} photos allowed.`);
-        return;
-      }
-
-let fileSize: number | undefined;
-
-try {
-  const fileInfo = await FileSystem.getInfoAsync(uri);
-
-  if (fileInfo && fileInfo.exists && typeof fileInfo.size === 'number') {
-    fileSize = fileInfo.size;
-  }
-} catch (error) {
-  console.warn('[SmartPhotoField] Could not read file metadata:', error);
-}
-
-const meta: PhotoMeta = {
-  uri: typeof uri === 'string' ? uri : '',
-  width: Number(exif?.ImageWidth || exif?.width || 0),
-  height: Number(exif?.ImageLength || exif?.height || 0),
-  timestamp: new Date().toISOString(),
-  fileSize,
-  type: 'image/jpeg',
-};
-      if (exif?.GPSLatitude && exif?.GPSLongitude) {
-        meta.location = {
-          latitude: exif.GPSLatitude,
-          longitude: exif.GPSLongitude,
-        };
-      }
-
-      setPhotos((prev) => [...prev, meta]);
-      setCurrentUri(uri);
-      onChange(uri, meta);
-
-      if (!autoAnalyze) return;
-
-      setAnalyzing(true);
       try {
-        const result = await analyzePhoto(uri, trackerContext);
-        setAnalysis(result);
-        setAnalysisHistory((prev) => ({ ...prev, [uri]: result }));
-        onChange(uri, meta, result);
-      } catch {
-        // silent fail
-      } finally {
-        setAnalyzing(false);
+        if (photos.some((p) => p.uri === uri)) {
+          sweetAlert.alert('Duplicate', 'This photo is already added.');
+          return;
+        }
+        if (photos.length >= maxPhotos) {
+          sweetAlert.alert('Limit Reached', `Maximum ${maxPhotos} photos allowed.`);
+          return;
+        }
+
+        const fileInfo = await FileSystem.getInfoAsync(uri);
+        const meta: PhotoMeta = {
+          uri,
+          width: exif?.ImageWidth || exif?.width || 0,
+          height: exif?.ImageLength || exif?.height || 0,
+          timestamp: new Date().toISOString(),
+          fileSize: fileInfo.exists ? fileInfo.size : undefined,
+          type: 'image/jpeg',
+        };
+
+        if (exif?.GPSLatitude && exif?.GPSLongitude) {
+          meta.location = {
+            latitude: exif.GPSLatitude,
+            longitude: exif.GPSLongitude,
+          };
+        }
+
+        setPhotos((prev) => [...prev, meta]);
+        setCurrentUri(uri);
+        onChange(uri, meta);
+
+        if (!autoAnalyze) return;
+
+        setAnalyzing(true);
+        try {
+          const result = await analyzePhoto(uri, trackerContext);
+          setAnalysis(result);
+          setAnalysisHistory((prev) => ({ ...prev, [uri]: result }));
+          onChange(uri, meta, result);
+        } catch {
+          // silent fail
+        } finally {
+          setAnalyzing(false);
+        }
+      } catch (e) {
+        console.error('processPhoto error:', e);
+        setError('Failed to process photo');
+        sweetAlert.alert('Error', 'Failed to process photo. Please try again.');
       }
     },
     [photos, maxPhotos, autoAnalyze, trackerContext, onChange]
@@ -368,8 +354,9 @@ const meta: PhotoMeta = {
       if (!result.canceled && result.assets?.[0]) {
         await processPhoto(result.assets[0].uri, result.assets[0].exif);
       }
-    } catch {
-      safeAlert('Camera Error', 'Could not capture photo. Please try again.');
+    } catch (e) {
+      console.error('takePhoto error:', e);
+      sweetAlert.alert('Camera Error', 'Could not capture photo. Please try again.');
     }
   }, [processPhoto]);
 
@@ -385,8 +372,9 @@ const meta: PhotoMeta = {
       if (!result.canceled && result.assets?.[0]) {
         await processPhoto(result.assets[0].uri, result.assets[0].exif);
       }
-    } catch {
-      safeAlert('Gallery Error', 'Could not select photo. Please try again.');
+    } catch (e) {
+      console.error('pickPhoto error:', e);
+      sweetAlert.alert('Gallery Error', 'Could not select photo. Please try again.');
     }
   }, [processPhoto]);
 
@@ -394,31 +382,40 @@ const meta: PhotoMeta = {
     if (!currentUri) return;
     try {
       await Share.share({ url: currentUri, title: 'LittleLoom Photo' });
-    } catch {
-      safeAlert('Share Error', 'Unable to share this photo.');
+    } catch (e) {
+      console.error('sharePhoto error:', e);
+      sweetAlert.alert('Share Error', 'Unable to share this photo.');
     }
   }, [currentUri]);
 
   const removePhoto = useCallback(
     (idx: number) => {
-      if (idx < 0 || idx >= photos.length) return;
-      
-      const photoToRemove = photos[idx];
-      if (!photoToRemove) return;
-      
-      safeConfirm('Remove Photo?', 'This cannot be undone.', () => {
-        setPhotos((prev) => {
-          const next = prev.filter((_, i) => i !== idx);
-          if (currentUri === prev[idx]?.uri) {
-            setCurrentUri(next[0]?.uri || null);
-            onChange(next[0]?.uri || null);
+      try {
+        if (idx < 0 || idx >= photos.length) return;
+        
+        const photoToRemove = photos[idx];
+        if (!photoToRemove) return;
+        
+        sweetAlert.confirm('Remove Photo?', 'This cannot be undone.', () => {
+          try {
+            setPhotos((prev) => {
+              const next = prev.filter((_, i) => i !== idx);
+              if (currentUri && photoToRemove && currentUri === photoToRemove.uri) {
+                setCurrentUri(next[0]?.uri || null);
+                onChange(next[0]?.uri || null);
+              }
+              return next;
+            });
+            setSelectedCompare((prev) =>
+              prev.filter((i) => i !== idx).map((i) => (i > idx ? i - 1 : i))
+            );
+          } catch (e) {
+            console.error('Remove photo callback error:', e);
           }
-          return next;
         });
-        setSelectedCompare((prev) =>
-          prev.filter((i) => i !== idx).map((i) => (i > idx ? i - 1 : i))
-        );
-      });
+      } catch (e) {
+        console.error('removePhoto error:', e);
+      }
     },
     [currentUri, onChange, photos]
   );
@@ -426,45 +423,73 @@ const meta: PhotoMeta = {
   // ── Annotation (Skia) ─────────────────────────────────────────────────────
   const touchHandler = useTouchHandler({
     onStart: (touch) => {
-      if (touch.type === TouchType.Start) {
-        currentPath.current = Skia.Path.Make();
-        currentPath.current.moveTo(touch.x, touch.y);
+      try {
+        if (touch.type === TouchType.Start) {
+          currentPath.current = Skia.Path.Make();
+          currentPath.current.moveTo(touch.x, touch.y);
+        }
+      } catch (e) {
+        console.error('Touch start error:', e);
       }
     },
     onActive: (touch) => {
-      if (currentPath.current) currentPath.current.lineTo(touch.x, touch.y);
+      try {
+        if (currentPath.current) currentPath.current.lineTo(touch.x, touch.y);
+      } catch (e) {
+        console.error('Touch active error:', e);
+      }
     },
     onEnd: () => {
-      if (currentPath.current) {
-        paths.current.push({ path: currentPath.current, color: annotationColor });
-        currentPath.current = null;
+      try {
+        if (currentPath.current) {
+          paths.current.push({ path: currentPath.current, color: annotationColor });
+          currentPath.current = null;
+        }
+      } catch (e) {
+        console.error('Touch end error:', e);
       }
     },
   });
 
   const undoAnnotation = () => {
-    paths.current.pop();
-    setAnnotationColor((c) => c);
+    try {
+      paths.current.pop();
+      setAnnotationColor((c) => c);
+    } catch (e) {
+      console.error('undoAnnotation error:', e);
+    }
   };
 
   const clearAnnotation = () => {
-    paths.current = [];
-    setAnnotationColor((c) => c);
+    try {
+      paths.current = [];
+      setAnnotationColor((c) => c);
+    } catch (e) {
+      console.error('clearAnnotation error:', e);
+    }
   };
 
   const saveAnnotation = async () => {
-    setAnnotating(false);
-    safeAlert('Saved', 'Annotation saved with photo.');
+    try {
+      setAnnotating(false);
+      sweetAlert.alert('Saved', 'Annotation saved with photo.');
+    } catch (e) {
+      console.error('saveAnnotation error:', e);
+    }
   };
 
   // ── Compare ────────────────────────────────────────────────────────────────
   const toggleCompareSelect = (idx: number) => {
-    if (idx < 0 || idx >= photos.length) return;
-    setSelectedCompare((prev) => {
-      if (prev.includes(idx)) return prev.filter((i) => i !== idx);
-      if (prev.length >= 2) return [prev[1], idx];
-      return [...prev, idx];
-    });
+    try {
+      if (idx < 0 || idx >= photos.length) return;
+      setSelectedCompare((prev) => {
+        if (prev.includes(idx)) return prev.filter((i) => i !== idx);
+        if (prev.length >= 2) return [prev[1], idx];
+        return [...prev, idx];
+      });
+    } catch (e) {
+      console.error('toggleCompareSelect error:', e);
+    }
   };
 
   // ── Zoom / Pan (Reanimated) ────────────────────────────────────────────────
@@ -474,35 +499,55 @@ const meta: PhotoMeta = {
   const translateY = useSharedValue(0);
 
   const resetZoom = () => {
-    scale.value = withSpring(1);
-    savedScale.value = 1;
-    translateX.value = withSpring(0);
-    translateY.value = withSpring(0);
+    try {
+      scale.value = withSpring(1);
+      savedScale.value = 1;
+      translateX.value = withSpring(0);
+      translateY.value = withSpring(0);
+    } catch (e) {
+      console.error('resetZoom error:', e);
+    }
   };
 
   const pinchGesture = Gesture.Pinch()
     .onUpdate((e) => {
-      scale.value = Math.max(1, savedScale.value * e.scale);
+      try {
+        scale.value = Math.max(1, savedScale.value * e.scale);
+      } catch (e) {
+        console.error('Pinch update error:', e);
+      }
     })
     .onEnd(() => {
-      savedScale.value = scale.value;
-      if (scale.value < 1.1) runOnJS(setShowZoom)(false);
+      try {
+        savedScale.value = scale.value;
+        if (scale.value < 1.1) runOnJS(setShowZoom)(false);
+      } catch (e) {
+        console.error('Pinch end error:', e);
+      }
     });
 
   const panGesture = Gesture.Pan().onUpdate((e) => {
-    if (scale.value > 1) {
-      translateX.value = e.translationX;
-      translateY.value = e.translationY;
+    try {
+      if (scale.value > 1) {
+        translateX.value = e.translationX;
+        translateY.value = e.translationY;
+      }
+    } catch (e) {
+      console.error('Pan update error:', e);
     }
   });
 
   const doubleTapGesture = Gesture.Tap()
     .numberOfTaps(2)
     .onEnd(() => {
-      if (scale.value > 1) runOnJS(resetZoom)();
-      else {
-        scale.value = withSpring(2.5);
-        savedScale.value = 2.5;
+      try {
+        if (scale.value > 1) runOnJS(resetZoom)();
+        else {
+          scale.value = withSpring(2.5);
+          savedScale.value = 2.5;
+        }
+      } catch (e) {
+        console.error('Double tap error:', e);
       }
     });
 
@@ -522,9 +567,13 @@ const meta: PhotoMeta = {
   // ── AI Severity Bar Animation ──────────────────────────────────────────────
   const confidenceProgress = useSharedValue(0);
   useEffect(() => {
-    confidenceProgress.value = withTiming(analysis ? analysis.confidence : 0, {
-      duration: 800,
-    });
+    try {
+      confidenceProgress.value = withTiming(analysis ? analysis.confidence : 0, {
+        duration: 800,
+      });
+    } catch (e) {
+      console.error('confidenceProgress error:', e);
+    }
   }, [analysis, confidenceProgress]);
 
   const severityBarStyle = useAnimatedStyle(() => ({
@@ -532,26 +581,51 @@ const meta: PhotoMeta = {
   }));
 
   // ── Derived values ─────────────────────────────────────────────────────────
-const currentMeta = useMemo(() => {
-  if (!currentUri || !Array.isArray(photos)) {
-    return undefined;
-  }
-
-  return photos.find(
-    (photo) =>
-      photo &&
-      typeof photo.uri === 'string' &&
-      photo.uri === currentUri
+  const currentMeta = useMemo(
+    () => {
+      try {
+        return photos.find((p) => p.uri === currentUri);
+      } catch (e) {
+        console.error('currentMeta error:', e);
+        return undefined;
+      }
+    },
+    [photos, currentUri]
   );
-}, [photos, currentUri]);
 
   const severityColor = useMemo(() => {
-    if (analysis?.severity === 'high') return COLORS.danger;
-    if (analysis?.severity === 'medium') return COLORS.warning;
-    return COLORS.success;
+    try {
+      if (analysis?.severity === 'high') return COLORS.danger;
+      if (analysis?.severity === 'medium') return COLORS.warning;
+      return COLORS.success;
+    } catch (e) {
+      console.error('severityColor error:', e);
+      return COLORS.success;
+    }
   }, [analysis]);
 
-  const photoCountText = `${photos.length}/${maxPhotos}`;
+  const photoCountText = `${photos?.length || 0}/${maxPhotos}`;
+
+  // Get current photo index for removal
+  const currentPhotoIndex = useMemo(() => {
+    try {
+      return photos.findIndex((p) => p.uri === currentUri);
+    } catch (e) {
+      console.error('currentPhotoIndex error:', e);
+      return -1;
+    }
+  }, [photos, currentUri]);
+
+  // If there's an error, show a fallback UI
+  if (error) {
+    return (
+      <View style={[styles.container, { padding: SPACE.md }]}>
+        <Text style={{ color: COLORS.danger, textAlign: 'center' }}>
+          Something went wrong. Please try again.
+        </Text>
+      </View>
+    );
+  }
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -618,7 +692,9 @@ const currentMeta = useMemo(() => {
                   </TouchableOpacity>
                 )}
                 <TouchableOpacity
-                  onPress={() => removePhoto(photos.findIndex((p) => p.uri === currentUri))}
+                  onPress={() => {
+                    if (currentPhotoIndex !== -1) removePhoto(currentPhotoIndex);
+                  }}
                   style={[styles.iconBtn, { backgroundColor: GLASS.bg }]}
                 >
                   <Ionicons name="trash" size={20} color={COLORS.danger} />
@@ -668,35 +744,12 @@ const currentMeta = useMemo(() => {
             Confidence: {Math.round(analysis.confidence * 100)}%
           </Text>
 
-          {Array.isArray(analysis?.suggestions) &&
-  analysis.suggestions.map((suggestion, index) => {
-    const safeSuggestion =
-      typeof suggestion === 'string' && suggestion.trim()
-        ? suggestion
-        : 'No additional information available.';
-
-    return (
-      <View
-        key={`suggestion-${index}`}
-        style={styles.suggestionRow}
-      >
-        <Ionicons
-          name="checkmark-circle"
-          size={14}
-          color={severityColor}
-        />
-
-        <Text
-          style={[
-            styles.suggestionText,
-            { color: COLORS.text.secondary },
-          ]}
-        >
-          {safeSuggestion}
-        </Text>
-      </View>
-    );
-  })}
+          {analysis.suggestions && analysis.suggestions.length > 0 && analysis.suggestions.map((s, i) => (
+            <View key={i} style={styles.suggestionRow}>
+              <Ionicons name="checkmark-circle" size={14} color={severityColor} />
+              <Text style={[styles.suggestionText, { color: COLORS.text.secondary }]}>{s}</Text>
+            </View>
+          ))}
         </View>
       )}
 
@@ -748,9 +801,13 @@ const currentMeta = useMemo(() => {
         <View style={[styles.compareContainer, { borderRadius: RADIUS.lg }]}>
           <Text style={[styles.compareLabel, { color: COLORS.text.primary }]}>Before & After</Text>
           <View style={styles.compareRow}>
-            <Image source={{ uri: photos[selectedCompare[0]]?.uri }} style={styles.compareImg} />
+            {photos[selectedCompare[0]] && (
+              <Image source={{ uri: photos[selectedCompare[0]].uri }} style={styles.compareImg} />
+            )}
             <Ionicons name="arrow-forward" size={24} color={COLORS.primary} />
-            <Image source={{ uri: photos[selectedCompare[1]]?.uri }} style={styles.compareImg} />
+            {photos[selectedCompare[1]] && (
+              <Image source={{ uri: photos[selectedCompare[1]].uri }} style={styles.compareImg} />
+            )}
           </View>
         </View>
       )}
@@ -782,8 +839,8 @@ const currentMeta = useMemo(() => {
               <ScrollView showsVerticalScrollIndicator={false}>
                 <MetaRow label="URI" value={currentMeta.uri || '—'} />
                 <MetaRow label="Dimensions" value={`${currentMeta.width || 0} × ${currentMeta.height || 0}`} />
-                <MetaRow label="File Size" value={formatBytes(currentMeta.fileSize) || '—'} />
-                <MetaRow label="Timestamp" value={currentMeta.timestamp ? formatDate(currentMeta.timestamp) : '—'} />
+                <MetaRow label="File Size" value={formatBytes(currentMeta.fileSize)} />
+                <MetaRow label="Timestamp" value={formatDate(currentMeta.timestamp)} />
                 <MetaRow label="Type" value={currentMeta.type || '—'} />
                 {currentMeta.location && (
                   <>
@@ -886,7 +943,6 @@ const currentMeta = useMemo(() => {
 
 // ── Subcomponents ────────────────────────────────────────────────────────────
 const MetaRow = ({ label, value }: { label?: string; value?: string }) => {
-  // Guard against undefined values with fallbacks
   const safeLabel = label || '—';
   const safeValue = value || '—';
   
