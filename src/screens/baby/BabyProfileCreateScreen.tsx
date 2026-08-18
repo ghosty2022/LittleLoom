@@ -413,18 +413,31 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
       const hasCustomImage = isImageUri(avatar);
       const avatarToSave = hasCustomImage ? '👶' : avatar;
 
-      babyId = await createBaby({
-        name: trimmedName,
-        birthDate: birthIso,
-        gender,
-        skinTone,
-        avatar: avatarToSave,
-        weight: weight.trim() || undefined,
-        height: height.trim() || undefined,
-        bloodType: bloodType.trim().toUpperCase() || undefined,
-        allergies: allergies.trim() ? allergies.split(',').map((a) => a.trim()).filter(Boolean) : undefined,
-        medicalNotes: medicalNotes.trim() || undefined,
-      });
+// Get the authenticated user ID
+const { data: userData } = await supabase.auth.getUser();
+const userId = userData?.user?.id || `user_${Date.now()}`;
+
+// Ensure we have a valid user ID
+if (!userData?.user?.id) {
+  showError('Not authenticated. Please sign in again.');
+  setIsLoading(false);
+  isCreatingRef.current = false;
+  return;
+}
+
+babyId = await createBaby({
+  name: trimmedName,
+  birthDate: birthIso,
+  gender,
+  skinTone,
+  avatar: avatarToSave,
+  weight: weight.trim() || undefined,
+  height: height.trim() || undefined,
+  bloodType: bloodType.trim().toUpperCase() || undefined,
+  allergies: allergies.trim() ? allergies.split(',').map((a) => a.trim()).filter(Boolean) : undefined,
+  medicalNotes: medicalNotes.trim() || undefined,
+  parent1Id: userId,  // CRITICAL: This must match auth.uid()
+});
 
       if (!babyId) {
         if (isMounted.current) {

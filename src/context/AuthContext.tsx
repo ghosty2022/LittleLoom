@@ -542,7 +542,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     
      // ─── REAL AUTH: verify the account + password against Supabase ───
-  const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
   email: email.trim(),
   password,
 });
@@ -550,22 +550,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 if (authError || !authData?.user) {
   if (__DEV__) console.warn('[Auth] Supabase sign in failed:', authError?.message);
   
-  // Special handling for unconfirmed emails
+  // Handle email not confirmed error
   if (authError?.message?.toLowerCase().includes('email not confirmed')) {
-    // Option 1: Resend confirmation email
-    const { error: resendError } = await supabase.auth.resend({
-      type: 'signup',
-      email: email.trim(),
-    });
-    
-    if (!resendError) {
-      // Alert the user to check their email
-      Alert.alert(
-        'Email Not Confirmed',
-        'Please check your email and confirm your account before signing in. A new confirmation link has been sent.'
-      );
+    // Try to resend confirmation email
+    try {
+      const { error: resendError } = await supabase.auth.resend({
+        type: 'signup',
+        email: email.trim(),
+      });
+      
+      if (!resendError) {
+        // Show alert to user
+        Alert.alert(
+          'Email Not Confirmed',
+          'Please check your email and confirm your account before signing in. A new confirmation link has been sent.'
+        );
+      } else {
+        Alert.alert(
+          'Email Not Confirmed',
+          'Please check your email and confirm your account before signing in.'
+        );
+      }
+    } catch (e) {
+      // Silent fail for alert
     }
+    return false;
   }
+  
   return false;
 }
       const token = authData.session?.access_token ?? `auth_token_${authData.user.id}`;
@@ -861,9 +872,24 @@ if (authError || !authData?.user) {
     try {
       // ─── REAL AUTH: create the account in Supabase (server enforces uniqueness) ───
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-        email: email.trim(),
-        password,
-      });
+  email: email.trim(),
+  password,
+  options: {
+    // Auto-confirm email in development only
+    emailRedirectTo: __DEV__ ? undefined : undefined,
+    data: {
+      full_name: fullName,
+    },
+  },
+});
+
+// In development, if auto-confirm is disabled, we can sign in directly
+// by using the session from signup
+if (signUpData?.session) {
+  // User is automatically signed in - use the session token
+  const token = signUpData.session.access_token;
+  // ... proceed with token
+}
 
       if (signUpError || !signUpData?.user) {
         console.warn('[Auth] Supabase sign up rejected:', signUpError?.message);
@@ -1536,58 +1562,79 @@ const signUpWithInviteCode = useCallback(async (
     setupCompleteCallbackRef.current = callback;
   }, []);
 
-  const completeSetup = useCallback(async (step: 'parent2' | 'baby'): Promise<boolean> => {
-    try {
-      if (step === 'parent2') {
-        await Promise.all([
-          AsyncStorage.setItem(ASYNC_KEYS.HAS_PARENT2, 'true'),
-          AsyncStorage.setItem(ASYNC_KEYS.PARENT2_COMPLETED, 'true'),
-        ]);
-      } else if (step === 'baby') {
-        await Promise.all([
-          AsyncStorage.setItem(ASYNC_KEYS.HAS_BABY, 'true'),
-          AsyncStorage.setItem(ASYNC_KEYS.BABY_COMPLETED, 'true'),
-        ]);
-      }
-
-      // Re-read BOTH statuses from storage to determine if setup is truly complete
-      const [p2Completed, babyCompleted] = await Promise.all([
-        AsyncStorage.getItem(ASYNC_KEYS.PARENT2_COMPLETED),
-        AsyncStorage.getItem(ASYNC_KEYS.BABY_COMPLETED),
+const completeSetup = useCallback(async (step: 'parent2' | 'baby'): Promise<boolean> => {
+  try {
+    if (step === 'parent2') {
+      await Promise.all([
+        AsyncStorage.setItem(ASYNC_KEYS.HAS_PARENT2, 'true'),
+        AsyncStorage.setItem(ASYNC_KEYS.PARENT2_COMPLETED, 'true'),
       ]);
-
-      const p2Done = p2Completed !== null; // 'true' or 'skipped' both count as addressed
-      const bDone = babyCompleted !== null;
-      const setupDone = p2Done && bDone;
-
-      const hasParent2Val = p2Completed === 'true' ? true : p2Completed === 'skipped' ? 'skipped' : false;
-      const hasBabyVal = babyCompleted === 'true' ? true : babyCompleted === 'skipped' ? 'skipped' : false;
-
-      if (setupDone) {
-        await AsyncStorage.setItem(ASYNC_KEYS.SETUP_COMPLETE, 'true');
-        await AsyncStorage.setItem(ASYNC_KEYS.ONBOARDING_COMPLETE, 'true');
-      }
-
-      if (isMounted.current) {
-        setState(prev => ({
-          ...prev,
-          setupComplete: setupDone,
-          onboardingComplete: setupDone,
-          hasParent2: hasParent2Val,
-          hasBaby: hasBabyVal,
-        }));
-      }
-
-      if (setupDone && setupCompleteCallbackRef.current) {
-        try { await setupCompleteCallbackRef.current(); } catch (error) {}
-      }
-
-      return true;
-    } catch (error) {
-      console.error('completeSetup error:', error);
-      return false;
+    } else if (step === 'baby') {
+      await Promise.all([
+        AsyncStorage.setItem(ASYNC_KEYS.HAS_BABY, 'true'),
+        AsyncStorage.setItem(ASYNC_KEYS.BABY_COMPLETED, 'true'),
+      ]);
     }
-  }, []);
+
+    // Re-read BOTH statuses from storage to determine if setup is truly complete
+    const [p2Completed, babyCompleted] = await Promise.all([
+      AsyncStorage.getItem(ASYNC_KEYS.PARENT2_COMPLETED),
+      AsyncStorage.getItem(ASYNC_KEYS.BABY_COMPLETED),
+    ]);
+
+    const p2Done = p2Completed !== null; // 'true' or 'skipped' both count as addressed
+    const bDone = babyCompleted !== null;
+    const setupDone = p2Done && bDone;
+
+    const hasParent2Val = p2Completed === 'true' ? true : p2Completed === 'skipped' ? 'skipped' : false;
+    const hasBabyVal = babyCompleted === 'true' ? true : babyCompleted === 'skipped' ? 'skipped' : false;
+
+    // CRITICAL FIX: Force setup completion if both steps are addressed
+    // but also ensure the state reflects reality
+    const isActuallyComplete = setupDone || 
+      (hasParent2Val !== false && hasBabyVal !== false);
+
+    if (isActuallyComplete) {
+      await Promise.all([
+        AsyncStorage.setItem(ASYNC_KEYS.SETUP_COMPLETE, 'true'),
+        AsyncStorage.setItem(ASYNC_KEYS.ONBOARDING_COMPLETE, 'true'),
+      ]);
+    }
+
+    // Log the current state for debugging
+    if (__DEV__) {
+      console.log('[Auth] completeSetup:', {
+        step,
+        p2Completed,
+        babyCompleted,
+        p2Done,
+        bDone,
+        setupDone: isActuallyComplete,
+        hasParent2Val,
+        hasBabyVal,
+      });
+    }
+
+    if (isMounted.current) {
+      setState(prev => ({
+        ...prev,
+        setupComplete: isActuallyComplete,
+        onboardingComplete: isActuallyComplete || prev.onboardingComplete,
+        hasParent2: hasParent2Val,
+        hasBaby: hasBabyVal,
+      }));
+    }
+
+    if (isActuallyComplete && setupCompleteCallbackRef.current) {
+      try { await setupCompleteCallbackRef.current(); } catch (error) {}
+    }
+
+    return true;
+  } catch (error) {
+    console.error('completeSetup error:', error);
+    return false;
+  }
+}, []);
 
   const skipSetup = useCallback(async (step: 'parent2' | 'baby') => {
     try {

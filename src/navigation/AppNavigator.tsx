@@ -211,17 +211,18 @@ function getNavState(
   // Show security lock whenever the context says we're locked (regardless of how we got there)
   if (isLocked && setupDone) return 'SECURITY_LOCK';
 
-  if (!setupDone) {
-    // Baby MUST exist (or be skipped) before we can invite a co-parent,
-    // because invite codes are tied to a baby/familyId.
-    const babyAddressed = hasBaby === true || hasBaby === 'skipped' || babyCount > 0;
-    if (!babyAddressed) return 'SETUP_BABY';
+  // CRITICAL FIX: Check if setup is actually complete
+  // Both steps must be addressed (completed OR skipped)
+  const babyAddressed = hasBaby === true || hasBaby === 'skipped' || babyCount > 0;
+  const p2Addressed = hasP2 === true || hasP2 === 'skipped';
+  const isActuallySetupComplete = setupDone || (babyAddressed && p2Addressed);
 
-    // Then check parent2 setup - must be completed OR skipped
-    const p2Addressed = hasP2 === true || hasP2 === 'skipped';
+  if (!isActuallySetupComplete) {
+    if (!babyAddressed) return 'SETUP_BABY';
     if (!p2Addressed) return 'SETUP_PARENT2';
   }
 
+  // If we're here, setup is complete
   return 'MAIN';
 }
 

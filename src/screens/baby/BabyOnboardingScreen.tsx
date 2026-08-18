@@ -99,21 +99,30 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
     triggerHaptic('medium');
     navigation.navigate('CreateBabyProfile');
   }, [navigation, triggerHaptic]);
-
-  const handleSelectBaby = useCallback(async (babyId: string) => {
-    triggerHaptic('medium');
-    setIsProcessing(true);
-    try {
-      await switchBaby(babyId);
-      await completeSetup('baby');
-      showSuccess('Welcome Back!', 'Baby profile selected');
-      // AuthContext.completeSetup updates state → AppNavigator navState → MAIN
-      // DO NOT call navigation.replace() — causes flash/disappear bug
-    } catch (error) {
-      showError('Error', 'Could not switch baby');
-      setIsProcessing(false);
+const handleSelectBaby = useCallback(async (babyId: string) => {
+  triggerHaptic('medium');
+  setIsProcessing(true);
+  try {
+    await switchBaby(babyId);
+    
+    // CRITICAL FIX: Ensure both setup steps are completed
+    await completeSetup('baby');
+    
+    // Also check if parent2 is already completed
+    const { hasParent2 } = await wasSetupCompleted();
+    if (hasParent2 !== false) {
+      // Parent2 is already done, mark setup complete
+      await completeSetup('parent2');
     }
-  }, [switchBaby, completeSetup, showError, showSuccess, triggerHaptic]);
+    
+    showSuccess('Welcome Back!', 'Baby profile selected');
+    // AuthContext.completeSetup updates state → AppNavigator navState → MAIN
+    // DO NOT call navigation.replace() — causes flash/disappear bug
+  } catch (error) {
+    showError('Error', 'Could not switch baby');
+    setIsProcessing(false);
+  }
+}, [switchBaby, completeSetup, wasSetupCompleted, showError, showSuccess, triggerHaptic]);
 
   const handleRetry = useCallback(async () => {
     setLoadError(null);
