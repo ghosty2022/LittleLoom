@@ -33,7 +33,8 @@ const FACEBOOK_APP_ID = process.env.EXPO_PUBLIC_FACEBOOK_APP_ID ?? '152613331217
 
 const redirectUri = AuthSession.makeRedirectUri({
   scheme: 'littleloom',
-  useProxy: Platform.OS !== 'web',
+  // Force the Expo proxy in development – this is the most reliable for Facebook
+  useProxy: true,
 });
 
 interface SocialButtonProps {
@@ -217,6 +218,9 @@ useEffect(() => {
       tokenEndpoint: 'https://graph.facebook.com/v18.0/oauth/access_token',
     }
   );
+  useEffect(() => {
+  console.log('Facebook Redirect URI →', redirectUri);
+}, []);
 
   useEffect(() => {
     return () => {

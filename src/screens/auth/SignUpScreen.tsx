@@ -151,6 +151,10 @@ useEffect(() => {
   );
 
   useEffect(() => {
+  console.log('Facebook Redirect URI →', redirectUri);
+}, []);
+
+  useEffect(() => {
     return () => {
       isMounted.current = false;
       if (codeDebounceTimer.current) clearTimeout(codeDebounceTimer.current);
