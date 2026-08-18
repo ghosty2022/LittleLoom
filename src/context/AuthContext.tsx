@@ -965,179 +965,211 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  const signUpWithInviteCode = useCallback(async (
-    code: string,
-    fullName: string,
-    email: string,
-    password: string
-  ): Promise<{ success: boolean; message: string }> => {
-    if (!acquireSignInLock()) return { success: false, message: 'Another operation in progress' };
+const signUpWithInviteCode = useCallback(async (
+  code: string,
+  fullName: string,
+  email: string,
+  password: string
+): Promise<{ success: boolean; message: string }> => {
+  if (!acquireSignInLock()) {
+    return { success: false, message: 'Another operation in progress' };
+  }
+
+  try {
+    // ─── 1. Validate invite ───────────────────────────────────────────────
+    let validation: { valid: boolean; invite?: any; message?: string } = { valid: false };
 
     try {
-      let validation: { valid: boolean; invite?: any; message?: string } = { valid: false };
-      try {
-        const { validateInviteCode } = await import('@/utils/portableInvite');
-        validation = await validateInviteCode(code);
-      } catch {
-        // Fallback validation from AsyncStorage
-        const raw = await AsyncStorage.getItem('littleloom_invite_codes');
-        const codes = raw ? JSON.parse(raw) : {};
-        const invite = codes[code];
-        if (!invite) {
-          return { success: false, message: 'Invalid or expired invite code' };
-        }
-        if (invite.used) {
-          return { success: false, message: 'This invite code has already been used' };
-        }
-        if (Date.now() > invite.expiresAt) {
-          return { success: false, message: 'This invite code has expired' };
-        }
-        validation = { valid: true, invite };
+      const { validateInviteCode } = await import('@/utils/portableInvite');
+      validation = await validateInviteCode(code);
+    } catch {
+      // Fallback to AsyncStorage (legacy)
+      const raw = await AsyncStorage.getItem('littleloom_invite_codes');
+      const codes = raw ? JSON.parse(raw) : {};
+      const invite = codes[code];
+      if (!invite) return { success: false, message: 'Invalid or expired invite code' };
+      if (invite.used) return { success: false, message: 'This invite code has already been used' };
+      if (invite.revoked || Date.now() > invite.expiresAt) {
+        return { success: false, message: 'This invite code has expired' };
       }
-
-      if (!validation.valid || !validation.invite) {
-        return { success: false, message: validation.message || 'Invalid invite code' };
-      }
-
-      const invite = validation.invite;
-
-      await new Promise(resolve => setTimeout(resolve, 800));
-
-      const token = `auth_token_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-      const handle = `@${fullName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
-
-      const userProfile: UserProfile = {
-        id: userId,
-        fullName,
-        email,
-        avatar: '👤',
-        role: invite.role === 'parent2' ? 'parent2' : invite.role === 'guardian' ? 'guardian' : 'guardian',
-        createdAt: new Date().toISOString(),
-        preferences: { notifications: true, darkMode: false, language: 'en' },
-        communityUsername: fullName,
-        communityHandle: handle,
-        communityBio: '',
-        communityAvatar: '👤',
-        communityDisplayName: fullName,
-        communityStats: { posts: 0, followers: 0, following: 0, helpful: 0 },
-        communitySelectedTopics: [],
-      };
-
-      const registryEntry: UserRegistryEntry = {
-        userId,
-        email,
-        fullName,
-        role: userProfile.role,
-        createdAt: userProfile.createdAt,
-        communityUsername: fullName,
-        communityHandle: handle,
-        communityBio: '',
-        communityAvatar: '👤',
-        communityDisplayName: fullName,
-        communityStats: { posts: 0, followers: 0, following: 0, helpful: 0 },
-        communitySelectedTopics: [],
-        hasPassword: true,
-      };
-      await registerUser(registryEntry);
-
-      await Promise.all([
-        secureStorage.setItem(SECURE_KEYS.AUTH_TOKEN, token),
-        secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(userProfile)),
-        AsyncStorage.setItem(ASYNC_KEYS.HAS_SEEN_ONBOARDING, 'true'),
-      ]);
-
-      // Ensure baby exists on this device (critical for Phone B)
-      try {
-        const { getBabyByIdFromDb, createBabyInDb, updateBabyInDb } = await import('@/database/dbHelpers');
-        let baby = await getBabyByIdFromDb(invite.familyId);
-
-        if (!baby) {
-          baby = await createBabyInDb({
-            id: invite.familyId,
-            name: invite.babyName,
-            dateOfBirth: invite.babyDob || new Date().toISOString(),
-            gender: invite.babyGender || 'unknown',
-            parent1Id: invite.creatorId,
-            parent1Name: invite.creatorName,
-            createdAt: new Date().toISOString(),
-          });
-        }
-        if (invite.role === 'parent2') {
-          await updateBabyInDb(invite.familyId, { parent2Id: userId });
-        }
-      } catch (dbError) {
-        console.error('Baby setup error (non-fatal):', dbError);
-      }
-
-      // Create family member entry
-      try {
-        const { createFamilyMemberInDb } = await import('@/database/dbHelpers');
-        const memberId = `fam_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        await createFamilyMemberInDb({
-          id: memberId,
-          babyId: invite.familyId,
-          userId,
-          email: email.toLowerCase(),
-          fullName,
-          role: invite.role,
-          relationship: invite.relationship || (invite.role === 'parent2' ? 'Parent' : 'Guardian'),
-          permissions: {},
-          addedBy: invite.creatorId,
-          canBeRemoved: true,
-          notificationsEnabled: true,
-          status: 'active',
-        });
-      } catch (famError) {
-        console.error('Family member creation error:', famError);
-      }
-
-      try {
-        const { markInviteCodeUsed } = await import('@/utils/portableInvite');
-        await markInviteCodeUsed(code);
-      } catch {
-        // Fallback: mark as used in AsyncStorage
-        const raw = await AsyncStorage.getItem('littleloom_invite_codes');
-        const codes = raw ? JSON.parse(raw) : {};
-        if (codes[code]) {
-          codes[code].used = true;
-          await AsyncStorage.setItem('littleloom_invite_codes', JSON.stringify(codes));
-        }
-      }
-
-      await Promise.all([
-        AsyncStorage.setItem(ASYNC_KEYS.HAS_PARENT2, 'true'),
-        AsyncStorage.setItem(ASYNC_KEYS.HAS_BABY, 'true'),
-        AsyncStorage.setItem(ASYNC_KEYS.PARENT2_COMPLETED, 'true'),
-        AsyncStorage.setItem(ASYNC_KEYS.BABY_COMPLETED, 'true'),
-        AsyncStorage.setItem(ASYNC_KEYS.SETUP_COMPLETE, 'true'),
-        AsyncStorage.setItem(ASYNC_KEYS.ONBOARDING_COMPLETE, 'true'),
-      ]);
-
-      if (isMounted.current) {
-        setState(prev => ({
-          ...prev,
-          isAuthenticated: true,
-          userToken: token,
-          userProfile,
-          onboardingComplete: true,
-          hasSeenOnboarding: true,
-          setupComplete: true,
-          hasParent2: true,
-          hasBaby: true,
-        }));
-      }
-
-      lastSignInTime.current = Date.now();
-      return { success: true, message: 'Welcome to the family!' };
-    } catch (error) {
-      console.error('Invite code sign up error:', error);
-      return { success: false, message: 'Failed to join family. Please try again.' };
-    } finally {
-      releaseSignInLock();
+      validation = { valid: true, invite };
     }
-  }, [acquireSignInLock, releaseSignInLock]);
+
+    if (!validation.valid || !validation.invite) {
+      return { success: false, message: validation.message || 'Invalid invite code' };
+    }
+
+    const invite = validation.invite;
+
+    // ─── 2. Create REAL Supabase Auth user ────────────────────────────────
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+      email: email.trim().toLowerCase(),
+      password,
+      options: {
+        data: {
+          full_name: fullName.trim(),
+          role: invite.role,               // optional metadata
+        },
+      },
+    });
+
+    if (signUpError || !signUpData?.user) {
+      console.warn('[Auth] Invite signup rejected by Supabase:', signUpError?.message);
+      // Common case: email already registered
+      if (signUpError?.message?.toLowerCase().includes('already registered') ||
+          signUpError?.message?.toLowerCase().includes('user already exists')) {
+        return { success: false, message: 'An account with this email already exists. Please sign in instead.' };
+      }
+      return { success: false, message: signUpError?.message || 'Could not create account' };
+    }
+
+    const userId = signUpData.user.id;                         // ← real UUID from Auth
+    const token = signUpData.session?.access_token
+      ?? `auth_token_${userId}`;                               // fallback only
+
+    // ─── 3. Build profile + local registry entry ──────────────────────────
+    const handle = `@${fullName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
+
+    const role: UserProfile['role'] =
+      invite.role === 'parent2' ? 'parent2' :
+      invite.role === 'guardian' ? 'guardian' : 'guardian';
+
+    const userProfile: UserProfile = {
+      id: userId,
+      fullName: fullName.trim(),
+      email: email.trim().toLowerCase(),
+      avatar: '👤',
+      role,
+      createdAt: new Date().toISOString(),
+      preferences: { notifications: true, darkMode: false, language: 'en' },
+      communityUsername: fullName.trim(),
+      communityHandle: handle,
+      communityBio: '',
+      communityAvatar: '👤',
+      communityDisplayName: fullName.trim(),
+      communityStats: { posts: 0, followers: 0, following: 0, helpful: 0 },
+      communitySelectedTopics: [],
+    };
+
+    const registryEntry: UserRegistryEntry = {
+      userId,
+      email: userProfile.email,
+      fullName: userProfile.fullName,
+      avatar: '👤',
+      role,
+      createdAt: userProfile.createdAt,
+      communityUsername: fullName.trim(),
+      communityHandle: handle,
+      communityBio: '',
+      communityAvatar: '👤',
+      communityDisplayName: fullName.trim(),
+      communityStats: { posts: 0, followers: 0, following: 0, helpful: 0 },
+      communitySelectedTopics: [],
+      hasPassword: true,
+      // NEVER store the password itself
+    };
+    await registerUser(registryEntry);
+
+    // ─── 4. Persist session + profile ─────────────────────────────────────
+    await Promise.all([
+      secureStorage.setItem(SECURE_KEYS.AUTH_TOKEN, token),
+      secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(userProfile)),
+      AsyncStorage.setItem(ASYNC_KEYS.HAS_SEEN_ONBOARDING, 'true'),
+    ]);
+
+    // ─── 5. Link to baby / family (same as before, but with real userId) ───
+    try {
+      const { getBabyByIdFromDb, createBabyInDb, updateBabyInDb } = await import('@/database/dbHelpers');
+      let baby = await getBabyByIdFromDb(invite.familyId);
+
+      if (!baby) {
+        baby = await createBabyInDb({
+          id: invite.familyId,
+          name: invite.babyName,
+          dateOfBirth: invite.babyDob || new Date().toISOString(),
+          gender: invite.babyGender || 'unknown',
+          parent1Id: invite.creatorId,
+          parent1Name: invite.creatorName,
+          createdAt: new Date().toISOString(),
+        });
+      }
+
+      if (invite.role === 'parent2') {
+        await updateBabyInDb(invite.familyId, { parent2Id: userId });
+      }
+    } catch (dbError) {
+      console.error('Baby setup error (non-fatal):', dbError);
+    }
+
+    try {
+      const { createFamilyMemberInDb } = await import('@/database/dbHelpers');
+      const memberId = `fam_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      await createFamilyMemberInDb({
+        id: memberId,
+        babyId: invite.familyId,
+        userId,                                   // real Auth UID
+        email: email.trim().toLowerCase(),
+        fullName: fullName.trim(),
+        role: invite.role,
+        relationship: invite.relationship || (invite.role === 'parent2' ? 'Parent' : 'Guardian'),
+        permissions: {},
+        addedBy: invite.creatorId,
+        canBeRemoved: true,
+        notificationsEnabled: true,
+        status: 'active',
+      });
+    } catch (famError) {
+      console.error('Family member creation error:', famError);
+    }
+
+    // ─── 6. Mark invite used ──────────────────────────────────────────────
+    try {
+      const { markInviteCodeUsed } = await import('@/utils/portableInvite');
+      await markInviteCodeUsed(code);
+    } catch {
+      const raw = await AsyncStorage.getItem('littleloom_invite_codes');
+      const codes = raw ? JSON.parse(raw) : {};
+      if (codes[code]) {
+        codes[code].used = true;
+        codes[code].used_by = userId;
+        codes[code].used_at = Date.now();
+        await AsyncStorage.setItem('littleloom_invite_codes', JSON.stringify(codes));
+      }
+    }
+
+    // ─── 7. Mark setup complete (invitee joins an already-configured family)
+    await Promise.all([
+      AsyncStorage.setItem(ASYNC_KEYS.HAS_PARENT2, 'true'),
+      AsyncStorage.setItem(ASYNC_KEYS.HAS_BABY, 'true'),
+      AsyncStorage.setItem(ASYNC_KEYS.PARENT2_COMPLETED, 'true'),
+      AsyncStorage.setItem(ASYNC_KEYS.BABY_COMPLETED, 'true'),
+      AsyncStorage.setItem(ASYNC_KEYS.SETUP_COMPLETE, 'true'),
+      AsyncStorage.setItem(ASYNC_KEYS.ONBOARDING_COMPLETE, 'true'),
+    ]);
+
+    if (isMounted.current) {
+      setState(prev => ({
+        ...prev,
+        isAuthenticated: true,
+        userToken: token,
+        userProfile,
+        onboardingComplete: true,
+        hasSeenOnboarding: true,
+        setupComplete: true,
+        hasParent2: true,
+        hasBaby: true,
+      }));
+    }
+
+    lastSignInTime.current = Date.now();
+    return { success: true, message: 'Welcome to the family!' };
+  } catch (error) {
+    console.error('Invite code sign up error:', error);
+    return { success: false, message: 'Failed to join family. Please try again.' };
+  } finally {
+    releaseSignInLock();
+  }
+}, [acquireSignInLock, releaseSignInLock]);
 
   const loginWithBiometric = useCallback(async (): Promise<boolean> => {
     if (!acquireBiometricLock()) return false;
