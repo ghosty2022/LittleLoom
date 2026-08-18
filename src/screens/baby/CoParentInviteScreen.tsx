@@ -189,7 +189,7 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
   const { isDark, colors } = useApp();
   const { themeColors, shouldReduceMotion, triggerHaptic, avatar } = useCustomization();
-  const { userProfile, skipSetup, completeSetup } = useAuth();
+   const { userProfile, skipSetup, completeSetup, setupComplete } = useAuth();
   const { currentBaby } = useBaby();
   const { generateInviteCode, getActiveInviteCodes, revokeInviteCode } = useFamily();
 
@@ -210,12 +210,11 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
   const [isLoadingCodes, setIsLoadingCodes] = useState(false);
   const [toast, setToast] = useState({ visible: false, message: '', type: 'success' as const });
 
-  // Detect if we're in onboarding mode (no back button, show skip/continue)
-  const isOnboarding = useMemo(() => {
-    // Heuristic: if navigated from onboarding flow, no back action expected
-    // You can also pass a param like route.params?.fromOnboarding
-    return !navigation.canGoBack();
-  }, [navigation]);
+  // REPLACE
+  // In onboarding whenever account setup isn't finished yet — not a
+  // navigation-stack heuristic, which breaks once this screen is pushed
+  // (not reset) during setup.
+  const isOnboarding = useMemo(() => !setupComplete, [setupComplete]);
 
   // ── Animated rings ──
   const ringProgress = useSharedValue(0);
@@ -275,7 +274,8 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
   const handleGenerate = useCallback(async () => {
     if (!validate()) return;
     if (!currentBaby?.id) {
-      showToast('Create a baby profile first to generate invites', 'info');
+      showToast('Add a baby profile first to generate invites', 'info');
+      navigation.navigate('CreateBabyProfile' as never);
       return;
     }
     triggerHaptic('medium');
@@ -420,6 +420,32 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
                   : 'Share the journey of raising your little one together'}
               </Text>
             </Animated.View>
+
+            {/* ── No baby yet: link to creation screen ── */}
+            {!currentBaby && (
+              <Animated.View
+                entering={shouldReduceMotion ? undefined : FadeInUp.delay(100)}
+                style={[
+                  styles.infoPill,
+                  {
+                    backgroundColor: dynamicPrimary + '12',
+                    borderRadius: 16,
+                    padding: 14,
+                    marginBottom: 20,
+                    borderWidth: 1,
+                    borderColor: dynamicPrimary + '30',
+                  },
+                ]}
+              >
+                <Ionicons name="information-circle" size={18} color={dynamicPrimary} />
+                <Text style={[styles.infoPillText, isDark && { color: '#94a3b8' }]}>
+                  Add your baby's profile first — invite codes need a baby to link to.
+                </Text>
+                <TouchableOpacity onPress={() => navigation.navigate('CreateBabyProfile' as never)}>
+                  <Text style={{ color: dynamicPrimary, fontWeight: '800', fontSize: 12 }}>Add Baby</Text>
+                </TouchableOpacity>
+              </Animated.View>
+            )}
 
             {/* ── Role Selection ── */}
             <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(120)} style={styles.section}>

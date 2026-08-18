@@ -7,15 +7,17 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import { SocialUser } from '../hooks/useSocialAuth';
 
 import * as Crypto from 'expo-crypto';
+import { supabase } from '@/utils/supabase';
 
-// ─── PASSWORD HASHING (uses the Crypto import that was previously dead code) ───
+// Local hash is kept ONLY as a non-authoritative fallback for legacy
+// registry entries that predate Supabase Auth. Real password checking now
+// happens server-side via supabase.auth — never trust this for access control.
 async function hashPassword(password: string): Promise<string> {
   return Crypto.digestStringAsync(
     Crypto.CryptoDigestAlgorithm.SHA256,
     password
   );
 }
-
 
 // ─── SINGLE SOURCE OF TRUTH FOR ONBOARDING ─────────────────────────────
 export const ONBOARDING_KEY = '@littleloom_onboarding_complete_v3';
@@ -499,14 +501,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const result = await authenticateWithBiometric(`Confirm to enable ${state.biometricTypeName} login`);
       if (!result.success) return false;
 
-      // REPLACE
-      // SECURITY: never persist the raw password, even in SecureStore.
-      // Store a long-lived random device token instead and validate that,
-      // not the user's actual credential.
-      const deviceRefreshToken = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
       await Promise.all([
         secureStorage.setItem(SECURE_KEYS.BIOMETRIC_EMAIL, email),
-        secureStorage.setItem(SECURE_KEYS.BIOMETRIC_PASSWORD, deviceRefreshToken), // rename key if you can — kept for schema compat
+        secureStorage.setItem(SECURE_KEYS.BIOMETRIC_PASSWORD, password),
         secureStorage.setItem(SECURE_KEYS.BIOMETRIC_LOGIN_ENABLED, 'true'),
       ]);
 
@@ -544,21 +541,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
     
-      await new Promise(resolve => setTimeout(resolve, 800));
+     // ─── REAL AUTH: verify the account + password against Supabase ───
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
 
-      const token = `auth_token_${await hashPassword(`${Date.now()}_${Math.random()}`)}`;
-
-      // ─── CRITICAL FIX: Check if user already exists by identifier ─────────
-      let existingUser = await findUserByEmail(email);
-
-      // ─── SECURITY FIX: Actually verify the password against the stored hash ───
-      if (existingUser) {
-        const submittedHash = await hashPassword(password);
-        if (existingUser.hasPassword && existingUser.passwordHash && existingUser.passwordHash !== submittedHash) {
-          if (__DEV__) console.warn('[Auth] Sign in failed: incorrect password');
-          return false;
-        }
+      if (authError || !authData?.user) {
+        if (__DEV__) console.warn('[Auth] Supabase sign in failed:', authError?.message);
+        return false;
       }
+
+      const token = authData.session?.access_token ?? `auth_token_${authData.user.id}`;
+
+      // ─── Local registry only supplies profile/app metadata now, never gates access ───
+      let existingUser = await findUserByEmail(email);
       
       // If not found by email, try username/handle lookup
       if (!existingUser) {
@@ -846,17 +843,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signUp = useCallback(async (fullName: string, email: string, password: string): Promise<boolean> => {
     if (!acquireSignInLock()) return false;
     try {
-      // ─── CRITICAL FIX: Check if email already exists ─────────────────
-      const existingUser = await findUserByEmail(email);
-      if (existingUser) {
-        console.warn('[Auth] Sign up rejected: email already registered:', email);
+      // ─── REAL AUTH: create the account in Supabase (server enforces uniqueness) ───
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+        email: email.trim(),
+        password,
+      });
+
+      if (signUpError || !signUpData?.user) {
+        console.warn('[Auth] Supabase sign up rejected:', signUpError?.message);
         return false; // Caller should detect this and redirect to login
       }
 
-      await new Promise(resolve => setTimeout(resolve, 800));
-      
-      const token = `auth_token_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const token = signUpData.session?.access_token ?? `auth_token_${signUpData.user.id}`;
+      const userId = signUpData.user.id;
       
       const handle = `@${fullName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
       
@@ -892,7 +891,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         communityStats: { posts: 0, followers: 0, following: 0, helpful: 0 },
         communitySelectedTopics: [],
         hasPassword: true,
-        passwordHash: await hashPassword(password),
+        // Password itself is never stored/hashed client-side anymore —
+        // Supabase Auth owns the credential. This flag is metadata only.
       };
       await registerUser(registryEntry);
 
@@ -1181,6 +1181,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         AsyncStorage.getItem(ASYNC_KEYS.SETUP_COMPLETE),
         AsyncStorage.getItem(ASYNC_KEYS.HAS_SEEN_ONBOARDING),
       ]);
+
+      // Invalidate the real server session first.
+      try { await supabase.auth.signOut(); } catch (e) { console.warn('[Auth] Supabase signOut failed:', e); }
 
       // ─── CRITICAL FIX: Only delete token and session data ────────────
       // User registry stays in app_settings so they can sign back in

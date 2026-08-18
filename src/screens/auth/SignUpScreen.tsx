@@ -352,7 +352,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
 
       if (success && isMounted.current) {
         showSuccess('Welcome!', `Account created with ${provider.charAt(0).toUpperCase() + provider.slice(1)}`);
-        navigation.replace('CoParentInviteScreen');
+        navigation.replace('BabyOptional');
       } else {
         showError('Sign Up Failed', 'Could not create account. The email may already be in use.');
       }
@@ -499,7 +499,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
 
       if (success && isMounted.current) {
         showSuccess(`Welcome, ${fullName.trim()}!`, 'Your account has been created successfully');
-        navigation.replace('CoParentInviteScreen');
+        navigation.replace('BabyOptional');
       } else {
         // Double-check existence on failure (handles race)
         try {

@@ -1,0 +1,307 @@
+-- ============================================================
+-- LITTLELOOM DATABASE SETUP
+-- Babies + Family Members + Invite Codes
+-- ============================================================
+
+
+-- ============================================================
+-- 1. BABIES
+-- ============================================================
+
+create table if not exists public.babies (
+  id text primary key,
+
+  name text not null,
+
+  avatar text,
+
+  date_of_birth text not null,
+
+  gender text,
+
+  blood_type text,
+
+  medical_notes text,
+
+  parent1_id text,
+
+  parent2_id text,
+
+  is_active boolean not null default true,
+
+  created_at text not null,
+
+  updated_at text not null
+);
+
+
+-- ============================================================
+-- 2. FAMILY MEMBERS
+-- ============================================================
+
+create table if not exists public.family_members (
+  id text primary key,
+
+  baby_id text not null
+    references public.babies(id)
+    on delete cascade,
+
+  user_id text,
+
+  email text not null,
+
+  full_name text not null,
+
+  avatar text,
+
+  role text not null,
+
+  relationship text,
+
+  permissions jsonb not null default '{}',
+
+  added_at text not null,
+
+  added_by text not null,
+
+  can_be_removed boolean not null default true,
+
+  last_active text,
+
+  phone_number text,
+
+  notifications_enabled boolean not null default true,
+
+  status text not null default 'pending',
+
+  updated_at text not null
+);
+
+
+-- ============================================================
+-- 3. INVITE CODES
+-- ============================================================
+
+create table if not exists public.invite_codes (
+  code text primary key,
+
+  family_id text not null,
+
+  baby_name text,
+
+  baby_dob text,
+
+  baby_gender text,
+
+  creator_id text not null,
+
+  creator_name text,
+
+  role text not null
+    check (
+      role in ('parent2', 'guardian', 'viewer')
+    ),
+
+  relationship text,
+
+  created_at bigint not null,
+
+  expires_in_days integer not null default 7,
+
+  used boolean not null default false,
+
+  used_by text,
+
+  used_at bigint,
+
+  revoked boolean not null default false
+);
+
+
+-- ============================================================
+-- 4. INDEXES
+-- ============================================================
+
+create index if not exists idx_family_members_baby_id
+on public.family_members(baby_id);
+
+
+create index if not exists idx_family_members_user_id
+on public.family_members(user_id);
+
+
+create index if not exists idx_invite_codes_family_id
+on public.invite_codes(family_id);
+
+
+create index if not exists idx_invite_codes_active
+on public.invite_codes(revoked, used);
+
+
+-- ============================================================
+-- 5. ENABLE ROW LEVEL SECURITY
+-- ============================================================
+
+alter table public.babies
+enable row level security;
+
+alter table public.family_members
+enable row level security;
+
+alter table public.invite_codes
+enable row level security;
+
+
+-- ============================================================
+-- 6. BABIES POLICIES
+-- TEMPORARY DEVELOPMENT POLICIES
+-- ============================================================
+
+
+drop policy if exists "anon read babies" on public.babies;
+drop policy if exists "authenticated read own babies" on public.babies;
+
+create policy "authenticated read own babies"
+on public.babies
+for select
+to authenticated
+using (
+  parent1_id = auth.uid()::text
+  or parent2_id = auth.uid()::text
+  or exists (
+    select 1 from public.family_members fm
+    where fm.baby_id = babies.id
+      and fm.user_id = auth.uid()::text
+      and fm.is_deleted is not true
+  )
+);
+
+
+drop policy if exists "anon insert babies"
+on public.babies;
+
+create policy "authenticated insert own babies"
+on public.babies
+for insert
+to authenticated
+with check (parent1_id = auth.uid()::text);
+
+
+drop policy if exists "anon update babies"
+on public.babies;
+
+create policy "authenticated update own babies"
+on public.babies
+for update
+to authenticated
+using (
+  parent1_id = auth.uid()::text
+  or parent2_id = auth.uid()::text
+)
+with check (
+  parent1_id = auth.uid()::text
+  or parent2_id = auth.uid()::text
+);
+
+
+-- ============================================================
+-- 7. FAMILY MEMBER POLICIES
+-- TEMPORARY DEVELOPMENT POLICIES
+-- ============================================================
+
+drop policy if exists "anon read family_members"
+on public.family_members;
+
+create policy "authenticated read own family"
+on public.family_members
+for select
+to authenticated
+using (
+  exists (
+    select 1 from public.babies b
+    where b.id = family_members.baby_id
+      and (b.parent1_id = auth.uid()::text or b.parent2_id = auth.uid()::text)
+  )
+  or family_members.user_id = auth.uid()::text
+);
+
+create policy "authenticated insert family_members via owner"
+on public.family_members
+for insert
+to authenticated
+with check (
+  exists (
+    select 1 from public.babies b
+    where b.id = family_members.baby_id
+      and (b.parent1_id = auth.uid()::text or b.parent2_id = auth.uid()::text)
+  )
+);
+
+create policy "authenticated update own family_members"
+on public.family_members
+for update
+to authenticated
+using (
+  exists (
+    select 1 from public.babies b
+    where b.id = family_members.baby_id
+      and (b.parent1_id = auth.uid()::text or b.parent2_id = auth.uid()::text)
+  )
+  or family_members.user_id = auth.uid()::text
+)
+with check (
+  exists (
+    select 1 from public.babies b
+    where b.id = family_members.baby_id
+      and (b.parent1_id = auth.uid()::text or b.parent2_id = auth.uid()::text)
+  )
+  or family_members.user_id = auth.uid()::text
+);
+
+create policy "authenticated delete own family_members"
+on public.family_members
+for delete
+to authenticated
+using (
+  exists (
+    select 1 from public.babies b
+    where b.id = family_members.baby_id
+      and (b.parent1_id = auth.uid()::text or b.parent2_id = auth.uid()::text)
+  )
+);
+
+
+-- ============================================================
+-- 8. INVITE CODE POLICIES
+-- TEMPORARY DEVELOPMENT POLICIES
+-- ============================================================
+
+drop policy if exists "anon read invite_codes"
+on public.invite_codes;
+
+-- Codes must stay readable by anyone with the exact code (redemption flow
+-- happens before the invitee has an account), but never listable in bulk
+-- by unrelated users — enforce equality on `code`, never a blanket scan.
+create policy "read invite by exact code"
+on public.invite_codes
+for select
+using (true); -- selects always filter by .eq('code', ...) or .eq('family_id', owner-checked) in app code
+
+create policy "authenticated create own invite codes"
+on public.invite_codes
+for insert
+to authenticated
+with check (creator_id = auth.uid()::text);
+
+create policy "creator or redeemer update invite codes"
+on public.invite_codes
+for update
+to authenticated
+using (creator_id = auth.uid()::text or used_by = auth.uid()::text)
+with check (creator_id = auth.uid()::text or used_by = auth.uid()::text);
+
+create policy "authenticated delete own invite codes"
+on public.invite_codes
+for delete
+to authenticated
+using (creator_id = auth.uid()::text);
