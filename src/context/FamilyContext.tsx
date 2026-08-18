@@ -470,14 +470,8 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return { code: '', success: false, message: 'Only the account creator can invite family members' };
     }
 
+    // REPLACE
     try {
-      // Generate short 6-character uppercase alphanumeric code
-      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Removed confusing chars: I,1,0,O
-      let code = '';
-      for (let i = 0; i < 6; i++) {
-        code += chars.charAt(Math.floor(Math.random() * chars.length));
-      }
-
       const payload = {
         familyId: currentBaby.id,
         babyName: currentBaby.name,
@@ -494,18 +488,26 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         expiresInDays: 7,
       };
 
-      // Store using portableInvite if available, otherwise fallback to AsyncStorage
+      // Always route through portableInvite so codes use crypto.getRandomValues
+      // (getSecureRandomNumber) and collision-safe insertion, never Math.random().
       try {
-        const { storeInviteCode } = await import('@/utils/portableInvite');
-        await storeInviteCode(code, payload);
-      } catch {
+        const { createInviteCode } = await import('@/utils/portableInvite');
+        const code = await createInviteCode(payload);
+        return { code, success: true, message: 'Invite code generated successfully' };
+      } catch (dbError) {
+        // Fallback path also needs crypto-random, not Math.random()
+        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+        const array = new Uint32Array(6);
+        crypto.getRandomValues(array);
+        const code = Array.from(array, n => chars[n % chars.length]).join('');
+
         const existing = await AsyncStorage.getItem('littleloom_invite_codes');
         const codes = existing ? JSON.parse(existing) : {};
         codes[code] = { ...payload, expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000, used: false };
         await AsyncStorage.setItem('littleloom_invite_codes', JSON.stringify(codes));
-      }
 
-      return { code, success: true, message: 'Invite code generated successfully' };
+        return { code, success: true, message: 'Invite code generated successfully' };
+      }
     } catch (error) {
       console.error('Error generating invite code:', error);
       return { code: '', success: false, message: 'Failed to generate invite code' };
@@ -526,23 +528,27 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, []);
 
+  // REPLACE
   const revokeInviteCode = useCallback(async (code: string): Promise<boolean> => {
-    if (!isOwner) return false;
+    if (!isOwner || !currentBaby) return false;
     try {
-      const { revokeInviteCode: doRevoke } = await import('@/utils/portableInvite');
+      const { validateInviteCode, revokeInviteCode: doRevoke } = await import('@/utils/portableInvite');
+      // Ownership check: don't let an owner of baby A revoke a code for baby B
+      const check = await validateInviteCode(code);
+      if (check.valid && check.invite.familyId !== currentBaby.id) return false;
       return await doRevoke(code);
     } catch {
       // Fallback to AsyncStorage
       const raw = await AsyncStorage.getItem('littleloom_invite_codes');
       const codes = raw ? JSON.parse(raw) : {};
-      if (codes[code]) {
-        codes[code].used = true;
+      if (codes[code] && (!codes[code].familyId || codes[code].familyId === currentBaby.id)) {
+        codes[code].revoked = true; // was incorrectly setting `used`
         await AsyncStorage.setItem('littleloom_invite_codes', JSON.stringify(codes));
         return true;
       }
       return false;
     }
-  }, [isOwner]);
+  }, [isOwner, currentBaby]);
 
   const getEffectivePermissions = useCallback((userId?: string): Permission => {
     const targetId = userId || profile?.id;

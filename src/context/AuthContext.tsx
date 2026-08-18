@@ -5,7 +5,16 @@ import * as SecureStore from 'expo-secure-store';
 import { getAppSetting, setAppSetting } from '@/database/dbHelpers';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { SocialUser } from '../hooks/useSocialAuth';
+
 import * as Crypto from 'expo-crypto';
+
+// ─── PASSWORD HASHING (uses the Crypto import that was previously dead code) ───
+async function hashPassword(password: string): Promise<string> {
+  return Crypto.digestStringAsync(
+    Crypto.CryptoDigestAlgorithm.SHA256,
+    password
+  );
+}
 
 
 // ─── SINGLE SOURCE OF TRUTH FOR ONBOARDING ─────────────────────────────
@@ -490,9 +499,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const result = await authenticateWithBiometric(`Confirm to enable ${state.biometricTypeName} login`);
       if (!result.success) return false;
 
+      // REPLACE
+      // SECURITY: never persist the raw password, even in SecureStore.
+      // Store a long-lived random device token instead and validate that,
+      // not the user's actual credential.
+      const deviceRefreshToken = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
       await Promise.all([
         secureStorage.setItem(SECURE_KEYS.BIOMETRIC_EMAIL, email),
-        secureStorage.setItem(SECURE_KEYS.BIOMETRIC_PASSWORD, password),
+        secureStorage.setItem(SECURE_KEYS.BIOMETRIC_PASSWORD, deviceRefreshToken), // rename key if you can — kept for schema compat
         secureStorage.setItem(SECURE_KEYS.BIOMETRIC_LOGIN_ENABLED, 'true'),
       ]);
 
@@ -529,12 +543,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return false;
       }
 
+    
       await new Promise(resolve => setTimeout(resolve, 800));
 
-      const token = `auth_token_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      
+      const token = `auth_token_${await hashPassword(`${Date.now()}_${Math.random()}`)}`;
+
       // ─── CRITICAL FIX: Check if user already exists by identifier ─────────
       let existingUser = await findUserByEmail(email);
+
+      // ─── SECURITY FIX: Actually verify the password against the stored hash ───
+      if (existingUser) {
+        const submittedHash = await hashPassword(password);
+        if (existingUser.hasPassword && existingUser.passwordHash && existingUser.passwordHash !== submittedHash) {
+          if (__DEV__) console.warn('[Auth] Sign in failed: incorrect password');
+          return false;
+        }
+      }
       
       // If not found by email, try username/handle lookup
       if (!existingUser) {
@@ -852,8 +876,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         communityStats: { posts: 0, followers: 0, following: 0, helpful: 0 },
         communitySelectedTopics: [],
       };
-
-      // ─── CRITICAL FIX: Register user in persistent registry ──────────
+// REPLACE
       const registryEntry: UserRegistryEntry = {
         userId,
         email,
@@ -869,6 +892,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         communityStats: { posts: 0, followers: 0, following: 0, helpful: 0 },
         communitySelectedTopics: [],
         hasPassword: true,
+        passwordHash: await hashPassword(password),
       };
       await registerUser(registryEntry);
 
