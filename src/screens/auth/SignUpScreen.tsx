@@ -47,11 +47,12 @@ const GOOGLE_CLIENT_ID = Platform.select({
   default: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ?? 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com',
 });
 
-const FACEBOOK_APP_ID = process.env.EXPO_PUBLIC_FACEBOOK_APP_ID ?? 'YOUR_FACEBOOK_APP_ID';
+const FACEBOOK_APP_ID = process.env.EXPO_PUBLIC_FACEBOOK_APP_ID ?? '1526133312174343';
 
 const redirectUri = AuthSession.makeRedirectUri({
   scheme: 'littleloom',
-  useProxy: Platform.OS !== 'web',
+  // Force the Expo proxy in development – this is the most reliable for Facebook
+  useProxy: true,
 });
 
 const isValidEmail = (email: string): boolean => {
@@ -94,7 +95,9 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
     isAuthenticated,
     findUserByEmail,
   } = useAuth();
-
+useEffect(() => {
+  console.log('Redirect URI →', redirectUri);
+}, []);
   const customization = useCustomization();
   const isDark = customization?.darkMode ?? false;
   const themeColors = customization?.themeColors ?? { primary: '#667eea', secondary: '#764ba2' };

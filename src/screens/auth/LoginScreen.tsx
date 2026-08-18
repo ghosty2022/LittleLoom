@@ -24,16 +24,16 @@ const { width, height } = Dimensions.get('window');
 WebBrowser.maybeCompleteAuthSession();
 
 const GOOGLE_CLIENT_ID = Platform.select({
-  ios: 'YOUR_IOS_GOOGLE_CLIENT_ID.apps.googleusercontent.com',
-  android: 'YOUR_ANDROID_GOOGLE_CLIENT_ID.apps.googleusercontent.com',
-  default: 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com',
+  ios: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ?? 'YOUR_IOS_GOOGLE_CLIENT_ID.apps.googleusercontent.com',
+  android: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ?? 'YOUR_ANDROID_GOOGLE_CLIENT_ID.apps.googleusercontent.com',
+  default: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ?? 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com',
 });
 
-const FACEBOOK_APP_ID = 'YOUR_FACEBOOK_APP_ID';
+const FACEBOOK_APP_ID = process.env.EXPO_PUBLIC_FACEBOOK_APP_ID ?? '1526133312174343';
 
-const redirectUri = AuthSession.makeRedirectUri({ 
+const redirectUri = AuthSession.makeRedirectUri({
   scheme: 'littleloom',
-  useProxy: Platform.OS !== 'web' 
+  useProxy: Platform.OS !== 'web',
 });
 
 interface SocialButtonProps {
@@ -154,6 +154,9 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     userProfile,
     findUserByEmail,
   } = useAuth();
+useEffect(() => {
+  console.log('Redirect URI →', redirectUri);
+}, []);
 
   const { resetUnlockLock, forceUnlock } = useSecurity();
   
