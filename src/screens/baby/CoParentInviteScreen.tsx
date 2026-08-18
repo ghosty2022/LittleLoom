@@ -15,7 +15,7 @@ import {
   Share,
   Dimensions,
 } from 'react-native';
-import Clipboard from '@react-native-clipboard/clipboard';
+import * as Clipboard from 'expo-clipboard';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -311,7 +311,7 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
 
     switch (method) {
       case 'copy':
-        await Clipboard.setString(`${message}\n${url}`);
+        await Clipboard.setStringAsync(`${message}\n${url}`);
         showToast('Copied to clipboard'); break;
       case 'whatsapp':
         Linking.openURL(`whatsapp://send?text=${encodeURIComponent(message + '\n' + url)}`)

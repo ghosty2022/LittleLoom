@@ -1,3 +1,9 @@
+/**
+ * portableInvite.ts
+ * Hardened invite-code utilities for LittleLoom.
+ * Uses Supabase as the source of truth + secure random generation.
+ */
+
 import { supabase } from '@/utils/supabase';
 
 /* ============================================================
@@ -17,34 +23,24 @@ export interface PortableInvitePayload {
   expiresInDays: number;
 }
 
-export interface ActiveInvite
-  extends PortableInvitePayload {
+export interface ActiveInvite extends PortableInvitePayload {
   code: string;
   used: boolean;
   revoked: boolean;
   expiresAt: number;
 }
 
-
 /* ============================================================
    INVITE CODE CONFIGURATION
    ============================================================ */
 
 /*
- * Excluded:
- *
- * 0 - can look like O
- * O - can look like 0
- * I - can look like 1
- * 1 - can look like I
+ * Excluded characters that look alike:
+ * 0 / O, 1 / I / l
  */
-const CODE_CHARS =
-  'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-
+const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const INVITE_CODE_LENGTH = 6;
-
-const MAX_GENERATION_ATTEMPTS = 10;
-
+const MAX_GENERATION_ATTEMPTS = 12;
 
 /* ============================================================
    DATABASE TYPE
@@ -52,126 +48,73 @@ const MAX_GENERATION_ATTEMPTS = 10;
 
 type InviteRow = {
   code: string;
-
   family_id: string;
-
   baby_name: string | null;
-
   baby_dob: string | null;
-
   baby_gender: string | null;
-
   creator_id: string;
-
   creator_name: string | null;
-
-  role:
-    | 'parent2'
-    | 'guardian'
-    | 'viewer';
-
+  role: 'parent2' | 'guardian' | 'viewer';
   relationship: string | null;
-
   created_at: number;
-
   expires_in_days: number;
-
   used: boolean;
-
   used_by: string | null;
-
   used_at: number | null;
-
   revoked: boolean;
 };
 
-
 /* ============================================================
-   CRYPTOGRAPHIC RANDOM NUMBER
+   CRYPTOGRAPHIC RANDOM NUMBER (no Math.random fallback in prod)
    ============================================================ */
 
-function getSecureRandomNumber(
-  max: number
-): number {
-  /*
-   * Browser / modern JS environment
-   */
+function getSecureRandomNumber(max: number): number {
   if (
     typeof crypto !== 'undefined' &&
     typeof crypto.getRandomValues === 'function'
   ) {
     const array = new Uint32Array(1);
-
-    crypto.getRandomValues(array);
-
-    /*
-     * Avoid simple modulo bias by using
-     * rejection sampling.
-     */
     const maxUint32 = 0x100000000;
-
-    const limit =
-      maxUint32 -
-      (maxUint32 % max);
+    const limit = maxUint32 - (maxUint32 % max);
 
     let randomValue: number;
-
     do {
       crypto.getRandomValues(array);
-
       randomValue = array[0];
     } while (randomValue >= limit);
 
     return randomValue % max;
   }
 
-  /*
-   * Fallback.
-   *
-   * This should normally not be reached in a
-   * modern browser/Expo environment.
-   */
-  return Math.floor(
-    Math.random() * max
+  // In production we refuse to generate insecure codes
+  if (typeof __DEV__ !== 'undefined' && __DEV__) {
+    console.warn(
+      '[portableInvite] crypto.getRandomValues unavailable – using Math.random (INSECURE, DEV ONLY)'
+    );
+    return Math.floor(Math.random() * max);
+  }
+
+  throw new Error(
+    'Secure random source (crypto.getRandomValues) is unavailable. Cannot generate invite codes.'
   );
 }
-
 
 /* ============================================================
    GENERATE INVITE CODE
    ============================================================ */
 
 /**
- * Generates a cryptographically stronger,
- * human-readable 6-character invite code.
- *
- * Examples:
- *
- *   K7M4PX
- *   AB29QF
- *   W8R3TZ
+ * Generates a cryptographically stronger, human-readable 6-character invite code.
+ * Examples: K7M4PX, AB29QF, W8R3TZ
  */
-export function generateInviteCode(
-  _payload?: PortableInvitePayload
-): string {
+export function generateInviteCode(_payload?: PortableInvitePayload): string {
   let code = '';
-
-  for (
-    let i = 0;
-    i < INVITE_CODE_LENGTH;
-    i++
-  ) {
-    const index =
-      getSecureRandomNumber(
-        CODE_CHARS.length
-      );
-
+  for (let i = 0; i < INVITE_CODE_LENGTH; i++) {
+    const index = getSecureRandomNumber(CODE_CHARS.length);
     code += CODE_CHARS[index];
   }
-
   return code;
 }
-
 
 /* ============================================================
    NORMALIZE CODE
@@ -179,22 +122,14 @@ export function generateInviteCode(
 
 /**
  * Converts user input into the database format.
- *
- * Examples:
- *
- *   k7m4px   -> K7M4PX
- *   K7M-4PX  -> K7M4PX
- *   K7M 4PX  -> K7M4PX
+ * k7m4px → K7M4PX | K7M-4PX → K7M4PX | K7M 4PX → K7M4PX
  */
-function normalizeInviteCode(
-  code: string
-): string {
+function normalizeInviteCode(code: string): string {
   return code
     .trim()
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, '');
 }
-
 
 /* ============================================================
    EXPIRATION
@@ -204,57 +139,27 @@ function getInviteExpiration(
   createdAt: number,
   expiresInDays: number
 ): number {
-  return (
-    createdAt +
-    expiresInDays *
-      86_400_000
-  );
+  return createdAt + expiresInDays * 86_400_000;
 }
-
 
 /* ============================================================
-   ROW -> PAYLOAD
+   ROW → PAYLOAD
    ============================================================ */
 
-function rowToPayload(
-  row: InviteRow
-): PortableInvitePayload {
+function rowToPayload(row: InviteRow): PortableInvitePayload {
   return {
     familyId: row.family_id,
-
-    babyName:
-      row.baby_name || '',
-
-    babyDob:
-      row.baby_dob ||
-      undefined,
-
-    babyGender:
-      row.baby_gender ||
-      undefined,
-
-    creatorId:
-      row.creator_id,
-
-    creatorName:
-      row.creator_name ||
-      '',
-
-    role:
-      row.role,
-
-    relationship:
-      row.relationship ||
-      undefined,
-
-    createdAt:
-      row.created_at,
-
-    expiresInDays:
-      row.expires_in_days,
+    babyName: row.baby_name || '',
+    babyDob: row.baby_dob || undefined,
+    babyGender: row.baby_gender || undefined,
+    creatorId: row.creator_id,
+    creatorName: row.creator_name || '',
+    role: row.role,
+    relationship: row.relationship || undefined,
+    createdAt: row.created_at,
+    expiresInDays: row.expires_in_days,
   };
 }
-
 
 /* ============================================================
    STORE INVITE
@@ -264,71 +169,34 @@ export async function storeInviteCode(
   code: string,
   payload: PortableInvitePayload
 ): Promise<void> {
-  const normalizedCode =
-    normalizeInviteCode(code);
+  const normalizedCode = normalizeInviteCode(code);
 
-  if (
-    normalizedCode.length !==
-    INVITE_CODE_LENGTH
-  ) {
-    throw new Error(
-      'Invite code must be exactly 6 characters'
-    );
+  if (normalizedCode.length !== INVITE_CODE_LENGTH) {
+    throw new Error('Invite code must be exactly 6 characters');
   }
 
-  const { error } =
-    await supabase
-      .from('invite_codes')
-      .insert({
-        code: normalizedCode,
-
-        family_id:
-          payload.familyId,
-
-        baby_name:
-          payload.babyName,
-
-        baby_dob:
-          payload.babyDob ??
-          null,
-
-        baby_gender:
-          payload.babyGender ??
-          null,
-
-        creator_id:
-          payload.creatorId,
-
-        creator_name:
-          payload.creatorName,
-
-        role:
-          payload.role,
-
-        relationship:
-          payload.relationship ??
-          null,
-
-        created_at:
-          payload.createdAt,
-
-        expires_in_days:
-          payload.expiresInDays,
-
-        used: false,
-
-        used_by: null,
-
-        used_at: null,
-
-        revoked: false,
-      });
+  const { error } = await supabase.from('invite_codes').insert({
+    code: normalizedCode,
+    family_id: payload.familyId,
+    baby_name: payload.babyName,
+    baby_dob: payload.babyDob ?? null,
+    baby_gender: payload.babyGender ?? null,
+    creator_id: payload.creatorId,
+    creator_name: payload.creatorName,
+    role: payload.role,
+    relationship: payload.relationship ?? null,
+    created_at: payload.createdAt,
+    expires_in_days: payload.expiresInDays,
+    used: false,
+    used_by: null,
+    used_at: null,
+    revoked: false,
+  });
 
   if (error) {
     throw error;
   }
 }
-
 
 /* ============================================================
    CREATE + STORE UNIQUE INVITE
@@ -336,45 +204,23 @@ export async function storeInviteCode(
 
 /**
  * Generates a code and attempts to store it.
- *
- * If a collision occurs, a new code is generated.
- *
- * This is the function I recommend your UI use when
- * creating an invitation.
+ * On unique-violation (23505) it retries with a new code.
+ * This is the function the UI should call when creating an invitation.
  */
 export async function createInviteCode(
   payload: PortableInvitePayload
 ): Promise<string> {
-  for (
-    let attempt = 0;
-    attempt < MAX_GENERATION_ATTEMPTS;
-    attempt++
-  ) {
-    const code =
-      generateInviteCode(payload);
+  for (let attempt = 0; attempt < MAX_GENERATION_ATTEMPTS; attempt++) {
+    const code = generateInviteCode(payload);
 
     try {
-      await storeInviteCode(
-        code,
-        payload
-      );
-
+      await storeInviteCode(code, payload);
       return code;
     } catch (error: any) {
-      /*
-       * PostgreSQL unique violation.
-       *
-       * 23505 = unique_violation
-       *
-       * If the generated code already exists,
-       * simply generate another one.
-       */
-      if (
-        error?.code === '23505'
-      ) {
+      // PostgreSQL unique_violation
+      if (error?.code === '23505') {
         continue;
       }
-
       throw error;
     }
   }
@@ -384,7 +230,6 @@ export async function createInviteCode(
   );
 }
 
-
 /* ============================================================
    VALIDATE INVITE
    ============================================================ */
@@ -392,146 +237,99 @@ export async function createInviteCode(
 export async function validateInviteCode(
   code: string
 ): Promise<
-  | {
-      valid: true;
-      invite: PortableInvitePayload;
-    }
-  | {
-      valid: false;
-      message: string;
-    }
+  | { valid: true; invite: PortableInvitePayload }
+  | { valid: false; message: string }
 > {
-  const normalizedCode =
-    normalizeInviteCode(code);
+  const normalizedCode = normalizeInviteCode(code);
 
-  if (
-    normalizedCode.length !==
-    INVITE_CODE_LENGTH
-  ) {
+  if (normalizedCode.length !== INVITE_CODE_LENGTH) {
     return {
       valid: false,
-      message:
-        'Code must be 6 characters',
+      message: 'Code must be 6 characters',
     };
   }
 
-  const { data, error } =
-    await supabase
-      .from('invite_codes')
-      .select('*')
-      .eq(
-        'code',
-        normalizedCode
-      )
-      .maybeSingle();
+  const { data, error } = await supabase
+    .from('invite_codes')
+    .select('*')
+    .eq('code', normalizedCode)
+    .maybeSingle();
 
   if (error) {
-    console.error(
-      'Error validating invite code:',
-      error
-    );
-
+    console.error('Error validating invite code:', error);
     return {
       valid: false,
-      message:
-        'Could not reach the server — check your connection',
+      message: 'Could not reach the server — check your connection',
     };
   }
 
   if (!data) {
     return {
       valid: false,
-      message:
-        'Invalid invite code',
+      message: 'Invalid invite code',
     };
   }
 
-  const invite =
-    data as InviteRow;
+  const invite = data as InviteRow;
 
   if (invite.revoked) {
     return {
       valid: false,
-      message:
-        'Invite code has been revoked',
+      message: 'Invite code has been revoked',
     };
   }
 
   if (invite.used) {
     return {
       valid: false,
-      message:
-        'Invite code has already been used',
+      message: 'Invite code has already been used',
     };
   }
 
-  const expiresAt =
-    getInviteExpiration(
-      invite.created_at,
-      invite.expires_in_days
-    );
+  const expiresAt = getInviteExpiration(
+    invite.created_at,
+    invite.expires_in_days
+  );
 
-  if (
-    Date.now() > expiresAt
-  ) {
+  if (Date.now() > expiresAt) {
     return {
       valid: false,
-      message:
-        'Invite code has expired',
+      message: 'Invite code has expired',
     };
   }
 
   return {
     valid: true,
-    invite:
-      rowToPayload(invite),
+    invite: rowToPayload(invite),
   };
 }
 
-
 /* ============================================================
-   MARK INVITE USED
+   MARK INVITE USED (atomic)
    ============================================================ */
 
+/**
+ * Marks an invite as used only if it is still unused and not revoked.
+ * Throws if the code is invalid / already used / revoked.
+ */
 export async function markInviteCodeUsed(
   code: string,
   usedBy?: string
 ): Promise<void> {
-  const normalizedCode =
-    normalizeInviteCode(code);
+  const normalizedCode = normalizeInviteCode(code);
 
-  /*
-   * Important:
-   * Only mark an invite as used if it is
-   * currently unused and not revoked.
-   */
-  const { data, error } =
-    await supabase
-      .from('invite_codes')
-      .update({
-        used: true,
-
-        used_by:
-          usedBy ??
-          null,
-
-        used_at:
-          Date.now(),
-      })
-      .eq(
-        'code',
-        normalizedCode
-      )
-      .eq(
-        'used',
-        false
-      )
-      .eq(
-        'revoked',
-        false
-      )
-      .select('code')
-      .maybeSingle();
+  const { data, error } = await supabase
+    .from('invite_codes')
+    .update({
+      used: true,
+      used_by: usedBy ?? null,
+      used_at: Date.now(),
+    })
+    .eq('code', normalizedCode)
+    .eq('used', false)
+    .eq('revoked', false)
+    .select('code')
+    .maybeSingle();
 
   if (error) {
     throw error;
@@ -544,46 +342,31 @@ export async function markInviteCodeUsed(
   }
 }
 
-
 /* ============================================================
    GET ACTIVE INVITES
    ============================================================ */
 
+/**
+ * Returns active (unused, not revoked, not expired) invites.
+ * Pass familyId to scope to a single baby / family.
+ */
 export async function getActiveInvites(
   familyId?: string
 ): Promise<ActiveInvite[]> {
-  let query =
-    supabase
-      .from('invite_codes')
-      .select('*')
-      .eq(
-        'revoked',
-        false
-      )
-      .eq(
-        'used',
-        false
-      );
+  let query = supabase
+    .from('invite_codes')
+    .select('*')
+    .eq('revoked', false)
+    .eq('used', false);
 
   if (familyId) {
-    query =
-      query.eq(
-        'family_id',
-        familyId
-      );
+    query = query.eq('family_id', familyId);
   }
 
-  const {
-    data,
-    error,
-  } = await query;
+  const { data, error } = await query;
 
   if (error) {
-    console.error(
-      'Error getting active invites:',
-      error
-    );
-
+    console.error('Error getting active invites:', error);
     return [];
   }
 
@@ -591,100 +374,59 @@ export async function getActiveInvites(
     return [];
   }
 
-  const now =
-    Date.now();
+  const now = Date.now();
 
-  return (
-    data as InviteRow[]
-  )
+  return (data as InviteRow[])
     .map((row) => {
-      const expiresAt =
-        getInviteExpiration(
-          row.created_at,
-          row.expires_in_days
-        );
-
+      const expiresAt = getInviteExpiration(
+        row.created_at,
+        row.expires_in_days
+      );
       return {
         code: row.code,
-
         ...rowToPayload(row),
-
-        used:
-          row.used,
-
-        revoked:
-          row.revoked,
-
+        used: row.used,
+        revoked: row.revoked,
         expiresAt,
       };
     })
-    .filter(
-      (invite) =>
-        now <=
-        invite.expiresAt
-    );
+    .filter((invite) => now <= invite.expiresAt);
 }
-
 
 /* ============================================================
    REVOKE INVITE
    ============================================================ */
 
-export async function revokeInviteCode(
-  code: string
-): Promise<boolean> {
-  const normalizedCode =
-    normalizeInviteCode(code);
+export async function revokeInviteCode(code: string): Promise<boolean> {
+  const normalizedCode = normalizeInviteCode(code);
 
-  const { error } =
-    await supabase
-      .from('invite_codes')
-      .update({
-        revoked: true,
-      })
-      .eq(
-        'code',
-        normalizedCode
-      );
+  const { error } = await supabase
+    .from('invite_codes')
+    .update({ revoked: true })
+    .eq('code', normalizedCode);
 
   if (error) {
-    console.error(
-      'Error revoking invite code:',
-      error
-    );
-
+    console.error('Error revoking invite code:', error);
     return false;
   }
 
   return true;
 }
 
-
 /* ============================================================
    DELETE INVITE
    ============================================================ */
 
-export async function deleteInviteCode(
-  code: string
-): Promise<boolean> {
-  const normalizedCode =
-    normalizeInviteCode(code);
+export async function deleteInviteCode(code: string): Promise<boolean> {
+  const normalizedCode = normalizeInviteCode(code);
 
-  const { error } =
-    await supabase
-      .from('invite_codes')
-      .delete()
-      .eq(
-        'code',
-        normalizedCode
-      );
+  const { error } = await supabase
+    .from('invite_codes')
+    .delete()
+    .eq('code', normalizedCode);
 
   if (error) {
-    console.error(
-      'Error deleting invite code:',
-      error
-    );
-
+    console.error('Error deleting invite code:', error);
     return false;
   }
 

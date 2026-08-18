@@ -517,35 +517,54 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const getActiveInviteCodes = useCallback(async () => {
     try {
       const { getActiveInvites } = await import('@/utils/portableInvite');
-      return await getActiveInvites();
+      // Pass currentBaby.id so the server only returns relevant invites
+      const invites = await getActiveInvites(currentBaby?.id);
+      return invites;
     } catch {
-      // Fallback to AsyncStorage
+      // Offline / fallback path – still filter by familyId
       const raw = await AsyncStorage.getItem('littleloom_invite_codes');
       const codes = raw ? JSON.parse(raw) : {};
+
       return Object.entries(codes)
-        .filter(([_, v]: [string, any]) => !v.used && v.expiresAt > Date.now())
+        .filter(([_, v]: [string, any]) => {
+          const notUsed = !v.used;
+          const notRevoked = !v.revoked;
+          const notExpired = (v.expiresAt ?? 0) > Date.now();
+          const belongsToCurrent =
+            !currentBaby || v.familyId === currentBaby.id;
+          return notUsed && notRevoked && notExpired && belongsToCurrent;
+        })
         .map(([code, data]: [string, any]) => ({ code, ...data }));
     }
-  }, []);
+  }, [currentBaby]);
 
-  // REPLACE
   const revokeInviteCode = useCallback(async (code: string): Promise<boolean> => {
     if (!isOwner || !currentBaby) return false;
+
     try {
       const { validateInviteCode, revokeInviteCode: doRevoke } = await import('@/utils/portableInvite');
+
       // Ownership check: don't let an owner of baby A revoke a code for baby B
       const check = await validateInviteCode(code);
-      if (check.valid && check.invite.familyId !== currentBaby.id) return false;
+      if (check.valid && check.invite.familyId !== currentBaby.id) {
+        return false;
+      }
+
       return await doRevoke(code);
     } catch {
       // Fallback to AsyncStorage
       const raw = await AsyncStorage.getItem('littleloom_invite_codes');
       const codes = raw ? JSON.parse(raw) : {};
-      if (codes[code] && (!codes[code].familyId || codes[code].familyId === currentBaby.id)) {
-        codes[code].revoked = true; // was incorrectly setting `used`
+
+      if (
+        codes[code] &&
+        (!codes[code].familyId || codes[code].familyId === currentBaby.id)
+      ) {
+        codes[code].revoked = true; // correctly mark as revoked, not used
         await AsyncStorage.setItem('littleloom_invite_codes', JSON.stringify(codes));
         return true;
       }
+
       return false;
     }
   }, [isOwner, currentBaby]);
