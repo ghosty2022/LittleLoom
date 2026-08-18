@@ -1,28 +1,58 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import Animated,{ FadeIn, FadeInUp, useAnimatedStyle, useSharedValue, withDelay, withSpring } from 'react-native-reanimated';
-import { ActivityIndicator, Dimensions, Image, Keyboard, KeyboardAvoidingView, Platform, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import Animated, {
+  FadeIn,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withSpring,
+} from 'react-native-reanimated';
+import {
+  ActivityIndicator,
+  Dimensions,
+  Image,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+
 import { useAuth } from '../../context/AuthContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import type { RootStackParamList } from '../../types/navigation';
 import { UniversalSpinner } from '../../components/UniversalSpinner';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type SignUpScreenProps = NativeStackScreenProps<RootStackParamList, 'SignUp'>;
 const { width } = Dimensions.get('window');
 
 WebBrowser.maybeCompleteAuthSession();
 
-const GOOGLE_CLIENT_ID = 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com';
-const FACEBOOK_APP_ID = 'YOUR_FACEBOOK_APP_ID';
-const redirectUri = AuthSession.makeRedirectUri({ useProxy: true });
+// ⚠️ Replace with real values from Expo / EAS secrets – never ship placeholders
+const GOOGLE_CLIENT_ID = Platform.select({
+  ios: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ?? 'YOUR_IOS_GOOGLE_CLIENT_ID.apps.googleusercontent.com',
+  android: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ?? 'YOUR_ANDROID_GOOGLE_CLIENT_ID.apps.googleusercontent.com',
+  default: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ?? 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com',
+});
+
+const FACEBOOK_APP_ID = process.env.EXPO_PUBLIC_FACEBOOK_APP_ID ?? 'YOUR_FACEBOOK_APP_ID';
+
+const redirectUri = AuthSession.makeRedirectUri({
+  scheme: 'littleloom',
+  useProxy: Platform.OS !== 'web',
+});
 
 const isValidEmail = (email: string): boolean => {
   const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -56,7 +86,15 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [showSplash, setShowSplash] = useState(false);
 
-  const { signUp, signUpWithInviteCode, signIn, isLoading: authLoading, isAuthenticated, findUserByEmail } = useAuth();
+  const {
+    signUp,
+    signUpWithInviteCode,
+    signInWithSocial,
+    isLoading: authLoading,
+    isAuthenticated,
+    findUserByEmail,
+  } = useAuth();
+
   const customization = useCustomization();
   const isDark = customization?.darkMode ?? false;
   const themeColors = customization?.themeColors ?? { primary: '#667eea', secondary: '#764ba2' };
@@ -72,6 +110,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
   const signUpAttempted = useRef(false);
   const joinAttempted = useRef(false);
   const codeDebounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const socialAuthInProgress = useRef(false);
 
   // Auto-fill invite code from QR scan
   useEffect(() => {
@@ -84,11 +123,15 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
 
   const [googleRequest, googleResponse, googlePromptAsync] = AuthSession.useAuthRequest(
     {
-      clientId: GOOGLE_CLIENT_ID,
+      clientId: GOOGLE_CLIENT_ID as string,
       redirectUri,
       scopes: ['openid', 'profile', 'email'],
+      responseType: 'token',
     },
-    { authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth' }
+    {
+      authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
+      tokenEndpoint: 'https://oauth2.googleapis.com/token',
+    }
   );
 
   const [fbRequest, fbResponse, fbPromptAsync] = AuthSession.useAuthRequest(
@@ -96,14 +139,19 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
       clientId: FACEBOOK_APP_ID,
       redirectUri,
       scopes: ['public_profile', 'email'],
+      responseType: 'token',
     },
-    { authorizationEndpoint: 'https://www.facebook.com/v18.0/dialog/oauth' }
+    {
+      authorizationEndpoint: 'https://www.facebook.com/v18.0/dialog/oauth',
+      tokenEndpoint: 'https://graph.facebook.com/v18.0/oauth/access_token',
+    }
   );
 
   useEffect(() => {
     return () => {
       isMounted.current = false;
       if (codeDebounceTimer.current) clearTimeout(codeDebounceTimer.current);
+      socialAuthInProgress.current = false;
     };
   }, []);
 
@@ -133,10 +181,11 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
           const { validateInviteCode } = await import('@/utils/portableInvite');
           result = await validateInviteCode(trimmed);
         } catch {
+          // Fallback – same store AuthContext uses
           const raw = await AsyncStorage.getItem('littleloom_invite_codes');
           const codes = raw ? JSON.parse(raw) : {};
           const invite = codes[trimmed];
-          if (!invite || invite.used || Date.now() > invite.expiresAt) {
+          if (!invite || invite.used || invite.revoked || Date.now() > invite.expiresAt) {
             result = { valid: false };
           } else {
             result = { valid: true, invite };
@@ -150,7 +199,16 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
               role: result.invite.role,
               relationship: result.invite.relationship,
             });
-            showInfo('Valid Code!', `You'll join as ${result.invite.role === 'parent2' ? 'Parent 2' : result.invite.role === 'guardian' ? 'Guardian' : 'Viewer'}`);
+            showInfo(
+              'Valid Code!',
+              `You'll join as ${
+                result.invite.role === 'parent2'
+                  ? 'Parent 2'
+                  : result.invite.role === 'guardian'
+                  ? 'Guardian'
+                  : 'Viewer'
+              }`
+            );
           } else {
             setCodeValidated(false);
             setCodeInfo(null);
@@ -158,27 +216,17 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
         }
       } catch (error) {
         console.error('Code validation error:', error);
+        if (isMounted.current) {
+          setCodeValidated(false);
+          setCodeInfo(null);
+        }
       } finally {
         if (isMounted.current) setIsValidatingCode(false);
       }
     }, 500);
-
-const getActiveInviteCodes = useCallback(async () => {
-    try {
-      const { getActiveInvites } = await import('@/utils/portableInvite');
-      const invites = await getActiveInvites();
-      return currentBaby ? invites.filter((inv: any) => inv.familyId === currentBaby.id) : invites;
-    } catch {
-      // Fallback to AsyncStorage
-      const raw = await AsyncStorage.getItem('littleloom_invite_codes');
-      const codes = raw ? JSON.parse(raw) : {};
-      return Object.entries(codes)
-        .filter(([_, v]: [string, any]) => !v.used && v.expiresAt > Date.now() && (!currentBaby || v.familyId === currentBaby.id))
-        .map(([code, data]: [string, any]) => ({ code, ...data }));
-    }
-  }, [currentBaby]);
   }, [inviteCode, activeTab]);
 
+  // ─── Google response ───
   useEffect(() => {
     if (googleResponse?.type === 'success') {
       const { authentication } = googleResponse;
@@ -188,9 +236,14 @@ const getActiveInviteCodes = useCallback(async () => {
     } else if (googleResponse?.type === 'error') {
       showError('Google Error', 'Authentication failed. Please try again.');
       setIsProcessing(false);
+      socialAuthInProgress.current = false;
+    } else if (googleResponse?.type === 'cancel') {
+      setIsProcessing(false);
+      socialAuthInProgress.current = false;
     }
   }, [googleResponse]);
 
+  // ─── Facebook response ───
   useEffect(() => {
     if (fbResponse?.type === 'success') {
       const { authentication } = fbResponse;
@@ -200,6 +253,10 @@ const getActiveInviteCodes = useCallback(async () => {
     } else if (fbResponse?.type === 'error') {
       showError('Facebook Error', 'Authentication failed. Please try again.');
       setIsProcessing(false);
+      socialAuthInProgress.current = false;
+    } else if (fbResponse?.type === 'cancel') {
+      setIsProcessing(false);
+      socialAuthInProgress.current = false;
     }
   }, [fbResponse]);
 
@@ -219,6 +276,7 @@ const getActiveInviteCodes = useCallback(async () => {
       console.error('Google user info error:', error);
       showError('Google Error', 'Could not retrieve account information');
       setIsProcessing(false);
+      socialAuthInProgress.current = false;
     }
   };
 
@@ -243,9 +301,15 @@ const getActiveInviteCodes = useCallback(async () => {
       console.error('Facebook user info error:', error);
       showError('Facebook Error', 'Could not retrieve account information');
       setIsProcessing(false);
+      socialAuthInProgress.current = false;
     }
   };
 
+  /**
+   * Social sign-up / sign-in.
+   * Prefer a dedicated signInWithSocial that links identities without inventing a password.
+   * Falls back to a strong random password only as last resort.
+   */
   const handleSocialSignUp = async (
     provider: 'google' | 'apple' | 'facebook',
     email: string,
@@ -255,24 +319,56 @@ const getActiveInviteCodes = useCallback(async () => {
     if (!email) {
       showError('Auth Failed', `Could not get ${provider} account information`);
       setIsProcessing(false);
+      socialAuthInProgress.current = false;
       return;
     }
 
     setIsProcessing(true);
     try {
-      const success = await signUp(name, email, `social_${provider}_${Date.now()}`);
+      // Preferred path – proper social identity linking
+      if (typeof signInWithSocial === 'function') {
+        const success = await signInWithSocial({
+          id: `${provider}_${Date.now()}`,
+          email,
+          fullName: name,
+          avatar,
+          provider,
+        });
+
+        if (success && isMounted.current) {
+          showSuccess('Welcome!', `Signed in with ${provider.charAt(0).toUpperCase() + provider.slice(1)}`);
+          navigation.replace('CoParentInviteScreen');
+          return;
+        }
+      }
+
+      // Fallback – create account with a strong random password (user should set a real one later)
+      const strongTempPassword =
+        typeof crypto !== 'undefined' && crypto.randomUUID
+          ? crypto.randomUUID() + crypto.randomUUID()
+          : `tmp_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+      const success = await signUp(name, email, strongTempPassword);
 
       if (success && isMounted.current) {
         showSuccess('Welcome!', `Account created with ${provider.charAt(0).toUpperCase() + provider.slice(1)}`);
+        navigation.replace('CoParentInviteScreen');
+      } else {
+        showError('Sign Up Failed', 'Could not create account. The email may already be in use.');
       }
     } catch (error) {
       showError('Sign Up Failed', 'Social authentication failed');
     } finally {
-      if (isMounted.current) setIsProcessing(false);
+      if (isMounted.current) {
+        setIsProcessing(false);
+        socialAuthInProgress.current = false;
+      }
     }
   };
 
   const handleGoogleSignUp = async () => {
+    if (socialAuthInProgress.current) return;
+    socialAuthInProgress.current = true;
     triggerHaptic('light');
     setIsProcessing(true);
     try {
@@ -280,11 +376,14 @@ const getActiveInviteCodes = useCallback(async () => {
     } catch (error) {
       showError('Google Error', 'Could not open Google sign-up');
       setIsProcessing(false);
+      socialAuthInProgress.current = false;
     }
   };
 
   const handleAppleSignUp = async () => {
+    if (socialAuthInProgress.current) return;
     triggerHaptic('light');
+
     try {
       const { AppleAuthentication } = await import('expo-apple-authentication');
 
@@ -296,19 +395,23 @@ const getActiveInviteCodes = useCallback(async () => {
       });
 
       if (credential.identityToken && credential.email) {
-        await handleSocialSignUp('apple', credential.email, credential.fullName?.givenName || 'Apple User');
+        await handleSocialSignUp(
+          'apple',
+          credential.email,
+          credential.fullName?.givenName || 'Apple User'
+        );
       } else if (credential.identityToken) {
         toast('Apple Sign-Up', 'Please use email sign-up for this account', 'info');
       }
     } catch (error: any) {
-      if (error.code === 'ERR_CANCELED') {
-        return;
-      }
+      if (error.code === 'ERR_CANCELED') return;
       showError('Apple Error', 'Apple Sign-Up failed');
     }
   };
 
   const handleFacebookSignUp = async () => {
+    if (socialAuthInProgress.current) return;
+    socialAuthInProgress.current = true;
     triggerHaptic('light');
     setIsProcessing(true);
     try {
@@ -316,10 +419,13 @@ const getActiveInviteCodes = useCallback(async () => {
     } catch (error) {
       showError('Facebook Error', 'Could not open Facebook sign-up');
       setIsProcessing(false);
+      socialAuthInProgress.current = false;
     }
   };
 
   const handleTelegramSignUp = async () => {
+    if (socialAuthInProgress.current) return;
+    socialAuthInProgress.current = true;
     triggerHaptic('light');
     setIsProcessing(true);
     try {
@@ -327,7 +433,10 @@ const getActiveInviteCodes = useCallback(async () => {
     } catch (error) {
       showError('Telegram Error', 'Could not open Telegram sign-up');
     } finally {
-      if (isMounted.current) setIsProcessing(false);
+      if (isMounted.current) {
+        setIsProcessing(false);
+        socialAuthInProgress.current = false;
+      }
     }
   };
 
@@ -355,8 +464,8 @@ const getActiveInviteCodes = useCallback(async () => {
       triggerHaptic('error');
       return;
     }
-    if (password.length < 6) {
-      showError('Weak Password', 'Password must be at least 6 characters');
+    if (password.length < 8) {
+      showError('Weak Password', 'Password must be at least 8 characters');
       triggerHaptic('error');
       return;
     }
@@ -366,15 +475,18 @@ const getActiveInviteCodes = useCallback(async () => {
       return;
     }
 
-    // ─── CRITICAL FIX: Pre-check if email already exists ─────────────
-    const existingUser = await findUserByEmail(email.trim());
-    
-    if (existingUser) {
-      showInfo('Account Exists', 'An account with this email already exists. Redirecting to sign in...');
-      setTimeout(() => {
-        navigation.navigate('Login');
-      }, 1500);
-      return;
+    // Pre-check for existing account
+    try {
+      const existingUser = await findUserByEmail(email.trim());
+      if (existingUser) {
+        showInfo('Account Exists', 'An account with this email already exists. Redirecting to sign in...');
+        setTimeout(() => {
+          if (isMounted.current) navigation.navigate('Login');
+        }, 1500);
+        return;
+      }
+    } catch (e) {
+      console.warn('findUserByEmail failed, continuing with sign-up', e);
     }
 
     signUpAttempted.current = true;
@@ -387,19 +499,20 @@ const getActiveInviteCodes = useCallback(async () => {
 
       if (success && isMounted.current) {
         showSuccess(`Welcome, ${fullName.trim()}!`, 'Your account has been created successfully');
-        // Push user into setup flow immediately — don't wait for AppNavigator reactive routing
         navigation.replace('CoParentInviteScreen');
       } else {
-        // ─── CRITICAL FIX: Check if email already exists ───────────────
-        const { findUserByEmail } = await import('@/database/dbHelpers');
-        const existing = await findUserByEmail(email.trim());
-        
-        if (existing) {
-          showInfo('Account Exists', 'An account with this email already exists. Redirecting to sign in...');
-          setTimeout(() => {
-            navigation.navigate('Login');
-          }, 1500);
-        } else {
+        // Double-check existence on failure (handles race)
+        try {
+          const existing = await findUserByEmail(email.trim());
+          if (existing) {
+            showInfo('Account Exists', 'An account with this email already exists. Redirecting to sign in...');
+            setTimeout(() => {
+              if (isMounted.current) navigation.navigate('Login');
+            }, 1500);
+          } else {
+            showError('Sign Up Failed', 'Could not create account. Please try again.');
+          }
+        } catch {
           showError('Sign Up Failed', 'Could not create account. Please try again.');
         }
         signUpAttempted.current = false;
@@ -410,7 +523,21 @@ const getActiveInviteCodes = useCallback(async () => {
     } finally {
       if (isMounted.current) setIsProcessing(false);
     }
-  }, [fullName, email, password, confirmPassword, signUp, findUserByEmail, isProcessing, authLoading, triggerHaptic, showError, showSuccess, showInfo, navigation]);
+  }, [
+    fullName,
+    email,
+    password,
+    confirmPassword,
+    signUp,
+    findUserByEmail,
+    isProcessing,
+    authLoading,
+    triggerHaptic,
+    showError,
+    showSuccess,
+    showInfo,
+    navigation,
+  ]);
 
   // ─── JOIN FAMILY HANDLER ───
   const handleJoinFamily = useCallback(async () => {
@@ -448,8 +575,8 @@ const getActiveInviteCodes = useCallback(async () => {
       triggerHaptic('error');
       return;
     }
-    if (joinPassword.length < 6) {
-      showError('Weak Password', 'Password must be at least 6 characters');
+    if (joinPassword.length < 8) {
+      showError('Weak Password', 'Password must be at least 8 characters');
       triggerHaptic('error');
       return;
     }
@@ -459,22 +586,32 @@ const getActiveInviteCodes = useCallback(async () => {
       return;
     }
 
+    // Prevent duplicate accounts
+    try {
+      const existingUser = await findUserByEmail(joinEmail.trim());
+      if (existingUser) {
+        showInfo('Account Exists', 'You already have an account. Redirecting to sign in...');
+        setTimeout(() => {
+          if (isMounted.current) navigation.navigate('Login');
+        }, 1500);
+        return;
+      }
+    } catch (e) {
+      console.warn('findUserByEmail failed during join', e);
+    }
+
     joinAttempted.current = true;
     setIsProcessing(true);
     Keyboard.dismiss();
     triggerHaptic('medium');
 
     try {
-      // ─── CRITICAL FIX: Prevent duplicate accounts ────────────────────
-      const existingUser = await findUserByEmail(joinEmail.trim());
-      
-      if (existingUser) {
-        showInfo('Account Exists', 'You already have an account. Redirecting to sign in...');
-        setTimeout(() => navigation.navigate('Login'), 1500);
-        return;
-      }
-
-      const result = await signUpWithInviteCode(trimmedCode, joinFullName.trim(), joinEmail.trim(), joinPassword);
+      const result = await signUpWithInviteCode(
+        trimmedCode,
+        joinFullName.trim(),
+        joinEmail.trim(),
+        joinPassword
+      );
 
       if (result.success && isMounted.current) {
         showSuccess(`Welcome, ${joinFullName.trim()}!`, result.message);
@@ -488,7 +625,23 @@ const getActiveInviteCodes = useCallback(async () => {
     } finally {
       if (isMounted.current) setIsProcessing(false);
     }
-  }, [inviteCode, codeValidated, joinFullName, joinEmail, joinPassword, joinConfirmPassword, signUpWithInviteCode, findUserByEmail, isProcessing, authLoading, triggerHaptic, showError, showSuccess, showInfo, navigation]);
+  }, [
+    inviteCode,
+    codeValidated,
+    joinFullName,
+    joinEmail,
+    joinPassword,
+    joinConfirmPassword,
+    signUpWithInviteCode,
+    findUserByEmail,
+    isProcessing,
+    authLoading,
+    triggerHaptic,
+    showError,
+    showSuccess,
+    showInfo,
+    navigation,
+  ]);
 
   const isLoading = authLoading || isProcessing;
 
@@ -502,34 +655,63 @@ const getActiveInviteCodes = useCallback(async () => {
 
   // ─── RENDER TAB SWITCHER ───
   const renderTabSwitcher = () => (
-    <View style={[styles.tabContainer, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(102,126,234,0.08)' }]}>
+    <View
+      style={[
+        styles.tabContainer,
+        { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(102,126,234,0.08)' },
+      ]}
+    >
       <TouchableOpacity
         style={[
           styles.tabButton,
-          activeTab === 'create' && [styles.tabButtonActive, { backgroundColor: isDark ? 'rgba(102,126,234,0.4)' : '#667eea' }],
+          activeTab === 'create' && [
+            styles.tabButtonActive,
+            { backgroundColor: isDark ? 'rgba(102,126,234,0.4)' : '#667eea' },
+          ],
         ]}
         onPress={() => setActiveTab('create')}
         disabled={isLoading}
       >
-        <Text style={[
-          styles.tabText,
-          { color: activeTab === 'create' ? '#fff' : isDark ? 'rgba(255,255,255,0.6)' : '#64748b' }
-        ]}>
+        <Text
+          style={[
+            styles.tabText,
+            {
+              color:
+                activeTab === 'create'
+                  ? '#fff'
+                  : isDark
+                  ? 'rgba(255,255,255,0.6)'
+                  : '#64748b',
+            },
+          ]}
+        >
           Create Account
         </Text>
       </TouchableOpacity>
       <TouchableOpacity
         style={[
           styles.tabButton,
-          activeTab === 'join' && [styles.tabButtonActive, { backgroundColor: isDark ? 'rgba(102,126,234,0.4)' : '#667eea' }],
+          activeTab === 'join' && [
+            styles.tabButtonActive,
+            { backgroundColor: isDark ? 'rgba(102,126,234,0.4)' : '#667eea' },
+          ],
         ]}
         onPress={() => setActiveTab('join')}
         disabled={isLoading}
       >
-        <Text style={[
-          styles.tabText,
-          { color: activeTab === 'join' ? '#fff' : isDark ? 'rgba(255,255,255,0.6)' : '#64748b' }
-        ]}>
+        <Text
+          style={[
+            styles.tabText,
+            {
+              color:
+                activeTab === 'join'
+                  ? '#fff'
+                  : isDark
+                  ? 'rgba(255,255,255,0.6)'
+                  : '#64748b',
+            },
+          ]}
+        >
           Join Family
         </Text>
       </TouchableOpacity>
@@ -539,7 +721,6 @@ const getActiveInviteCodes = useCallback(async () => {
   // ─── RENDER CREATE ACCOUNT FORM ───
   const renderCreateForm = () => (
     <>
-      {/* Social Sign Up - Icon Only */}
       <View style={styles.socialIconsContainer}>
         <TouchableOpacity
           style={[styles.socialIconButton, { borderColor: 'rgba(219,68,55,0.2)' }]}
@@ -547,17 +728,28 @@ const getActiveInviteCodes = useCallback(async () => {
           disabled={isLoading}
           activeOpacity={0.8}
         >
-          <Image source={require('../../../assets/social/google.png')} style={styles.socialIcon} resizeMode="contain" />
+          <Image
+            source={require('../../../assets/social/google.png')}
+            style={styles.socialIcon}
+            resizeMode="contain"
+          />
         </TouchableOpacity>
 
         {Platform.OS === 'ios' && (
           <TouchableOpacity
-            style={[styles.socialIconButton, { borderColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)' }]}
+            style={[
+              styles.socialIconButton,
+              { borderColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)' },
+            ]}
             onPress={handleAppleSignUp}
             disabled={isLoading}
             activeOpacity={0.8}
           >
-            <Image source={require('../../../assets/social/apple.png')} style={[styles.socialIcon, isDark && { tintColor: '#FFFFFF' }]} resizeMode="contain" />
+            <Image
+              source={require('../../../assets/social/apple.png')}
+              style={[styles.socialIcon, isDark && { tintColor: '#FFFFFF' }]}
+              resizeMode="contain"
+            />
           </TouchableOpacity>
         )}
 
@@ -567,7 +759,11 @@ const getActiveInviteCodes = useCallback(async () => {
           disabled={isLoading}
           activeOpacity={0.8}
         >
-          <Image source={require('../../../assets/social/facebook.png')} style={styles.socialIcon} resizeMode="contain" />
+          <Image
+            source={require('../../../assets/social/facebook.png')}
+            style={styles.socialIcon}
+            resizeMode="contain"
+          />
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -576,7 +772,11 @@ const getActiveInviteCodes = useCallback(async () => {
           disabled={isLoading}
           activeOpacity={0.8}
         >
-          <Image source={require('../../../assets/social/telegram.png')} style={styles.socialIcon} resizeMode="contain" />
+          <Image
+            source={require('../../../assets/social/telegram.png')}
+            style={styles.socialIcon}
+            resizeMode="contain"
+          />
         </TouchableOpacity>
       </View>
 
@@ -588,7 +788,6 @@ const getActiveInviteCodes = useCallback(async () => {
         <View style={[styles.dividerLine, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
       </View>
 
-      {/* Full Name Input */}
       <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
         <Ionicons name="person-outline" size={20} color="#667eea" style={styles.inputIcon} />
         <TextInput
@@ -605,7 +804,6 @@ const getActiveInviteCodes = useCallback(async () => {
         />
       </View>
 
-      {/* Email Input */}
       <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
         <Ionicons name="mail-outline" size={20} color="#667eea" style={styles.inputIcon} />
         <TextInput
@@ -624,12 +822,11 @@ const getActiveInviteCodes = useCallback(async () => {
         />
       </View>
 
-      {/* Password Input */}
       <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
         <Ionicons name="lock-closed-outline" size={20} color="#667eea" style={styles.inputIcon} />
         <TextInput
           style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
-          placeholder="Password"
+          placeholder="Password (min 8 characters)"
           placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
           value={password}
           onChangeText={setPassword}
@@ -653,7 +850,6 @@ const getActiveInviteCodes = useCallback(async () => {
         </TouchableOpacity>
       </View>
 
-      {/* Confirm Password Input */}
       <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
         <Ionicons name="shield-checkmark-outline" size={20} color="#667eea" style={styles.inputIcon} />
         <TextInput
@@ -717,20 +913,37 @@ const getActiveInviteCodes = useCallback(async () => {
         </Text>
       </View>
 
-      {/* Invite Code Input */}
-      <View style={[
-        styles.inputContainer,
-        isDark && styles.inputContainerDark,
-        codeValidated && styles.inputContainerSuccess,
-        !codeValidated && inviteCode.length === 6 && !isValidatingCode && styles.inputContainerError,
-      ]}>
-        <Ionicons name="key-outline" size={20} color={codeValidated ? '#22c55e' : '#667eea'} style={styles.inputIcon} />
-               <TextInput
-          style={[styles.input, { color: isDark ? '#fff' : '#1e293b', letterSpacing: 3, fontWeight: '700', fontSize: 18, textAlign: 'center' }]}
+      <View
+        style={[
+          styles.inputContainer,
+          isDark && styles.inputContainerDark,
+          codeValidated && styles.inputContainerSuccess,
+          !codeValidated && inviteCode.length === 6 && !isValidatingCode && styles.inputContainerError,
+        ]}
+      >
+        <Ionicons
+          name="key-outline"
+          size={20}
+          color={codeValidated ? '#22c55e' : '#667eea'}
+          style={styles.inputIcon}
+        />
+        <TextInput
+          style={[
+            styles.input,
+            {
+              color: isDark ? '#fff' : '#1e293b',
+              letterSpacing: 3,
+              fontWeight: '700',
+              fontSize: 18,
+              textAlign: 'center',
+            },
+          ]}
           placeholder="Paste invite code here"
           placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
           value={inviteCode}
-          onChangeText={(text) => setInviteCode(text.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+          onChangeText={(text) =>
+            setInviteCode(text.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))
+          }
           autoCapitalize="characters"
           autoCorrect={false}
           editable={!isLoading}
@@ -768,17 +981,34 @@ const getActiveInviteCodes = useCallback(async () => {
       </TouchableOpacity>
 
       {codeValidated && codeInfo && (
-        <View style={[styles.codeInfoCard, { backgroundColor: isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)' }]}>
+        <View
+          style={[
+            styles.codeInfoCard,
+            { backgroundColor: isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)' },
+          ]}
+        >
           <Ionicons name="shield-checkmark" size={18} color="#22c55e" />
           <Text style={[styles.codeInfoText, { color: isDark ? '#86efac' : '#15803d' }]}>
-            You'll join as <Text style={{ fontWeight: '700' }}>{codeInfo.role === 'parent2' ? 'Parent 2' : codeInfo.role === 'guardian' ? 'Guardian' : 'Viewer'}</Text>
+            You'll join as{' '}
+            <Text style={{ fontWeight: '700' }}>
+              {codeInfo.role === 'parent2'
+                ? 'Parent 2'
+                : codeInfo.role === 'guardian'
+                ? 'Guardian'
+                : 'Viewer'}
+            </Text>
             {codeInfo.relationship ? ` (${codeInfo.relationship})` : ''}
           </Text>
         </View>
       )}
 
       {!codeValidated && inviteCode.length >= 6 && !isValidatingCode && (
-        <View style={[styles.codeInfoCard, { backgroundColor: isDark ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.1)' }]}>
+        <View
+          style={[
+            styles.codeInfoCard,
+            { backgroundColor: isDark ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.1)' },
+          ]}
+        >
           <Ionicons name="alert-circle" size={18} color="#ef4444" />
           <Text style={[styles.codeInfoText, { color: isDark ? '#fca5a5' : '#b91c1c' }]}>
             Invalid or expired code. Please check and try again.
@@ -789,14 +1019,17 @@ const getActiveInviteCodes = useCallback(async () => {
       {codeValidated && (
         <>
           <View style={styles.divider}>
-            <View style={[styles.dividerLine, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
+            <View
+              style={[styles.dividerLine, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]}
+            />
             <Text style={[styles.dividerText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
               set up your account
             </Text>
-            <View style={[styles.dividerLine, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
+            <View
+              style={[styles.dividerLine, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]}
+            />
           </View>
 
-          {/* Full Name */}
           <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
             <Ionicons name="person-outline" size={20} color="#667eea" style={styles.inputIcon} />
             <TextInput
@@ -813,7 +1046,6 @@ const getActiveInviteCodes = useCallback(async () => {
             />
           </View>
 
-          {/* Email */}
           <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
             <Ionicons name="mail-outline" size={20} color="#667eea" style={styles.inputIcon} />
             <TextInput
@@ -832,12 +1064,11 @@ const getActiveInviteCodes = useCallback(async () => {
             />
           </View>
 
-          {/* Password */}
           <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
             <Ionicons name="lock-closed-outline" size={20} color="#667eea" style={styles.inputIcon} />
             <TextInput
               style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
-              placeholder="Password"
+              placeholder="Password (min 8 characters)"
               placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
               value={joinPassword}
               onChangeText={setJoinPassword}
@@ -861,9 +1092,13 @@ const getActiveInviteCodes = useCallback(async () => {
             </TouchableOpacity>
           </View>
 
-          {/* Confirm Password */}
           <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
-            <Ionicons name="shield-checkmark-outline" size={20} color="#667eea" style={styles.inputIcon} />
+            <Ionicons
+              name="shield-checkmark-outline"
+              size={20}
+              color="#667eea"
+              style={styles.inputIcon}
+            />
             <TextInput
               style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
               placeholder="Confirm password"
@@ -946,7 +1181,6 @@ const getActiveInviteCodes = useCallback(async () => {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Logo Section */}
           <Animated.View style={[styles.logoContainer, logoStyle]}>
             <View style={styles.logoFloatWrap}>
               <Image
@@ -959,7 +1193,6 @@ const getActiveInviteCodes = useCallback(async () => {
             <Text style={styles.logoTagline}>Begin weaving precious memories</Text>
           </Animated.View>
 
-          {/* Glass Card Form */}
           <Animated.View style={[styles.formContainer, formStyle]}>
             <BlurView intensity={isDark ? 40 : 80} style={styles.glassCard} tint={isDark ? 'dark' : 'light'}>
               <LinearGradient
@@ -987,20 +1220,31 @@ const getActiveInviteCodes = useCallback(async () => {
                     By signing up, you agree to our{' '}
                   </Text>
                   <TouchableOpacity onPress={() => navigation.navigate('TermsOfService')}>
-                    <Text style={[styles.termsLink, { color: themeColors.primary }]}>Terms of Service</Text>
+                    <Text style={[styles.termsLink, { color: themeColors.primary }]}>
+                      Terms of Service
+                    </Text>
                   </TouchableOpacity>
-                  <Text style={[styles.termsText, { color: isDark ? '#94a3b8' : '#64748b' }]}>{' '}and{' '}</Text>
+                  <Text style={[styles.termsText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+                    {' '}
+                    and{' '}
+                  </Text>
                   <TouchableOpacity onPress={() => navigation.navigate('PrivacyPolicy')}>
-                    <Text style={[styles.termsLink, { color: themeColors.primary }]}>Privacy Policy</Text>
+                    <Text style={[styles.termsLink, { color: themeColors.primary }]}>
+                      Privacy Policy
+                    </Text>
                   </TouchableOpacity>
                 </View>
               )}
             </BlurView>
           </Animated.View>
 
-          {/* Footer */}
           <Animated.View entering={FadeIn.delay(800)} style={styles.footer}>
-            <Text style={[styles.footerText, { color: isDark ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.9)' }]}>
+            <Text
+              style={[
+                styles.footerText,
+                { color: isDark ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.9)' },
+              ]}
+            >
               Already have an account?
             </Text>
             <TouchableOpacity onPress={() => navigation.navigate('Login')} disabled={isLoading}>
@@ -1014,15 +1258,9 @@ const getActiveInviteCodes = useCallback(async () => {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  gradient: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  keyboardView: {
-    flex: 1,
-  },
+  container: { flex: 1 },
+  gradient: { ...StyleSheet.absoluteFillObject },
+  keyboardView: { flex: 1 },
   scrollContent: {
     flexGrow: 1,
     justifyContent: 'center',
@@ -1077,7 +1315,6 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     textAlign: 'center',
   },
-  // ─── TAB SWITCHER ───
   tabContainer: {
     flexDirection: 'row',
     borderRadius: 14,
@@ -1101,7 +1338,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
-  // ─── JOIN FAMILY ───
   joinHeader: {
     alignItems: 'center',
     marginBottom: 20,
@@ -1138,7 +1374,6 @@ const styles = StyleSheet.create({
     borderColor: '#ef4444',
     backgroundColor: 'rgba(239,68,68,0.05)',
   },
-  // ─── SOCIAL ───
   socialIconsContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
