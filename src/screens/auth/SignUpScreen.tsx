@@ -127,8 +127,20 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
     setIsValidatingCode(true);
     codeDebounceTimer.current = setTimeout(async () => {
       try {
-        const { validateInviteCode } = await import('@/utils/portableInvite');
-        const result = await validateInviteCode(trimmed);
+        let result: { valid: boolean; invite?: any; message?: string };
+        try {
+          const { validateInviteCode } = await import('@/utils/portableInvite');
+          result = await validateInviteCode(trimmed);
+        } catch {
+          const raw = await AsyncStorage.getItem('littleloom_invite_codes');
+          const codes = raw ? JSON.parse(raw) : {};
+          const invite = codes[trimmed];
+          if (!invite || invite.used || Date.now() > invite.expiresAt) {
+            result = { valid: false };
+          } else {
+            result = { valid: true, invite };
+          }
+        }
 
         if (isMounted.current) {
           if (result.valid && result.invite) {
@@ -149,6 +161,44 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
         if (isMounted.current) setIsValidatingCode(false);
       }
     }, 500);
+
+This file already imports AsyncStorage too.
+
+3. FamilyContext.tsx — stop leaking other babies' invite codes
+
+Currently getActiveInviteCodes returns every invite in storage, not just the current baby's — a problem the moment a parent manages more than one baby.
+
+tsx
+// FIND
+  const getActiveInviteCodes = useCallback(async () => {
+    try {
+      const { getActiveInvites } = await import('@/utils/portableInvite');
+      return await getActiveInvites();
+    } catch {
+      // Fallback to AsyncStorage
+      const raw = await AsyncStorage.getItem('littleloom_invite_codes');
+      const codes = raw ? JSON.parse(raw) : {};
+      return Object.entries(codes)
+        .filter(([_, v]: [string, any]) => !v.used && v.expiresAt > Date.now())
+        .map(([code, data]: [string, any]) => ({ code, ...data }));
+    }
+  }, []);
+
+// REPLACE
+  const getActiveInviteCodes = useCallback(async () => {
+    try {
+      const { getActiveInvites } = await import('@/utils/portableInvite');
+      const invites = await getActiveInvites();
+      return currentBaby ? invites.filter((inv: any) => inv.familyId === currentBaby.id) : invites;
+    } catch {
+      // Fallback to AsyncStorage
+      const raw = await AsyncStorage.getItem('littleloom_invite_codes');
+      const codes = raw ? JSON.parse(raw) : {};
+      return Object.entries(codes)
+        .filter(([_, v]: [string, any]) => !v.used && v.expiresAt > Date.now() && (!currentBaby || v.familyId === currentBaby.id))
+        .map(([code, data]: [string, any]) => ({ code, ...data }));
+    }
+  }, [currentBaby]);
   }, [inviteCode, activeTab]);
 
   useEffect(() => {

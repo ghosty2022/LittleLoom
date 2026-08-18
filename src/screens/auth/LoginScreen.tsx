@@ -280,8 +280,21 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     setIsValidatingCode(true);
     codeDebounceTimer.current = setTimeout(async () => {
       try {
-        const { validateInviteCode } = await import('@/database/dbHelpers');
-        const result = await validateInviteCode(trimmed);
+        let result: { valid: boolean; invite?: any; message?: string };
+        try {
+          const { validateInviteCode } = await import('@/utils/portableInvite');
+          result = await validateInviteCode(trimmed);
+        } catch {
+          // Same fallback store AuthContext.signUpWithInviteCode actually uses
+          const raw = await AsyncStorage.getItem('littleloom_invite_codes');
+          const codes = raw ? JSON.parse(raw) : {};
+          const invite = codes[trimmed];
+          if (!invite || invite.used || Date.now() > invite.expiresAt) {
+            result = { valid: false };
+          } else {
+            result = { valid: true, invite };
+          }
+        }
 
         if (isMounted.current) {
           if (result.valid && result.invite) {
