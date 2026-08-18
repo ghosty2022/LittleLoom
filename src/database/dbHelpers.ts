@@ -6,6 +6,7 @@ import { babies, trackerEntries, appSettings, familyMembers, inviteCodes } from 
 import { eq, and, desc, count } from 'drizzle-orm';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
+import { supabase } from '@/utils/supabase';
 
 const MIGRATION_KEY = '@littleloom_db_migration_v1';
 /* v2: explicit per-type migration of the legacy per-baby log keys
@@ -81,7 +82,38 @@ export async function getAllBabiesFromDb() {
 export async function getBabyByIdFromDb(id: string) {
   try {
     const result = db.select().from(babies).where(eq(babies.id, id)).all();
-    return result[0] || null;
+    if (result[0]) return result[0];
+
+    // Not found locally — this baby may have been created on another
+    // device. Best-effort pull from Supabase and cache it locally.
+    try {
+      const { data, error } = await supabase.from('babies').select('*').eq('id', id).maybeSingle();
+      if (!error && data) {
+        const now = new Date().toISOString();
+        db.insert(babies).values({
+          id: data.id,
+          name: data.name,
+          avatar: data.avatar ?? undefined,
+          dateOfBirth: data.date_of_birth,
+          gender: data.gender ?? undefined,
+          bloodType: data.blood_type ?? undefined,
+          medicalNotes: data.medical_notes ?? undefined,
+          parent1Id: data.parent1_id ?? undefined,
+          parent2Id: data.parent2_id ?? undefined,
+          createdAt: data.created_at ?? now,
+          updatedAt: now,
+          isActive: data.is_active ?? true,
+          syncStatus: 'synced',
+        }).onConflictDoNothing().run();
+
+        const pulled = db.select().from(babies).where(eq(babies.id, id)).all();
+        return pulled[0] || null;
+      }
+    } catch (pullError) {
+      console.warn(`[DB] Supabase pull failed for baby('${id}'):`, pullError);
+    }
+
+    return null;
   } catch (error) {
     const msg = String(error);
     if (msg.includes('no such table') || msg.includes('prepareSync')) {
@@ -119,12 +151,34 @@ export async function createBabyInDb(data: {
 }) {
   try {
     const now = new Date().toISOString();
-    return db.insert(babies).values({
+    const inserted = db.insert(babies).values({
       ...data,
       createdAt: now,
       updatedAt: now,
       syncStatus: 'pending',
     }).returning().all();
+
+    // Best-effort push so other devices can find this baby. Never throws —
+    // a failed push just leaves syncStatus 'pending' for the next attempt.
+    supabase.from('babies').upsert({
+      id: data.id,
+      name: data.name,
+      avatar: data.avatar ?? null,
+      date_of_birth: data.dateOfBirth,
+      gender: data.gender ?? null,
+      blood_type: data.bloodType ?? null,
+      medical_notes: data.medicalNotes ?? null,
+      parent1_id: data.parent1Id ?? null,
+      parent2_id: data.parent2Id ?? null,
+      created_at: now,
+      updated_at: now,
+      is_active: true,
+    }).then(({ error }) => {
+      if (error) console.warn('[DB] Supabase push failed for createBabyInDb:', error.message);
+      else db.update(babies).set({ syncStatus: 'synced' }).where(eq(babies.id, data.id)).run();
+    });
+
+    return inserted;
   } catch (error) {
     const msg = String(error);
     if (msg.includes('no such table') || msg.includes('prepareSync')) {
@@ -138,11 +192,29 @@ export async function createBabyInDb(data: {
 export async function updateBabyInDb(id: string, updates: Partial<typeof babies.$inferInsert>) {
   try {
     const now = new Date().toISOString();
-    return db.update(babies)
+    const result = db.update(babies)
       .set({ ...updates, updatedAt: now, syncStatus: 'pending' })
       .where(eq(babies.id, id))
       .returning()
       .all();
+
+    const remoteUpdates: Record<string, unknown> = { updated_at: now };
+    if (updates.name !== undefined) remoteUpdates.name = updates.name;
+    if (updates.avatar !== undefined) remoteUpdates.avatar = updates.avatar;
+    if (updates.dateOfBirth !== undefined) remoteUpdates.date_of_birth = updates.dateOfBirth;
+    if (updates.gender !== undefined) remoteUpdates.gender = updates.gender;
+    if (updates.bloodType !== undefined) remoteUpdates.blood_type = updates.bloodType;
+    if (updates.medicalNotes !== undefined) remoteUpdates.medical_notes = updates.medicalNotes;
+    if (updates.parent1Id !== undefined) remoteUpdates.parent1_id = updates.parent1Id;
+    if (updates.parent2Id !== undefined) remoteUpdates.parent2_id = updates.parent2Id;
+    if (updates.isActive !== undefined) remoteUpdates.is_active = updates.isActive;
+
+    supabase.from('babies').update(remoteUpdates).eq('id', id).then(({ error }) => {
+      if (error) console.warn(`[DB] Supabase push failed for updateBabyInDb('${id}'):`, error.message);
+      else db.update(babies).set({ syncStatus: 'synced' }).where(eq(babies.id, id)).run();
+    });
+
+    return result;
   } catch (error) {
     const msg = String(error);
     if (msg.includes('no such table') || msg.includes('prepareSync')) {
@@ -405,6 +477,47 @@ export async function multiRemoveAppSettings(keys: string[]): Promise<void> {
 
 export async function getFamilyMembersByBabyFromDb(babyId: string, includeDeleted = false) {
   try {
+    // Pull-then-merge: bring in any family members created on OTHER
+    // devices (e.g. someone redeemed an invite code on Device B) before
+    // reading locally, so this list stays current on every load.
+    try {
+      const { data: remoteRows, error } = await supabase
+        .from('family_members')
+        .select('*')
+        .eq('baby_id', babyId);
+
+      if (!error && remoteRows) {
+        for (const row of remoteRows) {
+          const existsLocally = db.select({ id: familyMembers.id }).from(familyMembers).where(eq(familyMembers.id, row.id)).all();
+          if (existsLocally.length === 0) {
+            db.insert(familyMembers).values({
+              id: row.id,
+              babyId: row.baby_id,
+              userId: row.user_id ?? null,
+              email: row.email,
+              fullName: row.full_name,
+              avatar: row.avatar ?? undefined,
+              role: row.role,
+              relationship: row.relationship ?? 'Family',
+              permissions: row.permissions ?? {},
+              addedAt: row.added_at,
+              addedBy: row.added_by,
+              canBeRemoved: row.can_be_removed ?? true,
+              lastActive: row.last_active ?? undefined,
+              phoneNumber: row.phone_number ?? undefined,
+              notificationsEnabled: row.notifications_enabled ?? true,
+              status: row.status ?? 'active',
+              updatedAt: row.updated_at ?? new Date().toISOString(),
+              syncStatus: 'synced',
+              isDeleted: false,
+            }).onConflictDoNothing().run();
+          }
+        }
+      }
+    } catch (pullError) {
+      console.warn('[DB] Supabase pull failed for getFamilyMembersByBabyFromDb:', pullError);
+    }
+
     const conditions = [eq(familyMembers.babyId, babyId)];
     if (!includeDeleted) {
       conditions.push(eq(familyMembers.isDeleted, false));
@@ -479,12 +592,38 @@ export async function createFamilyMemberInDb(data: {
 }) {
   try {
     const now = new Date().toISOString();
-    return db.insert(familyMembers).values({
+    const inserted = db.insert(familyMembers).values({
       ...data,
       addedAt: now,
       updatedAt: now,
       syncStatus: 'pending',
     }).returning().all();
+
+    // Best-effort push so the family owner's device sees this new member
+    // without a manual sync step.
+    supabase.from('family_members').upsert({
+      id: data.id,
+      baby_id: data.babyId,
+      user_id: data.userId ?? null,
+      email: data.email,
+      full_name: data.fullName,
+      avatar: data.avatar ?? null,
+      role: data.role,
+      relationship: data.relationship,
+      permissions: data.permissions ?? {},
+      added_at: now,
+      added_by: data.addedBy,
+      can_be_removed: data.canBeRemoved ?? true,
+      phone_number: data.phoneNumber ?? null,
+      notifications_enabled: data.notificationsEnabled ?? true,
+      status: data.status ?? 'pending',
+      updated_at: now,
+    }).then(({ error }) => {
+      if (error) console.warn('[DB] Supabase push failed for createFamilyMemberInDb:', error.message);
+      else db.update(familyMembers).set({ syncStatus: 'synced' }).where(eq(familyMembers.id, data.id)).run();
+    });
+
+    return inserted;
   } catch (error) {
     const msg = String(error);
     if (msg.includes('no such table') || msg.includes('prepareSync')) {
@@ -502,11 +641,30 @@ export async function updateFamilyMemberInDb(id: string, updates: Partial<typeof
     if (updates.permissions && typeof updates.permissions !== 'string') {
       processed.permissions = JSON.stringify(updates.permissions) as any;
     }
-    return db.update(familyMembers)
+    const result = db.update(familyMembers)
       .set({ ...processed, updatedAt: now, syncStatus: 'pending' })
       .where(eq(familyMembers.id, id))
       .returning()
       .all();
+
+    const remoteUpdates: Record<string, unknown> = { updated_at: now };
+    if (updates.fullName !== undefined) remoteUpdates.full_name = updates.fullName;
+    if (updates.email !== undefined) remoteUpdates.email = updates.email;
+    if (updates.avatar !== undefined) remoteUpdates.avatar = updates.avatar;
+    if (updates.phoneNumber !== undefined) remoteUpdates.phone_number = updates.phoneNumber;
+    if (updates.relationship !== undefined) remoteUpdates.relationship = updates.relationship;
+    if (updates.role !== undefined) remoteUpdates.role = updates.role;
+    if (updates.permissions !== undefined) remoteUpdates.permissions = updates.permissions;
+    if (updates.notificationsEnabled !== undefined) remoteUpdates.notifications_enabled = updates.notificationsEnabled;
+    if (updates.status !== undefined) remoteUpdates.status = updates.status;
+    if (updates.lastActive !== undefined) remoteUpdates.last_active = updates.lastActive;
+
+    supabase.from('family_members').update(remoteUpdates).eq('id', id).then(({ error }) => {
+      if (error) console.warn(`[DB] Supabase push failed for updateFamilyMemberInDb('${id}'):`, error.message);
+      else db.update(familyMembers).set({ syncStatus: 'synced' }).where(eq(familyMembers.id, id)).run();
+    });
+
+    return result;
   } catch (error) {
     const msg = String(error);
     if (msg.includes('no such table') || msg.includes('prepareSync')) {
@@ -519,11 +677,18 @@ export async function updateFamilyMemberInDb(id: string, updates: Partial<typeof
 
 export async function softDeleteFamilyMemberInDb(id: string) {
   try {
-    return db.update(familyMembers)
-      .set({ isDeleted: true, syncStatus: 'deleted', updatedAt: new Date().toISOString() })
+    const now = new Date().toISOString();
+    const result = db.update(familyMembers)
+      .set({ isDeleted: true, syncStatus: 'deleted', updatedAt: now })
       .where(eq(familyMembers.id, id))
       .returning()
       .all();
+
+    supabase.from('family_members').delete().eq('id', id).then(({ error }) => {
+      if (error) console.warn(`[DB] Supabase delete failed for softDeleteFamilyMemberInDb('${id}'):`, error.message);
+    });
+
+    return result;
   } catch (error) {
     const msg = String(error);
     if (msg.includes('no such table') || msg.includes('prepareSync')) {
@@ -534,6 +699,15 @@ export async function softDeleteFamilyMemberInDb(id: string) {
   }
 }
 
+/* ─────────────────────────────────────────────────────────────────────────
+   DEPRECATED: local Drizzle `invite_codes` table system below. Cross-device
+   invites now go through src/utils/portableInvite.ts, which talks directly
+   to Supabase's `invite_codes` table — the only store both devices can
+   see. createInviteCode, validateInviteCode, getInviteCodeFromDb,
+   markInviteCodeUsed, deactivateInviteCode, getActiveInviteCodesForFamily
+   and cleanupExpiredInviteCodes below are unused by the current flow.
+   Kept only so nothing breaks if something still imports them.
+   ───────────────────────────────────────────────────────────────────────── */
 function generateInviteCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // No 0, O, I, 1 (confusing)
   let code = '';
