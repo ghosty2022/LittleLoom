@@ -632,11 +632,11 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
         forceUnlock().catch(() => {});
 
         // If setup is incomplete, push to setup flow immediately
-        if (!setupComplete) {
-          if (!hasParent2) {
-            navigation.replace('CoParentInviteScreen');
-          } else if (!hasBaby) {
+         if (!setupComplete) {
+          if (!hasBaby) {
             navigation.replace('BabyOptional');
+          } else if (!hasParent2) {
+            navigation.replace('CoParentInviteScreen');
           }
           return;
         }

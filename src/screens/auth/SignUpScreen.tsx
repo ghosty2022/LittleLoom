@@ -335,9 +335,9 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
           provider,
         });
 
-        if (success && isMounted.current) {
+       if (success && isMounted.current) {
           showSuccess('Welcome!', `Signed in with ${provider.charAt(0).toUpperCase() + provider.slice(1)}`);
-          navigation.replace('CoParentInviteScreen');
+          navigation.replace('BabyOptional');
           return;
         }
       }
