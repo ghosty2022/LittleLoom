@@ -16,7 +16,9 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons as ExpoIonicons } from '@expo/vector-icons';
+
+const Ionicons = ExpoIonicons;
 import { BlurView } from 'expo-blur';
 import Animated, {
   useSharedValue,
@@ -42,7 +44,7 @@ import {
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const PREVIEW_SIZE = SCREEN_W - 48;
 
-// ── Colors (moved to constants for safety) ─────────────────────────────
+// ── Colors ─────────────────────────────────────────────
 const COLORS = {
   text: {
     primary: '#1a1a1a',
@@ -106,7 +108,7 @@ const formatBytes = (bytes?: number) => {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 };
 
-const formatDate = (iso: string) => {
+const formatDate = (iso?: string) => {
   if (!iso) return '—';
   try {
     return new Date(iso).toLocaleString('en-US', {
@@ -120,23 +122,50 @@ const formatDate = (iso: string) => {
   }
 };
 
-const sweetAlert = {
-  alert: (title: string, message: string) => {
-    if (!title || !message) return;
-    Alert.alert(title, message);
-  },
-  confirm: (title: string, message: string, onOk: () => void) => {
-    if (!title || !message) return;
-    Alert.alert(
-      title, 
-      message, 
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'OK', onPress: onOk },
-      ],
-      { cancelable: true }
-    );
-  },
+const safeAlert = (title?: string, message?: string) => {
+  const safeTitle = typeof title === 'string' && title.trim()
+    ? title
+    : 'Notice';
+
+  const safeMessage = typeof message === 'string' && message.trim()
+    ? message
+    : 'Something went wrong.';
+
+  Alert.alert(safeTitle, safeMessage);
+};
+
+const safeConfirm = (
+  title: string | undefined,
+  message: string | undefined,
+  onOk: () => void
+) => {
+  const safeTitle =
+    typeof title === 'string' && title.trim()
+      ? title
+      : 'Confirm';
+
+  const safeMessage =
+    typeof message === 'string' && message.trim()
+      ? message
+      : 'Are you sure?';
+
+  Alert.alert(
+    safeTitle,
+    safeMessage,
+    [
+      {
+        text: 'Cancel',
+        style: 'cancel',
+      },
+      {
+        text: 'OK',
+        onPress: onOk,
+      },
+    ],
+    {
+      cancelable: true,
+    }
+  );
 };
 
 // ── Mock AI Analysis Engine ──────────────────────────────────────────────────
@@ -257,7 +286,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
       const { status: cam } = await ImagePicker.requestCameraPermissionsAsync();
       const { status: lib } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (cam !== 'granted' || lib !== 'granted') {
-        sweetAlert.alert('Permissions Required', 'Camera and photo library access are needed for this feature.');
+        safeAlert('Permissions Required', 'Camera and photo library access are needed for this feature.');
       }
     })();
   }, []);
@@ -265,25 +294,40 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
   // ── Photo Capture ──────────────────────────────────────────────────────────
   const processPhoto = useCallback(
     async (uri: string, exif: any) => {
-      if (photos.some((p) => p.uri === uri)) {
-        sweetAlert.alert('Duplicate', 'This photo is already added.');
+  if (!uri || typeof uri !== 'string') {
+    safeAlert('Photo Error', 'The selected photo is invalid.');
+    return;
+  }
+
+  if (photos.some((p) => p && p.uri === uri)) {
+        safeAlert('Duplicate', 'This photo is already added.');
         return;
       }
       if (photos.length >= maxPhotos) {
-        sweetAlert.alert('Limit Reached', `Maximum ${maxPhotos} photos allowed.`);
+        safeAlert('Limit Reached', `Maximum ${maxPhotos} photos allowed.`);
         return;
       }
 
-      const fileInfo = await FileSystem.getInfoAsync(uri);
-      const meta: PhotoMeta = {
-        uri,
-        width: exif?.ImageWidth || exif?.width || 0,
-        height: exif?.ImageLength || exif?.height || 0,
-        timestamp: new Date().toISOString(),
-        fileSize: fileInfo.exists ? fileInfo.size : undefined,
-        type: 'image/jpeg',
-      };
+let fileSize: number | undefined;
 
+try {
+  const fileInfo = await FileSystem.getInfoAsync(uri);
+
+  if (fileInfo && fileInfo.exists && typeof fileInfo.size === 'number') {
+    fileSize = fileInfo.size;
+  }
+} catch (error) {
+  console.warn('[SmartPhotoField] Could not read file metadata:', error);
+}
+
+const meta: PhotoMeta = {
+  uri: typeof uri === 'string' ? uri : '',
+  width: Number(exif?.ImageWidth || exif?.width || 0),
+  height: Number(exif?.ImageLength || exif?.height || 0),
+  timestamp: new Date().toISOString(),
+  fileSize,
+  type: 'image/jpeg',
+};
       if (exif?.GPSLatitude && exif?.GPSLongitude) {
         meta.location = {
           latitude: exif.GPSLatitude,
@@ -325,7 +369,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
         await processPhoto(result.assets[0].uri, result.assets[0].exif);
       }
     } catch {
-      sweetAlert.alert('Camera Error', 'Could not capture photo. Please try again.');
+      safeAlert('Camera Error', 'Could not capture photo. Please try again.');
     }
   }, [processPhoto]);
 
@@ -342,7 +386,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
         await processPhoto(result.assets[0].uri, result.assets[0].exif);
       }
     } catch {
-      sweetAlert.alert('Gallery Error', 'Could not select photo. Please try again.');
+      safeAlert('Gallery Error', 'Could not select photo. Please try again.');
     }
   }, [processPhoto]);
 
@@ -351,33 +395,33 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     try {
       await Share.share({ url: currentUri, title: 'LittleLoom Photo' });
     } catch {
-      sweetAlert.alert('Share Error', 'Unable to share this photo.');
+      safeAlert('Share Error', 'Unable to share this photo.');
     }
   }, [currentUri]);
 
-const removePhoto = useCallback(
-  (idx: number) => {
-    if (idx < 0 || idx >= photos.length) return;
-    
-    const photoToRemove = photos[idx];
-    if (!photoToRemove) return;
-    
-    sweetAlert.confirm('Remove Photo?', 'This cannot be undone.', () => {
-      setPhotos((prev) => {
-        const next = prev.filter((_, i) => i !== idx);
-        if (currentUri === prev[idx]?.uri) {
-          setCurrentUri(next[0]?.uri || null);
-          onChange(next[0]?.uri || null);
-        }
-        return next;
+  const removePhoto = useCallback(
+    (idx: number) => {
+      if (idx < 0 || idx >= photos.length) return;
+      
+      const photoToRemove = photos[idx];
+      if (!photoToRemove) return;
+      
+      safeConfirm('Remove Photo?', 'This cannot be undone.', () => {
+        setPhotos((prev) => {
+          const next = prev.filter((_, i) => i !== idx);
+          if (currentUri === prev[idx]?.uri) {
+            setCurrentUri(next[0]?.uri || null);
+            onChange(next[0]?.uri || null);
+          }
+          return next;
+        });
+        setSelectedCompare((prev) =>
+          prev.filter((i) => i !== idx).map((i) => (i > idx ? i - 1 : i))
+        );
       });
-      setSelectedCompare((prev) =>
-        prev.filter((i) => i !== idx).map((i) => (i > idx ? i - 1 : i))
-      );
-    });
-  },
-  [currentUri, onChange, photos]
-);
+    },
+    [currentUri, onChange, photos]
+  );
 
   // ── Annotation (Skia) ─────────────────────────────────────────────────────
   const touchHandler = useTouchHandler({
@@ -410,18 +454,18 @@ const removePhoto = useCallback(
 
   const saveAnnotation = async () => {
     setAnnotating(false);
-    sweetAlert.alert('Saved', 'Annotation saved with photo.');
+    safeAlert('Saved', 'Annotation saved with photo.');
   };
 
   // ── Compare ────────────────────────────────────────────────────────────────
   const toggleCompareSelect = (idx: number) => {
-  if (idx < 0 || idx >= photos.length) return;
-  setSelectedCompare((prev) => {
-    if (prev.includes(idx)) return prev.filter((i) => i !== idx);
-    if (prev.length >= 2) return [prev[1], idx];
-    return [...prev, idx];
-  });
-};
+    if (idx < 0 || idx >= photos.length) return;
+    setSelectedCompare((prev) => {
+      if (prev.includes(idx)) return prev.filter((i) => i !== idx);
+      if (prev.length >= 2) return [prev[1], idx];
+      return [...prev, idx];
+    });
+  };
 
   // ── Zoom / Pan (Reanimated) ────────────────────────────────────────────────
   const scale = useSharedValue(1);
@@ -488,10 +532,18 @@ const removePhoto = useCallback(
   }));
 
   // ── Derived values ─────────────────────────────────────────────────────────
-  const currentMeta = useMemo(
-    () => photos.find((p) => p.uri === currentUri),
-    [photos, currentUri]
+const currentMeta = useMemo(() => {
+  if (!currentUri || !Array.isArray(photos)) {
+    return undefined;
+  }
+
+  return photos.find(
+    (photo) =>
+      photo &&
+      typeof photo.uri === 'string' &&
+      photo.uri === currentUri
   );
+}, [photos, currentUri]);
 
   const severityColor = useMemo(() => {
     if (analysis?.severity === 'high') return COLORS.danger;
@@ -616,12 +668,35 @@ const removePhoto = useCallback(
             Confidence: {Math.round(analysis.confidence * 100)}%
           </Text>
 
-          {analysis.suggestions.map((s, i) => (
-            <View key={i} style={styles.suggestionRow}>
-              <Ionicons name="checkmark-circle" size={14} color={severityColor} />
-              <Text style={[styles.suggestionText, { color: COLORS.text.secondary }]}>{s}</Text>
-            </View>
-          ))}
+          {Array.isArray(analysis?.suggestions) &&
+  analysis.suggestions.map((suggestion, index) => {
+    const safeSuggestion =
+      typeof suggestion === 'string' && suggestion.trim()
+        ? suggestion
+        : 'No additional information available.';
+
+    return (
+      <View
+        key={`suggestion-${index}`}
+        style={styles.suggestionRow}
+      >
+        <Ionicons
+          name="checkmark-circle"
+          size={14}
+          color={severityColor}
+        />
+
+        <Text
+          style={[
+            styles.suggestionText,
+            { color: COLORS.text.secondary },
+          ]}
+        >
+          {safeSuggestion}
+        </Text>
+      </View>
+    );
+  })}
         </View>
       )}
 
@@ -703,23 +778,23 @@ const removePhoto = useCallback(
           <BlurView intensity={60} style={StyleSheet.absoluteFill} />
           <View style={[styles.modalContent, { backgroundColor: COLORS.surface, borderRadius: RADIUS.xl }]}>
             <Text style={[styles.modalTitle, { color: COLORS.text.primary }]}>Photo Metadata</Text>
-{currentMeta ? (
-  <ScrollView showsVerticalScrollIndicator={false}>
-    <MetaRow label="URI" value={currentMeta.uri || '—'} />
-    <MetaRow label="Dimensions" value={`${currentMeta.width || 0} × ${currentMeta.height || 0}`} />
-    <MetaRow label="File Size" value={formatBytes(currentMeta.fileSize) || '—'} />
-    <MetaRow label="Timestamp" value={currentMeta.timestamp ? formatDate(currentMeta.timestamp) : '—'} />
-    <MetaRow label="Type" value={currentMeta.type || '—'} />
-    {currentMeta.location && (
-      <>
-        <MetaRow label="Latitude" value={currentMeta.location.latitude?.toFixed(6) || '—'} />
-        <MetaRow label="Longitude" value={currentMeta.location.longitude?.toFixed(6) || '—'} />
-      </>
-    )}
-  </ScrollView>
-) : (
-  <Text style={{ color: COLORS.text.secondary }}>No metadata available</Text>
-)}
+            {currentMeta ? (
+              <ScrollView showsVerticalScrollIndicator={false}>
+                <MetaRow label="URI" value={currentMeta.uri || '—'} />
+                <MetaRow label="Dimensions" value={`${currentMeta.width || 0} × ${currentMeta.height || 0}`} />
+                <MetaRow label="File Size" value={formatBytes(currentMeta.fileSize) || '—'} />
+                <MetaRow label="Timestamp" value={currentMeta.timestamp ? formatDate(currentMeta.timestamp) : '—'} />
+                <MetaRow label="Type" value={currentMeta.type || '—'} />
+                {currentMeta.location && (
+                  <>
+                    <MetaRow label="Latitude" value={currentMeta.location.latitude?.toFixed(6) || '—'} />
+                    <MetaRow label="Longitude" value={currentMeta.location.longitude?.toFixed(6) || '—'} />
+                  </>
+                )}
+              </ScrollView>
+            ) : (
+              <Text style={{ color: COLORS.text.secondary }}>No metadata available</Text>
+            )}
             <TouchableOpacity onPress={() => setShowMeta(false)} style={[styles.modalClose, { backgroundColor: COLORS.primary, borderRadius: RADIUS.md }]}>
               <Text style={styles.modalCloseText}>Close</Text>
             </TouchableOpacity>
@@ -810,8 +885,8 @@ const removePhoto = useCallback(
 };
 
 // ── Subcomponents ────────────────────────────────────────────────────────────
-const MetaRow = ({ label, value }: { label: string; value: string }) => {
-  // Guard against undefined values
+const MetaRow = ({ label, value }: { label?: string; value?: string }) => {
+  // Guard against undefined values with fallbacks
   const safeLabel = label || '—';
   const safeValue = value || '—';
   
@@ -853,7 +928,7 @@ const styles = StyleSheet.create({
   confidenceFill: { height: '100%', borderRadius: 3 },
   confidenceLabel: { fontSize: 11, fontWeight: '600' },
   suggestionRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 6 },
-suggestionText: { fontSize: 13, flex: 1 },
+  suggestionText: { fontSize: 13, flex: 1 },
   thumbStrip: { marginTop: 12, flexDirection: 'row' },
   thumb: { width: 56, height: 56, overflow: 'hidden', position: 'relative' },
   thumbImg: { width: '100%', height: '100%' },
