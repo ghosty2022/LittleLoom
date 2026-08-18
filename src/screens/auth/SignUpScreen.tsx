@@ -13,6 +13,7 @@ import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import type { RootStackParamList } from '../../types/navigation';
 import { UniversalSpinner } from '../../components/UniversalSpinner';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type SignUpScreenProps = NativeStackScreenProps<RootStackParamList, 'SignUp'>;
 const { width } = Dimensions.get('window');
@@ -162,30 +163,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
       }
     }, 500);
 
-This file already imports AsyncStorage too.
-
-3. FamilyContext.tsx — stop leaking other babies' invite codes
-
-Currently getActiveInviteCodes returns every invite in storage, not just the current baby's — a problem the moment a parent manages more than one baby.
-
-tsx
-// FIND
-  const getActiveInviteCodes = useCallback(async () => {
-    try {
-      const { getActiveInvites } = await import('@/utils/portableInvite');
-      return await getActiveInvites();
-    } catch {
-      // Fallback to AsyncStorage
-      const raw = await AsyncStorage.getItem('littleloom_invite_codes');
-      const codes = raw ? JSON.parse(raw) : {};
-      return Object.entries(codes)
-        .filter(([_, v]: [string, any]) => !v.used && v.expiresAt > Date.now())
-        .map(([code, data]: [string, any]) => ({ code, ...data }));
-    }
-  }, []);
-
-// REPLACE
-  const getActiveInviteCodes = useCallback(async () => {
+const getActiveInviteCodes = useCallback(async () => {
     try {
       const { getActiveInvites } = await import('@/utils/portableInvite');
       const invites = await getActiveInvites();

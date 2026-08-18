@@ -13,9 +13,9 @@ import {
   TouchableOpacity,
   View,
   Share,
-  Clipboard,
   Dimensions,
 } from 'react-native';
+import Clipboard from '@react-native-clipboard/clipboard';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -172,8 +172,7 @@ const Toast = ({ message, type, visible, onHide }: {
   }[type];
 
   return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="none" zIndex={999}>
-      <View style={[StyleSheet.absoluteFill, { zIndex: 999 }]} pointerEvents="none"></View>
+    <View style={[StyleSheet.absoluteFill, { zIndex: 999 }]} pointerEvents="none">
       <RNAnimated.View style={[styles.toast, { opacity, backgroundColor: colors.bg }]}>
         <Ionicons name={colors.icon as any} size={18} color="#fff" />
         <Text style={styles.toastText}>{message}</Text>
