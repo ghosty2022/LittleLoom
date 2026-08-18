@@ -180,11 +180,12 @@ using (
 drop policy if exists "anon insert babies"
 on public.babies;
 
-create policy "authenticated insert own babies"
+-- Allow authenticated users to insert babies (temporary dev policy)
+create policy "authenticated insert babies"
 on public.babies
 for insert
 to authenticated
-with check (parent1_id = auth.uid()::text);
+with check (true);
 
 
 drop policy if exists "anon update babies"

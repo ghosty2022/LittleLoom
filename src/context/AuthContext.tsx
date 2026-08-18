@@ -542,16 +542,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     
      // ─── REAL AUTH: verify the account + password against Supabase ───
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      });
+  const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+  email: email.trim(),
+  password,
+});
 
-      if (authError || !authData?.user) {
-        if (__DEV__) console.warn('[Auth] Supabase sign in failed:', authError?.message);
-        return false;
-      }
-
+if (authError || !authData?.user) {
+  if (__DEV__) console.warn('[Auth] Supabase sign in failed:', authError?.message);
+  
+  // Special handling for unconfirmed emails
+  if (authError?.message?.toLowerCase().includes('email not confirmed')) {
+    // Option 1: Resend confirmation email
+    const { error: resendError } = await supabase.auth.resend({
+      type: 'signup',
+      email: email.trim(),
+    });
+    
+    if (!resendError) {
+      // Alert the user to check their email
+      Alert.alert(
+        'Email Not Confirmed',
+        'Please check your email and confirm your account before signing in. A new confirmation link has been sent.'
+      );
+    }
+  }
+  return false;
+}
       const token = authData.session?.access_token ?? `auth_token_${authData.user.id}`;
 
       // ─── Local registry only supplies profile/app metadata now, never gates access ───
