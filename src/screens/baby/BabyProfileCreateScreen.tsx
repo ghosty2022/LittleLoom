@@ -323,7 +323,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
       imagePickerLock.current = false;
     }
   }, [showError, triggerHaptic]);
-
+const {  wasSetupCompleted } = useAuth();
   /* ---- Validation ---- */
   const validateStep1 = useCallback((): boolean => {
     const trimmed = name.trim();
@@ -510,39 +510,48 @@ babyId = await createBaby({
           console.warn('Failed to auto-switch to new baby:', switchErr);
         }
 
-        // Only mark setup complete if this is the very first baby
-        if (babies.length === 0) {
-          try {
-            await completeSetup('baby');
-          } catch (setupError) {
-            console.warn('completeSetup threw error:', setupError);
-          }
-        }
+// Check if this is the first baby or adding another
+if (babies.length === 0) {
+  try {
+    await completeSetup('baby');
+  } catch (setupError) {
+    console.warn('completeSetup threw error:', setupError);
+  }
+}
 
-        if (andContinue) {
-          if (navigation.canGoBack()) {
-            navigation.goBack();
-          } else {
-            navigation.replace('Main');
-          }
-        } else {
-          // Reset form for adding another baby
-          setName('');
-          setBirthDate(new Date());
-          setGender('boy');
-          setSkinTone(0);
-          setAvatar('👶');
-          setWeight('');
-          setHeight('');
-          setBloodType('');
-          setAllergies('');
-          setMedicalNotes('');
-          setCurrentStep(1);
-          scrollViewRef.current?.scrollTo({ y: 0, animated: true });
-          if (isMounted.current) {
-            showSuccess('You can add another baby now, or tap Continue when done');
-          }
-        }
+// Navigate based on action
+if (andContinue) {
+  // User tapped "Create & Continue" - navigate to CoParent invite or Main
+  if (navigation.canGoBack()) {
+    navigation.goBack();
+  } else {
+    // Check if parent2 is already done
+    const { hasParent2 } = await wasSetupCompleted();
+    if (hasParent2 === false) {
+      // Parent2 is NOT done - go to CoParent invite
+      navigation.replace('CoParentInviteScreen');
+    } else {
+      navigation.replace('Main');
+    }
+  }
+} else {
+  // User tapped "Create & Add Another" - reset form
+  setName('');
+  setBirthDate(new Date());
+  setGender('boy');
+  setSkinTone(0);
+  setAvatar('👶');
+  setWeight('');
+  setHeight('');
+  setBloodType('');
+  setAllergies('');
+  setMedicalNotes('');
+  setCurrentStep(1);
+  scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+  if (isMounted.current) {
+    showSuccess('You can add another baby now, or tap Continue when done');
+  }
+}
       } catch (navError) {
         console.error('Post-create error:', navError);
         if (isMounted.current) {

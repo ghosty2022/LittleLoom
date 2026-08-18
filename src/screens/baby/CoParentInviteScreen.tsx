@@ -338,24 +338,37 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
     }
   }, [revokeInviteCode, generatedCode, showToast]);
 
-  const handleSkip = useCallback(async () => {
-    triggerHaptic('light');
-    try { await skipSetup('parent2'); }
-    catch { showToast('Could not skip', 'error'); }
-  }, [skipSetup, triggerHaptic, showToast]);
+const handleSkip = useCallback(async () => {
+  triggerHaptic('light');
+  setIsLoading(true);
+  try {
+    await skipSetup('parent2');
+    // After skipping, navigate to Main
+    showToast('Skipped for now - you can add later in Family settings', 'info');
+    navigation.replace('Main');
+  } catch (error) {
+    console.error('handleSkip error:', error);
+    showToast('Could not skip', 'error');
+  } finally {
+    setIsLoading(false);
+  }
+}, [skipSetup, triggerHaptic, showToast, navigation]);
 
-  const handleContinue = useCallback(async () => {
-    triggerHaptic('medium');
-    setIsLoading(true);
-    try {
-      await completeSetup('parent2');
-      setTimeout(() => setIsLoading(false), 600);
-    } catch {
-      showToast('Could not save progress', 'error');
-      setIsLoading(false);
-    }
-  }, [completeSetup, triggerHaptic, showToast]);
-
+const handleContinue = useCallback(async () => {
+  triggerHaptic('medium');
+  setIsLoading(true);
+  try {
+    await completeSetup('parent2');
+    showToast('Setup complete! Welcome to the family', 'success');
+    // Navigate to Main after setup is complete
+    navigation.replace('Main');
+  } catch (error) {
+    console.error('handleContinue error:', error);
+    showToast('Could not save progress', 'error');
+  } finally {
+    setIsLoading(false);
+  }
+}, [completeSetup, triggerHaptic, showToast, navigation]);
   const handleBack = () => {
     if (navigation.canGoBack()) navigation.goBack();
     else navigation.navigate('Main' as never);

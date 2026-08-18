@@ -866,151 +866,180 @@ if (authError || !authData?.user) {
       releaseSignInLock();
     }
   }, [acquireSignInLock, releaseSignInLock]);
+const signUp = useCallback(async (fullName: string, email: string, password: string): Promise<boolean> => {
+  if (!acquireSignInLock()) return false;
+  try {
+    console.log('[Auth] SignUp attempt for:', email);
+    
+    // ─── REAL AUTH: create the account in Supabase ───
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+      email: email.trim(),
+      password,
+      options: {
+        data: {
+          full_name: fullName,
+        },
+      },
+    });
 
-  const signUp = useCallback(async (fullName: string, email: string, password: string): Promise<boolean> => {
-    if (!acquireSignInLock()) return false;
-    try {
-      // ─── REAL AUTH: create the account in Supabase (server enforces uniqueness) ───
-// ─── FORCE AUTO-CONFIRM: Use admin API to confirm user immediately ───
-const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-  email: email.trim(),
-  password,
-  options: {
-    data: {
-      full_name: fullName,
-    },
-  },
-});
-
-if (signUpError || !signUpData?.user) {
-  console.warn('[Auth] Supabase sign up rejected:', signUpError?.message);
-  
-  // Check if user already exists
-  if (signUpError?.message?.toLowerCase().includes('already registered') ||
-      signUpError?.message?.toLowerCase().includes('user already exists')) {
-    // Try to sign in instead
-    try {
-      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      });
+    if (signUpError || !signUpData?.user) {
+      console.warn('[Auth] Supabase sign up rejected:', signUpError?.message);
       
-      if (!signInError && signInData?.user) {
-        // Successfully signed in existing user
-        const token = signInData.session?.access_token ?? `auth_token_${signInData.user.id}`;
-        const userId = signInData.user.id;
-        // ... continue with existing user flow
-        return true;
+      // Check if user already exists - try to sign in instead
+      if (signUpError?.message?.toLowerCase().includes('already registered') ||
+          signUpError?.message?.toLowerCase().includes('user already exists')) {
+        console.log('[Auth] User exists, attempting sign in...');
+        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        });
+        
+        if (!signInError && signInData?.user) {
+          console.log('[Auth] Existing user signed in successfully');
+          const token = signInData.session?.access_token ?? `auth_token_${signInData.user.id}`;
+          const userId = signInData.user.id;
+          
+          // Create profile for existing user
+          const handle = `@${fullName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
+          const userProfile: UserProfile = {
+            id: userId,
+            fullName,
+            email: email.trim(),
+            avatar: '👤',
+            role: 'parent1',
+            createdAt: new Date().toISOString(),
+            preferences: { notifications: true, darkMode: false, language: 'en' },
+            communityUsername: fullName,
+            communityHandle: handle,
+            communityBio: '',
+            communityAvatar: '👤',
+            communityDisplayName: fullName,
+            communityStats: { posts: 0, followers: 0, following: 0, helpful: 0 },
+            communitySelectedTopics: [],
+          };
+          
+          await Promise.all([
+            secureStorage.setItem(SECURE_KEYS.AUTH_TOKEN, token),
+            secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(userProfile)),
+            AsyncStorage.setItem(ASYNC_KEYS.HAS_SEEN_ONBOARDING, 'true'),
+          ]);
+          
+          if (isMounted.current) {
+            setState(prev => ({
+              ...prev,
+              isAuthenticated: true,
+              userToken: token,
+              userProfile,
+              onboardingComplete: false,
+              hasSeenOnboarding: true,
+              setupComplete: false,
+              hasParent2: false,
+              hasBaby: false,
+            }));
+          }
+          
+          return true;
+        }
       }
-    } catch (e) {
-      // Fall through to error
-    }
-  }
-  
-  return false;
-}
-
-// ─── FIX: Auto-confirm email immediately after signup ───
-try {
-  // Try to confirm the user's email using the admin API
-  // Note: This requires the service role key in your environment
-  const adminSupabase = supabase; // You may need to initialize with service role key
-  
-  // Alternative: Send a fresh confirmation email
-  const { error: resendError } = await supabase.auth.resend({
-    type: 'signup',
-    email: email.trim(),
-  });
-  
-  if (!resendError) {
-    console.log('[Auth] Confirmation email resent successfully');
-  }
-} catch (confirmError) {
-  console.warn('[Auth] Auto-confirm failed, user will need to confirm email:', confirmError);
-}
-      const token = signUpData.session?.access_token ?? `auth_token_${signUpData.user.id}`;
-      const userId = signUpData.user.id;
       
-      const handle = `@${fullName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
-      
-      const userProfile: UserProfile = {
-        id: userId,
-        fullName,
-        email,
-        avatar: '👤',
-        role: 'parent1',
-        createdAt: new Date().toISOString(),
-        preferences: { notifications: true, darkMode: false, language: 'en' },
-        communityUsername: fullName,
-        communityHandle: handle,
-        communityBio: '',
-        communityAvatar: '👤',
-        communityDisplayName: fullName,
-        communityStats: { posts: 0, followers: 0, following: 0, helpful: 0 },
-        communitySelectedTopics: [],
-      };
-// REPLACE
-      const registryEntry: UserRegistryEntry = {
-        userId,
-        email,
-        fullName,
-        avatar: '👤',
-        role: 'parent1',
-        createdAt: userProfile.createdAt,
-        communityUsername: fullName,
-        communityHandle: handle,
-        communityBio: '',
-        communityAvatar: '👤',
-        communityDisplayName: fullName,
-        communityStats: { posts: 0, followers: 0, following: 0, helpful: 0 },
-        communitySelectedTopics: [],
-        hasPassword: true,
-        // Password itself is never stored/hashed client-side anymore —
-        // Supabase Auth owns the credential. This flag is metadata only.
-      };
-      await registerUser(registryEntry);
-
-      await Promise.all([
-        secureStorage.setItem(SECURE_KEYS.AUTH_TOKEN, token),
-        secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(userProfile)),
-        AsyncStorage.setItem(ASYNC_KEYS.HAS_SEEN_ONBOARDING, 'true'),
-        setAppSetting(ASYNC_KEYS.COMMUNITY_USERNAME, fullName),
-        setAppSetting(ASYNC_KEYS.COMMUNITY_HANDLE, handle),
-        setAppSetting(ASYNC_KEYS.COMMUNITY_DISPLAY_NAME, fullName),
-      ]);
-
-      // ─── CRITICAL FIX: New signups MUST go through Parent2 + Baby setup
-      // Clear any stale setup flags from previous sessions
-      await AsyncStorage.multiRemove([
-        ASYNC_KEYS.SETUP_COMPLETE,
-        ASYNC_KEYS.HAS_PARENT2,
-        ASYNC_KEYS.HAS_BABY,
-        ASYNC_KEYS.PARENT2_COMPLETED,
-        ASYNC_KEYS.BABY_COMPLETED,
-      ]);
-
-      if (isMounted.current) {
-        setState(prev => ({
-          ...prev,
-          isAuthenticated: true,
-          userToken: token,
-          userProfile,
-          onboardingComplete: false,
-          hasSeenOnboarding: true,
-          setupComplete: false,
-          hasParent2: false,
-          hasBaby: false,
-        }));
-      }
-
-      lastSignInTime.current = Date.now();
-      return true;
-    } catch (error) {
-      console.error('Sign up error:', error);
       return false;
-    } finally { releaseSignInLock(); }
-  }, [acquireSignInLock, releaseSignInLock]);
+    }
 
+    console.log('[Auth] User created successfully:', signUpData.user.id);
+    const token = signUpData.session?.access_token ?? `auth_token_${signUpData.user.id}`;
+    const userId = signUpData.user.id;
+    
+    // ─── AUTO-CONFIRM: Resend confirmation email ───
+    try {
+      const { error: resendError } = await supabase.auth.resend({
+        type: 'signup',
+        email: email.trim(),
+      });
+      if (!resendError) {
+        console.log('[Auth] Confirmation email resent successfully');
+      }
+    } catch (resendErr) {
+      console.warn('[Auth] Could not resend confirmation:', resendErr);
+    }
+    
+    // Create user profile
+    const handle = `@${fullName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
+    
+    const userProfile: UserProfile = {
+      id: userId,
+      fullName,
+      email: email.trim(),
+      avatar: '👤',
+      role: 'parent1',
+      createdAt: new Date().toISOString(),
+      preferences: { notifications: true, darkMode: false, language: 'en' },
+      communityUsername: fullName,
+      communityHandle: handle,
+      communityBio: '',
+      communityAvatar: '👤',
+      communityDisplayName: fullName,
+      communityStats: { posts: 0, followers: 0, following: 0, helpful: 0 },
+      communitySelectedTopics: [],
+    };
+
+    const registryEntry: UserRegistryEntry = {
+      userId,
+      email: email.trim(),
+      fullName,
+      avatar: '👤',
+      role: 'parent1',
+      createdAt: userProfile.createdAt,
+      communityUsername: fullName,
+      communityHandle: handle,
+      communityBio: '',
+      communityAvatar: '👤',
+      communityDisplayName: fullName,
+      communityStats: { posts: 0, followers: 0, following: 0, helpful: 0 },
+      communitySelectedTopics: [],
+      hasPassword: true,
+    };
+    await registerUser(registryEntry);
+
+    await Promise.all([
+      secureStorage.setItem(SECURE_KEYS.AUTH_TOKEN, token),
+      secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(userProfile)),
+      AsyncStorage.setItem(ASYNC_KEYS.HAS_SEEN_ONBOARDING, 'true'),
+      setAppSetting(ASYNC_KEYS.COMMUNITY_USERNAME, fullName),
+      setAppSetting(ASYNC_KEYS.COMMUNITY_HANDLE, handle),
+      setAppSetting(ASYNC_KEYS.COMMUNITY_DISPLAY_NAME, fullName),
+    ]);
+
+    // ─── Clear any stale setup flags ───
+    await AsyncStorage.multiRemove([
+      ASYNC_KEYS.SETUP_COMPLETE,
+      ASYNC_KEYS.HAS_PARENT2,
+      ASYNC_KEYS.HAS_BABY,
+      ASYNC_KEYS.PARENT2_COMPLETED,
+      ASYNC_KEYS.BABY_COMPLETED,
+    ]);
+
+    if (isMounted.current) {
+      setState(prev => ({
+        ...prev,
+        isAuthenticated: true,
+        userToken: token,
+        userProfile,
+        onboardingComplete: false,
+        hasSeenOnboarding: true,
+        setupComplete: false,
+        hasParent2: false,
+        hasBaby: false,
+      }));
+    }
+
+    lastSignInTime.current = Date.now();
+    return true;
+  } catch (error) {
+    console.error('[Auth] Sign up error:', error);
+    return false;
+  } finally { releaseSignInLock(); }
+}, [acquireSignInLock, releaseSignInLock]);
+  
   // ─── INVITE CODE SIGN UP ─────────────────────────────────────────────
   const forgotPassword = useCallback(async (email: string): Promise<{ success: boolean; message: string }> => {
     try {

@@ -23,7 +23,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
   const {
     babies, currentBabyId, switchBaby, loadBabies, isLoading: babyLoading
   } = useBaby();
-  const { userProfile, skipSetup, completeSetup } = useAuth();
+  const { userProfile, skipSetup, completeSetup, wasSetupCompleted } = useAuth();
   const insets = useSafeAreaInsets();
 
   const {
@@ -74,56 +74,67 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
     };
     loadData();
   }, [loadBabies, babies.length]);
-
-  const handleSkip = useCallback(async () => {
-    triggerHaptic('light');
-    setIsProcessing(true);
-    try {
-      await skipSetup('baby');
-      // AuthContext.skipSetup already sets:
-      // - littleloom_has_baby = 'skipped'
-      // - littleloom_baby_completed = 'skipped'
-      // - littleloom_setup_complete = 'true' (if parent2 also done)
-      // AND updates AuthContext state which triggers AppNavigator navState
-      // DO NOT manually set AsyncStorage or call navigation.replace() here
+const handleSkip = useCallback(async () => {
+  triggerHaptic('light');
+  setIsProcessing(true);
+  try {
+    await skipSetup('baby');
+    
+    // Check if parent2 is also skipped or completed
+    const { hasParent2 } = await wasSetupCompleted();
+    
+    if (hasParent2 === false) {
+      // Parent2 is NOT done - navigate to CoParent invite screen
+      showInfo('Next Step', 'Let\'s set up family sharing');
+      navigation.replace('CoParentInviteScreen');
+    } else {
+      // Parent2 is skipped or done - go to Main
       showInfo('Skipped', 'You can add a baby later from settings');
       // Let AppNavigator handle navigation based on auth state
-      // Screen will unmount automatically when nav state changes to MAIN
-    } catch (error) {
-      showError('Error', 'Could not skip baby setup');
-      setIsProcessing(false);
     }
-  }, [skipSetup, showError, showInfo, triggerHaptic]);
-
+  } catch (error) {
+    console.error('handleSkip error:', error);
+    showError('Error', 'Could not skip baby setup');
+    setIsProcessing(false);
+  }
+}, [skipSetup, wasSetupCompleted, showError, showInfo, triggerHaptic, navigation]);
   const handleCreateBaby = useCallback(() => {
-    triggerHaptic('medium');
-    navigation.navigate('CreateBabyProfile');
-  }, [navigation, triggerHaptic]);
+  triggerHaptic('medium');
+  // Navigate to create baby profile with a flag to return here
+  navigation.navigate('CreateBabyProfile');
+}, [navigation, triggerHaptic]);
 const handleSelectBaby = useCallback(async (babyId: string) => {
   triggerHaptic('medium');
   setIsProcessing(true);
   try {
     await switchBaby(babyId);
     
-    // CRITICAL FIX: Ensure both setup steps are completed
+    // CRITICAL FIX: Mark baby setup as complete
     await completeSetup('baby');
     
-    // Also check if parent2 is already completed
+    // Now check the setup status to determine where to navigate
     const { hasParent2 } = await wasSetupCompleted();
-    if (hasParent2 !== false) {
-      // Parent2 is already done, mark setup complete
-      await completeSetup('parent2');
-    }
     
-    showSuccess('Welcome Back!', 'Baby profile selected');
-    // AuthContext.completeSetup updates state → AppNavigator navState → MAIN
-    // DO NOT call navigation.replace() — causes flash/disappear bug
+    if (hasParent2 === false) {
+      // Parent2 is NOT done - navigate to CoParent invite screen
+      showInfo('Next Step', 'Invite a co-parent to join the family');
+      // Navigate to CoParentInviteScreen
+      navigation.replace('CoParentInviteScreen');
+    } else if (hasParent2 === 'skipped' || hasParent2 === true) {
+      // Parent2 is skipped or done - setup complete, go to Main
+      await completeSetup('parent2'); // This will mark setup complete
+      showSuccess('Welcome Back!', 'Baby profile selected');
+      // Let AppNavigator handle navigation to MAIN
+    } else {
+      // Fallback: just show success
+      showSuccess('Welcome Back!', 'Baby profile selected');
+    }
   } catch (error) {
+    console.error('handleSelectBaby error:', error);
     showError('Error', 'Could not switch baby');
     setIsProcessing(false);
   }
-}, [switchBaby, completeSetup, wasSetupCompleted, showError, showSuccess, triggerHaptic]);
-
+}, [switchBaby, completeSetup, wasSetupCompleted, showError, showSuccess, showInfo, triggerHaptic, navigation]);
   const handleRetry = useCallback(async () => {
     setLoadError(null);
     setLocalLoading(true);
