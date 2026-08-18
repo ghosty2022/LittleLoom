@@ -12,6 +12,7 @@ import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/dat
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import { useAuth } from '../../context/AuthContext';
+import { supabase } from '@/utils/supabase'; // ADD THIS
 import { useSweetAlert } from '../../hooks/useSweetAlert';
 import { useBaby } from '../../context/BabyContext';
 import { getBabyByIdFromDb, setAppSetting } from '../../database/dbHelpers';
@@ -412,11 +413,6 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
     try {
       const hasCustomImage = isImageUri(avatar);
       const avatarToSave = hasCustomImage ? '👶' : avatar;
-
-// Get the authenticated user ID
-const { data: userData } = await supabase.auth.getUser();
-const userId = userData?.user?.id || `user_${Date.now()}`;
-
 // Ensure we have a valid user ID
 if (!userData?.user?.id) {
   showError('Not authenticated. Please sign in again.');
@@ -424,6 +420,20 @@ if (!userData?.user?.id) {
   isCreatingRef.current = false;
   return;
 }
+
+// Get the authenticated user ID
+const { data: userData } = await supabase.auth.getUser();
+const userId = userData?.user?.id;
+
+// Ensure we have a valid user ID
+if (!userId) {
+  showError('Not authenticated. Please sign in again.');
+  setIsLoading(false);
+  isCreatingRef.current = false;
+  return;
+}
+
+console.log('[BabyProfile] Creating baby with parent1Id:', userId);
 
 babyId = await createBaby({
   name: trimmedName,
@@ -438,7 +448,6 @@ babyId = await createBaby({
   medicalNotes: medicalNotes.trim() || undefined,
   parent1Id: userId,  // CRITICAL: This must match auth.uid()
 });
-
       if (!babyId) {
         if (isMounted.current) {
           showError('Failed to create profile. Please try again.');
