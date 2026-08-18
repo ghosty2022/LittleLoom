@@ -40,10 +40,10 @@ import { useCustomization } from '../../hooks/useCustomization';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { useApp } from '../../context/AppContext';
 import { useFamily } from '../../context/FamilyContext';
+import QRCode from 'react-native-qrcode-svg'; // ADD THIS
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CoParentInviteScreen'>;
 const { width: SCREEN_W } = Dimensions.get('window');
-
 /* ═══════════════════════════════════════════════════════════════════════════
    ROLE CONFIGURATION
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -86,63 +86,6 @@ const ROLE_META: Record<RoleKey, {
     placeholder: 'e.g., Aunt, Family Friend',
     permissions: ['Read Only', 'View Timeline', 'View Photos'],
   },
-};
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   SIMPLE QR CODE (Deterministic visual pattern — swap for real QR lib)
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const SimpleQR: React.FC<{ data: string; size?: number; color?: string }> = ({
-  data, size = 140, color = '#1a1a1a',
-}) => {
-  const hash = useMemo(() => {
-    let h = 0;
-    for (let i = 0; i < data.length; i++) h = ((h << 5) - h + data.charCodeAt(i)) | 0;
-    return Math.abs(h);
-  }, [data]);
-
-  const cells = 25;
-  const cellSize = size / cells;
-  const modules = useMemo(() => {
-    const grid: boolean[][] = [];
-    const seed = hash;
-    for (let r = 0; r < cells; r++) {
-      grid[r] = [];
-      for (let c = 0; c < cells; c++) {
-        const isFinder = (r < 7 && c < 7) || (r < 7 && c >= cells - 7) || (r >= cells - 7 && c < 7);
-        const isTiming = r === 6 || c === 6;
-        const isDark = isFinder
-          ? (r === 0 || r === 6 || c === 0 || c === 6 || (r > 1 && r < 5 && c > 1 && c < 5))
-          : isTiming ? (r + c) % 2 === 0
-          : Math.sin((r * 7 + c * 13 + seed) * 0.5) > 0;
-        grid[r][c] = isDark;
-      }
-    }
-    for (let r = 8; r < cells - 8; r++) {
-      for (let c = 8; c < cells - 8; c++) {
-        grid[r][c] = Math.sin((r * 3 + c * 5 + seed) * 0.8) > 0.1;
-      }
-    }
-    return grid;
-  }, [hash]);
-
-  return (
-    <View style={[styles.qrContainer, { width: size, height: size }]}>
-      {modules.map((row, r) =>
-        row.map((isDark, c) =>
-          isDark ? (
-            <View key={`${r}-${c}`} style={{
-              position: 'absolute', left: c * cellSize, top: r * cellSize,
-              width: cellSize + 0.5, height: cellSize + 0.5, backgroundColor: color,
-            }} />
-          ) : null
-        )
-      )}
-      <View style={[styles.qrLogo, { backgroundColor: '#fff' }]}>
-        <Ionicons name="link" size={18} color={color} />
-      </View>
-    </View>
-  );
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -535,8 +478,21 @@ const handleContinue = useCallback(async () => {
                   <Text style={[styles.codeText, { color: dynamicPrimary }]}>{generatedCode}</Text>
 
                   <View style={[styles.qrWrap, isDark && styles.qrWrapDark]}>
-                    <SimpleQR data={generatedCode} size={130} color={isDark ? '#fff' : '#1a1a1a'} />
-                  </View>
+  <TouchableOpacity 
+    onPress={() => handleShare('native')}
+    activeOpacity={0.8}
+  >
+    <QRCode
+      value={generatedCode}
+      size={130}
+      color={isDark ? '#ffffff' : '#1a1a1a'}
+      backgroundColor={isDark ? '#1a1a2e' : '#ffffff'}
+      logo={require('../../../assets/icon.png')}
+      logoSize={24}
+      logoBackgroundColor={isDark ? '#1a1a2e' : '#ffffff'}
+    />
+  </TouchableOpacity>
+</View>
 
                   <Text style={[styles.codeSub, isDark && { color: '#94a3b8' }]}>
                     Valid for 7 days • One-time use • {ROLE_META[role].label}
@@ -786,10 +742,21 @@ const styles = StyleSheet.create({
   },
   codeLabel: { fontSize: 11, fontWeight: '800', color: '#94a3b8', letterSpacing: 2, marginTop: 4 },
   codeText: { fontSize: 34, fontWeight: '900', letterSpacing: 8, textAlign: 'center' },
-  qrWrap: { padding: 12, borderRadius: 16, backgroundColor: '#fff', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', marginVertical: 4 },
-  qrWrapDark: { backgroundColor: '#1a1a2e', borderColor: 'rgba(255,255,255,0.08)' },
-  qrContainer: { position: 'relative', overflow: 'hidden', borderRadius: 8 },
-  qrLogo: { position: 'absolute', top: '50%', left: '50%', width: 36, height: 36, marginLeft: -18, marginTop: -18, borderRadius: 8, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#fff' },
+  qrWrap: { 
+  padding: 12, 
+  borderRadius: 16, 
+  backgroundColor: '#fff', 
+  borderWidth: 1, 
+  borderColor: 'rgba(0,0,0,0.06)', 
+  marginVertical: 4,
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+qrWrapDark: { 
+  backgroundColor: '#1a1a2e', 
+  borderColor: 'rgba(255,255,255,0.08)' 
+},
+// Remove qrContainer and qrLogo as they're no longer needed
   codeSub: { fontSize: 12, fontWeight: '600', color: '#94a3b8', textAlign: 'center' },
   shareGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10, marginTop: 8, width: '100%' },
   shareBtn: { alignItems: 'center', gap: 6, minWidth: 64 },
