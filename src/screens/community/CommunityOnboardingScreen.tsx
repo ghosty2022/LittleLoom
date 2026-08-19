@@ -194,80 +194,120 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
     });
   };
 
-  const handleComplete = async () => {
-    if (selectedTopics.length === 0) {
-      sweetAlert.alert('Select Topics', 'Please select at least 1 topic to personalize your feed.', 'info');
+const handleComplete = async () => {
+  if (selectedTopics.length === 0) {
+    sweetAlert.alert('Select Topics', 'Please select at least 1 topic to personalize your feed.', 'info');
+    return;
+  }
+
+  try {
+    // Save to local storage
+    const data = { 
+      completed: true, 
+      selectedTopics,
+      timestamp: new Date().toISOString(),
+      recommendedUsed: showRecommendations,
+    };
+
+    await AsyncStorage.setItem(ONBOARDING_KEY, JSON.stringify(data));
+    await AsyncStorage.setItem('@community_selected_topics_v2', JSON.stringify(selectedTopics));
+
+    // Update context - this will also sync to Supabase via the context's updateSelectedTopics
+    if (updateCommunityTopics) {
+      await updateCommunityTopics(selectedTopics);
+    }
+    if (updateUserTopics) {
+      await updateUserTopics(selectedTopics);
+    }
+    
+    // Update splash state
+    await updateSectionState('community', { onboardingComplete: true, topicSelected: true });
+
+    // Verify topics were saved to Supabase by doing a quick check
+    try {
+      const supabaseTopics = await AsyncStorage.getItem('@community_topics_supabase_synced');
+      if (!supabaseTopics) {
+        console.warn('Topics not synced to Supabase - will retry on next context sync');
+      }
+    } catch (syncError) {
+      console.warn('Supabase sync verification failed:', syncError);
+    }
+
+    if (settings.hapticFeedback) {
+      triggerHaptic('success');
+    }
+    
+    if (isEditing) {
+      navigation?.goBack?.();
       return;
     }
-
-    try {
-      const data = { 
-        completed: true, 
-        selectedTopics,
-        timestamp: new Date().toISOString(),
-        recommendedUsed: showRecommendations,
-      };
-
-      await AsyncStorage.setItem(ONBOARDING_KEY, JSON.stringify(data));
-      await AsyncStorage.setItem('@community_selected_topics_v2', JSON.stringify(selectedTopics));
-
-      if (updateCommunityTopics) {
-        await updateCommunityTopics(selectedTopics);
-      }
-      if (updateUserTopics) {
-        await updateUserTopics(selectedTopics);
-      }
-      await updateSectionState('community', { onboardingComplete: true, topicSelected: true });
-
-      if (settings.hapticFeedback) {
-        triggerHaptic('success');
-      }
-      
-      if (isEditing) {
-        navigation?.goBack?.();
-        return;
-      }
-      
-      if (onComplete) {
-        onComplete();
-      }
-    } catch (error) {
-      console.error('Error saving topics:', error);
-      sweetAlert.alert('Error', 'Failed to save your preferences. Please try again.', 'warning');
+    
+    if (onComplete) {
+      onComplete();
     }
-  };
+  } catch (error) {
+    console.error('Error saving topics:', error);
+    sweetAlert.alert('Error', 'Failed to save your preferences. Please try again.', 'warning');
+  }
+};
 
-  const handleSkip = async () => {
-    if (isEditing) return;
-    sweetAlert.confirm(      'Skip Topic Selection?',
-      'Selecting topics helps us show you relevant content. You can always change this later in your profile.',
-      async () => {
-        try {
-          const data = { 
-            completed: true, 
-            selectedTopics: [],
-            timestamp: new Date().toISOString(),
-            skipped: true
-          };
-          await AsyncStorage.setItem(ONBOARDING_KEY, JSON.stringify(data));
-          await AsyncStorage.setItem('@community_selected_topics_v2', JSON.stringify([]));
-          if (updateCommunityTopics) await updateCommunityTopics([]);
-          if (updateUserTopics) await updateUserTopics([]);
-          await updateSectionState('community', { onboardingComplete: true, topicSelected: false });
-          
-          if (onComplete) {
-            onComplete();
-          }
-        } catch (error) {
-          console.error('Error skipping onboarding:', error);
+const handleSkip = async () => {
+  if (isEditing) return;
+  
+  // First, check if we should auto-select some topics instead of skipping
+  const autoSelectTopics = recommendedTopics
+    .filter(r => r.confidence === 'high')
+    .slice(0, 3)
+    .map(r => r.topicId)
+    .filter(id => INITIAL_TOPICS.some(t => t.id === id));
+
+  sweetAlert.confirm(
+    'Skip Topic Selection?',
+    autoSelectTopics.length > 0 
+      ? `We recommend selecting at least 3 topics. Would you like us to auto-select ${autoSelectTopics.length} recommended topics for you? You can always change these later.`
+      : 'Selecting topics helps us show you relevant content. You can always change this later in your profile.',
+    async () => {
+      try {
+        // If we have auto-select topics, use them instead of empty array
+        const topicsToSave = autoSelectTopics.length > 0 ? autoSelectTopics : [];
+        
+        const data = { 
+          completed: true, 
+          selectedTopics: topicsToSave,
+          timestamp: new Date().toISOString(),
+          skipped: topicsToSave.length === 0,
+          autoSelected: topicsToSave.length > 0
+        };
+        
+        await AsyncStorage.setItem(ONBOARDING_KEY, JSON.stringify(data));
+        await AsyncStorage.setItem('@community_selected_topics_v2', JSON.stringify(topicsToSave));
+        
+        if (updateCommunityTopics) {
+          await updateCommunityTopics(topicsToSave);
         }
-      },
-      undefined,
-      'Skip Anyway',
-      'Select Topics',
-      true
-    );
-  };
+        if (updateUserTopics) {
+          await updateUserTopics(topicsToSave);
+        }
+        await updateSectionState('community', { onboardingComplete: true, topicSelected: topicsToSave.length > 0 });
+        
+        if (topicsToSave.length > 0) {
+          sweetAlert.toast('Topics Selected', `${topicsToSave.length} topics were auto-selected for you.`, 'info');
+        }
+        
+        if (onComplete) {
+          onComplete();
+        }
+      } catch (error) {
+        console.error('Error skipping onboarding:', error);
+        sweetAlert.alert('Error', 'Failed to complete onboarding. Please try again.', 'warning');
+      }
+    },
+    undefined,
+    autoSelectTopics.length > 0 ? 'Auto-select' : 'Skip Anyway',
+    'Choose Topics',
+    true
+  );
+};
 
   const isTopicRecommended = (topicId: string) => {
     return recommendedTopics.find(r => r.topicId === topicId);
