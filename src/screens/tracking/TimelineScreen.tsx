@@ -1,8 +1,10 @@
+// EnhancedTimelineScreen.tsx — FIXED: Proper baby context sync
+// Now uses useBaby() directly instead of relying solely on useTracker()
+
 import React, { useCallback, useMemo, useState, useEffect } from 'react';
 
 import { useCustomization } from '../../hooks/useCustomization';
 import { Dimensions, Modal, Pressable, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View, LayoutAnimation, UIManager, Platform } from 'react-native';
-// REMOVED: Image — unused in this screen
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -979,9 +981,6 @@ const GrowthScoreCard: React.FC<{
   );
 };
 
-// AchievementToast removed — replaced with silent haptic + inline badge
-// to avoid disruptive popups during tracking sessions
-
 const StreakBanner: React.FC<{
   streak: any;
   theme: any;
@@ -1054,17 +1053,42 @@ export default function EnhancedTimelineScreen() {
   const theme = useUnifiedTrackerTheme();
   const { triggerHaptic, borderRadiusValue, shouldReduceMotion, fontSizeMultiplier } = useCustomization();
 
+  // ✅ FIX: Use both BabyContext and TrackerContext
+  // BabyContext provides the actual baby profile
   const {
-    entries,
-    isLoading,
+    currentBaby: babyFromContext,
+    isLoading: babyLoading,
+    loadBabies,
+    refreshCurrentBaby,
+  } = useBaby();
+
+  // TrackerContext provides entries and tracking operations
+  const {
+    entries: trackerEntries,
+    isLoading: trackerLoading,
     refreshEntries,
     deleteEntry,
     getTracker,
     getEntries,
     currentBabyId,
-    currentBaby,
   } = useTracker();
+
   const { success, confirm, error } = useSweetAlert();
+
+  // ✅ FIX: Use baby from context directly, not from tracker
+  const currentBaby = babyFromContext;
+
+  // Load baby data on mount and focus
+  useEffect(() => {
+    loadBabies();
+  }, [loadBabies]);
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshEntries();
+      refreshCurrentBaby();
+    }, [refreshEntries, refreshCurrentBaby])
+  );
 
   const { correlations: timelineCorrelations } = useTimelineCorrelations();
   const { reminders: predictiveReminders } = usePredictiveReminders();
@@ -1094,15 +1118,15 @@ export default function EnhancedTimelineScreen() {
 
   useEffect(() => {
     if (route.params?.filter) setSelectedFilter(route.params.filter);
-  }, [route.params?.filter]); // FIXED: depend on primitive, not object reference
+  }, [route.params?.filter]);
 
-  // ── Live refresh: reload entries every time this screen gains focus, so
-  //    newly logged activity appears instantly (same as FamilySharing) ──
-  useFocusEffect(
-    useCallback(() => {
-      refreshEntries();
-    }, [refreshEntries])
-  );
+  // ✅ FIX: Auto-prompt to create baby profile when none exists
+  useEffect(() => {
+    if (!babyLoading && !currentBaby) {
+      const timer = setTimeout(() => setShowBabyRequiredModal(true), 400);
+      return () => clearTimeout(timer);
+    }
+  }, [babyLoading, currentBaby]);
 
   useEffect(() => {
     const safeNewlyUnlocked = safeArray(newlyUnlocked);
@@ -1114,18 +1138,11 @@ export default function EnhancedTimelineScreen() {
     }
   }, [newlyUnlocked, triggerHaptic]);
 
-  // Auto-prompt to create baby profile when none exists
-  useEffect(() => {
-    if (!isLoading && !currentBaby) {
-      const timer = setTimeout(() => setShowBabyRequiredModal(true), 400);
-      return () => clearTimeout(timer);
-    }
-  }, [isLoading, currentBaby]);
-
+  // ✅ FIX: Use trackerEntries directly
   const allEntries = useMemo(() => {
-    if (!currentBaby || !Array.isArray(entries)) return [];
-    return [...entries].sort((a, b) => b.timestamp - a.timestamp);
-  }, [entries, currentBaby]);
+    if (!currentBaby || !Array.isArray(trackerEntries)) return [];
+    return [...trackerEntries].sort((a, b) => b.timestamp - a.timestamp);
+  }, [trackerEntries, currentBaby]);
 
   const { insights: allInsights, dismissInsight } = useTrackerProgressive(
     selectedFilter === 'all' ? 'feed' : selectedFilter
@@ -1352,7 +1369,6 @@ export default function EnhancedTimelineScreen() {
     return groups;
   }, [allEntries, selectedFilter, searchQuery, selectedDate]);
 
-  // ── Calendar day-view: per-day entry counts + month grid cells ──
   const entryCountByDay = useMemo(() => {
     const map = new Map<string, number>();
     allEntries.forEach(e => {
@@ -1369,10 +1385,8 @@ export default function EnhancedTimelineScreen() {
     const firstWeekday = new Date(y, m, 1).getDay();
     const daysInMonth = new Date(y, m + 1, 0).getDate();
     const cells: (Date | null)[] = [];
-    // Pad start to align with week start (Sunday = 0)
     for (let i = 0; i < firstWeekday; i++) cells.push(null);
     for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(y, m, d));
-    // Pad end to complete the last week row
     const totalCells = cells.length;
     const remainingCells = 7 - (totalCells % 7);
     if (remainingCells < 7) {
@@ -1381,7 +1395,6 @@ export default function EnhancedTimelineScreen() {
     return cells;
   }, [calendarMonth]);
 
-  // ── Day-view: entries for the date currently highlighted in the calendar ──
   const selectedDayEntries = useMemo(() => {
     if (!selectedDate) return [] as TrackerEntry[];
     return allEntries.filter(e => e?.timestamp && isSameDay(new Date(e.timestamp), selectedDate));
@@ -1440,9 +1453,13 @@ export default function EnhancedTimelineScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refreshEntries();
+    await Promise.all([
+      refreshEntries(),
+      refreshCurrentBaby(),
+      loadBabies(),
+    ]);
     setRefreshing(false);
-  }, [refreshEntries]);
+  }, [refreshEntries, refreshCurrentBaby, loadBabies]);
 
   const handleEditEvent = useCallback((entry: TrackerEntry) => {
     triggerHaptic('light');
@@ -1458,7 +1475,6 @@ export default function EnhancedTimelineScreen() {
         if (entry?.id) {
           try {
             await deleteEntry(entry.id);
-            // Force refresh from database to ensure sync
             await refreshEntries();
             triggerHaptic('success');
             success('Deleted', 'Entry removed from database');
@@ -1502,7 +1518,8 @@ export default function EnhancedTimelineScreen() {
     triggerHaptic('light');
   }, [triggerHaptic]);
 
-  if (isLoading && !refreshing) {
+  // ✅ FIX: Show loading only if both contexts are loading
+  if ((babyLoading || trackerLoading) && !refreshing) {
     return (
       <View style={[styles.container, styles.loadingContainer]}>
         <StatusBar barStyle={theme.isDark ? 'light-content' : 'dark-content'} />
@@ -1539,7 +1556,6 @@ export default function EnhancedTimelineScreen() {
         style={styles.backgroundGradient}
       />
 
-      {/* Achievement indicator — inline, non-intrusive */}
       {safeArray(newlyUnlocked).length > 0 && (
         <View style={[styles.achievementInlineBadge, { backgroundColor: `${theme.primary}12` }]}>
           <Ionicons name="trophy" size={12} color={theme.primary} />
@@ -1664,10 +1680,9 @@ export default function EnhancedTimelineScreen() {
           </Animated.View>
         )}
 
-        {/* Smart Stats Overview — Clean KPI Cards, No Shadows */}
+        {/* Smart Stats Overview */}
         <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(100)} style={styles.statsContainer}>
           <Animated.ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statsContent}>
-            
             {/* Today Card */}
             <View style={[styles.kpiCard, { borderRadius: borderRadiusValue, borderColor: `${theme.primary}30`, backgroundColor: theme.isDark ? 'rgba(45,45,60,0.4)' : 'rgba(102,126,234,0.06)' }]}>
               <View style={styles.kpiTop}>
@@ -1727,26 +1742,21 @@ export default function EnhancedTimelineScreen() {
               <Text style={[styles.kpiLabel, { color: theme.text.muted }]}>Growth</Text>
               <Text style={[styles.kpiSub, { color: theme.text.secondary }]}>Composite Index</Text>
             </View>
-
           </Animated.ScrollView>
         </Animated.View>
 
-        {/* ── TAB BAR ── */}
+        {/* Tab Bar */}
         <TabBar tabs={tabs} activeTab={activeTab} onChange={handleTabChange} theme={theme} />
 
-        {/* ═════════════════════════════════════════════════════════════════
-            TAB: TIMELINE
-           ═════════════════════════════════════════════════════════════════ */}
+        {/* Timeline Tab */}
         {activeTab === 'timeline' && (
           <>
-            {/* ── Quick Action Suggestions — Accurate Timing ── */}
             <QuickActionSuggestions 
               theme={theme} 
               entries={allEntries}
               onPress={(action) => navigation.navigate('AddEntry', { trackerId: action })} 
             />
 
-            {/* ── Latest 5 Entries Preview ── */}
             {allEntries.length > 0 && (
               <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(250)} style={{ marginHorizontal: 20, marginBottom: 12 }}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -1779,7 +1789,6 @@ export default function EnhancedTimelineScreen() {
               </Animated.View>
             )}
 
-            {/* Filter Chips */}
             <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(200)} style={styles.filterContainer}>
               <Animated.ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterContent}>
                 {filterChips.map((filter, index) => (
@@ -1805,15 +1814,12 @@ export default function EnhancedTimelineScreen() {
               </Animated.ScrollView>
             </Animated.View>
 
-            
-            {/* ── NEW FEATURE 1: AI Pattern Predictor ── */}
             <AIPatternPredictor 
               entries={allEntries} 
               theme={theme} 
               onPress={() => handleTabChange('analytics')} 
             />
 
-            {/* Active date filter banner */}
             {selectedDate && (
               <Animated.View entering={shouldReduceMotion ? undefined : FadeInDown} style={[styles.dateFilterBanner, { backgroundColor: `${theme.primary}15`, borderColor: `${theme.primary}40`, borderRadius: borderRadiusValue }]}>
                 <Ionicons name="calendar" size={16} color={theme.primary} />
@@ -1826,7 +1832,6 @@ export default function EnhancedTimelineScreen() {
               </Animated.View>
             )}
 
-            {/* Timeline Events */}
             <View style={styles.timelineContainer}>
               {groupedEvents.length === 0 ? (
                 <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(400)} style={styles.emptyState}>
@@ -1945,12 +1950,9 @@ export default function EnhancedTimelineScreen() {
           </>
         )}
 
-        {/* ═════════════════════════════════════════════════════════════════
-            TAB: INSIGHTS
-           ═════════════════════════════════════════════════════════════════ */}
+        {/* Insights Tab */}
         {activeTab === 'insights' && (
           <>
-            {/* ── SMART SECTIONS ── */}
             {smartSections.length > 0 && (
               <View style={styles.smartSectionsContainer}>
                 <View style={styles.smartSectionHeader}>
@@ -1972,7 +1974,6 @@ export default function EnhancedTimelineScreen() {
               </View>
             )}
 
-            {/* ── NEW FEATURE 4: Health Trend Correlation ── */}
             <HealthTrendCorrelation 
               entries={allEntries} 
               theme={theme} 
@@ -1980,12 +1981,9 @@ export default function EnhancedTimelineScreen() {
           </>
         )}
 
-        {/* ═════════════════════════════════════════════════════════════════
-            TAB: GROWTH
-           ═════════════════════════════════════════════════════════════════ */}
+        {/* Growth Tab */}
         {activeTab === 'growth' && (
           <>
-            {/* Growth Score Card */}
             {growthIndex && (
               <GrowthScoreCard
                 growthIndex={growthIndex}
@@ -1994,19 +1992,16 @@ export default function EnhancedTimelineScreen() {
               />
             )}
 
-            {/* ── NEW FEATURE 2: Activity Balance Radar ── */}
             <ActivityBalanceRadar 
               entries={allEntries} 
               theme={theme} 
             />
 
-            {/* ── NEW FEATURE 3: Weekly Heatmap ── */}
             <WeeklyHeatmap 
               entries={allEntries} 
               theme={theme} 
             />
 
-            {/* ── NEW FEATURE 6: Upcoming Events Timeline ── */}
             <UpcomingEventsTimeline 
               reminders={predictiveReminders} 
               theme={theme} 
@@ -2015,9 +2010,7 @@ export default function EnhancedTimelineScreen() {
           </>
         )}
 
-        {/* ═════════════════════════════════════════════════════════════════
-            TAB: ACHIEVEMENTS
-           ═════════════════════════════════════════════════════════════════ */}
+        {/* Achievements Tab */}
         {activeTab === 'achievements' && (
           <>
             <View style={styles.section}>
@@ -2044,7 +2037,6 @@ export default function EnhancedTimelineScreen() {
               </GlassCard>
             </View>
 
-            {/* Streak Banner */}
             {globalStreak?.currentStreak > 0 && (
               <StreakBanner
                 streak={globalStreak}
@@ -2053,7 +2045,6 @@ export default function EnhancedTimelineScreen() {
               />
             )}
 
-            {/* Recent Achievements */}
             <View style={styles.section}>
               <SectionHeader 
                 title="Recent Achievements" 
@@ -2088,24 +2079,19 @@ export default function EnhancedTimelineScreen() {
           </>
         )}
 
-        {/* ═════════════════════════════════════════════════════════════════
-            TAB: ANALYTICS
-           ═════════════════════════════════════════════════════════════════ */}
+        {/* Analytics Tab */}
         {activeTab === 'analytics' && (
           <>
-            {/* ── NEW FEATURE 2: Activity Balance Radar (Analytics view) ── */}
             <ActivityBalanceRadar 
               entries={allEntries} 
               theme={theme} 
             />
 
-            {/* ── NEW FEATURE 3: Weekly Heatmap (Analytics view) ── */}
             <WeeklyHeatmap 
               entries={allEntries} 
               theme={theme} 
             />
 
-            {/* Entry Stats */}
             <View style={styles.section}>
               <SectionHeader 
                 title="Entry Statistics" 
@@ -2169,7 +2155,7 @@ export default function EnhancedTimelineScreen() {
         currentBabyAvatar={currentBaby?.avatar}
       />
 
-      {/* Calendar Day-View Modal */}
+      {/* Calendar Modal */}
       <Modal visible={showCalendar} transparent animationType="fade" onRequestClose={() => setShowCalendar(false)}>
         <View style={styles.calendarModalOverlay}>
           <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setShowCalendar(false)} />
@@ -2232,7 +2218,6 @@ export default function EnhancedTimelineScreen() {
               })}
             </View>
 
-            {/* ── Day view: entries for the highlighted date — tap any row to open EntryDetail ── */}
             <View style={[styles.calendarDayView, { borderTopColor: theme.surface.border }]}>
               <View style={styles.calendarDayViewHeader}>
                 <Ionicons name="list-outline" size={14} color={theme.primary} />
@@ -2311,6 +2296,7 @@ export default function EnhancedTimelineScreen() {
           </View>
         </View>
       </Modal>
+
       {/* Baby Required Modal */}
       <Modal
         visible={showBabyRequiredModal}
@@ -2391,7 +2377,7 @@ const styles = StyleSheet.create({
   searchBlur: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 4, overflow: 'hidden' },
   searchInput: { flex: 1, marginLeft: 10, paddingVertical: 12 },
 
-  // ── Stats — Clean KPI Cards, No Shadows ──
+  // ── Stats ──
   statsContainer: { marginBottom: 16 },
   statsContent: { paddingHorizontal: 20, gap: 10 },
   kpiCard: { width: 120, padding: 14, borderWidth: 1, borderRadius: 16 },
@@ -2428,7 +2414,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
-    /* no shadow */
     marginHorizontal: DESIGN.spacing.lg,
     marginBottom: DESIGN.spacing.lg,
   },
@@ -2530,14 +2515,6 @@ const styles = StyleSheet.create({
   milestoneProgressFill: { height: '100%', borderRadius: 3 },
   milestoneText: { fontSize: 12, fontWeight: '600', width: 100, textAlign: 'right' },
 
-  // ── Achievement Toast ──
-  achievementToast: { position: 'absolute', top: 100, left: 20, right: 20, zIndex: 200, borderRadius: 16, overflow: 'hidden' },
-  achievementToastGradient: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12 },
-  achievementToastEmoji: { fontSize: 32 },
-  achievementToastContent: { flex: 1 },
-  achievementToastTitle: { fontSize: 13, fontWeight: '700', color: '#fff', textTransform: 'uppercase', letterSpacing: 0.5, opacity: 0.9 },
-  achievementToastName: { fontSize: 16, fontWeight: '800', color: '#fff' },
-
   // ── Streak Banner ──
   streakBanner: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 16, borderWidth: 1, marginBottom: 10, gap: 12 },
   streakIconContainer: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
@@ -2550,7 +2527,7 @@ const styles = StyleSheet.create({
   streakProgressBg: { height: 4, backgroundColor: 'rgba(0,0,0,0.06)', borderRadius: 2, marginTop: 4, overflow: 'hidden' },
   streakProgressFill: { height: '100%', borderRadius: 2 },
 
-  // ── Predictor (AI Pattern) ──
+  // ── Predictor ──
   predictorHeader: { 
     flexDirection: 'row', 
     alignItems: 'center', 
@@ -2670,7 +2647,7 @@ const styles = StyleSheet.create({
   correlationBarFill: { height: '100%', borderRadius: 2 },
   correlationValue: { fontSize: 12, fontWeight: '700' },
 
-  // ── Quick Action Suggestions — No Backgrounds, Centered ──
+  // ── Quick Action Suggestions ──
   suggestionsHeader: { marginHorizontal: 20, marginBottom: 10, marginTop: 4 },
   suggestionsTitle: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3 },
   suggestionsSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2, opacity: 0.7 },
@@ -2728,7 +2705,6 @@ const styles = StyleSheet.create({
     padding: 14, 
     borderRadius: 16, 
     marginBottom: 12, 
-    /* no shadow */ 
   },
   calendarHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 },
   calendarEmoji: { fontSize: 20 },
@@ -2764,8 +2740,8 @@ const styles = StyleSheet.create({
   timelineLine: { width: 2, flex: 1, marginTop: 4 },
   eventCardContainer: { flex: 1, paddingBottom: 16 },
 
-  // ── Timeline Entry Card — soft card borrowed from FamilySharing (no inner shadows) ──
-  timelineEntryCard: { flex: 1, overflow: 'hidden', borderWidth: 1, /* no shadow */ },
+  // ── Timeline Entry Card ──
+  timelineEntryCard: { flex: 1, overflow: 'hidden', borderWidth: 1 },
   timelineEntryContent: { padding: 14, gap: 8 },
   timelineEntryHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   timelineEntryIconBg: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
@@ -2779,17 +2755,6 @@ const styles = StyleSheet.create({
   timelineEntryActions: { flexDirection: 'row', gap: 8, marginTop: 4, marginLeft: 46 },
   timelineEntryActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
   timelineEntryActionText: { fontSize: 11, fontWeight: '700' },
-  eventCard: { flexDirection: 'row', alignItems: 'center', padding: 14, borderWidth: 1, gap: 12 },
-  eventIconContainer: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  eventIcon: { fontSize: 20 },
-  eventContent: { flex: 1, gap: 2 },
-  eventTitle: { fontSize: 15, fontWeight: '700' },
-  eventSubtitle: { fontSize: 13, lineHeight: 18, marginTop: 2 },
-  eventMeta: { flexDirection: 'row', gap: 8, marginTop: 4 },
-  eventTime: { fontSize: 11, fontWeight: '500' },
-  eventAuthor: { fontSize: 11, fontWeight: '500' },
-  eventActions: { flexDirection: 'row', gap: 4 },
-  actionButton: { padding: 6 },
 
   // ── Achievements Tab ──
   section: { marginBottom: DESIGN.spacing.xl },
@@ -2827,7 +2792,7 @@ const styles = StyleSheet.create({
   analyticsCount: { fontSize: 20, fontWeight: '800' },
   analyticsLabel: { fontSize: 11, fontWeight: '600' },
 
-  // ── Calendar Day-View ──
+  // ── Calendar ──
   calendarActiveDot: { position: 'absolute', top: 8, right: 8, width: 8, height: 8, borderRadius: 4 },
   dateFilterBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 20, marginBottom: 12, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1 },
   dateFilterText: { flex: 1, fontSize: 14, fontWeight: '700' },
@@ -2873,6 +2838,7 @@ const styles = StyleSheet.create({
   calendarDayViewEmojiText: { fontSize: 15 },
   calendarDayViewRowTitle: { fontSize: 14, fontWeight: '700' },
   calendarDayViewRowMeta: { fontSize: 11, fontWeight: '500', marginTop: 1 },
+
   // ── Inline Achievement Badge ──
   achievementInlineBadge: { 
     position: 'absolute', 
@@ -2887,9 +2853,9 @@ const styles = StyleSheet.create({
     zIndex: 50,
   },
   achievementInlineText: { fontSize: 11, fontWeight: '700' },
-    headerBabyImage: { width: 44, height: 44, borderRadius: 14, borderWidth: 2, marginBottom: 6 },
   headerBabyPlaceholder: { width: 56, height: 56, borderRadius: 18, justifyContent: 'center', alignItems: 'center', marginBottom: 6 },
-    // ── Latest Entries Preview ──
+
+  // ── Latest Entries Preview ──
   latestEntryRow: { 
     flexDirection: 'row', 
     alignItems: 'center', 
@@ -2901,6 +2867,7 @@ const styles = StyleSheet.create({
   latestEntryIcon: { width: 32, height: 32, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
   latestEntryTitle: { fontSize: 13, fontWeight: '700' },
   latestEntryMeta: { fontSize: 10, fontWeight: '500', marginTop: 1 },
+
   // ── FAB ──
   fabContainer: { position: 'absolute', zIndex: 100 },
   fab: { width: 56, height: 56, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 6 },
@@ -2974,4 +2941,3 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
-                
