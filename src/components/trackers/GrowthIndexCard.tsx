@@ -14,6 +14,17 @@ interface SubScoreBarProps {
   index: number;
 }
 
+const getEmojiForLabel = (label: string): string => {
+  const map: Record<string, string> = {
+    'Nutrition': '🍎',
+    'Rest': '😴',
+    'Physical': '💪',
+    'Cognitive': '🧠',
+    'Health': '❤️',
+  };
+  return map[label] || '📊';
+};
+
 const SubScoreBar: React.FC<SubScoreBarProps> = ({ score, index }) => {
   const { fullThemeColors, borderRadiusValue, fontSizeMultiplier } = useCustomization();
   
@@ -52,28 +63,22 @@ const SubScoreBar: React.FC<SubScoreBarProps> = ({ score, index }) => {
   );
 };
 
-const getEmojiForLabel = (label: string): string => {
-  const map: Record<string, string> = {
-    'Nutrition': '🍎',
-    'Rest': '😴',
-    'Physical': '💪',
-    'Cognitive': '🧠',
-    'Health': '❤️',
-  };
-  return map[label] || '📊';
-};
+const VelocityPill: React.FC<{ label: string; value: number; unit: string; percentile: number; color: string }> = ({
+  label, value, unit, percentile, color
+}) => (
+  <View style={styles.velocityPill}>
+    <Text style={[styles.velocityPillLabel, { color }]}>{label}</Text>
+    <Text style={styles.velocityPillValue}>
+      {value > 0 ? value.toFixed(1) : '--'} <Text style={styles.velocityPillUnit}>{unit}</Text>
+    </Text>
+    <Text style={[styles.velocityPillPercentile, { color }]}>{percentile}th %ile (latest)</Text>
+  </View>
+);
 
 export const GrowthIndexCard: React.FC = () => {
   const navigation = useNavigation();
   const { fullThemeColors, themeColors, borderRadiusValue, fontSizeMultiplier } = useCustomization();
   const { growthIndex } = useGrowthIntelligence();
-
-  const getIndexColor = (index: number): [string, string] => {
-    if (index >= 85) return ['#10AC84', '#1DD1A1']; // Green
-    if (index >= 70) return ['#FFD700', '#FF9F43']; // Yellow
-    if (index >= 50) return ['#FF9F43', '#EE5A24']; // Orange
-    return ['#EE5A24', '#FF6B6B']; // Red
-  };
 
   if (!growthIndex) {
     return (
@@ -85,7 +90,15 @@ export const GrowthIndexCard: React.FC = () => {
     );
   }
 
-  const [gradientStart, gradientEnd] = getIndexColor(growthIndex.compositeIndex ?? 0);
+  const getIndexColor = (index: number): [string, string] => {
+    if (index >= 85) return ['#10AC84', '#1DD1A1'];
+    if (index >= 70) return ['#FFD700', '#FF9F43'];
+    if (index >= 50) return ['#FF9F43', '#EE5A24'];
+    return ['#EE5A24', '#FF6B6B'];
+  };
+
+  const compositeIndex = growthIndex.compositeIndex ?? 0;
+  const [gradientStart, gradientEnd] = getIndexColor(compositeIndex);
 
   return (
     <Animated.View entering={FadeInUp} style={[styles.container, { borderRadius: borderRadiusValue * 1.5 }]}>
@@ -106,7 +119,7 @@ export const GrowthIndexCard: React.FC = () => {
         </View>
         <View style={[styles.scoreCircle, { borderColor: gradientStart }]}>
           <Text style={[styles.scoreValue, { color: gradientStart, fontSize: 28 * fontSizeMultiplier }]}>
-            {growthIndex.compositeIndex}
+            {compositeIndex}
           </Text>
           <Text style={[styles.scoreLabel, { color: fullThemeColors.textSecondary }]}>/100</Text>
         </View>
@@ -114,45 +127,47 @@ export const GrowthIndexCard: React.FC = () => {
 
       {/* Sub Scores */}
       <View style={styles.subScores}>
-        <SubScoreBar score={growthIndex.nutritionScore} index={0} />
-        <SubScoreBar score={growthIndex.restScore} index={1} />
-        <SubScoreBar score={growthIndex.physicalScore} index={2} />
-        <SubScoreBar score={growthIndex.cognitiveScore} index={3} />
-        <SubScoreBar score={growthIndex.healthStability} index={4} />
+        {growthIndex.nutritionScore && <SubScoreBar score={growthIndex.nutritionScore} index={0} />}
+        {growthIndex.restScore && <SubScoreBar score={growthIndex.restScore} index={1} />}
+        {growthIndex.physicalScore && <SubScoreBar score={growthIndex.physicalScore} index={2} />}
+        {growthIndex.cognitiveScore && <SubScoreBar score={growthIndex.cognitiveScore} index={3} />}
+        {growthIndex.healthStability && <SubScoreBar score={growthIndex.healthStability} index={4} />}
       </View>
 
       {/* Velocity Summary */}
-      <View style={[styles.velocityCard, { backgroundColor: fullThemeColors.glassBg, borderRadius: borderRadiusValue }]}>
-        <Text style={[styles.velocityTitle, { color: fullThemeColors.text, fontSize: 14 * fontSizeMultiplier }]}>
-          📈 Growth Velocity
-        </Text>
-        <View style={styles.velocityRow}>
-          <VelocityPill 
-            label="Height" 
-            value={growthIndex.velocityTrends?.height?.perMonth} 
-            unit="cm/mo" 
-            percentile={growthIndex.velocityTrends?.height?.percentile}
-            color="#667eea"
-          />
-          <VelocityPill 
-            label="Weight" 
-            value={growthIndex.velocityTrends?.weight?.perMonth} 
-            unit="kg/mo" 
-            percentile={growthIndex.velocityTrends?.weight?.percentile}
-            color="#fa709a"
-          />
-          <VelocityPill 
-            label="Head" 
-            value={growthIndex.velocityTrends?.head?.perMonth} 
-            unit="cm/mo" 
-            percentile={growthIndex.velocityTrends?.head?.percentile}
-            color="#11998e"
-          />
+      {growthIndex.velocityTrends && (
+        <View style={[styles.velocityCard, { backgroundColor: fullThemeColors.glassBg, borderRadius: borderRadiusValue }]}>
+          <Text style={[styles.velocityTitle, { color: fullThemeColors.text, fontSize: 14 * fontSizeMultiplier }]}>
+            📈 Growth Velocity
+          </Text>
+          <View style={styles.velocityRow}>
+            <VelocityPill 
+              label="Height" 
+              value={growthIndex.velocityTrends.height?.perMonth || 0} 
+              unit="cm/mo" 
+              percentile={growthIndex.velocityTrends.height?.percentile || 0}
+              color="#667eea"
+            />
+            <VelocityPill 
+              label="Weight" 
+              value={growthIndex.velocityTrends.weight?.perMonth || 0} 
+              unit="kg/mo" 
+              percentile={growthIndex.velocityTrends.weight?.percentile || 0}
+              color="#fa709a"
+            />
+            <VelocityPill 
+              label="Head" 
+              value={growthIndex.velocityTrends.head?.perMonth || 0} 
+              unit="cm/mo" 
+              percentile={growthIndex.velocityTrends.head?.percentile || 0}
+              color="#11998e"
+            />
+          </View>
         </View>
-      </View>
+      )}
 
       {/* Milestone Readiness */}
-      {growthIndex.milestoneReadiness.length > 0 && (
+      {growthIndex.milestoneReadiness && growthIndex.milestoneReadiness.length > 0 && (
         <View style={styles.readinessSection}>
           <Text style={[styles.readinessTitle, { color: fullThemeColors.text, fontSize: 15 * fontSizeMultiplier }]}>
             🎯 Milestone Readiness
@@ -161,10 +176,13 @@ export const GrowthIndexCard: React.FC = () => {
             <TouchableOpacity 
               key={idx}
               style={[styles.readinessItem, { backgroundColor: fullThemeColors.glassBg, borderRadius: borderRadiusValue }]}
-              onPress={() => navigation.navigate('AddEntry', { 
-                trackerId: 'milestone', 
-                presetData: { category: readiness.category } 
-              })}
+              onPress={() => {
+                // @ts-ignore - navigate to AddEntry
+                navigation.navigate('AddEntry', { 
+                  trackerId: 'milestone', 
+                  presetData: { category: readiness.category } 
+                });
+              }}
             >
               <View style={[styles.readinessBar, { backgroundColor: fullThemeColors.border }]}>
                 <View style={[
@@ -190,27 +208,17 @@ export const GrowthIndexCard: React.FC = () => {
       )}
 
       {/* Predicted Checkup */}
-      <View style={[styles.checkupCard, { backgroundColor: `${themeColors.primary}10`, borderRadius: borderRadiusValue }]}>
-        <Ionicons name="calendar" size={20} color={themeColors.primary} />
-        <Text style={[styles.checkupText, { color: fullThemeColors.text, fontSize: 13 * fontSizeMultiplier }]}>
-          Next checkup suggested: {growthIndex.predictedNextCheckup ? growthIndex.predictedNextCheckup.toLocaleDateString() : '—'}
-        </Text>
-      </View>
+      {growthIndex.predictedNextCheckup && (
+        <View style={[styles.checkupCard, { backgroundColor: `${themeColors.primary}10`, borderRadius: borderRadiusValue }]}>
+          <Ionicons name="calendar" size={20} color={themeColors.primary} />
+          <Text style={[styles.checkupText, { color: fullThemeColors.text, fontSize: 13 * fontSizeMultiplier }]}>
+            Next checkup suggested: {growthIndex.predictedNextCheckup.toLocaleDateString()}
+          </Text>
+        </View>
+      )}
     </Animated.View>
   );
 };
-
-const VelocityPill: React.FC<{ label: string; value: number; unit: string; percentile: number; color: string }> = ({
-  label, value, unit, percentile, color
-}) => (
-  <View style={styles.velocityPill}>
-    <Text style={[styles.velocityPillLabel, { color }]}>{label}</Text>
-    <Text style={styles.velocityPillValue}>
-      {value > 0 ? value.toFixed(1) : '--'} <Text style={styles.velocityPillUnit}>{unit}</Text>
-    </Text>
-    <Text style={[styles.velocityPillPercentile, { color }]}>{percentile}th %ile (latest)</Text>
-  </View>
-);
 
 const styles = StyleSheet.create({
   container: {

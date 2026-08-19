@@ -26,12 +26,13 @@ import {
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import {
-TrackerProgressiveState,
-ProgressiveSuggestion,
-ProgressiveTrend,
+  TrackerProgressiveState,
+  ProgressiveSuggestion,
+  ProgressiveTrend,
 } from '../../hooks/useTrackerProgressive';
 import { MOOD_EMOJIS } from './trackerConstants';
-import { isFieldVisible } from '@/utils/form';
+import { isFieldVisible } from '../../utils/form';
+
 const { width: SCREEN_W } = Dimensions.get('window');
 
 interface DynamicTrackerFormProps {
@@ -52,7 +53,6 @@ interface DynamicTrackerFormProps {
   showInsights?: boolean;
   quickMode?: boolean;
 }
-
 
 const TREND_ICONS = { up: 'trending-up-outline', down: 'trending-down-outline', same: 'remove-outline' };
 
@@ -101,23 +101,27 @@ const InsightCard: React.FC<{
   borderRadiusValue: number;
 }> = ({ insight, onAction, onDismiss, colors, borderRadiusValue }) => {
   const priorityColors = {
-    info: colors.info,
-    good: colors.success,
-    warning: colors.warning,
-    alert: colors.error,
+    info: colors.info || '#667eea',
+    good: colors.success || '#22c55e',
+    warning: colors.warning || '#f59e0b',
+    alert: colors.error || '#ef4444',
   };
   
   const bgColors = {
-    info: `${colors.info}10`,
-    good: `${colors.success}10`,
-    warning: `${colors.warning}10`,
-    alert: `${colors.error}10`,
+    info: `${priorityColors.info}10`,
+    good: `${priorityColors.good}10`,
+    warning: `${priorityColors.warning}10`,
+    alert: `${priorityColors.alert}10`,
   };
+  
+  const pKey = insight.priority as keyof typeof bgColors;
+  const bgColor = bgColors[pKey] || bgColors.info;
+  const borderColor = priorityColors[pKey] || priorityColors.info;
   
   return (
     <Animated.View entering={FadeInUp} style={[styles.insightCard, { 
-      backgroundColor: bgColors[insight.priority as keyof typeof bgColors] || bgColors.info,
-      borderColor: priorityColors[insight.priority as keyof typeof priorityColors] || colors.info,
+      backgroundColor: bgColor,
+      borderColor: borderColor,
       borderRadius: borderRadiusValue,
     }]}>
       <Text style={styles.insightEmoji}>{insight.emoji}</Text>
@@ -128,7 +132,7 @@ const InsightCard: React.FC<{
         </Text>
         {insight.action && insight.action.type !== 'none' && (
           <TouchableOpacity onPress={onAction} style={styles.insightAction}>
-            <Text style={[styles.insightActionText, { color: priorityColors[insight.priority as keyof typeof priorityColors] || colors.info }]}>
+            <Text style={[styles.insightActionText, { color: borderColor }]}>
               {insight.action.message || 'Take Action'} →
             </Text>
           </TouchableOpacity>
@@ -150,24 +154,24 @@ const CorrelationBanner: React.FC<{
 }> = ({ correlation, onAction, onDismiss, colors, borderRadiusValue }) => {
   return (
     <Animated.View entering={FadeInUp} style={[styles.correlationBanner, { 
-      backgroundColor: `${colors.info}08`,
+      backgroundColor: `${colors.info || '#667eea'}08`,
       borderRadius: borderRadiusValue,
       borderLeftWidth: 3,
-      borderLeftColor: colors.info,
+      borderLeftColor: colors.info || '#667eea',
     }]}>
-      <Text style={styles.correlationEmoji}>{correlation.emoji}</Text>
+      <Text style={styles.correlationEmoji}>{correlation.emoji || '🔗'}</Text>
       <View style={styles.correlationInfo}>
         <Text style={[styles.correlationMessage, { color: colors.text }]} numberOfLines={2}>
           {correlation.message}
         </Text>
         <Text style={[styles.correlationMeta, { color: colors.textSecondary }]}>
-          {correlation.trackerEmoji} {correlation.trackerName} • {correlation.confidence}% match
+          {correlation.trackerEmoji || ''} {correlation.trackerName || ''} • {correlation.confidence || 0}% match
         </Text>
       </View>
       <View style={styles.correlationActions}>
         {correlation.action !== 'none' && (
           <TouchableOpacity 
-            style={[styles.correlationActionBtn, { backgroundColor: colors.info }]}
+            style={[styles.correlationActionBtn, { backgroundColor: colors.info || '#667eea' }]}
             onPress={onAction}
           >
             <Text style={styles.correlationActionText}>
@@ -251,7 +255,7 @@ const SmartTextField: React.FC<SmartFieldProps> = ({
       <View style={styles.labelRow}>
         <Text style={[styles.label, { color: colors.text, fontSize: 15 * fontSizeMultiplier }]}>
           {field.label}
-          {field.required && <Text style={[styles.required, { color: colors.error }]}> *</Text>}
+          {field.required && <Text style={[styles.required, { color: colors.error || '#ef4444' }]}> *</Text>}
         </Text>
         {trend && trend.direction !== 'same' && (
           <View style={styles.trendBadge}>
@@ -330,7 +334,7 @@ const SmartNumberField: React.FC<SmartFieldProps> = ({
       <View style={styles.labelRow}>
         <Text style={[styles.label, { color: colors.text, fontSize: 15 * fontSizeMultiplier }]}>
           {field.label}
-          {field.required && <Text style={[styles.required, { color: colors.error }]}> *</Text>}
+          {field.required && <Text style={[styles.required, { color: colors.error || '#ef4444' }]}> *</Text>}
         </Text>
         {trend && trend.direction !== 'same' && (
           <View style={styles.trendBadge}>
@@ -397,7 +401,7 @@ const SmartSelectField: React.FC<SmartFieldProps> = ({
     <View style={styles.fieldContainer}>
       <Text style={[styles.label, { color: colors.text, fontSize: 15 * fontSizeMultiplier }]}>
         {field.label}
-        {field.required && <Text style={[styles.required, { color: colors.error }]}> *</Text>}
+        {field.required && <Text style={[styles.required, { color: colors.error || '#ef4444' }]}> *</Text>}
       </Text>
       
       {suggestion && field.options?.find(o => o.id === suggestion.value) && (
@@ -623,6 +627,67 @@ const SmartMoodField: React.FC<SmartFieldProps> = ({
   );
 };
 
+// Define renderQuantityField outside the component to avoid hook issues
+const renderQuantityField = (
+  field: FieldConfig,
+  data: Record<string, unknown>,
+  updateField: (id: string, value: unknown) => void,
+  errors: Record<string, string>,
+  fullThemeColors: any,
+  tracker: UnifiedTrackerConfig,
+  borderRadiusValue: number,
+  fontSizeMultiplier: number
+) => {
+  const unitKey = `${field.id}_unit`;
+  const unitOptions = (field as any).unitOptions || [
+    { id: 'ml', label: 'ml' },
+    { id: 'oz', label: 'oz' },
+  ];
+  const selectedUnit = (data[unitKey] as string) || unitOptions[0].id;
+
+  return (
+    <View key={field.id} style={styles.fieldContainer}>
+      <Text style={[styles.label, { color: fullThemeColors.text, fontSize: 15 * fontSizeMultiplier }]}>
+        {field.label}
+        {field.required && <Text style={[styles.required, { color: fullThemeColors.error || '#ef4444' }]}> *</Text>}
+      </Text>
+
+      <View style={[styles.numberRow, {
+        borderColor: errors[field.id] ? fullThemeColors.error || '#ef4444' : fullThemeColors.border,
+        borderRadius: borderRadiusValue,
+        backgroundColor: errors[field.id] ? `${fullThemeColors.error || '#ef4444'}10` : fullThemeColors.surface,
+      }]}>
+        <TextInput
+          style={[styles.numberInput, { color: fullThemeColors.text, fontSize: 16 * fontSizeMultiplier }]}
+          keyboardType="numeric"
+          placeholder={field.placeholder || '0'}
+          placeholderTextColor={fullThemeColors.textSecondary}
+          value={String(data[field.id] || '')}
+          onChangeText={text => {
+            const num = parseFloat(text);
+            updateField(field.id, isNaN(num) ? text : num);
+          }}
+        />
+        <View style={[styles.tempUnitToggle, { backgroundColor: fullThemeColors.border, borderRadius: borderRadiusValue / 2 }]}>
+          {unitOptions.map((u: any) => (
+            <TouchableOpacity
+              key={u.id}
+              style={[styles.tempUnitBtn, selectedUnit === u.id && { backgroundColor: tracker.color, borderRadius: borderRadiusValue / 3 }]}
+              onPress={() => updateField(unitKey, u.id)}
+            >
+              <Text style={[styles.tempUnitText, { color: selectedUnit === u.id ? '#fff' : fullThemeColors.textSecondary }]}>
+                {u.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
+      {errors[field.id] && <Text style={[styles.errorText, { color: fullThemeColors.error || '#ef4444' }]}>{errors[field.id]}</Text>}
+    </View>
+  );
+};
+
 export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
   tracker,
   initialData = {},
@@ -706,8 +771,6 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     });
   }, [prefillData, suggestions, initialData, appliedPrefill]);
 
-  // isFieldVisible imported from @/utils/form
-
   const validate = useCallback((): boolean => {
     const newErrors: Record<string, string> = {};
     tracker.fields.forEach(field => {
@@ -752,7 +815,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     } finally {
       setIsSubmitting(false);
     }
-  }, [validate, data, notes, selectedTags, photoUris, onSubmit, triggerHaptic, error, success, tracker, isSubmitting, linkedEntryId]);
+  }, [validate, data, notes, selectedTags, photoUris, onSubmit, triggerHaptic, error, linkedEntryId, isSubmitting]);
 
   const updateField = useCallback((fieldId: string, value: unknown) => {
     userEditedFields.current.add(fieldId);
@@ -796,7 +859,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
       <View key={field.id} style={styles.fieldContainer}>
         <Text style={[styles.label, { color: fullThemeColors.text, fontSize: 15 * fontSizeMultiplier }]}>
           {field.label}
-          {field.required && <Text style={[styles.required, { color: fullThemeColors.error }]}> *</Text>}
+          {field.required && <Text style={[styles.required, { color: fullThemeColors.error || '#ef4444' }]}> *</Text>}
         </Text>
         <View style={styles.optionsWrap}>
           {field.options?.map((option: FieldOption) => {
@@ -826,7 +889,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
             );
           })}
         </View>
-        {errors[field.id] && <Text style={[styles.errorText, { color: fullThemeColors.error }]}>{errors[field.id]}</Text>}
+        {errors[field.id] && <Text style={[styles.errorText, { color: fullThemeColors.error || '#ef4444' }]}>{errors[field.id]}</Text>}
       </View>
     );
   }, [data, errors, tracker.color, fullThemeColors, borderRadiusValue, fontSizeMultiplier, triggerHaptic, updateField]);
@@ -865,9 +928,9 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
       <Text style={[styles.label, { color: fullThemeColors.text, fontSize: 15 * fontSizeMultiplier }]}>{field.label}</Text>
       <TextInput
         style={[styles.input, styles.textarea, { 
-          borderColor: errors[field.id] ? fullThemeColors.error : fullThemeColors.border,
+          borderColor: errors[field.id] ? fullThemeColors.error || '#ef4444' : fullThemeColors.border,
           borderRadius: borderRadiusValue,
-          backgroundColor: errors[field.id] ? `${fullThemeColors.error}10` : fullThemeColors.surface,
+          backgroundColor: errors[field.id] ? `${fullThemeColors.error || '#ef4444'}10` : fullThemeColors.surface,
           color: fullThemeColors.text,
           fontSize: 16 * fontSizeMultiplier,
           minHeight: 100 * fontSizeMultiplier,
@@ -880,7 +943,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
         onChangeText={text => updateField(field.id, text)}
         textAlignVertical="top"
       />
-      {errors[field.id] && <Text style={[styles.errorText, { color: fullThemeColors.error }]}>{errors[field.id]}</Text>}
+      {errors[field.id] && <Text style={[styles.errorText, { color: fullThemeColors.error || '#ef4444' }]}>{errors[field.id]}</Text>}
     </View>
   ), [data, errors, fullThemeColors, borderRadiusValue, fontSizeMultiplier, updateField]);
 
@@ -915,16 +978,16 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
       borderRadiusValue={borderRadiusValue}
       maxPhotos={field.max || 5}
     />
-  ), [photoUris, tracker.color, fullThemeColors, borderRadiusValue, fontSizeMultiplier, setPhotoUris]);
+  ), [photoUris, tracker.color, fullThemeColors, borderRadiusValue, fontSizeMultiplier]);
 
   const renderTemperatureField = useCallback((field: FieldConfig) => (
     <View key={field.id} style={styles.fieldContainer}>
       <Text style={[styles.label, { color: fullThemeColors.text, fontSize: 15 * fontSizeMultiplier }]}>
         {field.label}
-        {field.required && <Text style={[styles.required, { color: fullThemeColors.error }]}> *</Text>}
+        {field.required && <Text style={[styles.required, { color: fullThemeColors.error || '#ef4444' }]}> *</Text>}
       </Text>
       <View style={[styles.tempRow, { 
-        borderColor: errors[field.id] ? fullThemeColors.error : fullThemeColors.border,
+        borderColor: errors[field.id] ? fullThemeColors.error || '#ef4444' : fullThemeColors.border,
         borderRadius: borderRadiusValue,
         backgroundColor: fullThemeColors.surface,
       }]}>
@@ -950,7 +1013,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
           ))}
         </View>
       </View>
-      {errors[field.id] && <Text style={[styles.errorText, { color: fullThemeColors.error }]}>{errors[field.id]}</Text>}
+      {errors[field.id] && <Text style={[styles.errorText, { color: fullThemeColors.error || '#ef4444' }]}>{errors[field.id]}</Text>}
     </View>
   ), [data, errors, fullThemeColors, tracker.color, borderRadiusValue, fontSizeMultiplier, updateField]);
 
@@ -980,56 +1043,6 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
       timeContext,
     };
     
-      const renderQuantityField = useCallback((field: FieldConfig) => {
-    const unitKey = `${field.id}_unit`;
-    const unitOptions = (field as any).unitOptions || [
-      { id: 'ml', label: 'ml' },
-      { id: 'oz', label: 'oz' },
-    ];
-    const selectedUnit = (data[unitKey] as string) || unitOptions[0].id;
-
-    return (
-      <View key={field.id} style={styles.fieldContainer}>
-        <Text style={[styles.label, { color: fullThemeColors.text, fontSize: 15 * fontSizeMultiplier }]}>
-          {field.label}
-          {field.required && <Text style={[styles.required, { color: fullThemeColors.error }]}> *</Text>}
-        </Text>
-
-        <View style={[styles.numberRow, {
-          borderColor: errors[field.id] ? fullThemeColors.error : fullThemeColors.border,
-          borderRadius: borderRadiusValue,
-          backgroundColor: errors[field.id] ? `${fullThemeColors.error}10` : fullThemeColors.surface,
-        }]}>
-          <TextInput
-            style={[styles.numberInput, { color: fullThemeColors.text, fontSize: 16 * fontSizeMultiplier }]}
-            keyboardType="numeric"
-            placeholder={field.placeholder || '0'}
-            placeholderTextColor={fullThemeColors.textSecondary}
-            value={String(data[field.id] || '')}
-            onChangeText={text => {
-              const num = parseFloat(text);
-              updateField(field.id, isNaN(num) ? text : num);
-            }}
-          />
-          <View style={[styles.tempUnitToggle, { backgroundColor: fullThemeColors.border, borderRadius: borderRadiusValue / 2 }]}>
-            {unitOptions.map((u: any) => (
-              <TouchableOpacity
-                key={u.id}
-                style={[styles.tempUnitBtn, selectedUnit === u.id && { backgroundColor: tracker.color, borderRadius: borderRadiusValue / 3 }]}
-                onPress={() => updateField(unitKey, u.id)}
-              >
-                <Text style={[styles.tempUnitText, { color: selectedUnit === u.id ? '#fff' : fullThemeColors.textSecondary }]}>
-                  {u.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        {errors[field.id] && <Text style={[styles.errorText, { color: fullThemeColors.error }]}>{errors[field.id]}</Text>}
-      </View>
-    );
-  }, [data, errors, fullThemeColors, tracker.color, borderRadiusValue, fontSizeMultiplier, updateField]);
     const animatedWrapper = (children: React.ReactNode, key?: string) => (
       <Animated.View key={key} entering={shouldReduceMotion ? undefined : FadeInUp.delay(50)}>
         {children}
@@ -1049,7 +1062,10 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
       case 'slider': return animatedWrapper(renderSliderField(field), field.id);
       case 'photo': return animatedWrapper(renderPhotoField(field), field.id);
       case 'temperature': return animatedWrapper(renderTemperatureField(field), field.id);
-      case 'quantity': return animatedWrapper(renderQuantityField(field), field.id);
+      case 'quantity': return animatedWrapper(
+        renderQuantityField(field, data, updateField, errors, fullThemeColors, tracker, borderRadiusValue, fontSizeMultiplier),
+        field.id
+      );
       default: return animatedWrapper(<SmartTextField {...commonProps} />, field.id);
     }
   }, [data, errors, tracker, fullThemeColors, borderRadiusValue, fontSizeMultiplier, shouldReduceMotion, getFieldSuggestion, getYesterdayValue, getFieldTrend, timeContext, updateField, renderMultiselectField, renderToggleField, renderRatingField, renderTextareaField, renderSliderField, renderPhotoField, renderTemperatureField]);
@@ -1515,8 +1531,6 @@ const styles = StyleSheet.create({
   },
   
   slider: { width: '100%', height: 40, marginTop: 8 },
-  
-
   
   tempRow: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, paddingHorizontal: 16 },
   tempInput: { flex: 1, paddingVertical: 14, fontWeight: '500' },

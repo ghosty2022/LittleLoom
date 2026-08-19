@@ -1,11 +1,11 @@
 // src/hooks/index.ts
-// Safe context hooks
+// Safe context hooks - FIXED: Added useSafeTracker
 export { 
   useSafeApp, 
   useSafeBaby, 
   useSafeAuth, 
   useSafeCustomization, 
-  useSafeTracker,
+  useSafeTracker,      // ← ADD THIS LINE
   useSafeActivity,
   useUnifiedTheme,
 } from './useSafeContexts';
