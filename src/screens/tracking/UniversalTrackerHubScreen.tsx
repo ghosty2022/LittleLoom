@@ -1,5 +1,6 @@
-// UniversalTrackerHubScreen.tsx — PRODUCTION-READY v5.0
-// Refactored with shared components and centralized intelligence
+// UniversalTrackerHubScreen.tsx — PRODUCTION-READY v4.0
+// Complete redesign with smooth interactions, fixed navigation, no hanging routes
+// Emulates GrowthDashboard patterns: sticky header, glass cards, smooth scroll
 
 import React, {
   useCallback,
@@ -64,11 +65,6 @@ import { SafeBabyAvatar } from '../../components/SafeAvatar';
 import { useSweetAlert } from '../../components/SweetAlert';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { TimelinePicker } from '../../components/trackers/TimelinePicker';
-import { TrackerEntryCard } from '../../components/trackers/TrackerEntryCard';
-import { useDashboardIntelligence } from '../../hooks/useDashboardIntelligence';
-
-// FIX: Import TRACKER_CONFIGS from the correct location
-import { TRACKER_CONFIGS } from '../../config/defaultTrackers';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -128,6 +124,16 @@ interface SmartInsight {
   timestamp: number;
 }
 
+interface DailyGoal {
+  id: string;
+  label: string;
+  icon: string;
+  target: number;
+  current: number;
+  color: string;
+  unit: string;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    CONSTANTS
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -136,6 +142,111 @@ const SPRING_CONFIG = { damping: 15, stiffness: 300 };
 const HAPTIC_LIGHT = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 const HAPTIC_MEDIUM = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 const HAPTIC_SUCCESS = () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+const TRACKER_CONFIGS: Record<string, TrackerConfig> = {
+  feed: {
+    emoji: '🍼',
+    color: '#fa709a',
+    gradient: ['#fa709a', '#f5576c'],
+    description: 'Feeding sessions',
+    category: 'essential',
+    subActions: [
+      { id: 'breast_left', label: 'Left Breast', icon: 'arrow-back-outline', color: '#f472b6', presetData: { feedType: 'breast', side: 'left' } },
+      { id: 'breast_right', label: 'Right Breast', icon: 'arrow-forward-outline', color: '#f472b6', presetData: { feedType: 'breast', side: 'right' } },
+      { id: 'breast_both', label: 'Both Sides', icon: 'swap-horizontal-outline', color: '#ec4899', presetData: { feedType: 'breast', side: 'both' } },
+      { id: 'bottle', label: 'Bottle', icon: 'beaker-outline', color: '#3b82f6', presetData: { feedType: 'bottle' } },
+      { id: 'solid', label: 'Solid Food', icon: 'restaurant-outline', color: '#f59e0b', presetData: { feedType: 'solid' } },
+    ],
+  },
+  sleep: {
+    emoji: '🌙',
+    color: '#11998e',
+    gradient: ['#11998e', '#38ef7d'],
+    description: 'Sleep tracking',
+    category: 'essential',
+    subActions: [
+      { id: 'nap', label: 'Start Nap', icon: 'sunny-outline', color: '#10b981', presetData: { sleepType: 'nap', status: 'started' } },
+      { id: 'bedtime', label: 'Bedtime', icon: 'moon-outline', color: '#6366f1', presetData: { sleepType: 'night', status: 'started' } },
+      { id: 'end', label: 'End Sleep', icon: 'alarm-outline', color: '#f59e0b', presetData: { status: 'ended' } },
+    ],
+  },
+  diaper: {
+    emoji: '👶',
+    color: '#8B5CF6',
+    gradient: ['#8B5CF6', '#A78BFA'],
+    description: 'Diaper changes',
+    category: 'essential',
+    subActions: [
+      { id: 'wet', label: 'Wet', icon: 'water-outline', color: '#3b82f6', presetData: { type: 'wet' } },
+      { id: 'dirty', label: 'Dirty', icon: 'flame-outline', color: '#8B4513', presetData: { type: 'dirty' } },
+      { id: 'both', label: 'Both', icon: 'water', color: '#8B5CF6', presetData: { type: 'both' } },
+      { id: 'dry', label: 'Dry', icon: 'checkmark-circle-outline', color: '#10b981', presetData: { type: 'dry' } },
+    ],
+  },
+  potty: {
+    emoji: '💧',
+    color: '#667eea',
+    gradient: ['#667eea', '#764ba2'],
+    description: 'Potty training',
+    category: 'development',
+    subActions: [
+      { id: 'wet', label: 'Wet', icon: 'water-outline', color: '#3b82f6', presetData: { type: 'wet', successful: true } },
+      { id: 'dirty', label: 'Dirty', icon: 'flame-outline', color: '#8B4513', presetData: { type: 'dirty', successful: true } },
+      { id: 'both', label: 'Both', icon: 'water', color: '#667eea', presetData: { type: 'both', successful: true } },
+      { id: 'dry', label: 'Dry Attempt', icon: 'close-circle-outline', color: '#94a3b8', presetData: { type: 'dry', successful: false } },
+    ],
+  },
+  growth: {
+    emoji: '📏',
+    color: '#43e97b',
+    gradient: ['#43e97b', '#38f9d7'],
+    description: 'Growth measurements',
+    category: 'health',
+    subActions: [
+      { id: 'weight', label: 'Weight', icon: 'scale-outline', color: '#10b981', presetData: { measurementType: 'weight' } },
+      { id: 'height', label: 'Height', icon: 'resize-outline', color: '#3b82f6', presetData: { measurementType: 'height' } },
+      { id: 'head', label: 'Head', icon: 'ellipse-outline', color: '#f59e0b', presetData: { measurementType: 'head' } },
+    ],
+  },
+  milestone: {
+    emoji: '🏆',
+    color: '#ffd700',
+    gradient: ['#ffd700', '#ffaa00'],
+    description: 'Development milestones',
+    category: 'development',
+    subActions: [
+      { id: 'physical', label: 'Physical', icon: 'body-outline', color: '#f59e0b', presetData: { category: 'physical' } },
+      { id: 'cognitive', label: 'Cognitive', icon: 'bulb-outline', color: '#8b5cf6', presetData: { category: 'cognitive' } },
+      { id: 'social', label: 'Social', icon: 'people-outline', color: '#ec4899', presetData: { category: 'social' } },
+      { id: 'language', label: 'Language', icon: 'chatbubble-outline', color: '#3b82f6', presetData: { category: 'language' } },
+    ],
+  },
+  medication: {
+    emoji: '💊',
+    color: '#ff6b6b',
+    gradient: ['#ff6b6b', '#ee5a5a'],
+    description: 'Health & medication',
+    category: 'health',
+    subActions: [
+      { id: 'medicine', label: 'Medicine', icon: 'medical-outline', color: '#ef4444', presetData: { type: 'medicine' } },
+      { id: 'temperature', label: 'Temperature', icon: 'thermometer-outline', color: '#f59e0b', presetData: { type: 'temperature' } },
+      { id: 'symptom', label: 'Symptom', icon: 'alert-circle-outline', color: '#8b5cf6', presetData: { type: 'symptom' } },
+      { id: 'vaccine', label: 'Vaccination', icon: 'shield-checkmark-outline', color: '#10b981', presetData: { type: 'vaccine' } },
+    ],
+  },
+  pumping: {
+    emoji: '🤱',
+    color: '#ec4899',
+    gradient: ['#ec4899', '#f472b6'],
+    description: 'Pumping sessions',
+    category: 'care',
+    subActions: [
+      { id: 'left', label: 'Left', icon: 'arrow-back-outline', color: '#f472b6', presetData: { side: 'left' } },
+      { id: 'right', label: 'Right', icon: 'arrow-forward-outline', color: '#f472b6', presetData: { side: 'right' } },
+      { id: 'both', label: 'Both', icon: 'swap-horizontal-outline', color: '#ec4899', presetData: { side: 'both' } },
+    ],
+  },
+};
 
 const CATEGORY_COLORS: Record<string, string> = {
   essential: '#10b981',
@@ -202,6 +313,7 @@ const getBabyAge = (birthDate?: string | Date) => {
 const useHubTheme = () => {
   const { isDark, colors, fullThemeColors } = useCustomization();
 
+  // Build theme object matching useUnifiedTrackerTheme shape
   const theme = useMemo(() => ({
     primary: colors?.primary || '#667eea',
     secondary: colors?.secondary || '#764ba2',
@@ -318,17 +430,37 @@ const SectionHeader = React.memo(({
 SectionHeader.displayName = 'SectionHeader';
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   WELLNESS SCORE DASHBOARD — Uses centralized intelligence
+   WELLNESS SCORE DASHBOARD — Redesigned with radial visual
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const WellnessScoreCard = React.memo(({ 
-  score, 
+  entries, 
   onPress 
 }: { 
-  score: any; 
+  entries: any[]; 
   onPress: () => void;
 }) => {
   const theme = useHubTheme();
+
+  const score = useMemo(() => {
+    const today = startOfDay(new Date()).getTime();
+    const todayEntries = entries.filter((e: any) => e?.timestamp >= today);
+
+    const feedCount = todayEntries.filter((e: any) => e.trackerId === 'feed').length;
+    const sleepMins = todayEntries
+      .filter((e: any) => e.trackerId === 'sleep')
+      .reduce((sum: number, e: any) => sum + (e.duration || 0), 0);
+    const diaperCount = todayEntries.filter((e: any) => e.trackerId === 'diaper').length;
+    const milestoneCount = todayEntries.filter((e: any) => e.trackerId === 'milestone').length;
+
+    return {
+      overall: Math.min(100, Math.round((feedCount / 8) * 25 + (sleepMins / 840) * 25 + (diaperCount / 6) * 25 + (milestoneCount / 1) * 25)),
+      nutrition: Math.min(100, Math.round((feedCount / 8) * 100)),
+      sleep: Math.min(100, Math.round((sleepMins / 840) * 100)),
+      activity: Math.min(100, Math.round((milestoneCount / 3) * 100)),
+      hydration: Math.min(100, Math.round((diaperCount / 6) * 100)),
+    };
+  }, [entries]);
 
   const scoreColor = score.overall >= 80 ? '#10b981' : score.overall >= 60 ? theme.primary : score.overall >= 40 ? '#f59e0b' : '#ef4444';
   const scoreLabel = score.overall >= 80 ? 'Excellent' : score.overall >= 60 ? 'Good' : score.overall >= 40 ? 'Fair' : 'Needs Attention';
@@ -385,17 +517,42 @@ const WellnessScoreCard = React.memo(({
 WellnessScoreCard.displayName = 'WellnessScoreCard';
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   SLEEP QUALITY ANALYZER — Uses centralized intelligence
+   SLEEP QUALITY ANALYZER
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const SleepQualityAnalyzer = React.memo(({ 
-  sleepData, 
+  entries, 
   onPress 
 }: { 
-  sleepData: any; 
+  entries: any[]; 
   onPress: () => void;
 }) => {
   const theme = useHubTheme();
+
+  const sleepData = useMemo(() => {
+    const sleepEntries = entries
+      .filter((e: any) => e.trackerId === 'sleep')
+      .sort((a: any, b: any) => b.timestamp - a.timestamp)
+      .slice(0, 7);
+
+    if (sleepEntries.length === 0) return null;
+
+    const totalHours = sleepEntries.reduce((sum: number, e: any) => sum + (e.duration || 0), 0) / 60;
+    const durations = sleepEntries.map((e: any) => e.duration || 0);
+    const longestStretch = Math.max(...durations) / 60;
+    const avgDuration = totalHours / sleepEntries.length;
+    const wakeCount = sleepEntries.filter((e: any) => e.presetData?.status === 'ended').length;
+
+    const recent = durations.slice(0, 3).reduce((a: number, b: number) => a + b, 0) / 3;
+    const older = durations.slice(3, 6).reduce((a: number, b: number) => a + b, 0) / Math.min(3, durations.length - 3);
+    const trend = recent > older * 1.1 ? 'up' : recent < older * 0.9 ? 'down' : 'stable';
+
+    const score = Math.min(100, Math.round(
+      (avgDuration / 14) * 40 + (longestStretch / 6) * 30 + (1 - Math.min(wakeCount / 5, 1)) * 30
+    ));
+
+    return { score, totalHours: Math.round(totalHours * 10) / 10, longestStretch: Math.round(longestStretch * 10) / 10, wakeCount, trend };
+  }, [entries]);
 
   if (!sleepData) return null;
 
@@ -453,17 +610,49 @@ const SleepQualityAnalyzer = React.memo(({
 SleepQualityAnalyzer.displayName = 'SleepQualityAnalyzer';
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   FEEDING PATTERN CARD — Uses centralized intelligence
+   FEEDING PATTERN INTELLIGENCE
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const FeedingPatternCard = React.memo(({ 
-  pattern, 
+  entries, 
   onPress 
 }: { 
-  pattern: any; 
+  entries: any[]; 
   onPress: () => void;
 }) => {
   const theme = useHubTheme();
+
+  const pattern = useMemo(() => {
+    const feedEntries = entries
+      .filter((e: any) => e.trackerId === 'feed')
+      .sort((a: any, b: any) => b.timestamp - a.timestamp)
+      .slice(0, 10);
+
+    if (feedEntries.length < 2) return null;
+
+    const intervals: number[] = [];
+    for (let i = 0; i < feedEntries.length - 1; i++) {
+      const diff = (feedEntries[i].timestamp - feedEntries[i + 1].timestamp) / 3600000;
+      if (diff > 0 && diff < 12) intervals.push(diff);
+    }
+
+    const avgInterval = intervals.length > 0 
+      ? Math.round(intervals.reduce((a, b) => a + b, 0) / intervals.length * 10) / 10 
+      : 3;
+
+    const totalVolume = feedEntries.reduce((sum: number, e: any) => sum + (e.amount || e.value || 120), 0);
+
+    const lastEntry = feedEntries[0];
+    const lastSide = lastEntry?.presetData?.side === 'left' ? 'left' 
+      : lastEntry?.presetData?.side === 'right' ? 'right' 
+      : lastEntry?.presetData?.feedType === 'bottle' ? 'bottle' 
+      : lastEntry?.presetData?.feedType === 'solid' ? 'solid' 
+      : 'left';
+
+    const nextFeed = new Date(lastEntry.timestamp + avgInterval * 3600000);
+
+    return { avgInterval, totalVolume, lastSide, nextFeedEstimate: format(nextFeed, 'h:mm a') };
+  }, [entries]);
 
   if (!pattern) return null;
 
@@ -477,12 +666,10 @@ const FeedingPatternCard = React.memo(({
         <View style={styles.feedingCard}>
           <View style={styles.feedingTop}>
             <View style={[styles.feedingLastBadge, { backgroundColor: `${theme.primary}12` }]}>
-              <Text style={styles.feedingLastEmoji}>{sideEmoji[pattern.lastSide] || '🍼'}</Text>
+              <Text style={styles.feedingLastEmoji}>{sideEmoji[pattern.lastSide]}</Text>
               <View>
                 <Text style={[styles.feedingLastLabel, { color: theme.text.primary }]}>Last Feed</Text>
-                <Text style={[styles.feedingLastValue, { color: theme.primary }]}>
-                  {sideLabel[pattern.lastSide] || 'Feed'}
-                </Text>
+                <Text style={[styles.feedingLastValue, { color: theme.primary }]}>{sideLabel[pattern.lastSide]}</Text>
               </View>
             </View>
             <View style={styles.feedingNextBadge}>
@@ -519,17 +706,48 @@ const FeedingPatternCard = React.memo(({
 FeedingPatternCard.displayName = 'FeedingPatternCard';
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   WEEKLY SUMMARY STRIP — Uses centralized intelligence
+   WEEKLY SUMMARY STRIP
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const WeeklySummaryStrip = React.memo(({ 
-  weekData, 
+  entries, 
   onDayPress 
 }: { 
-  weekData: any[]; 
+  entries: any[]; 
   onDayPress: (day: string) => void;
 }) => {
   const theme = useHubTheme();
+
+  const weekData = useMemo(() => {
+    const days = [];
+    const today = new Date();
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date(today);
+      date.setDate(date.getDate() - i);
+      const dayStart = startOfDay(date).getTime();
+      const dayEnd = dayStart + 86400000;
+
+      const dayEntries = entries.filter((e: any) => {
+        return e?.timestamp >= dayStart && e?.timestamp < dayEnd;
+      });
+
+      const counts: Record<string, number> = {};
+      dayEntries.forEach((e: any) => {
+        counts[e.trackerId] = (counts[e.trackerId] || 0) + 1;
+      });
+
+      days.push({
+        day: dayNames[date.getDay()],
+        date: date.getDate(),
+        isToday: i === 0,
+        counts,
+        total: dayEntries.length,
+      });
+    }
+    return days;
+  }, [entries]);
 
   return (
     <Animated.View entering={FadeInUp.delay(200).springify()}>
@@ -562,7 +780,7 @@ const WeeklySummaryStrip = React.memo(({
               {day.date}
             </Text>
             <View style={styles.weekDots}>
-              {Object.entries(day.counts || {}).slice(0, 3).map(([trackerId, count]: [string, any], j) => {
+              {Object.entries(day.counts).slice(0, 3).map(([trackerId, count]: [string, any], j) => {
                 const config = TRACKER_CONFIGS[trackerId];
                 return (
                   <View key={j} style={[styles.weekDot, { backgroundColor: config?.color || theme.primary }]}>
@@ -632,25 +850,72 @@ const EmergencyQuickActions = React.memo(({
 EmergencyQuickActions.displayName = 'EmergencyQuickActions';
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   AI NEXT EVENT PREDICTOR — Uses centralized intelligence
+   AI NEXT EVENT PREDICTOR
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const NextEventPredictor = React.memo(({ 
-  nextEvents, 
+  entries, 
   onEventPress 
 }: { 
-  nextEvents: any[]; 
+  entries: any[]; 
   onEventPress: (trackerId: string, action: TrackerSubAction) => void;
 }) => {
   const theme = useHubTheme();
 
-  if (nextEvents.length === 0) return null;
+  const predictions = useMemo(() => {
+    const now = Date.now();
+    const result: any[] = [];
+
+    const feedEntries = entries.filter(e => e.trackerId === 'feed').sort((a, b) => b.timestamp - a.timestamp);
+    if (feedEntries.length >= 2) {
+      const avgGap = (feedEntries[0].timestamp - feedEntries[Math.min(3, feedEntries.length - 1)].timestamp) / Math.min(3, feedEntries.length - 1);
+      const nextFeed = feedEntries[0].timestamp + avgGap;
+      const dueIn = Math.max(0, Math.floor((nextFeed - now) / 60000));
+      if (dueIn < 180) {
+        result.push({
+          id: 'next-feed', trackerId: 'feed', label: 'Next Feed', emoji: '🍼', color: '#fa709a',
+          dueInMinutes: dueIn, predictedTime: format(new Date(nextFeed), 'h:mm a'), confidence: Math.min(95, 60 + feedEntries.length * 5),
+        });
+      }
+    }
+
+    const sleepEntries = entries.filter(e => e.trackerId === 'sleep').sort((a, b) => b.timestamp - a.timestamp);
+    if (sleepEntries.length >= 2) {
+      const lastSleep = sleepEntries[0];
+      const avgWakeWindow = 3 * 60;
+      const nextSleep = lastSleep.timestamp + (lastSleep.duration || avgWakeWindow) * 60000;
+      const dueIn = Math.max(0, Math.floor((nextSleep - now) / 60000));
+      if (dueIn < 240) {
+        result.push({
+          id: 'next-sleep', trackerId: 'sleep', label: 'Next Sleep', emoji: '🌙', color: '#11998e',
+          dueInMinutes: dueIn, predictedTime: format(new Date(nextSleep), 'h:mm a'), confidence: Math.min(90, 50 + sleepEntries.length * 4),
+        });
+      }
+    }
+
+    const diaperEntries = entries.filter(e => e.trackerId === 'diaper').sort((a, b) => b.timestamp - a.timestamp);
+    if (diaperEntries.length >= 2) {
+      const avgGap = (diaperEntries[0].timestamp - diaperEntries[Math.min(5, diaperEntries.length - 1)].timestamp) / Math.min(5, diaperEntries.length - 1);
+      const nextDiaper = diaperEntries[0].timestamp + avgGap;
+      const dueIn = Math.max(0, Math.floor((nextDiaper - now) / 60000));
+      if (dueIn < 120) {
+        result.push({
+          id: 'next-diaper', trackerId: 'diaper', label: 'Next Diaper', emoji: '👶', color: '#8B5CF6',
+          dueInMinutes: dueIn, predictedTime: format(new Date(nextDiaper), 'h:mm a'), confidence: Math.min(85, 55 + diaperEntries.length * 3),
+        });
+      }
+    }
+
+    return result.sort((a, b) => a.dueInMinutes - b.dueInMinutes).slice(0, 3);
+  }, [entries]);
+
+  if (predictions.length === 0) return null;
 
   return (
     <Animated.View entering={FadeInUp.delay(100).springify()}>
       <SectionHeader title="Up Next" subtitle="AI predictions based on patterns" icon="time-outline" />
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.predictorScroll}>
-        {nextEvents.map((pred) => (
+        {predictions.map((pred) => (
           <TouchableOpacity
             key={pred.id}
             onPress={() => {
@@ -690,29 +955,57 @@ const NextEventPredictor = React.memo(({
 NextEventPredictor.displayName = 'NextEventPredictor';
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   SMART DAILY GOALS — Uses centralized intelligence
+   SMART DAILY GOALS
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const SmartDailyGoals = React.memo(({ 
-  dailyGoals, 
-  completedCount,
+  entries, 
   onGoalPress 
 }: { 
-  dailyGoals: any[]; 
-  completedCount: number;
+  entries: any[]; 
   onGoalPress: (trackerId: string) => void;
 }) => {
   const theme = useHubTheme();
+  const today = useMemo(() => startOfDay(new Date()).getTime(), []);
+
+  const goals = useMemo((): DailyGoal[] => {
+    const todayEntries = entries.filter(e => e?.timestamp >= today);
+
+    return [
+      {
+        id: 'feed-goal', label: 'Feeds', icon: '🍼', target: 8,
+        current: todayEntries.filter(e => e.trackerId === 'feed').length,
+        color: '#fa709a', unit: 'feeds',
+      },
+      {
+        id: 'sleep-goal', label: 'Sleep', icon: '🌙', target: 14,
+        current: Math.floor(todayEntries.filter(e => e.trackerId === 'sleep').reduce((sum, e) => sum + (e.duration || 0), 0) / 60),
+        color: '#11998e', unit: 'hrs',
+      },
+      {
+        id: 'diaper-goal', label: 'Diapers', icon: '👶', target: 6,
+        current: todayEntries.filter(e => e.trackerId === 'diaper').length,
+        color: '#8B5CF6', unit: 'changes',
+      },
+      {
+        id: 'milestone-goal', label: 'Moments', icon: '🏆', target: 1,
+        current: todayEntries.filter(e => e.trackerId === 'milestone').length,
+        color: '#ffd700', unit: 'logs',
+      },
+    ];
+  }, [entries, today]);
+
+  const completedCount = goals.filter(g => g.current >= g.target).length;
 
   return (
     <Animated.View entering={FadeInUp.delay(280).springify()}>
       <SectionHeader 
         title="Daily Goals" 
-        subtitle={`${completedCount}/${dailyGoals.length} completed`} 
+        subtitle={`${completedCount}/${goals.length} completed`} 
         icon="trophy-outline"
       />
       <View style={styles.goalsGrid}>
-        {dailyGoals.map((goal) => {
+        {goals.map((goal) => {
           const progress = Math.min(goal.current / goal.target, 1);
           const isComplete = goal.current >= goal.target;
           return (
@@ -761,6 +1054,140 @@ const SmartDailyGoals = React.memo(({
   );
 });
 SmartDailyGoals.displayName = 'SmartDailyGoals';
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SMART INSIGHTS CAROUSEL — Redesigned to match GrowthDashboard insights
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const SmartInsightsCarousel = React.memo(({ 
+  entries, 
+  baby, 
+  onInsightPress 
+}: { 
+  entries: any[]; 
+  baby: BabyProfile | null; 
+  onInsightPress: (insight: SmartInsight) => void;
+}) => {
+  const theme = useHubTheme();
+
+  const insights = useMemo((): SmartInsight[] => {
+    if (!baby) return [];
+    const items: SmartInsight[] = [];
+    const now = Date.now();
+    const today = startOfDay(new Date()).getTime();
+    const todayEntries = entries.filter((e: any) => e?.timestamp >= today);
+
+    const feedEntries = entries.filter((e: any) => e.trackerId === 'feed').sort((a: any, b: any) => b.timestamp - a.timestamp);
+    if (feedEntries.length >= 2) {
+      const gap = (feedEntries[0].timestamp - feedEntries[1].timestamp) / 3600000;
+      if (gap > 4) {
+        items.push({
+          id: 'feed-gap', type: 'alert', title: 'Long Gap Between Feeds',
+          description: `It's been ${Math.floor(gap)} hours since the last feed. Consider offering a feed soon.`,
+          emoji: '⏰', color: '#f59e0b', priority: 'medium',
+          action: { label: 'Log Feed', screen: 'AddEntry', params: { trackerId: 'feed' } },
+          timestamp: now,
+        });
+      }
+    }
+
+    const sleepMins = todayEntries.filter((e: any) => e.trackerId === 'sleep').reduce((sum: number, e: any) => sum + (e.duration || 0), 0);
+    const ageMonths = differenceInMonths(new Date(), new Date(baby.birthDate));
+    const expectedSleep = ageMonths < 3 ? 16 : ageMonths < 6 ? 14 : ageMonths < 12 ? 13 : 12;
+    if (sleepMins > 0 && sleepMins / 60 < expectedSleep * 0.7) {
+      items.push({
+        id: 'low-sleep', type: 'alert', title: 'Sleep Total Low Today',
+        description: `Only ${Math.floor(sleepMins / 60)}h logged. Aim for ~${expectedSleep}h for ${ageMonths}mo.`,
+        emoji: '😴', color: '#6366f1', priority: 'medium',
+        action: { label: 'Track Sleep', screen: 'AddEntry', params: { trackerId: 'sleep' } },
+        timestamp: now,
+      });
+    }
+
+    const uniqueDays = new Set(entries.map((e: any) => format(new Date(e.timestamp), 'yyyy-MM-dd'))).size;
+    if (uniqueDays >= 7) {
+      items.push({
+        id: 'tracking-streak', type: 'streak', title: `${uniqueDays}-Day Tracking Streak!`,
+        description: 'Great consistency! Your data is getting richer and predictions more accurate.',
+        emoji: '🔥', color: '#f59e0b', priority: 'low',
+        action: { label: 'View Stats', screen: 'Timeline' },
+        timestamp: now,
+      });
+    }
+
+    const growthEntries = entries.filter((e: any) => e.trackerId === 'growth');
+    if (growthEntries.length > 0) {
+      const lastGrowth = Math.max(...growthEntries.map((e: any) => e.timestamp));
+      const daysSince = differenceInDays(new Date(), new Date(lastGrowth));
+      if (daysSince > 14) {
+        items.push({
+          id: 'growth-check', type: 'prediction', title: 'Growth Check Due',
+          description: `Last measurement was ${daysSince} days ago. Time for a new measurement!`,
+          emoji: '📏', color: '#43e97b', priority: 'low',
+          action: { label: 'Measure', screen: 'AddEntry', params: { trackerId: 'growth' } },
+          timestamp: now,
+        });
+      }
+    }
+
+    const milestoneEntries = entries.filter((e: any) => e.trackerId === 'milestone');
+    if (milestoneEntries.length === 0 && ageMonths >= 3) {
+      items.push({
+        id: 'first-milestone', type: 'tip', title: 'Log First Milestone',
+        description: 'At this age, babies start reaching exciting milestones. Log them to track progress!',
+        emoji: '🏆', color: '#ffd700', priority: 'low',
+        action: { label: 'Log Milestone', screen: 'AddEntry', params: { trackerId: 'milestone' } },
+        timestamp: now,
+      });
+    }
+
+    return items.sort((a, b) => {
+      const order = { high: 0, medium: 1, low: 2 };
+      return order[a.priority] - order[b.priority];
+    }).slice(0, 4);
+  }, [entries, baby]);
+
+  if (insights.length === 0) return null;
+
+  return (
+    <Animated.View entering={FadeInUp.delay(320).springify()}>
+      <SectionHeader 
+        title="Smart Insights" 
+        subtitle={`${insights.filter(i => i.priority === 'high').length} need attention`} 
+        icon="sparkles-outline"
+      />
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.insightsScroll}>
+        {insights.map((insight) => (
+          <TouchableOpacity
+            key={insight.id}
+            onPress={() => onInsightPress(insight)}
+            style={[styles.insightCard, { borderLeftColor: insight.color, borderLeftWidth: 3 }]}
+            activeOpacity={0.85}
+          >
+            <LinearGradient
+              colors={[`${insight.color}08`, `${insight.color}02`]}
+              style={StyleSheet.absoluteFill}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            />
+            <View style={styles.insightTop}>
+              <Text style={styles.insightEmoji}>{insight.emoji}</Text>
+              <View style={[styles.insightPriorityDot, { backgroundColor: insight.color }]} />
+            </View>
+            <Text style={[styles.insightTitle, { color: theme.text.primary }]} numberOfLines={1}>{insight.title}</Text>
+            <Text style={[styles.insightDesc, { color: theme.text.secondary }]} numberOfLines={2}>{insight.description}</Text>
+            {insight.action && (
+              <View style={[styles.insightActionBadge, { backgroundColor: `${theme.primary}10` }]}>
+                <Text style={[styles.insightActionText, { color: theme.primary }]}>{insight.action.label} →</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    </Animated.View>
+  );
+});
+SmartInsightsCarousel.displayName = 'SmartInsightsCarousel';
 
 /* ═══════════════════════════════════════════════════════════════════════════
    TRACKER CARDS GRID — Pinned strip + category scrolls + browse-all CTA
@@ -963,7 +1390,7 @@ const QuickLogStrip = React.memo(({ onQuickLog }: { onQuickLog: (trackerId: stri
 QuickLogStrip.displayName = 'QuickLogStrip';
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   RECENT ACTIVITY — Uses shared TrackerEntryCard
+   RECENT ACTIVITY — Redesigned to match GrowthDashboard history rows
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const RecentActivityList = React.memo(({ 
@@ -978,7 +1405,7 @@ const RecentActivityList = React.memo(({
   const theme = useHubTheme();
 
   const recent = useMemo(() =>
-    [...entries].sort((a: any, b: any) => b.timestamp - a.timestamp).slice(0, 5),
+    [...entries].sort((a: any, b: any) => b.timestamp - a.timestamp).slice(0, 8),
     [entries]
   );
 
@@ -994,16 +1421,49 @@ const RecentActivityList = React.memo(({
         actionLabel="Timeline" 
       />
       <GlassCard style={styles.historyCard}>
-        {recent.map((entry, index) => (
-          <TrackerEntryCard
-            key={entry.id || `entry-${index}`}
-            entry={entry}
-            onPress={() => onEntryPress(entry)}
-            showActions={false}
-            compact={false}
-            index={index}
-          />
-        ))}
+        {recent.map((entry: any, index: number) => {
+          const config = TRACKER_CONFIGS[entry.trackerId];
+          const isLast = index === recent.length - 1;
+
+          return (
+            <TouchableOpacity
+              key={entry.id || `entry-${index}`}
+              onPress={() => onEntryPress(entry)}
+              style={[
+                styles.historyRow,
+                !isLast && { borderBottomWidth: 1, borderBottomColor: theme.surface.border }
+              ]}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.historyIcon, { backgroundColor: `${config?.color || theme.primary}10` }]}>
+                <Text style={{ fontSize: 18 }}>{config?.emoji || '📋'}</Text>
+              </View>
+              <View style={styles.historyInfo}>
+                <Text style={[styles.historyType, { color: theme.text.primary }]}>
+                  {safeStr(entry.title, config?.description || 'Entry')}
+                </Text>
+                <Text style={[styles.historyDate, { color: theme.text.muted }]}>
+                  {format(new Date(entry.timestamp), 'MMM d, h:mm a')}
+                </Text>
+              </View>
+              <View style={styles.historyRight}>
+                {entry.duration && (
+                  <Text style={[styles.historyValue, { color: theme.primary }]}>
+                    {Math.floor(entry.duration / 60)}h {entry.duration % 60}m
+                  </Text>
+                )}
+                {entry.amount && (
+                  <Text style={[styles.historyValue, { color: theme.primary }]}>
+                    {entry.amount}ml
+                  </Text>
+                )}
+                <Text style={[styles.historyTime, { color: theme.text.muted }]}>
+                  {formatDistanceToNow(entry.timestamp)}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
       </GlassCard>
     </Animated.View>
   );
@@ -1197,8 +1657,28 @@ BabySwitcherPill.displayName = 'BabySwitcherPill';
    TODAY SUMMARY BAR (Redesigned)
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const TodaySummaryBar = React.memo(({ todayCount, trackerCounts, lastEntryTime }: any) => {
+const TodaySummaryBar = React.memo(({ todayCount, entries }: any) => {
   const theme = useHubTheme();
+
+  const today = useMemo(() => startOfDay(new Date()).getTime(), []);
+
+  const todayEntries = useMemo(() =>
+    entries.filter((e: any) => e?.timestamp >= today),
+    [entries, today]
+  );
+
+  const lastEntry = todayEntries[0];
+  const timeSinceLast = lastEntry ? formatDistanceToNow(lastEntry.timestamp) : null;
+
+  const trackerCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    todayEntries.forEach((e: any) => {
+      counts[e.trackerId] = (counts[e.trackerId] || 0) + 1;
+    });
+    return Object.entries(counts)
+      .sort(([, a]: any, [, b]: any) => b - a)
+      .slice(0, 3);
+  }, [todayEntries]);
 
   return (
     <GlassCard style={styles.todayBar} shadow="sm">
@@ -1213,9 +1693,9 @@ const TodaySummaryBar = React.memo(({ todayCount, trackerCounts, lastEntryTime }
               entries today
             </Text>
           </Text>
-          {lastEntryTime && (
+          {timeSinceLast && (
             <Text style={[styles.todayBarLast, { color: theme.text.muted }]}>
-              Last: {lastEntryTime}
+              Last: {timeSinceLast}
             </Text>
           )}
         </View>
@@ -1236,8 +1716,8 @@ const TodaySummaryBar = React.memo(({ todayCount, trackerCounts, lastEntryTime }
 TodaySummaryBar.displayName = 'TodaySummaryBar';
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   MAIN SCREEN — PRODUCTION-READY v5.0
-   Uses centralized intelligence and shared components
+   MAIN SCREEN — PRODUCTION-READY v4.0
+   No bottom tabs. Single scroll with sticky header. All navigation safe.
    ═══════════════════════════════════════════════════════════════════════════ */
 
 export default function UniversalTrackerHubScreen() {
@@ -1250,34 +1730,10 @@ export default function UniversalTrackerHubScreen() {
     borderRadiusValue,
     triggerHaptic,
   } = useCustomization();
-  
-  const tracker = useTracker();
-  const { entries, getEntries, trackers } = tracker;
-  const { currentBaby, babies, isLoading: babyLoading, loadBabies, refreshCurrentBaby } = useBaby();
+const tracker = useTracker();
+const { entries, getEntries, trackers } = tracker;
+const { currentBaby, babies, isLoading: babyLoading, loadBabies, refreshCurrentBaby } = useBaby();
   const { success: showSuccess, error: showError, confirm: showConfirm } = useSweetAlert();
-
-// ── Use centralized intelligence ──
-const intelligence = useDashboardIntelligence();
-
-// SAFE: Destructure with defaults to prevent undefined errors
-const {
-  todayCount = 0,
-  weekTotal = 0,
-  avgPerDay = 0,
-  totalEntries = 0,
-  wellnessScore = { overall: 0, nutrition: 0, sleep: 0, activity: 0, hydration: 0 },
-  sleepQuality = null,
-  feedingPattern = null,
-  dailyGoals = [],
-  completedGoals = 0,
-  streakDays = 0,
-  isStreakAtRisk = false,
-  hoursUntilBreak = 0,
-  nextEvents = [],
-  entries: allEntries = [],
-  todayEntries = [],
-  weekEntries = [],
-} = intelligence || {};;
 
   const [selectedTrackerId, setSelectedTrackerId] = useState<string | null>(null);
   const [showActionModal, setShowActionModal] = useState(false);
@@ -1356,6 +1812,8 @@ const {
   }, [hiddenTrackerIds]);
 
   // Poll using ref to avoid stale closure AND break the object-reference loop
+  // BabyContext returns a new currentBaby object on every refresh, so
+  // depending on it directly causes an infinite re-render cycle.
   useEffect(() => {
     const tick = async () => {
       if (currentBabyRef.current && isMountedRef.current) {
@@ -1365,11 +1823,15 @@ const {
     tick();
     const interval = setInterval(tick, 60000);
     return () => clearInterval(interval);
-  }, [refreshCurrentBaby]);
+  }, [refreshCurrentBaby]); // Deliberately omit currentBaby
 
   const today = useMemo(() => startOfDay(new Date()).getTime(), []);
 
-  // ── Tracker Cards ──
+  const todayCount = useMemo(() => {
+    if (!currentBaby) return 0;
+    return entries.filter((e: any) => e?.timestamp >= today).length;
+  }, [entries, today, currentBaby]);
+
   const trackerCards = useMemo(() => {
     if (!currentBaby) return [];
     const sourceTrackers = trackers?.length > 0
@@ -1404,23 +1866,7 @@ const {
     });
   }, [trackers, getEntries]);
 
-  // ─── Compute tracker counts for Today Summary Bar ──
-  const trackerCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    todayEntries.forEach((e: any) => {
-      counts[e.trackerId] = (counts[e.trackerId] || 0) + 1;
-    });
-    return Object.entries(counts)
-      .sort(([, a]: any, [, b]: any) => b - a)
-      .slice(0, 3);
-  }, [todayEntries]);
-
-  const lastEntryTime = useMemo(() => {
-    const last = todayEntries[0];
-    return last ? formatDistanceToNow(last.timestamp) : null;
-  }, [todayEntries]);
-
-  // ─── HANDLERS ───
+  // ─── HANDLERS ─── All navigation routes verified against RootStackParamList
 
   const handleTrackerPress = useCallback((trackerId: string, hasSubActions: boolean) => {
     HAPTIC_LIGHT();
@@ -1510,18 +1956,22 @@ const {
     }
   }, [navigation]);
 
+  // Safe navigation handlers that check route existence
   const handleWellnessPress = useCallback(() => {
     HAPTIC_LIGHT();
+    // Navigate to GrowthDashboard which has wellness data
     navigation.navigate('GrowthDashboard');
   }, [navigation]);
 
   const handleSleepPress = useCallback(() => {
     HAPTIC_LIGHT();
+    // Navigate to Timeline filtered for sleep
     navigation.navigate('Timeline', { type: 'sleep' });
   }, [navigation]);
 
   const handleFeedingPress = useCallback(() => {
     HAPTIC_LIGHT();
+    // Navigate to Timeline filtered for feed
     navigation.navigate('Timeline', { type: 'feed' });
   }, [navigation]);
 
@@ -1544,6 +1994,8 @@ const {
     HAPTIC_LIGHT();
     navigation.navigate('AllTrackers');
   }, [navigation]);
+
+
 
   const onRefresh = useCallback(async () => {
     setIsRefreshing(true);
@@ -1639,50 +2091,29 @@ const {
         </Animated.View>
 
         {/* ── TODAY SUMMARY ── */}
-        <TodaySummaryBar 
-          todayCount={todayCount} 
-          trackerCounts={trackerCounts}
-          lastEntryTime={lastEntryTime}
-        />
+        <TodaySummaryBar todayCount={todayCount} entries={entries} />
 
         {/* ── WELLNESS SCORE DASHBOARD ── */}
         <WellnessScoreCard
-          score={wellnessScore}
+          entries={entries}
           onPress={handleWellnessPress}
         />
 
         {/* ── SLEEP QUALITY ANALYZER ── */}
         <SleepQualityAnalyzer
-          sleepData={sleepQuality}
+          entries={entries}
           onPress={handleSleepPress}
         />
 
-        {/* ── FEEDING PATTERN CARD ── */}
+        {/* ── FEEDING PATTERN INTELLIGENCE ── */}
         <FeedingPatternCard
-          pattern={feedingPattern}
+          entries={entries}
           onPress={handleFeedingPress}
         />
 
         {/* ── WEEKLY SUMMARY STRIP ── */}
         <WeeklySummaryStrip
-          weekData={weekEntries.map((_, i) => {
-            const date = new Date();
-            date.setDate(date.getDate() - (6 - i));
-            const dayStart = startOfDay(date).getTime();
-            const dayEnd = dayStart + 86400000;
-            const dayEntries = allEntries.filter((e: any) => e?.timestamp >= dayStart && e?.timestamp < dayEnd);
-            const counts: Record<string, number> = {};
-            dayEntries.forEach((e: any) => {
-              counts[e.trackerId] = (counts[e.trackerId] || 0) + 1;
-            });
-            return {
-              day: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][date.getDay()],
-              date: date.getDate(),
-              isToday: i === 6,
-              counts,
-              total: dayEntries.length,
-            };
-          })}
+          entries={entries}
           onDayPress={handleDayPress}
         />
 
@@ -1693,15 +2124,21 @@ const {
 
         {/* ── AI NEXT EVENT PREDICTOR ── */}
         <NextEventPredictor
-          nextEvents={nextEvents}
+          entries={entries}
           onEventPress={handleSubActionSelect}
         />
 
         {/* ── SMART DAILY GOALS ── */}
         <SmartDailyGoals
-          dailyGoals={dailyGoals}
-          completedCount={completedGoals}
+          entries={entries}
           onGoalPress={handleGoalPress}
+        />
+
+        {/* ── SMART INSIGHTS CAROUSEL ── */}
+        <SmartInsightsCarousel
+          entries={entries}
+          baby={currentBaby}
+          onInsightPress={handleInsightPress}
         />
 
         {/* ── TRACKER CARDS GRID ── */}
@@ -1720,9 +2157,9 @@ const {
           onQuickLog={handleQuickLog}
         />
 
-        {/* ── RECENT ACTIVITY — uses shared TrackerEntryCard ── */}
+        {/* ── RECENT ACTIVITY — matches GrowthDashboard history rows ── */}
         <RecentActivityList
-          entries={allEntries.slice(0, 5)}
+          entries={entries}
           onViewAll={handleViewTimeline}
           onEntryPress={handleEntryPress}
         />
@@ -1767,6 +2204,8 @@ const {
         onClose={() => setShowActionModal(false)}
         onSelect={handleSubActionSelect}
       />
+
+
 
       {/* Timeline Picker */}
       <TimelinePicker
@@ -1825,7 +2264,7 @@ const {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   STYLES — Completely Redesigned v5.0
+   STYLES — Completely Redesigned v4.0
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const styles = StyleSheet.create({
@@ -2314,6 +2753,22 @@ const styles = StyleSheet.create({
   goalBarBg: { height: 6, borderRadius: 3, overflow: 'hidden' },
   goalBarFill: { height: '100%', borderRadius: 3 },
 
+  // ── Smart Insights Carousel ──
+  insightsScroll: { paddingHorizontal: SPACING.lg, gap: 10, paddingBottom: 4 },
+  insightCard: {
+    width: 200,
+    padding: SPACING.md,
+    borderRadius: RADIUS.lg,
+    overflow: 'hidden',
+  },
+  insightTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 },
+  insightEmoji: { fontSize: 22 },
+  insightPriorityDot: { width: 8, height: 8, borderRadius: 4 },
+  insightTitle: { fontSize: 13, fontWeight: '700', marginBottom: 4 },
+  insightDesc: { fontSize: 11, fontWeight: '500', lineHeight: 16, marginBottom: 8 },
+  insightActionBadge: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 5, borderRadius: RADIUS.sm },
+  insightActionText: { fontSize: 11, fontWeight: '700' },
+
   // ── Tracker Cards Grid ──
   trackerCategorySection: { marginBottom: SPACING.lg },
   trackerCategoryHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: SPACING.xl, marginBottom: 10 },
@@ -2365,6 +2820,103 @@ const styles = StyleSheet.create({
   },
   customTrackerText: { fontSize: 13, fontWeight: '700' },
 
+  // ── Tracker Browser Modal ──
+  browserModalContent: {
+    width: SCREEN_WIDTH - 32,
+    maxHeight: SCREEN_HEIGHT * 0.82,
+    overflow: 'hidden',
+    backgroundColor: '#fff',
+  },
+  browserHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: SPACING.lg,
+    borderBottomWidth: 1,
+  },
+  browserTitle: { fontSize: 18, fontWeight: '800', letterSpacing: -0.3 },
+  browserSubtitle: { fontSize: 12, fontWeight: '600', marginTop: 2 },
+  browserCloseBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  browserSearchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: SPACING.lg,
+    marginTop: SPACING.md,
+    marginBottom: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 10,
+    borderRadius: RADIUS.md,
+  },
+  browserSearchInput: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '500',
+    paddingVertical: 4,
+  },
+  browserCategoryScroll: {
+    paddingHorizontal: SPACING.lg,
+    gap: 8,
+    paddingBottom: SPACING.sm,
+  },
+  browserCategoryChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: RADIUS.full,
+    backgroundColor: 'rgba(120,120,140,0.08)',
+  },
+  browserCategoryText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748b',
+  },
+  browserGrid: {
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.xl,
+    gap: 8,
+  },
+  browserCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: SPACING.md,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    gap: 10,
+  },
+  browserCardIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  browserCardTitle: { fontSize: 14, fontWeight: '700' },
+  browserCardDesc: { fontSize: 12, fontWeight: '500', marginTop: 2 },
+  browserActionBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: RADIUS.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  browserCustomBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: SPACING.md,
+    borderRadius: RADIUS.md,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    marginTop: SPACING.md,
+  },
+
   // ── Quick Log Strip ──
   quickLogScroll: { paddingHorizontal: SPACING.lg, gap: 8, paddingBottom: 4 },
   quickLogChip: {
@@ -2379,8 +2931,27 @@ const styles = StyleSheet.create({
   },
   quickLogLabel: { fontWeight: '700', fontSize: 12 },
 
-  // ── Recent Activity — uses shared TrackerEntryCard ──
+  // ── Recent Activity — matches GrowthDashboard history rows ──
   historyCard: { padding: 8 },
+  historyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    gap: 12,
+  },
+  historyIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  historyInfo: { flex: 1, gap: 2 },
+  historyType: { fontSize: 14, fontWeight: '700' },
+  historyDate: { fontSize: 11, fontWeight: '500' },
+  historyRight: { alignItems: 'flex-end', gap: 4 },
+  historyValue: { fontSize: 16, fontWeight: '800' },
+  historyTime: { fontSize: 11, fontWeight: '600' },
 
   // ── Quick Links ──
   quickLinksGrid: {

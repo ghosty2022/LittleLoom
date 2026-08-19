@@ -79,7 +79,7 @@ interface AIAnalysis {
 
 interface SmartPhotoFieldProps {
   value?: string;
-  onChange: (uri: string | null, meta?: PhotoMeta, analysis?: AIAnalysis) => void;
+  onChange?: (uri: string | null, meta?: PhotoMeta, analysis?: AIAnalysis) => void;
   label?: string;
   trackerContext?: string;
   allowAnnotation?: boolean;
@@ -128,8 +128,8 @@ const sweetAlert = {
     if (!title || !message || !onOk) return;
     try {
       Alert.alert(
-        title, 
-        message, 
+        title,
+        message,
         [
           { text: 'Cancel', style: 'cancel' },
           { text: 'OK', onPress: onOk },
@@ -234,6 +234,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
   const [currentPoints, setCurrentPoints] = useState<{ x: number; y: number; color: string }[]>([]);
 
   const hasInitializedPhotos = useRef(false);
+  const prevPhotosRef = useRef<PhotoMeta[]>([]);
 
   // ── Init photos (edit mode) ───────────────────────────────────────────────
   useEffect(() => {
@@ -257,9 +258,32 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     }
   }, [initialPhotoUris]);
 
+  // ── Notify parent of photo changes - FIXED: only when photos actually change ──
   useEffect(() => {
     try {
-      onPhotosChange?.(photos);
+      // Check if photos actually changed using deep comparison
+      const currentPhotos = photos;
+      const prevPhotos = prevPhotosRef.current;
+      
+      if (currentPhotos.length !== prevPhotos.length) {
+        prevPhotosRef.current = currentPhotos;
+        onPhotosChange?.(currentPhotos);
+        return;
+      }
+      
+      // Check if any photo changed
+      let changed = false;
+      for (let i = 0; i < currentPhotos.length; i++) {
+        if (currentPhotos[i]?.uri !== prevPhotos[i]?.uri) {
+          changed = true;
+          break;
+        }
+      }
+      
+      if (changed) {
+        prevPhotosRef.current = currentPhotos;
+        onPhotosChange?.(currentPhotos);
+      }
     } catch (e) {
       console.error('onPhotosChange error:', e);
     }
@@ -312,7 +336,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
 
         setPhotos((prev) => [...prev, meta]);
         setCurrentUri(uri);
-        onChange(uri, meta);
+        if (onChange) onChange(uri, meta);
 
         if (!autoAnalyze) return;
 
@@ -321,7 +345,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
           const result = await analyzePhoto(uri, trackerContext);
           setAnalysis(result);
           setAnalysisHistory((prev) => ({ ...prev, [uri]: result }));
-          onChange(uri, meta, result);
+          if (onChange) onChange(uri, meta, result);
         } catch {
           // silent fail
         } finally {
@@ -396,7 +420,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
               const next = prev.filter((_, i) => i !== idx);
               if (currentUri && photoToRemove && currentUri === photoToRemove.uri) {
                 setCurrentUri(next[0]?.uri || null);
-                onChange(next[0]?.uri || null);
+                if (onChange) onChange(next[0]?.uri || null);
               }
               return next;
             });
