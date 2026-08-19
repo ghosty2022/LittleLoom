@@ -41,7 +41,6 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import { supabase } from '../../lib/supabase';
-import { useSupabase } from '../../hooks/useSupabase';
 import { useCustomization } from '../../hooks/useCustomization';
 import { LittleLoomAvatar, SkinTonePicker, BABY_EMOJIS, ILLUSTRATION_AVATARS, GRADIENT_PRESETS, GENDER_CONFIG, SKIN_TONES, type BabyGender } from '../../components/avatars/LittleLoomAvatars';
 
@@ -113,7 +112,23 @@ export const AvatarPickerScreen: React.FC<AvatarPickerScreenProps> = ({
   babyId,
 }) => {
   const { sweetAlert } = useSweetAlert();
-  const { user, isConnected } = useSupabase();
+  const [user, setUser] = useState<any>(null);
+  const [isConnected, setIsConnected] = useState(false);
+  
+  // Check Supabase connection and get user
+  useEffect(() => {
+    const checkSupabase = async () => {
+      try {
+        const { error } = await supabase.from('tracker_entries').select('id').limit(1);
+        setIsConnected(!error);
+        const { data: { user } } = await supabase.auth.getUser();
+        setUser(user);
+      } catch {
+        setIsConnected(false);
+      }
+    };
+    checkSupabase();
+  }, []);
   const { themeColors } = useCustomization();
   const insets = useSafeAreaInsets();
 

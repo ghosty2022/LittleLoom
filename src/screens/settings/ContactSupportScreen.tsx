@@ -1,5 +1,5 @@
 // screens/settings/ContactSupportScreen.tsx
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { 
   Alert, 
   KeyboardAvoidingView, 
@@ -21,7 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { useCustomization } from '../../hooks/useCustomization';
-import { useSupabase } from '../../hooks/useSupabase';
+import { supabase } from '../../lib/supabase';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { UniversalSpinner } from '../../components/UniversalSpinner';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -205,7 +205,23 @@ const SectionHeader: React.FC<{
 
 export default function ContactSupportScreen({ navigation }: Props) {
   const { sweetAlert } = useSweetAlert();
-  const { user, isConnected } = useSupabase();
+  const [user, setUser] = useState<any>(null);
+  const [isConnected, setIsConnected] = useState(false);
+  
+  // Check Supabase connection and get user
+  useEffect(() => {
+    const checkSupabase = async () => {
+      try {
+        const { error } = await supabase.from('tracker_entries').select('id').limit(1);
+        setIsConnected(!error);
+        const { data: { user } } = await supabase.auth.getUser();
+        setUser(user);
+      } catch {
+        setIsConnected(false);
+      }
+    };
+    checkSupabase();
+  }, []);
   const insets = useSafeAreaInsets();
 
   const {
@@ -220,7 +236,14 @@ export default function ContactSupportScreen({ navigation }: Props) {
   const [category, setCategory] = useState('bug');
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
-  const [email, setEmail] = useState(user?.email || '');
+  const [email, setEmail] = useState('');
+  
+  // Update email when user changes
+  useEffect(() => {
+    if (user?.email) {
+      setEmail(user.email);
+    }
+  }, [user]);
   const [isSending, setIsSending] = useState(false);
   const [sendProgress, setSendProgress] = useState(0);
 

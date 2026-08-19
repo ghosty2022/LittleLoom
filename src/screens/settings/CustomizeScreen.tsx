@@ -43,7 +43,7 @@ import type { CustomizationSettings, AppearanceMode } from '../../hooks/useCusto
 
 import { useSweetAlert } from '../../components/SweetAlert';
 import { SafeAvatar } from '../../components/SafeAvatar';
-import { useSupabase } from '../../hooks/useSupabase';
+// useSupabase removed - using local state instead
 import { UniversalSpinner } from '../../components/UniversalSpinner';
 
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -327,7 +327,23 @@ export default function CustomizeScreen({ navigation }: Props) {
   const systemColorScheme = useColorScheme();
   const { setAppearance } = useTheme();
   const { sweetAlert } = useSweetAlert();
-  const { user, isConnected } = useSupabase();
+  const [user, setUser] = useState<any>(null);
+  const [isConnected, setIsConnected] = useState(false);
+  
+  // Check Supabase connection and get user
+  useEffect(() => {
+    const checkSupabase = async () => {
+      try {
+        const { error } = await supabase.from('tracker_entries').select('id').limit(1);
+        setIsConnected(!error);
+        const { data: { user } } = await supabase.auth.getUser();
+        setUser(user);
+      } catch {
+        setIsConnected(false);
+      }
+    };
+    checkSupabase();
+  }, []);
   const {
     settings,
     isLoaded,

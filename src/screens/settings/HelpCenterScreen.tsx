@@ -1,5 +1,5 @@
 // screens/settings/HelpCenterScreen.tsx
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { 
   Dimensions, 
   StatusBar, 
@@ -20,7 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { useCustomization } from '../../hooks/useCustomization';
-import { useSupabase } from '../../hooks/useSupabase';
+import { supabase } from '../../lib/supabase';
 import { useSweetAlert } from '../../components/SweetAlert';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
@@ -173,8 +173,24 @@ const SectionHeader: React.FC<{
 
 export default function HelpCenterScreen({ navigation }: Props) {
   const { themeColors, darkMode, reduceMotion } = useCustomization();
-  const { isConnected, user } = useSupabase();
   const { sweetAlert } = useSweetAlert();
+  const [isConnected, setIsConnected] = useState(false);
+  const [user, setUser] = useState<any>(null);
+  
+  // Check Supabase connection and get user
+  useEffect(() => {
+    const checkSupabase = async () => {
+      try {
+        const { error } = await supabase.from('tracker_entries').select('id').limit(1);
+        setIsConnected(!error);
+        const { data: { user } } = await supabase.auth.getUser();
+        setUser(user);
+      } catch {
+        setIsConnected(false);
+      }
+    };
+    checkSupabase();
+  }, []);
   const insets = useSafeAreaInsets();
 
   const isDark = darkMode;
