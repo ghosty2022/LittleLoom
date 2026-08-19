@@ -50,7 +50,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 
 import { useCustomization } from '@/hooks/useCustomization';
 import { useUnifiedTrackerTheme } from '@/hooks/useUnifiedTrackerTheme';
-import { useTracker } from '@/context/TrackerContext';
+import { useTracker } from '../../hooks';
 import { useBaby } from '@/context/BabyContext';
 import { SafeAvatar } from '@/components/SafeAvatar';
 import { useSweetAlert } from '@/components/SweetAlert';

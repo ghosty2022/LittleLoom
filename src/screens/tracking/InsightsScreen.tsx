@@ -20,7 +20,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useBaby } from '../../context/BabyContext';
 // REMOVED: useActivity — useTracker is the single source of truth across all screens
 // import { useActivity } from '../../context/ActivityContext';
-import { useTracker } from '../../hooks/useTrackerContext';
+import { useTracker } from '../../hooks';
 import { useGrowthIntelligence } from '../../hooks/useGrowthIntelligence';
 import { useTimelineCorrelations } from '../../hooks/useTimelineCorrelations';
 import { useTrackerAchievements } from '../../hooks/useTrackerAchievements';

@@ -1,14 +1,19 @@
 // src/hooks/index.ts
-// Safe context hooks - FIXED: Added useSafeTracker
+// Safe context hooks - COMPLETE FIX with explicit exports
+
+// First, export everything from useSafeContexts
 export { 
   useSafeApp, 
   useSafeBaby, 
   useSafeAuth, 
   useSafeCustomization, 
-  useSafeTracker,      // ← ADD THIS LINE
+  useSafeTracker,
   useSafeActivity,
   useUnifiedTheme,
 } from './useSafeContexts';
+
+// Also export as default from useSafeContexts
+export { default as useSafeContexts } from './useSafeContexts';
 
 // Main hooks
 export { useActivity } from './useActivity';
@@ -43,3 +48,6 @@ export { useTimelineCorrelations } from './useTimelineCorrelations';
 export { useTrackerAchievements } from './useTrackerAchievements';
 export { useTrackerProgressive } from './useTrackerProgressive';
 export { useWHOGrowthCalculator } from './useWHOGrowthCalculator';
+
+// Re-export all from useSafeContexts as a namespace
+export * as SafeContexts from './useSafeContexts';

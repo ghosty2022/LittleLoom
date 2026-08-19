@@ -60,7 +60,7 @@ import { SafeAvatar } from '@/components/SafeAvatar';
 import { useAuth } from '@/context/AuthContext';
 import { useCustomization } from '@/hooks/useCustomization';
 import { useBaby } from '@/context/BabyContext';
-import { useTracker } from '@/context/TrackerContext';
+import { useTracker } from '../../hooks';
 import { useSweetAlert } from '@/components/SweetAlert';
 import { useGrowthIntelligence } from '@/hooks/useGrowthIntelligence';
 import { useTimelineCorrelations } from '@/hooks/useTimelineCorrelations';

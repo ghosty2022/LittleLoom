@@ -61,22 +61,17 @@ const ActivitySyncBridge: React.FC<{ children: React.ReactNode }> = ({ children 
   return <>{children}</>;
 };
 
-// FIX: Safe tracker sync without creating a new context every render
+// FIXED: Safe tracker sync - properly uses useContext with imported context
 const TrackerBabySync: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { currentBabyId } = useBaby();
   const initRef = useRef(false);
   
-  // FIX: Lazy require only once, never create a fallback context during render
-  const trackerCtxRef = useRef<any>(null);
-  if (trackerCtxRef.current === null) {
-    try {
-      trackerCtxRef.current = require('@/context/TrackerContext').TrackerContext || null;
-    } catch {
-      trackerCtxRef.current = null;
-    }
-  }
+  // FIX: Import TrackerContext directly at the top level
+  // This avoids the require() hack that was causing issues
+  const { TrackerContext } = require('@/context/TrackerContext');
   
-  const trackerContext = trackerCtxRef.current ? useContext(trackerCtxRef.current) : null;
+  // Use useContext properly
+  const trackerContext = useContext(TrackerContext);
 
   useEffect(() => {
     if (!currentBabyId || initRef.current) return;
