@@ -1256,26 +1256,28 @@ export default function UniversalTrackerHubScreen() {
   const { currentBaby, babies, isLoading: babyLoading, loadBabies, refreshCurrentBaby } = useBaby();
   const { success: showSuccess, error: showError, confirm: showConfirm } = useSweetAlert();
 
-  // ── Use centralized intelligence ──
-  const intelligence = useDashboardIntelligence();
-  const {
-    todayCount,
-    weekTotal,
-    avgPerDay,
-    totalEntries,
-    wellnessScore,
-    sleepQuality,
-    feedingPattern,
-    dailyGoals,
-    completedGoals,
-    streakDays,
-    isStreakAtRisk,
-    hoursUntilBreak,
-    nextEvents,
-    entries: allEntries,
-    todayEntries,
-    weekEntries,
-  } = intelligence;
+// ── Use centralized intelligence ──
+const intelligence = useDashboardIntelligence();
+
+// SAFE: Destructure with defaults to prevent undefined errors
+const {
+  todayCount = 0,
+  weekTotal = 0,
+  avgPerDay = 0,
+  totalEntries = 0,
+  wellnessScore = { overall: 0, nutrition: 0, sleep: 0, activity: 0, hydration: 0 },
+  sleepQuality = null,
+  feedingPattern = null,
+  dailyGoals = [],
+  completedGoals = 0,
+  streakDays = 0,
+  isStreakAtRisk = false,
+  hoursUntilBreak = 0,
+  nextEvents = [],
+  entries: allEntries = [],
+  todayEntries = [],
+  weekEntries = [],
+} = intelligence || {};;
 
   const [selectedTrackerId, setSelectedTrackerId] = useState<string | null>(null);
   const [showActionModal, setShowActionModal] = useState(false);
