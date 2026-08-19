@@ -44,7 +44,7 @@ import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import type { RootStackParamList } from '../../types/navigation';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useUnifiedTrackerTheme } from '../../hooks/useUnifiedTrackerTheme';
-import { useTracker } from '../../context/TrackerContext';
+import { useTracker } from '../../hooks/useTrackerContext';
 import { useBaby } from '../../context/BabyContext';
 import { UnifiedTrackerConfig } from '../../types/trackers';
 import { SafeAvatar } from '../../components/SafeAvatar';

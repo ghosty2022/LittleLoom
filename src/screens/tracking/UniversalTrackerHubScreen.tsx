@@ -58,7 +58,7 @@ import {
 } from 'date-fns';
 
 import { useCustomization } from '../../hooks/useCustomization';
-import { useTracker } from '../../context/TrackerContext';
+import { useTracker } from '../../hooks';  // SINGLE SOURCE
 import { useBaby, type BabyProfile } from '../../context/BabyContext';
 import { useTrackerAchievements } from '../../hooks/useTrackerAchievements';
 import { SafeBabyAvatar } from '../../components/SafeAvatar';
@@ -1730,9 +1730,9 @@ export default function UniversalTrackerHubScreen() {
     borderRadiusValue,
     triggerHaptic,
   } = useCustomization();
-  const { entries, getEntries, trackers } = useTracker();
-  const { stats, streak, growthScore } = useTrackerAchievements();
-  const { currentBaby, babies, isLoading: babyLoading, loadBabies, refreshCurrentBaby } = useBaby();
+const tracker = useTracker();
+const { entries, getEntries, trackers } = tracker;
+const { currentBaby, babies, isLoading: babyLoading, loadBabies, refreshCurrentBaby } = useBaby();
   const { success: showSuccess, error: showError, confirm: showConfirm } = useSweetAlert();
 
   const [selectedTrackerId, setSelectedTrackerId] = useState<string | null>(null);

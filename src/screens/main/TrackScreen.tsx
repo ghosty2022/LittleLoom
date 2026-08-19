@@ -20,7 +20,7 @@ import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useCustomization } from '../../hooks/useCustomization';
-import { useTracker } from '../../context/TrackerContext';
+import { useTracker } from '../../hooks/useTrackerContext';
 import { useBaby } from '../../context/BabyContext';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');

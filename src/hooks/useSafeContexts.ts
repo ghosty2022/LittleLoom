@@ -308,7 +308,9 @@ export function useSafeTracker() {
   }
 }
 
-// FIX: Separate fallback function to avoid re-creation
+// src/hooks/useSafeContexts.ts
+// ── FIXED FALLBACK ──────────────────────────────────────────────────────
+
 function getFallbackTrackerContext() {
   return {
     isLoading: false,
@@ -359,7 +361,7 @@ function getFallbackTrackerContext() {
     getTemplates: async () => [],
     linkEntries: async () => {},
     getLinkedEntries: () => [],
-    syncToLegacyActivity: () => ({}) as any,
+    syncToLegacyActivity: () => ({} as any),
     getLegacyActivities: () => [],
     syncFromBabyContext: async () => {},
     refreshTrackers: async () => {},

@@ -10,7 +10,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
 
-import { useTracker } from '../../context/TrackerContext';
+import { useTracker } from '../../hooks/useTrackerContext';
 
 const { width } = Dimensions.get('window');
 
