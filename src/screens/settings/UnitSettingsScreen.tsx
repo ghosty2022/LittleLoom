@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+// screens/settings/UnitSettingsScreen.tsx
+import React, { useState, useCallback, useEffect } from 'react';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -7,19 +8,21 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useCustomization } from '../../hooks/useCustomization';
+import { useSupabase } from '../../hooks/useSupabase';
+import { useSweetAlert } from '../../components/SweetAlert';
+import { UniversalSpinner } from '../../components/UniversalSpinner';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
-
 
 type Props = NativeStackScreenProps<RootStackParamList, 'UnitSettings'>;
 
 type UnitSystem = 'metric' | 'imperial';
 
 interface UnitConfig {
-  weight: { metric: 'kg'; imperial: 'lb' };
-  height: { metric: 'cm'; imperial: 'in' };
-  temperature: { metric: '°C'; imperial: '°F' };
-  volume: { metric: 'ml'; imperial: 'oz' };
+  weight: { metric: string; imperial: string };
+  height: { metric: string; imperial: string };
+  temperature: { metric: string; imperial: string };
+  volume: { metric: string; imperial: string };
 }
 
 const UNIT_CONFIG: UnitConfig = {
@@ -46,13 +49,40 @@ const SectionHeader: React.FC<{
 );
 
 export default function UnitSettingsScreen({ navigation }: Props) {
-  const { themeColors, darkMode, reduceMotion } = useCustomization();
+  const { themeColors, darkMode, reduceMotion, updateSettings } = useCustomization();
+  const { user, isConnected, supabase } = useSupabase();
+  const { sweetAlert } = useSweetAlert();
   const insets = useSafeAreaInsets();
 
   const isDark = darkMode;
   const primary = themeColors?.primary || '#667eea';
 
   const [system, setSystem] = useState<UnitSystem>('metric');
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Load saved unit preference
+  useEffect(() => {
+    const loadUnits = async () => {
+      if (isConnected && user) {
+        try {
+          const { data, error } = await supabase
+            .from('user_preferences')
+            .select('units')
+            .eq('user_id', user.id)
+            .single();
+
+          if (data?.units) {
+            setSystem(data.units as UnitSystem);
+          }
+        } catch (e) {
+          console.warn('Failed to load units:', e);
+        }
+      }
+      setIsLoading(false);
+    };
+    loadUnits();
+  }, [isConnected, user, supabase]);
 
   const handleHaptic = () => {
     if (!reduceMotion) {
@@ -60,11 +90,48 @@ export default function UnitSettingsScreen({ navigation }: Props) {
     }
   };
 
-  const handleChange = (newSystem: UnitSystem) => {
-    if (newSystem === system) return;
+  const handleChange = useCallback(async (newSystem: UnitSystem) => {
+    if (newSystem === system || isSaving) return;
     handleHaptic();
+
+    setIsSaving(true);
     setSystem(newSystem);
-  };
+
+    try {
+      // Save locally
+      await updateSettings({ units: newSystem as any });
+
+      // Save to Supabase if connected
+      if (isConnected && user) {
+        const { error } = await supabase
+          .from('user_preferences')
+          .upsert({
+            user_id: user.id,
+            units: newSystem,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'user_id' });
+
+        if (error) throw error;
+      }
+
+      sweetAlert({
+        title: 'Units Updated',
+        message: `Measurement system set to ${newSystem === 'metric' ? 'Metric' : 'Imperial'}.`,
+        type: 'success',
+        confirmText: 'OK',
+      });
+    } catch (error) {
+      console.error('Failed to save units:', error);
+      sweetAlert({
+        title: 'Error',
+        message: 'Failed to save unit preference. Please try again.',
+        type: 'error',
+        confirmText: 'OK',
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  }, [system, isSaving, isConnected, user, supabase, updateSettings, sweetAlert]);
 
   const UnitRow = ({
     label,
@@ -108,6 +175,19 @@ export default function UnitSettingsScreen({ navigation }: Props) {
     ? [themeColors?.colors?.[0] || '#0f0f1e', themeColors?.colors?.[1] || '#1a1a2e', themeColors?.colors?.[2] || '#16213e']
     : [themeColors?.colors?.[0] || '#f8faff', themeColors?.colors?.[1] || '#f0f4ff', themeColors?.colors?.[2] || '#e8eeff'];
 
+  if (isLoading) {
+    return (
+      <LinearGradient colors={bgColors} style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <UniversalSpinner size={32} color={primary} variant="liquid" section="settings" />
+          <Text style={[styles.loadingText, isDark && styles.loadingTextDark]}>
+            Loading units...
+          </Text>
+        </View>
+      </LinearGradient>
+    );
+  }
+
   return (
     <LinearGradient colors={bgColors} style={styles.container}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
@@ -142,6 +222,18 @@ export default function UnitSettingsScreen({ navigation }: Props) {
           </Text>
         </Animated.View>
 
+        {/* Cloud Sync Status */}
+        {isConnected && (
+          <Animated.View entering={reduceMotion ? undefined : FadeInUp.delay(150)}>
+            <View style={[styles.cloudBadge, { backgroundColor: `${primary}15` }]}>
+              <Ionicons name="cloud-outline" size={16} color={primary} />
+              <Text style={[styles.cloudText, { color: primary }]}>
+                Preferences synced to cloud
+              </Text>
+            </View>
+          </Animated.View>
+        )}
+
         {/* System Selector */}
         <Animated.View
           entering={reduceMotion ? undefined : FadeInUp.delay(200)}
@@ -154,8 +246,10 @@ export default function UnitSettingsScreen({ navigation }: Props) {
                 styles.selectorBtn,
                 system === 'metric' && [styles.selectorBtnActive, { backgroundColor: primary, borderColor: `${primary}4D` }],
                 isDark && styles.selectorBtnDark,
+                isSaving && styles.selectorBtnDisabled,
               ]}
               onPress={() => handleChange('metric')}
+              disabled={isSaving}
             >
               <Ionicons
                 name="earth"
@@ -181,8 +275,10 @@ export default function UnitSettingsScreen({ navigation }: Props) {
                 styles.selectorBtn,
                 system === 'imperial' && [styles.selectorBtnActive, { backgroundColor: primary, borderColor: `${primary}4D` }],
                 isDark && styles.selectorBtnDark,
+                isSaving && styles.selectorBtnDisabled,
               ]}
               onPress={() => handleChange('imperial')}
+              disabled={isSaving}
             >
               <Ionicons
                 name="flag"
@@ -247,6 +343,16 @@ export default function UnitSettingsScreen({ navigation }: Props) {
         <Text style={[styles.note, isDark && styles.noteDark]}>
           Existing entries will not be converted. New entries will use the selected units.
         </Text>
+
+        {/* Saving indicator */}
+        {isSaving && (
+          <View style={styles.savingContainer}>
+            <UniversalSpinner size={20} color={primary} variant="liquid" section="settings" />
+            <Text style={[styles.savingText, isDark && styles.savingTextDark]}>
+              Saving preferences...
+            </Text>
+          </View>
+        )}
       </Animated.ScrollView>
     </LinearGradient>
   );
@@ -255,6 +361,19 @@ export default function UnitSettingsScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { paddingHorizontal: 20 },
+
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 16,
+  },
+  loadingText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#64748b',
+  },
+  loadingTextDark: { color: '#94a3b8' },
 
   header: { marginBottom: 24 },
   backButton: {
@@ -279,6 +398,21 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   headerSubtitleDark: { color: '#a0a0a0' },
+
+  cloudBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 16,
+    marginBottom: 20,
+    gap: 8,
+    alignSelf: 'flex-start',
+  },
+  cloudText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
 
   sectionWrapper: { marginBottom: 20 },
   sectionHeader: {
@@ -322,6 +456,9 @@ const styles = StyleSheet.create({
   },
   selectorBtnActive: {
     borderColor: 'rgba(102,126,234,0.3)',
+  },
+  selectorBtnDisabled: {
+    opacity: 0.6,
   },
   selectorText: {
     fontSize: 16,
@@ -410,4 +547,21 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   noteDark: { color: '#666' },
+
+  savingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    marginTop: 16,
+    padding: 12,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0,0,0,0.04)',
+  },
+  savingText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#64748b',
+  },
+  savingTextDark: { color: '#94a3b8' },
 });

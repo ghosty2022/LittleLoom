@@ -284,6 +284,9 @@ export interface CustomizationSettings {
   hapticFeedback: boolean;
   soundEffects: boolean;
   notifications: boolean;
+  // ─── NEW: Language & Units ───
+  language: string;
+  units: 'metric' | 'imperial';
 }
 
 export const DEFAULT_SETTINGS: CustomizationSettings = {
@@ -305,6 +308,9 @@ export const DEFAULT_SETTINGS: CustomizationSettings = {
   hapticFeedback: true,
   soundEffects: true,
   notifications: true,
+  // ─── NEW: Language & Units ───
+  language: 'en',
+  units: 'metric',
 };
 
 const STORAGE_KEY = '@littleloom_customization_v3';
@@ -424,6 +430,9 @@ export interface UseCustomizationReturn {
   highContrast: boolean;
   boldText: boolean;
   notifications: boolean;
+  // ─── NEW: Language & Units ───
+  language: string;
+  units: 'metric' | 'imperial';
   updateSettings: (newSettings: Partial<CustomizationSettings>) => Promise<void>;
   reset: () => Promise<void>;
   triggerHaptic: (type: HapticType) => Promise<void>;
@@ -576,6 +585,9 @@ export function useCustomization(): UseCustomizationReturn {
     highContrast: settings.highContrast,
     boldText: settings.boldText,
     notifications: settings.notifications,
+    // ─── NEW: Language & Units ───
+    language: settings.language,
+    units: settings.units,
     updateSettings,
     reset,
     triggerHaptic,

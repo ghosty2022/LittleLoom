@@ -3,11 +3,154 @@
 
 import { db } from './db';
 import { babies, trackerEntries, appSettings, familyMembers } from './schema';
-import { eq, and, desc, count, isNull } from 'drizzle-orm';
+import { eq, and, desc, count, isNull, like, or } from 'drizzle-orm';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/utils/supabase';
 
 const MIGRATION_KEY = '@littleloom_db_migration_v1';
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   USER REGISTRY TYPES
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+export interface UserRegistryEntry {
+  userId: string;
+  email: string;
+  fullName: string;
+  avatar?: string;
+  role: 'parent1' | 'parent2' | 'guardian' | string;
+  createdAt: string;
+  communityUsername?: string;
+  communityHandle?: string;
+  communityBio?: string;
+  communityAvatar?: string;
+  communityDisplayName?: string;
+  communityStats?: {
+    posts: number;
+    followers: number;
+    following: number;
+    helpful: number;
+  };
+  communitySelectedTopics?: string[];
+  socialProvider?: 'google' | 'apple' | 'facebook' | null;
+  hasPassword?: boolean;
+}
+
+const USER_REGISTRY_KEY = 'littleloom_user_registry';
+
+/* ─── USER REGISTRY ───────────────────────────────────────────────────── */
+
+export async function getUserRegistry(): Promise<Record<string, UserRegistryEntry>> {
+  try {
+    const data = await AsyncStorage.getItem(USER_REGISTRY_KEY);
+    if (data) {
+      return JSON.parse(data);
+    }
+    return {};
+  } catch (error) {
+    console.error('Error loading user registry:', error);
+    return {};
+  }
+}
+
+export async function saveUserRegistry(registry: Record<string, UserRegistryEntry>): Promise<void> {
+  try {
+    await AsyncStorage.setItem(USER_REGISTRY_KEY, JSON.stringify(registry));
+  } catch (error) {
+    console.error('Error saving user registry:', error);
+    throw error;
+  }
+}
+
+export async function registerUser(entry: UserRegistryEntry): Promise<boolean> {
+  try {
+    const registry = await getUserRegistry();
+    registry[entry.userId] = entry;
+    await saveUserRegistry(registry);
+    return true;
+  } catch (error) {
+    console.error('Error registering user:', error);
+    return false;
+  }
+}
+
+export async function updateUserInRegistry(
+  userId: string,
+  updates: Partial<UserRegistryEntry>
+): Promise<boolean> {
+  try {
+    const registry = await getUserRegistry();
+    if (registry[userId]) {
+      registry[userId] = { ...registry[userId], ...updates };
+      await saveUserRegistry(registry);
+      return true;
+    }
+    return false;
+  } catch (error) {
+    console.error('Error updating user in registry:', error);
+    return false;
+  }
+}
+
+export async function findUserByEmail(
+  email: string
+): Promise<UserRegistryEntry | null> {
+  try {
+    const registry = await getUserRegistry();
+    const searchEmail = email.trim().toLowerCase();
+    
+    for (const entry of Object.values(registry)) {
+      if (entry.email.toLowerCase() === searchEmail) {
+        return entry;
+      }
+    }
+    return null;
+  } catch (error) {
+    console.error('Error finding user by email:', error);
+    return null;
+  }
+}
+
+export async function findUserByUsername(
+  username: string
+): Promise<UserRegistryEntry | null> {
+  try {
+    const registry = await getUserRegistry();
+    const searchUsername = username.trim().toLowerCase().replace(/^@/, '');
+    
+    for (const entry of Object.values(registry)) {
+      const entryHandle = (entry.communityHandle || '').toLowerCase().replace(/^@/, '');
+      const entryUsername = (entry.communityUsername || '').toLowerCase();
+      
+      if (entryHandle === searchUsername || entryUsername === searchUsername) {
+        return entry;
+      }
+    }
+    return null;
+  } catch (error) {
+    console.error('Error finding user by username:', error);
+    return null;
+  }
+}
+
+export async function findUserByEmailOrUsername(
+  identifier: string
+): Promise<UserRegistryEntry | null> {
+  try {
+    // Try as email first
+    const byEmail = await findUserByEmail(identifier);
+    if (byEmail) return byEmail;
+    
+    // Then try as username
+    const byUsername = await findUserByUsername(identifier);
+    if (byUsername) return byUsername;
+    
+    return null;
+  } catch (error) {
+    console.error('Error finding user by email or username:', error);
+    return null;
+  }
+}
 
 /* ═══════════════════════════════════════════════════════════════════════════
    UTILITY HELPERS
@@ -721,6 +864,53 @@ export async function runOneTimeMigration(): Promise<void> {
 
   const appearance = await AsyncStorage.getItem('@littleloom_appearance_v1');
   if (appearance) await setAppSetting('appearance', appearance);
+
+  // Migrate user registry from old format if it exists
+  try {
+    const oldRegistry = await AsyncStorage.getItem('littleloom_username_registry');
+    if (oldRegistry) {
+      const parsed = JSON.parse(oldRegistry);
+      if (typeof parsed === 'object' && !Array.isArray(parsed)) {
+        // Convert from username -> userId to full registry
+        const newRegistry: Record<string, UserRegistryEntry> = {};
+        // We need to find user details from other stored data
+        // This is a best-effort migration
+        const profileStr = await AsyncStorage.getItem('littleloom_user_profile_secure');
+        if (profileStr) {
+          try {
+            const profile = JSON.parse(profileStr);
+            if (profile && profile.id) {
+              // Find the username for this user
+              for (const [username, userId] of Object.entries(parsed)) {
+                if (userId === profile.id) {
+                  newRegistry[profile.id] = {
+                    userId: profile.id,
+                    email: profile.email || '',
+                    fullName: profile.fullName || 'User',
+                    avatar: profile.avatar || '👤',
+                    role: profile.role || 'parent1',
+                    createdAt: profile.createdAt || new Date().toISOString(),
+                    communityUsername: username,
+                    communityHandle: `@${username}`,
+                    communityDisplayName: profile.fullName || username,
+                  };
+                  break;
+                }
+              }
+            }
+          } catch (e) {
+            console.warn('[Migration] Failed to parse user profile:', e);
+          }
+        }
+        if (Object.keys(newRegistry).length > 0) {
+          await saveUserRegistry(newRegistry);
+          console.log('[Migration] Migrated user registry');
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[Migration] User registry migration failed:', e);
+  }
 
   await markMigrationComplete();
   console.log('[Migration] Complete!');

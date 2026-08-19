@@ -65,8 +65,8 @@ const SectionHeader: React.FC<{
 );
 
 export default function LanguageSettingsScreen({ navigation }: Props) {
-  const { alert: showAlert } = useSweetAlert();
-  const { themeColors, darkMode, reduceMotion } = useCustomization();
+  const { sweetAlert } = useSweetAlert();
+  const { themeColors, darkMode, reduceMotion, updateSettings } = useCustomization();
   const { user, isConnected, supabase } = useSupabase();
   const insets = useSafeAreaInsets();
 
@@ -98,7 +98,7 @@ export default function LanguageSettingsScreen({ navigation }: Props) {
       setIsLoading(false);
     };
     loadLanguage();
-  }, [isConnected, user]);
+  }, [isConnected, user, supabase]);
 
   const handleHaptic = () => {
     if (!reduceMotion) {
@@ -114,6 +114,9 @@ export default function LanguageSettingsScreen({ navigation }: Props) {
     setSelected(code);
 
     try {
+      // Save locally
+      await updateSettings({ language: code as any });
+
       // Save to Supabase if connected
       if (isConnected && user) {
         const { error } = await supabase
@@ -127,18 +130,24 @@ export default function LanguageSettingsScreen({ navigation }: Props) {
         if (error) throw error;
       }
 
-      showAlert(
-        'Language Changed',
-        `App language set to ${LANGUAGES.find(l => l.code === code)?.name}. Please restart the app for changes to take effect.`,
-        'info'
-      );
+      sweetAlert({
+        title: 'Language Changed',
+        message: `App language set to ${LANGUAGES.find(l => l.code === code)?.name}. Please restart the app for changes to take effect.`,
+        type: 'info',
+        confirmText: 'OK',
+      });
     } catch (error) {
       console.error('Failed to save language:', error);
-      showAlert('Error', 'Failed to save language preference. Please try again.', 'error');
+      sweetAlert({
+        title: 'Error',
+        message: 'Failed to save language preference. Please try again.',
+        type: 'error',
+        confirmText: 'OK',
+      });
     } finally {
       setIsSaving(false);
     }
-  }, [selected, isSaving, isConnected, user, supabase, showAlert]);
+  }, [selected, isSaving, isConnected, user, supabase, updateSettings, sweetAlert]);
 
   const selectedLanguage = LANGUAGES.find(l => l.code === selected);
 

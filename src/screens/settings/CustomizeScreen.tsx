@@ -43,7 +43,7 @@ import type { CustomizationSettings, AppearanceMode } from '../../hooks/useCusto
 
 import { useSweetAlert } from '../../components/SweetAlert';
 import { SafeAvatar } from '../../components/SafeAvatar';
-// useSupabase removed - using local state instead
+import { useSupabase } from '../../hooks/useSupabase';
 import { UniversalSpinner } from '../../components/UniversalSpinner';
 
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -327,23 +327,8 @@ export default function CustomizeScreen({ navigation }: Props) {
   const systemColorScheme = useColorScheme();
   const { setAppearance } = useTheme();
   const { sweetAlert } = useSweetAlert();
-  const [user, setUser] = useState<any>(null);
-  const [isConnected, setIsConnected] = useState(false);
+  const { user, isConnected, supabase } = useSupabase();
   
-  // Check Supabase connection and get user
-  useEffect(() => {
-    const checkSupabase = async () => {
-      try {
-        const { error } = await supabase.from('tracker_entries').select('id').limit(1);
-        setIsConnected(!error);
-        const { data: { user } } = await supabase.auth.getUser();
-        setUser(user);
-      } catch {
-        setIsConnected(false);
-      }
-    };
-    checkSupabase();
-  }, []);
   const {
     settings,
     isLoaded,
@@ -492,7 +477,7 @@ export default function CustomizeScreen({ navigation }: Props) {
     } finally {
       setIsSyncing(false);
     }
-  }, [pending, updateSettings, isConnected, user, hapticSuccess, sweetAlert, navigation]);
+  }, [pending, updateSettings, isConnected, user, supabase, hapticSuccess, sweetAlert, navigation]);
 
   const handleResetDefaults = useCallback(() => {
     sweetAlert({
@@ -515,7 +500,23 @@ export default function CustomizeScreen({ navigation }: Props) {
               .from('user_preferences')
               .upsert({
                 user_id: user.id,
-                ...DEFAULT_SETTINGS,
+                theme: DEFAULT_SETTINGS.theme,
+                avatar: DEFAULT_SETTINGS.avatar,
+                appearance: DEFAULT_SETTINGS.appearance,
+                font_size: DEFAULT_SETTINGS.fontSize,
+                border_radius: DEFAULT_SETTINGS.borderRadius,
+                animation_speed: DEFAULT_SETTINGS.animationSpeed,
+                accent_color: DEFAULT_SETTINGS.accentColor,
+                use_gradients: DEFAULT_SETTINGS.useGradients,
+                use_blur: DEFAULT_SETTINGS.useBlur,
+                show_shadows: DEFAULT_SETTINGS.showShadows,
+                compact_spacing: DEFAULT_SETTINGS.compactSpacing,
+                reduce_motion: DEFAULT_SETTINGS.reduceMotion,
+                high_contrast: DEFAULT_SETTINGS.highContrast,
+                bold_text: DEFAULT_SETTINGS.boldText,
+                haptic_feedback: DEFAULT_SETTINGS.hapticFeedback,
+                sound_effects: DEFAULT_SETTINGS.soundEffects,
+                notifications: DEFAULT_SETTINGS.notifications,
                 updated_at: new Date().toISOString(),
               }, { onConflict: 'user_id' });
           } catch (e) {
@@ -524,7 +525,7 @@ export default function CustomizeScreen({ navigation }: Props) {
         }
       },
     });
-  }, [reset, setAppearance, hapticSuccess, sweetAlert, isConnected, user]);
+  }, [reset, setAppearance, hapticSuccess, sweetAlert, isConnected, user, supabase]);
 
   const handleBack = useCallback(() => {
     if (hasChanges) {
