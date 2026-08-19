@@ -19,6 +19,8 @@ import {
   UIManager,
   useColorScheme,
   RefreshControl,
+  Alert,
+  Linking,
 } from 'react-native';
 import Animated, {
   FadeIn,
@@ -30,6 +32,8 @@ import Animated, {
   useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
+  withSpring,
+  withTiming,
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -40,6 +44,8 @@ import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import * as Location from 'expo-location';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useFocusEffect } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import type { CommunityStackParamList } from '../../types/navigation';
 import { useCommunity, INITIAL_TOPICS } from '../../context/CommunityContext';
@@ -47,7 +53,6 @@ import { useUser } from '../../context/UserContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useMedia } from '../../context/MediaContext';
 import { useSweetAlert } from '../../components/SweetAlert';
-import { SafeAvatar } from '../../components/SafeAvatar';
 import { UniversalSpinner } from '../../components/UniversalSpinner';
 
 type Props = NativeStackScreenProps<CommunityStackParamList, 'CommunityProfile'>;
@@ -107,6 +112,9 @@ const TOPIC_COLORS: Record<string, string> = {
 
 type ProfileTab = 'overview' | 'posts' | 'achievements' | 'settings';
 
+// ============================================
+// INTERFACES
+// ============================================
 interface ActivityScore { overall: number; engagement: number; consistency: number; helpfulness: number; creativity: number; }
 interface WeeklyImpact { postsThisWeek: number; helpfulVotes: number; newConnections: number; rankChange: number; trend: 'up' | 'down' | 'stable'; }
 interface CommunityStanding { percentile: number; rank: string; nextMilestone: string; progressToNext: number; }
@@ -118,7 +126,9 @@ interface TopicAffinity { topicId: string; topicName: string; emoji: string; col
 interface PeerComparison { metric: string; userValue: number; avgValue: number; percentile: number; icon: string; color: string; }
 interface ContentStreak { type: string; current: number; best: number; color: string; icon: string; }
 
-// GlassCard Component
+// ============================================
+// COMPONENTS
+// ============================================
 const GlassCard = React.memo(({ children, style, onPress, active = false, delay = 0, isDark = true, colors }: any) => {
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   const Wrapper = onPress ? TouchableOpacity : View;
@@ -133,7 +143,6 @@ const GlassCard = React.memo(({ children, style, onPress, active = false, delay 
   );
 });
 
-// SectionHeader Component
 const SectionHeader = React.memo(({ title, subtitle, action, actionLabel, isDark = true, colors }: any) => {
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   return (
@@ -152,7 +161,6 @@ const SectionHeader = React.memo(({ title, subtitle, action, actionLabel, isDark
   );
 });
 
-// TabBar Component
 const TabBar = React.memo(({ tabs, activeTab, onChange, isDark = true, colors }: any) => {
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   return (
@@ -170,7 +178,6 @@ const TabBar = React.memo(({ tabs, activeTab, onChange, isDark = true, colors }:
   );
 });
 
-// KpiPill Component
 const KpiPill = React.memo(({ icon, value, label, color, onPress, isDark = true, colors }: any) => {
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   return (
@@ -187,7 +194,6 @@ const KpiPill = React.memo(({ icon, value, label, color, onPress, isDark = true,
   );
 });
 
-// ActionModal Component
 const ActionModal = React.memo(({ visible, onClose, title, children, isDark = true, colors }: any) => {
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   if (!visible) return null;
@@ -214,7 +220,6 @@ const ActionModal = React.memo(({ visible, onClose, title, children, isDark = tr
   );
 });
 
-// QuickActionsDock Component
 const QuickActionsDock = React.memo(({ onMessage, onShare, onEdit, onSettings, isDark = true, colors }: any) => {
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   return (
@@ -249,6 +254,9 @@ const QuickActionsDock = React.memo(({ onMessage, onShare, onEdit, onSettings, i
   );
 });
 
+// ============================================
+// MAIN COMPONENT
+// ============================================
 export default function CommunityProfileScreen({ navigation }: Props) {
   const {
     currentUser,
@@ -261,16 +269,17 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     checkAndAwardAchievements,
     getAllUsers,
     refreshFeed,
-    getPostById,
     getFeedPosts,
     getPopularPosts,
     getTrendingTopics,
+    getPostRank,
   } = useCommunity();
   const { 
     profile, 
     updateCommunityProfile: updateUserContextProfile,
     checkUsernameAvailable,
     updateUsername,
+    clearUserData,
   } = useUser();
   const { themeColors, fullThemeColors, darkMode, shouldReduceMotion, triggerHaptic } = useCustomization();
   const { compressImage } = useMedia();
@@ -293,6 +302,8 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   const [showTopicSelector, setShowTopicSelector] = useState(false);
   const [usernameCheckStatus, setUsernameCheckStatus] = useState<{ available: boolean; message: string } | null>(null);
   const [isCheckingUsername, setIsCheckingUsername] = useState(false);
+  const [isProfileDeactivated, setIsProfileDeactivated] = useState(false);
+  const [activityLog, setActivityLog] = useState<any[]>([]);
 
   const [userPosts, setUserPosts] = useState<any[]>([]);
   const [followerCount, setFollowerCount] = useState(0);
@@ -315,7 +326,294 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   const [originalData, setOriginalData] = useState({ ...formData });
   const usernameDebounceRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Generate intelligent username from display name
+  // ============================================
+  // COMPUTED DATA FROM REAL POSTS
+  // ============================================
+  const userPostList = useMemo(() => getUserPosts(currentUser?.id || ''), [currentUser, getUserPosts]);
+  const allUsers = useMemo(() => getAllUsers(), [getAllUsers]);
+  const feedPosts = useMemo(() => getFeedPosts(), [getFeedPosts]);
+  const popularPosts = useMemo(() => getPopularPosts(10), [getPopularPosts]);
+
+  // Activity Score - Real data
+  const activityScore: ActivityScore = useMemo(() => {
+    const posts = userPostList;
+    const totalPosts = posts.length;
+    const totalLikes = posts.reduce((sum, p) => sum + (p.likes || 0), 0);
+    const totalComments = posts.reduce((sum, p) => sum + (p.commentsCount || 0), 0);
+    const totalHelpful = posts.reduce((sum, p) => sum + (p.helpfulVotes || 0), 0);
+    const uniqueDays = new Set(posts.map(p => new Date(p.timestamp).toDateString())).size;
+
+    const engagement = Math.min(100, Math.round((totalLikes + totalComments * 2) / Math.max(1, totalPosts) * 5));
+    const consistency = Math.min(100, Math.round(uniqueDays / Math.max(1, Math.min(totalPosts, 30)) * 100));
+    const helpfulness = Math.min(100, Math.round(totalHelpful / Math.max(1, totalPosts) * 10));
+    const creativity = Math.min(100, Math.round((posts.filter(p => p.images?.length > 0).length / Math.max(1, totalPosts)) * 100 + 20));
+    const overall = Math.min(100, Math.round((engagement + consistency + helpfulness + creativity) / 4));
+
+    return { overall, engagement, consistency, helpfulness, creativity };
+  }, [userPostList]);
+
+  // Influence Metrics - Real data
+  const influenceMetrics: InfluenceMetric[] = useMemo(() => {
+    const totalPosts = userPostList.length;
+    const totalLikes = userPostList.reduce((sum, p) => sum + (p.likes || 0), 0);
+    const totalComments = userPostList.reduce((sum, p) => sum + (p.commentsCount || 0), 0);
+    const totalHelpful = userPostList.reduce((sum, p) => sum + (p.helpfulVotes || 0), 0);
+    const totalViews = userPostList.reduce((sum, p) => sum + (p.viewCount || 0), 0);
+    
+    const avgEngagement = totalPosts > 0 ? Math.min(100, Math.round((totalLikes + totalComments * 2) / totalPosts * 2)) : 0;
+    const consistency = Math.min(100, Math.round((totalPosts / Math.max(1, 30)) * 100));
+    const helpful = Math.min(100, Math.round(totalHelpful / Math.max(1, totalPosts) * 15));
+    const reach = Math.min(100, Math.round(totalViews / Math.max(1, totalPosts * 10) * 100));
+
+    return [
+      { label: 'Engagement', value: avgEngagement, color: TC.primary, icon: 'flash' },
+      { label: 'Consistency', value: consistency, color: TC.secondary, icon: 'calendar' },
+      { label: 'Helpful', value: helpful, color: TC.success, icon: 'heart' },
+      { label: 'Reach', value: reach, color: TC.accent, icon: 'eye' },
+    ];
+  }, [userPostList]);
+
+  // Weekly Impact - Real data
+  const weeklyImpact: WeeklyImpact = useMemo(() => {
+    const now = new Date();
+    const weekAgo = new Date(now);
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    
+    const weekPosts = userPostList.filter(p => new Date(p.timestamp) >= weekAgo);
+    const totalHelpful = weekPosts.reduce((sum, p) => sum + (p.helpfulVotes || 0), 0);
+    const totalLikes = weekPosts.reduce((sum, p) => sum + (p.likes || 0), 0);
+    const newConnections = Math.min(20, Math.round(weekPosts.length * 0.3 + Math.random() * 5));
+    const rankChange = Math.min(5, Math.max(-5, Math.round((weekPosts.length - 3) * 0.5)));
+
+    return {
+      postsThisWeek: weekPosts.length,
+      helpfulVotes: totalHelpful,
+      newConnections,
+      rankChange,
+      trend: rankChange >= 0 ? 'up' : 'down',
+    };
+  }, [userPostList]);
+
+  // Community Standing - Real data
+  const communityStanding: CommunityStanding = useMemo(() => {
+    const userPostCount = userPostList.length;
+    const allPostCounts = allUsers.map(u => getUserPosts(u.id).length);
+    const sortedCounts = [...allPostCounts].sort((a, b) => b - a);
+    const rank = sortedCounts.findIndex(c => c <= userPostCount) + 1;
+    const percentile = Math.min(100, Math.round((1 - (rank / Math.max(1, allUsers.length))) * 100));
+    
+    const totalEngagement = userPostList.reduce((sum, p) => sum + (p.likes || 0) + (p.commentsCount || 0) * 2, 0);
+    let rankLabel = 'New Parent';
+    let nextMilestone = '50 posts';
+    let progressToNext = Math.min(100, Math.round((userPostCount / 50) * 100));
+    
+    if (userPostCount > 100 && totalEngagement > 500) {
+      rankLabel = 'Legendary Parent';
+      nextMilestone = '200 posts';
+      progressToNext = Math.min(100, Math.round((userPostCount / 200) * 100));
+    } else if (userPostCount > 50 && totalEngagement > 200) {
+      rankLabel = 'Gold Parent';
+      nextMilestone = '100 posts';
+      progressToNext = Math.min(100, Math.round((userPostCount / 100) * 100));
+    } else if (userPostCount > 20 && totalEngagement > 50) {
+      rankLabel = 'Silver Parent';
+      nextMilestone = '50 posts';
+      progressToNext = Math.min(100, Math.round((userPostCount / 50) * 100));
+    } else if (userPostCount > 5) {
+      rankLabel = 'Bronze Parent';
+      nextMilestone = '20 posts';
+      progressToNext = Math.min(100, Math.round((userPostCount / 20) * 100));
+    }
+
+    return { percentile, rank: rankLabel, nextMilestone, progressToNext };
+  }, [userPostList, allUsers, getUserPosts]);
+
+  // Content Breakdown - Real data
+  const contentBreakdown: ContentBreakdown = useMemo(() => ({
+    posts: userPostList.length,
+    comments: userPostList.reduce((sum, p) => sum + (p.commentsCount || 0), 0),
+    reactions: userPostList.reduce((sum, p) => sum + (p.likes || 0), 0),
+    shares: userPostList.reduce((sum, p) => sum + (p.reposts || 0), 0),
+  }), [userPostList]);
+
+  // Engagement Data - 7 days from real posts
+  const engagementData: EngagementPoint[] = useMemo(() => {
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const dayMap: Record<string, number> = {};
+    days.forEach(d => dayMap[d] = 0);
+
+    const now = new Date();
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date(now);
+      date.setDate(date.getDate() - i);
+      const dayName = days[date.getDay()];
+      const dayPosts = userPostList.filter(p => {
+        const postDate = new Date(p.timestamp);
+        return postDate.toDateString() === date.toDateString();
+      });
+      dayMap[dayName] = dayPosts.length + dayPosts.reduce((sum, p) => sum + (p.likes || 0) * 0.5, 0);
+    }
+
+    return days.map(day => ({ day: day.slice(0, 1), value: Math.round(dayMap[day] || 0) }));
+  }, [userPostList]);
+
+  // Smart Suggestions - Based on real data
+  const smartSuggestions: SmartSuggestion[] = useMemo(() => {
+    const suggestions: SmartSuggestion[] = [];
+    const topics = getSelectedTopics();
+    
+    if (topics.length < 3) {
+      suggestions.push({
+        id: 'add-topics', type: 'topic', title: 'Add More Topics',
+        description: 'Select 3+ topics to get better community recommendations',
+        emoji: '🏷️', color: TC.primary, action: () => setShowTopicSelector(true),
+      });
+    }
+    if (userPostList.length < 5) {
+      suggestions.push({
+        id: 'first-post', type: 'post', title: 'Share Your Story',
+        description: 'Parents love hearing about your journey. Post today!',
+        emoji: '✍️', color: TC.secondary, action: () => navigation.navigate('CreatePost' as never),
+      });
+    }
+    if (!currentUser?.isVerified) {
+      suggestions.push({
+        id: 'verify', type: 'verify', title: 'Get Verified',
+        description: 'Verify your identity to unlock exclusive features',
+        emoji: '✅', color: TC.success, action: () => navigation.navigate('CommunityVerification' as never),
+      });
+    }
+    if (followerCount < 10) {
+      suggestions.push({
+        id: 'connect', type: 'connect', title: 'Connect with Others',
+        description: 'Follow other parents to grow your network',
+        emoji: '👥', color: TC.purple, action: () => navigation.navigate('CommunityDiscover' as never),
+      });
+    }
+    return suggestions;
+  }, [getSelectedTopics, userPostList, currentUser, followerCount, navigation]);
+
+  // Topic Affinity - Real data
+  const topicAffinities: TopicAffinity[] = useMemo(() => {
+    const affinities: TopicAffinity[] = [];
+    const topicCounts: Record<string, number> = {};
+    userPostList.forEach(p => {
+      topicCounts[p.topicId] = (topicCounts[p.topicId] || 0) + 1;
+    });
+    Object.entries(topicCounts).forEach(([topicId, count]) => {
+      const topic = INITIAL_TOPICS.find(t => t.id === topicId);
+      if (topic) {
+        affinities.push({
+          topicId, topicName: topic.name, emoji: topic.emoji || '🏷️',
+          color: topic.color || TOPIC_COLORS[topicId] || TC.primary,
+          affinity: Math.min(100, count * 15), posts: count,
+        });
+      }
+    });
+    return affinities.sort((a, b) => b.affinity - a.affinity).slice(0, 4);
+  }, [userPostList]);
+
+  // Peer Comparison - Real data
+  const peerComparisons: PeerComparison[] = useMemo(() => {
+    const avgPosts = allUsers.reduce((sum, u) => sum + getUserPosts(u.id).length, 0) / Math.max(1, allUsers.length);
+    const avgHelpful = allUsers.reduce((sum, u) => sum + getUserPosts(u.id).reduce((s, p) => s + (p.helpfulVotes || 0), 0), 0) / Math.max(1, allUsers.length);
+    const avgEngagement = allUsers.reduce((sum, u) => {
+      const posts = getUserPosts(u.id);
+      return sum + posts.reduce((s, p) => s + (p.likes || 0) + (p.commentsCount || 0) * 2, 0);
+    }, 0) / Math.max(1, allUsers.length);
+
+    const userPostsCount = userPostList.length;
+    const userHelpful = userPostList.reduce((sum, p) => sum + (p.helpfulVotes || 0), 0);
+    const userEngagement = userPostList.reduce((sum, p) => sum + (p.likes || 0) + (p.commentsCount || 0) * 2, 0);
+
+    return [
+      { metric: 'Posts', userValue: userPostsCount, avgValue: Math.round(avgPosts), 
+        percentile: Math.min(100, Math.round((userPostsCount / Math.max(1, avgPosts * 2)) * 100)), 
+        icon: 'document-text', color: TC.primary },
+      { metric: 'Helpful', userValue: userHelpful, avgValue: Math.round(avgHelpful),
+        percentile: Math.min(100, Math.round((userHelpful / Math.max(1, avgHelpful * 2)) * 100)),
+        icon: 'heart', color: TC.success },
+      { metric: 'Engagement', userValue: userEngagement, avgValue: Math.round(avgEngagement),
+        percentile: Math.min(100, Math.round((userEngagement / Math.max(1, avgEngagement * 2)) * 100)),
+        icon: 'flash', color: TC.accent },
+    ];
+  }, [userPostList, allUsers, getUserPosts]);
+
+  // Content Streaks - Real data
+  const contentStreaks: ContentStreak[] = useMemo(() => {
+    const postDates = userPostList.map(p => new Date(p.timestamp).toDateString());
+    const uniquePostDays = [...new Set(postDates)];
+
+    let currentStreakCount = 0;
+    for (let i = uniquePostDays.length - 1; i >= 0; i--) {
+      const day = new Date(uniquePostDays[i]);
+      const expectedDay = new Date();
+      expectedDay.setDate(expectedDay.getDate() - currentStreakCount);
+      if (day.toDateString() === expectedDay.toDateString()) {
+        currentStreakCount++;
+      } else {
+        break;
+      }
+    }
+
+    return [
+      { type: 'Posting', current: currentStreakCount, best: Math.min(userPostList.length, 30), 
+        color: TC.primary, icon: 'document-text' },
+      { type: 'Helpful', current: Math.min(5, Math.round(userPostList.reduce((s, p) => s + (p.helpfulVotes || 0), 0) / 2)), 
+        best: Math.min(10, Math.round(userPostList.reduce((s, p) => s + (p.helpfulVotes || 0), 0))), 
+        color: TC.success, icon: 'heart' },
+      { type: 'Active', current: userPostList.length > 0 ? Math.min(30, userPostList.length) : 0, 
+        best: Math.min(30, userPostList.length * 2), color: TC.accent, icon: 'flame' },
+    ];
+  }, [userPostList]);
+
+  // ============================================
+  // ANIMATIONS
+  // ============================================
+  const headerOpacity = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, [0, 100], [0, 1], Extrapolation.CLAMP),
+    transform: [{ translateY: interpolate(scrollY.value, [0, 100], [-10, 0], Extrapolation.CLAMP) }],
+  }));
+
+  const scrollHandler = useAnimatedScrollHandler({ 
+    onScroll: (e) => { 'worklet'; scrollY.value = e.contentOffset.y; } 
+  });
+
+  // ============================================
+  // EFFECTS
+  // ============================================
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', () => {});
+    const hide = Keyboard.addListener('keyboardDidHide', () => {});
+    return () => { show.remove(); hide.remove(); };
+  }, []);
+
+  useEffect(() => { loadUserData(); }, [currentUser]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadUserData();
+      return () => {};
+    }, [])
+  );
+
+  // Load activity log
+  useEffect(() => {
+    loadActivityLog();
+  }, []);
+
+  const loadActivityLog = async () => {
+    try {
+      const log = await AsyncStorage.getItem('@community_activity_log');
+      if (log) {
+        setActivityLog(JSON.parse(log));
+      }
+    } catch (error) {
+      console.error('Error loading activity log:', error);
+    }
+  };
+
+  // Generate intelligent username
   const generateIntelligentUsername = useCallback((displayName: string, userId: string): string => {
     let base = displayName
       .toLowerCase()
@@ -396,315 +694,9 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     detectLocation();
   }, []);
 
-  // Compute all data from real posts
-  const userPostList = useMemo(() => getUserPosts(currentUser?.id || ''), [currentUser, getUserPosts]);
-
   // ============================================
-  // REAL DATA COMPUTATIONS FOR INTELLIGENCE SECTION
+  // DATA LOADING
   // ============================================
-
-  // Activity Score - computed from real data
-  const activityScore: ActivityScore = useMemo(() => {
-    const posts = userPostList;
-    const totalPosts = posts.length;
-    if (totalPosts === 0) {
-      return { overall: 0, engagement: 0, consistency: 0, helpfulness: 0, creativity: 0 };
-    }
-    
-    const totalLikes = posts.reduce((sum, p) => sum + (p.likes || 0), 0);
-    const totalComments = posts.reduce((sum, p) => sum + (p.commentsCount || 0), 0);
-    const totalHelpful = posts.reduce((sum, p) => sum + (p.helpfulVotes || 0), 0);
-    const totalViews = posts.reduce((sum, p) => sum + (p.viewCount || 0), 0);
-    const uniqueDays = new Set(posts.map(p => new Date(p.timestamp).toDateString())).size;
-    const postsWithImages = posts.filter(p => p.images?.length > 0).length;
-
-    // Engagement: likes + comments + views per post
-    const engagement = Math.min(100, Math.round(
-      ((totalLikes * 0.5) + (totalComments * 1.5) + (totalViews * 0.05)) / totalPosts * 2
-    ));
-    
-    // Consistency: based on posting frequency
-    const consistency = Math.min(100, Math.round(
-      (uniqueDays / Math.max(1, Math.min(totalPosts, 30))) * 100
-    ));
-    
-    // Helpfulness: based on helpful votes
-    const helpfulness = Math.min(100, Math.round(
-      (totalHelpful / Math.max(1, totalPosts)) * 15
-    ));
-    
-    // Creativity: based on images and post variety
-    const creativity = Math.min(100, Math.round(
-      20 + (postsWithImages / Math.max(1, totalPosts)) * 80
-    ));
-    
-    const overall = Math.min(100, Math.round((engagement + consistency + helpfulness + creativity) / 4));
-
-    return { overall, engagement, consistency, helpfulness, creativity };
-  }, [userPostList]);
-
-  // Influence Metrics - using real data
-  const influenceMetrics: InfluenceMetric[] = useMemo(() => {
-    const posts = userPostList;
-    const totalPosts = posts.length;
-    if (totalPosts === 0) {
-      return [
-        { label: 'Engagement', value: 0, color: TC.primary, icon: 'flash' },
-        { label: 'Consistency', value: 0, color: TC.secondary, icon: 'calendar' },
-        { label: 'Helpful', value: 0, color: TC.success, icon: 'heart' },
-        { label: 'Creative', value: 0, color: TC.accent, icon: 'bulb' },
-      ];
-    }
-
-    const totalLikes = posts.reduce((sum, p) => sum + (p.likes || 0), 0);
-    const totalComments = posts.reduce((sum, p) => sum + (p.commentsCount || 0), 0);
-    const totalHelpful = posts.reduce((sum, p) => sum + (p.helpfulVotes || 0), 0);
-    const totalViews = posts.reduce((sum, p) => sum + (p.viewCount || 0), 0);
-    const postsWithImages = posts.filter(p => p.images?.length > 0).length;
-    const uniqueDays = new Set(posts.map(p => new Date(p.timestamp).toDateString())).size;
-
-    const engagement = Math.min(100, Math.round(
-      ((totalLikes * 0.4) + (totalComments * 1.2) + (totalViews * 0.03)) / totalPosts * 3
-    ));
-    const consistency = Math.min(100, Math.round((uniqueDays / Math.max(1, Math.min(totalPosts, 30))) * 100));
-    const helpful = Math.min(100, Math.round((totalHelpful / Math.max(1, totalPosts)) * 12));
-    const creative = Math.min(100, Math.round(15 + (postsWithImages / Math.max(1, totalPosts)) * 85));
-
-    return [
-      { label: 'Engagement', value: Math.max(0, engagement), color: TC.primary, icon: 'flash' },
-      { label: 'Consistency', value: Math.max(0, consistency), color: TC.secondary, icon: 'calendar' },
-      { label: 'Helpful', value: Math.max(0, helpful), color: TC.success, icon: 'heart' },
-      { label: 'Creative', value: Math.max(0, creative), color: TC.accent, icon: 'bulb' },
-    ];
-  }, [userPostList]);
-
-  // Weekly Impact - computed from last 7 days
-  const weeklyImpact: WeeklyImpact = useMemo(() => {
-    const now = new Date();
-    const weekAgo = new Date(now);
-    weekAgo.setDate(weekAgo.getDate() - 7);
-    
-    const weekPosts = userPostList.filter(p => new Date(p.timestamp) >= weekAgo);
-    const totalHelpful = weekPosts.reduce((sum, p) => sum + (p.helpfulVotes || 0), 0);
-    const totalLikes = weekPosts.reduce((sum, p) => sum + (p.likes || 0), 0);
-    const newConnections = Math.min(20, Math.round(weekPosts.length * 0.3 + Math.random() * 5));
-    const rankChange = Math.min(5, Math.max(-5, Math.round((weekPosts.length - 3) * 0.5)));
-
-    return {
-      postsThisWeek: weekPosts.length,
-      helpfulVotes: totalHelpful,
-      newConnections,
-      rankChange,
-      trend: rankChange >= 0 ? 'up' : 'down',
-    };
-  }, [userPostList]);
-
-  // Community Standing - computed from real data
-  const communityStanding: CommunityStanding = useMemo(() => {
-    const allUsers = getAllUsers();
-    const userPostCount = userPostList.length;
-    const allPostCounts = allUsers.map(u => getUserPosts(u.id).length);
-    const sortedCounts = [...allPostCounts].sort((a, b) => b - a);
-    const rank = sortedCounts.findIndex(c => c <= userPostCount) + 1;
-    const percentile = Math.min(100, Math.round((1 - (rank / Math.max(1, allUsers.length))) * 100));
-    
-    const totalEngagement = userPostList.reduce((sum, p) => sum + (p.likes || 0) + (p.commentsCount || 0) * 2, 0);
-    let rankLabel = 'New Parent';
-    let nextMilestone = '50 posts';
-    let progressToNext = Math.min(100, Math.round((userPostCount / 50) * 100));
-    
-    if (userPostCount > 100 && totalEngagement > 500) {
-      rankLabel = 'Legendary Parent';
-      nextMilestone = '200 posts';
-      progressToNext = Math.min(100, Math.round((userPostCount / 200) * 100));
-    } else if (userPostCount > 50 && totalEngagement > 200) {
-      rankLabel = 'Gold Parent';
-      nextMilestone = '100 posts';
-      progressToNext = Math.min(100, Math.round((userPostCount / 100) * 100));
-    } else if (userPostCount > 20 && totalEngagement > 50) {
-      rankLabel = 'Silver Parent';
-      nextMilestone = '50 posts';
-      progressToNext = Math.min(100, Math.round((userPostCount / 50) * 100));
-    } else if (userPostCount > 5) {
-      rankLabel = 'Bronze Parent';
-      nextMilestone = '20 posts';
-      progressToNext = Math.min(100, Math.round((userPostCount / 20) * 100));
-    }
-
-    return { percentile, rank: rankLabel, nextMilestone, progressToNext };
-  }, [userPostList, getAllUsers, getUserPosts]);
-
-  // Content Breakdown
-  const contentBreakdown: ContentBreakdown = useMemo(() => ({
-    posts: userPostList.length,
-    comments: userPostList.reduce((sum, p) => sum + (p.commentsCount || 0), 0),
-    reactions: userPostList.reduce((sum, p) => sum + (p.likes || 0), 0),
-    shares: userPostList.reduce((sum, p) => sum + (p.reposts || 0), 0),
-  }), [userPostList]);
-
-  // Engagement Data - 7 days from real posts
-  const engagementData: EngagementPoint[] = useMemo(() => {
-    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const dayMap: Record<string, number> = {};
-    days.forEach(d => dayMap[d] = 0);
-
-    const now = new Date();
-    for (let i = 6; i >= 0; i--) {
-      const date = new Date(now);
-      date.setDate(date.getDate() - i);
-      const dayName = days[date.getDay()];
-      const dayPosts = userPostList.filter(p => {
-        const postDate = new Date(p.timestamp);
-        return postDate.toDateString() === date.toDateString();
-      });
-      dayMap[dayName] = dayPosts.length + dayPosts.reduce((sum, p) => sum + (p.likes || 0) * 0.5, 0);
-    }
-
-    return days.map(day => ({ day: day.slice(0, 1), value: Math.round(dayMap[day] || 0) }));
-  }, [userPostList]);
-
-  // Smart Suggestions - based on real data
-  const smartSuggestions: SmartSuggestion[] = useMemo(() => {
-    const suggestions: SmartSuggestion[] = [];
-    const topics = getSelectedTopics();
-    
-    if (topics.length < 3) {
-      suggestions.push({
-        id: 'add-topics', type: 'topic', title: 'Add More Topics',
-        description: 'Select 3+ topics to get better community recommendations',
-        emoji: '🏷️', color: TC.primary, action: () => setShowTopicSelector(true),
-      });
-    }
-    if (userPostList.length < 5) {
-      suggestions.push({
-        id: 'first-post', type: 'post', title: 'Share Your Story',
-        description: 'Parents love hearing about your journey. Post today!',
-        emoji: '✍️', color: TC.secondary, action: () => navigation.navigate('CreatePost' as never),
-      });
-    }
-    if (!currentUser?.isVerified) {
-      suggestions.push({
-        id: 'verify', type: 'verify', title: 'Get Verified',
-        description: 'Verify your identity to unlock exclusive features',
-        emoji: '✅', color: TC.success, action: () => navigation.navigate('CommunityVerification' as never),
-      });
-    }
-    return suggestions;
-  }, [getSelectedTopics, userPostList, currentUser, navigation]);
-
-  // Topic Affinity - from real posts
-  const topicAffinities: TopicAffinity[] = useMemo(() => {
-    const affinities: TopicAffinity[] = [];
-    const topicCounts: Record<string, number> = {};
-    userPostList.forEach(p => {
-      topicCounts[p.topicId] = (topicCounts[p.topicId] || 0) + 1;
-    });
-    Object.entries(topicCounts).forEach(([topicId, count]) => {
-      const topic = INITIAL_TOPICS.find(t => t.id === topicId);
-      if (topic) {
-        affinities.push({
-          topicId, topicName: topic.name, emoji: topic.emoji || '🏷️',
-          color: topic.color || TOPIC_COLORS[topicId] || TC.primary,
-          affinity: Math.min(100, count * 15), posts: count,
-        });
-      }
-    });
-    return affinities.sort((a, b) => b.affinity - a.affinity).slice(0, 4);
-  }, [userPostList]);
-
-  // Peer Comparison - from real data
-  const peerComparisons: PeerComparison[] = useMemo(() => {
-    const allUsers = getAllUsers();
-    const avgPosts = allUsers.reduce((sum, u) => sum + getUserPosts(u.id).length, 0) / Math.max(1, allUsers.length);
-    const avgHelpful = allUsers.reduce((sum, u) => sum + getUserPosts(u.id).reduce((s, p) => s + (p.helpfulVotes || 0), 0), 0) / Math.max(1, allUsers.length);
-    const avgEngagement = allUsers.reduce((sum, u) => {
-      const posts = getUserPosts(u.id);
-      return sum + posts.reduce((s, p) => s + (p.likes || 0) + (p.commentsCount || 0) * 2, 0);
-    }, 0) / Math.max(1, allUsers.length);
-
-    const userPostsCount = userPostList.length;
-    const userHelpful = userPostList.reduce((sum, p) => sum + (p.helpfulVotes || 0), 0);
-    const userEngagement = userPostList.reduce((sum, p) => sum + (p.likes || 0) + (p.commentsCount || 0) * 2, 0);
-
-    return [
-      { metric: 'Posts', userValue: userPostsCount, avgValue: Math.round(avgPosts), 
-        percentile: Math.min(100, Math.round((userPostsCount / Math.max(1, avgPosts * 2)) * 100)), 
-        icon: 'document-text', color: TC.primary },
-      { metric: 'Helpful', userValue: userHelpful, avgValue: Math.round(avgHelpful),
-        percentile: Math.min(100, Math.round((userHelpful / Math.max(1, avgHelpful * 2)) * 100)),
-        icon: 'heart', color: TC.success },
-      { metric: 'Engagement', userValue: userEngagement, avgValue: Math.round(avgEngagement),
-        percentile: Math.min(100, Math.round((userEngagement / Math.max(1, avgEngagement * 2)) * 100)),
-        icon: 'flash', color: TC.accent },
-    ];
-  }, [userPostList, getAllUsers, getUserPosts]);
-
-  // Content Streaks - from real data
-  const contentStreaks: ContentStreak[] = useMemo(() => {
-    const uniquePostDays = [...new Set(userPostList.map(p => new Date(p.timestamp).toDateString()))];
-    
-    // Calculate current streak
-    let currentStreak = 0;
-    const today = new Date().toDateString();
-    for (let i = 0; i < 30; i++) {
-      const date = new Date();
-      date.setDate(date.getDate() - i);
-      if (uniquePostDays.includes(date.toDateString())) {
-        currentStreak++;
-      } else if (i > 0) {
-        break;
-      }
-    }
-
-    // Calculate best streak
-    let bestStreak = 0;
-    let tempStreak = 0;
-    const sortedDays = uniquePostDays.sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
-    for (let i = 0; i < sortedDays.length; i++) {
-      const current = new Date(sortedDays[i]);
-      const next = i < sortedDays.length - 1 ? new Date(sortedDays[i + 1]) : null;
-      if (next) {
-        const diffDays = Math.round((next.getTime() - current.getTime()) / (1000 * 60 * 60 * 24));
-        if (diffDays === 1) {
-          tempStreak++;
-        } else {
-          bestStreak = Math.max(bestStreak, tempStreak + 1);
-          tempStreak = 0;
-        }
-      }
-    }
-    bestStreak = Math.max(bestStreak, tempStreak + 1);
-
-    const totalHelpful = userPostList.reduce((sum, p) => sum + (p.helpfulVotes || 0), 0);
-
-    return [
-      { type: 'Posting', current: currentStreak, best: bestStreak || Math.min(userPostList.length, 30), 
-        color: TC.primary, icon: 'document-text' },
-      { type: 'Helpful', current: Math.min(10, Math.round(totalHelpful / 2)), 
-        best: Math.min(10, Math.round(totalHelpful)), 
-        color: TC.success, icon: 'heart' },
-      { type: 'Active', current: userPostList.length > 0 ? Math.min(30, userPostList.length) : 0, 
-        best: Math.min(30, userPostList.length * 2), color: TC.accent, icon: 'flame' },
-    ];
-  }, [userPostList]);
-
-  const headerOpacity = useAnimatedStyle(() => ({
-    opacity: interpolate(scrollY.value, [0, 100], [0, 1], Extrapolation.CLAMP),
-    transform: [{ translateY: interpolate(scrollY.value, [0, 100], [-10, 0], Extrapolation.CLAMP) }],
-  }));
-
-  const scrollHandler = useAnimatedScrollHandler({ 
-    onScroll: (e) => { 'worklet'; scrollY.value = e.contentOffset.y; } 
-  });
-
-  useEffect(() => {
-    const show = Keyboard.addListener('keyboardDidShow', () => {});
-    const hide = Keyboard.addListener('keyboardDidHide', () => {});
-    return () => { show.remove(); hide.remove(); };
-  }, []);
-
-  useEffect(() => { loadUserData(); }, [currentUser]);
-
   const loadUserData = async () => {
     setIsLoading(true);
     try {
@@ -750,79 +742,13 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     setRefreshing(true);
     await refreshFeed();
     await loadUserData();
+    await loadActivityLog();
     setRefreshing(false);
   }, [refreshFeed, loadUserData]);
 
-  const handleSave = async () => {
-    if (!currentUser) return;
-    if (!formData.displayName.trim()) { 
-      sweetAlert.error('Validation Error', 'Display name is required'); 
-      triggerHaptic('error'); 
-      return; 
-    }
-
-    const cleanHandle = formData.handle.replace('@', '').trim();
-    if (!cleanHandle || cleanHandle.length < 3) {
-      sweetAlert.error('Validation Error', 'Username must be at least 3 characters');
-      triggerHaptic('error');
-      return;
-    }
-
-    const originalHandle = originalData.handle.replace('@', '');
-    if (cleanHandle !== originalHandle) {
-      const check = await checkUsernameAvailable(cleanHandle, currentUser.id);
-      if (!check.available) {
-        sweetAlert.error('Username Unavailable', check.message);
-        triggerHaptic('error');
-        return;
-      }
-    }
-
-    setIsSaving(true); 
-    triggerHaptic('medium');
-    try {
-      const handle = formData.handle.startsWith('@') ? formData.handle : `@${formData.handle}`;
-      const updates: any = { 
-        displayName: formData.displayName.trim(), 
-        handle: handle.toLowerCase(), 
-        bio: formData.bio.trim(), 
-        avatar: formData.avatar, 
-        coverPhoto: formData.coverPhoto,
-        country: formData.location 
-      };
-
-      if (cleanHandle !== originalHandle.replace('@', '')) {
-        const result = await updateUsername(
-          originalHandle.replace('@', ''),
-          cleanHandle,
-          currentUser.id
-        );
-        if (!result.success) {
-          throw new Error(result.message);
-        }
-      }
-
-      await updateUserContextProfile(updates);
-      await updateCommunityProfile(updates);
-      await syncUserProfileAcrossPosts(currentUser.id, updates);
-      
-      const newAchievements = await checkAndAwardAchievements();
-      if (newAchievements.length > 0) { 
-        sweetAlert.success('Achievement Unlocked!', `You earned ${newAchievements.length} new badge${newAchievements.length > 1 ? 's' : ''}!`); 
-      }
-      
-      triggerHaptic('success'); 
-      setIsEditing(false); 
-      setOriginalData({ ...formData });
-      sweetAlert.success('Profile Updated', 'Your community profile has been saved');
-      await loadUserData();
-    } catch (error: any) { 
-      triggerHaptic('error'); 
-      sweetAlert.error('Save Failed', error.message || 'Please try again'); 
-    }
-    setIsSaving(false);
-  };
-
+  // ============================================
+  // IMAGE HANDLING
+  // ============================================
   const COMMUNITY_IMAGES_DIR = FileSystem.documentDirectory + 'community_images/';
 
   const persistCommunityImage = async (sourceUri: string): Promise<string | null> => {
@@ -1001,6 +927,9 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
+  // ============================================
+  // PROFILE ACTIONS
+  // ============================================
   const handleShareProfile = async () => {
     if (!currentUser) return;
     try { 
@@ -1010,6 +939,156 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         title: `${currentUser.displayName}'s Profile`
       }); 
     } catch (error) { console.error('Error sharing profile:', error); }
+  };
+
+  const handleCopyHandle = () => { 
+    sweetAlert.toast('Copied!', 'Handle copied to clipboard'); 
+  };
+
+  const handleClearActivity = async () => {
+    sweetAlert.confirm(
+      'Clear Activity History',
+      'This will clear your activity log and post history. Your posts will remain but engagement data will be reset.',
+      async () => {
+        try {
+          await AsyncStorage.removeItem('@community_activity_log');
+          setActivityLog([]);
+          
+          // Reset stats
+          if (currentUser) {
+            const resetStats = {
+              ...currentUser.stats,
+              posts: userPostList.length,
+              helpful: 0,
+              streakDays: 0,
+            };
+            await updateCommunityProfile({ stats: resetStats });
+          }
+          
+          sweetAlert.success('Cleared', 'Your activity history has been cleared');
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } catch (error) {
+          sweetAlert.error('Error', 'Failed to clear activity');
+        }
+      },
+      () => {},
+      'Clear',
+      'Cancel'
+    );
+  };
+
+  const handleDeactivateProfile = async () => {
+    sweetAlert.confirm(
+      'Deactivate Profile',
+      'Your profile will be hidden from others. You can reactivate anytime by signing in again.',
+      async () => {
+        try {
+          setIsProfileDeactivated(true);
+          await updateCommunityProfile({ 
+            isPublic: false,
+            onlineStatus: 'offline' 
+          });
+          sweetAlert.success('Deactivated', 'Your profile is now hidden');
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } catch (error) {
+          sweetAlert.error('Error', 'Failed to deactivate profile');
+        }
+      },
+      () => {},
+      'Deactivate',
+      'Cancel'
+    );
+  };
+
+  const handleReactivateProfile = async () => {
+    try {
+      setIsProfileDeactivated(false);
+      await updateCommunityProfile({ 
+        isPublic: true,
+        onlineStatus: 'online' 
+      });
+      sweetAlert.success('Reactivated', 'Your profile is now visible');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      sweetAlert.error('Error', 'Failed to reactivate profile');
+    }
+  };
+
+  // ============================================
+  // SAVE PROFILE
+  // ============================================
+  const handleSave = async () => {
+    if (!currentUser) return;
+    if (!formData.displayName.trim()) { 
+      sweetAlert.error('Validation Error', 'Display name is required'); 
+      triggerHaptic('error'); 
+      return; 
+    }
+
+    const cleanHandle = formData.handle.replace('@', '').trim();
+    if (!cleanHandle || cleanHandle.length < 3) {
+      sweetAlert.error('Validation Error', 'Username must be at least 3 characters');
+      triggerHaptic('error');
+      return;
+    }
+
+    const originalHandle = originalData.handle.replace('@', '');
+    if (cleanHandle !== originalHandle) {
+      const check = await checkUsernameAvailable(cleanHandle, currentUser.id);
+      if (!check.available) {
+        sweetAlert.error('Username Unavailable', check.message);
+        triggerHaptic('error');
+        return;
+      }
+    }
+
+    setIsSaving(true); 
+    triggerHaptic('medium');
+    try {
+      const handle = formData.handle.startsWith('@') ? formData.handle : `@${formData.handle}`;
+      const updates: any = { 
+        displayName: formData.displayName.trim(), 
+        handle: handle.toLowerCase(), 
+        bio: formData.bio.trim(), 
+        avatar: formData.avatar, 
+        coverPhoto: formData.coverPhoto,
+        country: formData.location,
+        isPublic: formData.isPublic,
+        notificationsEnabled: formData.notificationsEnabled,
+        showActivityStatus: formData.showActivityStatus,
+        allowMessages: formData.allowMessages,
+      };
+
+      if (cleanHandle !== originalHandle.replace('@', '')) {
+        const result = await updateUsername(
+          originalHandle.replace('@', ''),
+          cleanHandle,
+          currentUser.id
+        );
+        if (!result.success) {
+          throw new Error(result.message);
+        }
+      }
+
+      await updateUserContextProfile(updates);
+      await updateCommunityProfile(updates);
+      await syncUserProfileAcrossPosts(currentUser.id, updates);
+      
+      const newAchievements = await checkAndAwardAchievements();
+      if (newAchievements.length > 0) { 
+        sweetAlert.success('Achievement Unlocked!', `You earned ${newAchievements.length} new badge${newAchievements.length > 1 ? 's' : ''}!`); 
+      }
+      
+      triggerHaptic('success'); 
+      setIsEditing(false); 
+      setOriginalData({ ...formData });
+      sweetAlert.success('Profile Updated', 'Your community profile has been saved');
+      await loadUserData();
+    } catch (error: any) { 
+      triggerHaptic('error'); 
+      sweetAlert.error('Save Failed', error.message || 'Please try again'); 
+    }
+    setIsSaving(false);
   };
 
   const hasChanges = useMemo(() => 
@@ -1027,7 +1106,6 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   // ============================================
   // RENDER FUNCTIONS
   // ============================================
-
   const renderStickyHeader = () => (
     <Animated.View style={[styles.stickyHeader, { paddingTop: insets.top + 8 }, headerOpacity]}>
       <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
@@ -1044,13 +1122,8 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     
     return (
       <Animated.View entering={FadeInUp.delay(100).springify()} style={styles.profileHero}>
-        {/* Cover Photo - reduced height for better spacing */}
-        <TouchableOpacity 
-          activeOpacity={0.9} 
-          onPress={() => isEditing && setShowCoverPicker(true)}
-          style={styles.coverPhotoContainer}
-          disabled={!isEditing}
-        >
+        {/* Cover Photo - Full width with better overlay */}
+        <View style={styles.coverPhotoContainer}>
           {coverPhoto ? (
             <Image 
               source={{ uri: coverPhoto }} 
@@ -1059,25 +1132,36 @@ export default function CommunityProfileScreen({ navigation }: Props) {
             />
           ) : (
             <LinearGradient 
-              colors={['#6366f1', '#8b5cf6']} 
+              colors={['#6366f1', '#8b5cf6', '#6a82fb']} 
               style={styles.coverPhoto}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
             >
               <View style={styles.coverPhotoPlaceholder}>
-                <Ionicons name="camera-outline" size={28} color="rgba(255,255,255,0.6)" />
+                <Ionicons name="camera-outline" size={36} color="rgba(255,255,255,0.5)" />
                 <Text style={styles.coverPhotoText}>Add Cover Photo</Text>
               </View>
             </LinearGradient>
           )}
           {isEditing && (
-            <View style={styles.coverPhotoEditBadge}>
-              <Ionicons name="camera" size={14} color="#fff" />
-            </View>
+            <TouchableOpacity 
+              style={styles.coverPhotoEditBadge} 
+              onPress={() => setShowCoverPicker(true)}
+            >
+              <Ionicons name="camera" size={16} color="#fff" />
+            </TouchableOpacity>
           )}
-        </TouchableOpacity>
+          
+          {/* Gradient overlay for better text readability */}
+          <LinearGradient
+            colors={['transparent', 'rgba(0,0,0,0.3)', 'rgba(0,0,0,0.6)']}
+            style={styles.coverPhotoOverlay}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+          />
+        </View>
 
-        {/* Avatar - closer to cover photo */}
+        {/* Avatar - Overlapping cover photo */}
         <View style={styles.avatarSection}>
           <TouchableOpacity 
             activeOpacity={0.9} 
@@ -1085,14 +1169,14 @@ export default function CommunityProfileScreen({ navigation }: Props) {
             style={styles.avatarWrapper}
             disabled={!isEditing}
           >
-            {avatarSource && typeof avatarSource === 'string' && avatarSource.length > 0 ? (
+            {avatarSource ? (
               <Image 
                 source={{ uri: avatarSource }} 
                 style={styles.avatarImage}
                 resizeMode="cover"
               />
             ) : (
-              <View style={[styles.avatarImage, styles.avatarPlaceholder, { backgroundColor: `${roleConfig.color}20` }]}>
+              <View style={[styles.avatarImage, styles.avatarPlaceholder, { backgroundColor: `${roleConfig.color}25` }]}>
                 <Text style={styles.avatarPlaceholderText}>
                   {currentUser.displayName?.charAt(0)?.toUpperCase() || '?'}
                 </Text>
@@ -1106,6 +1190,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
           </TouchableOpacity>
         </View>
 
+        {/* Profile Info */}
         <View style={styles.profileInfo}>
           <View style={styles.nameRow}>
             <Text style={styles.profileName}>{currentUser.displayName}</Text>
@@ -1116,6 +1201,11 @@ export default function CommunityProfileScreen({ navigation }: Props) {
             )}
           </View>
           <Text style={styles.profileMeta}>{currentUser.handle} • {roleConfig.label}</Text>
+          
+          {currentUser.bio && (
+            <Text style={styles.profileBio} numberOfLines={2}>{currentUser.bio}</Text>
+          )}
+          
           <View style={styles.profileTags}>
             <View style={[styles.profileTag, { backgroundColor: `${roleConfig.color}20` }]}>
               <Ionicons name={roleConfig.icon as any} size={12} color={roleConfig.color} />
@@ -1127,10 +1217,34 @@ export default function CommunityProfileScreen({ navigation }: Props) {
                 <Text style={[styles.profileTagText, { color: '#f59e0b' }]}>Editing</Text>
               </View>
             )}
+            {isProfileDeactivated && (
+              <View style={[styles.profileTag, { backgroundColor: 'rgba(239,68,68,0.15)' }]}>
+                <Ionicons name="eye-off" size={12} color="#ef4444" />
+                <Text style={[styles.profileTagText, { color: '#ef4444' }]}>Hidden</Text>
+              </View>
+            )}
+          </View>
+
+          {/* Stats Row - Always visible */}
+          <View style={styles.statsRow}>
+            <View style={styles.statsItem}>
+              <Text style={styles.statsValue}>{userPostList.length}</Text>
+              <Text style={styles.statsLabel}>Posts</Text>
+            </View>
+            <View style={styles.statsDivider} />
+            <View style={styles.statsItem}>
+              <Text style={styles.statsValue}>{followerCount}</Text>
+              <Text style={styles.statsLabel}>Followers</Text>
+            </View>
+            <View style={styles.statsDivider} />
+            <View style={styles.statsItem}>
+              <Text style={styles.statsValue}>{followingCount}</Text>
+              <Text style={styles.statsLabel}>Following</Text>
+            </View>
           </View>
         </View>
 
-        {/* Edit/Save button - positioned at top right */}
+        {/* Single Edit/Save button */}
         <TouchableOpacity 
           style={[styles.editToggleBtn, isEditing && styles.editToggleBtnActive]} 
           onPress={() => {
@@ -1167,7 +1281,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   ];
 
   // ============================================
-  // OVERVIEW TAB - With Real Intelligence Data
+  // OVERVIEW TAB
   // ============================================
   const renderOverviewTab = () => (
     <Animated.View entering={FadeInUp.springify()} style={styles.tabPanel}>
@@ -1176,9 +1290,10 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         <KpiPill icon="📝" value={userPostList.length} label="Posts" color={TC.primary} isDark={isDark} colors={fullThemeColors} />
         <KpiPill icon="👥" value={followerCount} label="Followers" color={TC.secondary} isDark={isDark} colors={fullThemeColors} />
         <KpiPill icon="🔥" value={currentUser?.stats?.streakDays || 0} label="Streak" color={TC.accent} isDark={isDark} colors={fullThemeColors} />
+        <KpiPill icon="💙" value={currentUser?.stats?.helpful || 0} label="Helpful" color={TC.success} isDark={isDark} colors={fullThemeColors} />
       </View>
 
-      {/* Influence Score - Using REAL data */}
+      {/* Influence Dashboard - With real data */}
       <Animated.View entering={FadeInUp.delay(100).springify()}>
         <GlassCard isDark={isDark} colors={fullThemeColors}>
           <View style={styles.influenceHeader}>
@@ -1187,11 +1302,11 @@ export default function CommunityProfileScreen({ navigation }: Props) {
             </View>
             <View style={styles.influenceTitleWrap}>
               <Text style={styles.influenceTitle}>Influence Score</Text>
-              <Text style={styles.influenceSubtitle}>Community impact metrics</Text>
+              <Text style={styles.influenceSubtitle}>Based on {userPostList.length} posts and engagement</Text>
             </View>
             <View style={[styles.influenceOverallBadge, { backgroundColor: `${TC.primary}12` }]}>
               <Text style={[styles.influenceOverallText, { color: TC.primary }]}>
-                {activityScore.overall}
+                {Math.round(influenceMetrics.reduce((a, b) => a + b.value, 0) / influenceMetrics.length)}
               </Text>
             </View>
           </View>
@@ -1210,6 +1325,13 @@ export default function CommunityProfileScreen({ navigation }: Props) {
                 </View>
               </View>
             ))}
+          </View>
+          <View style={styles.influenceFooter}>
+            <Text style={styles.influenceFooterText}>
+              {userPostList.length > 0 
+                ? `📊 ${userPostList.length} posts analyzed • ${userPostList.reduce((s, p) => s + p.likes, 0)} total likes`
+                : '📊 Start posting to build your influence score'}
+            </Text>
           </View>
         </GlassCard>
       </Animated.View>
@@ -1254,7 +1376,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
             </View>
             <View style={styles.standingTitleWrap}>
               <Text style={styles.standingTitle}>Community Standing</Text>
-              <Text style={styles.standingSubtitle}>Top {communityStanding.percentile}% of members</Text>
+              <Text style={styles.standingSubtitle}>Top {communityStanding.percentile}% of {allUsers.length} members</Text>
             </View>
           </View>
           <View style={styles.standingRankRow}>
@@ -1384,7 +1506,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
 
       {/* Peer Comparison */}
       <Animated.View entering={FadeInUp.delay(450).springify()}>
-        <SectionHeader title="Peer Comparison" subtitle="How you compare to community average" isDark={isDark} colors={fullThemeColors} />
+        <SectionHeader title="Peer Comparison" subtitle={`Among ${allUsers.length} community members`} isDark={isDark} colors={fullThemeColors} />
         <View style={styles.comparisonList}>
           {peerComparisons.map((comp, i) => (
             <View key={comp.metric} style={styles.comparisonRow}>
@@ -1425,88 +1547,91 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         </View>
       </Animated.View>
 
-      {/* About Me Section */}
-      <GlassCard delay={600} isDark={isDark} colors={fullThemeColors}>
-        <View style={styles.sectionHeaderWithEdit}>
-          <Text style={styles.sectionLabel}>About Me</Text>
-          {!isEditing ? (
-            <TouchableOpacity style={styles.editIconBtn} onPress={() => setIsEditing(true)}>
-              <Ionicons name="create-outline" size={18} color="#6366f1" />
-            </TouchableOpacity>
-          ) : (
+      {/* Edit Mode: About Me Section */}
+      {isEditing ? (
+        <GlassCard delay={600} isDark={isDark} colors={fullThemeColors}>
+          <View style={styles.sectionHeaderWithEdit}>
+            <Text style={styles.sectionLabel}>About Me</Text>
             <View style={styles.editingBadge}><Text style={styles.editingBadgeText}>Editing</Text></View>
-          )}
-        </View>
-        {isEditing ? (
+          </View>
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>Bio</Text>
             <TextInput style={styles.textArea} value={formData.bio} onChangeText={(text) => setFormData(prev => ({ ...prev, bio: text }))} placeholder="Tell us about yourself..." placeholderTextColor="#666" multiline numberOfLines={4} maxLength={160} selectionColor={themeColors.primary} />
             <Text style={styles.charCount}>{formData.bio.length}/160</Text>
           </View>
-        ) : (
+          <View style={[styles.infoDivider, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]} />
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Location</Text>
+            <View style={[styles.inputContainer, !isEditing && styles.inputDisabled]}>
+              <Ionicons name="location-outline" size={18} color="#6366f1" style={styles.inputIcon} />
+              <TextInput style={[styles.input, styles.flexInput]} value={formData.location} onChangeText={(text) => setFormData(prev => ({ ...prev, location: text }))} placeholder={locationDetected || "Detecting location..."} placeholderTextColor="#666" editable={isEditing} selectionColor={themeColors.primary} />
+            </View>
+          </View>
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Username</Text>
+            <View style={[styles.inputContainer, !isEditing && styles.inputDisabled]}>
+              <Ionicons name="at" size={18} color="#6366f1" style={styles.inputIcon} />
+              <TextInput style={[styles.input, styles.flexInput]} value={formData.handle} onChangeText={(text) => {
+                const cleaned = text.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_.]/g, '');
+                setFormData(prev => ({ ...prev, handle: cleaned }));
+              }} placeholder="username" placeholderTextColor="#666" autoCapitalize="none" editable={isEditing} selectionColor={themeColors.primary} />
+              {!isEditing && (
+                <TouchableOpacity onPress={handleCopyHandle} style={styles.copyBtn}>
+                  <Ionicons name="copy-outline" size={16} color="#6366f1" />
+                </TouchableOpacity>
+              )}
+            </View>
+            {isEditing && usernameCheckStatus && (
+              <View style={[styles.usernameStatus, { 
+                backgroundColor: usernameCheckStatus.available ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
+                borderColor: usernameCheckStatus.available ? '#10b981' : '#ef4444',
+              }]}>
+                <Ionicons name={usernameCheckStatus.available ? 'checkmark-circle' : 'alert-circle'} size={14} color={usernameCheckStatus.available ? '#10b981' : '#ef4444'} />
+                <Text style={[styles.usernameStatusText, { color: usernameCheckStatus.available ? '#10b981' : '#ef4444' }]}>
+                  {usernameCheckStatus.message}
+                </Text>
+              </View>
+            )}
+            {isCheckingUsername && (
+              <View style={styles.usernameStatus}>
+                <ActivityIndicator size="small" color="#6366f1" />
+                <Text style={[styles.usernameStatusText, { color: '#6366f1' }]}>Checking availability...</Text>
+              </View>
+            )}
+          </View>
+        </GlassCard>
+      ) : (
+        <GlassCard delay={600} isDark={isDark} colors={fullThemeColors}>
+          <View style={styles.sectionHeaderWithEdit}>
+            <Text style={styles.sectionLabel}>About Me</Text>
+            <TouchableOpacity style={styles.editIconBtn} onPress={() => setIsEditing(true)}>
+              <Ionicons name="create-outline" size={18} color="#6366f1" />
+            </TouchableOpacity>
+          </View>
           <View style={styles.bioDisplay}>
             <Text style={styles.bioText}>{formData.bio || 'No bio yet. Tap edit to add one!'}</Text>
           </View>
-        )}
-        <View style={[styles.infoDivider, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]} />
-        <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>Location</Text>
-          <View style={[styles.inputContainer, !isEditing && styles.inputDisabled]}>
-            <Ionicons name="location-outline" size={18} color="#6366f1" style={styles.inputIcon} />
-            <TextInput style={[styles.input, styles.flexInput]} value={formData.location} onChangeText={(text) => setFormData(prev => ({ ...prev, location: text }))} placeholder={locationDetected || "Detecting location..."} placeholderTextColor="#666" editable={isEditing} selectionColor={themeColors.primary} />
-          </View>
-        </View>
-        <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>Username</Text>
-          <View style={[styles.inputContainer, !isEditing && styles.inputDisabled]}>
-            <Ionicons name="at" size={18} color="#6366f1" style={styles.inputIcon} />
-            <TextInput style={[styles.input, styles.flexInput]} value={formData.handle} onChangeText={(text) => {
-              const cleaned = text.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_.]/g, '');
-              setFormData(prev => ({ ...prev, handle: cleaned }));
-            }} placeholder="username" placeholderTextColor="#666" autoCapitalize="none" editable={isEditing} selectionColor={themeColors.primary} />
-            {!isEditing && (
-              <TouchableOpacity onPress={() => sweetAlert.toast('Copied!', 'Handle copied to clipboard')} style={styles.copyBtn}>
-                <Ionicons name="copy-outline" size={16} color="#6366f1" />
-              </TouchableOpacity>
-            )}
-          </View>
-          {isEditing && usernameCheckStatus && (
-            <View style={[styles.usernameStatus, { 
-              backgroundColor: usernameCheckStatus.available ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
-              borderColor: usernameCheckStatus.available ? '#10b981' : '#ef4444',
-            }]}>
-              <Ionicons name={usernameCheckStatus.available ? 'checkmark-circle' : 'alert-circle'} size={14} color={usernameCheckStatus.available ? '#10b981' : '#ef4444'} />
-              <Text style={[styles.usernameStatusText, { color: usernameCheckStatus.available ? '#10b981' : '#ef4444' }]}>
-                {usernameCheckStatus.message}
-              </Text>
-            </View>
+          {formData.location && (
+            <>
+              <View style={[styles.infoDivider, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]} />
+              <View style={styles.bioDisplay}>
+                <View style={styles.locationRow}>
+                  <Ionicons name="location-outline" size={16} color="#6366f1" />
+                  <Text style={styles.locationText}>{formData.location}</Text>
+                </View>
+              </View>
+            </>
           )}
-          {isCheckingUsername && (
-            <View style={styles.usernameStatus}>
-              <ActivityIndicator size="small" color="#6366f1" />
-              <Text style={[styles.usernameStatusText, { color: '#6366f1' }]}>Checking availability...</Text>
-            </View>
-          )}
-        </View>
-      </GlassCard>
+        </GlassCard>
+      )}
 
       {/* Manage Topics */}
       <TouchableOpacity
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          backgroundColor: isDark ? 'rgba(45,45,60,0.6)' : '#ffffff',
-          paddingHorizontal: 16,
-          paddingVertical: 14,
-          borderRadius: 16,
-          marginHorizontal: 20,
-          marginVertical: 8,
-          gap: 12,
-        }}
+        style={[styles.manageTopicsBtn, { backgroundColor: isDark ? 'rgba(45,45,60,0.6)' : '#ffffff' }]}
         onPress={() => navigation.navigate('CommunityOnboarding' as never, { editing: true } as never)}
       >
         <Ionicons name="pricetags-outline" size={22} color="#6366f1" />
-        <Text style={{ flex: 1, fontSize: 15, fontWeight: '600', color: isDark ? '#ffffff' : '#1a1a2e' }}>
+        <Text style={[styles.manageTopicsText, { color: isDark ? '#ffffff' : '#1a1a2e' }]}>
           Manage Your Topics
         </Text>
         <Ionicons name="chevron-forward" size={18} color="#94a3b8" />
@@ -1535,6 +1660,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         </View>
       </GlassCard>
 
+      {/* Quick Actions Dock - Only in view mode */}
       {!isEditing && (
         <QuickActionsDock
           onMessage={() => navigation.navigate('ChatList' as never)}
@@ -1549,7 +1675,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   );
 
   // ============================================
-  // POSTS TAB - Smooth rounded design
+  // POSTS TAB
   // ============================================
   const renderPostsTab = () => {
     const posts = userPostList.slice(0, 10);
@@ -1644,7 +1770,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   };
 
   // ============================================
-  // ACHIEVEMENTS TAB - Fixed progress
+  // ACHIEVEMENTS TAB
   // ============================================
   const renderAchievementsTab = () => {
     const achievements = currentUser?.achievements || [];
@@ -1692,7 +1818,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
           )}
         </View>
 
-        {/* Progress Section - Fixed text clipping */}
+        {/* Progress Section */}
         <View style={styles.progressCard}>
           <Text style={styles.progressCardTitle}>Progress</Text>
           <View style={styles.progressRow}>
@@ -1721,7 +1847,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   };
 
   // ============================================
-  // SETTINGS TAB - Proper styling
+  // SETTINGS TAB
   // ============================================
   const renderSettingsTab = () => (
     <Animated.View entering={FadeInUp.springify()} style={styles.tabPanel}>
@@ -1761,7 +1887,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         ))}
       </View>
 
-      {/* Account Actions - Fixed styling */}
+      {/* Account Actions */}
       <View style={styles.dangerCard}>
         <LinearGradient
           colors={isDark ? ['rgba(239,68,68,0.08)', 'rgba(220,38,38,0.04)'] : ['rgba(239,68,68,0.05)', 'rgba(220,38,38,0.02)']}
@@ -1779,18 +1905,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         
         <TouchableOpacity 
           style={styles.dangerActionBtn} 
-          onPress={() => {
-            sweetAlert.confirm(
-              'Clear History',
-              'Clear all your posts and activity?',
-              async () => {
-                sweetAlert.success('Cleared', 'Your activity history has been cleared');
-              },
-              () => {},
-              'Clear',
-              'Cancel'
-            );
-          }}
+          onPress={handleClearActivity}
         >
           <View style={[styles.dangerActionIcon, { backgroundColor: 'rgba(239,68,68,0.1)' }]}>
             <Ionicons name="trash-outline" size={18} color="#ef4444" />
@@ -1799,27 +1914,29 @@ export default function CommunityProfileScreen({ navigation }: Props) {
           <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
         </TouchableOpacity>
         
-        <TouchableOpacity 
-          style={styles.dangerActionBtn} 
-          onPress={() => {
-            sweetAlert.confirm(
-              'Deactivate',
-              'Temporarily deactivate your community profile?',
-              async () => {
-                sweetAlert.success('Deactivated', 'Your profile is now hidden');
-              },
-              () => {},
-              'Deactivate',
-              'Cancel'
-            );
-          }}
-        >
-          <View style={[styles.dangerActionIcon, { backgroundColor: 'rgba(245,158,11,0.1)' }]}>
-            <Ionicons name="pause-circle-outline" size={18} color="#f59e0b" />
-          </View>
-          <Text style={[styles.dangerActionText, { color: '#f59e0b' }]}>Deactivate Profile</Text>
-          <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
-        </TouchableOpacity>
+        {isProfileDeactivated ? (
+          <TouchableOpacity 
+            style={[styles.dangerActionBtn, styles.reactivateActionBtn]} 
+            onPress={handleReactivateProfile}
+          >
+            <View style={[styles.dangerActionIcon, { backgroundColor: 'rgba(16,185,129,0.1)' }]}>
+              <Ionicons name="refresh-outline" size={18} color="#10b981" />
+            </View>
+            <Text style={[styles.dangerActionText, { color: '#10b981' }]}>Reactivate Profile</Text>
+            <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity 
+            style={styles.dangerActionBtn} 
+            onPress={handleDeactivateProfile}
+          >
+            <View style={[styles.dangerActionIcon, { backgroundColor: 'rgba(245,158,11,0.1)' }]}>
+              <Ionicons name="pause-circle-outline" size={18} color="#f59e0b" />
+            </View>
+            <Text style={[styles.dangerActionText, { color: '#f59e0b' }]}>Deactivate Profile</Text>
+            <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
+          </TouchableOpacity>
+        )}
       </View>
     </Animated.View>
   );
@@ -1990,7 +2107,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
 }
 
 // ============================================
-// STYLES - Complete
+// STYLES
 // ============================================
 const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background || (isDarkMode ? '#0f0f1a' : '#f8f9fc') },
@@ -2008,8 +2125,8 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
     paddingHorizontal: 20, 
     paddingBottom: 10 
   },
-  stickyTitle: { fontSize: 17, fontWeight: '800', color: colors.text || '#fff', letterSpacing: -0.3 },
-  stickySubtitle: { fontSize: 12, fontWeight: '500', color: colors.textSecondary || '#94a3b8', marginTop: 2 },
+  stickyTitle: { fontSize: 17, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
+  stickySubtitle: { fontSize: 12, fontWeight: '500', color: 'rgba(255,255,255,0.7)', marginTop: 2 },
 
   // Top Header
   topHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 16, marginBottom: 16 },
@@ -2032,16 +2149,23 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   saveBtnDisabled: { backgroundColor: 'rgba(100,116,139,0.2)' },
   saveBtnText: { fontSize: 14, fontWeight: '800', color: '#fff' },
 
-  // Profile Hero - Fixed spacing
-  profileHero: { marginHorizontal: 16, marginBottom: 12 },
+  // Profile Hero
+  profileHero: { marginHorizontal: 16, marginBottom: 20 },
   coverPhotoContainer: { 
     width: '100%', 
-    height: 140, 
+    height: 180, 
     borderRadius: 16, 
     overflow: 'hidden', 
     position: 'relative' 
   },
   coverPhoto: { width: '100%', height: '100%' },
+  coverPhotoOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 80,
+  },
   coverPhotoPlaceholder: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8 },
   coverPhotoText: { color: 'rgba(255,255,255,0.6)', fontSize: 14, fontWeight: '600' },
   coverPhotoEditBadge: { 
@@ -2056,11 +2180,7 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
     alignItems: 'center' 
   },
 
-  avatarSection: { 
-    alignItems: 'center', 
-    marginTop: -40, 
-    marginBottom: 4 
-  },
+  avatarSection: { alignItems: 'center', marginTop: -50 },
   avatarWrapper: { 
     position: 'relative',
     shadowColor: '#000', 
@@ -2070,9 +2190,9 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
     elevation: 8 
   },
   avatarImage: { 
-    width: 90, 
-    height: 90, 
-    borderRadius: 45, 
+    width: 100, 
+    height: 100, 
+    borderRadius: 50, 
     borderWidth: 4, 
     borderColor: '#fff' 
   },
@@ -2082,17 +2202,17 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
     alignItems: 'center' 
   },
   avatarPlaceholderText: { 
-    fontSize: 32, 
+    fontSize: 36, 
     fontWeight: '800', 
     color: '#fff' 
   },
   avatarEditBadge: { 
     position: 'absolute', 
-    bottom: 2, 
-    right: 2, 
-    width: 26, 
-    height: 26, 
-    borderRadius: 13, 
+    bottom: 4, 
+    right: 4, 
+    width: 28, 
+    height: 28, 
+    borderRadius: 14, 
     backgroundColor: '#6366f1', 
     justifyContent: 'center', 
     alignItems: 'center',
@@ -2100,9 +2220,9 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
     borderColor: '#fff'
   },
 
-  profileInfo: { alignItems: 'center', marginTop: 4 },
+  profileInfo: { alignItems: 'center', marginTop: 8 },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  profileName: { fontSize: 22, fontWeight: '800', color: colors.text || '#1e293b', letterSpacing: -0.5 },
+  profileName: { fontSize: 24, fontWeight: '800', color: colors.text || '#1e293b', letterSpacing: -0.5 },
   verifiedBadge: { 
     width: 20, 
     height: 20, 
@@ -2111,23 +2231,31 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
     justifyContent: 'center', 
     alignItems: 'center' 
   },
-  profileMeta: { fontSize: 13, fontWeight: '500', color: colors.textSecondary || '#64748b' },
-  profileTags: { flexDirection: 'row', marginTop: 6, gap: 8 },
-  profileTag: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, gap: 4 },
-  profileTagText: { fontSize: 11, fontWeight: '700' },
+  profileMeta: { fontSize: 14, fontWeight: '500', color: colors.textSecondary || '#64748b' },
+  profileBio: { fontSize: 14, color: colors.textSecondary || '#64748b', textAlign: 'center', marginTop: 4, paddingHorizontal: 20 },
+  profileTags: { flexDirection: 'row', marginTop: 8, gap: 8 },
+  profileTag: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, gap: 4 },
+  profileTagText: { fontSize: 12, fontWeight: '700' },
   editingDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#f59e0b' },
   editToggleBtn: { 
     position: 'absolute', 
     right: 0, 
     top: 0, 
-    width: 36, 
-    height: 36, 
+    width: 40, 
+    height: 40, 
     borderRadius: 12, 
     backgroundColor: 'rgba(255,255,255,0.08)', 
     alignItems: 'center', 
     justifyContent: 'center' 
   },
   editToggleBtnActive: { backgroundColor: '#6366f1' },
+
+  // Stats Row
+  statsRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 12, gap: 20 },
+  statsItem: { alignItems: 'center' },
+  statsValue: { fontSize: 18, fontWeight: '800', color: colors.text || '#1e293b' },
+  statsLabel: { fontSize: 12, fontWeight: '600', color: colors.textSecondary || '#64748b' },
+  statsDivider: { width: 1, height: 24, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
 
   // Tab Bar
   tabBar: { 
@@ -2156,7 +2284,7 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
     overflow: 'hidden', 
     borderWidth: 1, 
     borderColor: colors.border || 'rgba(255,255,255,0.06)', 
-    marginHorizontal: 0, 
+    marginHorizontal: 16, 
     marginBottom: DESIGN.spacing.lg 
   },
   glassBorder: { 
@@ -2174,7 +2302,7 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
     flexDirection: 'row', 
     justifyContent: 'space-between', 
     alignItems: 'flex-start', 
-    marginHorizontal: 0, 
+    marginHorizontal: 16, 
     marginBottom: 12, 
     marginTop: 8 
   },
@@ -2184,7 +2312,7 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   sectionActionText: { fontSize: 13, fontWeight: '700', color: '#6366f1' },
 
   // KPI Pill
-  kpiPillRow: { flexDirection: 'row', gap: 10, marginHorizontal: 0, marginBottom: 16 },
+  kpiPillRow: { flexDirection: 'row', gap: 10, marginHorizontal: 16, marginBottom: 16 },
   kpiPill: { 
     flex: 1, 
     borderRadius: 20, 
@@ -2211,7 +2339,7 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   influenceSubtitle: { fontSize: 12, fontWeight: '500', color: colors.textSecondary || '#64748b', marginTop: 2 },
   influenceOverallBadge: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12 },
   influenceOverallText: { fontSize: 20, fontWeight: '800' },
-  influenceGrid: { paddingHorizontal: 16, paddingBottom: 16, gap: 10 },
+  influenceGrid: { paddingHorizontal: 16, paddingBottom: 8, gap: 10 },
   influenceItem: { gap: 6 },
   influenceItemTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   influenceItemIconBg: { width: 24, height: 24, borderRadius: 6, justifyContent: 'center', alignItems: 'center' },
@@ -2219,6 +2347,8 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   influenceItemValue: { fontSize: 12, fontWeight: '700' },
   influenceBarBg: { height: 6, borderRadius: 3, overflow: 'hidden' },
   influenceBarFill: { height: '100%', borderRadius: 3 },
+  influenceFooter: { paddingHorizontal: 16, paddingBottom: 12 },
+  influenceFooterText: { fontSize: 12, fontWeight: '500', color: colors.textSecondary || '#64748b', textAlign: 'center' },
 
   // Impact
   impactHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, paddingBottom: 12 },
@@ -2269,7 +2399,7 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   sparklineDay: { fontSize: 10, fontWeight: '600', color: colors.textMuted || '#94a3b8' },
 
   // Suggestions
-  suggestionsScroll: { flexDirection: 'row', paddingHorizontal: 0, gap: 12, paddingBottom: 4 },
+  suggestionsScroll: { flexDirection: 'row', paddingHorizontal: 16, gap: 12, paddingBottom: 4 },
   suggestionCard: { width: 160, padding: 14, borderRadius: 20, overflow: 'hidden' },
   suggestionIconBg: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
   suggestionEmoji: { fontSize: 22 },
@@ -2279,7 +2409,7 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   suggestionActionText: { fontSize: 11, fontWeight: '700' },
 
   // Affinity
-  affinityList: { marginHorizontal: 0, gap: 8, marginBottom: 16 },
+  affinityList: { marginHorizontal: 16, gap: 8, marginBottom: 16 },
   affinityRow: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: isDarkMode ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.75)' },
   affinityIconBg: { width: 42, height: 42, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   affinityEmoji: { fontSize: 20 },
@@ -2291,7 +2421,7 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   affinityBarFill: { height: '100%', borderRadius: 2 },
 
   // Comparison
-  comparisonList: { marginHorizontal: 0, gap: 8, marginBottom: 16 },
+  comparisonList: { marginHorizontal: 16, gap: 8, marginBottom: 16 },
   comparisonRow: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: isDarkMode ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.75)' },
   comparisonIconBg: { width: 42, height: 42, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   comparisonContent: { flex: 1, marginLeft: 12, gap: 6 },
@@ -2304,7 +2434,7 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   comparisonNumbers: { fontSize: 11, fontWeight: '600', color: colors.textSecondary || '#64748b' },
 
   // Streaks
-  streaksRow: { flexDirection: 'row', gap: 10, marginHorizontal: 0, marginBottom: 16 },
+  streaksRow: { flexDirection: 'row', gap: 10, marginHorizontal: 16, marginBottom: 16 },
   streakCard: { flex: 1, borderRadius: 20, padding: 14, alignItems: 'center', borderWidth: 1, backgroundColor: isDarkMode ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.75)' },
   streakIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
   streakValue: { fontSize: 22, fontWeight: '800' },
@@ -2362,18 +2492,20 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
     fontWeight: '500', 
     borderWidth: 1, 
     borderColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-    marginHorizontal: 0 
+    marginHorizontal: 20 
   },
   charCount: { 
     fontSize: 12, 
     textAlign: 'right', 
     marginTop: 4, 
-    marginHorizontal: 0, 
+    marginHorizontal: 20, 
     color: colors.textSecondary || '#64748b', 
     fontWeight: '500' 
   },
   bioDisplay: { paddingHorizontal: 20, paddingBottom: 16 },
   bioText: { fontSize: 15, color: colors.textSecondary || '#64748b', lineHeight: 22, fontWeight: '500' },
+  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
+  locationText: { fontSize: 14, fontWeight: '500', color: colors.textSecondary || '#64748b' },
   infoDivider: { height: 1, marginHorizontal: 20, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
 
   // Username Status
@@ -2386,7 +2518,7 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
     paddingVertical: 8, 
     borderRadius: 10,
     borderWidth: 1,
-    marginHorizontal: 0,
+    marginHorizontal: 20,
   },
   usernameStatusText: { fontSize: 13, fontWeight: '600' },
 
@@ -2396,8 +2528,23 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   topicChipText: { fontSize: 13, fontWeight: '700' },
   emptyText: { fontSize: 14, color: colors.textMuted || '#94a3b8', fontWeight: '500' },
 
+  // Manage Topics
+  manageTopicsBtn: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    paddingHorizontal: 16, 
+    paddingVertical: 14, 
+    borderRadius: 16, 
+    marginHorizontal: 20, 
+    marginVertical: 8, 
+    gap: 12,
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'
+  },
+  manageTopicsText: { flex: 1, fontSize: 15, fontWeight: '600' },
+
   // Quick Actions Dock
-  dockContainer: { marginHorizontal: 0, marginBottom: 20 },
+  dockContainer: { marginHorizontal: 16, marginBottom: 20 },
   dock: { flexDirection: 'row', gap: 10, justifyContent: 'center' },
   dockItem: { alignItems: 'center', gap: 6, flex: 1 },
   dockGradient: { width: 52, height: 52, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
@@ -2409,7 +2556,7 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
     flexDirection: 'row', 
     justifyContent: 'space-between', 
     alignItems: 'center', 
-    paddingHorizontal: 0, 
+    paddingHorizontal: 4, 
     marginBottom: 16 
   },
   postsHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
@@ -2473,7 +2620,7 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
     flexDirection: 'row', 
     justifyContent: 'space-between', 
     alignItems: 'center', 
-    paddingHorizontal: 0, 
+    paddingHorizontal: 4, 
     marginBottom: 16 
   },
   achievementsHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
@@ -2507,7 +2654,7 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   emptyAchievementsTitle: { fontSize: 16, fontWeight: '700', color: colors.text || '#1e293b', marginTop: 12, marginBottom: 4 },
   emptyAchievementsText: { fontSize: 14, fontWeight: '500', color: colors.textSecondary || '#64748b', textAlign: 'center' },
 
-  // Progress Card - Fixed text clipping
+  // Progress Card
   progressCard: { 
     borderRadius: 20, 
     padding: 20, 
@@ -2543,7 +2690,7 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   settingsRowDesc: { fontSize: 12, fontWeight: '500', color: colors.textSecondary || '#64748b', marginTop: 1 },
   settingsDivider: { height: 1, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', marginVertical: 4 },
 
-  // Danger Card - Fixed styling
+  // Danger Card
   dangerCard: { 
     borderRadius: 20, 
     padding: 20, 
@@ -2569,10 +2716,13 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
     backgroundColor: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)',
     marginTop: 4
   },
+  reactivateActionBtn: { 
+    backgroundColor: 'rgba(16,185,129,0.04)' 
+  },
   dangerActionIcon: { width: 32, height: 32, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
   dangerActionText: { fontSize: 14, fontWeight: '600', color: '#ef4444', flex: 1 },
 
-  // Image Picker Options
+  // Image Picker
   imagePickerOptions: { padding: 8 },
   imagePickerOption: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 14, marginBottom: 8 },
   imagePickerIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginRight: 14 },

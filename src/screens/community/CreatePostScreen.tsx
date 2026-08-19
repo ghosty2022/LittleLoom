@@ -1,7 +1,8 @@
+// src/screens/community/CreatePostScreen.tsx
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useCommunity } from '../../context/CommunityContext';
-import {  Alert, Button, Dimensions, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Button, Dimensions, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -55,13 +56,31 @@ const MOODS: { value: PostMood; emoji: string; label: string; color: string; bgC
   { value: 'venting', emoji: '💨', label: 'Venting', color: '#ef4444', bgColor: '#ef444415' },
 ];
 
+// ─── Smart Compose Suggestions ───
+const SMART_SUGGESTIONS = [
+  "Share a milestone your little one reached 🎉",
+  "Ask for sleep training advice 😴",
+  "What's your favorite parenting hack? 💡",
+  "Celebrate a small win today 🌟",
+  "Need support? We're here 💙",
+  "Potty training tip that worked for us 🚽",
+  "Sleep regression survival guide 😴",
+  "Baby-led weaning experience 🍼",
+  "Early learning activity we love 📚",
+  "Natural remedies that actually work 💊",
+  "Toddler tantrum survival tips 😤",
+  "First day of school story 📚",
+  "How we handle screen time 📱",
+  "Meal prep for busy parents 🍱",
+  "Date night ideas for parents 💕",
+];
+
 interface ImageGridProps {
   images: string[];
   onRemove: (index: number) => void;
 }
 
-const ImageGrid = ({
-  images, onRemove }: ImageGridProps) => {
+const ImageGrid = ({ images, onRemove }: ImageGridProps) => {
   if (images.length === 0) return null;
 
   return (
@@ -165,6 +184,11 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
   const [pollQuestion, setPollQuestion] = useState('');
   const [pollOptions, setPollOptions] = useState<string[]>(['', '']);
   const [showMoodPicker, setShowMoodPicker] = useState(false);
+  
+  // ─── Smart Compose State ───
+  const [showSmartCompose, setShowSmartCompose] = useState(false);
+  const [smartPrompt, setSmartPrompt] = useState('');
+  const [filteredSuggestions, setFilteredSuggestions] = useState<string[]>(SMART_SUGGESTIONS);
 
   // Auto-detect device location on mount
   useEffect(() => {
@@ -194,6 +218,55 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
     detectLocation();
     return () => { isMounted = false; };
   }, [updateUserLocation]);
+
+  // ─── Smart Compose: Auto-detect topic from content ───
+  useEffect(() => {
+    if (content.length > 10 && !selectedTopic) {
+      const lowerContent = content.toLowerCase();
+      const keywordMap: Record<string, string[]> = {
+        'topic_1': ['potty', 'toilet', 'pee', 'poop', 'diaper', 'training'],
+        'topic_2': ['sleep', 'nap', 'bedtime', 'night', 'insomnia', 'tired', 'awake'],
+        'topic_3': ['feed', 'food', 'eat', 'milk', 'breast', 'formula', 'solid', 'nutrition', 'meal'],
+        'topic_4': ['milestone', 'first', 'walk', 'talk', 'word', 'step', 'crawl', 'baby'],
+        'topic_5': ['sick', 'fever', 'doctor', 'health', 'medicine', 'vaccine', 'ill', 'wellness'],
+        'topic_6': ['hack', 'tip', 'trick', 'advice', 'idea', 'help', 'solution'],
+        'topic_7': ['name', 'baby name', 'naming', 'call', 'named'],
+        'topic_8': ['work', 'job', 'career', 'balance', 'office', 'working', 'professional'],
+        'topic_9': ['tantrum', 'cry', 'scream', 'meltdown', 'angry', 'behavior', 'toddler'],
+        'topic_10': ['school', 'learn', 'education', 'teach', 'read', 'homework', 'class'],
+        'topic_11': ['single', 'alone', 'divorce', 'solo', 'widow', 'co-parent'],
+        'topic_12': ['special', 'autism', 'adhd', 'disability', 'therapy', 'needs', 'support'],
+      };
+      
+      let matchedTopic: Topic | undefined;
+      for (const [topicId, keywords] of Object.entries(keywordMap)) {
+        if (keywords.some(kw => lowerContent.includes(kw))) {
+          const found = topics.find(t => t.id === topicId);
+          if (found) {
+            matchedTopic = found;
+            break;
+          }
+        }
+      }
+      
+      if (matchedTopic && !selectedTopic) {
+        setSelectedTopic(matchedTopic);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    }
+  }, [content, topics, selectedTopic]);
+
+  // ─── Smart Compose: Filter suggestions based on input ───
+  useEffect(() => {
+    if (smartPrompt.trim().length > 0) {
+      const filtered = SMART_SUGGESTIONS.filter(s => 
+        s.toLowerCase().includes(smartPrompt.toLowerCase())
+      );
+      setFilteredSuggestions(filtered.length > 0 ? filtered : SMART_SUGGESTIONS.slice(0, 3));
+    } else {
+      setFilteredSuggestions(SMART_SUGGESTIONS);
+    }
+  }, [smartPrompt]);
 
   useEffect(() => {
     const loadSelectedTopics = async () => {
@@ -275,6 +348,14 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
     };
     loadDraft();
   }, [isValidImageUri]);
+
+  // ─── Smart Compose: Apply suggestion to content ───
+  const applySmartSuggestion = (suggestion: string) => {
+    setContent(suggestion);
+    setShowSmartCompose(false);
+    setSmartPrompt('');
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  };
 
   const pickImage = async () => {
     try {
@@ -514,7 +595,7 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
       <StatusBar barStyle="dark-content" />
       <LinearGradient colors={['#f8f9ff', '#fff5f8']} style={StyleSheet.absoluteFill} />
 
-      {/* Posting Progress Overlay - UniversalSpinner */}
+      {/* Posting Progress Overlay */}
       <CommunitySpinner
         visible={isPosting}
         text={postStatus}
@@ -564,8 +645,92 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
 
         <Animated.ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
-          {/* Author Card - with SafeAvatar */}
-          <Animated.View entering={FadeInUp.duration(400)}>
+          {/* ─── SMART COMPOSE BANNER ─── */}
+          <Animated.View entering={FadeInUp.delay(50).duration(400)}>
+            <TouchableOpacity
+              style={[styles.smartComposeBanner, { backgroundColor: '#667eea08' }]}
+              onPress={() => setShowSmartCompose(!showSmartCompose)}
+              activeOpacity={0.8}
+            >
+              <View style={styles.smartComposeBannerLeft}>
+                <LinearGradient
+                  colors={['#667eea', '#764ba2']}
+                  style={styles.smartComposeIcon}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                >
+                  <Ionicons name="sparkles" size={18} color="#fff" />
+                </LinearGradient>
+                <View>
+                  <Text style={styles.smartComposeTitle}>Smart Compose</Text>
+                  <Text style={styles.smartComposeSubtitle}>AI-powered writing assistant</Text>
+                </View>
+              </View>
+              <Ionicons 
+                name={showSmartCompose ? 'chevron-up' : 'chevron-down'} 
+                size={20} 
+                color={CommunityColors.text.tertiary} 
+              />
+            </TouchableOpacity>
+          </Animated.View>
+
+          {/* ─── SMART COMPOSE EXPANDED ─── */}
+          {showSmartCompose && (
+            <Animated.View entering={FadeInUp.delay(100).duration(300)} style={styles.smartComposeExpanded}>
+              <View style={styles.smartComposeInputRow}>
+                <View style={[styles.smartComposeInputWrap, { backgroundColor: '#f8f9ff' }]}>
+                  <Ionicons name="search" size={18} color="#667eea" />
+                  <TextInput
+                    style={styles.smartComposeInput}
+                    placeholder="Describe what you want to post about..."
+                    placeholderTextColor={CommunityColors.text.tertiary}
+                    value={smartPrompt}
+                    onChangeText={setSmartPrompt}
+                    returnKeyType="done"
+                    onSubmitEditing={() => {
+                      if (filteredSuggestions.length > 0) {
+                        applySmartSuggestion(filteredSuggestions[0]);
+                      }
+                    }}
+                  />
+                  {smartPrompt.length > 0 && (
+                    <TouchableOpacity onPress={() => setSmartPrompt('')}>
+                      <Ionicons name="close-circle" size={18} color={CommunityColors.text.tertiary} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+
+              <View style={styles.smartComposeSuggestions}>
+                {filteredSuggestions.slice(0, 5).map((suggestion, i) => (
+                  <TouchableOpacity
+                    key={i}
+                    style={[styles.smartComposeChip, { backgroundColor: '#667eea08' }]}
+                    onPress={() => applySmartSuggestion(suggestion)}
+                  >
+                    <Ionicons name="flash" size={12} color="#667eea" />
+                    <Text style={styles.smartComposeChipText} numberOfLines={2}>
+                      {suggestion}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {content.length > 0 && (
+                <View style={styles.smartComposeHelp}>
+                  <Ionicons name="information-circle-outline" size={14} color="#667eea" />
+                  <Text style={styles.smartComposeHelpText}>
+                    {content.length < 20 ? '💡 Try adding more detail to your post' :
+                     content.length < 50 ? '✨ Looking great! Add a question to engage others' :
+                     '🌟 Ready to post! Add images or a poll for more engagement'}
+                  </Text>
+                </View>
+              )}
+            </Animated.View>
+          )}
+
+          {/* Author Card */}
+          <Animated.View entering={FadeInUp.delay(150).duration(400)}>
             <View style={styles.authorCard}>
               <View style={styles.authorRow}>
                 <SafeAvatar
@@ -584,12 +749,16 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
                     {isAnonymous ? 'Anonymous' : (currentUser?.displayName || 'You')}
                   </Text>
                   <View style={styles.authorMeta}>
-                    <View style={[styles.topicBadge, { backgroundColor: (selectedTopic?.color || '#667eea') + '15' }]}>
+                    <TouchableOpacity
+                      style={[styles.topicBadge, { backgroundColor: (selectedTopic?.color || '#667eea') + '15' }]}
+                      onPress={() => setShowTopicSelector(true)}
+                    >
                       <Text style={styles.topicBadgeEmoji}>{selectedTopic?.emoji}</Text>
                       <Text style={[styles.topicBadgeText, { color: selectedTopic?.color || '#667eea' }]}>
                         {selectedTopic?.name}
                       </Text>
-                    </View>
+                      <Ionicons name="chevron-down" size={12} color={selectedTopic?.color || '#667eea'} />
+                    </TouchableOpacity>
                     <TouchableOpacity 
                       style={styles.locationChip}
                       onPress={() => setShowCountryPicker(true)}
@@ -616,7 +785,7 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
           </Animated.View>
 
           {/* Mood Selector */}
-          <Animated.View entering={FadeInUp.delay(30).duration(400)}>
+          <Animated.View entering={FadeInUp.delay(200).duration(400)}>
             <View style={styles.moodSection}>
               <Text style={styles.sectionLabel}>How are you feeling?</Text>
               <View style={styles.moodRow}>
@@ -653,7 +822,7 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
           </Animated.View>
 
           {/* Content Input */}
-          <Animated.View entering={FadeInUp.delay(50).duration(400)}>
+          <Animated.View entering={FadeInUp.delay(250).duration(400)}>
             <View style={styles.contentArea}>
               <TextInput
                 style={styles.textInput}
@@ -671,7 +840,7 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
             </View>
           </Animated.View>
 
-          {/* Image Grid Preview - MODERN STYLE */}
+          {/* Image Grid Preview */}
           {images.length > 0 && (
             <Animated.View entering={FadeInUp.duration(300)}>
               <ImageGrid images={images} onRemove={removeImage} />
@@ -742,7 +911,7 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
           )}
 
           {/* Topics Strip */}
-          <Animated.View entering={FadeInUp.delay(100).duration(400)}>
+          <Animated.View entering={FadeInUp.delay(300).duration(400)}>
             <View style={styles.topicsStripHeader}>
               <Text style={styles.sectionLabel}>Your Topics</Text>
               <TouchableOpacity 
@@ -808,7 +977,7 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
           </Animated.View>
 
           {/* Media Tools */}
-          <Animated.View entering={FadeInUp.delay(150).duration(400)} style={styles.toolsSection}>
+          <Animated.View entering={FadeInUp.delay(350).duration(400)} style={styles.toolsSection}>
             <Text style={styles.toolsLabel}>Add to your post</Text>
             <View style={styles.toolsRow}>
               <ToolButton 
@@ -841,7 +1010,7 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
           </Animated.View>
 
           {/* Tips Card */}
-          <Animated.View entering={FadeInUp.delay(200).duration(400)} style={styles.tipsContainer}>
+          <Animated.View entering={FadeInUp.delay(400).duration(400)} style={styles.tipsContainer}>
             <LinearGradient 
               colors={['#667eea10', '#667eea02']}
               style={styles.tipsGradient}
@@ -1068,6 +1237,105 @@ const styles = StyleSheet.create({
   },
   postButtonTextActive: { 
     color: 'white' 
+  },
+
+  // ─── Smart Compose ───
+  smartComposeBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginHorizontal: CommunitySpacing.lg,
+    marginBottom: CommunitySpacing.md,
+    paddingHorizontal: CommunitySpacing.lg,
+    paddingVertical: CommunitySpacing.md,
+    borderRadius: CommunityBorderRadius.xl,
+    borderWidth: 1,
+    borderColor: '#667eea20',
+  },
+  smartComposeBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  smartComposeIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  smartComposeTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: CommunityColors.text.primary,
+  },
+  smartComposeSubtitle: {
+    fontSize: 11,
+    color: CommunityColors.text.tertiary,
+    fontWeight: '500',
+  },
+  smartComposeExpanded: {
+    marginHorizontal: CommunitySpacing.lg,
+    marginBottom: CommunitySpacing.md,
+    paddingHorizontal: CommunitySpacing.md,
+    paddingVertical: CommunitySpacing.md,
+    backgroundColor: '#fff',
+    borderRadius: CommunityBorderRadius.xl,
+    ...CommunityShadows.small,
+  },
+  smartComposeInputRow: {
+    marginBottom: CommunitySpacing.md,
+  },
+  smartComposeInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: CommunityBorderRadius.lg,
+    paddingHorizontal: CommunitySpacing.md,
+    paddingVertical: CommunitySpacing.sm,
+    borderWidth: 1,
+    borderColor: '#667eea20',
+    gap: 8,
+  },
+  smartComposeInput: {
+    flex: 1,
+    fontSize: 14,
+    color: CommunityColors.text.primary,
+    paddingVertical: 6,
+  },
+  smartComposeSuggestions: {
+    gap: 8,
+    marginBottom: CommunitySpacing.md,
+  },
+  smartComposeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: CommunitySpacing.md,
+    paddingVertical: CommunitySpacing.sm,
+    borderRadius: CommunityBorderRadius.lg,
+    borderWidth: 1,
+    borderColor: '#667eea15',
+  },
+  smartComposeChipText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '500',
+    color: CommunityColors.text.primary,
+  },
+  smartComposeHelp: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: CommunitySpacing.sm,
+    paddingVertical: CommunitySpacing.xs,
+    backgroundColor: '#667eea06',
+    borderRadius: CommunityBorderRadius.md,
+  },
+  smartComposeHelpText: {
+    flex: 1,
+    fontSize: 12,
+    color: CommunityColors.text.secondary,
+    fontWeight: '500',
   },
 
   authorCard: {
@@ -1550,7 +1818,7 @@ const styles = StyleSheet.create({
   },
   countryName: { 
     flex: 1, 
-        fontSize: 16,
+    fontSize: 16,
     color: CommunityColors.text.primary,
   },
   countryNameSelected: { 

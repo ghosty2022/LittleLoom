@@ -1,8 +1,8 @@
-import { StyleSheet, ActivityIndicator, Alert, Linking, Dimensions, Image, KeyboardAvoidingView, Modal, StatusBar, Platform, ScrollView, Share, Text, TextInput, TouchableOpacity, View } from 'react-native';
+// src/screens/community/PostDetailScreen.tsx
+import { StyleSheet, ActivityIndicator, Linking, Dimensions, Image, KeyboardAvoidingView, Modal, StatusBar, Platform, ScrollView, Share, Text, TextInput, TouchableOpacity, View, RefreshControl } from 'react-native';
 import React, { useCallback, useEffect, useState } from 'react';
 
 import { BlurView } from 'expo-blur';
-
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInUp, FadeIn } from 'react-native-reanimated';
 
@@ -12,14 +12,157 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import type { CommunityStackParamList } from '../../types/navigation';
 
-import { Comment, Post, useCommunity } from '../../context/CommunityContext';
+import { Comment, Post, useCommunity, INITIAL_TOPICS } from '../../context/CommunityContext';
 import { CommunityBorderRadius, CommunityColors, CommunityShadows, CommunitySpacing } from '../../theme/CommunityTheme';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
+
 type PostDetailScreenProps = NativeStackScreenProps<CommunityStackParamList, 'PostDetail'>;
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// ─── Clickable Links ───
+const LinkifyText = ({ text, style, numberOfLines }: { text: string; style?: any; numberOfLines?: number }) => {
+  if (!text) return null;
+  const parts = text.split(/(https?:\/\/[^\s]+|www\.[^\s]+)/g);
+  return (
+    <Text style={style} numberOfLines={numberOfLines}>
+      {parts.map((part, i) => {
+        if (part.match(/^(https?:\/\/|www\.)/)) {
+          const url = part.startsWith('http') ? part : `https://${part}`;
+          return (
+            <Text key={i} style={{ color: '#6366f1', textDecorationLine: 'underline' }} onPress={() => Linking.openURL(url).catch(() => {})}>
+              {part}
+            </Text>
+          );
+        }
+        return <Text key={i}>{part}</Text>;
+      })}
+    </Text>
+  );
+};
+
+// ─── Sensitive Image Blur ───
+const SensitiveImage = ({ uri, style, resizeMode = 'cover' }: { uri: string; style?: any; resizeMode?: any }) => {
+  const [revealed, setRevealed] = useState(false);
+  return (
+    <TouchableOpacity activeOpacity={0.9} onPress={() => setRevealed(true)} disabled={revealed} style={style}>
+      <Image source={{ uri }} style={[style, { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }]} resizeMode={resizeMode} />
+      {!revealed && (
+        <BlurView intensity={75} style={[StyleSheet.absoluteFill, { justifyContent: 'center', alignItems: 'center', zIndex: 10 }]} tint="dark">
+          <View style={{ alignItems: 'center', padding: 20 }}>
+            <Ionicons name="shield-checkmark" size={36} color="#fff" />
+            <Text style={{ color: '#fff', fontWeight: '800', marginTop: 10, fontSize: 15 }}>Sensitive Content Hidden</Text>
+            <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 13, marginTop: 6, textAlign: 'center' }}>Tap to reveal image</Text>
+            <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 11, marginTop: 12, textAlign: 'center', maxWidth: 220 }}>LittleLoom blurs photos by default to keep our community safe. Only tap if you expect this content.</Text>
+          </View>
+        </BlurView>
+      )}
+    </TouchableOpacity>
+  );
+};
+
+// ─── Image Grid ───
+const ImageGrid = ({ images }: { images: string[] }) => {
+  if (!images || images.length === 0) return null;
+
+  return (
+    <View style={styles.imageGridWrapper}>
+      {images.length === 1 ? (
+        <View style={styles.singleImageContainer}>
+          <SensitiveImage uri={images[0]} style={styles.singleImage} resizeMode="cover" />
+        </View>
+      ) : (
+        <View style={styles.multiImageGrid}>
+          {images.slice(0, 4).map((img, idx) => (
+            <View key={idx} style={styles.gridImageItem}>
+              <SensitiveImage uri={img} style={styles.gridImage} resizeMode="cover" />
+              {idx === 3 && images.length > 4 && (
+                <View style={styles.gridMoreOverlay}>
+                  <Text style={styles.gridMoreText}>+{images.length - 4}</Text>
+                </View>
+              )}
+            </View>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+};
+
+// ─── Poll Widget ───
+const PollWidgetDetail = ({ poll, postId, onVote }: { poll: any; postId: string; onVote: (postId: string, optionId: string) => void }) => {
+  const [localPoll, setLocalPoll] = useState(poll);
+  
+  const handleVote = async (optionId: string) => {
+    if (localPoll.hasVoted) return;
+    await onVote(postId, optionId);
+    setLocalPoll((prev: any) => ({
+      ...prev,
+      hasVoted: true,
+      votedOptionId: optionId,
+      totalVotes: prev.totalVotes + 1,
+      options: prev.options.map((o: any) => o.id === optionId ? { ...o, votes: o.votes + 1 } : o)
+    }));
+  };
+
+  return (
+    <View style={{ marginVertical: 12, backgroundColor: '#f8f9ff', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: 'rgba(102,126,234,0.1)' }}>
+      <Text style={{ fontSize: 15, fontWeight: '700', color: '#1c1917', marginBottom: 12 }}>{localPoll.question}</Text>
+      {localPoll.options.map((option: any) => {
+        const pct = localPoll.totalVotes > 0 ? Math.round((option.votes / localPoll.totalVotes) * 100) : 0;
+        const isSelected = localPoll.votedOptionId === option.id;
+        return (
+          <TouchableOpacity key={option.id} onPress={() => handleVote(option.id)} disabled={localPoll.hasVoted} style={{ marginBottom: 10 }}>
+            <View style={{ height: 40, borderRadius: 12, backgroundColor: '#e0e7ff', overflow: 'hidden', justifyContent: 'center' }}>
+              {localPoll.hasVoted && (
+                <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${pct}%`, backgroundColor: isSelected ? '#6366f1' : '#c7d2fe', borderRadius: 12 }} />
+              )}
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 14, alignItems: 'center' }}>
+                <Text style={{ fontSize: 14, fontWeight: isSelected ? '700' : '600', color: localPoll.hasVoted ? (isSelected ? '#fff' : '#4338ca') : '#4338ca' }}>{option.text}</Text>
+                {localPoll.hasVoted && <Text style={{ fontSize: 13, fontWeight: '800', color: isSelected ? '#fff' : '#4338ca' }}>{pct}%</Text>}
+              </View>
+            </View>
+          </TouchableOpacity>
+        );
+      })}
+      <Text style={{ fontSize: 12, color: '#78716c', marginTop: 4 }}>{localPoll.totalVotes} vote{localPoll.totalVotes !== 1 ? 's' : ''}{!localPoll.hasVoted ? ' · Tap to vote' : ''}</Text>
+    </View>
+  );
+};
+
+// ─── Action Button ───
+const ActionButton = ({
+  icon,
+  label,
+  count,
+  active,
+  activeColor,
+  onPress,
+}: {
+  icon: string;
+  label: string;
+  count?: number;
+  active?: boolean;
+  activeColor?: string;
+  onPress: () => void;
+}) => (
+  <TouchableOpacity
+    style={[styles.actionBtn, active && styles.actionBtnActive]}
+    onPress={onPress}
+    activeOpacity={0.7}
+  >
+    <Ionicons
+      name={(active ? icon.replace('-outline', '') : icon) as any}
+      size={20}
+      color={active ? (activeColor || '#667eea') : CommunityColors.text.tertiary}
+    />
+    <Text style={[styles.actionBtnText, active && { color: activeColor || '#667eea', fontWeight: '700' }]}>
+      {count !== undefined && count > 0 ? count : label}
+    </Text>
+  </TouchableOpacity>
+);
 
 export default function PostDetailScreen({ navigation, route }: PostDetailScreenProps) {
   const insets = useSafeAreaInsets();
@@ -27,26 +170,28 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
   const routeParams = route?.params ?? {};
   const postId = routeParams?.postId;
 
-const {
-  getPostById,
-  likePost,
-  unlikePost,
-  repostPost,
-  unrepostPost,
-  bookmarkPost,
-  addComment,
-  likeComment,
-  voteHelpful,
-  votePoll,
-  currentUser,
-  followUser,
-  unfollowUser,
-  isFollowing,
-  deletePost,
-  blockUser,
-  isUserBlocked,
-  sharePost,
-} = useCommunity();
+  const {
+    getPostById,
+    likePost,
+    unlikePost,
+    repostPost,
+    unrepostPost,
+    bookmarkPost,
+    addComment,
+    likeComment,
+    voteHelpful,
+    votePoll,
+    currentUser,
+    followUser,
+    unfollowUser,
+    isFollowing,
+    deletePost,
+    blockUser,
+    isUserBlocked,
+    sharePost,
+    replyToComment,
+    refreshFeed,
+  } = useCommunity();
 
   const { shouldReduceMotion, triggerHaptic, spinnerColor } = useCustomization();
   const sweetAlert = useSweetAlert();
@@ -56,13 +201,20 @@ const {
   const [isLoading, setIsLoading] = useState(true);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [replyingTo, setReplyingTo] = useState<{ commentId: string; authorName: string } | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
+  // Load post on mount and when postId changes
   useEffect(() => {
     if (!postId) {
       setIsLoading(false);
       return;
     }
+    loadPost();
+  }, [postId]);
+
+  const loadPost = useCallback(() => {
     const foundPost = getPostById(postId);
+    console.log('[PostDetail] Loading post:', postId, foundPost ? 'Found' : 'Not found');
     setPost(foundPost);
     setIsLoading(false);
   }, [postId, getPostById]);
@@ -70,8 +222,17 @@ const {
   const refreshPost = useCallback(() => {
     if (!postId) return;
     const updated = getPostById(postId);
-    setPost(updated);
+    if (updated) {
+      setPost(updated);
+    }
   }, [postId, getPostById]);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await refreshFeed();
+    refreshPost();
+    setRefreshing(false);
+  }, [refreshFeed, refreshPost]);
 
   const handleLike = useCallback(async () => {
     if (!post) return;
@@ -108,24 +269,36 @@ const {
     refreshPost();
   }, [post, voteHelpful, refreshPost]);
 
+  const handleVotePoll = useCallback(async (postId: string, optionId: string) => {
+    await votePoll(postId, optionId);
+    refreshPost();
+  }, [votePoll, refreshPost]);
+
   const handleSubmitComment = useCallback(async () => {
     if (!post || !commentText.trim()) return;
     triggerHaptic('success');
-    await addComment(post.id, commentText.trim());
+    
+    if (replyingTo) {
+      await replyToComment(post.id, replyingTo.commentId, commentText.trim());
+      setReplyingTo(null);
+    } else {
+      await addComment(post.id, commentText.trim());
+    }
+    
     setCommentText('');
-    setReplyingTo(null);
     refreshPost();
-  }, [post, commentText, addComment, refreshPost, triggerHaptic]);
+  }, [post, commentText, addComment, replyToComment, replyingTo, refreshPost, triggerHaptic]);
 
   const handleFollow = useCallback(async () => {
     if (!post) return;
+    triggerHaptic('light');
     if (isFollowing(post.authorId)) {
       await unfollowUser(post.authorId);
     } else {
       await followUser(post.authorId);
     }
     refreshPost();
-  }, [post, followUser, unfollowUser, isFollowing, refreshPost]);
+  }, [post, followUser, unfollowUser, isFollowing, refreshPost, triggerHaptic]);
 
   const handleShare = useCallback(async () => {
     if (!post) return;
@@ -134,10 +307,11 @@ const {
         message: `${post.author.displayName} on LittleLoom: "${post.content.substring(0, 100)}..."`,
       });
       await sharePost(post.id);
+      refreshPost();
     } catch (error) {
       console.error('Share error:', error);
     }
-  }, [post, sharePost]);
+  }, [post, sharePost, refreshPost]);
 
   const navigateToUserProfile = useCallback((userId: string) => {
     triggerHaptic('light');
@@ -169,9 +343,15 @@ const {
 
   const handleBlock = useCallback(() => {
     if (!post) return;
+    const isBlocked = isUserBlocked(post.authorId);
     blockUser(post.authorId);
     setShowMoreMenu(false);
-  }, [post, blockUser]);
+    sweetAlert.alert(
+      isBlocked ? 'User Unblocked' : 'User Blocked',
+      isBlocked ? 'You have unblocked this user.' : 'You have blocked this user.',
+      'success'
+    );
+  }, [post, blockUser, isUserBlocked, sweetAlert]);
 
   const handleReport = useCallback(() => {
     if (!post) return;
@@ -186,145 +366,8 @@ const {
     }, 300);
   }, [post, navigation]);
 
-  const ImageGrid = ({ images }: { images: string[] }) => {
-    if (!images || images.length === 0) return null;
-
-    return (
-      <View style={styles.imageGridWrapper}>
-        {images.length === 1 ? (
-          <View style={styles.singleImageContainer}>
-            <SensitiveImage uri={images[0]} style={styles.singleImage} resizeMode="cover" />
-          </View>
-        ) : (
-          <View style={styles.multiImageGrid}>
-            {images.slice(0, 4).map((img, idx) => (
-              <View key={idx} style={styles.gridImageItem}>
-                <SensitiveImage uri={img} style={styles.gridImage} resizeMode="cover" />
-                {idx === 3 && images.length > 4 && (
-                  <View style={styles.gridMoreOverlay}>
-                    <Text style={styles.gridMoreText}>+{images.length - 4}</Text>
-                  </View>
-                )}
-              </View>
-            ))}
-          </View>
-        )}
-      </View>
-    );
-  };
-
-/* ─── Clickable Links ─── */
-const LinkifyText = ({ text, style, numberOfLines }: { text: string; style?: any; numberOfLines?: number }) => {
-  if (!text) return null;
-  const parts = text.split(/(https?:\/\/[^\s]+|www\.[^\s]+)/g);
-  return (
-    <Text style={style} numberOfLines={numberOfLines}>
-      {parts.map((part, i) => {
-        if (part.match(/^(https?:\/\/|www\.)/)) {
-          const url = part.startsWith('http') ? part : `https://${part}`;
-          return (
-            <Text key={i} style={{ color: '#6366f1', textDecorationLine: 'underline' }} onPress={() => Linking.openURL(url).catch(() => {})}>
-              {part}
-            </Text>
-          );
-        }
-        return <Text key={i}>{part}</Text>;
-      })}
-    </Text>
-  );
-};
-
-/* ─── Sensitive Image Blur ─── */
-const SensitiveImage = ({ uri, style, resizeMode = 'cover' }: { uri: string; style?: any; resizeMode?: any }) => {
-  const [revealed, setRevealed] = useState(false);
-  return (
-    <TouchableOpacity activeOpacity={0.9} onPress={() => setRevealed(true)} disabled={revealed} style={style}>
-      <Image source={{ uri }} style={[style, { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }]} resizeMode={resizeMode} />
-      {!revealed && (
-        <BlurView intensity={75} style={[StyleSheet.absoluteFill, { justifyContent: 'center', alignItems: 'center', zIndex: 10 }]} tint="dark">
-          <View style={{ alignItems: 'center', padding: 20 }}>
-            <Ionicons name="shield-checkmark" size={36} color="#fff" />
-            <Text style={{ color: '#fff', fontWeight: '800', marginTop: 10, fontSize: 15 }}>Sensitive Content Hidden</Text>
-            <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 13, marginTop: 6, textAlign: 'center' }}>Tap to reveal image</Text>
-            <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 11, marginTop: 12, textAlign: 'center', maxWidth: 220 }}>LittleLoom blurs photos by default to keep our community safe. Only tap if you expect this content.</Text>
-          </View>
-        </BlurView>
-      )}
-    </TouchableOpacity>
-  );
-};
-
-/* ─── Poll Widget (for Detail view) ─── */
-const PollWidgetDetail = ({ poll, postId }: { poll: any; postId: string }) => {
-  const [localPoll, setLocalPoll] = useState(poll);
-  
-  const handleVote = async (optionId: string) => {
-    if (localPoll.hasVoted || !votePoll) return;
-    await votePoll(postId, optionId);
-    setLocalPoll((prev: any) => ({
-      ...prev,
-      hasVoted: true,
-      votedOptionId: optionId,
-      totalVotes: prev.totalVotes + 1,
-      options: prev.options.map((o: any) => o.id === optionId ? { ...o, votes: o.votes + 1 } : o)
-    }));
-  };
-
-  return (
-    <View style={{ marginVertical: 12, backgroundColor: '#f8f9ff', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: 'rgba(102,126,234,0.1)' }}>
-      <Text style={{ fontSize: 15, fontWeight: '700', color: '#1c1917', marginBottom: 12 }}>{localPoll.question}</Text>
-      {localPoll.options.map((option: any) => {
-        const pct = localPoll.totalVotes > 0 ? Math.round((option.votes / localPoll.totalVotes) * 100) : 0;
-        const isSelected = localPoll.votedOptionId === option.id;
-        return (
-          <TouchableOpacity key={option.id} onPress={() => handleVote(option.id)} disabled={localPoll.hasVoted} style={{ marginBottom: 10 }}>
-            <View style={{ height: 40, borderRadius: 12, backgroundColor: '#e0e7ff', overflow: 'hidden', justifyContent: 'center' }}>
-              {localPoll.hasVoted && (
-                <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${pct}%`, backgroundColor: isSelected ? '#6366f1' : '#c7d2fe', borderRadius: 12 }} />
-              )}
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 14, alignItems: 'center' }}>
-                <Text style={{ fontSize: 14, fontWeight: isSelected ? '700' : '600', color: localPoll.hasVoted ? (isSelected ? '#fff' : '#4338ca') : '#4338ca' }}>{option.text}</Text>
-                {localPoll.hasVoted && <Text style={{ fontSize: 13, fontWeight: '800', color: isSelected ? '#fff' : '#4338ca' }}>{pct}%</Text>}
-              </View>
-            </View>
-          </TouchableOpacity>
-        );
-      })}
-      <Text style={{ fontSize: 12, color: '#78716c', marginTop: 4 }}>{localPoll.totalVotes} vote{localPoll.totalVotes !== 1 ? 's' : ''}{!localPoll.hasVoted ? ' · Tap to vote' : ''}</Text>
-    </View>
-  );
-};
-
-  const ActionButton = ({
-    icon,
-    label,
-    active,
-    activeColor,
-    onPress,
-  }: {
-    icon: string;
-    label: string;
-    active?: boolean;
-    activeColor?: string;
-    onPress: () => void;
-  }) => (
-    <TouchableOpacity
-      style={[styles.actionBtn, active && styles.actionBtnActive]}
-      onPress={onPress}
-      activeOpacity={0.7}
-    >
-      <Ionicons
-        name={(active ? icon.replace('-outline', '') : icon) as any}
-        size={20}
-        color={active ? (activeColor || '#667eea') : CommunityColors.text.tertiary}
-      />
-      <Text style={[styles.actionBtnText, active && { color: activeColor || '#667eea', fontWeight: '700' }]}>
-        {label}
-      </Text>
-    </TouchableOpacity>
-  );
-
-  const CommentCard = ({ comment, index }: { comment: Comment; index: number }) => (
+  // ─── Comment Card ───
+  const CommentCard = ({ comment }: { comment: Comment }) => (
     <View style={styles.commentCard}>
       <View style={styles.commentTop}>
         <TouchableOpacity
@@ -456,6 +499,8 @@ const PollWidgetDetail = ({ poll, postId }: { poll: any; postId: string }) => {
   }
 
   const isOwnPost = post.authorId === currentUser?.id;
+  const topicColor = INITIAL_TOPICS.find(t => t.id === post.topicId)?.color || '#667eea';
+  const totalEngagement = post.likes + post.commentsCount + post.reposts + post.shares + post.bookmarks;
 
   return (
     <View style={styles.container}>
@@ -507,9 +552,12 @@ const PollWidgetDetail = ({ poll, postId }: { poll: any; postId: string }) => {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
       >
-        <Animated.ScrollView
+        <ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={spinnerColor} />
+          }
         >
           {/* Header */}
           <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
@@ -519,7 +567,7 @@ const PollWidgetDetail = ({ poll, postId }: { poll: any; postId: string }) => {
             >
               <Ionicons name="arrow-back" size={22} color={CommunityColors.text.primary} />
             </TouchableOpacity>
-            <Text style={styles.headerTitle}>Post</Text>
+            <Text style={styles.headerTitle}>Thread</Text>
             <TouchableOpacity
               style={styles.headerIconBtn}
               onPress={() => {
@@ -532,7 +580,19 @@ const PollWidgetDetail = ({ poll, postId }: { poll: any; postId: string }) => {
           </View>
 
           {/* Post Card */}
-          <View style={styles.postCard}>
+          <View style={[styles.postCard, { borderColor: `${topicColor}30` }]}>
+            {/* Topic Badge */}
+            <View style={[styles.topicBadge, { backgroundColor: `${topicColor}15` }]}>
+              <View style={[styles.topicBadgeDot, { backgroundColor: topicColor }]} />
+              <Text style={[styles.topicBadgeText, { color: topicColor }]}>{post.topic}</Text>
+              {post.isTrending && (
+                <View style={styles.trendingBadge}>
+                  <Ionicons name="flame" size={10} color="#f59e0b" />
+                  <Text style={styles.trendingBadgeText}>Trending</Text>
+                </View>
+              )}
+            </View>
+
             {/* Author Row */}
             <View style={styles.postAuthorRow}>
               <TouchableOpacity
@@ -542,12 +602,12 @@ const PollWidgetDetail = ({ poll, postId }: { poll: any; postId: string }) => {
                 <View style={styles.avatarWrapper}>
                   <SafeAvatar
                     avatar={post.author.avatar}
-                    size={44}
+                    size={48}
                     fallbackIcon="person"
                     fallbackColor="#667eea"
                     fallbackBgColor="#f0f0f5"
-                    borderWidth={2}
-                    borderColor={post.author.isVerified ? '#667eea' : '#fff'}
+                    borderWidth={2.5}
+                    borderColor={post.author.isVerified ? '#667eea' : 'transparent'}
                   />
                   {post.author.isVerified && (
                     <View style={styles.verifiedBadgeSmall}>
@@ -566,12 +626,17 @@ const PollWidgetDetail = ({ poll, postId }: { poll: any; postId: string }) => {
                     )}
                   </View>
                   <View style={styles.postMetaRow}>
-                    <View style={[styles.topicTag, { backgroundColor: '#667eea15' }]}>
-                      <Text style={[styles.topicTagText, { color: '#667eea' }]}>
-                        {post.topic}
-                      </Text>
+                    <Text style={styles.postTimeText}>{post.time}</Text>
+                    <Text style={styles.postMetaDot}>•</Text>
+                    <View style={styles.postMetaStat}>
+                      <Ionicons name="eye-outline" size={11} color={CommunityColors.text.tertiary} />
+                      <Text style={styles.postMetaStatText}>{post.viewCount || 0}</Text>
                     </View>
-                    <Text style={styles.postTimeText}>• {post.time}</Text>
+                    <Text style={styles.postMetaDot}>•</Text>
+                    <View style={styles.postMetaStat}>
+                      <Ionicons name="stats-chart" size={11} color={CommunityColors.text.tertiary} />
+                      <Text style={styles.postMetaStatText}>{totalEngagement}</Text>
+                    </View>
                   </View>
                 </View>
               </TouchableOpacity>
@@ -589,16 +654,33 @@ const PollWidgetDetail = ({ poll, postId }: { poll: any; postId: string }) => {
               )}
             </View>
 
-                      {/* Content with clickable links */}
-          <LinkifyText text={post.content} style={styles.postContent} />
+            {/* Mood Badge */}
+            {post.mood && (
+              <View style={styles.moodBadgeContainer}>
+                <View style={[styles.moodBadge, { backgroundColor: `${topicColor}12` }]}>
+                  <Text style={styles.moodBadgeEmoji}>
+                    {post.mood === 'celebrating' ? '🎉' : 
+                     post.mood === 'support' ? '💙' : 
+                     post.mood === 'advice' ? '💡' : 
+                     post.mood === 'milestone' ? '🏆' : '💨'}
+                  </Text>
+                  <Text style={[styles.moodBadgeText, { color: topicColor }]}>
+                    {post.mood.charAt(0).toUpperCase() + post.mood.slice(1)}
+                  </Text>
+                </View>
+              </View>
+            )}
 
-          {/* Poll */}
-          {post.poll && <PollWidgetDetail poll={post.poll} postId={post.id} />}
+            {/* Content with clickable links */}
+            <LinkifyText text={post.content} style={styles.postContent} />
 
-          {/* Images - MODERN GRID (now privacy-protected) */}
-          {post.images && post.images.length > 0 && (
-            <ImageGrid images={post.images} />
-          )}
+            {/* Poll */}
+            {post.poll && <PollWidgetDetail poll={post.poll} postId={post.id} onVote={handleVotePoll} />}
+
+            {/* Images */}
+            {post.images && post.images.length > 0 && (
+              <ImageGrid images={post.images} />
+            )}
 
             {/* Helpful Votes */}
             {post.helpfulVotes > 0 && (
@@ -626,13 +708,24 @@ const PollWidgetDetail = ({ poll, postId }: { poll: any; postId: string }) => {
                 <Ionicons name="repeat" size={14} color="#43e97b" />
                 <Text style={styles.statText}>{post.reposts}</Text>
               </View>
+              <View style={styles.statDot} />
+              <View style={styles.statItem}>
+                <Ionicons name="bookmark" size={14} color="#fa709a" />
+                <Text style={styles.statText}>{post.bookmarks || 0}</Text>
+              </View>
+              <View style={styles.statDot} />
+              <View style={styles.statItem}>
+                <Ionicons name="share" size={14} color="#4facfe" />
+                <Text style={styles.statText}>{post.shares || 0}</Text>
+              </View>
             </View>
 
             {/* Action Bar */}
             <View style={styles.actionBar}>
               <ActionButton
                 icon="heart-outline"
-                label={post.isLiked ? 'Liked' : 'Like'}
+                label="Like"
+                count={post.likes}
                 active={post.isLiked}
                 activeColor="#fc5c7d"
                 onPress={handleLike}
@@ -640,26 +733,31 @@ const PollWidgetDetail = ({ poll, postId }: { poll: any; postId: string }) => {
               <ActionButton
                 icon="chatbubble-outline"
                 label="Comment"
+                count={post.commentsCount}
                 onPress={() => {}}
               />
               <ActionButton
                 icon="repeat-outline"
-                label={post.isReposted ? 'Reposted' : 'Repost'}
+                label="Repost"
+                count={post.reposts}
                 active={post.isReposted}
                 activeColor="#43e97b"
                 onPress={handleRepost}
               />
               <ActionButton
                 icon="bookmark-outline"
-                label={post.isBookmarked ? 'Saved' : 'Save'}
+                label="Save"
+                count={post.bookmarks || 0}
                 active={post.isBookmarked}
                 activeColor="#fa709a"
                 onPress={handleBookmark}
               />
-              <TouchableOpacity style={styles.actionBtn} onPress={handleShare}>
-                <Ionicons name="share-outline" size={20} color={CommunityColors.text.tertiary} />
-                <Text style={styles.actionBtnText}>Share</Text>
-              </TouchableOpacity>
+              <ActionButton
+                icon="share-outline"
+                label="Share"
+                count={post.shares || 0}
+                onPress={handleShare}
+              />
             </View>
           </View>
 
@@ -681,12 +779,12 @@ const PollWidgetDetail = ({ poll, postId }: { poll: any; postId: string }) => {
                 <Text style={styles.emptyCommentsSub}>Be the first to share your thoughts!</Text>
               </View>
             ) : (
-              post.comments.map((comment, index) => (
-                <CommentCard key={comment.id} comment={comment} index={index} />
+              post.comments.map((comment) => (
+                <CommentCard key={comment.id} comment={comment} />
               ))
             )}
           </View>
-        </Animated.ScrollView>
+        </ScrollView>
 
         {/* Comment Input */}
         <View style={[styles.commentInputWrap, { paddingBottom: insets.bottom + 12 }]}>
@@ -811,6 +909,40 @@ const styles = StyleSheet.create({
     color: CommunityColors.text.primary,
   },
 
+  topicBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+    marginBottom: 12,
+    gap: 6,
+  },
+  topicBadgeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  topicBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  trendingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    backgroundColor: '#f59e0b15',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  trendingBadgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#f59e0b',
+  },
+
   postCard: {
     backgroundColor: '#fff',
     borderRadius: CommunityBorderRadius.xl,
@@ -876,20 +1008,25 @@ const styles = StyleSheet.create({
   postMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 4,
     marginTop: 4,
-  },
-  topicTag: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  topicTagText: {
-    fontSize: 11,
-    fontWeight: '700',
   },
   postTimeText: {
     fontSize: 12,
+    color: CommunityColors.text.tertiary,
+    fontWeight: '500',
+  },
+  postMetaDot: {
+    fontSize: 12,
+    color: CommunityColors.text.tertiary,
+  },
+  postMetaStat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  postMetaStatText: {
+    fontSize: 11,
     color: CommunityColors.text.tertiary,
     fontWeight: '500',
   },
@@ -913,10 +1050,31 @@ const styles = StyleSheet.create({
   followingBtnText: {
     color: CommunityColors.text.secondary,
   },
+
+  moodBadgeContainer: {
+    marginBottom: CommunitySpacing.md,
+  },
+  moodBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+  },
+  moodBadgeEmoji: {
+    fontSize: 14,
+  },
+  moodBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+
   postContent: {
     fontSize: 16,
     color: CommunityColors.text.primary,
-    lineHeight: 25,
+    lineHeight: 26,
     marginBottom: CommunitySpacing.md,
   },
 
@@ -932,7 +1090,7 @@ const styles = StyleSheet.create({
   },
   singleImage: {
     width: '100%',
-    height: 240,
+    height: 280,
     borderRadius: CommunityBorderRadius.lg,
   },
   multiImageGrid: {
@@ -1020,7 +1178,7 @@ const styles = StyleSheet.create({
   actionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 4,
     paddingHorizontal: 8,
     paddingVertical: 6,
     borderRadius: 10,
