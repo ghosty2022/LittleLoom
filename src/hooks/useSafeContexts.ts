@@ -79,7 +79,7 @@ const DEFAULT_CUSTOMIZATION = {
 
 // ─── SAFE APP ──────────────────────────────────────────────────────────
 
-export function useSafeApp() {
+function useSafeApp() {
   try {
     const app = useThemeOriginal();
     return {
@@ -124,7 +124,7 @@ export function useSafeApp() {
 
 // ─── SAFE AUTH ─────────────────────────────────────────────────────────
 
-export function useSafeAuth() {
+function useSafeAuth() {
   try {
     return useAuthOriginal();
   } catch (e) {
@@ -181,7 +181,7 @@ export function useSafeAuth() {
 
 // ─── SAFE BABY ─────────────────────────────────────────────────────────
 
-export function useSafeBaby() {
+function useSafeBaby() {
   try {
     return useBabyOriginal();
   } catch (e) {
@@ -252,7 +252,7 @@ export function useSafeBaby() {
 
 // ─── SAFE ACTIVITY ─────────────────────────────────────────────────────
 
-export function useSafeActivity() {
+function useSafeActivity() {
   try {
     return useActivityOriginal();
   } catch (e) {
@@ -284,7 +284,7 @@ export function useSafeActivity() {
 
 // ─── SAFE CUSTOMIZATION ──────────────────────────────────────────────
 
-export function useSafeCustomization() {
+ function useSafeCustomization() {
   try {
     return useCustomizationOriginal();
   } catch (e) {
@@ -296,7 +296,7 @@ export function useSafeCustomization() {
 // FIX: Directly use useContext with the imported TrackerContext
 // NO circular dependency because we don't import from ./useTrackerContext
 
-export function useSafeTracker() {
+function useSafeTracker() {
   try {
     const ctx = useContext(TrackerContext);
     if (!ctx) {
@@ -438,5 +438,15 @@ export function useUnifiedTheme() {
 }
 
 // ─── EXPORTS ──────────────────────────────────────────────────────────
+
+export {
+  useSafeApp,
+  useSafeAuth,
+  useSafeBaby,
+  useSafeActivity,
+  useSafeCustomization,
+  useSafeTracker,
+  useUnifiedTheme,
+};
 
 export default useUnifiedTheme;
