@@ -1,6 +1,7 @@
-import React, { useCallback, useState } from 'react';
+// src/screens/community/NotificationsScreen.tsx
+import React, { useCallback, useState, useMemo, useEffect } from 'react';
 import { useCommunity } from '../../context/CommunityContext';
-import { FlatList, RefreshControl, StatusBar, StyleSheet, Text, TouchableOpacity, View, Pressable } from 'react-native';
+import { FlatList, RefreshControl, StatusBar, StyleSheet, Text, TouchableOpacity, View, Pressable, ActivityIndicator } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInUp, Layout } from 'react-native-reanimated';
@@ -11,6 +12,7 @@ import type { CommunityStackParamList } from '../../types/navigation';
 import { useApp } from '../../context/AppContext';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { useSweetAlert } from '../../components/SweetAlert';
+import { supabase } from '../../services/supabaseClient';
 
 // ─── Unified LL Theme ────────────────────────────────────────
 const LL = {
@@ -62,16 +64,54 @@ const NOTIFICATION_ICONS: Record<string, { name: any; color: string; bg: string 
   message:  { name: 'mail',            color: LL.primary,  bg: `${LL.primary}18` },
   system:   { name: 'information-circle', color: LL.success, bg: `${LL.success}18` },
   helpful:  { name: 'thumbs-up',       color: LL.primary,  bg: `${LL.primary}18` },
+  security: { name: 'shield-checkmark', color: LL.primary, bg: `${LL.primary}18` },
 };
 
 type NotificationsScreenProps = NativeStackScreenProps<CommunityStackParamList, 'Notifications'>;
 
 export default function NotificationsScreen({ navigation }: NotificationsScreenProps) {
-  const { notifications, markNotificationRead, markAllNotificationsRead, getUnreadCount } = useCommunity();
+  const { notifications, markNotificationRead, markAllNotificationsRead, getUnreadCount, currentUser } = useCommunity();
   const { isDark } = useApp();
   const sweetAlert = useSweetAlert();
   const [refreshing, setRefreshing] = useState(false);
-  const [filter, setFilter] = useState<'all' | 'mentions' | 'likes'>('all');
+  const [filter, setFilter] = useState<'all' | 'mentions' | 'likes' | 'security'>('all');
+  const [isLoading, setIsLoading] = useState(false);
+  const [selectedNotification, setSelectedNotification] = useState<string | null>(null);
+
+  // ─── Security Notifications ───
+  const securityNotifications = useMemo(() => {
+    const securityTypes = ['security', 'system', 'follow'];
+    return notifications.filter(n => securityTypes.includes(n.type) || n.type === 'like');
+  }, [notifications]);
+
+  // ─── Filter Logic ───
+  const filteredNotifications = useMemo(() => {
+    if (filter === 'mentions') return notifications.filter(n => n.type === 'mention' || n.type === 'comment');
+    if (filter === 'likes') return notifications.filter(n => n.type === 'like' || n.type === 'helpful');
+    if (filter === 'security') return securityNotifications;
+    return notifications;
+  }, [notifications, filter, securityNotifications]);
+
+  // ─── Group notifications by date ───
+  const groupedNotifications = useMemo(() => {
+    const groups: Record<string, any[]> = {};
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    filteredNotifications.forEach(n => {
+      const date = new Date(n.timestamp);
+      let key = 'Older';
+      if (date.toDateString() === today.toDateString()) key = 'Today';
+      else if (date.toDateString() === yesterday.toDateString()) key = 'Yesterday';
+      else if (date > yesterday) key = 'This Week';
+      
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(n);
+    });
+    
+    return groups;
+  }, [filteredNotifications]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -88,22 +128,27 @@ export default function NotificationsScreen({ navigation }: NotificationsScreenP
   const handleNotificationPress = async (notification: any) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     await markNotificationRead(notification.id);
+    setSelectedNotification(notification.id);
 
     switch (notification.type) {
       case 'like':
       case 'comment':
       case 'repost':
       case 'helpful':
+      case 'security':
         if (notification.postId) {
           navigation.navigate('PostDetail', { postId: notification.postId });
         }
         break;
       case 'follow':
       case 'mention':
-        navigation.navigate('CommunityMemberProfile', { userId: notification.user.id });
+        navigation.navigate('CommunityMemberProfile', { userId: notification.user?.id || notification.userId });
         break;
       case 'message':
-        navigation.navigate('Chat', { userId: notification.user.id });
+        navigation.navigate('Chat', { userId: notification.user?.id || notification.userId });
+        break;
+      case 'system':
+        sweetAlert.alert('System Notification', notification.content, 'info');
         break;
       default:
         break;
@@ -111,30 +156,30 @@ export default function NotificationsScreen({ navigation }: NotificationsScreenP
   };
 
   const handleMoreOptions = (notification: any) => {
+    setSelectedNotification(notification.id);
     sweetAlert.confirm(
       'Notification Options',
       '',
       () => {
+        // Delete notification
         console.log('Delete notification:', notification.id);
+        sweetAlert.toast('Deleted', 'Notification removed', 'success');
       },
       () => {
         markNotificationRead(notification.id);
+        sweetAlert.toast('Updated', `Marked as ${notification.read ? 'unread' : 'read'}`, 'info');
       },
       'Delete',
       notification.read ? 'Mark Unread' : 'Mark Read'
     );
   };
 
-  const filteredNotifications = notifications.filter(n => {
-    if (filter === 'mentions') return n.type === 'mention' || n.type === 'comment';
-    if (filter === 'likes') return n.type === 'like' || n.type === 'helpful';
-    return true;
-  });
-
   const unreadCount = getUnreadCount();
 
+  // ─── Render Notification ───
   const renderNotification = ({ item, index }: { item: any; index: number }) => {
     const icon = NOTIFICATION_ICONS[item.type] || NOTIFICATION_ICONS.system;
+    const isSelected = selectedNotification === item.id;
 
     return (
       <Animated.View
@@ -154,8 +199,14 @@ export default function NotificationsScreen({ navigation }: NotificationsScreenP
               borderLeftWidth: 3,
               borderLeftColor: LL.primary,
             },
+            isSelected && {
+              borderColor: LL.primary,
+              borderWidth: 2,
+            },
           ]}
           onPress={() => handleNotificationPress(item)}
+          onLongPress={() => handleMoreOptions(item)}
+          delayLongPress={500}
         >
           <View style={styles.notificationLeft}>
             <View style={[styles.iconContainer, { backgroundColor: icon.bg }]}>
@@ -163,7 +214,7 @@ export default function NotificationsScreen({ navigation }: NotificationsScreenP
             </View>
             <View style={styles.avatarContainer}>
               <SafeAvatar
-                avatar={item.user.avatar}
+                avatar={item.user?.avatar || item.actorAvatar}
                 size={40}
                 fallbackIcon="person"
                 fallbackColor={LL.primary}
@@ -177,18 +228,27 @@ export default function NotificationsScreen({ navigation }: NotificationsScreenP
           <View style={styles.notificationContent}>
             <Text style={[styles.notificationText, { color: isDark ? LL.gray300 : LL.gray700 }]}>
               <Text style={[styles.userName, { color: isDark ? LL.white : LL.gray900 }]}>
-                {item.user.displayName}
+                {item.user?.displayName || 'System'}
               </Text>
               {' '}{item.content}{' '}
               {item.target && (
                 <Text style={[styles.targetText, { color: isDark ? LL.gray500 : LL.gray400 }]}>
-                  {item.target}
+                  "{item.target}"
                 </Text>
               )}
             </Text>
-            <Text style={[styles.notificationTime, { color: isDark ? LL.gray500 : LL.gray400 }]}>
-              {item.time}
-            </Text>
+            <View style={styles.notificationMeta}>
+              <Text style={[styles.notificationTime, { color: isDark ? LL.gray500 : LL.gray400 }]}>
+                {item.time}
+              </Text>
+              {item.type && (
+                <View style={[styles.notificationTypeBadge, { backgroundColor: icon.bg }]}>
+                  <Text style={[styles.notificationTypeText, { color: icon.color }]}>
+                    {item.type}
+                  </Text>
+                </View>
+              )}
+            </View>
           </View>
 
           <TouchableOpacity
@@ -202,10 +262,25 @@ export default function NotificationsScreen({ navigation }: NotificationsScreenP
     );
   };
 
+  // ─── Render Section Header ───
+  const renderSectionHeader = (title: string) => (
+    <View style={[styles.sectionHeader, { backgroundColor: isDark ? LL.darkBg : LL.gray50 }]}>
+      <Text style={[styles.sectionHeaderText, { color: isDark ? LL.gray400 : LL.gray500 }]}>
+        {title}
+      </Text>
+      {title === 'Today' && unreadCount > 0 && (
+        <View style={styles.unreadBadge}>
+          <Text style={styles.unreadBadgeText}>{unreadCount} new</Text>
+        </View>
+      )}
+    </View>
+  );
+
   return (
     <View style={[styles.container, { backgroundColor: isDark ? LL.darkBg : LL.gray50 }]}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
+      {/* ─── Header ─── */}
       <View style={[styles.header, { backgroundColor: isDark ? LL.darkSurface : LL.white, borderBottomColor: isDark ? LL.darkBorder : LL.gray200 }]}>
         <View style={styles.headerRow}>
           <TouchableOpacity
@@ -221,7 +296,7 @@ export default function NotificationsScreen({ navigation }: NotificationsScreenP
             </Text>
             {unreadCount > 0 && (
               <View style={[styles.unreadBadge, { backgroundColor: LL.accent }]}>
-                <Text style={styles.unreadBadgeText}>{unreadCount} new</Text>
+                <Text style={styles.unreadBadgeText}>{unreadCount}</Text>
               </View>
             )}
           </View>
@@ -237,8 +312,9 @@ export default function NotificationsScreen({ navigation }: NotificationsScreenP
         </View>
       </View>
 
+      {/* ─── Filter Tabs ─── */}
       <View style={[styles.filterContainer, { backgroundColor: isDark ? LL.darkBg : LL.gray50 }]}>
-        {(['all', 'mentions', 'likes'] as const).map((f, i) => (
+        {(['all', 'mentions', 'likes', 'security'] as const).map((f, i) => (
           <Animated.View key={f} entering={FadeInUp.delay(i * 50).duration(300)}>
             <TouchableOpacity
               style={[
@@ -260,7 +336,7 @@ export default function NotificationsScreen({ navigation }: NotificationsScreenP
                 { color: isDark ? LL.gray400 : LL.gray500 },
                 filter === f && { color: LL.primary, fontWeight: '800' },
               ]}>
-                {f.charAt(0).toUpperCase() + f.slice(1)}
+                {f === 'security' ? '🔒 Security' : f.charAt(0).toUpperCase() + f.slice(1)}
               </Text>
               {filter === f && <View style={[styles.filterIndicator, { backgroundColor: LL.primary }]} />}
             </TouchableOpacity>
@@ -268,6 +344,7 @@ export default function NotificationsScreen({ navigation }: NotificationsScreenP
         ))}
       </View>
 
+      {/* ─── Notification List ─── */}
       <FlatList
         data={filteredNotifications}
         renderItem={renderNotification}
@@ -295,7 +372,7 @@ export default function NotificationsScreen({ navigation }: NotificationsScreenP
               No notifications
             </Text>
             <Text style={[styles.emptySubtext, { color: isDark ? LL.gray500 : LL.gray400 }]}>
-              You are all caught up!
+              {filter === 'security' ? 'You have no security notifications' : 'You are all caught up!'}
             </Text>
           </View>
         }
@@ -339,6 +416,8 @@ const styles = StyleSheet.create({
     borderRadius: LL.radius.full,
     paddingHorizontal: 8,
     paddingVertical: 2,
+    minWidth: 20,
+    alignItems: 'center',
   },
   unreadBadgeText: {
     color: LL.white,
@@ -355,6 +434,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: LL.space.lg,
     paddingBottom: LL.space.md,
     gap: LL.space.sm,
+    flexWrap: 'wrap',
   },
   filterTab: {
     paddingVertical: LL.space.sm,
@@ -378,6 +458,21 @@ const styles = StyleSheet.create({
   listContainer: {
     padding: LL.space.lg,
     paddingBottom: LL.space.xl,
+  },
+
+  sectionHeader: {
+    paddingVertical: LL.space.sm,
+    paddingHorizontal: LL.space.sm,
+    marginBottom: LL.space.sm,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  sectionHeaderText: {
+    fontSize: LL.text.sm.size,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
 
   notificationItem: {
@@ -430,10 +525,25 @@ const styles = StyleSheet.create({
   targetText: {
     fontStyle: 'italic',
   },
+  notificationMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: LL.space.sm,
+    marginTop: 4,
+  },
   notificationTime: {
     fontSize: LL.text.xs.size,
-    marginTop: 4,
     fontWeight: '500',
+  },
+  notificationTypeBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  notificationTypeText: {
+    fontSize: 9,
+    fontWeight: '700',
+    textTransform: 'uppercase',
   },
   moreButton: {
     padding: LL.space.sm,

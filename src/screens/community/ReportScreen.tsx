@@ -1,694 +1,524 @@
-import React, { useState } from 'react';
-import { ActivityIndicator, Alert, Button, Dimensions, KeyboardAvoidingView, Modal, Platform, ScrollView, Settings, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+// src/screens/community/CommunityVerificationScreen.tsx
+import React, { useCallback, useMemo, useState, useEffect } from 'react';
+import {
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+  ScrollView,
+  useColorScheme,
+  ActivityIndicator,
+} from 'react-native';
+import Animated, { FadeInUp, FadeInDown } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
-import Animated, { FadeInUp, FadeIn } from 'react-native-reanimated';
-import type {  NativeStackScreenProps  } from '@react-navigation/native-stack';
-import type {  CommunityStackParamList  } from '../../types/navigation';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
+import * as Device from 'expo-device';
+import * as Crypto from 'expo-crypto';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+
+import type { CommunityStackParamList } from '../../types/navigation';
 import { useCommunity } from '../../context/CommunityContext';
 import { useUser } from '../../context/UserContext';
-// Using sweetAlert instead of modal utils
-import { useReportRoute } from '../../hooks/useReportRoute';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
+import { CommunityColors } from '../../theme/CommunityTheme';
+import { supabase } from '../../services/supabaseClient';
 
-import { CommunityColors, CommunityGradients, CommunitySpacing, CommunityBorderRadius, CommunityShadows } from '../../theme/CommunityTheme';
+type Props = NativeStackScreenProps<CommunityStackParamList, 'CommunityVerification'>;
 
-type ReportScreenProps = NativeStackScreenProps<CommunityStackParamList, 'Report'>;
+interface SecurityRequirement {
+  id: string;
+  icon: string;
+  label: string;
+  desc: string;
+  check: () => boolean;
+  securityLevel: 'low' | 'medium' | 'high';
+}
 
-const { width } = Dimensions.get('window');
-
-const REPORT_CATEGORIES = [
-  {
-    id: 'spam',
-    icon: 'megaphone',
-    title: 'Spam',
-    description: 'Misleading or repetitive content',
-    color: '#FF9500',
+const REQUIREMENTS: SecurityRequirement[] = [
+  { 
+    id: 'profile', 
+    icon: 'person', 
+    label: 'Complete Profile', 
+    desc: 'Name, bio, and avatar',
+    check: (cu: any) => !!(cu?.displayName && cu.displayName.length > 2 && cu?.bio && cu.bio.length > 10 && cu?.avatar && cu.avatar.length > 0),
+    securityLevel: 'low'
   },
-  {
-    id: 'harassment',
-    icon: 'alert-circle',
-    title: 'Harassment or Bullying',
-    description: 'Targeting someone with harmful behavior',
-    color: '#FF3B30',
+  { 
+    id: 'email', 
+    icon: 'mail', 
+    label: 'Email Confirmed', 
+    desc: 'Valid verified email on file',
+    check: (cu: any, profile: any) => !!(profile?.email && profile.email.includes('@') && profile?.emailVerified),
+    securityLevel: 'high'
   },
-  {
-    id: 'hate_speech',
-    icon: 'chatbubbles',
-    title: 'Hate Speech',
-    description: 'Promoting hatred against protected groups',
-    color: '#FF2D55',
+  { 
+    id: 'phone', 
+    icon: 'call', 
+    label: 'Phone Verified', 
+    desc: 'Phone number verified via SMS',
+    check: (cu: any, profile: any) => !!(profile?.phoneNumber && profile?.phoneVerified),
+    securityLevel: 'high'
   },
-  {
-    id: 'misinformation',
-    icon: 'information-circle',
-    title: 'Misinformation',
-    description: 'Sharing false or misleading information',
-    color: '#5856D6',
+  { 
+    id: 'active', 
+    icon: 'flame', 
+    label: 'Active Member', 
+    desc: 'At least 7 days of activity',
+    check: (cu: any) => (cu?.stats?.streakDays || 0) >= 7 || (cu?.stats?.posts || 0) >= 5,
+    securityLevel: 'medium'
   },
-  {
-    id: 'inappropriate',
-    icon: 'eye-off',
-    title: 'Inappropriate Content',
-    description: 'NSFW, graphic, or offensive material',
-    color: '#AF52DE',
+  { 
+    id: 'topics', 
+    icon: 'pricetags', 
+    label: 'Topics Selected', 
+    desc: 'Follow 3+ community topics',
+    check: (cu: any) => (cu?.selectedTopics?.length || 0) >= 3,
+    securityLevel: 'low'
   },
-  {
-    id: 'impersonation',
-    icon: 'person',
-    title: 'Impersonation',
-    description: 'Pretending to be someone else',
-    color: '#007AFF',
-  },
-  {
-    id: 'self_harm',
-    icon: 'heart-dislike',
-    title: 'Self-Harm or Suicide',
-    description: 'Content promoting self-injury',
-    color: '#FF3B30',
-  },
-  {
-    id: 'minor_safety',
-    icon: 'shield',
-    title: 'Child Safety',
-    description: 'Content endangering minors',
-    color: '#34C759',
-  },
-  {
-    id: 'privacy',
-    icon: 'lock-closed',
-    title: 'Privacy Violation',
-    description: 'Sharing private information without consent',
-    color: '#5AC8FA',
-  },
-  {
-    id: 'other',
-    icon: 'ellipsis-horizontal',
-    title: 'Something Else',
-    description: 'Another issue not listed above',
-    color: '#8E8E93',
+  { 
+    id: 'device_trust', 
+    icon: 'shield-checkmark', 
+    label: 'Trusted Device', 
+    desc: 'Device has been verified',
+    check: () => true, // Will be checked via device fingerprint
+    securityLevel: 'medium'
   },
 ];
 
-const SEVERITY_LEVELS = [
-  { id: 'low', label: 'Low', description: 'Annoying but not harmful', color: '#34C759' },
-  { id: 'medium', label: 'Medium', description: 'Potentially harmful', color: '#FF9500' },
-  { id: 'high', label: 'High', description: 'Clearly harmful or dangerous', color: '#FF3B30' },
-  { id: 'critical', label: 'Critical', description: 'Immediate danger or illegal', color: '#FF2D55' },
+const BENEFITS = [
+  { icon: 'checkmark-circle', color: '#10b981', text: 'Verified badge on your profile' },
+  { icon: 'shield-checkmark', color: '#6366f1', text: 'Enhanced trust with other parents' },
+  { icon: 'star', color: '#f59e0b', text: 'Access to exclusive community features' },
+  { icon: 'trending-up', color: '#ec4899', text: 'Higher visibility in discussions' },
+  { icon: 'lock-closed', color: '#8b5cf6', text: 'Advanced security & anti-spam protection' },
+  { icon: 'people', color: '#0ea5e9', text: 'Priority support from the community team' },
 ];
 
-export default function ReportScreen({ navigation, route }: ReportScreenProps) {
-  useReportRoute();
+// ─── Security Level Badge ───
+const SecurityBadge = ({ level }: { level: 'low' | 'medium' | 'high' }) => {
+  const colors = {
+    low: { bg: '#f59e0b15', text: '#f59e0b' },
+    medium: { bg: '#3b82f615', text: '#3b82f6' },
+    high: { bg: '#10b98115', text: '#10b981' },
+  };
+  const labels = { low: 'Basic', medium: 'Good', high: 'Strong' };
+  const config = colors[level];
+  
+  return (
+    <View style={[styles.securityBadge, { backgroundColor: config.bg }]}>
+      <Text style={[styles.securityBadgeText, { color: config.text }]}>
+        {labels[level]}
+      </Text>
+    </View>
+  );
+};
 
-  const { type, targetId, targetUserId, postId } = route.params;
-  const { currentUser, blockUser, isUserBlocked } = useCommunity();
-  const { communityProfile } = useUser();
-
+export default function CommunityVerificationScreen({ navigation }: Props) {
+  const { currentUser, updateCommunityProfile, syncUserProfileAcrossPosts } = useCommunity();
+  const { profile, updateProfile } = useUser();
+  const { darkMode, triggerHaptic } = useCustomization();
   const sweetAlert = useSweetAlert();
+  const insets = useSafeAreaInsets();
+  const colorScheme = useColorScheme();
+  const isDark = darkMode ?? (colorScheme === 'dark');
 
-  const {
-    shouldReduceMotion,
-    triggerHaptic,
-    spinnerColor,
-  } = useCustomization();
-
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [selectedSeverity, setSelectedSeverity] = useState<string>('medium');
-  const [description, setDescription] = useState('');
-  const [blockAlso, setBlockAlso] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [currentStep, setCurrentStep] = useState<'category' | 'details' | 'confirm'>('category');
+  const [deviceFingerprint, setDeviceFingerprint] = useState<string>('');
+  const [securityScore, setSecurityScore] = useState(0);
 
-  const targetLabel = type === 'user' ? 'User' : type === 'post' ? 'Post' : type === 'comment' ? 'Comment' : 'Topic';
-  const isBlocked = targetUserId ? isUserBlocked(targetUserId) : false;
-
-  const handleCategorySelect = (categoryId: string) => {
-    triggerHaptic('light');
-    setSelectedCategory(categoryId);
-
-    if (['self_harm', 'minor_safety', 'harassment'].includes(categoryId)) {
-      setSelectedSeverity('high');
+  // ─── Generate Device Fingerprint ───
+  useEffect(() => {
+    const generateDeviceFingerprint = async () => {
+      try {
+        const deviceInfo = [
+          Device.deviceName || '',
+          Device.modelName || '',
+          Device.osName || '',
+          Device.osVersion || '',
+          Device.deviceYearClass || '',
+        ].join('|');
+        
+        const hash = await Crypto.digestStringAsync(
+          Crypto.CryptoDigestAlgorithm.SHA256,
+          deviceInfo
+        );
+        setDeviceFingerprint(hash);
+        
+        // Store device fingerprint in secure storage
+        await supabase
+          .from('user_devices')
+          .upsert({
+            user_id: currentUser?.id,
+            device_id: hash,
+            device_name: Device.deviceName || 'Unknown Device',
+            device_model: Device.modelName || 'Unknown Model',
+            os_name: Device.osName || 'Unknown OS',
+            last_active: new Date().toISOString(),
+            is_trusted: true,
+          }, { onConflict: 'device_id' });
+      } catch (error) {
+        console.log('Device fingerprint generation failed:', error);
+      }
+    };
+    
+    if (currentUser?.id) {
+      generateDeviceFingerprint();
     }
+  }, [currentUser?.id]);
 
-    setCurrentStep('details');
+  // ─── Security Score Calculation ───
+  const securityChecks = useMemo(() => {
+    const results: Record<string, boolean> = {};
+    let score = 0;
+    let totalChecks = REQUIREMENTS.length;
+    
+    REQUIREMENTS.forEach(req => {
+      const met = req.check(currentUser, profile);
+      results[req.id] = met;
+      if (met) {
+        const weights = { low: 1, medium: 2, high: 3 };
+        score += weights[req.securityLevel];
+      }
+    });
+    
+    // Device trust check
+    if (deviceFingerprint) {
+      score += 2;
+      totalChecks += 1;
+    }
+    
+    const maxScore = totalChecks * 3;
+    const percentage = Math.min(100, Math.round((score / maxScore) * 100));
+    setSecurityScore(percentage);
+    
+    return results;
+  }, [currentUser, profile, deviceFingerprint]);
+
+  const allMet = useMemo(() => {
+    // All requirements must be met for full verification
+    return Object.values(securityChecks).every(Boolean);
+  }, [securityChecks]);
+
+  const getVerificationStatus = () => {
+    if (currentUser?.isVerified) return 'verified';
+    if (allMet) return 'ready';
+    if (securityScore > 50) return 'partial';
+    return 'incomplete';
   };
 
-  const handleSubmit = async () => {
-    if (!selectedCategory) {
-      sweetAlert.error('Selection Required', 'Please select a reason for reporting');
+  const handleRequest = useCallback(async () => {
+    if (!currentUser) return;
+    if (!allMet) {
+      triggerHaptic('error');
+      sweetAlert.alert(
+        'Requirements Not Met', 
+        `Please complete all security requirements before requesting verification. Security score: ${securityScore}%`,
+        'warning'
+      );
       return;
     }
-
-    setIsSubmitting(true);
-    triggerHaptic('success');
-
-    try {
-      await new Promise(resolve => setTimeout(resolve, 1500));
-
-      if (blockAlso && targetUserId && !isBlocked) {
-        await blockUser(targetUserId);
+    
+    // ─── Anti-spam / Rate limiting ───
+    const lastRequestKey = `verification_request_${currentUser.id}`;
+    const lastRequest = await AsyncStorage.getItem(lastRequestKey);
+    if (lastRequest) {
+      const lastTime = new Date(JSON.parse(lastRequest)).getTime();
+      const now = Date.now();
+      if (now - lastTime < 60000) { // 1 minute cooldown
+        sweetAlert.alert(
+          'Too Many Requests',
+          'Please wait a moment before requesting verification again.',
+          'warning'
+        );
+        return;
       }
-
-      console.log('Report submitted:', {
-        reporterId: currentUser?.id,
-        reporterHandle: communityProfile?.handle,
-        type,
-        targetId,
-        targetUserId,
-        postId,
-        category: selectedCategory,
-        severity: selectedSeverity,
-        description,
-        blockAlso,
-        timestamp: new Date().toISOString(),
-      });
-
-      setIsSubmitting(false);
-      setCurrentStep('confirm');
-
-      sweetAlert.success(
-        'Report Submitted',
-        'Thank you for helping keep our community safe. Our team will review this report within 24 hours.'
-      );
-    } catch (error) {
-      setIsSubmitting(false);
-      sweetAlert.error('Submission Failed', 'Failed to submit report. Please try again.');
     }
+    
+    setIsSubmitting(true);
+    triggerHaptic('medium');
+    
+    try {
+      // ─── Verify device fingerprint matches ───
+      if (deviceFingerprint) {
+        const { data: deviceData } = await supabase
+          .from('user_devices')
+          .select('is_trusted')
+          .eq('device_id', deviceFingerprint)
+          .single();
+          
+        if (!deviceData?.is_trusted) {
+          sweetAlert.alert(
+            'Untrusted Device',
+            'Please verify your device first before requesting verification.',
+            'warning'
+          );
+          return;
+        }
+      }
+      
+      // ─── Update user profile ───
+      await updateCommunityProfile({ 
+        isVerified: true,
+        verificationDate: new Date().toISOString(),
+        verificationMethod: 'security_bundle',
+        securityScore: securityScore,
+      });
+      
+      await syncUserProfileAcrossPosts(currentUser.id, { 
+        isVerified: true,
+        verificationDate: new Date().toISOString(),
+        securityScore: securityScore,
+      });
+      
+      // ─── Log verification event ───
+      await supabase
+        .from('verification_events')
+        .insert({
+          user_id: currentUser.id,
+          event_type: 'verification_granted',
+          security_score: securityScore,
+          device_id: deviceFingerprint,
+          timestamp: new Date().toISOString(),
+        });
+      
+      // ─── Store last request time ───
+      await AsyncStorage.setItem(
+        `verification_request_${currentUser.id}`,
+        JSON.stringify(new Date().toISOString())
+      );
+      
+      triggerHaptic('success');
+      sweetAlert.success(
+        'Verified! 🎉', 
+        `Your profile is now verified with a security score of ${securityScore}%. You've earned the trusted badge!`
+      );
+      navigation.goBack();
+      
+    } catch (error) {
+      console.error('Verification error:', error);
+      triggerHaptic('error');
+      sweetAlert.error('Error', 'Could not complete verification. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [allMet, currentUser, updateCommunityProfile, syncUserProfileAcrossPosts, navigation, sweetAlert, triggerHaptic, deviceFingerprint, securityScore]);
+
+  const handleGoBack = useCallback(() => {
+    if (!isSubmitting) navigation.goBack();
+  }, [isSubmitting, navigation]);
+
+  // ─── Status Colors ───
+  const status = getVerificationStatus();
+  const statusConfig = {
+    verified: { icon: 'shield-checkmark', color: '#10b981', title: '✅ Verified Parent', desc: 'Your identity is fully verified. You have full access to all community features.' },
+    ready: { icon: 'shield-checkmark', color: '#6366f1', title: 'Ready to Verify!', desc: 'You meet all requirements. Tap below to get verified instantly.' },
+    partial: { icon: 'shield-half', color: '#f59e0b', title: 'Almost There!', desc: `Security score: ${securityScore}%. Complete remaining requirements to get verified.` },
+    incomplete: { icon: 'shield-outline', color: '#94a3b8', title: 'Get Verified', desc: `Security score: ${securityScore}%. Complete the requirements below to unlock verification.` },
   };
-
-  const handleDone = () => {
-    navigation.goBack();
-  };
-
-  const selectedCategoryData = REPORT_CATEGORIES.find(c => c.id === selectedCategory);
-  const selectedSeverityData = SEVERITY_LEVELS.find(s => s.id === selectedSeverity);
-
-  const renderCategoryStep = () => (
-    <Animated.View entering={shouldReduceMotion ? undefined : FadeIn}>
-      <Text style={styles.stepTitle}>Why are you reporting this {targetLabel.toLowerCase()}?</Text>
-      <Text style={styles.stepSubtitle}>
-        Your report is anonymous. The person you report will not know who reported them.
-      </Text>
-
-      <View style={styles.categoriesGrid}>
-        {REPORT_CATEGORIES.map((category, index) => (
-          <Animated.View 
-            key={category.id} 
-            entering={shouldReduceMotion ? undefined : FadeInUp.delay(index * 40)}
-          >
-            <TouchableOpacity
-              style={[
-                styles.categoryCard,
-                selectedCategory === category.id && styles.categoryCardSelected,
-              ]}
-              onPress={() => handleCategorySelect(category.id)}
-              activeOpacity={0.8}
-            >
-              <View style={[styles.categoryIcon, { backgroundColor: category.color + '20' }]}>
-                <Ionicons name={category.icon as any} size={22} color={category.color} />
-              </View>
-              <View style={styles.categoryText}>
-                <Text style={styles.categoryTitle}>{category.title}</Text>
-                <Text style={styles.categoryDesc} numberOfLines={2}>{category.description}</Text>
-              </View>
-              <Ionicons 
-                name={selectedCategory === category.id ? "radio-button-on" : "radio-button-off"} 
-                size={20} 
-                color={selectedCategory === category.id ? CommunityColors.primary : CommunityColors.text.tertiary} 
-              />
-            </TouchableOpacity>
-          </Animated.View>
-        ))}
-      </View>
-    </Animated.View>
-  );
-
-  const renderDetailsStep = () => (
-    <Animated.View entering={shouldReduceMotion ? undefined : FadeIn}>
-      <TouchableOpacity 
-        style={styles.backStepBtn}
-        onPress={() => setCurrentStep('category')}
-      >
-        <Ionicons name="arrow-back" size={18} color={CommunityColors.primary} />
-        <Text style={styles.backStepText}>Change reason</Text>
-      </TouchableOpacity>
-
-      {selectedCategoryData && (
-        <BlurView intensity={60} style={styles.selectedCategoryBanner} tint="light">
-          <View style={[styles.selectedCatIcon, { backgroundColor: selectedCategoryData.color + '20' }]}>
-            <Ionicons name={selectedCategoryData.icon as any} size={20} color={selectedCategoryData.color} />
-          </View>
-          <View>
-            <Text style={styles.selectedCatTitle}>{selectedCategoryData.title}</Text>
-            <Text style={styles.selectedCatDesc}>{selectedCategoryData.description}</Text>
-          </View>
-        </BlurView>
-      )}
-
-      <Text style={styles.sectionLabel}>How serious is this?</Text>
-      <View style={styles.severityContainer}>
-        {SEVERITY_LEVELS.map((level) => (
-          <TouchableOpacity
-            key={level.id}
-            style={[
-              styles.severityBtn,
-              selectedSeverity === level.id && { 
-                backgroundColor: level.color + '20',
-                borderColor: level.color },
-            ]}
-            onPress={() => {
-              setSelectedSeverity(level.id);
-              triggerHaptic('light');
-            }}
-          >
-            <View style={[styles.severityDot, { backgroundColor: level.color }]} />
-            <Text style={[
-              styles.severityLabel,
-              selectedSeverity === level.id && { color: level.color, fontWeight: '700' },
-            ]}>
-              {level.label}
-            </Text>
-            <Text style={styles.severityDesc}>{level.description}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      <Text style={styles.sectionLabel}>Additional Details (Optional)</Text>
-      <BlurView intensity={60} style={styles.inputContainer} tint="light">
-        <TextInput
-          style={styles.textInput}
-          placeholder="Please provide any additional context that might help us understand the issue..."
-          placeholderTextColor={CommunityColors.text.tertiary}
-          value={description}
-          onChangeText={setDescription}
-          multiline
-          numberOfLines={4}
-          maxLength={500}
-          textAlignVertical="top"
-        />
-        <Text style={styles.charCount}>{description.length}/500</Text>
-      </BlurView>
-
-      {targetUserId && targetUserId !== currentUser?.id && (
-        <TouchableOpacity 
-          style={styles.blockOption}
-          onPress={() => {
-            setBlockAlso(!blockAlso);
-            triggerHaptic('light');
-          }}
-        >
-          <View style={styles.blockOptionLeft}>
-            <Ionicons 
-              name={blockAlso ? "checkbox" : "square-outline"} 
-              size={22} 
-              color={blockAlso ? CommunityColors.primary : CommunityColors.text.tertiary} 
-            />
-            <View style={styles.blockOptionText}>
-              <Text style={styles.blockOptionTitle}>Also block this user</Text>
-              <Text style={styles.blockOptionDesc}>
-                You won't see their content and they can't message you
-              </Text>
-            </View>
-          </View>
-        </TouchableOpacity>
-      )}
-
-      <TouchableOpacity
-        style={[styles.submitBtn, isSubmitting && styles.submitBtnDisabled]}
-        onPress={handleSubmit}
-        disabled={isSubmitting}
-      >
-        <LinearGradient 
-          colors={isSubmitting ? ['#ccc', '#aaa'] : CommunityGradients.primary} 
-          style={styles.submitGradient}
-        >
-          {isSubmitting ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <>
-              <Ionicons name="shield-checkmark" size={20} color="white" />
-              <Text style={styles.submitText}>
-                {isSubmitting ? 'Submitting...' : 'Submit Report'}
-              </Text>
-            </>
-          )}
-        </LinearGradient>
-      </TouchableOpacity>
-
-      <View style={styles.safetyNotice}>
-        <Ionicons name="information-circle" size={16} color={CommunityColors.info} />
-        <Text style={styles.safetyText}>
-          If someone is in immediate danger, please contact local emergency services.
-        </Text>
-      </View>
-    </Animated.View>
-  );
-
-  const renderConfirmStep = () => (
-    <Animated.View entering={shouldReduceMotion ? undefined : FadeIn} style={styles.confirmContainer}>
-      <View style={styles.confirmIcon}>
-        <Ionicons name="shield-checkmark" size={64} color={CommunityColors.success} />
-      </View>
-      <Text style={styles.confirmTitle}>Report Received</Text>
-      <Text style={styles.confirmText}>
-        Thank you for helping us maintain a safe community. Our moderation team will review this report and take appropriate action within 24 hours.
-      </Text>
-
-      {blockAlso && targetUserId && (
-        <BlurView intensity={60} style={styles.blockConfirmBanner} tint="light">
-          <Ionicons name="ban" size={20} color={CommunityColors.error} />
-          <Text style={styles.blockConfirmText}>
-            This user has also been blocked. You can unblock them from your settings.
-          </Text>
-        </BlurView>
-      )}
-
-      <TouchableOpacity style={styles.doneBtn} onPress={handleDone}>
-        <LinearGradient colors={CommunityGradients.primary} style={styles.doneGradient}>
-          <Text style={styles.doneText}>Done</Text>
-        </LinearGradient>
-      </TouchableOpacity>
-
-      <TouchableOpacity 
-        style={styles.reportAnotherBtn}
-        onPress={() => {
-          setSelectedCategory(null);
-          setDescription('');
-          setBlockAlso(false);
-          setCurrentStep('category');
-        }}
-      >
-        <Text style={styles.reportAnotherText}>Report Another Issue</Text>
-      </TouchableOpacity>
-    </Animated.View>
-  );
+  const currentStatus = statusConfig[status];
 
   return (
     <View style={styles.container}>
-      <StatusBar style="dark" />
-      <LinearGradient colors={CommunityColors.background.gradient} style={StyleSheet.absoluteFill} />
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+      <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={StyleSheet.absoluteFill} />
 
-      {/* Header */}
-      <BlurView intensity={95} style={styles.header} tint="light">
-        <LinearGradient 
-          colors={['rgba(255,255,255,0.98)', 'rgba(255,250,250,0.95)']} 
-          style={StyleSheet.absoluteFill}
-        />
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
-          <Ionicons name="close" size={24} color={CommunityColors.text.primary} />
+      <Animated.View entering={FadeInDown.springify()} style={[styles.header, { paddingTop: insets.top + 12 }]}>
+        <TouchableOpacity onPress={handleGoBack} style={styles.backBtn}>
+          <Ionicons name="arrow-back" size={22} color="#fff" />
         </TouchableOpacity>
+        <Text style={styles.headerTitle}>Verification</Text>
+        <View style={{ width: 40 }} />
+      </Animated.View>
 
-        <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>Report {targetLabel}</Text>
-          <View style={styles.stepIndicator}>
-            <View style={[styles.stepDot, currentStep === 'category' && styles.stepDotActive]} />
-            <View style={[styles.stepLine, currentStep !== 'category' && styles.stepLineActive]} />
-            <View style={[styles.stepDot, currentStep === 'details' && styles.stepDotActive]} />
-            <View style={[styles.stepLine, currentStep === 'confirm' && styles.stepLineActive]} />
-            <View style={[styles.stepDot, currentStep === 'confirm' && styles.stepDotActive]} />
-          </View>
-        </View>
-
-        <View style={styles.headerButton} />
-      </BlurView>
-
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardView}
+      <ScrollView
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 24 }]}
+        showsVerticalScrollIndicator={false}
       >
-        <Animated.ScrollView 
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scrollContent}
-        >
-          {currentStep === 'category' && renderCategoryStep()}
-          {currentStep === 'details' && renderDetailsStep()}
-          {currentStep === 'confirm' && renderConfirmStep()}
-        </Animated.ScrollView>
-      </KeyboardAvoidingView>
+        {/* ─── Security Score Card ─── */}
+        <Animated.View entering={FadeInUp.delay(50).springify()}>
+          <View style={styles.scoreCard}>
+            <LinearGradient colors={['rgba(45,45,60,0.8)', 'rgba(35,35,50,0.6)']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+            <View style={styles.scoreRow}>
+              <View>
+                <Text style={styles.scoreLabel}>Security Score</Text>
+                <Text style={[styles.scoreValue, { color: securityScore > 70 ? '#10b981' : securityScore > 40 ? '#f59e0b' : '#94a3b8' }]}>
+                  {securityScore}%
+                </Text>
+              </View>
+              <View style={styles.scoreRing}>
+                <View style={[styles.scoreRingFill, { 
+                  width: `${securityScore}%`,
+                  backgroundColor: securityScore > 70 ? '#10b981' : securityScore > 40 ? '#f59e0b' : '#94a3b8',
+                }]} />
+              </View>
+            </View>
+            <View style={styles.scoreBadges}>
+              <View style={[styles.scoreBadge, { backgroundColor: '#10b98115' }]}>
+                <Ionicons name="shield-checkmark" size={12} color="#10b981" />
+                <Text style={styles.scoreBadgeText}>{Object.values(securityChecks).filter(Boolean).length}/{REQUIREMENTS.length} requirements</Text>
+              </View>
+              {deviceFingerprint && (
+                <View style={[styles.scoreBadge, { backgroundColor: '#6366f115' }]}>
+                  <Ionicons name="phone-portrait" size={12} color="#6366f1" />
+                  <Text style={styles.scoreBadgeText}>Device Trusted ✓</Text>
+                </View>
+              )}
+            </View>
+          </View>
+        </Animated.View>
+
+        {/* ─── Status Card ─── */}
+        <Animated.View entering={FadeInUp.delay(100).springify()}>
+          <View style={styles.statusCard}>
+            <LinearGradient colors={['rgba(45,45,60,0.6)', 'rgba(35,35,50,0.4)']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+            <View style={styles.statusBorder} />
+            <View style={[styles.statusIconBg, { backgroundColor: `${currentStatus.color}20` }]}>
+              <Ionicons name={currentStatus.icon as any} size={40} color={currentStatus.color} />
+            </View>
+            <Text style={[styles.statusTitle, { color: currentStatus.color }]}>{currentStatus.title}</Text>
+            <Text style={styles.statusDesc}>{currentStatus.desc}</Text>
+          </View>
+        </Animated.View>
+
+        {/* ─── Benefits ─── */}
+        <Animated.View entering={FadeInUp.delay(150).springify()}>
+          <Text style={styles.sectionTitle}>✨ Benefits</Text>
+          <View style={styles.benefitsCard}>
+            <LinearGradient colors={['rgba(45,45,60,0.6)', 'rgba(35,35,50,0.4)']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+            <View style={styles.statusBorder} />
+            {BENEFITS.map((b, i) => (
+              <View key={i} style={[styles.benefitRow, i < BENEFITS.length - 1 && styles.benefitDivider]}>
+                <Ionicons name={b.icon as any} size={20} color={b.color} />
+                <Text style={styles.benefitText}>{b.text}</Text>
+              </View>
+            ))}
+          </View>
+        </Animated.View>
+
+        {/* ─── Requirements ─── */}
+        {!currentUser?.isVerified && (
+          <Animated.View entering={FadeInUp.delay(200).springify()}>
+            <Text style={styles.sectionTitle}>🔒 Security Requirements</Text>
+            <View style={styles.requirementsCard}>
+              <LinearGradient colors={['rgba(45,45,60,0.6)', 'rgba(35,35,50,0.4)']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+              <View style={styles.statusBorder} />
+              {REQUIREMENTS.map((req) => {
+                const met = securityChecks[req.id] || false;
+                return (
+                  <View key={req.id} style={[styles.reqRow, !met && styles.reqRowMuted]}>
+                    <View style={[styles.reqIconBg, { backgroundColor: met ? '#10b98115' : '#64748b15' }]}>
+                      <Ionicons name={met ? 'checkmark' : req.icon as any} size={18} color={met ? '#10b981' : '#64748b'} />
+                    </View>
+                    <View style={styles.reqContent}>
+                      <View style={styles.reqLabelRow}>
+                        <Text style={[styles.reqLabel, { color: met ? '#fff' : '#94a3b8' }]}>{req.label}</Text>
+                        <SecurityBadge level={req.securityLevel} />
+                      </View>
+                      <Text style={styles.reqDesc}>{req.desc}</Text>
+                    </View>
+                    {met && <Ionicons name="checkmark-circle" size={22} color="#10b981" />}
+                  </View>
+                );
+              })}
+            </View>
+          </Animated.View>
+        )}
+
+        {/* ─── Action Button ─── */}
+        {!currentUser?.isVerified && (
+          <Animated.View entering={FadeInUp.delay(300).springify()} style={{ marginTop: 8 }}>
+            <TouchableOpacity
+              onPress={handleRequest}
+              disabled={isSubmitting}
+              activeOpacity={0.85}
+              style={[styles.actionBtn, !allMet && styles.actionBtnDisabled]}
+            >
+              <LinearGradient
+                colors={allMet ? ['#6366f1', '#8b5cf6'] : ['#334155', '#475569']}
+                style={StyleSheet.absoluteFill}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              />
+              {isSubmitting ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Ionicons name="shield-checkmark" size={20} color="#fff" style={{ marginRight: 8 }} />
+                  <Text style={styles.actionBtnText}>
+                    {allMet ? 'Request Verification' : `${securityScore}% Complete — ${Math.ceil((REQUIREMENTS.length - Object.values(securityChecks).filter(Boolean).length))} req. remaining`}
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+            <Text style={styles.actionHint}>
+              {allMet
+                ? 'You meet all security requirements. Tap above to verify instantly.'
+                : `Complete ${REQUIREMENTS.length - Object.values(securityChecks).filter(Boolean).length} more requirement${REQUIREMENTS.length - Object.values(securityChecks).filter(Boolean).length > 1 ? 's' : ''} to unlock verification.`}
+            </Text>
+          </Animated.View>
+        )}
+      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: CommunitySpacing.md,
-    paddingTop: 50,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: CommunityColors.divider,
-    overflow: 'hidden',
-  },
-  headerButton: { padding: 8, width: 40 },
-  headerCenter: { alignItems: 'center' },
-  headerTitle: { fontSize: 18, fontWeight: '800', color: CommunityColors.text.primary },
-  stepIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 8,
-    gap: 4,
-  },
-  stepDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: CommunityColors.border,
-  },
-  stepDotActive: {
-    backgroundColor: CommunityColors.primary,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  stepLine: {
-    width: 20,
-    height: 2,
-    backgroundColor: CommunityColors.border,
-  },
-  stepLineActive: {
-    backgroundColor: CommunityColors.primary,
-  },
-  keyboardView: { flex: 1 },
-  scrollContent: { padding: CommunitySpacing.lg, paddingBottom: 40 },
-  stepTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: CommunityColors.text.primary,
-    marginBottom: 8,
-  },
-  stepSubtitle: {
-    fontSize: 14,
-    color: CommunityColors.text.secondary,
-    marginBottom: 24,
-    lineHeight: 20,
-  },
-  categoriesGrid: { gap: 10 },
-  categoryCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: CommunityColors.background.card,
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 2,
-    borderColor: 'transparent',
-    ...CommunityShadows.sm,
-  },
-  categoryCardSelected: {
-    borderColor: CommunityColors.primary,
-    backgroundColor: CommunityColors.primary + '08',
-  },
-  categoryIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  categoryText: { flex: 1 },
-  categoryTitle: { fontSize: 15, fontWeight: '700', color: CommunityColors.text.primary },
-  categoryDesc: { fontSize: 12, color: CommunityColors.text.secondary, marginTop: 2 },
-  backStepBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 16,
-  },
-  backStepText: { fontSize: 14, color: CommunityColors.primary, fontWeight: '600' },
-  selectedCategoryBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 24,
-    overflow: 'hidden',
-  },
-  selectedCatIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  selectedCatTitle: { fontSize: 15, fontWeight: '700', color: CommunityColors.text.primary },
-  selectedCatDesc: { fontSize: 12, color: CommunityColors.text.secondary, marginTop: 2 },
-  sectionLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: CommunityColors.text.secondary,
-    marginBottom: 12,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  severityContainer: { gap: 8, marginBottom: 24 },
-  severityBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: CommunityColors.background.card,
-    borderRadius: 12,
-    padding: 12,
-    borderWidth: 2,
-    borderColor: 'transparent',
-    gap: 10,
-  },
-  severityDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-  },
-  severityLabel: { fontSize: 14, fontWeight: '600', color: CommunityColors.text.primary, width: 60 },
-  severityDesc: { fontSize: 12, color: CommunityColors.text.secondary, flex: 1 },
-  inputContainer: {
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 20,
-    overflow: 'hidden',
-  },
-  textInput: {
-    fontSize: 15,
-    color: CommunityColors.text.primary,
-    minHeight: 100,
-    lineHeight: 20,
-  },
-  charCount: {
-    fontSize: 12,
-    color: CommunityColors.text.tertiary,
-    textAlign: 'right',
-    marginTop: 8,
-  },
-  blockOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: CommunityColors.background.card,
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 24,
-    ...CommunityShadows.sm,
-  },
-  blockOptionLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    flex: 1,
-  },
-  blockOptionText: { flex: 1 },
-  blockOptionTitle: { fontSize: 14, fontWeight: '700', color: CommunityColors.text.primary },
-  blockOptionDesc: { fontSize: 12, color: CommunityColors.text.secondary, marginTop: 2 },
-  submitBtn: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    marginBottom: 16,
-    ...CommunityShadows.md,
-  },
-  submitBtnDisabled: { opacity: 0.6 },
-  submitGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-    gap: 8,
-  },
-  submitText: { color: 'white', fontSize: 16, fontWeight: '700' },
-  safetyNotice: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: CommunityColors.info + '10',
-    borderRadius: 12,
-    padding: 12,
-  },
-  safetyText: {
-    fontSize: 12,
-    color: CommunityColors.text.secondary,
-    flex: 1,
-    lineHeight: 16,
-  },
-  confirmContainer: {
-    alignItems: 'center',
-    paddingTop: 40,
-    paddingHorizontal: 20,
-  },
-  confirmIcon: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: CommunityColors.success + '15',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 24,
-  },
-  confirmTitle: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: CommunityColors.text.primary,
-    marginBottom: 12,
-  },
-  confirmText: {
-    fontSize: 15,
-    color: CommunityColors.text.secondary,
-    textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: 24,
-  },
-  blockConfirmBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 24,
-    overflow: 'hidden',
-  },
-  blockConfirmText: {
-    fontSize: 13,
-    color: CommunityColors.text.secondary,
-    flex: 1,
-    lineHeight: 18,
-  },
-  doneBtn: {
-    width: '100%',
-    borderRadius: 16,
-    overflow: 'hidden',
-    marginBottom: 12,
-    ...CommunityShadows.md,
-  },
-  doneGradient: {
-    alignItems: 'center',
-    paddingVertical: 16,
-  },
-  doneText: { color: 'white', fontSize: 16, fontWeight: '700' },
-  reportAnotherBtn: {
-    paddingVertical: 12,
-  },
-  reportAnotherText: {
-    fontSize: 15,
-    color: CommunityColors.primary,
-    fontWeight: '600',
-  },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, marginBottom: 16 },
+  backBtn: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.08)' },
+  headerTitle: { fontSize: 17, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
+
+  scrollContent: { paddingHorizontal: 16, paddingTop: 8 },
+
+  // ─── Security Score ───
+  scoreCard: { borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', padding: 20, marginBottom: 16 },
+  scoreRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  scoreLabel: { fontSize: 13, fontWeight: '600', color: '#94a3b8', marginBottom: 4 },
+  scoreValue: { fontSize: 28, fontWeight: '800' },
+  scoreRing: { width: 80, height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.1)', overflow: 'hidden' },
+  scoreRingFill: { height: '100%', borderRadius: 4 },
+  scoreBadges: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  scoreBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+  scoreBadgeText: { fontSize: 11, fontWeight: '600', color: '#94a3b8' },
+
+  // ─── Status Card ───
+  statusCard: { borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', padding: 24, alignItems: 'center', marginBottom: 20 },
+  statusBorder: { position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.06)' },
+  statusIconBg: { width: 80, height: 80, borderRadius: 24, justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
+  statusTitle: { fontSize: 22, fontWeight: '800', letterSpacing: -0.5, marginBottom: 8 },
+  statusDesc: { fontSize: 14, fontWeight: '500', color: '#94a3b8', textAlign: 'center', lineHeight: 20 },
+
+  // ─── Section Title ───
+  sectionTitle: { fontSize: 18, fontWeight: '800', color: '#fff', letterSpacing: -0.3, marginBottom: 12, marginTop: 4 },
+
+  // ─── Benefits ───
+  benefitsCard: { borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', padding: 16, marginBottom: 20 },
+  benefitRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
+  benefitDivider: { borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.06)' },
+  benefitText: { fontSize: 14, fontWeight: '600', color: '#e2e8f0', flex: 1 },
+
+  // ─── Requirements ───
+  requirementsCard: { borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', padding: 16, marginBottom: 20 },
+  reqRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
+  reqRowMuted: { opacity: 0.6 },
+  reqIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  reqContent: { flex: 1, gap: 2 },
+  reqLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  reqLabel: { fontSize: 15, fontWeight: '700' },
+  reqDesc: { fontSize: 12, fontWeight: '500', color: '#94a3b8' },
+  reqStatus: { fontSize: 11, fontWeight: '700' },
+
+  // ─── Security Badge ───
+  securityBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
+  securityBadgeText: { fontSize: 10, fontWeight: '700' },
+
+  // ─── Action Button ───
+  actionBtn: { height: 56, borderRadius: 16, overflow: 'hidden', justifyContent: 'center', alignItems: 'center', flexDirection: 'row', marginHorizontal: 16 },
+  actionBtnDisabled: { opacity: 0.6 },
+  actionBtnText: { fontSize: 16, fontWeight: '800', color: '#fff' },
+  actionHint: { fontSize: 12, fontWeight: '500', color: '#64748b', textAlign: 'center', marginTop: 12, marginHorizontal: 24, lineHeight: 18 },
 });

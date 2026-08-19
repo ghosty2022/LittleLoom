@@ -14,8 +14,9 @@ import {
   UIManager,
   Platform,
   RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 
 import { BlurView } from 'expo-blur';
 import Animated, {
@@ -90,6 +91,9 @@ interface SmartAction { id: string; title: string; description: string; icon: st
 interface ParentingTip { id: string; emoji: string; title: string; tip: string; color: string; }
 interface PostTopic { topicId: string; count: number; color: string; label: string; percentage: number; }
 
+// ============================================
+// COMPONENTS
+// ============================================
 const GlassCard = React.memo(({ children, style, onPress, active = false, delay = 0, isDark = true, colors }: any) => {
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   const Wrapper = onPress ? TouchableOpacity : View;
@@ -198,6 +202,9 @@ const PostCard = React.memo(({ post, index, onPress, isDark, colors }: any) => {
   );
 });
 
+// ============================================
+// MAIN COMPONENT
+// ============================================
 export default function CommunityMemberProfileScreen({ navigation, route }: Props) {
   const { userId } = route.params;
   const {
@@ -215,6 +222,9 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
     getAllUsers,
     refreshFeed,
     syncUserProfileAcrossPosts,
+    getFeedPosts,
+    getPopularPosts,
+    getTrendingTopics,
   } = useCommunity();
   const { communityProfile } = useUser();
   const { themeColors, fullThemeColors, darkMode, triggerHaptic, shouldReduceMotion } = useCustomization();
@@ -237,6 +247,7 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
   const [activeTab, setActiveTab] = useState<ProfileTab>('posts');
 
   const isOwnProfile = currentUser?.id === userId;
+  const allUsers = useMemo(() => getAllUsers(), [getAllUsers]);
 
   // Sync user profile across posts when community profile changes
   useEffect(() => {
@@ -269,6 +280,10 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
   // Compute all data from real posts
   const userPostList = useMemo(() => getUserPosts(userId), [userId, getUserPosts]);
 
+  // ============================================
+  // COMPUTED DATA FROM REAL POSTS
+  // ============================================
+
   // Engagement Insights - from real data
   const engagementInsights = useMemo(() => {
     const totalLikes = userPostList.reduce((sum, p) => sum + p.likes, 0);
@@ -291,9 +306,29 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
     ];
   }, [userPostList]);
 
+  // Influence Metrics - Real data
+  const influenceMetrics = useMemo(() => {
+    const totalPosts = userPostList.length;
+    const totalLikes = userPostList.reduce((sum, p) => sum + (p.likes || 0), 0);
+    const totalComments = userPostList.reduce((sum, p) => sum + (p.commentsCount || 0), 0);
+    const totalHelpful = userPostList.reduce((sum, p) => sum + (p.helpfulVotes || 0), 0);
+    const totalViews = userPostList.reduce((sum, p) => sum + (p.viewCount || 0), 0);
+    
+    const avgEngagement = totalPosts > 0 ? Math.min(100, Math.round((totalLikes + totalComments * 2) / totalPosts * 2)) : 0;
+    const consistency = Math.min(100, Math.round((totalPosts / Math.max(1, 30)) * 100));
+    const helpful = Math.min(100, Math.round(totalHelpful / Math.max(1, totalPosts) * 15));
+    const reach = Math.min(100, Math.round(totalViews / Math.max(1, totalPosts * 10) * 100));
+
+    return [
+      { label: 'Engagement', value: avgEngagement, color: TC.primary, icon: 'flash' },
+      { label: 'Consistency', value: consistency, color: TC.secondary, icon: 'calendar' },
+      { label: 'Helpful', value: helpful, color: TC.success, icon: 'heart' },
+      { label: 'Reach', value: reach, color: TC.accent, icon: 'eye' },
+    ];
+  }, [userPostList]);
+
   // Community Influence - from real data
   const communityInfluence = useMemo(() => {
-    const allUsers = getAllUsers();
     const userPostCount = userPostList.length;
     const allPostCounts = allUsers.map(u => getUserPosts(u.id).length);
     const sortedCounts = [...allPostCounts].sort((a, b) => b - a);
@@ -307,7 +342,6 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
     else if (userPostCount > 20 && totalEngagement > 50) rankLabel = 'Silver Parent';
     else if (userPostCount > 5) rankLabel = 'Bronze Parent';
 
-    // Find top contributors (users with most posts)
     const topContributors = allUsers
       .filter(u => u.id !== userId && getUserPosts(u.id).length > 0)
       .sort((a, b) => getUserPosts(b.id).length - getUserPosts(a.id).length)
@@ -315,7 +349,7 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
       .map(u => ({ id: u.id, name: u.displayName, avatar: u.avatar }));
 
     return { score: Math.min(100, Math.round(percentile + 20)), rank: rankLabel, percentile, topContributors };
-  }, [userPostList, getAllUsers, getUserPosts, userId]);
+  }, [userPostList, allUsers, getUserPosts, userId]);
 
   // Content Highlights - from real data
   const contentHighlights = useMemo(() => {
@@ -343,13 +377,20 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
     });
   }, [userPostList]);
 
+  // Content Breakdown - Real data
+  const contentBreakdown = useMemo(() => ({
+    posts: userPostList.length,
+    comments: userPostList.reduce((sum, p) => sum + (p.commentsCount || 0), 0),
+    reactions: userPostList.reduce((sum, p) => sum + (p.likes || 0), 0),
+    shares: userPostList.reduce((sum, p) => sum + (p.reposts || 0), 0),
+  }), [userPostList]);
+
   // Mutual Connections - from real data
   const mutualConnections = useMemo(() => {
     if (!currentUser) return [];
     const currentUserFollowing = currentUser.following || [];
     const targetUserFollowing = user?.following || [];
     const mutuals = currentUserFollowing.filter(id => targetUserFollowing.includes(id) && id !== currentUser.id);
-    const allUsers = getAllUsers();
     return mutuals.slice(0, 4).map(id => {
       const u = allUsers.find(a => a.id === id);
       return { 
@@ -359,7 +400,7 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
         mutualCount: Math.min(10, Math.round(Math.random() * 8 + 2))
       };
     });
-  }, [currentUser, user, getAllUsers]);
+  }, [currentUser, user, allUsers]);
 
   // Smart Actions - based on real state
   const smartActions = useMemo(() => {
@@ -487,6 +528,34 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
     })).slice(6, 22);
   }, [userPostList]);
 
+  // Content Streaks - from real data
+  const contentStreaks = useMemo(() => {
+    const postDates = userPostList.map(p => new Date(p.timestamp).toDateString());
+    const uniquePostDays = [...new Set(postDates)];
+
+    let currentStreakCount = 0;
+    for (let i = uniquePostDays.length - 1; i >= 0; i--) {
+      const day = new Date(uniquePostDays[i]);
+      const expectedDay = new Date();
+      expectedDay.setDate(expectedDay.getDate() - currentStreakCount);
+      if (day.toDateString() === expectedDay.toDateString()) {
+        currentStreakCount++;
+      } else {
+        break;
+      }
+    }
+
+    return [
+      { type: 'Posting', current: currentStreakCount, best: Math.min(userPostList.length, 30), 
+        color: TC.primary, icon: 'document-text' },
+      { type: 'Helpful', current: Math.min(5, Math.round(userPostList.reduce((s, p) => s + (p.helpfulVotes || 0), 0) / 2)), 
+        best: Math.min(10, Math.round(userPostList.reduce((s, p) => s + (p.helpfulVotes || 0), 0))), 
+        color: TC.success, icon: 'heart' },
+      { type: 'Active', current: userPostList.length > 0 ? Math.min(30, userPostList.length) : 0, 
+        best: Math.min(30, userPostList.length * 2), color: TC.accent, icon: 'flame' },
+    ];
+  }, [userPostList]);
+
   const tabs = [
     { key: 'posts' as ProfileTab, label: 'Posts', icon: 'document-text-outline' },
     { key: 'about' as ProfileTab, label: 'About', icon: 'information-circle-outline' },
@@ -604,6 +673,10 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
     onScroll: (event) => { 'worklet'; scrollY.value = event.contentOffset.y; },
   });
 
+  // ============================================
+  // RENDER FUNCTIONS
+  // ============================================
+
   const renderStickyHeader = () => (
     <Animated.View style={[styles.stickyHeader, { paddingTop: insets.top + 8 }, headerOpacity]}>
       <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
@@ -616,6 +689,7 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
     if (!user) return null;
     const isOnline = user.onlineStatus === 'online';
     const coverPhoto = user.coverPhoto;
+    const avatarSource = user.avatar;
     
     return (
       <Animated.View entering={FadeInUp.springify()} style={[styles.profileHero, { marginTop: insets.top + 60 }]}>
@@ -631,21 +705,30 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
               end={{ x: 1, y: 1 }}
             />
           )}
+          <LinearGradient
+            colors={['transparent', 'rgba(0,0,0,0.3)', 'rgba(0,0,0,0.6)']}
+            style={styles.coverPhotoOverlay}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+          />
         </View>
         
         <View style={styles.profileHeroContent}>
           <View style={styles.avatarSection}>
             <View style={styles.avatarWrapper}>
-              <SafeAvatar 
-                avatar={user.avatar} 
-                size={100} 
-                fallbackIcon="person" 
-                fallbackColor={themeColors.primary} 
-                fallbackBgColor={`${themeColors.primary}20`} 
-                borderWidth={4} 
-                borderColor="#fff" 
-                showEditBadge={false} 
-              />
+              {avatarSource ? (
+                <Image 
+                  source={{ uri: avatarSource }} 
+                  style={styles.avatarImage}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={[styles.avatarImage, styles.avatarPlaceholder, { backgroundColor: `${TC.primary}25` }]}>
+                  <Text style={styles.avatarPlaceholderText}>
+                    {user.displayName?.charAt(0)?.toUpperCase() || '?'}
+                  </Text>
+                </View>
+              )}
               {isOnline && <View style={styles.onlineIndicator}><View style={styles.onlineDot} /></View>}
             </View>
           </View>
@@ -657,12 +740,25 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
             <Text style={styles.profileHandle}>{user.handle}</Text>
             {user.bio && <Text style={styles.profileBio} numberOfLines={2}>{user.bio}</Text>}
             {user.country && <View style={styles.locationRow}><Ionicons name="location-outline" size={14} color="#94a3b8" /><Text style={styles.locationText}>{user.country}</Text></View>}
-            <View style={styles.statsPillsRow}>
-              <KpiPill icon="📝" value={userPostList.length} label="Posts" color={TC.primary} isDark={isDark} colors={fullThemeColors} />
-              <KpiPill icon="👥" value={followerCount} label="Followers" color={TC.secondary} isDark={isDark} colors={fullThemeColors} />
-              <KpiPill icon="👤" value={followingCount} label="Following" color={TC.info} isDark={isDark} colors={fullThemeColors} />
-              <KpiPill icon="💙" value={user.stats?.helpful || 0} label="Helpful" color={TC.success} isDark={isDark} colors={fullThemeColors} />
+            
+            {/* Stats Row */}
+            <View style={styles.statsRow}>
+              <View style={styles.statsItem}>
+                <Text style={styles.statsValue}>{userPostList.length}</Text>
+                <Text style={styles.statsLabel}>Posts</Text>
+              </View>
+              <View style={styles.statsDivider} />
+              <View style={styles.statsItem}>
+                <Text style={styles.statsValue}>{followerCount}</Text>
+                <Text style={styles.statsLabel}>Followers</Text>
+              </View>
+              <View style={styles.statsDivider} />
+              <View style={styles.statsItem}>
+                <Text style={styles.statsValue}>{followingCount}</Text>
+                <Text style={styles.statsLabel}>Following</Text>
+              </View>
             </View>
+
             {!isOwnProfile && (
               <View style={styles.actionButtons}>
                 <TouchableOpacity style={[styles.followBtn, isFollowingUser && styles.followingBtn, isBlocked && styles.blockedBtn]} onPress={handleFollowToggle} disabled={isBlocked}>
@@ -682,8 +778,9 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
     );
   };
 
-  // Render functions for each tab with real data
-  
+  // ============================================
+  // RENDER ENGAGEMENT INSIGHTS
+  // ============================================
   const renderEngagementInsights = () => (
     <Animated.View entering={FadeInUp.delay(100).springify()}>
       <GlassCard isDark={isDark} colors={fullThemeColors}>
@@ -693,7 +790,7 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
           </View>
           <View style={styles.insightsTitleWrap}>
             <Text style={styles.insightsTitle}>Engagement Insights</Text>
-            <Text style={styles.insightsSubtitle}>How this parent connects</Text>
+            <Text style={styles.insightsSubtitle}>Based on {userPostList.length} posts</Text>
           </View>
         </View>
         <View style={styles.insightsGrid}>
@@ -715,42 +812,85 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
     </Animated.View>
   );
 
+  // ============================================
+  // RENDER INFLUENCE METRICS
+  // ============================================
+  const renderInfluenceMetrics = () => (
+    <Animated.View entering={FadeInUp.delay(120).springify()}>
+      <GlassCard isDark={isDark} colors={fullThemeColors}>
+        <View style={styles.influenceHeader}>
+          <View style={[styles.influenceIconBg, { backgroundColor: `${TC.primary}15` }]}>
+            <Ionicons name="analytics" size={20} color={TC.primary} />
+          </View>
+          <View style={styles.influenceTitleWrap}>
+            <Text style={styles.influenceTitle}>Influence Score</Text>
+            <Text style={styles.influenceSubtitle}>Community impact metrics</Text>
+          </View>
+          <View style={[styles.influenceOverallBadge, { backgroundColor: `${TC.primary}12` }]}>
+            <Text style={[styles.influenceOverallText, { color: TC.primary }]}>
+              {Math.round(influenceMetrics.reduce((a, b) => a + b.value, 0) / influenceMetrics.length)}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.influenceGrid}>
+          {influenceMetrics.map((metric, i) => (
+            <View key={metric.label} style={styles.influenceItem}>
+              <View style={styles.influenceItemTop}>
+                <View style={[styles.influenceItemIconBg, { backgroundColor: `${metric.color}12` }]}>
+                  <Ionicons name={metric.icon as any} size={14} color={metric.color} />
+                </View>
+                <Text style={[styles.influenceItemLabel, { color: metric.color }]}>{metric.label}</Text>
+                <Text style={[styles.influenceItemValue, { color: metric.color }]}>{metric.value}%</Text>
+              </View>
+              <View style={[styles.influenceBarBg, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
+                <Animated.View entering={FadeInRight.delay(200 + i * 80).springify()} style={[styles.influenceBarFill, { width: `${metric.value}%`, backgroundColor: metric.color }]} />
+              </View>
+            </View>
+          ))}
+        </View>
+      </GlassCard>
+    </Animated.View>
+  );
+
+  // ============================================
+  // RENDER COMMUNITY INFLUENCE
+  // ============================================
   const renderCommunityInfluence = () => (
     <Animated.View entering={FadeInUp.delay(150).springify()}>
       <GlassCard isDark={isDark} colors={fullThemeColors}>
-        <View style={styles.influenceHeader}>
-          <View style={[styles.influenceIconBg, { backgroundColor: `${TC.purple}15` }]}>
+        <View style={styles.communityInfluenceHeader}>
+          <View style={[styles.communityInfluenceIconBg, { backgroundColor: `${TC.purple}15` }]}>
             <Ionicons name="trophy" size={20} color={TC.purple} />
           </View>
-          <View style={styles.influenceTitleWrap}>
-            <Text style={styles.influenceTitle}>Community Influence</Text>
-            <Text style={styles.influenceSubtitle}>Top {communityInfluence.percentile}% of members</Text>
+          <View style={styles.communityInfluenceTitleWrap}>
+            <Text style={styles.communityInfluenceTitle}>Community Standing</Text>
+            <Text style={styles.communityInfluenceSubtitle}>Top {communityInfluence.percentile}% of {allUsers.length} members</Text>
           </View>
-          <View style={[styles.influenceScoreBadge, { backgroundColor: `${TC.purple}12` }]}>
-            <Text style={[styles.influenceScoreText, { color: TC.purple }]}>{communityInfluence.score}</Text>
+          <View style={[styles.communityInfluenceScoreBadge, { backgroundColor: `${TC.purple}12` }]}>
+            <Text style={[styles.communityInfluenceScoreText, { color: TC.purple }]}>{communityInfluence.score}</Text>
           </View>
         </View>
-        <View style={styles.influenceRankRow}>
-          <View style={[styles.influenceRankBadge, { backgroundColor: `${TC.purple}12` }]}>
-            <Text style={[styles.influenceRankText, { color: TC.purple }]}>{communityInfluence.rank}</Text>
+        <View style={styles.communityInfluenceRankRow}>
+          <View style={[styles.communityInfluenceRankBadge, { backgroundColor: `${TC.purple}12` }]}>
+            <Text style={[styles.communityInfluenceRankText, { color: TC.purple }]}>{communityInfluence.rank}</Text>
           </View>
-          <View style={styles.influenceProgressWrap}>
-            <View style={styles.influenceProgressLabelRow}>
-              <Text style={styles.influenceProgressLabel}>Next rank</Text>
-              <Text style={[styles.influenceProgressValue, { color: TC.purple }]}>{communityInfluence.percentile}%</Text>
+          <View style={styles.communityInfluenceProgressWrap}>
+            <View style={styles.communityInfluenceProgressLabelRow}>
+              <Text style={styles.communityInfluenceProgressLabel}>Next rank</Text>
+              <Text style={[styles.communityInfluenceProgressValue, { color: TC.purple }]}>{communityInfluence.percentile}%</Text>
             </View>
-            <View style={styles.influenceProgressBarBg}>
-              <Animated.View entering={FadeInRight.delay(300).springify()} style={[styles.influenceProgressBarFill, { width: `${communityInfluence.percentile}%`, backgroundColor: TC.purple }]} />
+            <View style={styles.communityInfluenceProgressBarBg}>
+              <Animated.View entering={FadeInRight.delay(300).springify()} style={[styles.communityInfluenceProgressBarFill, { width: `${communityInfluence.percentile}%`, backgroundColor: TC.purple }]} />
             </View>
           </View>
         </View>
         {communityInfluence.topContributors.length > 0 && (
-          <View style={styles.influenceContributors}>
-            <Text style={styles.influenceContributorsLabel}>Top contributors</Text>
-            <View style={styles.influenceAvatarStack}>
+          <View style={styles.communityInfluenceContributors}>
+            <Text style={styles.communityInfluenceContributorsLabel}>Top contributors</Text>
+            <View style={styles.communityInfluenceAvatarStack}>
               {communityInfluence.topContributors.map((c, i) => (
                 <TouchableOpacity key={c.id} onPress={() => navigation.navigate('CommunityMemberProfile' as never, { userId: c.id })}>
-                  <View style={[styles.influenceAvatar, { marginLeft: i > 0 ? -10 : 0, zIndex: communityInfluence.topContributors.length - i }]}>
+                  <View style={[styles.communityInfluenceAvatar, { marginLeft: i > 0 ? -10 : 0, zIndex: communityInfluence.topContributors.length - i }]}>
                     <SafeAvatar avatar={c.avatar} size={28} fallbackIcon="person" fallbackColor={TC.purple} />
                   </View>
                 </TouchableOpacity>
@@ -762,6 +902,9 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
     </Animated.View>
   );
 
+  // ============================================
+  // RENDER CONTENT HIGHLIGHTS
+  // ============================================
   const renderContentHighlights = () => {
     if (!contentHighlights.topPost) return null;
     const post = contentHighlights.topPost;
@@ -817,6 +960,39 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
     );
   };
 
+  // ============================================
+  // RENDER CONTENT BREAKDOWN
+  // ============================================
+  const renderContentBreakdown = () => (
+    <Animated.View entering={FadeInUp.delay(220).springify()}>
+      <GlassCard isDark={isDark} colors={fullThemeColors}>
+        <View style={styles.breakdownHeader}>
+          <Text style={styles.breakdownTitle}>Content Breakdown</Text>
+          <Text style={styles.breakdownTotal}>{contentBreakdown.posts + contentBreakdown.comments + contentBreakdown.reactions + contentBreakdown.shares} total</Text>
+        </View>
+        <View style={styles.breakdownGrid}>
+          {[
+            { label: 'Posts', value: contentBreakdown.posts, color: TC.primary, icon: 'document-text' },
+            { label: 'Comments', value: contentBreakdown.comments, color: TC.info, icon: 'chatbubble' },
+            { label: 'Reactions', value: contentBreakdown.reactions, color: TC.secondary, icon: 'heart' },
+            { label: 'Shares', value: contentBreakdown.shares, color: TC.success, icon: 'share' },
+          ].map((item) => (
+            <View key={item.label} style={styles.breakdownItem}>
+              <View style={[styles.breakdownIconBg, { backgroundColor: `${item.color}12` }]}>
+                <Ionicons name={item.icon as any} size={16} color={item.color} />
+              </View>
+              <Text style={[styles.breakdownValue, { color: item.color }]}>{item.value}</Text>
+              <Text style={styles.breakdownLabel}>{item.label}</Text>
+            </View>
+          ))}
+        </View>
+      </GlassCard>
+    </Animated.View>
+  );
+
+  // ============================================
+  // RENDER ACTIVITY PATTERN
+  // ============================================
   const renderActivityPattern = () => (
     <Animated.View entering={FadeInUp.delay(250).springify()}>
       <GlassCard isDark={isDark} colors={fullThemeColors}>
@@ -848,6 +1024,9 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
     </Animated.View>
   );
 
+  // ============================================
+  // RENDER MUTUAL CONNECTIONS
+  // ============================================
   const renderMutualConnections = () => {
     if (mutualConnections.length === 0) return null;
     return (
@@ -867,6 +1046,9 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
     );
   };
 
+  // ============================================
+  // RENDER SMART ACTIONS
+  // ============================================
   const renderSmartActions = () => {
     if (smartActions.length === 0) return null;
     return (
@@ -888,6 +1070,9 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
     );
   };
 
+  // ============================================
+  // RENDER PARENTING TIPS
+  // ============================================
   const renderParentingTips = () => (
     <Animated.View entering={FadeInUp.delay(400).springify()}>
       <SectionHeader title="Parenting Insights" subtitle="Personalized for this parent" isDark={isDark} colors={fullThemeColors} />
@@ -907,6 +1092,9 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
     </Animated.View>
   );
 
+  // ============================================
+  // RENDER TOPIC BREAKDOWN
+  // ============================================
   const renderTopicBreakdown = () => {
     if (topicBreakdown.length === 0) return null;
     return (
@@ -934,6 +1122,9 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
     );
   };
 
+  // ============================================
+  // RENDER INTERACTION HEAT MAP
+  // ============================================
   const renderInteractionHeatMap = () => {
     if (interactionHeatMap.length === 0 || userPostList.length === 0) return null;
     return (
@@ -965,6 +1156,9 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
     );
   };
 
+  // ============================================
+  // RENDER CONTRIBUTION STREAK
+  // ============================================
   const renderContributionStreak = () => (
     <Animated.View entering={FadeInUp.delay(550).springify()}>
       <GlassCard isDark={isDark} colors={fullThemeColors}>
@@ -993,6 +1187,30 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
     </Animated.View>
   );
 
+  // ============================================
+  // RENDER CONTENT STREAKS
+  // ============================================
+  const renderContentStreaks = () => (
+    <Animated.View entering={FadeInUp.delay(580).springify()}>
+      <SectionHeader title="Streaks" subtitle="Consistency tracking" isDark={isDark} colors={fullThemeColors} />
+      <View style={styles.streaksRow}>
+        {contentStreaks.map((streak) => (
+          <View key={streak.type} style={[styles.streakCard, { borderColor: `${streak.color}30` }]}>
+            <View style={[styles.streakIconBg, { backgroundColor: `${streak.color}12` }]}>
+              <Ionicons name={streak.icon as any} size={18} color={streak.color} />
+            </View>
+            <Text style={[styles.streakValue, { color: streak.color }]}>{streak.current}</Text>
+            <Text style={styles.streakLabel}>{streak.type}</Text>
+            <Text style={styles.streakBest}>Best: {streak.best}</Text>
+          </View>
+        ))}
+      </View>
+    </Animated.View>
+  );
+
+  // ============================================
+  // RENDER SOCIAL GRAPH
+  // ============================================
   const renderSocialGraph = () => (
     <Animated.View entering={FadeInUp.delay(600).springify()}>
       <SectionHeader title="Social Graph" subtitle="Engagement distribution" isDark={isDark} colors={fullThemeColors} />
@@ -1014,6 +1232,9 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
     </Animated.View>
   );
 
+  // ============================================
+  // RENDER RECENT INTERACTIONS
+  // ============================================
   const renderRecentInteractions = () => {
     const recent = userPostList.slice(0, 3);
     if (recent.length === 0) return null;
@@ -1043,11 +1264,16 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
     );
   };
 
+  // ============================================
+  // RENDER POSTS TAB
+  // ============================================
   const renderPostsTab = () => (
     <Animated.View entering={FadeInUp.springify()} style={styles.tabPanel}>
       {renderEngagementInsights()}
+      {renderInfluenceMetrics()}
       {renderCommunityInfluence()}
       {renderContentHighlights()}
+      {renderContentBreakdown()}
       {renderActivityPattern()}
       {renderMutualConnections()}
       {renderSmartActions()}
@@ -1055,6 +1281,7 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
       {renderTopicBreakdown()}
       {renderInteractionHeatMap()}
       {renderContributionStreak()}
+      {renderContentStreaks()}
       {renderSocialGraph()}
       {renderRecentInteractions()}
       
@@ -1083,6 +1310,9 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
     </Animated.View>
   );
 
+  // ============================================
+  // RENDER ABOUT TAB
+  // ============================================
   const renderAboutTab = () => {
     if (!user) return null;
     return (
@@ -1142,56 +1372,94 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
     );
   };
 
-  const renderAchievementsTab = () => (
-    <Animated.View entering={FadeInUp.springify()} style={styles.tabPanel}>
-      <View style={styles.sectionHeader}>
-        <View style={styles.sectionTitleRow}>
-          <Ionicons name="trophy" size={20} color={TC.primary} />
-          <Text style={styles.sectionTitle}>Achievements</Text>
-        </View>
-        <View style={[styles.badge, { backgroundColor: `${themeColors.primary}20` }]}>
-          <Text style={[styles.badgeText, { color: themeColors.primary }]}>{user?.achievements?.length || 0} earned</Text>
-        </View>
-      </View>
-      <GlassCard style={styles.achievementsCard} delay={100} isDark={isDark} colors={fullThemeColors}>
-        {user?.achievements && user.achievements.length > 0 ? (
-          user.achievements.map((achievement) => {
-            const badge = ACHIEVEMENTS[achievement] || { emoji: '🏅', name: achievement, color: TC.primary, desc: '' };
-            return (
-              <View key={achievement} style={[styles.achievementBadge, { backgroundColor: `${badge.color}08` }]}>
-                <View style={[styles.achievementIconBg, { backgroundColor: `${badge.color}12` }]}>
-                  <Text style={styles.achievementEmoji}>{badge.emoji}</Text>
-                </View>
-                <View style={styles.achievementInfo}>
-                  <Text style={[styles.achievementName, { color: badge.color }]}>{badge.name}</Text>
-                  <Text style={styles.achievementDesc}>{badge.desc}</Text>
-                </View>
-                <Ionicons name="checkmark-circle" size={18} color={badge.color} style={{ opacity: 0.5 }} />
-              </View>
-            );
-          })
-        ) : (
-          <View style={styles.emptyStateSmall}>
-            <Ionicons name="trophy-outline" size={40} color={TC.primary} />
-            <Text style={styles.emptyStateTitle}>No achievements yet</Text>
-            <Text style={styles.emptyText}>This parent is just getting started!</Text>
+  // ============================================
+  // RENDER ACHIEVEMENTS TAB
+  // ============================================
+  const renderAchievementsTab = () => {
+    const achievements = user?.achievements || [];
+    return (
+      <Animated.View entering={FadeInUp.springify()} style={styles.tabPanel}>
+        <View style={styles.achievementsHeader}>
+          <View style={styles.achievementsHeaderLeft}>
+            <Ionicons name="trophy" size={20} color={TC.primary} />
+            <Text style={styles.achievementsTitle}>Achievements</Text>
           </View>
+          <View style={[styles.achievementsBadge, { backgroundColor: `${themeColors.primary}20` }]}>
+            <Text style={[styles.achievementsBadgeText, { color: themeColors.primary }]}>{achievements.length} earned</Text>
+          </View>
+        </View>
+        <GlassCard style={styles.achievementsCard} delay={100} isDark={isDark} colors={fullThemeColors}>
+          {achievements.length > 0 ? (
+            achievements.map((achievement) => {
+              const badge = ACHIEVEMENTS[achievement] || { emoji: '🏅', name: achievement, color: TC.primary, desc: '' };
+              return (
+                <View key={achievement} style={[styles.achievementBadge, { backgroundColor: `${badge.color}08` }]}>
+                  <View style={[styles.achievementIconBg, { backgroundColor: `${badge.color}12` }]}>
+                    <Text style={styles.achievementEmoji}>{badge.emoji}</Text>
+                  </View>
+                  <View style={styles.achievementInfo}>
+                    <Text style={[styles.achievementName, { color: badge.color }]}>{badge.name}</Text>
+                    <Text style={styles.achievementDesc}>{badge.desc}</Text>
+                  </View>
+                  <Ionicons name="checkmark-circle" size={18} color={badge.color} style={{ opacity: 0.5 }} />
+                </View>
+              );
+            })
+          ) : (
+            <View style={styles.emptyAchievements}>
+              <Ionicons name="trophy-outline" size={40} color={TC.primary} />
+              <Text style={styles.emptyAchievementsTitle}>No achievements yet</Text>
+              <Text style={styles.emptyAchievementsText}>This parent is just getting started!</Text>
+            </View>
+          )}
+        </GlassCard>
+        {achievements.length > 0 && (
+          <GlassCard delay={150} isDark={isDark} colors={fullThemeColors}>
+            <Text style={styles.progressTitle}>Progress</Text>
+            <View style={styles.progressRow}>
+              <View style={styles.progressItem}>
+                <View style={styles.progressItemHeader}>
+                  <Text style={styles.progressItemValue}>{userPostList.length}</Text>
+                  <Text style={styles.progressItemLabel}>of 50 posts</Text>
+                </View>
+                <View style={styles.progressBar}>
+                  <View style={[styles.progressFill, { width: `${Math.min((userPostList.length / 50) * 100, 100)}%`, backgroundColor: TC.primary }]} />
+                </View>
+              </View>
+              <View style={styles.progressItem}>
+                <View style={styles.progressItemHeader}>
+                  <Text style={styles.progressItemValue}>{user?.stats?.helpful || 0}</Text>
+                  <Text style={styles.progressItemLabel}>of 50 helpful</Text>
+                </View>
+                <View style={styles.progressBar}>
+                  <View style={[styles.progressFill, { width: `${Math.min(((user?.stats?.helpful || 0) / 50) * 100, 100)}%`, backgroundColor: TC.success }]} />
+                </View>
+              </View>
+            </View>
+          </GlassCard>
         )}
-      </GlassCard>
-    </Animated.View>
-  );
+      </Animated.View>
+    );
+  };
 
+  // ============================================
+  // RENDER INSIGHTS TAB
+  // ============================================
   const renderInsightsTab = () => (
     <Animated.View entering={FadeInUp.springify()} style={styles.tabPanel}>
       {renderParentingTips()}
       {renderTopicBreakdown()}
       {renderInteractionHeatMap()}
       {renderContributionStreak()}
+      {renderContentStreaks()}
       {renderSocialGraph()}
       {renderRecentInteractions()}
     </Animated.View>
   );
 
+  // ============================================
+  // MAIN RENDER
+  // ============================================
   if (isLoading) {
     return (
       <View style={[styles.container, styles.centered]}>
@@ -1254,6 +1522,9 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
   );
 }
 
+// ============================================
+// STYLES
+// ============================================
 const getStyles = (isDarkMode: boolean, colors: any) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   bg: { ...StyleSheet.absoluteFillObject },
@@ -1268,11 +1539,35 @@ const getStyles = (isDarkMode: boolean, colors: any) => StyleSheet.create({
   backBtn: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.08)' },
 
   profileHero: { paddingHorizontal: 0, paddingBottom: 20 },
-  coverPhotoContainer: { width: '100%', height: 160, overflow: 'hidden' },
+  coverPhotoContainer: { width: '100%', height: 160, overflow: 'hidden', position: 'relative' },
   coverPhoto: { width: '100%', height: '100%' },
+  coverPhotoOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 80,
+  },
   profileHeroContent: { position: 'relative', zIndex: 2, paddingHorizontal: DESIGN.spacing.xl },
   avatarSection: { alignItems: 'center', marginTop: -50 },
   avatarWrapper: { position: 'relative', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 8, elevation: 8 },
+  avatarImage: { 
+    width: 100, 
+    height: 100, 
+    borderRadius: 50, 
+    borderWidth: 4, 
+    borderColor: '#fff' 
+  },
+  avatarPlaceholder: { 
+    backgroundColor: '#6366f1', 
+    justifyContent: 'center', 
+    alignItems: 'center' 
+  },
+  avatarPlaceholderText: { 
+    fontSize: 36, 
+    fontWeight: '800', 
+    color: '#fff' 
+  },
   onlineIndicator: { position: 'absolute', bottom: 4, right: 4, width: 24, height: 24, borderRadius: DESIGN.radius.md, backgroundColor: colors.background, borderWidth: 3, borderColor: colors.background, justifyContent: 'center', alignItems: 'center' },
   onlineDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#10b981' },
   profileInfo: { alignItems: 'center' },
@@ -1284,20 +1579,19 @@ const getStyles = (isDarkMode: boolean, colors: any) => StyleSheet.create({
   locationRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8 },
   locationText: { fontSize: 13, color: colors.textSecondary, fontWeight: '500' },
 
-  statsPillsRow: { flexDirection: 'row', justifyContent: 'space-around', width: '100%', marginTop: 16, paddingHorizontal: 8 },
-  kpiPill: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 16, overflow: 'hidden' },
-  kpiPillIconBg: { width: 36, height: 36, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  kpiPillEmoji: { fontSize: 18 },
-  kpiPillBody: { gap: 1 },
-  kpiPillValue: { fontSize: 18, fontWeight: '800' },
-  kpiPillLabel: { fontSize: 10, color: colors.textSecondary, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
+  // Stats Row
+  statsRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 12, gap: 20 },
+  statsItem: { alignItems: 'center' },
+  statsValue: { fontSize: 18, fontWeight: '800', color: colors.text || '#1e293b' },
+  statsLabel: { fontSize: 12, fontWeight: '600', color: colors.textSecondary || '#64748b' },
+  statsDivider: { width: 1, height: 24, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
 
   actionButtons: { flexDirection: 'row', gap: DESIGN.spacing.lg, marginTop: 20, width: '100%', paddingHorizontal: 20 },
   followBtn: { flex: 1, backgroundColor: '#6366f1', borderRadius: DESIGN.radius.md, paddingVertical: 12, alignItems: 'center', justifyContent: 'center' },
   followingBtn: { backgroundColor: '#f1f5f9', borderWidth: 1, borderColor: '#e2e8f0' },
   blockedBtn: { backgroundColor: '#fef2f2', borderWidth: 1, borderColor: '#fecaca' },
-  followBtnText: { fontSize: 15, fontWeight: '700', color: colors.text },
-  followingBtnText: { color: colors.textMuted },
+  followBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  followingBtnText: { color: '#64748b' },
   blockedBtnText: { color: '#ef4444' },
   messageBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: 'rgba(99,102,241,0.1)', borderRadius: DESIGN.radius.md, paddingVertical: 12, borderWidth: 1, borderColor: 'rgba(99,102,241,0.2)' },
   messageBtnDisabled: { opacity: 0.5 },
@@ -1320,6 +1614,7 @@ const getStyles = (isDarkMode: boolean, colors: any) => StyleSheet.create({
   badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
   badgeText: { fontSize: 12, fontWeight: '700' },
 
+  // Engagement Insights
   insightsHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, paddingBottom: 12 },
   insightsIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   insightsTitleWrap: { flex: 1 },
@@ -1333,28 +1628,47 @@ const getStyles = (isDarkMode: boolean, colors: any) => StyleSheet.create({
   insightTrendRow: { flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 2 },
   insightTrendText: { fontSize: 11, fontWeight: '700' },
 
+  // Influence Metrics
   influenceHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, paddingBottom: 12 },
   influenceIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   influenceTitleWrap: { flex: 1 },
   influenceTitle: { fontSize: 16, fontWeight: '800', color: colors.text },
   influenceSubtitle: { fontSize: 12, fontWeight: '500', color: colors.textSecondary, marginTop: 2 },
-  influenceScoreBadge: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12 },
-  influenceScoreText: { fontSize: 20, fontWeight: '800' },
-  influenceRankRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingBottom: 16 },
-  influenceRankBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
-  influenceRankText: { fontSize: 13, fontWeight: '800' },
-  influenceProgressWrap: { flex: 1, gap: 6 },
-  influenceProgressLabelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  influenceProgressLabel: { fontSize: 12, fontWeight: '600', color: colors.textSecondary },
-  influenceProgressValue: { fontSize: 12, fontWeight: '700' },
-  influenceProgressBarBg: { height: 6, borderRadius: 3, overflow: 'hidden', backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
-  influenceProgressBarFill: { height: '100%', borderRadius: 3 },
-  influenceContributors: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 16 },
-  influenceContributorsLabel: { fontSize: 12, fontWeight: '600', color: colors.textSecondary },
-  influenceAvatarStack: { flexDirection: 'row', alignItems: 'center' },
-  influenceAvatar: { borderRadius: 14, borderWidth: 2, borderColor: colors.background },
-  influenceAvatarMore: { width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginLeft: -10 },
+  influenceOverallBadge: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12 },
+  influenceOverallText: { fontSize: 20, fontWeight: '800' },
+  influenceGrid: { paddingHorizontal: 16, paddingBottom: 16, gap: 10 },
+  influenceItem: { gap: 6 },
+  influenceItemTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  influenceItemIconBg: { width: 24, height: 24, borderRadius: 6, justifyContent: 'center', alignItems: 'center' },
+  influenceItemLabel: { fontSize: 12, fontWeight: '600', flex: 1 },
+  influenceItemValue: { fontSize: 12, fontWeight: '700' },
+  influenceBarBg: { height: 6, borderRadius: 3, overflow: 'hidden' },
+  influenceBarFill: { height: '100%', borderRadius: 3 },
 
+  // Community Influence
+  communityInfluenceHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, paddingBottom: 12 },
+  communityInfluenceIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  communityInfluenceTitleWrap: { flex: 1 },
+  communityInfluenceTitle: { fontSize: 16, fontWeight: '800', color: colors.text },
+  communityInfluenceSubtitle: { fontSize: 12, fontWeight: '500', color: colors.textSecondary, marginTop: 2 },
+  communityInfluenceScoreBadge: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12 },
+  communityInfluenceScoreText: { fontSize: 20, fontWeight: '800' },
+  communityInfluenceRankRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingBottom: 16 },
+  communityInfluenceRankBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
+  communityInfluenceRankText: { fontSize: 13, fontWeight: '800' },
+  communityInfluenceProgressWrap: { flex: 1, gap: 6 },
+  communityInfluenceProgressLabelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  communityInfluenceProgressLabel: { fontSize: 12, fontWeight: '600', color: colors.textSecondary },
+  communityInfluenceProgressValue: { fontSize: 12, fontWeight: '700' },
+  communityInfluenceProgressBarBg: { height: 6, borderRadius: 3, overflow: 'hidden', backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
+  communityInfluenceProgressBarFill: { height: '100%', borderRadius: 3 },
+  communityInfluenceContributors: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 16 },
+  communityInfluenceContributorsLabel: { fontSize: 12, fontWeight: '600', color: colors.textSecondary },
+  communityInfluenceAvatarStack: { flexDirection: 'row', alignItems: 'center' },
+  communityInfluenceAvatar: { borderRadius: 14, borderWidth: 2, borderColor: colors.background },
+  communityInfluenceAvatarMore: { width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginLeft: -10 },
+
+  // Highlights
   highlightsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, paddingBottom: 12 },
   highlightsTitle: { fontSize: 16, fontWeight: '800', color: colors.text },
   highlightsBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10 },
@@ -1374,6 +1688,17 @@ const getStyles = (isDarkMode: boolean, colors: any) => StyleSheet.create({
   highlightsMetricValue: { fontSize: 18, fontWeight: '800' },
   highlightsMetricLabel: { fontSize: 11, fontWeight: '600', color: colors.textSecondary },
 
+  // Breakdown
+  breakdownHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, paddingBottom: 12 },
+  breakdownTitle: { fontSize: 16, fontWeight: '800', color: colors.text },
+  breakdownTotal: { fontSize: 12, fontWeight: '600', color: colors.textSecondary },
+  breakdownGrid: { flexDirection: 'row', paddingHorizontal: 16, paddingBottom: 16 },
+  breakdownItem: { flex: 1, alignItems: 'center', gap: 6 },
+  breakdownIconBg: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+  breakdownValue: { fontSize: 18, fontWeight: '800' },
+  breakdownLabel: { fontSize: 11, fontWeight: '600', color: colors.textSecondary },
+
+  // Pattern
   patternHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, paddingBottom: 12 },
   patternTitle: { fontSize: 16, fontWeight: '800', color: colors.text },
   patternLiveBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: '#10b98115' },
@@ -1386,17 +1711,20 @@ const getStyles = (isDarkMode: boolean, colors: any) => StyleSheet.create({
   patternPostBadge: { paddingHorizontal: 5, paddingVertical: 2, borderRadius: 6, marginTop: 2 },
   patternPostBadgeText: { fontSize: 9, fontWeight: '700' },
 
+  // Mutual
   mutualScroll: { flexDirection: 'row', paddingHorizontal: 16, gap: 12, paddingBottom: 4 },
   mutualCard: { width: 100, padding: 12, borderRadius: 16, overflow: 'hidden', alignItems: 'center', gap: 6 },
   mutualName: { fontSize: 12, fontWeight: '700', color: colors.text, textAlign: 'center' },
   mutualCount: { fontSize: 10, fontWeight: '600', color: colors.textSecondary },
 
+  // Actions
   actionsGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, gap: 10, paddingBottom: 4 },
   actionCard: { width: (SCREEN_W - 72) / 3, padding: 14, borderRadius: 16, overflow: 'hidden', alignItems: 'center', gap: 8 },
   actionIconBg: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
   actionTitle: { fontSize: 13, fontWeight: '700', color: colors.text },
   actionDesc: { fontSize: 10, fontWeight: '500', color: colors.textSecondary, textAlign: 'center', lineHeight: 14 },
 
+  // Tips
   tipsList: { marginHorizontal: 16, gap: 8, marginBottom: 16 },
   tipCard: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: isDarkMode ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.75)', borderLeftWidth: 3 },
   tipIconBg: { width: 42, height: 42, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
@@ -1405,6 +1733,7 @@ const getStyles = (isDarkMode: boolean, colors: any) => StyleSheet.create({
   tipTitle: { fontSize: 14, fontWeight: '700', color: colors.text },
   tipText: { fontSize: 12, lineHeight: 17, fontWeight: '500', color: colors.textSecondary },
 
+  // Topic Breakdown
   topicBreakdown: { padding: 16, gap: 12 },
   topicBreakdownRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   topicBreakdownLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
@@ -1415,6 +1744,7 @@ const getStyles = (isDarkMode: boolean, colors: any) => StyleSheet.create({
   topicBreakdownBarFill: { height: '100%', borderRadius: 3 },
   topicBreakdownCount: { fontSize: 13, fontWeight: '700', width: 28, textAlign: 'right' },
 
+  // Heat Map
   heatMapContainer: { padding: 16, paddingBottom: 12 },
   heatMapRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', height: 70 },
   heatMapCell: { alignItems: 'center', gap: 4, flex: 1 },
@@ -1424,6 +1754,7 @@ const getStyles = (isDarkMode: boolean, colors: any) => StyleSheet.create({
   heatMapLegendText: { fontSize: 10, fontWeight: '600', color: colors.textMuted },
   heatMapLegendDot: { width: 8, height: 8, borderRadius: 4 },
 
+  // Streak
   streakHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, paddingBottom: 12 },
   streakTitle: { fontSize: 16, fontWeight: '800', color: colors.text },
   streakSubtitle: { fontSize: 12, fontWeight: '500', color: colors.textSecondary },
@@ -1434,6 +1765,15 @@ const getStyles = (isDarkMode: boolean, colors: any) => StyleSheet.create({
   streakGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: 16, paddingBottom: 16 },
   streakCell: { width: 22, height: 22, borderRadius: 6, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
 
+  // Content Streaks
+  streaksRow: { flexDirection: 'row', gap: 10, marginHorizontal: 16, marginBottom: 16 },
+  streakCard: { flex: 1, borderRadius: 20, padding: 14, alignItems: 'center', borderWidth: 1, backgroundColor: isDarkMode ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.75)' },
+  streakIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
+  streakValue: { fontSize: 22, fontWeight: '800' },
+  streakLabel: { fontSize: 11, fontWeight: '600', color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 2 },
+  streakBest: { fontSize: 10, fontWeight: '500', color: colors.textMuted, marginTop: 2 },
+
+  // Social Graph
   socialGraph: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-end', paddingHorizontal: 16, paddingBottom: 16, height: 120 },
   socialGraphItem: { alignItems: 'center', gap: 6, flex: 1 },
   socialGraphBarWrap: { height: 80, justifyContent: 'flex-end' },
@@ -1442,6 +1782,7 @@ const getStyles = (isDarkMode: boolean, colors: any) => StyleSheet.create({
   socialGraphLabel: { fontSize: 11, fontWeight: '600', color: colors.textSecondary },
   socialGraphValue: { fontSize: 13, fontWeight: '800' },
 
+  // Recent
   recentList: { marginHorizontal: 16, gap: 8, marginBottom: 16 },
   recentItem: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: isDarkMode ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.75)', overflow: 'hidden' },
   recentDot: { width: 8, height: 8, borderRadius: 4, marginRight: 12 },
@@ -1451,6 +1792,7 @@ const getStyles = (isDarkMode: boolean, colors: any) => StyleSheet.create({
   recentStats: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   recentStatText: { fontSize: 12, fontWeight: '600', color: colors.textMuted },
 
+  // Posts
   postCard: { marginHorizontal: 0, marginBottom: 12 },
   postHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
   topicDot: { width: 8, height: 8, borderRadius: 4 },
@@ -1463,6 +1805,9 @@ const getStyles = (isDarkMode: boolean, colors: any) => StyleSheet.create({
   postStat: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   postStatText: { fontSize: 13, fontWeight: '600', color: colors.textSecondary },
 
+  postsList: { gap: 12 },
+
+  // About
   formCard: { marginHorizontal: 0, marginBottom: 16 },
   sectionLabel: { fontSize: 18, fontWeight: '800', color: colors.text, letterSpacing: -0.3, paddingHorizontal: 20, paddingTop: 20, marginBottom: 16 },
   infoItem: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12 },
@@ -1475,13 +1820,15 @@ const getStyles = (isDarkMode: boolean, colors: any) => StyleSheet.create({
   topicChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
   topicChipText: { fontSize: 13, fontWeight: '700' },
 
-  emptyCard: { padding: 40, alignItems: 'center', justifyContent: 'center' },
-  emptyStateIcon: { width: 64, height: 64, borderRadius: 20, backgroundColor: 'rgba(99,102,241,0.1)', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
-  emptyStateTitle: { fontSize: 16, fontWeight: '700', color: colors.text, textAlign: 'center', marginBottom: 8 },
-  emptyText: { fontSize: 14, color: colors.textMuted, fontWeight: '500', textAlign: 'center' },
+  // Achievements
+  tabPanel: { paddingBottom: 20 },
+  achievementsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 4, marginBottom: 16 },
+  achievementsHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  achievementsTitle: { fontSize: 18, fontWeight: '800', color: colors.text || '#1e293b' },
+  achievementsBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
+  achievementsBadgeText: { fontSize: 12, fontWeight: '700' },
 
   achievementsCard: { padding: 16 },
-  emptyStateSmall: { padding: 32, alignItems: 'center' },
   achievementBadge: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 14, marginBottom: 6 },
   achievementIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   achievementEmoji: { fontSize: 22 },
@@ -1489,6 +1836,27 @@ const getStyles = (isDarkMode: boolean, colors: any) => StyleSheet.create({
   achievementName: { fontSize: 14, fontWeight: '700' },
   achievementDesc: { fontSize: 12, fontWeight: '500', color: colors.textSecondary },
 
+  emptyAchievements: { padding: 32, alignItems: 'center' },
+  emptyAchievementsTitle: { fontSize: 16, fontWeight: '700', color: colors.text || '#1e293b', marginTop: 12, marginBottom: 4 },
+  emptyAchievementsText: { fontSize: 14, fontWeight: '500', color: colors.textSecondary || '#64748b', textAlign: 'center' },
+
+  // Progress
+  progressTitle: { fontSize: 18, fontWeight: '800', color: colors.text || '#1e293b', paddingHorizontal: 20, paddingTop: 20, marginBottom: 16 },
+  progressRow: { flexDirection: 'row', gap: 16, paddingHorizontal: 20, paddingBottom: 20 },
+  progressItem: { flex: 1 },
+  progressItemHeader: { flexDirection: 'row', alignItems: 'baseline', gap: 8, marginBottom: 6 },
+  progressItemValue: { fontSize: 20, fontWeight: '800', color: colors.text || '#1e293b' },
+  progressItemLabel: { fontSize: 12, fontWeight: '500', color: colors.textSecondary || '#64748b' },
+  progressBar: { height: 6, borderRadius: 3, backgroundColor: 'rgba(100,116,139,0.15)', overflow: 'hidden' },
+  progressFill: { height: '100%', borderRadius: 3 },
+
+  // Empty
+  emptyCard: { padding: 40, alignItems: 'center', justifyContent: 'center' },
+  emptyStateIcon: { width: 64, height: 64, borderRadius: 20, backgroundColor: 'rgba(99,102,241,0.1)', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  emptyStateTitle: { fontSize: 16, fontWeight: '700', color: colors.text, textAlign: 'center', marginBottom: 8 },
+  emptyStateSmall: { padding: 32, alignItems: 'center' },
+  emptyText: { fontSize: 14, color: colors.textMuted, fontWeight: '500', textAlign: 'center' },
+
   retryButton: { marginTop: 20, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 14 },
-  retryButtonText: { fontSize: 15, fontWeight: '700', color: colors.text },
+  retryButtonText: { fontSize: 15, fontWeight: '700', color: '#fff' },
 });
