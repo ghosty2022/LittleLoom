@@ -59,6 +59,7 @@ export interface CommunityUser {
   displayName: string;
   handle: string;
   avatar: string;
+  coverPhoto?: string;
   isVerified: boolean;
   bio?: string;
   location?: string;
