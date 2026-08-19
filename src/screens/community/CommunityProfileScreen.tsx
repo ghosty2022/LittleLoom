@@ -113,6 +113,16 @@ const TOPIC_COLORS: Record<string, string> = {
 type ProfileTab = 'overview' | 'posts' | 'achievements' | 'settings';
 
 // ============================================
+// HELPER: Check if avatar is an emoji
+// ============================================
+const isEmojiAvatar = (avatar: string | undefined): boolean => {
+  if (!avatar) return false;
+  // Check if it's a single emoji or short emoji string
+  const emojiRegex = /[\u{1F000}-\u{1FFFF}]|[\u2600-\u27BF]|[\u{2700}-\u{27BF}]|[\u{FE00}-\u{FEFF}]|[\u{1F300}-\u{1F5FF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|[\u{1F700}-\u{1F77F}]|[\u{1F780}-\u{1F7FF}]|[\u{1F800}-\u{1F8FF}]|[\u{1F900}-\u{1F9FF}]|[\u{1FA00}-\u{1FA6F}]|[\u{1FA70}-\u{1FAFF}]|[\u{1FB00}-\u{1FBFF}]|[\u{1FC00}-\u{1FCFF}]|[\u{1FD00}-\u{1FDFF}]|[\u{1FE00}-\u{1FEFF}]|[\u{1FF00}-\u{1FFFF}]/u;
+  return avatar.length <= 2 && (emojiRegex.test(avatar) || /^[\u{1F000}-\u{1FFFF}]$/u.test(avatar));
+};
+
+// ============================================
 // INTERFACES
 // ============================================
 interface ActivityScore { overall: number; engagement: number; consistency: number; helpfulness: number; creativity: number; }
@@ -1091,8 +1101,8 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     const coverPhoto = formData.coverPhoto || currentUser.coverPhoto;
     const avatarSource = formData.avatar || currentUser.avatar;
     
-    // Check if avatar is an emoji (single character or emoji string)
-    const isEmojiAvatar = avatarSource && (avatarSource.length <= 2 || /[\u{1F000}-\u{1FFFF}]/u.test(avatarSource));
+    // Check if avatar is an emoji
+    const isEmoji = isEmojiAvatar(avatarSource);
     
     return (
       <Animated.View entering={FadeInUp.delay(100).springify()} style={styles.profileHero}>
@@ -1144,7 +1154,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
             disabled={!isEditing}
           >
             {avatarSource ? (
-              isEmojiAvatar ? (
+              isEmoji ? (
                 <View style={[styles.avatarImage, styles.avatarEmojiContainer, { backgroundColor: '#6366f125' }]}>
                   <Text style={styles.avatarEmojiText}>{avatarSource}</Text>
                 </View>
