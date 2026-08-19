@@ -1,3 +1,4 @@
+// src/context/CommunityContext.tsx
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -35,9 +36,7 @@ const STORAGE_KEYS = {
 };
 
 export type OnlineStatus = 'online' | 'offline' | 'away';
-
 export type MessageType = 'text' | 'image';
-
 export type PostMood = 'celebrating' | 'support' | 'advice' | 'milestone' | 'venting';
 
 export interface PollOption {
@@ -289,6 +288,7 @@ interface CommunityContextType extends CommunityState {
   getUserProfile: () => CommunityUser | null;
   isAuthenticated: () => boolean;
   votePoll: (postId: string, optionId: string) => Promise<void>;
+  refreshTopics: () => Promise<Topic[]>;
 }
 
 const CommunityContext = createContext<CommunityContextType | null>(null);
@@ -308,39 +308,6 @@ export const INITIAL_TOPICS: Topic[] = [
   { id: 'topic_12', name: 'Special Needs', emoji: '🌈', color: '#667eea', members: 6400, posts: 1500, trending: false, description: 'Resources and community for special needs parenting', isJoined: false, joinedBy: [], engagementScore: 75, weeklyGrowth: 9 },
 ];
 
-const ACHIEVEMENTS = {
-  FIRST_POST: { id: 'first_post', emoji: '📝', name: 'First Steps', description: 'Made your first post' },
-  HELPFUL_PARENT: { id: 'helpful_parent', emoji: '💙', name: 'Helpful Parent', description: 'Received 50+ likes' },
-  TOP_CONTRIBUTOR: { id: 'top_contributor', emoji: '🏆', name: 'Top Contributor', description: '100+ helpful posts' },
-  STREAK_7: { id: 'streak_7', emoji: '🔥', name: '7 Day Streak', description: 'Active for 7 days' },
-  STREAK_30: { id: 'streak_30', emoji: '🔥', name: '30 Day Streak', description: 'Active for 30 days' },
-  RISING_STAR: { id: 'rising_star', emoji: '⭐', name: 'Rising Star', description: 'Gained 1000 followers' },
-  STORYTELLER: { id: 'storyteller', emoji: '📖', name: 'Storyteller', description: '50+ posts shared' },
-  SOCIAL_BUTTERFLY: { id: 'social_butterfly', emoji: '🦋', name: 'Social Butterfly', description: 'Following 100+ users' },
-  TRENDSETTER: { id: 'trendsetter', emoji: '🚀', name: 'Trendsetter', description: 'Post reached 100+ reshares' },
-  INFLUENCER: { id: 'influencer', emoji: '👑', name: 'Influencer', description: '10K+ total engagement' },
-};
-
-const LITTLELOOM_TEAM: CommunityUser = {
-  id: 'littleloom_team',
-  displayName: 'LittleLoom Team',
-  handle: '@littleloom',
-  avatar: '🧸',
-  isVerified: true,
-  bio: 'Official LittleLoom support team. Here to help you on your parenting journey!',
-  location: 'Global',
-  country: 'Global',
-  onlineStatus: 'online',
-  lastActive: new Date().toISOString(),
-  stats: { posts: 1, followers: 9999, following: 0, helpful: 999, streakDays: 999, lastStreakDate: new Date().toISOString() },
-  achievements: ['top_contributor', 'rising_star', 'influencer'],
-  isFollowing: false,
-  followers: [],
-  following: [],
-};
-
-// Add this function after the INITIAL_TOPICS declaration and before CommunityProvider
-
 // ============================================================
 // Fetch Real Topic Stats from Supabase
 // ============================================================
@@ -349,14 +316,12 @@ export const fetchRealTopicStats = async (): Promise<Topic[]> => {
     // Get real post counts per topic
     const { data: postCounts, error: postError } = await supabase
       .from('community_posts')
-      .select('topic_id, count')
-      .groupBy('topic_id');
+      .select('topic_id, count');
 
     // Get real member counts per topic
     const { data: memberCounts, error: memberError } = await supabase
       .from('user_topics')
-      .select('topic_id, count')
-      .groupBy('topic_id');
+      .select('topic_id, count');
 
     if (postError && postError.code !== 'PGRST205') {
       console.warn('Post count fetch error:', postError);
@@ -371,10 +336,28 @@ export const fetchRealTopicStats = async (): Promise<Topic[]> => {
       return INITIAL_TOPICS;
     }
 
+    // Count posts per topic from the data
+    const postCountMap = new Map<string, number>();
+    if (postCounts) {
+      postCounts.forEach((item: any) => {
+        const count = postCountMap.get(item.topic_id) || 0;
+        postCountMap.set(item.topic_id, count + 1);
+      });
+    }
+
+    // Count members per topic from the data
+    const memberCountMap = new Map<string, number>();
+    if (memberCounts) {
+      memberCounts.forEach((item: any) => {
+        const count = memberCountMap.get(item.topic_id) || 0;
+        memberCountMap.set(item.topic_id, count + 1);
+      });
+    }
+
     // Update topics with real data
     const updatedTopics = INITIAL_TOPICS.map(topic => {
-      const posts = postCounts?.find((p: any) => p.topic_id === topic.id)?.count || 0;
-      const members = memberCounts?.find((m: any) => m.topic_id === topic.id)?.count || 0;
+      const posts = postCountMap.get(topic.id) || 0;
+      const members = memberCountMap.get(topic.id) || 0;
       return {
         ...topic,
         posts: Math.max(topic.posts, posts),
@@ -415,6 +398,38 @@ export const refreshTopics = async (): Promise<Topic[]> => {
   lastFetchTime = Date.now();
   return topics;
 };
+
+const ACHIEVEMENTS = {
+  FIRST_POST: { id: 'first_post', emoji: '📝', name: 'First Steps', description: 'Made your first post' },
+  HELPFUL_PARENT: { id: 'helpful_parent', emoji: '💙', name: 'Helpful Parent', description: 'Received 50+ likes' },
+  TOP_CONTRIBUTOR: { id: 'top_contributor', emoji: '🏆', name: 'Top Contributor', description: '100+ helpful posts' },
+  STREAK_7: { id: 'streak_7', emoji: '🔥', name: '7 Day Streak', description: 'Active for 7 days' },
+  STREAK_30: { id: 'streak_30', emoji: '🔥', name: '30 Day Streak', description: 'Active for 30 days' },
+  RISING_STAR: { id: 'rising_star', emoji: '⭐', name: 'Rising Star', description: 'Gained 1000 followers' },
+  STORYTELLER: { id: 'storyteller', emoji: '📖', name: 'Storyteller', description: '50+ posts shared' },
+  SOCIAL_BUTTERFLY: { id: 'social_butterfly', emoji: '🦋', name: 'Social Butterfly', description: 'Following 100+ users' },
+  TRENDSETTER: { id: 'trendsetter', emoji: '🚀', name: 'Trendsetter', description: 'Post reached 100+ reshares' },
+  INFLUENCER: { id: 'influencer', emoji: '👑', name: 'Influencer', description: '10K+ total engagement' },
+};
+
+const LITTLELOOM_TEAM: CommunityUser = {
+  id: 'littleloom_team',
+  displayName: 'LittleLoom Team',
+  handle: '@littleloom',
+  avatar: '🧸',
+  isVerified: true,
+  bio: 'Official LittleLoom support team. Here to help you on your parenting journey!',
+  location: 'Global',
+  country: 'Global',
+  onlineStatus: 'online',
+  lastActive: new Date().toISOString(),
+  stats: { posts: 1, followers: 9999, following: 0, helpful: 999, streakDays: 999, lastStreakDate: new Date().toISOString() },
+  achievements: ['top_contributor', 'rising_star', 'influencer'],
+  isFollowing: false,
+  followers: [],
+  following: [],
+};
+
 const MOOD_CONFIG: Record<PostMood, { emoji: string; label: string; color: string; bgColor: string }> = {
   celebrating: { emoji: '🎉', label: 'Celebrating', color: '#f59e0b', bgColor: '#f59e0b15' },
   support: { emoji: '💙', label: 'Support', color: '#3b82f6', bgColor: '#3b82f615' },
@@ -602,35 +617,33 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const globalTopics = globalTopicsData ? JSON.parse(globalTopicsData) : [];
       let mergedTopics = savedTopics.length > 0 ? savedTopics : (authProfile.communitySelectedTopics || globalTopics);
       
-// Try to load topics from Supabase (graceful fallback)
-try {
-  if (supabase) {
-    const { data: userTopics, error } = await supabase
-      .from('user_topics')
-      .select('topic_id')
-      .eq('user_id', authProfile.id);
-      
-    if (!error && userTopics && userTopics.length > 0) {
-      const supabaseTopicIds = userTopics.map(t => t.topic_id);
-      const validSupabaseTopics = validateTopicIds(supabaseTopicIds);
-      
-      if (validSupabaseTopics.length > 0) {
-        mergedTopics = validSupabaseTopics;
-        await AsyncStorage.setItem(STORAGE_KEYS.SELECTED_TOPICS, JSON.stringify(validSupabaseTopics));
-        await AsyncStorage.setItem(
-          `${STORAGE_KEYS.SELECTED_TOPICS}_${authProfile.id}`,
-          JSON.stringify(validSupabaseTopics)
-        );
-        console.log(`[syncWithAuthUser] Loaded ${validSupabaseTopics.length} topics from Supabase`);
+      try {
+        if (supabase) {
+          const { data: userTopics, error } = await supabase
+            .from('user_topics')
+            .select('topic_id')
+            .eq('user_id', authProfile.id);
+            
+          if (!error && userTopics && userTopics.length > 0) {
+            const supabaseTopicIds = userTopics.map(t => t.topic_id);
+            const validSupabaseTopics = validateTopicIds(supabaseTopicIds);
+            
+            if (validSupabaseTopics.length > 0) {
+              mergedTopics = validSupabaseTopics;
+              await AsyncStorage.setItem(STORAGE_KEYS.SELECTED_TOPICS, JSON.stringify(validSupabaseTopics));
+              await AsyncStorage.setItem(
+                `${STORAGE_KEYS.SELECTED_TOPICS}_${authProfile.id}`,
+                JSON.stringify(validSupabaseTopics)
+              );
+              console.log(`[syncWithAuthUser] Loaded ${validSupabaseTopics.length} topics from Supabase`);
+            }
+          } else if (error?.code === 'PGRST205') {
+            console.log('[syncWithAuthUser] Topics table not available, using local storage');
+          }
+        }
+      } catch (supabaseError) {
+        console.log('[syncWithAuthUser] Supabase not available, using local storage');
       }
-    } else if (error?.code === 'PGRST205') {
-      // Table doesn't exist yet - this is fine
-      console.log('[syncWithAuthUser] Topics table not available, using local storage');
-    }
-  }
-} catch (supabaseError) {
-  console.log('[syncWithAuthUser] Supabase not available, using local storage');
-}
       
       const validTopics = validateTopicIds(mergedTopics);
 
@@ -778,132 +791,156 @@ try {
     }
   };
 
-const loadPersistedData = async () => {
-  try {
-    const currentUserId = userProfile?.id;
-
-    // Try to load topics from Supabase first (with graceful fallback)
-    let supabaseTopics: string[] = [];
-    
+  const loadPersistedData = async () => {
     try {
-      if (currentUserId && supabase) {
-        // Load user's topics from Supabase
-        const { data: userTopics, error: topicsError } = await supabase
-          .from('user_topics')
-          .select('topic_id')
-          .eq('user_id', currentUserId);
+      const currentUserId = userProfile?.id;
 
-        if (!topicsError && userTopics) {
-          supabaseTopics = userTopics.map(t => t.topic_id);
-          console.log(`[loadPersistedData] Loaded ${supabaseTopics.length} topics from Supabase`);
-        } else if (topicsError) {
-          // Table might not exist yet - this is fine, just use local storage
-          console.log('[loadPersistedData] Supabase topics table not available, using local storage');
+      // Try to load topics from Supabase first (with graceful fallback)
+      let supabaseTopics: string[] = [];
+      
+      try {
+        if (currentUserId && supabase) {
+          const { data: userTopics, error: topicsError } = await supabase
+            .from('user_topics')
+            .select('topic_id')
+            .eq('user_id', currentUserId);
+
+          if (!topicsError && userTopics) {
+            supabaseTopics = userTopics.map(t => t.topic_id);
+            console.log(`[loadPersistedData] Loaded ${supabaseTopics.length} topics from Supabase`);
+          } else if (topicsError) {
+            console.log('[loadPersistedData] Supabase topics table not available, using local storage');
+          }
+        }
+      } catch (supabaseError) {
+        console.log('[loadPersistedData] Supabase not available, using local storage');
+      }
+
+      const [
+        postsData,
+        topicsData,
+        notificationsData,
+        chatsData,
+        blockedUsersData,
+        selectedTopicsData,
+        onboardingData,
+        likesData,
+        bookmarksData,
+        repostsData,
+        popularPostsData,
+        trendingTopicsData,
+      ] = await Promise.all([
+        AsyncStorage.getItem(STORAGE_KEYS.POSTS),
+        AsyncStorage.getItem(STORAGE_KEYS.TOPICS),
+        AsyncStorage.getItem(STORAGE_KEYS.NOTIFICATIONS),
+        AsyncStorage.getItem(STORAGE_KEYS.MESSAGES),
+        AsyncStorage.getItem(STORAGE_KEYS.BLOCKED_USERS),
+        currentUserId 
+          ? AsyncStorage.getItem(`${STORAGE_KEYS.SELECTED_TOPICS}_${currentUserId}`)
+          : AsyncStorage.getItem(STORAGE_KEYS.SELECTED_TOPICS),
+        AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING),
+        AsyncStorage.getItem(STORAGE_KEYS.LIKES),
+        AsyncStorage.getItem(STORAGE_KEYS.BOOKMARKS),
+        AsyncStorage.getItem(STORAGE_KEYS.REPOSTS),
+        AsyncStorage.getItem(STORAGE_KEYS.POPULAR_POSTS),
+        AsyncStorage.getItem(STORAGE_KEYS.TRENDING_TOPICS),
+      ]);
+
+      const globalTopicsData = await AsyncStorage.getItem(STORAGE_KEYS.SELECTED_TOPICS);
+
+      let loadedPosts: Post[] = postsData ? JSON.parse(postsData) : [];
+      
+      // Try to load real topic data from Supabase
+      let loadedTopics: Topic[] = [];
+      try {
+        const realTopics = await fetchRealTopicStats();
+        loadedTopics = realTopics;
+        console.log('[loadPersistedData] Loaded real topic data from Supabase');
+        // Cache the real topics
+        await AsyncStorage.setItem(STORAGE_KEYS.TOPICS, JSON.stringify(realTopics));
+      } catch (error) {
+        console.warn('[loadPersistedData] Failed to fetch real topics, using cached:', error);
+        loadedTopics = topicsData ? JSON.parse(topicsData) : INITIAL_TOPICS;
+      }
+      
+      // Prefer Supabase topics if available, otherwise use local storage
+      let loadedSelectedTopics: string[] = supabaseTopics.length > 0 
+        ? supabaseTopics
+        : (selectedTopicsData 
+          ? JSON.parse(selectedTopicsData) 
+          : (globalTopicsData ? JSON.parse(globalTopicsData) : []));
+          
+      const loadedPopularPosts = popularPostsData ? JSON.parse(popularPostsData) : [];
+      const loadedTrendingTopics = trendingTopicsData ? JSON.parse(trendingTopicsData) : [];
+
+      const likedPosts: string[] = likesData ? JSON.parse(likesData) : [];
+      const bookmarkedPosts: string[] = bookmarksData ? JSON.parse(bookmarksData) : [];
+      const repostedPosts: string[] = repostsData ? JSON.parse(repostsData) : [];
+
+      if (loadedPosts.length > 0) {
+        loadedPosts = loadedPosts.map(post => ({
+          ...post,
+          isLiked: likedPosts.includes(post.id),
+          isBookmarked: bookmarkedPosts.includes(post.id),
+          isReposted: repostedPosts.includes(post.id),
+        }));
+      }
+
+      if (onboardingData) {
+        const parsedOnboarding = JSON.parse(onboardingData);
+        if (loadedSelectedTopics.length === 0 && parsedOnboarding.selectedTopics?.length > 0) {
+          loadedSelectedTopics = parsedOnboarding.selectedTopics;
         }
       }
-    } catch (supabaseError) {
-      // Gracefully fallback to local storage
-      console.log('[loadPersistedData] Supabase not available, using local storage');
-    }
 
-    const [
-      postsData,
-      topicsData,
-      notificationsData,
-      chatsData,
-      blockedUsersData,
-      selectedTopicsData,
-      onboardingData,
-      likesData,
-      bookmarksData,
-      repostsData,
-      popularPostsData,
-      trendingTopicsData,
-    ] = await Promise.all([
-      AsyncStorage.getItem(STORAGE_KEYS.POSTS),
-      AsyncStorage.getItem(STORAGE_KEYS.TOPICS),
-      AsyncStorage.getItem(STORAGE_KEYS.NOTIFICATIONS),
-      AsyncStorage.getItem(STORAGE_KEYS.MESSAGES),
-      AsyncStorage.getItem(STORAGE_KEYS.BLOCKED_USERS),
-      currentUserId 
-        ? AsyncStorage.getItem(`${STORAGE_KEYS.SELECTED_TOPICS}_${currentUserId}`)
-        : AsyncStorage.getItem(STORAGE_KEYS.SELECTED_TOPICS),
-      AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING),
-      AsyncStorage.getItem(STORAGE_KEYS.LIKES),
-      AsyncStorage.getItem(STORAGE_KEYS.BOOKMARKS),
-      AsyncStorage.getItem(STORAGE_KEYS.REPOSTS),
-      AsyncStorage.getItem(STORAGE_KEYS.POPULAR_POSTS),
-      AsyncStorage.getItem(STORAGE_KEYS.TRENDING_TOPICS),
-    ]);
+      loadedSelectedTopics = validateTopicIds(loadedSelectedTopics);
 
-    const globalTopicsData = await AsyncStorage.getItem(STORAGE_KEYS.SELECTED_TOPICS);
+      if (loadedPosts.length === 0) {
+        loadedPosts = [createDefaultPost()];
+        await AsyncStorage.setItem(STORAGE_KEYS.POSTS, JSON.stringify(loadedPosts));
+      }
 
-    let loadedPosts: Post[] = postsData ? JSON.parse(postsData) : [];
-    const loadedTopics = topicsData ? JSON.parse(topicsData) : INITIAL_TOPICS;
-    
-    // Prefer Supabase topics if available, otherwise use local storage
-    let loadedSelectedTopics: string[] = supabaseTopics.length > 0 
-      ? supabaseTopics
-      : (selectedTopicsData 
-        ? JSON.parse(selectedTopicsData) 
-        : (globalTopicsData ? JSON.parse(globalTopicsData) : []));
-        
-    const loadedPopularPosts = popularPostsData ? JSON.parse(popularPostsData) : [];
-    const loadedTrendingTopics = trendingTopicsData ? JSON.parse(trendingTopicsData) : [];
+      setIsInitialized(true);
+      
+      setState(prev => ({
+        ...prev,
+        posts: loadedPosts,
+        topics: loadedTopics,
+        notifications: notificationsData ? JSON.parse(notificationsData) : [],
+        blockedUsers: blockedUsersData ? JSON.parse(blockedUsersData) : [],
+        selectedTopics: loadedSelectedTopics,
+        popularPosts: loadedPopularPosts,
+        trendingTopics: loadedTrendingTopics,
+        isInitialized: true,
+        isLoading: false,
+      }));
 
-    const likedPosts: string[] = likesData ? JSON.parse(likesData) : [];
-    const bookmarkedPosts: string[] = bookmarksData ? JSON.parse(bookmarksData) : [];
-    const repostedPosts: string[] = repostsData ? JSON.parse(repostsData) : [];
-
-    if (loadedPosts.length > 0) {
-      loadedPosts = loadedPosts.map(post => ({
-        ...post,
-        isLiked: likedPosts.includes(post.id),
-        isBookmarked: bookmarkedPosts.includes(post.id),
-        isReposted: repostedPosts.includes(post.id),
+      updateTrendingData();
+    } catch (error) {
+      console.error('Error loading persisted data:', error);
+      setIsInitialized(true);
+      setState(prev => ({ 
+        ...prev, 
+        isLoading: false,
+        isInitialized: true,
       }));
     }
+  };
 
-    if (onboardingData) {
-      const parsedOnboarding = JSON.parse(onboardingData);
-      if (loadedSelectedTopics.length === 0 && parsedOnboarding.selectedTopics?.length > 0) {
-        loadedSelectedTopics = parsedOnboarding.selectedTopics;
-      }
+  const refreshTopicsData = useCallback(async (): Promise<Topic[]> => {
+    try {
+      const realTopics = await fetchRealTopicStats();
+      setState(prev => ({
+        ...prev,
+        topics: realTopics,
+      }));
+      await AsyncStorage.setItem(STORAGE_KEYS.TOPICS, JSON.stringify(realTopics));
+      return realTopics;
+    } catch (error) {
+      console.error('Error refreshing topics:', error);
+      return state.topics;
     }
-
-    loadedSelectedTopics = validateTopicIds(loadedSelectedTopics);
-
-    if (loadedPosts.length === 0) {
-      loadedPosts = [createDefaultPost()];
-      await AsyncStorage.setItem(STORAGE_KEYS.POSTS, JSON.stringify(loadedPosts));
-    }
-
-    setIsInitialized(true);
-    
-    setState(prev => ({
-      ...prev,
-      posts: loadedPosts,
-      topics: loadedTopics,
-      notifications: notificationsData ? JSON.parse(notificationsData) : [],
-      blockedUsers: blockedUsersData ? JSON.parse(blockedUsersData) : [],
-      selectedTopics: loadedSelectedTopics,
-      popularPosts: loadedPopularPosts,
-      trendingTopics: loadedTrendingTopics,
-      isInitialized: true,
-      isLoading: false,
-    }));
-
-    updateTrendingData();
-  } catch (error) {
-    console.error('Error loading persisted data:', error);
-    setIsInitialized(true);
-    setState(prev => ({ 
-      ...prev, 
-      isLoading: false,
-      isInitialized: true,
-    }));
-  }
-};
+  }, []);
 
   const checkStreak = async () => {
     if (!stateRef.current.currentUser) return;
@@ -1656,7 +1693,6 @@ const loadPersistedData = async () => {
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-    // Also sync to Supabase
     try {
       await supabase
         .from('user_topics')
@@ -1687,7 +1723,6 @@ const loadPersistedData = async () => {
     const currentUser = stateRef.current.currentUser;
     if (!currentUser) return;
 
-    // Also sync to Supabase
     try {
       await supabase
         .from('user_topics')
@@ -1733,7 +1768,6 @@ const loadPersistedData = async () => {
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-    // Sync to Supabase
     try {
       await supabase
         .from('user_follows')
@@ -1820,7 +1854,6 @@ const loadPersistedData = async () => {
     const currentUser = stateRef.current.currentUser;
     if (!currentUser) return;
 
-    // Sync to Supabase
     try {
       await supabase
         .from('user_follows')
@@ -1973,7 +2006,6 @@ const loadPersistedData = async () => {
       status,
     };
 
-    // Sync to Supabase
     try {
       await supabase
         .from('user_activity')
@@ -2302,66 +2334,58 @@ const loadPersistedData = async () => {
     return user?.achievements || [];
   }, [getUserById]);
 
-const checkOnboardingStatus = useCallback(async (): Promise<{ completed: boolean; hasTopics: boolean }> => {
-  try {
-    // Check both onboarding data AND selected topics
-    const [onboardingData, selectedTopicsData, userTopicsData] = await Promise.all([
-      AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING),
-      AsyncStorage.getItem(STORAGE_KEYS.SELECTED_TOPICS),
-      stateRef.current.currentUser?.id 
-        ? AsyncStorage.getItem(`${STORAGE_KEYS.SELECTED_TOPICS}_${stateRef.current.currentUser.id}`)
-        : null,
-    ]);
+  const checkOnboardingStatus = useCallback(async (): Promise<{ completed: boolean; hasTopics: boolean }> => {
+    try {
+      const [onboardingData, selectedTopicsData, userTopicsData] = await Promise.all([
+        AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING),
+        AsyncStorage.getItem(STORAGE_KEYS.SELECTED_TOPICS),
+        stateRef.current.currentUser?.id 
+          ? AsyncStorage.getItem(`${STORAGE_KEYS.SELECTED_TOPICS}_${stateRef.current.currentUser.id}`)
+          : null,
+      ]);
 
-    let completed = false;
-    let rawTopics: string[] = [];
+      let completed = false;
+      let rawTopics: string[] = [];
 
-    // Parse onboarding data
-    if (onboardingData) {
-      const parsed = JSON.parse(onboardingData);
-      completed = parsed.completed === true;
-      rawTopics = parsed.selectedTopics || [];
-    }
+      if (onboardingData) {
+        const parsed = JSON.parse(onboardingData);
+        completed = parsed.completed === true;
+        rawTopics = parsed.selectedTopics || [];
+      }
 
-    // If no topics from onboarding, check other sources
-    if (rawTopics.length === 0 && selectedTopicsData) {
-      rawTopics = JSON.parse(selectedTopicsData);
-    }
+      if (rawTopics.length === 0 && selectedTopicsData) {
+        rawTopics = JSON.parse(selectedTopicsData);
+      }
 
-    if (rawTopics.length === 0 && userTopicsData) {
-      rawTopics = JSON.parse(userTopicsData);
-    }
+      if (rawTopics.length === 0 && userTopicsData) {
+        rawTopics = JSON.parse(userTopicsData);
+      }
 
-    // Also check state
-    if (rawTopics.length === 0 && stateRef.current.selectedTopics?.length > 0) {
-      rawTopics = stateRef.current.selectedTopics;
-    }
+      if (rawTopics.length === 0 && stateRef.current.selectedTopics?.length > 0) {
+        rawTopics = stateRef.current.selectedTopics;
+      }
 
-    const validTopics = validateTopicIds(rawTopics);
-    const hasTopics = validTopics.length > 0;
+      const validTopics = validateTopicIds(rawTopics);
+      const hasTopics = validTopics.length > 0;
+      const isTrulyComplete = completed && hasTopics;
 
-    // IMPORTANT: User MUST have topics to be considered complete
-    // No skipping allowed - must select at least 1 topic
-    const isTrulyComplete = completed && hasTopics;
+      if (completed && !hasTopics) {
+        console.warn('[checkOnboardingStatus] Completed but no topics - resetting');
+        await AsyncStorage.setItem(STORAGE_KEYS.ONBOARDING, JSON.stringify({
+          completed: false,
+          selectedTopics: [],
+          timestamp: new Date().toISOString(),
+        }));
+        return { completed: false, hasTopics: false };
+      }
 
-    // If marked complete but no topics, reset completion status
-    if (completed && !hasTopics) {
-      console.warn('[checkOnboardingStatus] Completed but no topics - resetting');
-      await AsyncStorage.setItem(STORAGE_KEYS.ONBOARDING, JSON.stringify({
-        completed: false,
-        selectedTopics: [],
-        timestamp: new Date().toISOString(),
-      }));
+      console.log(`[checkOnboardingStatus] completed: ${isTrulyComplete}, hasTopics: ${hasTopics}, count: ${validTopics.length}`);
+      return { completed: isTrulyComplete, hasTopics };
+    } catch (error) {
+      console.error('[checkOnboardingStatus] Error:', error);
       return { completed: false, hasTopics: false };
     }
-
-    console.log(`[checkOnboardingStatus] completed: ${isTrulyComplete}, hasTopics: ${hasTopics}, count: ${validTopics.length}`);
-    return { completed: isTrulyComplete, hasTopics };
-  } catch (error) {
-    console.error('[checkOnboardingStatus] Error:', error);
-    return { completed: false, hasTopics: false };
-  }
-}, []);
+  }, []);
 
   const updateSelectedTopics = useCallback(async (topics: string[]) => {
     const validTopics = validateTopicIds(topics);
@@ -2373,10 +2397,8 @@ const checkOnboardingStatus = useCallback(async (): Promise<{ completed: boolean
 
     const currentUser = stateRef.current.currentUser;
 
-    // Sync to Supabase
     if (currentUser) {
       try {
-        // First, get current topics from Supabase
         const { data: existingTopics, error: fetchError } = await supabase
           .from('user_topics')
           .select('topic_id')
@@ -2412,7 +2434,6 @@ const checkOnboardingStatus = useCallback(async (): Promise<{ completed: boolean
       }
     }
 
-    // Auto-join any newly selected topics
     if (currentUser) {
       setState(prev => {
         const updatedTopics = prev.topics.map(topic => {
@@ -2679,145 +2700,147 @@ const checkOnboardingStatus = useCallback(async (): Promise<{ completed: boolean
     return !!stateRef.current.currentUser;
   }, []);
 
-const value = React.useMemo(() => ({
-  ...state,
-  createPost,
-  likePost,
-  unlikePost,
-  repostPost,
-  unrepostPost,
-  bookmarkPost,
-  sharePost,
-  deletePost,
-  getPostById,
-  voteHelpful,
-  addComment,
-  likeComment,
-  voteCommentHelpful,
-  replyToComment,
-  joinTopic,
-  leaveTopic,
-  getTopicById,
-  getPostsByTopic,
-  followUser,
-  unfollowUser,
-  getUserById,
-  getUserPosts,
-  isFollowing,
-  updateUserBio,
-  updateUserLocation,
-  updateOnlineStatus,
-  getUserStats,
-  markNotificationRead,
-  markAllNotificationsRead,
-  getUnreadCount,
-  sendMessage,
-  editMessage,
-  resendMessage,
-  deleteMessage,
-  getChatMessages,
-  markChatRead,
-  getOrCreateChat,
-  setTypingStatus,
-  getTypingStatus,
-  deleteChat,
-  blockUser,
-  isUserBlocked,
-  refreshFeed,
-  loadMorePosts,
-  updateCommunityProfile,
-  getCurrentUserProfile,
-  checkAndAwardAchievements,
-  getUserAchievements,
-  checkOnboardingStatus,
-  updateSelectedTopics,
-  getSelectedTopics,
-  getFollowers,
-  getFollowing,
-  getAllUsers,
-  syncUserProfileAcrossPosts,
-  getFeedPosts,
-  getPopularPosts,
-  getTrendingTopics,
-  incrementViewCount,
-  getPostRank,
-  updateUsername,
-  updateDisplayName,
-  updateAvatar,
-  updateBio,
-  getUserProfile,
-  isAuthenticated: checkIsAuthenticated,
-  votePoll,
-}), [
-  state,
-  createPost,
-  likePost,
-  unlikePost,
-  repostPost,
-  unrepostPost,
-  bookmarkPost,
-  sharePost,
-  deletePost,
-  getPostById,
-  voteHelpful,
-  addComment,
-  likeComment,
-  voteCommentHelpful,
-  replyToComment,
-  joinTopic,
-  leaveTopic,
-  getTopicById,
-  getPostsByTopic,
-  followUser,
-  unfollowUser,
-  getUserById,
-  getUserPosts,
-  isFollowing,
-  updateUserBio,
-  updateUserLocation,
-  updateOnlineStatus,
-  getUserStats,
-  markNotificationRead,
-  markAllNotificationsRead,
-  getUnreadCount,
-  sendMessage,
-  editMessage,
-  resendMessage,
-  deleteMessage,
-  getChatMessages,
-  markChatRead,
-  getOrCreateChat,
-  setTypingStatus,
-  getTypingStatus,
-  deleteChat,
-  blockUser,
-  isUserBlocked,
-  refreshFeed,
-  loadMorePosts,
-  updateCommunityProfile,
-  getCurrentUserProfile,
-  checkAndAwardAchievements,
-  getUserAchievements,
-  checkOnboardingStatus,
-  updateSelectedTopics,
-  getSelectedTopics,
-  getFollowers,
-  getFollowing,
-  getAllUsers,
-  syncUserProfileAcrossPosts,
-  getFeedPosts,
-  getPopularPosts,
-  getTrendingTopics,
-  incrementViewCount,
-  getPostRank,
-  updateUsername,
-  updateDisplayName,
-  updateAvatar,
-  updateBio,
-  getUserProfile,
-  checkIsAuthenticated,
-  votePoll,
-]);
+  const value = React.useMemo(() => ({
+    ...state,
+    createPost,
+    likePost,
+    unlikePost,
+    repostPost,
+    unrepostPost,
+    bookmarkPost,
+    sharePost,
+    deletePost,
+    getPostById,
+    voteHelpful,
+    addComment,
+    likeComment,
+    voteCommentHelpful,
+    replyToComment,
+    joinTopic,
+    leaveTopic,
+    getTopicById,
+    getPostsByTopic,
+    followUser,
+    unfollowUser,
+    getUserById,
+    getUserPosts,
+    isFollowing,
+    updateUserBio,
+    updateUserLocation,
+    updateOnlineStatus,
+    getUserStats,
+    markNotificationRead,
+    markAllNotificationsRead,
+    getUnreadCount,
+    sendMessage,
+    editMessage,
+    resendMessage,
+    deleteMessage,
+    getChatMessages,
+    markChatRead,
+    getOrCreateChat,
+    setTypingStatus,
+    getTypingStatus,
+    deleteChat,
+    blockUser,
+    isUserBlocked,
+    refreshFeed,
+    loadMorePosts,
+    updateCommunityProfile,
+    getCurrentUserProfile,
+    checkAndAwardAchievements,
+    getUserAchievements,
+    checkOnboardingStatus,
+    updateSelectedTopics,
+    getSelectedTopics,
+    getFollowers,
+    getFollowing,
+    getAllUsers,
+    syncUserProfileAcrossPosts,
+    getFeedPosts,
+    getPopularPosts,
+    getTrendingTopics,
+    incrementViewCount,
+    getPostRank,
+    updateUsername,
+    updateDisplayName,
+    updateAvatar,
+    updateBio,
+    getUserProfile,
+    isAuthenticated: checkIsAuthenticated,
+    votePoll,
+    refreshTopics: refreshTopicsData,
+  }), [
+    state,
+    createPost,
+    likePost,
+    unlikePost,
+    repostPost,
+    unrepostPost,
+    bookmarkPost,
+    sharePost,
+    deletePost,
+    getPostById,
+    voteHelpful,
+    addComment,
+    likeComment,
+    voteCommentHelpful,
+    replyToComment,
+    joinTopic,
+    leaveTopic,
+    getTopicById,
+    getPostsByTopic,
+    followUser,
+    unfollowUser,
+    getUserById,
+    getUserPosts,
+    isFollowing,
+    updateUserBio,
+    updateUserLocation,
+    updateOnlineStatus,
+    getUserStats,
+    markNotificationRead,
+    markAllNotificationsRead,
+    getUnreadCount,
+    sendMessage,
+    editMessage,
+    resendMessage,
+    deleteMessage,
+    getChatMessages,
+    markChatRead,
+    getOrCreateChat,
+    setTypingStatus,
+    getTypingStatus,
+    deleteChat,
+    blockUser,
+    isUserBlocked,
+    refreshFeed,
+    loadMorePosts,
+    updateCommunityProfile,
+    getCurrentUserProfile,
+    checkAndAwardAchievements,
+    getUserAchievements,
+    checkOnboardingStatus,
+    updateSelectedTopics,
+    getSelectedTopics,
+    getFollowers,
+    getFollowing,
+    getAllUsers,
+    syncUserProfileAcrossPosts,
+    getFeedPosts,
+    getPopularPosts,
+    getTrendingTopics,
+    incrementViewCount,
+    getPostRank,
+    updateUsername,
+    updateDisplayName,
+    updateAvatar,
+    updateBio,
+    getUserProfile,
+    checkIsAuthenticated,
+    votePoll,
+    refreshTopicsData,
+  ]);
 
   return (
     <CommunityContext.Provider value={value}>

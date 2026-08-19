@@ -1,4 +1,16 @@
 // src/hooks/index.ts
+// Safe context hooks
+export { 
+  useSafeApp, 
+  useSafeBaby, 
+  useSafeAuth, 
+  useSafeCustomization, 
+  useSafeTracker,
+  useSafeActivity,
+  useUnifiedTheme,
+} from './useSafeContexts';
+
+// Main hooks
 export { useActivity } from './useActivity';
 export { useAuth } from './useAuth';
 export { useBaby } from '@/context/BabyContext';
@@ -10,14 +22,6 @@ export { useSafety } from './useSafety';
 export { useSecurity } from './useSecurity';
 export { useSweetAlert } from './useSweetAlert';
 export { useUser } from './useUser';
-export { 
-  useSafeApp, 
-  useSafeBaby, 
-  useSafeAuth, 
-  useSafeCustomization, 
-  useSafeActivity,
-  useUnifiedTheme,
-} from './useSafeContexts';
 export { useUnifiedTrackerTheme } from './useUnifiedTrackerTheme';
 export { useTracker } from './useTrackerContext';
 export { useRouteBasedNavVisibility } from './useRouteBasedNavVisibility';
