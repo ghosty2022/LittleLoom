@@ -1,7 +1,49 @@
+import React, { memo, useCallback, useMemo, useState, useEffect, useRef } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  ScrollView,
+  StyleSheet,
+  Dimensions,
+  Platform,
+  StatusBar,
+  KeyboardAvoidingView,
+  Modal,
+  Pressable,
+  Image,
+  UIManager,
+} from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
+import { Ionicons } from '@expo/vector-icons';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import Animated, {
+  FadeInUp,
+  FadeInDown,
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
+import {
+  differenceInMinutes,
+  startOfDay,
+  endOfDay,
+  subDays,
+  isToday,
+  isYesterday,
+  format,
+} from 'date-fns';
+import * as Haptics from 'expo-haptics';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
+
 import type { RootStackParamList } from '../../types/navigation';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useUnifiedTrackerTheme } from '../../hooks/useUnifiedTrackerTheme';
-
 import { useTracker } from '../../context/TrackerContext';
 import { useBaby } from '../../context/BabyContext';
 import { UnifiedTrackerConfig } from '../../types/trackers';
@@ -9,11 +51,12 @@ import { SafeAvatar } from '../../components/SafeAvatar';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { TimelinePicker } from '../../components/trackers/TimelinePicker';
 import { DynamicTrackerForm } from '../../components/trackers/DynamicTrackerForm';
-import SmartPhotoField from '../../screens/gallery/SmartPhotoField'; // ← Fixed path
+import SmartPhotoField from '../../screens/gallery/SmartPhotoField';
 import { useTrackerProgressive } from '../../hooks/useTrackerProgressive';
 import type { ProgressiveCorrelation, ProgressiveReminder } from '../../hooks/useTrackerProgressive';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);

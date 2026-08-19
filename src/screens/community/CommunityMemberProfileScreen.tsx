@@ -685,11 +685,15 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
     </Animated.View>
   );
 
+  // ============================================
+  // RENDER PROFILE HERO - REDESIGNED
+  // ============================================
   const renderProfileHero = () => {
     if (!user) return null;
     const isOnline = user.onlineStatus === 'online';
     const coverPhoto = user.coverPhoto;
     const avatarSource = user.avatar;
+    const isAvatarEmoji = avatarSource && avatarSource.length <= 2 && !avatarSource.includes('/');
     
     return (
       <Animated.View entering={FadeInUp.springify()} style={[styles.profileHero, { marginTop: insets.top + 60 }]}>
@@ -716,7 +720,7 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
         <View style={styles.profileHeroContent}>
           <View style={styles.avatarSection}>
             <View style={styles.avatarWrapper}>
-              {avatarSource ? (
+              {avatarSource && !isAvatarEmoji ? (
                 <Image 
                   source={{ uri: avatarSource }} 
                   style={styles.avatarImage}
@@ -725,7 +729,7 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
               ) : (
                 <View style={[styles.avatarImage, styles.avatarPlaceholder, { backgroundColor: `${TC.primary}25` }]}>
                   <Text style={styles.avatarPlaceholderText}>
-                    {user.displayName?.charAt(0)?.toUpperCase() || '?'}
+                    {isAvatarEmoji ? avatarSource : (user.displayName?.charAt(0)?.toUpperCase() || '?')}
                   </Text>
                 </View>
               )}
@@ -759,16 +763,60 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
               </View>
             </View>
 
+            {/* Action Bar - Redesigned matching CommunityProfileScreen */}
             {!isOwnProfile && (
-              <View style={styles.actionButtons}>
-                <TouchableOpacity style={[styles.followBtn, isFollowingUser && styles.followingBtn, isBlocked && styles.blockedBtn]} onPress={handleFollowToggle} disabled={isBlocked}>
-                  <Text style={[styles.followBtnText, isFollowingUser && styles.followingBtnText, isBlocked && styles.blockedBtnText]}>
+              <View style={styles.actionBar}>
+                <TouchableOpacity 
+                  style={[styles.actionBarItem, isFollowingUser && styles.actionBarItemActive]}
+                  onPress={handleFollowToggle}
+                  disabled={isBlocked}
+                >
+                  <LinearGradient
+                    colors={isFollowingUser ? ['#f1f5f9', '#e2e8f0'] : ['#6366f1', '#8b5cf6']}
+                    style={styles.actionBarIcon}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                  >
+                    <Ionicons 
+                      name={isFollowingUser ? 'checkmark' : 'person-add'} 
+                      size={18} 
+                      color={isFollowingUser ? '#64748b' : '#fff'} 
+                    />
+                  </LinearGradient>
+                  <Text style={[styles.actionBarLabel, isFollowingUser && styles.actionBarLabelActive]}>
                     {isBlocked ? 'Blocked' : isFollowingUser ? 'Following' : 'Follow'}
                   </Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.messageBtn, isBlocked && styles.messageBtnDisabled]} onPress={handleMessage} disabled={isBlocked}>
-                  <Ionicons name="mail-outline" size={16} color={isBlocked ? '#94a3b8' : TC.primary} />
-                  <Text style={[styles.messageBtnText, isBlocked && { color: fullThemeColors.textSecondary }]}>Message</Text>
+
+                <TouchableOpacity 
+                  style={styles.actionBarItem}
+                  onPress={handleMessage}
+                  disabled={isBlocked}
+                >
+                  <View style={[styles.actionBarIcon, styles.actionBarIconSecondary]}>
+                    <Ionicons name="chatbubbles" size={18} color={isBlocked ? '#94a3b8' : '#6366f1'} />
+                  </View>
+                  <Text style={[styles.actionBarLabel, isBlocked && { color: '#94a3b8' }]}>Message</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={styles.actionBarItem}
+                  onPress={handleShareProfile}
+                >
+                  <View style={[styles.actionBarIcon, styles.actionBarIconSecondary]}>
+                    <Ionicons name="share-outline" size={18} color="#6366f1" />
+                  </View>
+                  <Text style={styles.actionBarLabel}>Share</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={styles.actionBarItem}
+                  onPress={handleMoreOptions}
+                >
+                  <View style={[styles.actionBarIcon, styles.actionBarIconSecondary]}>
+                    <Ionicons name="ellipsis-horizontal" size={18} color="#6366f1" />
+                  </View>
+                  <Text style={styles.actionBarLabel}>More</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -1495,9 +1543,6 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
           <Ionicons name="arrow-back" size={22} color="#fff" />
         </TouchableOpacity>
         <View style={{ flex: 1 }} />
-        <TouchableOpacity onPress={handleMoreOptions} style={styles.backBtn}>
-          <Ionicons name="ellipsis-horizontal" size={22} color="#fff" />
-        </TouchableOpacity>
       </Animated.View>
 
       <Animated.ScrollView
@@ -1535,8 +1580,27 @@ const getStyles = (isDarkMode: boolean, colors: any) => StyleSheet.create({
   stickyTitle: { fontSize: 17, fontWeight: '800', color: colors.text, letterSpacing: -0.3 },
   stickySubtitle: { fontSize: 12, fontWeight: '500', color: colors.textSecondary, marginTop: 2 },
 
-  topHeader: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 50, flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 16 },
-  backBtn: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.08)' },
+  topHeader: { 
+    position: 'absolute', 
+    top: 0, 
+    left: 0, 
+    right: 0, 
+    zIndex: 50, 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'space-between',
+    paddingHorizontal: 16, 
+  },
+  backBtn: { 
+    width: 40, 
+    height: 40, 
+    borderRadius: 12, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
 
   profileHero: { paddingHorizontal: 0, paddingBottom: 20 },
   coverPhotoContainer: { width: '100%', height: 160, overflow: 'hidden', position: 'relative' },
@@ -1586,17 +1650,48 @@ const getStyles = (isDarkMode: boolean, colors: any) => StyleSheet.create({
   statsLabel: { fontSize: 12, fontWeight: '600', color: colors.textSecondary || '#64748b' },
   statsDivider: { width: 1, height: 24, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
 
-  actionButtons: { flexDirection: 'row', gap: DESIGN.spacing.lg, marginTop: 20, width: '100%', paddingHorizontal: 20 },
-  followBtn: { flex: 1, backgroundColor: '#6366f1', borderRadius: DESIGN.radius.md, paddingVertical: 12, alignItems: 'center', justifyContent: 'center' },
-  followingBtn: { backgroundColor: '#f1f5f9', borderWidth: 1, borderColor: '#e2e8f0' },
-  blockedBtn: { backgroundColor: '#fef2f2', borderWidth: 1, borderColor: '#fecaca' },
-  followBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
-  followingBtnText: { color: '#64748b' },
-  blockedBtnText: { color: '#ef4444' },
-  messageBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: 'rgba(99,102,241,0.1)', borderRadius: DESIGN.radius.md, paddingVertical: 12, borderWidth: 1, borderColor: 'rgba(99,102,241,0.2)' },
-  messageBtnDisabled: { opacity: 0.5 },
-  messageBtnText: { fontSize: 15, fontWeight: '700', color: '#6366f1' },
+  // Action Bar - Redesigned matching CommunityProfileScreen
+  actionBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 14,
+    marginTop: 16,
+    width: '100%',
+    borderRadius: 16,
+    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.9)',
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+  },
+  actionBarItem: {
+    alignItems: 'center',
+    gap: 4,
+    flex: 1,
+  },
+  actionBarItemActive: {
+    opacity: 0.8,
+  },
+  actionBarIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  actionBarIconSecondary: {
+    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(99,102,241,0.08)',
+  },
+  actionBarLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.textSecondary || '#64748b',
+  },
+  actionBarLabelActive: {
+    color: '#64748b',
+  },
 
+  // Existing styles continue...
   tabBar: { flexDirection: 'row', marginHorizontal: 16, marginBottom: 16, padding: 4, borderRadius: 16, gap: 2, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
   tabItem: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 12 },
   tabLabel: { fontSize: 12, fontWeight: '600' },
