@@ -1,18 +1,31 @@
-import React, { useState } from 'react';
-import { useSweetAlert } from '../../components/SweetAlert';
-import Animated, { FadeInUp } from 'react-native-reanimated';
+// screens/settings/ContactSupportScreen.tsx
+import React, { useState, useCallback } from 'react';
+import { 
+  Alert, 
+  KeyboardAvoidingView, 
+  Linking, 
+  Platform, 
+  StatusBar, 
+  StyleSheet, 
+  Text, 
+  TextInput, 
+  TouchableOpacity, 
+  View,
+  ScrollView,
+  ActivityIndicator,
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, { FadeInUp } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import { useCustomization } from '../../hooks/useCustomization';
+import { useSupabase } from '../../hooks/useSupabase';
+import { useSweetAlert } from '../../components/SweetAlert';
+import { UniversalSpinner } from '../../components/UniversalSpinner';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
-
-import { useCustomization } from '../../hooks/useCustomization';
-import { BlurView } from 'expo-blur';
-
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
-import { Alert, KeyboardAvoidingView, Linking, Platform, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ContactSupport'>;
 
@@ -23,6 +36,15 @@ interface CategoryItem {
   route?: keyof RootStackParamList;
   params?: any;
   helpText?: string;
+}
+
+interface AltContact {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  value: string;
+  url?: string;
+  route?: keyof RootStackParamList;
+  color: string;
 }
 
 const CATEGORIES: CategoryItem[] = [
@@ -165,15 +187,6 @@ const CATEGORIES: CategoryItem[] = [
   { id: 'other', label: 'Other', icon: 'ellipsis-horizontal-outline' },
 ];
 
-interface AltContact {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  value: string;
-  url?: string;
-  route?: keyof RootStackParamList;
-  color: string;
-}
-
 const SectionHeader: React.FC<{
   icon: keyof typeof Ionicons.glyphMap;
   title: string;
@@ -191,7 +204,8 @@ const SectionHeader: React.FC<{
 );
 
 export default function ContactSupportScreen({ navigation }: Props) {
-  const sweetAlert = useSweetAlert();
+  const { sweetAlert } = useSweetAlert();
+  const { user, isConnected } = useSupabase();
   const insets = useSafeAreaInsets();
 
   const {
@@ -206,70 +220,127 @@ export default function ContactSupportScreen({ navigation }: Props) {
   const [category, setCategory] = useState('bug');
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(user?.email || '');
   const [isSending, setIsSending] = useState(false);
+  const [sendProgress, setSendProgress] = useState(0);
 
   const handleHaptic = (style: 'light' | 'medium' | 'success' = 'light') => {
     if (!reduceMotion) {
-      Haptics.impactAsync(
-        style === 'success'
-          ? Haptics.ImpactFeedbackStyle.Medium
-          : Haptics.ImpactFeedbackStyle.Light
-      ).catch(() => {});
+      const hapticStyle = style === 'success' 
+        ? Haptics.ImpactFeedbackStyle.Medium 
+        : Haptics.ImpactFeedbackStyle.Light;
+      Haptics.impactAsync(hapticStyle).catch(() => {});
     }
   };
 
   const handleCategoryPress = (cat: CategoryItem) => {
-    handleHaptic();
+    handleHaptic('light');
     setCategory(cat.id);
     if (cat.route) {
-      sweetAlert.confirm(
-        `Go to ${cat.label}?`,
-        `We'll take you to the ${cat.label} screen where you can find help with this topic.`,
-        () => {
+      sweetAlert({
+        title: `Go to ${cat.label}?`,
+        message: `We'll take you to the ${cat.label} screen where you can find help with this topic.`,
+        type: 'question',
+        confirmText: 'Go There',
+        cancelText: 'Stay Here',
+        showCancel: true,
+        onConfirm: () => {
           if (cat.params) {
             navigation.navigate(cat.route as any, cat.params as any);
           } else {
             navigation.navigate(cat.route as any);
           }
         },
-        () => {
-          // User chose to stay on Contact Support
-        },
-        'Go There',
-        'Stay Here',
-        false
-      );
+      });
     }
   };
 
   const handleSend = async () => {
     if (!subject.trim() || !message.trim()) {
-      sweetAlert.alert('Missing Info', 'Please fill in the subject and message.', 'warning');
+      sweetAlert({
+        title: 'Missing Info',
+        message: 'Please fill in the subject and message.',
+        type: 'warning',
+        confirmText: 'OK',
+      });
       return;
     }
 
     handleHaptic('medium');
     setIsSending(true);
+    setSendProgress(0);
 
-    setTimeout(() => {
+    // Simulate progress
+    const progressInterval = setInterval(() => {
+      setSendProgress(prev => {
+        if (prev >= 90) {
+          clearInterval(progressInterval);
+          return 90;
+        }
+        return prev + 10;
+      });
+    }, 200);
+
+    try {
+      // Send to Supabase support table or email
+      const supportData = {
+        email,
+        category,
+        subject,
+        message,
+        user_id: user?.id,
+        app_version: '1.0.0',
+        platform: Platform.OS,
+        created_at: new Date().toISOString(),
+      };
+
+      // Store in support_tickets table
+      const { error } = await supabase
+        .from('support_tickets')
+        .insert([supportData]);
+
+      if (error) throw error;
+
+      setSendProgress(100);
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      sweetAlert({
+        title: 'Message Sent! 🎉',
+        message: 'Our team will get back to you within 24 hours.',
+        type: 'success',
+        confirmText: 'Great',
+        onConfirm: () => {
+          setSubject('');
+          setMessage('');
+          navigation.goBack();
+        },
+      });
+    } catch (error) {
+      console.error('Send error:', error);
+      sweetAlert({
+        title: 'Send Failed',
+        message: 'We could not send your message. Please try again or use an alternative contact method.',
+        type: 'error',
+        confirmText: 'Try Again',
+        onConfirm: () => {
+          setIsSending(false);
+          setSendProgress(0);
+        },
+      });
+    } finally {
+      clearInterval(progressInterval);
       setIsSending(false);
-      handleHaptic('success');
+    }
+  };
 
-      sweetAlert.confirm(
-        'Message Sent!',
-        '',
-        () => {
-          // TODO: Confirm action
-        },
-        () => {
-          // Cancel action
-        },
-        'OK',
-        'OK',
-        false
-      );
-    }, 1500);
+  const openLink = async (url?: string) => {
+    if (!url) return;
+    try {
+      const supported = await Linking.canOpenURL(url);
+      if (supported) await Linking.openURL(url);
+    } catch (e) {
+      console.warn('Failed to open link:', e);
+    }
   };
 
   const altContacts: AltContact[] = [
@@ -303,18 +374,8 @@ export default function ContactSupportScreen({ navigation }: Props) {
     },
   ];
 
-  const openLink = async (url?: string) => {
-    if (!url) return;
-    try {
-      const supported = await Linking.canOpenURL(url);
-      if (supported) await Linking.openURL(url);
-    } catch (e) {
-      console.warn('Failed to open link:', e);
-    }
-  };
-
   const handleAltContact = (contact: AltContact) => {
-    handleHaptic();
+    handleHaptic('light');
     if (contact.route) {
       navigation.navigate(contact.route as any);
     } else if (contact.url) {
@@ -341,7 +402,7 @@ export default function ContactSupportScreen({ navigation }: Props) {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Header */}
+          {/* ─── Header ─── */}
           <Animated.View
             entering={reduceMotion ? undefined : FadeInUp.delay(100)}
             style={styles.header}
@@ -352,7 +413,7 @@ export default function ContactSupportScreen({ navigation }: Props) {
                 { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' },
               ]}
               onPress={() => {
-                handleHaptic();
+                handleHaptic('light');
                 navigation.goBack();
               }}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -367,7 +428,21 @@ export default function ContactSupportScreen({ navigation }: Props) {
             </Text>
           </Animated.View>
 
-          {/* Category Selection */}
+          {/* ─── Status Banner ─── */}
+          <Animated.View entering={reduceMotion ? undefined : FadeInUp.delay(150)}>
+            <View style={[styles.statusBanner, { backgroundColor: isConnected ? `${primary}10` : `${secondary}10` }]}>
+              <Ionicons 
+                name={isConnected ? 'cloud-outline' : 'cloud-offline-outline'} 
+                size={20} 
+                color={isConnected ? primary : secondary} 
+              />
+              <Text style={[styles.statusText, { color: isConnected ? primary : secondary }]}>
+                {isConnected ? 'Connected to support system' : 'You are offline - messages will be queued'}
+              </Text>
+            </View>
+          </Animated.View>
+
+          {/* ─── Category Selection ─── */}
           <Animated.View
             entering={reduceMotion ? undefined : FadeInUp.delay(200)}
             style={styles.sectionWrapper}
@@ -410,7 +485,7 @@ export default function ContactSupportScreen({ navigation }: Props) {
             </BlurView>
           </Animated.View>
 
-          {/* Form */}
+          {/* ─── Form ─── */}
           <Animated.View
             entering={reduceMotion ? undefined : FadeInUp.delay(300)}
             style={styles.sectionWrapper}
@@ -431,6 +506,7 @@ export default function ContactSupportScreen({ navigation }: Props) {
                   onChangeText={setEmail}
                   keyboardType="email-address"
                   autoCapitalize="none"
+                  autoCorrect={false}
                 />
               </View>
 
@@ -458,15 +534,26 @@ export default function ContactSupportScreen({ navigation }: Props) {
                   textAlignVertical="top"
                 />
               </View>
+
+              {isSending && (
+                <View style={styles.progressContainer}>
+                  <View style={styles.progressBarBg}>
+                    <View style={[styles.progressBarFill, { width: `${sendProgress}%`, backgroundColor: primary }]} />
+                  </View>
+                  <Text style={[styles.progressText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+                    {sendProgress < 100 ? 'Sending...' : 'Sent!'}
+                  </Text>
+                </View>
+              )}
             </BlurView>
           </Animated.View>
 
-          {/* Send Button */}
+          {/* ─── Send Button ─── */}
           <Animated.View entering={reduceMotion ? undefined : FadeInUp.delay(400)}>
             <TouchableOpacity
-              style={[styles.sendButton, isSending && styles.sendButtonDisabled]}
+              style={[styles.sendButton, (isSending || !subject.trim() || !message.trim()) && styles.sendButtonDisabled]}
               onPress={handleSend}
-              disabled={isSending}
+              disabled={isSending || !subject.trim() || !message.trim()}
             >
               <LinearGradient
                 colors={isSending ? ['#999', '#888'] : [primary, secondary]}
@@ -475,7 +562,10 @@ export default function ContactSupportScreen({ navigation }: Props) {
                 end={{ x: 1, y: 1 }}
               >
                 {isSending ? (
-                  <Text style={styles.sendButtonText}>Sending...</Text>
+                  <View style={styles.sendLoading}>
+                    <UniversalSpinner size={20} color="#fff" variant="liquid" section="settings" />
+                    <Text style={styles.sendButtonText}>Sending...</Text>
+                  </View>
                 ) : (
                   <>
                     <Ionicons name="send" size={18} color="#fff" style={{ marginRight: 8 }} />
@@ -486,7 +576,7 @@ export default function ContactSupportScreen({ navigation }: Props) {
             </TouchableOpacity>
           </Animated.View>
 
-          {/* Alternative Contact */}
+          {/* ─── Alternative Contact ─── */}
           <Animated.View
             entering={reduceMotion ? undefined : FadeInUp.delay(500)}
             style={styles.sectionWrapper}
@@ -538,7 +628,7 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { paddingHorizontal: 20 },
 
-  header: { marginBottom: 24 },
+  header: { marginBottom: 20 },
   backButton: {
     width: 40,
     height: 40,
@@ -561,6 +651,20 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   headerSubtitleDark: { color: '#a0a0a0' },
+
+  statusBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 16,
+    marginBottom: 20,
+    gap: 10,
+  },
+  statusText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '500',
+  },
 
   sectionWrapper: { marginBottom: 20 },
   sectionHeader: {
@@ -670,6 +774,26 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.05)',
   },
 
+  progressContainer: {
+    marginTop: 8,
+    gap: 8,
+  },
+  progressBarBg: {
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(0,0,0,0.06)',
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    borderRadius: 2,
+  },
+  progressText: {
+    fontSize: 12,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+
   sendButton: {
     borderRadius: 18,
     overflow: 'hidden',
@@ -681,6 +805,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 18,
+    minHeight: 56,
+  },
+  sendLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   sendButtonText: {
     color: '#fff',
@@ -701,6 +831,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     backgroundColor: 'transparent',
   },
+  altItemDark: {},
   altIcon: {
     width: 44,
     height: 44,

@@ -1,5 +1,17 @@
-import React from 'react';
-import { Button, Dimensions, Linking, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+// screens/settings/AboutScreen.tsx
+import React, { useCallback, useEffect, useState } from 'react';
+import { 
+  Dimensions, 
+  Linking, 
+  ScrollView, 
+  StatusBar, 
+  StyleSheet, 
+  Text, 
+  TouchableOpacity, 
+  View,
+  Share,
+  Platform,
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,17 +20,21 @@ import Animated, { FadeInUp } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useApp } from '../../context/AppContext';
+import { useSupabase } from '../../hooks/useSupabase';
+import { useSweetAlert } from '../../components/SweetAlert';
+import { SafeAvatar } from '../../components/SafeAvatar';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
-
-import { SafeAvatar } from '../../components/SafeAvatar';
+import packageJson from '../../../package.json';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'About'>;
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_GAP = 12;
-const HORIZONTAL_PADDING = 40; // 20px each side
+const HORIZONTAL_PADDING = 40;
 const CARD_WIDTH = (SCREEN_WIDTH - HORIZONTAL_PADDING - CARD_GAP) / 2;
+
+// ─── Types ──────────────────────────────────────────────────────────
 
 interface ServiceLink {
   icon: keyof typeof Ionicons.glyphMap;
@@ -39,11 +55,20 @@ interface FeatureItem {
   color: string;
 }
 
+interface SocialLink {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  url: string;
+  color: string;
+}
+
+// ─── Constants ──────────────────────────────────────────────────────
+
 const FEATURES: FeatureItem[] = [
   {
     icon: 'shield-checkmark',
     title: 'Privacy First',
-    desc: 'Your data stays on your device',
+    desc: 'Your data stays on your device or encrypted in the cloud',
     route: 'PrivacyPolicy',
     color: '#10b981',
   },
@@ -58,7 +83,7 @@ const FEATURES: FeatureItem[] = [
     icon: 'trending-up',
     title: 'Growth Tracking',
     desc: 'Monitor height, weight, milestones',
-    route: 'Grow',
+    route: 'GrowthDashboard',
     color: '#f59e0b',
   },
   {
@@ -79,7 +104,7 @@ const FEATURES: FeatureItem[] = [
     icon: 'medical',
     title: 'Health Records',
     desc: 'Medications, allergies, and more',
-    route: 'UniversalTracker',
+    route: 'UniversalTrackerHub',
     params: { type: 'health' },
     color: '#ef4444',
   },
@@ -108,7 +133,7 @@ const FEATURES: FeatureItem[] = [
     icon: 'alarm',
     title: 'Reminders',
     desc: 'Never miss an important moment',
-    route: 'Reminders',
+    route: 'TrackerReminders',
     color: '#14b8a6',
   },
   {
@@ -127,9 +152,19 @@ const FEATURES: FeatureItem[] = [
   },
 ];
 
-const TEAM = [
-  { name: 'Refresh', role: ' By TPM Solutions' },
+const SOCIAL_LINKS: SocialLink[] = [
+  { icon: 'logo-twitter', label: 'Twitter', url: 'https://twitter.com/littleloom', color: '#1DA1F2' },
+  { icon: 'logo-instagram', label: 'Instagram', url: 'https://instagram.com/littleloom', color: '#E4405F' },
+  { icon: 'logo-github', label: 'GitHub', url: 'https://github.com/littleloom', color: '#333' },
+  { icon: 'logo-youtube', label: 'YouTube', url: 'https://youtube.com/littleloom', color: '#FF0000' },
 ];
+
+const TEAM = [
+  { name: 'Refresh', role: 'By TPM Solutions', emoji: '🚀' },
+  { name: 'Community', role: 'Powered by Supabase', emoji: '⚡' },
+];
+
+// ─── Components ─────────────────────────────────────────────────────
 
 const SectionHeader: React.FC<{
   icon: keyof typeof Ionicons.glyphMap;
@@ -241,14 +276,28 @@ const FeatureRow: React.FC<{
   </View>
 );
 
+// ─── Main Component ─────────────────────────────────────────────────
+
 export default function AboutScreen({ navigation }: Props) {
   const { themeColors, darkMode, reduceMotion, avatar } = useCustomization();
   const { colors, isDark: appIsDark } = useApp();
+  const { isConnected, user } = useSupabase();
+  const { sweetAlert } = useSweetAlert();
   const insets = useSafeAreaInsets();
 
   const isDark = darkMode ?? appIsDark;
   const primary = themeColors?.primary || colors.primary || '#667eea';
   const secondary = themeColors?.secondary || colors.accent || '#fa709a';
+
+  const [appVersion, setAppVersion] = useState('1.0.0');
+
+  useEffect(() => {
+    try {
+      setAppVersion(packageJson.version || '1.0.0');
+    } catch {
+      // Use default version
+    }
+  }, []);
 
   const openLink = async (url: string) => {
     try {
@@ -256,23 +305,43 @@ export default function AboutScreen({ navigation }: Props) {
       if (supported) {
         await Linking.openURL(url);
       } else {
-        console.warn('Cannot open URL:', url);
+        sweetAlert({
+          title: 'Cannot Open Link',
+          message: `Unable to open ${url}`,
+          type: 'warning',
+          confirmText: 'OK',
+        });
       }
     } catch (error) {
       console.warn('Failed to open link:', error);
     }
   };
 
-  const handleHaptic = () => {
+  const handleHaptic = (style: 'light' | 'medium' | 'success' = 'light') => {
     if (!reduceMotion) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      const hapticStyle = style === 'success' 
+        ? Haptics.ImpactFeedbackStyle.Medium 
+        : Haptics.ImpactFeedbackStyle.Light;
+      Haptics.impactAsync(hapticStyle).catch(() => {});
     }
   };
 
   const handleFeaturePress = (feature: FeatureItem) => {
-    handleHaptic();
+    handleHaptic('light');
     if (feature.route) {
       navigation.navigate(feature.route as any, feature.params);
+    }
+  };
+
+  const handleShareApp = async () => {
+    handleHaptic('medium');
+    try {
+      await Share.share({
+        message: `Check out LittleLoom - the best baby tracking app! 🍼\n\nVersion ${appVersion}\nDownload now: https://littleloom.app/download`,
+        title: 'LittleLoom Baby Tracker',
+      });
+    } catch (error) {
+      console.error('Share error:', error);
     }
   };
 
@@ -291,6 +360,14 @@ export default function AboutScreen({ navigation }: Props) {
       subtitle: 'Legal terms and conditions',
       url: 'https://littleloom.app/terms',
       color: secondary,
+      isExternal: true,
+    },
+    {
+      icon: 'cloud-outline',
+      title: 'Cloud Status',
+      subtitle: isConnected ? 'Connected to Supabase' : 'Offline mode',
+      url: 'https://status.littleloom.app',
+      color: isConnected ? '#10b981' : '#f59e0b',
       isExternal: true,
     },
     {
@@ -328,7 +405,7 @@ export default function AboutScreen({ navigation }: Props) {
   ];
 
   const handleLinkPress = (item: ServiceLink) => {
-    handleHaptic();
+    handleHaptic('light');
     if (item.route) {
       navigation.navigate(item.route as any);
     } else if (item.url) {
@@ -371,7 +448,7 @@ export default function AboutScreen({ navigation }: Props) {
               { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' },
             ]}
             onPress={() => {
-              handleHaptic();
+              handleHaptic('light');
               navigation.goBack();
             }}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -381,6 +458,15 @@ export default function AboutScreen({ navigation }: Props) {
           <Text style={[styles.headerTitle, isDark && styles.headerTitleDark]}>
             About
           </Text>
+          <TouchableOpacity
+            onPress={handleShareApp}
+            style={[
+              styles.shareButton,
+              { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' },
+            ]}
+          >
+            <Ionicons name="share-outline" size={22} color={isDark ? '#fff' : '#1a1a1a'} />
+          </TouchableOpacity>
         </Animated.View>
 
         {/* ─── App Logo / Brand ─── */}
@@ -413,15 +499,23 @@ export default function AboutScreen({ navigation }: Props) {
               LittleLoom
             </Text>
             <Text style={[styles.version, isDark && styles.versionDark]}>
-              Version 1.0.0
+              Version {appVersion}
             </Text>
             <Text style={[styles.tagline, isDark && styles.taglineDark]}>
               Weaving together the precious moments of parenthood
             </Text>
+            {isConnected && (
+              <View style={[styles.cloudBadge, { backgroundColor: `${primary}15` }]}>
+                <View style={[styles.cloudDot, { backgroundColor: '#10b981' }]} />
+                <Text style={[styles.cloudText, { color: '#10b981' }]}>
+                  Connected to Supabase
+                </Text>
+              </View>
+            )}
           </BlurView>
         </Animated.View>
 
-        {/* ─── Features Grid (2×2) ─── */}
+        {/* ─── Features Grid ─── */}
         <Animated.View
           entering={reduceMotion ? undefined : FadeInUp.delay(300)}
           style={styles.sectionWrapper}
@@ -447,6 +541,49 @@ export default function AboutScreen({ navigation }: Props) {
                   reduceMotion={reduceMotion}
                   onPressFeature={handleFeaturePress}
                 />
+              ))}
+            </View>
+          </BlurView>
+        </Animated.View>
+
+        {/* ─── Social Links ─── */}
+        <Animated.View
+          entering={reduceMotion ? undefined : FadeInUp.delay(400)}
+          style={styles.sectionWrapper}
+        >
+          <SectionHeader
+            icon="share-social-outline"
+            title="Connect With Us"
+            color="#4facfe"
+            isDark={isDark}
+          />
+          <BlurView
+            intensity={isDark ? 30 : 70}
+            style={styles.socialContainer}
+            tint={isDark ? 'dark' : 'light'}
+          >
+            <View style={styles.socialGrid}>
+              {SOCIAL_LINKS.map((social) => (
+                <TouchableOpacity
+                  key={social.label}
+                  style={[
+                    styles.socialItem,
+                    isDark && styles.socialItemDark,
+                    { borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
+                  ]}
+                  onPress={() => {
+                    handleHaptic('light');
+                    openLink(social.url);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.socialIcon, { backgroundColor: `${social.color}15` }]}>
+                    <Ionicons name={social.icon} size={24} color={social.color} />
+                  </View>
+                  <Text style={[styles.socialLabel, isDark && styles.socialLabelDark]}>
+                    {social.label}
+                  </Text>
+                </TouchableOpacity>
               ))}
             </View>
           </BlurView>
@@ -478,7 +615,7 @@ export default function AboutScreen({ navigation }: Props) {
                 ]}
               >
                 <View style={[styles.teamAvatar, { backgroundColor: `${primary}15` }]}>
-                  <Text style={styles.teamEmoji}>👋</Text>
+                  <Text style={styles.teamEmoji}>{member.emoji}</Text>
                 </View>
                 <View style={styles.teamInfo}>
                   <Text style={[styles.teamName, isDark && styles.teamNameDark]}>
@@ -547,6 +684,11 @@ export default function AboutScreen({ navigation }: Props) {
               {' Made with love for parents everywhere'}
             </Text>
           </View>
+          {user && (
+            <Text style={[styles.userInfo, isDark && styles.userInfoDark]}>
+              Signed in as {user.email}
+            </Text>
+          )}
         </Animated.View>
       </Animated.ScrollView>
     </LinearGradient>
@@ -570,7 +712,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  shareButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 'auto',
+  },
   headerTitle: {
+    flex: 1,
     fontSize: 28,
     fontWeight: '800',
     color: '#1a1a1a',
@@ -649,6 +800,24 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   taglineDark: { color: '#a0a0a0' },
+  cloudBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    marginTop: 12,
+    gap: 8,
+  },
+  cloudDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  cloudText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
 
   featuresContainer: {
     borderRadius: 24,
@@ -711,6 +880,46 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: 10,
   },
+
+  socialContainer: {
+    borderRadius: 24,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+    padding: 16,
+  },
+  socialGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    justifyContent: 'center',
+  },
+  socialItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: 'rgba(255,255,255,0.5)',
+    borderRadius: 16,
+    gap: 10,
+    borderWidth: 1,
+  },
+  socialItemDark: {
+    backgroundColor: 'rgba(30,30,40,0.4)',
+  },
+  socialIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  socialLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1a1a1a',
+  },
+  socialLabelDark: { color: '#fff' },
 
   teamContainer: {
     borderRadius: 24,
@@ -846,4 +1055,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   madeWithTextDark: { color: '#666' },
+  userInfo: {
+    fontSize: 11,
+    color: '#aaa',
+    fontWeight: '500',
+    marginTop: 4,
+  },
+  userInfoDark: { color: '#555' },
 });

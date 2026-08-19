@@ -9,16 +9,15 @@ import {
   StyleSheet,
   Switch,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
   RefreshControl,
   Share,
-  Alert,
   Platform,
+  Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { BlurView } from 'expo-blur';
@@ -27,7 +26,6 @@ import Animated, {
   useAnimatedStyle,
   withSpring,
   withTiming,
-  withSequence,
   interpolate,
   Extrapolate,
   FadeInUp,
@@ -36,54 +34,37 @@ import Animated, {
   useAnimatedScrollHandler,
 } from 'react-native-reanimated';
 import { useFocusEffect } from '@react-navigation/native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
-// Supabase integration
-import { supabase } from '../../lib/supabase';
+// ─── Hooks ──────────────────────────────────────────────────────────
 import { useSupabase } from '../../hooks/useSupabase';
 import { useRealtimeSubscription } from '../../hooks/useRealtimeSubscription';
+import { useOfflineSync } from '../../hooks/useOfflineSync';
+import { useCustomization } from '../../hooks/useCustomization';
 
-// Contexts
+// ─── Contexts ──────────────────────────────────────────────────────
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { useBaby } from '../../context/BabyContext';
 import { useFamily } from '../../context/FamilyContext';
 import { useSecurity } from '../../context/SecurityContext';
-import { useCustomization } from '../../hooks/useCustomization';
+import { useActivity } from '../../context/ActivityContext';
+import { useUser } from '../../context/UserContext';
 
-// Components
+// ─── Components ────────────────────────────────────────────────────
 import { SafeAvatar, SafeBabyAvatar } from '../../components/SafeAvatar';
 import { UniversalSpinner } from '../../components/UniversalSpinner';
 import { useSweetAlert } from '../../components/SweetAlert';
 
-// Types
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+// ─── Types ─────────────────────────────────────────────────────────
 import type { RootStackParamList } from '../../types/navigation';
 import type { FamilyMember } from '../../types/roles';
 
-type Props = NativeStackScreenProps<RootStackParamList, 'Main'>;
+type SettingsScreenProps = NativeStackScreenProps<RootStackParamList, 'Main'>;
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-// ─── Constants ──────────────────────────────────────────────────────────
-
-const SECTION_ICONS = {
-  security: 'shield-checkmark',
-  preferences: 'options',
-  family: 'people',
-  tracking: 'analytics',
-  safety: 'shield-half',
-  support: 'help-circle',
-} as const;
-
-const QUICK_ACTIONS = [
-  { icon: 'person-outline', label: 'Profile', route: 'Profile' },
-  { icon: 'heart-outline', label: 'Baby', route: 'EditProfile' },
-  { icon: 'people-outline', label: 'Family', route: 'FamilySharing' },
-  { icon: 'notifications-outline', label: 'Alerts', route: 'TrackerReminders' },
-] as const;
-
-// ─── Animated Components ──────────────────────────────────────────────
+// ─── Animated Components ──────────────────────────────────────────
 
 const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
 
@@ -144,27 +125,7 @@ const PressableScale = React.memo<PressableScaleProps>(({
   );
 });
 
-// ─── Skeleton Loader ──────────────────────────────────────────────────
-
-const SkeletonLoader = React.memo(({ isDark }: { isDark: boolean }) => (
-  <View style={styles.skeletonContainer}>
-    {[1, 2, 3, 4].map((i) => (
-      <Animated.View
-        key={i}
-        entering={FadeInUp.delay(i * 80)}
-        style={[styles.skeletonCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' }]}
-      >
-        <View style={[styles.skeletonAvatar, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]} />
-        <View style={styles.skeletonText}>
-          <View style={[styles.skeletonLine, { width: '60%', backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]} />
-          <View style={[styles.skeletonLine, { width: '40%', backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)' }]} />
-        </View>
-      </Animated.View>
-    ))}
-  </View>
-));
-
-// ─── Section Components ──────────────────────────────────────────────
+// ─── Section Components ───────────────────────────────────────────
 
 interface SectionHeaderProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -354,25 +315,576 @@ const MenuItem = React.memo<MenuItemProps>(({
   );
 });
 
-// ─── Main Component ──────────────────────────────────────────────────
+// ─── Stat Card ─────────────────────────────────────────────────────
 
-function MoreScreen({ navigation, route }: Props) {
+interface StatCardProps {
+  icon: keyof typeof Ionicons.glyphMap;
+  value: string | number;
+  label: string;
+  color: string;
+  isDark: boolean;
+  onPress?: () => void;
+}
+
+const StatCard = React.memo<StatCardProps>(({ icon, value, label, color, isDark, onPress }) => (
+  <PressableScale onPress={onPress} activeScale={0.95} style={{ flex: 1 }}>
+    <BlurView
+      intensity={isDark ? 40 : 80}
+      style={[styles.statCard, isDark && styles.statCardDark]}
+      tint={isDark ? 'dark' : 'light'}
+    >
+      <View style={[styles.statIconWrap, { backgroundColor: `${color}15` }]}>
+        <Ionicons name={icon} size={20} color={color} />
+      </View>
+      <Text style={[styles.statValue, isDark && styles.textLight]}>{value}</Text>
+      <Text style={[styles.statLabel, isDark && styles.textMuted]}>{label}</Text>
+    </BlurView>
+  </PressableScale>
+));
+
+// ─── Quick Action ─────────────────────────────────────────────────
+
+interface QuickActionProps {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  color: string;
+  isDark: boolean;
+  onPress: () => void;
+}
+
+const QuickAction = React.memo<QuickActionProps>(({ icon, label, color, isDark, onPress }) => (
+  <PressableScale onPress={onPress} activeScale={0.9} style={styles.quickAction}>
+    <View style={[styles.quickActionIcon, { backgroundColor: `${color}15` }]}>
+      <Ionicons name={icon} size={22} color={color} />
+    </View>
+    <Text style={[styles.quickActionLabel, isDark && styles.textMuted]}>{label}</Text>
+  </PressableScale>
+));
+
+// ─── Family Member Item ───────────────────────────────────────────
+
+interface FamilyMemberProps {
+  avatar?: string | number;
+  name: string;
+  label: string;
+  color: string;
+  isDark: boolean;
+  onPress: () => void;
+  badge?: React.ReactNode;
+  isBaby?: boolean;
+  gender?: 'boy' | 'girl' | 'other';
+}
+
+const FamilyMemberItem = React.memo<FamilyMemberProps>(({
+  avatar,
+  name,
+  label,
+  color,
+  isDark,
+  onPress,
+  badge,
+  isBaby = false,
+  gender = 'other',
+}) => (
+  <PressableScale onPress={onPress} activeScale={0.92} style={styles.familyMember}>
+    <View style={[styles.familyAvatarWrap, { borderColor: `${color}40` }]}>
+      {isBaby ? (
+        <SafeBabyAvatar
+          avatar={avatar}
+          gender={gender}
+          size={48}
+          showBadge={false}
+        />
+      ) : (
+        <SafeAvatar
+          avatar={avatar}
+          size={48}
+          fallbackIcon="person"
+          fallbackColor={color}
+          borderWidth={0}
+        />
+      )}
+      {badge}
+    </View>
+    <Text style={[styles.familyName, isDark && styles.textLight]} numberOfLines={1}>
+      {name}
+    </Text>
+    <Text style={[styles.familyLabel, isDark && styles.textMuted]}>{label}</Text>
+  </PressableScale>
+));
+
+// ─── Baby Selection Modal ─────────────────────────────────────────
+
+interface BabySelectionModalProps {
+  visible: boolean;
+  onClose: () => void;
+  babies: any[];
+  currentBabyId: string | null;
+  onSelectBaby: (baby: any) => void;
+  isDark: boolean;
+  primaryColor: string;
+}
+
+const BabySelectionModal = React.memo<BabySelectionModalProps>(({
+  visible,
+  onClose,
+  babies,
+  currentBabyId,
+  onSelectBaby,
+  isDark,
+  primaryColor,
+}) => {
+  const translateY = useSharedValue(SCREEN_HEIGHT);
+  const backdropOpacity = useSharedValue(0);
+
+  useEffect(() => {
+    if (visible) {
+      translateY.value = withSpring(0, { damping: 25, stiffness: 300 });
+      backdropOpacity.value = withTiming(1, { duration: 200 });
+    } else {
+      translateY.value = withSpring(SCREEN_HEIGHT, { damping: 25, stiffness: 300 });
+      backdropOpacity.value = withTiming(0, { duration: 200 });
+    }
+  }, [visible, translateY, backdropOpacity]);
+
+  const sheetStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+  }));
+
+  const backdropStyle = useAnimatedStyle(() => ({
+    opacity: backdropOpacity.value,
+  }));
+
+  if (!visible) return null;
+
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+      <Animated.View
+        style={[StyleSheet.absoluteFill, styles.modalBackdrop, backdropStyle]}
+        pointerEvents={visible ? 'auto' : 'none'}
+      >
+        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
+      </Animated.View>
+
+      <Animated.View
+        style={[styles.modalSheet, sheetStyle]}
+        pointerEvents={visible ? 'auto' : 'none'}
+      >
+        <BlurView
+          intensity={isDark ? 60 : 90}
+          style={styles.modalSheetBlur}
+          tint={isDark ? 'dark' : 'light'}
+        >
+          <View style={styles.modalHandle} />
+          <View style={styles.modalSheetHeader}>
+            <Text style={[styles.modalSheetTitle, isDark && styles.textLight]}>
+              Select Baby Profile
+            </Text>
+            <PressableScale onPress={onClose} hapticType="light">
+              <View style={[styles.modalCloseBtn, isDark && styles.modalCloseBtnDark]}>
+                <Ionicons name="close" size={22} color={isDark ? '#fff' : '#1a1a1a'} />
+              </View>
+            </PressableScale>
+          </View>
+
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.modalSheetContent}
+          >
+            {babies.map((baby) => {
+              const isActive = baby.id === currentBabyId;
+              return (
+                <PressableScale
+                  key={baby.id}
+                  onPress={() => onSelectBaby(baby)}
+                  activeScale={0.98}
+                >
+                  <View style={[
+                    styles.babyOption,
+                    isDark && styles.babyOptionDark,
+                    isActive && [styles.babyOptionActive, { borderColor: primaryColor }],
+                    isActive && isDark && styles.babyOptionActiveDark,
+                  ]}>
+                    <SafeBabyAvatar
+                      avatar={baby.avatar}
+                      gender={baby.gender}
+                      size={52}
+                    />
+                    <View style={styles.babyOptionInfo}>
+                      <Text style={[
+                        styles.babyOptionName,
+                        isDark && styles.textLight,
+                        isActive && { color: primaryColor },
+                      ]}>
+                        {baby.name}
+                      </Text>
+                      <Text style={[styles.babyOptionMeta, isDark && styles.textMuted]}>
+                        {baby.age || 'Age unknown'} · {baby.gender || 'Unknown'}
+                      </Text>
+                    </View>
+                    {isActive ? (
+                      <View style={[styles.activeCheck, { backgroundColor: primaryColor }]}>
+                        <Ionicons name="checkmark" size={16} color="#fff" />
+                      </View>
+                    ) : (
+                      <Ionicons name="chevron-forward" size={18} color={isDark ? '#666' : '#ccc'} />
+                    )}
+                  </View>
+                </PressableScale>
+              );
+            })}
+          </ScrollView>
+        </BlurView>
+      </Animated.View>
+    </View>
+  );
+});
+
+// ─── Profile Header ───────────────────────────────────────────────
+
+interface ProfileHeaderProps {
+  navigation: any;
+  isDark: boolean;
+  userProfile: any;
+  babies: any[];
+  currentBaby: any;
+  currentBabyId: string | null;
+  parent2Profile: FamilyMember | null;
+  guardians: FamilyMember[];
+  onShowBabyModal: () => void;
+  stats: { entries: number; streak: number; milestones: number };
+  primaryColor: string;
+  secondaryColor: string;
+  accentColor: string;
+}
+
+const ProfileHeader = React.memo<ProfileHeaderProps>(({
+  navigation,
+  isDark,
+  userProfile,
+  babies,
+  currentBaby,
+  currentBabyId,
+  parent2Profile,
+  guardians,
+  onShowBabyModal,
+  stats,
+  primaryColor,
+  secondaryColor,
+  accentColor,
+}) => {
+  const safeBabies = babies || [];
+  const hasMultipleBabies = safeBabies.length > 1;
+  const { triggerHaptic, hapticFeedback } = useCustomization();
+
+  const handleBabyPress = useCallback(() => {
+    if (hapticFeedback) triggerHaptic('light').catch(() => {});
+    if (safeBabies.length === 1 && currentBaby) {
+      navigation.navigate('EditProfile', { mode: 'baby', babyId: currentBaby.id });
+    } else if (safeBabies.length > 1) {
+      navigation.navigate('SwitchBaby', { returnTo: 'Main', returnLabel: 'Settings' });
+    } else {
+      navigation.navigate('CreateBabyProfile');
+    }
+  }, [safeBabies.length, currentBaby, hapticFeedback, triggerHaptic, navigation]);
+
+  const handleCurrentUserPress = useCallback(() => {
+    if (hapticFeedback) triggerHaptic('light').catch(() => {});
+    const guardianId = userProfile?.id || userProfile?.uid || 'parent1';
+    navigation.navigate('EditGuardian', {
+      guardianId,
+      mode: 'parent2',
+      fromChat: false,
+    });
+  }, [userProfile, hapticFeedback, triggerHaptic, navigation]);
+
+  const handleParent2Press = useCallback(() => {
+    if (hapticFeedback) triggerHaptic('light').catch(() => {});
+    if (parent2Profile) {
+      navigation.navigate('EditGuardian', {
+        guardianId: parent2Profile.id,
+        mode: 'parent2',
+        fromChat: false,
+      });
+    } else {
+      navigation.navigate('CoParentInviteScreen');
+    }
+  }, [parent2Profile, hapticFeedback, triggerHaptic, navigation]);
+
+  const handleGuardianPress = useCallback((guardian: FamilyMember) => {
+    if (hapticFeedback) triggerHaptic('light').catch(() => {});
+    navigation.navigate('EditGuardian', {
+      guardianId: guardian.id,
+      mode: 'guardian',
+      fromChat: false,
+    });
+  }, [hapticFeedback, triggerHaptic, navigation]);
+
+  const handleCommunityProfile = useCallback(() => {
+    if (hapticFeedback) triggerHaptic('medium').catch(() => {});
+    navigation.navigate('CommunityProfile', { userId: userProfile?.id });
+  }, [userProfile, hapticFeedback, triggerHaptic, navigation]);
+
+  return (
+    <BlurView
+      intensity={isDark ? 35 : 85}
+      style={styles.profileCard}
+      tint={isDark ? 'dark' : 'light'}
+    >
+      {/* User Info Row */}
+      <View style={styles.profileTopRow}>
+        <PressableScale onPress={handleCurrentUserPress} activeScale={0.92}>
+          <SafeAvatar
+            avatar={userProfile?.avatar}
+            size={72}
+            fallbackIcon="person"
+            fallbackColor={primaryColor}
+            showEditBadge={true}
+            borderWidth={3}
+            borderColor={isDark ? 'rgba(255,255,255,0.1)' : '#fff'}
+          />
+        </PressableScale>
+
+        <View style={styles.profileInfo}>
+          <Text style={[styles.profileName, isDark && styles.textLight]} numberOfLines={1}>
+            {userProfile?.fullName || 'Parent'}
+          </Text>
+          <Text style={[styles.profileEmail, isDark && styles.textMuted]} numberOfLines={1}>
+            {userProfile?.email || 'parent@littleloom.app'}
+          </Text>
+          {currentBaby && (
+            <View style={[styles.babyTag, { backgroundColor: `${secondaryColor}18` }]}>
+              <Ionicons name="heart" size={12} color={secondaryColor} />
+              <Text style={[styles.babyTagText, { color: secondaryColor }]}>
+                {currentBaby.name} · {currentBaby.age}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        <PressableScale onPress={handleCurrentUserPress} activeScale={0.85}>
+          <View style={[styles.settingsBtn, isDark && styles.settingsBtnDark]}>
+            <Ionicons name="settings-outline" size={22} color={isDark ? '#fff' : '#1a1a1a'} />
+          </View>
+        </PressableScale>
+      </View>
+
+      {/* Community Profile Link */}
+      <PressableScale onPress={handleCommunityProfile} activeScale={0.98}>
+        <View style={[styles.communityLink, { backgroundColor: `${primaryColor}10` }]}>
+          <View style={[styles.communityIcon, { backgroundColor: `${primaryColor}18` }]}>
+            <Ionicons name="globe-outline" size={18} color={primaryColor} />
+          </View>
+          <View style={styles.communityLinkText}>
+            <Text style={[styles.communityLinkTitle, isDark && styles.textLight]}>
+              Community Profile
+            </Text>
+            <Text style={[styles.communityLinkSub, isDark && styles.textMuted]}>
+              Edit your public profile & bio
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={isDark ? '#666' : '#bbb'} />
+        </View>
+      </PressableScale>
+
+      {/* Stats Row */}
+      <View style={styles.statsRow}>
+        <StatCard
+          icon="time-outline"
+          value={stats.entries}
+          label="Entries"
+          color="#4facfe"
+          isDark={isDark}
+          onPress={() => navigation.navigate('Timeline')}
+        />
+        <StatCard
+          icon="flame-outline"
+          value={stats.streak}
+          label="Day Streak"
+          color="#f59e0b"
+          isDark={isDark}
+          onPress={() => navigation.navigate('Achievements')}
+        />
+        <StatCard
+          icon="trophy-outline"
+          value={stats.milestones}
+          label="Milestones"
+          color={accentColor}
+          isDark={isDark}
+          onPress={() => navigation.navigate('Achievements', { highlightAchievement: 'milestones' })}
+        />
+      </View>
+
+      {/* Family Members Scroll */}
+      <View style={styles.familySection}>
+        <Text style={[styles.familySectionTitle, isDark && styles.textMuted]}>
+          FAMILY MEMBERS
+        </Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.familyScroll}
+        >
+          <FamilyMemberItem
+            avatar={userProfile?.avatar}
+            name="You"
+            label="Parent"
+            color={primaryColor}
+            isDark={isDark}
+            onPress={handleCurrentUserPress}
+            badge={
+              <View style={[styles.onlineIndicator, { backgroundColor: accentColor, borderColor: isDark ? '#1a1a2e' : '#fff' }]} />
+            }
+          />
+
+          <FamilyMemberItem
+            avatar={currentBaby?.avatar}
+            name={currentBaby?.name || 'Baby'}
+            label="Baby"
+            color={secondaryColor}
+            isDark={isDark}
+            onPress={handleBabyPress}
+            isBaby={true}
+            gender={currentBaby?.gender}
+            badge={hasMultipleBabies ? (
+              <View style={[styles.babyCountBadge, { backgroundColor: primaryColor }]}>
+                <Text style={styles.babyCountText}>{safeBabies.length}</Text>
+              </View>
+            ) : undefined}
+          />
+
+          {parent2Profile && (
+            <FamilyMemberItem
+              avatar={parent2Profile?.avatar}
+              name={parent2Profile?.fullName || 'Co-Parent'}
+              label="Co-Parent"
+              color="#11998e"
+              isDark={isDark}
+              onPress={handleParent2Press}
+            />
+          )}
+
+          {guardians?.map((guardian, index) => (
+            <FamilyMemberItem
+              key={guardian.id || index}
+              avatar={guardian?.avatar}
+              name={guardian.fullName || 'Guardian'}
+              label="Guardian"
+              color="#9b59b6"
+              isDark={isDark}
+              onPress={() => handleGuardianPress(guardian)}
+            />
+          ))}
+
+          <FamilyMemberItem
+            avatar={undefined}
+            name="Add"
+            label="Member"
+            color={primaryColor}
+            isDark={isDark}
+            onPress={() => navigation.navigate('FamilySharing')}
+            badge={
+              <View style={[styles.addBadge, isDark && styles.addBadgeDark]}>
+                <Ionicons name="add" size={18} color={primaryColor} />
+              </View>
+            }
+          />
+        </ScrollView>
+      </View>
+
+      {/* Quick Actions */}
+      <View style={styles.quickActionsRow}>
+        <QuickAction
+          icon="person-outline"
+          label="Profile"
+          color={primaryColor}
+          isDark={isDark}
+          onPress={handleCurrentUserPress}
+        />
+        <QuickAction
+          icon="heart-outline"
+          label="Baby"
+          color={secondaryColor}
+          isDark={isDark}
+          onPress={handleBabyPress}
+        />
+        <QuickAction
+          icon="people-outline"
+          label="Family"
+          color="#11998e"
+          isDark={isDark}
+          onPress={() => navigation.navigate('FamilySharing')}
+        />
+        <QuickAction
+          icon="notifications-outline"
+          label="Alerts"
+          color="#f59e0b"
+          isDark={isDark}
+          onPress={() => navigation.navigate('TrackerReminders')}
+        />
+      </View>
+
+      {/* Switch Baby Row */}
+      {hasMultipleBabies && (
+        <PressableScale
+          onPress={() => navigation.navigate('SwitchBaby', { returnTo: 'Main', returnLabel: 'Settings' })}
+          activeScale={0.98}
+        >
+          <View style={styles.switchBabyRow}>
+            <View style={[styles.switchBabyIcon, { backgroundColor: `${primaryColor}12` }]}>
+              <Ionicons name="swap-horizontal" size={18} color={primaryColor} />
+            </View>
+            <Text style={[styles.switchBabyText, { color: primaryColor }]}>
+              Switch Active Baby
+            </Text>
+            <View style={[styles.switchBabyBadge, { backgroundColor: primaryColor }]}>
+              <Text style={styles.switchBabyBadgeText}>{safeBabies.length}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={primaryColor} />
+          </View>
+        </PressableScale>
+      )}
+    </BlurView>
+  );
+});
+
+// ─── Skeleton Loader ──────────────────────────────────────────────
+
+const SkeletonLoader = React.memo(({ isDark }: { isDark: boolean }) => (
+  <View style={styles.skeletonContainer}>
+    {[1, 2, 3, 4].map((i) => (
+      <Animated.View
+        key={i}
+        entering={FadeInUp.delay(i * 80)}
+        style={[styles.skeletonCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' }]}
+      >
+        <View style={[styles.skeletonAvatar, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]} />
+        <View style={styles.skeletonText}>
+          <View style={[styles.skeletonLine, { width: '60%', backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]} />
+          <View style={[styles.skeletonLine, { width: '40%', backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)' }]} />
+        </View>
+      </Animated.View>
+    ))}
+  </View>
+));
+
+// ─── Main Component ───────────────────────────────────────────────
+
+function MoreScreen({ navigation, route }: SettingsScreenProps) {
   const insets = useSafeAreaInsets();
   const { sweetAlert } = useSweetAlert();
-  
+
   // ─── Contexts ────────────────────────────────────────────────────
   const { signOut, userProfile, isLoading: authLoading } = useAuth();
-  const { 
-    babies, 
-    currentBaby, 
-    currentBabyId, 
-    isLoading: babyLoading, 
-    hasSkippedBaby,
+  const {
+    babies,
+    currentBaby,
+    currentBabyId,
+    isLoading: babyLoading,
     getBabyStats,
     loadBabies,
   } = useBaby();
-  const { guardians, parent2: parent2Profile, familyMembers } = useFamily();
-  const { 
+  const {
     settings: securitySettings,
     isBiometricEnabled,
     toggleBiometric,
@@ -384,26 +896,43 @@ function MoreScreen({ navigation, route }: Props) {
     updateAutoLockTimeout,
     getAvailableAuthMethods,
   } = useSecurity();
-  const { 
-    themeColors, 
+  const { profile: userContextProfile } = useUser();
+  const { guardians, parent2: parent2Profile, familyMembers } = useFamily();
+  const { entries, loadEntries } = useActivity();
+  const {
+    themeColors,
     fullThemeColors,
-    darkMode, 
-    reduceMotion, 
-    hapticFeedback,
-    triggerHaptic,
     isDark: customizationIsDark,
+    triggerHaptic,
+    hapticFeedback,
   } = useCustomization();
-  const { isNavVisible, showNav } = useApp();
+
+  // ─── Supabase Hooks ─────────────────────────────────────────────
+  const { isConnected, user: supabaseUser } = useSupabase();
+
+  const { sync, isSyncing, getQueueStatus } = useOfflineSync();
+
+  // ─── Realtime Subscription ──────────────────────────────────────
+  useRealtimeSubscription({
+    table: 'family_members',
+    filter: currentBaby?.id ? `baby_id=eq.${currentBaby.id}` : undefined,
+    onInsert: () => {
+      loadBabies();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    },
+    onUpdate: () => loadBabies(),
+    onDelete: () => loadBabies(),
+    enabled: !!currentBaby?.id && isConnected,
+  });
 
   // ─── State ──────────────────────────────────────────────────────
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
     new Set(['security', 'preferences', 'family'])
   );
-  const [refreshing, setRefreshing] = useState(false);
+  const [showBabyModal, setShowBabyModal] = useState(false);
   const [showTimeoutModal, setShowTimeoutModal] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle');
-  const [onlineStatus, setOnlineStatus] = useState(true);
 
   // ─── Refs ──────────────────────────────────────────────────────
   const scrollY = useSharedValue(0);
@@ -422,7 +951,7 @@ function MoreScreen({ navigation, route }: Props) {
 
   const babyStats = currentBaby ? getBabyStats() : { streak: 0, milestones: 0, photos: 0, entries: 0 };
   const activityStats = {
-    entries: babyStats.entries || 0,
+    entries: entries?.length || 0,
     streak: babyStats.streak || 0,
     milestones: babyStats.milestones || 0,
   };
@@ -442,27 +971,6 @@ function MoreScreen({ navigation, route }: Props) {
     ];
   }, [isDark, fullThemeColors]);
 
-  // ─── Supabase Integration ──────────────────────────────────────
-  const { user, session, isConnected } = useSupabase();
-
-  // Real-time subscription for family updates
-  useRealtimeSubscription({
-    table: 'family_members',
-    filter: `baby_id=eq.${currentBaby?.id}`,
-    onInsert: (payload) => {
-      // Refresh family data
-      loadBabies();
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    },
-    onUpdate: (payload) => {
-      loadBabies();
-    },
-    onDelete: (payload) => {
-      loadBabies();
-    },
-    enabled: !!currentBaby?.id && isConnected,
-  });
-
   // ─── Handlers ──────────────────────────────────────────────────
 
   const toggleSection = useCallback((section: string) => {
@@ -480,8 +988,7 @@ function MoreScreen({ navigation, route }: Props) {
     try {
       await Promise.all([
         loadBabies(),
-        // Sync with Supabase
-        supabase.from('family_members').select('*').eq('baby_id', currentBaby?.id),
+        loadEntries?.(),
       ]);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
@@ -489,39 +996,32 @@ function MoreScreen({ navigation, route }: Props) {
     } finally {
       setRefreshing(false);
     }
-  }, [loadBabies, currentBaby?.id]);
+  }, [loadBabies, loadEntries]);
 
   const handleSync = useCallback(async () => {
-    if (syncStatus === 'syncing') return;
-    
-    setIsSyncing(true);
+    if (isSyncing) return;
+
     setSyncStatus('syncing');
-    
     try {
-      // Sync family members
-      if (currentBaby?.id && familyMembers.length > 0) {
-        const { error } = await supabase
-          .from('family_members')
-          .upsert(
-            familyMembers.map(member => ({
-              ...member,
-              baby_id: currentBaby.id,
-              updated_at: new Date().toISOString(),
-            })),
-            { onConflict: 'id' }
-          );
-        
-        if (error) throw error;
+      const result = await sync();
+      if (result.success) {
+        setSyncStatus('success');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        sweetAlert({
+          title: 'Synced!',
+          message: 'Your data is now in sync with the cloud',
+          type: 'success',
+          confirmText: 'Great',
+        });
+      } else {
+        setSyncStatus('error');
+        sweetAlert({
+          title: 'Sync Issue',
+          message: 'Some items failed to sync. They will be retried.',
+          type: 'warning',
+          confirmText: 'OK',
+        });
       }
-      
-      setSyncStatus('success');
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      sweetAlert({
-        title: 'Synced!',
-        message: 'Your family data is now in sync',
-        type: 'success',
-        confirmText: 'Great',
-      });
     } catch (error) {
       console.error('Sync error:', error);
       setSyncStatus('error');
@@ -532,10 +1032,9 @@ function MoreScreen({ navigation, route }: Props) {
         confirmText: 'OK',
       });
     } finally {
-      setIsSyncing(false);
       setTimeout(() => setSyncStatus('idle'), 3000);
     }
-  }, [currentBaby?.id, familyMembers, sweetAlert]);
+  }, [isSyncing, sync, sweetAlert]);
 
   const handleBiometricToggle = useCallback(async (enabled: boolean) => {
     if (enabled) {
@@ -591,6 +1090,19 @@ function MoreScreen({ navigation, route }: Props) {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }, [availableMethods, securitySettings.isAppLockEnabled, lockApp, sweetAlert, navigation]);
 
+  const formatTimeout = useCallback((minutes: number) => {
+    if (minutes < 60) return `${minutes} min`;
+    return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+  }, []);
+
+  const handleAutoLockTimeout = useCallback(() => {
+    if (!securitySettings.isAppLockEnabled) {
+      sweetAlert.toast('Enable App Lock first', 'Turn on Auto-Lock App to set a timeout', 'warning');
+      return;
+    }
+    setShowTimeoutModal(true);
+  }, [securitySettings.isAppLockEnabled, sweetAlert]);
+
   const handleSelectTimeout = useCallback(async (minutes: number) => {
     setShowTimeoutModal(false);
     try {
@@ -599,7 +1111,7 @@ function MoreScreen({ navigation, route }: Props) {
     } catch (err) {
       sweetAlert.error('Update Failed', 'Could not update auto-lock timeout.');
     }
-  }, [updateAutoLockTimeout, sweetAlert]);
+  }, [updateAutoLockTimeout, sweetAlert, formatTimeout]);
 
   const handleLogout = useCallback(async () => {
     const confirmed = await sweetAlert.confirm({
@@ -610,11 +1122,14 @@ function MoreScreen({ navigation, route }: Props) {
       destructive: true,
     });
     if (confirmed) {
-      // Sign out from Supabase
-      await supabase.auth.signOut();
       signOut();
     }
   }, [signOut, sweetAlert]);
+
+  const handleSelectBabyFromModal = useCallback((baby: any) => {
+    setShowBabyModal(false);
+    navigation.navigate('EditProfile', { mode: 'baby', babyId: baby.id });
+  }, [navigation]);
 
   const handleShare = useCallback(async () => {
     try {
@@ -627,13 +1142,6 @@ function MoreScreen({ navigation, route }: Props) {
     }
   }, [currentBaby]);
 
-  // ─── Timeout Helpers ──────────────────────────────────────────
-
-  const formatTimeout = useCallback((minutes: number) => {
-    if (minutes < 60) return `${minutes} min`;
-    return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
-  }, []);
-
   // ─── Scroll Handler ────────────────────────────────────────────
 
   const scrollHandler = useAnimatedScrollHandler({
@@ -641,6 +1149,22 @@ function MoreScreen({ navigation, route }: Props) {
       scrollY.value = event.contentOffset.y;
     },
   });
+
+  // ─── Effects ────────────────────────────────────────────────────
+
+  useFocusEffect(
+    useCallback(() => {
+      loadBabies();
+      loadEntries?.();
+    }, [loadBabies, loadEntries])
+  );
+
+  useEffect(() => {
+    if (route.params?.babySwitched) {
+      loadBabies();
+      navigation.setParams({ babySwitched: undefined });
+    }
+  }, [route.params?.babySwitched, loadBabies, navigation]);
 
   // ─── Render Sections ───────────────────────────────────────────
 
@@ -695,7 +1219,7 @@ function MoreScreen({ navigation, route }: Props) {
               icon="time"
               title="Lock Timeout"
               value={formatTimeout(securitySettings.autoLockTimeout)}
-              onPress={() => setShowTimeoutModal(true)}
+              onPress={handleAutoLockTimeout}
               color="#f59e0b"
               isDark={isDark}
               showArrow
@@ -729,6 +1253,7 @@ function MoreScreen({ navigation, route }: Props) {
     handlePinSetup,
     toggleAppLock,
     formatTimeout,
+    handleAutoLockTimeout,
     handleLockNow,
   ]);
 
@@ -796,6 +1321,7 @@ function MoreScreen({ navigation, route }: Props) {
 
   const renderFamilySection = useCallback(() => {
     const isExpanded = expandedSections.has('family');
+    const queueStatus = getQueueStatus();
     return (
       <Animated.View entering={FadeInUp.delay(200)} layout={Layout.springify()} style={styles.section}>
         <SectionHeader
@@ -844,19 +1370,36 @@ function MoreScreen({ navigation, route }: Props) {
             <MenuItem
               icon="cloud-upload"
               title="Sync with Cloud"
-              subtitle={isConnected ? 'Connected to Supabase' : 'Offline mode'}
+              subtitle={isConnected ? `${queueStatus.pending} pending` : 'Offline mode'}
               onPress={handleSync}
               color="#3b82f6"
               isDark={isDark}
               loading={isSyncing}
-              value={syncStatus === 'success' ? '✓ Synced' : syncStatus === 'error' ? '✗ Failed' : undefined}
+              value={
+                syncStatus === 'success' ? '✓ Synced' :
+                syncStatus === 'error' ? '✗ Failed' :
+                isConnected ? `🔄 ${queueStatus.pending}` : '📴 Offline'
+              }
               isLast
             />
           </BlurView>
         )}
       </Animated.View>
     );
-  }, [expandedSections, guardians, secondary, accent, isDark, toggleSection, navigation, isConnected, isSyncing, syncStatus, handleSync]);
+  }, [
+    expandedSections,
+    guardians,
+    secondary,
+    accent,
+    isDark,
+    toggleSection,
+    navigation,
+    isConnected,
+    isSyncing,
+    syncStatus,
+    handleSync,
+    getQueueStatus,
+  ]);
 
   const renderTrackingSection = useCallback(() => {
     const isExpanded = expandedSections.has('tracking');
@@ -899,7 +1442,7 @@ function MoreScreen({ navigation, route }: Props) {
               icon="calendar-outline"
               title="Activity History"
               subtitle="View complete timeline"
-              onPress={() => navigation.navigate('Main', { screen: 'Track' })}
+              onPress={() => navigation.navigate('Timeline')}
               color={primary}
               isDark={isDark}
               showArrow
@@ -1071,12 +1614,14 @@ function MoreScreen({ navigation, route }: Props) {
       >
         {/* ─── Header ────────────────────────────────────────────── */}
         <Animated.View entering={FadeInUp.duration(400)} style={styles.header}>
-          <Text style={[styles.headerTitle, isDark && styles.textLight]}>
-            Settings
-          </Text>
-          <Text style={[styles.headerSubtitle, isDark && styles.textMuted]}>
-            Manage your account, family, and preferences
-          </Text>
+          <View style={styles.headerLeft}>
+            <Text style={[styles.headerTitle, isDark && styles.textLight]}>
+              Settings
+            </Text>
+            <Text style={[styles.headerSubtitle, isDark && styles.textMuted]}>
+              Manage your account, family, and preferences
+            </Text>
+          </View>
           <View style={styles.headerRight}>
             <TouchableOpacity
               onPress={handleShare}
@@ -1089,13 +1634,36 @@ function MoreScreen({ navigation, route }: Props) {
               style={[styles.headerBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' }]}
               disabled={isSyncing}
             >
-              <Ionicons 
-                name={syncStatus === 'success' ? 'checkmark' : isSyncing ? 'refresh' : 'cloud-outline'} 
-                size={20} 
-                color={syncStatus === 'success' ? '#10b981' : isDark ? '#fff' : '#1a1a1a'} 
+              <Ionicons
+                name={syncStatus === 'success' ? 'checkmark' : isSyncing ? 'refresh' : 'cloud-outline'}
+                size={20}
+                color={
+                  syncStatus === 'success' ? '#10b981' :
+                  syncStatus === 'error' ? '#ef4444' :
+                  isDark ? '#fff' : '#1a1a1a'
+                }
               />
             </TouchableOpacity>
           </View>
+        </Animated.View>
+
+        {/* ─── Profile Card ──────────────────────────────────────── */}
+        <Animated.View entering={FadeInUp.delay(50).duration(500)}>
+          <ProfileHeader
+            navigation={navigation}
+            isDark={isDark}
+            userProfile={userProfile || userContextProfile}
+            babies={safeBabies}
+            currentBaby={currentBaby}
+            currentBabyId={currentBabyId}
+            parent2Profile={parent2Profile}
+            guardians={guardians || []}
+            onShowBabyModal={() => setShowBabyModal(true)}
+            stats={activityStats}
+            primaryColor={primary}
+            secondaryColor={secondary}
+            accentColor={accent}
+          />
         </Animated.View>
 
         {/* ─── Sections ──────────────────────────────────────────── */}
@@ -1241,6 +1809,17 @@ function MoreScreen({ navigation, route }: Props) {
           </BlurView>
         </View>
       </Modal>
+
+      {/* ─── Baby Selection Modal ────────────────────────────────── */}
+      <BabySelectionModal
+        visible={showBabyModal}
+        onClose={() => setShowBabyModal(false)}
+        babies={safeBabies}
+        currentBabyId={currentBabyId}
+        onSelectBaby={handleSelectBabyFromModal}
+        isDark={isDark}
+        primaryColor={primary}
+      />
     </LinearGradient>
   );
 }
@@ -1262,18 +1841,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexWrap: 'wrap',
   },
+  headerLeft: { flex: 1 },
   headerTitle: {
     fontSize: 34,
     fontWeight: '800',
     color: '#1a1a1a',
     letterSpacing: -0.5,
-    flex: 1,
   },
   headerSubtitle: {
     fontSize: 15,
     color: '#666',
     fontWeight: '500',
-    width: '100%',
     marginTop: 2,
   },
   headerRight: {
@@ -1289,7 +1867,282 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  // ─── Section ──────────────────────────────────────────────────
+  // ─── Profile Card ─────────────────────────────────────────────
+  profileCard: {
+    borderRadius: 28,
+    padding: 20,
+    marginBottom: 20,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+  },
+  profileTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  profileInfo: {
+    flex: 1,
+    marginLeft: 14,
+  },
+  profileName: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#1a1a1a',
+    marginBottom: 3,
+    letterSpacing: -0.3,
+  },
+  profileEmail: {
+    fontSize: 13,
+    color: '#666',
+    marginBottom: 8,
+    fontWeight: '500',
+  },
+  babyTag: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  babyTagText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  settingsBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  settingsBtnDark: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+
+  communityLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 18,
+    marginBottom: 16,
+    gap: 12,
+  },
+  communityIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  communityLinkText: { flex: 1 },
+  communityLinkTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1a1a1a',
+    marginBottom: 2,
+  },
+  communityLinkSub: {
+    fontSize: 13,
+    color: '#888',
+    fontWeight: '500',
+  },
+
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 18,
+    gap: 10,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.6)',
+    borderRadius: 20,
+    padding: 14,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
+    overflow: 'hidden',
+  },
+  statCardDark: {
+    backgroundColor: 'rgba(30,30,40,0.4)',
+    borderColor: 'rgba(255,255,255,0.04)',
+  },
+  statIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  statValue: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#1a1a1a',
+    marginBottom: 2,
+  },
+  statLabel: {
+    fontSize: 11,
+    color: '#666',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+
+  familySection: { marginBottom: 18 },
+  familySectionTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#888',
+    marginBottom: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  familyScroll: {
+    paddingRight: 16,
+    gap: 14,
+    flexDirection: 'row',
+  },
+  familyMember: {
+    alignItems: 'center',
+    minWidth: 64,
+  },
+  familyAvatarWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'transparent',
+    marginBottom: 6,
+  },
+  familyName: {
+    fontSize: 12,
+    color: '#1a1a1a',
+    fontWeight: '700',
+    maxWidth: 70,
+    textAlign: 'center',
+  },
+  familyLabel: {
+    fontSize: 11,
+    color: '#888',
+    fontWeight: '500',
+    marginTop: 1,
+  },
+  onlineIndicator: {
+    position: 'absolute',
+    bottom: 2,
+    right: 2,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 2,
+  },
+  babyCountBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  babyCountText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  addBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(102,126,234,0.2)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  addBadgeDark: {
+    backgroundColor: '#1a1a2e',
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+
+  quickActionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.04)',
+  },
+  quickAction: {
+    alignItems: 'center',
+    gap: 8,
+  },
+  quickActionIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickActionLabel: {
+    fontSize: 12,
+    color: '#666',
+    fontWeight: '600',
+  },
+
+  switchBabyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 14,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.04)',
+    gap: 12,
+  },
+  switchBabyIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  switchBabyText: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  switchBabyBadge: {
+    borderRadius: 10,
+    minWidth: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  switchBabyBadgeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+
+  // ─── Sections ──────────────────────────────────────────────────
   section: { marginBottom: 4 },
 
   sectionHeader: {
@@ -1300,6 +2153,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     marginBottom: 2,
   },
+  sectionHeaderDark: {},
   sectionHeaderLeft: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1332,7 +2186,6 @@ const styles = StyleSheet.create({
     color: '#888',
     fontWeight: '500',
   },
-  sectionHeaderDark: {},
 
   menuContainer: {
     borderRadius: 24,
@@ -1521,6 +2374,100 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
+  // ─── Modal ────────────────────────────────────────────────────
+  modalBackdrop: {
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  modalSheet: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    overflow: 'hidden',
+    maxHeight: SCREEN_HEIGHT * 0.7,
+  },
+  modalSheetBlur: {
+    paddingTop: 12,
+    paddingBottom: 24,
+  },
+  modalHandle: {
+    width: 40,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: 'rgba(150,150,150,0.3)',
+    alignSelf: 'center',
+    marginBottom: 16,
+  },
+  modalSheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+  },
+  modalSheetTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#1a1a1a',
+  },
+  modalCloseBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalCloseBtnDark: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  modalSheetContent: {
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+
+  babyOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.5)',
+    gap: 14,
+  },
+  babyOptionDark: {
+    backgroundColor: 'rgba(30,30,40,0.4)',
+  },
+  babyOptionActive: {
+    borderWidth: 2,
+    backgroundColor: 'rgba(102,126,234,0.08)',
+  },
+  babyOptionActiveDark: {
+    backgroundColor: 'rgba(102,126,234,0.15)',
+  },
+  babyOptionInfo: {
+    flex: 1,
+  },
+  babyOptionName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1a1a1a',
+    marginBottom: 3,
+  },
+  babyOptionMeta: {
+    fontSize: 13,
+    color: '#888',
+    fontWeight: '500',
+  },
+  activeCheck: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
   // ─── Timeout Modal ────────────────────────────────────────────
   modalOverlay: {
     flex: 1,
@@ -1562,17 +2509,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginBottom: 16,
   },
-  modalCloseBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    backgroundColor: 'rgba(0,0,0,0.05)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalCloseBtnDark: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
   timeoutOption: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1606,13 +2542,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#1a1a1a',
-  },
-  activeCheck: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 
   // ─── Skeleton ──────────────────────────────────────────────────
