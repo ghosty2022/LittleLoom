@@ -17,7 +17,7 @@ import Animated, {
   FadeInUp, 
   FadeIn,
 } from 'react-native-reanimated';
-import { SmartPhotoField } from './SmartPhotoField';
+import SmartPhotoField from '../../screens/gallery/SmartPhotoField';
 import {
   UnifiedTrackerConfig,
   FieldConfig,

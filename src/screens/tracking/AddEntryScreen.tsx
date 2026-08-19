@@ -9,7 +9,7 @@ import { SafeAvatar } from '../../components/SafeAvatar';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { TimelinePicker } from '../../components/trackers/TimelinePicker';
 import { DynamicTrackerForm } from '../../components/trackers/DynamicTrackerForm';
-import { SmartPhotoField } from '../gallery/SmartPhotoField'; // ← Fixed path
+import SmartPhotoField from '../../screens/gallery/SmartPhotoField'; // ← Fixed path
 import { useTrackerProgressive } from '../../hooks/useTrackerProgressive';
 import type { ProgressiveCorrelation, ProgressiveReminder } from '../../hooks/useTrackerProgressive';
 

@@ -6,6 +6,7 @@ import { drizzle } from 'drizzle-orm/expo-sqlite';
 import { migrate } from 'drizzle-orm/expo-sqlite/migrator';
 import * as schema from './schema';
 import migrations from './migrations/migrations';
+import React, { useState, useEffect } from 'react';
 
 const DB_NAME = 'littleloom.db';
 let expoDb: SQLiteDatabase | null = null;
@@ -235,7 +236,7 @@ export async function initializeDatabase(): Promise<void> {
 
       // 2. CRITICAL: Verify tables actually exist, create if missing
       if (expoDb) {
-        ensureCoreTablesExist(expoDb);
+        await ensureCoreTablesExist(expoDb);
       }
 
       // 3. Run AsyncStorage → SQLite data migration
