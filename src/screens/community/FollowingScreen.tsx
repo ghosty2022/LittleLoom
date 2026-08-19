@@ -14,7 +14,12 @@ import { SafeAvatar } from '../../components/SafeAvatar';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { InlineSpinner, CommunitySpinner } from '../../components/UniversalSpinner';
 
-import { CommunityColors, CommunitySpacing } from '../../theme/CommunityTheme';
+import {
+  CommunityColors,
+  CommunitySpacing,
+  CommunityBorderRadius,
+  CommunityShadows,
+} from '../../theme/CommunityTheme';
 
 type FollowingScreenProps = NativeStackScreenProps<CommunityStackParamList, 'Following'>;
 
@@ -42,10 +47,7 @@ const LITTLELOOM_TEAM: CommunityUser = {
   isFollowing: true,
 };
 
-// Demo generator removed — now resolving real following IDs from storage
-
-export default function FollowingScreen
-  ({ navigation, route }: FollowingScreenProps) {
+export default function FollowingScreen({ navigation, route }: FollowingScreenProps) {
   const { userId } = route.params;
   const { currentUser, unfollowUser, blockUser, isUserBlocked, getUserById, getFollowing } = useCommunity();
 
@@ -184,7 +186,7 @@ export default function FollowingScreen
             sweetAlert.alert('Action Failed', 'Failed to block user', 'error');
           });
       },
-      () => {}, // Cancel
+      () => {},
       blocked ? 'Unblock' : 'Block',
       'Cancel'
     );
@@ -203,12 +205,12 @@ export default function FollowingScreen
           activeOpacity={0.8}
         >
           <View style={styles.avatarContainer}>
-            {/* SafeAvatar with online status indicator */}
             <SafeAvatar
               avatar={item.avatar}
               size={44}
               fallbackIcon="person"
               fallbackColor={CommunityColors.primary}
+              fallbackBgColor={CommunityColors.primary + '20'}
               borderWidth={2}
               borderColor={item.onlineStatus === 'online' ? CommunityColors.success : '#fff'}
             />
@@ -306,7 +308,6 @@ export default function FollowingScreen
     <LinearGradient colors={CommunityColors.background.gradient} style={[styles.container]}>
       <StatusBar barStyle="dark-content" />
 
-      {/* Loading Spinner */}
       <CommunitySpinner
         visible={loading && followingList.length === 0}
         text="Loading..."
@@ -315,7 +316,6 @@ export default function FollowingScreen
         variant="liquid"
       />
 
-      {/* Header */}
       <BlurView intensity={95} style={styles.header} tint="light">
         <LinearGradient 
           colors={['rgba(255,255,255,0.98)', 'rgba(255,250,250,0.95)']} 
@@ -333,7 +333,6 @@ export default function FollowingScreen
         <View style={styles.headerButton} />
       </BlurView>
 
-      {/* Search Bar */}
       <View style={styles.searchContainer}>
         <View style={styles.searchWrapper}>
           <Ionicons name="search" size={18} color={CommunityColors.text.tertiary} />
@@ -354,7 +353,6 @@ export default function FollowingScreen
         </View>
       </View>
 
-      {/* Following List */}
       <FlatList
         data={filteredFollowing}
         renderItem={renderFollowing}

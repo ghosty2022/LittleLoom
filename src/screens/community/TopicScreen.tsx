@@ -350,7 +350,9 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
           <Text style={styles.topicName}>{topic.name}</Text>
           <Text style={styles.topicDescription}>{topic.description}</Text>
           <View style={styles.topicStats}>
-            <Text style={styles.stat} onPress={() => navigation.navigate('TopicMembers', { topicId })}>{topic.members.toLocaleString()} members</Text>
+            <Text style={styles.stat} onPress={() => navigation.navigate('TopicMembers', { topicId })}>
+              {topic.members.toLocaleString()} members
+            </Text>
             <Text style={styles.statDot}>•</Text>
             <Text style={styles.stat}>{topic.posts.toLocaleString()} posts</Text>
           </View>
@@ -370,7 +372,6 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
           <TouchableOpacity
             style={styles.sortButton}
             onPress={() => {
-              // Simple sort toggle instead of confirm dialog
               setSortBy(prev => prev === 'trending' ? 'newest' : prev === 'newest' ? 'popular' : 'trending');
               triggerHaptic('light');
             }}

@@ -1,8 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 
 import { useCommunity } from '../../context/CommunityContext';
-import { EmptyState } from '../../components/EmptyState';
-import {  Alert, Button, Dimensions, FlatList, RefreshControl, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Dimensions, FlatList, RefreshControl, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,7 +15,12 @@ import { SafeAvatar } from '../../components/SafeAvatar';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { InlineSpinner, CommunitySpinner } from '../../components/UniversalSpinner';
 
-import { CommunityColors, CommunitySpacing, CommunityBorderRadius, CommunityShadows } from '../../theme/CommunityTheme';
+import {
+  CommunityColors,
+  CommunitySpacing,
+  CommunityBorderRadius,
+  CommunityShadows,
+} from '../../theme/CommunityTheme';
 
 type FollowersScreenProps = NativeStackScreenProps<CommunityStackParamList, 'Followers'>;
 
@@ -44,20 +48,16 @@ const LITTLELOOM_TEAM: CommunityUser = {
   isFollowing: true,
 };
 
-// Demo generator removed — now resolving real follower IDs from storage
-
-export default function FollowersScreen
-  ({ navigation, route }: FollowersScreenProps) {
+export default function FollowersScreen({ navigation, route }: FollowersScreenProps) {
   const { userId } = route.params;
   const { currentUser, followUser, unfollowUser, isFollowing, blockUser, isUserBlocked, getUserById, getFollowers } = useCommunity();
-
-// Guard against undefined functions
-const safeIsUserBlocked = useCallback((userId: string) => {
-  return isUserBlocked ? isUserBlocked(userId) : false;
-}, [isUserBlocked]);
   const { profile } = useUser();
-  
   const sweetAlert = useSweetAlert();
+
+  // Guard against undefined functions
+  const safeIsUserBlocked = useCallback((userId: string) => {
+    return isUserBlocked ? isUserBlocked(userId) : false;
+  }, [isUserBlocked]);
 
   const [followers, setFollowers] = useState<CommunityUser[]>([]);
   const [filteredFollowers, setFilteredFollowers] = useState<CommunityUser[]>([]);
@@ -165,7 +165,7 @@ const safeIsUserBlocked = useCallback((userId: string) => {
   };
 
   const handleMoreOptions = (follower: CommunityUser) => {
-    const isBlocked = isUserBlocked(follower.id);
+    const isBlocked = safeIsUserBlocked(follower.id);
 
     sweetAlert.confirm(
       follower.displayName,
@@ -183,7 +183,7 @@ const safeIsUserBlocked = useCallback((userId: string) => {
             sweetAlert.error('Action Failed', 'Failed to block user');
           });
       },
-      () => {}, // Cancel
+      () => {},
       isBlocked ? 'Unblock' : 'Block',
       'Cancel'
     );
@@ -203,12 +203,12 @@ const safeIsUserBlocked = useCallback((userId: string) => {
           activeOpacity={0.8}
         >
           <View style={styles.avatarContainer}>
-            {/* REPLACED: RenderAvatar → SafeAvatar */}
             <SafeAvatar
               avatar={item.avatar}
               size={44}
               fallbackIcon="person"
               fallbackColor={CommunityColors.primary}
+              fallbackBgColor={CommunityColors.primary + '20'}
               borderWidth={2}
               borderColor={item.onlineStatus === 'online' ? CommunityColors.success : '#fff'}
             />
@@ -295,7 +295,6 @@ const safeIsUserBlocked = useCallback((userId: string) => {
     <LinearGradient colors={CommunityColors.background.gradient} style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
 
-      {/* Loading Spinner */}
       <CommunitySpinner
         visible={loading && followers.length === 0}
         text="Loading followers..."
@@ -304,7 +303,6 @@ const safeIsUserBlocked = useCallback((userId: string) => {
         variant="liquid"
       />
 
-      {/* Header */}
       <BlurView intensity={95} style={styles.header} tint="light">
         <LinearGradient 
           colors={['rgba(255,255,255,0.98)', 'rgba(255,250,250,0.95)']} 
@@ -322,7 +320,6 @@ const safeIsUserBlocked = useCallback((userId: string) => {
         <View style={styles.headerButton} />
       </BlurView>
 
-      {/* Search Bar */}
       <View style={styles.searchContainer}>
         <View style={styles.searchWrapper}>
           <Ionicons name="search" size={18} color={CommunityColors.text.tertiary} />
@@ -343,7 +340,6 @@ const safeIsUserBlocked = useCallback((userId: string) => {
         </View>
       </View>
 
-      {/* Followers List */}
       <FlatList
         data={filteredFollowers}
         renderItem={renderFollower}

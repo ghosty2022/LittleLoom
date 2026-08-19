@@ -1,10 +1,9 @@
 import React, { useCallback, useState } from 'react';
-import { EmptyState } from '../../components/EmptyState';
 import { useCommunity } from '../../context/CommunityContext';
-import {  Alert, Button, FlatList, Pressable, RefreshControl, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { FlatList, RefreshControl, StatusBar, StyleSheet, Text, TouchableOpacity, View, Pressable } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import Animated, { FadeInUp, FadeIn, FadeOut, Layout } from 'react-native-reanimated';
+import Animated, { FadeInUp, Layout } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CommunityStackParamList } from '../../types/navigation';
@@ -13,17 +12,11 @@ import { useApp } from '../../context/AppContext';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { useSweetAlert } from '../../components/SweetAlert';
 
-
-// ═══════════════════════════════════════════════════════════
-// UNIFIED LITTLELOOM THEME — matches CommunityScreen exactly
-// ═══════════════════════════════════════════════════════════
+// ─── Unified LL Theme ────────────────────────────────────────
 const LL = {
   primary: '#7c6cf1',
-  primaryLight: '#a5b4fc',
   primaryDark: '#6b5ce7',
-  primaryGhost: '#7c6cf118',
   accent: '#f472b6',
-  accentSoft: '#fbcfe8',
   success: '#34d399',
   warning: '#fbbf24',
   info: '#38bdf8',
@@ -92,7 +85,7 @@ export default function NotificationsScreen({ navigation }: NotificationsScreenP
     sweetAlert.toast('All Read', 'All notifications marked as read', 'success');
   };
 
-  const handleNotificationPress = async (notification: Notification) => {
+  const handleNotificationPress = async (notification: any) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     await markNotificationRead(notification.id);
 
@@ -117,7 +110,7 @@ export default function NotificationsScreen({ navigation }: NotificationsScreenP
     }
   };
 
-  const handleMoreOptions = (notification: Notification) => {
+  const handleMoreOptions = (notification: any) => {
     sweetAlert.confirm(
       'Notification Options',
       '',
@@ -140,7 +133,7 @@ export default function NotificationsScreen({ navigation }: NotificationsScreenP
 
   const unreadCount = getUnreadCount();
 
-  const renderNotification = ({ item, index }: { item: Notification; index: number }) => {
+  const renderNotification = ({ item, index }: { item: any; index: number }) => {
     const icon = NOTIFICATION_ICONS[item.type] || NOTIFICATION_ICONS.system;
 
     return (
@@ -177,7 +170,7 @@ export default function NotificationsScreen({ navigation }: NotificationsScreenP
                 fallbackBgColor={`${LL.primary}15`}
                 borderWidth={0}
               />
-              {!item.read && <View style={styles.unreadDot} />}
+              {!item.read && <View style={[styles.unreadDot, { borderColor: isDark ? LL.darkCard : LL.white }]} />}
             </View>
           </View>
 
@@ -213,7 +206,6 @@ export default function NotificationsScreen({ navigation }: NotificationsScreenP
     <View style={[styles.container, { backgroundColor: isDark ? LL.darkBg : LL.gray50 }]}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
-      {/* ── Header ── */}
       <View style={[styles.header, { backgroundColor: isDark ? LL.darkSurface : LL.white, borderBottomColor: isDark ? LL.darkBorder : LL.gray200 }]}>
         <View style={styles.headerRow}>
           <TouchableOpacity
@@ -245,7 +237,6 @@ export default function NotificationsScreen({ navigation }: NotificationsScreenP
         </View>
       </View>
 
-      {/* ── Filter Tabs ── */}
       <View style={[styles.filterContainer, { backgroundColor: isDark ? LL.darkBg : LL.gray50 }]}>
         {(['all', 'mentions', 'likes'] as const).map((f, i) => (
           <Animated.View key={f} entering={FadeInUp.delay(i * 50).duration(300)}>
@@ -277,7 +268,6 @@ export default function NotificationsScreen({ navigation }: NotificationsScreenP
         ))}
       </View>
 
-      {/* ── Notifications List ── */}
       <FlatList
         data={filteredNotifications}
         renderItem={renderNotification}
@@ -424,7 +414,6 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     backgroundColor: LL.accent,
     borderWidth: 2.5,
-    borderColor: isDark => isDark ? LL.darkCard : LL.white,
   },
   notificationContent: {
     flex: 1,
