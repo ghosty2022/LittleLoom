@@ -1,5 +1,20 @@
+// screens/settings/CustomizeScreen.tsx
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import {  ActivityIndicator, BackHandler, Dimensions, Image, Pressable, ScrollView, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  BackHandler,
+  Dimensions,
+  Image,
+  Pressable,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Switch,
+  Text,
+  TouchableOpacity,
+  View,
+  Platform,
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
@@ -28,6 +43,8 @@ import type { CustomizationSettings, AppearanceMode } from '../../hooks/useCusto
 
 import { useSweetAlert } from '../../components/SweetAlert';
 import { SafeAvatar } from '../../components/SafeAvatar';
+import { useSupabase } from '../../hooks/useSupabase';
+import { UniversalSpinner } from '../../components/UniversalSpinner';
 
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
@@ -80,6 +97,8 @@ const ACCENT_COLORS = [
   '#f97316', '#ef4444', '#14b8a6', '#8b5cf6', '#e11d48',
   '#06b6d4', '#84cc16',
 ];
+
+// ─── Components ─────────────────────────────────────────────────────
 
 const PillSelector = <T extends string>({
   options,
@@ -210,6 +229,7 @@ const ModernToggle = ({
   textColor,
   subTextColor,
   isDark,
+  disabled = false,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   title: string;
@@ -220,10 +240,12 @@ const ModernToggle = ({
   textColor: string;
   subTextColor: string;
   isDark: boolean;
+  disabled?: boolean;
 }) => {
   const translateX = useSharedValue(0);
 
   const handlePress = () => {
+    if (disabled) return;
     translateX.value = withTiming(value ? -3 : 3, { duration: 80 });
     setTimeout(() => {
       translateX.value = withTiming(0, { duration: 120 });
@@ -245,9 +267,11 @@ const ModernToggle = ({
           borderRadius: 18,
           borderWidth: 1,
           borderColor: value ? color + '25' : isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)',
+          opacity: disabled ? 0.5 : 1,
         },
       ]}
       android_ripple={{ color: color + '10', borderless: false }}
+      disabled={disabled}
     >
       <Animated.View style={[styles.modernToggleInner, animatedStyle]}>
         <View style={[styles.modernToggleIcon, { backgroundColor: color + '15' }]}>
@@ -259,10 +283,11 @@ const ModernToggle = ({
         </View>
         <Switch
           value={value}
-          onValueChange={onToggle}
+          onValueChange={disabled ? undefined : onToggle}
           trackColor={{ false: isDark ? 'rgba(255,255,255,0.12)' : '#e2e8f0', true: color + '50' }}
           thumbColor={value ? color : isDark ? '#555' : '#f4f3f4'}
           style={{ transform: [{ scale: 0.85 }] }}
+          disabled={disabled}
         />
       </Animated.View>
     </Pressable>
@@ -295,11 +320,14 @@ const SectionHeader = ({
   </View>
 );
 
+// ─── Main Component ─────────────────────────────────────────────────
+
 export default function CustomizeScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const systemColorScheme = useColorScheme();
   const { setAppearance } = useTheme();
   const { sweetAlert } = useSweetAlert();
+  const { user, isConnected } = useSupabase();
   const {
     settings,
     isLoaded,
@@ -310,6 +338,7 @@ export default function CustomizeScreen({ navigation }: Props) {
   } = useCustomization();
 
   const [pending, setPending] = useState<CustomizationSettings>(settings);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const effectiveIsDark = useMemo(() => {
     if (pending.appearance === 'system') return systemColorScheme === 'dark';
@@ -392,25 +421,62 @@ export default function CustomizeScreen({ navigation }: Props) {
   }, [hapticMedium]);
 
   const savePreferences = useCallback(async () => {
+    setIsSyncing(true);
     try {
+      // Save locally
       await updateSettings(pending);
+
+      // Sync to Supabase if connected
+      if (isConnected && user) {
+        const { error } = await supabase
+          .from('user_preferences')
+          .upsert({
+            user_id: user.id,
+            theme: pending.theme,
+            avatar: pending.avatar,
+            appearance: pending.appearance,
+            font_size: pending.fontSize,
+            border_radius: pending.borderRadius,
+            animation_speed: pending.animationSpeed,
+            accent_color: pending.accentColor,
+            use_gradients: pending.useGradients,
+            use_blur: pending.useBlur,
+            show_shadows: pending.showShadows,
+            compact_spacing: pending.compactSpacing,
+            reduce_motion: pending.reduceMotion,
+            high_contrast: pending.highContrast,
+            bold_text: pending.boldText,
+            haptic_feedback: pending.hapticFeedback,
+            sound_effects: pending.soundEffects,
+            notifications: pending.notifications,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'user_id' });
+
+        if (error) {
+          console.warn('Failed to sync preferences:', error);
+        }
+      }
+
       hapticSuccess();
       sweetAlert({
         title: 'Saved!',
-        message: 'Your style is locked in ✨',
+        message: isConnected ? 'Your style is locked in and synced ✨' : 'Your style is locked in ✨',
         type: 'success',
         confirmText: 'Done',
         onConfirm: () => navigation.goBack(),
       });
     } catch (error) {
+      console.error('Save error:', error);
       sweetAlert({
         title: 'Oops!',
         message: 'Could not save. Try again.',
         type: 'error',
         confirmText: 'Retry',
       });
+    } finally {
+      setIsSyncing(false);
     }
-  }, [pending, updateSettings, hapticSuccess, sweetAlert, navigation]);
+  }, [pending, updateSettings, isConnected, user, hapticSuccess, sweetAlert, navigation]);
 
   const handleResetDefaults = useCallback(() => {
     sweetAlert({
@@ -425,9 +491,24 @@ export default function CustomizeScreen({ navigation }: Props) {
         await setAppearance('system');
         setPending(DEFAULT_SETTINGS);
         hapticSuccess();
+
+        // Also reset in Supabase
+        if (isConnected && user) {
+          try {
+            await supabase
+              .from('user_preferences')
+              .upsert({
+                user_id: user.id,
+                ...DEFAULT_SETTINGS,
+                updated_at: new Date().toISOString(),
+              }, { onConflict: 'user_id' });
+          } catch (e) {
+            console.warn('Failed to reset cloud preferences:', e);
+          }
+        }
       },
     });
-  }, [reset, setAppearance, hapticSuccess, sweetAlert]);
+  }, [reset, setAppearance, hapticSuccess, sweetAlert, isConnected, user]);
 
   const handleBack = useCallback(() => {
     if (hasChanges) {
@@ -472,7 +553,7 @@ export default function CustomizeScreen({ navigation }: Props) {
   if (!isLoaded) {
     return (
       <View style={[styles.loadingContainer, { backgroundColor: previewColors.background }]}>
-        <ActivityIndicator size="large" color={currentTheme.primary} />
+        <UniversalSpinner size={40} color={currentTheme.primary} variant="liquid" section="settings" />
         <Text style={[styles.loadingText, { color: subTextColor }]}>Loading your style...</Text>
       </View>
     );
@@ -482,6 +563,18 @@ export default function CustomizeScreen({ navigation }: Props) {
     <View style={[styles.container, { backgroundColor: previewColors.background }]}>
       <StatusBar barStyle={effectiveIsDark ? 'light-content' : 'dark-content'} />
 
+      {/* ─── Cloud Sync Status ─── */}
+      {isConnected && user && (
+        <Animated.View entering={FadeInUp.delay(50)} style={styles.syncStatus}>
+          <View style={[styles.syncBadge, { backgroundColor: `${effectivePrimary}15` }]}>
+            <View style={[styles.syncDot, { backgroundColor: '#10b981' }]} />
+            <Text style={[styles.syncText, { color: '#10b981' }]}>
+              Synced to cloud
+            </Text>
+          </View>
+        </Animated.View>
+      )}
+
       <ScrollView
         contentContainerStyle={{
           paddingTop: insets.top + 20,
@@ -490,13 +583,14 @@ export default function CustomizeScreen({ navigation }: Props) {
         }}
         showsVerticalScrollIndicator={false}
       >
-        {/* ===== MODERN HEADER ===== */}
+        {/* ─── Header ─── */}
         <Animated.View entering={FadeInUp.duration(400)} style={styles.modernHeader}>
           <View style={styles.headerTop}>
             <TouchableOpacity
               style={[styles.headerButton, { backgroundColor: cardBg }]}
               onPress={handleBack}
               activeOpacity={0.7}
+              disabled={isSyncing}
             >
               <Ionicons name="arrow-back" size={22} color={textColor} />
             </TouchableOpacity>
@@ -510,13 +604,14 @@ export default function CustomizeScreen({ navigation }: Props) {
               style={[styles.headerButton, { backgroundColor: cardBg }]}
               onPress={handleResetDefaults}
               activeOpacity={0.7}
+              disabled={isSyncing}
             >
               <Ionicons name="refresh-outline" size={20} color={textColor} />
             </TouchableOpacity>
           </View>
         </Animated.View>
 
-        {/* ===== LIVE PREVIEW CARD ===== */}
+        {/* ─── Live Preview ─── */}
         <Animated.View entering={FadeInUp.delay(100).duration(500)}>
           <View
             style={[
@@ -575,7 +670,7 @@ export default function CustomizeScreen({ navigation }: Props) {
           </View>
         </Animated.View>
 
-        {/* ===== APPEARANCE ===== */}
+        {/* ─── Appearance ─── */}
         <Animated.View entering={FadeInUp.delay(200).duration(500)} style={styles.section}>
           <SectionHeader
             icon="contrast"
@@ -596,7 +691,7 @@ export default function CustomizeScreen({ navigation }: Props) {
           />
         </Animated.View>
 
-        {/* ===== COLOR THEME ===== */}
+        {/* ─── Color Theme ─── */}
         <Animated.View entering={FadeInUp.delay(300).duration(500)} style={styles.section}>
           <SectionHeader
             icon="color-palette"
@@ -658,7 +753,7 @@ export default function CustomizeScreen({ navigation }: Props) {
           </ScrollView>
         </Animated.View>
 
-        {/* ===== ACCENT COLOR ===== */}
+        {/* ─── Accent Color ─── */}
         <Animated.View entering={FadeInUp.delay(400).duration(500)} style={styles.section}>
           <SectionHeader
             icon="color-fill"
@@ -687,7 +782,7 @@ export default function CustomizeScreen({ navigation }: Props) {
           </View>
         </Animated.View>
 
-        {/* ===== AVATAR ===== */}
+        {/* ─── Avatar ─── */}
         <Animated.View entering={FadeInUp.delay(500).duration(500)} style={styles.section}>
           <SectionHeader
             icon="happy-outline"
@@ -729,7 +824,7 @@ export default function CustomizeScreen({ navigation }: Props) {
           </ScrollView>
         </Animated.View>
 
-        {/* ===== TYPOGRAPHY ===== */}
+        {/* ─── Typography ─── */}
         <Animated.View entering={FadeInUp.delay(600).duration(500)} style={styles.section}>
           <SectionHeader
             icon="text"
@@ -750,7 +845,7 @@ export default function CustomizeScreen({ navigation }: Props) {
           />
         </Animated.View>
 
-        {/* ===== SHAPE ===== */}
+        {/* ─── Shape ─── */}
         <Animated.View entering={FadeInUp.delay(700).duration(500)} style={styles.section}>
           <SectionHeader
             icon="shapes"
@@ -771,7 +866,7 @@ export default function CustomizeScreen({ navigation }: Props) {
           />
         </Animated.View>
 
-        {/* ===== ANIMATION ===== */}
+        {/* ─── Animation ─── */}
         <Animated.View entering={FadeInUp.delay(800).duration(500)} style={styles.section}>
           <SectionHeader
             icon="speedometer"
@@ -792,7 +887,7 @@ export default function CustomizeScreen({ navigation }: Props) {
           />
         </Animated.View>
 
-        {/* ===== VISUAL EFFECTS ===== */}
+        {/* ─── Visual Effects ─── */}
         <Animated.View entering={FadeInUp.delay(900).duration(500)} style={styles.section}>
           <SectionHeader
             icon="sparkles"
@@ -850,7 +945,7 @@ export default function CustomizeScreen({ navigation }: Props) {
           </View>
         </Animated.View>
 
-        {/* ===== ACCESSIBILITY ===== */}
+        {/* ─── Accessibility ─── */}
         <Animated.View entering={FadeInUp.delay(1000).duration(500)} style={styles.section}>
           <SectionHeader
             icon="accessibility"
@@ -908,7 +1003,7 @@ export default function CustomizeScreen({ navigation }: Props) {
           </View>
         </Animated.View>
 
-        {/* ===== SOUNDS ===== */}
+        {/* ─── Sounds ─── */}
         <Animated.View entering={FadeInUp.delay(1100).duration(500)} style={styles.section}>
           <SectionHeader
             icon="volume-high"
@@ -944,7 +1039,7 @@ export default function CustomizeScreen({ navigation }: Props) {
           </View>
         </Animated.View>
 
-        {/* ===== SAVE FAB ===== */}
+        {/* ─── Save FAB ─── */}
         <Animated.View entering={FadeInUp.delay(1200).duration(500)} style={styles.fabContainer}>
           {hasChanges && (
             <View style={styles.unsavedPill}>
@@ -956,7 +1051,7 @@ export default function CustomizeScreen({ navigation }: Props) {
             style={[
               styles.fab,
               {
-                opacity: hasChanges ? 1 : 0.4,
+                opacity: hasChanges && !isSyncing ? 1 : 0.4,
                 shadowColor: effectivePrimary,
                 shadowOffset: { width: 0, height: 8 },
                 shadowOpacity: 0.4,
@@ -966,16 +1061,20 @@ export default function CustomizeScreen({ navigation }: Props) {
             ]}
             onPress={savePreferences}
             activeOpacity={0.85}
-            disabled={!hasChanges}
+            disabled={!hasChanges || isSyncing}
           >
             <LinearGradient
-              colors={[effectivePrimary, currentTheme.secondary]}
+              colors={isSyncing ? ['#999', '#888'] : [effectivePrimary, currentTheme.secondary]}
               style={styles.fabGradient}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
             >
-              <Ionicons name="checkmark" size={24} color="#fff" />
-              <Text style={styles.fabText}>Save</Text>
+              {isSyncing ? (
+                <UniversalSpinner size={20} color="#fff" variant="liquid" section="settings" />
+              ) : (
+                <Ionicons name="checkmark" size={24} color="#fff" />
+              )}
+              <Text style={styles.fabText}>{isSyncing ? 'Saving...' : 'Save'}</Text>
             </LinearGradient>
           </TouchableOpacity>
         </Animated.View>
@@ -993,6 +1092,28 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   loadingText: { fontSize: 16, fontWeight: '500' },
+
+  syncStatus: {
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  syncBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 16,
+    gap: 8,
+  },
+  syncDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  syncText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
 
   modernHeader: { marginBottom: 24 },
   headerTop: {

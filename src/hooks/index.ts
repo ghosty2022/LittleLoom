@@ -25,6 +25,7 @@ export { useMedia } from './useMedia';
 export { useNotifications } from './useNotifications';
 export { useSafety } from './useSafety';
 export { useSecurity } from './useSecurity';
+export { useSupabase } from './useSupabase'; // ← ADD THIS LINE
 export { useSweetAlert } from './useSweetAlert';
 export { useUser } from './useUser';
 export { useUnifiedTrackerTheme } from './useUnifiedTrackerTheme';

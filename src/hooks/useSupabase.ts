@@ -1,103 +1,91 @@
-// hooks/useOfflineSync.ts
-import { useState, useCallback, useEffect } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+// src/hooks/useSupabase.ts
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
+import { User, Session } from '@supabase/supabase-js';
 
-const OFFLINE_QUEUE_KEY = '@littleloom_offline_queue';
-
-interface OfflineOperation {
-  id: string;
-  table: string;
-  operation: 'insert' | 'update' | 'delete';
-  data: any;
-  timestamp: number;
+interface SupabaseState {
+  isConnected: boolean;
+  user: User | null;
+  session: Session | null;
+  isLoading: boolean;
 }
 
-export function useOfflineSync() {
-  const [queue, setQueue] = useState<OfflineOperation[]>([]);
-  const [isSyncing, setIsSyncing] = useState(false);
+export function useSupabase() {
+  const [state, setState] = useState<SupabaseState>({
+    isConnected: false,
+    user: null,
+    session: null,
+    isLoading: true,
+  });
 
+  // Check connection and get user
   useEffect(() => {
-    loadQueue();
-  }, []);
+    const checkConnection = async () => {
+      try {
+        // Test connection with a lightweight query
+        const { error } = await supabase.from('tracker_entries').select('id').limit(1);
+        const isConnected = !error;
 
-  const loadQueue = async () => {
-    try {
-      const data = await AsyncStorage.getItem(OFFLINE_QUEUE_KEY);
-      if (data) {
-        setQueue(JSON.parse(data));
+        // Get current user
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+        setState({
+          isConnected,
+          user: user || null,
+          session: session || null,
+          isLoading: false,
+        });
+      } catch (err) {
+        console.warn('Supabase connection check failed:', err);
+        setState(prev => ({
+          ...prev,
+          isConnected: false,
+          isLoading: false,
+        }));
       }
-    } catch (error) {
-      console.error('Failed to load offline queue:', error);
-    }
-  };
-
-  const saveQueue = async (newQueue: OfflineOperation[]) => {
-    try {
-      await AsyncStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(newQueue));
-      setQueue(newQueue);
-    } catch (error) {
-      console.error('Failed to save offline queue:', error);
-    }
-  };
-
-  const enqueue = useCallback(async (
-    table: string,
-    operation: OfflineOperation['operation'],
-    data: any
-  ) => {
-    const newOp: OfflineOperation = {
-      id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
-      table,
-      operation,
-      data,
-      timestamp: Date.now(),
     };
 
-    const newQueue = [...queue, newOp];
-    await saveQueue(newQueue);
-  }, [queue]);
+    checkConnection();
 
-  const sync = useCallback(async () => {
-    if (queue.length === 0 || isSyncing) return;
+    // Subscribe to auth changes
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      setState(prev => ({
+        ...prev,
+        user: session?.user || null,
+        session: session || null,
+      }));
+    });
 
-    setIsSyncing(true);
-    const errors: OfflineOperation[] = [];
+    return () => {
+      authListener?.subscription?.unsubscribe();
+    };
+  }, []);
 
-    for (const op of queue) {
-      try {
-        switch (op.operation) {
-          case 'insert':
-            await supabase.from(op.table).insert(op.data);
-            break;
-          case 'update':
-            await supabase.from(op.table).update(op.data).eq('id', op.data.id);
-            break;
-          case 'delete':
-            await supabase.from(op.table).delete().eq('id', op.data.id);
-            break;
-        }
-      } catch (error) {
-        console.error(`Failed to sync operation ${op.id}:`, error);
-        errors.push(op);
-      }
+  // Refresh connection status
+  const refreshConnection = useCallback(async () => {
+    setState(prev => ({ ...prev, isLoading: true }));
+    try {
+      const { error } = await supabase.from('tracker_entries').select('id').limit(1);
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+
+      setState({
+        isConnected: !error,
+        user: user || null,
+        session: session || null,
+        isLoading: false,
+      });
+    } catch (err) {
+      setState(prev => ({ ...prev, isLoading: false, isConnected: false }));
     }
-
-    await saveQueue(errors);
-    setIsSyncing(false);
-
-    return { success: errors.length === 0, errors };
-  }, [queue, isSyncing]);
-
-  const clearQueue = useCallback(async () => {
-    await saveQueue([]);
   }, []);
 
   return {
-    queue,
-    isSyncing,
-    enqueue,
-    sync,
-    clearQueue,
+    ...state,
+    supabase,
+    refreshConnection,
   };
 }
+
+export default useSupabase;

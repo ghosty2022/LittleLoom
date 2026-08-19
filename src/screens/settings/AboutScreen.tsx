@@ -10,7 +10,6 @@ import {
   TouchableOpacity, 
   View,
   Share,
-  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -20,12 +19,13 @@ import Animated, { FadeInUp } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useApp } from '../../context/AppContext';
-import { useSupabase } from '../../hooks/useSupabase';
+import { useAuth } from '../../context/AuthContext'; // Use your auth context
 import { useSweetAlert } from '../../components/SweetAlert';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
 import packageJson from '../../../package.json';
+import { supabase } from '../../lib/supabase'; // Add your supabase client import
 
 type Props = NativeStackScreenProps<RootStackParamList, 'About'>;
 
@@ -281,7 +281,7 @@ const FeatureRow: React.FC<{
 export default function AboutScreen({ navigation }: Props) {
   const { themeColors, darkMode, reduceMotion, avatar } = useCustomization();
   const { colors, isDark: appIsDark } = useApp();
-  const { isConnected, user } = useSupabase();
+  const { user } = useAuth(); // Use your auth context instead
   const { sweetAlert } = useSweetAlert();
   const insets = useSafeAreaInsets();
 
@@ -290,6 +290,21 @@ export default function AboutScreen({ navigation }: Props) {
   const secondary = themeColors?.secondary || colors.accent || '#fa709a';
 
   const [appVersion, setAppVersion] = useState('1.0.0');
+  const [isSupabaseConnected, setIsSupabaseConnected] = useState(false);
+
+  // Check Supabase connection
+  useEffect(() => {
+    const checkConnection = async () => {
+      try {
+        // Simple health check - adjust based on your Supabase setup
+        const { error } = await supabase.from('tracker_entries').select('id').limit(1);
+        setIsSupabaseConnected(!error);
+      } catch {
+        setIsSupabaseConnected(false);
+      }
+    };
+    checkConnection();
+  }, []);
 
   useEffect(() => {
     try {
@@ -365,9 +380,9 @@ export default function AboutScreen({ navigation }: Props) {
     {
       icon: 'cloud-outline',
       title: 'Cloud Status',
-      subtitle: isConnected ? 'Connected to Supabase' : 'Offline mode',
+      subtitle: isSupabaseConnected ? 'Connected to Supabase' : 'Offline mode',
       url: 'https://status.littleloom.app',
-      color: isConnected ? '#10b981' : '#f59e0b',
+      color: isSupabaseConnected ? '#10b981' : '#f59e0b',
       isExternal: true,
     },
     {
@@ -504,7 +519,7 @@ export default function AboutScreen({ navigation }: Props) {
             <Text style={[styles.tagline, isDark && styles.taglineDark]}>
               Weaving together the precious moments of parenthood
             </Text>
-            {isConnected && (
+            {isSupabaseConnected && (
               <View style={[styles.cloudBadge, { backgroundColor: `${primary}15` }]}>
                 <View style={[styles.cloudDot, { backgroundColor: '#10b981' }]} />
                 <Text style={[styles.cloudText, { color: '#10b981' }]}>

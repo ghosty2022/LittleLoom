@@ -1,3 +1,7 @@
+// AddEntryScreen.tsx — INTELLIGENCE EDITION v7.0
+// Refactored with shared components and centralized intelligence
+// Unified with Timeline + GrowthDashboard aesthetics
+
 import React, { memo, useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import {
   View,
@@ -51,12 +55,13 @@ import { SafeAvatar } from '../../components/SafeAvatar';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { TimelinePicker } from '../../components/trackers/TimelinePicker';
 import { DynamicTrackerForm } from '../../components/trackers/DynamicTrackerForm';
+import { TrackerEntryCard } from '../../components/trackers/TrackerEntryCard';
+import { useDashboardIntelligence } from '../../hooks/useDashboardIntelligence';
 import SmartPhotoField from '../../screens/gallery/SmartPhotoField';
 import { useTrackerProgressive } from '../../hooks/useTrackerProgressive';
 import type { ProgressiveCorrelation, ProgressiveReminder } from '../../hooks/useTrackerProgressive';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -165,7 +170,6 @@ const glassStyles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
-    /* no shadow */
   },
   glassBorder: {
     position: 'absolute',
@@ -1521,23 +1525,22 @@ function TrackerContent({
             onViewAll={() => setShowYesterdayModal(true)} colors={fullThemeColors}
             borderRadiusValue={borderRadiusValue} fontSizeMultiplier={fontSizeMultiplier} />
 
-          {/* Recent entries */}
+          {/* Recent entries using shared TrackerEntryCard */}
           {recentEntries.length > 0 && !editEntryId && (
             <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(50).springify()} style={styles.recentSection}>
               <View style={styles.sectionHeader}>
                 <Text style={[styles.sectionTitle, { color: fullThemeColors.textSecondary, fontSize: 13 * fontSizeMultiplier }]}>Recent {tracker.name}</Text>
               </View>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                 {recentEntries.map((entry: any) => (
-                  <View key={entry.id} style={[styles.recentCard, { backgroundColor: fullThemeColors.glassBg, borderColor: fullThemeColors.border, borderRadius: borderRadiusValue }]}>
-                    <Text style={styles.recentEmoji}>{tracker.emoji}</Text>
-                    <Text style={[styles.recentTime, { color: fullThemeColors.textSecondary }]}>{format(new Date(entry.timestamp), 'h:mm a')}</Text>
-                    {entry.photoUris && entry.photoUris.length > 0 && (
-                      <View style={{ position: 'absolute', top: 4, right: 4 }}>
-                        <Ionicons name="image" size={12} color={fullThemeColors.textSecondary} />
-                      </View>
-                    )}
-                  </View>
+                {recentEntries.map((entry: any) => (
+                  <TrackerEntryCard
+                    key={entry.id}
+                    entry={entry}
+                    compact={true}
+                    onPress={() => {
+                      navigation.navigate('EntryDetail', { entryId: entry.id, trackerId: entry.trackerId });
+                    }}
+                  />
                 ))}
               </ScrollView>
             </Animated.View>
@@ -1621,7 +1624,8 @@ export default function AddEntryScreen() {
   const navigation = useNavigation<AddEntryNavigationProp>();
   const route = useRoute<AddEntryRouteProp>();
 
-  const { fullThemeColors, themeColors, isDark } = useCustomization();  const { getTracker } = useTracker();
+  const { fullThemeColors, themeColors, isDark } = useCustomization();
+  const { getTracker } = useTracker();
   const { currentBaby, babyLoading } = useBaby();
 
   // ─── State (all unconditional) ────────────────────────────────
@@ -1899,16 +1903,6 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  recentCard: {
-    width: 80,
-    height: 80,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  recentEmoji: { fontSize: 28 },
-  recentTime: { fontSize: 12, marginTop: 4, fontWeight: '600' },
 
   errorsContainer: {
     borderRadius: 12,

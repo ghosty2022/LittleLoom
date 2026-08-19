@@ -1,15 +1,49 @@
+// screens/settings/AvatarPickerScreen.tsx
 import { useSweetAlert } from '../../components/SweetAlert';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Dimensions, Image, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Dimensions,
+  Image,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, { FadeIn, FadeInUp, FadeInDown, FadeOut, FadeOutDown, Layout, useSharedValue, useAnimatedStyle, withSpring, withTiming, interpolate, Extrapolate, runOnJS, SlideInRight, SlideOutLeft } from 'react-native-reanimated';
+import Animated, {
+  FadeIn,
+  FadeInUp,
+  FadeInDown,
+  FadeOut,
+  FadeOutDown,
+  Layout,
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withTiming,
+  interpolate,
+  Extrapolate,
+  runOnJS,
+  SlideInRight,
+  SlideOutLeft,
+} from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
-import { LittleLoomAvatar, BabyAvatar, SkinTonePicker, BABY_EMOJIS, ALL_EMOJIS, ILLUSTRATION_AVATARS, GRADIENT_PRESETS, GENDER_CONFIG, SKIN_TONES, type BabyGender, type AvatarSize } from '../../components/avatars/LittleLoomAvatars';
+import { supabase } from '../../lib/supabase';
+import { useSupabase } from '../../hooks/useSupabase';
+import { useCustomization } from '../../hooks/useCustomization';
+import { LittleLoomAvatar, SkinTonePicker, BABY_EMOJIS, ILLUSTRATION_AVATARS, GRADIENT_PRESETS, GENDER_CONFIG, SKIN_TONES, type BabyGender } from '../../components/avatars/LittleLoomAvatars';
 
 const { width, height } = Dimensions.get('window');
 const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
@@ -25,6 +59,7 @@ interface AvatarPickerScreenProps {
   gender?: BabyGender;
   currentSkinTone?: number;
   onSkinToneChange?: (tone: number) => void;
+  babyId?: string;
 }
 
 const TABS: { id: PickerTab; icon: keyof typeof Ionicons.glyphMap; label: string; color: string }[] = [
@@ -75,17 +110,25 @@ export const AvatarPickerScreen: React.FC<AvatarPickerScreenProps> = ({
   gender = 'other',
   currentSkinTone = 2,
   onSkinToneChange,
+  babyId,
 }) => {
+  const { sweetAlert } = useSweetAlert();
+  const { user, isConnected } = useSupabase();
+  const { themeColors } = useCustomization();
+  const insets = useSafeAreaInsets();
+
   const [activeTab, setActiveTab] = useState<PickerTab>('emoji');
   const [selectedAvatar, setSelectedAvatar] = useState<string | null>(currentAvatar);
   const [selectedSkinTone, setSelectedSkinTone] = useState(currentSkinTone);
   const [isUploading, setIsUploading] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
 
-  const insets = useSafeAreaInsets();
   const genderConfig = GENDER_CONFIG[gender];
   const scrollY = useSharedValue(0);
+
+  const primary = themeColors?.primary || '#667eea';
 
   const headerOpacity = useAnimatedStyle(() => ({
     opacity: interpolate(scrollY.value, [0, 100], [0, 1], Extrapolate.CLAMP),
@@ -100,6 +143,45 @@ export const AvatarPickerScreen: React.FC<AvatarPickerScreenProps> = ({
       setShowSearch(false);
     }
   }, [visible, currentAvatar, currentSkinTone]);
+
+  const showAlert = (title: string, message: string, type: 'success' | 'error' | 'warning' | 'info' = 'info') => {
+    sweetAlert({ title, message, type, confirmText: 'OK' });
+  };
+
+  const uploadAvatarToCloud = async (uri: string): Promise<string | null> => {
+    if (!isConnected || !user || !babyId) return null;
+
+    try {
+      const fileExt = uri.split('.').pop() || 'jpg';
+      const fileName = `avatar_${babyId}_${Date.now()}.${fileExt}`;
+      const filePath = `avatars/${user.id}/${fileName}`;
+
+      // Read file as base64
+      const base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      // Upload to Supabase storage
+      const { data, error } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, Buffer.from(base64, 'base64'), {
+          contentType: `image/${fileExt}`,
+          upsert: true,
+        });
+
+      if (error) throw error;
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath);
+
+      return urlData.publicUrl;
+    } catch (error) {
+      console.error('Failed to upload avatar:', error);
+      return null;
+    }
+  };
 
   const handleTakePhoto = async () => {
     try {
@@ -129,13 +211,25 @@ export const AvatarPickerScreen: React.FC<AvatarPickerScreenProps> = ({
         await FileSystem.copyAsync({ from: result.assets[0].uri, to: permanentUri });
 
         setSelectedAvatar(permanentUri);
+
+        // Upload to cloud if connected
+        if (isConnected && babyId) {
+          setIsSyncing(true);
+          const cloudUrl = await uploadAvatarToCloud(permanentUri);
+          if (cloudUrl) {
+            setSelectedAvatar(cloudUrl);
+          }
+          setIsSyncing(false);
+        }
+
         setIsUploading(false);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
     } catch (error) {
       console.error('Camera error:', error);
-      showAlert('Error', 'Failed to take photo. Please try again.', 'warning');
+      showAlert('Error', 'Failed to take photo. Please try again.', 'error');
       setIsUploading(false);
+      setIsSyncing(false);
     }
   };
 
@@ -168,13 +262,25 @@ export const AvatarPickerScreen: React.FC<AvatarPickerScreenProps> = ({
         await FileSystem.copyAsync({ from: result.assets[0].uri, to: permanentUri });
 
         setSelectedAvatar(permanentUri);
+
+        // Upload to cloud if connected
+        if (isConnected && babyId) {
+          setIsSyncing(true);
+          const cloudUrl = await uploadAvatarToCloud(permanentUri);
+          if (cloudUrl) {
+            setSelectedAvatar(cloudUrl);
+          }
+          setIsSyncing(false);
+        }
+
         setIsUploading(false);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
     } catch (error) {
       console.error('Gallery error:', error);
-      showAlert('Error', 'Failed to pick photo. Please try again.', 'warning');
+      showAlert('Error', 'Failed to pick photo. Please try again.', 'error');
       setIsUploading(false);
+      setIsSyncing(false);
     }
   };
 
@@ -240,10 +346,12 @@ export const AvatarPickerScreen: React.FC<AvatarPickerScreenProps> = ({
         </TouchableOpacity>
       </View>
 
-      {isUploading && (
+      {(isUploading || isSyncing) && (
         <GlassCard style={styles.uploadingCard} delay={100}>
           <ActivityIndicator size="large" color="#667eea" />
-          <Text style={styles.uploadingText}>Saving photo...</Text>
+          <Text style={styles.uploadingText}>
+            {isSyncing ? 'Syncing to cloud...' : 'Saving photo...'}
+          </Text>
         </GlassCard>
       )}
 
@@ -255,6 +363,15 @@ export const AvatarPickerScreen: React.FC<AvatarPickerScreenProps> = ({
           </GlassCard>
         </>
       )}
+
+      {isConnected && (
+        <View style={[styles.cloudBadge, { backgroundColor: `${primary}15` }]}>
+          <Ionicons name="cloud-outline" size={14} color={primary} />
+          <Text style={[styles.cloudText, { color: primary }]}>
+            Photos will be backed up to the cloud
+          </Text>
+        </View>
+      )}
     </View>
   );
 
@@ -264,7 +381,6 @@ export const AvatarPickerScreen: React.FC<AvatarPickerScreenProps> = ({
 
     return (
       <View style={styles.tabPanel}>
-        {/* Search Bar */}
         <GlassCard style={styles.searchCard} delay={0}>
           <View style={styles.searchRow}>
             <Ionicons name="search" size={18} color="#94a3b8" />
@@ -333,7 +449,6 @@ export const AvatarPickerScreen: React.FC<AvatarPickerScreenProps> = ({
 
   const renderIllustrationTab = () => (
     <View style={styles.tabPanel}>
-      {/* Baby Characters */}
       <SectionHeader title="Baby Characters" icon="body" color={genderConfig.defaultColor} />
       <View style={styles.illustrationGrid}>
         {genderConfig.illustrations.map((url, index) => (
@@ -359,7 +474,6 @@ export const AvatarPickerScreen: React.FC<AvatarPickerScreenProps> = ({
         ))}
       </View>
 
-      {/* Animals */}
       <SectionHeader title="Cute Animals" icon="paw" color="#f59e0b" />
       <View style={styles.illustrationGrid}>
         {Object.entries(ILLUSTRATION_AVATARS.animal).map(([key, url]) => (
@@ -385,7 +499,6 @@ export const AvatarPickerScreen: React.FC<AvatarPickerScreenProps> = ({
         ))}
       </View>
 
-      {/* Baby Items */}
       <SectionHeader title="Baby Items" icon="cube" color="#ec4899" />
       <View style={styles.illustrationGrid}>
         {Object.entries(ILLUSTRATION_AVATARS.object).map(([key, url]) => (
@@ -424,7 +537,7 @@ export const AvatarPickerScreen: React.FC<AvatarPickerScreenProps> = ({
               styles.gradientOption,
               selectedAvatar === key && [
                 styles.gradientOptionSelected,
-                { borderColor: colors[0]},
+                { borderColor: colors[0] },
               ],
             ]}
             onPress={() => handleAvatarPress(key)}
@@ -445,7 +558,7 @@ export const AvatarPickerScreen: React.FC<AvatarPickerScreenProps> = ({
                 .join(' ')}
             </Text>
             {selectedAvatar === key && (
-              <View style={[styles.gradientCheck, { backgroundColor: colors[0]}]}>
+              <View style={[styles.gradientCheck, { backgroundColor: colors[0] }]}>
                 <Ionicons name="checkmark" size={12} color="#fff" />
               </View>
             )}
@@ -497,13 +610,11 @@ export const AvatarPickerScreen: React.FC<AvatarPickerScreenProps> = ({
       <View style={styles.container}>
         <StatusBar style="dark" />
 
-        {/* Background Gradient */}
         <LinearGradient
           colors={['#f8fafc', '#e2e8f0', '#dbeafe']}
           style={StyleSheet.absoluteFill}
         />
 
-        {/* Sticky Header */}
         <Animated.View style={[styles.stickyHeader, headerOpacity, { paddingTop: insets.top }]}>
           <BlurView intensity={95} style={StyleSheet.absoluteFill} tint="light" />
           <LinearGradient
@@ -519,7 +630,6 @@ export const AvatarPickerScreen: React.FC<AvatarPickerScreenProps> = ({
           </View>
         </Animated.View>
 
-        {/* Main Header */}
         <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
           <TouchableOpacity onPress={onClose} style={styles.headerBtn}>
             <BlurView intensity={80} style={styles.headerBlur}>
@@ -543,7 +653,6 @@ export const AvatarPickerScreen: React.FC<AvatarPickerScreenProps> = ({
           </TouchableOpacity>
         </View>
 
-        {/* Preview Section */}
         <View style={styles.previewSection}>
           <View style={styles.previewContainer}>
             <LittleLoomAvatar
@@ -559,7 +668,6 @@ export const AvatarPickerScreen: React.FC<AvatarPickerScreenProps> = ({
             />
           </View>
 
-          {/* Skin Tone */}
           {activeTab !== 'gradient' && activeTab !== 'letter' && (
             <View style={styles.skinToneSection}>
               <View style={styles.skinToneHeader}>
@@ -579,7 +687,6 @@ export const AvatarPickerScreen: React.FC<AvatarPickerScreenProps> = ({
           )}
         </View>
 
-        {/* Tabs Bar */}
         <View style={styles.tabsBar}>
           <BlurView intensity={95} style={StyleSheet.absoluteFill} tint="light" />
           <LinearGradient
@@ -628,7 +735,6 @@ export const AvatarPickerScreen: React.FC<AvatarPickerScreenProps> = ({
           </ScrollView>
         </View>
 
-        {/* Content */}
         <AnimatedScrollView
           contentContainerStyle={[
             styles.scrollContent,
@@ -650,7 +756,6 @@ export const AvatarPickerScreen: React.FC<AvatarPickerScreenProps> = ({
           {activeTab === 'letter' && renderLetterTab()}
         </AnimatedScrollView>
 
-        {/* Bottom Confirm Bar */}
         <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 16 }]}>
           <TouchableOpacity
             style={[styles.confirmBtn, !canConfirm && styles.confirmBtnDisabled]}
@@ -859,6 +964,20 @@ const styles = StyleSheet.create({
   },
   glassContent: {
     padding: 16,
+  },
+
+  cloudBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 16,
+    gap: 8,
+    alignSelf: 'center',
+  },
+  cloudText: {
+    fontSize: 13,
+    fontWeight: '600',
   },
 
   sectionHeader: {
