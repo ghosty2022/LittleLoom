@@ -12,7 +12,8 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { useCustomization } from '../../hooks/useCustomization';
-import { useTrackerProgressive } from '../../hooks';
+// ✅ FIX: Add the missing import for useTracker
+import { useTracker } from '../../hooks';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { UnifiedTrackerConfig, TrackerCategory } from '../../types/trackers';
@@ -152,6 +153,7 @@ export const TimelinePicker: React.FC<TimelinePickerProps> = ({
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const customization = useCustomization();
   const { fullThemeColors, themeColors, isDark, borderRadiusValue, fontSizeMultiplier, shouldReduceMotion, triggerHaptic } = customization;
+  // ✅ FIX: useTracker is now properly imported
   const { trackers } = useTracker();
 
   const [searchQuery, setSearchQuery] = useState('');

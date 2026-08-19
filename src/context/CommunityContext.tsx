@@ -311,68 +311,43 @@ export const INITIAL_TOPICS: Topic[] = [
 // ============================================================
 // Fetch Real Topic Stats from Supabase
 // ============================================================
+// src/context/CommunityContext.tsx
 export const fetchRealTopicStats = async (): Promise<Topic[]> => {
   try {
-    // Get real post counts per topic
-    const { data: postCounts, error: postError } = await supabase
-      .from('community_posts')
-      .select('topic_id, count');
+    // ✅ BEST: Use RPC function
+    const { data, error } = await supabase
+      .rpc('get_topic_stats');
 
-    // Get real member counts per topic
-    const { data: memberCounts, error: memberError } = await supabase
-      .from('user_topics')
-      .select('topic_id, count');
-
-    if (postError && postError.code !== 'PGRST205') {
-      console.warn('Post count fetch error:', postError);
-    }
-    if (memberError && memberError.code !== 'PGRST205') {
-      console.warn('Member count fetch error:', memberError);
-    }
-
-    // If tables don't exist yet, return initial topics
-    if (postError?.code === 'PGRST205' || memberError?.code === 'PGRST205') {
-      console.log('Topics tables not available yet, using initial data');
+    if (error) {
+      console.warn('RPC error, falling back to initial:', error);
       return INITIAL_TOPICS;
     }
 
-    // Count posts per topic from the data
+    if (!data || data.length === 0) {
+      return INITIAL_TOPICS;
+    }
+
     const postCountMap = new Map<string, number>();
-    if (postCounts) {
-      postCounts.forEach((item: any) => {
-        const count = postCountMap.get(item.topic_id) || 0;
-        postCountMap.set(item.topic_id, count + 1);
-      });
-    }
-
-    // Count members per topic from the data
     const memberCountMap = new Map<string, number>();
-    if (memberCounts) {
-      memberCounts.forEach((item: any) => {
-        const count = memberCountMap.get(item.topic_id) || 0;
-        memberCountMap.set(item.topic_id, count + 1);
-      });
-    }
 
-    // Update topics with real data
-    const updatedTopics = INITIAL_TOPICS.map(topic => {
-      const posts = postCountMap.get(topic.id) || 0;
-      const members = memberCountMap.get(topic.id) || 0;
-      return {
-        ...topic,
-        posts: Math.max(topic.posts, posts),
-        members: Math.max(topic.members, members),
-      };
+    data.forEach((item: any) => {
+      postCountMap.set(item.topic_id, Number(item.post_count) || 0);
+      memberCountMap.set(item.topic_id, Number(item.member_count) || 0);
     });
 
-    console.log(`[fetchRealTopicStats] Updated ${updatedTopics.length} topics with real data`);
+    const updatedTopics = INITIAL_TOPICS.map(topic => ({
+      ...topic,
+      posts: Math.max(topic.posts, postCountMap.get(topic.id) || 0),
+      members: Math.max(topic.members, memberCountMap.get(topic.id) || 0),
+    }));
+
+    console.log(`[fetchRealTopicStats] Updated ${updatedTopics.length} topics via RPC`);
     return updatedTopics;
   } catch (error) {
-    console.warn('Failed to fetch real topic stats, using initial:', error);
+    console.warn('Failed to fetch topic stats, using initial:', error);
     return INITIAL_TOPICS;
   }
 };
-
 // ============================================================
 // Cache for topic stats
 // ============================================================
