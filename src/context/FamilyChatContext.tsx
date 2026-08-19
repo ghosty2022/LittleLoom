@@ -258,6 +258,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const typingTimeoutRef = useRef<Record<string, NodeJS.Timeout>>({});
   const syncServiceRef = useRef<FamilyChatSyncService | null>(null);
   const isInitializedRef = useRef(false);
+  const isSubscribedRef = useRef(false);
 
   // ─── Initialize Device ID ────────────────────────────────────
   useEffect(() => {
@@ -267,112 +268,91 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     })();
   }, []);
 
-  // ─── Initialize Sync Service ────────────────────────────────
-// ─── Initialize Sync Service ────────────────────────────────
-useEffect(() => {
-  if (deviceIdRef.current && state.familyCode) {
-    // Only create service if it doesn't exist
-    if (!syncServiceRef.current) {
-      syncServiceRef.current = new FamilyChatSyncService(deviceIdRef.current);
-      syncServiceRef.current.setFamilyCode(state.familyCode);
-    }
-    
-    // Setup realtime listeners (will check isSubscribedRef internally)
-    setupRealtimeListeners();
-    
-    // Initial sync
-    if (!isInitializedRef.current) {
-      performInitialSync();
-    }
-  }
-}, [deviceIdRef.current, state.familyCode]);
-// ─── Setup Realtime Listeners ────────────────────────────────
-const isSubscribedRef = useRef(false);
+  // ─── Setup Realtime Listeners ────────────────────────────────
+  const setupRealtimeListeners = useCallback(() => {
+    if (!syncServiceRef.current) return;
 
-const setupRealtimeListeners = () => {
-  if (!syncServiceRef.current) return;
+    const service = syncServiceRef.current;
+    service.setFamilyCode(state.familyCode || '');
 
-  const service = syncServiceRef.current;
-  service.setFamilyCode(state.familyCode || '');
-
-  // Listen for incoming messages
-  service.onMessages((remoteMessages) => {
-    if (remoteMessages.length === 0) return;
-    
-    setState(prev => {
-      const updatedMessages = { ...prev.messages };
-      let hasNewMessages = false;
+    // Listen for incoming messages
+    service.onMessages((remoteMessages) => {
+      if (remoteMessages.length === 0) return;
       
-      remoteMessages.forEach(msg => {
-        const chatMessages = updatedMessages[msg.chatId] || [];
-        const exists = chatMessages.some(m => m.syncId === msg.syncId);
-        if (!exists) {
-          updatedMessages[msg.chatId] = [...chatMessages, msg];
-          hasNewMessages = true;
-        }
-      });
-      
-      if (hasNewMessages) {
-        const updatedChats = prev.chats.map(chat => {
-          const msgs = updatedMessages[chat.id] || [];
-          if (msgs.length > 0) {
-            const last = msgs[msgs.length - 1];
-            return { ...chat, lastMessage: last, updatedAt: last.timestamp };
+      setState(prev => {
+        const updatedMessages = { ...prev.messages };
+        let hasNewMessages = false;
+        
+        remoteMessages.forEach(msg => {
+          const chatMessages = updatedMessages[msg.chatId] || [];
+          const exists = chatMessages.some(m => m.syncId === msg.syncId);
+          if (!exists) {
+            updatedMessages[msg.chatId] = [...chatMessages, msg];
+            hasNewMessages = true;
           }
-          return chat;
         });
-        return { ...prev, messages: updatedMessages, chats: updatedChats };
-      }
-      return prev;
-    });
-  });
-
-  // Listen for typing status
-  service.onTyping((data) => {
-    if (!data) return;
-    const { user_id, chat_id, is_typing, timestamp } = data;
-    
-    if (user_id === deviceIdRef.current) return;
-    
-    setState(prev => {
-      const currentTypers = prev.typingUsers[chat_id] || [];
-      const existingIndex = currentTypers.findIndex(t => t.userId === user_id);
-      
-      let updatedTypers;
-      if (is_typing) {
-        const newStatus: TypingStatus = {
-          userId: user_id,
-          userName: 'Family Member',
-          chatId: chat_id,
-          isTyping: true,
-          timestamp: timestamp || new Date().toISOString(),
-        };
-        if (existingIndex >= 0) {
-          updatedTypers = [...currentTypers];
-          updatedTypers[existingIndex] = newStatus;
-        } else {
-          updatedTypers = [...currentTypers, newStatus];
+        
+        if (hasNewMessages) {
+          const updatedChats = prev.chats.map(chat => {
+            const msgs = updatedMessages[chat.id] || [];
+            if (msgs.length > 0) {
+              const last = msgs[msgs.length - 1];
+              return { ...chat, lastMessage: last, updatedAt: last.timestamp };
+            }
+            return chat;
+          });
+          return { ...prev, messages: updatedMessages, chats: updatedChats };
         }
-      } else {
-        updatedTypers = currentTypers.filter(t => t.userId !== user_id);
-      }
-      
-      return {
-        ...prev,
-        typingUsers: { ...prev.typingUsers, [chat_id]: updatedTypers },
-      };
+        return prev;
+      });
     });
-  });
 
-  // Subscribe to realtime - ONLY IF NOT ALREADY SUBSCRIBED
-  if (!isSubscribedRef.current) {
-    isSubscribedRef.current = true;
-    service.subscribeToMessages();
-  }
-};
+    // Listen for typing status
+    service.onTyping((data) => {
+      if (!data) return;
+      const { user_id, chat_id, is_typing, timestamp } = data;
+      
+      if (user_id === deviceIdRef.current) return;
+      
+      setState(prev => {
+        const currentTypers = prev.typingUsers[chat_id] || [];
+        const existingIndex = currentTypers.findIndex(t => t.userId === user_id);
+        
+        let updatedTypers;
+        if (is_typing) {
+          const newStatus: TypingStatus = {
+            userId: user_id,
+            userName: 'Family Member',
+            chatId: chat_id,
+            isTyping: true,
+            timestamp: timestamp || new Date().toISOString(),
+          };
+          if (existingIndex >= 0) {
+            updatedTypers = [...currentTypers];
+            updatedTypers[existingIndex] = newStatus;
+          } else {
+            updatedTypers = [...currentTypers, newStatus];
+          }
+        } else {
+          updatedTypers = currentTypers.filter(t => t.userId !== user_id);
+        }
+        
+        return {
+          ...prev,
+          typingUsers: { ...prev.typingUsers, [chat_id]: updatedTypers },
+        };
+      });
+    });
+
+    // Subscribe to realtime - ONLY IF NOT ALREADY SUBSCRIBED
+    if (!isSubscribedRef.current && state.familyCode) {
+      isSubscribedRef.current = true;
+      service.subscribeToMessages();
+    }
+  }, [state.familyCode]);
 
   // ─── Perform Initial Sync ────────────────────────────────────
-  const performInitialSync = async () => {
+  const performInitialSync = useCallback(async () => {
     if (!syncServiceRef.current || !state.familyCode) return;
     
     isInitializedRef.current = true;
@@ -434,7 +414,36 @@ const setupRealtimeListeners = () => {
     } finally {
       setState(prev => ({ ...prev, isLoading: false }));
     }
-  };
+  }, [state.familyCode]);
+
+  // ─── Initialize Sync Service ────────────────────────────────
+  useEffect(() => {
+    if (deviceIdRef.current && state.familyCode) {
+      // Only create service if it doesn't exist or was cleaned up
+      if (!syncServiceRef.current) {
+        syncServiceRef.current = new FamilyChatSyncService(deviceIdRef.current);
+        syncServiceRef.current.setFamilyCode(state.familyCode);
+        isSubscribedRef.current = false;
+      }
+      
+      // Setup realtime listeners
+      setupRealtimeListeners();
+      
+      // Initial sync
+      if (!isInitializedRef.current) {
+        performInitialSync();
+      }
+    }
+    
+    // Cleanup on unmount
+    return () => {
+      if (syncServiceRef.current) {
+        syncServiceRef.current.unsubscribe();
+        syncServiceRef.current = null;
+        isSubscribedRef.current = false;
+      }
+    };
+  }, [deviceIdRef.current, state.familyCode, setupRealtimeListeners, performInitialSync]);
 
   const loadFamilyCode = async () => {
     try {
@@ -624,6 +633,11 @@ const setupRealtimeListeners = () => {
       deviceIdRef.current
     );
     await saveMessages(chatId, [welcomeMsg]);
+    
+    // Push to remote
+    if (syncServiceRef.current) {
+      await syncServiceRef.current.pushChats([newChat]);
+    }
     
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     return chatId;
@@ -1300,7 +1314,9 @@ const setupRealtimeListeners = () => {
       // ─── PULL REMOTE DATA ────────────────────────────────────
       if (syncServiceRef.current) {
         await performInitialSync();
-        syncServiceRef.current.subscribeToMessages();
+        // Reset subscription to ensure it reconnects
+        isSubscribedRef.current = false;
+        setupRealtimeListeners();
       }
       
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -1354,7 +1370,9 @@ const setupRealtimeListeners = () => {
 
   const forceSync = async (): Promise<void> => {
     if (syncServiceRef.current) {
+      isSubscribedRef.current = false;
       await performInitialSync();
+      setupRealtimeListeners();
     }
   };
 

@@ -16,6 +16,7 @@ export class FamilyChatSyncService {
   private typingCallbacks: ((data: any) => void)[] = [];
   private messageChannel: any = null;
   private typingChannel: any = null;
+  private isCleanedUp: boolean = false;
 
   constructor(deviceId: string) {
     this.deviceId = deviceId;
@@ -23,6 +24,7 @@ export class FamilyChatSyncService {
 
   setFamilyCode(code: string) {
     this.familyCode = code;
+    this.isCleanedUp = false;
   }
 
   // ─── Message Sync ────────────────────────────────────────────
@@ -85,6 +87,11 @@ export class FamilyChatSyncService {
       return;
     }
 
+    if (this.isCleanedUp) {
+      console.log('[FamilyChatSync] Service was cleaned up, reinitializing');
+      this.isCleanedUp = false;
+    }
+
     // Unsubscribe from any existing channels first
     this.unsubscribeFromMessages();
 
@@ -95,7 +102,7 @@ export class FamilyChatSyncService {
 
     // Create message channel
     this.messageChannel = supabase
-      .channel('family_messages_realtime')
+      .channel(`family_messages_${this.familyCode}_${Date.now()}`)
       .on(
         'postgres_changes',
         {
@@ -105,6 +112,7 @@ export class FamilyChatSyncService {
           filter: filter,
         },
         (payload) => {
+          if (this.isCleanedUp) return;
           const message = this.fromSupabaseFormat(payload.new as SupabaseMessage);
           if (message.deviceId === this.deviceId) return;
           this.messageCallbacks.forEach(cb => cb([message]));
@@ -119,6 +127,7 @@ export class FamilyChatSyncService {
           filter: filter,
         },
         (payload) => {
+          if (this.isCleanedUp) return;
           const message = this.fromSupabaseFormat(payload.new as SupabaseMessage);
           if (message.deviceId === this.deviceId) return;
           this.messageCallbacks.forEach(cb => cb([message]));
@@ -128,6 +137,16 @@ export class FamilyChatSyncService {
         console.log(`[FamilyChatSync] Message subscription status: ${status}`);
         if (status === 'SUBSCRIBED') {
           this.isSubscribed = true;
+        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+          this.isSubscribed = false;
+          // Attempt to reconnect after a delay
+          setTimeout(() => {
+            if (!this.isCleanedUp && this.familyCode) {
+              console.log('[FamilyChatSync] Attempting to reconnect...');
+              this.isSubscribed = false;
+              this.subscribeToMessages(chatId);
+            }
+          }, 5000);
         }
       });
 
@@ -137,13 +156,15 @@ export class FamilyChatSyncService {
 
   private subscribeToTyping(): void {
     if (!this.familyCode) return;
+    if (this.isCleanedUp) return;
+    
     if (this.typingChannel) {
       this.typingChannel.unsubscribe();
       this.typingChannel = null;
     }
 
     this.typingChannel = supabase
-      .channel('typing_status_realtime')
+      .channel(`typing_status_${this.familyCode}_${Date.now()}`)
       .on(
         'postgres_changes',
         {
@@ -153,11 +174,21 @@ export class FamilyChatSyncService {
           filter: `family_code=eq.${this.familyCode}`,
         },
         (payload) => {
+          if (this.isCleanedUp) return;
           this.typingCallbacks.forEach(cb => cb(payload.new));
         }
       )
       .subscribe((status) => {
         console.log(`[FamilyChatSync] Typing subscription status: ${status}`);
+        if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+          // Attempt to reconnect
+          setTimeout(() => {
+            if (!this.isCleanedUp && this.familyCode) {
+              console.log('[FamilyChatSync] Attempting to reconnect typing...');
+              this.subscribeToTyping();
+            }
+          }, 5000);
+        }
       });
   }
 
@@ -383,23 +414,34 @@ export class FamilyChatSyncService {
     this.isSubscribed = false;
     
     if (this.messageChannel) {
-      this.messageChannel.unsubscribe();
+      try {
+        this.messageChannel.unsubscribe();
+      } catch (e) {
+        console.warn('[FamilyChatSync] Error unsubscribing message channel:', e);
+      }
       this.messageChannel = null;
     }
     
     if (this.typingChannel) {
-      this.typingChannel.unsubscribe();
+      try {
+        this.typingChannel.unsubscribe();
+      } catch (e) {
+        console.warn('[FamilyChatSync] Error unsubscribing typing channel:', e);
+      }
       this.typingChannel = null;
     }
-    
-    // Don't remove all channels globally - only our specific ones
   }
 
   unsubscribe(): void {
     this.isSubscribed = false;
+    this.isCleanedUp = true;
     this.unsubscribeFromMessages();
     this.messageCallbacks = [];
     this.chatCallbacks = [];
     this.typingCallbacks = [];
+  }
+
+  isActive(): boolean {
+    return !this.isCleanedUp && this.isSubscribed;
   }
 }
