@@ -53,7 +53,6 @@ const ASYNC_KEYS = {
   COMMUNITY_STATS: 'littleloom_community_stats',
   COMMUNITY_SELECTED_TOPICS: 'littleloom_community_selected_topics',
   USERNAME_REGISTRY: 'littleloom_username_registry',
-  // User registry keys are in dbHelpers.ts, not here
 } as const;
 
 export interface UserProfile {
@@ -143,7 +142,6 @@ interface AuthContextType extends AuthState {
   ) => Promise<{ success: boolean; message: string }>;
   forgotPassword: (email: string) => Promise<{ success: boolean; message: string }>;
   resetPasswordForUser: (email: string, newPassword: string) => Promise<{ success: boolean; message: string }>;
-  // NEW: Expose user lookup for UI screens
   findUserByEmail: (email: string) => Promise<{ userId: string; email: string; fullName: string; role: string } | null>;
 }
 
@@ -188,7 +186,6 @@ import {
   getUserRegistry,
   type UserRegistryEntry,
 } from '@/database/dbHelpers';
-
 
 const getBiometricTypeName = (types: LocalAuthentication.AuthenticationType[]): string => {
   if (!types || types.length === 0) return 'Biometric';
@@ -394,7 +391,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         } catch (bioError) { biometricAvailable = false; }
 
-        // ─── CRITICAL FIX: Setup complete requires BOTH steps addressed (completed OR skipped)
         const p2Done = parent2Completed !== null;
         const bDone = babyCompleted !== null;
         const explicitSetupComplete = setupComplete === 'true';
@@ -411,7 +407,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                        hasBabyStr === 'true' ? true :
                        hasBabyStr === 'skipped' ? 'skipped' : false;
 
-        // ─── CRITICAL FIX: Onboarding is ONLY complete when setup is fully done
         const isOnboardingDone = onboardingComplete === 'true';
         const effectiveOnboardingComplete = isOnboardingDone || shouldBeSetupComplete;
 
@@ -534,7 +529,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) { return false; }
   }, []);
 
-  // ─── FIX: Remove sweetAlert dependency, use console + return false ─────
+  // ─── PERFORM SIGN IN INTERNAL ─────────────────────────────────────
   const performSignInInternal = useCallback(async (email: string, password: string, isBiometric: boolean = false): Promise<boolean> => {
     try {
       if (!email || !password) {
@@ -542,105 +537,91 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return false;
       }
 
-    
-// ─── REAL AUTH: verify the account + password against Supabase ───
-const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-  email: email.trim(),
-  password,
-});
-
-if (authError || !authData?.user) {
-  if (__DEV__) console.warn('[Auth] Supabase sign in failed:', authError?.message);
-  
-  // Handle email not confirmed error
-  if (authError?.message?.toLowerCase().includes('email not confirmed')) {
-    // Try to resend confirmation email
-    try {
-      const { error: resendError } = await supabase.auth.resend({
-        type: 'signup',
+      // ─── REAL AUTH: verify the account + password against Supabase ───
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email: email.trim(),
+        password,
       });
-      
-      if (!resendError) {
-        // Show alert to user
-        Alert.alert(
-          'Email Not Confirmed',
-          'Please check your email and confirm your account before signing in. A new confirmation link has been sent.'
-        );
-      } else {
-        Alert.alert(
-          'Email Not Confirmed',
-          'Please check your email and confirm your account before signing in.'
-        );
-      }
-    } catch (e) {
-      // Silent fail for alert
-    }
-    return false;
-  }
-  
-  return false;
-}
-const token = authData.session?.access_token ?? `auth_token_${authData.user.id}`;
-const userId = authData.user.id;
 
-// ─── CRITICAL FIX: Restore baby data from Supabase BEFORE profile lookup ───
-try {
-  console.log('[Auth] Restoring baby data for user:', userId);
-  
-  // Import dbHelpers dynamically
-  const { getBabyByIdFromDb, createBabyInDb, updateBabyInDb, setAppSetting } = await import('@/database/dbHelpers');
-  
-  // Get babies from Supabase
-  const { data: supabaseBabies, error: babiesError } = await supabase
-    .from('babies')
-    .select('*')
-    .eq('parent1_id', userId);
-  
-  if (!babiesError && supabaseBabies && supabaseBabies.length > 0) {
-    console.log(`[Auth] Found ${supabaseBabies.length} babies in Supabase for user`);
-    
-    // Restore each baby to local DB
-    for (const baby of supabaseBabies) {
-      const exists = await getBabyByIdFromDb(baby.id);
-      if (!exists) {
-        await createBabyInDb({
-          id: baby.id,
-          name: baby.name,
-          avatar: baby.avatar,
-          dateOfBirth: baby.date_of_birth,
-          gender: baby.gender,
-          bloodType: baby.blood_type,
-          medicalNotes: baby.medical_notes,
-          parent1Id: baby.parent1_id,
-          parent2Id: baby.parent2_id,
-        });
-        console.log(`[Auth] Restored baby: ${baby.name}`);
+      if (authError || !authData?.user) {
+        if (__DEV__) console.warn('[Auth] Supabase sign in failed:', authError?.message);
+        
+        if (authError?.message?.toLowerCase().includes('email not confirmed')) {
+          try {
+            const { error: resendError } = await supabase.auth.resend({
+              type: 'signup',
+              email: email.trim(),
+            });
+            
+            if (!resendError) {
+              Alert.alert(
+                'Email Not Confirmed',
+                'Please check your email and confirm your account before signing in. A new confirmation link has been sent.'
+              );
+            } else {
+              Alert.alert(
+                'Email Not Confirmed',
+                'Please check your email and confirm your account before signing in.'
+              );
+            }
+          } catch (e) {}
+          return false;
+        }
+        return false;
       }
-    }
-    
-    // Set current baby to first one
-    if (supabaseBabies[0]) {
-      await setAppSetting('current_baby_id', supabaseBabies[0].id);
-      await AsyncStorage.setItem('@littleloom_current_baby', supabaseBabies[0].id);
-    }
-  }
-} catch (restoreError) {
-  console.warn('[Auth] Failed to restore babies from Supabase:', restoreError);
-}
 
-// ─── Local registry only supplies profile/app metadata now, never gates access ───
-let existingUser = await findUserByEmail(email);
-      // ─── Local registry only supplies profile/app metadata now, never gates access ───
+      const token = authData.session?.access_token ?? `auth_token_${authData.user.id}`;
+      const userId = authData.user.id;
+
+      // ─── CRITICAL FIX: Restore baby data from Supabase BEFORE profile lookup ───
+      try {
+        console.log('[Auth] Restoring baby data for user:', userId);
+        
+        const { getBabyByIdFromDb, createBabyInDb, setAppSetting } = await import('@/database/dbHelpers');
+        
+        const { data: supabaseBabies, error: babiesError } = await supabase
+          .from('babies')
+          .select('*')
+          .eq('parent1_id', userId);
+        
+        if (!babiesError && supabaseBabies && supabaseBabies.length > 0) {
+          console.log(`[Auth] Found ${supabaseBabies.length} babies in Supabase for user`);
+          
+          for (const baby of supabaseBabies) {
+            const exists = await getBabyByIdFromDb(baby.id);
+            if (!exists) {
+              await createBabyInDb({
+                id: baby.id,
+                name: baby.name,
+                avatar: baby.avatar,
+                dateOfBirth: baby.date_of_birth,
+                gender: baby.gender,
+                bloodType: baby.blood_type,
+                medicalNotes: baby.medical_notes,
+                parent1Id: baby.parent1_id,
+                parent2Id: baby.parent2_id,
+              });
+              console.log(`[Auth] Restored baby: ${baby.name}`);
+            }
+          }
+          
+          if (supabaseBabies[0]) {
+            await setAppSetting('current_baby_id', supabaseBabies[0].id);
+            await AsyncStorage.setItem('@littleloom_current_baby', supabaseBabies[0].id);
+          }
+        }
+      } catch (restoreError) {
+        console.warn('[Auth] Failed to restore babies from Supabase:', restoreError);
+      }
+
+      // ─── Local registry lookup ──────────────────────────────────────────
       let existingUser = await findUserByEmail(email);
       
-      // If not found by email, try username/handle lookup using findUserByEmailOrUsername
       if (!existingUser) {
         try {
           const { findUserByEmailOrUsername } = await import('@/database/dbHelpers');
           existingUser = await findUserByEmailOrUsername(email);
         } catch (importError) {
-          // Fallback: manual lookup
           const registry = await getUserRegistry();
           const searchKey = email.toLowerCase().trim().replace(/^@/, '');
           for (const entry of Object.values(registry)) {
@@ -655,56 +636,11 @@ let existingUser = await findUserByEmail(email);
       }
       
       let userProfile: UserProfile;
-      let userId: string;
+      let finalUserId: string;
 
       if (existingUser) {
-        // Existing user — restore their profile from registry
-        userId = existingUser.userId;
+        finalUserId = existingUser.userId;
         
-        // ─── CRITICAL: Pull babies from Supabase and restore locally ───
-        try {
-          const { data: supabaseBabies, error: babiesError } = await supabase
-            .from('babies')
-            .select('*')
-            .eq('parent1_id', userId);
-          
-          if (!babiesError && supabaseBabies && supabaseBabies.length > 0) {
-            console.log(`[Auth] Restoring ${supabaseBabies.length} babies from Supabase`);
-            
-            // Import dbHelpers functions dynamically to avoid circular deps
-            const { createBabyInDb, setAppSetting } = await import('@/database/dbHelpers');
-            
-            for (const baby of supabaseBabies) {
-              // Check if baby already exists locally
-              const { getBabyByIdFromDb } = await import('@/database/dbHelpers');
-              const exists = await getBabyByIdFromDb(baby.id);
-              if (!exists) {
-                await createBabyInDb({
-                  id: baby.id,
-                  name: baby.name,
-                  avatar: baby.avatar,
-                  dateOfBirth: baby.date_of_birth,
-                  gender: baby.gender,
-                  bloodType: baby.blood_type,
-                  medicalNotes: baby.medical_notes,
-                  parent1Id: baby.parent1_id,
-                  parent2Id: baby.parent2_id,
-                });
-                console.log(`[Auth] Restored baby: ${baby.name}`);
-              }
-            }
-            
-            // Set current baby to first one
-            if (supabaseBabies[0]) {
-              await setAppSetting('current_baby_id', supabaseBabies[0].id);
-              await AsyncStorage.setItem('@littleloom_current_baby', supabaseBabies[0].id);
-            }
-          }
-        } catch (restoreError) {
-          console.warn('[Auth] Failed to restore babies from Supabase:', restoreError);
-        }
-        
-        // Merge stored community data with any newer app_settings data
         const [commUsername, commHandle, commBio, commAvatar, commDisplayName, commStats, commTopics] = await Promise.all([
           getAppSetting(ASYNC_KEYS.COMMUNITY_USERNAME),
           getAppSetting(ASYNC_KEYS.COMMUNITY_HANDLE),
@@ -716,7 +652,7 @@ let existingUser = await findUserByEmail(email);
         ]);
 
         userProfile = {
-          id: userId,
+          id: finalUserId,
           fullName: existingUser.fullName,
           email: existingUser.email,
           avatar: existingUser.avatar || existingUser.communityAvatar || '👤',
@@ -733,8 +669,7 @@ let existingUser = await findUserByEmail(email);
           communitySelectedTopics: commTopics ? JSON.parse(commTopics) : (existingUser.communitySelectedTopics || []),
         };
       } else {
-        // New user — create fresh profile (fallback for legacy users)
-        userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        finalUserId = userId;
         
         const [commUsername, commHandle, commBio, commAvatar, commDisplayName, commStats, commTopics] = await Promise.all([
           getAppSetting(ASYNC_KEYS.COMMUNITY_USERNAME),
@@ -750,9 +685,9 @@ let existingUser = await findUserByEmail(email);
         const baseHandle = `@${baseName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
         
         userProfile = {
-          id: userId,
+          id: finalUserId,
           fullName: baseName,
-          email,
+          email: email.trim(),
           avatar: '👤',
           role: 'parent1',
           createdAt: new Date().toISOString(),
@@ -777,10 +712,8 @@ let existingUser = await findUserByEmail(email);
         return false;
       }
 
-      // ─── FIX: Only mark onboarding seen, NOT complete until setup is done
       await AsyncStorage.setItem(ASYNC_KEYS.HAS_SEEN_ONBOARDING, 'true');
 
-      // Check existing setup state
       const [setupCompleteStr, hasParent2Str, hasBabyStr] = await Promise.all([
         AsyncStorage.getItem(ASYNC_KEYS.SETUP_COMPLETE),
         AsyncStorage.getItem(ASYNC_KEYS.PARENT2_COMPLETED),
@@ -792,7 +725,6 @@ let existingUser = await findUserByEmail(email);
       const bothStepsAddressed = hasParent2Str !== null && hasBabyStr !== null;
       const isSetupComplete = setupCompleteStr === 'true' || bothStepsAddressed;
       
-      // Only mark onboarding complete if setup is actually done
       if (isSetupComplete) {
         await AsyncStorage.setItem(ASYNC_KEYS.ONBOARDING_COMPLETE, 'true');
       }
@@ -803,7 +735,7 @@ let existingUser = await findUserByEmail(email);
           isAuthenticated: true,
           userToken: token,
           userProfile,
-          onboardingComplete: isSetupComplete,  // FIX: false until setup done
+          onboardingComplete: isSetupComplete,
           hasSeenOnboarding: true,
           setupComplete: isSetupComplete,
           hasParent2: p2Done,
@@ -824,7 +756,6 @@ let existingUser = await findUserByEmail(email);
       await new Promise(resolve => setTimeout(resolve, 1500 - (now - lastSignInTime.current)));
     }
     try {
-      // Let performSignInInternal handle user lookup and restoration
       const success = await performSignInInternal(email, password, false);
       lastSignInTime.current = Date.now();
       return success;
@@ -852,14 +783,12 @@ let existingUser = await findUserByEmail(email);
       const baseName = socialUser.fullName;
       const baseHandle = `@${baseName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
       
-      // ─── CRITICAL FIX: Check if social user already exists by email ──
       const existingUser = await findUserByEmail(socialUser.email);
       
       let userProfile: UserProfile;
       let finalUserId: string;
 
       if (existingUser) {
-        // Restore existing user
         finalUserId = existingUser.userId;
         userProfile = {
           id: finalUserId,
@@ -879,7 +808,6 @@ let existingUser = await findUserByEmail(email);
           communitySelectedTopics: commTopics ? JSON.parse(commTopics) : (existingUser.communitySelectedTopics || []),
         };
       } else {
-        // New social user
         finalUserId = socialUser.id;
         userProfile = {
           id: finalUserId,
@@ -899,7 +827,6 @@ let existingUser = await findUserByEmail(email);
           communitySelectedTopics: commTopics ? JSON.parse(commTopics) : [],
         };
 
-        // Register in persistent registry
         const registryEntry: UserRegistryEntry = {
           userId: finalUserId,
           email: socialUser.email,
@@ -920,7 +847,6 @@ let existingUser = await findUserByEmail(email);
         await registerUser(registryEntry);
       }
 
-      // ─── FIX: Don't auto-complete onboarding for new social users
       await Promise.all([
         secureStorage.setItem(SECURE_KEYS.AUTH_TOKEN, token),
         secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(userProfile)),
@@ -928,7 +854,6 @@ let existingUser = await findUserByEmail(email);
         AsyncStorage.setItem(ASYNC_KEYS.HAS_SEEN_ONBOARDING, 'true'),
       ]);
 
-      // Check if setup was previously completed
       const [setupCompleteStr, hasParent2Str, hasBabyStr] = await Promise.all([
         AsyncStorage.getItem(ASYNC_KEYS.SETUP_COMPLETE),
         AsyncStorage.getItem(ASYNC_KEYS.PARENT2_COMPLETED),
@@ -965,217 +890,210 @@ let existingUser = await findUserByEmail(email);
       releaseSignInLock();
     }
   }, [acquireSignInLock, releaseSignInLock]);
-const signUp = useCallback(async (fullName: string, email: string, password: string): Promise<boolean> => {
-  if (!acquireSignInLock()) return false;
-  try {
-    console.log('[Auth] SignUp attempt for:', email);
-    
-    // ─── REAL AUTH: create the account in Supabase ───
-    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-      email: email.trim(),
-      password,
-      options: {
-        data: {
-          full_name: fullName,
-        },
-      },
-    });
 
-    if (signUpError || !signUpData?.user) {
-      console.warn('[Auth] Supabase sign up rejected:', signUpError?.message);
-      
-      // Check if user already exists - try to sign in instead
-      if (signUpError?.message?.toLowerCase().includes('already registered') ||
-          signUpError?.message?.toLowerCase().includes('user already exists')) {
-        console.log('[Auth] User exists, attempting sign in...');
-        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password,
-        });
-        
-        if (!signInError && signInData?.user) {
-          console.log('[Auth] Existing user signed in successfully');
-          const token = signInData.session?.access_token ?? `auth_token_${signInData.user.id}`;
-          const userId = signInData.user.id;
-          
-          // Create profile for existing user
-          const handle = `@${fullName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
-          const userProfile: UserProfile = {
-            id: userId,
-            fullName,
-            email: email.trim(),
-            avatar: '👤',
-            role: 'parent1',
-            createdAt: new Date().toISOString(),
-            preferences: { notifications: true, darkMode: false, language: 'en' },
-            communityUsername: fullName,
-            communityHandle: handle,
-            communityBio: '',
-            communityAvatar: '👤',
-            communityDisplayName: fullName,
-            communityStats: { posts: 0, followers: 0, following: 0, helpful: 0 },
-            communitySelectedTopics: [],
-          };
-          
-          await Promise.all([
-            secureStorage.setItem(SECURE_KEYS.AUTH_TOKEN, token),
-            secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(userProfile)),
-            AsyncStorage.setItem(ASYNC_KEYS.HAS_SEEN_ONBOARDING, 'true'),
-          ]);
-          
-          if (isMounted.current) {
-            setState(prev => ({
-              ...prev,
-              isAuthenticated: true,
-              userToken: token,
-              userProfile,
-              onboardingComplete: false,
-              hasSeenOnboarding: true,
-              setupComplete: false,
-              hasParent2: false,
-              hasBaby: false,
-            }));
-          }
-          
-          return true;
-        }
-      }
-      
-      return false;
-    }
-
-    console.log('[Auth] User created successfully:', signUpData.user.id);
-    const token = signUpData.session?.access_token ?? `auth_token_${signUpData.user.id}`;
-    const userId = signUpData.user.id;
-    
-    // ─── AUTO-CONFIRM: Resend confirmation email ───
+  const signUp = useCallback(async (fullName: string, email: string, password: string): Promise<boolean> => {
+    if (!acquireSignInLock()) return false;
     try {
-      const { error: resendError } = await supabase.auth.resend({
-        type: 'signup',
+      console.log('[Auth] SignUp attempt for:', email);
+      
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email: email.trim(),
+        password,
+        options: {
+          data: {
+            full_name: fullName,
+          },
+        },
       });
-      if (!resendError) {
-        console.log('[Auth] Confirmation email resent successfully');
-      }
-    } catch (resendErr) {
-      console.warn('[Auth] Could not resend confirmation:', resendErr);
-    }
-    
-    // Create user profile
-    const handle = `@${fullName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
-    
-    const userProfile: UserProfile = {
-      id: userId,
-      fullName,
-      email: email.trim(),
-      avatar: '👤',
-      role: 'parent1',
-      createdAt: new Date().toISOString(),
-      preferences: { notifications: true, darkMode: false, language: 'en' },
-      communityUsername: fullName,
-      communityHandle: handle,
-      communityBio: '',
-      communityAvatar: '👤',
-      communityDisplayName: fullName,
-      communityStats: { posts: 0, followers: 0, following: 0, helpful: 0 },
-      communitySelectedTopics: [],
-    };
 
-    const registryEntry: UserRegistryEntry = {
-      userId,
-      email: email.trim(),
-      fullName,
-      avatar: '👤',
-      role: 'parent1',
-      createdAt: userProfile.createdAt,
-      communityUsername: fullName,
-      communityHandle: handle,
-      communityBio: '',
-      communityAvatar: '👤',
-      communityDisplayName: fullName,
-      communityStats: { posts: 0, followers: 0, following: 0, helpful: 0 },
-      communitySelectedTopics: [],
-      hasPassword: true,
-    };
-    await registerUser(registryEntry);
-
-    // ─── CRITICAL: Ensure baby data from Supabase is pulled after sign-up ───
-    try {
-      const { data: supabaseBabies, error: babiesError } = await supabase
-        .from('babies')
-        .select('*')
-        .eq('parent1_id', userId);
-      
-      if (!babiesError && supabaseBabies && supabaseBabies.length > 0) {
-        console.log(`[Auth] Found ${supabaseBabies.length} babies in Supabase for new user`);
-        const { createBabyInDb, setAppSetting } = await import('@/database/dbHelpers');
-        for (const baby of supabaseBabies) {
-          const { getBabyByIdFromDb } = await import('@/database/dbHelpers');
-          const exists = await getBabyByIdFromDb(baby.id);
-          if (!exists) {
-            await createBabyInDb({
-              id: baby.id,
-              name: baby.name,
-              avatar: baby.avatar,
-              dateOfBirth: baby.date_of_birth,
-              gender: baby.gender,
-              bloodType: baby.blood_type,
-              medicalNotes: baby.medical_notes,
-              parent1Id: baby.parent1_id,
-              parent2Id: baby.parent2_id,
-            });
+      if (signUpError || !signUpData?.user) {
+        console.warn('[Auth] Supabase sign up rejected:', signUpError?.message);
+        
+        if (signUpError?.message?.toLowerCase().includes('already registered') ||
+            signUpError?.message?.toLowerCase().includes('user already exists')) {
+          console.log('[Auth] User exists, attempting sign in...');
+          const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+            email: email.trim(),
+            password,
+          });
+          
+          if (!signInError && signInData?.user) {
+            console.log('[Auth] Existing user signed in successfully');
+            const token = signInData.session?.access_token ?? `auth_token_${signInData.user.id}`;
+            const userId = signInData.user.id;
+            
+            const handle = `@${fullName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
+            const userProfile: UserProfile = {
+              id: userId,
+              fullName,
+              email: email.trim(),
+              avatar: '👤',
+              role: 'parent1',
+              createdAt: new Date().toISOString(),
+              preferences: { notifications: true, darkMode: false, language: 'en' },
+              communityUsername: fullName,
+              communityHandle: handle,
+              communityBio: '',
+              communityAvatar: '👤',
+              communityDisplayName: fullName,
+              communityStats: { posts: 0, followers: 0, following: 0, helpful: 0 },
+              communitySelectedTopics: [],
+            };
+            
+            await Promise.all([
+              secureStorage.setItem(SECURE_KEYS.AUTH_TOKEN, token),
+              secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(userProfile)),
+              AsyncStorage.setItem(ASYNC_KEYS.HAS_SEEN_ONBOARDING, 'true'),
+            ]);
+            
+            if (isMounted.current) {
+              setState(prev => ({
+                ...prev,
+                isAuthenticated: true,
+                userToken: token,
+                userProfile,
+                onboardingComplete: false,
+                hasSeenOnboarding: true,
+                setupComplete: false,
+                hasParent2: false,
+                hasBaby: false,
+              }));
+            }
+            
+            return true;
           }
         }
-        if (supabaseBabies[0]) {
-          await setAppSetting('current_baby_id', supabaseBabies[0].id);
-          await AsyncStorage.setItem('@littleloom_current_baby', supabaseBabies[0].id);
-        }
+        
+        return false;
       }
-    } catch (restoreError) {
-      console.warn('[Auth] Failed to restore babies from Supabase after sign-up:', restoreError);
-    }
 
-    await Promise.all([
-      secureStorage.setItem(SECURE_KEYS.AUTH_TOKEN, token),
-      secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(userProfile)),
-      AsyncStorage.setItem(ASYNC_KEYS.HAS_SEEN_ONBOARDING, 'true'),
-      setAppSetting(ASYNC_KEYS.COMMUNITY_USERNAME, fullName),
-      setAppSetting(ASYNC_KEYS.COMMUNITY_HANDLE, handle),
-      setAppSetting(ASYNC_KEYS.COMMUNITY_DISPLAY_NAME, fullName),
-    ]);
+      console.log('[Auth] User created successfully:', signUpData.user.id);
+      const token = signUpData.session?.access_token ?? `auth_token_${signUpData.user.id}`;
+      const userId = signUpData.user.id;
+      
+      try {
+        const { error: resendError } = await supabase.auth.resend({
+          type: 'signup',
+          email: email.trim(),
+        });
+        if (!resendError) {
+          console.log('[Auth] Confirmation email resent successfully');
+        }
+      } catch (resendErr) {
+        console.warn('[Auth] Could not resend confirmation:', resendErr);
+      }
+      
+      const handle = `@${fullName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
+      
+      const userProfile: UserProfile = {
+        id: userId,
+        fullName,
+        email: email.trim(),
+        avatar: '👤',
+        role: 'parent1',
+        createdAt: new Date().toISOString(),
+        preferences: { notifications: true, darkMode: false, language: 'en' },
+        communityUsername: fullName,
+        communityHandle: handle,
+        communityBio: '',
+        communityAvatar: '👤',
+        communityDisplayName: fullName,
+        communityStats: { posts: 0, followers: 0, following: 0, helpful: 0 },
+        communitySelectedTopics: [],
+      };
 
-    // ─── Clear any stale setup flags ───
-    await AsyncStorage.multiRemove([
-      ASYNC_KEYS.SETUP_COMPLETE,
-      ASYNC_KEYS.HAS_PARENT2,
-      ASYNC_KEYS.HAS_BABY,
-      ASYNC_KEYS.PARENT2_COMPLETED,
-      ASYNC_KEYS.BABY_COMPLETED,
-    ]);
+      const registryEntry: UserRegistryEntry = {
+        userId,
+        email: email.trim(),
+        fullName,
+        avatar: '👤',
+        role: 'parent1',
+        createdAt: userProfile.createdAt,
+        communityUsername: fullName,
+        communityHandle: handle,
+        communityBio: '',
+        communityAvatar: '👤',
+        communityDisplayName: fullName,
+        communityStats: { posts: 0, followers: 0, following: 0, helpful: 0 },
+        communitySelectedTopics: [],
+        hasPassword: true,
+      };
+      await registerUser(registryEntry);
 
-    if (isMounted.current) {
-      setState(prev => ({
-        ...prev,
-        isAuthenticated: true,
-        userToken: token,
-        userProfile,
-        onboardingComplete: false,
-        hasSeenOnboarding: true,
-        setupComplete: false,
-        hasParent2: false,
-        hasBaby: false,
-      }));
-    }
+      try {
+        const { data: supabaseBabies, error: babiesError } = await supabase
+          .from('babies')
+          .select('*')
+          .eq('parent1_id', userId);
+        
+        if (!babiesError && supabaseBabies && supabaseBabies.length > 0) {
+          console.log(`[Auth] Found ${supabaseBabies.length} babies in Supabase for new user`);
+          const { createBabyInDb, setAppSetting } = await import('@/database/dbHelpers');
+          for (const baby of supabaseBabies) {
+            const { getBabyByIdFromDb } = await import('@/database/dbHelpers');
+            const exists = await getBabyByIdFromDb(baby.id);
+            if (!exists) {
+              await createBabyInDb({
+                id: baby.id,
+                name: baby.name,
+                avatar: baby.avatar,
+                dateOfBirth: baby.date_of_birth,
+                gender: baby.gender,
+                bloodType: baby.blood_type,
+                medicalNotes: baby.medical_notes,
+                parent1Id: baby.parent1_id,
+                parent2Id: baby.parent2_id,
+              });
+            }
+          }
+          if (supabaseBabies[0]) {
+            await setAppSetting('current_baby_id', supabaseBabies[0].id);
+            await AsyncStorage.setItem('@littleloom_current_baby', supabaseBabies[0].id);
+          }
+        }
+      } catch (restoreError) {
+        console.warn('[Auth] Failed to restore babies from Supabase after sign-up:', restoreError);
+      }
 
-    lastSignInTime.current = Date.now();
-    return true;
-  } catch (error) {
-    console.error('[Auth] Sign up error:', error);
-    return false;
-  } finally { releaseSignInLock(); }
-}, [acquireSignInLock, releaseSignInLock]);
-  
-  // ─── INVITE CODE SIGN UP ─────────────────────────────────────────────
+      await Promise.all([
+        secureStorage.setItem(SECURE_KEYS.AUTH_TOKEN, token),
+        secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(userProfile)),
+        AsyncStorage.setItem(ASYNC_KEYS.HAS_SEEN_ONBOARDING, 'true'),
+        setAppSetting(ASYNC_KEYS.COMMUNITY_USERNAME, fullName),
+        setAppSetting(ASYNC_KEYS.COMMUNITY_HANDLE, handle),
+        setAppSetting(ASYNC_KEYS.COMMUNITY_DISPLAY_NAME, fullName),
+      ]);
+
+      await AsyncStorage.multiRemove([
+        ASYNC_KEYS.SETUP_COMPLETE,
+        ASYNC_KEYS.HAS_PARENT2,
+        ASYNC_KEYS.HAS_BABY,
+        ASYNC_KEYS.PARENT2_COMPLETED,
+        ASYNC_KEYS.BABY_COMPLETED,
+      ]);
+
+      if (isMounted.current) {
+        setState(prev => ({
+          ...prev,
+          isAuthenticated: true,
+          userToken: token,
+          userProfile,
+          onboardingComplete: false,
+          hasSeenOnboarding: true,
+          setupComplete: false,
+          hasParent2: false,
+          hasBaby: false,
+        }));
+      }
+
+      lastSignInTime.current = Date.now();
+      return true;
+    } catch (error) {
+      console.error('[Auth] Sign up error:', error);
+      return false;
+    } finally { releaseSignInLock(); }
+  }, [acquireSignInLock, releaseSignInLock]);
+
   const forgotPassword = useCallback(async (email: string): Promise<{ success: boolean; message: string }> => {
     try {
       const existingUser = await findUserByEmail(email);
@@ -1203,211 +1121,200 @@ const signUp = useCallback(async (fullName: string, email: string, password: str
     }
   }, []);
 
-const signUpWithInviteCode = useCallback(async (
-  code: string,
-  fullName: string,
-  email: string,
-  password: string
-): Promise<{ success: boolean; message: string }> => {
-  if (!acquireSignInLock()) {
-    return { success: false, message: 'Another operation in progress' };
-  }
-
-  try {
-    // ─── 1. Validate invite ───────────────────────────────────────────────
-    let validation: { valid: boolean; invite?: any; message?: string } = { valid: false };
-
-    try {
-      const { validateInviteCode } = await import('@/utils/portableInvite');
-      validation = await validateInviteCode(code);
-    } catch {
-      // Fallback to AsyncStorage (legacy)
-      const raw = await AsyncStorage.getItem('littleloom_invite_codes');
-      const codes = raw ? JSON.parse(raw) : {};
-      const invite = codes[code];
-      if (!invite) return { success: false, message: 'Invalid or expired invite code' };
-      if (invite.used) return { success: false, message: 'This invite code has already been used' };
-      if (invite.revoked || Date.now() > invite.expiresAt) {
-        return { success: false, message: 'This invite code has expired' };
-      }
-      validation = { valid: true, invite };
-    }
-
-    if (!validation.valid || !validation.invite) {
-      return { success: false, message: validation.message || 'Invalid invite code' };
-    }
-
-    const invite = validation.invite;
-
-    // ─── 2. Create REAL Supabase Auth user ────────────────────────────────
-    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-      email: email.trim().toLowerCase(),
-      password,
-      options: {
-        data: {
-          full_name: fullName.trim(),
-          role: invite.role,               // optional metadata
-        },
-      },
-    });
-
-    if (signUpError || !signUpData?.user) {
-      console.warn('[Auth] Invite signup rejected by Supabase:', signUpError?.message);
-      // Common case: email already registered
-      if (signUpError?.message?.toLowerCase().includes('already registered') ||
-          signUpError?.message?.toLowerCase().includes('user already exists')) {
-        return { success: false, message: 'An account with this email already exists. Please sign in instead.' };
-      }
-      return { success: false, message: signUpError?.message || 'Could not create account' };
-    }
-
-    const userId = signUpData.user.id;                         // ← real UUID from Auth
-    const token = signUpData.session?.access_token
-      ?? `auth_token_${userId}`;                               // fallback only
-
-    // ─── 3. Build profile + local registry entry ──────────────────────────
-    const handle = `@${fullName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
-
-    const role: UserProfile['role'] =
-      invite.role === 'parent2' ? 'parent2' :
-      invite.role === 'guardian' ? 'guardian' : 'guardian';
-
-    const userProfile: UserProfile = {
-      id: userId,
-      fullName: fullName.trim(),
-      email: email.trim().toLowerCase(),
-      avatar: '👤',
-      role,
-      createdAt: new Date().toISOString(),
-      preferences: { notifications: true, darkMode: false, language: 'en' },
-      communityUsername: fullName.trim(),
-      communityHandle: handle,
-      communityBio: '',
-      communityAvatar: '👤',
-      communityDisplayName: fullName.trim(),
-      communityStats: { posts: 0, followers: 0, following: 0, helpful: 0 },
-      communitySelectedTopics: [],
-    };
-
-    const registryEntry: UserRegistryEntry = {
-      userId,
-      email: userProfile.email,
-      fullName: userProfile.fullName,
-      avatar: '👤',
-      role,
-      createdAt: userProfile.createdAt,
-      communityUsername: fullName.trim(),
-      communityHandle: handle,
-      communityBio: '',
-      communityAvatar: '👤',
-      communityDisplayName: fullName.trim(),
-      communityStats: { posts: 0, followers: 0, following: 0, helpful: 0 },
-      communitySelectedTopics: [],
-      hasPassword: true,
-      // NEVER store the password itself
-    };
-    await registerUser(registryEntry);
-
-    // ─── 4. Persist session + profile ─────────────────────────────────────
-    await Promise.all([
-      secureStorage.setItem(SECURE_KEYS.AUTH_TOKEN, token),
-      secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(userProfile)),
-      AsyncStorage.setItem(ASYNC_KEYS.HAS_SEEN_ONBOARDING, 'true'),
-    ]);
-
-    // ─── 5. Link to baby / family (same as before, but with real userId) ───
-    try {
-      const { getBabyByIdFromDb, createBabyInDb, updateBabyInDb } = await import('@/database/dbHelpers');
-      let baby = await getBabyByIdFromDb(invite.familyId);
-
-      if (!baby) {
-        baby = await createBabyInDb({
-          id: invite.familyId,
-          name: invite.babyName,
-          dateOfBirth: invite.babyDob || new Date().toISOString(),
-          gender: invite.babyGender || 'unknown',
-          parent1Id: invite.creatorId,
-          parent1Name: invite.creatorName,
-          createdAt: new Date().toISOString(),
-        });
-      }
-
-      if (invite.role === 'parent2') {
-        await updateBabyInDb(invite.familyId, { parent2Id: userId });
-      }
-    } catch (dbError) {
-      console.error('Baby setup error (non-fatal):', dbError);
+  const signUpWithInviteCode = useCallback(async (
+    code: string,
+    fullName: string,
+    email: string,
+    password: string
+  ): Promise<{ success: boolean; message: string }> => {
+    if (!acquireSignInLock()) {
+      return { success: false, message: 'Another operation in progress' };
     }
 
     try {
-      const { createFamilyMemberInDb } = await import('@/database/dbHelpers');
-      const memberId = `fam_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      await createFamilyMemberInDb({
-        id: memberId,
-        babyId: invite.familyId,
-        userId,                                   // real Auth UID
+      let validation: { valid: boolean; invite?: any; message?: string } = { valid: false };
+
+      try {
+        const { validateInviteCode } = await import('@/utils/portableInvite');
+        validation = await validateInviteCode(code);
+      } catch {
+        const raw = await AsyncStorage.getItem('littleloom_invite_codes');
+        const codes = raw ? JSON.parse(raw) : {};
+        const invite = codes[code];
+        if (!invite) return { success: false, message: 'Invalid or expired invite code' };
+        if (invite.used) return { success: false, message: 'This invite code has already been used' };
+        if (invite.revoked || Date.now() > invite.expiresAt) {
+          return { success: false, message: 'This invite code has expired' };
+        }
+        validation = { valid: true, invite };
+      }
+
+      if (!validation.valid || !validation.invite) {
+        return { success: false, message: validation.message || 'Invalid invite code' };
+      }
+
+      const invite = validation.invite;
+
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email: email.trim().toLowerCase(),
-        fullName: fullName.trim(),
-        role: invite.role,
-        relationship: invite.relationship || (invite.role === 'parent2' ? 'Parent' : 'Guardian'),
-        permissions: {},
-        addedBy: invite.creatorId,
-        canBeRemoved: true,
-        notificationsEnabled: true,
-        status: 'active',
+        password,
+        options: {
+          data: {
+            full_name: fullName.trim(),
+            role: invite.role,
+          },
+        },
       });
-    } catch (famError) {
-      console.error('Family member creation error:', famError);
-    }
 
-    // ─── 6. Mark invite used ──────────────────────────────────────────────
-    try {
-      const { markInviteCodeUsed } = await import('@/utils/portableInvite');
-      await markInviteCodeUsed(code);
-    } catch {
-      const raw = await AsyncStorage.getItem('littleloom_invite_codes');
-      const codes = raw ? JSON.parse(raw) : {};
-      if (codes[code]) {
-        codes[code].used = true;
-        codes[code].used_by = userId;
-        codes[code].used_at = Date.now();
-        await AsyncStorage.setItem('littleloom_invite_codes', JSON.stringify(codes));
+      if (signUpError || !signUpData?.user) {
+        console.warn('[Auth] Invite signup rejected by Supabase:', signUpError?.message);
+        if (signUpError?.message?.toLowerCase().includes('already registered') ||
+            signUpError?.message?.toLowerCase().includes('user already exists')) {
+          return { success: false, message: 'An account with this email already exists. Please sign in instead.' };
+        }
+        return { success: false, message: signUpError?.message || 'Could not create account' };
       }
+
+      const userId = signUpData.user.id;
+      const token = signUpData.session?.access_token ?? `auth_token_${userId}`;
+
+      const handle = `@${fullName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
+
+      const role: UserProfile['role'] =
+        invite.role === 'parent2' ? 'parent2' :
+        invite.role === 'guardian' ? 'guardian' : 'guardian';
+
+      const userProfile: UserProfile = {
+        id: userId,
+        fullName: fullName.trim(),
+        email: email.trim().toLowerCase(),
+        avatar: '👤',
+        role,
+        createdAt: new Date().toISOString(),
+        preferences: { notifications: true, darkMode: false, language: 'en' },
+        communityUsername: fullName.trim(),
+        communityHandle: handle,
+        communityBio: '',
+        communityAvatar: '👤',
+        communityDisplayName: fullName.trim(),
+        communityStats: { posts: 0, followers: 0, following: 0, helpful: 0 },
+        communitySelectedTopics: [],
+      };
+
+      const registryEntry: UserRegistryEntry = {
+        userId,
+        email: userProfile.email,
+        fullName: userProfile.fullName,
+        avatar: '👤',
+        role,
+        createdAt: userProfile.createdAt,
+        communityUsername: fullName.trim(),
+        communityHandle: handle,
+        communityBio: '',
+        communityAvatar: '👤',
+        communityDisplayName: fullName.trim(),
+        communityStats: { posts: 0, followers: 0, following: 0, helpful: 0 },
+        communitySelectedTopics: [],
+        hasPassword: true,
+      };
+      await registerUser(registryEntry);
+
+      await Promise.all([
+        secureStorage.setItem(SECURE_KEYS.AUTH_TOKEN, token),
+        secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(userProfile)),
+        AsyncStorage.setItem(ASYNC_KEYS.HAS_SEEN_ONBOARDING, 'true'),
+      ]);
+
+      try {
+        const { getBabyByIdFromDb, createBabyInDb, updateBabyInDb } = await import('@/database/dbHelpers');
+        let baby = await getBabyByIdFromDb(invite.familyId);
+
+        if (!baby) {
+          baby = await createBabyInDb({
+            id: invite.familyId,
+            name: invite.babyName,
+            dateOfBirth: invite.babyDob || new Date().toISOString(),
+            gender: invite.babyGender || 'unknown',
+            parent1Id: invite.creatorId,
+            parent1Name: invite.creatorName,
+            createdAt: new Date().toISOString(),
+          });
+        }
+
+        if (invite.role === 'parent2') {
+          await updateBabyInDb(invite.familyId, { parent2Id: userId });
+        }
+      } catch (dbError) {
+        console.error('Baby setup error (non-fatal):', dbError);
+      }
+
+      try {
+        const { createFamilyMemberInDb } = await import('@/database/dbHelpers');
+        const memberId = `fam_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        await createFamilyMemberInDb({
+          id: memberId,
+          babyId: invite.familyId,
+          userId,
+          email: email.trim().toLowerCase(),
+          fullName: fullName.trim(),
+          role: invite.role,
+          relationship: invite.relationship || (invite.role === 'parent2' ? 'Parent' : 'Guardian'),
+          permissions: {},
+          addedBy: invite.creatorId,
+          canBeRemoved: true,
+          notificationsEnabled: true,
+          status: 'active',
+        });
+      } catch (famError) {
+        console.error('Family member creation error:', famError);
+      }
+
+      try {
+        const { markInviteCodeUsed } = await import('@/utils/portableInvite');
+        await markInviteCodeUsed(code);
+      } catch {
+        const raw = await AsyncStorage.getItem('littleloom_invite_codes');
+        const codes = raw ? JSON.parse(raw) : {};
+        if (codes[code]) {
+          codes[code].used = true;
+          codes[code].used_by = userId;
+          codes[code].used_at = Date.now();
+          await AsyncStorage.setItem('littleloom_invite_codes', JSON.stringify(codes));
+        }
+      }
+
+      await Promise.all([
+        AsyncStorage.setItem(ASYNC_KEYS.HAS_PARENT2, 'true'),
+        AsyncStorage.setItem(ASYNC_KEYS.HAS_BABY, 'true'),
+        AsyncStorage.setItem(ASYNC_KEYS.PARENT2_COMPLETED, 'true'),
+        AsyncStorage.setItem(ASYNC_KEYS.BABY_COMPLETED, 'true'),
+        AsyncStorage.setItem(ASYNC_KEYS.SETUP_COMPLETE, 'true'),
+        AsyncStorage.setItem(ASYNC_KEYS.ONBOARDING_COMPLETE, 'true'),
+      ]);
+
+      if (isMounted.current) {
+        setState(prev => ({
+          ...prev,
+          isAuthenticated: true,
+          userToken: token,
+          userProfile,
+          onboardingComplete: true,
+          hasSeenOnboarding: true,
+          setupComplete: true,
+          hasParent2: true,
+          hasBaby: true,
+        }));
+      }
+
+      lastSignInTime.current = Date.now();
+      return { success: true, message: 'Welcome to the family!' };
+    } catch (error) {
+      console.error('Invite code sign up error:', error);
+      return { success: false, message: 'Failed to join family. Please try again.' };
+    } finally {
+      releaseSignInLock();
     }
-
-    // ─── 7. Mark setup complete (invitee joins an already-configured family)
-    await Promise.all([
-      AsyncStorage.setItem(ASYNC_KEYS.HAS_PARENT2, 'true'),
-      AsyncStorage.setItem(ASYNC_KEYS.HAS_BABY, 'true'),
-      AsyncStorage.setItem(ASYNC_KEYS.PARENT2_COMPLETED, 'true'),
-      AsyncStorage.setItem(ASYNC_KEYS.BABY_COMPLETED, 'true'),
-      AsyncStorage.setItem(ASYNC_KEYS.SETUP_COMPLETE, 'true'),
-      AsyncStorage.setItem(ASYNC_KEYS.ONBOARDING_COMPLETE, 'true'),
-    ]);
-
-    if (isMounted.current) {
-      setState(prev => ({
-        ...prev,
-        isAuthenticated: true,
-        userToken: token,
-        userProfile,
-        onboardingComplete: true,
-        hasSeenOnboarding: true,
-        setupComplete: true,
-        hasParent2: true,
-        hasBaby: true,
-      }));
-    }
-
-    lastSignInTime.current = Date.now();
-    return { success: true, message: 'Welcome to the family!' };
-  } catch (error) {
-    console.error('Invite code sign up error:', error);
-    return { success: false, message: 'Failed to join family. Please try again.' };
-  } finally {
-    releaseSignInLock();
-  }
-}, [acquireSignInLock, releaseSignInLock]);
+  }, [acquireSignInLock, releaseSignInLock]);
 
   const loginWithBiometric = useCallback(async (): Promise<boolean> => {
     if (!acquireBiometricLock()) return false;
@@ -1442,7 +1349,6 @@ const signUpWithInviteCode = useCallback(async (
   const signOut = useCallback(async (): Promise<void> => {
     if (signInLock.current) await new Promise(resolve => setTimeout(resolve, 1000));
     try {
-      // Release any active security lock before clearing auth
       await AsyncStorage.setItem('littleloom_security_lock', 'false');
       
       const [hasParent2Str, hasBabyStr, setupComplete, hasSeenOnboarding] = await Promise.all([
@@ -1452,12 +1358,8 @@ const signUpWithInviteCode = useCallback(async (
         AsyncStorage.getItem(ASYNC_KEYS.HAS_SEEN_ONBOARDING),
       ]);
 
-      // Invalidate the real server session first.
       try { await supabase.auth.signOut(); } catch (e) { console.warn('[Auth] Supabase signOut failed:', e); }
 
-      // ─── CRITICAL FIX: Only delete token and session data ────────────
-      // User registry stays in app_settings so they can sign back in
-      // We delete USER_PROFILE from SecureStore but it's restored from registry on next sign-in
       await Promise.all([
         secureStorage.deleteItem(SECURE_KEYS.AUTH_TOKEN),
         secureStorage.deleteItem(SECURE_KEYS.USER_PROFILE),
@@ -1482,7 +1384,6 @@ const signUpWithInviteCode = useCallback(async (
           isAuthenticated: false,
           userToken: null,
           userProfile: null,
-          // ─── FIX: Keep onboarding seen so user doesn't re-see it ─────
           onboardingComplete: hasSeenOnboarding === 'true',
           hasSeenOnboarding: hasSeenOnboarding === 'true',
           isBiometricLoginEnabled: false,
@@ -1500,7 +1401,6 @@ const signUpWithInviteCode = useCallback(async (
       const updated = { ...state.userProfile, ...updates };
       await secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(updated));
       
-      // ─── CRITICAL FIX: Sync profile changes to persistent registry ───
       await updateUserInRegistry(updated.id, {
         fullName: updated.fullName,
         email: updated.email,
@@ -1758,79 +1658,75 @@ const signUpWithInviteCode = useCallback(async (
     setupCompleteCallbackRef.current = callback;
   }, []);
 
-const completeSetup = useCallback(async (step: 'parent2' | 'baby'): Promise<boolean> => {
-  try {
-    if (step === 'parent2') {
-      await Promise.all([
-        AsyncStorage.setItem(ASYNC_KEYS.HAS_PARENT2, 'true'),
-        AsyncStorage.setItem(ASYNC_KEYS.PARENT2_COMPLETED, 'true'),
+  const completeSetup = useCallback(async (step: 'parent2' | 'baby'): Promise<boolean> => {
+    try {
+      if (step === 'parent2') {
+        await Promise.all([
+          AsyncStorage.setItem(ASYNC_KEYS.HAS_PARENT2, 'true'),
+          AsyncStorage.setItem(ASYNC_KEYS.PARENT2_COMPLETED, 'true'),
+        ]);
+      } else if (step === 'baby') {
+        await Promise.all([
+          AsyncStorage.setItem(ASYNC_KEYS.HAS_BABY, 'true'),
+          AsyncStorage.setItem(ASYNC_KEYS.BABY_COMPLETED, 'true'),
+        ]);
+      }
+
+      const [p2Completed, babyCompleted] = await Promise.all([
+        AsyncStorage.getItem(ASYNC_KEYS.PARENT2_COMPLETED),
+        AsyncStorage.getItem(ASYNC_KEYS.BABY_COMPLETED),
       ]);
-    } else if (step === 'baby') {
-      await Promise.all([
-        AsyncStorage.setItem(ASYNC_KEYS.HAS_BABY, 'true'),
-        AsyncStorage.setItem(ASYNC_KEYS.BABY_COMPLETED, 'true'),
-      ]);
+
+      const p2Done = p2Completed !== null;
+      const bDone = babyCompleted !== null;
+      const setupDone = p2Done && bDone;
+
+      const hasParent2Val = p2Completed === 'true' ? true : p2Completed === 'skipped' ? 'skipped' : false;
+      const hasBabyVal = babyCompleted === 'true' ? true : babyCompleted === 'skipped' ? 'skipped' : false;
+
+      const isActuallyComplete = setupDone || 
+        (hasParent2Val !== false && hasBabyVal !== false);
+
+      if (isActuallyComplete) {
+        await Promise.all([
+          AsyncStorage.setItem(ASYNC_KEYS.SETUP_COMPLETE, 'true'),
+          AsyncStorage.setItem(ASYNC_KEYS.ONBOARDING_COMPLETE, 'true'),
+        ]);
+      }
+
+      if (__DEV__) {
+        console.log('[Auth] completeSetup:', {
+          step,
+          p2Completed,
+          babyCompleted,
+          p2Done,
+          bDone,
+          setupDone: isActuallyComplete,
+          hasParent2Val,
+          hasBabyVal,
+        });
+      }
+
+      if (isMounted.current) {
+        setState(prev => ({
+          ...prev,
+          setupComplete: isActuallyComplete,
+          onboardingComplete: isActuallyComplete || prev.onboardingComplete,
+          hasParent2: hasParent2Val,
+          hasBaby: hasBabyVal,
+        }));
+      }
+
+      if (isActuallyComplete && setupCompleteCallbackRef.current) {
+        try { await setupCompleteCallbackRef.current(); } catch (error) {}
+      }
+
+      return true;
+    } catch (error) {
+      console.error('completeSetup error:', error);
+      return false;
     }
-
-    // Re-read BOTH statuses from storage to determine if setup is truly complete
-    const [p2Completed, babyCompleted] = await Promise.all([
-      AsyncStorage.getItem(ASYNC_KEYS.PARENT2_COMPLETED),
-      AsyncStorage.getItem(ASYNC_KEYS.BABY_COMPLETED),
-    ]);
-
-    const p2Done = p2Completed !== null; // 'true' or 'skipped' both count as addressed
-    const bDone = babyCompleted !== null;
-    const setupDone = p2Done && bDone;
-
-    const hasParent2Val = p2Completed === 'true' ? true : p2Completed === 'skipped' ? 'skipped' : false;
-    const hasBabyVal = babyCompleted === 'true' ? true : babyCompleted === 'skipped' ? 'skipped' : false;
-
-    // CRITICAL FIX: Force setup completion if both steps are addressed
-    // but also ensure the state reflects reality
-    const isActuallyComplete = setupDone || 
-      (hasParent2Val !== false && hasBabyVal !== false);
-
-    if (isActuallyComplete) {
-      await Promise.all([
-        AsyncStorage.setItem(ASYNC_KEYS.SETUP_COMPLETE, 'true'),
-        AsyncStorage.setItem(ASYNC_KEYS.ONBOARDING_COMPLETE, 'true'),
-      ]);
-    }
-
-    // Log the current state for debugging
-    if (__DEV__) {
-      console.log('[Auth] completeSetup:', {
-        step,
-        p2Completed,
-        babyCompleted,
-        p2Done,
-        bDone,
-        setupDone: isActuallyComplete,
-        hasParent2Val,
-        hasBabyVal,
-      });
-    }
-
-    if (isMounted.current) {
-      setState(prev => ({
-        ...prev,
-        setupComplete: isActuallyComplete,
-        onboardingComplete: isActuallyComplete || prev.onboardingComplete,
-        hasParent2: hasParent2Val,
-        hasBaby: hasBabyVal,
-      }));
-    }
-
-    if (isActuallyComplete && setupCompleteCallbackRef.current) {
-      try { await setupCompleteCallbackRef.current(); } catch (error) {}
-    }
-
-    return true;
-  } catch (error) {
-    console.error('completeSetup error:', error);
-    return false;
-  }
-}, []);
+  }, []);
 
   const skipSetup = useCallback(async (step: 'parent2' | 'baby') => {
     try {
@@ -1846,7 +1742,6 @@ const completeSetup = useCallback(async (step: 'parent2' | 'baby'): Promise<bool
         ]);
       }
 
-      // Re-read BOTH statuses from storage
       const [p2Completed, babyCompleted] = await Promise.all([
         AsyncStorage.getItem(ASYNC_KEYS.PARENT2_COMPLETED),
         AsyncStorage.getItem(ASYNC_KEYS.BABY_COMPLETED),
@@ -1922,6 +1817,7 @@ const completeSetup = useCallback(async (step: 'parent2' | 'baby'): Promise<bool
   }, [releaseSignInLock, releaseBiometricLock]);
 
   const getCurrentUserProfile = useCallback(() => state.userProfile, [state.userProfile]);
+  
   const findUserByEmailCallback = useCallback(async (email: string): Promise<{ userId: string; email: string; fullName: string; role: string } | null> => {
     const user = await findUserByEmail(email);
     return user ? { userId: user.userId, email: user.email, fullName: user.fullName, role: user.role } : null;
