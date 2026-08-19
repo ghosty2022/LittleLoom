@@ -339,6 +339,82 @@ const LITTLELOOM_TEAM: CommunityUser = {
   following: [],
 };
 
+// Add this function after the INITIAL_TOPICS declaration and before CommunityProvider
+
+// ============================================================
+// Fetch Real Topic Stats from Supabase
+// ============================================================
+export const fetchRealTopicStats = async (): Promise<Topic[]> => {
+  try {
+    // Get real post counts per topic
+    const { data: postCounts, error: postError } = await supabase
+      .from('community_posts')
+      .select('topic_id, count')
+      .groupBy('topic_id');
+
+    // Get real member counts per topic
+    const { data: memberCounts, error: memberError } = await supabase
+      .from('user_topics')
+      .select('topic_id, count')
+      .groupBy('topic_id');
+
+    if (postError && postError.code !== 'PGRST205') {
+      console.warn('Post count fetch error:', postError);
+    }
+    if (memberError && memberError.code !== 'PGRST205') {
+      console.warn('Member count fetch error:', memberError);
+    }
+
+    // If tables don't exist yet, return initial topics
+    if (postError?.code === 'PGRST205' || memberError?.code === 'PGRST205') {
+      console.log('Topics tables not available yet, using initial data');
+      return INITIAL_TOPICS;
+    }
+
+    // Update topics with real data
+    const updatedTopics = INITIAL_TOPICS.map(topic => {
+      const posts = postCounts?.find((p: any) => p.topic_id === topic.id)?.count || 0;
+      const members = memberCounts?.find((m: any) => m.topic_id === topic.id)?.count || 0;
+      return {
+        ...topic,
+        posts: Math.max(topic.posts, posts),
+        members: Math.max(topic.members, members),
+      };
+    });
+
+    console.log(`[fetchRealTopicStats] Updated ${updatedTopics.length} topics with real data`);
+    return updatedTopics;
+  } catch (error) {
+    console.warn('Failed to fetch real topic stats, using initial:', error);
+    return INITIAL_TOPICS;
+  }
+};
+
+// ============================================================
+// Cache for topic stats
+// ============================================================
+let cachedTopics: Topic[] | null = null;
+let lastFetchTime = 0;
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+export const getCachedTopics = async (): Promise<Topic[]> => {
+  const now = Date.now();
+  if (cachedTopics && (now - lastFetchTime) < CACHE_DURATION) {
+    return cachedTopics;
+  }
+  
+  const topics = await fetchRealTopicStats();
+  cachedTopics = topics;
+  lastFetchTime = now;
+  return topics;
+};
+
+export const refreshTopics = async (): Promise<Topic[]> => {
+  const topics = await fetchRealTopicStats();
+  cachedTopics = topics;
+  lastFetchTime = Date.now();
+  return topics;
+};
 const MOOD_CONFIG: Record<PostMood, { emoji: string; label: string; color: string; bgColor: string }> = {
   celebrating: { emoji: '🎉', label: 'Celebrating', color: '#f59e0b', bgColor: '#f59e0b15' },
   support: { emoji: '💙', label: 'Support', color: '#3b82f6', bgColor: '#3b82f615' },

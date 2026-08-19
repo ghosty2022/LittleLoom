@@ -6,14 +6,15 @@ import {
   Text,
   TouchableOpacity,
   ActivityIndicator,
-  RefreshControl as RNRefreshControl,  // Rename imported RefreshControl
+  RefreshControl as RNRefreshControl,
   StatusBar,
   FlatList,
   Image,
+  Share,
 } from 'react-native';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useRef } from 'react';
 
-import Animated, { FadeInUp } from 'react-native-reanimated';
+import Animated, { FadeInUp, Layout } from 'react-native-reanimated';
 
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -22,14 +23,14 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import type { CommunityStackParamList } from '../../types/navigation';
 
-import { Post, Topic, useCommunity, INITIAL_TOPICS } from '../../context/CommunityContext';
+import { Post, Topic, useCommunity, INITIAL_TOPICS, refreshTopics } from '../../context/CommunityContext';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { useRouteBasedNavVisibility } from '../../hooks/useRouteBasedNavVisibility';
 import { useReportRoute } from '../../hooks/useReportRoute';
 import { useSafeCustomization } from '../../hooks/useSafeContexts';
 import { useUser } from '../../context/UserContext';
 import { useSweetAlert } from '../../components/SweetAlert';
-import { Share } from 'react-native';
+import { supabase } from '../../services/supabaseClient';
 
 import {
   CommunityColors,
@@ -47,24 +48,166 @@ const PILL_MARGIN = 14;
 const SAFE_AREA_BOTTOM = 20;
 const NAV_PILL_TOTAL_HEIGHT = PILL_HEIGHT + PILL_MARGIN + SAFE_AREA_BOTTOM;
 
-// ─── Sensitive Image ───
-const SensitiveImage = ({ uri, style, resizeMode = 'cover' }: { uri: string; style?: any; resizeMode?: any }) => {
+// ─── Sensitive Image with Blur ───
+const SensitiveImage = React.memo(({ 
+  uri, 
+  style, 
+  resizeMode = 'cover',
+  isDark = false,
+}: { 
+  uri: string; 
+  style?: any; 
+  resizeMode?: any;
+  isDark?: boolean;
+}) => {
   const [revealed, setRevealed] = useState(false);
+  
+  if (!uri) return null;
+  
   return (
-    <TouchableOpacity activeOpacity={0.9} onPress={() => setRevealed(true)} disabled={revealed} style={style}>
-      <Image source={{ uri }} style={[style, { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }]} resizeMode={resizeMode} />
+    <TouchableOpacity 
+      activeOpacity={0.9} 
+      onPress={() => setRevealed(true)} 
+      disabled={revealed} 
+      style={style}
+    >
+      <Image 
+        source={{ uri }} 
+        style={[style, { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }]} 
+        resizeMode={resizeMode}
+        blurRadius={!revealed ? 15 : 0}
+      />
       {!revealed && (
-        <BlurView intensity={75} style={[StyleSheet.absoluteFill, { justifyContent: 'center', alignItems: 'center', zIndex: 10 }]} tint="dark">
+        <BlurView 
+          intensity={80} 
+          style={[StyleSheet.absoluteFill, { justifyContent: 'center', alignItems: 'center', zIndex: 10 }]} 
+          tint={isDark ? 'dark' : 'light'}
+        >
           <View style={{ alignItems: 'center', padding: 20 }}>
-            <Ionicons name="shield-checkmark" size={28} color="#fff" />
-            <Text style={{ color: '#fff', fontWeight: '700', marginTop: 8, fontSize: 13 }}>Sensitive Content</Text>
-            <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 11, marginTop: 4 }}>Tap to view</Text>
+            <View style={{ 
+              width: 48, 
+              height: 48, 
+              borderRadius: 24, 
+              backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
+              justifyContent: 'center',
+              alignItems: 'center',
+              marginBottom: 8,
+            }}>
+              <Ionicons name="shield-checkmark" size={24} color={isDark ? '#fff' : '#666'} />
+            </View>
+            <Text style={{ color: isDark ? '#fff' : '#333', fontWeight: '700', fontSize: 13 }}>
+              Sensitive Content
+            </Text>
+            <Text style={{ color: isDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.5)', fontSize: 11, marginTop: 4 }}>
+              Tap to view
+            </Text>
           </View>
         </BlurView>
       )}
     </TouchableOpacity>
   );
-};
+});
+
+// ─── Sentiment Indicator ───
+const SentimentIndicator = React.memo(({ text, isDark }: { text: string; isDark: boolean }) => {
+  const analyzeSentiment = (content: string) => {
+    const positiveWords = ['happy', 'joy', 'love', 'great', 'wonderful', 'amazing', 'excellent', 'good', 'beautiful', 'fantastic', 'awesome', 'incredible', 'perfect', 'glad', 'thankful', 'grateful', 'blessed', 'proud', 'exciting', 'milestone', 'achievement', 'success', 'celebrate', 'celebrating'];
+    const negativeWords = ['sad', 'upset', 'angry', 'frustrated', 'worried', 'scared', 'tired', 'exhausted', 'overwhelmed', 'stressed', 'anxious', 'depressed', 'struggle', 'difficult', 'hard', 'tough', 'challenging', 'pain', 'cry', 'crying', 'hurt'];
+    
+    const words = content.toLowerCase().split(/\s+/);
+    let positiveCount = 0;
+    let negativeCount = 0;
+    
+    words.forEach(word => {
+      if (positiveWords.includes(word)) positiveCount++;
+      if (negativeWords.includes(word)) negativeCount++;
+    });
+    
+    const score = (positiveCount - negativeCount) / (words.length || 1);
+    let sentiment: 'positive' | 'negative' | 'neutral' = 'neutral';
+    if (score > 0.1) sentiment = 'positive';
+    else if (score < -0.1) sentiment = 'negative';
+    
+    return { sentiment, score, confidence: Math.min(Math.abs(score) * 2 + 0.3, 1) };
+  };
+
+  const getEmoji = (sentiment: string) => {
+    const map: Record<string, string> = { positive: '😊', negative: '😢', neutral: '😐' };
+    return map[sentiment] || '😐';
+  };
+
+  const getColor = (sentiment: string) => {
+    switch (sentiment) {
+      case 'positive': return '#10b981';
+      case 'negative': return '#ef4444';
+      default: return '#a8a29e';
+    }
+  };
+
+  const getLabel = (sentiment: string) => {
+    switch (sentiment) {
+      case 'positive': return 'Positive';
+      case 'negative': return 'Needs support';
+      default: return 'Neutral';
+    }
+  };
+
+  const analysis = analyzeSentiment(text);
+  if (analysis.confidence < 0.3) return null;
+
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+      <Text style={{ fontSize: 14 }}>{getEmoji(analysis.sentiment)}</Text>
+      <View style={{ flex: 1, height: 3, backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : '#f0f0f0', borderRadius: 1.5, overflow: 'hidden' }}>
+        <View style={{ 
+          width: `${(analysis.score + 1) / 2 * 100}%`, 
+          height: '100%', 
+          backgroundColor: getColor(analysis.sentiment),
+          borderRadius: 1.5,
+        }} />
+      </View>
+      <Text style={{ fontSize: 10, fontWeight: '600', color: getColor(analysis.sentiment) }}>
+        {getLabel(analysis.sentiment)}
+      </Text>
+    </View>
+  );
+});
+
+// ─── Thread Summary ───
+const ThreadSummary = React.memo(({ content, isDark }: { content: string; isDark: boolean }) => {
+  const [expanded, setExpanded] = useState(false);
+  
+  if (content.length <= 120) return null;
+  
+  const summary = content.slice(0, 100) + '...';
+  
+  return (
+    <TouchableOpacity 
+      onPress={() => setExpanded(!expanded)}
+      style={{ 
+        backgroundColor: isDark ? 'rgba(99,102,241,0.08)' : 'rgba(99,102,241,0.05)',
+        padding: 10,
+        borderRadius: 10,
+        marginBottom: 10,
+      }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <Ionicons name="sparkles" size={14} color="#6366f1" />
+        <Text style={{ fontSize: 11, fontWeight: '600', color: '#6366f1' }}>
+          {expanded ? 'Hide summary' : 'AI Summary'}
+        </Text>
+      </View>
+      <Text style={{ 
+        fontSize: 13, 
+        color: isDark ? '#d6d3d1' : '#57534e',
+        lineHeight: 18,
+        marginTop: 4,
+      }}>
+        {expanded ? content : summary}
+      </Text>
+    </TouchableOpacity>
+  );
+});
 
 export default function TopicScreen({ navigation, route }: TopicScreenProps) {
   useRouteBasedNavVisibility();
@@ -88,6 +231,7 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
     deletePost,
     blockUser,
     isUserBlocked,
+    topics,
   } = useCommunity();
   const { communityProfile } = useUser();
 
@@ -104,6 +248,55 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
   const [topic, setTopic] = useState<Topic | undefined>(undefined);
   const [posts, setPosts] = useState<Post[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [realTopicData, setRealTopicData] = useState<Topic | null>(null);
+  const listRef = useRef<FlatList>(null);
+
+  // Get user's theme preference
+  const { settings } = useSafeCustomization?.() || { settings: { darkMode: false } };
+  const isDark = settings?.darkMode ?? false;
+
+  // Fetch real topic data on mount
+  useEffect(() => {
+    const fetchTopicData = async () => {
+      try {
+        // Try to get real data from Supabase
+        const { data: topicData, error: topicError } = await supabase
+          .from('community_topics')
+          .select('*')
+          .eq('id', topicId)
+          .single();
+
+        if (!topicError && topicData) {
+          // Get real post count
+          const { count: postCount, error: postError } = await supabase
+            .from('community_posts')
+            .select('*', { count: 'exact', head: true })
+            .eq('topic_id', topicId);
+
+          // Get real member count
+          const { count: memberCount, error: memberError } = await supabase
+            .from('user_topics')
+            .select('*', { count: 'exact', head: true })
+            .eq('topic_id', topicId);
+
+          setRealTopicData({
+            ...topicData,
+            posts: postError ? 0 : (postCount || 0),
+            members: memberError ? 0 : (memberCount || 0),
+            isJoined: false, // Will be updated from context
+            joinedBy: [],
+            engagementScore: 0,
+            weeklyGrowth: 0,
+            trending: topicData.trending || false,
+          });
+        }
+      } catch (error) {
+        console.warn('Failed to fetch real topic data:', error);
+      }
+    };
+
+    fetchTopicData();
+  }, [topicId]);
 
   useEffect(() => {
     if (!currentUser?.id || !communityProfile) return;
@@ -140,16 +333,28 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
     setIsLoading(true);
     const currentTopic = getTopicById(topicId);
     const topicPosts = getPostsByTopic(topicId);
-    setTopic(currentTopic);
+    
+    // Merge real data with context data
+    if (realTopicData && currentTopic) {
+      setTopic({
+        ...currentTopic,
+        posts: Math.max(currentTopic.posts, realTopicData.posts),
+        members: Math.max(currentTopic.members, realTopicData.members),
+      });
+    } else {
+      setTopic(currentTopic);
+    }
+    
     setPosts(topicPosts);
-    const timer = setTimeout(() => setIsLoading(false), 100);
+    const timer = setTimeout(() => setIsLoading(false), 300);
     return () => clearTimeout(timer);
-  }, [topicId, getTopicById, getPostsByTopic]);
+  }, [topicId, getTopicById, getPostsByTopic, realTopicData]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await refreshFeed();
-    setPosts(getPostsByTopic(topicId));
+    const topicPosts = getPostsByTopic(topicId);
+    setPosts(topicPosts);
     setRefreshing(false);
   }, [topicId, refreshFeed, getPostsByTopic]);
 
@@ -212,7 +417,7 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
     async (post: Post) => {
       try {
         await Share.share({
-          message: `${post.author.displayName} on LittleLoom: "${post.content.substring(0, 100)}..."`,
+          message: `${post.author.displayName} on The Loom: "${post.content.substring(0, 100)}..."`,
         });
         await sharePost(post.id);
       } catch (error) {
@@ -269,10 +474,11 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
   });
 
   const getTopicColor = (topicId: string) => {
-    const t = INITIAL_TOPICS.find(t => t.id === topicId);
+    const t = topics.find(t => t.id === topicId) || INITIAL_TOPICS.find(t => t.id === topicId);
     return t?.color || '#667eea';
   };
 
+  // ─── Render Post ───
   const renderPost = useCallback(
     ({ item, index }: { item: Post; index: number }) => {
       const topicColor = getTopicColor(item.topicId);
@@ -280,9 +486,12 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
       const isOwnPost = item.authorId === currentUser?.id;
 
       return (
-        <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(index * 50)}>
-          <View style={styles.postCard}>
-            <BlurView intensity={80} style={styles.postCardInner} tint="light">
+        <Animated.View 
+          entering={shouldReduceMotion ? undefined : FadeInUp.delay(index * 30).duration(400).springify()}
+          layout={Layout.springify()}
+        >
+          <View style={[styles.postCard, { backgroundColor: isDark ? '#292524' : '#fff' }]}>
+            <View style={[styles.postCardInner, { padding: 16 }]}>
               {/* Author Row */}
               <TouchableOpacity
                 style={styles.postHeader}
@@ -299,7 +508,9 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
                 />
                 <View style={styles.postHeaderText}>
                   <View style={styles.postNameRow}>
-                    <Text style={styles.postAuthor}>{item.author.displayName}</Text>
+                    <Text style={[styles.postAuthor, { color: isDark ? '#fff' : '#1c1917' }]}>
+                      {item.author.displayName}
+                    </Text>
                     {item.author.isVerified && (
                       <Ionicons name="checkmark-circle" size={14} color={topicColor} />
                     )}
@@ -310,33 +521,42 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
                       </View>
                     )}
                   </View>
-                  <Text style={styles.postTime}>{item.time}</Text>
+                  <Text style={[styles.postTime, { color: isDark ? '#78716c' : '#a8a29e' }]}>
+                    {item.time}
+                  </Text>
                 </View>
               </TouchableOpacity>
+
+              {/* Sentiment Indicator */}
+              <SentimentIndicator text={item.content} isDark={isDark} />
 
               {/* Content */}
               <TouchableOpacity
                 onPress={() => navigateToPostDetail(item.id)}
                 activeOpacity={0.9}
               >
-                <Text style={styles.postContent} numberOfLines={3}>
+                <Text style={[styles.postContent, { color: isDark ? '#d6d3d1' : '#44403c' }]} numberOfLines={3}>
                   {item.content}
                 </Text>
               </TouchableOpacity>
 
-              {/* Images */}
+              {/* Thread Summary */}
+              <ThreadSummary content={item.content} isDark={isDark} />
+
+              {/* Images with blur */}
               {hasImages && (
                 <View style={styles.postImagesContainer}>
                   {item.images!.slice(0, 2).map((img, idx) => (
                     <TouchableOpacity
                       key={idx}
-                      style={styles.postImageWrap}
+                      style={[styles.postImageWrap, { flex: 1, minWidth: (width - 80) / 2, height: 120 }]}
                       onPress={() => navigateToPostDetail(item.id)}
                     >
                       <SensitiveImage
                         uri={img}
                         style={styles.postImage}
                         resizeMode="cover"
+                        isDark={isDark}
                       />
                     </TouchableOpacity>
                   ))}
@@ -369,38 +589,40 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
                   <Ionicons
                     name={item.isLiked ? 'heart' : 'heart-outline'}
                     size={20}
-                    color={item.isLiked ? CommunityColors.error : CommunityColors.text.secondary}
+                    color={item.isLiked ? CommunityColors.error : (isDark ? '#78716c' : CommunityColors.text.secondary)}
                   />
-                  <Text style={[styles.actionText, item.isLiked && styles.actionTextActive]}>
+                  <Text style={[styles.actionText, item.isLiked && styles.actionTextActive, { color: isDark ? '#78716c' : CommunityColors.text.secondary }]}>
                     {item.likes}
                   </Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.action} onPress={() => navigateToPostDetail(item.id)}>
-                  <Ionicons name="chatbubble-outline" size={20} color={CommunityColors.text.secondary} />
-                  <Text style={styles.actionText}>{item.commentsCount}</Text>
+                  <Ionicons name="chatbubble-outline" size={20} color={isDark ? '#78716c' : CommunityColors.text.secondary} />
+                  <Text style={[styles.actionText, { color: isDark ? '#78716c' : CommunityColors.text.secondary }]}>
+                    {item.commentsCount}
+                  </Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.action} onPress={() => handlePostRepost(item)}>
                   <Ionicons
                     name={item.isReposted ? 'repeat' : 'repeat-outline'}
                     size={20}
-                    color={item.isReposted ? CommunityColors.secondary : CommunityColors.text.secondary}
+                    color={item.isReposted ? CommunityColors.secondary : (isDark ? '#78716c' : CommunityColors.text.secondary)}
                   />
-                  <Text style={[styles.actionText, item.isReposted && styles.actionTextActive]}>
+                  <Text style={[styles.actionText, item.isReposted && styles.actionTextActive, { color: isDark ? '#78716c' : CommunityColors.text.secondary }]}>
                     {item.reposts}
                   </Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.action} onPress={() => handlePostShare(item)}>
-                  <Ionicons name="share-outline" size={20} color={CommunityColors.text.secondary} />
+                  <Ionicons name="share-outline" size={20} color={isDark ? '#78716c' : CommunityColors.text.secondary} />
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.action} onPress={() => handlePostBookmark(item)}>
                   <Ionicons
                     name={item.isBookmarked ? 'bookmark' : 'bookmark-outline'}
                     size={20}
-                    color={item.isBookmarked ? CommunityColors.primary : CommunityColors.text.secondary}
+                    color={item.isBookmarked ? CommunityColors.primary : (isDark ? '#78716c' : CommunityColors.text.secondary)}
                   />
                 </TouchableOpacity>
 
@@ -410,7 +632,7 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
                   </TouchableOpacity>
                 )}
               </View>
-            </BlurView>
+            </View>
           </View>
         </Animated.View>
       );
@@ -426,23 +648,29 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
       handlePostDelete,
       currentUser,
       navigation,
+      isDark,
+      topics,
     ]
   );
 
   if (isLoading) {
     return (
-      <View style={[styles.container, styles.centered]}>
+      <View style={[styles.container, styles.centered, { backgroundColor: isDark ? '#0c0a09' : '#f8f9ff' }]}>
         <ActivityIndicator size="large" color={themeColors.spinnerColor} />
-        <Text style={styles.loadingText}>Loading topic...</Text>
+        <Text style={[styles.loadingText, { color: isDark ? '#78716c' : CommunityColors.text.secondary }]}>
+          Loading topic...
+        </Text>
       </View>
     );
   }
 
   if (!topic) {
     return (
-      <View style={[styles.container, styles.centered]}>
-        <Ionicons name="alert-circle-outline" size={48} color={CommunityColors.text.tertiary} />
-        <Text style={styles.errorText}>Topic not found</Text>
+      <View style={[styles.container, styles.centered, { backgroundColor: isDark ? '#0c0a09' : '#f8f9ff' }]}>
+        <Ionicons name="alert-circle-outline" size={48} color={isDark ? '#78716c' : CommunityColors.text.tertiary} />
+        <Text style={[styles.errorText, { color: isDark ? '#d6d3d1' : CommunityColors.text.secondary }]}>
+          Topic not found
+        </Text>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.goBackButton}>
           <Text style={styles.goBackText}>Go Back</Text>
         </TouchableOpacity>
@@ -450,22 +678,32 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
     );
   }
 
+  const displayTopic = realTopicData || topic;
+
   return (
     <LinearGradient
-      colors={[topic.color + '20', ...CommunityColors.background.gradient]}
-      style={styles.container}
+      colors={isDark ? 
+        [`${displayTopic.color}15`, '#0c0a09'] : 
+        [displayTopic.color + '20', ...CommunityColors.background.gradient]
+      }
+      style={[styles.container, { backgroundColor: isDark ? '#0c0a09' : '#f8f9ff' }]}
     >
-      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
 
       <LinearGradient
-        colors={[topic.color + '60', topic.color + '20', 'transparent']}
+        colors={isDark ? 
+          [`${displayTopic.color}30`, `${displayTopic.color}10`, 'transparent'] :
+          [displayTopic.color + '60', displayTopic.color + '20', 'transparent']
+        }
         style={styles.headerGradient}
       >
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={28} color={CommunityColors.text.primary} />
+          <TouchableOpacity onPress={() => navigation.goBack()} style={[styles.backButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.5)' }]}>
+            <Ionicons name="arrow-back" size={28} color={isDark ? '#fff' : CommunityColors.text.primary} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>{topic.name}</Text>
+          <Text style={[styles.headerTitle, { color: isDark ? '#fff' : CommunityColors.text.primary }]}>
+            {displayTopic.name}
+          </Text>
           <TouchableOpacity
             onPress={() =>
               sweetAlert.confirm(
@@ -473,7 +711,7 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
                 'What would you like to do?',
                 () => navigation.navigate('Report', {
                   type: 'topic',
-                  targetId: topic.id,
+                  targetId: displayTopic.id,
                   targetUserId: 'system',
                 }),
                 undefined,
@@ -482,22 +720,28 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
               )
             }
           >
-            <Ionicons name="ellipsis-horizontal" size={24} color={CommunityColors.text.primary} />
+            <Ionicons name="ellipsis-horizontal" size={24} color={isDark ? '#fff' : CommunityColors.text.primary} />
           </TouchableOpacity>
         </View>
 
         <View style={styles.topicInfo}>
-          <Text style={styles.topicEmoji}>{topic.emoji}</Text>
-          <Text style={[styles.topicName, { color: topic.color }]}>{topic.name}</Text>
-          <Text style={styles.topicDescription}>{topic.description}</Text>
+          <Text style={styles.topicEmoji}>{displayTopic.emoji}</Text>
+          <Text style={[styles.topicName, { color: displayTopic.color }]}>{displayTopic.name}</Text>
+          <Text style={[styles.topicDescription, { color: isDark ? '#a8a29e' : CommunityColors.text.secondary }]}>
+            {displayTopic.description}
+          </Text>
           <View style={styles.topicStats}>
-            <TouchableOpacity style={styles.statPill} onPress={() => navigation.navigate('TopicMembers', { topicId })}>
-              <Ionicons name="people" size={14} color={CommunityColors.text.secondary} />
-              <Text style={styles.stat}>{topic.members.toLocaleString()} members</Text>
+            <TouchableOpacity style={[styles.statPill, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.5)' }]} onPress={() => navigation.navigate('TopicMembers', { topicId })}>
+              <Ionicons name="people" size={14} color={isDark ? '#a8a29e' : CommunityColors.text.secondary} />
+              <Text style={[styles.stat, { color: isDark ? '#a8a29e' : CommunityColors.text.secondary }]}>
+                {displayTopic.members.toLocaleString()} members
+              </Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.statPill}>
-              <Ionicons name="document-text" size={14} color={CommunityColors.text.secondary} />
-              <Text style={styles.stat}>{topic.posts.toLocaleString()} posts</Text>
+            <TouchableOpacity style={[styles.statPill, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.5)' }]}>
+              <Ionicons name="document-text" size={14} color={isDark ? '#a8a29e' : CommunityColors.text.secondary} />
+              <Text style={[styles.stat, { color: isDark ? '#a8a29e' : CommunityColors.text.secondary }]}>
+                {displayTopic.posts.toLocaleString()} posts
+              </Text>
             </TouchableOpacity>
           </View>
           <TouchableOpacity
@@ -505,7 +749,10 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
             onPress={handleJoinToggle}
           >
             <LinearGradient
-              colors={topic.isJoined ? [`${topic.color}20`, `${topic.color}10`] : [topic.color, topic.color + 'dd']}
+              colors={topic.isJoined ? 
+                isDark ? [`${displayTopic.color}20`, `${displayTopic.color}10`] : [`${displayTopic.color}20`, `${displayTopic.color}10`] :
+                [displayTopic.color, displayTopic.color + 'dd']
+              }
               style={styles.joinButtonGradient}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
@@ -518,27 +765,28 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
         </View>
       </LinearGradient>
 
-      <View style={styles.content}>
+      <View style={[styles.content, { backgroundColor: isDark ? 'rgba(12,10,9,0.6)' : 'rgba(255,255,255,0.3)' }]}>
         <View style={styles.sortContainer}>
           <TouchableOpacity
-            style={styles.sortButton}
+            style={[styles.sortButton, { backgroundColor: isDark ? '#292524' : CommunityColors.background.card }]}
             onPress={() => {
               const cycle = { trending: 'newest', newest: 'popular', popular: 'trending' };
               setSortBy(prev => cycle[prev] as typeof sortBy);
               triggerHaptic('light');
             }}
           >
-            <Text style={styles.sortText}>
+            <Text style={[styles.sortText, { color: isDark ? '#a8a29e' : CommunityColors.text.secondary }]}>
               {sortBy.charAt(0).toUpperCase() + sortBy.slice(1)}
             </Text>
-            <Ionicons name="chevron-down" size={16} color={CommunityColors.text.secondary} />
+            <Ionicons name="chevron-down" size={16} color={isDark ? '#78716c' : CommunityColors.text.secondary} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.filterButton}>
+          <TouchableOpacity style={[styles.filterButton, { backgroundColor: isDark ? '#292524' : CommunityColors.background.card }]}>
             <Ionicons name="funnel-outline" size={20} color={CommunityColors.primary} />
           </TouchableOpacity>
         </View>
 
         <FlatList
+          ref={listRef}
           data={sortedPosts}
           renderItem={renderPost}
           keyExtractor={(item) => item.id}
@@ -552,17 +800,22 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
               refreshing={refreshing}
               onRefresh={onRefresh}
               tintColor={themeColors.spinnerColor}
+              progressBackgroundColor={isDark ? '#292524' : '#fff'}
             />
           }
           ListEmptyComponent={
             <View style={styles.emptyState}>
-              <View style={styles.emptyIconWrap}>
-                <Ionicons name="document-text-outline" size={48} color={CommunityColors.text.tertiary} />
+              <View style={[styles.emptyIconWrap, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' }]}>
+                <Ionicons name="document-text-outline" size={48} color={isDark ? '#78716c' : CommunityColors.text.tertiary} />
               </View>
-              <Text style={styles.emptyText}>No posts yet</Text>
-              <Text style={styles.emptySubtext}>Be the first to post in {topic.name}!</Text>
+              <Text style={[styles.emptyText, { color: isDark ? '#d6d3d1' : CommunityColors.text.secondary }]}>
+                No posts yet
+              </Text>
+              <Text style={[styles.emptySubtext, { color: isDark ? '#78716c' : CommunityColors.text.tertiary }]}>
+                Be the first to post in {displayTopic.name}!
+              </Text>
               <TouchableOpacity style={styles.emptyPostBtn} onPress={navigateToCreatePost}>
-                <LinearGradient colors={[topic.color, topic.color + 'dd']} style={styles.emptyPostGradient}>
+                <LinearGradient colors={[displayTopic.color, displayTopic.color + 'dd']} style={styles.emptyPostGradient}>
                   <Ionicons name="create-outline" size={18} color="#fff" />
                   <Text style={styles.emptyPostText}>Create Post</Text>
                 </LinearGradient>
@@ -572,8 +825,8 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
         />
       </View>
 
-      <TouchableOpacity style={styles.fab} onPress={navigateToCreatePost}>
-        <LinearGradient colors={[topic.color, topic.color + 'aa']} style={styles.fabGradient}>
+      <TouchableOpacity style={[styles.fab, { backgroundColor: displayTopic.color }]} onPress={navigateToCreatePost}>
+        <LinearGradient colors={[displayTopic.color, displayTopic.color + 'aa']} style={styles.fabGradient}>
           <Ionicons name="create-outline" size={28} color="white" />
         </LinearGradient>
       </TouchableOpacity>
@@ -587,7 +840,6 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 12,
     fontSize: 16,
-    color: CommunityColors.text.secondary,
     fontWeight: '600',
   },
   headerGradient: {
@@ -605,14 +857,12 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.5)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   headerTitle: {
     fontSize: 18,
     fontWeight: '800',
-    color: CommunityColors.text.primary,
   },
   topicInfo: { alignItems: 'center' },
   topicEmoji: { fontSize: 80, marginBottom: 12 },
@@ -623,7 +873,6 @@ const styles = StyleSheet.create({
   },
   topicDescription: {
     fontSize: 14,
-    color: CommunityColors.text.secondary,
     textAlign: 'center',
     marginBottom: 16,
     paddingHorizontal: 40,
@@ -641,9 +890,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.5)',
   },
-  stat: { fontSize: 13, color: CommunityColors.text.secondary, fontWeight: '600' },
+  stat: { fontSize: 13, fontWeight: '600' },
   joinButton: {
     borderRadius: 24,
     overflow: 'hidden',
@@ -658,7 +906,6 @@ const styles = StyleSheet.create({
   joinedText: { color: CommunityColors.primary },
   content: {
     flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.3)',
     borderTopLeftRadius: 30,
     borderTopRightRadius: 30,
     paddingTop: 20,
@@ -674,17 +921,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: CommunityColors.background.card,
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
   },
-  sortText: { fontSize: 14, fontWeight: '600', color: CommunityColors.text.secondary },
+  sortText: { fontSize: 14, fontWeight: '600' },
   filterButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: CommunityColors.background.card,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -698,7 +943,6 @@ const styles = StyleSheet.create({
     ...CommunityShadows.medium,
   },
   postCardInner: {
-    padding: 20,
     overflow: 'hidden',
   },
   postHeader: {
@@ -708,8 +952,8 @@ const styles = StyleSheet.create({
   },
   postHeaderText: { marginLeft: 12, flex: 1 },
   postNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
-  postAuthor: { fontSize: 15, fontWeight: '700', color: CommunityColors.text.primary },
-  postTime: { fontSize: 13, color: CommunityColors.text.tertiary, marginTop: 2 },
+  postAuthor: { fontSize: 15, fontWeight: '700' },
+  postTime: { fontSize: 13, marginTop: 2 },
   trendingBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -726,7 +970,6 @@ const styles = StyleSheet.create({
   },
   postContent: {
     fontSize: 15,
-    color: CommunityColors.text.primary,
     lineHeight: 22,
     marginBottom: 12,
   },
@@ -737,9 +980,6 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   postImageWrap: {
-    flex: 1,
-    minWidth: (width - 88) / 2,
-    height: 120,
     borderRadius: CommunityBorderRadius.lg,
     overflow: 'hidden',
   },
@@ -749,6 +989,9 @@ const styles = StyleSheet.create({
   },
   postImageMore: {
     position: 'relative',
+    flex: 1,
+    minWidth: (width - 88) / 2,
+    height: 120,
   },
   postImageMoreOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -773,7 +1016,7 @@ const styles = StyleSheet.create({
   },
   postActions: { flexDirection: 'row', gap: 16, flexWrap: 'wrap' },
   action: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  actionText: { fontSize: 13, color: CommunityColors.text.secondary, fontWeight: '600' },
+  actionText: { fontSize: 13, fontWeight: '600' },
   actionTextActive: { color: CommunityColors.primary },
   fab: {
     position: 'absolute',
@@ -799,13 +1042,12 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: 'rgba(0,0,0,0.03)',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
   },
-  emptyText: { fontSize: 16, color: CommunityColors.text.secondary, marginTop: 12, fontWeight: '700' },
-  emptySubtext: { fontSize: 14, color: CommunityColors.text.tertiary, marginTop: 4 },
+  emptyText: { fontSize: 16, marginTop: 12, fontWeight: '700' },
+  emptySubtext: { fontSize: 14, marginTop: 4 },
   emptyPostBtn: {
     marginTop: 16,
     borderRadius: 16,
@@ -823,7 +1065,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
-  errorText: { fontSize: 18, color: CommunityColors.text.secondary, marginBottom: 16, marginTop: 12 },
+  errorText: { fontSize: 18, marginBottom: 16, marginTop: 12 },
   goBackButton: {
     backgroundColor: CommunityColors.primary,
     paddingHorizontal: 24,
