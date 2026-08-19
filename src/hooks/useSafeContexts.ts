@@ -308,11 +308,12 @@ export function useSafeTracker() {
   }
 }
 
-// src/hooks/useSafeContexts.ts
-// ── FIXED FALLBACK ──────────────────────────────────────────────────────
+// ── COMPLETE FALLBACK TRACKER CONTEXT ────────────────────────────────
+// This must match the TrackerContextType interface exactly
 
 function getFallbackTrackerContext() {
   return {
+    // State
     isLoading: false,
     trackers: [],
     customTrackers: [],
@@ -329,41 +330,71 @@ function getFallbackTrackerContext() {
       recentTemplates: [],
       detectedPatterns: [],
     },
+
+    // Tracker operations
     getTracker: () => undefined,
     getTrackersByCategory: () => [],
     searchTrackers: () => [],
+
+    // Custom tracker CRUD
     createCustomTracker: async () => null,
     updateCustomTracker: async () => false,
     deleteCustomTracker: async () => false,
     duplicateTracker: async () => null,
+
+    // Entry CRUD
     addEntry: async () => null,
     updateEntry: async () => false,
     deleteEntry: async () => false,
+
+    // Entry queries
     getEntries: () => [],
     getEntriesByDate: () => [],
     getEntryById: () => undefined,
-    getTrackerStats: () => ({ totalEntries: 0, thisWeek: 0, thisMonth: 0, lastEntry: null, streakDays: 0 }),
+
+    // Stats
+    getTrackerStats: () => ({ 
+      totalEntries: 0, 
+      thisWeek: 0, 
+      thisMonth: 0, 
+      lastEntry: null, 
+      streakDays: 0 
+    }),
     getTodaySummary: () => [],
+
+    // Permissions
     canUseTracker: () => false,
     canCreateEntry: () => false,
     canEditEntry: () => false,
     canDeleteEntry: () => false,
+
+    // Progressive features
     getSmartSuggestions: () => ({}),
     getYesterdayData: () => null,
     getStreak: () => undefined,
     getInsights: () => [],
     dismissInsight: () => {},
+
+    // Reminders
     scheduleReminder: async () => '',
     cancelReminder: async () => {},
     getPendingReminders: () => [],
     snoozeReminder: async () => {},
+
+    // Templates
     saveTemplate: async () => {},
     getTemplates: async () => [],
+
+    // Entry linking
     linkEntries: async () => {},
     getLinkedEntries: () => [],
+
+    // Legacy sync
     syncToLegacyActivity: () => ({} as any),
     getLegacyActivities: () => [],
     syncFromBabyContext: async () => {},
+
+    // Refresh
     refreshTrackers: async () => {},
     refreshEntries: async () => {},
     setCurrentBabyId: () => {},
@@ -407,15 +438,5 @@ export function useUnifiedTheme() {
 }
 
 // ─── EXPORTS ──────────────────────────────────────────────────────────
-
-export {
-  useSafeApp,
-  useSafeAuth,
-  useSafeBaby,
-  useSafeActivity,
-  useSafeCustomization,
-  useSafeTracker,
-  useUnifiedTheme,
-};
 
 export default useUnifiedTheme;

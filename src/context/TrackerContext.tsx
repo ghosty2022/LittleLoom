@@ -1502,10 +1502,16 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   );
 };
 
+// src/context/TrackerContext.tsx
+// ── FIXED EXPORTS ──────────────────────────────────────────────────────
+
 export const useTracker = (): TrackerContextType => {
   const context = useContext(TrackerContext);
   if (!context) throw new Error('useTracker must be used within TrackerProvider');
   return context;
 };
+
+// Export the context itself for useSafeContexts.ts
+export { TrackerContext };
 
 export default TrackerProvider;
