@@ -1,15 +1,15 @@
 // src/hooks/useSafeContexts.ts
 // Safe context hooks that never throw - for use in components that may render before contexts are ready
 
+import { useContext } from 'react';
 import { useTheme as useThemeOriginal } from '../context/AppContext';
 import { useAuth as useAuthOriginal } from '../context/AuthContext';
 import { useBaby as useBabyOriginal } from '../context/BabyContext';
 import { useActivity as useActivityOriginal } from '../context/ActivityContext';
 import useCustomizationOriginal from './useCustomization';
 
-// FIX: Direct import from context, not through hook wrapper
+// FIX: Direct import of the context, NOT the hook wrapper
 import { TrackerContext } from '../context/TrackerContext';
-import { useContext } from 'react';
 
 const DEFAULT_APP_COLORS = {
   background: '#f8faff',
@@ -291,11 +291,12 @@ export function useSafeCustomization() {
 }
 
 // ─── SAFE TRACKER ─────────────────────────────────────────────────────
-// FIX: Direct context usage to avoid circular dependency
+// FIX: Directly use useContext with the imported TrackerContext
+// NO circular dependency because we don't import from ./useTrackerContext
 
 export function useSafeTracker() {
   try {
-    // Directly use useContext with TrackerContext
+    // Directly use useContext with the imported TrackerContext
     const ctx = useContext(TrackerContext);
     if (!ctx) {
       // Return fallback if context not available
