@@ -1,7 +1,6 @@
 import { supabase, SupabaseMessage } from './supabaseClient';
-import { FamilyMessage, FamilyChat } from '../context/FamilyChatContext';
+import { FamilyMessage, FamilyChat, TypingStatus } from '../context/FamilyChatContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Crypto from 'expo-crypto';
 
 const STORAGE_KEYS = {
   LAST_SYNC: '@littleloom_last_sync_timestamp',
@@ -43,33 +42,8 @@ export class FamilyChatSyncService {
       throw error;
     }
 
-    // Store synced IDs
     const syncedIds = messages.map(m => m.syncId);
     await this.markSynced(syncedIds);
-  }
-
-  async pullMessages(since?: string): Promise<FamilyMessage[]> {
-    if (!this.familyCode) return [];
-
-    let query = supabase
-      .from('family_messages')
-      .select('*')
-      .eq('family_code', this.familyCode)
-      .eq('device_id', this.deviceId)
-      .order('timestamp', { ascending: true });
-
-    if (since) {
-      query = query.gt('created_at', since);
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
-      console.error('Error pulling messages:', error);
-      return [];
-    }
-
-    return (data || []).map(msg => this.fromSupabaseFormat(msg));
   }
 
   async pullRemoteMessages(chatId?: string): Promise<FamilyMessage[]> {
@@ -79,7 +53,6 @@ export class FamilyChatSyncService {
       .from('family_messages')
       .select('*')
       .eq('family_code', this.familyCode)
-      .neq('device_id', this.deviceId) // Don't pull our own messages (already have them)
       .order('timestamp', { ascending: true });
 
     if (chatId) {
@@ -101,7 +74,12 @@ export class FamilyChatSyncService {
   subscribeToMessages(chatId?: string): void {
     if (this.isSubscribed || !this.familyCode) return;
 
-    let channel = supabase
+    let filter = `family_code=eq.${this.familyCode}`;
+    if (chatId) {
+      filter += `,chat_id=eq.${chatId}`;
+    }
+
+    supabase
       .channel('family_messages_realtime')
       .on(
         'postgres_changes',
@@ -109,11 +87,10 @@ export class FamilyChatSyncService {
           event: 'INSERT',
           schema: 'public',
           table: 'family_messages',
-          filter: chatId ? `chat_id=eq.${chatId}` : undefined,
+          filter: filter,
         },
         (payload) => {
           const message = this.fromSupabaseFormat(payload.new as SupabaseMessage);
-          // Ignore our own messages
           if (message.deviceId === this.deviceId) return;
           this.messageCallbacks.forEach(cb => cb([message]));
         }
@@ -124,9 +101,9 @@ export class FamilyChatSyncService {
           event: 'UPDATE',
           schema: 'public',
           table: 'family_messages',
+          filter: filter,
         },
         (payload) => {
-          // Handle delivery status updates
           const message = this.fromSupabaseFormat(payload.new as SupabaseMessage);
           if (message.deviceId === this.deviceId) return;
           this.messageCallbacks.forEach(cb => cb([message]));
@@ -137,7 +114,6 @@ export class FamilyChatSyncService {
         this.isSubscribed = status === 'SUBSCRIBED';
       });
 
-    // Also subscribe to typing status via a separate channel
     this.subscribeToTyping();
   }
 
@@ -151,7 +127,7 @@ export class FamilyChatSyncService {
         {
           event: '*',
           schema: 'public',
-          table: 'typing_status', // We'll create this table
+          table: 'typing_status',
           filter: `family_code=eq.${this.familyCode}`,
         },
         (payload) => {
@@ -174,7 +150,6 @@ export class FamilyChatSyncService {
         family_code: this.familyCode,
         is_typing: isTyping,
         timestamp: new Date().toISOString(),
-        // Clean up old entries on insert
       }, { onConflict: 'user_id,chat_id' });
 
     if (error) console.error('Error broadcasting typing:', error);
@@ -182,22 +157,9 @@ export class FamilyChatSyncService {
 
   // ─── Message Status Updates ──────────────────────────────────
 
-  async updateMessageStatus(chatId: string, messageId: string, status: string): Promise<void> {
-    if (!this.familyCode) return;
-
-    const { error } = await supabase
-      .from('family_messages')
-      .update({ delivery_status: status })
-      .eq('id', messageId)
-      .eq('family_code', this.familyCode);
-
-    if (error) console.error('Error updating message status:', error);
-  }
-
   async markMessageRead(chatId: string, messageId: string, userId: string): Promise<void> {
     if (!this.familyCode) return;
 
-    // Get current read_by array and add user
     const { data } = await supabase
       .from('family_messages')
       .select('read_by')
@@ -280,7 +242,7 @@ export class FamilyChatSyncService {
       familyCode: chat.family_code,
       isPinned: chat.is_pinned || false,
       backgroundImage: chat.background_image || undefined,
-      lastMessage: undefined, // Will be populated separately
+      lastMessage: undefined,
     }));
   }
 

@@ -12,8 +12,10 @@ import { useAuth } from './AuthContext';
 import { useBaby } from './BabyContext';
 import { useFamily } from './FamilyContext';
 import type { FamilyMember } from './FamilyContext';
-import { showAlert } from '@/utils/alert';
 import { useSweetAlert } from '../components/SweetAlert';
+
+// Import Supabase sync service
+import { FamilyChatSyncService } from '../services/FamilyChatSyncService';
 
 export type MessageType = 'text' | 'image' | 'voice' | 'system' | 'file';
 
@@ -90,6 +92,7 @@ interface FamilyChatState {
   currentUserTyping: boolean;
   pendingSync: string[];
   blockedUsers: string[];
+  isSynced: boolean;
 }
 
 interface FamilyChatContextType extends FamilyChatState {
@@ -132,6 +135,7 @@ interface FamilyChatContextType extends FamilyChatState {
   getMessageById: (chatId: string, messageId: string) => FamilyMessage | undefined;
   blockUser: (userId: string) => Promise<void>;
   isUserBlocked: (userId: string) => boolean;
+  forceSync: () => Promise<void>;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -167,12 +171,14 @@ const fromHex = (hex: string): string => {
 };
 
 const encryptData = async (data: string, familyCode: string): Promise<string> => {
-  const key = await deriveKey(familyCode || 'default');
+  if (!familyCode) return data;
+  const key = await deriveKey(familyCode);
   return toHex(xorEncrypt(data, key));
 };
 
 const decryptData = async (encrypted: string, familyCode: string): Promise<string> => {
-  const key = await deriveKey(familyCode || 'default');
+  if (!familyCode) return encrypted;
+  const key = await deriveKey(familyCode);
   return xorEncrypt(fromHex(encrypted), key);
 };
 
@@ -245,11 +251,15 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     currentUserTyping: false,
     pendingSync: [],
     blockedUsers: [],
+    isSynced: false,
   });
 
   const deviceIdRef = useRef<string>('');
   const typingTimeoutRef = useRef<Record<string, NodeJS.Timeout>>({});
+  const syncServiceRef = useRef<FamilyChatSyncService | null>(null);
+  const isInitializedRef = useRef(false);
 
+  // ─── Initialize Device ID ────────────────────────────────────
   useEffect(() => {
     (async () => {
       deviceIdRef.current = await getOrCreateDeviceId();
@@ -257,11 +267,168 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     })();
   }, []);
 
+  // ─── Initialize Sync Service ────────────────────────────────
   useEffect(() => {
-    if (state.familyCode && members.length > 0) {
-      initializeFamilyChat();
+    if (deviceIdRef.current && state.familyCode) {
+      syncServiceRef.current = new FamilyChatSyncService(deviceIdRef.current);
+      syncServiceRef.current.setFamilyCode(state.familyCode);
+      
+      // Setup realtime listeners
+      setupRealtimeListeners();
+      
+      // Initial sync
+      if (!isInitializedRef.current) {
+        performInitialSync();
+      }
     }
-  }, [state.familyCode, members.length]);
+  }, [deviceIdRef.current, state.familyCode]);
+
+  // ─── Setup Realtime Listeners ────────────────────────────────
+  const setupRealtimeListeners = () => {
+    if (!syncServiceRef.current) return;
+
+    const service = syncServiceRef.current;
+    service.setFamilyCode(state.familyCode || '');
+
+    // Listen for incoming messages
+    service.onMessages((remoteMessages) => {
+      if (remoteMessages.length === 0) return;
+      
+      setState(prev => {
+        const updatedMessages = { ...prev.messages };
+        let hasNewMessages = false;
+        
+        remoteMessages.forEach(msg => {
+          const chatMessages = updatedMessages[msg.chatId] || [];
+          const exists = chatMessages.some(m => m.syncId === msg.syncId);
+          if (!exists) {
+            updatedMessages[msg.chatId] = [...chatMessages, msg];
+            hasNewMessages = true;
+          }
+        });
+        
+        if (hasNewMessages) {
+          // Update chat lastMessage
+          const updatedChats = prev.chats.map(chat => {
+            const msgs = updatedMessages[chat.id] || [];
+            if (msgs.length > 0) {
+              const last = msgs[msgs.length - 1];
+              return { ...chat, lastMessage: last, updatedAt: last.timestamp };
+            }
+            return chat;
+          });
+          return { ...prev, messages: updatedMessages, chats: updatedChats };
+        }
+        return prev;
+      });
+    });
+
+    // Listen for typing status
+    service.onTyping((data) => {
+      if (!data) return;
+      const { user_id, chat_id, is_typing, timestamp } = data;
+      
+      // Ignore our own typing
+      if (user_id === deviceIdRef.current) return;
+      
+      setState(prev => {
+        const currentTypers = prev.typingUsers[chat_id] || [];
+        const existingIndex = currentTypers.findIndex(t => t.userId === user_id);
+        
+        let updatedTypers;
+        if (is_typing) {
+          const newStatus: TypingStatus = {
+            userId: user_id,
+            userName: 'Family Member',
+            chatId: chat_id,
+            isTyping: true,
+            timestamp: timestamp || new Date().toISOString(),
+          };
+          if (existingIndex >= 0) {
+            updatedTypers = [...currentTypers];
+            updatedTypers[existingIndex] = newStatus;
+          } else {
+            updatedTypers = [...currentTypers, newStatus];
+          }
+        } else {
+          updatedTypers = currentTypers.filter(t => t.userId !== user_id);
+        }
+        
+        return {
+          ...prev,
+          typingUsers: { ...prev.typingUsers, [chat_id]: updatedTypers },
+        };
+      });
+    });
+
+    // Subscribe to realtime
+    service.subscribeToMessages();
+  };
+
+  // ─── Perform Initial Sync ────────────────────────────────────
+  const performInitialSync = async () => {
+    if (!syncServiceRef.current || !state.familyCode) return;
+    
+    isInitializedRef.current = true;
+    setState(prev => ({ ...prev, isLoading: true }));
+    
+    try {
+      const service = syncServiceRef.current;
+      
+      // Pull remote messages
+      const remoteMessages = await service.pullRemoteMessages();
+      
+      // Pull remote chats
+      const remoteChats = await service.pullChats();
+      
+      // Merge with local
+      if (remoteMessages.length > 0 || remoteChats.length > 0) {
+        setState(prev => {
+          const updatedMessages = { ...prev.messages };
+          
+          // Merge messages
+          remoteMessages.forEach(msg => {
+            const chatMessages = updatedMessages[msg.chatId] || [];
+            const exists = chatMessages.some(m => m.syncId === msg.syncId);
+            if (!exists) {
+              updatedMessages[msg.chatId] = [...chatMessages, msg];
+            }
+          });
+          
+          // Merge chats
+          let updatedChats = [...prev.chats];
+          remoteChats.forEach(remoteChat => {
+            const existingIndex = updatedChats.findIndex(c => c.id === remoteChat.id);
+            if (existingIndex >= 0) {
+              updatedChats[existingIndex] = { ...updatedChats[existingIndex], ...remoteChat };
+            } else {
+              updatedChats.push(remoteChat);
+            }
+          });
+          
+          // Sort chats by updatedAt
+          updatedChats.sort((a, b) => 
+            new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+          );
+          
+          return {
+            ...prev,
+            chats: updatedChats,
+            messages: updatedMessages,
+            isSynced: true,
+          };
+        });
+      } else {
+        setState(prev => ({ ...prev, isSynced: true }));
+      }
+      
+      await service.updateLastSyncTime();
+    } catch (error) {
+      console.error('Initial sync error:', error);
+    } finally {
+      setState(prev => ({ ...prev, isLoading: false }));
+    }
+  };
 
   const loadFamilyCode = async () => {
     try {
@@ -369,7 +536,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           const decrypted = await decryptData(existing, state.familyCode);
           allMessages = JSON.parse(decrypted);
         } catch {
-          // Legacy unencrypted fallback
           allMessages = JSON.parse(existing);
         }
       }
@@ -402,7 +568,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const decrypted = await decryptData(saved, state.familyCode);
         return JSON.parse(decrypted);
       } catch {
-        // Legacy unencrypted fallback
         return JSON.parse(saved);
       }
     } catch (error) {
@@ -508,6 +673,11 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     
     setState(prev => ({ ...prev, chats: updatedChats }));
     
+    // Push to remote
+    if (syncServiceRef.current) {
+      await syncServiceRef.current.pushChats([newChat]);
+    }
+    
     return chatId;
   };
 
@@ -535,7 +705,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const chat = state.chats.find(c => c.id === chatId);
     if (!chat) return;
     
-    // Block guard for direct/community chats
     if (chat.type === 'direct') {
       const otherId = chat.participants.find(p => p !== userProfile.id);
       if (otherId && state.blockedUsers.includes(otherId)) {
@@ -616,6 +785,12 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       
       await AsyncStorage.setItem(STORAGE_KEYS.CHATS(state.familyCode), JSON.stringify(updatedChats));
       
+      // ─── PUSH TO REMOTE ──────────────────────────────────────
+      if (syncServiceRef.current) {
+        await syncServiceRef.current.pushMessages([{ ...newMessage, deliveryStatus: 'sent' }]);
+        await syncServiceRef.current.pushChats(updatedChats);
+      }
+      
       setState(prev => ({
         ...prev,
         chats: updatedChats,
@@ -662,6 +837,10 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       await new Promise(resolve => setTimeout(resolve, 300));
       await saveMessages(chatId, [{ ...message, deliveryStatus: 'sent' }]);
       
+      if (syncServiceRef.current) {
+        await syncServiceRef.current.pushMessages([{ ...message, deliveryStatus: 'sent' }]);
+      }
+      
       setState(prev => ({
         ...prev,
         messages: {
@@ -702,6 +881,13 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     });
     
     await saveMessages(chatId, updatedMessages);
+    
+    if (syncServiceRef.current) {
+      const editedMsg = updatedMessages.find(m => m.id === messageId);
+      if (editedMsg) {
+        await syncServiceRef.current.pushMessages([editedMsg]);
+      }
+    }
     
     setState(prev => ({
       ...prev,
@@ -802,6 +988,14 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     
     await saveMessages(chatId, updatedMessages);
     
+    // ─── SYNC READ STATUS ──────────────────────────────────────
+    if (syncServiceRef.current && state.familyCode) {
+      const unreadMessages = messages.filter(m => !m.readBy.includes(userProfile.id));
+      for (const msg of unreadMessages) {
+        await syncServiceRef.current.markMessageRead(chatId, msg.id, userProfile.id);
+      }
+    }
+    
     const updatedChats = state.chats.map(c => {
       if (c.id === chatId) {
         return { ...c, unreadCount: 0 };
@@ -887,12 +1081,17 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       };
     });
     
+    // ─── BROADCAST TYPING STATUS ──────────────────────────────
+    if (syncServiceRef.current && state.familyCode) {
+      syncServiceRef.current.broadcastTyping(chatId, isTyping);
+    }
+    
     if (isTyping) {
       typingTimeoutRef.current[key] = setTimeout(() => {
         setTypingStatus(chatId, false);
       }, 3000);
     }
-  }, [userProfile]);
+  }, [userProfile, state.familyCode]);
 
   const isUserTyping = useCallback((chatId: string, userId: string): boolean => {
     return (state.typingUsers[chatId] || []).some(t => t.userId === userId && t.isTyping);
@@ -927,6 +1126,13 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     });
     
     await saveMessages(chatId, updatedMessages);
+    
+    if (syncServiceRef.current) {
+      const updatedMsg = updatedMessages.find(m => m.id === messageId);
+      if (updatedMsg) {
+        await syncServiceRef.current.pushMessages([updatedMsg]);
+      }
+    }
     
     setState(prev => ({
       ...prev,
@@ -969,6 +1175,10 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     
     await AsyncStorage.setItem(STORAGE_KEYS.CHATS(state.familyCode), JSON.stringify(updatedChats));
     
+    if (syncServiceRef.current) {
+      await syncServiceRef.current.pushChats(updatedChats);
+    }
+    
     setState(prev => ({ ...prev, chats: updatedChats }));
     
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -982,6 +1192,10 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     );
     
     await AsyncStorage.setItem(STORAGE_KEYS.CHATS(state.familyCode), JSON.stringify(updatedChats));
+    
+    if (syncServiceRef.current) {
+      await syncServiceRef.current.pushChats(updatedChats);
+    }
     
     setState(prev => ({ ...prev, chats: updatedChats }));
   };
@@ -1046,6 +1260,10 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       await AsyncStorage.setItem(STORAGE_KEYS.FAMILY_CODE, code);
       setState(prev => ({ ...prev, familyCode: code }));
       
+      if (syncServiceRef.current) {
+        syncServiceRef.current.setFamilyCode(code);
+      }
+      
       const chatsKey = STORAGE_KEYS.CHATS(code);
       const savedChats = await AsyncStorage.getItem(chatsKey);
       
@@ -1071,6 +1289,12 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         }
         
         setState(prev => ({ ...prev, chats }));
+      }
+      
+      // ─── PULL REMOTE DATA ────────────────────────────────────
+      if (syncServiceRef.current) {
+        await performInitialSync();
+        syncServiceRef.current.subscribeToMessages();
       }
       
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -1117,6 +1341,15 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const syncFamilyData = async (): Promise<void> => {
     await initializeFamilyChat();
+    if (syncServiceRef.current) {
+      await performInitialSync();
+    }
+  };
+
+  const forceSync = async (): Promise<void> => {
+    if (syncServiceRef.current) {
+      await performInitialSync();
+    }
   };
 
   const blockUser = async (userId: string): Promise<void> => {
@@ -1144,75 +1377,79 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return state.blockedUsers.includes(userId);
   };
 
-const value = useMemo<FamilyChatContextType>(() => ({
-  ...state,
-  createFamilyGroup,
-  getOrCreateDirectChat,
-  getChatMessages,
-  sendMessage,
-  editMessage,
-  markChatRead,
-  deleteMessage,
-  clearChat,
-  resendMessage,
-  pickAndSendImage,
-  pickAndSendFile,
-  setTypingStatus,
-  isUserTyping,
-  getTypingUsers,
-  addReaction,
-  removeReaction,
-  muteChat,
-  pinChat,
-  leaveChat,
-  deleteChat,
-  setChatBackground,
-  generateFamilyCode,
-  getFamilyCode,
-  shareFamilyCode,
-  joinFamilyByCode,
-  getUnreadCount,
-  getChatById,
-  getMemberChatInfo,
-  syncFamilyData,
-  searchMessages,
-  getMessageById,
-  blockUser,
-  isUserBlocked,
-}), [
-  state,
-  createFamilyGroup,
-  getOrCreateDirectChat,
-  getChatMessages,
-  sendMessage,
-  editMessage,
-  markChatRead,
-  deleteMessage,
-  clearChat,
-  resendMessage,
-  pickAndSendImage,
-  pickAndSendFile,
-  setTypingStatus,
-  isUserTyping,
-  getTypingUsers,
-  addReaction,
-  removeReaction,
-  muteChat,
-  pinChat,
-  leaveChat,
-  deleteChat,
-  setChatBackground,
-  generateFamilyCode,
-  getFamilyCode,
-  shareFamilyCode,
-  joinFamilyByCode,
-  getUnreadCount,
-  getChatById,
-  getMemberChatInfo,
-  syncFamilyData,
-  searchMessages,
-  getMessageById,
-]);
+  const value = useMemo<FamilyChatContextType>(() => ({
+    ...state,
+    createFamilyGroup,
+    getOrCreateDirectChat,
+    getChatMessages,
+    sendMessage,
+    editMessage,
+    markChatRead,
+    deleteMessage,
+    clearChat,
+    resendMessage,
+    pickAndSendImage,
+    pickAndSendFile,
+    setTypingStatus,
+    isUserTyping,
+    getTypingUsers,
+    addReaction,
+    removeReaction,
+    muteChat,
+    pinChat,
+    leaveChat,
+    deleteChat,
+    setChatBackground,
+    generateFamilyCode,
+    getFamilyCode,
+    shareFamilyCode,
+    joinFamilyByCode,
+    getUnreadCount,
+    getChatById,
+    getMemberChatInfo,
+    syncFamilyData,
+    searchMessages,
+    getMessageById,
+    blockUser,
+    isUserBlocked,
+    forceSync,
+  }), [
+    state,
+    createFamilyGroup,
+    getOrCreateDirectChat,
+    getChatMessages,
+    sendMessage,
+    editMessage,
+    markChatRead,
+    deleteMessage,
+    clearChat,
+    resendMessage,
+    pickAndSendImage,
+    pickAndSendFile,
+    setTypingStatus,
+    isUserTyping,
+    getTypingUsers,
+    addReaction,
+    removeReaction,
+    muteChat,
+    pinChat,
+    leaveChat,
+    deleteChat,
+    setChatBackground,
+    generateFamilyCode,
+    getFamilyCode,
+    shareFamilyCode,
+    joinFamilyByCode,
+    getUnreadCount,
+    getChatById,
+    getMemberChatInfo,
+    syncFamilyData,
+    searchMessages,
+    getMessageById,
+    blockUser,
+    isUserBlocked,
+    forceSync,
+  ]);
 
   return (
     <FamilyChatContext.Provider value={value}>
