@@ -30,14 +30,9 @@ import {
   Gesture,
   GestureDetector,
   GestureHandlerRootView,
+  PanGestureHandler,
+  State,
 } from 'react-native-gesture-handler';
-import {
-  Canvas,
-  Path,
-  Skia,
-  TouchType,
-  useTouchHandler,
-} from '@shopify/react-native-skia';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const PREVIEW_SIZE = SCREEN_W - 48;
@@ -236,10 +231,13 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
   const [annotationColor, setAnnotationColor] = useState('#ef4444');
   const [analysisHistory, setAnalysisHistory] = useState<Record<string, AIAnalysis>>({});
   const [error, setError] = useState<string | null>(null);
+  const [annotationPoints, setAnnotationPoints] = useState<{ x: number; y: number; color: string }[]>([]);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [currentPoints, setCurrentPoints] = useState<{ x: number; y: number; color: string }[]>([]);
 
-  const paths = useRef<any[]>([]);
-  const currentPath = useRef<any>(null);
   const hasInitializedPhotos = useRef(false);
+  const annotationContainerRef = useRef<View>(null);
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
 
   // ── Init photos (edit mode) ───────────────────────────────────────────────
   useEffect(() => {
@@ -420,62 +418,53 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     [currentUri, onChange, photos]
   );
 
-  // ── Annotation (Skia) ─────────────────────────────────────────────────────
-  const touchHandler = useTouchHandler({
-    onStart: (touch) => {
-      try {
-        if (touch.type === TouchType.Start) {
-          currentPath.current = Skia.Path.Make();
-          currentPath.current.moveTo(touch.x, touch.y);
-        }
-      } catch (e) {
-        console.error('Touch start error:', e);
-      }
-    },
-    onActive: (touch) => {
-      try {
-        if (currentPath.current) currentPath.current.lineTo(touch.x, touch.y);
-      } catch (e) {
-        console.error('Touch active error:', e);
-      }
-    },
-    onEnd: () => {
-      try {
-        if (currentPath.current) {
-          paths.current.push({ path: currentPath.current, color: annotationColor });
-          currentPath.current = null;
-        }
-      } catch (e) {
-        console.error('Touch end error:', e);
-      }
-    },
-  });
+  // ── Annotation (Simple Gesture-based) ─────────────────────────────────────
+  const handleTouchStart = (event: any) => {
+    if (!annotating) return;
+    const { locationX, locationY } = event.nativeEvent;
+    setIsDrawing(true);
+    setCurrentPoints([{ x: locationX, y: locationY, color: annotationColor }]);
+  };
+
+  const handleTouchMove = (event: any) => {
+    if (!annotating || !isDrawing) return;
+    const { locationX, locationY } = event.nativeEvent;
+    setCurrentPoints((prev) => [...prev, { x: locationX, y: locationY, color: annotationColor }]);
+  };
+
+  const handleTouchEnd = () => {
+    if (!annotating) return;
+    setIsDrawing(false);
+    if (currentPoints.length > 1) {
+      setAnnotationPoints((prev) => [...prev, ...currentPoints]);
+    }
+    setCurrentPoints([]);
+  };
 
   const undoAnnotation = () => {
-    try {
-      paths.current.pop();
-      setAnnotationColor((c) => c);
-    } catch (e) {
-      console.error('undoAnnotation error:', e);
-    }
+    setAnnotationPoints((prev) => {
+      // Remove the last stroke (find where color changes)
+      const lastIndex = prev.length - 1;
+      if (lastIndex < 0) return prev;
+      let lastColor = prev[lastIndex]?.color;
+      let i = lastIndex;
+      while (i >= 0 && prev[i]?.color === lastColor) {
+        i--;
+      }
+      return prev.slice(0, i + 1);
+    });
   };
 
   const clearAnnotation = () => {
-    try {
-      paths.current = [];
-      setAnnotationColor((c) => c);
-    } catch (e) {
-      console.error('clearAnnotation error:', e);
-    }
+    setAnnotationPoints([]);
+    setCurrentPoints([]);
   };
 
   const saveAnnotation = async () => {
-    try {
-      setAnnotating(false);
-      sweetAlert.alert('Saved', 'Annotation saved with photo.');
-    } catch (e) {
-      console.error('saveAnnotation error:', e);
-    }
+    setAnnotating(false);
+    setAnnotationPoints([]);
+    setCurrentPoints([]);
+    sweetAlert.alert('Saved', 'Annotation saved with photo.');
   };
 
   // ── Compare ────────────────────────────────────────────────────────────────
@@ -499,55 +488,35 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
   const translateY = useSharedValue(0);
 
   const resetZoom = () => {
-    try {
-      scale.value = withSpring(1);
-      savedScale.value = 1;
-      translateX.value = withSpring(0);
-      translateY.value = withSpring(0);
-    } catch (e) {
-      console.error('resetZoom error:', e);
-    }
+    scale.value = withSpring(1);
+    savedScale.value = 1;
+    translateX.value = withSpring(0);
+    translateY.value = withSpring(0);
   };
 
   const pinchGesture = Gesture.Pinch()
     .onUpdate((e) => {
-      try {
-        scale.value = Math.max(1, savedScale.value * e.scale);
-      } catch (e) {
-        console.error('Pinch update error:', e);
-      }
+      scale.value = Math.max(1, savedScale.value * e.scale);
     })
     .onEnd(() => {
-      try {
-        savedScale.value = scale.value;
-        if (scale.value < 1.1) runOnJS(setShowZoom)(false);
-      } catch (e) {
-        console.error('Pinch end error:', e);
-      }
+      savedScale.value = scale.value;
+      if (scale.value < 1.1) runOnJS(setShowZoom)(false);
     });
 
   const panGesture = Gesture.Pan().onUpdate((e) => {
-    try {
-      if (scale.value > 1) {
-        translateX.value = e.translationX;
-        translateY.value = e.translationY;
-      }
-    } catch (e) {
-      console.error('Pan update error:', e);
+    if (scale.value > 1) {
+      translateX.value = e.translationX;
+      translateY.value = e.translationY;
     }
   });
 
   const doubleTapGesture = Gesture.Tap()
     .numberOfTaps(2)
     .onEnd(() => {
-      try {
-        if (scale.value > 1) runOnJS(resetZoom)();
-        else {
-          scale.value = withSpring(2.5);
-          savedScale.value = 2.5;
-        }
-      } catch (e) {
-        console.error('Double tap error:', e);
+      if (scale.value > 1) runOnJS(resetZoom)();
+      else {
+        scale.value = withSpring(2.5);
+        savedScale.value = 2.5;
       }
     });
 
@@ -606,7 +575,6 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
 
   const photoCountText = `${photos?.length || 0}/${maxPhotos}`;
 
-  // Get current photo index for removal
   const currentPhotoIndex = useMemo(() => {
     try {
       return photos.findIndex((p) => p.uri === currentUri);
@@ -615,6 +583,42 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
       return -1;
     }
   }, [photos, currentUri]);
+
+  // ── Render annotation overlay ─────────────────────────────────────────────
+  const renderAnnotationOverlay = () => {
+    const allPoints = [...annotationPoints, ...currentPoints];
+    if (allPoints.length === 0) return null;
+
+    // Group points by color for rendering
+    const groupedPoints: Record<string, { x: number; y: number }[]> = {};
+    allPoints.forEach((p) => {
+      if (!groupedPoints[p.color]) groupedPoints[p.color] = [];
+      groupedPoints[p.color].push({ x: p.x, y: p.y });
+    });
+
+    return (
+      <View style={[StyleSheet.absoluteFill, { pointerEvents: 'none' }]}>
+        {Object.entries(groupedPoints).map(([color, points]) => (
+          <View key={color} style={{ flex: 1 }}>
+            {points.map((p, i) => (
+              <View
+                key={i}
+                style={{
+                  position: 'absolute',
+                  left: p.x - 3,
+                  top: p.y - 3,
+                  width: 6,
+                  height: 6,
+                  borderRadius: 3,
+                  backgroundColor: color,
+                }}
+              />
+            ))}
+          </View>
+        ))}
+      </View>
+    );
+  };
 
   // If there's an error, show a fallback UI
   if (error) {
@@ -891,26 +895,29 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
           </View>
 
           {currentUri && (
-            <View style={{ flex: 1 }}>
+            <View style={{ flex: 1, position: 'relative' }}>
               <Image
                 source={{ uri: currentUri }}
                 style={{ width: PREVIEW_SIZE, height: PREVIEW_SIZE * 0.75, alignSelf: 'center', borderRadius: RADIUS.lg }}
                 resizeMode="contain"
               />
-              <View style={{ position: 'absolute', width: PREVIEW_SIZE, height: PREVIEW_SIZE * 0.75, alignSelf: 'center' }}>
-                <Canvas style={{ flex: 1 }}>
-                  {paths.current.map((p, i) => (
-                    <Path key={i} path={p.path} color={Skia.Color(p.color)} style="stroke" strokeWidth={3} />
-                  ))}
-                  {currentPath.current && (
-                    <Path path={currentPath.current} color={Skia.Color(annotationColor)} style="stroke" strokeWidth={3} />
-                  )}
-                </Canvas>
-                <GestureHandlerRootView style={StyleSheet.absoluteFill}>
-                  <GestureDetector gesture={touchHandler}>
-                    <View style={StyleSheet.absoluteFill} />
-                  </GestureDetector>
-                </GestureHandlerRootView>
+              <View
+                style={{
+                  position: 'absolute',
+                  width: PREVIEW_SIZE,
+                  height: PREVIEW_SIZE * 0.75,
+                  alignSelf: 'center',
+                  borderRadius: RADIUS.lg,
+                  overflow: 'hidden',
+                }}
+                onStartShouldSetResponder={() => true}
+                onMoveShouldSetResponder={() => true}
+                onResponderGrant={handleTouchStart}
+                onResponderMove={handleTouchMove}
+                onResponderRelease={handleTouchEnd}
+                onResponderTerminate={handleTouchEnd}
+              >
+                {renderAnnotationOverlay()}
               </View>
             </View>
           )}
