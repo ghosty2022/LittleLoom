@@ -1,15 +1,9 @@
+// src/hooks/useTrackerProgressive.ts
 /**
  * useTrackerProgressive — The central progressive intelligence hook.
  * Aggregates ALL smart features into a single clean API for forms & screens.
  *
- * Sources consumed:
- *   - useTracker (entries, history, streaks, insights, templates, reminders)
- *   - useBaby (baby profile, age, growth data)
- *   - useGrowthIntelligence (growth scores, milestone readiness)
- *   - usePredictiveReminders (smart reminder triggers)
- *   - useTimelineCorrelations (cross-tracker pattern detection)
- *
- * Target: DynamicTrackerForm.tsx + SmartTrackerScreen.tsx + AddEntryScreen.tsx
+ * FIX: Uses safe contexts to prevent "_context" errors
  */
 
 import { useMemo, useCallback, useEffect, useState, useRef } from 'react';
@@ -23,9 +17,9 @@ import {
   isToday,
 } from 'date-fns';
 
-// FIX: Import directly from context sources to avoid circular deps
-import { useTracker } from './useTrackerContext';
-import { useBaby } from '@/context/BabyContext';
+// FIX: Use safe contexts that never throw
+import { useSafeTracker } from './useSafeContexts';
+import { useSafeBaby } from './useSafeContexts';
 import {
   TrackerEntry,
   TrackerStreak,
@@ -35,12 +29,10 @@ import {
   FieldConfig,
 } from '@/types/trackers';
 
-// FIX: Use safe dynamic requires to prevent circular dependency crashes
-// These hooks are called at top level to maintain hook order
-// The try/catch inside them handles missing contexts gracefully
 import { useGrowthIntelligence } from './useGrowthIntelligence';
 import { usePredictiveReminders } from './usePredictiveReminders';
 import { useTimelineCorrelations } from './useTimelineCorrelations';
+
 /* ═══════════════════════════════════════════════════════════════
    TYPES
    ═════════════════════════════════════════════════════════════ */
@@ -142,7 +134,6 @@ const getTimeOfDay = (hour: number): ProgressiveTimeContext['timeOfDay'] => {
   return 'night';
 };
 
-/* Fixed-date holidays (MM-DD). Extend per locale as needed. */
 const FIXED_HOLIDAYS = new Set(['01-01', '07-04', '12-24', '12-25', '12-31']);
 const isFixedHoliday = (d: Date): boolean =>
   FIXED_HOLIDAYS.has(`${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
@@ -183,29 +174,16 @@ const computeTrend = (
    ═════════════════════════════════════════════════════════════ */
 
 export const useTrackerProgressive = (trackerId: string) => {
-  const {
-    entries,
-    getEntries,
-    getSmartSuggestions,
-    getYesterdayData,
-    getStreak,
-    getInsights,
-    dismissInsight,
-    getTemplates,
-    getPendingReminders,
-    trackers,
-  } = useTracker();
+  // FIX: Use safe contexts that never throw
+  const tracker = useSafeTracker();
+  const baby = useSafeBaby();
 
-  const { currentBaby, growthData } = useBaby();
-
-  // FIX: Hooks must be called unconditionally at top level per React Rules of Hooks.
-  // The try/catch safety is moved INTO each hook or handled via safe wrapper hooks.
   const gi = useGrowthIntelligence();
   const growthIndex = gi?.growthIndex ?? null;
-  
+
   const pr = usePredictiveReminders();
   const predictiveReminders = pr?.reminders ?? [];
-  
+
   const tc = useTimelineCorrelations();
   const timelineCorrelations = tc?.correlations ?? [];
 
@@ -225,7 +203,7 @@ export const useTrackerProgressive = (trackerId: string) => {
 
   useEffect(() => {
     if (trackerId) {
-      getTemplates(trackerId)
+      tracker.getTemplates(trackerId)
         .then((templates: any[]) => {
           setUserSavedTemplates(
             templates.map((t) => ({
@@ -238,7 +216,7 @@ export const useTrackerProgressive = (trackerId: string) => {
     } else {
       setUserSavedTemplates([]);
     }
-  }, [trackerId, getTemplates]);
+  }, [trackerId, tracker]);
 
   useEffect(() => {
     if (isLoading) {
@@ -247,7 +225,7 @@ export const useTrackerProgressive = (trackerId: string) => {
     }
   }, [isLoading]);
 
-  const safeTrackers = trackers || [];
+  const safeTrackers = tracker.trackers || [];
 
   const trackerConfig = useMemo(
     () => safeTrackers.find((t) => t.id === trackerId),
@@ -256,8 +234,8 @@ export const useTrackerProgressive = (trackerId: string) => {
 
   /* ── All entries for this tracker ── */
   const trackerEntries = useMemo(
-    () => (trackerId ? getEntries(trackerId) || [] : []),
-    [getEntries, trackerId, entries, refreshToken]
+    () => (trackerId ? tracker.getEntries(trackerId) || [] : []),
+    [tracker, trackerId, refreshToken]
   );
 
   /* ── Today's entries ── */
@@ -331,7 +309,7 @@ export const useTrackerProgressive = (trackerId: string) => {
      ═══════════════════════════════════════════════════════════ */
 
   const streakData = useMemo(() => {
-    const s = getStreak(trackerId);
+    const s = tracker.getStreak(trackerId);
     if (!s) return null;
 
     const hoursUntilBreak = s.isAtRisk ? Math.max(0, 24 - now.getHours()) : 0;
@@ -348,7 +326,7 @@ export const useTrackerProgressive = (trackerId: string) => {
       hoursUntilBreak,
       streakMessage,
     };
-  }, [getStreak, trackerId, now]);
+  }, [tracker, trackerId, now]);
 
   /* ═══════════════════════════════════════════════════════════
      PREFILL DATA & SUGGESTIONS
@@ -358,7 +336,7 @@ export const useTrackerProgressive = (trackerId: string) => {
     const prefill: Record<string, unknown> = {};
     const sugg: ProgressiveSuggestion[] = [];
 
-    const yesterday = getYesterdayData(trackerId);
+    const yesterday = tracker.getYesterdayData(trackerId);
     if (yesterday && Object.keys(yesterday).length > 0) {
       Object.entries(yesterday).forEach(([fieldId, value]) => {
         if (value !== undefined && value !== '' && value !== null) {
@@ -375,7 +353,7 @@ export const useTrackerProgressive = (trackerId: string) => {
       });
     }
 
-    const patternSuggestions = getSmartSuggestions(trackerId) || {};
+    const patternSuggestions = tracker.getSmartSuggestions(trackerId) || {};
     Object.entries(patternSuggestions).forEach(([fieldId, value]) => {
       if (prefill[fieldId] === undefined && value !== undefined) {
         prefill[fieldId] = value;
@@ -473,8 +451,7 @@ export const useTrackerProgressive = (trackerId: string) => {
 
     return { prefillData: prefill, suggestions: sugg };
   }, [
-    getYesterdayData,
-    getSmartSuggestions,
+    tracker,
     trackerEntries,
     timelineCorrelations,
     trackerId,
@@ -503,10 +480,10 @@ export const useTrackerProgressive = (trackerId: string) => {
       });
     }
 
-    const yesterday = getYesterdayData(trackerId);
+    const yesterday = tracker.getYesterdayData(trackerId);
     if (yesterday) {
       Object.entries(yesterday).forEach(([fieldId, yestVal]) => {
-        if (result[fieldId]) return; // Already computed
+        if (result[fieldId]) return;
         const current = Number(prefillData[fieldId]);
         const previous = Number(yestVal);
         if (Number.isFinite(current) && Number.isFinite(previous)) {
@@ -516,14 +493,14 @@ export const useTrackerProgressive = (trackerId: string) => {
     }
 
     return result;
-  }, [todayEntries, yesterdayEntries, prefillData, getYesterdayData, trackerId]);
+  }, [todayEntries, yesterdayEntries, prefillData, tracker, trackerId]);
 
   /* ═══════════════════════════════════════════════════════════
      INSIGHTS
      ═══════════════════════════════════════════════════════════ */
 
   const insights = useMemo(() => {
-    const allInsights = getInsights() || [];
+    const allInsights = tracker.getInsights() || [];
     const filtered = allInsights.filter(
       (i) =>
         i.trackerId === trackerId ||
@@ -531,7 +508,7 @@ export const useTrackerProgressive = (trackerId: string) => {
         (i.type === 'correlation' && i.description?.toLowerCase().includes(trackerId))
     );
     return filtered;
-  }, [getInsights, trackerId, refreshToken]);
+  }, [tracker, trackerId, refreshToken]);
 
   const hasNewInsights = useMemo(
     () => insights.some((i) => !i.dismissedAt && i.generatedAt > Date.now() - 24 * 60 * 60 * 1000),
@@ -562,8 +539,7 @@ export const useTrackerProgressive = (trackerId: string) => {
 
         if (trackerId === 'medication' && c.type === 'health_alert') {
           action = 'prefill';
-          // Prefill from the baby's REAL medication history — never invent a drug name/dose
-          const lastMed = (getEntries('medication', 10) || [])[0];
+          const lastMed = (tracker.getEntries('medication', 10) || [])[0];
           prefillData = lastMed
             ? {
                 reason: 'Fever',
@@ -597,14 +573,14 @@ export const useTrackerProgressive = (trackerId: string) => {
           confidence: Number.isFinite(c.confidence) ? c.confidence : 50,
         };
       });
-  }, [timelineCorrelations, trackerId, safeTrackers, getEntries]);
+  }, [timelineCorrelations, trackerId, safeTrackers, tracker]);
 
   /* ═══════════════════════════════════════════════════════════
      REMINDERS
      ═══════════════════════════════════════════════════════════ */
 
   const activeReminders = useMemo((): ProgressiveReminder[] => {
-    const pending = getPendingReminders() || [];
+    const pending = tracker.getPendingReminders() || [];
 
     const safePredictiveReminders = predictiveReminders || [];
     const predictive = safePredictiveReminders
@@ -649,7 +625,7 @@ export const useTrackerProgressive = (trackerId: string) => {
     ];
 
     return all;
-  }, [getPendingReminders, predictiveReminders, trackerId]);
+  }, [tracker, predictiveReminders, trackerId]);
 
   const hasUrgentReminders = useMemo(
     () => activeReminders.some((r) => r.priority === 'high' || r.priority === 'urgent'),
@@ -672,8 +648,7 @@ export const useTrackerProgressive = (trackerId: string) => {
       trackerId === 'medication' &&
       correlations.some((c) => c.message.toLowerCase().includes('fever'))
     ) {
-      // Build from the most recent REAL fever medication entry — drop the template if none exists
-      const lastFeverMed = (getEntries('medication', 20) || []).find(
+      const lastFeverMed = (tracker.getEntries('medication', 20) || []).find(
         (e) => String(e.data?.reason || '').toLowerCase().includes('fever')
       );
       if (lastFeverMed) {
@@ -700,8 +675,7 @@ export const useTrackerProgressive = (trackerId: string) => {
           c.message.toLowerCase().includes('sleep')
       )
     ) {
-      // Derive location from the modal value of recent nap entries (omit if never logged)
-      const recentNaps = (getEntries('sleep', 30) || []).filter((e) => e.data?.sleepType === 'nap');
+      const recentNaps = (tracker.getEntries('sleep', 30) || []).filter((e) => e.data?.sleepType === 'nap');
       const locationCounts: Record<string, number> = {};
       recentNaps.forEach((e) => {
         const loc = String(e.data?.location || '');
@@ -721,7 +695,7 @@ export const useTrackerProgressive = (trackerId: string) => {
     }
 
     return [...builtIn, ...userSavedTemplates, ...autoGenerated];
-  }, [trackerConfig, userSavedTemplates, trackerId, correlations, getEntries]);
+  }, [trackerConfig, userSavedTemplates, trackerId, correlations, tracker]);
 
   /* ═══════════════════════════════════════════════════════════
      COMPOSED STATE
@@ -777,37 +751,33 @@ export const useTrackerProgressive = (trackerId: string) => {
      ACTIONS
      ═══════════════════════════════════════════════════════════ */
 
- const getAllYesterday = useCallback(() => {
-const yesterday = getYesterdayData(trackerId);
-return yesterday || {};
-}, [getYesterdayData, trackerId]);
-// NOTE: Renamed from applyAllYesterday -> getAllYesterday because this
-// function returns data; it does NOT mutate state. The caller must
-// use setData() or similar to actually apply the values.
+  const getAllYesterday = useCallback(() => {
+    const yesterday = tracker.getYesterdayData(trackerId);
+    return yesterday || {};
+  }, [tracker, trackerId]);
+
   const dismissInsightById = useCallback(
     (insightId: string) => {
-      dismissInsight(insightId);
+      tracker.dismissInsight(insightId);
       setRefreshToken((t) => t + 1);
     },
-    [dismissInsight]
+    [tracker]
   );
 
   const refresh = useCallback(() => {
     setRefreshToken((t) => t + 1);
-    setNow(new Date()); // Also refresh time
+    setNow(new Date());
   }, []);
 
   return {
-...state,
-// NOTE: We intentionally do NOT spread raw dismissInsight from useTracker.
-// The wrapped dismissInsightById below handles refresh token invalidation.
-getAllYesterday, // renamed from applyAllYesterday -- returns data, caller applies
-dismissInsight: dismissInsightById,
-refresh,
-todayEntries,
-yesterdayEntries,
-recentEntries,
-};
+    ...state,
+    getAllYesterday,
+    dismissInsight: dismissInsightById,
+    refresh,
+    todayEntries,
+    yesterdayEntries,
+    recentEntries,
+  };
 };
 
 export default useTrackerProgressive;

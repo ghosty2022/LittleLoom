@@ -980,6 +980,11 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     }
   };
 
+  // Navigate to messages
+  const handleNavigateToMessages = () => {
+    navigation.navigate('ChatList' as never);
+  };
+
   // ============================================
   // SAVE PROFILE
   // ============================================
@@ -1080,15 +1085,14 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     </Animated.View>
   );
 
-  // ============================================
-  // RENDER PROFILE HERO
-  // ============================================
   const renderProfileHero = () => {
     if (!currentUser) return null;
     const roleConfig = currentUser.isVerified ? ROLE_CONFIG.verified : ROLE_CONFIG.member;
     const coverPhoto = formData.coverPhoto || currentUser.coverPhoto;
     const avatarSource = formData.avatar || currentUser.avatar;
-    const isAvatarEmoji = avatarSource && avatarSource.length <= 2 && !avatarSource.includes('/');
+    
+    // Check if avatar is an emoji (single character or emoji string)
+    const isEmojiAvatar = avatarSource && (avatarSource.length <= 2 || /[\u{1F000}-\u{1FFFF}]/u.test(avatarSource));
     
     return (
       <Animated.View entering={FadeInUp.delay(100).springify()} style={styles.profileHero}>
@@ -1139,16 +1143,22 @@ export default function CommunityProfileScreen({ navigation }: Props) {
             style={styles.avatarWrapper}
             disabled={!isEditing}
           >
-            {avatarSource && !isAvatarEmoji ? (
-              <Image 
-                source={{ uri: avatarSource }} 
-                style={styles.avatarImage}
-                resizeMode="cover"
-              />
+            {avatarSource ? (
+              isEmojiAvatar ? (
+                <View style={[styles.avatarImage, styles.avatarEmojiContainer, { backgroundColor: '#6366f125' }]}>
+                  <Text style={styles.avatarEmojiText}>{avatarSource}</Text>
+                </View>
+              ) : (
+                <Image 
+                  source={{ uri: avatarSource }} 
+                  style={styles.avatarImage}
+                  resizeMode="cover"
+                />
+              )
             ) : (
               <View style={[styles.avatarImage, styles.avatarPlaceholder, { backgroundColor: `${roleConfig.color}25` }]}>
                 <Text style={styles.avatarPlaceholderText}>
-                  {isAvatarEmoji ? avatarSource : (currentUser.displayName?.charAt(0)?.toUpperCase() || '?')}
+                  {currentUser.displayName?.charAt(0)?.toUpperCase() || '?'}
                 </Text>
               </View>
             )}
@@ -1195,7 +1205,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
             )}
           </View>
 
-          {/* Stats Row */}
+          {/* Stats Row - Always visible */}
           <View style={styles.statsRow}>
             <View style={styles.statsItem}>
               <Text style={styles.statsValue}>{userPostList.length}</Text>
@@ -1214,77 +1224,31 @@ export default function CommunityProfileScreen({ navigation }: Props) {
           </View>
         </View>
 
-        {/* Action Bar - Redesigned */}
-        <View style={styles.actionBar}>
-          <TouchableOpacity 
-            style={styles.actionBarItem}
-            onPress={() => navigation.navigate('ChatList' as never)}
-          >
-            <LinearGradient
-              colors={['#6366f1', '#8b5cf6']}
-              style={styles.actionBarIcon}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            >
-              <Ionicons name="chatbubbles" size={18} color="#fff" />
-            </LinearGradient>
-            <Text style={styles.actionBarLabel}>Message</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.actionBarItem}
-            onPress={handleShareProfile}
-          >
-            <View style={[styles.actionBarIcon, styles.actionBarIconSecondary]}>
-              <Ionicons name="share-outline" size={18} color="#6366f1" />
-            </View>
-            <Text style={styles.actionBarLabel}>Share</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.actionBarItem}
-            onPress={() => setIsEditing(true)}
-          >
-            <View style={[styles.actionBarIcon, styles.actionBarIconSecondary]}>
-              <Ionicons name="create-outline" size={18} color="#6366f1" />
-            </View>
-            <Text style={styles.actionBarLabel}>Edit</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.actionBarItem}
-            onPress={() => setActiveTab('settings')}
-          >
-            <View style={[styles.actionBarIcon, styles.actionBarIconSecondary]}>
-              <Ionicons name="settings-outline" size={18} color="#6366f1" />
-            </View>
-            <Text style={styles.actionBarLabel}>Settings</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Edit/Save Button - Floating */}
-        {isEditing && (
-          <TouchableOpacity 
-            style={[styles.floatingSaveBtn, (!hasChanges || isSaving) && styles.floatingSaveBtnDisabled]} 
-            onPress={handleSave}
-            disabled={isSaving || !hasChanges}
-          >
-            <LinearGradient
-              colors={['#6366f1', '#8b5cf6']}
-              style={StyleSheet.absoluteFill}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
+        {/* Single Edit/Save button */}
+        <TouchableOpacity 
+          style={[styles.editToggleBtn, isEditing && styles.editToggleBtnActive]} 
+          onPress={() => {
+            if (isEditing && hasChanges) {
+              handleSave();
+            } else if (isEditing) {
+              setIsEditing(false);
+              setFormData({ ...originalData });
+            } else {
+              setIsEditing(true);
+            }
+          }}
+          disabled={isSaving}
+        >
+          {isSaving ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Ionicons 
+              name={isEditing ? "checkmark" : "create-outline"} 
+              size={20} 
+              color="#fff" 
             />
-            {isSaving ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <>
-                <Ionicons name="checkmark" size={18} color="#fff" />
-                <Text style={styles.floatingSaveText}>Save Changes</Text>
-              </>
-            )}
-          </TouchableOpacity>
-        )}
+          )}
+        </TouchableOpacity>
       </Animated.View>
     );
   };
@@ -1309,7 +1273,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         <KpiPill icon="💙" value={currentUser?.stats?.helpful || 0} label="Helpful" color={TC.success} isDark={isDark} colors={fullThemeColors} />
       </View>
 
-      {/* Influence Dashboard */}
+      {/* Influence Dashboard - With real data */}
       <Animated.View entering={FadeInUp.delay(100).springify()}>
         <GlassCard isDark={isDark} colors={fullThemeColors}>
           <View style={styles.influenceHeader}>
@@ -1675,6 +1639,32 @@ export default function CommunityProfileScreen({ navigation }: Props) {
           )}
         </View>
       </GlassCard>
+
+      {/* Quick Actions Dock - Only in view mode */}
+      {!isEditing && (
+        <View style={styles.dockContainer}>
+          <View style={styles.dock}>
+            <TouchableOpacity onPress={handleNavigateToMessages} style={styles.dockItem}>
+              <LinearGradient colors={['#6366f1', '#8b5cf6']} style={styles.dockGradient}>
+                <Ionicons name="chatbubbles" size={20} color="#fff" />
+              </LinearGradient>
+              <Text style={styles.dockLabel}>Messages</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleShareProfile} style={styles.dockItem}>
+              <View style={[styles.dockGradient, { backgroundColor: 'rgba(99,102,241,0.15)' }]}>
+                <Ionicons name="share-outline" size={20} color="#6366f1" />
+              </View>
+              <Text style={styles.dockLabel}>Share</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setIsEditing(true)} style={styles.dockItem}>
+              <View style={[styles.dockGradient, { backgroundColor: 'rgba(245,158,11,0.15)' }]}>
+                <Ionicons name="create-outline" size={20} color="#f59e0b" />
+              </View>
+              <Text style={styles.dockLabel}>Edit</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
     </Animated.View>
   );
 
@@ -1992,6 +1982,16 @@ export default function CommunityProfileScreen({ navigation }: Props) {
             <Ionicons name="arrow-back" size={22} color="#fff" />
           </TouchableOpacity>
           <View style={{ flex: 1 }} />
+          {isEditing && (
+            <TouchableOpacity 
+              onPress={handleSave} 
+              style={[styles.saveBtn, (!hasChanges || isSaving) && styles.saveBtnDisabled]} 
+              disabled={isSaving || !hasChanges}
+              activeOpacity={0.8}
+            >
+              {isSaving ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.saveBtnText}>Save</Text>}
+            </TouchableOpacity>
+          )}
         </Animated.View>
 
         {renderProfileHero()}
@@ -2123,35 +2123,32 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   stickySubtitle: { fontSize: 12, fontWeight: '500', color: 'rgba(255,255,255,0.7)', marginTop: 2 },
 
   // Top Header
-  topHeader: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'space-between',
-    paddingHorizontal: 16, 
-    paddingTop: 16,
-    paddingBottom: 8,
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 50,
-  },
+  topHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 16, marginBottom: 16, marginTop: 8 },
   backBtn: { 
     width: 40, 
     height: 40, 
     borderRadius: 12, 
     justifyContent: 'center', 
     alignItems: 'center', 
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.08)' 
   },
+  saveBtn: { 
+    paddingHorizontal: 16, 
+    paddingVertical: 8, 
+    borderRadius: 12, 
+    backgroundColor: '#6366f1', 
+    minWidth: 60, 
+    alignItems: 'center' 
+  },
+  saveBtnDisabled: { backgroundColor: 'rgba(100,116,139,0.2)' },
+  saveBtnText: { fontSize: 14, fontWeight: '800', color: '#fff' },
 
   // Profile Hero
-  profileHero: { marginTop: 0, marginBottom: 20 },
+  profileHero: { marginHorizontal: 16, marginBottom: 20 },
   coverPhotoContainer: { 
     width: '100%', 
-    height: 200, 
+    height: 180, 
+    borderRadius: 16, 
     overflow: 'hidden', 
     position: 'relative' 
   },
@@ -2161,37 +2158,48 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    height: 100,
+    height: 80,
   },
   coverPhotoPlaceholder: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8 },
   coverPhotoText: { color: 'rgba(255,255,255,0.6)', fontSize: 14, fontWeight: '600' },
   coverPhotoEditBadge: { 
     position: 'absolute', 
-    right: 16, 
-    top: 16, 
-    width: 36, 
-    height: 36, 
-    borderRadius: 18, 
+    right: 12, 
+    top: 12, 
+    width: 32, 
+    height: 32, 
+    borderRadius: 16, 
     backgroundColor: 'rgba(0,0,0,0.5)', 
     justifyContent: 'center', 
     alignItems: 'center' 
   },
 
-  avatarSection: { alignItems: 'center', marginTop: -60 },
+  avatarSection: { alignItems: 'center', marginTop: -50 },
   avatarWrapper: { 
     position: 'relative',
     shadowColor: '#000', 
-    shadowOffset: { width: 0, height: 4 }, 
-    shadowOpacity: 0.3, 
-    shadowRadius: 12, 
-    elevation: 10 
+    shadowOffset: { width: 0, height: 2 }, 
+    shadowOpacity: 0.25, 
+    shadowRadius: 8, 
+    elevation: 8 
   },
   avatarImage: { 
-    width: 120, 
-    height: 120, 
-    borderRadius: 60, 
+    width: 100, 
+    height: 100, 
+    borderRadius: 50, 
     borderWidth: 4, 
     borderColor: '#fff' 
+  },
+  avatarEmojiContainer: { 
+    justifyContent: 'center', 
+    alignItems: 'center',
+    backgroundColor: '#6366f125',
+  },
+  avatarEmojiText: { 
+    fontSize: 44, 
+    lineHeight: 100,
+    textAlign: 'center',
+    textAlignVertical: 'center',
   },
   avatarPlaceholder: { 
     backgroundColor: '#6366f1', 
@@ -2199,7 +2207,7 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
     alignItems: 'center' 
   },
   avatarPlaceholderText: { 
-    fontSize: 44, 
+    fontSize: 36, 
     fontWeight: '800', 
     color: '#fff' 
   },
@@ -2207,9 +2215,9 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
     position: 'absolute', 
     bottom: 4, 
     right: 4, 
-    width: 32, 
-    height: 32, 
-    borderRadius: 16, 
+    width: 28, 
+    height: 28, 
+    borderRadius: 14, 
     backgroundColor: '#6366f1', 
     justifyContent: 'center', 
     alignItems: 'center',
@@ -2217,13 +2225,13 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
     borderColor: '#fff'
   },
 
-  profileInfo: { alignItems: 'center', marginTop: 12, paddingHorizontal: 20 },
+  profileInfo: { alignItems: 'center', marginTop: 8 },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  profileName: { fontSize: 26, fontWeight: '800', color: colors.text || '#1e293b', letterSpacing: -0.5 },
+  profileName: { fontSize: 24, fontWeight: '800', color: colors.text || '#1e293b', letterSpacing: -0.5 },
   verifiedBadge: { 
-    width: 22, 
-    height: 22, 
-    borderRadius: 11, 
+    width: 20, 
+    height: 20, 
+    borderRadius: 10, 
     backgroundColor: '#6366f1', 
     justifyContent: 'center', 
     alignItems: 'center' 
@@ -2234,74 +2242,25 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   profileTag: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, gap: 4 },
   profileTagText: { fontSize: 12, fontWeight: '700' },
   editingDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#f59e0b' },
+  editToggleBtn: { 
+    position: 'absolute', 
+    right: 0, 
+    top: 0, 
+    width: 40, 
+    height: 40, 
+    borderRadius: 12, 
+    backgroundColor: 'rgba(255,255,255,0.08)', 
+    alignItems: 'center', 
+    justifyContent: 'center' 
+  },
+  editToggleBtnActive: { backgroundColor: '#6366f1' },
 
   // Stats Row
-  statsRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 12, gap: 24 },
+  statsRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 12, gap: 20 },
   statsItem: { alignItems: 'center' },
-  statsValue: { fontSize: 20, fontWeight: '800', color: colors.text || '#1e293b' },
+  statsValue: { fontSize: 18, fontWeight: '800', color: colors.text || '#1e293b' },
   statsLabel: { fontSize: 12, fontWeight: '600', color: colors.textSecondary || '#64748b' },
-  statsDivider: { width: 1, height: 28, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' },
-
-  // Action Bar - Redesigned
-  actionBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    marginTop: 16,
-    marginHorizontal: 16,
-    borderRadius: 16,
-    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.9)',
-    borderWidth: 1,
-    borderColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-  },
-  actionBarItem: {
-    alignItems: 'center',
-    gap: 6,
-  },
-  actionBarIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  actionBarIconSecondary: {
-    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(99,102,241,0.08)',
-  },
-  actionBarLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: colors.textSecondary || '#64748b',
-  },
-
-  // Floating Save Button
-  floatingSaveBtn: {
-    position: 'absolute',
-    bottom: 16,
-    right: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 16,
-    overflow: 'hidden',
-    shadowColor: '#6366f1',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  floatingSaveBtnDisabled: {
-    opacity: 0.5,
-  },
-  floatingSaveText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#fff',
-  },
+  statsDivider: { width: 1, height: 24, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
 
   // Tab Bar
   tabBar: { 
@@ -2330,6 +2289,7 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
     overflow: 'hidden', 
     borderWidth: 1, 
     borderColor: colors.border || 'rgba(255,255,255,0.06)', 
+    marginHorizontal: 16, 
     marginBottom: DESIGN.spacing.lg 
   },
   glassBorder: { 
@@ -2347,6 +2307,7 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
     flexDirection: 'row', 
     justifyContent: 'space-between', 
     alignItems: 'flex-start', 
+    marginHorizontal: 16, 
     marginBottom: 12, 
     marginTop: 8 
   },
@@ -2356,7 +2317,7 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   sectionActionText: { fontSize: 13, fontWeight: '700', color: '#6366f1' },
 
   // KPI Pill
-  kpiPillRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
+  kpiPillRow: { flexDirection: 'row', gap: 10, marginHorizontal: 16, marginBottom: 16 },
   kpiPill: { 
     flex: 1, 
     borderRadius: 20, 
@@ -2443,7 +2404,7 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   sparklineDay: { fontSize: 10, fontWeight: '600', color: colors.textMuted || '#94a3b8' },
 
   // Suggestions
-  suggestionsScroll: { flexDirection: 'row', gap: 12, paddingBottom: 4 },
+  suggestionsScroll: { flexDirection: 'row', paddingHorizontal: 16, gap: 12, paddingBottom: 4 },
   suggestionCard: { width: 160, padding: 14, borderRadius: 20, overflow: 'hidden' },
   suggestionIconBg: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
   suggestionEmoji: { fontSize: 22 },
@@ -2453,7 +2414,7 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   suggestionActionText: { fontSize: 11, fontWeight: '700' },
 
   // Affinity
-  affinityList: { gap: 8, marginBottom: 16 },
+  affinityList: { marginHorizontal: 16, gap: 8, marginBottom: 16 },
   affinityRow: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: isDarkMode ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.75)' },
   affinityIconBg: { width: 42, height: 42, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   affinityEmoji: { fontSize: 20 },
@@ -2465,7 +2426,7 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   affinityBarFill: { height: '100%', borderRadius: 2 },
 
   // Comparison
-  comparisonList: { gap: 8, marginBottom: 16 },
+  comparisonList: { marginHorizontal: 16, gap: 8, marginBottom: 16 },
   comparisonRow: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: isDarkMode ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.75)' },
   comparisonIconBg: { width: 42, height: 42, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   comparisonContent: { flex: 1, marginLeft: 12, gap: 6 },
@@ -2478,7 +2439,7 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   comparisonNumbers: { fontSize: 11, fontWeight: '600', color: colors.textSecondary || '#64748b' },
 
   // Streaks
-  streaksRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
+  streaksRow: { flexDirection: 'row', gap: 10, marginHorizontal: 16, marginBottom: 16 },
   streakCard: { flex: 1, borderRadius: 20, padding: 14, alignItems: 'center', borderWidth: 1, backgroundColor: isDarkMode ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.75)' },
   streakIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
   streakValue: { fontSize: 22, fontWeight: '800' },
@@ -2579,12 +2540,29 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
     paddingHorizontal: 16, 
     paddingVertical: 14, 
     borderRadius: 16, 
+    marginHorizontal: 20, 
     marginVertical: 8, 
     gap: 12,
     borderWidth: 1,
     borderColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'
   },
   manageTopicsText: { flex: 1, fontSize: 15, fontWeight: '600' },
+
+  // Quick Actions Dock - Redesigned
+  dockContainer: { marginHorizontal: 16, marginBottom: 20 },
+  dock: { flexDirection: 'row', gap: 12, justifyContent: 'center' },
+  dockItem: { alignItems: 'center', gap: 6, flex: 1 },
+  dockGradient: { 
+    width: 56, 
+    height: 56, 
+    borderRadius: 16, 
+    justifyContent: 'center', 
+    alignItems: 'center',
+    backgroundColor: 'rgba(99,102,241,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(99,102,241,0.15)',
+  },
+  dockLabel: { fontSize: 11, fontWeight: '600', color: colors.textSecondary || '#64748b' },
 
   // Posts Tab
   tabPanel: { paddingBottom: 20 },

@@ -1,8 +1,15 @@
+// src/hooks/useSafeContexts.ts
+// Safe context hooks that never throw - for use in components that may render before contexts are ready
+
 import { useTheme as useThemeOriginal } from '../context/AppContext';
 import { useAuth as useAuthOriginal } from '../context/AuthContext';
 import { useBaby as useBabyOriginal } from '../context/BabyContext';
 import { useActivity as useActivityOriginal } from '../context/ActivityContext';
 import useCustomizationOriginal from './useCustomization';
+
+// FIX: Add tracker context safety
+// Use direct import for the hook itself, not the context
+import { useTracker as useTrackerOriginal } from './useTrackerContext';
 
 const DEFAULT_APP_COLORS = {
   background: '#f8faff',
@@ -68,6 +75,8 @@ const DEFAULT_CUSTOMIZATION = {
   triggerHaptic: async () => {},
 };
 
+// ─── SAFE APP ──────────────────────────────────────────────────────────
+
 export function useSafeApp() {
   try {
     const app = useThemeOriginal();
@@ -110,6 +119,8 @@ export function useSafeApp() {
     };
   }
 }
+
+// ─── SAFE AUTH ─────────────────────────────────────────────────────────
 
 export function useSafeAuth() {
   try {
@@ -166,6 +177,8 @@ export function useSafeAuth() {
   }
 }
 
+// ─── SAFE BABY ─────────────────────────────────────────────────────────
+
 export function useSafeBaby() {
   try {
     return useBabyOriginal();
@@ -183,6 +196,8 @@ export function useSafeBaby() {
       pottyLogs: [],
       medicationLogs: [],
       activities: [],
+      entries: [],
+      isLoadingEntries: false,
       loadBabies: async () => {},
       createBaby: async () => false,
       updateBaby: async () => {},
@@ -220,9 +235,20 @@ export function useSafeBaby() {
       deleteActivity: async () => false,
       getBabyStats: () => ({ streak: 0, milestones: 0, photos: 0, entries: 0 }),
       updateBabyStats: async () => {},
+      loadEntries: async () => {},
+      deleteEntry: async () => false,
+      addEntry: async () => false,
+      updateEntry: async () => false,
+      getEntryById: () => undefined,
+      getDateTitle: () => 'Today',
+      syncWithActivityContext: async () => {},
+      scheduleActivityReminder: async () => null,
+      cancelActivityReminder: async () => {},
     };
   }
 }
+
+// ─── SAFE ACTIVITY ─────────────────────────────────────────────────────
 
 export function useSafeActivity() {
   try {
@@ -254,6 +280,8 @@ export function useSafeActivity() {
   }
 }
 
+// ─── SAFE CUSTOMIZATION ──────────────────────────────────────────────
+
 export function useSafeCustomization() {
   try {
     return useCustomizationOriginal();
@@ -261,6 +289,75 @@ export function useSafeCustomization() {
     return DEFAULT_CUSTOMIZATION;
   }
 }
+
+// ─── SAFE TRACKER ─────────────────────────────────────────────────────
+// FIX: This now uses the hook directly, not the context
+
+export function useSafeTracker() {
+  try {
+    return useTrackerOriginal();
+  } catch (e) {
+    // Return safe fallback that matches TrackerContextType
+    return {
+      isLoading: false,
+      trackers: [],
+      customTrackers: [],
+      entries: [],
+      entriesByTracker: {},
+      lastTrackerId: null,
+      currentBabyId: null,
+      progressive: {
+        todayEntries: [],
+        yesterdayEntries: [],
+        streaks: [],
+        insights: [],
+        pendingReminders: [],
+        recentTemplates: [],
+        detectedPatterns: [],
+      },
+      getTracker: () => undefined,
+      getTrackersByCategory: () => [],
+      searchTrackers: () => [],
+      createCustomTracker: async () => null,
+      updateCustomTracker: async () => false,
+      deleteCustomTracker: async () => false,
+      duplicateTracker: async () => null,
+      addEntry: async () => null,
+      updateEntry: async () => false,
+      deleteEntry: async () => false,
+      getEntries: () => [],
+      getEntriesByDate: () => [],
+      getEntryById: () => undefined,
+      getTrackerStats: () => ({ totalEntries: 0, thisWeek: 0, thisMonth: 0, lastEntry: null, streakDays: 0 }),
+      getTodaySummary: () => [],
+      canUseTracker: () => false,
+      canCreateEntry: () => false,
+      canEditEntry: () => false,
+      canDeleteEntry: () => false,
+      getSmartSuggestions: () => ({}),
+      getYesterdayData: () => null,
+      getStreak: () => undefined,
+      getInsights: () => [],
+      dismissInsight: () => {},
+      scheduleReminder: async () => '',
+      cancelReminder: async () => {},
+      getPendingReminders: () => [],
+      snoozeReminder: async () => {},
+      saveTemplate: async () => {},
+      getTemplates: async () => [],
+      linkEntries: async () => {},
+      getLinkedEntries: () => [],
+      syncToLegacyActivity: () => ({} as any),
+      getLegacyActivities: () => [],
+      syncFromBabyContext: async () => {},
+      refreshTrackers: async () => {},
+      refreshEntries: async () => {},
+      setCurrentBabyId: () => {},
+    };
+  }
+}
+
+// ─── UNIFIED THEME ────────────────────────────────────────────────────
 
 export function useUnifiedTheme() {
   const app = useSafeApp();
@@ -296,12 +393,15 @@ export function useUnifiedTheme() {
   };
 }
 
+// ─── EXPORTS ──────────────────────────────────────────────────────────
+
 export {
   useSafeApp,
   useSafeAuth,
   useSafeBaby,
   useSafeActivity,
   useSafeCustomization,
+  useSafeTracker,
   useUnifiedTheme,
 };
 

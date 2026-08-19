@@ -1,21 +1,15 @@
+// src/hooks/useTrackerAchievements.ts
 /**
  * useTrackerAchievements — The bridge hook that aggregates ALL growth intelligence
  * sources into the achievement format the UI expects.
  *
- * Sources consumed:
- *   - useTracker (entries, stats, streaks)
- *   - useGrowthIntelligence (growth scores, milestones, readiness)
- *   - usePredictiveReminders (smart reminders → achievement triggers)
- *   - useTimelineCorrelations (cross-tracker patterns)
- *   - BabyContext (baby profile, age, growth data)
- *
- * Target: AchievementsScreen (replaces useActivity + BabyContext direct calls)
+ * FIX: Uses safe contexts to prevent "_context" errors
  */
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
-  differenceInHours,
   differenceInDays,
+  differenceInHours,
   isSameDay,
   subDays,
   format,
@@ -24,29 +18,14 @@ import {
 } from 'date-fns';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// FIX: Import directly from context sources to avoid circular deps
-import { useTracker } from './useTrackerContext';
-import { useBaby } from '@/context/BabyContext';
+// FIX: Use safe contexts that never throw
+import { useSafeTracker } from './useSafeContexts';
+import { useSafeBaby } from './useSafeContexts';
 import { useGrowthIntelligence } from './useGrowthIntelligence';
 import { usePredictiveReminders } from './usePredictiveReminders';
 import { computeStreak } from '@/utils/streak';
-// Inline type definition to avoid dependency on potentially missing file export
-interface PredictiveReminder {
-id: string;
-title: string;
-description: string;
-emoji: string;
-confidence: number;
-priority: 'low' | 'medium' | 'high';
-basedOn?: { trackerId: string; reason: string }[];
-suggestedTime?: Date | number;
-suggestedTrackerId?: string;
-}
 
-/* ───────────────────────────────────────────────────────────────
-   TYPES — Aligned with AchievementsScreen expectations
-   ─────────────────────────────────────────────────────────────── */
-
+// Type definitions (keep as before)
 export type AchievementCategory =
   | 'milestone'
   | 'streak'
@@ -71,22 +50,16 @@ export interface Achievement {
   category: AchievementCategory;
   rarity: AchievementRarity;
   points: number;
-  /** When this achievement was first unlocked (for "NEW" badges) */
   unlockedAt?: number;
-  /** Correlated tracker IDs that feed into this achievement */
   sourceTrackers?: string[];
-  /** Human-readable summary of how this was earned */
   earnedSummary?: string;
-  /** Predictive reminder that triggered this (if applicable) */
-  triggeredByReminder?: PredictiveReminder;
+  triggeredByReminder?: any;
 }
-
-// StreakData imported from @/utils/streak
 
 export interface AchievementStats {
   total: number;
   unlocked: number;
-  progress: number; // 0-100
+  progress: number;
   totalPoints: number;
   legendary: number;
   epic: number;
@@ -105,23 +78,14 @@ export interface AchievementStats {
 export interface TrackerAchievementSummary {
   achievements: Achievement[];
   stats: AchievementStats;
-  streak: StreakData;
+  streak: any;
   newlyUnlocked: string[];
-  /** Growth score from useGrowthIntelligence */
-  growthScore: ReturnType<typeof useGrowthIntelligence>['growthIndex'] | null;
-  /** Predictive reminders that could become achievements */
-  pendingReminders: PredictiveReminder[];
-  /** Whether data is still loading */
+  growthScore: any;
+  pendingReminders: any[];
   isLoading: boolean;
-  /** Refresh all achievement data */
   refresh: () => void;
-  /** Mark predictive achievement as unlocked */
   unlockPredictive: (reminderId: string) => Promise<void>;
 }
-
-/* ───────────────────────────────────────────────────────────────
-   CONSTANTS
-   ─────────────────────────────────────────────────────────────── */
 
 const ACHIEVEMENTS_UNLOCKED_KEY = '@littleloom_achievements_unlocked_v2';
 const ACHIEVEMENTS_UNLOCKED_AT_KEY = '@littleloom_achievements_unlocked_at';
@@ -146,19 +110,13 @@ const CATEGORY_META: Record<AchievementCategory, { label: string; icon: string; 
 };
 
 /* ───────────────────────────────────────────────────────────────
-   STREAK ENGINE
-   ─────────────────────────────────────────────────────────────── */
-
-// Extracted to utils/streak.ts — shared streak computation
-
-/* ───────────────────────────────────────────────────────────────
    MAIN HOOK
    ─────────────────────────────────────────────────────────────── */
 
 export const useTrackerAchievements = (): TrackerAchievementSummary => {
-  // FIX: Use safe wrappers to prevent crashes during context initialization
-  const tracker = useTracker();
-  const baby = useBaby();
+  // FIX: Use safe contexts that never throw
+  const tracker = useSafeTracker();
+  const baby = useSafeBaby();
   const { growthIndex } = useGrowthIntelligence();
   const { reminders: predictiveReminders } = usePredictiveReminders();
 
@@ -207,7 +165,7 @@ export const useTrackerAchievements = (): TrackerAchievementSummary => {
 
   /* ── Core achievement builder ── */
   const achievements: Achievement[] = useMemo(() => {
-    // FIX: Guard against missing contexts
+    // Guard against missing baby
     if (!baby?.currentBaby?.id) return [];
 
     const babyId = baby.currentBaby.id;
@@ -275,7 +233,6 @@ export const useTrackerAchievements = (): TrackerAchievementSummary => {
 
     const photoCount = allEntries.filter((e: any) => e.photoUris && e.photoUris.length > 0).length;
 
-    // No tracker has a `shared` field — count partner-logged entries instead (real shared-care signal)
     const sharedCount = allEntries.filter((e: any) => e.loggedByRole === 'parent2').length;
 
     const usedTypes = new Set(allEntries.map((e: any) => e.trackerId)).size;
@@ -921,7 +878,7 @@ export const useTrackerAchievements = (): TrackerAchievementSummary => {
         sourceTrackers: ['growth', 'milestone', 'medication'],
       },
 
-      /* ═══ PREDICTIVE (from usePredictiveReminders) ═══ */
+      /* ═══ PREDICTIVE ═══ */
       ...predictiveAchievements,
     ];
 
