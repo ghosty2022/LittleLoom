@@ -2,7 +2,7 @@
 // FIX: Direct import pattern - no proxy issues
 
 import { useContext } from 'react';
-import { TrackerContext } from '@/context/TrackerContext';
+import { TrackerContext } from '../context/TrackerContext';
 
 /**
  * useTracker - Safe hook for accessing tracker context

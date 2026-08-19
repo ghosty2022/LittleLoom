@@ -82,15 +82,6 @@ const ACHIEVEMENTS: Record<string, { emoji: string; name: string; color: string;
   verified: { emoji: '✅', name: 'Verified', color: '#6366f1', desc: 'Identity verified' },
 };
 
-interface EngagementInsight { label: string; value: number; icon: string; color: string; trend: number; }
-interface CommunityInfluence { score: number; rank: string; percentile: number; topContributors: { id: string; name: string; avatar: string }[]; }
-interface ContentHighlights { topPost: Post | null; mostLiked: number; mostCommented: number; avgEngagement: number; }
-interface ActivityPattern { day: string; activity: number; posts: number; }
-interface MutualConnection { id: string; name: string; avatar: string; mutualCount: number; }
-interface SmartAction { id: string; title: string; description: string; icon: string; color: string; action: () => void; }
-interface ParentingTip { id: string; emoji: string; title: string; tip: string; color: string; }
-interface PostTopic { topicId: string; count: number; color: string; label: string; percentage: number; }
-
 // ============================================
 // COMPONENTS
 // ============================================
@@ -201,6 +192,14 @@ const PostCard = React.memo(({ post, index, onPress, isDark, colors }: any) => {
     </GlassCard>
   );
 });
+
+// Helper to check if avatar is an emoji
+const isEmojiAvatar = (avatar: string | undefined): boolean => {
+  if (!avatar) return false;
+  // Check if it's a single emoji or short emoji string
+  const emojiRegex = /[\u{1F000}-\u{1FFFF}]|[\u2600-\u27BF]|[\u{2700}-\u{27BF}]|[\u{FE00}-\u{FEFF}]|[\u{1F300}-\u{1F5FF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|[\u{1F700}-\u{1F77F}]|[\u{1F780}-\u{1F7FF}]|[\u{1F800}-\u{1F8FF}]|[\u{1F900}-\u{1F9FF}]|[\u{1FA00}-\u{1FA6F}]|[\u{1FA70}-\u{1FAFF}]|[\u{1FB00}-\u{1FBFF}]|[\u{1FC00}-\u{1FCFF}]|[\u{1FD00}-\u{1FDFF}]|[\u{1FE00}-\u{1FEFF}]|[\u{1FF00}-\u{1FFFF}]/u;
+  return avatar.length <= 2 && (emojiRegex.test(avatar) || /^[\u{1F000}-\u{1FFFF}]$/u.test(avatar));
+};
 
 // ============================================
 // MAIN COMPONENT
@@ -438,7 +437,7 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
 
   // Parenting Tips - from real data
   const parentingTips = useMemo(() => {
-    const tips: ParentingTip[] = [];
+    const tips: any[] = [];
     const topicCounts: Record<string, number> = {};
     userPostList.forEach(p => {
       topicCounts[p.topicId] = (topicCounts[p.topicId] || 0) + 1;
@@ -693,7 +692,7 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
     const isOnline = user.onlineStatus === 'online';
     const coverPhoto = user.coverPhoto;
     const avatarSource = user.avatar;
-    const isAvatarEmoji = avatarSource && avatarSource.length <= 2 && !avatarSource.includes('/');
+    const isAvatarEmoji = isEmojiAvatar(avatarSource);
     
     return (
       <Animated.View entering={FadeInUp.springify()} style={[styles.profileHero, { marginTop: insets.top + 60 }]}>
@@ -763,63 +762,98 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
               </View>
             </View>
 
-            {/* Action Bar - Redesigned matching CommunityProfileScreen */}
-            {!isOwnProfile && (
-              <View style={styles.actionBar}>
-                <TouchableOpacity 
-                  style={[styles.actionBarItem, isFollowingUser && styles.actionBarItemActive]}
-                  onPress={handleFollowToggle}
-                  disabled={isBlocked}
-                >
-                  <LinearGradient
-                    colors={isFollowingUser ? ['#f1f5f9', '#e2e8f0'] : ['#6366f1', '#8b5cf6']}
-                    style={styles.actionBarIcon}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
+            {/* Action Bar - Redesigned */}
+            <View style={styles.actionBar}>
+              {!isOwnProfile ? (
+                <>
+                  <TouchableOpacity 
+                    style={[styles.actionBarItem, isFollowingUser && styles.actionBarItemActive]}
+                    onPress={handleFollowToggle}
+                    disabled={isBlocked}
                   >
-                    <Ionicons 
-                      name={isFollowingUser ? 'checkmark' : 'person-add'} 
-                      size={18} 
-                      color={isFollowingUser ? '#64748b' : '#fff'} 
-                    />
-                  </LinearGradient>
-                  <Text style={[styles.actionBarLabel, isFollowingUser && styles.actionBarLabelActive]}>
-                    {isBlocked ? 'Blocked' : isFollowingUser ? 'Following' : 'Follow'}
-                  </Text>
-                </TouchableOpacity>
+                    <LinearGradient
+                      colors={isFollowingUser ? ['#f1f5f9', '#e2e8f0'] : ['#6366f1', '#8b5cf6']}
+                      style={styles.actionBarIcon}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                    >
+                      <Ionicons 
+                        name={isFollowingUser ? 'checkmark' : 'person-add'} 
+                        size={18} 
+                        color={isFollowingUser ? '#64748b' : '#fff'} 
+                      />
+                    </LinearGradient>
+                    <Text style={[styles.actionBarLabel, isFollowingUser && styles.actionBarLabelActive]}>
+                      {isBlocked ? 'Blocked' : isFollowingUser ? 'Following' : 'Follow'}
+                    </Text>
+                  </TouchableOpacity>
 
-                <TouchableOpacity 
-                  style={styles.actionBarItem}
-                  onPress={handleMessage}
-                  disabled={isBlocked}
-                >
-                  <View style={[styles.actionBarIcon, styles.actionBarIconSecondary]}>
-                    <Ionicons name="chatbubbles" size={18} color={isBlocked ? '#94a3b8' : '#6366f1'} />
-                  </View>
-                  <Text style={[styles.actionBarLabel, isBlocked && { color: '#94a3b8' }]}>Message</Text>
-                </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={styles.actionBarItem}
+                    onPress={handleMessage}
+                    disabled={isBlocked}
+                  >
+                    <View style={[styles.actionBarIcon, styles.actionBarIconSecondary]}>
+                      <Ionicons name="chatbubbles" size={18} color={isBlocked ? '#94a3b8' : '#6366f1'} />
+                    </View>
+                    <Text style={[styles.actionBarLabel, isBlocked && { color: '#94a3b8' }]}>Message</Text>
+                  </TouchableOpacity>
 
-                <TouchableOpacity 
-                  style={styles.actionBarItem}
-                  onPress={handleShareProfile}
-                >
-                  <View style={[styles.actionBarIcon, styles.actionBarIconSecondary]}>
-                    <Ionicons name="share-outline" size={18} color="#6366f1" />
-                  </View>
-                  <Text style={styles.actionBarLabel}>Share</Text>
-                </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={styles.actionBarItem}
+                    onPress={handleShareProfile}
+                  >
+                    <View style={[styles.actionBarIcon, styles.actionBarIconSecondary]}>
+                      <Ionicons name="share-outline" size={18} color="#6366f1" />
+                    </View>
+                    <Text style={styles.actionBarLabel}>Share</Text>
+                  </TouchableOpacity>
 
-                <TouchableOpacity 
-                  style={styles.actionBarItem}
-                  onPress={handleMoreOptions}
-                >
-                  <View style={[styles.actionBarIcon, styles.actionBarIconSecondary]}>
-                    <Ionicons name="ellipsis-horizontal" size={18} color="#6366f1" />
-                  </View>
-                  <Text style={styles.actionBarLabel}>More</Text>
-                </TouchableOpacity>
-              </View>
-            )}
+                  <TouchableOpacity 
+                    style={styles.actionBarItem}
+                    onPress={handleMoreOptions}
+                  >
+                    <View style={[styles.actionBarIcon, styles.actionBarIconSecondary]}>
+                      <Ionicons name="ellipsis-horizontal" size={18} color="#6366f1" />
+                    </View>
+                    <Text style={styles.actionBarLabel}>More</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                // Own profile - show message button that navigates to messages
+                <>
+                  <TouchableOpacity 
+                    style={styles.actionBarItem}
+                    onPress={() => navigation.navigate('ChatList' as never)}
+                  >
+                    <View style={[styles.actionBarIcon, styles.actionBarIconSecondary]}>
+                      <Ionicons name="chatbubbles" size={18} color="#6366f1" />
+                    </View>
+                    <Text style={styles.actionBarLabel}>Messages</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity 
+                    style={styles.actionBarItem}
+                    onPress={handleShareProfile}
+                  >
+                    <View style={[styles.actionBarIcon, styles.actionBarIconSecondary]}>
+                      <Ionicons name="share-outline" size={18} color="#6366f1" />
+                    </View>
+                    <Text style={styles.actionBarLabel}>Share</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity 
+                    style={styles.actionBarItem}
+                    onPress={() => navigation.navigate('CommunityProfile' as never)}
+                  >
+                    <View style={[styles.actionBarIcon, { backgroundColor: '#f59e0b20' }]}>
+                      <Ionicons name="settings-outline" size={18} color="#f59e0b" />
+                    </View>
+                    <Text style={styles.actionBarLabel}>Settings</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
           </View>
         </View>
       </Animated.View>
@@ -939,7 +973,13 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
               {communityInfluence.topContributors.map((c, i) => (
                 <TouchableOpacity key={c.id} onPress={() => navigation.navigate('CommunityMemberProfile' as never, { userId: c.id })}>
                   <View style={[styles.communityInfluenceAvatar, { marginLeft: i > 0 ? -10 : 0, zIndex: communityInfluence.topContributors.length - i }]}>
-                    <SafeAvatar avatar={c.avatar} size={28} fallbackIcon="person" fallbackColor={TC.purple} />
+                    {c.avatar && !isEmojiAvatar(c.avatar) ? (
+                      <Image source={{ uri: c.avatar }} style={{ width: 28, height: 28, borderRadius: 14 }} />
+                    ) : (
+                      <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: `${TC.purple}20`, justifyContent: 'center', alignItems: 'center' }}>
+                        <Text style={{ fontSize: 14 }}>{isEmojiAvatar(c.avatar) ? c.avatar : c.name?.charAt(0) || '?'}</Text>
+                      </View>
+                    )}
                   </View>
                 </TouchableOpacity>
               ))}
@@ -1084,7 +1124,13 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
           {mutualConnections.map((conn) => (
             <TouchableOpacity key={conn.id} onPress={() => navigation.navigate('CommunityMemberProfile' as never, { userId: conn.id })} style={styles.mutualCard}>
               <LinearGradient colors={[TC.primary + '08', TC.primary + '02']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
-              <SafeAvatar avatar={conn.avatar} size={48} fallbackIcon="person" fallbackColor={TC.primary} borderColor={TC.primary} borderWidth={2} />
+              {conn.avatar && !isEmojiAvatar(conn.avatar) ? (
+                <Image source={{ uri: conn.avatar }} style={{ width: 48, height: 48, borderRadius: 24, borderWidth: 2, borderColor: TC.primary }} />
+              ) : (
+                <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: `${TC.primary}20`, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: TC.primary }}>
+                  <Text style={{ fontSize: 20 }}>{isEmojiAvatar(conn.avatar) ? conn.avatar : conn.name?.charAt(0) || '?'}</Text>
+                </View>
+              )}
               <Text style={styles.mutualName} numberOfLines={1}>{conn.name}</Text>
               <Text style={styles.mutualCount}>{conn.mutualCount} mutual</Text>
             </TouchableOpacity>
@@ -1650,7 +1696,7 @@ const getStyles = (isDarkMode: boolean, colors: any) => StyleSheet.create({
   statsLabel: { fontSize: 12, fontWeight: '600', color: colors.textSecondary || '#64748b' },
   statsDivider: { width: 1, height: 24, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
 
-  // Action Bar - Redesigned matching CommunityProfileScreen
+  // Action Bar - Redesigned
   actionBar: {
     flexDirection: 'row',
     justifyContent: 'space-around',

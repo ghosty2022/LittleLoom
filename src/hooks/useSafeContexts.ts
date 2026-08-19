@@ -7,9 +7,9 @@ import { useBaby as useBabyOriginal } from '../context/BabyContext';
 import { useActivity as useActivityOriginal } from '../context/ActivityContext';
 import useCustomizationOriginal from './useCustomization';
 
-// FIX: Add tracker context safety
-// Use direct import for the hook itself, not the context
-import { useTracker as useTrackerOriginal } from './useTrackerContext';
+// FIX: Direct import from context, not through hook wrapper
+import { TrackerContext } from '../context/TrackerContext';
+import { useContext } from 'react';
 
 const DEFAULT_APP_COLORS = {
   background: '#f8faff',
@@ -291,70 +291,80 @@ export function useSafeCustomization() {
 }
 
 // ─── SAFE TRACKER ─────────────────────────────────────────────────────
-// FIX: This now uses the hook directly, not the context
+// FIX: Direct context usage to avoid circular dependency
 
 export function useSafeTracker() {
   try {
-    return useTrackerOriginal();
+    // Directly use useContext with TrackerContext
+    const ctx = useContext(TrackerContext);
+    if (!ctx) {
+      // Return fallback if context not available
+      return getFallbackTrackerContext();
+    }
+    return ctx;
   } catch (e) {
-    // Return safe fallback that matches TrackerContextType
-    return {
-      isLoading: false,
-      trackers: [],
-      customTrackers: [],
-      entries: [],
-      entriesByTracker: {},
-      lastTrackerId: null,
-      currentBabyId: null,
-      progressive: {
-        todayEntries: [],
-        yesterdayEntries: [],
-        streaks: [],
-        insights: [],
-        pendingReminders: [],
-        recentTemplates: [],
-        detectedPatterns: [],
-      },
-      getTracker: () => undefined,
-      getTrackersByCategory: () => [],
-      searchTrackers: () => [],
-      createCustomTracker: async () => null,
-      updateCustomTracker: async () => false,
-      deleteCustomTracker: async () => false,
-      duplicateTracker: async () => null,
-      addEntry: async () => null,
-      updateEntry: async () => false,
-      deleteEntry: async () => false,
-      getEntries: () => [],
-      getEntriesByDate: () => [],
-      getEntryById: () => undefined,
-      getTrackerStats: () => ({ totalEntries: 0, thisWeek: 0, thisMonth: 0, lastEntry: null, streakDays: 0 }),
-      getTodaySummary: () => [],
-      canUseTracker: () => false,
-      canCreateEntry: () => false,
-      canEditEntry: () => false,
-      canDeleteEntry: () => false,
-      getSmartSuggestions: () => ({}),
-      getYesterdayData: () => null,
-      getStreak: () => undefined,
-      getInsights: () => [],
-      dismissInsight: () => {},
-      scheduleReminder: async () => '',
-      cancelReminder: async () => {},
-      getPendingReminders: () => [],
-      snoozeReminder: async () => {},
-      saveTemplate: async () => {},
-      getTemplates: async () => [],
-      linkEntries: async () => {},
-      getLinkedEntries: () => [],
-      syncToLegacyActivity: () => ({} as any),
-      getLegacyActivities: () => [],
-      syncFromBabyContext: async () => {},
-      refreshTrackers: async () => {},
-      refreshEntries: async () => {},
-      setCurrentBabyId: () => {},
-    };
+    return getFallbackTrackerContext();
   }
+}
+
+// FIX: Separate fallback function to avoid re-creation
+function getFallbackTrackerContext() {
+  return {
+    isLoading: false,
+    trackers: [],
+    customTrackers: [],
+    entries: [],
+    entriesByTracker: {},
+    lastTrackerId: null,
+    currentBabyId: null,
+    progressive: {
+      todayEntries: [],
+      yesterdayEntries: [],
+      streaks: [],
+      insights: [],
+      pendingReminders: [],
+      recentTemplates: [],
+      detectedPatterns: [],
+    },
+    getTracker: () => undefined,
+    getTrackersByCategory: () => [],
+    searchTrackers: () => [],
+    createCustomTracker: async () => null,
+    updateCustomTracker: async () => false,
+    deleteCustomTracker: async () => false,
+    duplicateTracker: async () => null,
+    addEntry: async () => null,
+    updateEntry: async () => false,
+    deleteEntry: async () => false,
+    getEntries: () => [],
+    getEntriesByDate: () => [],
+    getEntryById: () => undefined,
+    getTrackerStats: () => ({ totalEntries: 0, thisWeek: 0, thisMonth: 0, lastEntry: null, streakDays: 0 }),
+    getTodaySummary: () => [],
+    canUseTracker: () => false,
+    canCreateEntry: () => false,
+    canEditEntry: () => false,
+    canDeleteEntry: () => false,
+    getSmartSuggestions: () => ({}),
+    getYesterdayData: () => null,
+    getStreak: () => undefined,
+    getInsights: () => [],
+    dismissInsight: () => {},
+    scheduleReminder: async () => '',
+    cancelReminder: async () => {},
+    getPendingReminders: () => [],
+    snoozeReminder: async () => {},
+    saveTemplate: async () => {},
+    getTemplates: async () => [],
+    linkEntries: async () => {},
+    getLinkedEntries: () => [],
+    syncToLegacyActivity: () => ({}) as any,
+    getLegacyActivities: () => [],
+    syncFromBabyContext: async () => {},
+    refreshTrackers: async () => {},
+    refreshEntries: async () => {},
+    setCurrentBabyId: () => {},
+  };
 }
 
 // ─── UNIFIED THEME ────────────────────────────────────────────────────

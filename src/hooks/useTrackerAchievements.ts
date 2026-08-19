@@ -3,7 +3,7 @@
  * useTrackerAchievements — The bridge hook that aggregates ALL growth intelligence
  * sources into the achievement format the UI expects.
  *
- * FIX: Uses safe contexts to prevent "_context" errors
+ * FIX: Uses direct context imports to prevent "_context" errors
  */
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
@@ -18,14 +18,14 @@ import {
 } from 'date-fns';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// FIX: Use safe contexts that never throw
-import { useSafeTracker } from './useSafeContexts';
-import { useSafeBaby } from './useSafeContexts';
+// FIX: Direct imports from context, not through wrapper that may have circular deps
+import { useTracker } from './useTrackerContext';
+import { useBaby } from '../context/BabyContext';
 import { useGrowthIntelligence } from './useGrowthIntelligence';
 import { usePredictiveReminders } from './usePredictiveReminders';
-import { computeStreak } from '@/utils/streak';
+import { computeStreak } from '../utils/streak';
 
-// Type definitions (keep as before)
+// Type definitions
 export type AchievementCategory =
   | 'milestone'
   | 'streak'
@@ -114,9 +114,9 @@ const CATEGORY_META: Record<AchievementCategory, { label: string; icon: string; 
    ─────────────────────────────────────────────────────────────── */
 
 export const useTrackerAchievements = (): TrackerAchievementSummary => {
-  // FIX: Use safe contexts that never throw
-  const tracker = useSafeTracker();
-  const baby = useSafeBaby();
+  // FIX: Use direct imports that don't go through useSafeContexts
+  const tracker = useTracker();
+  const baby = useBaby();
   const { growthIndex } = useGrowthIntelligence();
   const { reminders: predictiveReminders } = usePredictiveReminders();
 

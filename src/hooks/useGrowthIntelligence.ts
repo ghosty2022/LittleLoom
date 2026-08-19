@@ -15,8 +15,8 @@ import {
 
 // FIX: Import directly from context files, NOT from hook wrappers
 import { useTracker } from './useTrackerContext';
-import { useBaby } from '@/context/BabyContext';
-import { TrackerEntry } from '@/types/trackers';
+import { useBaby } from '../context/BabyContext';
+import { TrackerEntry } from '../types/trackers';
 import {
   calculatePercentilePrecise,
   calculateZScore,
@@ -28,7 +28,7 @@ import {
   WHO_BOY_LMS,
   WHO_GIRL_LMS,
   LMSParams,
-} from '@/hooks/useWHOGrowthCalculator';
+} from './useWHOGrowthCalculator';
 
 export interface SubScore {
   label: string;
@@ -132,14 +132,9 @@ const safeParseDate = (dateString: string | undefined | null): Date | null => {
   }
 };
 
-/* ── Safe gender helper — handles 'other' by defaulting to 'boy' ── */
 const safeGender = (gender: string | undefined): 'boy' | 'girl' => {
   return gender === 'girl' ? 'girl' : 'boy';
 };
-
-/* ═══════════════════════════════════════════════════════════════
-   SAFE NUMBER HELPERS — prevent NaN/Infinity from leaking
-   ═════════════════════════════════════════════════════════════ */
 
 const safeNumber = (v: unknown, fallback = 0): number => {
   const n = Number(v);
@@ -161,8 +156,6 @@ const safeVelocity = (v: number): number => {
   return v;
 };
 
-/* ── Tolerant duration parser — accepts seconds (number), '5m', '1.5h', '90s', '2h30m' ──
-   DURATION_PRESETS are strings, so Number('5m') → NaN used to collapse the Rest score. */
 const parseDurationSeconds = (v: unknown): number => {
   if (typeof v === 'number' && Number.isFinite(v)) return v;
   const s = String(v ?? '').trim().toLowerCase();
@@ -180,14 +173,11 @@ const parseDurationSeconds = (v: unknown): number => {
   return total;
 };
 
-/* ── Normalize free-text milestone titles to MILESTONE_CALENDAR snake_case ids ──
-   'Rolling over' → 'rolling_over' so .has() can actually match the calendar keys. */
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
 
 export const useGrowthIntelligence = () => {
   const { entries, getEntries } = useTracker();
   const { currentBaby, growthData, milestones } = useBaby();
-// NOTE: getMilestones was destructured but never used -- removed.
 
   const ageInMonths = useMemo(() => {
     if (!currentBaby?.birthDate) return 0;
@@ -199,7 +189,6 @@ export const useGrowthIntelligence = () => {
 
   const gender = useMemo(() => safeGender(currentBaby?.gender), [currentBaby?.gender]);
 
-  /* ── Union BabyContext growth store with tracker-logged growth entries (split-brain fix) ── */
   const mergedGrowthData = useMemo(() => {
     const fromEntries = (getEntries('growth', 200) || [])
       .map(e => ({
@@ -212,7 +201,6 @@ export const useGrowthIntelligence = () => {
     return [...(growthData || []), ...fromEntries].filter(g => g && g.type && g.date);
   }, [growthData, getEntries, entries]);
 
-  /* ── Achieved milestones: BabyContext store + 🏆 tracker entries, slugged to calendar ids ── */
   const achievedMilestoneIds = useMemo(() => {
     const fromContext = (milestones || []).map(m => slug(m.title));
     const fromTracker = (getEntries('milestone', 100) || [])
@@ -231,8 +219,6 @@ export const useGrowthIntelligence = () => {
     const guideline = getGuidelineForAge(NUTRITION_GUIDELINES, ageInMonths);
 
     const dailyVolumes: Record<string, number> = {};
-    // Breastfed sessions carry no volume. Estimate conservatively (~9ml/min, capped 140ml;
-    // 90ml flat when no duration) so breastfed babies aren't scored near zero.
     const BREAST_SESSION_ML = 90;
     last7Days.forEach(entry => {
       const day = new Date(entry.timestamp).toDateString();
@@ -351,9 +337,9 @@ export const useGrowthIntelligence = () => {
 
     if (heightData[0]) {
       const measurementDate = safeParseDate(heightData[0].date);
-const ageAtMeasurement = measurementDate
-? Math.max(0, differenceInMonths(measurementDate, birthDate || new Date()))
-: 0;
+      const ageAtMeasurement = measurementDate
+        ? Math.max(0, differenceInMonths(measurementDate, birthDate || new Date()))
+        : 0;
       const rawPercentile = calculatePercentilePrecise(
         safeNumber(heightData[0].value, 0),
         Number.isFinite(ageAtMeasurement) ? ageAtMeasurement : 0,
@@ -364,9 +350,9 @@ const ageAtMeasurement = measurementDate
     }
     if (weightData[0]) {
       const measurementDate = safeParseDate(weightData[0].date);
-const ageAtMeasurement = measurementDate
-? Math.max(0, differenceInMonths(measurementDate, birthDate || new Date()))
-: 0;
+      const ageAtMeasurement = measurementDate
+        ? Math.max(0, differenceInMonths(measurementDate, birthDate || new Date()))
+        : 0;
       const rawPercentile = calculatePercentilePrecise(
         safeNumber(weightData[0].value, 0),
         Number.isFinite(ageAtMeasurement) ? ageAtMeasurement : 0,
@@ -411,8 +397,6 @@ const ageAtMeasurement = measurementDate
     const milestoneEntries = getEntries('milestone', 50) || [];
     const playEntries = getEntries('play', 30) || [];
     const readingEntries = getEntries('reading', 30) || [];
-
-    // achievedMilestoneIds comes from the hook-level memo (BabyContext + tracker entries, slugged)
 
     const expectedMilestones = Object.entries(MILESTONE_CALENDAR)
       .filter(([_, data]) => data.window.start <= ageInMonths)
@@ -594,7 +578,6 @@ const ageAtMeasurement = measurementDate
     return new Date(Date.now() + daysUntil * 24 * 60 * 60 * 1000);
   }, [mergedGrowthData, ageInMonths]);
 
-  /* ── Persisted sleep-score history (last 30 days) — replaces stubbed dimensions.sleep.history ── */
   const SLEEP_HISTORY_KEY = '@littleloom_sleep_score_history';
   const [sleepHistory, setSleepHistory] = useState<number[]>([]);
 
@@ -622,7 +605,6 @@ const ageAtMeasurement = measurementDate
     sleep: { ...restScore, history: sleepHistory },
   }), [nutritionScore, restScore, physicalScore, cognitiveScore, healthStability, sleepHistory]);
 
-  /* ── Real insights & recommendations derived from the computed scores ── */
   const intelligence = useMemo(() => {
     const insights: { id: string; title: string; body: string; emoji: string; priority: 'low' | 'medium' | 'high' }[] = [];
     const recommendations: string[] = [];
@@ -667,7 +649,6 @@ const ageAtMeasurement = measurementDate
     return { insights, recommendations };
   }, [nutritionScore, restScore, physicalScore, cognitiveScore, healthStability, velocityTrends, milestoneReadiness, ageInMonths]);
 
-  /* ── Real getTrackerIndex: tracker → dimension map + 30-day logging consistency ── */
   const getTrackerIndex = useCallback((trackerId: string) => {
     const map: Record<string, 'nutritionScore' | 'restScore' | 'physicalScore' | 'cognitiveScore' | 'healthStability'> = {
       feed: 'nutritionScore', solid_food: 'nutritionScore', pumping: 'nutritionScore',
@@ -680,17 +661,13 @@ const ageAtMeasurement = measurementDate
     if (!key) return null;
     const dimScores = { nutritionScore, restScore, physicalScore, cognitiveScore, healthStability };
     const thirtyDaysAgo = subDays(new Date(), 30).getTime();
-    // FIX: Guard getEntries -- it may be undefined if TrackerContext is not ready
-    // FIX: Guard getEntries — it may be undefined if TrackerContext is not ready
     const entries30d = typeof getEntries === 'function'
       ? (getEntries(trackerId, 200) || []).filter(e => e.timestamp > thirtyDaysAgo).length
       : 0;
-    // 60% dimension score + 40% logging consistency (14+ logs/month saturates)
     const score = Math.round(dimScores[key].value * 0.6 + Math.min(100, (entries30d / 14) * 100) * 0.4);
     return { trackerId, dimension: key, score: Math.max(0, Math.min(100, score)), entries30d };
   }, [nutritionScore, restScore, physicalScore, cognitiveScore, healthStability, getEntries]);
 
-  /* ── Real generateReminders: guideline gaps, growth interval, milestone windows, fever follow-up ── */
   const generateReminders = useCallback((_entries: TrackerEntry[], _trackers: any[], _score: any) => {
     const reminders: { id: string; title: string; body: string; emoji: string; priority: 'low' | 'medium' | 'high' }[] = [];
     const now = Date.now();
@@ -764,7 +741,6 @@ const ageAtMeasurement = measurementDate
     return reminders;
   }, [mergedGrowthData, ageInMonths, nutritionScore.value, restScore.value, milestoneReadiness, getEntries]);
 
-  /* ── Real checkNewAchievements: score thresholds, filtered against already-unlocked ids ── */
   const checkNewAchievements = useCallback((_entries: TrackerEntry[], _score: any, unlocked: string[]) => {
     const candidates = [
       { id: 'gi_composite_80', title: 'Composite index above 80', emoji: '⭐', met: compositeIndex >= 80 },
