@@ -8,6 +8,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/utils/supabase';
 
 const MIGRATION_KEY = '@littleloom_db_migration_v1';
+const BACKUP_KEY = '@littleloom_last_backup_time';
 
 /* ═══════════════════════════════════════════════════════════════════════════
    USER REGISTRY TYPES
@@ -149,6 +150,176 @@ export async function findUserByEmailOrUsername(
   } catch (error) {
     console.error('Error finding user by email or username:', error);
     return null;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   BACKUP HELPERS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+export async function getLastBackupTime(): Promise<number | null> {
+  try {
+    const last = await AsyncStorage.getItem(BACKUP_KEY);
+    return last ? parseInt(last, 10) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function setLastBackupTime(time: number): Promise<void> {
+  try {
+    await AsyncStorage.setItem(BACKUP_KEY, String(time));
+  } catch {
+    // Ignore
+  }
+}
+
+export async function getAllUserDataForBackup(userId: string): Promise<{
+  babies: any[];
+  entries: Record<string, any[]>;
+  familyMembers: Record<string, any[]>;
+  appSettings: Record<string, string>;
+}> {
+  try {
+    const allBabies = await getAllBabiesFromDb();
+    
+    const entries: Record<string, any[]> = {};
+    const familyMembers: Record<string, any[]> = {};
+    const appSettings: Record<string, string> = {};
+    
+    // Get all entries for each baby
+    for (const baby of allBabies) {
+      const babyEntries = await getEntriesByBabyFromDb(baby.id);
+      entries[baby.id] = babyEntries;
+      
+      const babyFamily = await getFamilyMembersByBabyFromDb(baby.id);
+      familyMembers[baby.id] = babyFamily;
+    }
+    
+    // Get all app settings
+    const settingsKeys = [
+      'current_baby_id',
+      'has_skipped_baby',
+      'community_username',
+      'community_handle',
+      'community_bio',
+      'community_avatar',
+      'community_display_name',
+      'community_stats',
+      'community_selected_topics',
+    ];
+    
+    for (const key of settingsKeys) {
+      const val = await getAppSetting(key);
+      if (val) appSettings[key] = val;
+    }
+    
+    return { babies: allBabies, entries, familyMembers, appSettings };
+  } catch (error) {
+    console.error('Error getting user data for backup:', error);
+    throw error;
+  }
+}
+
+export async function restoreFromBackupData(
+  backupData: any,
+  userId: string
+): Promise<{ restoredBabies: number; restoredEntries: number; restoredFamily: number }> {
+  let restoredBabies = 0;
+  let restoredEntries = 0;
+  let restoredFamily = 0;
+  
+  try {
+    // Restore babies
+    for (const baby of backupData.babies || []) {
+      const exists = await getBabyByIdFromDb(baby.id);
+      if (!exists) {
+        await createBabyInDb({
+          id: baby.id,
+          name: baby.name,
+          avatar: baby.avatar || baby.avatar,
+          dateOfBirth: baby.dateOfBirth || baby.date_of_birth,
+          gender: baby.gender || baby.gender,
+          bloodType: baby.bloodType || baby.blood_type,
+          medicalNotes: baby.medicalNotes || baby.medical_notes,
+          parent1Id: baby.parent1Id || baby.parent1_id || userId,
+          parent2Id: baby.parent2Id || baby.parent2_id,
+        });
+        restoredBabies++;
+      } else {
+        // Update existing baby
+        await updateBabyInDb(baby.id, {
+          name: baby.name,
+          avatar: baby.avatar || baby.avatar,
+          dateOfBirth: baby.dateOfBirth || baby.date_of_birth,
+          gender: baby.gender || baby.gender,
+          bloodType: baby.bloodType || baby.blood_type,
+          medicalNotes: baby.medicalNotes || baby.medical_notes,
+          parent2Id: baby.parent2Id || baby.parent2_id,
+        });
+        restoredBabies++;
+      }
+    }
+    
+    // Restore entries
+    for (const [babyId, entries] of Object.entries(backupData.entries || {})) {
+      for (const entry of entries as any[]) {
+        const exists = await getEntryByIdFromDb(entry.id);
+        if (!exists) {
+          await createEntryInDb({
+            id: entry.id,
+            trackerId: entry.trackerId || entry.type || 'unknown',
+            babyId: entry.babyId || babyId,
+            timestamp: entry.timestamp || Date.now(),
+            title: entry.title || 'Untitled',
+            data: entry.data || {},
+            notes: entry.notes || entry.details,
+            photoUris: entry.photoUris || entry.photo_uris || (entry.photo ? [entry.photo] : undefined),
+            tags: entry.tags,
+            loggedBy: entry.loggedBy || userId,
+            loggedByName: entry.loggedByName || 'Restored User',
+            loggedByRole: entry.loggedByRole || 'parent1',
+          });
+          restoredEntries++;
+        }
+      }
+    }
+    
+    // Restore family members
+    for (const [babyId, members] of Object.entries(backupData.familyMembers || {})) {
+      for (const member of members as any[]) {
+        const exists = await getFamilyMemberByIdFromDb(member.id);
+        if (!exists) {
+          await createFamilyMemberInDb({
+            id: member.id,
+            babyId: member.babyId || babyId,
+            email: member.email,
+            fullName: member.fullName,
+            role: member.role,
+            relationship: member.relationship || 'Family',
+            permissions: member.permissions || {},
+            addedBy: member.addedBy || userId,
+            userId: member.userId || null,
+            avatar: member.avatar,
+            phoneNumber: member.phoneNumber,
+            canBeRemoved: member.canBeRemoved ?? true,
+            notificationsEnabled: member.notificationsEnabled ?? true,
+            status: member.status || 'active',
+          });
+          restoredFamily++;
+        }
+      }
+    }
+    
+    // Restore app settings
+    for (const [key, value] of Object.entries(backupData.appSettings || {})) {
+      await setAppSetting(key, String(value));
+    }
+    
+    return { restoredBabies, restoredEntries, restoredFamily };
+  } catch (error) {
+    console.error('Error restoring from backup:', error);
+    throw error;
   }
 }
 

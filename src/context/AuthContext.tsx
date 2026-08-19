@@ -543,7 +543,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
     
-     // ─── REAL AUTH: verify the account + password against Supabase ───
+// ─── REAL AUTH: verify the account + password against Supabase ───
 const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
   email: email.trim(),
   password,
@@ -581,8 +581,56 @@ if (authError || !authData?.user) {
   
   return false;
 }
-      const token = authData.session?.access_token ?? `auth_token_${authData.user.id}`;
+const token = authData.session?.access_token ?? `auth_token_${authData.user.id}`;
+const userId = authData.user.id;
 
+// ─── CRITICAL FIX: Restore baby data from Supabase BEFORE profile lookup ───
+try {
+  console.log('[Auth] Restoring baby data for user:', userId);
+  
+  // Import dbHelpers dynamically
+  const { getBabyByIdFromDb, createBabyInDb, updateBabyInDb, setAppSetting } = await import('@/database/dbHelpers');
+  
+  // Get babies from Supabase
+  const { data: supabaseBabies, error: babiesError } = await supabase
+    .from('babies')
+    .select('*')
+    .eq('parent1_id', userId);
+  
+  if (!babiesError && supabaseBabies && supabaseBabies.length > 0) {
+    console.log(`[Auth] Found ${supabaseBabies.length} babies in Supabase for user`);
+    
+    // Restore each baby to local DB
+    for (const baby of supabaseBabies) {
+      const exists = await getBabyByIdFromDb(baby.id);
+      if (!exists) {
+        await createBabyInDb({
+          id: baby.id,
+          name: baby.name,
+          avatar: baby.avatar,
+          dateOfBirth: baby.date_of_birth,
+          gender: baby.gender,
+          bloodType: baby.blood_type,
+          medicalNotes: baby.medical_notes,
+          parent1Id: baby.parent1_id,
+          parent2Id: baby.parent2_id,
+        });
+        console.log(`[Auth] Restored baby: ${baby.name}`);
+      }
+    }
+    
+    // Set current baby to first one
+    if (supabaseBabies[0]) {
+      await setAppSetting('current_baby_id', supabaseBabies[0].id);
+      await AsyncStorage.setItem('@littleloom_current_baby', supabaseBabies[0].id);
+    }
+  }
+} catch (restoreError) {
+  console.warn('[Auth] Failed to restore babies from Supabase:', restoreError);
+}
+
+// ─── Local registry only supplies profile/app metadata now, never gates access ───
+let existingUser = await findUserByEmail(email);
       // ─── Local registry only supplies profile/app metadata now, never gates access ───
       let existingUser = await findUserByEmail(email);
       
