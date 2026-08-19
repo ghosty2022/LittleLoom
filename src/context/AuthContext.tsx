@@ -183,6 +183,8 @@ import {
   registerUser, 
   updateUserInRegistry,
   findUserByEmail,
+  findUserByUsername,
+  findUserByEmailOrUsername,
   getUserRegistry,
   type UserRegistryEntry,
 } from '@/database/dbHelpers';
@@ -584,16 +586,22 @@ if (authError || !authData?.user) {
       // ─── Local registry only supplies profile/app metadata now, never gates access ───
       let existingUser = await findUserByEmail(email);
       
-      // If not found by email, try username/handle lookup
+      // If not found by email, try username/handle lookup using findUserByEmailOrUsername
       if (!existingUser) {
-        const registry = await getUserRegistry();
-        const searchKey = email.toLowerCase().trim().replace(/^@/, '');
-        for (const entry of Object.values(registry)) {
-          const handle = (entry.communityHandle || '').toLowerCase().replace(/^@/, '');
-          const username = (entry.communityUsername || '').toLowerCase();
-          if (handle === searchKey || username === searchKey) {
-            existingUser = entry;
-            break;
+        try {
+          const { findUserByEmailOrUsername } = await import('@/database/dbHelpers');
+          existingUser = await findUserByEmailOrUsername(email);
+        } catch (importError) {
+          // Fallback: manual lookup
+          const registry = await getUserRegistry();
+          const searchKey = email.toLowerCase().trim().replace(/^@/, '');
+          for (const entry of Object.values(registry)) {
+            const handle = (entry.communityHandle || '').toLowerCase().replace(/^@/, '');
+            const username = (entry.communityUsername || '').toLowerCase();
+            if (handle === searchKey || username === searchKey) {
+              existingUser = entry;
+              break;
+            }
           }
         }
       }
@@ -604,6 +612,49 @@ if (authError || !authData?.user) {
       if (existingUser) {
         // Existing user — restore their profile from registry
         userId = existingUser.userId;
+        
+        // ─── CRITICAL: Pull babies from Supabase and restore locally ───
+        try {
+          const { data: supabaseBabies, error: babiesError } = await supabase
+            .from('babies')
+            .select('*')
+            .eq('parent1_id', userId);
+          
+          if (!babiesError && supabaseBabies && supabaseBabies.length > 0) {
+            console.log(`[Auth] Restoring ${supabaseBabies.length} babies from Supabase`);
+            
+            // Import dbHelpers functions dynamically to avoid circular deps
+            const { createBabyInDb, setAppSetting } = await import('@/database/dbHelpers');
+            
+            for (const baby of supabaseBabies) {
+              // Check if baby already exists locally
+              const { getBabyByIdFromDb } = await import('@/database/dbHelpers');
+              const exists = await getBabyByIdFromDb(baby.id);
+              if (!exists) {
+                await createBabyInDb({
+                  id: baby.id,
+                  name: baby.name,
+                  avatar: baby.avatar,
+                  dateOfBirth: baby.date_of_birth,
+                  gender: baby.gender,
+                  bloodType: baby.blood_type,
+                  medicalNotes: baby.medical_notes,
+                  parent1Id: baby.parent1_id,
+                  parent2Id: baby.parent2_id,
+                });
+                console.log(`[Auth] Restored baby: ${baby.name}`);
+              }
+            }
+            
+            // Set current baby to first one
+            if (supabaseBabies[0]) {
+              await setAppSetting('current_baby_id', supabaseBabies[0].id);
+              await AsyncStorage.setItem('@littleloom_current_baby', supabaseBabies[0].id);
+            }
+          }
+        } catch (restoreError) {
+          console.warn('[Auth] Failed to restore babies from Supabase:', restoreError);
+        }
         
         // Merge stored community data with any newer app_settings data
         const [commUsername, commHandle, commBio, commAvatar, commDisplayName, commStats, commTopics] = await Promise.all([
@@ -999,6 +1050,42 @@ const signUp = useCallback(async (fullName: string, email: string, password: str
       hasPassword: true,
     };
     await registerUser(registryEntry);
+
+    // ─── CRITICAL: Ensure baby data from Supabase is pulled after sign-up ───
+    try {
+      const { data: supabaseBabies, error: babiesError } = await supabase
+        .from('babies')
+        .select('*')
+        .eq('parent1_id', userId);
+      
+      if (!babiesError && supabaseBabies && supabaseBabies.length > 0) {
+        console.log(`[Auth] Found ${supabaseBabies.length} babies in Supabase for new user`);
+        const { createBabyInDb, setAppSetting } = await import('@/database/dbHelpers');
+        for (const baby of supabaseBabies) {
+          const { getBabyByIdFromDb } = await import('@/database/dbHelpers');
+          const exists = await getBabyByIdFromDb(baby.id);
+          if (!exists) {
+            await createBabyInDb({
+              id: baby.id,
+              name: baby.name,
+              avatar: baby.avatar,
+              dateOfBirth: baby.date_of_birth,
+              gender: baby.gender,
+              bloodType: baby.blood_type,
+              medicalNotes: baby.medical_notes,
+              parent1Id: baby.parent1_id,
+              parent2Id: baby.parent2_id,
+            });
+          }
+        }
+        if (supabaseBabies[0]) {
+          await setAppSetting('current_baby_id', supabaseBabies[0].id);
+          await AsyncStorage.setItem('@littleloom_current_baby', supabaseBabies[0].id);
+        }
+      }
+    } catch (restoreError) {
+      console.warn('[Auth] Failed to restore babies from Supabase after sign-up:', restoreError);
+    }
 
     await Promise.all([
       secureStorage.setItem(SECURE_KEYS.AUTH_TOKEN, token),
