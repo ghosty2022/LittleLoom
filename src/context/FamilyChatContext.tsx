@@ -268,102 +268,108 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, []);
 
   // ─── Initialize Sync Service ────────────────────────────────
-  useEffect(() => {
-    if (deviceIdRef.current && state.familyCode) {
+// ─── Initialize Sync Service ────────────────────────────────
+useEffect(() => {
+  if (deviceIdRef.current && state.familyCode) {
+    // Only create service if it doesn't exist
+    if (!syncServiceRef.current) {
       syncServiceRef.current = new FamilyChatSyncService(deviceIdRef.current);
       syncServiceRef.current.setFamilyCode(state.familyCode);
-      
-      // Setup realtime listeners
-      setupRealtimeListeners();
-      
-      // Initial sync
-      if (!isInitializedRef.current) {
-        performInitialSync();
-      }
     }
-  }, [deviceIdRef.current, state.familyCode]);
+    
+    // Setup realtime listeners (will check isSubscribedRef internally)
+    setupRealtimeListeners();
+    
+    // Initial sync
+    if (!isInitializedRef.current) {
+      performInitialSync();
+    }
+  }
+}, [deviceIdRef.current, state.familyCode]);
+// ─── Setup Realtime Listeners ────────────────────────────────
+const isSubscribedRef = useRef(false);
 
-  // ─── Setup Realtime Listeners ────────────────────────────────
-  const setupRealtimeListeners = () => {
-    if (!syncServiceRef.current) return;
+const setupRealtimeListeners = () => {
+  if (!syncServiceRef.current) return;
 
-    const service = syncServiceRef.current;
-    service.setFamilyCode(state.familyCode || '');
+  const service = syncServiceRef.current;
+  service.setFamilyCode(state.familyCode || '');
 
-    // Listen for incoming messages
-    service.onMessages((remoteMessages) => {
-      if (remoteMessages.length === 0) return;
+  // Listen for incoming messages
+  service.onMessages((remoteMessages) => {
+    if (remoteMessages.length === 0) return;
+    
+    setState(prev => {
+      const updatedMessages = { ...prev.messages };
+      let hasNewMessages = false;
       
-      setState(prev => {
-        const updatedMessages = { ...prev.messages };
-        let hasNewMessages = false;
-        
-        remoteMessages.forEach(msg => {
-          const chatMessages = updatedMessages[msg.chatId] || [];
-          const exists = chatMessages.some(m => m.syncId === msg.syncId);
-          if (!exists) {
-            updatedMessages[msg.chatId] = [...chatMessages, msg];
-            hasNewMessages = true;
+      remoteMessages.forEach(msg => {
+        const chatMessages = updatedMessages[msg.chatId] || [];
+        const exists = chatMessages.some(m => m.syncId === msg.syncId);
+        if (!exists) {
+          updatedMessages[msg.chatId] = [...chatMessages, msg];
+          hasNewMessages = true;
+        }
+      });
+      
+      if (hasNewMessages) {
+        const updatedChats = prev.chats.map(chat => {
+          const msgs = updatedMessages[chat.id] || [];
+          if (msgs.length > 0) {
+            const last = msgs[msgs.length - 1];
+            return { ...chat, lastMessage: last, updatedAt: last.timestamp };
           }
+          return chat;
         });
-        
-        if (hasNewMessages) {
-          // Update chat lastMessage
-          const updatedChats = prev.chats.map(chat => {
-            const msgs = updatedMessages[chat.id] || [];
-            if (msgs.length > 0) {
-              const last = msgs[msgs.length - 1];
-              return { ...chat, lastMessage: last, updatedAt: last.timestamp };
-            }
-            return chat;
-          });
-          return { ...prev, messages: updatedMessages, chats: updatedChats };
-        }
-        return prev;
-      });
+        return { ...prev, messages: updatedMessages, chats: updatedChats };
+      }
+      return prev;
     });
+  });
 
-    // Listen for typing status
-    service.onTyping((data) => {
-      if (!data) return;
-      const { user_id, chat_id, is_typing, timestamp } = data;
+  // Listen for typing status
+  service.onTyping((data) => {
+    if (!data) return;
+    const { user_id, chat_id, is_typing, timestamp } = data;
+    
+    if (user_id === deviceIdRef.current) return;
+    
+    setState(prev => {
+      const currentTypers = prev.typingUsers[chat_id] || [];
+      const existingIndex = currentTypers.findIndex(t => t.userId === user_id);
       
-      // Ignore our own typing
-      if (user_id === deviceIdRef.current) return;
-      
-      setState(prev => {
-        const currentTypers = prev.typingUsers[chat_id] || [];
-        const existingIndex = currentTypers.findIndex(t => t.userId === user_id);
-        
-        let updatedTypers;
-        if (is_typing) {
-          const newStatus: TypingStatus = {
-            userId: user_id,
-            userName: 'Family Member',
-            chatId: chat_id,
-            isTyping: true,
-            timestamp: timestamp || new Date().toISOString(),
-          };
-          if (existingIndex >= 0) {
-            updatedTypers = [...currentTypers];
-            updatedTypers[existingIndex] = newStatus;
-          } else {
-            updatedTypers = [...currentTypers, newStatus];
-          }
-        } else {
-          updatedTypers = currentTypers.filter(t => t.userId !== user_id);
-        }
-        
-        return {
-          ...prev,
-          typingUsers: { ...prev.typingUsers, [chat_id]: updatedTypers },
+      let updatedTypers;
+      if (is_typing) {
+        const newStatus: TypingStatus = {
+          userId: user_id,
+          userName: 'Family Member',
+          chatId: chat_id,
+          isTyping: true,
+          timestamp: timestamp || new Date().toISOString(),
         };
-      });
+        if (existingIndex >= 0) {
+          updatedTypers = [...currentTypers];
+          updatedTypers[existingIndex] = newStatus;
+        } else {
+          updatedTypers = [...currentTypers, newStatus];
+        }
+      } else {
+        updatedTypers = currentTypers.filter(t => t.userId !== user_id);
+      }
+      
+      return {
+        ...prev,
+        typingUsers: { ...prev.typingUsers, [chat_id]: updatedTypers },
+      };
     });
+  });
 
-    // Subscribe to realtime
+  // Subscribe to realtime - ONLY IF NOT ALREADY SUBSCRIBED
+  if (!isSubscribedRef.current) {
+    isSubscribedRef.current = true;
     service.subscribeToMessages();
-  };
+  }
+};
 
   // ─── Perform Initial Sync ────────────────────────────────────
   const performInitialSync = async () => {

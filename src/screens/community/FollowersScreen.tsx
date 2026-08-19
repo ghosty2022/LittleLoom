@@ -50,6 +50,11 @@ export default function FollowersScreen
   ({ navigation, route }: FollowersScreenProps) {
   const { userId } = route.params;
   const { currentUser, followUser, unfollowUser, isFollowing, blockUser, isUserBlocked, getUserById, getFollowers } = useCommunity();
+
+// Guard against undefined functions
+const safeIsUserBlocked = useCallback((userId: string) => {
+  return isUserBlocked ? isUserBlocked(userId) : false;
+}, [isUserBlocked]);
   const { profile } = useUser();
   
   const sweetAlert = useSweetAlert();
@@ -186,7 +191,7 @@ export default function FollowersScreen
 
   const renderFollower = ({ item, index }: { item: CommunityUser; index: number }) => {
     const following = isFollowing(item.id);
-    const blocked = isUserBlocked(item.id);
+    const blocked = safeIsUserBlocked(item.id);
     const isMe = item.id === currentUser?.id;
     const isTeam = item.id === 'littleloom_team';
 

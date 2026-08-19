@@ -14,6 +14,8 @@ export class FamilyChatSyncService {
   private messageCallbacks: ((messages: FamilyMessage[]) => void)[] = [];
   private chatCallbacks: ((chats: FamilyChat[]) => void)[] = [];
   private typingCallbacks: ((data: any) => void)[] = [];
+  private messageChannel: any = null;
+  private typingChannel: any = null;
 
   constructor(deviceId: string) {
     this.deviceId = deviceId;
@@ -72,14 +74,27 @@ export class FamilyChatSyncService {
   // ─── Real-Time Subscriptions ────────────────────────────────
 
   subscribeToMessages(chatId?: string): void {
-    if (this.isSubscribed || !this.familyCode) return;
+    // Prevent duplicate subscriptions
+    if (this.isSubscribed) {
+      console.log('[FamilyChatSync] Already subscribed, skipping');
+      return;
+    }
+
+    if (!this.familyCode) {
+      console.log('[FamilyChatSync] No family code set, skipping subscription');
+      return;
+    }
+
+    // Unsubscribe from any existing channels first
+    this.unsubscribeFromMessages();
 
     let filter = `family_code=eq.${this.familyCode}`;
     if (chatId) {
       filter += `,chat_id=eq.${chatId}`;
     }
 
-    supabase
+    // Create message channel
+    this.messageChannel = supabase
       .channel('family_messages_realtime')
       .on(
         'postgres_changes',
@@ -110,18 +125,25 @@ export class FamilyChatSyncService {
         }
       )
       .subscribe((status) => {
-        console.log(`[Realtime] Subscription status: ${status}`);
-        this.isSubscribed = status === 'SUBSCRIBED';
+        console.log(`[FamilyChatSync] Message subscription status: ${status}`);
+        if (status === 'SUBSCRIBED') {
+          this.isSubscribed = true;
+        }
       });
 
+    // Subscribe to typing status
     this.subscribeToTyping();
   }
 
   private subscribeToTyping(): void {
     if (!this.familyCode) return;
+    if (this.typingChannel) {
+      this.typingChannel.unsubscribe();
+      this.typingChannel = null;
+    }
 
-    supabase
-      .channel('typing_status')
+    this.typingChannel = supabase
+      .channel('typing_status_realtime')
       .on(
         'postgres_changes',
         {
@@ -134,7 +156,9 @@ export class FamilyChatSyncService {
           this.typingCallbacks.forEach(cb => cb(payload.new));
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log(`[FamilyChatSync] Typing subscription status: ${status}`);
+      });
   }
 
   // ─── Typing Status ────────────────────────────────────────────
@@ -355,9 +379,25 @@ export class FamilyChatSyncService {
 
   // ─── Cleanup ────────────────────────────────────────────────
 
+  unsubscribeFromMessages(): void {
+    this.isSubscribed = false;
+    
+    if (this.messageChannel) {
+      this.messageChannel.unsubscribe();
+      this.messageChannel = null;
+    }
+    
+    if (this.typingChannel) {
+      this.typingChannel.unsubscribe();
+      this.typingChannel = null;
+    }
+    
+    // Don't remove all channels globally - only our specific ones
+  }
+
   unsubscribe(): void {
     this.isSubscribed = false;
-    supabase.removeAllChannels();
+    this.unsubscribeFromMessages();
     this.messageCallbacks = [];
     this.chatCallbacks = [];
     this.typingCallbacks = [];
