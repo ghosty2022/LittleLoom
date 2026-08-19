@@ -284,7 +284,7 @@ function useSafeActivity() {
 
 // ─── SAFE CUSTOMIZATION ──────────────────────────────────────────────
 
- function useSafeCustomization() {
+function useSafeCustomization() {
   try {
     return useCustomizationOriginal();
   } catch (e) {
@@ -295,18 +295,6 @@ function useSafeActivity() {
 // ─── SAFE TRACKER ─────────────────────────────────────────────────────
 // FIX: Directly use useContext with the imported TrackerContext
 // NO circular dependency because we don't import from ./useTrackerContext
-
-function useSafeTracker() {
-  try {
-    const ctx = useContext(TrackerContext);
-    if (!ctx) {
-      return getFallbackTrackerContext();
-    }
-    return ctx;
-  } catch (e) {
-    return getFallbackTrackerContext();
-  }
-}
 
 // ── COMPLETE FALLBACK TRACKER CONTEXT ────────────────────────────────
 // This must match the TrackerContextType interface exactly
@@ -374,11 +362,11 @@ function getFallbackTrackerContext() {
     getStreak: () => undefined,
     getInsights: () => [],
     dismissInsight: () => {},
-
+    getPendingReminders: () => [],
+    
     // Reminders
     scheduleReminder: async () => '',
     cancelReminder: async () => {},
-    getPendingReminders: () => [],
     snoozeReminder: async () => {},
 
     // Templates
@@ -398,7 +386,32 @@ function getFallbackTrackerContext() {
     refreshTrackers: async () => {},
     refreshEntries: async () => {},
     setCurrentBabyId: () => {},
+    
+    // These are needed for useTracker hook
+    getCustomTrackers: () => [],
+    getSystemTrackers: () => [],
+    getTrackerById: () => undefined,
+    getTrackers: () => [],
+    getEntriesByTrackerId: () => [],
+    getRecentEntries: () => [],
+    getTrackerEntries: () => [],
+    getStreakDays: () => 0,
+    getStreakForTracker: () => 0,
+    getLastEntryForTracker: () => null,
+    getTodayEntriesForTracker: () => [],
   };
+}
+
+function useSafeTracker() {
+  try {
+    const ctx = useContext(TrackerContext);
+    if (!ctx) {
+      return getFallbackTrackerContext();
+    }
+    return ctx;
+  } catch (e) {
+    return getFallbackTrackerContext();
+  }
 }
 
 // ─── UNIFIED THEME ────────────────────────────────────────────────────
@@ -446,7 +459,6 @@ export {
   useSafeActivity,
   useSafeCustomization,
   useSafeTracker,
-  useUnifiedTheme,
 };
 
 export default useUnifiedTheme;
