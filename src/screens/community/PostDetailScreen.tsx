@@ -1,8 +1,8 @@
-// src/screens/community/PostDetailScreen.tsx
-import { StyleSheet, ActivityIndicator, Linking, Dimensions, Image, KeyboardAvoidingView, Modal, StatusBar, Platform, ScrollView, Share, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, ActivityIndicator, Alert, Linking, Dimensions, Image, KeyboardAvoidingView, Modal, StatusBar, Platform, ScrollView, Share, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import React, { useCallback, useEffect, useState } from 'react';
 
 import { BlurView } from 'expo-blur';
+
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInUp, FadeIn } from 'react-native-reanimated';
 
@@ -17,7 +17,6 @@ import { CommunityBorderRadius, CommunityColors, CommunityShadows, CommunitySpac
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
-
 type PostDetailScreenProps = NativeStackScreenProps<CommunityStackParamList, 'PostDetail'>;
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -28,27 +27,26 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
   const routeParams = route?.params ?? {};
   const postId = routeParams?.postId;
 
-  const {
-    getPostById,
-    likePost,
-    unlikePost,
-    repostPost,
-    unrepostPost,
-    bookmarkPost,
-    addComment,
-    likeComment,
-    voteHelpful,
-    votePoll,
-    currentUser,
-    followUser,
-    unfollowUser,
-    isFollowing,
-    deletePost,
-    blockUser,
-    isUserBlocked,
-    sharePost,
-    replyToComment,
-  } = useCommunity();
+const {
+  getPostById,
+  likePost,
+  unlikePost,
+  repostPost,
+  unrepostPost,
+  bookmarkPost,
+  addComment,
+  likeComment,
+  voteHelpful,
+  votePoll,
+  currentUser,
+  followUser,
+  unfollowUser,
+  isFollowing,
+  deletePost,
+  blockUser,
+  isUserBlocked,
+  sharePost,
+} = useCommunity();
 
   const { shouldReduceMotion, triggerHaptic, spinnerColor } = useCustomization();
   const sweetAlert = useSweetAlert();
@@ -58,17 +56,12 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
   const [isLoading, setIsLoading] = useState(true);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [replyingTo, setReplyingTo] = useState<{ commentId: string; authorName: string } | null>(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
     if (!postId) {
       setIsLoading(false);
       return;
     }
-    loadPost();
-  }, [postId]);
-
-  const loadPost = useCallback(() => {
     const foundPost = getPostById(postId);
     setPost(foundPost);
     setIsLoading(false);
@@ -79,12 +72,6 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
     const updated = getPostById(postId);
     setPost(updated);
   }, [postId, getPostById]);
-
-  const handleRefresh = useCallback(async () => {
-    setIsRefreshing(true);
-    refreshPost();
-    setIsRefreshing(false);
-  }, [refreshPost]);
 
   const handleLike = useCallback(async () => {
     if (!post) return;
@@ -124,17 +111,11 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
   const handleSubmitComment = useCallback(async () => {
     if (!post || !commentText.trim()) return;
     triggerHaptic('success');
-    
-    if (replyingTo) {
-      await replyToComment(post.id, replyingTo.commentId, commentText.trim());
-      setReplyingTo(null);
-    } else {
-      await addComment(post.id, commentText.trim());
-    }
-    
+    await addComment(post.id, commentText.trim());
     setCommentText('');
+    setReplyingTo(null);
     refreshPost();
-  }, [post, commentText, addComment, replyToComment, replyingTo, refreshPost, triggerHaptic]);
+  }, [post, commentText, addComment, refreshPost, triggerHaptic]);
 
   const handleFollow = useCallback(async () => {
     if (!post) return;
@@ -190,12 +171,7 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
     if (!post) return;
     blockUser(post.authorId);
     setShowMoreMenu(false);
-    sweetAlert.alert(
-      isUserBlocked(post.authorId) ? 'User Unblocked' : 'User Blocked',
-      isUserBlocked(post.authorId) ? 'You have unblocked this user.' : 'You have blocked this user.',
-      'success'
-    );
-  }, [post, blockUser, isUserBlocked, sweetAlert]);
+  }, [post, blockUser]);
 
   const handleReport = useCallback(() => {
     if (!post) return;
@@ -210,48 +186,6 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
     }, 300);
   }, [post, navigation]);
 
-  // ─── Sensitive Image Blur ───
-  const SensitiveImage = ({ uri, style, resizeMode = 'cover' }: { uri: string; style?: any; resizeMode?: any }) => {
-    const [revealed, setRevealed] = useState(false);
-    return (
-      <TouchableOpacity activeOpacity={0.9} onPress={() => setRevealed(true)} disabled={revealed} style={style}>
-        <Image source={{ uri }} style={[style, { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }]} resizeMode={resizeMode} />
-        {!revealed && (
-          <BlurView intensity={75} style={[StyleSheet.absoluteFill, { justifyContent: 'center', alignItems: 'center', zIndex: 10 }]} tint="dark">
-            <View style={{ alignItems: 'center', padding: 20 }}>
-              <Ionicons name="shield-checkmark" size={36} color="#fff" />
-              <Text style={{ color: '#fff', fontWeight: '800', marginTop: 10, fontSize: 15 }}>Sensitive Content Hidden</Text>
-              <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 13, marginTop: 6, textAlign: 'center' }}>Tap to reveal image</Text>
-              <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 11, marginTop: 12, textAlign: 'center', maxWidth: 220 }}>LittleLoom blurs photos by default to keep our community safe. Only tap if you expect this content.</Text>
-            </View>
-          </BlurView>
-        )}
-      </TouchableOpacity>
-    );
-  };
-
-  // ─── Clickable Links ───
-  const LinkifyText = ({ text, style, numberOfLines }: { text: string; style?: any; numberOfLines?: number }) => {
-    if (!text) return null;
-    const parts = text.split(/(https?:\/\/[^\s]+|www\.[^\s]+)/g);
-    return (
-      <Text style={style} numberOfLines={numberOfLines}>
-        {parts.map((part, i) => {
-          if (part.match(/^(https?:\/\/|www\.)/)) {
-            const url = part.startsWith('http') ? part : `https://${part}`;
-            return (
-              <Text key={i} style={{ color: '#6366f1', textDecorationLine: 'underline' }} onPress={() => Linking.openURL(url).catch(() => {})}>
-                {part}
-              </Text>
-            );
-          }
-          return <Text key={i}>{part}</Text>;
-        })}
-      </Text>
-    );
-  };
-
-  // ─── Image Grid ───
   const ImageGrid = ({ images }: { images: string[] }) => {
     if (!images || images.length === 0) return null;
 
@@ -279,51 +213,88 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
     );
   };
 
-  // ─── Poll Widget ───
-  const PollWidgetDetail = ({ poll, postId }: { poll: any; postId: string }) => {
-    const [localPoll, setLocalPoll] = useState(poll);
-    
-    const handleVote = async (optionId: string) => {
-      if (localPoll.hasVoted || !votePoll) return;
-      await votePoll(postId, optionId);
-      // Refresh the post to get updated poll data
-      refreshPost();
-      // Optimistic update
-      setLocalPoll((prev: any) => ({
-        ...prev,
-        hasVoted: true,
-        votedOptionId: optionId,
-        totalVotes: prev.totalVotes + 1,
-        options: prev.options.map((o: any) => o.id === optionId ? { ...o, votes: o.votes + 1 } : o)
-      }));
-    };
-
-    return (
-      <View style={{ marginVertical: 12, backgroundColor: '#f8f9ff', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: 'rgba(102,126,234,0.1)' }}>
-        <Text style={{ fontSize: 15, fontWeight: '700', color: '#1c1917', marginBottom: 12 }}>{localPoll.question}</Text>
-        {localPoll.options.map((option: any) => {
-          const pct = localPoll.totalVotes > 0 ? Math.round((option.votes / localPoll.totalVotes) * 100) : 0;
-          const isSelected = localPoll.votedOptionId === option.id;
+/* ─── Clickable Links ─── */
+const LinkifyText = ({ text, style, numberOfLines }: { text: string; style?: any; numberOfLines?: number }) => {
+  if (!text) return null;
+  const parts = text.split(/(https?:\/\/[^\s]+|www\.[^\s]+)/g);
+  return (
+    <Text style={style} numberOfLines={numberOfLines}>
+      {parts.map((part, i) => {
+        if (part.match(/^(https?:\/\/|www\.)/)) {
+          const url = part.startsWith('http') ? part : `https://${part}`;
           return (
-            <TouchableOpacity key={option.id} onPress={() => handleVote(option.id)} disabled={localPoll.hasVoted} style={{ marginBottom: 10 }}>
-              <View style={{ height: 40, borderRadius: 12, backgroundColor: '#e0e7ff', overflow: 'hidden', justifyContent: 'center' }}>
-                {localPoll.hasVoted && (
-                  <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${pct}%`, backgroundColor: isSelected ? '#6366f1' : '#c7d2fe', borderRadius: 12 }} />
-                )}
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 14, alignItems: 'center' }}>
-                  <Text style={{ fontSize: 14, fontWeight: isSelected ? '700' : '600', color: localPoll.hasVoted ? (isSelected ? '#fff' : '#4338ca') : '#4338ca' }}>{option.text}</Text>
-                  {localPoll.hasVoted && <Text style={{ fontSize: 13, fontWeight: '800', color: isSelected ? '#fff' : '#4338ca' }}>{pct}%</Text>}
-                </View>
-              </View>
-            </TouchableOpacity>
+            <Text key={i} style={{ color: '#6366f1', textDecorationLine: 'underline' }} onPress={() => Linking.openURL(url).catch(() => {})}>
+              {part}
+            </Text>
           );
-        })}
-        <Text style={{ fontSize: 12, color: '#78716c', marginTop: 4 }}>{localPoll.totalVotes} vote{localPoll.totalVotes !== 1 ? 's' : ''}{!localPoll.hasVoted ? ' · Tap to vote' : ''}</Text>
-      </View>
-    );
+        }
+        return <Text key={i}>{part}</Text>;
+      })}
+    </Text>
+  );
+};
+
+/* ─── Sensitive Image Blur ─── */
+const SensitiveImage = ({ uri, style, resizeMode = 'cover' }: { uri: string; style?: any; resizeMode?: any }) => {
+  const [revealed, setRevealed] = useState(false);
+  return (
+    <TouchableOpacity activeOpacity={0.9} onPress={() => setRevealed(true)} disabled={revealed} style={style}>
+      <Image source={{ uri }} style={[style, { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }]} resizeMode={resizeMode} />
+      {!revealed && (
+        <BlurView intensity={75} style={[StyleSheet.absoluteFill, { justifyContent: 'center', alignItems: 'center', zIndex: 10 }]} tint="dark">
+          <View style={{ alignItems: 'center', padding: 20 }}>
+            <Ionicons name="shield-checkmark" size={36} color="#fff" />
+            <Text style={{ color: '#fff', fontWeight: '800', marginTop: 10, fontSize: 15 }}>Sensitive Content Hidden</Text>
+            <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 13, marginTop: 6, textAlign: 'center' }}>Tap to reveal image</Text>
+            <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 11, marginTop: 12, textAlign: 'center', maxWidth: 220 }}>LittleLoom blurs photos by default to keep our community safe. Only tap if you expect this content.</Text>
+          </View>
+        </BlurView>
+      )}
+    </TouchableOpacity>
+  );
+};
+
+/* ─── Poll Widget (for Detail view) ─── */
+const PollWidgetDetail = ({ poll, postId }: { poll: any; postId: string }) => {
+  const [localPoll, setLocalPoll] = useState(poll);
+  
+  const handleVote = async (optionId: string) => {
+    if (localPoll.hasVoted || !votePoll) return;
+    await votePoll(postId, optionId);
+    setLocalPoll((prev: any) => ({
+      ...prev,
+      hasVoted: true,
+      votedOptionId: optionId,
+      totalVotes: prev.totalVotes + 1,
+      options: prev.options.map((o: any) => o.id === optionId ? { ...o, votes: o.votes + 1 } : o)
+    }));
   };
 
-  // ─── Action Button ───
+  return (
+    <View style={{ marginVertical: 12, backgroundColor: '#f8f9ff', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: 'rgba(102,126,234,0.1)' }}>
+      <Text style={{ fontSize: 15, fontWeight: '700', color: '#1c1917', marginBottom: 12 }}>{localPoll.question}</Text>
+      {localPoll.options.map((option: any) => {
+        const pct = localPoll.totalVotes > 0 ? Math.round((option.votes / localPoll.totalVotes) * 100) : 0;
+        const isSelected = localPoll.votedOptionId === option.id;
+        return (
+          <TouchableOpacity key={option.id} onPress={() => handleVote(option.id)} disabled={localPoll.hasVoted} style={{ marginBottom: 10 }}>
+            <View style={{ height: 40, borderRadius: 12, backgroundColor: '#e0e7ff', overflow: 'hidden', justifyContent: 'center' }}>
+              {localPoll.hasVoted && (
+                <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${pct}%`, backgroundColor: isSelected ? '#6366f1' : '#c7d2fe', borderRadius: 12 }} />
+              )}
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 14, alignItems: 'center' }}>
+                <Text style={{ fontSize: 14, fontWeight: isSelected ? '700' : '600', color: localPoll.hasVoted ? (isSelected ? '#fff' : '#4338ca') : '#4338ca' }}>{option.text}</Text>
+                {localPoll.hasVoted && <Text style={{ fontSize: 13, fontWeight: '800', color: isSelected ? '#fff' : '#4338ca' }}>{pct}%</Text>}
+              </View>
+            </View>
+          </TouchableOpacity>
+        );
+      })}
+      <Text style={{ fontSize: 12, color: '#78716c', marginTop: 4 }}>{localPoll.totalVotes} vote{localPoll.totalVotes !== 1 ? 's' : ''}{!localPoll.hasVoted ? ' · Tap to vote' : ''}</Text>
+    </View>
+  );
+};
+
   const ActionButton = ({
     icon,
     label,
@@ -353,113 +324,108 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
     </TouchableOpacity>
   );
 
-  // ─── Comment Card ───
-  const CommentCard = ({ comment, index }: { comment: Comment; index: number }) => {
-    const [showReplies, setShowReplies] = useState(true);
+  const CommentCard = ({ comment, index }: { comment: Comment; index: number }) => (
+    <View style={styles.commentCard}>
+      <View style={styles.commentTop}>
+        <TouchableOpacity
+          style={styles.commentAuthorRow}
+          onPress={() => navigateToUserProfile(comment.authorId)}
+        >
+          <SafeAvatar
+            avatar={comment.author.avatar}
+            size={36}
+            fallbackIcon="person"
+            fallbackColor="#667eea"
+            fallbackBgColor="#f0f0f5"
+          />
+          <View style={styles.commentAuthorInfo}>
+            <Text style={styles.commentAuthorName}>{comment.author.displayName}</Text>
+            <Text style={styles.commentTime}>{comment.time}</Text>
+          </View>
+        </TouchableOpacity>
+      </View>
 
-    return (
-      <View style={styles.commentCard}>
-        <View style={styles.commentTop}>
-          <TouchableOpacity
-            style={styles.commentAuthorRow}
-            onPress={() => navigateToUserProfile(comment.authorId)}
-          >
-            <SafeAvatar
-              avatar={comment.author.avatar}
-              size={36}
-              fallbackIcon="person"
-              fallbackColor="#667eea"
-              fallbackBgColor="#f0f0f5"
-            />
-            <View style={styles.commentAuthorInfo}>
-              <Text style={styles.commentAuthorName}>{comment.author.displayName}</Text>
-              <Text style={styles.commentTime}>{comment.time}</Text>
-            </View>
-          </TouchableOpacity>
-        </View>
+      <Text style={styles.commentBody}>{comment.content}</Text>
 
-        <Text style={styles.commentBody}>{comment.content}</Text>
+      <View style={styles.commentFooter}>
+        <TouchableOpacity
+          style={[styles.commentActionBtn, comment.isLiked && styles.commentActionBtnActive]}
+          onPress={() => {
+            likeComment(post!.id, comment.id);
+            refreshPost();
+          }}
+        >
+          <Ionicons
+            name={comment.isLiked ? "heart" : "heart-outline"}
+            size={15}
+            color={comment.isLiked ? '#fc5c7d' : CommunityColors.text.tertiary}
+          />
+          <Text style={[styles.commentActionText, comment.isLiked && { color: '#fc5c7d', fontWeight: '700' }]}>
+            {comment.likes > 0 ? comment.likes : 'Like'}
+          </Text>
+        </TouchableOpacity>
 
-        <View style={styles.commentFooter}>
-          <TouchableOpacity
-            style={[styles.commentActionBtn, comment.isLiked && styles.commentActionBtnActive]}
-            onPress={() => {
-              likeComment(post!.id, comment.id);
-              refreshPost();
-            }}
-          >
-            <Ionicons
-              name={comment.isLiked ? "heart" : "heart-outline"}
-              size={15}
-              color={comment.isLiked ? '#fc5c7d' : CommunityColors.text.tertiary}
-            />
-            <Text style={[styles.commentActionText, comment.isLiked && { color: '#fc5c7d', fontWeight: '700' }]}>
-              {comment.likes > 0 ? comment.likes : 'Like'}
-            </Text>
-          </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.commentActionBtn}
+          onPress={() => {
+            setReplyingTo({ commentId: comment.id, authorName: comment.author.displayName });
+            triggerHaptic('light');
+          }}
+        >
+          <Ionicons name="chatbubble-outline" size={15} color={CommunityColors.text.tertiary} />
+          <Text style={styles.commentActionText}>Reply</Text>
+        </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.commentActionBtn}
-            onPress={() => {
-              setReplyingTo({ commentId: comment.id, authorName: comment.author.displayName });
-              triggerHaptic('light');
-            }}
-          >
-            <Ionicons name="chatbubble-outline" size={15} color={CommunityColors.text.tertiary} />
-            <Text style={styles.commentActionText}>Reply</Text>
-          </TouchableOpacity>
+        <TouchableOpacity style={styles.commentActionBtn}>
+          <Ionicons name="thumbs-up-outline" size={15} color={CommunityColors.text.tertiary} />
+          <Text style={styles.commentActionText}>
+            {comment.helpfulVotes > 0 ? `${comment.helpfulVotes} Helpful` : 'Helpful'}
+          </Text>
+        </TouchableOpacity>
+      </View>
 
-          <TouchableOpacity style={styles.commentActionBtn}>
-            <Ionicons name="thumbs-up-outline" size={15} color={CommunityColors.text.tertiary} />
-            <Text style={styles.commentActionText}>
-              {comment.helpfulVotes > 0 ? `${comment.helpfulVotes} Helpful` : 'Helpful'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Nested Replies */}
-        {comment.replies && comment.replies.length > 0 && (
-          <View style={styles.repliesContainer}>
-            {comment.replies.map((reply) => (
-              <View key={reply.id} style={styles.replyCard}>
-                <SafeAvatar
-                  avatar={reply.author.avatar}
-                  size={28}
-                  fallbackIcon="person"
-                  fallbackColor="#667eea"
-                  fallbackBgColor="#f0f0f5"
-                />
-                <View style={styles.replyContent}>
-                  <View style={styles.replyBubble}>
-                    <Text style={styles.replyAuthorName}>{reply.author.displayName}</Text>
-                    <Text style={styles.replyBody}>{reply.content}</Text>
-                  </View>
-                  <View style={styles.replyFooter}>
-                    <TouchableOpacity
-                      style={[styles.replyActionBtn, reply.isLiked && styles.replyActionBtnActive]}
-                      onPress={() => {
-                        likeComment(post!.id, reply.id);
-                        refreshPost();
-                      }}
-                    >
-                      <Ionicons
-                        name={reply.isLiked ? "heart" : "heart-outline"}
-                        size={13}
-                        color={reply.isLiked ? '#fc5c7d' : CommunityColors.text.tertiary}
-                      />
-                      <Text style={[styles.replyActionText, reply.isLiked && { color: '#fc5c7d' }]}>
-                        {reply.likes > 0 ? reply.likes : 'Like'}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
+      {/* Nested Replies */}
+      {comment.replies && comment.replies.length > 0 && (
+        <View style={styles.repliesContainer}>
+          {comment.replies.map((reply) => (
+            <View key={reply.id} style={styles.replyCard}>
+              <SafeAvatar
+                avatar={reply.author.avatar}
+                size={28}
+                fallbackIcon="person"
+                fallbackColor="#667eea"
+                fallbackBgColor="#f0f0f5"
+              />
+              <View style={styles.replyContent}>
+                <View style={styles.replyBubble}>
+                  <Text style={styles.replyAuthorName}>{reply.author.displayName}</Text>
+                  <Text style={styles.replyBody}>{reply.content}</Text>
+                </View>
+                <View style={styles.replyFooter}>
+                  <TouchableOpacity
+                    style={[styles.replyActionBtn, reply.isLiked && styles.replyActionBtnActive]}
+                    onPress={() => {
+                      likeComment(post!.id, reply.id);
+                      refreshPost();
+                    }}
+                  >
+                    <Ionicons
+                      name={reply.isLiked ? "heart" : "heart-outline"}
+                      size={13}
+                      color={reply.isLiked ? '#fc5c7d' : CommunityColors.text.tertiary}
+                    />
+                    <Text style={[styles.replyActionText, reply.isLiked && { color: '#fc5c7d' }]}>
+                      {reply.likes > 0 ? reply.likes : 'Like'}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               </View>
-            ))}
-          </View>
-        )}
-      </View>
-    );
-  };
+            </View>
+          ))}
+        </View>
+      )}
+    </View>
+  );
 
   if (isLoading) {
     return (
@@ -541,12 +507,9 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
       >
-        <ScrollView
+        <Animated.ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
-          refreshControl={
-            <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={spinnerColor} />
-          }
         >
           {/* Header */}
           <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
@@ -603,14 +566,11 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
                     )}
                   </View>
                   <View style={styles.postMetaRow}>
-                    <TouchableOpacity
-                      style={[styles.topicTag, { backgroundColor: '#667eea15' }]}
-                      onPress={() => navigation.navigate('Topic', { topicId: post.topicId })}
-                    >
+                    <View style={[styles.topicTag, { backgroundColor: '#667eea15' }]}>
                       <Text style={[styles.topicTagText, { color: '#667eea' }]}>
                         {post.topic}
                       </Text>
-                    </TouchableOpacity>
+                    </View>
                     <Text style={styles.postTimeText}>• {post.time}</Text>
                   </View>
                 </View>
@@ -629,16 +589,16 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
               )}
             </View>
 
-            {/* Content with clickable links */}
-            <LinkifyText text={post.content} style={styles.postContent} />
+                      {/* Content with clickable links */}
+          <LinkifyText text={post.content} style={styles.postContent} />
 
-            {/* Poll */}
-            {post.poll && <PollWidgetDetail poll={post.poll} postId={post.id} />}
+          {/* Poll */}
+          {post.poll && <PollWidgetDetail poll={post.poll} postId={post.id} />}
 
-            {/* Images */}
-            {post.images && post.images.length > 0 && (
-              <ImageGrid images={post.images} />
-            )}
+          {/* Images - MODERN GRID (now privacy-protected) */}
+          {post.images && post.images.length > 0 && (
+            <ImageGrid images={post.images} />
+          )}
 
             {/* Helpful Votes */}
             {post.helpfulVotes > 0 && (
@@ -726,7 +686,7 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
               ))
             )}
           </View>
-        </ScrollView>
+        </Animated.ScrollView>
 
         {/* Comment Input */}
         <View style={[styles.commentInputWrap, { paddingBottom: insets.bottom + 12 }]}>
@@ -781,16 +741,6 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
     </View>
   );
 }
-
-// ─── RefreshControl ───
-const RefreshControl = ({ refreshing, onRefresh, tintColor }: any) => (
-  <ActivityIndicator
-    style={{ marginVertical: 20 }}
-    animating={refreshing}
-    size="small"
-    color={tintColor}
-  />
-);
 
 const styles = StyleSheet.create({
   container: {
