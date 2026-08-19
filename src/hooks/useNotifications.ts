@@ -1,9 +1,12 @@
+// src/hooks/useNotifications.ts
 import { useState, useEffect, useCallback } from 'react';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { useCustomization } from '@/hooks/useCustomization';
+import { useCustomization } from './useCustomization';
 
+// ... rest remains the same ...
 export const NOTIFICATION_CHANNELS = {
   DEFAULT: 'default',
   REMINDERS: 'reminders',

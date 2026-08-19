@@ -1,11 +1,12 @@
+// src/hooks/useAudioPlayer.ts
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useAudioPlayer as useExpoAudioPlayer, useAudioPlayerState } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
 
 interface AudioState {
   isPlaying: boolean;
-  position: number;        // in milliseconds
-  duration: number;        // in milliseconds
+  position: number;
+  duration: number;
   isLoading: boolean;
 }
 
@@ -24,7 +25,7 @@ export const useAudioPlayer = (uri: string) => {
   useEffect(() => {
     if (!isMounted.current) return;
 
-     const positionMs = (status?.currentTime ?? 0) * 1000;
+    const positionMs = (status?.currentTime ?? 0) * 1000;
     const durationMs = (status?.duration ?? 0) * 1000;
 
     setState({
@@ -58,14 +59,22 @@ export const useAudioPlayer = (uri: string) => {
     }
   }, [state.isPlaying, player]);
 
-  const stop = useCallback(() => {
-    await player.pause();
-    player.seekTo(0);
-    setState(prev => ({ ...prev, isPlaying: false, position: 0 }));
+  const stop = useCallback(async () => {
+    try {
+      await player.pause();
+      player.seekTo(0);
+      setState(prev => ({ ...prev, isPlaying: false, position: 0 }));
+    } catch (error) {
+      console.error('Audio stop error:', error);
+    }
   }, [player]);
 
   const seekTo = useCallback((positionMillis: number) => {
-    player.seekTo(positionMillis / 1000);
+    try {
+      player.seekTo(positionMillis / 1000);
+    } catch (error) {
+      console.error('Audio seek error:', error);
+    }
   }, [player]);
 
   const formatTime = useCallback((millis: number = 0) => {
@@ -76,7 +85,7 @@ export const useAudioPlayer = (uri: string) => {
   }, []);
 
   return {
-    sound: null,              // kept for backward compatibility
+    sound: null,
     isPlaying: state.isPlaying,
     position: state.position,
     duration: state.duration,

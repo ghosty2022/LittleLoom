@@ -16,5 +16,4 @@ export const useTracker = () => {
   return ctx;
 };
 
-// Also export as default for consistency
 export default useTracker;

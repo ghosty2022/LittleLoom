@@ -10,7 +10,7 @@ export { useSafety } from './useSafety';
 export { useSecurity } from './useSecurity';
 export { useSweetAlert } from './useSweetAlert';
 export { useUser } from './useUser';
-export { useSafeApp, useSafeBaby, useSafeAuth } from './useSafeContexts';
+export { useSafeApp, useSafeBaby, useSafeAuth, useSafeTracker, useSafeCustomization } from './useSafeContexts';
 export { useUnifiedTrackerTheme } from './useUnifiedTrackerTheme';
 export { useTracker } from './useTrackerContext';
 export { useRouteBasedNavVisibility } from './useRouteBasedNavVisibility';

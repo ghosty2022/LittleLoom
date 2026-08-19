@@ -1,3 +1,4 @@
+// src/hooks/useCountdown.ts
 import { useState, useEffect, useCallback, useRef } from 'react';
 
 interface CountdownState {
@@ -6,7 +7,7 @@ interface CountdownState {
   totalSeconds: number;
   isExpired: boolean;
   formatted: string;
-  progress: number; // 0-100 based on initial time
+  progress: number;
 }
 
 export const useCountdown = (initialMinutes: number = 45) => {
@@ -26,9 +27,17 @@ export const useCountdown = (initialMinutes: number = 45) => {
   const initialTotalRef = useRef(initialMinutes * 60);
 
   useEffect(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+    }
+
     intervalRef.current = setInterval(() => {
       setState(prev => {
         if (prev.totalSeconds <= 0) {
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+          }
           return { ...prev, isExpired: true, progress: 0 };
         }
         
@@ -50,11 +59,17 @@ export const useCountdown = (initialMinutes: number = 45) => {
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
+        intervalRef.current = null;
       }
     };
   }, []);
 
   const reset = useCallback((minutes: number) => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+
     initialTotalRef.current = minutes * 60;
     setState({
       minutes,
@@ -64,6 +79,27 @@ export const useCountdown = (initialMinutes: number = 45) => {
       formatted: `${minutes}:00`,
       progress: 100,
     });
+
+    intervalRef.current = setInterval(() => {
+      setState(prev => {
+        if (prev.totalSeconds <= 0) {
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+          }
+          return { ...prev, isExpired: true, progress: 0 };
+        }
+        const newTotal = prev.totalSeconds - 1;
+        return {
+          ...prev,
+          minutes: Math.floor(newTotal / 60),
+          seconds: newTotal % 60,
+          totalSeconds: newTotal,
+          formatted: `${Math.floor(newTotal / 60)}:${(newTotal % 60).toString().padStart(2, '0')}`,
+          progress: (newTotal / initialTotalRef.current) * 100,
+        };
+      });
+    }, 1000);
   }, []);
 
   const pause = useCallback(() => {
@@ -74,24 +110,30 @@ export const useCountdown = (initialMinutes: number = 45) => {
   }, []);
 
   const resume = useCallback(() => {
-    if (!intervalRef.current) {
-      intervalRef.current = setInterval(() => {
-        setState(prev => {
-          if (prev.totalSeconds <= 0) {
-            return { ...prev, isExpired: true, progress: 0 };
-          }
-          const newTotal = prev.totalSeconds - 1;
-          return {
-            ...prev,
-            minutes: Math.floor(newTotal / 60),
-            seconds: newTotal % 60,
-            totalSeconds: newTotal,
-            formatted: `${Math.floor(newTotal / 60)}:${(newTotal % 60).toString().padStart(2, '0')}`,
-            progress: (newTotal / initialTotalRef.current) * 100,
-          };
-        });
-      }, 1000);
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
     }
+
+    intervalRef.current = setInterval(() => {
+      setState(prev => {
+        if (prev.totalSeconds <= 0) {
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+          }
+          return { ...prev, isExpired: true, progress: 0 };
+        }
+        const newTotal = prev.totalSeconds - 1;
+        return {
+          ...prev,
+          minutes: Math.floor(newTotal / 60),
+          seconds: newTotal % 60,
+          totalSeconds: newTotal,
+          formatted: `${Math.floor(newTotal / 60)}:${(newTotal % 60).toString().padStart(2, '0')}`,
+          progress: (newTotal / initialTotalRef.current) * 100,
+        };
+      });
+    }, 1000);
   }, []);
 
   return {

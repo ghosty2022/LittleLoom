@@ -1,30 +1,18 @@
 // src/hooks/useTrackerAchievements.ts
-/**
- * useTrackerAchievements — The bridge hook that aggregates ALL growth intelligence
- * sources into the achievement format the UI expects.
- *
- * FIX: Uses direct context imports to prevent "_context" errors
- */
+// FIX: Use direct imports, not useSafeContexts
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import {
-  differenceInDays,
-  differenceInHours,
-  isSameDay,
-  subDays,
-  format,
-  addHours,
-  addDays,
-} from 'date-fns';
+import { differenceInDays, differenceInHours, isSameDay, subDays, format, addHours, addDays } from 'date-fns';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// FIX: Direct imports from context, not through wrapper that may have circular deps
+// FIX: Direct imports from context sources
 import { useTracker } from './useTrackerContext';
 import { useBaby } from '../context/BabyContext';
 import { useGrowthIntelligence } from './useGrowthIntelligence';
 import { usePredictiveReminders } from './usePredictiveReminders';
 import { computeStreak } from '../utils/streak';
 
+// ... rest of the file remains the same ...
 // Type definitions
 export type AchievementCategory =
   | 'milestone'

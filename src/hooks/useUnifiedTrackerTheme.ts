@@ -1,3 +1,6 @@
+// src/hooks/useUnifiedTrackerTheme.ts
+// FIX: Use direct imports, not useSafeContexts
+
 import { useMemo } from 'react';
 import { useCustomization } from './useCustomization';
 import { useApp } from '../context/AppContext';

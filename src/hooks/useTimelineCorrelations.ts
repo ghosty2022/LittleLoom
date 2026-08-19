@@ -1,10 +1,14 @@
+// src/hooks/useTimelineCorrelations.ts
+// FIX: Use direct imports
+
 import { useMemo } from 'react';
 import { differenceInHours, differenceInDays } from 'date-fns';
 
-// FIX: Import directly from context source
+// FIX: Direct import from context source
 import { useTracker } from './useTrackerContext';
-import { TimelineCorrelation } from '@/components/trackers/TrackerCorrelationBadge';
+import { TimelineCorrelation } from '../components/trackers/TrackerCorrelationBadge';
 
+// ... rest of the file remains the same ...
 export const useTimelineCorrelations = () => {
   const { entries, getEntries } = useTracker();
 

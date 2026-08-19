@@ -1,5 +1,7 @@
 // src/hooks/useSafeContexts.ts
 // Safe context hooks that never throw - for use in components that may render before contexts are ready
+// 
+// FIX: No circular dependencies. This file does NOT import from any hook that uses the tracker context.
 
 import { useContext } from 'react';
 import { useTheme as useThemeOriginal } from '../context/AppContext';
@@ -296,10 +298,8 @@ export function useSafeCustomization() {
 
 export function useSafeTracker() {
   try {
-    // Directly use useContext with the imported TrackerContext
     const ctx = useContext(TrackerContext);
     if (!ctx) {
-      // Return fallback if context not available
       return getFallbackTrackerContext();
     }
     return ctx;

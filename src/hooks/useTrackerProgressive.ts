@@ -1,38 +1,19 @@
 // src/hooks/useTrackerProgressive.ts
-/**
- * useTrackerProgressive — The central progressive intelligence hook.
- * Aggregates ALL smart features into a single clean API for forms & screens.
- *
- * FIX: Uses safe contexts to prevent "_context" errors
- */
+// FIX: Use direct imports, not useSafeContexts
 
 import { useMemo, useCallback, useEffect, useState, useRef } from 'react';
-import {
-  differenceInDays,
-  differenceInHours,
-  subDays,
-  subHours,
-  format,
-  isSameDay,
-  isToday,
-} from 'date-fns';
+import { differenceInDays, differenceInHours, subDays, subHours, format, isSameDay, isToday } from 'date-fns';
 
-// FIX: Use safe contexts that never throw
-import { useSafeTracker } from './useSafeContexts';
-import { useSafeBaby } from './useSafeContexts';
-import {
-  TrackerEntry,
-  TrackerStreak,
-  TrackerInsight,
-  UnifiedTrackerConfig,
-  ReminderRule,
-  FieldConfig,
-} from '@/types/trackers';
+// FIX: Direct imports from context sources
+import { useTracker } from './useTrackerContext';
+import { useBaby } from '../context/BabyContext';
+import { TrackerEntry, TrackerStreak, TrackerInsight, UnifiedTrackerConfig, ReminderRule, FieldConfig } from '../types/trackers';
 
 import { useGrowthIntelligence } from './useGrowthIntelligence';
 import { usePredictiveReminders } from './usePredictiveReminders';
 import { useTimelineCorrelations } from './useTimelineCorrelations';
 
+// ... rest of the file remains the same ...
 /* ═══════════════════════════════════════════════════════════════
    TYPES
    ═════════════════════════════════════════════════════════════ */

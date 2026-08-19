@@ -1,21 +1,15 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import {
-  differenceInMonths,
-  differenceInDays,
-  differenceInHours,
-  subDays,
-  subMonths,
-} from 'date-fns';
+// src/hooks/useGrowthIntelligence.ts
+// FIX: Use direct imports
 
-// FIX: Import directly from context files, NOT from hook wrappers
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { differenceInMonths, differenceInDays, differenceInHours, subDays, subMonths } from 'date-fns';
+
+// FIX: Direct imports from context sources
 import { useTracker } from './useTrackerContext';
 import { useBaby } from '../context/BabyContext';
+
+// ... rest of the file remains the same ...
 import { TrackerEntry } from '../types/trackers';
 import {
   calculatePercentilePrecise,
