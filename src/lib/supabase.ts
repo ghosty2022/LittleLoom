@@ -19,10 +19,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 });
 
-// ============================================================================
-// EXPORT COMMUNITY TYPES FROM SUPABASE CLIENT
-// ============================================================================
-
+// Re-export types from the services file for convenience
 export type {
   SupabaseCommunityTopic,
   SupabaseUserTopic,
@@ -41,7 +38,3 @@ export type {
   SupabaseUserActivity,
   SupabasePollVote,
 } from '@/services/supabaseClient';
-
-// Re-export the supabase client from the services file for consistency
-// This ensures we only have one source of truth for the client
-export { supabase as supabaseClient } from '@/services/supabaseClient';

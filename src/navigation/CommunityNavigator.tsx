@@ -306,33 +306,37 @@ const CommunityNavigator = React.memo(() => {
 
   const isReady = !isLoading && isInitialized && splashReady;
 
-  useEffect(() => {
-    if (!isReady || initDone.current) return;
+useEffect(() => {
+  if (!isReady || initDone.current) return;
 
-    let mounted = true;
-    initDone.current = true;
+  let mounted = true;
+  initDone.current = true;
 
-    const initialize = async () => {
-      const onboardingStatus = await checkOnboardingStatus();
+  const initialize = async () => {
+    const onboardingStatus = await checkOnboardingStatus();
 
-      if (!mounted) return;
+    if (!mounted) return;
 
-      if (__DEV__) {
-        console.log('[CommunityNavigator] Init - completed:', onboardingStatus.completed, 'hasTopics:', onboardingStatus.hasTopics);
-      }
+    if (__DEV__) {
+      console.log('[CommunityNavigator] Init - completed:', onboardingStatus.completed, 'hasTopics:', onboardingStatus.hasTopics);
+    }
 
-      if (!onboardingStatus.completed) {
-        setPhase('onboarding');
-      } else if (shouldShowSplash) {
-        setPhase('splash');
-      } else {
-        setPhase('main');
-      }
-    };
+    // ALWAYS show onboarding if no topics selected OR not completed
+    const hasNoTopics = !onboardingStatus.hasTopics || getSelectedTopics().length === 0;
+    
+    if (!onboardingStatus.completed || hasNoTopics) {
+      console.log('[CommunityNavigator] Showing onboarding - needs topics');
+      setPhase('onboarding');
+    } else if (shouldShowSplash) {
+      setPhase('splash');
+    } else {
+      setPhase('main');
+    }
+  };
 
-    initialize();
-    return () => { mounted = false; };
-  }, [isReady, checkOnboardingStatus, getSelectedTopics, shouldShowSplash, isDetectingCountry]);
+  initialize();
+  return () => { mounted = false; };
+}, [isReady, checkOnboardingStatus, getSelectedTopics, shouldShowSplash, isDetectingCountry]);
 
   const handleSplashComplete = useCallback(async () => {
     await markSplashShown();

@@ -525,31 +525,35 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const globalTopics = globalTopicsData ? JSON.parse(globalTopicsData) : [];
       let mergedTopics = savedTopics.length > 0 ? savedTopics : (authProfile.communitySelectedTopics || globalTopics);
       
-      // Try to load topics from Supabase
-      try {
-        const { data: userTopics, error } = await supabase
-          .from('user_topics')
-          .select('topic_id')
-          .eq('user_id', authProfile.id);
-          
-        if (!error && userTopics && userTopics.length > 0) {
-          const supabaseTopicIds = userTopics.map(t => t.topic_id);
-          const validSupabaseTopics = validateTopicIds(supabaseTopicIds);
-          
-          if (validSupabaseTopics.length > 0) {
-            mergedTopics = validSupabaseTopics;
-            // Update local storage with Supabase topics
-            await AsyncStorage.setItem(STORAGE_KEYS.SELECTED_TOPICS, JSON.stringify(validSupabaseTopics));
-            await AsyncStorage.setItem(
-              `${STORAGE_KEYS.SELECTED_TOPICS}_${authProfile.id}`,
-              JSON.stringify(validSupabaseTopics)
-            );
-            console.log(`[syncWithAuthUser] Loaded ${validSupabaseTopics.length} topics from Supabase`);
-          }
-        }
-      } catch (supabaseError) {
-        console.warn('Error loading topics from Supabase in sync:', supabaseError);
+// Try to load topics from Supabase (graceful fallback)
+try {
+  if (supabase) {
+    const { data: userTopics, error } = await supabase
+      .from('user_topics')
+      .select('topic_id')
+      .eq('user_id', authProfile.id);
+      
+    if (!error && userTopics && userTopics.length > 0) {
+      const supabaseTopicIds = userTopics.map(t => t.topic_id);
+      const validSupabaseTopics = validateTopicIds(supabaseTopicIds);
+      
+      if (validSupabaseTopics.length > 0) {
+        mergedTopics = validSupabaseTopics;
+        await AsyncStorage.setItem(STORAGE_KEYS.SELECTED_TOPICS, JSON.stringify(validSupabaseTopics));
+        await AsyncStorage.setItem(
+          `${STORAGE_KEYS.SELECTED_TOPICS}_${authProfile.id}`,
+          JSON.stringify(validSupabaseTopics)
+        );
+        console.log(`[syncWithAuthUser] Loaded ${validSupabaseTopics.length} topics from Supabase`);
       }
+    } else if (error?.code === 'PGRST205') {
+      // Table doesn't exist yet - this is fine
+      console.log('[syncWithAuthUser] Topics table not available, using local storage');
+    }
+  }
+} catch (supabaseError) {
+  console.log('[syncWithAuthUser] Supabase not available, using local storage');
+}
       
       const validTopics = validateTopicIds(mergedTopics);
 
@@ -697,131 +701,132 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   };
 
-  const loadPersistedData = async () => {
+const loadPersistedData = async () => {
+  try {
+    const currentUserId = userProfile?.id;
+
+    // Try to load topics from Supabase first (with graceful fallback)
+    let supabaseTopics: string[] = [];
+    
     try {
-      const currentUserId = userProfile?.id;
+      if (currentUserId && supabase) {
+        // Load user's topics from Supabase
+        const { data: userTopics, error: topicsError } = await supabase
+          .from('user_topics')
+          .select('topic_id')
+          .eq('user_id', currentUserId);
 
-      // Try to load topics from Supabase first
-      let supabaseTopics: string[] = [];
-      let supabasePosts: any[] = [];
-      
-      try {
-        if (currentUserId) {
-          // Load user's topics from Supabase
-          const { data: userTopics, error: topicsError } = await supabase
-            .from('user_topics')
-            .select('topic_id')
-            .eq('user_id', currentUserId);
-
-          if (!topicsError && userTopics) {
-            supabaseTopics = userTopics.map(t => t.topic_id);
-            console.log(`[loadPersistedData] Loaded ${supabaseTopics.length} topics from Supabase`);
-          } else {
-            console.warn('Error loading topics from Supabase:', topicsError);
-          }
-        }
-      } catch (supabaseError) {
-        console.warn('Supabase load error:', supabaseError);
-      }
-
-      const [
-        postsData,
-        topicsData,
-        notificationsData,
-        chatsData,
-        blockedUsersData,
-        selectedTopicsData,
-        onboardingData,
-        likesData,
-        bookmarksData,
-        repostsData,
-        popularPostsData,
-        trendingTopicsData,
-      ] = await Promise.all([
-        AsyncStorage.getItem(STORAGE_KEYS.POSTS),
-        AsyncStorage.getItem(STORAGE_KEYS.TOPICS),
-        AsyncStorage.getItem(STORAGE_KEYS.NOTIFICATIONS),
-        AsyncStorage.getItem(STORAGE_KEYS.MESSAGES),
-        AsyncStorage.getItem(STORAGE_KEYS.BLOCKED_USERS),
-        currentUserId 
-          ? AsyncStorage.getItem(`${STORAGE_KEYS.SELECTED_TOPICS}_${currentUserId}`)
-          : AsyncStorage.getItem(STORAGE_KEYS.SELECTED_TOPICS),
-        AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING),
-        AsyncStorage.getItem(STORAGE_KEYS.LIKES),
-        AsyncStorage.getItem(STORAGE_KEYS.BOOKMARKS),
-        AsyncStorage.getItem(STORAGE_KEYS.REPOSTS),
-        AsyncStorage.getItem(STORAGE_KEYS.POPULAR_POSTS),
-        AsyncStorage.getItem(STORAGE_KEYS.TRENDING_TOPICS),
-      ]);
-
-      const globalTopicsData = await AsyncStorage.getItem(STORAGE_KEYS.SELECTED_TOPICS);
-
-      let loadedPosts: Post[] = postsData ? JSON.parse(postsData) : [];
-      const loadedTopics = topicsData ? JSON.parse(topicsData) : INITIAL_TOPICS;
-      
-      // Prefer Supabase topics if available
-      let loadedSelectedTopics: string[] = supabaseTopics.length > 0 
-        ? supabaseTopics
-        : (selectedTopicsData 
-          ? JSON.parse(selectedTopicsData) 
-          : (globalTopicsData ? JSON.parse(globalTopicsData) : []));
-          
-      const loadedPopularPosts = popularPostsData ? JSON.parse(popularPostsData) : [];
-      const loadedTrendingTopics = trendingTopicsData ? JSON.parse(trendingTopicsData) : [];
-
-      const likedPosts: string[] = likesData ? JSON.parse(likesData) : [];
-      const bookmarkedPosts: string[] = bookmarksData ? JSON.parse(bookmarksData) : [];
-      const repostedPosts: string[] = repostsData ? JSON.parse(repostsData) : [];
-
-      if (loadedPosts.length > 0) {
-        loadedPosts = loadedPosts.map(post => ({
-          ...post,
-          isLiked: likedPosts.includes(post.id),
-          isBookmarked: bookmarkedPosts.includes(post.id),
-          isReposted: repostedPosts.includes(post.id),
-        }));
-      }
-
-      if (onboardingData) {
-        const parsedOnboarding = JSON.parse(onboardingData);
-        if (loadedSelectedTopics.length === 0 && parsedOnboarding.selectedTopics?.length > 0) {
-          loadedSelectedTopics = parsedOnboarding.selectedTopics;
+        if (!topicsError && userTopics) {
+          supabaseTopics = userTopics.map(t => t.topic_id);
+          console.log(`[loadPersistedData] Loaded ${supabaseTopics.length} topics from Supabase`);
+        } else if (topicsError) {
+          // Table might not exist yet - this is fine, just use local storage
+          console.log('[loadPersistedData] Supabase topics table not available, using local storage');
         }
       }
+    } catch (supabaseError) {
+      // Gracefully fallback to local storage
+      console.log('[loadPersistedData] Supabase not available, using local storage');
+    }
 
-      loadedSelectedTopics = validateTopicIds(loadedSelectedTopics);
+    const [
+      postsData,
+      topicsData,
+      notificationsData,
+      chatsData,
+      blockedUsersData,
+      selectedTopicsData,
+      onboardingData,
+      likesData,
+      bookmarksData,
+      repostsData,
+      popularPostsData,
+      trendingTopicsData,
+    ] = await Promise.all([
+      AsyncStorage.getItem(STORAGE_KEYS.POSTS),
+      AsyncStorage.getItem(STORAGE_KEYS.TOPICS),
+      AsyncStorage.getItem(STORAGE_KEYS.NOTIFICATIONS),
+      AsyncStorage.getItem(STORAGE_KEYS.MESSAGES),
+      AsyncStorage.getItem(STORAGE_KEYS.BLOCKED_USERS),
+      currentUserId 
+        ? AsyncStorage.getItem(`${STORAGE_KEYS.SELECTED_TOPICS}_${currentUserId}`)
+        : AsyncStorage.getItem(STORAGE_KEYS.SELECTED_TOPICS),
+      AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING),
+      AsyncStorage.getItem(STORAGE_KEYS.LIKES),
+      AsyncStorage.getItem(STORAGE_KEYS.BOOKMARKS),
+      AsyncStorage.getItem(STORAGE_KEYS.REPOSTS),
+      AsyncStorage.getItem(STORAGE_KEYS.POPULAR_POSTS),
+      AsyncStorage.getItem(STORAGE_KEYS.TRENDING_TOPICS),
+    ]);
 
-      if (loadedPosts.length === 0) {
-        loadedPosts = [createDefaultPost()];
-        await AsyncStorage.setItem(STORAGE_KEYS.POSTS, JSON.stringify(loadedPosts));
-      }
+    const globalTopicsData = await AsyncStorage.getItem(STORAGE_KEYS.SELECTED_TOPICS);
 
-      setIsInitialized(true);
-      
-      setState(prev => ({
-        ...prev,
-        posts: loadedPosts,
-        topics: loadedTopics,
-        notifications: notificationsData ? JSON.parse(notificationsData) : [],
-        blockedUsers: blockedUsersData ? JSON.parse(blockedUsersData) : [],
-        selectedTopics: loadedSelectedTopics,
-        popularPosts: loadedPopularPosts,
-        trendingTopics: loadedTrendingTopics,
-        isInitialized: true,
-        isLoading: false,
-      }));
+    let loadedPosts: Post[] = postsData ? JSON.parse(postsData) : [];
+    const loadedTopics = topicsData ? JSON.parse(topicsData) : INITIAL_TOPICS;
+    
+    // Prefer Supabase topics if available, otherwise use local storage
+    let loadedSelectedTopics: string[] = supabaseTopics.length > 0 
+      ? supabaseTopics
+      : (selectedTopicsData 
+        ? JSON.parse(selectedTopicsData) 
+        : (globalTopicsData ? JSON.parse(globalTopicsData) : []));
+        
+    const loadedPopularPosts = popularPostsData ? JSON.parse(popularPostsData) : [];
+    const loadedTrendingTopics = trendingTopicsData ? JSON.parse(trendingTopicsData) : [];
 
-      updateTrendingData();
-    } catch (error) {
-      console.error('Error loading persisted data:', error);
-      setIsInitialized(true);
-      setState(prev => ({ 
-        ...prev, 
-        isLoading: false,
-        isInitialized: true,
+    const likedPosts: string[] = likesData ? JSON.parse(likesData) : [];
+    const bookmarkedPosts: string[] = bookmarksData ? JSON.parse(bookmarksData) : [];
+    const repostedPosts: string[] = repostsData ? JSON.parse(repostsData) : [];
+
+    if (loadedPosts.length > 0) {
+      loadedPosts = loadedPosts.map(post => ({
+        ...post,
+        isLiked: likedPosts.includes(post.id),
+        isBookmarked: bookmarkedPosts.includes(post.id),
+        isReposted: repostedPosts.includes(post.id),
       }));
     }
-  };
+
+    if (onboardingData) {
+      const parsedOnboarding = JSON.parse(onboardingData);
+      if (loadedSelectedTopics.length === 0 && parsedOnboarding.selectedTopics?.length > 0) {
+        loadedSelectedTopics = parsedOnboarding.selectedTopics;
+      }
+    }
+
+    loadedSelectedTopics = validateTopicIds(loadedSelectedTopics);
+
+    if (loadedPosts.length === 0) {
+      loadedPosts = [createDefaultPost()];
+      await AsyncStorage.setItem(STORAGE_KEYS.POSTS, JSON.stringify(loadedPosts));
+    }
+
+    setIsInitialized(true);
+    
+    setState(prev => ({
+      ...prev,
+      posts: loadedPosts,
+      topics: loadedTopics,
+      notifications: notificationsData ? JSON.parse(notificationsData) : [],
+      blockedUsers: blockedUsersData ? JSON.parse(blockedUsersData) : [],
+      selectedTopics: loadedSelectedTopics,
+      popularPosts: loadedPopularPosts,
+      trendingTopics: loadedTrendingTopics,
+      isInitialized: true,
+      isLoading: false,
+    }));
+
+    updateTrendingData();
+  } catch (error) {
+    console.error('Error loading persisted data:', error);
+    setIsInitialized(true);
+    setState(prev => ({ 
+      ...prev, 
+      isLoading: false,
+      isInitialized: true,
+    }));
+  }
+};
 
   const checkStreak = async () => {
     if (!stateRef.current.currentUser) return;
@@ -2220,49 +2225,66 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return user?.achievements || [];
   }, [getUserById]);
 
-  const checkOnboardingStatus = useCallback(async (): Promise<{ completed: boolean; hasTopics: boolean }> => {
-    try {
-      const data = await AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING);
-      if (data) {
-        const parsed = JSON.parse(data);
-        const completed = parsed.completed === true;
-        
-        // Get topics from multiple sources
-        let rawTopics = parsed.selectedTopics || [];
-        
-        if (rawTopics.length === 0) {
-          const storedTopics = await AsyncStorage.getItem(STORAGE_KEYS.SELECTED_TOPICS);
-          if (storedTopics) {
-            rawTopics = JSON.parse(storedTopics);
-          }
-        }
-        
-        const currentUserId = stateRef.current.currentUser?.id;
-        if (currentUserId && rawTopics.length === 0) {
-          const userTopics = await AsyncStorage.getItem(`${STORAGE_KEYS.SELECTED_TOPICS}_${currentUserId}`);
-          if (userTopics) {
-            rawTopics = JSON.parse(userTopics);
-          }
-        }
-        
-        const validTopics = validateTopicIds(rawTopics);
-        const hasTopics = validTopics.length > 0;
-        
-        // COMPLETION REQUIRES TOPICS - no skipping allowed
-        const isTrulyComplete = completed && hasTopics;
-        
-        if (completed && !hasTopics) {
-          console.warn('[checkOnboardingStatus] Completed but no topics - forcing re-onboarding');
-          return { completed: false, hasTopics: false };
-        }
-        
-        return { completed: isTrulyComplete, hasTopics };
-      }
-      return { completed: false, hasTopics: false };
-    } catch {
+const checkOnboardingStatus = useCallback(async (): Promise<{ completed: boolean; hasTopics: boolean }> => {
+  try {
+    // Check both onboarding data AND selected topics
+    const [onboardingData, selectedTopicsData, userTopicsData] = await Promise.all([
+      AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING),
+      AsyncStorage.getItem(STORAGE_KEYS.SELECTED_TOPICS),
+      stateRef.current.currentUser?.id 
+        ? AsyncStorage.getItem(`${STORAGE_KEYS.SELECTED_TOPICS}_${stateRef.current.currentUser.id}`)
+        : null,
+    ]);
+
+    let completed = false;
+    let rawTopics: string[] = [];
+
+    // Parse onboarding data
+    if (onboardingData) {
+      const parsed = JSON.parse(onboardingData);
+      completed = parsed.completed === true;
+      rawTopics = parsed.selectedTopics || [];
+    }
+
+    // If no topics from onboarding, check other sources
+    if (rawTopics.length === 0 && selectedTopicsData) {
+      rawTopics = JSON.parse(selectedTopicsData);
+    }
+
+    if (rawTopics.length === 0 && userTopicsData) {
+      rawTopics = JSON.parse(userTopicsData);
+    }
+
+    // Also check state
+    if (rawTopics.length === 0 && stateRef.current.selectedTopics?.length > 0) {
+      rawTopics = stateRef.current.selectedTopics;
+    }
+
+    const validTopics = validateTopicIds(rawTopics);
+    const hasTopics = validTopics.length > 0;
+
+    // IMPORTANT: User MUST have topics to be considered complete
+    // No skipping allowed - must select at least 1 topic
+    const isTrulyComplete = completed && hasTopics;
+
+    // If marked complete but no topics, reset completion status
+    if (completed && !hasTopics) {
+      console.warn('[checkOnboardingStatus] Completed but no topics - resetting');
+      await AsyncStorage.setItem(STORAGE_KEYS.ONBOARDING, JSON.stringify({
+        completed: false,
+        selectedTopics: [],
+        timestamp: new Date().toISOString(),
+      }));
       return { completed: false, hasTopics: false };
     }
-  }, []);
+
+    console.log(`[checkOnboardingStatus] completed: ${isTrulyComplete}, hasTopics: ${hasTopics}, count: ${validTopics.length}`);
+    return { completed: isTrulyComplete, hasTopics };
+  } catch (error) {
+    console.error('[checkOnboardingStatus] Error:', error);
+    return { completed: false, hasTopics: false };
+  }
+}, []);
 
   const updateSelectedTopics = useCallback(async (topics: string[]) => {
     const validTopics = validateTopicIds(topics);
