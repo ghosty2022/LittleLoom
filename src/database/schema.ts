@@ -1,11 +1,11 @@
 // src/database/schema.ts
-// Drizzle ORM schema — models auto-generate tables
+// Drizzle ORM schema — fully aligned with Supabase tables
 
-import { sqliteTable, text, integer, real, blob, index, uniqueIndex, foreignKey } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, real, index, uniqueIndex } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   BABIES TABLE
+   BABIES TABLE — matches Supabase `babies` table
    ═══════════════════════════════════════════════════════════════════════════ */
 
 export const babies = sqliteTable('babies', {
@@ -15,13 +15,12 @@ export const babies = sqliteTable('babies', {
   dateOfBirth: text('date_of_birth').notNull(),
   gender: text('gender'), // 'male' | 'female' | 'other'
   bloodType: text('blood_type'),
-  allergies: text('allergies', { mode: 'json' }).$type<string[]>().default(sql`'[]'`),
   medicalNotes: text('medical_notes'),
   parent1Id: text('parent1_id'),
   parent2Id: text('parent2_id'),
+  isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
   createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
   updatedAt: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`),
-  isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
   syncStatus: text('sync_status').notNull().default('pending'),
   isDeleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
 }, (table) => ({
@@ -31,53 +30,7 @@ export const babies = sqliteTable('babies', {
 }));
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   PHOTOS TABLE
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-export const photos = sqliteTable('photos', {
-  id: text('id').primaryKey().notNull(),
-  uri: text('uri').notNull().unique(),
-  localUri: text('local_uri'),
-  thumbnailUri: text('thumbnail_uri'),
-  babyId: text('baby_id').references(() => babies.id, { onDelete: 'set null' }),
-  date: text('date').notNull(),
-  timestamp: integer('timestamp').notNull(),
-  type: text('type').notNull().default('daily'),
-  caption: text('caption'),
-  isFavorite: integer('is_favorite', { mode: 'boolean' }).notNull().default(false),
-  isPrivate: integer('is_private', { mode: 'boolean' }).notNull().default(false),
-  isScreenshot: integer('is_screenshot', { mode: 'boolean' }).notNull().default(false),
-  tags: text('tags', { mode: 'json' }).$type<string[]>().default(sql`'[]'`),
-  location: text('location'),
-  exif: text('exif', { mode: 'json' }).$type<Record<string, any>>(),
-  mood: text('mood'),
-  source: text('source').notNull().default('camera'),
-  backupStatus: text('backup_status').notNull().default('pending'),
-  facesDetected: text('faces_detected', { mode: 'json' }).$type<any[]>().default(sql`'[]'`),
-  aiTags: text('ai_tags', { mode: 'json' }).$type<string[]>().default(sql`'[]'`),
-  blurHash: text('blur_hash'),
-  folder: text('folder'),
-  linkedEntryId: text('linked_entry_id'),
-  linkedEntryType: text('linked_entry_type'),
-  createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`),
-  syncStatus: text('sync_status').notNull().default('pending'),
-  isDeleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
-}, (table) => ({
-  babyIdx: index('idx_photos_baby').on(table.babyId),
-  dateIdx: index('idx_photos_date').on(table.date),
-  timestampIdx: index('idx_photos_timestamp').on(table.timestamp),
-  typeIdx: index('idx_photos_type').on(table.type),
-  favoriteIdx: index('idx_photos_favorite').on(table.isFavorite),
-  privateIdx: index('idx_photos_private').on(table.isPrivate),
-  sourceIdx: index('idx_photos_source').on(table.source),
-  backupIdx: index('idx_photos_backup').on(table.backupStatus),
-  syncIdx: index('idx_photos_sync').on(table.syncStatus),
-  babyDateIdx: index('idx_photos_baby_date').on(table.babyId, table.date),
-}));
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   TRACKER ENTRIES TABLE
+   TRACKER ENTRIES TABLE — unified entry storage
    ═══════════════════════════════════════════════════════════════════════════ */
 
 export const trackerEntries = sqliteTable('tracker_entries', {
@@ -92,10 +45,20 @@ export const trackerEntries = sqliteTable('tracker_entries', {
   photoUris: text('photo_uris', { mode: 'json' }).$type<string[]>().default(sql`'[]'`),
   location: text('location'),
   mood: text('mood'),
+  // Legacy fields for backward compatibility (populated from data JSON)
+  loggedBy: text('logged_by'),
+  loggedByName: text('logged_by_name'),
+  loggedByRole: text('logged_by_role'),
+  notificationId: text('notification_id'),
+  reminderScheduled: integer('reminder_scheduled', { mode: 'boolean' }).default(false),
+  syncedAt: text('synced_at'),
+  editedBy: text('edited_by'),
+  editedAt: integer('edited_at'),
+  // Soft delete
+  isDeleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
+  syncStatus: text('sync_status').notNull().default('pending'),
   createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
   updatedAt: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`),
-  syncStatus: text('sync_status').notNull().default('pending'),
-  isDeleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
 }, (table) => ({
   trackerIdx: index('idx_entries_tracker').on(table.trackerId),
   babyIdx: index('idx_entries_baby').on(table.babyId),
@@ -105,59 +68,35 @@ export const trackerEntries = sqliteTable('tracker_entries', {
 }));
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   PHOTO IMPORT QUEUE TABLE
+   FAMILY MEMBERS TABLE — matches Supabase `family_members`
    ═══════════════════════════════════════════════════════════════════════════ */
 
-export const photoImportQueue = sqliteTable('photo_import_queue', {
+export const familyMembers = sqliteTable('family_members', {
   id: text('id').primaryKey().notNull(),
-  uri: text('uri').notNull().unique(),
-  status: text('status').notNull().default('pending'),
-  priority: integer('priority').notNull().default(0),
-  sourceType: text('source_type').notNull(),
-  detectedBabyIds: text('detected_baby_ids', { mode: 'json' }).$type<string[]>().default(sql`'[]'`),
-  aiConfidence: real('ai_confidence'),
-  errorMessage: text('error_message'),
-  retryCount: integer('retry_count').notNull().default(0),
-  createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
-  processedAt: text('processed_at'),
-}, (table) => ({
-  statusIdx: index('idx_queue_status').on(table.status),
-  priorityIdx: index('idx_queue_priority').on(table.status, table.priority),
-}));
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   SMART ALBUMS TABLE
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-export const smartAlbums = sqliteTable('smart_albums', {
-  id: text('id').primaryKey().notNull(),
-  title: text('title').notNull(),
-  type: text('type').notNull(), // 'smart' | 'baby' | 'activity' | 'date' | 'folder' | 'face'
-  icon: text('icon'),
-  gradient: text('gradient', { mode: 'json' }).$type<[string, string]>(),
-  filterQuery: text('filter_query'),
-  photoCount: integer('photo_count').notNull().default(0),
-  coverPhotoId: text('cover_photo_id').references(() => photos.id, { onDelete: 'set null' }),
-  isSystem: integer('is_system', { mode: 'boolean' }).notNull().default(false),
-  sortOrder: integer('sort_order').notNull().default(0),
-  createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`),
-}, (table) => ({
-  typeIdx: index('idx_albums_type').on(table.type),
-  systemIdx: index('idx_albums_system').on(table.isSystem, table.sortOrder),
-}));
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   ALBUM PHOTOS (MANY-TO-MANY)
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-export const albumPhotos = sqliteTable('album_photos', {
-  albumId: text('album_id').notNull().references(() => smartAlbums.id, { onDelete: 'cascade' }),
-  photoId: text('photo_id').notNull().references(() => photos.id, { onDelete: 'cascade' }),
+  babyId: text('baby_id').notNull().references(() => babies.id, { onDelete: 'cascade' }),
+  userId: text('user_id'),
+  email: text('email').notNull(),
+  fullName: text('full_name').notNull(),
+  avatar: text('avatar'),
+  role: text('role').notNull(), // 'parent1' | 'parent2' | 'guardian' | 'viewer'
+  relationship: text('relationship').notNull().default('Family'),
+  permissions: text('permissions', { mode: 'json' }).$type<Record<string, boolean>>().notNull().default(sql`'{}'`),
   addedAt: text('added_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+  addedBy: text('added_by').notNull(),
+  canBeRemoved: integer('can_be_removed', { mode: 'boolean' }).notNull().default(true),
+  lastActive: text('last_active'),
+  phoneNumber: text('phone_number'),
+  notificationsEnabled: integer('notifications_enabled', { mode: 'boolean' }).notNull().default(true),
+  status: text('status').notNull().default('pending'),
+  updatedAt: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+  syncStatus: text('sync_status').notNull().default('pending'),
+  isDeleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
 }, (table) => ({
-  pk: uniqueIndex('idx_album_photos_pk').on(table.albumId, table.photoId),
-  photoIdx: index('idx_album_photos_photo').on(table.photoId),
+  babyIdx: index('idx_family_baby').on(table.babyId),
+  emailIdx: index('idx_family_email').on(table.email),
+  roleIdx: index('idx_family_role').on(table.role),
+  statusIdx: index('idx_family_status').on(table.status),
+  babyRoleIdx: index('idx_family_baby_role').on(table.babyId, table.role),
 }));
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -171,108 +110,17 @@ export const appSettings = sqliteTable('app_settings', {
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   SCAN SESSIONS TABLE
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-export const scanSessions = sqliteTable('scan_sessions', {
-  id: text('id').primaryKey().notNull(),
-  startedAt: text('started_at').notNull().default(sql`CURRENT_TIMESTAMP`),
-  completedAt: text('completed_at'),
-  photosFound: integer('photos_found').notNull().default(0),
-  photosImported: integer('photos_imported').notNull().default(0),
-  photosSkipped: integer('photos_skipped').notNull().default(0),
-  status: text('status').notNull().default('running'),
-  errorMessage: text('error_message'),
-});
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   FAMILY MEMBERS TABLE
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-export const familyMembers = sqliteTable('family_members', {
-  id: text('id').primaryKey().notNull(),
-  babyId: text('baby_id').notNull().references(() => babies.id, { onDelete: 'cascade' }),
-  userId: text('user_id'), // null for pending invites
-  email: text('email').notNull(),
-  fullName: text('full_name').notNull(),
-  avatar: text('avatar'),
-  role: text('role').notNull(), // 'parent1' | 'parent2' | 'guardian' | 'viewer'
-  relationship: text('relationship').notNull(),
-  permissions: text('permissions', { mode: 'json' }).$type<Record<string, boolean>>().notNull().default(sql`'{}'`),
-  addedAt: text('added_at').notNull().default(sql`CURRENT_TIMESTAMP`),
-  addedBy: text('added_by').notNull(),
-  canBeRemoved: integer('can_be_removed', { mode: 'boolean' }).notNull().default(true),
-  lastActive: text('last_active'),
-  phoneNumber: text('phone_number'),
-  notificationsEnabled: integer('notifications_enabled', { mode: 'boolean' }).notNull().default(true),
-  status: text('status').notNull().default('pending'), // 'pending' | 'active' | 'declined'
-  updatedAt: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`),
-  syncStatus: text('sync_status').notNull().default('pending'),
-  isDeleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
-}, (table) => ({
-  babyIdx: index('idx_family_baby').on(table.babyId),
-  emailIdx: index('idx_family_email').on(table.email),
-  roleIdx: index('idx_family_role').on(table.role),
-  statusIdx: index('idx_family_status').on(table.status),
-  babyRoleIdx: index('idx_family_baby_role').on(table.babyId, table.role),
-}));
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   INVITE CODES TABLE
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-export const inviteCodes = sqliteTable('invite_codes', {
-  code: text('code').primaryKey().notNull(),
-  familyId: text('family_id').notNull(),
-  role: text('role').notNull(),
-  createdBy: text('created_by').notNull(),
-  createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
-  expiresAt: text('expires_at').notNull(),
-  maxUses: integer('max_uses').notNull().default(1),
-  usedCount: integer('used_count').notNull().default(0),
-  isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
-  relationship: text('relationship'),
-  inviteeName: text('invitee_name'),
-  inviteeEmail: text('invitee_email'),
-  inviteePhone: text('invitee_phone'),
-  usedBy: text('used_by', { mode: 'json' }).$type<string[]>().default(sql`'[]'`),
-}, (table) => ({
-  familyIdx: index('idx_invite_family').on(table.familyId),
-  activeIdx: index('idx_invite_active').on(table.isActive),
-  roleIdx: index('idx_invite_role').on(table.role),
-  familyActiveIdx: index('idx_invite_family_active').on(table.familyId, table.isActive),
-}));
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   TYPE EXPORTS (inferred from schema)
+   TYPE EXPORTS
    ═══════════════════════════════════════════════════════════════════════════ */
 
 export type Baby = typeof babies.$inferSelect;
 export type NewBaby = typeof babies.$inferInsert;
 
-export type Photo = typeof photos.$inferSelect;
-export type NewPhoto = typeof photos.$inferInsert;
-
 export type TrackerEntry = typeof trackerEntries.$inferSelect;
 export type NewTrackerEntry = typeof trackerEntries.$inferInsert;
-
-export type PhotoImportJob = typeof photoImportQueue.$inferSelect;
-export type NewPhotoImportJob = typeof photoImportQueue.$inferInsert;
-
-export type SmartAlbum = typeof smartAlbums.$inferSelect;
-export type NewSmartAlbum = typeof smartAlbums.$inferInsert;
-
-export type AlbumPhoto = typeof albumPhotos.$inferSelect;
-export type NewAlbumPhoto = typeof albumPhotos.$inferInsert;
-
-export type AppSetting = typeof appSettings.$inferSelect;
-export type NewAppSetting = typeof appSettings.$inferInsert;
-
-export type ScanSession = typeof scanSessions.$inferSelect;
-export type NewScanSession = typeof scanSessions.$inferInsert;
 
 export type FamilyMember = typeof familyMembers.$inferSelect;
 export type NewFamilyMember = typeof familyMembers.$inferInsert;
 
-export type InviteCodeRow = typeof inviteCodes.$inferSelect;
-export type NewInviteCode = typeof inviteCodes.$inferInsert;
+export type AppSetting = typeof appSettings.$inferSelect;
+export type NewAppSetting = typeof appSettings.$inferInsert;

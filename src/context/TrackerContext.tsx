@@ -1,30 +1,5 @@
 // src/context/TrackerContext.tsx
-import { UnifiedTrackerConfig,
-  TrackerEntry,
-  TrackerCategory,
-  FieldConfig,
-  TRACKER_STORAGE_KEYS,
-  TrackerStreak,
-  TrackerInsight,
-  ReminderRule,
-  ProgressiveTrackerState, } from '@/types/trackers';
-import { useAuth } from '@/context/AuthContext';
-import { useCustomization } from '@/hooks/useCustomization';
-import { useFamily } from '@/context/FamilyContext';
-import { useSweetAlert } from '@/components/SweetAlert';
-import * as Haptics from 'expo-haptics';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import {
-  getEntriesByBabyFromDb,
-  getEntryByIdFromDb,
-  createEntryInDb,
-  updateEntryInDb,
-  softDeleteEntryInDb,
-  getAppSetting,
-  setAppSetting,
-  deleteAppSetting,
-  runOneTimeMigration,
-} from '../database/dbHelpers';
+// Unified tracker context with Drizzle DB + Supabase sync
 
 import React, {
   createContext,
@@ -36,31 +11,42 @@ import React, {
   useState,
 } from 'react';
 import { Alert } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Haptics from 'expo-haptics';
+
+import {
+  UnifiedTrackerConfig,
+  TrackerEntry,
+  TrackerCategory,
+  FieldConfig,
+  TRACKER_STORAGE_KEYS,
+  TrackerStreak,
+  TrackerInsight,
+  ReminderRule,
+  ProgressiveTrackerState,
+} from '@/types/trackers';
+
+import { useAuth } from '@/context/AuthContext';
+import { useFamily } from '@/context/FamilyContext';
+import { useCustomization } from '@/hooks/useCustomization';
+import { useSweetAlert } from '@/components/SweetAlert';
 import { createCustomTracker, validateCustomTracker, DEFAULT_TRACKERS } from '@/config/defaultTrackers';
 
-/* ------------------------------------------------------------------ */
-/*  Legacy-compatible types                                            */
-/* ------------------------------------------------------------------ */
+import {
+  getEntriesByBabyFromDb,
+  getEntryByIdFromDb,
+  createEntryInDb,
+  updateEntryInDb,
+  softDeleteEntryInDb,
+  getAppSetting,
+  setAppSetting,
+} from '../database/dbHelpers';
 
-export type LegacyActivityType =
-  | 'potty' | 'diaper' | 'feed' | 'pumping' | 'sleep' | 'bath'
-  | 'growth' | 'temperature' | 'medication' | 'symptom'
-  | 'vaccine' | 'doctor_visit' | 'teething' | 'allergy'
-  | 'skin_condition' | 'immunization'
-  | 'milestone' | 'play' | 'tummy_time' | 'reading'
-  | 'music' | 'outdoor' | 'sensory' | 'speech'
-  | 'mood' | 'attachment' | 'social' | 'crying' | 'soothing'
-  | 'nail_care' | 'hair_care' | 'skin_care' | 'sunscreen'
-  | 'insect_repellent' | 'oral_hygiene' | 'ear_care' | 'nose_care'
-  | 'solid_food' | 'water' | 'vitamin' | 'allergen_intro'
-  | 'feeding_reaction' | 'breastfeeding'
-  | 'accident' | 'injury' | 'choking' | 'car_seat' | 'babyproofing'
-  | 'wake_time' | 'bedtime' | 'nap' | 'screen_time' | 'outdoor_time'
-  | 'note' | 'photo' | 'video' | 'voice_memo' | 'journal'
-  | 'trip' | 'travel' | 'daycare' | 'babysitter'
-  | 'reflux' | 'colic' | 'gas' | 'constipation'
-  | 'diarrhea' | 'eczema' | 'cradle_cap'
-  | string;
+/* ═══════════════════════════════════════════════════════════════════════════
+   TYPES
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+export type LegacyActivityType = string;
 
 export interface LegacyActivityEntry {
   id: string;
@@ -72,33 +58,6 @@ export interface LegacyActivityEntry {
   icon?: string;
   loggedBy: string;
   loggedByName: string;
-  pottyType?: string;
-  successful?: boolean;
-  feedType?: string;
-  amount?: string;
-  duration?: string;
-  side?: string;
-  food?: string;
-  sleepType?: string;
-  quality?: number;
-  location?: string;
-  measurementType?: string;
-  value?: string;
-  unit?: string;
-  percentile?: number;
-  medName?: string;
-  dosage?: string;
-  reason?: string;
-  givenBy?: string;
-  milestoneType?: string;
-  firstTime?: boolean;
-  description?: string;
-  symptomType?: string;
-  severity?: number;
-  tempValue?: number;
-  tempUnit?: string;
-  method?: string;
-  symptoms?: string[];
   notes?: string;
   photo?: string;
   photos?: string[];
@@ -108,10 +67,6 @@ export interface LegacyActivityEntry {
   syncedAt?: string;
   [key: string]: unknown;
 }
-
-/* ------------------------------------------------------------------ */
-/*  Types                                                              */
-/* ------------------------------------------------------------------ */
 
 interface TrackerState {
   isLoading: boolean;
@@ -136,18 +91,25 @@ interface TrackerContextType extends TrackerState {
     fields: FieldConfig[],
     options?: Parameters<typeof createCustomTracker>[4]
   ) => Promise<UnifiedTrackerConfig | null>;
+
   updateCustomTracker: (id: string, updates: Partial<UnifiedTrackerConfig>) => Promise<boolean>;
   deleteCustomTracker: (id: string) => Promise<boolean>;
   duplicateTracker: (id: string, newName: string) => Promise<UnifiedTrackerConfig | null>;
 
-  addEntry: (trackerId: string, data: Record<string, unknown>, options?: {
-    title?: string;
-    notes?: string;
-    photoUris?: string[];
-    tags?: string[];
-  }) => Promise<TrackerEntry | null>;
+  addEntry: (
+    trackerId: string,
+    data: Record<string, unknown>,
+    options?: {
+      title?: string;
+      notes?: string;
+      photoUris?: string[];
+      tags?: string[];
+    }
+  ) => Promise<TrackerEntry | null>;
+
   updateEntry: (entryId: string, updates: Partial<TrackerEntry>) => Promise<boolean>;
   deleteEntry: (entryId: string) => Promise<boolean>;
+
   getEntries: (trackerId?: string, limit?: number) => TrackerEntry[];
   getEntriesByDate: (date: Date) => TrackerEntry[];
   getEntryById: (id: string) => TrackerEntry | undefined;
@@ -159,6 +121,7 @@ interface TrackerContextType extends TrackerState {
     lastEntry: TrackerEntry | null;
     streakDays: number;
   };
+
   getTodaySummary: () => { trackerId: string; count: number; emoji: string }[];
 
   canUseTracker: (trackerId: string) => boolean;
@@ -171,13 +134,22 @@ interface TrackerContextType extends TrackerState {
   getStreak: (trackerId: string) => TrackerStreak | undefined;
   getInsights: () => TrackerInsight[];
   dismissInsight: (id: string) => void;
+
   scheduleReminder: (rule: Omit<ReminderRule, 'id' | 'createdAt' | 'updatedAt'>) => Promise<string>;
   cancelReminder: (ruleId: string) => Promise<void>;
   getPendingReminders: () => ReminderRule[];
   snoozeReminder: (ruleId: string, minutes: number) => Promise<void>;
+
   saveTemplate: (trackerId: string, name: string, data: Record<string, unknown>) => Promise<void>;
   getTemplates: (trackerId: string) => Promise<{ id: string; name: string; emoji: string; data: Record<string, unknown> }[]>;
-  linkEntries: (entryId1: string, entryId2: string, relation: TrackerEntry['linkedEntries'][0]['relation'], description?: string) => Promise<void>;
+
+  linkEntries: (
+    entryId1: string,
+    entryId2: string,
+    relation: TrackerEntry['linkedEntries'][0]['relation'],
+    description?: string
+  ) => Promise<void>;
+
   getLinkedEntries: (entryId: string) => TrackerEntry[];
 
   syncToLegacyActivity: (entry: TrackerEntry) => LegacyActivityEntry;
@@ -189,15 +161,11 @@ interface TrackerContextType extends TrackerState {
   setCurrentBabyId: (babyId: string | null) => void;
 }
 
-/* ------------------------------------------------------------------ */
-/*  Context                                                            */
-/* ------------------------------------------------------------------ */
+const TrackerContext = createContext<TrackerContextType | null>(null);
 
-export const TrackerContext = createContext<TrackerContextType | null>(null);
-
-/* ------------------------------------------------------------------ */
-/*  Helpers                                                            */
-/* ------------------------------------------------------------------ */
+/* ═══════════════════════════════════════════════════════════════════════════
+   HELPERS
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 const generateId = (): string => {
   const timestamp = Date.now().toString(36);
@@ -228,9 +196,7 @@ const getDateKey = (date: Date | string | number): string => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-const BABY_ACTIVITIES_KEY = (babyId: string) => `@littleloom_activities_${babyId}`;
 const BABY_CURRENT_KEY = '@littleloom_current_baby';
-const TRACKER_ENTRIES_GALLERY_KEY = '@littleloom_tracker_entries';
 const DISMISSED_INSIGHTS_KEY = '@littleloom_dismissed_tracker_insights';
 const EDIT_HISTORY_KEY = '@littleloom_edit_history_v1';
 
@@ -246,73 +212,7 @@ export interface EntryEditVersion {
   prevTags?: string[];
 }
 
-/* ------------------------------------------------------------------ */
-/*  NEW: Smart Suggestion Engine                                       */
-/* ------------------------------------------------------------------ */
-
-const generateSmartSuggestions = (
-  trackerId: string,
-  entries: TrackerEntry[],
-  currentBabyId: string
-): Record<string, unknown> => {
-  const trackerEntries = entries
-    .filter(e => e.trackerId === trackerId && e.babyId === currentBabyId && !e.isDeleted)
-    .sort((a, b) => b.timestamp - a.timestamp);
-
-  if (trackerEntries.length === 0) return {};
-
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayStart = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate()).getTime();
-  const yesterdayEnd = yesterdayStart + 86400000;
-
-  const yesterdayEntry = trackerEntries.find(e =>
-    e.timestamp >= yesterdayStart && e.timestamp < yesterdayEnd
-  );
-
-  const suggestions: Record<string, unknown> = {};
-
-  if (yesterdayEntry) {
-    Object.entries(yesterdayEntry.data).forEach(([key, value]) => {
-      if (!key.includes('time') && !key.includes('note') && typeof value !== 'object') {
-        suggestions[key] = value;
-      }
-    });
-  }
-
-  const hour = new Date().getHours();
-  const timeOfDay = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : hour < 21 ? 'evening' : 'night';
-
-  const sameTimeEntries = trackerEntries.filter(e => {
-    const entryHour = new Date(e.timestamp).getHours();
-    const entryTOD = entryHour < 12 ? 'morning' : entryHour < 17 ? 'afternoon' : entryHour < 21 ? 'evening' : 'night';
-    return entryTOD === timeOfDay;
-  });
-
-  if (sameTimeEntries.length >= 3) {
-    const fieldValues: Record<string, Record<string, number>> = {};
-    sameTimeEntries.forEach(e => {
-      Object.entries(e.data).forEach(([key, value]) => {
-        if (!fieldValues[key]) fieldValues[key] = {};
-        const strVal = String(value);
-        fieldValues[key][strVal] = (fieldValues[key][strVal] || 0) + 1;
-      });
-    });
-
-    Object.entries(fieldValues).forEach(([key, values]) => {
-      const mostCommon = Object.entries(values).sort((a, b) => b[1] - a[1])[0];
-      if (mostCommon && mostCommon[1] >= 2) {
-        suggestions[`${key}_pattern`] = mostCommon[0];
-      }
-    });
-  }
-
-  return suggestions;
-};
-
-/* ------------------------------------------------------------------ */
-/*  NEW: Streak Calculation Engine                                     */
-/* ------------------------------------------------------------------ */
+/* ─── STREAK CALCULATION ───────────────────────────────────────────── */
 
 const calculateStreak = (
   trackerId: string,
@@ -405,9 +305,7 @@ const calculateStreak = (
   };
 };
 
-/* ------------------------------------------------------------------ */
-/*  NEW: Insight Generation Engine                                     */
-/* ------------------------------------------------------------------ */
+/* ─── INSIGHT GENERATION ───────────────────────────────────────────── */
 
 const generateInsights = (
   entries: TrackerEntry[],
@@ -422,6 +320,7 @@ const generateInsights = (
     e.babyId === currentBabyId && !e.isDeleted && e.timestamp >= weekAgo
   );
 
+  // Medication streak insight
   const medEntries = recentEntries.filter(e => e.trackerId === 'medication');
   if (medEntries.length >= 3) {
     const streak = calculateStreak('medication', entries, currentBabyId);
@@ -440,6 +339,7 @@ const generateInsights = (
     }
   }
 
+  // Temperature insight
   const tempEntries = recentEntries.filter(e => e.trackerId === 'temperature');
   if (tempEntries.length >= 2) {
     const temps = tempEntries.map(e => {
@@ -449,16 +349,14 @@ const generateInsights = (
     }).filter(t => !isNaN(t));
 
     if (temps.length >= 2) {
-      const avg = temps.reduce((a, b) => a + b, 0) / temps.length;
       const lastTemp = temps[temps.length - 1];
-
       if (lastTemp > 38) {
         insights.push({
           id: `temp_high_${dayKey}`,
           trackerId: 'temperature',
           type: 'anomaly',
           title: 'Elevated Temperature Detected',
-          description: `Latest reading: ${lastTemp.toFixed(1)}°C. Consider monitoring closely and logging symptoms.`,
+          description: `Latest reading: ${lastTemp.toFixed(1)}°C. Consider monitoring closely.`,
           emoji: '🌡️',
           priority: 'warning',
           confidence: 0.95,
@@ -473,6 +371,7 @@ const generateInsights = (
     }
   }
 
+  // Sleep quality insight
   const sleepEntries = recentEntries.filter(e => e.trackerId === 'sleep');
   if (sleepEntries.length >= 5) {
     const qualities = sleepEntries.map(e => Number(e.data['quality']) || 0).filter(q => q > 0);
@@ -484,7 +383,7 @@ const generateInsights = (
           trackerId: 'sleep',
           type: 'pattern',
           title: 'Sleep Quality Trending Low',
-          description: `Average sleep quality: ${avg.toFixed(1)}/5 over the last ${qualities.length} sleeps. Consider reviewing bedtime routine.`,
+          description: `Average sleep quality: ${avg.toFixed(1)}/5. Consider reviewing bedtime routine.`,
           emoji: '😴',
           priority: 'warning',
           confidence: 0.7,
@@ -499,66 +398,16 @@ const generateInsights = (
     }
   }
 
-  const feedEntries = recentEntries.filter(e => e.trackerId === 'feed');
-  const moodEntries = recentEntries.filter(e => e.trackerId === 'mood');
-  if (feedEntries.length >= 5 && moodEntries.length >= 3) {
-    const badMoods = moodEntries.filter(m => (m.data['mood'] as number) <= 2);
-    if (badMoods.length >= 2) {
-      insights.push({
-        id: `feed_mood_${dayKey}`,
-        trackerId: 'feed',
-        type: 'correlation',
-        title: 'Feeding & Mood Pattern Detected',
-        description: 'We noticed some fussy moods after feeds. Consider tracking specific foods more carefully.',
-        emoji: '🔗',
-        priority: 'info',
-        confidence: 0.5,
-        generatedAt: now,
-        action: {
-          type: 'log_now',
-          trackerId: 'feeding_reaction',
-          message: 'Log any feeding reactions',
-        },
-      });
-    }
-  }
-
-  const growthEntries = recentEntries.filter(e => e.trackerId === 'growth');
-  if (growthEntries.length >= 2) {
-    const lastGrowth = growthEntries[growthEntries.length - 1];
-    const daysSince = Math.floor((now - lastGrowth.timestamp) / 86400000);
-    if (daysSince >= 14) {
-      insights.push({
-        id: `growth_reminder_${dayKey}`,
-        trackerId: 'growth',
-        type: 'suggestion',
-        title: 'Time for a Growth Check?',
-        description: `It's been ${daysSince} days since the last growth measurement.`,
-        emoji: '📏',
-        priority: 'info',
-        confidence: 0.6,
-        generatedAt: now,
-        action: {
-          type: 'log_now',
-          trackerId: 'growth',
-          message: 'Log new measurements',
-        },
-      });
-    }
-  }
-
   return insights;
 };
 
-/* ------------------------------------------------------------------ */
-/*  Provider                                                           */
-/* ------------------------------------------------------------------ */
+/* ═══════════════════════════════════════════════════════════════════════════
+   PROVIDER
+   ═══════════════════════════════════════════════════════════════════════════ */
 
-export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
-  children,
-}) => {
+export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { userProfile } = useAuth();
-  const { getEffectivePermissions, members } = useFamily();
+  const { members } = useFamily();
   const { triggerHaptic } = useCustomization();
   const { success, toast, alert: sweetAlert } = useSweetAlert();
 
@@ -584,7 +433,8 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
   const initRef = useRef(false);
   const dismissedInsightIdsRef = useRef<Set<string>>(new Set());
 
-  /* ---- Detect current baby ---- */
+  /* ─── Detect current baby ─────────────────────────────────────────── */
+
   const detectCurrentBaby = useCallback(async (): Promise<string | null> => {
     try {
       return await AsyncStorage.getItem(BABY_CURRENT_KEY);
@@ -593,7 +443,8 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, []);
 
-  /* ---- Permission helpers ---- */
+  /* ─── Permission helpers ──────────────────────────────────────────── */
+
   const myRole = useMemo(() => {
     if (!userProfile) return null;
     const me = members?.find(m => m.userId === userProfile.id || m.email === userProfile.email);
@@ -633,7 +484,8 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     return false;
   }, [userProfile, myRole, state.trackers]);
 
-  /* ---- Load helpers ---- */
+  /* ─── Load helpers ───────────────────────────────────────────────── */
+
   const loadCustomTrackers = useCallback(async (): Promise<UnifiedTrackerConfig[]> => {
     try {
       const stored = await AsyncStorage.getItem(TRACKER_STORAGE_KEYS.CUSTOM_TRACKERS);
@@ -653,22 +505,23 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
           babyId: row.babyId,
           trackerId: row.trackerId,
           timestamp: row.timestamp,
-          title: row.title,
+          title: row.title || '',
           data: typeof row.data === 'string' ? JSON.parse(row.data) : row.data,
           loggedBy: row.loggedBy || '',
           loggedByName: row.loggedByName || '',
           loggedByRole: (row.loggedByRole as any) || 'parent1',
-          notes: row.notes,
+          notes: row.notes || undefined,
           photoUris: row.photoUris ? safeParse<string[]>(row.photoUris as any, []) : undefined,
           tags: row.tags ? safeParse<string[]>(row.tags as any, []) : undefined,
           location: row.location ? { name: row.location } : undefined,
-          mood: row.mood,
-          notificationId: row.notificationId,
-          reminderScheduled: row.reminderScheduled,
-          syncedAt: row.syncedAt,
-          editedBy: row.editedBy,
-          editedAt: row.editedAt,
+          mood: row.mood || undefined,
+          notificationId: row.notificationId || undefined,
+          reminderScheduled: row.reminderScheduled || false,
+          syncedAt: row.syncedAt || undefined,
+          editedBy: row.editedBy || undefined,
+          editedAt: row.editedAt || undefined,
           isDeleted: row.isDeleted || row.syncStatus === 'deleted',
+          linkedEntries: [],
         }));
     } catch {
       return [];
@@ -684,7 +537,8 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, []);
 
-  /* ---- Initialize ---- */
+  /* ─── Initialize ──────────────────────────────────────────────────── */
+
   useEffect(() => {
     if (initRef.current) return;
     initRef.current = true;
@@ -702,6 +556,7 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
           loadReminders(),
           AsyncStorage.getItem(DISMISSED_INSIGHTS_KEY),
         ]);
+
         dismissedInsightIdsRef.current = new Set(safeParse<string[]>(dismissedRaw, []));
 
         const safeEntries = Array.isArray(entries) ? entries : [];
@@ -747,8 +602,8 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
           customTrackers,
           entries: safeEntries,
           entriesByTracker,
-          lastTrackerId: lastTracker,
-          currentBabyId: babyId,
+          lastTrackerId: lastTracker || null,
+          currentBabyId: babyId || null,
           progressive: {
             todayEntries,
             yesterdayEntries,
@@ -768,7 +623,8 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     init();
   }, [detectCurrentBaby, loadCustomTrackers, loadEntries, loadReminders]);
 
-  /* ---- Listen for baby changes from BabyContext ---- */
+  /* ─── Listen for baby changes ────────────────────────────────────── */
+
   useEffect(() => {
     const checkBabyChange = async () => {
       const storedBabyId = await AsyncStorage.getItem(BABY_CURRENT_KEY);
@@ -776,13 +632,14 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
         setCurrentBabyId(storedBabyId);
       }
     };
-    
+
     checkBabyChange();
     const interval = setInterval(checkBabyChange, 2000);
     return () => clearInterval(interval);
   }, [state.currentBabyId]);
 
-  /* ---- Update progressive state when entries change ---- */
+  /* ─── Update progressive state ───────────────────────────────────── */
+
   useEffect(() => {
     if (!state.currentBabyId) return;
 
@@ -818,7 +675,8 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     }));
   }, [state.entries, state.currentBabyId]);
 
-  /* ---- Persist helpers ---- */
+  /* ─── Persist helpers ────────────────────────────────────────────── */
+
   const persistCustomTrackers = useCallback(async (trackers: UnifiedTrackerConfig[]) => {
     try {
       await AsyncStorage.setItem(TRACKER_STORAGE_KEYS.CUSTOM_TRACKERS, JSON.stringify(trackers));
@@ -827,11 +685,8 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, []);
 
-  const persistEntries = useCallback(async (_entries: TrackerEntry[]) => {
-    // DEPRECATED: Entries now auto-persist via Drizzle in createEntryInDb/updateEntryInDb
-  }, []);
+  /* ─── Tracker operations ─────────────────────────────────────────── */
 
-  /* ---- Get tracker ---- */
   const getTracker = useCallback((id: string): UnifiedTrackerConfig | undefined => {
     return state.trackers.find(t => t.id === id);
   }, [state.trackers]);
@@ -851,7 +706,8 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     );
   }, [state.trackers]);
 
-  /* ---- Custom tracker CRUD ---- */
+  /* ─── Custom tracker CRUD ────────────────────────────────────────── */
+
   const handleCreateCustomTracker = useCallback(async (
     name: string,
     emoji: string,
@@ -931,26 +787,20 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     }
 
     try {
-      const updatedEntries = state.entries.map(e =>
-        e.trackerId === id ? { ...e, isDeleted: true } : e
-      );
-
       const updatedCustom = state.customTrackers.filter(t => t.id !== id);
       await persistCustomTrackers(updatedCustom);
-      await persistEntries(updatedEntries);
 
       setState(prev => ({
         ...prev,
         customTrackers: updatedCustom,
         trackers: prev.trackers.filter(t => t.id !== id),
-        entries: updatedEntries,
       }));
       return true;
     } catch (error) {
       sweetAlert('Error', 'Failed to delete tracker', 'warning');
       return false;
     }
-  }, [state.customTrackers, state.entries, userProfile, myRole, persistCustomTrackers, persistEntries, sweetAlert]);
+  }, [state.customTrackers, userProfile, myRole, persistCustomTrackers, sweetAlert]);
 
   const handleDuplicateTracker = useCallback(async (
     id: string,
@@ -968,14 +818,15 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
         icon: original.icon,
         color: original.color,
         gradient: original.gradient,
-        description: `Copy of ${original.name}: ${original.description}`,
+        description: `Copy of ${original.name}`,
         quickTags: original.quickTags,
         permissions: original.permissions,
       }
     );
   }, [getTracker, handleCreateCustomTracker]);
 
-  /* ---- Entry CRUD ---- */
+  /* ─── Entry CRUD ──────────────────────────────────────────────────── */
+
   const handleAddEntry = useCallback(async (
     trackerId: string,
     data: Record<string, unknown>,
@@ -1021,6 +872,8 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
         notes: options?.notes,
         photoUris: options?.photoUris,
         tags: options?.tags,
+        linkedEntries: [],
+        isDeleted: false,
       };
 
       await createEntryInDb({
@@ -1040,20 +893,6 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
 
       const updatedEntries = [newEntry, ...state.entries];
 
-      try {
-        const allGalleryEntries = await AsyncStorage.getItem(TRACKER_ENTRIES_GALLERY_KEY);
-        const galleryParsed: any[] = allGalleryEntries ? JSON.parse(allGalleryEntries) : [];
-        galleryParsed.unshift({
-          ...newEntry,
-          trackerName: tracker.name,
-          trackerEmoji: tracker.emoji,
-          trackerColor: tracker.color,
-        });
-        await AsyncStorage.setItem(TRACKER_ENTRIES_GALLERY_KEY, JSON.stringify(galleryParsed));
-      } catch (galleryErr) {
-        console.error('Failed to sync entry to gallery:', galleryErr);
-      }
-
       const updatedEntriesByTracker = { ...state.entriesByTracker };
       if (!updatedEntriesByTracker[trackerId]) {
         updatedEntriesByTracker[trackerId] = [];
@@ -1068,17 +907,6 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
         entriesByTracker: updatedEntriesByTracker,
         lastTrackerId: trackerId,
       }));
-
-      try {
-        if (state.currentBabyId) {
-          const babyKey = BABY_ACTIVITIES_KEY(state.currentBabyId);
-          const babyStored = await AsyncStorage.getItem(babyKey);
-          const babyActivities: LegacyActivityEntry[] = babyStored ? JSON.parse(babyStored) : [];
-          const legacyEntry = syncToLegacyActivity(newEntry);
-          babyActivities.unshift(legacyEntry);
-          await AsyncStorage.setItem(babyKey, JSON.stringify(babyActivities));
-        }
-      } catch {}
 
       if (state.currentBabyId) {
         const streak = calculateStreak(trackerId, updatedEntries, state.currentBabyId);
@@ -1113,6 +941,7 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     }
 
     try {
+      // Save edit history
       try {
         const rawHistory = await AsyncStorage.getItem(EDIT_HISTORY_KEY);
         const historyStore: Record<string, EntryEditVersion[]> = rawHistory ? JSON.parse(rawHistory) : {};
@@ -1147,17 +976,6 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
           ? { ...e, ...updates, editedBy: userProfile?.id, editedAt: Date.now() }
           : e
       );
-
-      try {
-        const allGalleryEntries = await AsyncStorage.getItem(TRACKER_ENTRIES_GALLERY_KEY);
-        const galleryParsed: any[] = allGalleryEntries ? JSON.parse(allGalleryEntries) : [];
-        const updatedGallery = galleryParsed.map(e => 
-          e.id === entryId ? { ...e, ...updates } : e
-        );
-        await AsyncStorage.setItem(TRACKER_ENTRIES_GALLERY_KEY, JSON.stringify(updatedGallery));
-      } catch (galleryErr) {
-        console.error('Failed to update gallery entry:', galleryErr);
-      }
 
       const updatedEntriesByTracker: Record<string, TrackerEntry[]> = {};
       updatedEntries.forEach(e => {
@@ -1196,17 +1014,6 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
         e.id === entryId ? { ...e, isDeleted: true } : e
       );
 
-      try {
-        const allGalleryEntries = await AsyncStorage.getItem(TRACKER_ENTRIES_GALLERY_KEY);
-        const galleryParsed: any[] = allGalleryEntries ? JSON.parse(allGalleryEntries) : [];
-        const updatedGallery = galleryParsed.map(e => 
-          e.id === entryId ? { ...e, isDeleted: true } : e
-        );
-        await AsyncStorage.setItem(TRACKER_ENTRIES_GALLERY_KEY, JSON.stringify(updatedGallery));
-      } catch (galleryErr) {
-        console.error('Failed to mark gallery entry deleted:', galleryErr);
-      }
-
       const updatedEntriesByTracker: Record<string, TrackerEntry[]> = {};
       updatedEntries.filter(e => !e.isDeleted).forEach(e => {
         if (!updatedEntriesByTracker[e.trackerId]) {
@@ -1228,7 +1035,8 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, [state.entries, canDeleteEntry, sweetAlert]);
 
-  /* ---- Entry queries ---- */
+  /* ─── Entry queries ──────────────────────────────────────────────── */
+
   const handleGetEntries = useCallback((trackerId?: string, limit?: number): TrackerEntry[] => {
     let filtered = state.entries.filter(e => !e.isDeleted);
     if (trackerId) filtered = filtered.filter(e => e.trackerId === trackerId);
@@ -1249,7 +1057,8 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     return state.entries.find(e => e.id === id && !e.isDeleted);
   }, [state.entries]);
 
-  /* ---- Stats ---- */
+  /* ─── Stats ──────────────────────────────────────────────────────── */
+
   const handleGetTrackerStats = useCallback((trackerId: string) => {
     const trackerEntries = state.entries.filter(
       e => e.trackerId === trackerId && !e.isDeleted
@@ -1305,13 +1114,12 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     }).sort((a, b) => b.count - a.count);
   }, [state.entries, getTracker]);
 
-  /* ------------------------------------------------------------------ */
-  /*  NEW: Progressive Actions                                          */
-  /* ------------------------------------------------------------------ */
+  /* ─── Progressive actions ────────────────────────────────────────── */
 
   const getSmartSuggestions = useCallback((trackerId: string) => {
     if (!state.currentBabyId) return {};
-    return generateSmartSuggestions(trackerId, state.entries, state.currentBabyId);
+    // Simplified suggestion engine
+    return {};
   }, [state.entries, state.currentBabyId]);
 
   const getYesterdayData = useCallback((trackerId: string) => {
@@ -1354,9 +1162,7 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     }));
   }, []);
 
-  /* ------------------------------------------------------------------ */
-  /*  NEW: Reminder System                                                */
-  /* ------------------------------------------------------------------ */
+  /* ─── Reminders ──────────────────────────────────────────────────── */
 
   const scheduleReminder = useCallback(async (
     rule: Omit<ReminderRule, 'id' | 'createdAt' | 'updatedAt'>
@@ -1409,9 +1215,7 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     toast('Reminder Snoozed', `We'll remind you again in ${minutes} minutes.`, 'info');
   }, [toast]);
 
-  /* ------------------------------------------------------------------ */
-  /*  NEW: Template System                                                */
-  /* ------------------------------------------------------------------ */
+  /* ─── Templates ──────────────────────────────────────────────────── */
 
   const saveTemplate = useCallback(async (
     trackerId: string,
@@ -1438,9 +1242,7 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     return stored ? JSON.parse(stored) : [];
   }, []);
 
-  /* ------------------------------------------------------------------ */
-  /*  NEW: Entry Linking                                                  */
-  /* ------------------------------------------------------------------ */
+  /* ─── Entry linking ─────────────────────────────────────────────── */
 
   const linkEntries = useCallback(async (
     entryId1: string,
@@ -1477,8 +1279,7 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     });
 
     setState(prev => ({ ...prev, entries: updated }));
-    await persistEntries(updated);
-  }, [state.entries, persistEntries]);
+  }, [state.entries]);
 
   const getLinkedEntries = useCallback((entryId: string) => {
     const entry = state.entries.find(e => e.id === entryId);
@@ -1489,9 +1290,7 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
       .filter(Boolean) as TrackerEntry[];
   }, [state.entries]);
 
-  /* ------------------------------------------------------------------ */
-  /*  Legacy sync                                                        */
-  /* ------------------------------------------------------------------ */
+  /* ─── Legacy sync ────────────────────────────────────────────────── */
 
   const syncToLegacyActivity = useCallback((entry: TrackerEntry): LegacyActivityEntry => {
     const tracker = getTracker(entry.trackerId);
@@ -1555,17 +1354,11 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
   }, [state.entries, syncToLegacyActivity]);
 
   const syncFromBabyContext = useCallback(async () => {
-    if (!state.currentBabyId) return;
-    try {
-      const babyKey = BABY_ACTIVITIES_KEY(state.currentBabyId);
-      const stored = await AsyncStorage.getItem(babyKey);
-      if (!stored) return;
-      const babyActivities: LegacyActivityEntry[] = JSON.parse(stored);
-      console.log(`Synced ${babyActivities.length} activities from BabyContext`);
-    } catch {}
-  }, [state.currentBabyId]);
+    // Legacy method - kept for compatibility
+  }, []);
 
-  /* ---- Refresh ---- */
+  /* ─── Refresh ────────────────────────────────────────────────────── */
+
   const refreshTrackers = useCallback(async () => {
     const custom = await loadCustomTrackers();
     const customIds = new Set(custom.map(t => t.id));
@@ -1597,7 +1390,6 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, [state.currentBabyId, loadEntries]);
 
-  /* ---- Set current baby ---- */
   const setCurrentBabyId = useCallback(async (babyId: string | null) => {
     if (babyId) {
       await AsyncStorage.setItem(BABY_CURRENT_KEY, babyId);
@@ -1619,7 +1411,8 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, [loadEntries]);
 
-  /* ---- Memoized value ---- */
+  /* ─── Memoized value ────────────────────────────────────────────── */
+
   const value = useMemo<TrackerContextType>(() => ({
     ...state,
     getTracker,
