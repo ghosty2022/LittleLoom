@@ -1,95 +1,136 @@
-// hooks/useSupabase.ts
-import { useEffect, useState, useCallback } from 'react';
+// src/hooks/useRealtimeSubscription.ts
+import { useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
-import { Session, User } from '@supabase/supabase-js';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export function useSupabase() {
-  const [session, setSession] = useState<Session | null>(null);
-  const [user, setUser] = useState<User | null>(null);
-  const [isConnected, setIsConnected] = useState(true);
-  const [isLoading, setIsLoading] = useState(true);
+interface UseRealtimeSubscriptionProps {
+  table: string;
+  filter?: string;
+  onInsert?: (payload: any) => void;
+  onUpdate?: (payload: any) => void;
+  onDelete?: (payload: any) => void;
+  enabled?: boolean;
+}
 
+export function useRealtimeSubscription({
+  table,
+  filter,
+  onInsert,
+  onUpdate,
+  onDelete,
+  enabled = true,
+}: UseRealtimeSubscriptionProps) {
+  const subscriptionRef = useRef<any>(null);
+  const channelRef = useRef<any>(null);
+  const isSubscribedRef = useRef(false);
+
+  const setupSubscription = useCallback(async () => {
+    if (!enabled || !table) {
+      return;
+    }
+
+    try {
+      // Clean up any existing subscription
+      if (channelRef.current) {
+        await supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+        isSubscribedRef.current = false;
+      }
+
+      // Build channel name
+      const channelName = `realtime:${table}${filter ? `:${filter}` : ''}`;
+
+      // Create channel
+      const channel = supabase
+        .channel(channelName)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: table,
+            filter: filter,
+          },
+          (payload) => {
+            // Handle different event types
+            switch (payload.eventType) {
+              case 'INSERT':
+                onInsert?.(payload);
+                break;
+              case 'UPDATE':
+                onUpdate?.(payload);
+                break;
+              case 'DELETE':
+                onDelete?.(payload);
+                break;
+            }
+          }
+        )
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            isSubscribedRef.current = true;
+          } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+            isSubscribedRef.current = false;
+          }
+        });
+
+      channelRef.current = channel;
+
+      // Cleanup function
+      return () => {
+        if (channelRef.current) {
+          supabase.removeChannel(channelRef.current);
+          channelRef.current = null;
+          isSubscribedRef.current = false;
+        }
+      };
+    } catch (error) {
+      console.warn('[useRealtimeSubscription] Error setting up subscription:', error);
+    }
+  }, [table, filter, onInsert, onUpdate, onDelete, enabled]);
+
+  // Setup subscription on mount and when dependencies change
   useEffect(() => {
-    let mounted = true;
+    let cleanup: (() => void) | undefined;
 
-    const initialize = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (mounted) {
-          setSession(session);
-          setUser(session?.user ?? null);
-          setIsLoading(false);
-        }
-      } catch (error) {
-        console.error('Error getting session:', error);
-        if (mounted) setIsLoading(false);
-      }
+    const init = async () => {
+      cleanup = await setupSubscription();
     };
 
-    initialize();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (mounted) {
-        setSession(session);
-        setUser(session?.user ?? null);
-        setIsLoading(false);
-      }
-    });
-
-    // Check connection status
-    const checkConnection = async () => {
-      try {
-        const { error } = await supabase.from('health_check').select('*').limit(1);
-        if (mounted) {
-          setIsConnected(!error);
-        }
-      } catch {
-        if (mounted) {
-          setIsConnected(false);
-        }
-      }
-    };
-
-    checkConnection();
-
-    // Periodically check connection
-    const interval = setInterval(checkConnection, 30000);
+    if (enabled) {
+      init();
+    }
 
     return () => {
-      mounted = false;
-      subscription.unsubscribe();
-      clearInterval(interval);
+      if (cleanup) {
+        cleanup();
+      } else if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+        isSubscribedRef.current = false;
+      }
     };
-  }, []);
+  }, [setupSubscription, enabled]);
 
-  const signOut = useCallback(async () => {
-    try {
-      await supabase.auth.signOut();
-    } catch (error) {
-      console.error('Error signing out:', error);
+  // Manual unsubscribe function
+  const unsubscribe = useCallback(async () => {
+    if (channelRef.current) {
+      await supabase.removeChannel(channelRef.current);
+      channelRef.current = null;
+      isSubscribedRef.current = false;
     }
   }, []);
 
-  const refreshSession = useCallback(async () => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      setSession(session);
-      setUser(session?.user ?? null);
-      return session;
-    } catch (error) {
-      console.error('Error refreshing session:', error);
-      return null;
-    }
-  }, []);
+  // Manual resubscribe function
+  const resubscribe = useCallback(async () => {
+    await unsubscribe();
+    return setupSubscription();
+  }, [unsubscribe, setupSubscription]);
 
   return {
-    session,
-    user,
-    isConnected,
-    isLoading,
-    signOut,
-    refreshSession,
-    supabase,
+    isSubscribed: isSubscribedRef.current,
+    unsubscribe,
+    resubscribe,
   };
 }
+
+export default useRealtimeSubscription;

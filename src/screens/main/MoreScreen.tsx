@@ -998,111 +998,76 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     }
   }, [loadBabies, loadEntries]);
 
-  const handleSync = useCallback(async () => {
-    if (isSyncing) return;
+const handleSync = useCallback(async () => {
+  if (isSyncing) return;
 
-    setSyncStatus('syncing');
-    try {
-      const result = await sync();
-      if (result.success) {
-        setSyncStatus('success');
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        sweetAlert({
-          title: 'Synced!',
-          message: 'Your data is now in sync with the cloud',
-          type: 'success',
-          confirmText: 'Great',
-        });
-      } else {
-        setSyncStatus('error');
-        sweetAlert({
-          title: 'Sync Issue',
-          message: 'Some items failed to sync. They will be retried.',
-          type: 'warning',
-          confirmText: 'OK',
-        });
-      }
-    } catch (error) {
-      console.error('Sync error:', error);
-      setSyncStatus('error');
-      sweetAlert({
-        title: 'Sync Failed',
-        message: 'Could not sync data. Please try again.',
-        type: 'error',
-        confirmText: 'OK',
-      });
-    } finally {
-      setTimeout(() => setSyncStatus('idle'), 3000);
-    }
-  }, [isSyncing, sync, sweetAlert]);
-
-  const handleBiometricToggle = useCallback(async (enabled: boolean) => {
-    if (enabled) {
-      if (!hasBiometric) {
-        sweetAlert({
-          title: 'Biometric Not Available',
-          message: 'Please set up biometric authentication in your device settings first.',
-          type: 'warning',
-          confirmText: 'OK',
-        });
-        return;
-      }
-      navigation.navigate('BiometricSetup');
+  setSyncStatus('syncing');
+  try {
+    const result = await sync();
+    if (result.success) {
+      setSyncStatus('success');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      sweetAlert.toast('Synced!', 'Your data is now in sync with the cloud', 'success');
     } else {
-      const confirmed = await sweetAlert.confirm({
-        title: 'Disable Biometric?',
-        message: 'Are you sure you want to disable biometric authentication?',
-        confirmText: 'Disable',
-        cancelText: 'Cancel',
-        destructive: true,
-      });
-      if (confirmed) {
-        const success = await toggleBiometric(false);
-        if (!success) {
-          sweetAlert.error('Error', 'Could not disable biometric authentication.');
-        }
+      setSyncStatus('error');
+      sweetAlert.toast('Sync Issue', 'Some items failed to sync. They will be retried.', 'warning');
+    }
+  } catch (error) {
+    console.error('Sync error:', error);
+    setSyncStatus('error');
+    sweetAlert.toast('Sync Failed', 'Could not sync data. Please try again.', 'error');
+  } finally {
+    setTimeout(() => setSyncStatus('idle'), 3000);
+  }
+}, [isSyncing, sync, sweetAlert]);
+
+const handleBiometricToggle = useCallback(async (enabled: boolean) => {
+  if (enabled) {
+    if (!hasBiometric) {
+      sweetAlert.alert('Biometric Not Available', 'Please set up biometric authentication in your device settings first.', 'warning');
+      return;
+    }
+    navigation.navigate('BiometricSetup');
+  } else {
+    const confirmed = await sweetAlert.confirm({
+      title: 'Disable Biometric?',
+      message: 'Are you sure you want to disable biometric authentication?',
+      confirmText: 'Disable',
+      cancelText: 'Cancel',
+      destructive: true,
+    });
+    if (confirmed) {
+      const success = await toggleBiometric(false);
+      if (!success) {
+        sweetAlert.alert('Error', 'Could not disable biometric authentication.', 'error');
       }
     }
-  }, [hasBiometric, navigation, sweetAlert, toggleBiometric]);
-
+  }
+}, [hasBiometric, navigation, sweetAlert, toggleBiometric]);
   const handlePinSetup = useCallback(() => {
     navigation.navigate('SecurityCenter', { mode: 'setup' });
   }, [navigation]);
 
-  const handleLockNow = useCallback(async () => {
-    const hasAnySecurity = availableMethods.hasPin || availableMethods.hasBiometric || securitySettings.isAppLockEnabled;
-    if (!hasAnySecurity) {
-      const confirmed = await sweetAlert.confirm({
-        title: 'No Security Enabled',
-        message: 'You can lock the app without protection, or set up PIN / Biometric first.',
-        confirmText: 'Lock Anyway',
-        cancelText: 'Set Up Security',
-      });
-      if (confirmed) {
-        await lockApp(true);
-        sweetAlert.toast('App Locked', 'Locked without security. Tap unlock to enter.', 'warning');
-      } else {
-        navigation.navigate('SecurityCenter', { mode: 'setup' });
-      }
-      return;
+const handleLockNow = useCallback(async () => {
+  const hasAnySecurity = availableMethods.hasPin || availableMethods.hasBiometric || securitySettings.isAppLockEnabled;
+  if (!hasAnySecurity) {
+    const confirmed = await sweetAlert.confirm({
+      title: 'No Security Enabled',
+      message: 'You can lock the app without protection, or set up PIN / Biometric first.',
+      confirmText: 'Lock Anyway',
+      cancelText: 'Set Up Security',
+    });
+    if (confirmed) {
+      await lockApp(true);
+      sweetAlert.toast('App Locked', 'Locked without security. Tap unlock to enter.', 'warning');
+    } else {
+      navigation.navigate('SecurityCenter', { mode: 'setup' });
     }
-    await lockApp();
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }, [availableMethods, securitySettings.isAppLockEnabled, lockApp, sweetAlert, navigation]);
-
-  const formatTimeout = useCallback((minutes: number) => {
-    if (minutes < 60) return `${minutes} min`;
-    return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
-  }, []);
-
-  const handleAutoLockTimeout = useCallback(() => {
-    if (!securitySettings.isAppLockEnabled) {
-      sweetAlert.toast('Enable App Lock first', 'Turn on Auto-Lock App to set a timeout', 'warning');
-      return;
-    }
-    setShowTimeoutModal(true);
-  }, [securitySettings.isAppLockEnabled, sweetAlert]);
-
+    return;
+  }
+  await lockApp();
+  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+}, [availableMethods, securitySettings.isAppLockEnabled, lockApp, sweetAlert, navigation]);
   const handleSelectTimeout = useCallback(async (minutes: number) => {
     setShowTimeoutModal(false);
     try {
