@@ -1,3 +1,4 @@
+// src/context/TrackerContext.tsx
 import { UnifiedTrackerConfig,
   TrackerEntry,
   TrackerCategory,
@@ -99,8 +100,8 @@ export interface LegacyActivityEntry {
   method?: string;
   symptoms?: string[];
   notes?: string;
-   photo?: string;
-  photos?: string[];  // ADD THIS
+  photo?: string;
+  photos?: string[];
   tags?: string[];
   notificationId?: string;
   reminderScheduled?: boolean;
@@ -229,16 +230,14 @@ const getDateKey = (date: Date | string | number): string => {
 
 const BABY_ACTIVITIES_KEY = (babyId: string) => `@littleloom_activities_${babyId}`;
 const BABY_CURRENT_KEY = '@littleloom_current_baby';
-const TRACKER_ENTRIES_GALLERY_KEY = '@littleloom_tracker_entries'; // For gallery photo sync
+const TRACKER_ENTRIES_GALLERY_KEY = '@littleloom_tracker_entries';
 const DISMISSED_INSIGHTS_KEY = '@littleloom_dismissed_tracker_insights';
-const EDIT_HISTORY_KEY = '@littleloom_edit_history_v1'; // Previous versions of edited entries
+const EDIT_HISTORY_KEY = '@littleloom_edit_history_v1';
 
-/* A snapshot of an entry's previous state, captured just before each edit.
-   Consumed by EntryDetailScreen's "Edited history" section. */
 export interface EntryEditVersion {
-  editedAt: number;          // when the edit was made
-  editedBy?: string;         // user id who made the edit
-  editedByName: string;      // display name who made the edit
+  editedAt: number;
+  editedBy?: string;
+  editedByName: string;
   prevTitle?: string;
   prevNotes?: string;
   prevTimestamp: number;
@@ -417,7 +416,7 @@ const generateInsights = (
   const insights: TrackerInsight[] = [];
   const now = Date.now();
   const weekAgo = now - 7 * 86400000;
-  const dayKey = getDateKey(new Date(now)); // stable id suffix — regenerated insights keep the same id each day
+  const dayKey = getDateKey(new Date(now));
 
   const recentEntries = entries.filter(e =>
     e.babyId === currentBabyId && !e.isDeleted && e.timestamp >= weekAgo
@@ -674,7 +673,7 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     } catch {
       return [];
     }
-  }, [getEntriesByBabyFromDb]);
+  }, []);
 
   const loadReminders = useCallback(async (): Promise<ReminderRule[]> => {
     try {
@@ -768,6 +767,7 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
 
     init();
   }, [detectCurrentBaby, loadCustomTrackers, loadEntries, loadReminders]);
+
   /* ---- Listen for baby changes from BabyContext ---- */
   useEffect(() => {
     const checkBabyChange = async () => {
@@ -777,20 +777,6 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
       }
     };
     
-    // Check immediately and set up interval
-    checkBabyChange();
-    const interval = setInterval(checkBabyChange, 2000);
-    return () => clearInterval(interval);
-  }, [state.currentBabyId]);  /* ---- Listen for baby changes from BabyContext ---- */
-  useEffect(() => {
-    const checkBabyChange = async () => {
-      const storedBabyId = await AsyncStorage.getItem(BABY_CURRENT_KEY);
-      if (storedBabyId && storedBabyId !== state.currentBabyId) {
-        setCurrentBabyId(storedBabyId);
-      }
-    };
-    
-    // Check immediately and set up interval
     checkBabyChange();
     const interval = setInterval(checkBabyChange, 2000);
     return () => clearInterval(interval);
@@ -843,8 +829,7 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const persistEntries = useCallback(async (_entries: TrackerEntry[]) => {
     // DEPRECATED: Entries now auto-persist via Drizzle in createEntryInDb/updateEntryInDb
-    // Kept for backward compat during migration
-  }, [state.currentBabyId]);
+  }, []);
 
   /* ---- Get tracker ---- */
   const getTracker = useCallback((id: string): UnifiedTrackerConfig | undefined => {
@@ -883,8 +868,7 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({
     const validation = validateCustomTracker(newTracker);
 
     if (!validation.valid) {
-
-Alert.alert('Invalid Tracker', validation.errors.join('\n'));
+      Alert.alert('Invalid Tracker', validation.errors.join('\n'));
       return null;
     }
 
@@ -904,7 +888,7 @@ Alert.alert('Invalid Tracker', validation.errors.join('\n'));
       sweetAlert('Error', 'Failed to create custom tracker', 'warning');
       return null;
     }
-  }, [userProfile, state.customTrackers, persistCustomTrackers]);
+  }, [userProfile, state.customTrackers, persistCustomTrackers, sweetAlert]);
 
   const handleUpdateCustomTracker = useCallback(async (
     id: string,
@@ -936,7 +920,7 @@ Alert.alert('Invalid Tracker', validation.errors.join('\n'));
       sweetAlert('Error', 'Failed to update tracker', 'warning');
       return false;
     }
-  }, [state.customTrackers, userProfile, myRole, persistCustomTrackers]);
+  }, [state.customTrackers, userProfile, myRole, persistCustomTrackers, sweetAlert]);
 
   const handleDeleteCustomTracker = useCallback(async (id: string): Promise<boolean> => {
     const tracker = state.customTrackers.find(t => t.id === id);
@@ -966,7 +950,7 @@ Alert.alert('Invalid Tracker', validation.errors.join('\n'));
       sweetAlert('Error', 'Failed to delete tracker', 'warning');
       return false;
     }
-  }, [state.customTrackers, state.entries, userProfile, myRole, persistCustomTrackers, persistEntries]);
+  }, [state.customTrackers, state.entries, userProfile, myRole, persistCustomTrackers, persistEntries, sweetAlert]);
 
   const handleDuplicateTracker = useCallback(async (
     id: string,
@@ -1018,8 +1002,7 @@ Alert.alert('Invalid Tracker', validation.errors.join('\n'));
       .map(f => f.label);
 
     if (missingFields.length > 0) {
-
-Alert.alert('Missing Information', `Please fill in: ${missingFields.join(', ')}`);
+      Alert.alert('Missing Information', `Please fill in: ${missingFields.join(', ')}`);
       return null;
     }
 
@@ -1040,7 +1023,6 @@ Alert.alert('Missing Information', `Please fill in: ${missingFields.join(', ')}`
         tags: options?.tags,
       };
 
-      // Write directly to Drizzle DB
       await createEntryInDb({
         id: newId,
         trackerId,
@@ -1058,7 +1040,6 @@ Alert.alert('Missing Information', `Please fill in: ${missingFields.join(', ')}`
 
       const updatedEntries = [newEntry, ...state.entries];
 
-      // ── Sync to gallery storage ──
       try {
         const allGalleryEntries = await AsyncStorage.getItem(TRACKER_ENTRIES_GALLERY_KEY);
         const galleryParsed: any[] = allGalleryEntries ? JSON.parse(allGalleryEntries) : [];
@@ -1117,7 +1098,7 @@ Alert.alert('Missing Information', `Please fill in: ${missingFields.join(', ')}`
       sweetAlert('Error', 'Failed to save entry', 'warning');
       return null;
     }
-  }, [canCreateEntry, getTracker, state.currentBabyId, userProfile, myRole, state.entries, state.entriesByTracker, persistEntries, triggerHaptic, success]);
+  }, [canCreateEntry, getTracker, state.currentBabyId, userProfile, myRole, state.entries, state.entriesByTracker, triggerHaptic, success, sweetAlert]);
 
   const handleUpdateEntry = useCallback(async (
     entryId: string,
@@ -1132,7 +1113,6 @@ Alert.alert('Missing Information', `Please fill in: ${missingFields.join(', ')}`
     }
 
     try {
-      // ── Snapshot the previous version for "Edited history" ──
       try {
         const rawHistory = await AsyncStorage.getItem(EDIT_HISTORY_KEY);
         const historyStore: Record<string, EntryEditVersion[]> = rawHistory ? JSON.parse(rawHistory) : {};
@@ -1148,7 +1128,7 @@ Alert.alert('Missing Information', `Please fill in: ${missingFields.join(', ')}`
           prevPhotoUris: entry.photoUris,
           prevTags: entry.tags,
         });
-        historyStore[entryId] = versionList.slice(-20); // keep last 20 versions per entry
+        historyStore[entryId] = versionList.slice(-20);
         await AsyncStorage.setItem(EDIT_HISTORY_KEY, JSON.stringify(historyStore));
       } catch {}
 
@@ -1168,7 +1148,6 @@ Alert.alert('Missing Information', `Please fill in: ${missingFields.join(', ')}`
           : e
       );
 
-      // ── Update gallery storage ──
       try {
         const allGalleryEntries = await AsyncStorage.getItem(TRACKER_ENTRIES_GALLERY_KEY);
         const galleryParsed: any[] = allGalleryEntries ? JSON.parse(allGalleryEntries) : [];
@@ -1199,7 +1178,7 @@ Alert.alert('Missing Information', `Please fill in: ${missingFields.join(', ')}`
       sweetAlert('Error', 'Failed to update entry', 'warning');
       return false;
     }
-  }, [state.entries, canEditEntry, userProfile, persistEntries]);
+  }, [state.entries, canEditEntry, userProfile, sweetAlert]);
 
   const handleDeleteEntry = useCallback(async (entryId: string): Promise<boolean> => {
     const entry = state.entries.find(e => e.id === entryId);
@@ -1217,7 +1196,6 @@ Alert.alert('Missing Information', `Please fill in: ${missingFields.join(', ')}`
         e.id === entryId ? { ...e, isDeleted: true } : e
       );
 
-      // ── Mark as deleted in gallery storage ──
       try {
         const allGalleryEntries = await AsyncStorage.getItem(TRACKER_ENTRIES_GALLERY_KEY);
         const galleryParsed: any[] = allGalleryEntries ? JSON.parse(allGalleryEntries) : [];
@@ -1248,7 +1226,7 @@ Alert.alert('Missing Information', `Please fill in: ${missingFields.join(', ')}`
       sweetAlert('Error', 'Failed to delete entry', 'warning');
       return false;
     }
-  }, [state.entries, canDeleteEntry, persistEntries]);
+  }, [state.entries, canDeleteEntry, sweetAlert]);
 
   /* ---- Entry queries ---- */
   const handleGetEntries = useCallback((trackerId?: string, limit?: number): TrackerEntry[] => {
@@ -1530,8 +1508,8 @@ Alert.alert('Missing Information', `Please fill in: ${missingFields.join(', ')}`
       loggedBy: entry.loggedBy,
       loggedByName: entry.loggedByName,
       notes: entry.notes,
-      photo: entry.photoUris?.[0],        // Keep for backward compat
-      photos: entry.photoUris,            // Add full array for new code
+      photo: entry.photoUris?.[0],
+      photos: entry.photoUris,
       tags: entry.tags,
       notificationId: entry.notificationId,
       reminderScheduled: entry.reminderScheduled,

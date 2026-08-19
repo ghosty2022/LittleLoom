@@ -1,23 +1,3 @@
-// AddEntryScreen.tsx
-// FIXED: Hook order violation resolved — useTrackerProgressive moved to inner component
-
-import React, { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react';
-import {
-  Dimensions, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView,
-  StatusBar, StyleSheet, Text, TouchableOpacity, View, UIManager,
-} from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { FadeInDown, FadeInUp, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
-import { BlurView } from 'expo-blur';
-import { Ionicons } from '@expo/vector-icons';
-import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
-import Animated from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
-import { format, isToday, isYesterday, subDays, startOfDay, endOfDay, differenceInMinutes } from 'date-fns';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-
 import type { RootStackParamList } from '../../types/navigation';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useUnifiedTrackerTheme } from '../../hooks/useUnifiedTrackerTheme';
@@ -29,7 +9,7 @@ import { SafeAvatar } from '../../components/SafeAvatar';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { TimelinePicker } from '../../components/trackers/TimelinePicker';
 import { DynamicTrackerForm } from '../../components/trackers/DynamicTrackerForm';
-import { SmartPhotoField } from '../../components/trackers/SmartPhotoField';
+import { SmartPhotoField } from '../gallery/SmartPhotoField'; // ← Fixed path
 import { useTrackerProgressive } from '../../hooks/useTrackerProgressive';
 import type { ProgressiveCorrelation, ProgressiveReminder } from '../../hooks/useTrackerProgressive';
 
