@@ -58,7 +58,7 @@ import { useCustomization } from '../../hooks/useCustomization';
 import { useFamily } from '../../context/FamilyContext';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { useUser } from '../../context/UserContext';
-import { useTracker } from '../../hooks/useTrackerContext';
+import { useTrackerProgressive } from '../../hooks';
 type FamilySharingScreenProps = NativeStackScreenProps<RootStackParamList, 'FamilySharing'>;
 
 // ═══════════════════════════════════════════════════════════════════════════

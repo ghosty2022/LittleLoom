@@ -4,7 +4,7 @@
 import { useMemo, useCallback, useEffect, useState, useRef } from 'react';
 import { differenceInDays, differenceInHours, subDays, subHours, format, isSameDay, isToday } from 'date-fns';
 
-// FIX: Direct imports from context sources
+// FIX: Direct imports from context sources (NOT useSafeContexts)
 import { useTracker } from './useTrackerContext';
 import { useBaby } from '../context/BabyContext';
 import { TrackerEntry, TrackerStreak, TrackerInsight, UnifiedTrackerConfig, ReminderRule, FieldConfig } from '../types/trackers';
@@ -13,10 +13,9 @@ import { useGrowthIntelligence } from './useGrowthIntelligence';
 import { usePredictiveReminders } from './usePredictiveReminders';
 import { useTimelineCorrelations } from './useTimelineCorrelations';
 
-// ... rest of the file remains the same ...
 /* ═══════════════════════════════════════════════════════════════
    TYPES
-   ═════════════════════════════════════════════════════════════ */
+   ═══════════════════════════════════════════════════════════════ */
 
 export type SuggestionSource = 'yesterday' | 'pattern' | 'partner' | 'template' | 'correlation' | 'time_based';
 
@@ -105,7 +104,7 @@ export interface TrackerProgressiveState {
 
 /* ═══════════════════════════════════════════════════════════════
    HELPERS
-   ═════════════════════════════════════════════════════════════ */
+   ═══════════════════════════════════════════════════════════════ */
 
 const getTimeOfDay = (hour: number): ProgressiveTimeContext['timeOfDay'] => {
   if (hour < 6) return 'night';
@@ -152,12 +151,12 @@ const computeTrend = (
 
 /* ═══════════════════════════════════════════════════════════════
    MAIN HOOK
-   ═════════════════════════════════════════════════════════════ */
+   ═══════════════════════════════════════════════════════════════ */
 
 export const useTrackerProgressive = (trackerId: string) => {
-  // FIX: Use safe contexts that never throw
-  const tracker = useSafeTracker();
-  const baby = useSafeBaby();
+  // FIX: Use direct imports, not useSafeContexts
+  const tracker = useTracker();
+  const baby = useBaby();
 
   const gi = useGrowthIntelligence();
   const growthIndex = gi?.growthIndex ?? null;

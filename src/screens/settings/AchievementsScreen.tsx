@@ -42,7 +42,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 
 import { useBaby } from '../../context/BabyContext';
-import { useTracker } from '../../hooks/useTrackerContext';
+import { useTrackerProgressive } from '../../hooks';
 import { useCustomization } from '../../hooks/useCustomization';
 import {
   useTrackerAchievements,

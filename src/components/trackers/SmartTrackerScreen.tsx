@@ -17,7 +17,7 @@ import Animated, {
   interpolate,
 } from 'react-native-reanimated';
 
-import { useTracker } from '../../hooks/useTrackerContext';
+import { useTrackerProgressive } from '../../hooks';
 import { useTrackerProgressive } from '../../hooks/useTrackerProgressive';
 import { formatTimeShort, formatDateShort } from '@/utils/time';
 import { useCustomization } from '../../hooks/useCustomization';
