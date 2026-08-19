@@ -30,8 +30,6 @@ import {
   Gesture,
   GestureDetector,
   GestureHandlerRootView,
-  PanGestureHandler,
-  State,
 } from 'react-native-gesture-handler';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
@@ -236,8 +234,6 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
   const [currentPoints, setCurrentPoints] = useState<{ x: number; y: number; color: string }[]>([]);
 
   const hasInitializedPhotos = useRef(false);
-  const annotationContainerRef = useRef<View>(null);
-  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
 
   // ── Init photos (edit mode) ───────────────────────────────────────────────
   useEffect(() => {
@@ -443,10 +439,9 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
 
   const undoAnnotation = () => {
     setAnnotationPoints((prev) => {
-      // Remove the last stroke (find where color changes)
       const lastIndex = prev.length - 1;
       if (lastIndex < 0) return prev;
-      let lastColor = prev[lastIndex]?.color;
+      const lastColor = prev[lastIndex]?.color;
       let i = lastIndex;
       while (i >= 0 && prev[i]?.color === lastColor) {
         i--;
@@ -589,7 +584,6 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     const allPoints = [...annotationPoints, ...currentPoints];
     if (allPoints.length === 0) return null;
 
-    // Group points by color for rendering
     const groupedPoints: Record<string, { x: number; y: number }[]> = {};
     allPoints.forEach((p) => {
       if (!groupedPoints[p.color]) groupedPoints[p.color] = [];
