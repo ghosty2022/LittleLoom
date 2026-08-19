@@ -1,4 +1,4 @@
-// App.tsx - Clean version
+// App.tsx - Fixed version with safe initialization
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   StyleSheet,
@@ -10,13 +10,10 @@ import {
   LogBox,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { navigationRef } from './navigation/navigationRef';
 import { useAppLock } from '@/hooks/useAppLock';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-// Removed: Animated entering wrappers cause native crashes with NavigationContainer
-// import Animated, { FadeIn } from 'react-native-reanimated';
 import * as SplashScreen from 'expo-splash-screen';
 import * as SystemUI from 'expo-system-ui';
 import * as Font from 'expo-font';
@@ -133,7 +130,7 @@ interface InnerAppProps {
 
 const InnerApp: React.FC<InnerAppProps> = React.memo(({ initialState, onStateChange }) => {
   const { isDark } = useTheme();
-  useAppLock(); // Auto-pushes SecurityLock when isSecurityLocked becomes true
+  useAppLock();
 
   return (
     <ModalProvider>
@@ -160,7 +157,7 @@ export default function App(): JSX.Element | null {
   const [initError, setInitError] = useState<string | null>(null);
 
   const lastStateRef = useRef<object | undefined>(undefined);
-  const lastStateKeyRef = useRef<string>(''); // FIX: deduplication key
+  const lastStateKeyRef = useRef<string>('');
   const initStartedRef = useRef(false);
   const stateSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -194,7 +191,7 @@ export default function App(): JSX.Element | null {
     return () => { mounted = false; };
   }, [systemScheme]);
 
-  // Phase 1: Parallel initialization
+  // Phase 1: Parallel initialization with safe null checks
   useEffect(() => {
     if (!themeLoaded || initStartedRef.current) return;
     initStartedRef.current = true;
@@ -202,18 +199,46 @@ export default function App(): JSX.Element | null {
     const init = async () => {
       try {
         const fontPromise = Font.loadAsync(ICON_FONTS_TO_PRELOAD);
+
+        // ─── SAFE INIT: Check if services exist before calling initialize ───
         const servicesPromise = Promise.all([
-          notificationService
-            .initialize()
-            .catch((e) => console.warn('Notification init:', e)),
-          ensureAllImageDirs().catch((e) => console.warn('Image dirs init:', e)),
-          SystemUI.setBackgroundColorAsync(initialTheme.isTrueBlack ? '#000000' : initialTheme.isDark ? '#08080f' : '#f8faff').catch(() => {}),
+          (async () => {
+            try {
+              // notificationService now has initialize method
+              if (notificationService && typeof notificationService.initialize === 'function') {
+                await notificationService.initialize();
+              } else {
+                console.warn('[App] notificationService not available or missing initialize method');
+              }
+            } catch (e) {
+              console.warn('[App] Notification init failed (non-fatal):', e);
+            }
+          })(),
+          (async () => {
+            try {
+              if (ensureAllImageDirs && typeof ensureAllImageDirs === 'function') {
+                await ensureAllImageDirs();
+              }
+            } catch (e) {
+              console.warn('[App] Image dirs init failed (non-fatal):', e);
+            }
+          })(),
+          (async () => {
+            try {
+              if (SystemUI && typeof SystemUI.setBackgroundColorAsync === 'function') {
+                await SystemUI.setBackgroundColorAsync(
+                  initialTheme.isTrueBlack ? '#000000' : 
+                  initialTheme.isDark ? '#08080f' : '#f8faff'
+                );
+              }
+            } catch (e) {
+              console.warn('[App] SystemUI init failed (non-fatal):', e);
+            }
+          })(),
         ]);
 
         const navRestorePromise = (async () => {
           try {
-            // ─── FIX: Don't restore nav state if setup isn't complete
-            // This prevents jumping to Main when user still needs setup
             const setupCompleteStr = await AsyncStorage.getItem('littleloom_setup_complete');
             const hasParent2Str = await AsyncStorage.getItem('littleloom_parent2_completed');
             const hasBabyStr = await AsyncStorage.getItem('littleloom_baby_completed');
@@ -223,42 +248,45 @@ export default function App(): JSX.Element | null {
             
             if (!setupDone) {
               console.log('[App] Setup incomplete, clearing nav state');
-              await statePersistence.clearNavigationState();
+              if (statePersistence && typeof statePersistence.clearNavigationState === 'function') {
+                await statePersistence.clearNavigationState();
+              }
               return;
             }
 
-            // Don't restore nav state if app was locked when killed
             const wasLocked = await AsyncStorage.getItem('littleloom_security_lock');
             if (wasLocked === 'true') {
               console.log('[App] App was locked, clearing nav state to force lock screen');
-              await statePersistence.clearNavigationState();
+              if (statePersistence && typeof statePersistence.clearNavigationState === 'function') {
+                await statePersistence.clearNavigationState();
+              }
               return;
             }
             
-            const navState = await statePersistence.getNavigationState();
-            if (navState?.state) {
-              const routeName = navState.routeName as string;
-              if (!NON_RESTORABLE_ROUTES.has(routeName)) {
-                setInitialState(navState.state);
-              } else {
-                await statePersistence.clearNavigationState();
+            if (statePersistence && typeof statePersistence.getNavigationState === 'function') {
+              const navState = await statePersistence.getNavigationState();
+              if (navState?.state) {
+                const routeName = navState.routeName as string;
+                if (!NON_RESTORABLE_ROUTES.has(routeName)) {
+                  setInitialState(navState.state);
+                } else if (statePersistence && typeof statePersistence.clearNavigationState === 'function') {
+                  await statePersistence.clearNavigationState();
+                }
               }
             }
           } catch (e) {
-            console.warn('Nav restore failed:', e);
+            console.warn('[App] Nav restore failed (non-fatal):', e);
           }
         })();
 
         await Promise.all([fontPromise, servicesPromise, navRestorePromise]);
         
-        // ─── FIX: Brief delay to let auth state settle before showing UI
-        // Prevents flash of wrong screen during init
         await new Promise(resolve => setTimeout(resolve, 400));
 
         await SplashScreen.hideAsync();
         setReady(true);
       } catch (e) {
-        console.error('Critical init error:', e);
+        console.error('[App] Critical init error:', e);
         setInitError('Failed to initialize app');
         await SplashScreen.hideAsync();
       }
@@ -267,7 +295,9 @@ export default function App(): JSX.Element | null {
     init();
 
     return () => {
-      statePersistence.cleanup();
+      if (statePersistence && typeof statePersistence.cleanup === 'function') {
+        statePersistence.cleanup();
+      }
     };
   }, [themeLoaded]);
 
@@ -282,24 +312,26 @@ export default function App(): JSX.Element | null {
           const parsed = lastStateRef.current as any;
           const route = parsed.routes?.[parsed.index];
           if (route?.name !== 'SecurityLock') {
-            await statePersistence.saveNavigationState(
-              lastStateRef.current,
-              route?.name,
-              route?.params
-            );
+            if (statePersistence && typeof statePersistence.saveNavigationState === 'function') {
+              await statePersistence.saveNavigationState(
+                lastStateRef.current,
+                route?.name,
+                route?.params
+              );
+            }
           }
         }
-        await statePersistence.flushPendingSaves();
+        if (statePersistence && typeof statePersistence.flushPendingSaves === 'function') {
+          await statePersistence.flushPendingSaves();
+        }
       }
     });
     return () => sub.remove();
   }, []);
 
-  // FIX: Deduplicated onStateChange with 2s debounce
   const onStateChange = useCallback((state: object | undefined) => {
     if (!state) return;
 
-    // Deduplicate: skip if same state object already processed
     const stateKey = (state as any)?.key || JSON.stringify((state as any)?.routes?.[(state as any)?.index]);
     if (stateKey && stateKey === lastStateKeyRef.current) return;
     if (stateKey) lastStateKeyRef.current = stateKey;
@@ -313,16 +345,20 @@ export default function App(): JSX.Element | null {
         clearTimeout(stateSaveTimerRef.current);
       }
       stateSaveTimerRef.current = setTimeout(() => {
-        statePersistence.queueSave('@littleloom_nav_state_v4', {
-          state,
-          routeName: route.name,
-          params: route.params,
-          timestamp: Date.now(),
-          appVersion: '2.1.0',
-        });
-        statePersistence.saveLastRoute(route.name, route.params);
+        if (statePersistence && typeof statePersistence.queueSave === 'function') {
+          statePersistence.queueSave('@littleloom_nav_state_v4', {
+            state,
+            routeName: route.name,
+            params: route.params,
+            timestamp: Date.now(),
+            appVersion: '2.1.0',
+          });
+        }
+        if (statePersistence && typeof statePersistence.saveLastRoute === 'function') {
+          statePersistence.saveLastRoute(route.name, route.params);
+        }
         stateSaveTimerRef.current = null;
-      }, 2000); // Increased to 2s to reduce I/O churn
+      }, 2000);
     }
   }, []);
 

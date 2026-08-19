@@ -1,8 +1,34 @@
-// src/context/AppContext.ts
+// src/context/AppContext.tsx
+
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { useColorScheme, AppState } from 'react-native';
+import { useColorScheme, AppState, AppStateStatus, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Notifications from 'expo-notifications';
+import * as BackgroundFetch from 'expo-background-fetch';
+import * as TaskManager from 'expo-task-manager';
+import * as KeepAwake from 'expo-keep-awake';
+import * as Device from 'expo-device';
 import { useCustomization, AppearanceMode } from '../hooks/useCustomization';
+
+// ─── TASK DEFINITION ──────────────────────────────────────────────
+
+const BACKGROUND_SYNC_TASK = 'BACKGROUND_NOTIFICATION_SYNC';
+
+if (!TaskManager.isTaskDefined(BACKGROUND_SYNC_TASK)) {
+  TaskManager.defineTask(BACKGROUND_SYNC_TASK, async () => {
+    try {
+      const result = await performBackgroundNotificationSync();
+      return result?.hasUpdates
+        ? BackgroundFetch.BackgroundFetchResult.NewData
+        : BackgroundFetch.BackgroundFetchResult.NoData;
+    } catch (error) {
+      console.error('[BackgroundSync] Task error:', error);
+      return BackgroundFetch.BackgroundFetchResult.Failed;
+    }
+  });
+}
+
+// ─── TYPES ──────────────────────────────────────────────────────────
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 
@@ -23,7 +49,85 @@ export interface ThemeColors {
   glassBorder: string;
   navBackground: string;
   handleBar: string;
+  shadowColor: string;
 }
+
+export interface NotificationSettings {
+  enabled: boolean;
+  pushEnabled: boolean;
+  inAppEnabled: boolean;
+  soundEnabled: boolean;
+  vibrationEnabled: boolean;
+  badgeEnabled: boolean;
+  quietHoursStart?: string;
+  quietHoursEnd?: string;
+  allowBackgroundSync: boolean;
+  syncInterval: number;
+  achievementReminders: boolean;
+  streakReminders: boolean;
+  chatNotifications: boolean;
+  safetyAlerts: boolean;
+  dailySummary: boolean;
+  activityReminders: boolean;
+}
+
+export interface NotificationPayload {
+  title: string;
+  body: string;
+  data?: Record<string, unknown>;
+  channelId?: string;
+  sound?: 'default' | boolean;
+  priority?: 'high' | 'normal' | 'low';
+  badge?: number;
+}
+
+export interface ScheduledNotification {
+  id: string;
+  payload: NotificationPayload;
+  trigger: Notifications.NotificationTriggerInput | null;
+  status: 'pending' | 'sent' | 'cancelled' | 'failed';
+  scheduledAt: number;
+  sentAt?: number;
+  error?: string;
+}
+
+export interface AppContextType {
+  // Theme
+  themeMode: ThemeMode;
+  appearance: AppearanceMode;
+  isDark: boolean;
+  isTrueBlack: boolean;
+  isPureWhite: boolean;
+  colors: ThemeColors;
+  setThemeMode: (mode: ThemeMode) => Promise<void>;
+  setAppearance: (appearance: AppearanceMode) => Promise<void>;
+  toggleTheme: () => void;
+  setDarkMode: (isDark: boolean) => void;
+  themeReady: boolean;
+  isCommunityScreen: boolean;
+  setCommunityScreen: (isCommunity: boolean) => void;
+
+  // Notifications
+  notificationSettings: NotificationSettings;
+  isNotificationReady: boolean;
+  updateNotificationSettings: (settings: Partial<NotificationSettings>) => Promise<void>;
+  scheduleNotification: (payload: NotificationPayload, trigger?: Notifications.NotificationTriggerInput) => Promise<string | null>;
+  sendImmediateNotification: (payload: NotificationPayload) => Promise<string | null>;
+  cancelNotification: (id: string) => Promise<void>;
+  cancelAllNotifications: () => Promise<void>;
+  getScheduledNotifications: () => Promise<Notifications.NotificationRequest[]>;
+  getNotificationHistory: () => Promise<any[]>;
+  markNotificationRead: (id: string) => Promise<void>;
+  getBadgeCount: () => number;
+  isInQuietHours: () => boolean;
+  enableKeepAwake: (reason?: string) => Promise<void>;
+  releaseKeepAwake: () => Promise<void>;
+
+  // Navigation handler
+  setNavigationRef: (ref: any) => void;
+}
+
+// ─── COLORS ─────────────────────────────────────────────────────────
 
 const LIGHT_COLORS: ThemeColors = {
   background: '#f8faff', surface: '#ffffff', card: '#ffffff',
@@ -61,48 +165,199 @@ const PURE_WHITE_COLORS: ThemeColors = {
   navBackground: '#ffffff', handleBar: 'rgba(0,0,0,0.15)', shadowColor: '#000000',
 };
 
-export interface AppContextType {
-  themeMode: ThemeMode;
-  appearance: AppearanceMode;
-  isDark: boolean;
-  isTrueBlack: boolean;
-  isPureWhite: boolean;
-  colors: ThemeColors;
-  setThemeMode: (mode: ThemeMode) => Promise<void>;
-  setAppearance: (appearance: AppearanceMode) => Promise<void>;
-  toggleTheme: () => void;
-  setDarkMode: (isDark: boolean) => void;
-  themeReady: boolean;
-  isCommunityScreen: boolean;
-  setCommunityScreen: (isCommunity: boolean) => void;
-}
+// ─── STORAGE KEYS ──────────────────────────────────────────────────
 
 const THEME_STORAGE_KEY = 'theme_mode';
 const APPEARANCE_STORAGE_KEY = 'appearance';
+const NOTIFICATION_SETTINGS_KEY = '@littleloom_notification_settings_v2';
+const NOTIFICATION_HISTORY_KEY = '@littleloom_notification_history';
+const PENDING_NOTIFICATIONS_KEY = '@littleloom_pending_notifications';
+const DEVICE_ID_KEY = '@littleloom_device_id';
 
-// ─── STATIC CACHE: Survives re-renders, read once ─────────────────────
+// ─── STATIC CACHE ──────────────────────────────────────────────────
+
 let _cachedAppearance: AppearanceMode | null = null;
 let _cachedThemeMode: ThemeMode | null = null;
 let _themeLoaded = false;
+let _navigationRef: any = null;
+
+// ─── DEFAULT SETTINGS ─────────────────────────────────────────────
+
+const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
+  enabled: true,
+  pushEnabled: true,
+  inAppEnabled: true,
+  soundEnabled: true,
+  vibrationEnabled: true,
+  badgeEnabled: true,
+  quietHoursStart: '22:00',
+  quietHoursEnd: '07:00',
+  allowBackgroundSync: true,
+  syncInterval: 5,
+  achievementReminders: true,
+  streakReminders: true,
+  chatNotifications: true,
+  safetyAlerts: true,
+  dailySummary: true,
+  activityReminders: true,
+};
+
+// ─── BACKGROUND SYNC FUNCTION ─────────────────────────────────────
+
+async function performBackgroundNotificationSync(): Promise<{ hasUpdates: boolean }> {
+  try {
+    const settings = await loadNotificationSettings();
+    if (!settings.allowBackgroundSync) return { hasUpdates: false };
+
+    const pending = await loadPendingNotifications();
+    let hasUpdates = false;
+
+    for (const notification of pending) {
+      if (notification.status === 'pending') {
+        try {
+          const id = await Notifications.scheduleNotificationAsync({
+            content: {
+              title: notification.payload.title,
+              body: notification.payload.body,
+              data: notification.payload.data || {},
+              sound: notification.payload.sound !== false,
+              badge: notification.payload.badge || 1,
+              ...(Platform.OS === 'android' && {
+                channelId: notification.payload.channelId || 'default',
+                priority: notification.payload.priority === 'high'
+                  ? Notifications.AndroidPriority.HIGH
+                  : notification.payload.priority === 'low'
+                    ? Notifications.AndroidPriority.LOW
+                    : Notifications.AndroidPriority.DEFAULT,
+              }),
+            },
+            trigger: null,
+          });
+          notification.status = 'sent';
+          notification.sentAt = Date.now();
+          hasUpdates = true;
+        } catch (error) {
+          notification.status = 'failed';
+          notification.error = String(error);
+        }
+      }
+    }
+
+    if (hasUpdates) {
+      await savePendingNotifications(pending);
+    }
+
+    return { hasUpdates };
+  } catch (error) {
+    console.error('[BackgroundSync] Error:', error);
+    return { hasUpdates: false };
+  }
+}
+
+// ─── STORAGE HELPERS ──────────────────────────────────────────────
+
+async function loadNotificationSettings(): Promise<NotificationSettings> {
+  try {
+    const stored = await AsyncStorage.getItem(NOTIFICATION_SETTINGS_KEY);
+    if (stored) {
+      return { ...DEFAULT_NOTIFICATION_SETTINGS, ...JSON.parse(stored) };
+    }
+  } catch (error) {
+    console.warn('Failed to load notification settings:', error);
+  }
+  return { ...DEFAULT_NOTIFICATION_SETTINGS };
+}
+
+async function saveNotificationSettings(settings: NotificationSettings): Promise<void> {
+  await AsyncStorage.setItem(NOTIFICATION_SETTINGS_KEY, JSON.stringify(settings));
+}
+
+async function loadPendingNotifications(): Promise<ScheduledNotification[]> {
+  try {
+    const stored = await AsyncStorage.getItem(PENDING_NOTIFICATIONS_KEY);
+    return stored ? JSON.parse(stored) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function savePendingNotifications(notifications: ScheduledNotification[]): Promise<void> {
+  await AsyncStorage.setItem(PENDING_NOTIFICATIONS_KEY, JSON.stringify(notifications));
+}
+
+async function getDeviceId(): Promise<string> {
+  try {
+    let id = await AsyncStorage.getItem(DEVICE_ID_KEY);
+    if (!id) {
+      id = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+      await AsyncStorage.setItem(DEVICE_ID_KEY, id);
+    }
+    return id;
+  } catch {
+    return `device_${Date.now()}`;
+  }
+}
+
+// ─── CONTEXT ──────────────────────────────────────────────────────
 
 const AppContext = createContext<AppContextType>({
-  themeMode: 'system', appearance: 'system', isDark: false,
-  isTrueBlack: false, isPureWhite: false, colors: LIGHT_COLORS,
-  setThemeMode: async () => {}, setAppearance: async () => {},
-  toggleTheme: () => {}, setDarkMode: () => {}, themeReady: false,
-  isCommunityScreen: false, setCommunityScreen: () => {},
+  // Theme defaults
+  themeMode: 'system',
+  appearance: 'system',
+  isDark: false,
+  isTrueBlack: false,
+  isPureWhite: false,
+  colors: LIGHT_COLORS,
+  setThemeMode: async () => {},
+  setAppearance: async () => {},
+  toggleTheme: () => {},
+  setDarkMode: () => {},
+  themeReady: false,
+  isCommunityScreen: false,
+  setCommunityScreen: () => {},
+
+  // Notification defaults
+  notificationSettings: DEFAULT_NOTIFICATION_SETTINGS,
+  isNotificationReady: false,
+  updateNotificationSettings: async () => {},
+  scheduleNotification: async () => null,
+  sendImmediateNotification: async () => null,
+  cancelNotification: async () => {},
+  cancelAllNotifications: async () => {},
+  getScheduledNotifications: async () => [],
+  getNotificationHistory: async () => [],
+  markNotificationRead: async () => {},
+  getBadgeCount: () => 0,
+  isInQuietHours: () => false,
+  enableKeepAwake: async () => {},
+  releaseKeepAwake: async () => {},
+  setNavigationRef: () => {},
 });
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const systemColorScheme = useColorScheme();
   const customization = useCustomization();
 
+  // ─── Theme State ──────────────────────────────────────────────────
+
   const [themeMode, setThemeModeState] = useState<ThemeMode>(_cachedThemeMode ?? 'system');
   const [appearance, setAppearanceState] = useState<AppearanceMode>(_cachedAppearance ?? 'system');
   const [themeReady, setThemeReady] = useState(_themeLoaded);
   const [isCommunityScreen, setIsCommunityScreen] = useState(false);
 
-  // ─── Load theme once on mount ──────────────────────────────────────
+  // ─── Notification State ──────────────────────────────────────────
+
+  const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(DEFAULT_NOTIFICATION_SETTINGS);
+  const [isNotificationReady, setIsNotificationReady] = useState(false);
+  const [keepAwakeRef, setKeepAwakeRef] = useState<{ release: () => Promise<void> } | null>(null);
+
+  const notificationListener = useRef<any>(null);
+  const responseListener = useRef<any>(null);
+  const appStateListener = useRef<any>(null);
+  const isInitialized = useRef(false);
+
+  // ─── Load Theme ──────────────────────────────────────────────────
+
   useEffect(() => {
     if (_themeLoaded) return;
 
@@ -117,11 +372,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         if (!mounted) return;
 
-        const finalAppearance = (savedAppearance && ['system','light','dark','trueBlack','pureWhite'].includes(savedAppearance))
+        const finalAppearance = (savedAppearance && ['system', 'light', 'dark', 'trueBlack', 'pureWhite'].includes(savedAppearance))
           ? savedAppearance as AppearanceMode
           : customization.settings.appearance ?? 'system';
 
-        const finalThemeMode = (savedTheme && ['light','dark','system'].includes(savedTheme))
+        const finalThemeMode = (savedTheme && ['light', 'dark', 'system'].includes(savedTheme))
           ? savedTheme as ThemeMode
           : (finalAppearance === 'light' || finalAppearance === 'pureWhite') ? 'light'
           : (finalAppearance === 'dark' || finalAppearance === 'trueBlack') ? 'dark'
@@ -145,7 +400,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => { mounted = false; };
   }, []);
 
-  // ─── Sync with customization when it changes ───────────────────────
+  // ─── Sync with customization ─────────────────────────────────────
+
   useEffect(() => {
     if (!customization?.isLoaded || !_themeLoaded) return;
     const customApp = customization.settings?.appearance;
@@ -165,6 +421,256 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [customization.isLoaded, customization.settings.appearance]);
 
+  // ─── Initialize Notifications ────────────────────────────────────
+
+  const initializeNotifications = useCallback(async () => {
+    if (isInitialized.current) return;
+
+    try {
+      // Load settings
+      const settings = await loadNotificationSettings();
+      setNotificationSettings(settings);
+
+      if (!settings.enabled) {
+        console.log('[AppContext] Notifications disabled by user');
+        setIsNotificationReady(true);
+        return;
+      }
+
+      // Request permissions
+      if (Device.isDevice) {
+        const { status: existingStatus } = await Notifications.getPermissionsAsync();
+        let finalStatus = existingStatus;
+
+        if (existingStatus !== 'granted') {
+          const { status } = await Notifications.requestPermissionsAsync({
+            ios: {
+              allowAlert: true,
+              allowBadge: true,
+              allowSound: true,
+              allowAnnouncements: true,
+            },
+          });
+          finalStatus = status;
+        }
+
+        if (finalStatus !== 'granted') {
+          console.log('[AppContext] Notification permission denied');
+          setIsNotificationReady(true);
+          return;
+        }
+      }
+
+      // Setup Android channels
+      if (Platform.OS === 'android') {
+        const channelConfigs = [
+          { id: 'default', name: 'Default', importance: Notifications.AndroidImportance.MAX, vibrationPattern: [0, 250, 250, 250], lightColor: '#7c6cf1' },
+          { id: 'achievements', name: 'Achievements', importance: Notifications.AndroidImportance.HIGH, vibrationPattern: [0, 500, 200, 500], lightColor: '#f59e0b' },
+          { id: 'streaks', name: 'Streak Protection', importance: Notifications.AndroidImportance.HIGH, vibrationPattern: [0, 300, 100, 300, 100, 300], lightColor: '#ef4444' },
+          { id: 'chat', name: 'Chat Messages', importance: Notifications.AndroidImportance.HIGH, vibrationPattern: [0, 100, 50, 100], lightColor: '#22c55e' },
+          { id: 'safety', name: 'Safety Alerts', importance: Notifications.AndroidImportance.MAX, vibrationPattern: [0, 300, 100, 300], lightColor: '#ef4444' },
+          { id: 'reminders', name: 'Reminders', importance: Notifications.AndroidImportance.HIGH, vibrationPattern: [0, 250, 250, 250], lightColor: '#667eea' },
+          { id: 'activities', name: 'Activities', importance: Notifications.AndroidImportance.DEFAULT, vibrationPattern: [0, 200, 100, 200], lightColor: '#3b82f6' },
+          { id: 'community', name: 'Community', importance: Notifications.AndroidImportance.DEFAULT, vibrationPattern: [0, 150, 150, 150], lightColor: '#8b5cf6' },
+        ];
+
+        for (const config of channelConfigs) {
+          try {
+            await Notifications.setNotificationChannelAsync(config.id, {
+              name: config.name,
+              importance: config.importance,
+              vibrationPattern: config.vibrationPattern,
+              lightColor: config.lightColor,
+              enableVibrate: true,
+              enableLights: true,
+            });
+          } catch (error) {
+            console.warn(`[AppContext] Failed to create channel ${config.id}:`, error);
+          }
+        }
+      }
+
+      // Setup notification handler
+      Notifications.setNotificationHandler({
+        handleNotification: async (notification) => {
+          const data = notification.request.content.data;
+          const channelId = data?.channelId as string || 'default';
+
+          return {
+            shouldShowAlert: settings.inAppEnabled,
+            shouldPlaySound: settings.soundEnabled,
+            shouldSetBadge: settings.badgeEnabled,
+            priority: Notifications.AndroidNotificationPriority.HIGH,
+            ...(Platform.OS === 'android' && { channelId }),
+          };
+        },
+      });
+
+      // Setup listeners
+      notificationListener.current = Notifications.addNotificationReceivedListener(
+        handleNotificationReceived
+      );
+
+      responseListener.current = Notifications.addNotificationResponseReceivedListener(
+        handleNotificationResponse
+      );
+
+      // Setup background sync
+      if (settings.allowBackgroundSync) {
+        try {
+          const status = await BackgroundFetch.getStatusAsync();
+          if (status !== BackgroundFetch.BackgroundFetchStatus.Denied) {
+            const isRegistered = await TaskManager.isTaskRegisteredAsync(BACKGROUND_SYNC_TASK);
+            if (!isRegistered) {
+              await BackgroundFetch.registerTaskAsync(BACKGROUND_SYNC_TASK, {
+                minimumInterval: settings.syncInterval || 5,
+                stopOnTerminate: false,
+                startOnBoot: true,
+              });
+              console.log('[AppContext] Background sync registered');
+            }
+          }
+        } catch (error) {
+          console.warn('[AppContext] Background sync setup error:', error);
+        }
+      }
+
+      // App state listener
+      appStateListener.current = AppState.addEventListener('change', handleAppStateChange);
+
+      isInitialized.current = true;
+      setIsNotificationReady(true);
+
+      console.log('[AppContext] Notifications initialized successfully');
+    } catch (error) {
+      console.error('[AppContext] Notification initialization error:', error);
+      setIsNotificationReady(true);
+    }
+  }, []);
+
+  // ─── Notification Handlers ──────────────────────────────────────
+
+  const handleNotificationReceived = (notification: Notifications.Notification) => {
+    console.log('[AppContext] Notification received:', notification.request.identifier);
+    storeNotification(notification);
+  };
+
+  const handleNotificationResponse = (response: Notifications.NotificationResponse) => {
+    console.log('[AppContext] Notification response:', response.notification.request.identifier);
+
+    const data = response.notification.request.content.data;
+    if (!data) return;
+
+    // Handle navigation
+    if (_navigationRef) {
+      handleNavigation(data, _navigationRef);
+    }
+  };
+
+  const handleAppStateChange = (nextAppState: AppStateStatus) => {
+    if (nextAppState === 'background') {
+      // Release keep awake
+      if (keepAwakeRef) {
+        keepAwakeRef.release().catch(() => {});
+        setKeepAwakeRef(null);
+      }
+      // Perform background sync
+      if (notificationSettings.allowBackgroundSync) {
+        performBackgroundNotificationSync().catch(() => {});
+      }
+    }
+  };
+
+  const handleNavigation = (data: Record<string, unknown>, navigation: any) => {
+    const type = data.type as string;
+    const screen = data.screen as string;
+    const params = data.params as Record<string, unknown> || {};
+
+    switch (type) {
+      case 'streak_reminder':
+      case 'streak_urgent':
+        navigation.navigate('Timeline', { type: 'potty', ...params });
+        break;
+      case 'achievement_reminder':
+      case 'achievement_unlocked':
+        navigation.navigate('Achievements', params);
+        break;
+      case 'chat_message':
+        navigation.navigate('FamilyChat', params);
+        break;
+      case 'safety_alert':
+        navigation.navigate('Safety', params);
+        break;
+      case 'reminder':
+        navigation.navigate('Reminders', params);
+        break;
+      case 'daily_summary':
+        navigation.navigate('Timeline', params);
+        break;
+      case 'community_notification':
+        navigation.navigate('Community', params);
+        break;
+      default:
+        if (screen) {
+          navigation.navigate(screen, params);
+        }
+        break;
+    }
+  };
+
+  // ─── Notification Storage ───────────────────────────────────────
+
+  const storeNotification = async (notification: Notifications.Notification) => {
+    try {
+      const stored = await AsyncStorage.getItem(NOTIFICATION_HISTORY_KEY);
+      const history = stored ? JSON.parse(stored) : [];
+
+      history.push({
+        id: notification.request.identifier,
+        content: notification.request.content,
+        timestamp: Date.now(),
+        read: false,
+      });
+
+      // Keep last 100
+      while (history.length > 100) {
+        history.shift();
+      }
+
+      await AsyncStorage.setItem(NOTIFICATION_HISTORY_KEY, JSON.stringify(history));
+    } catch (error) {
+      console.warn('[AppContext] Failed to store notification:', error);
+    }
+  };
+
+  // ─── Initialize ──────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!_themeLoaded) return;
+    initializeNotifications();
+
+    return () => {
+      if (notificationListener.current) {
+        notificationListener.current.remove();
+        notificationListener.current = null;
+      }
+      if (responseListener.current) {
+        responseListener.current.remove();
+        responseListener.current = null;
+      }
+      if (appStateListener.current) {
+        appStateListener.current.remove();
+        appStateListener.current = null;
+      }
+      if (keepAwakeRef) {
+        keepAwakeRef.release().catch(() => {});
+        setKeepAwakeRef(null);
+      }
+    };
+  }, [initializeNotifications, _themeLoaded]);
+
+  // ─── Theme Functions ─────────────────────────────────────────────
+
   const setThemeMode = useCallback(async (mode: ThemeMode) => {
     setThemeModeState(mode);
     _cachedThemeMode = mode;
@@ -175,12 +681,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const setAppearance = useCallback(async (newAppearance: AppearanceMode) => {
     setAppearanceState(newAppearance);
     _cachedAppearance = newAppearance;
-    
+
     const nextTheme: ThemeMode = (newAppearance === 'light' || newAppearance === 'pureWhite') ? 'light'
       : (newAppearance === 'dark' || newAppearance === 'trueBlack') ? 'dark' : 'system';
     setThemeModeState(nextTheme);
     _cachedThemeMode = nextTheme;
-    
+
     customization?.updateSettings?.({ appearance: newAppearance });
     const { setAppSetting } = await import('../database/dbHelpers');
     await setAppSetting(APPEARANCE_STORAGE_KEY, newAppearance).catch(() => {});
@@ -219,6 +725,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     ]).catch(() => {});
   }, [customization]);
 
+  // ─── Computed Theme Values ──────────────────────────────────────
+
   const isDark = useMemo(() => {
     if (appearance === 'system') return systemColorScheme === 'dark';
     if (appearance === 'trueBlack') return true;
@@ -235,23 +743,298 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return isDark ? DARK_COLORS : LIGHT_COLORS;
   }, [isDark, isTrueBlack, isPureWhite]);
 
+  // ─── Notification Functions ─────────────────────────────────────
+
+  const isInQuietHours = useCallback((): boolean => {
+    if (!notificationSettings.quietHoursStart || !notificationSettings.quietHoursEnd) {
+      return false;
+    }
+
+    const now = new Date();
+    const hours = now.getHours();
+    const minutes = now.getMinutes();
+    const currentTime = hours * 60 + minutes;
+
+    const [startH, startM] = notificationSettings.quietHoursStart.split(':').map(Number);
+    const [endH, endM] = notificationSettings.quietHoursEnd.split(':').map(Number);
+    const startTime = startH * 60 + startM;
+    const endTime = endH * 60 + endM;
+
+    if (startTime <= endTime) {
+      return currentTime >= startTime && currentTime < endTime;
+    } else {
+      return currentTime >= startTime || currentTime < endTime;
+    }
+  }, [notificationSettings]);
+
+  const scheduleNotification = useCallback(async (
+    payload: NotificationPayload,
+    trigger?: Notifications.NotificationTriggerInput
+  ): Promise<string | null> => {
+    if (!isNotificationReady) {
+      console.warn('[AppContext] Notifications not ready');
+      return null;
+    }
+
+    if (!notificationSettings.enabled || !notificationSettings.pushEnabled) {
+      return null;
+    }
+
+    // Check quiet hours
+    if (isInQuietHours()) {
+      // Store for later
+      const notification: ScheduledNotification = {
+        id: `pending_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+        payload,
+        trigger: trigger || null,
+        status: 'pending',
+        scheduledAt: Date.now(),
+      };
+
+      const pending = await loadPendingNotifications();
+      pending.push(notification);
+      await savePendingNotifications(pending);
+      return notification.id;
+    }
+
+    try {
+      const id = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: payload.title,
+          body: payload.body,
+          data: payload.data || {},
+          sound: payload.sound !== false && notificationSettings.soundEnabled,
+          badge: payload.badge || 1,
+          ...(Platform.OS === 'android' && {
+            channelId: payload.channelId || 'default',
+            priority: payload.priority === 'high'
+              ? Notifications.AndroidPriority.HIGH
+              : payload.priority === 'low'
+                ? Notifications.AndroidPriority.LOW
+                : Notifications.AndroidPriority.DEFAULT,
+          }),
+        },
+        trigger: trigger || null,
+      });
+
+      return id;
+    } catch (error) {
+      console.error('[AppContext] Schedule error:', error);
+      return null;
+    }
+  }, [isNotificationReady, notificationSettings, isInQuietHours]);
+
+  const sendImmediateNotification = useCallback(
+    (payload: NotificationPayload): Promise<string | null> => {
+      return scheduleNotification(payload, null);
+    },
+    [scheduleNotification]
+  );
+
+  const cancelNotification = useCallback(async (id: string) => {
+    try {
+      await Notifications.cancelScheduledNotificationAsync(id);
+    } catch (error) {
+      console.warn('[AppContext] Cancel error:', error);
+    }
+  }, []);
+
+  const cancelAllNotifications = useCallback(async () => {
+    try {
+      await Notifications.cancelAllScheduledNotificationsAsync();
+      await AsyncStorage.removeItem(PENDING_NOTIFICATIONS_KEY);
+    } catch (error) {
+      console.warn('[AppContext] Cancel all error:', error);
+    }
+  }, []);
+
+  const getScheduledNotifications = useCallback(async () => {
+    return await Notifications.getAllScheduledNotificationsAsync();
+  }, []);
+
+  const getNotificationHistory = useCallback(async () => {
+    try {
+      const stored = await AsyncStorage.getItem(NOTIFICATION_HISTORY_KEY);
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  }, []);
+
+  const markNotificationRead = useCallback(async (id: string) => {
+    try {
+      const stored = await AsyncStorage.getItem(NOTIFICATION_HISTORY_KEY);
+      if (stored) {
+        const history = JSON.parse(stored);
+        const updated = history.map((n: any) =>
+          n.id === id ? { ...n, read: true } : n
+        );
+        await AsyncStorage.setItem(NOTIFICATION_HISTORY_KEY, JSON.stringify(updated));
+      }
+    } catch (error) {
+      console.warn('[AppContext] Mark read error:', error);
+    }
+  }, []);
+
+  const getBadgeCount = useCallback((): number => {
+    // This should be calculated from your app's state
+    return 0;
+  }, []);
+
+  const updateNotificationSettings = useCallback(async (updates: Partial<NotificationSettings>) => {
+    const newSettings = { ...notificationSettings, ...updates };
+    setNotificationSettings(newSettings);
+    await saveNotificationSettings(newSettings);
+
+    // Update background sync if changed
+    if (updates.allowBackgroundSync !== undefined) {
+      if (updates.allowBackgroundSync) {
+        try {
+          const status = await BackgroundFetch.getStatusAsync();
+          if (status !== BackgroundFetch.BackgroundFetchStatus.Denied) {
+            const isRegistered = await TaskManager.isTaskRegisteredAsync(BACKGROUND_SYNC_TASK);
+            if (!isRegistered) {
+              await BackgroundFetch.registerTaskAsync(BACKGROUND_SYNC_TASK, {
+                minimumInterval: newSettings.syncInterval || 5,
+                stopOnTerminate: false,
+                startOnBoot: true,
+              });
+            }
+          }
+        } catch (error) {
+          console.warn('[AppContext] Background sync update error:', error);
+        }
+      } else {
+        try {
+          await BackgroundFetch.unregisterTaskAsync(BACKGROUND_SYNC_TASK);
+        } catch {
+          // Ignore
+        }
+      }
+    }
+
+    // Update notification handler
+    Notifications.setNotificationHandler({
+      handleNotification: async (notification) => {
+        const data = notification.request.content.data;
+        const channelId = data?.channelId as string || 'default';
+
+        return {
+          shouldShowAlert: newSettings.inAppEnabled,
+          shouldPlaySound: newSettings.soundEnabled,
+          shouldSetBadge: newSettings.badgeEnabled,
+          priority: Notifications.AndroidNotificationPriority.HIGH,
+          ...(Platform.OS === 'android' && { channelId }),
+        };
+      },
+    });
+  }, [notificationSettings]);
+
+  const enableKeepAwake = useCallback(async (reason: string = 'Critical') => {
+    try {
+      if (!keepAwakeRef) {
+        const ref = await KeepAwake.activateKeepAwakeAsync(`LittleLoom_${reason}`);
+        setKeepAwakeRef(ref);
+      }
+    } catch (error) {
+      console.warn('[AppContext] Enable keep awake error:', error);
+    }
+  }, [keepAwakeRef]);
+
+  const releaseKeepAwake = useCallback(async () => {
+    try {
+      if (keepAwakeRef) {
+        await keepAwakeRef.release();
+        setKeepAwakeRef(null);
+      }
+    } catch (error) {
+      console.warn('[AppContext] Release keep awake error:', error);
+    }
+  }, [keepAwakeRef]);
+
+  const setNavigationRef = useCallback((ref: any) => {
+    _navigationRef = ref;
+  }, []);
+
   const setCommunityScreen = useCallback((isComm: boolean) => {
     setIsCommunityScreen(isComm);
   }, []);
 
-  // ─── Stable value object ───────────────────────────────────────────
+  // ─── Context Value ──────────────────────────────────────────────
+
   const value = useMemo(() => ({
-    themeMode, appearance, isDark, isTrueBlack, isPureWhite, colors,
-    setThemeMode, setAppearance, toggleTheme, setDarkMode, themeReady,
-    isCommunityScreen, setCommunityScreen,
-  }), [
-    themeMode, appearance, isDark, isTrueBlack, isPureWhite, colors, themeReady,
+    // Theme
+    themeMode,
+    appearance,
+    isDark,
+    isTrueBlack,
+    isPureWhite,
+    colors,
+    setThemeMode,
+    setAppearance,
+    toggleTheme,
+    setDarkMode,
+    themeReady,
     isCommunityScreen,
-    setThemeMode, setAppearance, toggleTheme, setDarkMode, setCommunityScreen,
+    setCommunityScreen,
+
+    // Notifications
+    notificationSettings,
+    isNotificationReady,
+    updateNotificationSettings,
+    scheduleNotification,
+    sendImmediateNotification,
+    cancelNotification,
+    cancelAllNotifications,
+    getScheduledNotifications,
+    getNotificationHistory,
+    markNotificationRead,
+    getBadgeCount,
+    isInQuietHours,
+    enableKeepAwake,
+    releaseKeepAwake,
+
+    // Navigation
+    setNavigationRef,
+  }), [
+    themeMode,
+    appearance,
+    isDark,
+    isTrueBlack,
+    isPureWhite,
+    colors,
+    themeReady,
+    isCommunityScreen,
+    notificationSettings,
+    isNotificationReady,
+    setThemeMode,
+    setAppearance,
+    toggleTheme,
+    setDarkMode,
+    setCommunityScreen,
+    updateNotificationSettings,
+    scheduleNotification,
+    sendImmediateNotification,
+    cancelNotification,
+    cancelAllNotifications,
+    getScheduledNotifications,
+    getNotificationHistory,
+    markNotificationRead,
+    getBadgeCount,
+    isInQuietHours,
+    enableKeepAwake,
+    releaseKeepAwake,
+    setNavigationRef,
   ]);
 
-  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
+  return (
+    <AppContext.Provider value={value}>
+      {children}
+    </AppContext.Provider>
+  );
 };
+
+// ─── HOOKS ─────────────────────────────────────────────────────────
 
 export const useApp = () => {
   const ctx = useContext(AppContext);
@@ -262,6 +1045,42 @@ export const useApp = () => {
 export const useTheme = () => {
   const { themeMode, appearance, isDark, isTrueBlack, isPureWhite, colors, setThemeMode, setAppearance, toggleTheme, setDarkMode, themeReady } = useApp();
   return { themeMode, appearance, isDark, isTrueBlack, isPureWhite, colors, setThemeMode, setAppearance, toggleTheme, setDarkMode, themeReady };
+};
+
+export const useNotifications = () => {
+  const {
+    notificationSettings,
+    isNotificationReady,
+    updateNotificationSettings,
+    scheduleNotification,
+    sendImmediateNotification,
+    cancelNotification,
+    cancelAllNotifications,
+    getScheduledNotifications,
+    getNotificationHistory,
+    markNotificationRead,
+    getBadgeCount,
+    isInQuietHours,
+    enableKeepAwake,
+    releaseKeepAwake,
+  } = useApp();
+
+  return {
+    settings: notificationSettings,
+    isReady: isNotificationReady,
+    updateSettings: updateNotificationSettings,
+    schedule: scheduleNotification,
+    sendImmediate: sendImmediateNotification,
+    cancel: cancelNotification,
+    cancelAll: cancelAllNotifications,
+    getScheduled: getScheduledNotifications,
+    getHistory: getNotificationHistory,
+    markRead: markNotificationRead,
+    getBadgeCount,
+    isInQuietHours,
+    enableKeepAwake,
+    releaseKeepAwake,
+  };
 };
 
 export default AppContext;

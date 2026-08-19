@@ -1,151 +1,434 @@
-// src/services/EnhancedNotificationService.ts
+// src/services/NotificationService.ts
 
 import * as Notifications from 'expo-notifications';
-import * as BackgroundFetch from 'expo-background-fetch';
-import * as TaskManager from 'expo-task-manager';
-import * as KeepAwake from 'expo-keep-awake';
-import { Platform, AppState, AppStateStatus } from 'react-native';
+import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Device from 'expo-device';
 
-// ─── TASK DEFINITION ──────────────────────────────────────────────
+// ─── CHANNEL TYPES ──────────────────────────────────────────────────
 
-const BACKGROUND_SYNC_TASK = 'BACKGROUND_NOTIFICATION_SYNC';
+export const NOTIFICATION_CHANNELS = {
+  DEFAULT: 'default',
+  REMINDERS: 'reminders',
+  ACHIEVEMENTS: 'achievements',
+  CHAT: 'chat',
+  SAFETY: 'safety',
+  SYSTEM: 'system',
+  ACTIVITIES: 'activities',
+  FEEDING: 'feeding',
+  SLEEP: 'sleep',
+  POTTY: 'potty',
+  GROWTH: 'growth',
+  COMMUNITY: 'community',
+  STREAKS: 'streaks', // Added missing STREAKS channel
+} as const;
 
-TaskManager.defineTask(BACKGROUND_SYNC_TASK, async () => {
-  try {
-    const data = await NotificationSyncService.getInstance().performBackgroundSync();
-    return data?.hasUpdates 
-      ? BackgroundFetch.BackgroundFetchResult.NewData 
-      : BackgroundFetch.BackgroundFetchResult.NoData;
-  } catch (error) {
-    console.error('[BackgroundSync] Error:', error);
-    return BackgroundFetch.BackgroundFetchResult.Failed;
-  }
-});
+export type NotificationChannels = typeof NOTIFICATION_CHANNELS[keyof typeof NOTIFICATION_CHANNELS];
 
-// ─── TYPES ──────────────────────────────────────────────────────────
-
-export interface NotificationSettings {
-  enabled: boolean;
-  pushEnabled: boolean;
-  inAppEnabled: boolean;
-  soundEnabled: boolean;
-  vibrationEnabled: boolean;
-  badgeEnabled: boolean;
-  quietHoursStart?: string;
-  quietHoursEnd?: string;
-  allowBackgroundSync: boolean;
-  syncInterval: number; // minutes
-}
+// ─── INTERFACES ────────────────────────────────────────────────────
 
 export interface NotificationPayload {
   title: string;
   body: string;
   data?: Record<string, unknown>;
-  channelId?: string;
+  channelId?: NotificationChannels;
   sound?: 'default' | boolean;
   priority?: 'high' | 'normal' | 'low';
   badge?: number;
-  category?: string;
-  threadId?: string;
-  summaryArgument?: string;
 }
 
-export interface ScheduledNotification {
-  id: string;
-  payload: NotificationPayload;
-  trigger: Notifications.NotificationTriggerInput;
-  status: 'pending' | 'sent' | 'cancelled' | 'failed';
-  scheduledAt: number;
-  sentAt?: number;
-  error?: string;
-}
+// ─── NOTIFICATION SERVICE ──────────────────────────────────────────
 
-// ─── SYNC SERVICE ──────────────────────────────────────────────────
+class NotificationService {
+  private static instance: NotificationService;
+  private isInitialized = false;
 
-export class NotificationSyncService {
-  private static instance: NotificationSyncService;
-  private lastSyncTime: number = 0;
-  private syncInterval: number = 5 * 60 * 1000; // 5 minutes default
-  private isSyncing: boolean = false;
-
-  static getInstance(): NotificationSyncService {
-    if (!NotificationSyncService.instance) {
-      NotificationSyncService.instance = new NotificationSyncService();
+  static getInstance(): NotificationService {
+    if (!NotificationService.instance) {
+      NotificationService.instance = new NotificationService();
     }
-    return NotificationSyncService.instance;
+    return NotificationService.instance;
   }
 
-  async performBackgroundSync(): Promise<{ hasUpdates: boolean }> {
-    if (this.isSyncing) return { hasUpdates: false };
-    this.isSyncing = true;
+  /**
+   * Initialize the notification service
+   * Sets up notification channels for Android
+   */
+  async initialize(): Promise<void> {
+    if (this.isInitialized) {
+      return;
+    }
 
     try {
-      const settings = await this.getSettings();
-      if (!settings.allowBackgroundSync) {
-        return { hasUpdates: false };
+      // Request permissions
+      const { status } = await Notifications.requestPermissionsAsync({
+        ios: {
+          allowAlert: true,
+          allowBadge: true,
+          allowSound: true,
+          allowAnnouncements: true,
+        },
+      });
+
+      if (status !== 'granted') {
+        console.warn('[NotificationService] Permission not granted');
       }
 
-      const now = Date.now();
-      if (now - this.lastSyncTime < this.syncInterval) {
-        return { hasUpdates: false };
+      // Set up Android channels
+      if (Platform.OS === 'android') {
+        await this.setupAndroidChannels();
       }
 
-      // Sync pending notifications
-      const pending = await this.getPendingNotifications();
-      let hasUpdates = false;
+      // Set notification handler
+      Notifications.setNotificationHandler({
+        handleNotification: async () => ({
+          shouldShowAlert: true,
+          shouldPlaySound: true,
+          shouldSetBadge: true,
+        }),
+      });
 
-      for (const notification of pending) {
-        if (notification.status === 'pending') {
-          try {
-            const id = await this.sendImmediateNotification(notification.payload);
-            notification.status = 'sent';
-            notification.sentAt = Date.now();
-            hasUpdates = true;
-          } catch (error) {
-            notification.status = 'failed';
-            notification.error = String(error);
-          }
-        }
-      }
-
-      if (hasUpdates) {
-        await this.savePendingNotifications(pending);
-      }
-
-      this.lastSyncTime = now;
-      return { hasUpdates };
-    } finally {
-      this.isSyncing = false;
+      this.isInitialized = true;
+      console.log('[NotificationService] Initialized successfully');
+    } catch (error) {
+      console.warn('[NotificationService] Initialization error:', error);
+      // Don't throw - allow app to continue
     }
   }
 
-  private async getSettings(): Promise<NotificationSettings> {
-    const defaultSettings: NotificationSettings = {
+  /**
+   * Setup Android notification channels
+   */
+  private async setupAndroidChannels(): Promise<void> {
+    try {
+      const channels: {
+        id: string;
+        name: string;
+        importance: Notifications.AndroidImportance;
+        sound?: string;
+      }[] = [
+        {
+          id: NOTIFICATION_CHANNELS.DEFAULT,
+          name: 'General Notifications',
+          importance: Notifications.AndroidImportance.DEFAULT,
+        },
+        {
+          id: NOTIFICATION_CHANNELS.REMINDERS,
+          name: 'Reminders',
+          importance: Notifications.AndroidImportance.HIGH,
+        },
+        {
+          id: NOTIFICATION_CHANNELS.ACHIEVEMENTS,
+          name: 'Achievements',
+          importance: Notifications.AndroidImportance.HIGH,
+        },
+        {
+          id: NOTIFICATION_CHANNELS.CHAT,
+          name: 'Family Chat',
+          importance: Notifications.AndroidImportance.HIGH,
+        },
+        {
+          id: NOTIFICATION_CHANNELS.SAFETY,
+          name: 'Safety Alerts',
+          importance: Notifications.AndroidImportance.HIGH,
+        },
+        {
+          id: NOTIFICATION_CHANNELS.SYSTEM,
+          name: 'System Notifications',
+          importance: Notifications.AndroidImportance.LOW,
+        },
+        {
+          id: NOTIFICATION_CHANNELS.ACTIVITIES,
+          name: 'Activities',
+          importance: Notifications.AndroidImportance.DEFAULT,
+        },
+        {
+          id: NOTIFICATION_CHANNELS.FEEDING,
+          name: 'Feeding',
+          importance: Notifications.AndroidImportance.DEFAULT,
+        },
+        {
+          id: NOTIFICATION_CHANNELS.SLEEP,
+          name: 'Sleep',
+          importance: Notifications.AndroidImportance.DEFAULT,
+        },
+        {
+          id: NOTIFICATION_CHANNELS.POTTY,
+          name: 'Potty',
+          importance: Notifications.AndroidImportance.DEFAULT,
+        },
+        {
+          id: NOTIFICATION_CHANNELS.GROWTH,
+          name: 'Growth',
+          importance: Notifications.AndroidImportance.DEFAULT,
+        },
+        {
+          id: NOTIFICATION_CHANNELS.COMMUNITY,
+          name: 'Community',
+          importance: Notifications.AndroidImportance.DEFAULT,
+        },
+        {
+          id: NOTIFICATION_CHANNELS.STREAKS,
+          name: 'Streaks',
+          importance: Notifications.AndroidImportance.HIGH,
+        },
+      ];
+
+      for (const channel of channels) {
+        await Notifications.setNotificationChannelAsync(channel.id, {
+          name: channel.name,
+          importance: channel.importance,
+          sound: channel.sound || 'default',
+          vibrationPattern: [0, 250, 250, 250],
+          lightColor: '#667eea',
+        });
+      }
+
+      console.log('[NotificationService] Android channels setup complete');
+    } catch (error) {
+      console.warn('[NotificationService] Failed to setup Android channels:', error);
+    }
+  }
+
+  /**
+   * Schedule a notification
+   */
+  async scheduleLocalNotification(options: NotificationPayload): Promise<string | null> {
+    try {
+      const settings = await this.getSettings();
+
+      if (!settings.enabled || !settings.pushEnabled) {
+        return null;
+      }
+
+      const trigger = options.data?.delay
+        ? { seconds: options.data.delay as number }
+        : null;
+
+      const id = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: options.title,
+          body: options.body,
+          data: options.data || {},
+          sound: options.sound !== false && settings.soundEnabled,
+          badge: options.badge || 1,
+          ...(Platform.OS === 'android' && {
+            channelId: options.channelId || 'default',
+            priority: options.priority === 'high'
+              ? Notifications.AndroidPriority.HIGH
+              : options.priority === 'low'
+                ? Notifications.AndroidPriority.LOW
+                : Notifications.AndroidPriority.DEFAULT,
+          }),
+        },
+        trigger: trigger,
+      });
+
+      return id;
+    } catch (error) {
+      console.warn('[NotificationService] Failed to schedule notification:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Cancel a notification
+   */
+  async cancelNotification(identifier: string): Promise<void> {
+    try {
+      await Notifications.cancelScheduledNotificationAsync(identifier);
+    } catch (error) {
+      console.warn('[NotificationService] Failed to cancel notification:', error);
+    }
+  }
+
+  /**
+   * Cancel all notifications
+   */
+  async cancelAllNotifications(): Promise<void> {
+    try {
+      await Notifications.cancelAllScheduledNotificationsAsync();
+    } catch (error) {
+      console.warn('[NotificationService] Failed to cancel all notifications:', error);
+    }
+  }
+
+  /**
+   * Get scheduled notifications
+   */
+  async getScheduledNotifications(): Promise<Notifications.NotificationRequest[]> {
+    try {
+      return await Notifications.getAllScheduledNotificationsAsync();
+    } catch (error) {
+      console.warn('[NotificationService] Failed to get scheduled notifications:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Schedule an activity reminder
+   */
+  async scheduleActivityReminder(
+    type: string,
+    babyName: string,
+    minutes: number,
+    details?: string
+  ): Promise<string | null> {
+    const titles: Record<string, string> = {
+      feed: `🍼 Time to feed ${babyName}!`,
+      sleep: `😴 ${babyName} might be sleepy`,
+      potty: `🚽 Potty check for ${babyName}`,
+      milestone: `🎉 Milestone reminder for ${babyName}`,
+      growth: `📏 Growth tracking for ${babyName}`,
+      medication: `💊 Medication reminder for ${babyName}`,
+      diaper: `🧷 Diaper check for ${babyName}`,
+      bath: `🛁 Bath time for ${babyName}`,
+      default: `⏰ Reminder for ${babyName}`,
+    };
+
+    const channelMap: Record<string, NotificationChannels> = {
+      feed: NOTIFICATION_CHANNELS.FEEDING,
+      sleep: NOTIFICATION_CHANNELS.SLEEP,
+      potty: NOTIFICATION_CHANNELS.POTTY,
+      growth: NOTIFICATION_CHANNELS.GROWTH,
+      medication: NOTIFICATION_CHANNELS.REMINDERS,
+      default: NOTIFICATION_CHANNELS.ACTIVITIES,
+    };
+
+    return this.scheduleLocalNotification({
+      title: titles[type] || titles.default,
+      body: details || `Tap to open LittleLoom and track this activity.`,
+      channelId: channelMap[type] || channelMap.default,
+      data: {
+        type: 'activity_reminder',
+        screen: 'Timeline',
+        activityType: type,
+        delay: minutes * 60,
+      },
+    });
+  }
+
+  /**
+   * Send achievement notification
+   */
+  async sendAchievementNotification(achievement: string, description: string): Promise<string | null> {
+    return this.scheduleLocalNotification({
+      title: `🏆 Achievement Unlocked!`,
+      body: `${achievement}: ${description}`,
+      channelId: NOTIFICATION_CHANNELS.ACHIEVEMENTS,
+      data: { type: 'achievement_unlocked', screen: 'Achievements' },
+    });
+  }
+
+  /**
+   * Send chat notification
+   */
+  async sendChatNotification(senderName: string, message: string, chatId?: string): Promise<string | null> {
+    return this.scheduleLocalNotification({
+      title: `💬 ${senderName}`,
+      body: message.length > 60 ? message.substring(0, 60) + '...' : message,
+      channelId: NOTIFICATION_CHANNELS.CHAT,
+      data: { type: 'chat_message', screen: 'FamilyChat', chatId },
+    });
+  }
+
+  /**
+   * Send safety alert
+   */
+  async sendSafetyAlert(title: string, body: string): Promise<string | null> {
+    return this.scheduleLocalNotification({
+      title: `🛡️ ${title}`,
+      body,
+      channelId: NOTIFICATION_CHANNELS.SAFETY,
+      priority: 'high',
+      data: { type: 'safety_alert', screen: 'Safety' },
+    });
+  }
+
+  /**
+   * Send activity complete notification
+   */
+  async sendActivityCompleteNotification(activityType: string, babyName: string): Promise<string | null> {
+    const messages: Record<string, string> = {
+      potty: `🎉 ${babyName} had a successful potty visit!`,
+      feed: `🍼 ${babyName} was fed successfully.`,
+      sleep: `😴 ${babyName} is now sleeping.`,
+      milestone: `🏆 New milestone reached for ${babyName}!`,
+      growth: `📏 Growth measurement recorded for ${babyName}.`,
+      default: `✅ Activity completed for ${babyName}.`,
+    };
+
+    return this.scheduleLocalNotification({
+      title: `✅ Activity Logged`,
+      body: messages[activityType] || messages.default,
+      channelId: NOTIFICATION_CHANNELS.ACTIVITIES,
+      data: { type: 'activity_complete', screen: 'Timeline' },
+    });
+  }
+
+  /**
+   * Send streak reminder
+   */
+  async sendStreakReminder(streakDays: number, hoursLeft: number): Promise<string | null> {
+    return this.scheduleLocalNotification({
+      title: `🔥 Streak at Risk!`,
+      body: `Your ${streakDays}-day streak ends in ${hoursLeft} hours! Log an activity now.`,
+      channelId: NOTIFICATION_CHANNELS.STREAKS,
+      priority: 'high',
+      data: { type: 'streak_reminder', screen: 'Timeline' },
+    });
+  }
+
+  /**
+   * Send urgent streak reminder
+   */
+  async sendUrgentStreakReminder(streakDays: number, hoursLeft: number): Promise<string | null> {
+    return this.scheduleLocalNotification({
+      title: `⏰ URGENT: Streak Ending!`,
+      body: `Only ${hoursLeft} hours left for your ${streakDays}-day streak! Tap to log now!`,
+      channelId: NOTIFICATION_CHANNELS.STREAKS,
+      priority: 'high',
+      data: { type: 'streak_urgent', screen: 'Timeline' },
+    });
+  }
+
+  /**
+   * Send daily summary
+   */
+  async sendDailySummary(babyName: string, summary: string): Promise<string | null> {
+    return this.scheduleLocalNotification({
+      title: `📊 Daily Summary for ${babyName}`,
+      body: summary,
+      channelId: NOTIFICATION_CHANNELS.DEFAULT,
+      data: { type: 'daily_summary', screen: 'Timeline' },
+    });
+  }
+
+  /**
+   * Get notification settings
+   */
+  private async getSettings(): Promise<any> {
+    try {
+      const stored = await AsyncStorage.getItem('@littleloom_notification_settings_v2');
+      if (stored) {
+        return JSON.parse(stored);
+      }
+    } catch (error) {
+      console.warn('[NotificationService] Failed to load notification settings:', error);
+    }
+    return {
       enabled: true,
       pushEnabled: true,
       inAppEnabled: true,
       soundEnabled: true,
       vibrationEnabled: true,
       badgeEnabled: true,
-      allowBackgroundSync: true,
-      syncInterval: 5,
     };
-
-    try {
-      const stored = await AsyncStorage.getItem('@littleloom_notification_settings_v2');
-      if (stored) {
-        return { ...defaultSettings, ...JSON.parse(stored) };
-      }
-    } catch (error) {
-      console.warn('Failed to load notification settings:', error);
-    }
-
-    return defaultSettings;
   }
 
-  private async getPendingNotifications(): Promise<ScheduledNotification[]> {
+  /**
+   * Get pending notifications
+   */
+  async getPendingNotifications(): Promise<any[]> {
     try {
       const stored = await AsyncStorage.getItem('@littleloom_pending_notifications');
       return stored ? JSON.parse(stored) : [];
@@ -154,625 +437,150 @@ export class NotificationSyncService {
     }
   }
 
-  private async savePendingNotifications(notifications: ScheduledNotification[]): Promise<void> {
-    await AsyncStorage.setItem('@littleloom_pending_notifications', JSON.stringify(notifications));
-  }
-
-  private async sendImmediateNotification(payload: NotificationPayload): Promise<string> {
-    return await Notifications.scheduleNotificationAsync({
-      content: {
-        title: payload.title,
-        body: payload.body,
-        data: payload.data || {},
-        sound: payload.sound !== false,
-        badge: payload.badge || 1,
-        categoryIdentifier: payload.category,
-        threadIdentifier: payload.threadId,
-        summaryArgument: payload.summaryArgument,
-        ...(Platform.OS === 'android' && {
-          channelId: payload.channelId || 'default',
-          priority: payload.priority === 'high' 
-            ? Notifications.AndroidPriority.HIGH 
-            : payload.priority === 'low'
-              ? Notifications.AndroidPriority.LOW
-              : Notifications.AndroidPriority.DEFAULT,
-        }),
-      },
-      trigger: null, // immediate
-    });
-  }
-}
-
-// ─── MAIN NOTIFICATION SERVICE ────────────────────────────────────
-
-export class EnhancedNotificationService {
-  private static instance: EnhancedNotificationService;
-  private isInitialized: boolean = false;
-  private appStateListener: any = null;
-  private keepAwakeRef: { release: () => Promise<void> } | null = null;
-  private settings: NotificationSettings | null = null;
-  private responseListener: any = null;
-  private notificationListener: any = null;
-
-  static getInstance(): EnhancedNotificationService {
-    if (!EnhancedNotificationService.instance) {
-      EnhancedNotificationService.instance = new EnhancedNotificationService();
-    }
-    return EnhancedNotificationService.instance;
-  }
-
-  // ─── INITIALIZATION ─────────────────────────────────────────────
-
-  async initialize(): Promise<boolean> {
-    if (this.isInitialized) return true;
-
+  /**
+   * Clear pending notifications
+   */
+  async clearPendingNotifications(): Promise<void> {
     try {
-      // Load settings
-      const syncService = NotificationSyncService.getInstance();
-      this.settings = await syncService['getSettings']();
-
-      if (!this.settings.enabled) {
-        console.log('[Notifications] Disabled by user settings');
-        return false;
-      }
-
-      // Request permissions
-      const hasPermission = await this.requestPermissions();
-      if (!hasPermission) {
-        console.log('[Notifications] Permission denied');
-        return false;
-      }
-
-      // Setup Android channels
-      if (Platform.OS === 'android') {
-        await this.setupAndroidChannels();
-      }
-
-      // Setup notification handler
-      Notifications.setNotificationHandler({
-        handleNotification: async (notification) => {
-          const data = notification.request.content.data;
-          const channelId = data?.channelId as string || 'default';
-          
-          return {
-            shouldShowAlert: this.settings?.inAppEnabled ?? true,
-            shouldPlaySound: this.settings?.soundEnabled ?? true,
-            shouldSetBadge: this.settings?.badgeEnabled ?? true,
-            priority: Notifications.AndroidNotificationPriority.HIGH,
-            ...(Platform.OS === 'android' && { channelId }),
-          };
-        },
-      });
-
-      // Setup listeners
-      this.setupListeners();
-
-      // Setup background sync
-      if (this.settings.allowBackgroundSync) {
-        await this.setupBackgroundSync();
-      }
-
-      // Setup keep awake for critical screens
-      await this.setupKeepAwake();
-
-      this.isInitialized = true;
-      return true;
-    } catch (error) {
-      console.error('[Notifications] Initialization error:', error);
-      return false;
-    }
-  }
-
-  // ─── PERMISSIONS ──────────────────────────────────────────────────
-
-  async requestPermissions(): Promise<boolean> {
-    if (!Device.isDevice) {
-      console.log('[Notifications] Must use physical device');
-      return false;
-    }
-
-    try {
-      const { status: existingStatus } = await Notifications.getPermissionsAsync();
-      let finalStatus = existingStatus;
-
-      if (existingStatus !== 'granted') {
-        const { status } = await Notifications.requestPermissionsAsync({
-          ios: {
-            allowAlert: true,
-            allowBadge: true,
-            allowSound: true,
-            allowAnnouncements: true,
-          },
-        });
-        finalStatus = status;
-      }
-
-      return finalStatus === 'granted';
-    } catch (error) {
-      console.error('[Notifications] Permission request error:', error);
-      return false;
-    }
-  }
-
-  // ─── ANDROID CHANNELS ────────────────────────────────────────────
-
-  private async setupAndroidChannels(): Promise<void> {
-    const channelConfigs: Array<{
-      id: string;
-      name: string;
-      importance: Notifications.AndroidImportance;
-      vibrationPattern?: number[];
-      lightColor?: string;
-      sound?: string;
-    }> = [
-      {
-        id: 'default',
-        name: 'Default',
-        importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#7c6cf1',
-      },
-      {
-        id: 'achievements',
-        name: 'Achievements',
-        importance: Notifications.AndroidImportance.HIGH,
-        vibrationPattern: [0, 500, 200, 500],
-        lightColor: '#f59e0b',
-      },
-      {
-        id: 'streaks',
-        name: 'Streak Protection',
-        importance: Notifications.AndroidImportance.HIGH,
-        vibrationPattern: [0, 300, 100, 300, 100, 300],
-        lightColor: '#ef4444',
-      },
-      {
-        id: 'chat',
-        name: 'Chat Messages',
-        importance: Notifications.AndroidImportance.HIGH,
-        vibrationPattern: [0, 100, 50, 100],
-        lightColor: '#22c55e',
-      },
-      {
-        id: 'safety',
-        name: 'Safety Alerts',
-        importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 300, 100, 300],
-        lightColor: '#ef4444',
-        sound: 'safety.wav',
-      },
-      {
-        id: 'reminders',
-        name: 'Reminders',
-        importance: Notifications.AndroidImportance.HIGH,
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#667eea',
-      },
-      {
-        id: 'activities',
-        name: 'Activities',
-        importance: Notifications.AndroidImportance.DEFAULT,
-        vibrationPattern: [0, 200, 100, 200],
-        lightColor: '#3b82f6',
-      },
-      {
-        id: 'community',
-        name: 'Community',
-        importance: Notifications.AndroidImportance.DEFAULT,
-        vibrationPattern: [0, 150, 150, 150],
-        lightColor: '#8b5cf6',
-      },
-    ];
-
-    for (const config of channelConfigs) {
-      try {
-        await Notifications.setNotificationChannelAsync(config.id, {
-          name: config.name,
-          importance: config.importance,
-          vibrationPattern: config.vibrationPattern,
-          lightColor: config.lightColor,
-          sound: config.sound,
-          enableVibrate: true,
-          enableLights: true,
-        });
-      } catch (error) {
-        console.warn(`[Notifications] Failed to create channel ${config.id}:`, error);
-      }
-    }
-  }
-
-  // ─── LISTENERS ────────────────────────────────────────────────────
-
-  private setupListeners(): void {
-    // Remove existing listeners
-    this.cleanupListeners();
-
-    // Notification received while app is foreground
-    this.notificationListener = Notifications.addNotificationReceivedListener(
-      this.handleNotificationReceived.bind(this)
-    );
-
-    // Notification response (tapped)
-    this.responseListener = Notifications.addNotificationResponseReceivedListener(
-      this.handleNotificationResponse.bind(this)
-    );
-
-    // App state changes
-    this.appStateListener = AppState.addEventListener('change', this.handleAppStateChange.bind(this));
-  }
-
-  private cleanupListeners(): void {
-    if (this.notificationListener) {
-      this.notificationListener.remove();
-      this.notificationListener = null;
-    }
-    if (this.responseListener) {
-      this.responseListener.remove();
-      this.responseListener = null;
-    }
-    if (this.appStateListener) {
-      this.appStateListener.remove();
-      this.appStateListener = null;
-    }
-  }
-
-  private handleNotificationReceived(notification: Notifications.Notification): void {
-    console.log('[Notifications] Received:', notification.request.identifier);
-    
-    // Store for later if needed
-    const data = notification.request.content.data;
-    if (data?.type) {
-      this.storeNotification(notification);
-    }
-  }
-
-  private handleNotificationResponse(response: Notifications.NotificationResponse): void {
-    console.log('[Notifications] Response:', response.notification.request.identifier);
-    
-    const data = response.notification.request.content.data;
-    if (!data) return;
-
-    // Navigate based on data
-    const navigation = this.getNavigation();
-    if (navigation) {
-      this.handleNavigation(data, navigation);
-    }
-  }
-
-  private handleAppStateChange(nextAppState: AppStateStatus): void {
-    if (nextAppState === 'background') {
-      // Schedule background sync
-      if (this.settings?.allowBackgroundSync) {
-        this.scheduleBackgroundSync();
-      }
-    } else if (nextAppState === 'active') {
-      // Release keep awake if not needed
-      this.releaseKeepAwake();
-    }
-  }
-
-  // ─── BACKGROUND SYNC ─────────────────────────────────────────────
-
-  private async setupBackgroundSync(): Promise<void> {
-    try {
-      const status = await BackgroundFetch.getStatusAsync();
-      
-      if (status === BackgroundFetch.BackgroundFetchStatus.Denied) {
-        console.log('[BackgroundSync] Permission denied');
-        return;
-      }
-
-      // Register the task if not already registered
-      const isRegistered = await TaskManager.isTaskRegisteredAsync(BACKGROUND_SYNC_TASK);
-      if (!isRegistered) {
-        await BackgroundFetch.registerTaskAsync(BACKGROUND_SYNC_TASK, {
-          minimumInterval: this.settings?.syncInterval || 5,
-          stopOnTerminate: false,
-          startOnBoot: true,
-        });
-        console.log('[BackgroundSync] Task registered');
-      }
-
-      // Schedule immediate sync
-      await this.scheduleBackgroundSync();
-    } catch (error) {
-      console.error('[BackgroundSync] Setup error:', error);
-    }
-  }
-
-  private async scheduleBackgroundSync(): Promise<void> {
-    try {
-      const syncService = NotificationSyncService.getInstance();
-      await syncService.performBackgroundSync();
-    } catch (error) {
-      console.error('[BackgroundSync] Schedule error:', error);
-    }
-  }
-
-  // ─── KEEP AWAKE ──────────────────────────────────────────────────
-
-  private async setupKeepAwake(): Promise<void> {
-    try {
-      // Only keep awake for critical screens
-      const isCritical = await this.isCriticalScreen();
-      if (isCritical) {
-        this.keepAwakeRef = await KeepAwake.activateKeepAwakeAsync('LittleLoom_Critical');
-      }
-    } catch (error) {
-      console.warn('[KeepAwake] Setup error:', error);
-    }
-  }
-
-  async enableKeepAwake(reason: string = 'Critical'): Promise<void> {
-    try {
-      if (!this.keepAwakeRef) {
-        this.keepAwakeRef = await KeepAwake.activateKeepAwakeAsync(`LittleLoom_${reason}`);
-      }
-    } catch (error) {
-      console.warn('[KeepAwake] Enable error:', error);
-    }
-  }
-
-  async releaseKeepAwake(): Promise<void> {
-    try {
-      if (this.keepAwakeRef) {
-        await this.keepAwakeRef.release();
-        this.keepAwakeRef = null;
-      }
-    } catch (error) {
-      console.warn('[KeepAwake] Release error:', error);
-    }
-  }
-
-  private async isCriticalScreen(): Promise<boolean> {
-    // Check if current screen requires keep awake
-    try {
-      const currentScreen = await AsyncStorage.getItem('@littleloom_current_screen');
-      const criticalScreens = ['Tracking', 'Chat', 'SleepTimer', 'Achievements'];
-      return criticalScreens.includes(currentScreen || '');
-    } catch {
-      return false;
-    }
-  }
-
-  // ─── NAVIGATION ──────────────────────────────────────────────────
-
-  private getNavigation(): any {
-    // This should be set by the app
-    return (global as any).__NAVIGATION__ || null;
-  }
-
-  private handleNavigation(data: Record<string, unknown>, navigation: any): void {
-    const type = data.type as string;
-    const screen = data.screen as string;
-    const params = data.params as Record<string, unknown> || {};
-
-    switch (type) {
-      case 'streak_reminder':
-      case 'streak_urgent':
-        navigation.navigate('Timeline', { type: 'potty', ...params });
-        break;
-      case 'achievement_reminder':
-      case 'achievement_unlocked':
-        navigation.navigate('Achievements', params);
-        break;
-      case 'chat_message':
-        navigation.navigate('FamilyChat', params);
-        break;
-      case 'safety_alert':
-        navigation.navigate('Safety', params);
-        break;
-      case 'reminder':
-        navigation.navigate('Reminders', params);
-        break;
-      case 'daily_summary':
-        navigation.navigate('Timeline', params);
-        break;
-      case 'community_notification':
-        navigation.navigate('Community', params);
-        break;
-      default:
-        if (screen) {
-          navigation.navigate(screen, params);
-        }
-        break;
-    }
-  }
-
-  // ─── STORAGE ─────────────────────────────────────────────────────
-
-  private async storeNotification(notification: Notifications.Notification): Promise<void> {
-    try {
-      const key = '@littleloom_notification_history';
-      const stored = await AsyncStorage.getItem(key);
-      const history = stored ? JSON.parse(stored) : [];
-      
-      history.push({
-        id: notification.request.identifier,
-        content: notification.request.content,
-        timestamp: Date.now(),
-        read: false,
-      });
-
-      // Keep last 100
-      while (history.length > 100) {
-        history.shift();
-      }
-
-      await AsyncStorage.setItem(key, JSON.stringify(history));
-    } catch (error) {
-      console.warn('[Notifications] Failed to store notification:', error);
-    }
-  }
-
-  // ─── PUBLIC API ──────────────────────────────────────────────────
-
-  async scheduleNotification(
-    payload: NotificationPayload,
-    trigger?: Notifications.NotificationTriggerInput
-  ): Promise<string | null> {
-    if (!this.isInitialized) {
-      await this.initialize();
-    }
-
-    if (!this.settings?.enabled || !this.settings?.pushEnabled) {
-      return null;
-    }
-
-    // Check quiet hours
-    if (this.isInQuietHours()) {
-      // Store for later
-      const notification: ScheduledNotification = {
-        id: `pending_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-        payload,
-        trigger: trigger || null,
-        status: 'pending',
-        scheduledAt: Date.now(),
-      };
-
-      const pending = await NotificationSyncService.getInstance()['getPendingNotifications']();
-      pending.push(notification);
-      await NotificationSyncService.getInstance()['savePendingNotifications'](pending);
-      return notification.id;
-    }
-
-    try {
-      const id = await Notifications.scheduleNotificationAsync({
-        content: {
-          title: payload.title,
-          body: payload.body,
-          data: payload.data || {},
-          sound: payload.sound !== false && this.settings.soundEnabled,
-          badge: payload.badge || 1,
-          categoryIdentifier: payload.category,
-          threadIdentifier: payload.threadId,
-          summaryArgument: payload.summaryArgument,
-          ...(Platform.OS === 'android' && {
-            channelId: payload.channelId || 'default',
-            priority: payload.priority === 'high' 
-              ? Notifications.AndroidPriority.HIGH 
-              : payload.priority === 'low'
-                ? Notifications.AndroidPriority.LOW
-                : Notifications.AndroidPriority.DEFAULT,
-          }),
-        },
-        trigger: trigger || null,
-      });
-
-      return id;
-    } catch (error) {
-      console.error('[Notifications] Schedule error:', error);
-      return null;
-    }
-  }
-
-  async sendImmediateNotification(payload: NotificationPayload): Promise<string | null> {
-    return this.scheduleNotification(payload, null);
-  }
-
-  async cancelNotification(id: string): Promise<void> {
-    try {
-      await Notifications.cancelScheduledNotificationAsync(id);
-    } catch (error) {
-      console.warn('[Notifications] Cancel error:', error);
-    }
-  }
-
-  async cancelAllNotifications(): Promise<void> {
-    try {
-      await Notifications.cancelAllScheduledNotificationsAsync();
       await AsyncStorage.removeItem('@littleloom_pending_notifications');
     } catch (error) {
-      console.warn('[Notifications] Cancel all error:', error);
+      console.warn('[NotificationService] Failed to clear pending notifications:', error);
     }
   }
 
-  async getScheduledNotifications(): Promise<Notifications.NotificationRequest[]> {
-    return await Notifications.getAllScheduledNotificationsAsync();
-  }
-
-  async getNotificationHistory(): Promise<any[]> {
+  /**
+   * Request permissions
+   */
+  async requestPermissions(): Promise<boolean> {
     try {
-      const stored = await AsyncStorage.getItem('@littleloom_notification_history');
-      return stored ? JSON.parse(stored) : [];
-    } catch {
-      return [];
-    }
-  }
-
-  async markNotificationRead(id: string): Promise<void> {
-    try {
-      const key = '@littleloom_notification_history';
-      const stored = await AsyncStorage.getItem(key);
-      if (stored) {
-        const history = JSON.parse(stored);
-        const updated = history.map((n: any) => 
-          n.id === id ? { ...n, read: true } : n
-        );
-        await AsyncStorage.setItem(key, JSON.stringify(updated));
-      }
+      const { status } = await Notifications.requestPermissionsAsync({
+        ios: {
+          allowAlert: true,
+          allowBadge: true,
+          allowSound: true,
+          allowAnnouncements: true,
+        },
+      });
+      return status === 'granted';
     } catch (error) {
-      console.warn('[Notifications] Mark read error:', error);
-    }
-  }
-
-  getBadgeCount(): number {
-    // Return unread count from stored notifications
-    // This should be calculated based on your app's state
-    return 0;
-  }
-
-  isInQuietHours(): boolean {
-    if (!this.settings?.quietHoursStart || !this.settings?.quietHoursEnd) {
+      console.warn('[NotificationService] Failed to request permissions:', error);
       return false;
     }
-
-    const now = new Date();
-    const hours = now.getHours();
-    const minutes = now.getMinutes();
-    const currentTime = hours * 60 + minutes;
-
-    const [startH, startM] = this.settings.quietHoursStart.split(':').map(Number);
-    const [endH, endM] = this.settings.quietHoursEnd.split(':').map(Number);
-    const startTime = startH * 60 + startM;
-    const endTime = endH * 60 + endM;
-
-    if (startTime <= endTime) {
-      return currentTime >= startTime && currentTime < endTime;
-    } else {
-      // Crosses midnight
-      return currentTime >= startTime || currentTime < endTime;
-    }
   }
 
-  async updateSettings(settings: Partial<NotificationSettings>): Promise<void> {
-    this.settings = { ...this.settings, ...settings } as NotificationSettings;
-    await AsyncStorage.setItem('@littleloom_notification_settings_v2', JSON.stringify(this.settings));
-
-    // Update background sync if changed
-    if (settings.allowBackgroundSync !== undefined) {
-      if (settings.allowBackgroundSync) {
-        await this.setupBackgroundSync();
-      } else {
-        await BackgroundFetch.unregisterTaskAsync(BACKGROUND_SYNC_TASK).catch(() => {});
-      }
-    }
-  }
-
-  async getSettings(): Promise<NotificationSettings> {
-    if (!this.settings) {
-      const syncService = NotificationSyncService.getInstance();
-      this.settings = await syncService['getSettings']();
-    }
-    return { ...this.settings };
-  }
-
-  async cleanup(): Promise<void> {
-    this.cleanupListeners();
-    await this.releaseKeepAwake();
-    this.isInitialized = false;
+  /**
+   * Get permission status
+   */
+  async getPermissionsStatus(): Promise<Notifications.NotificationPermissionsStatus> {
+    return await Notifications.getPermissionsAsync();
   }
 }
 
-export const enhancedNotificationService = EnhancedNotificationService.getInstance();
-export default enhancedNotificationService;
+// ─── EXPORT ─────────────────────────────────────────────────────────
+
+export const notificationService = NotificationService.getInstance();
+export default notificationService;
+
+// ─── HOOK VERSION ──────────────────────────────────────────────────
+
+import { useApp } from '../context/AppContext';
+
+export function useNotificationService() {
+  const {
+    notificationSettings,
+    isNotificationReady,
+    updateNotificationSettings,
+    scheduleNotification,
+    sendImmediateNotification,
+    cancelNotification,
+    cancelAllNotifications,
+    getScheduledNotifications,
+    getNotificationHistory,
+    markNotificationRead,
+    getBadgeCount,
+    isInQuietHours,
+    enableKeepAwake,
+    releaseKeepAwake,
+  } = useApp();
+
+  return {
+    settings: notificationSettings,
+    isReady: isNotificationReady,
+    updateSettings: updateNotificationSettings,
+    schedule: scheduleNotification,
+    sendImmediate: sendImmediateNotification,
+    cancel: cancelNotification,
+    cancelAll: cancelAllNotifications,
+    getScheduled: getScheduledNotifications,
+    getHistory: getNotificationHistory,
+    markRead: markNotificationRead,
+    getBadgeCount,
+    isInQuietHours,
+    enableKeepAwake,
+    releaseKeepAwake,
+    // Legacy methods
+    scheduleLocalNotification: scheduleNotification,
+    sendAchievementNotification: async (achievement: string, description: string) => {
+      return scheduleNotification({
+        title: `🏆 Achievement Unlocked!`,
+        body: `${achievement}: ${description}`,
+        channelId: 'achievements',
+        data: { type: 'achievement_unlocked', screen: 'Achievements' },
+      });
+    },
+    sendChatNotification: async (senderName: string, message: string, chatId?: string) => {
+      return scheduleNotification({
+        title: `💬 ${senderName}`,
+        body: message.length > 60 ? message.substring(0, 60) + '...' : message,
+        channelId: 'chat',
+        data: { type: 'chat_message', screen: 'FamilyChat', chatId },
+      });
+    },
+    sendSafetyAlert: async (title: string, body: string) => {
+      return scheduleNotification({
+        title: `🛡️ ${title}`,
+        body,
+        channelId: 'safety',
+        priority: 'high',
+        data: { type: 'safety_alert', screen: 'Safety' },
+      });
+    },
+    sendActivityReminder: async (type: string, babyName: string, minutes: number, details?: string) => {
+      const titles: Record<string, string> = {
+        feed: `🍼 Time to feed ${babyName}!`,
+        sleep: `😴 ${babyName} might be sleepy`,
+        potty: `🚽 Potty check for ${babyName}`,
+        milestone: `🎉 Milestone reminder for ${babyName}`,
+        growth: `📏 Growth tracking for ${babyName}`,
+        medication: `💊 Medication reminder for ${babyName}`,
+        diaper: `🧷 Diaper check for ${babyName}`,
+        bath: `🛁 Bath time for ${babyName}`,
+        default: `⏰ Reminder for ${babyName}`,
+      };
+
+      const channelMap: Record<string, string> = {
+        feed: 'feeding',
+        sleep: 'sleep',
+        potty: 'potty',
+        growth: 'growth',
+        default: 'activities',
+      };
+
+      return scheduleNotification({
+        title: titles[type] || titles.default,
+        body: details || `Tap to open LittleLoom and track this activity.`,
+        channelId: channelMap[type] || channelMap.default,
+        data: { type: 'activity_reminder', screen: 'Timeline', activityType: type },
+      });
+    },
+    sendStreakReminder: async (streakDays: number, hoursLeft: number) => {
+      return scheduleNotification({
+        title: `🔥 Streak at Risk!`,
+        body: `Your ${streakDays}-day streak ends in ${hoursLeft} hours! Log an activity now.`,
+        channelId: 'streaks',
+        priority: 'high',
+        data: { type: 'streak_reminder', screen: 'Timeline' },
+      });
+    },
+  };
+}
