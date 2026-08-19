@@ -1,8 +1,14 @@
-
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.warn(
+    '⚠️ Supabase credentials missing. Please set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY in your .env file.'
+  );
+}
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
@@ -12,3 +18,30 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     detectSessionInUrl: false,
   },
 });
+
+// ============================================================================
+// EXPORT COMMUNITY TYPES FROM SUPABASE CLIENT
+// ============================================================================
+
+export type {
+  SupabaseCommunityTopic,
+  SupabaseUserTopic,
+  SupabaseCommunityPost,
+  SupabasePostLike,
+  SupabasePostRepost,
+  SupabasePostBookmark,
+  SupabasePostView,
+  SupabaseCommunityComment,
+  SupabaseCommentLike,
+  SupabaseCommentHelpfulVote,
+  SupabasePostHelpfulVote,
+  SupabaseUserFollow,
+  SupabaseUserBlock,
+  SupabaseCommunityNotification,
+  SupabaseUserActivity,
+  SupabasePollVote,
+} from '@/services/supabaseClient';
+
+// Re-export the supabase client from the services file for consistency
+// This ensures we only have one source of truth for the client
+export { supabase as supabaseClient } from '@/services/supabaseClient';

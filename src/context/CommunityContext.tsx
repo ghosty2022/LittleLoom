@@ -1,13 +1,14 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system'; // <-- add this line
+import * as FileSystem from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getAppSetting, setAppSetting, deleteAppSetting } from '@/database/dbHelpers';
 import { useAuth } from './AuthContext';
 import { useSweetAlert } from '../components/SweetAlert';
 import { showAlert } from '@/utils/alert';
+import { supabase } from '@/services/supabaseClient';
 
 const STORAGE_KEYS = {
   POSTS: '@community_posts_v2',
@@ -208,7 +209,6 @@ interface CommunityState {
   posts: Post[];
   topics: Topic[];
   notifications: Notification[];
-  // NOTE: All chat state moved to FamilyChatContext
   currentUser: CommunityUser | null;
   isLoading: boolean;
   onlineUsers: string[];
@@ -523,7 +523,33 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       
       const globalTopicsData = await AsyncStorage.getItem(STORAGE_KEYS.SELECTED_TOPICS);
       const globalTopics = globalTopicsData ? JSON.parse(globalTopicsData) : [];
-      const mergedTopics = savedTopics.length > 0 ? savedTopics : (authProfile.communitySelectedTopics || globalTopics);
+      let mergedTopics = savedTopics.length > 0 ? savedTopics : (authProfile.communitySelectedTopics || globalTopics);
+      
+      // Try to load topics from Supabase
+      try {
+        const { data: userTopics, error } = await supabase
+          .from('user_topics')
+          .select('topic_id')
+          .eq('user_id', authProfile.id);
+          
+        if (!error && userTopics && userTopics.length > 0) {
+          const supabaseTopicIds = userTopics.map(t => t.topic_id);
+          const validSupabaseTopics = validateTopicIds(supabaseTopicIds);
+          
+          if (validSupabaseTopics.length > 0) {
+            mergedTopics = validSupabaseTopics;
+            // Update local storage with Supabase topics
+            await AsyncStorage.setItem(STORAGE_KEYS.SELECTED_TOPICS, JSON.stringify(validSupabaseTopics));
+            await AsyncStorage.setItem(
+              `${STORAGE_KEYS.SELECTED_TOPICS}_${authProfile.id}`,
+              JSON.stringify(validSupabaseTopics)
+            );
+            console.log(`[syncWithAuthUser] Loaded ${validSupabaseTopics.length} topics from Supabase`);
+          }
+        }
+      } catch (supabaseError) {
+        console.warn('Error loading topics from Supabase in sync:', supabaseError);
+      }
       
       const validTopics = validateTopicIds(mergedTopics);
 
@@ -628,7 +654,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         promises.push(AsyncStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(currentState.notifications)));
       }
       if (keysToPersist.includes('chats')) {
-        promises.push(AsyncStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(currentState.chats)));
+        promises.push(AsyncStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify((currentState as any).chats || [])));
       }
       if (keysToPersist.includes('blockedUsers')) {
         promises.push(AsyncStorage.setItem(STORAGE_KEYS.BLOCKED_USERS, JSON.stringify(currentState.blockedUsers)));
@@ -675,6 +701,29 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     try {
       const currentUserId = userProfile?.id;
 
+      // Try to load topics from Supabase first
+      let supabaseTopics: string[] = [];
+      let supabasePosts: any[] = [];
+      
+      try {
+        if (currentUserId) {
+          // Load user's topics from Supabase
+          const { data: userTopics, error: topicsError } = await supabase
+            .from('user_topics')
+            .select('topic_id')
+            .eq('user_id', currentUserId);
+
+          if (!topicsError && userTopics) {
+            supabaseTopics = userTopics.map(t => t.topic_id);
+            console.log(`[loadPersistedData] Loaded ${supabaseTopics.length} topics from Supabase`);
+          } else {
+            console.warn('Error loading topics from Supabase:', topicsError);
+          }
+        }
+      } catch (supabaseError) {
+        console.warn('Supabase load error:', supabaseError);
+      }
+
       const [
         postsData,
         topicsData,
@@ -694,7 +743,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         AsyncStorage.getItem(STORAGE_KEYS.NOTIFICATIONS),
         AsyncStorage.getItem(STORAGE_KEYS.MESSAGES),
         AsyncStorage.getItem(STORAGE_KEYS.BLOCKED_USERS),
-       currentUserId 
+        currentUserId 
           ? AsyncStorage.getItem(`${STORAGE_KEYS.SELECTED_TOPICS}_${currentUserId}`)
           : AsyncStorage.getItem(STORAGE_KEYS.SELECTED_TOPICS),
         AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING),
@@ -710,10 +759,13 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       let loadedPosts: Post[] = postsData ? JSON.parse(postsData) : [];
       const loadedTopics = topicsData ? JSON.parse(topicsData) : INITIAL_TOPICS;
       
-      let loadedSelectedTopics: string[] = selectedTopicsData 
-        ? JSON.parse(selectedTopicsData) 
-        : (globalTopicsData ? JSON.parse(globalTopicsData) : []);
-        
+      // Prefer Supabase topics if available
+      let loadedSelectedTopics: string[] = supabaseTopics.length > 0 
+        ? supabaseTopics
+        : (selectedTopicsData 
+          ? JSON.parse(selectedTopicsData) 
+          : (globalTopicsData ? JSON.parse(globalTopicsData) : []));
+          
       const loadedPopularPosts = popularPostsData ? JSON.parse(popularPostsData) : [];
       const loadedTrendingTopics = trendingTopicsData ? JSON.parse(trendingTopicsData) : [];
 
@@ -751,7 +803,6 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         posts: loadedPosts,
         topics: loadedTopics,
         notifications: notificationsData ? JSON.parse(notificationsData) : [],
-        chats: chatsData ? JSON.parse(chatsData) : [],
         blockedUsers: blockedUsersData ? JSON.parse(blockedUsersData) : [],
         selectedTopics: loadedSelectedTopics,
         popularPosts: loadedPopularPosts,
@@ -1226,6 +1277,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       return { ...prev, posts: updatedPosts };
     });
   }, []);
+
   const voteHelpful = useCallback(async (postId: string) => {
     const currentUser = stateRef.current.currentUser;
     if (!currentUser) return;
@@ -1258,7 +1310,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   }, []);
 
-   const sharePost = useCallback(async (postId: string) => {
+  const sharePost = useCallback(async (postId: string) => {
     const currentUser = stateRef.current.currentUser;
     setState(prev => {
       const updatedPosts = prev.posts.map(post => {
@@ -1522,6 +1574,15 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
+    // Also sync to Supabase
+    try {
+      await supabase
+        .from('user_topics')
+        .upsert({ user_id: currentUser.id, topic_id: topicId }, { onConflict: 'user_id, topic_id' });
+    } catch (error) {
+      console.warn('Failed to sync join topic to Supabase:', error);
+    }
+
     setState(prev => {
       const updatedTopics = prev.topics.map(topic => {
         if (topic.id === topicId && !topic.joinedBy.includes(currentUser.id)) {
@@ -1543,6 +1604,17 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const leaveTopic = useCallback(async (topicId: string) => {
     const currentUser = stateRef.current.currentUser;
     if (!currentUser) return;
+
+    // Also sync to Supabase
+    try {
+      await supabase
+        .from('user_topics')
+        .delete()
+        .eq('user_id', currentUser.id)
+        .eq('topic_id', topicId);
+    } catch (error) {
+      console.warn('Failed to sync leave topic from Supabase:', error);
+    }
 
     setState(prev => {
       const updatedTopics = prev.topics.map(topic => {
@@ -1578,6 +1650,15 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    // Sync to Supabase
+    try {
+      await supabase
+        .from('user_follows')
+        .upsert({ follower_id: currentUser.id, following_id: userId }, { onConflict: 'follower_id, following_id' });
+    } catch (error) {
+      console.warn('Failed to sync follow to Supabase:', error);
+    }
 
     const followersKey = `${STORAGE_KEYS.USER_FOLLOWERS}_${userId}`;
     const followingKey = `${STORAGE_KEYS.USER_FOLLOWING}_${currentUser.id}`;
@@ -1656,6 +1737,17 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const unfollowUser = useCallback(async (userId: string) => {
     const currentUser = stateRef.current.currentUser;
     if (!currentUser) return;
+
+    // Sync to Supabase
+    try {
+      await supabase
+        .from('user_follows')
+        .delete()
+        .eq('follower_id', currentUser.id)
+        .eq('following_id', userId);
+    } catch (error) {
+      console.warn('Failed to sync unfollow to Supabase:', error);
+    }
 
     const followersKey = `${STORAGE_KEYS.USER_FOLLOWERS}_${userId}`;
     const followingKey = `${STORAGE_KEYS.USER_FOLLOWING}_${currentUser.id}`;
@@ -1799,6 +1891,15 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       status,
     };
 
+    // Sync to Supabase
+    try {
+      await supabase
+        .from('user_activity')
+        .upsert({ user_id: currentUser.id, status, last_active: updatedActivity.lastActive, updated_at: new Date().toISOString() });
+    } catch (error) {
+      console.warn('Failed to sync activity to Supabase:', error);
+    }
+
     setState(prev => ({
       ...prev,
       currentUser: { ...prev.currentUser!, onlineStatus: status, lastActive: updatedActivity.lastActive },
@@ -1860,16 +1961,17 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       deliveryStatus: 'sent',
       replyTo: replyToId,
       replyToPreview: replyToId
-        ? stateRef.current.chats.find(c => c.participantId === userId)?.messages.find(m => m.id === replyToId)?.content.substring(0, 60)
+        ? (stateRef.current as any).chats?.find((c: Chat) => c.participantId === userId)?.messages.find((m: Message) => m.id === replyToId)?.content.substring(0, 60)
         : undefined,
     };
 
     setState(prev => {
-      const existingChat = prev.chats.find(c => c.participantId === userId);
+      const chats = (prev as any).chats || [];
+      const existingChat = chats.find((c: Chat) => c.participantId === userId);
       let updatedChats: Chat[];
 
       if (existingChat) {
-        updatedChats = prev.chats.map(chat => 
+        updatedChats = chats.map((chat: Chat) => 
           chat.id === existingChat.id 
             ? { 
                 ...chat, 
@@ -1892,7 +1994,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           unreadCount: 0,
           updatedAt: newMessage.timestamp,
         };
-        updatedChats = [newChat, ...prev.chats];
+        updatedChats = [newChat, ...chats];
       }
 
       const notification: Notification = {
@@ -1912,7 +2014,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       AsyncStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(updatedChats)).catch(console.error);
       AsyncStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(updatedNotifications)).catch(console.error);
 
-      return { ...prev, chats: updatedChats, notifications: updatedNotifications };
+      return { ...prev, chats: updatedChats, notifications: updatedNotifications } as any;
     });
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -1920,11 +2022,12 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const editMessage = useCallback(async (userId: string, messageId: string, newContent: string) => {
     setState(prev => {
-      const updatedChats = prev.chats.map(chat =>
+      const chats = (prev as any).chats || [];
+      const updatedChats = chats.map((chat: Chat) =>
         chat.participantId === userId
           ? {
               ...chat,
-              messages: chat.messages.map(m =>
+              messages: chat.messages.map((m: Message) =>
                 m.id === messageId ? { ...m, content: newContent, editedAt: new Date().toISOString() } : m
               ),
               lastMessage: chat.lastMessage.id === messageId
@@ -1934,92 +2037,105 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           : chat
       );
       AsyncStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(updatedChats)).catch(console.error);
-      return { ...prev, chats: updatedChats };
+      return { ...prev, chats: updatedChats } as any;
     });
   }, []);
 
   const resendMessage = useCallback(async (userId: string, messageId: string) => {
     setState(prev => {
-      const updatedChats = prev.chats.map(chat =>
+      const chats = (prev as any).chats || [];
+      const updatedChats = chats.map((chat: Chat) =>
         chat.participantId === userId
           ? {
               ...chat,
-              messages: chat.messages.map(m =>
+              messages: chat.messages.map((m: Message) =>
                 m.id === messageId ? { ...m, deliveryStatus: 'sent' as const, timestamp: new Date().toISOString() } : m
               ),
             }
           : chat
       );
       AsyncStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(updatedChats)).catch(console.error);
-      return { ...prev, chats: updatedChats };
+      return { ...prev, chats: updatedChats } as any;
     });
   }, []);
 
   const deleteMessage = useCallback(async (userId: string, messageId: string) => {
     setState(prev => {
-      const updatedChats = prev.chats.map(chat =>
+      const chats = (prev as any).chats || [];
+      const updatedChats = chats.map((chat: Chat) =>
         chat.participantId === userId
-          ? { ...chat, messages: chat.messages.filter(m => m.id !== messageId) }
+          ? { ...chat, messages: chat.messages.filter((m: Message) => m.id !== messageId) }
           : chat
       );
       AsyncStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(updatedChats)).catch(console.error);
-      return { ...prev, chats: updatedChats };
+      return { ...prev, chats: updatedChats } as any;
     });
   }, []);
 
   const getChatMessages = useCallback((userId: string): Message[] => {
-    const chat = stateRef.current.chats.find(c => c.participantId === userId);
+    const chats = (stateRef.current as any).chats || [];
+    const chat = chats.find((c: Chat) => c.participantId === userId);
     return chat?.messages || [];
   }, []);
 
   const markChatRead = useCallback(async (userId: string) => {
     setState(prev => {
-      const updatedChats = prev.chats.map(chat => 
+      const chats = (prev as any).chats || [];
+      const updatedChats = chats.map((chat: Chat) => 
         chat.participantId === userId ? { ...chat, unreadCount: 0 } : chat
       );
       AsyncStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(updatedChats)).catch(console.error);
-      return { ...prev, chats: updatedChats };
+      return { ...prev, chats: updatedChats } as any;
     });
   }, []);
 
   const getOrCreateChat = useCallback((userId: string) => {
-    return stateRef.current.chats.find(c => c.participantId === userId);
+    const chats = (stateRef.current as any).chats || [];
+    return chats.find((c: Chat) => c.participantId === userId);
   }, []);
 
   const setTypingStatus = useCallback((userId: string, isTyping: boolean) => {
-    setState(prev => ({
-      ...prev,
-      chats: prev.chats.map(chat => 
-        chat.participantId === userId ? { ...chat, isTyping } : chat
-      ),
-    }));
+    setState(prev => {
+      const chats = (prev as any).chats || [];
+      return {
+        ...prev,
+        chats: chats.map((chat: Chat) => 
+          chat.participantId === userId ? { ...chat, isTyping } : chat
+        ),
+      } as any;
+    });
 
     const existingTimeout = typingTimeouts.current.get(userId);
     if (existingTimeout) clearTimeout(existingTimeout);
 
     if (isTyping) {
       const timeout = setTimeout(() => {
-        setState(prev => ({
-          ...prev,
-          chats: prev.chats.map(chat => 
-            chat.participantId === userId ? { ...chat, isTyping: false } : chat
-          ),
-        }));
+        setState(prev => {
+          const chats = (prev as any).chats || [];
+          return {
+            ...prev,
+            chats: chats.map((chat: Chat) => 
+              chat.participantId === userId ? { ...chat, isTyping: false } : chat
+            ),
+          } as any;
+        });
       }, 3000);
       typingTimeouts.current.set(userId, timeout);
     }
   }, []);
 
   const getTypingStatus = useCallback((userId: string) => {
-    const chat = stateRef.current.chats.find(c => c.participantId === userId);
+    const chats = (stateRef.current as any).chats || [];
+    const chat = chats.find((c: Chat) => c.participantId === userId);
     return chat?.isTyping || false;
   }, []);
 
   const deleteChat = useCallback(async (userId: string) => {
     setState(prev => {
-      const updatedChats = prev.chats.filter(chat => chat.participantId !== userId);
+      const chats = (prev as any).chats || [];
+      const updatedChats = chats.filter((chat: Chat) => chat.participantId !== userId);
       AsyncStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(updatedChats)).catch(console.error);
-      return { ...prev, chats: updatedChats };
+      return { ...prev, chats: updatedChats } as any;
     });
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }, []);
@@ -2111,11 +2227,34 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         const parsed = JSON.parse(data);
         const completed = parsed.completed === true;
         
-        const rawTopics = parsed.selectedTopics || [];
+        // Get topics from multiple sources
+        let rawTopics = parsed.selectedTopics || [];
+        
+        if (rawTopics.length === 0) {
+          const storedTopics = await AsyncStorage.getItem(STORAGE_KEYS.SELECTED_TOPICS);
+          if (storedTopics) {
+            rawTopics = JSON.parse(storedTopics);
+          }
+        }
+        
+        const currentUserId = stateRef.current.currentUser?.id;
+        if (currentUserId && rawTopics.length === 0) {
+          const userTopics = await AsyncStorage.getItem(`${STORAGE_KEYS.SELECTED_TOPICS}_${currentUserId}`);
+          if (userTopics) {
+            rawTopics = JSON.parse(userTopics);
+          }
+        }
+        
         const validTopics = validateTopicIds(rawTopics);
         const hasTopics = validTopics.length > 0;
         
-        const isTrulyComplete = completed && (hasTopics || parsed.skipped === true);
+        // COMPLETION REQUIRES TOPICS - no skipping allowed
+        const isTrulyComplete = completed && hasTopics;
+        
+        if (completed && !hasTopics) {
+          console.warn('[checkOnboardingStatus] Completed but no topics - forcing re-onboarding');
+          return { completed: false, hasTopics: false };
+        }
         
         return { completed: isTrulyComplete, hasTopics };
       }
@@ -2135,7 +2274,46 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     const currentUser = stateRef.current.currentUser;
 
-    // Auto-join any newly selected topics so they appear in the user's feed immediately
+    // Sync to Supabase
+    if (currentUser) {
+      try {
+        // First, get current topics from Supabase
+        const { data: existingTopics, error: fetchError } = await supabase
+          .from('user_topics')
+          .select('topic_id')
+          .eq('user_id', currentUser.id);
+
+        if (!fetchError) {
+          const existingTopicIds = (existingTopics || []).map(t => t.topic_id);
+          
+          const topicsToAdd = validTopics.filter(id => !existingTopicIds.includes(id));
+          const topicsToRemove = existingTopicIds.filter(id => !validTopics.includes(id));
+
+          if (topicsToAdd.length > 0) {
+            await supabase
+              .from('user_topics')
+              .insert(topicsToAdd.map(topicId => ({
+                user_id: currentUser.id,
+                topic_id: topicId,
+              })));
+          }
+
+          if (topicsToRemove.length > 0) {
+            await supabase
+              .from('user_topics')
+              .delete()
+              .eq('user_id', currentUser.id)
+              .in('topic_id', topicsToRemove);
+          }
+
+          console.log(`[updateSelectedTopics] Synced to Supabase: +${topicsToAdd.length}, -${topicsToRemove.length}`);
+        }
+      } catch (supabaseError) {
+        console.warn('Supabase sync error (will retry later):', supabaseError);
+      }
+    }
+
+    // Auto-join any newly selected topics
     if (currentUser) {
       setState(prev => {
         const updatedTopics = prev.topics.map(topic => {
