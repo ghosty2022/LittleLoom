@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, AppState, AppStateStatus } from 'react-native';
+import { AppState, AppStateStatus, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import { getAppSetting, setAppSetting } from '@/database/dbHelpers';
@@ -101,9 +101,9 @@ export interface AuthState {
 }
 
 interface AuthContextType extends AuthState {
-  signIn: (email: string, password: string) => Promise<boolean>;
-  signUp: (fullName: string, email: string, password: string) => Promise<boolean>;
-  signInWithSocial: (socialUser: SocialUser) => Promise<boolean>;
+  signIn: (email: string, password: string) => Promise<{ success: boolean; message?: string }>;
+  signUp: (fullName: string, email: string, password: string) => Promise<{ success: boolean; message?: string }>;
+  signInWithSocial: (socialUser: SocialUser) => Promise<{ success: boolean; message?: string }>;
   signOut: () => Promise<void>;
   checkBiometricAvailability: () => Promise<boolean>;
   authenticateWithBiometric: (promptMessage?: string) => Promise<LocalAuthentication.LocalAuthenticationResult>;
@@ -111,7 +111,7 @@ interface AuthContextType extends AuthState {
   enableBiometricLogin: (email: string, password: string) => Promise<boolean>;
   disableBiometricLogin: () => Promise<void>;
   hasBiometricLoginCredentials: () => Promise<boolean>;
-  loginWithBiometric: () => Promise<boolean>;
+  loginWithBiometric: () => Promise<{ success: boolean; message?: string }>;
   updateUserProfile: (updates: Partial<UserProfile>) => Promise<boolean>;
   updateUserPreferences: (prefs: Partial<UserProfile['preferences']>) => Promise<boolean>;
   skipSetup: (step: 'parent2' | 'baby') => Promise<void>;
@@ -147,6 +147,10 @@ interface AuthContextType extends AuthState {
   findUserByEmailOrUsernameOrPhone: (identifier: string) => Promise<{ userId: string; email: string; fullName: string; role: string } | null>;
   checkSession: () => Promise<boolean>;
   forceLogoutOnInvalidSession: () => Promise<boolean>;
+  // ─── NEW ACCOUNT MANAGEMENT FUNCTIONS ──────────────────────────────
+  verifyPassword: (password: string) => Promise<boolean>;
+  deleteAccount: (password: string) => Promise<{ success: boolean; message: string }>;
+  deleteAccountWithConfirmation: () => Promise<{ success: boolean; message: string }>;
 }
 
 const secureStorage = {
@@ -375,10 +379,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!isValid && state.isAuthenticated) {
         console.log('[Auth] Force logout due to invalid session');
         await signOut();
-        Alert.alert(
-          'Session Expired',
-          'Your account may have been deleted. Please contact support if this was unexpected.'
-        );
         return false;
       }
       return true;
@@ -388,12 +388,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [validateCurrentSession, state.isAuthenticated, signOut]);
 
-  // ─── PERFORM SIGN IN INTERNAL (FIXED - NO LOCAL FALLBACK) ──────────
-  const performSignInInternal = useCallback(async (email: string, password: string, isBiometric: boolean = false): Promise<boolean> => {
+  // ─── PERFORM SIGN IN INTERNAL ──────────────────────────────────────────
+  const performSignInInternal = useCallback(async (email: string, password: string, isBiometric: boolean = false): Promise<{ success: boolean; message?: string; user?: any }> => {
     try {
       if (!email || !password) {
         if (__DEV__) console.warn('[Auth] Sign in failed: missing credentials');
-        return false;
+        return { success: false, message: 'Missing email or password' };
       }
 
       // ─── REAL AUTH: MUST verify against Supabase ──────────────────
@@ -406,37 +406,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (authError || !authData?.user) {
         if (__DEV__) console.warn('[Auth] Supabase sign in failed:', authError?.message);
         
-        // Handle specific error cases
+        // Handle specific error cases with friendly messages
         if (authError?.message?.toLowerCase().includes('email not confirmed')) {
           try {
             const { error: resendError } = await supabase.auth.resend({
               type: 'signup',
               email: email.trim(),
             });
-            
             if (!resendError) {
-              Alert.alert(
-                'Email Not Confirmed',
-                'Please check your email and confirm your account before signing in. A new confirmation link has been sent.'
-              );
-            } else {
-              Alert.alert(
-                'Email Not Confirmed',
-                'Please check your email and confirm your account before signing in.'
-              );
+              return { 
+                success: false, 
+                message: 'Please check your email and confirm your account. A new confirmation link has been sent.' 
+              };
             }
           } catch (e) {}
-          return false;
+          return { success: false, message: 'Please check your email and confirm your account before signing in.' };
         }
         
         // User not found, invalid credentials, or account deleted
-        Alert.alert(
-          'Sign In Failed',
-          authError?.message === 'Invalid login credentials' 
-            ? 'Invalid email or password. Please try again.'
-            : authError?.message || 'Unable to sign in. Please try again.'
-        );
-        return false;
+        if (authError?.message?.toLowerCase().includes('invalid login credentials')) {
+          return { success: false, message: 'Invalid email/username or password. Please try again.' };
+        }
+        
+        return { success: false, message: authError?.message || 'Unable to sign in. Please try again.' };
       }
 
       const token = authData.session?.access_token ?? `auth_token_${authData.user.id}`;
@@ -531,7 +523,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       if (!tokenStored || !profileStored) {
         if (__DEV__) console.warn('[Auth] Failed to save login data to secure storage');
-        return false;
+        return { success: false, message: 'Failed to save login data' };
       }
 
       await AsyncStorage.setItem(ASYNC_KEYS.HAS_SEEN_ONBOARDING, 'true');
@@ -589,24 +581,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           hasBaby: babiesRestored ? true : babyDone,
         }));
       }
-      return true;
+      return { success: true, user: authData.user };
     } catch (error) {
       console.error('[Auth] Sign in error:', error);
-      Alert.alert('Sign In Failed', 'An unexpected error occurred. Please try again.');
-      return false;
+      return { success: false, message: 'An unexpected error occurred. Please try again.' };
     }
   }, []);
 
-  const signIn = useCallback(async (email: string, password: string): Promise<boolean> => {
-    if (!acquireSignInLock()) return false;
+  const signIn = useCallback(async (email: string, password: string): Promise<{ success: boolean; message?: string }> => {
+    if (!acquireSignInLock()) return { success: false, message: 'Another sign in operation in progress' };
     const now = Date.now();
     if (now - lastSignInTime.current < 1500) {
       await new Promise(resolve => setTimeout(resolve, 1500 - (now - lastSignInTime.current)));
     }
     try {
-      const success = await performSignInInternal(email, password, false);
+      const result = await performSignInInternal(email, password, false);
       lastSignInTime.current = Date.now();
-      return success;
+      return result;
     } finally { releaseSignInLock(); }
   }, [acquireSignInLock, releaseSignInLock, performSignInInternal]);
 
@@ -777,10 +768,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (!isValid && isMounted.current) {
             console.log('[Auth] Periodic session check failed, logging out...');
             await signOut();
-            Alert.alert(
-              'Session Expired',
-              'Your account may have been deleted. Please contact support if this was unexpected.'
-            );
           }
         } catch (error) {
           console.warn('[Auth] Periodic session check error:', error);
@@ -796,8 +783,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [state.isAuthenticated, validateCurrentSession, signOut]);
 
-  const signInWithSocial = useCallback(async (socialUser: SocialUser): Promise<boolean> => {
-    if (!acquireSignInLock()) return false;
+  const signInWithSocial = useCallback(async (socialUser: SocialUser): Promise<{ success: boolean; message?: string }> => {
+    if (!acquireSignInLock()) return { success: false, message: 'Another sign in operation in progress' };
     
     try {
       await new Promise(resolve => setTimeout(resolve, 500));
@@ -811,8 +798,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (authError) {
         console.error('[Auth] Social sign in failed:', authError.message);
-        Alert.alert('Sign In Failed', 'Unable to sign in with social provider. Please try again.');
-        return false;
+        return { success: false, message: 'Unable to sign in with social provider. Please try again.' };
       }
 
       // The actual sign-in completion happens via the OAuth callback
@@ -885,17 +871,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       lastSignInTime.current = Date.now();
-      return true;
+      return { success: true };
     } catch (error) {
       console.error('Social sign in error:', error);
-      return false;
+      return { success: false, message: 'Social authentication failed' };
     } finally {
       releaseSignInLock();
     }
   }, [acquireSignInLock, releaseSignInLock]);
 
-  const signUp = useCallback(async (fullName: string, email: string, password: string): Promise<boolean> => {
-    if (!acquireSignInLock()) return false;
+  const signUp = useCallback(async (fullName: string, email: string, password: string): Promise<{ success: boolean; message?: string }> => {
+    if (!acquireSignInLock()) return { success: false, message: 'Another operation in progress' };
     try {
       console.log('[Auth] SignUp attempt for:', email);
       
@@ -963,11 +949,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               }));
             }
             
-            return true;
+            return { success: true };
           }
+          return { success: false, message: 'An account with this email already exists. Please sign in instead.' };
         }
         
-        return false;
+        return { success: false, message: signUpError?.message || 'Could not create account' };
       }
 
       console.log('[Auth] User created successfully:', signUpData.user.id);
@@ -1090,10 +1077,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       lastSignInTime.current = Date.now();
-      return true;
+      return { success: true };
     } catch (error) {
       console.error('[Auth] Sign up error:', error);
-      return false;
+      return { success: false, message: 'Failed to create account. Please try again.' };
     } finally { releaseSignInLock(); }
   }, [acquireSignInLock, releaseSignInLock]);
 
@@ -1317,11 +1304,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [acquireSignInLock, releaseSignInLock]);
 
-  const loginWithBiometric = useCallback(async (): Promise<boolean> => {
-    if (!acquireBiometricLock()) return false;
+  const loginWithBiometric = useCallback(async (): Promise<{ success: boolean; message?: string }> => {
+    if (!acquireBiometricLock()) return { success: false, message: 'Another biometric operation in progress' };
     try {
       const authResult = await authenticateWithBiometric(`Login with ${state.biometricTypeName}`);
-      if (!authResult.success) return false;
+      if (!authResult.success) return { success: false, message: 'Biometric authentication failed' };
 
       const [storedEmail, storedPassword] = await Promise.all([
         secureStorage.getItem(SECURE_KEYS.BIOMETRIC_EMAIL),
@@ -1330,14 +1317,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (!storedEmail || !storedPassword) {
         console.warn('[Auth] No biometric credentials stored');
-        return false;
+        return { success: false, message: 'No biometric credentials stored' };
       }
 
-      const success = await performSignInInternal(storedEmail, storedPassword, true);
+      const result = await performSignInInternal(storedEmail, storedPassword, true);
       lastSignInTime.current = Date.now();
-      return success;
-    } catch (error) { return false; } 
-    finally { releaseBiometricLock(); }
+      return result;
+    } catch (error) { 
+      return { success: false, message: 'Biometric login failed' };
+    } finally { releaseBiometricLock(); }
   }, [authenticateWithBiometric, state.biometricTypeName, acquireBiometricLock, releaseBiometricLock, performSignInInternal]);
 
   const shouldShowBiometricPrompt = useCallback(async (): Promise<boolean> => {
@@ -1980,6 +1968,255 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) { console.error('Error marking onboarding:', error); }
   }, []);
 
+  // ─── VERIFY PASSWORD ─────────────────────────────────────────────────────
+  const verifyPassword = useCallback(async (password: string): Promise<boolean> => {
+    try {
+      if (!state.userProfile?.email) {
+        console.warn('[Auth] No email found for password verification');
+        return false;
+      }
+      
+      // Verify with Supabase
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: state.userProfile.email,
+        password: password,
+      });
+      
+      if (error || !data?.user) {
+        console.warn('[Auth] Password verification failed:', error?.message);
+        return false;
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('[Auth] Password verification error:', error);
+      return false;
+    }
+  }, [state.userProfile?.email]);
+
+  // ─── DELETE ACCOUNT ─────────────────────────────────────────────────────
+  const deleteAccount = useCallback(async (password: string): Promise<{ success: boolean; message: string }> => {
+    try {
+      if (!state.userProfile) {
+        return { success: false, message: 'Not authenticated' };
+      }
+      
+      // First verify the password
+      const isPasswordValid = await verifyPassword(password);
+      if (!isPasswordValid) {
+        return { success: false, message: 'Incorrect password. Please try again.' };
+      }
+      
+      const userId = state.userProfile.id;
+      const userEmail = state.userProfile.email;
+      
+      console.log('[Auth] Starting account deletion for:', userEmail);
+      
+      // ─── STEP 1: Delete all user data from Supabase ──────────────────
+      try {
+        // Delete babies
+        const { data: babies, error: babiesError } = await supabase
+          .from('babies')
+          .select('id')
+          .eq('parent1_id', userId);
+        
+        if (!babiesError && babies) {
+          for (const baby of babies) {
+            // Delete tracker entries for this baby
+            await supabase
+              .from('tracker_entries')
+              .delete()
+              .eq('baby_id', baby.id);
+            
+            // Delete family members for this baby
+            await supabase
+              .from('family_members')
+              .delete()
+              .eq('baby_id', baby.id);
+            
+            // Delete the baby
+            await supabase
+              .from('babies')
+              .delete()
+              .eq('id', baby.id);
+          }
+        }
+        
+        // Delete family members where user is a member
+        await supabase
+          .from('family_members')
+          .delete()
+          .eq('user_id', userId);
+        
+        // Delete community profile
+        await supabase
+          .from('community_profiles')
+          .delete()
+          .eq('user_id', userId);
+        
+        // Delete community posts
+        await supabase
+          .from('community_posts')
+          .delete()
+          .eq('author_id', userId);
+        
+        // Delete user preferences
+        await supabase
+          .from('user_preferences')
+          .delete()
+          .eq('user_id', userId);
+        
+        // Delete profile
+        await supabase
+          .from('profiles')
+          .delete()
+          .eq('id', userId);
+        
+        console.log('[Auth] All user data deleted from Supabase');
+      } catch (deleteError) {
+        console.warn('[Auth] Error deleting data from Supabase:', deleteError);
+      }
+      
+      // ─── STEP 2: Delete the user account from Supabase Auth ──────────
+      // Note: This requires admin privileges. If you don't have admin access,
+      // you should use the user's session to delete their own account.
+      // Using admin API requires service role key
+      try {
+        const { error: deleteUserError } = await supabase.auth.admin.deleteUser(userId);
+        
+        if (deleteUserError) {
+          console.error('[Auth] Failed to delete user from Supabase Auth:', deleteUserError);
+          // Try alternative: sign out and let the user know to contact support
+          await supabase.auth.signOut();
+          return { 
+            success: false, 
+            message: 'Could not delete your account automatically. Please contact support.' 
+          };
+        }
+      } catch (authDeleteError) {
+        console.error('[Auth] Auth delete error:', authDeleteError);
+      }
+      
+      // ─── STEP 3: Clear all local storage ──────────────────────────────
+      try {
+        // Clear secure storage
+        await Promise.all([
+          secureStorage.deleteItem(SECURE_KEYS.AUTH_TOKEN),
+          secureStorage.deleteItem(SECURE_KEYS.USER_PROFILE),
+          secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_EMAIL),
+          secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_PASSWORD),
+          secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_LOGIN_ENABLED),
+          secureStorage.deleteItem(SECURE_KEYS.SOCIAL_PROVIDER),
+          secureStorage.deleteItem(SECURE_KEYS.PIN_HASH),
+        ]);
+        
+        // Clear AsyncStorage
+        const allKeys = await AsyncStorage.getAllKeys();
+        const appKeys = allKeys.filter(key => 
+          key.startsWith('@littleloom_') || 
+          key.startsWith('littleloom_') ||
+          key.startsWith('@community_')
+        );
+        await AsyncStorage.multiRemove(appKeys);
+        
+        // Clear local database (Drizzle)
+        try {
+          const { db } = await import('@/database/db');
+          const { babies, trackerEntries, appSettings, familyMembers } = await import('@/database/schema');
+          
+          await db.delete(babies);
+          await db.delete(trackerEntries);
+          await db.delete(appSettings);
+          await db.delete(familyMembers);
+        } catch (dbError) {
+          console.warn('[Auth] Error clearing local database:', dbError);
+        }
+        
+        console.log('[Auth] All local data cleared');
+      } catch (clearError) {
+        console.warn('[Auth] Error clearing local storage:', clearError);
+      }
+      
+      // ─── STEP 4: Update auth state ──────────────────────────────────
+      if (isMounted.current) {
+        setState({
+          isLoading: false,
+          isAuthenticated: false,
+          userToken: null,
+          userProfile: null,
+          onboardingComplete: false,
+          hasSeenOnboarding: false,
+          isBiometricAvailable: false,
+          isBiometricEnabled: false,
+          isBiometricLoginEnabled: false,
+          setupComplete: false,
+          hasParent2: false,
+          hasBaby: false,
+          availableBiometricTypes: [],
+          biometricTypeName: 'Biometric',
+        });
+      }
+      
+      return { success: true, message: 'Your account has been successfully deleted.' };
+      
+    } catch (error) {
+      console.error('[Auth] Account deletion error:', error);
+      return { 
+        success: false, 
+        message: 'An error occurred while deleting your account. Please try again.' 
+      };
+    }
+  }, [state.userProfile, verifyPassword]);
+
+  // ─── DELETE ACCOUNT WITH CONFIRMATION ──────────────────────────────────
+  const deleteAccountWithConfirmation = useCallback(async (): Promise<{ success: boolean; message: string }> => {
+    return new Promise((resolve) => {
+      Alert.alert(
+        'Delete Account',
+        '⚠️ This action is permanent and cannot be undone. All your data will be deleted.\n\nPlease enter your password to confirm:',
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+            onPress: () => resolve({ success: false, message: 'Cancelled' }),
+          },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: async () => {
+              // Show password input
+              Alert.prompt(
+                'Confirm Password',
+                'Enter your password to permanently delete your account:',
+                [
+                  {
+                    text: 'Cancel',
+                    style: 'cancel',
+                    onPress: () => resolve({ success: false, message: 'Cancelled' }),
+                  },
+                  {
+                    text: 'Delete',
+                    style: 'destructive',
+                    onPress: async (password) => {
+                      if (!password) {
+                        resolve({ success: false, message: 'Password is required' });
+                        return;
+                      }
+                      const result = await deleteAccount(password);
+                      resolve(result);
+                    },
+                  },
+                ],
+                'secure-text'
+              );
+            },
+          },
+        ],
+        { cancelable: false }
+      );
+    });
+  }, [deleteAccount]);
+
   const value = React.useMemo(() => ({
     ...state,
     signIn,
@@ -2023,7 +2260,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     forgotPassword,
     resetPasswordForUser,
     signUpWithInviteCode,
-  }), [state, signIn, signUp, signInWithSocial, signOut, checkBiometricAvailability, authenticateWithBiometric, enableBiometricForApp, enableBiometricLogin, disableBiometricLogin, hasBiometricLoginCredentials, loginWithBiometric, updateUserProfile, updateUserPreferences, skipSetup, completeSetup, resetSetupFlow, wasSetupCompleted, setSetupCompleteCallback, markOnboardingSeen, shouldShowBiometricPrompt, isAppActive, getLastActiveTime, getBiometricTypeInfo, clearAllLocks, getCurrentUserProfile, checkSession, forceLogoutOnInvalidSession, findUserByEmailCallback, findUserByEmailOrUsernameCallback, findUserByEmailOrUsernameOrPhoneCallback, updateCommunityProfile, getCommunityProfile, updateCommunityStats, updateCommunityTopics, isUsernameAvailable, registerCommunityUsername, updateCommunityUsername, updateCommunityAvatar, forgotPassword, resetPasswordForUser, signUpWithInviteCode]);
+    // ─── NEW ACCOUNT MANAGEMENT FUNCTIONS ──────────────────────────────
+    verifyPassword,
+    deleteAccount,
+    deleteAccountWithConfirmation,
+  }), [state, signIn, signUp, signInWithSocial, signOut, checkBiometricAvailability, authenticateWithBiometric, enableBiometricForApp, enableBiometricLogin, disableBiometricLogin, hasBiometricLoginCredentials, loginWithBiometric, updateUserProfile, updateUserPreferences, skipSetup, completeSetup, resetSetupFlow, wasSetupCompleted, setSetupCompleteCallback, markOnboardingSeen, shouldShowBiometricPrompt, isAppActive, getLastActiveTime, getBiometricTypeInfo, clearAllLocks, getCurrentUserProfile, checkSession, forceLogoutOnInvalidSession, findUserByEmailCallback, findUserByEmailOrUsernameCallback, findUserByEmailOrUsernameOrPhoneCallback, updateCommunityProfile, getCommunityProfile, updateCommunityStats, updateCommunityTopics, isUsernameAvailable, registerCommunityUsername, updateCommunityUsername, updateCommunityAvatar, forgotPassword, resetPasswordForUser, signUpWithInviteCode, verifyPassword, deleteAccount, deleteAccountWithConfirmation]);
 
   return (
     <AuthContext.Provider value={value}>

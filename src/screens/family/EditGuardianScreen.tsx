@@ -1079,6 +1079,25 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
 
   useEffect(() => { loadFamily(); }, [loadFamily]);
 
+  // Add verifyPassword function - you'll need to implement this based on your auth system
+  const verifyPassword = useCallback(async (password: string): Promise<boolean> => {
+    try {
+      // This should be implemented to verify the user's password
+      // For example, using Firebase Auth:
+      // const user = auth.currentUser;
+      // if (!user) return false;
+      // const credential = EmailAuthProvider.credential(user.email!, password);
+      // await user.reauthenticateWithCredential(credential);
+      // return true;
+      
+      // Placeholder - implement based on your auth system
+      return true;
+    } catch (error) {
+      console.error('Password verification error:', error);
+      return false;
+    }
+  }, []);
+
   useEffect(() => {
     const findMember = async () => {
       setIsLoading(true);
@@ -1152,17 +1171,60 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     setIsSaving(false);
   };
 
-  const handleRemove = () => {
+  const handleRemove = useCallback(() => {
     if (!member) return;
     const currentUserId = userProfile?.id || userProfile?.uid || profile?.id;
-    if (member.id === currentUserId) { sweetAlert.alert('Cannot Remove', 'You cannot remove yourself.', 'warning'); return; }
-    if (!hasPermission('manageFamily')) { sweetAlert.error('Permission Denied', 'Only parents can remove members'); triggerHaptic('error'); return; }
-    sweetAlert.confirm('Remove Family Member', `Remove ${member.fullName}? Their history will be preserved but they will lose access.`, async () => {
-      triggerHaptic('error'); const success = await removeMember(member.id);
-      if (success) { triggerHaptic('success'); sweetAlert.success('Member Removed', `${member.fullName} has been removed`); navigation.goBack(); }
-      else sweetAlert.error('Error', 'Failed to remove family member');
-    }, () => {}, 'Remove', 'Cancel');
-  };
+    if (member.id === currentUserId) { 
+      sweetAlert.alert('Cannot Remove', 'You cannot remove yourself.', 'warning'); 
+      return; 
+    }
+    if (!hasPermission('manageFamily')) { 
+      sweetAlert.error('Permission Denied', 'Only parents can remove members'); 
+      triggerHaptic('error'); 
+      return; 
+    }
+    
+    sweetAlert.confirm(
+      'Remove Family Member',
+      `Remove ${member.fullName}? Their history will be preserved but they will lose access.`,
+      async () => {
+        // Ask for password confirmation
+        sweetAlert.prompt(
+          'Confirm Password',
+          'Enter your password to confirm removal:',
+          'secure-text',
+          async (password) => {
+            if (!password) {
+              sweetAlert.error('Error', 'Password is required');
+              return;
+            }
+            
+            // Verify password
+            const isValid = await verifyPassword(password);
+            if (!isValid) {
+              sweetAlert.error('Error', 'Incorrect password. Please try again.');
+              return;
+            }
+            
+            triggerHaptic('error');
+            const success = await removeMember(member.id);
+            if (success) { 
+              triggerHaptic('success'); 
+              sweetAlert.success('Member Removed', `${member.fullName} has been removed`); 
+              navigation.goBack(); 
+            } else { 
+              sweetAlert.error('Error', 'Failed to remove family member'); 
+            }
+          },
+          'Remove',
+          'Cancel'
+        );
+      },
+      () => {},
+      'Remove',
+      'Cancel'
+    );
+  }, [member, userProfile, profile, hasPermission, removeMember, navigation, sweetAlert, triggerHaptic, verifyPassword]);
 
   const handleCameraCapture = async () => {
     setShowImagePicker(false);
