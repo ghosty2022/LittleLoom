@@ -298,7 +298,9 @@ function NavigationContent({
   const pendingNavTarget = useRef<string | null>(null);
   const processedNavState = useRef<NavigationState>('LOADING');
   const hasConsumedInitialState = useRef(false);
+  const hasInitializedNav = useRef(false);
   const isMounted = useRef(true);
+  const isNavigatingSetup = useRef(false); // NEW: Track if we're navigating to setup
 
   // Refs to track current baby values without causing re-renders
   const babyCountRef = useRef(0);
@@ -462,18 +464,50 @@ function NavigationContent({
   useEffect(() => {
     if (!navRef.current?.isReady() || !isNavReady || !initialCheckDone) return;
 
+    // If we're already navigating to setup, don't interrupt
+    if (isNavigatingSetup.current) {
+      console.log('[Navigation] Already navigating to setup, skipping');
+      return;
+    }
+
+    // If we've already initialized navigation and we're in MAIN, don't reset
+    if (hasInitializedNav.current && navState === 'MAIN') {
+      const currentRoute = navRef.current.getCurrentRoute()?.name;
+      if (currentRoute && SETUP_FLOW_SCREENS.has(currentRoute)) {
+        // We're on a setup screen but should be in MAIN - navigate to Main
+        console.log('[Navigation] On setup screen but should be MAIN, navigating to Main');
+        navRef.current.navigate('Main' as never);
+      }
+      return;
+    }
+
     // Deduplicate: skip if we've already processed this navState
-    if (navState === processedNavState.current && !pendingNavTarget.current) return;
+    if (navState === processedNavState.current && !pendingNavTarget.current) {
+      // If we're on a setup screen and navState is SETUP_BABY, we're already where we need to be
+      const currentRoute = navRef.current.getCurrentRoute()?.name;
+      if (navState === 'SETUP_BABY' && currentRoute === 'BabyOptional') {
+        // We're already on the right screen, mark as initialized
+        hasInitializedNav.current = true;
+        return;
+      }
+      return;
+    }
     processedNavState.current = navState;
 
     // If we restored state from persistence, let NavigationContainer handle it
     // on first boot. Don't override with a reset to Main.
     if (initialState && !hasConsumedInitialState.current) {
       hasConsumedInitialState.current = true;
+      // Always allow the initial state to be consumed regardless of navState
+      pendingNavTarget.current = null;
+      // Don't mark as initialized if we're going to setup
       if (navState === 'MAIN') {
-        pendingNavTarget.current = null;
-        return;
+        hasInitializedNav.current = true;
+      } else if (navState === 'SETUP_BABY') {
+        // We're going to setup, don't mark as initialized yet
+        console.log('[Navigation] Consuming initialState for SETUP_BABY');
       }
+      return;
     }
 
     // Block concurrent navigation
@@ -502,6 +536,11 @@ function NavigationContent({
     // Already at the target we want
     if (currentRoute === target) {
       pendingNavTarget.current = null;
+      // If we're on the setup screen, mark as initialized to prevent further resets
+      if (navState === 'SETUP_BABY' || navState === 'SETUP_PARENT2') {
+        isNavigatingSetup.current = true;
+      }
+      hasInitializedNav.current = true;
       return;
     }
 
@@ -522,12 +561,14 @@ function NavigationContent({
         lastNavState.current === 'SECURITY_LOCK';
       if (!fromNonMain) {
         pendingNavTarget.current = null;
+        hasInitializedNav.current = true;
         return;
       }
 
       // Single baby + restored state: let NavigationContainer's initialState do its job
       if (babyCountRef.current <= 1 && fromNonMain && initialState) {
         pendingNavTarget.current = null;
+        hasInitializedNav.current = true;
         return;
       }
     }
@@ -539,6 +580,12 @@ function NavigationContent({
     isNavigating.current = true;
     lastNavTime.current = now;
     pendingNavTarget.current = target;
+
+    // If navigating to setup, mark it
+    if (navState === 'SETUP_BABY' || navState === 'SETUP_PARENT2') {
+      isNavigatingSetup.current = true;
+      console.log('[Navigation] Setting isNavigatingSetup = true for', target);
+    }
 
     const shouldReset =
       navState === 'LOGIN' ||
@@ -554,6 +601,13 @@ function NavigationContent({
     setTimeout(() => {
       isNavigating.current = false;
       pendingNavTarget.current = null;
+      // Mark as initialized after navigation completes
+      hasInitializedNav.current = true;
+      // Reset the setup navigation flag after a delay
+      setTimeout(() => {
+        isNavigatingSetup.current = false;
+        console.log('[Navigation] Reset isNavigatingSetup');
+      }, 1000);
     }, 300);
   }, [navState, initialCheckDone, isNavReady, initialState]);
 
