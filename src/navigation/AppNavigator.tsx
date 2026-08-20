@@ -72,7 +72,7 @@ const Tab = createBottomTabNavigator<MainTabParamList>();
 
 const ONBOARDING_COMPLETE_KEY = '@littleloom_onboarding_complete_v3';
 const ONBOARDING_SEEN_KEY = '@littleloom_onboarding_seen_v3';
-const NAV_INITIALIZED_KEY = '@littleloom_nav_initialized_v1'; // NEW: Persisted flag
+const NAV_INITIALIZED_KEY = '@littleloom_nav_initialized_v1';
 
 const CustomLightTheme = {
   ...DefaultTheme,
@@ -302,7 +302,7 @@ function NavigationContent({
   const hasInitializedNav = useRef(false);
   const isMounted = useRef(true);
   const isNavigatingSetup = useRef(false);
-  const effectRunCount = useRef(0); // NEW: Track effect runs
+  const effectRunCount = useRef(0);
 
   // Refs to track current baby values without causing re-renders
   const babyCountRef = useRef(0);

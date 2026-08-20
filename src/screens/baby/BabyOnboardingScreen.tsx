@@ -45,6 +45,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
 
   const isMountedRef = useRef(true);
   const hasCheckedRef = useRef(false);
+  const checkTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ─── SIMPLE: Check remote babies once ──────────────────────────────
   const checkRemoteBabies = useCallback(async () => {
@@ -126,7 +127,8 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
         if (isMountedRef.current) {
           setLocalLoading(false);
           // Check remote after a short delay
-          setTimeout(() => {
+          if (checkTimeoutRef.current) clearTimeout(checkTimeoutRef.current);
+          checkTimeoutRef.current = setTimeout(() => {
             if (isMountedRef.current) {
               checkRemoteBabies();
             }
@@ -144,6 +146,10 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
     
     return () => {
       isMountedRef.current = false;
+      if (checkTimeoutRef.current) {
+        clearTimeout(checkTimeoutRef.current);
+        checkTimeoutRef.current = null;
+      }
     };
   }, [loadBabies, checkRemoteBabies]);
 
@@ -200,10 +206,16 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
         navigation.replace('CoParentInviteScreen');
       } else {
         showInfo('Skipped', 'You can add a baby later from settings');
+        // Navigate to main if setup is complete
+        const { setupComplete } = await wasSetupCompleted();
+        if (setupComplete) {
+          navigation.replace('Main');
+        }
       }
     } catch (error) {
       console.error('handleSkip error:', error);
       showError('Error', 'Could not skip baby setup');
+    } finally {
       setIsProcessing(false);
     }
   }, [skipSetup, wasSetupCompleted, showError, showInfo, triggerHaptic, navigation]);
@@ -228,12 +240,15 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
       } else if (hasParent2 === 'skipped' || hasParent2 === true) {
         await completeSetup('parent2');
         showSuccess('Welcome Back!', 'Baby profile selected');
+        navigation.replace('Main');
       } else {
         showSuccess('Welcome Back!', 'Baby profile selected');
+        navigation.replace('Main');
       }
     } catch (error) {
       console.error('handleSelectBaby error:', error);
       showError('Error', 'Could not switch baby');
+    } finally {
       setIsProcessing(false);
     }
   }, [switchBaby, completeSetup, wasSetupCompleted, showError, showSuccess, showInfo, triggerHaptic, navigation]);
@@ -246,7 +261,12 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
       await loadBabies();
       if (isMountedRef.current) {
         setLocalLoading(false);
-        checkRemoteBabies();
+        if (checkTimeoutRef.current) clearTimeout(checkTimeoutRef.current);
+        checkTimeoutRef.current = setTimeout(() => {
+          if (isMountedRef.current) {
+            checkRemoteBabies();
+          }
+        }, 500);
       }
     } catch (error) {
       if (isMountedRef.current) {
