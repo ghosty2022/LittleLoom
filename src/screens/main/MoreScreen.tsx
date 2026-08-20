@@ -1,4 +1,4 @@
-// screens/main/MoreScreen.tsx
+// screens/main/MoreScreen.tsx - COMPLETE PRODUCTION READY VERSION
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dimensions,
@@ -15,6 +15,7 @@ import {
   Share,
   Platform,
   Alert,
+  Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -34,6 +35,7 @@ import Animated, {
   useAnimatedScrollHandler,
 } from 'react-native-reanimated';
 import { useFocusEffect } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 // ─── Hooks ──────────────────────────────────────────────────────────
@@ -59,6 +61,9 @@ import { useSweetAlert } from '../../components/SweetAlert';
 // ─── Types ─────────────────────────────────────────────────────────
 import type { RootStackParamList } from '../../types/navigation';
 import type { FamilyMember } from '../../types/roles';
+
+// ─── Services ─────────────────────────────────────────────────────
+import { createBackup } from '../../utils/backupService';
 
 type SettingsScreenProps = NativeStackScreenProps<RootStackParamList, 'Main'>;
 
@@ -895,6 +900,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     lockApp,
     updateAutoLockTimeout,
     getAvailableAuthMethods,
+    getBiometricIcon,
   } = useSecurity();
   const { profile: userContextProfile } = useUser();
   const { guardians, parent2: parent2Profile, familyMembers } = useFamily();
@@ -909,21 +915,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
 
   // ─── Supabase Hooks ─────────────────────────────────────────────
   const { isConnected, user: supabaseUser } = useSupabase();
-
   const { sync, isSyncing, getQueueStatus } = useOfflineSync();
-
-  // ─── Realtime Subscription ──────────────────────────────────────
-  useRealtimeSubscription({
-    table: 'family_members',
-    filter: currentBaby?.id ? `baby_id=eq.${currentBaby.id}` : undefined,
-    onInsert: () => {
-      loadBabies();
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    },
-    onUpdate: () => loadBabies(),
-    onDelete: () => loadBabies(),
-    enabled: !!currentBaby?.id && isConnected,
-  });
 
   // ─── State ──────────────────────────────────────────────────────
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
@@ -947,6 +939,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
   const safeBabies = babies || [];
   const availableMethods = getAvailableAuthMethods();
   const biometricTypeName = getBiometricTypeName();
+  const biometricIcon = getBiometricIcon();
   const hasBiometric = isBiometricHardwareAvailable && isBiometricEnrolled;
 
   const babyStats = currentBaby ? getBabyStats() : { streak: 0, milestones: 0, photos: 0, entries: 0 };
@@ -1015,6 +1008,35 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     }
   }, [loadBabies, loadEntries]);
 
+  // ─── FIXED: Handle Sign Out ─────────────────────────────────────
+  const handleLogout = useCallback(async () => {
+    const confirmed = await sweetAlert.confirm({
+      title: 'Sign Out',
+      message: 'Are you sure you want to sign out? You will need to sign in again to access your data.',
+      confirmText: 'Sign Out',
+      cancelText: 'Cancel',
+      destructive: true,
+    });
+    if (confirmed) {
+      try {
+        triggerHaptic('medium');
+        // Clear security lock state before signing out
+        await AsyncStorage.setItem('littleloom_security_lock', 'false');
+        await signOut();
+        // Navigate to login screen
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Login' as never }],
+        });
+        sweetAlert.toast('Signed Out', 'You have been signed out successfully', 'success');
+      } catch (error) {
+        console.error('Sign out error:', error);
+        sweetAlert.alert('Error', 'Failed to sign out. Please try again.', 'error');
+      }
+    }
+  }, [signOut, sweetAlert, triggerHaptic, navigation]);
+
+  // ─── FIXED: Handle Sync / Cloud Backup ─────────────────────────
   const handleSync = useCallback(async () => {
     if (isSyncing) {
       sweetAlert.toast('Sync in Progress', 'Please wait for the current sync to complete.', 'info');
@@ -1026,8 +1048,23 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
       const result = await sync();
       if (result.success) {
         setSyncStatus('success');
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        triggerHaptic('success');
         sweetAlert.toast('✅ Synced!', 'Your data is now in sync with the cloud', 'success');
+        
+        // Also create a backup in the background
+        try {
+          const backupResult = await createBackup({ 
+            encrypted: false,
+            includePhotos: true,
+          });
+          if (backupResult.success) {
+            // Silently backup, don't show another toast
+            console.log('✅ Backup created successfully');
+          }
+        } catch (backupError) {
+          console.warn('Backup creation error (non-critical):', backupError);
+          // Don't show error to user, sync was successful
+        }
       } else {
         setSyncStatus('error');
         sweetAlert.toast('⚠️ Sync Issue', 'Some items failed to sync. They will be retried.', 'warning');
@@ -1039,7 +1076,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     } finally {
       setTimeout(() => setSyncStatus('idle'), 3000);
     }
-  }, [isSyncing, sync, sweetAlert]);
+  }, [isSyncing, sync, sweetAlert, triggerHaptic]);
 
   const handleBiometricToggle = useCallback(async (enabled: boolean) => {
     if (enabled) {
@@ -1099,19 +1136,6 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
       sweetAlert.alert('Update Failed', 'Could not update auto-lock timeout.', 'error');
     }
   }, [updateAutoLockTimeout, sweetAlert, formatTimeout]);
-
-  const handleLogout = useCallback(async () => {
-    const confirmed = await sweetAlert.confirm({
-      title: 'Logout',
-      message: 'Are you sure you want to sign out? You will need to sign in again to access your data.',
-      confirmText: 'Logout',
-      cancelText: 'Stay',
-      destructive: true,
-    });
-    if (confirmed) {
-      signOut();
-    }
-  }, [signOut, sweetAlert]);
 
   const handleSelectBabyFromModal = useCallback((baby: any) => {
     setShowBabyModal(false);
@@ -1175,7 +1199,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
             tint={isDark ? 'dark' : 'light'}
           >
             <MenuItem
-              icon={isBiometricEnabled ? 'finger-print' : 'finger-print-outline'}
+              icon={isBiometricEnabled ? biometricIcon as any : `${biometricIcon}-outline` as any}
               title={`${biometricTypeName} Unlock`}
               subtitle={isBiometricEnabled ? 'Enabled' : hasBiometric ? 'Disabled' : 'Not Available'}
               isEnabled={isBiometricEnabled}
@@ -1230,6 +1254,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     expandedSections,
     securitySettings,
     biometricTypeName,
+    biometricIcon,
     hasBiometric,
     primary,
     secondary,
@@ -1622,7 +1647,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
               disabled={isSyncing}
             >
               <Ionicons
-                name={syncStatus === 'success' ? 'checkmark' : isSyncing ? 'refresh' : 'cloud-outline'}
+                name={syncStatus === 'success' ? 'checkmark-circle' : isSyncing ? 'refresh' : 'cloud-upload-outline'}
                 size={20}
                 color={
                   syncStatus === 'success' ? '#10b981' :
