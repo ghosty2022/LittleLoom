@@ -355,6 +355,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const responseListener = useRef<any>(null);
   const appStateListener = useRef<any>(null);
   const isInitialized = useRef(false);
+  const initStarted = useRef(false);
 
   // ─── Load Theme ──────────────────────────────────────────────────
 
@@ -421,10 +422,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [customization.isLoaded, customization.settings.appearance]);
 
-  // ─── Initialize Notifications ────────────────────────────────────
+  // ─── Initialize Notifications (Lazy - called when needed) ──────
 
-  const initializeNotifications = useCallback(async () => {
-    if (isInitialized.current) return;
+  // CRITICAL FIX: Don't auto-initialize notifications on mount
+  // Initialize them lazily when needed
+
+  const ensureNotificationsInitialized = useCallback(async () => {
+    if (isInitialized.current) return true;
+    if (initStarted.current) {
+      // Wait for initialization to complete
+      return new Promise<boolean>((resolve) => {
+        const check = () => {
+          if (isInitialized.current) {
+            resolve(true);
+          } else {
+            setTimeout(check, 100);
+          }
+        };
+        check();
+      });
+    }
+
+    initStarted.current = true;
 
     try {
       // Load settings
@@ -434,10 +453,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (!settings.enabled) {
         console.log('[AppContext] Notifications disabled by user');
         setIsNotificationReady(true);
-        return;
+        isInitialized.current = true;
+        return true;
       }
 
-      // Request permissions
+      // Request permissions only if device
       if (Device.isDevice) {
         const { status: existingStatus } = await Notifications.getPermissionsAsync();
         let finalStatus = existingStatus;
@@ -457,7 +477,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (finalStatus !== 'granted') {
           console.log('[AppContext] Notification permission denied');
           setIsNotificationReady(true);
-          return;
+          isInitialized.current = true;
+          return true;
         }
       }
 
@@ -542,9 +563,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setIsNotificationReady(true);
 
       console.log('[AppContext] Notifications initialized successfully');
+      return true;
     } catch (error) {
       console.error('[AppContext] Notification initialization error:', error);
       setIsNotificationReady(true);
+      isInitialized.current = true;
+      return false;
     }
   }, []);
 
@@ -643,31 +667,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // ─── Initialize ──────────────────────────────────────────────────
+  // ─── Initialize on demand ───────────────────────────────────────
 
-  useEffect(() => {
-    if (!_themeLoaded) return;
-    initializeNotifications();
-
-    return () => {
-      if (notificationListener.current) {
-        notificationListener.current.remove();
-        notificationListener.current = null;
-      }
-      if (responseListener.current) {
-        responseListener.current.remove();
-        responseListener.current = null;
-      }
-      if (appStateListener.current) {
-        appStateListener.current.remove();
-        appStateListener.current = null;
-      }
-      if (keepAwakeRef) {
-        keepAwakeRef.release().catch(() => {});
-        setKeepAwakeRef(null);
-      }
-    };
-  }, [initializeNotifications, _themeLoaded]);
+  // CRITICAL FIX: Only initialize notifications when first needed
+  // Don't auto-initialize on mount
 
   // ─── Theme Functions ─────────────────────────────────────────────
 
@@ -767,10 +770,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [notificationSettings]);
 
+  // ─── Wrapped notification functions with lazy init ──────────────
+
   const scheduleNotification = useCallback(async (
     payload: NotificationPayload,
     trigger?: Notifications.NotificationTriggerInput
   ): Promise<string | null> => {
+    // Ensure notifications are initialized before use
+    await ensureNotificationsInitialized();
+
     if (!isNotificationReady) {
       console.warn('[AppContext] Notifications not ready');
       return null;
@@ -822,7 +830,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       console.error('[AppContext] Schedule error:', error);
       return null;
     }
-  }, [isNotificationReady, notificationSettings, isInQuietHours]);
+  }, [ensureNotificationsInitialized, isNotificationReady, notificationSettings, isInQuietHours]);
 
   const sendImmediateNotification = useCallback(
     (payload: NotificationPayload): Promise<string | null> => {
@@ -849,8 +857,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   const getScheduledNotifications = useCallback(async () => {
+    await ensureNotificationsInitialized();
     return await Notifications.getAllScheduledNotificationsAsync();
-  }, []);
+  }, [ensureNotificationsInitialized]);
 
   const getNotificationHistory = useCallback(async () => {
     try {
@@ -885,6 +894,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const newSettings = { ...notificationSettings, ...updates };
     setNotificationSettings(newSettings);
     await saveNotificationSettings(newSettings);
+
+    // Ensure notifications are initialized before updating
+    await ensureNotificationsInitialized();
 
     // Update background sync if changed
     if (updates.allowBackgroundSync !== undefined) {
@@ -928,7 +940,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         };
       },
     });
-  }, [notificationSettings]);
+  }, [notificationSettings, ensureNotificationsInitialized]);
 
   const enableKeepAwake = useCallback(async (reason: string = 'Critical') => {
     try {
@@ -959,6 +971,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const setCommunityScreen = useCallback((isComm: boolean) => {
     setIsCommunityScreen(isComm);
   }, []);
+
+  // ─── Cleanup ─────────────────────────────────────────────────────
+
+  useEffect(() => {
+    return () => {
+      if (notificationListener.current) {
+        notificationListener.current.remove();
+        notificationListener.current = null;
+      }
+      if (responseListener.current) {
+        responseListener.current.remove();
+        responseListener.current = null;
+      }
+      if (appStateListener.current) {
+        appStateListener.current.remove();
+        appStateListener.current = null;
+      }
+      if (keepAwakeRef) {
+        keepAwakeRef.release().catch(() => {});
+        setKeepAwakeRef(null);
+      }
+    };
+  }, [keepAwakeRef]);
 
   // ─── Context Value ──────────────────────────────────────────────
 

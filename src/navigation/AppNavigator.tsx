@@ -280,8 +280,6 @@ function NavigationContent({
 
   const [navState, setNavState] = useState<NavigationState>('LOADING');
   const [initialCheckDone, setInitialCheckDone] = useState(false);
-  // Switch-baby navigation is now handled imperatively (no state)
-  // const [shouldShowSwitchBaby, setShouldShowSwitchBaby] = useState(false);
   const [isNavReady, setIsNavReady] = useState(false);
   const [isFirstOpen, setIsFirstOpen] = useState(false);
   const [babiesReady, setBabiesReady] = useState(false);
@@ -292,7 +290,6 @@ function NavigationContent({
   const appState = useRef(AppState.currentState);
   const isNavigating = useRef(false);
   const lastNavTime = useRef(0);
-  // const hasShownSwitchBaby = useRef(false); // no longer needed — routed directly
   const wasOnSecurityLock = useRef(false);
   const lastSecCheck = useRef(0);
   const stateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -301,7 +298,6 @@ function NavigationContent({
   const pendingNavTarget = useRef<string | null>(null);
   const processedNavState = useRef<NavigationState>('LOADING');
   const hasConsumedInitialState = useRef(false);
-  // const processedSwitchBaby = useRef(false); // no longer needed
   const isMounted = useRef(true);
 
   // Refs to track current baby values without causing re-renders
@@ -369,8 +365,6 @@ function NavigationContent({
       isFirstOpen,
     );
 
-    // Switch-baby is handled imperatively after Main navigation (no state)
-
     if (newState !== lastNavState.current) {
       if (lastNavState.current === 'SECURITY_LOCK' && newState === 'MAIN') {
         wasOnSecurityLock.current = true;
@@ -392,9 +386,8 @@ function NavigationContent({
     hasSeenOnboarding,
     isFirstOpen,
     babiesReady,
-    babies?.length, // <-- REACT to baby count changes so SETUP_BABY → MAIN/SETUP_PARENT2 works
+    babies?.length,
   ]);
-
 
   useEffect(() => {
     return () => { isMounted.current = false; };
@@ -418,7 +411,7 @@ function NavigationContent({
 
       // Only trigger when coming BACK to active from background/inactive
       if ((previous === 'background' || previous === 'inactive') && next === 'active') {
-       // Minimal delay to let React Native settle
+        // Minimal delay to let React Native settle
         await new Promise(r => setTimeout(r, 30));
 
         const currentRoute = navRef.current?.getCurrentRoute()?.name;
@@ -436,7 +429,6 @@ function NavigationContent({
         if (now - lastSecCheck.current < 2000) return;
 
         // ALWAYS check security when authenticated, regardless of setup state
-        // (but security lock only shows if setup is done AND security is enabled)
         if (isAuthenticated) {
           await checkSecurityOnResumeRef.current();
         }
@@ -465,10 +457,6 @@ function NavigationContent({
   }, []);
 
   /* ═══════════════════════════════════════════════════════════════════════════
-     SWITCH BABY NAVIGATION — handled imperatively inside main nav effect
-     ═══════════════════════════════════════════════════════════════════════════ */
-
-  /* ═══════════════════════════════════════════════════════════════════════════
      MAIN NAVIGATION EFFECT (navState only)
      ═══════════════════════════════════════════════════════════════════════════ */
   useEffect(() => {
@@ -478,7 +466,7 @@ function NavigationContent({
     if (navState === processedNavState.current && !pendingNavTarget.current) return;
     processedNavState.current = navState;
 
-     // If we restored state from persistence, let NavigationContainer handle it
+    // If we restored state from persistence, let NavigationContainer handle it
     // on first boot. Don't override with a reset to Main.
     if (initialState && !hasConsumedInitialState.current) {
       hasConsumedInitialState.current = true;
@@ -517,11 +505,8 @@ function NavigationContent({
       return;
     }
 
-        // If we just created a baby and we're on the creation screen, let the screen handle dismissal
-    // instead of auto-navigating away while the user might want to add more babies.
+    // If we just created a baby and we're on the creation screen, let the screen handle dismissal
     if (currentRoute === 'CreateBabyProfile' && target !== 'CreateBabyProfile' && navState !== 'SETUP_BABY') {
-      // Don't force-leave the creation screen; the user taps Continue when ready.
-      // But if they explicitly go back, the underlying nav state will route correctly.
       pendingNavTarget.current = null;
       return;
     }
@@ -547,7 +532,7 @@ function NavigationContent({
       }
     }
 
-     // Cooldown guard (300ms) — prevents rapid reset/navigate loops while staying responsive
+    // Cooldown guard (300ms) — prevents rapid reset/navigate loops while staying responsive
     const now = Date.now();
     if (now - lastNavTime.current < 300) return;
 
@@ -562,8 +547,6 @@ function NavigationContent({
       navState === 'ONBOARDING';
     if (shouldReset) {
       navRef.current.reset({ index: 0, routes: [{ name: target }] });
-
-      // SwitchBaby is now routed directly via target above — no imperative flash
     } else {
       navRef.current.navigate(target as never);
     }
@@ -575,14 +558,12 @@ function NavigationContent({
   }, [navState, initialCheckDone, isNavReady, initialState]);
 
   // Early return MUST come after ALL hooks
-  // Keep showing loading until auth + firstOpen are resolved
-  // NOTE: Removed babiesReady check to prevent NavigationContainer remount
-  // which resets isNavReady and can block post-auth navigation to setup flow
   if (authLoading || !initialCheckDone) {
     return <AppLoadingScreen />;
   }
 
-  // FIX: Wrap in a non-collapsable View to prevent Reanimated index desync
+  // CRITICAL FIX: Use a stable key to prevent NavigationContainer remount
+  // that resets isNavReady and can block post-auth navigation to setup flow
   return (
     <NavigationContainer
       ref={navRef}
@@ -590,6 +571,7 @@ function NavigationContent({
       initialState={initialState}
       onStateChange={handleStateChange}
       onReady={() => setIsNavReady(true)}
+      key="app-navigation-container"
     >
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <View style={{ flex: 1 }} collapsable={false}>

@@ -42,11 +42,9 @@ LogBox.ignoreLogs([
 
 SplashScreen.preventAutoHideAsync();
 
-const ICON_FONTS_TO_PRELOAD = {
+// CRITICAL FIX: Only preload essential fonts, load others lazily
+const ESSENTIAL_FONTS = {
   'Ionicons': require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf'),
-  'MaterialIcons': require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialIcons.ttf'),
-  'MaterialCommunityIcons': require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialCommunityIcons.ttf'),
-  'Feather': require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Feather.ttf'),
 };
 
 const NON_RESTORABLE_ROUTES = new Set([
@@ -160,6 +158,7 @@ export default function App(): JSX.Element | null {
   const lastStateKeyRef = useRef<string>('');
   const initStartedRef = useRef(false);
   const stateSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const splashHiddenRef = useRef(false);
 
   // Phase 0: Read theme from database immediately
   useEffect(() => {
@@ -191,119 +190,55 @@ export default function App(): JSX.Element | null {
     return () => { mounted = false; };
   }, [systemScheme]);
 
-  // Phase 1: Parallel initialization with timeout
+  // Phase 1: Parallel initialization with aggressive timeout
   useEffect(() => {
     if (!themeLoaded || initStartedRef.current) return;
     initStartedRef.current = true;
 
     const init = async () => {
       try {
-        // Start all init tasks in parallel
-        const initTasks = Promise.all([
-          // Font loading
-          Font.loadAsync(ICON_FONTS_TO_PRELOAD).catch(e => {
+        // CRITICAL FIX: Hide splash screen IMMEDIATELY after essential tasks
+        // Don't wait for all tasks to complete
+        
+        // Start all init tasks in parallel - don't await them all
+        const essentialTasks = Promise.all([
+          // Only essential font loading
+          Font.loadAsync(ESSENTIAL_FONTS).catch(e => {
             console.warn('[App] Font loading failed:', e);
             return null;
           }),
-          
-          // Notification service
-          (async () => {
-            try {
-              if (notificationService && typeof notificationService.initialize === 'function') {
-                await notificationService.initialize();
-              }
-            } catch (e) {
-              console.warn('[App] Notification init failed:', e);
-            }
-          })(),
-          
-          // Image directories
-          (async () => {
-            try {
-              if (ensureAllImageDirs && typeof ensureAllImageDirs === 'function') {
-                await ensureAllImageDirs();
-              }
-            } catch (e) {
-              console.warn('[App] Image dirs init failed:', e);
-            }
-          })(),
-          
-          // System UI
-          (async () => {
-            try {
-              if (SystemUI && typeof SystemUI.setBackgroundColorAsync === 'function') {
-                await SystemUI.setBackgroundColorAsync(
-                  initialTheme.isTrueBlack ? '#000000' : 
-                  initialTheme.isDark ? '#08080f' : '#f8faff'
-                );
-              }
-            } catch (e) {
-              console.warn('[App] SystemUI init failed:', e);
-            }
-          })(),
         ]);
 
-        // Navigation state restoration (non-blocking)
-        const navRestorePromise = (async () => {
-          try {
-            // Quick check for setup completion
-            const [setupCompleteStr, hasParent2Str, hasBabyStr, wasLocked] = await Promise.all([
-              AsyncStorage.getItem('littleloom_setup_complete'),
-              AsyncStorage.getItem('littleloom_parent2_completed'),
-              AsyncStorage.getItem('littleloom_baby_completed'),
-              AsyncStorage.getItem('littleloom_security_lock'),
-            ]);
-
-            const hasParent2 = hasParent2Str === 'true' || hasParent2Str === 'skipped';
-            const hasBaby = hasBabyStr === 'true' || hasBabyStr === 'skipped';
-            const setupDone = setupCompleteStr === 'true' || (hasParent2 && hasBaby);
-            
-            if (!setupDone || wasLocked === 'true') {
-              if (statePersistence && typeof statePersistence.clearNavigationState === 'function') {
-                await statePersistence.clearNavigationState();
-              }
-              return;
-            }
-            
-            if (statePersistence && typeof statePersistence.getNavigationState === 'function') {
-              const navState = await statePersistence.getNavigationState();
-              if (navState?.state) {
-                const routeName = navState.routeName as string;
-                if (!NON_RESTORABLE_ROUTES.has(routeName)) {
-                  setInitialState(navState.state);
-                } else if (statePersistence && typeof statePersistence.clearNavigationState === 'function') {
-                  await statePersistence.clearNavigationState();
-                }
-              }
-            }
-          } catch (e) {
-            console.warn('[App] Nav restore failed:', e);
-          }
-        })();
-
-        // Wait for all init tasks with a timeout
-        // CRITICAL FIX: Don't wait for nav restore to complete before hiding splash
+        // Wait for essential tasks with shorter timeout
         await Promise.race([
-          initTasks,
+          essentialTasks,
           new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Init timeout')), 5000)
+            setTimeout(() => reject(new Error('Essential init timeout')), 2000)
           )
         ]).catch(e => {
-          console.warn('[App] Some init tasks timed out, continuing...', e);
+          console.warn('[App] Essential tasks timed out, continuing...', e);
         });
 
-        // Don't wait for nav restore - let it run in background
-        navRestorePromise.catch(e => {
-          console.warn('[App] Nav restore background error:', e);
-        });
-
-        // Immediately hide splash and show app
-        await SplashScreen.hideAsync();
+        // CRITICAL FIX: Hide splash immediately after essential tasks
+        if (!splashHiddenRef.current) {
+          await SplashScreen.hideAsync();
+          splashHiddenRef.current = true;
+        }
         setReady(true);
+
+        // Run non-essential tasks in background (don't await)
+        runBackgroundTasks().catch(e => {
+          console.warn('[App] Background tasks error:', e);
+        });
+
       } catch (e) {
         console.error('[App] Critical init error:', e);
         setInitError('Failed to initialize app');
-        await SplashScreen.hideAsync();
+        if (!splashHiddenRef.current) {
+          await SplashScreen.hideAsync();
+          splashHiddenRef.current = true;
+        }
+        setReady(true); // Show app even with error
       }
     };
 
@@ -315,6 +250,83 @@ export default function App(): JSX.Element | null {
       }
     };
   }, [themeLoaded]);
+
+  // Background tasks that don't block startup
+  const runBackgroundTasks = async () => {
+    try {
+      // Load additional fonts in background
+      const additionalFonts = {
+        'MaterialIcons': require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialIcons.ttf'),
+        'MaterialCommunityIcons': require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialCommunityIcons.ttf'),
+        'Feather': require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Feather.ttf'),
+      };
+      Font.loadAsync(additionalFonts).catch(e => {
+        console.warn('[App] Additional fonts failed:', e);
+      });
+
+      // Notification service (non-blocking)
+      if (notificationService && typeof notificationService.initialize === 'function') {
+        await notificationService.initialize();
+      }
+
+      // Image directories (non-blocking)
+      if (ensureAllImageDirs && typeof ensureAllImageDirs === 'function') {
+        await ensureAllImageDirs();
+      }
+
+      // System UI (non-blocking)
+      if (SystemUI && typeof SystemUI.setBackgroundColorAsync === 'function') {
+        await SystemUI.setBackgroundColorAsync(
+          initialTheme.isTrueBlack ? '#000000' : 
+          initialTheme.isDark ? '#08080f' : '#f8faff'
+        );
+      }
+
+      // Navigation state restoration (non-blocking)
+      await restoreNavigationState();
+
+    } catch (e) {
+      console.warn('[App] Background tasks error:', e);
+    }
+  };
+
+  // Navigation state restoration - non-blocking
+  const restoreNavigationState = async () => {
+    try {
+      // Quick check for setup completion
+      const [setupCompleteStr, hasParent2Str, hasBabyStr, wasLocked] = await Promise.all([
+        AsyncStorage.getItem('littleloom_setup_complete'),
+        AsyncStorage.getItem('littleloom_parent2_completed'),
+        AsyncStorage.getItem('littleloom_baby_completed'),
+        AsyncStorage.getItem('littleloom_security_lock'),
+      ]);
+
+      const hasParent2 = hasParent2Str === 'true' || hasParent2Str === 'skipped';
+      const hasBaby = hasBabyStr === 'true' || hasBabyStr === 'skipped';
+      const setupDone = setupCompleteStr === 'true' || (hasParent2 && hasBaby);
+      
+      if (!setupDone || wasLocked === 'true') {
+        if (statePersistence && typeof statePersistence.clearNavigationState === 'function') {
+          await statePersistence.clearNavigationState();
+        }
+        return;
+      }
+      
+      if (statePersistence && typeof statePersistence.getNavigationState === 'function') {
+        const navState = await statePersistence.getNavigationState();
+        if (navState?.state) {
+          const routeName = navState.routeName as string;
+          if (!NON_RESTORABLE_ROUTES.has(routeName)) {
+            setInitialState(navState.state);
+          } else if (statePersistence && typeof statePersistence.clearNavigationState === 'function') {
+            await statePersistence.clearNavigationState();
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[App] Nav restore failed:', e);
+    }
+  };
 
   // Phase 2: Background state saving
   useEffect(() => {
