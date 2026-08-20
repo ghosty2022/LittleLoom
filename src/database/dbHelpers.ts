@@ -35,6 +35,7 @@ export interface UserRegistryEntry {
   communitySelectedTopics?: string[];
   socialProvider?: 'google' | 'apple' | 'facebook' | null;
   hasPassword?: boolean;
+  phoneNumber?: string;
 }
 
 const USER_REGISTRY_KEY = 'littleloom_user_registry';
@@ -163,6 +164,7 @@ export async function findUserByPhone(
     return null;
   }
 }
+
 export async function findUserByEmailOrUsername(
   identifier: string
 ): Promise<UserRegistryEntry | null> {

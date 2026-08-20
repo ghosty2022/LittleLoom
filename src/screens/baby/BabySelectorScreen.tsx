@@ -110,14 +110,20 @@ export default function BabySelectorScreen({ navigation, route }: BabySelectorSc
     return () => { isMounted.current = false; };
   }, []);
 
+  // Safe navigation function that checks if we can go back
+  const safeGoBack = useCallback(() => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      // If we can't go back, replace with the return target
+      navigation.replace(getReturnTarget(route));
+    }
+  }, [navigation, route]);
+
   const handleSwitchBaby = useCallback(async (babyId: string) => {
     if (babyId === currentBabyId) {
       // Same baby — just dismiss modal to return to caller
-      if (navigation.canGoBack()) {
-        navigation.goBack();
-      } else {
-        navigation.replace(getReturnTarget(route));
-      }
+      safeGoBack();
       return;
     }
 
@@ -135,11 +141,7 @@ export default function BabySelectorScreen({ navigation, route }: BabySelectorSc
           if (!hasNavigated.current && isMounted.current) {
             hasNavigated.current = true;
             // Dismiss modal — underlying screen refreshes via useFocusEffect
-            if (navigation.canGoBack()) {
-              navigation.goBack();
-            } else {
-              navigation.replace(getReturnTarget(route));
-            }
+            safeGoBack();
           }
         }, 500);
       } else {
@@ -150,7 +152,7 @@ export default function BabySelectorScreen({ navigation, route }: BabySelectorSc
       sweetAlert.error('Error', 'An unexpected error occurred');
       setIsProcessing(false);
     }
-  }, [currentBabyId, switchBaby, loadBabies, navigation, sweetAlert, route]);
+  }, [currentBabyId, switchBaby, loadBabies, sweetAlert, safeGoBack]);
 
   const handleDeleteBaby = useCallback((babyId: string, babyName: string) => {
     if (isProcessing) return;
@@ -194,12 +196,13 @@ export default function BabySelectorScreen({ navigation, route }: BabySelectorSc
   }, [navigation]);
 
   const handleContinue = useCallback(() => {
-    if (navigation.canGoBack()) {
-      navigation.goBack();
-    } else {
-      navigation.replace(getReturnTarget(route));
-    }
-  }, [navigation, route]);
+    safeGoBack();
+  }, [safeGoBack]);
+
+  // Handle back button press
+  const handleBackPress = useCallback(() => {
+    safeGoBack();
+  }, [safeGoBack]);
 
   if (babyLoading && babies.length === 0) {
     return (
@@ -232,7 +235,7 @@ export default function BabySelectorScreen({ navigation, route }: BabySelectorSc
 
       {/* Header */}
       <Animated.View entering={FadeInUp} style={[styles.header, { paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+        <TouchableOpacity onPress={handleBackPress} style={styles.backButton}>
           <BlurView intensity={80} style={styles.backBlur}>
             <Ionicons name="arrow-back" size={24} color={isDark ? '#fff' : '#1a1a1a'} />
           </BlurView>
