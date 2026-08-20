@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Dimensions, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Dimensions, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View, RefreshControl } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -42,14 +42,49 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
   const [remoteBabies, setRemoteBabies] = useState<any[]>([]);
   const [showImportOption, setShowImportOption] = useState(false);
   const [checkDone, setCheckDone] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const isMountedRef = useRef(true);
   const hasCheckedRef = useRef(false);
   const checkTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const navigationAttemptedRef = useRef(false);
 
-  // ─── SIMPLE: Check remote babies once ──────────────────────────────
+  // ─── CHECK IF WE SHOULD NAVIGATE TO MAIN ──────────────────────────
+  const checkAndNavigateToMain = useCallback(async () => {
+    if (navigationAttemptedRef.current) return;
+    
+    try {
+      const { setupComplete, hasParent2, hasBaby } = await wasSetupCompleted();
+      
+      // If setup is complete and we have babies, navigate to Main
+      if (setupComplete && babies.length > 0) {
+        navigationAttemptedRef.current = true;
+        console.log('[BabyOnboarding] Setup complete, navigating to Main');
+        navigation.replace('Main');
+        return true;
+      }
+      
+      // If we have babies but setup not complete, mark baby as complete
+      if (babies.length > 0 && !setupComplete) {
+        await completeSetup('baby');
+        const { setupComplete: newSetupComplete } = await wasSetupCompleted();
+        if (newSetupComplete) {
+          navigationAttemptedRef.current = true;
+          console.log('[BabyOnboarding] Marked baby complete, navigating to Main');
+          navigation.replace('Main');
+          return true;
+        }
+      }
+      
+      return false;
+    } catch (error) {
+      console.warn('[BabyOnboarding] Check navigate error:', error);
+      return false;
+    }
+  }, [babies, completeSetup, wasSetupCompleted, navigation]);
+
+  // ─── CHECK REMOTE BABIES ──────────────────────────────────────────
   const checkRemoteBabies = useCallback(async () => {
-    // Prevent multiple checks
     if (hasCheckedRef.current) {
       console.log('[BabyOnboarding] Already checked, skipping');
       return;
@@ -57,7 +92,6 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
     hasCheckedRef.current = true;
 
     try {
-      // Get user ID - use multiple methods
       let userId: string | null = null;
       
       try {
@@ -84,7 +118,6 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
 
       console.log('[BabyOnboarding] Checking for babies with userId:', userId);
 
-      // Simple query without timeout - just let it complete
       const { data: remoteData, error } = await supabase
         .from('babies')
         .select('*')
@@ -111,13 +144,16 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
     } finally {
       if (isMountedRef.current) {
         setCheckDone(true);
+        // After checking remote babies, try to navigate
+        checkAndNavigateToMain();
       }
     }
-  }, [babies, userProfile]);
+  }, [babies, userProfile, checkAndNavigateToMain]);
 
-  // ─── Load babies ─────────────────────────────────────────────────────
+  // ─── LOAD BABIES ──────────────────────────────────────────────────
   useEffect(() => {
     isMountedRef.current = true;
+    navigationAttemptedRef.current = false;
     
     const loadData = async () => {
       try {
@@ -126,6 +162,13 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
         
         if (isMountedRef.current) {
           setLocalLoading(false);
+          
+          // If we have babies, try to navigate to Main
+          if (babies.length > 0) {
+            const navigated = await checkAndNavigateToMain();
+            if (navigated) return;
+          }
+          
           // Check remote after a short delay
           if (checkTimeoutRef.current) clearTimeout(checkTimeoutRef.current);
           checkTimeoutRef.current = setTimeout(() => {
@@ -151,9 +194,9 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
         checkTimeoutRef.current = null;
       }
     };
-  }, [loadBabies, checkRemoteBabies]);
+  }, [loadBabies, checkRemoteBabies, checkAndNavigateToMain, babies.length]);
 
-  // ─── Handlers ────────────────────────────────────────────────────────
+  // ─── HANDLERS ──────────────────────────────────────────────────────
   const handleImportBaby = useCallback(async (baby: any) => {
     triggerHaptic('medium');
     setIsProcessing(true);
@@ -184,6 +227,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
       } else {
         await completeSetup('parent2');
         showSuccess('Welcome Back!', `Imported ${baby.name}'s profile`);
+        navigation.replace('Main');
       }
     } catch (error) {
       console.error('Import baby error:', error);
@@ -206,7 +250,6 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
         navigation.replace('CoParentInviteScreen');
       } else {
         showInfo('Skipped', 'You can add a baby later from settings');
-        // Navigate to main if setup is complete
         const { setupComplete } = await wasSetupCompleted();
         if (setupComplete) {
           navigation.replace('Main');
@@ -257,10 +300,18 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
     setLoadError(null);
     setLocalLoading(true);
     hasCheckedRef.current = false;
+    navigationAttemptedRef.current = false;
     try {
       await loadBabies();
       if (isMountedRef.current) {
         setLocalLoading(false);
+        
+        // If we have babies, try to navigate to Main
+        if (babies.length > 0) {
+          const navigated = await checkAndNavigateToMain();
+          if (navigated) return;
+        }
+        
         if (checkTimeoutRef.current) clearTimeout(checkTimeoutRef.current);
         checkTimeoutRef.current = setTimeout(() => {
           if (isMountedRef.current) {
@@ -274,12 +325,28 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
         setLocalLoading(false);
       }
     }
-  }, [loadBabies, checkRemoteBabies]);
+  }, [loadBabies, checkRemoteBabies, babies.length, checkAndNavigateToMain]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    hasCheckedRef.current = false;
+    navigationAttemptedRef.current = false;
+    try {
+      await loadBabies();
+      if (babies.length > 0) {
+        await checkAndNavigateToMain();
+      }
+    } catch (error) {
+      console.warn('[BabyOnboarding] Refresh error:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadBabies, babies.length, checkAndNavigateToMain]);
 
   const showLoading = localLoading || babyLoading;
   const hasExistingBabies = babies && babies.length > 0;
 
-  // ─── Error State ─────────────────────────────────────────────────────
+  // ─── ERROR STATE ──────────────────────────────────────────────────
   if (loadError && !showLoading) {
     return (
       <View style={[styles.container]}>
@@ -301,7 +368,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
     );
   }
 
-  // ─── Loading State ──────────────────────────────────────────────────
+  // ─── LOADING STATE ─────────────────────────────────────────────────
   if (showLoading) {
     return (
       <View style={[styles.container]}>
@@ -316,7 +383,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
     );
   }
 
-  // ─── Main Content ────────────────────────────────────────────────────
+  // ─── MAIN CONTENT ──────────────────────────────────────────────────
   return (
     <View style={[styles.container]}>
       <LinearGradient colors={isDark ? ['#0a0a0a', '#1a1a2e'] : ['#f0f4ff', '#e0e7ff']} style={styles.gradient}>
@@ -325,6 +392,9 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
         <Animated.ScrollView
           contentContainerStyle={[styles.content, { paddingTop: insets.top + 40, paddingBottom: insets.bottom + 40 }]}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[themeColors.primary]} />
+          }
         >
           <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp} style={styles.header}>
             <View style={[styles.iconContainer, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]}>
