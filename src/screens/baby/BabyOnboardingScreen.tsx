@@ -13,7 +13,13 @@ import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { SafeBabyAvatar } from '../../components/SafeAvatar';
 import { supabase } from '@/utils/supabase';
-import { createBabyInDb, setCurrentBabyInDb, getAllBabiesFromDb } from '../../database/dbHelpers';
+import { 
+  createBabyInDb, 
+  setCurrentBabyInDb, 
+  getAllBabiesFromDb, 
+  getBabyByIdFromDb, 
+  getAppSetting 
+} from '../../database/dbHelpers';
 
 const { width } = Dimensions.get('window');
 const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpacity);
@@ -43,6 +49,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
   const [showImportOption, setShowImportOption] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [hasBabies, setHasBabies] = useState(false);
+  const [syncInProgress, setSyncInProgress] = useState(false);
 
   const isMountedRef = useRef(true);
   const hasCheckedRef = useRef(false);
@@ -51,8 +58,80 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
   const loadAttemptedRef = useRef(false);
   const loadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ─── CHECK REMOTE BABIES ──────────────────────────────────────────
-  const checkRemoteBabies = useCallback(async () => {
+  // ─── SYNC BABIES FROM SUPABASE ──────────────────────────────────────
+  const syncBabiesFromSupabase = useCallback(async (userId: string): Promise<boolean> => {
+    if (syncInProgress) return false;
+    setSyncInProgress(true);
+    
+    try {
+      console.log('[BabyOnboarding] Syncing babies from Supabase for user:', userId);
+      
+      const { data: supabaseBabies, error } = await supabase
+        .from('babies')
+        .select('*')
+        .or(`parent1_id.eq.${userId},parent2_id.eq.${userId}`)
+        .eq('is_active', true);
+
+      if (error) {
+        console.error('[BabyOnboarding] Supabase query error:', error.message);
+        setSyncInProgress(false);
+        return false;
+      }
+
+      if (!supabaseBabies || supabaseBabies.length === 0) {
+        console.log('[BabyOnboarding] No babies found in Supabase for user');
+        setSyncInProgress(false);
+        return false;
+      }
+
+      console.log(`[BabyOnboarding] Found ${supabaseBabies.length} babies in Supabase:`, 
+        supabaseBabies.map(b => ({ id: b.id, name: b.name })));
+
+      let syncedCount = 0;
+      for (const baby of supabaseBabies) {
+        try {
+          const exists = await getBabyByIdFromDb(baby.id);
+          if (!exists) {
+            console.log(`[BabyOnboarding] Creating local baby: ${baby.name} (${baby.id})`);
+            await createBabyInDb({
+              id: baby.id,
+              name: baby.name,
+              avatar: baby.avatar || undefined,
+              dateOfBirth: baby.date_of_birth,
+              gender: baby.gender || undefined,
+              bloodType: baby.blood_type || undefined,
+              medicalNotes: baby.medical_notes || undefined,
+              parent1Id: baby.parent1_id || undefined,
+              parent2Id: baby.parent2_id || undefined,
+            });
+            syncedCount++;
+          } else {
+            console.log(`[BabyOnboarding] Baby already exists locally: ${baby.name}`);
+          }
+        } catch (babyError) {
+          console.error(`[BabyOnboarding] Error syncing baby ${baby.name}:`, babyError);
+        }
+      }
+
+      console.log(`[BabyOnboarding] Synced ${syncedCount} new babies`);
+
+      const currentId = await getAppSetting('current_baby_id');
+      if (!currentId && supabaseBabies[0]) {
+        await setCurrentBabyInDb(supabaseBabies[0].id);
+        console.log(`[BabyOnboarding] Set current baby to: ${supabaseBabies[0].name}`);
+      }
+
+      setSyncInProgress(false);
+      return syncedCount > 0 || supabaseBabies.length > 0;
+    } catch (error) {
+      console.error('[BabyOnboarding] Sync error:', error);
+      setSyncInProgress(false);
+      return false;
+    }
+  }, [syncInProgress]);
+
+  // ─── CHECK AND SYNC BABIES ──────────────────────────────────────────
+  const checkAndSyncBabies = useCallback(async () => {
     if (hasCheckedRef.current) {
       console.log('[BabyOnboarding] Already checked, skipping');
       return;
@@ -85,30 +164,49 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
 
       console.log('[BabyOnboarding] Checking for babies with userId:', userId);
 
-      const { data: remoteData, error } = await supabase
-        .from('babies')
-        .select('*')
-        .or(`parent1_id.eq.${userId},parent2_id.eq.${userId}`)
-        .eq('is_active', true);
+      const localBabies = await getAllBabiesFromDb();
+      console.log(`[BabyOnboarding] Local babies count: ${localBabies.length}`);
 
-      if (error) {
-        console.warn('[BabyOnboarding] Query error:', error.message);
+      if (localBabies && localBabies.length > 0) {
+        setHasBabies(true);
+        setRemoteBabies(localBabies);
+        console.log(`[BabyOnboarding] Found ${localBabies.length} local babies`);
         return;
       }
 
-      if (remoteData && remoteData.length > 0 && isMountedRef.current) {
-        const localBabyIds = new Set(babies.map(b => b.id));
-        const newRemoteBabies = remoteData.filter(b => !localBabyIds.has(b.id));
-        
-        if (newRemoteBabies.length > 0) {
-          setRemoteBabies(newRemoteBabies);
-          setShowImportOption(true);
+      console.log('[BabyOnboarding] No local babies, syncing from Supabase...');
+      const synced = await syncBabiesFromSupabase(userId);
+      
+      if (synced) {
+        await loadBabies();
+        const updatedLocalBabies = await getAllBabiesFromDb();
+        if (updatedLocalBabies && updatedLocalBabies.length > 0) {
+          setHasBabies(true);
+          setRemoteBabies(updatedLocalBabies);
+          console.log(`[BabyOnboarding] Synced ${updatedLocalBabies.length} babies`);
+          await checkAndNavigate();
+        }
+      } else {
+        try {
+          const { data: remoteData } = await supabase
+            .from('babies')
+            .select('*')
+            .or(`parent1_id.eq.${userId},parent2_id.eq.${userId}`)
+            .eq('is_active', true);
+          
+          if (remoteData && remoteData.length > 0) {
+            console.log(`[BabyOnboarding] Found ${remoteData.length} babies in Supabase, showing import option`);
+            setRemoteBabies(remoteData);
+            setShowImportOption(true);
+          }
+        } catch (e) {
+          console.warn('[BabyOnboarding] Could not fetch remote babies for import:', e);
         }
       }
     } catch (error) {
-      console.warn('[BabyOnboarding] Error checking remote babies:', error);
+      console.error('[BabyOnboarding] Check error:', error);
     }
-  }, [babies, userProfile]);
+  }, [userProfile, loadBabies, syncBabiesFromSupabase, checkAndNavigate]);
 
   // ─── CHECK NAVIGATION ─────────────────────────────────────────────
   const checkAndNavigate = useCallback(async () => {
@@ -116,52 +214,9 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
     if (!isMountedRef.current) return;
     
     try {
-      // First try to get babies from Supabase directly
-      let localBabies = await getAllBabiesFromDb();
-      let hasBabies = localBabies && localBabies.length > 0;
+      const localBabies = await getAllBabiesFromDb();
       
-      // If no local babies, try to sync from Supabase
-      if (!hasBabies) {
-        try {
-          console.log('[BabyOnboarding] No local babies, checking Supabase...');
-          const userId = userProfile?.id || (await supabase.auth.getUser()).data?.user?.id;
-          if (userId) {
-            const { data: supabaseBabies, error } = await supabase
-              .from('babies')
-              .select('*')
-              .or(`parent1_id.eq.${userId},parent2_id.eq.${userId}`)
-              .eq('is_active', true);
-            
-            if (!error && supabaseBabies && supabaseBabies.length > 0) {
-              console.log(`[BabyOnboarding] Found ${supabaseBabies.length} babies in Supabase`);
-              // Sync them to local DB
-              const { createBabyInDb, setCurrentBabyInDb } = await import('../../database/dbHelpers');
-              for (const baby of supabaseBabies) {
-                await createBabyInDb({
-                  id: baby.id,
-                  name: baby.name,
-                  avatar: baby.avatar || undefined,
-                  dateOfBirth: baby.date_of_birth,
-                  gender: baby.gender || undefined,
-                  bloodType: baby.blood_type || undefined,
-                  medicalNotes: baby.medical_notes || undefined,
-                  parent1Id: baby.parent1_id || undefined,
-                  parent2Id: baby.parent2_id || undefined,
-                });
-              }
-              // Set first baby as current
-              await setCurrentBabyInDb(supabaseBabies[0].id);
-              // Reload babies
-              localBabies = await getAllBabiesFromDb();
-              hasBabies = localBabies && localBabies.length > 0;
-            }
-          }
-        } catch (syncError) {
-          console.warn('[BabyOnboarding] Failed to sync from Supabase:', syncError);
-        }
-      }
-      
-      if (hasBabies) {
+      if (localBabies && localBabies.length > 0) {
         console.log('[BabyOnboarding] Found babies, checking setup');
         setHasBabies(true);
         
@@ -174,7 +229,6 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
           return true;
         }
         
-        // If we have babies but setup not complete, mark baby as complete
         await completeSetup('baby');
         const { setupComplete: newSetupComplete } = await wasSetupCompleted();
         if (newSetupComplete) {
@@ -192,13 +246,14 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
       console.warn('[BabyOnboarding] Check navigate error:', error);
       return false;
     }
-  }, [completeSetup, navigation, wasSetupCompleted, userProfile]);
+  }, [navigation, wasSetupCompleted, completeSetup]);
 
   // ─── LOAD BABIES ──────────────────────────────────────────────────
   useEffect(() => {
     isMountedRef.current = true;
     loadAttemptedRef.current = false;
     navigationAttemptedRef.current = false;
+    hasCheckedRef.current = false;
     
     const loadData = async () => {
       if (loadAttemptedRef.current) return;
@@ -206,80 +261,49 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
       
       try {
         setLocalLoading(true);
-        console.log('[BabyOnboarding] Starting loadBabies...');
+        console.log('[BabyOnboarding] Starting load...');
         
-        // Force load with timeout
-        const loadPromise = loadBabies();
-        const timeoutPromise = new Promise((_, reject) => {
-          loadTimeoutRef.current = setTimeout(() => {
-            reject(new Error('Load babies timeout'));
-          }, 8000);
-        });
-        
-        await Promise.race([loadPromise, timeoutPromise]);
-        
-        if (loadTimeoutRef.current) {
-          clearTimeout(loadTimeoutRef.current);
-          loadTimeoutRef.current = null;
-        }
-        
+        await loadBabies();
         console.log('[BabyOnboarding] loadBabies completed');
         
         if (!isMountedRef.current) return;
         
-        setLocalLoading(false);
-        
-        // Check local DB directly as fallback
         const localBabies = await getAllBabiesFromDb();
+        console.log(`[BabyOnboarding] Local babies after load: ${localBabies.length}`);
+        
         if (localBabies && localBabies.length > 0) {
           setHasBabies(true);
+          setLocalLoading(false);
+          await checkAndNavigate();
+          return;
         }
         
-        // Try to navigate
-        const navigated = await checkAndNavigate();
-        if (navigated) return;
+        console.log('[BabyOnboarding] No local babies, syncing from Supabase...');
+        await checkAndSyncBabies();
         
-        // Check remote babies after a delay
-        if (checkTimeoutRef.current) clearTimeout(checkTimeoutRef.current);
-        checkTimeoutRef.current = setTimeout(() => {
-          if (isMountedRef.current) {
-            checkRemoteBabies();
-          }
-        }, 500);
+        setLocalLoading(false);
+        await checkAndNavigate();
         
       } catch (error) {
         console.error('[BabyOnboarding] Load error:', error);
         if (isMountedRef.current) {
           setLocalLoading(false);
-          // Check if we have babies in DB directly
-          try {
-            const localBabies = await getAllBabiesFromDb();
-            if (localBabies && localBabies.length > 0) {
-              setHasBabies(true);
-              // Try to navigate even if loadBabies failed
-              await checkAndNavigate();
-              return;
-            }
-          } catch (e) {}
           setLoadError('Failed to load babies');
         }
       }
     };
     
-    loadData();
+    const timer = setTimeout(loadData, 300);
     
     return () => {
       isMountedRef.current = false;
+      clearTimeout(timer);
       if (checkTimeoutRef.current) {
         clearTimeout(checkTimeoutRef.current);
         checkTimeoutRef.current = null;
       }
-      if (loadTimeoutRef.current) {
-        clearTimeout(loadTimeoutRef.current);
-        loadTimeoutRef.current = null;
-      }
     };
-  }, [loadBabies, checkRemoteBabies, checkAndNavigate]);
+  }, [loadBabies, checkAndSyncBabies, checkAndNavigate]);
 
   // ─── HANDLERS ──────────────────────────────────────────────────────
   const handleImportBaby = useCallback(async (baby: any) => {
@@ -389,13 +413,19 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
     navigationAttemptedRef.current = false;
     
     try {
-      // Try direct DB check first
-      const localBabies = await getAllBabiesFromDb();
-      if (localBabies && localBabies.length > 0) {
-        setHasBabies(true);
-        setLocalLoading(false);
-        await checkAndNavigate();
-        return;
+      const userId = userProfile?.id;
+      if (userId) {
+        const synced = await syncBabiesFromSupabase(userId);
+        if (synced) {
+          await loadBabies();
+          const localBabies = await getAllBabiesFromDb();
+          if (localBabies && localBabies.length > 0) {
+            setHasBabies(true);
+            setLocalLoading(false);
+            await checkAndNavigate();
+            return;
+          }
+        }
       }
       
       await loadBabies();
@@ -409,7 +439,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
         setLocalLoading(false);
       }
     }
-  }, [loadBabies, checkAndNavigate]);
+  }, [loadBabies, checkAndNavigate, userProfile, syncBabiesFromSupabase]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -417,7 +447,8 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
     navigationAttemptedRef.current = false;
     try {
       await loadBabies();
-      if (babies.length > 0) {
+      await checkAndSyncBabies();
+      if (babies.length > 0 || hasBabies) {
         await checkAndNavigate();
       }
     } catch (error) {
@@ -425,10 +456,10 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
     } finally {
       setRefreshing(false);
     }
-  }, [loadBabies, babies.length, checkAndNavigate]);
+  }, [loadBabies, babies.length, hasBabies, checkAndNavigate, checkAndSyncBabies]);
 
-  const showLoading = localLoading || babyLoading;
-  const hasExistingBabies = (babies && babies.length > 0) || hasBabies;
+  const showLoading = localLoading || babyLoading || syncInProgress;
+  const hasExistingBabies = (babies && babies.length > 0) || hasBabies || remoteBabies.length > 0;
 
   // ─── ERROR STATE ──────────────────────────────────────────────────
   if (loadError && !showLoading) {
@@ -460,7 +491,9 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
           <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
           <View style={[styles.content, { paddingTop: insets.top, justifyContent: 'center', alignItems: 'center' }]}>
             <ActivityIndicator size="large" color={themeColors.primary} />
-            <Text style={[styles.loadingText, isDark && styles.textDark]}>Loading your babies...</Text>
+            <Text style={[styles.loadingText, isDark && styles.textDark]}>
+              {syncInProgress ? 'Syncing your babies...' : 'Loading your babies...'}
+            </Text>
             <TouchableOpacity 
               style={[styles.cancelLoadingButton, { marginTop: 20 }]}
               onPress={handleRetry}
@@ -474,6 +507,10 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
   }
 
   // ─── MAIN CONTENT ──────────────────────────────────────────────────
+  // Check if we have babies from either local or remote
+  const displayBabies = babies.length > 0 ? babies : remoteBabies;
+  const displayHasBabies = hasExistingBabies;
+
   return (
     <View style={[styles.container]}>
       <LinearGradient colors={isDark ? ['#0a0a0a', '#1a1a2e'] : ['#f0f4ff', '#e0e7ff']} style={styles.gradient}>
@@ -491,10 +528,10 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
               <Text style={styles.icon}>👶</Text>
             </View>
             <Text style={[styles.title, isDark && styles.textDark]}>
-              {hasExistingBabies ? 'Select Your Baby' : remoteBabies.length > 0 ? 'Import Your Baby?' : 'Add Your Baby?'}
+              {displayHasBabies ? 'Select Your Baby' : remoteBabies.length > 0 ? 'Import Your Baby?' : 'Add Your Baby?'}
             </Text>
             <Text style={[styles.subtitle, isDark && { color: '#94a3b8' }]}>
-              {hasExistingBabies
+              {displayHasBabies
                 ? `Welcome back, ${userProfile?.fullName?.split(' ')[0] || 'Parent'}!`
                 : remoteBabies.length > 0
                 ? 'We found existing baby profiles linked to your account'
@@ -503,7 +540,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
           </Animated.View>
 
           {/* Remote Babies - Import Option */}
-          {showImportOption && remoteBabies.length > 0 && !hasExistingBabies && (
+          {showImportOption && remoteBabies.length > 0 && !displayHasBabies && (
             <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(100)} style={styles.importContainer}>
               <Text style={[styles.sectionTitle, isDark && styles.textDark]}>
                 Import Existing Profile{remoteBabies.length > 1 ? 's' : ''}
@@ -550,10 +587,10 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
             </Animated.View>
           )}
 
-          {hasExistingBabies && (
+          {displayHasBabies && displayBabies.length > 0 && (
             <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(200)} style={styles.babiesContainer}>
               <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Your Babies</Text>
-              {babies.map((baby, index) => (
+              {displayBabies.map((baby, index) => (
                 <AnimatedTouchableOpacity
                   key={baby.id}
                   entering={shouldReduceMotion ? undefined : FadeInDown.delay(300 + index * 100)}
@@ -581,7 +618,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
                     />
                     <View style={styles.babyInfo}>
                       <Text style={[styles.babyName, isDark && styles.textDark]}>{baby.name}</Text>
-                      <Text style={[styles.babyAge, { color: themeColors.primary }]}>{baby.age}</Text>
+                      <Text style={[styles.babyAge, { color: themeColors.primary }]}>{baby.age || 'Newborn'}</Text>
                     </View>
                     {currentBabyId === baby.id && (
                       <View style={styles.activeBadge}>
@@ -596,7 +633,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
           )}
 
           <Animated.View entering={shouldReduceMotion ? undefined : FadeIn.delay(400)} style={styles.buttonsContainer}>
-            {!hasExistingBabies && (
+            {!displayHasBabies && (
               <>
                 <TouchableOpacity style={styles.primaryButton} onPress={handleCreateBaby} activeOpacity={0.8}>
                   <LinearGradient colors={[themeColors.primary, themeColors.secondary]} style={styles.primaryGradient}>
@@ -614,13 +651,13 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
             <TouchableOpacity
               style={[
                 styles.skipButton,
-                hasExistingBabies && { backgroundColor: themeColors.colors[0] }
+                displayHasBabies && { backgroundColor: themeColors.colors[0] }
               ]}
               onPress={handleSkip}
               disabled={isProcessing}
             >
               <Text style={[styles.skipText, isDark && styles.textDark]}>
-                {hasExistingBabies ? "I'll decide later" : "I'll do this later"}
+                {displayHasBabies ? "I'll decide later" : "I'll do this later"}
               </Text>
             </TouchableOpacity>
           </Animated.View>
