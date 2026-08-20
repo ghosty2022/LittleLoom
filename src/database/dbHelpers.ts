@@ -182,6 +182,29 @@ export async function findUserByEmailOrUsername(
   }
 }
 
+export async function findUserByEmailOrUsernameOrPhone(
+  identifier: string
+): Promise<UserRegistryEntry | null> {
+  try {
+    // Try as email first
+    const byEmail = await findUserByEmail(identifier);
+    if (byEmail) return byEmail;
+    
+    // Then try as username
+    const byUsername = await findUserByUsername(identifier);
+    if (byUsername) return byUsername;
+    
+    // Then try as phone
+    const byPhone = await findUserByPhone(identifier);
+    if (byPhone) return byPhone;
+    
+    return null;
+  } catch (error) {
+    console.error('Error finding user by email, username, or phone:', error);
+    return null;
+  }
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    BACKUP HELPERS
    ═══════════════════════════════════════════════════════════════════════════ */

@@ -144,6 +144,7 @@ interface AuthContextType extends AuthState {
   resetPasswordForUser: (email: string, newPassword: string) => Promise<{ success: boolean; message: string }>;
   findUserByEmail: (email: string) => Promise<{ userId: string; email: string; fullName: string; role: string } | null>;
   findUserByEmailOrUsername: (identifier: string) => Promise<{ userId: string; email: string; fullName: string; role: string } | null>;
+  findUserByEmailOrUsernameOrPhone: (identifier: string) => Promise<{ userId: string; email: string; fullName: string; role: string } | null>;
 }
 
 const secureStorage = {
@@ -183,7 +184,9 @@ import {
   updateUserInRegistry,
   findUserByEmail,
   findUserByUsername,
+  findUserByPhone,
   findUserByEmailOrUsername,
+  findUserByEmailOrUsernameOrPhone,
   getUserRegistry,
   type UserRegistryEntry,
 } from '@/database/dbHelpers';
@@ -618,10 +621,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // ─── Local registry lookup ──────────────────────────────────────────
       let existingUser = await findUserByEmail(email);
       
+      // Try username if not found by email
       if (!existingUser) {
         try {
-          const { findUserByEmailOrUsername } = await import('@/database/dbHelpers');
-          existingUser = await findUserByEmailOrUsername(email);
+          existingUser = await findUserByUsername(email);
         } catch (importError) {
           const registry = await getUserRegistry();
           const searchKey = email.toLowerCase().trim().replace(/^@/, '');
@@ -629,6 +632,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const handle = (entry.communityHandle || '').toLowerCase().replace(/^@/, '');
             const username = (entry.communityUsername || '').toLowerCase();
             if (handle === searchKey || username === searchKey) {
+              existingUser = entry;
+              break;
+            }
+          }
+        }
+      }
+      
+      // Try phone if not found by email or username
+      if (!existingUser) {
+        try {
+          existingUser = await findUserByPhone(email);
+        } catch (importError) {
+          const registry = await getUserRegistry();
+          const searchPhone = email.trim().replace(/[^0-9+]/g, '');
+          for (const entry of Object.values(registry)) {
+            if (!entry.phoneNumber) continue;
+            const entryPhone = entry.phoneNumber.trim().replace(/[^0-9+]/g, '');
+            // Try multiple phone formats
+            if (searchPhone === entryPhone || 
+                searchPhone === entryPhone.replace(/^\+254/, '0') ||
+                '+' + searchPhone === entryPhone ||
+                '0' + searchPhone.replace(/^\+254/, '') === entryPhone.replace(/^\+254/, '0')) {
               existingUser = entry;
               break;
             }
@@ -1849,6 +1874,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [findUserByEmail]);
 
+  // Add this new function after findUserByEmailOrUsernameCallback
+  const findUserByEmailOrUsernameOrPhoneCallback = useCallback(async (identifier: string): Promise<{ userId: string; email: string; fullName: string; role: string } | null> => {
+    try {
+      // Try as email first
+      const byEmail = await findUserByEmail(identifier);
+      if (byEmail) return byEmail;
+      
+      // Then try as username
+      const byUsername = await findUserByUsername(identifier);
+      if (byUsername) {
+        return {
+          userId: byUsername.userId,
+          email: byUsername.email,
+          fullName: byUsername.fullName,
+          role: byUsername.role,
+        };
+      }
+      
+      // Then try as phone
+      const byPhone = await findUserByPhone(identifier);
+      if (byPhone) {
+        return {
+          userId: byPhone.userId,
+          email: byPhone.email,
+          fullName: byPhone.fullName,
+          role: byPhone.role,
+        };
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Error finding user by email, username, or phone:', error);
+      return null;
+    }
+  }, [findUserByEmail, findUserByUsername, findUserByPhone]);
+
   const value = React.useMemo(() => ({
     ...state,
     signIn,
@@ -1878,6 +1939,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     getCurrentUserProfile,
     findUserByEmail: findUserByEmailCallback,
     findUserByEmailOrUsername: findUserByEmailOrUsernameCallback,
+    findUserByEmailOrUsernameOrPhone: findUserByEmailOrUsernameOrPhoneCallback,
     updateCommunityProfile,
     getCommunityProfile,
     updateCommunityStats,
@@ -1889,7 +1951,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     forgotPassword,
     resetPasswordForUser,
     signUpWithInviteCode,
-  }), [state, signIn, signUp, signInWithSocial, signOut, checkBiometricAvailability, authenticateWithBiometric, enableBiometricForApp, enableBiometricLogin, disableBiometricLogin, hasBiometricLoginCredentials, loginWithBiometric, updateUserProfile, updateUserPreferences, skipSetup, completeSetup, resetSetupFlow, wasSetupCompleted, setSetupCompleteCallback, markOnboardingSeen, shouldShowBiometricPrompt, isAppActive, getLastActiveTime, getBiometricTypeInfo, clearAllLocks, getCurrentUserProfile, findUserByEmailCallback, findUserByEmailOrUsernameCallback, updateCommunityProfile, getCommunityProfile, updateCommunityStats, updateCommunityTopics, isUsernameAvailable, registerCommunityUsername, updateCommunityUsername, updateCommunityAvatar, forgotPassword, resetPasswordForUser, signUpWithInviteCode]);
+  }), [state, signIn, signUp, signInWithSocial, signOut, checkBiometricAvailability, authenticateWithBiometric, enableBiometricForApp, enableBiometricLogin, disableBiometricLogin, hasBiometricLoginCredentials, loginWithBiometric, updateUserProfile, updateUserPreferences, skipSetup, completeSetup, resetSetupFlow, wasSetupCompleted, setSetupCompleteCallback, markOnboardingSeen, shouldShowBiometricPrompt, isAppActive, getLastActiveTime, getBiometricTypeInfo, clearAllLocks, getCurrentUserProfile, findUserByEmailCallback, findUserByEmailOrUsernameCallback, findUserByEmailOrUsernameOrPhoneCallback, updateCommunityProfile, getCommunityProfile, updateCommunityStats, updateCommunityTopics, isUsernameAvailable, registerCommunityUsername, updateCommunityUsername, updateCommunityAvatar, forgotPassword, resetPasswordForUser, signUpWithInviteCode]);
 
   return (
     <AuthContext.Provider value={value}>
