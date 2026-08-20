@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Dimensions, ScrollView, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { Dimensions, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,6 +12,7 @@ import type { RootStackParamList } from '../../types/navigation';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { SafeBabyAvatar } from '../../components/SafeAvatar';
+import { UniversalSpinner, InlineSpinner } from '../../components/UniversalSpinner';
 import { supabase } from '@/utils/supabase';
 import { getAllBabiesFromDb, createBabyInDb, setCurrentBabyInDb } from '../../database/dbHelpers';
 
@@ -40,73 +41,95 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
   const [localLoading, setLocalLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [remoteBabies, setRemoteBabies] = useState<any[]>([]);
-  const [isLoadingRemote, setIsLoadingRemote] = useState(false);
+  const [isCheckingRemote, setIsCheckingRemote] = useState(true);
   const [showImportOption, setShowImportOption] = useState(false);
+  const [checkingProgress, setCheckingProgress] = useState(0);
+  const [checkingMessage, setCheckingMessage] = useState('');
 
   const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isMountedRef = useRef(true);
 
+  // ─── Check for remote babies ─────────────────────────────────────────
+  const checkRemoteBabies = useCallback(async () => {
+    setIsCheckingRemote(true);
+    setCheckingProgress(5);
+    setCheckingMessage(`Looking for ${userProfile?.fullName?.split(' ')[0] || 'your'} family...`);
+
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData?.user?.id;
+      
+      if (!userId) {
+        console.log('[BabyOnboarding] No authenticated user found');
+        setIsCheckingRemote(false);
+        return;
+      }
+
+      setCheckingProgress(25);
+      setCheckingMessage(`Searching for your little ones...`);
+
+      const { data: remoteData, error } = await supabase
+        .from('babies')
+        .select('*')
+        .or(`parent1_id.eq.${userId},parent2_id.eq.${userId}`)
+        .eq('is_active', true);
+
+      setCheckingProgress(60);
+
+      if (error) {
+        console.warn('[BabyOnboarding] Error fetching remote babies:', error);
+        setIsCheckingRemote(false);
+        return;
+      }
+
+      setCheckingProgress(75);
+      setCheckingMessage(`Checking your family profiles...`);
+
+      if (remoteData && remoteData.length > 0 && isMountedRef.current) {
+        const localBabyIds = new Set(babies.map(b => b.id));
+        const newRemoteBabies = remoteData.filter(b => !localBabyIds.has(b.id));
+        
+        console.log(`[BabyOnboarding] Found ${remoteData.length} remote babies, ${newRemoteBabies.length} new`);
+        
+        if (newRemoteBabies.length > 0) {
+          setRemoteBabies(newRemoteBabies);
+          setShowImportOption(true);
+          setCheckingMessage(`Found ${newRemoteBabies.length} baby profile${newRemoteBabies.length > 1 ? 's' : ''} linked to your account!`);
+        } else {
+          setCheckingMessage(`All your babies are already here!`);
+        }
+      } else {
+        setCheckingMessage(`No existing profiles found. Let's create one!`);
+      }
+
+      setCheckingProgress(100);
+    } catch (error) {
+      console.warn('[BabyOnboarding] Error checking remote babies:', error);
+      setCheckingMessage(`Couldn't check for existing profiles`);
+    } finally {
+      if (isMountedRef.current) {
+        // Small delay to show completion
+        setTimeout(() => {
+          if (isMountedRef.current) {
+            setIsCheckingRemote(false);
+          }
+        }, 500);
+      }
+    }
+  }, [babies, userProfile]);
+
+  // ─── Load local babies ──────────────────────────────────────────────
   useEffect(() => {
     isMountedRef.current = true;
-    loadingTimeoutRef.current = setTimeout(() => {
-      if (localLoading && isMountedRef.current) {
-        setLocalLoading(false);
-      }
-    }, 8000);
-    return () => {
-      isMountedRef.current = false;
-      if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
-    };
-  }, []);
-
-  // Check for remote babies on mount
-  useEffect(() => {
-    const checkRemoteBabies = async () => {
-      try {
-        const { data: userData } = await supabase.auth.getUser();
-        const userId = userData?.user?.id;
-        
-        if (!userId) return;
-
-        const { data: remoteData, error } = await supabase
-          .from('babies')
-          .select('*')
-          .or(`parent1_id.eq.${userId},parent2_id.eq.${userId}`)
-          .eq('is_active', true);
-
-        if (error) {
-          console.warn('Error fetching remote babies:', error);
-          return;
-        }
-
-        if (remoteData && remoteData.length > 0 && isMountedRef.current) {
-          // Filter out babies that are already in local DB
-          const localBabyIds = new Set(babies.map(b => b.id));
-          const newRemoteBabies = remoteData.filter(b => !localBabyIds.has(b.id));
-          
-          if (newRemoteBabies.length > 0) {
-            setRemoteBabies(newRemoteBabies);
-            setShowImportOption(true);
-          }
-        }
-      } catch (error) {
-        console.warn('Error checking remote babies:', error);
-      }
-    };
-
-    checkRemoteBabies();
-  }, [babies]);
-
-  useEffect(() => {
+    
     const loadData = async () => {
       try {
-        // Only show loading overlay on first mount, not on re-focus from navigation
-        const hasLoadedBefore = babies.length > 0;
-        if (!hasLoadedBefore) {
-          setLocalLoading(true);
-        }
+        setLocalLoading(true);
         await loadBabies();
-        if (isMountedRef.current) setLocalLoading(false);
+        if (isMountedRef.current) {
+          setLocalLoading(false);
+          await checkRemoteBabies();
+        }
       } catch (error) {
         if (isMountedRef.current) {
           setLoadError('Failed to load babies');
@@ -114,15 +137,28 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
         }
       }
     };
+    
     loadData();
-  }, [loadBabies, babies.length]);
+    
+    loadingTimeoutRef.current = setTimeout(() => {
+      if (localLoading && isMountedRef.current) {
+        setLocalLoading(false);
+        setIsCheckingRemote(false);
+      }
+    }, 8000);
+    
+    return () => {
+      isMountedRef.current = false;
+      if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
+    };
+  }, [loadBabies, checkRemoteBabies]);
 
+  // ─── Handlers ────────────────────────────────────────────────────────
   const handleImportBaby = useCallback(async (baby: any) => {
     triggerHaptic('medium');
     setIsProcessing(true);
     
     try {
-      // Import the baby into local DB
       await createBabyInDb({
         id: baby.id,
         name: baby.name,
@@ -135,17 +171,11 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
         parent2Id: baby.parent2_id || undefined,
       });
 
-      // Set as current baby
       await setCurrentBabyInDb(baby.id);
-      
-      // Refresh local babies
       await loadBabies();
       await switchBaby(baby.id);
-
-      // Mark baby setup as complete
       await completeSetup('baby');
 
-      // Check parent2 status
       const { hasParent2 } = await wasSetupCompleted();
       
       if (hasParent2 === false) {
@@ -154,7 +184,6 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
       } else {
         await completeSetup('parent2');
         showSuccess('Welcome Back!', `Imported ${baby.name}'s profile`);
-        // Let AppNavigator handle navigation
       }
     } catch (error) {
       console.error('Import baby error:', error);
@@ -220,18 +249,22 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
     setLocalLoading(true);
     try {
       await loadBabies();
-      if (isMountedRef.current) setLocalLoading(false);
+      if (isMountedRef.current) {
+        setLocalLoading(false);
+        await checkRemoteBabies();
+      }
     } catch (error) {
       if (isMountedRef.current) {
         setLoadError('Still unable to load');
         setLocalLoading(false);
       }
     }
-  }, [loadBabies, babies.length]);
+  }, [loadBabies, checkRemoteBabies]);
 
-  const showLoading = localLoading || babyLoading;
+  const showLoading = localLoading || babyLoading || isCheckingRemote;
   const hasExistingBabies = babies && babies.length > 0;
 
+  // ─── Error State ─────────────────────────────────────────────────────
   if (loadError && !showLoading) {
     return (
       <View style={[styles.container]}>
@@ -253,20 +286,67 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
     );
   }
 
+  // ─── Checking State ──────────────────────────────────────────────────
   if (showLoading) {
     return (
       <View style={[styles.container]}>
         <LinearGradient colors={isDark ? ['#0a0a0a', '#1a1a2e'] : ['#f0f4ff', '#e0e7ff']} style={styles.gradient}>
           <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
           <View style={[styles.content, { paddingTop: insets.top, justifyContent: 'center', alignItems: 'center' }]}>
-            <ActivityIndicator size="large" color={themeColors.primary} />
-            <Text style={[styles.loadingText, isDark && styles.textDark]}>Loading your babies...</Text>
+            <UniversalSpinner
+              visible={true}
+              text={isCheckingRemote ? checkingMessage : "Getting everything ready..."}
+              subtext={isCheckingRemote ? `We're looking for your family profiles` : "Please wait a moment"}
+              size="large"
+              overlay={false}
+              section="main"
+              variant={isCheckingRemote ? "aurora" : "liquid"}
+              showProgress={true}
+              progress={checkingProgress}
+            />
+            {isCheckingRemote && (
+              <View style={styles.checkingContainer}>
+                <View style={styles.checkingSteps}>
+                  <View style={[styles.checkingStep, checkingProgress >= 20 && styles.checkingStepDone]}>
+                    <Ionicons 
+                      name={checkingProgress >= 20 ? "checkmark-circle" : "search-outline"} 
+                      size={20} 
+                      color={checkingProgress >= 20 ? "#10b981" : themeColors.primary} 
+                    />
+                    <Text style={[styles.checkingStepText, isDark && styles.textDark]}>
+                      {checkingProgress >= 20 ? "✓ Looking for your family" : "Searching for your profiles..."}
+                    </Text>
+                  </View>
+                  <View style={[styles.checkingStep, checkingProgress >= 50 && styles.checkingStepDone]}>
+                    <Ionicons 
+                      name={checkingProgress >= 50 ? "checkmark-circle" : "people-outline"} 
+                      size={20} 
+                      color={checkingProgress >= 50 ? "#10b981" : themeColors.primary} 
+                    />
+                    <Text style={[styles.checkingStepText, isDark && styles.textDark]}>
+                      {checkingProgress >= 50 ? "✓ Found your babies" : "Checking for little ones..."}
+                    </Text>
+                  </View>
+                  <View style={[styles.checkingStep, checkingProgress >= 80 && styles.checkingStepDone]}>
+                    <Ionicons 
+                      name={checkingProgress >= 80 ? "checkmark-circle" : "happy-outline"} 
+                      size={20} 
+                      color={checkingProgress >= 80 ? "#10b981" : themeColors.primary} 
+                    />
+                    <Text style={[styles.checkingStepText, isDark && styles.textDark]}>
+                      {checkingProgress >= 80 ? "✓ Ready to go!" : "Preparing your experience..."}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            )}
           </View>
         </LinearGradient>
       </View>
     );
   }
 
+  // ─── Main Content ────────────────────────────────────────────────────
   return (
     <View style={[styles.container]}>
       <LinearGradient colors={isDark ? ['#0a0a0a', '#1a1a2e'] : ['#f0f4ff', '#e0e7ff']} style={styles.gradient}>
@@ -281,14 +361,14 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
               <Text style={styles.icon}>👶</Text>
             </View>
             <Text style={[styles.title, isDark && styles.textDark]}>
-              {hasExistingBabies ? 'Select Your Baby' : remoteBabies.length > 0 ? 'Import Your Baby?' : 'Add Your Baby?'}
+              {hasExistingBabies ? 'Welcome Back!' : remoteBabies.length > 0 ? 'Import Your Baby?' : 'Create Your Baby Profile'}
             </Text>
             <Text style={[styles.subtitle, isDark && { color: '#94a3b8' }]}>
               {hasExistingBabies
-                ? `Welcome back, ${userProfile?.fullName?.split(' ')[0] || 'Parent'}!`
+                ? `Great to see you again, ${userProfile?.fullName?.split(' ')[0] || 'Parent'}!`
                 : remoteBabies.length > 0
-                ? 'We found existing baby profiles linked to your account'
-                : 'Create a profile to start tracking milestones and activities'}
+                ? `We found ${remoteBabies.length} baby profile${remoteBabies.length > 1 ? 's' : ''} linked to your account`
+                : `Hello ${userProfile?.fullName?.split(' ')[0] || 'Parent'}! Let's get started with your baby's journey`}
             </Text>
           </Animated.View>
 
@@ -296,10 +376,10 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
           {showImportOption && remoteBabies.length > 0 && !hasExistingBabies && (
             <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(100)} style={styles.importContainer}>
               <Text style={[styles.sectionTitle, isDark && styles.textDark]}>
-                Import Existing Profile{remoteBabies.length > 1 ? 's' : ''}
+                Import Your Baby{remoteBabies.length > 1 ? ' Profiles' : ''}
               </Text>
               <Text style={[styles.importSubtitle, isDark && { color: '#94a3b8' }]}>
-                We found {remoteBabies.length} baby profile{remoteBabies.length > 1 ? 's' : ''} linked to your account
+                We found existing profiles linked to your account. Tap to import them.
               </Text>
               {remoteBabies.map((baby, index) => (
                 <AnimatedTouchableOpacity
@@ -331,6 +411,9 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
                       <Ionicons name="download-outline" size={20} color={themeColors.primary} />
                       <Text style={[styles.importBadgeText, { color: themeColors.primary }]}>Import</Text>
                     </View>
+                    {isProcessing && (
+                      <InlineSpinner size={20} variant="liquid" section="main" />
+                    )}
                   </View>
                 </AnimatedTouchableOpacity>
               ))}
@@ -385,7 +468,12 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
           <Animated.View entering={shouldReduceMotion ? undefined : FadeIn.delay(400)} style={styles.buttonsContainer}>
             {!hasExistingBabies && (
               <>
-                <TouchableOpacity style={styles.primaryButton} onPress={handleCreateBaby} activeOpacity={0.8}>
+                <TouchableOpacity 
+                  style={styles.primaryButton} 
+                  onPress={handleCreateBaby} 
+                  activeOpacity={0.8}
+                  disabled={isProcessing}
+                >
                   <LinearGradient colors={[themeColors.primary, themeColors.secondary]} style={styles.primaryGradient}>
                     <Ionicons name="add-circle" size={24} color="white" />
                     <Text style={styles.primaryText}>Create Baby Profile</Text>
@@ -592,5 +680,36 @@ const styles = StyleSheet.create({
     color: '#94a3b8',
     textAlign: 'center',
     marginVertical: 8,
+  },
+  checkingContainer: {
+    marginTop: 24,
+    width: '100%',
+    paddingHorizontal: 20,
+  },
+  checkingSteps: {
+    gap: 12,
+    marginBottom: 16,
+  },
+  checkingStep: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    backgroundColor: 'rgba(255,255,255,0.5)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.8)',
+    opacity: 0.7,
+  },
+  checkingStepDone: {
+    opacity: 1,
+    backgroundColor: 'rgba(16, 185, 129, 0.08)',
+    borderColor: '#10b981',
+  },
+  checkingStepText: {
+    fontSize: 14,
+    color: '#1e293b',
+    fontWeight: '500',
   },
 });
