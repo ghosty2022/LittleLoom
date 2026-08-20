@@ -57,7 +57,26 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
   const isEditing = route?.params?.editing === true;
   const sweetAlert = useSweetAlert();
   const { settings, themeColors, triggerHaptic } = useCustomization();
-  const { updateSelectedTopics: updateCommunityTopics, INITIAL_TOPICS: ctxTopics, getSelectedTopics } = useCommunity();
+  
+  // Safe access to community context - handle case where provider isn't ready
+  let communityContext;
+  try {
+    communityContext = useCommunity();
+  } catch (e) {
+    console.warn('[CommunityOnboarding] CommunityContext not ready, using fallback');
+    communityContext = null;
+  }
+  
+  const { 
+    updateSelectedTopics: updateCommunityTopics, 
+    INITIAL_TOPICS: ctxTopics, 
+    getSelectedTopics 
+  } = communityContext || { 
+    updateSelectedTopics: async () => {}, 
+    INITIAL_TOPICS: [], 
+    getSelectedTopics: () => [] 
+  };
+  
   const { updateSelectedTopics: updateUserTopics, profile } = useUser();
 
   const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
@@ -80,6 +99,9 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
   const categoriesWithTopics = useMemo((): CategoryWithTopics[] => {
     const grouped = new Map<string, CategoryWithTopics>();
 
+    // Ensure we have valid topics
+    const validTopics = Array.isArray(allTopics) && allTopics.length > 0 ? allTopics : [];
+
     // Initialize categories
     TOPIC_CATEGORIES.forEach(cat => {
       grouped.set(cat.id, {
@@ -90,7 +112,7 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
     });
 
     // Group topics
-    allTopics.forEach(topic => {
+    validTopics.forEach(topic => {
       const catId = (topic as any).category || 'community';
       const category = grouped.get(catId);
       if (category) {
@@ -226,10 +248,28 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
       await AsyncStorage.setItem(ONBOARDING_KEY, JSON.stringify(data));
       await AsyncStorage.setItem('@community_selected_topics_v2', JSON.stringify(selectedTopics));
 
-      // Update contexts
-      await updateCommunityTopics(selectedTopics);
-      await updateUserTopics(selectedTopics);
-      await updateSectionState('community', { onboardingComplete: true, topicSelected: true });
+      // Update contexts - with safety checks
+      try {
+        if (typeof updateCommunityTopics === 'function') {
+          await updateCommunityTopics(selectedTopics);
+        }
+      } catch (e) {
+        console.warn('[CommunityOnboarding] Failed to update community topics:', e);
+      }
+      
+      try {
+        if (typeof updateUserTopics === 'function') {
+          await updateUserTopics(selectedTopics);
+        }
+      } catch (e) {
+        console.warn('[CommunityOnboarding] Failed to update user topics:', e);
+      }
+      
+      try {
+        await updateSectionState('community', { onboardingComplete: true, topicSelected: true });
+      } catch (e) {
+        console.warn('[CommunityOnboarding] Failed to update section state:', e);
+      }
 
       triggerHaptic('success');
       sweetAlert.toast('Topics Selected', `${selectedTopics.length} topics selected!`, 'success');

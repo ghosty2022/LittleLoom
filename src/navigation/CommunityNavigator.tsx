@@ -369,14 +369,11 @@ const CommunityNavigator = React.memo(() => {
         initialRouteName="CommunityOnboarding"
         screenOptions={ONBOARDING_SCREEN_OPTIONS}
       >
-        <Stack.Screen name="CommunityOnboarding">
-          {(props) => (
-            <CommunityOnboardingScreen
-              {...props}
-              onComplete={handleOnboardingComplete}
-            />
-          )}
-        </Stack.Screen>
+        <Stack.Screen 
+          name="CommunityOnboarding"
+          component={CommunityOnboardingScreen}
+          initialParams={{ onComplete: handleOnboardingComplete }}
+        />
       </Stack.Navigator>
     );
   }
