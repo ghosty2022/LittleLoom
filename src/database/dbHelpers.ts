@@ -606,8 +606,20 @@ async function syncBabiesToLocalDb(remoteBabies: any[]): Promise<number> {
   return syncedCount;
 }
 
+// ─── FIXED: getAllBabiesFromDb with proper auth check ──────────────────
 export async function getAllBabiesFromDb(forceSync: boolean = false) {
   try {
+    // ─── CRITICAL FIX: Check authentication first ────────────────────
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    
+    if (authError || !authData?.user) {
+      console.log('[DB] No authenticated user found, returning empty list');
+      return [];
+    }
+    
+    const userId = authData.user.id;
+    console.log(`[DB] Authenticated user ID: ${userId}`);
+    
     // First, get local data immediately
     let localBabies = db.select().from(babies).where(eq(babies.isActive, true)).all();
     
@@ -617,12 +629,9 @@ export async function getAllBabiesFromDb(forceSync: boolean = false) {
         console.log('[DB] Triggering background sync...');
         setTimeout(async () => {
           try {
-            const { data: authData } = await supabase.auth.getUser();
-            if (authData?.user?.id) {
-              const remoteBabies = await fetchBabiesFromSupabase(authData.user.id);
-              if (remoteBabies.length > 0) {
-                await syncBabiesToLocalDb(remoteBabies);
-              }
+            const remoteBabies = await fetchBabiesFromSupabase(userId);
+            if (remoteBabies.length > 0) {
+              await syncBabiesToLocalDb(remoteBabies);
             }
           } catch (e) {
             console.warn('[DB] Background sync failed:', e);
@@ -635,16 +644,7 @@ export async function getAllBabiesFromDb(forceSync: boolean = false) {
     // No local data, try to sync from Supabase
     console.log('[DB] No local babies, trying to sync from Supabase...');
     
-    // Get the current user ID
-    const { data: authData } = await supabase.auth.getUser();
-    if (!authData?.user?.id) {
-      console.log('[DB] No authenticated user found');
-      return [];
-    }
-    
-    console.log(`[DB] Authenticated user ID: ${authData.user.id}`);
-    
-    const remoteBabies = await fetchBabiesFromSupabase(authData.user.id);
+    const remoteBabies = await fetchBabiesFromSupabase(userId);
     
     if (remoteBabies.length > 0) {
       await syncBabiesToLocalDb(remoteBabies);
@@ -1246,6 +1246,85 @@ export async function deleteFamilyMembersByBabyFromDb(babyId: string) {
       return;
     }
     throw error;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   HARD DELETE FUNCTIONS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+export async function hardDeleteBaby(babyId: string): Promise<boolean> {
+  try {
+    // First delete all related data from local DB
+    // Delete tracker entries
+    await db.delete(trackerEntries).where(eq(trackerEntries.babyId, babyId));
+    
+    // Delete family members
+    await db.delete(familyMembers).where(eq(familyMembers.babyId, babyId));
+    
+    // Delete the baby
+    await db.delete(babies).where(eq(babies.id, babyId));
+    
+    // Also delete from Supabase
+    await supabase.from('tracker_entries').delete().eq('baby_id', babyId);
+    await supabase.from('family_members').delete().eq('baby_id', babyId);
+    await supabase.from('babies').delete().eq('id', babyId);
+    
+    console.log(`[DB] Hard deleted baby: ${babyId}`);
+    return true;
+  } catch (error) {
+    console.error('[DB] hardDeleteBaby error:', error);
+    return false;
+  }
+}
+
+export async function hardDeleteFamilyMember(memberId: string): Promise<boolean> {
+  try {
+    // Delete from local DB
+    await db.delete(familyMembers).where(eq(familyMembers.id, memberId));
+    
+    // Delete from Supabase
+    await supabase.from('family_members').delete().eq('id', memberId);
+    
+    console.log(`[DB] Hard deleted family member: ${memberId}`);
+    return true;
+  } catch (error) {
+    console.error('[DB] hardDeleteFamilyMember error:', error);
+    return false;
+  }
+}
+
+export async function hardDeleteAllUserData(userId: string): Promise<boolean> {
+  try {
+    // Get all babies for this user
+    const userBabies = await db.select().from(babies).where(eq(babies.parent1Id, userId));
+    
+    for (const baby of userBabies) {
+      // Delete tracker entries
+      await db.delete(trackerEntries).where(eq(trackerEntries.babyId, baby.id));
+      // Delete family members
+      await db.delete(familyMembers).where(eq(familyMembers.babyId, baby.id));
+      // Delete baby
+      await db.delete(babies).where(eq(babies.id, baby.id));
+      
+      // Also delete from Supabase
+      await supabase.from('tracker_entries').delete().eq('baby_id', baby.id);
+      await supabase.from('family_members').delete().eq('baby_id', baby.id);
+      await supabase.from('babies').delete().eq('id', baby.id);
+    }
+    
+    // Delete any remaining family members where user is a member
+    await db.delete(familyMembers).where(eq(familyMembers.userId, userId));
+    await supabase.from('family_members').delete().eq('user_id', userId);
+    
+    // Delete app settings
+    await db.delete(appSettings);
+    
+    console.log(`[DB] Hard deleted all data for user: ${userId}`);
+    return true;
+  } catch (error) {
+    console.error('[DB] hardDeleteAllUserData error:', error);
+    return false;
   }
 }
 

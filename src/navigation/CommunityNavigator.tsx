@@ -36,6 +36,7 @@ import {
 import { InlineSpinner } from '../components/UniversalSpinner';
 import { LinearGradient } from 'expo-linear-gradient';
 import type { CommunityStackParamList } from '../types/navigation';
+import { supabase } from '@/utils/supabase';
 
 const Stack = createNativeStackNavigator<CommunityStackParamList>();
 
@@ -290,18 +291,49 @@ const BlockedUsersScreen = () => {
   );
 };
 
+// ─── AUTH CHECK HOOK ────────────────────────────────────────────────────
+function useCommunityAuthCheck() {
+  const [isValid, setIsValid] = useState<boolean | null>(null);
+  
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const { data: { user }, error } = await supabase.auth.getUser();
+        if (error || !user) {
+          console.log('[CommunityNavigator] No authenticated user');
+          setIsValid(false);
+          return;
+        }
+        console.log('[CommunityNavigator] Auth valid for user:', user.id);
+        setIsValid(true);
+      } catch (error) {
+        console.error('[CommunityNavigator] Auth check error:', error);
+        setIsValid(false);
+      }
+    };
+    
+    checkAuth();
+  }, []);
+  
+  return isValid;
+}
+
 const CommunityNavigator = React.memo(() => {
   const { isLoading, currentUser, checkOnboardingStatus, getSelectedTopics, isInitialized } = useCommunity();
   const { profile: userProfile } = useUser();
   const { settings, shouldReduceMotion } = useCustomization();
-  // Use automatic country detection - ensure it runs
-const isDetectingCountry = useAutomaticCountryDetection();
-// Log for debugging
-useEffect(() => {
-  if (__DEV__) {
-    console.log('[CommunityNavigator] Country detection:', isDetectingCountry ? 'running' : 'done');
-  }
-}, [isDetectingCountry]);
+  
+  // ─── CRITICAL FIX: Check authentication before showing community ────
+  const isAuthValid = useCommunityAuthCheck();
+  
+  const isDetectingCountry = useAutomaticCountryDetection();
+  
+  useEffect(() => {
+    if (__DEV__) {
+      console.log('[CommunityNavigator] Country detection:', isDetectingCountry ? 'running' : 'done');
+      console.log('[CommunityNavigator] Auth valid:', isAuthValid);
+    }
+  }, [isDetectingCountry, isAuthValid]);
 
   const {
     isReady: splashReady,
@@ -315,7 +347,13 @@ useEffect(() => {
   const isReady = !isLoading && isInitialized && splashReady;
 
   useEffect(() => {
-    if (!isReady || initDone.current) return;
+    // ─── CRITICAL FIX: Don't proceed if auth is invalid ──────────────
+    if (isAuthValid === false) {
+      console.log('[CommunityNavigator] Auth invalid, staying in loading state');
+      return;
+    }
+    
+    if (!isReady || initDone.current || isAuthValid === null) return;
 
     let mounted = true;
     initDone.current = true;
@@ -349,7 +387,7 @@ useEffect(() => {
 
     initialize();
     return () => { mounted = false; };
-  }, [isReady, checkOnboardingStatus, getSelectedTopics, shouldShowSplash, isDetectingCountry]);
+  }, [isReady, checkOnboardingStatus, getSelectedTopics, shouldShowSplash, isDetectingCountry, isAuthValid]);
 
   const handleSplashComplete = useCallback(async () => {
     await markSplashShown();
@@ -359,7 +397,6 @@ useEffect(() => {
   const handleOnboardingComplete = useCallback(async () => {
     try {
       await AsyncStorage.setItem(COMMUNITY_ONBOARDING_KEY, 'true');
-      // Mark onboarding as complete in the context
       await checkOnboardingStatus();
       setPhase('main');
       await markSplashShown();
@@ -368,6 +405,18 @@ useEffect(() => {
       setPhase('main');
     }
   }, [markSplashShown, checkOnboardingStatus]);
+
+  // ─── CRITICAL FIX: If auth is invalid, don't render anything ──────
+  if (isAuthValid === false) {
+    return (
+      <View style={[styles.placeholderContainer, { backgroundColor: CommunityColors.background.main }]}>
+        <Ionicons name="lock-closed" size={48} color={CommunityColors.text.secondary} />
+        <Text style={[styles.placeholderText, { marginTop: 16, color: CommunityColors.text.secondary }]}>
+          Please sign in to access the community
+        </Text>
+      </View>
+    );
+  }
 
   // Show onboarding phase
   if (phase === 'onboarding') {
@@ -404,7 +453,7 @@ useEffect(() => {
     );
   }
 
-  // Main app
+  // Main app - only if auth is valid and phase is main
   return (
     <>
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />

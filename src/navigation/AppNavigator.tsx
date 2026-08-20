@@ -66,6 +66,7 @@ import { InlineSpinner } from '../components/UniversalSpinner';
 import { useSecurity } from '../context/SecurityContext';
 import { useSafeApp, useSafeBaby, useSafeAuth } from '../hooks/useSafeContexts';
 import { RootStackParamList, MainTabParamList, NavigationState } from '../types/navigation';
+import { supabase } from '@/utils/supabase';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -186,12 +187,28 @@ function MainTabs() {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   NAV STATE COMPUTATION
+   ─── CRITICAL FIX: Validate session before computing nav state ──────────
    ═══════════════════════════════════════════════════════════════════════════ */
+
+async function validateSupabaseSession(): Promise<boolean> {
+  try {
+    const { data: { user }, error } = await supabase.auth.getUser();
+    if (error || !user) {
+      console.log('[Navigation] Session validation failed:', error?.message || 'No user');
+      return false;
+    }
+    console.log('[Navigation] Session validated for user:', user.id);
+    return true;
+  } catch (error) {
+    console.error('[Navigation] Session validation error:', error);
+    return false;
+  }
+}
 
 function getNavState(
   authLoading: boolean,
   isAuth: boolean,
+  isValidSession: boolean,
   isLocked: boolean,
   securityOn: boolean,
   setupDone: boolean,
@@ -203,12 +220,14 @@ function getNavState(
   firstOpen: boolean,
 ): NavigationState {
   if (authLoading) return 'LOADING';
-  if (!isAuth) {
+  
+  // ─── CRITICAL FIX: Require both isAuth AND valid session ──────────
+  if (!isAuth || !isValidSession) {
     if (firstOpen && !seenOnboarding) return 'ONBOARDING';
     return 'LOGIN';
   }
 
-  // isAuth === true from here on
+  // isAuth && isValidSession === true from here on
   // Show security lock whenever the context says we're locked (regardless of how we got there)
   if (isLocked && setupDone) return 'SECURITY_LOCK';
 
@@ -284,6 +303,8 @@ function NavigationContent({
   const [isNavReady, setIsNavReady] = useState(false);
   const [isFirstOpen, setIsFirstOpen] = useState(false);
   const [babiesReady, setBabiesReady] = useState(false);
+  const [isValidSession, setIsValidSession] = useState(false);
+  const [sessionChecked, setSessionChecked] = useState(false);
 
   // Shared ref so useAppLock() in App.tsx can navigate imperatively to SecurityLock
   const navRef = navigationRef;
@@ -307,6 +328,32 @@ function NavigationContent({
   // Refs to track current baby values without causing re-renders
   const babyCountRef = useRef(0);
   const hasSkippedBabyRef = useRef(false);
+
+  // ─── CRITICAL FIX: Declare refs properly ──────────────────────────────
+  const checkSecurityOnResumeRef = useRef(checkSecurityOnResume);
+  const loadBabiesRef = useRef(loadBabies);
+
+  // ─── CRITICAL FIX: Validate session on mount and when auth changes ──
+  useEffect(() => {
+    const checkSession = async () => {
+      if (!isAuthenticated) {
+        setIsValidSession(false);
+        setSessionChecked(true);
+        return;
+      }
+      
+      const valid = await validateSupabaseSession();
+      setIsValidSession(valid);
+      setSessionChecked(true);
+      
+      if (!valid && isMounted.current) {
+        console.log('[Navigation] Session invalid, forcing logout state');
+        // This will cause getNavState to return LOGIN
+      }
+    };
+    
+    checkSession();
+  }, [isAuthenticated]);
 
   // NEW: Load persisted navigation state
   useEffect(() => {
@@ -334,8 +381,6 @@ function NavigationContent({
   }, []);
 
   // FIX: Use refs for callbacks to keep AppState effect stable
-  const checkSecurityOnResumeRef = useRef(checkSecurityOnResume);
-  const loadBabiesRef = useRef(loadBabies);
   useEffect(() => {
     checkSecurityOnResumeRef.current = checkSecurityOnResume;
     loadBabiesRef.current = loadBabies;
@@ -374,15 +419,16 @@ function NavigationContent({
     hasSkippedBabyRef.current = hasSkippedBaby;
   }, [babies?.length, hasSkippedBaby, isAuthenticated, setupComplete, isFirstOpen]);
 
-  // FIX #2: Compute navState with stable deps — wait for babies if authenticated
+  // ─── CRITICAL FIX: Compute navState with session validation ──────────
   useEffect(() => {
-    if (authLoading || !firstOpenChecked.current) return;
+    if (authLoading || !firstOpenChecked.current || !sessionChecked) return;
     // For authenticated users, wait until baby list is loaded so we route correctly
     if (isAuthenticated && !babiesReady) return;
 
     const newState = getNavState(
       authLoading,
       isAuthenticated,
+      isValidSession, // ← CRITICAL: Pass session validation
       isSecurityLocked,
       securityOn,
       setupComplete,
@@ -407,6 +453,8 @@ function NavigationContent({
   }, [
     authLoading,
     isAuthenticated,
+    isValidSession, // ← CRITICAL: Add to dependencies
+    sessionChecked,
     isSecurityLocked,
     securityOn,
     setupComplete,
@@ -424,13 +472,13 @@ function NavigationContent({
 
   // FIX #3: Load babies ONCE and track readiness
   useEffect(() => {
-    if (isAuthenticated && !authLoading && !babiesLoaded.current) {
+    if (isAuthenticated && isValidSession && !authLoading && !babiesLoaded.current) {
       babiesLoaded.current = true;
       loadBabies().finally(() => {
         if (isMounted.current) setBabiesReady(true);
       });
     }
-  }, [isAuthenticated, authLoading]);
+  }, [isAuthenticated, isValidSession, authLoading]);
 
   // FIX #4: AppState listener — check security on EVERY resume when authenticated
   useEffect(() => {
@@ -458,7 +506,7 @@ function NavigationContent({
         if (now - lastSecCheck.current < 2000) return;
 
         // ALWAYS check security when authenticated, regardless of setup state
-        if (isAuthenticated) {
+        if (isAuthenticated && isValidSession) {
           await checkSecurityOnResumeRef.current();
         }
 
@@ -467,7 +515,7 @@ function NavigationContent({
       }
     });
     return () => sub.remove();
-  }, [isAuthenticated]);
+  }, [isAuthenticated, isValidSession]);
 
   // FIX: Deduplicated state change handler — forward ONLY to App.tsx prop
   const handleStateChange = useCallback((state: any) => {
@@ -497,8 +545,19 @@ useEffect(() => {
   
   console.log('[Navigation] Run:', effectRunCount.current, 'navState:', navState, 'route:', currentRoute, 'initialized:', hasInitializedNav.current);
 
+  // ─── CRITICAL FIX: If navState is LOGIN, ensure we're on a login screen ──
+  if (navState === 'LOGIN') {
+    if (currentRoute !== 'Login' && currentRoute !== 'Onboarding' && currentRoute !== 'SignUp') {
+      console.log('[Navigation] 🚀 Force navigating to Login (invalid session)');
+      navRef.current.reset({ index: 0, routes: [{ name: 'Login' }] });
+      return;
+    }
+    // If we're already on Login, just return
+    if (currentRoute === 'Login') return;
+  }
+
   // ─── CRITICAL FIX: Force navigation to BabyOptional if authenticated with babies ───
-  if (isAuthenticated && navState === 'SETUP_BABY' && babyCountRef.current > 0) {
+  if (isAuthenticated && isValidSession && navState === 'SETUP_BABY' && babyCountRef.current > 0) {
     if (currentRoute !== 'BabyOptional' && currentRoute !== 'Main') {
       console.log('[Navigation] 🚀 Force navigating to BabyOptional for baby selection');
       navRef.current.navigate('BabyOptional' as never);
@@ -515,7 +574,7 @@ useEffect(() => {
   }
 
   // ─── Force navigate to Main if setup is complete ──────────────────────
-  if (isAuthenticated && navState === 'MAIN' && currentRoute !== 'Main') {
+  if (isAuthenticated && isValidSession && navState === 'MAIN' && currentRoute !== 'Main') {
     if (SETUP_FLOW_SCREENS.has(currentRoute || '') || currentRoute === 'Login' || currentRoute === 'Onboarding') {
       console.log('[Navigation] 🚀 Setup complete, navigating to Main');
       navRef.current.reset({ index: 0, routes: [{ name: 'Main' }] });
@@ -693,10 +752,10 @@ useEffect(() => {
       console.log('[Navigation] Reset isNavigatingSetup');
     }, 1000);
   }, 300);
-}, [navState, initialCheckDone, isNavReady, initialState, saveNavInitialized, isAuthenticated, babyCountRef, babies.length]);
+}, [navState, initialCheckDone, isNavReady, initialState, saveNavInitialized, isAuthenticated, isValidSession, babyCountRef, babies.length]);
 
   // Early return MUST come after ALL hooks
-  if (authLoading || !initialCheckDone) {
+  if (authLoading || !initialCheckDone || !sessionChecked) {
     return <AppLoadingScreen />;
   }
 

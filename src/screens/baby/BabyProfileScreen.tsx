@@ -1145,15 +1145,53 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     }, () => {}, 'Delete', 'Cancel');
   };
 
-  const handleDeleteBaby = async () => {
-    sweetAlert.confirm('Delete Profile?', `This will permanently delete ${currentBabyData?.name}'s profile and all associated data. This action cannot be undone.`, async () => {
-      if (currentBabyData) {
-        await deleteBaby(currentBabyData.id);
-        sweetAlert.success('Profile Deleted', 'Baby profile has been removed.');
-        setTimeout(() => navigation.goBack(), 1500);
-      }
-    }, () => {}, 'Delete', 'Cancel');
-  };
+  const { verifyPassword } = useAuth();
+
+  const handleDeleteBaby = useCallback(async () => {
+    sweetAlert.confirm(
+      'Delete Profile?',
+      `⚠️ This will permanently delete ${currentBabyData?.name}'s profile and all associated data. This action cannot be undone.`,
+      async () => {
+        // Ask for password confirmation
+        sweetAlert.prompt(
+          'Confirm Password',
+          'Enter your password to confirm deletion:',
+          'secure-text',
+          async (password) => {
+            if (!password) {
+              sweetAlert.error('Error', 'Password is required');
+              return;
+            }
+            
+            // Verify password
+            const isValid = await verifyPassword(password);
+            if (!isValid) {
+              sweetAlert.error('Error', 'Incorrect password. Please try again.');
+              return;
+            }
+            
+            // Proceed with deletion
+            if (currentBabyData) {
+              try {
+                // Delete from database
+                await deleteBaby(currentBabyData.id);
+                sweetAlert.success('Profile Deleted', `${currentBabyData.name}'s profile has been removed.`);
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                setTimeout(() => navigation.goBack(), 1500);
+              } catch (error) {
+                sweetAlert.error('Error', 'Failed to delete profile');
+              }
+            }
+          },
+          'Delete',
+          'Cancel'
+        );
+      },
+      () => {},
+      'Delete',
+      'Cancel'
+    );
+  }, [currentBabyData, deleteBaby, navigation, sweetAlert, verifyPassword]);
 
   const onDateChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
     setShowDatePicker(Platform.OS === 'ios');

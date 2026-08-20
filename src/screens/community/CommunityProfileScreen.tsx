@@ -54,6 +54,7 @@ import { useCustomization } from '../../hooks/useCustomization';
 import { useMedia } from '../../context/MediaContext';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { UniversalSpinner } from '../../components/UniversalSpinner';
+import { useAuth } from '../../context/AuthContext';
 
 type Props = NativeStackScreenProps<CommunityStackParamList, 'CommunityProfile'>;
 
@@ -259,6 +260,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   const { themeColors, fullThemeColors, darkMode, shouldReduceMotion, triggerHaptic } = useCustomization();
   const { compressImage } = useMedia();
   const sweetAlert = useSweetAlert();
+  const { deleteAccountWithConfirmation } = useAuth();
 
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
@@ -988,6 +990,30 @@ export default function CommunityProfileScreen({ navigation }: Props) {
       sweetAlert.error('Error', 'Failed to reactivate profile');
     }
   };
+
+  // ─── DELETE ACCOUNT HANDLER ─────────────────────────────────────────────
+  const handleDeleteCommunityAccount = useCallback(() => {
+    sweetAlert.confirm(
+      'Delete Community Profile',
+      '⚠️ This will permanently delete your community profile, all posts, comments, and activity. This cannot be undone.',
+      async () => {
+        const result = await deleteAccountWithConfirmation();
+        if (result.success) {
+          sweetAlert.success('Account Deleted', result.message);
+          // Navigate to login screen
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'Login' as never }],
+          });
+        } else {
+          sweetAlert.error('Error', result.message);
+        }
+      },
+      () => {},
+      'Delete',
+      'Cancel'
+    );
+  }, [deleteAccountWithConfirmation, navigation, sweetAlert]);
 
   // Navigate to messages
   const handleNavigateToMessages = () => {
@@ -1940,6 +1966,22 @@ export default function CommunityProfileScreen({ navigation }: Props) {
             <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
           </TouchableOpacity>
         )}
+
+        <View style={styles.dangerDivider} />
+
+        {/* ─── DELETE ENTIRE ACCOUNT ────────────────────────────────── */}
+        <TouchableOpacity 
+          style={[styles.dangerActionBtn, styles.deleteAccountBtn]} 
+          onPress={handleDeleteCommunityAccount}
+        >
+          <View style={[styles.dangerActionIcon, { backgroundColor: 'rgba(239,68,68,0.15)' }]}>
+            <Ionicons name="person-remove-outline" size={18} color="#ef4444" />
+          </View>
+          <Text style={[styles.dangerActionText, { color: '#ef4444', fontWeight: '700' }]}>
+            Delete Entire Account
+          </Text>
+          <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
+        </TouchableOpacity>
       </View>
     </Animated.View>
   );
@@ -2728,6 +2770,12 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   dangerIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   dangerTitle: { fontSize: 16, fontWeight: '800', color: '#ef4444', marginBottom: 4 },
   dangerDescription: { fontSize: 13, fontWeight: '500', color: colors.textSecondary || '#64748b', textAlign: 'center', lineHeight: 18, marginBottom: 16 },
+  dangerDivider: { 
+    width: '100%', 
+    height: 1, 
+    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+    marginVertical: 8 
+  },
   dangerActionBtn: { 
     flexDirection: 'row', 
     alignItems: 'center', 
@@ -2738,6 +2786,9 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
     borderRadius: 12,
     backgroundColor: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)',
     marginTop: 4
+  },
+  deleteAccountBtn: {
+    marginTop: 0,
   },
   reactivateActionBtn: { 
     backgroundColor: 'rgba(16,185,129,0.04)' 

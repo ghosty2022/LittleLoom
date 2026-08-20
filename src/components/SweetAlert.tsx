@@ -11,6 +11,8 @@ import {
   StatusBar,
   Animated as RNAnimated,
   Easing as RNEasing,
+  TextInput,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -37,6 +39,7 @@ const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 export type AlertType = 'success' | 'error' | 'warning' | 'info' | 'question' | 'loading';
 export type AlertStyle = 'toast' | 'modal' | 'bottom-sheet';
 export type AlertPosition = 'top' | 'center' | 'bottom';
+export type PromptType = 'plain-text' | 'secure-text' | 'email' | 'phone';
 
 export interface SweetAlertConfig {
   title: string;
@@ -59,15 +62,21 @@ export interface SweetAlertConfig {
   iconColor?: string;
   haptic?: boolean;
   reduceMotion?: boolean;
-  // Modern additions
   icon?: keyof typeof Ionicons.glyphMap;
-  progress?: number; // 0-1 for loading
+  progress?: number;
   actionButtons?: {
     text: string;
     onPress: () => void;
     variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
     icon?: keyof typeof Ionicons.glyphMap;
   }[];
+  // Prompt support
+  isPrompt?: boolean;
+  promptType?: PromptType;
+  promptPlaceholder?: string;
+  promptValue?: string;
+  onPromptConfirm?: (value: string) => void;
+  onPromptCancel?: () => void;
 }
 
 // ─── Color System ───────────────────────────────────────────────────
@@ -315,10 +324,7 @@ const SweetAlertToast: React.FC<ToastProps> = React.memo(({ config, isDark, onDi
           }
         ]}
       >
-        {/* Left accent line */}
         <View style={[styles.toastAccent, { backgroundColor: alertCfg.defaultColor }]} />
-
-        {/* Icon */}
         <View style={[styles.toastIconWrap, { backgroundColor: alertCfg.bgTint }]}>
           <Ionicons 
             name={config.icon || alertCfg.icon} 
@@ -326,8 +332,6 @@ const SweetAlertToast: React.FC<ToastProps> = React.memo(({ config, isDark, onDi
             color={alertCfg.defaultColor} 
           />
         </View>
-
-        {/* Content */}
         <View style={styles.toastTextContainer}>
           <Text style={[styles.toastTitle, { color: textColor }]} numberOfLines={2}>
             {config.title}
@@ -341,8 +345,6 @@ const SweetAlertToast: React.FC<ToastProps> = React.memo(({ config, isDark, onDi
             <ProgressBar progress={config.progress} color={alertCfg.defaultColor} />
           )}
         </View>
-
-        {/* Close */}
         <TouchableOpacity 
           onPress={dismissToast} 
           style={styles.toastClose}
@@ -353,6 +355,214 @@ const SweetAlertToast: React.FC<ToastProps> = React.memo(({ config, isDark, onDi
         </TouchableOpacity>
       </Animated.View>
     </View>
+  );
+});
+
+// ─── Prompt Modal ───────────────────────────────────────────────────
+
+interface PromptModalProps {
+  config: SweetAlertConfig;
+  isDark: boolean;
+  themeColors: { primary: string; secondary: string; accent: string };
+  onDismiss: () => void;
+}
+
+const SweetAlertPrompt: React.FC<PromptModalProps> = React.memo(({ config, isDark, themeColors, onDismiss }) => {
+  const [inputValue, setInputValue] = useState(config.promptValue || '');
+  const [isSecure, setIsSecure] = useState(config.promptType === 'secure-text');
+  const inputRef = useRef<TextInput>(null);
+
+  const bgColor = isDark ? '#1a1a2e' : '#ffffff';
+  const textColor = isDark ? '#f1f5f9' : '#1a1a1a';
+  const subTextColor = isDark ? '#94a3b8' : '#64748b';
+  const borderColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
+  const inputBgColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
+
+  const overlayOpacity = useSharedValue(0);
+  const modalScale = useSharedValue(0.85);
+  const modalTranslateY = useSharedValue(30);
+
+  useEffect(() => {
+    overlayOpacity.value = withTiming(1, { duration: 200 });
+    modalScale.value = withSpring(1, { damping: 14, stiffness: 200 });
+    modalTranslateY.value = withSpring(0, { damping: 14 });
+    setTimeout(() => inputRef.current?.focus(), 300);
+  }, [overlayOpacity, modalScale, modalTranslateY]);
+
+  const animateOut = useCallback((callback?: () => void) => {
+    overlayOpacity.value = withTiming(0, { duration: 180 });
+    modalScale.value = withTiming(0.9, { duration: 180 });
+    modalTranslateY.value = withTiming(20, { duration: 180 });
+    setTimeout(() => callback?.(), 180);
+  }, [overlayOpacity, modalScale, modalTranslateY]);
+
+  const handleConfirm = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    animateOut(() => {
+      config.onPromptConfirm?.(inputValue);
+      onDismiss();
+    });
+  }, [config, inputValue, onDismiss, animateOut]);
+
+  const handleCancel = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    animateOut(() => {
+      config.onPromptCancel?.();
+      onDismiss();
+    });
+  }, [config, onDismiss, animateOut]);
+
+  const handleDismiss = useCallback(() => {
+    animateOut(() => {
+      config.onDismiss?.();
+      onDismiss();
+    });
+  }, [config, onDismiss, animateOut]);
+
+  const overlayStyle = useAnimatedStyle(() => ({
+    opacity: overlayOpacity.value,
+  }));
+
+  const modalStyle = useAnimatedStyle(() => ({
+    transform: [
+      { scale: modalScale.value },
+      { translateY: modalTranslateY.value },
+    ],
+  }));
+
+  const getKeyboardType = () => {
+    switch (config.promptType) {
+      case 'email': return 'email-address';
+      case 'phone': return 'phone-pad';
+      default: return 'default';
+    }
+  };
+
+  const getAutoCapitalize = () => {
+    switch (config.promptType) {
+      case 'email': return 'none';
+      default: return 'sentences';
+    }
+  };
+
+  const confirmColor = config.destructive ? '#ef4444' : (config.confirmColor || themeColors.primary);
+
+  return (
+    <Modal
+      visible={true}
+      transparent
+      animationType="none"
+      statusBarTranslucent
+      onRequestClose={handleDismiss}
+    >
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
+      <Animated.View style={[styles.modalOverlay, overlayStyle]}>
+        <TouchableWithoutFeedback onPress={handleDismiss}>
+          <View style={StyleSheet.absoluteFill} />
+        </TouchableWithoutFeedback>
+
+        <Animated.View style={[styles.modalContainer, modalStyle, { backgroundColor: bgColor, borderColor }]}>
+          {/* Top gradient accent */}
+          <LinearGradient
+            colors={['#6366f1', '#8b5cf6']}
+            style={styles.modalTopAccent}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+          />
+
+          {/* Icon */}
+          <View style={[styles.modalIconWrap, { backgroundColor: 'rgba(99,102,241,0.08)' }]}>
+            <LinearGradient
+              colors={['#6366f1', '#8b5cf6']}
+              style={styles.modalIconGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <Ionicons name="lock-closed" size={28} color="#fff" />
+            </LinearGradient>
+          </View>
+
+          {/* Title */}
+          <Text style={[styles.modalTitle, { color: textColor }]}>
+            {config.title}
+          </Text>
+
+          {/* Message */}
+          {config.message && (
+            <Text style={[styles.modalMessage, { color: subTextColor }]}>
+              {config.message}
+            </Text>
+          )}
+
+          {/* Input */}
+          <View style={[styles.promptInputContainer, { backgroundColor: inputBgColor, borderColor }]}>
+            <TextInput
+              ref={inputRef}
+              style={[styles.promptInput, { color: textColor }]}
+              value={inputValue}
+              onChangeText={setInputValue}
+              placeholder={config.promptPlaceholder || 'Enter your password...'}
+              placeholderTextColor={subTextColor}
+              secureTextEntry={isSecure}
+              keyboardType={getKeyboardType()}
+              autoCapitalize={getAutoCapitalize()}
+              autoCorrect={false}
+              autoFocus={true}
+              returnKeyType="done"
+              onSubmitEditing={handleConfirm}
+            />
+            {config.promptType === 'secure-text' && (
+              <TouchableOpacity
+                style={styles.promptToggleSecure}
+                onPress={() => setIsSecure(!isSecure)}
+                activeOpacity={0.7}
+              >
+                <Ionicons
+                  name={isSecure ? 'eye-off' : 'eye'}
+                  size={20}
+                  color={subTextColor}
+                />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Buttons */}
+          <View style={styles.modalButtonRow}>
+            {config.showCancel !== false && (
+              <TouchableOpacity
+                style={[
+                  styles.modalCancelButton,
+                  { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#f1f5f9' },
+                ]}
+                onPress={handleCancel}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.modalCancelText, { color: isDark ? '#cbd5e1' : '#64748b' }]}>
+                  {config.cancelText || 'Cancel'}
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity
+              style={styles.modalConfirmButton}
+              onPress={handleConfirm}
+              activeOpacity={0.8}
+            >
+              <LinearGradient
+                colors={[confirmColor, config.destructive ? '#dc2626' : (themeColors.secondary || confirmColor)]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.modalConfirmGradient}
+              >
+                <Text style={styles.modalConfirmText}>
+                  {config.confirmText || 'Confirm'}
+                </Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
+      </Animated.View>
+    </Modal>
   );
 });
 
@@ -688,11 +898,19 @@ export const SweetAlertProvider: React.FC<SweetAlertProviderProps> = ({
   const [toastQueue, setToastQueue] = useState<AlertQueueItem[]>([]);
   const [modalQueue, setModalQueue] = useState<AlertQueueItem[]>([]);
   const [sheetQueue, setSheetQueue] = useState<AlertQueueItem[]>([]);
+  const [promptQueue, setPromptQueue] = useState<AlertQueueItem[]>([]);
   const idCounter = useRef(0);
 
   const sweetAlert = useCallback((config: SweetAlertConfig) => {
     const id = `alert_${++idCounter.current}_${Date.now()}`;
     const fullConfig = { ...config, reduceMotion: config.reduceMotion ?? reduceMotion };
+    
+    // Check if this is a prompt
+    if (config.isPrompt) {
+      setPromptQueue(prev => [...prev, { id, config: fullConfig }]);
+      return;
+    }
+    
     const style = fullConfig.style || 'toast';
 
     if (style === 'modal') {
@@ -703,7 +921,7 @@ export const SweetAlertProvider: React.FC<SweetAlertProviderProps> = ({
       setToastQueue(prev => [...prev, { id, config: fullConfig }]);
     }
 
-    if (fullConfig.haptic !== false) {
+    if (fullConfig.haptic !== false && fullConfig.type !== 'loading') {
       const type = fullConfig.type || 'info';
       Haptics.notificationAsync(ALERT_CONFIG[type].hapticType).catch(() => {});
     }
@@ -717,6 +935,7 @@ export const SweetAlertProvider: React.FC<SweetAlertProviderProps> = ({
       setModalQueue([]);
       setToastQueue([]);
       setSheetQueue([]);
+      setPromptQueue([]);
     };
 
     alertListeners.add(handleShow);
@@ -742,8 +961,13 @@ export const SweetAlertProvider: React.FC<SweetAlertProviderProps> = ({
     setSheetQueue(prev => prev.filter(item => item.id !== id));
   }, []);
 
+  const dismissPrompt = useCallback((id: string) => {
+    setPromptQueue(prev => prev.filter(item => item.id !== id));
+  }, []);
+
   const activeModal = modalQueue[0] || null;
   const activeSheet = sheetQueue[0] || null;
+  const activePrompt = promptQueue[0] || null;
 
   return (
     <>
@@ -778,6 +1002,17 @@ export const SweetAlertProvider: React.FC<SweetAlertProviderProps> = ({
           isDark={isDark}
           themeColors={themeColors}
           onDismiss={() => dismissSheet(activeSheet.id)}
+        />
+      )}
+
+      {/* Prompts */}
+      {activePrompt && (
+        <SweetAlertPrompt
+          key={activePrompt.id}
+          config={activePrompt.config}
+          isDark={isDark}
+          themeColors={themeColors}
+          onDismiss={() => dismissPrompt(activePrompt.id)}
         />
       )}
     </>
@@ -928,11 +1163,65 @@ export const useSweetAlert = () => {
     hideSweetAlert();
   }, []);
 
+  // ─── PROMPT FUNCTION ──────────────────────────────────────────────
+
+  const prompt = useCallback((
+    title: string,
+    message: string,
+    type: 'plain-text' | 'secure-text' | 'email' | 'phone' = 'plain-text',
+    onConfirm: (value: string) => void,
+    onCancel?: () => void,
+    confirmText: string = 'Confirm',
+    cancelText: string = 'Cancel',
+    placeholder?: string,
+    defaultValue?: string
+  ) => {
+    showSweetAlert({
+      title,
+      message,
+      isPrompt: true,
+      promptType: type,
+      promptPlaceholder: placeholder || (type === 'secure-text' ? 'Enter your password...' : 'Enter value...'),
+      promptValue: defaultValue || '',
+      showCancel: true,
+      showConfirm: true,
+      confirmText,
+      cancelText,
+      onPromptConfirm: onConfirm,
+      onPromptCancel: onCancel,
+      destructive: type === 'secure-text',
+    });
+  }, []);
+
+  // ─── SECURE PROMPT (password) ─────────────────────────────────────
+
+  const securePrompt = useCallback((
+    title: string,
+    message: string,
+    onConfirm: (password: string) => void,
+    onCancel?: () => void,
+    confirmText: string = 'Confirm',
+    cancelText: string = 'Cancel'
+  ) => {
+    prompt(
+      title,
+      message,
+      'secure-text',
+      onConfirm,
+      onCancel,
+      confirmText,
+      cancelText,
+      'Enter your password...'
+    );
+  }, [prompt]);
+
   return useMemo(() => ({
     toast, success, error, warning, info, confirm, alert, 
-    bottomSheet, loading, hideLoading, show, hide
+    bottomSheet, loading, hideLoading, show, hide,
+    prompt, securePrompt
   }), [toast, success, error, warning, info, confirm, alert, 
-       bottomSheet, loading, hideLoading, show, hide]);
+       bottomSheet, loading, hideLoading, show, hide,
+       prompt, securePrompt]);
 };
 
 // ─── Styles ─────────────────────────────────────────────────────────
@@ -1127,6 +1416,28 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 15,
     fontWeight: '800',
+  },
+
+  // ── Prompt ──────────────────────────────────────────────────────
+  promptInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    minHeight: 52,
+  },
+  promptInput: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '500',
+    paddingVertical: 14,
+  },
+  promptToggleSecure: {
+    padding: 8,
+    marginLeft: 4,
   },
 
   // ── Custom Actions ───────────────────────────────────────────────
