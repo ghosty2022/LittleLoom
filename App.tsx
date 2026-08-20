@@ -1,4 +1,4 @@
-// App.tsx - Fixed version with safe initialization
+// App.tsx - Optimized for faster startup
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   StyleSheet,
@@ -191,38 +191,44 @@ export default function App(): JSX.Element | null {
     return () => { mounted = false; };
   }, [systemScheme]);
 
-  // Phase 1: Parallel initialization with safe null checks
+  // Phase 1: Parallel initialization with timeout
   useEffect(() => {
     if (!themeLoaded || initStartedRef.current) return;
     initStartedRef.current = true;
 
     const init = async () => {
       try {
-        const fontPromise = Font.loadAsync(ICON_FONTS_TO_PRELOAD);
-
-        // ─── SAFE INIT: Check if services exist before calling initialize ───
-        const servicesPromise = Promise.all([
+        // Start all init tasks in parallel
+        const initTasks = Promise.all([
+          // Font loading
+          Font.loadAsync(ICON_FONTS_TO_PRELOAD).catch(e => {
+            console.warn('[App] Font loading failed:', e);
+            return null;
+          }),
+          
+          // Notification service
           (async () => {
             try {
-              // notificationService now has initialize method
               if (notificationService && typeof notificationService.initialize === 'function') {
                 await notificationService.initialize();
-              } else {
-                console.warn('[App] notificationService not available or missing initialize method');
               }
             } catch (e) {
-              console.warn('[App] Notification init failed (non-fatal):', e);
+              console.warn('[App] Notification init failed:', e);
             }
           })(),
+          
+          // Image directories
           (async () => {
             try {
               if (ensureAllImageDirs && typeof ensureAllImageDirs === 'function') {
                 await ensureAllImageDirs();
               }
             } catch (e) {
-              console.warn('[App] Image dirs init failed (non-fatal):', e);
+              console.warn('[App] Image dirs init failed:', e);
             }
           })(),
+          
+          // System UI
           (async () => {
             try {
               if (SystemUI && typeof SystemUI.setBackgroundColorAsync === 'function') {
@@ -232,31 +238,27 @@ export default function App(): JSX.Element | null {
                 );
               }
             } catch (e) {
-              console.warn('[App] SystemUI init failed (non-fatal):', e);
+              console.warn('[App] SystemUI init failed:', e);
             }
           })(),
         ]);
 
+        // Navigation state restoration (non-blocking)
         const navRestorePromise = (async () => {
           try {
-            const setupCompleteStr = await AsyncStorage.getItem('littleloom_setup_complete');
-            const hasParent2Str = await AsyncStorage.getItem('littleloom_parent2_completed');
-            const hasBabyStr = await AsyncStorage.getItem('littleloom_baby_completed');
+            // Quick check for setup completion
+            const [setupCompleteStr, hasParent2Str, hasBabyStr, wasLocked] = await Promise.all([
+              AsyncStorage.getItem('littleloom_setup_complete'),
+              AsyncStorage.getItem('littleloom_parent2_completed'),
+              AsyncStorage.getItem('littleloom_baby_completed'),
+              AsyncStorage.getItem('littleloom_security_lock'),
+            ]);
+
             const hasParent2 = hasParent2Str === 'true' || hasParent2Str === 'skipped';
             const hasBaby = hasBabyStr === 'true' || hasBabyStr === 'skipped';
             const setupDone = setupCompleteStr === 'true' || (hasParent2 && hasBaby);
             
-            if (!setupDone) {
-              console.log('[App] Setup incomplete, clearing nav state');
-              if (statePersistence && typeof statePersistence.clearNavigationState === 'function') {
-                await statePersistence.clearNavigationState();
-              }
-              return;
-            }
-
-            const wasLocked = await AsyncStorage.getItem('littleloom_security_lock');
-            if (wasLocked === 'true') {
-              console.log('[App] App was locked, clearing nav state to force lock screen');
+            if (!setupDone || wasLocked === 'true') {
               if (statePersistence && typeof statePersistence.clearNavigationState === 'function') {
                 await statePersistence.clearNavigationState();
               }
@@ -275,14 +277,27 @@ export default function App(): JSX.Element | null {
               }
             }
           } catch (e) {
-            console.warn('[App] Nav restore failed (non-fatal):', e);
+            console.warn('[App] Nav restore failed:', e);
           }
         })();
 
-        await Promise.all([fontPromise, servicesPromise, navRestorePromise]);
-        
-        await new Promise(resolve => setTimeout(resolve, 400));
+        // Wait for all init tasks with a timeout
+        // CRITICAL FIX: Don't wait for nav restore to complete before hiding splash
+        await Promise.race([
+          initTasks,
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Init timeout')), 5000)
+          )
+        ]).catch(e => {
+          console.warn('[App] Some init tasks timed out, continuing...', e);
+        });
 
+        // Don't wait for nav restore - let it run in background
+        navRestorePromise.catch(e => {
+          console.warn('[App] Nav restore background error:', e);
+        });
+
+        // Immediately hide splash and show app
         await SplashScreen.hideAsync();
         setReady(true);
       } catch (e) {
