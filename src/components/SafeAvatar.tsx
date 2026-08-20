@@ -1,3 +1,4 @@
+// src/components/SafeAvatar.tsx
 import React, { useCallback, useState } from 'react';
 import {
   View,
@@ -7,6 +8,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   ImageSourcePropType,
+  ImageStyle,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeIn } from 'react-native-reanimated';
@@ -42,6 +44,8 @@ export interface SafeAvatarProps {
   style?: any;
   animated?: boolean;
   borderRadius?: number;
+  /** Pass a custom image source (e.g., require('../../assets/logo.png')) */
+  imageSource?: ImageSourcePropType;
   /** Pass theme colors directly, or they'll default to purple theme */
   themeColors?: ThemeColorSet;
   /** Override reduce motion setting */
@@ -134,6 +138,8 @@ interface AvatarContentProps {
   themeColors: ThemeColorSet;
   fallbackIcon: keyof typeof Ionicons.glyphMap;
   borderRadius: number;
+  /** Custom image source to override avatar */
+  imageSource?: ImageSourcePropType;
 }
 
 const AvatarContent: React.FC<AvatarContentProps> = ({
@@ -146,16 +152,39 @@ const AvatarContent: React.FC<AvatarContentProps> = ({
   themeColors,
   fallbackIcon,
   borderRadius,
+  imageSource,
 }) => {
-  const imageSource = resolveAvatarSource(avatar);
-  const hasImage = hasDisplayableImage(avatar, hasError);
-  const hasEmojiValue = avatar != null && typeof avatar === 'string' && isEmoji(avatar);
-
-  if (hasImage && imageSource) {
+  // If custom imageSource is provided, use it first
+  if (imageSource) {
     return (
       <>
         <Image
           source={imageSource}
+          style={[styles.image, { width: size, height: size, borderRadius }]}
+          resizeMode="contain"
+          onError={onError}
+          onLoad={onLoad}
+          accessible={true}
+          accessibilityLabel="Avatar image"
+        />
+        {isLoading && (
+          <View style={[styles.loadingOverlay, { borderRadius }]}>
+            <ActivityIndicator size="small" color={themeColors.spinnerColor || themeColors.primary} />
+          </View>
+        )}
+      </>
+    );
+  }
+
+  const imageSourceResolved = resolveAvatarSource(avatar);
+  const hasImage = hasDisplayableImage(avatar, hasError);
+  const hasEmojiValue = avatar != null && typeof avatar === 'string' && isEmoji(avatar);
+
+  if (hasImage && imageSourceResolved) {
+    return (
+      <>
+        <Image
+          source={imageSourceResolved}
           style={[styles.image, { width: size, height: size, borderRadius }]}
           resizeMode="cover"
           onError={onError}
@@ -214,6 +243,7 @@ export const SafeAvatar: React.FC<SafeAvatarProps> = ({
   style,
   animated = true,
   borderRadius: borderRadiusProp,
+  imageSource,
   themeColors: propThemeColors,
   reduceMotion,
 }) => {
@@ -275,6 +305,7 @@ export const SafeAvatar: React.FC<SafeAvatarProps> = ({
           themeColors={themeColors}
           fallbackIcon={fallbackIcon}
           borderRadius={effectiveBorderRadius}
+          imageSource={imageSource}
         />
       </Container>
 

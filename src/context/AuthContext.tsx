@@ -145,6 +145,8 @@ interface AuthContextType extends AuthState {
   findUserByEmail: (email: string) => Promise<{ userId: string; email: string; fullName: string; role: string } | null>;
   findUserByEmailOrUsername: (identifier: string) => Promise<{ userId: string; email: string; fullName: string; role: string } | null>;
   findUserByEmailOrUsernameOrPhone: (identifier: string) => Promise<{ userId: string; email: string; fullName: string; role: string } | null>;
+  checkSession: () => Promise<boolean>;
+  forceLogoutOnInvalidSession: () => Promise<boolean>;
 }
 
 const secureStorage = {
@@ -313,6 +315,301 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
+  // ─── SESSION VALIDATION ──────────────────────────────────────────────
+  const validateCurrentSession = useCallback(async (): Promise<boolean> => {
+    try {
+      // Check if we have a stored token
+      const token = await secureStorage.getItem(SECURE_KEYS.AUTH_TOKEN);
+      if (!token) return false;
+
+      // Verify with Supabase
+      const { data: { user }, error } = await supabase.auth.getUser();
+      
+      if (error || !user) {
+        console.warn('[Auth] Session validation failed, clearing local state');
+        // Clear local auth state
+        await Promise.all([
+          secureStorage.deleteItem(SECURE_KEYS.AUTH_TOKEN),
+          secureStorage.deleteItem(SECURE_KEYS.USER_PROFILE),
+          secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_EMAIL),
+          secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_PASSWORD),
+          secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_LOGIN_ENABLED),
+        ]);
+        
+        if (isMounted.current) {
+          setState(prev => ({ 
+            ...prev, 
+            isAuthenticated: false,
+            userToken: null,
+            userProfile: null,
+          }));
+        }
+        return false;
+      }
+
+      // User exists in Supabase, update local profile if needed
+      const userProfile = await secureStorage.getItem(SECURE_KEYS.USER_PROFILE);
+      if (userProfile) {
+        const parsed = JSON.parse(userProfile);
+        if (parsed.id !== user.id) {
+          // User ID mismatch - re-sync
+          const updatedProfile = { ...parsed, id: user.id };
+          await secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(updatedProfile));
+          if (isMounted.current) {
+            setState(prev => ({ ...prev, userProfile: updatedProfile }));
+          }
+        }
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('[Auth] Session validation error:', error);
+      return false;
+    }
+  }, []);
+
+  // ─── FORCE LOGOUT ON INVALID SESSION ─────────────────────────────────
+  const forceLogoutOnInvalidSession = useCallback(async (): Promise<boolean> => {
+    try {
+      const isValid = await validateCurrentSession();
+      if (!isValid && state.isAuthenticated) {
+        console.log('[Auth] Force logout due to invalid session');
+        await signOut();
+        Alert.alert(
+          'Session Expired',
+          'Your account may have been deleted. Please contact support if this was unexpected.'
+        );
+        return false;
+      }
+      return true;
+    } catch (error) {
+      console.error('[Auth] Force logout error:', error);
+      return false;
+    }
+  }, [validateCurrentSession, state.isAuthenticated, signOut]);
+
+  // ─── PERFORM SIGN IN INTERNAL (FIXED - NO LOCAL FALLBACK) ──────────
+  const performSignInInternal = useCallback(async (email: string, password: string, isBiometric: boolean = false): Promise<boolean> => {
+    try {
+      if (!email || !password) {
+        if (__DEV__) console.warn('[Auth] Sign in failed: missing credentials');
+        return false;
+      }
+
+      // ─── REAL AUTH: MUST verify against Supabase ──────────────────
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+
+      // If Supabase auth fails, login fails - NO FALLBACK
+      if (authError || !authData?.user) {
+        if (__DEV__) console.warn('[Auth] Supabase sign in failed:', authError?.message);
+        
+        // Handle specific error cases
+        if (authError?.message?.toLowerCase().includes('email not confirmed')) {
+          try {
+            const { error: resendError } = await supabase.auth.resend({
+              type: 'signup',
+              email: email.trim(),
+            });
+            
+            if (!resendError) {
+              Alert.alert(
+                'Email Not Confirmed',
+                'Please check your email and confirm your account before signing in. A new confirmation link has been sent.'
+              );
+            } else {
+              Alert.alert(
+                'Email Not Confirmed',
+                'Please check your email and confirm your account before signing in.'
+              );
+            }
+          } catch (e) {}
+          return false;
+        }
+        
+        // User not found, invalid credentials, or account deleted
+        Alert.alert(
+          'Sign In Failed',
+          authError?.message === 'Invalid login credentials' 
+            ? 'Invalid email or password. Please try again.'
+            : authError?.message || 'Unable to sign in. Please try again.'
+        );
+        return false;
+      }
+
+      const token = authData.session?.access_token ?? `auth_token_${authData.user.id}`;
+      const userId = authData.user.id;
+
+      // ─── User is authenticated with Supabase, now sync data ──────
+
+      // Restore baby data from Supabase
+      let babiesRestored = false;
+      try {
+        console.log('[Auth] Restoring baby data for user:', userId);
+        
+        const { getBabyByIdFromDb, createBabyInDb, setAppSetting } = await import('@/database/dbHelpers');
+        
+        const { data: supabaseBabies, error: babiesError } = await supabase
+          .from('babies')
+          .select('*')
+          .eq('parent1_id', userId);
+        
+        if (!babiesError && supabaseBabies && supabaseBabies.length > 0) {
+          console.log(`[Auth] Found ${supabaseBabies.length} babies in Supabase for user`);
+          babiesRestored = true;
+          
+          for (const baby of supabaseBabies) {
+            const exists = await getBabyByIdFromDb(baby.id);
+            if (!exists) {
+              await createBabyInDb({
+                id: baby.id,
+                name: baby.name,
+                avatar: baby.avatar,
+                dateOfBirth: baby.date_of_birth,
+                gender: baby.gender,
+                bloodType: baby.blood_type,
+                medicalNotes: baby.medical_notes,
+                parent1Id: baby.parent1_id,
+                parent2Id: baby.parent2_id,
+              });
+              console.log(`[Auth] Restored baby: ${baby.name}`);
+            }
+          }
+          
+          if (supabaseBabies[0]) {
+            await setAppSetting('current_baby_id', supabaseBabies[0].id);
+            await AsyncStorage.setItem('@littleloom_current_baby', supabaseBabies[0].id);
+          }
+        }
+      } catch (restoreError) {
+        console.warn('[Auth] Failed to restore babies from Supabase:', restoreError);
+      }
+
+      // ─── Build user profile from Supabase data ──────────────────
+      // Get user metadata from Supabase
+      const userEmail = authData.user.email || email.trim();
+      const userMeta = authData.user.user_metadata || {};
+      const fullName = userMeta.full_name || userMeta.fullName || userEmail.split('@')[0];
+
+      const [commUsername, commHandle, commBio, commAvatar, commDisplayName, commStats, commTopics] = await Promise.all([
+        getAppSetting(ASYNC_KEYS.COMMUNITY_USERNAME),
+        getAppSetting(ASYNC_KEYS.COMMUNITY_HANDLE),
+        getAppSetting(ASYNC_KEYS.COMMUNITY_BIO),
+        getAppSetting(ASYNC_KEYS.COMMUNITY_AVATAR),
+        getAppSetting(ASYNC_KEYS.COMMUNITY_DISPLAY_NAME),
+        getAppSetting(ASYNC_KEYS.COMMUNITY_STATS),
+        getAppSetting(ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS),
+      ]);
+      
+      const baseName = fullName || userEmail.split('@')[0];
+      const baseHandle = `@${baseName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
+      
+      const userProfile: UserProfile = {
+        id: userId,
+        fullName: baseName,
+        email: userEmail,
+        avatar: userMeta.avatar || '👤',
+        role: (userMeta.role as 'parent1' | 'parent2' | 'guardian') || 'parent1',
+        createdAt: authData.user.created_at || new Date().toISOString(),
+        preferences: { notifications: true, darkMode: false, language: 'en' },
+        communityUsername: commUsername || baseName,
+        communityHandle: commHandle || baseHandle,
+        communityBio: commBio || '',
+        communityAvatar: commAvatar || userMeta.avatar || '👤',
+        communityDisplayName: commDisplayName || baseName,
+        communityStats: commStats ? JSON.parse(commStats) : { posts: 0, followers: 0, following: 0, helpful: 0 },
+        communitySelectedTopics: commTopics ? JSON.parse(commTopics) : [],
+      };
+
+      // Store in secure storage
+      const [tokenStored, profileStored] = await Promise.all([
+        secureStorage.setItem(SECURE_KEYS.AUTH_TOKEN, token),
+        secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(userProfile)),
+      ]);
+      
+      if (!tokenStored || !profileStored) {
+        if (__DEV__) console.warn('[Auth] Failed to save login data to secure storage');
+        return false;
+      }
+
+      await AsyncStorage.setItem(ASYNC_KEYS.HAS_SEEN_ONBOARDING, 'true');
+
+      // Check setup status
+      const [setupCompleteStr, hasParent2Str, hasBabyStr] = await Promise.all([
+        AsyncStorage.getItem(ASYNC_KEYS.SETUP_COMPLETE),
+        AsyncStorage.getItem(ASYNC_KEYS.PARENT2_COMPLETED),
+        AsyncStorage.getItem(ASYNC_KEYS.BABY_COMPLETED),
+      ]);
+      
+      const p2Done = hasParent2Str === 'true' ? true : hasParent2Str === 'skipped' ? 'skipped' : false;
+      const babyDone = hasBabyStr === 'true' ? true : hasBabyStr === 'skipped' ? 'skipped' : false;
+      const bothStepsAddressed = hasParent2Str !== null && hasBabyStr !== null;
+      const isSetupComplete = setupCompleteStr === 'true' || bothStepsAddressed;
+      
+      if (isSetupComplete) {
+        await AsyncStorage.setItem(ASYNC_KEYS.ONBOARDING_COMPLETE, 'true');
+      }
+
+      // ─── UPDATE LOCAL REGISTRY (FOR CACHE ONLY) ─────────────────
+      // This is now a cache, NOT an authentication source
+      try {
+        const registryEntry: UserRegistryEntry = {
+          userId,
+          email: userEmail,
+          fullName: baseName,
+          avatar: userProfile.avatar,
+          role: userProfile.role,
+          createdAt: userProfile.createdAt,
+          communityUsername: userProfile.communityUsername,
+          communityHandle: userProfile.communityHandle,
+          communityBio: userProfile.communityBio,
+          communityAvatar: userProfile.communityAvatar,
+          communityDisplayName: userProfile.communityDisplayName,
+          communityStats: userProfile.communityStats,
+          communitySelectedTopics: userProfile.communitySelectedTopics,
+          hasPassword: true,
+        };
+        await registerUser(registryEntry);
+      } catch (registryError) {
+        console.warn('[Auth] Failed to update registry cache:', registryError);
+      }
+
+      if (isMounted.current) {
+        setState(prev => ({
+          ...prev,
+          isAuthenticated: true,
+          userToken: token,
+          userProfile,
+          onboardingComplete: isSetupComplete,
+          hasSeenOnboarding: true,
+          setupComplete: isSetupComplete,
+          hasParent2: p2Done,
+          hasBaby: babiesRestored ? true : babyDone,
+        }));
+      }
+      return true;
+    } catch (error) {
+      console.error('[Auth] Sign in error:', error);
+      Alert.alert('Sign In Failed', 'An unexpected error occurred. Please try again.');
+      return false;
+    }
+  }, []);
+
+  const signIn = useCallback(async (email: string, password: string): Promise<boolean> => {
+    if (!acquireSignInLock()) return false;
+    const now = Date.now();
+    if (now - lastSignInTime.current < 1500) {
+      await new Promise(resolve => setTimeout(resolve, 1500 - (now - lastSignInTime.current)));
+    }
+    try {
+      const success = await performSignInInternal(email, password, false);
+      lastSignInTime.current = Date.now();
+      return success;
+    } finally { releaseSignInLock(); }
+  }, [acquireSignInLock, releaseSignInLock, performSignInInternal]);
+
   // ─── CRITICAL FIX: Single init effect with proper sequencing ─────────
   useEffect(() => {
     if (initComplete.current) return;
@@ -349,9 +646,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           AsyncStorage.getItem(ASYNC_KEYS.BABY_COMPLETED),
         ]);
 
-        let userProfile = userProfileStr ? JSON.parse(userProfileStr) : null;
+        // ─── CRITICAL FIX: Validate session with Supabase ──────────
+        let isValidSession = false;
+        if (token) {
+          try {
+            const { data: { user }, error } = await supabase.auth.getUser();
+            isValidSession = !error && !!user;
+            console.log('[Auth] Session validation:', isValidSession ? 'valid' : 'invalid');
+          } catch (e) {
+            console.warn('[Auth] Session validation error:', e);
+            isValidSession = false;
+          }
+          
+          // If session invalid, clear everything
+          if (!isValidSession) {
+            console.log('[Auth] Invalid session detected, clearing local state');
+            await Promise.all([
+              secureStorage.deleteItem(SECURE_KEYS.AUTH_TOKEN),
+              secureStorage.deleteItem(SECURE_KEYS.USER_PROFILE),
+              secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_EMAIL),
+              secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_PASSWORD),
+              secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_LOGIN_ENABLED),
+            ]);
+          }
+        }
+
+        let userProfile = isValidSession && userProfileStr ? JSON.parse(userProfileStr) : null;
         
-        if (userProfile) {
+        if (userProfile && isValidSession) {
           const [commUsername, commHandle, commBio, commAvatar, commDisplayName, commStats, commTopics] = await Promise.all([
             getAppSetting(ASYNC_KEYS.COMMUNITY_USERNAME),
             getAppSetting(ASYNC_KEYS.COMMUNITY_HANDLE),
@@ -417,11 +739,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (isMounted.current) {
           setState({
             isLoading: false,
-            isAuthenticated: !!token,
-            userToken: token,
-            userProfile,
+            isAuthenticated: isValidSession && !!token,
+            userToken: isValidSession ? token : null,
+            userProfile: isValidSession ? userProfile : null,
             onboardingComplete: effectiveOnboardingComplete,
-            hasSeenOnboarding: hasSeenOnboarding === 'true' || !!token,
+            hasSeenOnboarding: hasSeenOnboarding === 'true' || (isValidSession && !!token),
             isBiometricAvailable: biometricAvailable,
             isBiometricEnabled: biometricEnabled === 'true',
             isBiometricLoginEnabled: biometricLoginEnabled === 'true',
@@ -443,361 +765,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initAuth();
   }, [loadUsernameRegistry]);
 
-  const markOnboardingSeen = useCallback(async () => {
-    try {
-      await AsyncStorage.setItem(ASYNC_KEYS.HAS_SEEN_ONBOARDING, 'true');
-      await AsyncStorage.setItem(ASYNC_KEYS.ONBOARDING_COMPLETE, 'true');
-      if (isMounted.current) setState(prev => ({ ...prev, hasSeenOnboarding: true, onboardingComplete: true }));
-    } catch (error) { console.error('Error marking onboarding:', error); }
-  }, []);
-
-  const checkBiometricAvailability = useCallback(async (): Promise<boolean> => {
-    try {
-      if (!LocalAuthentication?.hasHardwareAsync) return false;
-      const [hasHardware, isEnrolled] = await Promise.all([
-        LocalAuthentication.hasHardwareAsync(),
-        LocalAuthentication.isEnrolledAsync(),
-      ]);
-      const available = hasHardware && isEnrolled;
-      let types: LocalAuthentication.AuthenticationType[] = [];
-      if (available && LocalAuthentication.supportedAuthenticationTypesAsync) {
-        types = await LocalAuthentication.supportedAuthenticationTypesAsync();
-      }
-      if (isMounted.current) {
-        setState(prev => ({ 
-          ...prev, 
-          isBiometricAvailable: available,
-          availableBiometricTypes: types,
-          biometricTypeName: getBiometricTypeName(types),
-        }));
-      }
-      await AsyncStorage.setItem(ASYNC_KEYS.BIOMETRIC_AVAILABLE, available ? 'true' : 'false');
-      return available;
-    } catch (error) { return false; }
-  }, []);
-
-  const authenticateWithBiometric = useCallback(async (promptMessage?: string) => {
-    try {
-      if (!LocalAuthentication?.authenticateAsync) return { success: false, error: 'not_available' };
-      return await LocalAuthentication.authenticateAsync({
-        promptMessage: promptMessage || `Authenticate with LittleLoom`,
-        fallbackLabel: 'Use Password',
-        cancelLabel: 'Cancel',
-      });
-    } catch (error) { return { success: false, error: 'unknown' }; }
-  }, []);
-
-  const enableBiometricForApp = useCallback(async (): Promise<boolean> => {
-    const result = await authenticateWithBiometric('Confirm to enable biometric unlock');
-    if (result.success) {
-      await AsyncStorage.setItem(ASYNC_KEYS.BIOMETRIC_ENABLED, 'true');
-      if (isMounted.current) setState(prev => ({ ...prev, isBiometricEnabled: true }));
-      return true;
-    }
-    return false;
-  }, [authenticateWithBiometric]);
-
-  const enableBiometricLogin = useCallback(async (email: string, password: string): Promise<boolean> => {
-    try {
-      const result = await authenticateWithBiometric(`Confirm to enable ${state.biometricTypeName} login`);
-      if (!result.success) return false;
-
-      await Promise.all([
-        secureStorage.setItem(SECURE_KEYS.BIOMETRIC_EMAIL, email),
-        secureStorage.setItem(SECURE_KEYS.BIOMETRIC_PASSWORD, password),
-        secureStorage.setItem(SECURE_KEYS.BIOMETRIC_LOGIN_ENABLED, 'true'),
-      ]);
-
-      if (isMounted.current) setState(prev => ({ ...prev, isBiometricLoginEnabled: true }));
-      return true;
-    } catch (error) { return false; }
-  }, [authenticateWithBiometric, state.biometricTypeName]);
-
-  const disableBiometricLogin = useCallback(async (): Promise<void> => {
-    await Promise.all([
-      secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_EMAIL),
-      secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_PASSWORD),
-      secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_LOGIN_ENABLED),
-    ]);
-    if (isMounted.current) setState(prev => ({ ...prev, isBiometricLoginEnabled: false }));
-  }, []);
-
-  const hasBiometricLoginCredentials = useCallback(async (): Promise<boolean> => {
-    try {
-      const [email, password, enabled] = await Promise.all([
-        secureStorage.getItem(SECURE_KEYS.BIOMETRIC_EMAIL),
-        secureStorage.getItem(SECURE_KEYS.BIOMETRIC_PASSWORD),
-        secureStorage.getItem(SECURE_KEYS.BIOMETRIC_LOGIN_ENABLED),
-      ]);
-      return !!(email && password && enabled === 'true');
-    } catch (error) { return false; }
-  }, []);
-
-  // ─── PERFORM SIGN IN INTERNAL ─────────────────────────────────────
-  const performSignInInternal = useCallback(async (email: string, password: string, isBiometric: boolean = false): Promise<boolean> => {
-    try {
-      if (!email || !password) {
-        if (__DEV__) console.warn('[Auth] Sign in failed: missing credentials');
-        return false;
-      }
-
-      // ─── REAL AUTH: verify the account + password against Supabase ───
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      });
-
-      if (authError || !authData?.user) {
-        if (__DEV__) console.warn('[Auth] Supabase sign in failed:', authError?.message);
-        
-        if (authError?.message?.toLowerCase().includes('email not confirmed')) {
-          try {
-            const { error: resendError } = await supabase.auth.resend({
-              type: 'signup',
-              email: email.trim(),
-            });
-            
-            if (!resendError) {
-              Alert.alert(
-                'Email Not Confirmed',
-                'Please check your email and confirm your account before signing in. A new confirmation link has been sent.'
-              );
-            } else {
-              Alert.alert(
-                'Email Not Confirmed',
-                'Please check your email and confirm your account before signing in.'
-              );
-            }
-          } catch (e) {}
-          return false;
-        }
-        return false;
-      }
-
-      const token = authData.session?.access_token ?? `auth_token_${authData.user.id}`;
-      const userId = authData.user.id;
-
-      // ─── CRITICAL FIX: Restore baby data from Supabase BEFORE profile lookup ───
-      let babiesRestored = false;
-      try {
-        console.log('[Auth] Restoring baby data for user:', userId);
-        
-        const { getBabyByIdFromDb, createBabyInDb, setAppSetting } = await import('@/database/dbHelpers');
-        
-        const { data: supabaseBabies, error: babiesError } = await supabase
-          .from('babies')
-          .select('*')
-          .eq('parent1_id', userId);
-        
-        if (!babiesError && supabaseBabies && supabaseBabies.length > 0) {
-          console.log(`[Auth] Found ${supabaseBabies.length} babies in Supabase for user`);
-          babiesRestored = true;
-          
-          for (const baby of supabaseBabies) {
-            const exists = await getBabyByIdFromDb(baby.id);
-            if (!exists) {
-              await createBabyInDb({
-                id: baby.id,
-                name: baby.name,
-                avatar: baby.avatar,
-                dateOfBirth: baby.date_of_birth,
-                gender: baby.gender,
-                bloodType: baby.blood_type,
-                medicalNotes: baby.medical_notes,
-                parent1Id: baby.parent1_id,
-                parent2Id: baby.parent2_id,
-              });
-              console.log(`[Auth] Restored baby: ${baby.name}`);
-            }
-          }
-          
-          if (supabaseBabies[0]) {
-            await setAppSetting('current_baby_id', supabaseBabies[0].id);
-            await AsyncStorage.setItem('@littleloom_current_baby', supabaseBabies[0].id);
-          }
-        }
-      } catch (restoreError) {
-        console.warn('[Auth] Failed to restore babies from Supabase:', restoreError);
-      }
-
-      // ─── CRITICAL FIX: Update hasBaby in AuthContext state ──────────────
-      if (babiesRestored && isMounted.current) {
-        setState(prev => ({
-          ...prev,
-          hasBaby: true,
-          hasSeenOnboarding: true,
-        }));
-      }
-
-      // ─── Local registry lookup ──────────────────────────────────────────
-      let existingUser = await dbFindUserByEmail(email);
-      
-      // Try username if not found by email
-      if (!existingUser) {
+  // ─── PERIODIC SESSION CHECK ──────────────────────────────────────────
+  useEffect(() => {
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+    
+    if (state.isAuthenticated) {
+      // Check session every 5 minutes
+      intervalId = setInterval(async () => {
         try {
-          existingUser = await dbFindUserByUsername(email);
-        } catch (importError) {
-          const registry = await getUserRegistry();
-          const searchKey = email.toLowerCase().trim().replace(/^@/, '');
-          for (const entry of Object.values(registry)) {
-            const handle = (entry.communityHandle || '').toLowerCase().replace(/^@/, '');
-            const username = (entry.communityUsername || '').toLowerCase();
-            if (handle === searchKey || username === searchKey) {
-              existingUser = entry;
-              break;
-            }
+          const isValid = await validateCurrentSession();
+          if (!isValid && isMounted.current) {
+            console.log('[Auth] Periodic session check failed, logging out...');
+            await signOut();
+            Alert.alert(
+              'Session Expired',
+              'Your account may have been deleted. Please contact support if this was unexpected.'
+            );
           }
+        } catch (error) {
+          console.warn('[Auth] Periodic session check error:', error);
         }
-      }
-      
-      // Try phone if not found by email or username
-      if (!existingUser) {
-        try {
-          existingUser = await dbFindUserByPhone(email);
-        } catch (importError) {
-          const registry = await getUserRegistry();
-          const searchPhone = email.trim().replace(/[^0-9+]/g, '');
-          for (const entry of Object.values(registry)) {
-            if (!entry.phoneNumber) continue;
-            const entryPhone = entry.phoneNumber.trim().replace(/[^0-9+]/g, '');
-            // Try multiple phone formats
-            if (searchPhone === entryPhone || 
-                searchPhone === entryPhone.replace(/^\+254/, '0') ||
-                '+' + searchPhone === entryPhone ||
-                '0' + searchPhone.replace(/^\+254/, '') === entryPhone.replace(/^\+254/, '0')) {
-              existingUser = entry;
-              break;
-            }
-          }
-        }
-      }
-      
-      let userProfile: UserProfile;
-      let finalUserId: string;
-
-      if (existingUser) {
-        finalUserId = existingUser.userId;
-        
-        const [commUsername, commHandle, commBio, commAvatar, commDisplayName, commStats, commTopics] = await Promise.all([
-          getAppSetting(ASYNC_KEYS.COMMUNITY_USERNAME),
-          getAppSetting(ASYNC_KEYS.COMMUNITY_HANDLE),
-          getAppSetting(ASYNC_KEYS.COMMUNITY_BIO),
-          getAppSetting(ASYNC_KEYS.COMMUNITY_AVATAR),
-          getAppSetting(ASYNC_KEYS.COMMUNITY_DISPLAY_NAME),
-          getAppSetting(ASYNC_KEYS.COMMUNITY_STATS),
-          getAppSetting(ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS),
-        ]);
-
-        userProfile = {
-          id: finalUserId,
-          fullName: existingUser.fullName,
-          email: existingUser.email,
-          avatar: existingUser.avatar || existingUser.communityAvatar || '👤',
-          role: existingUser.role as 'parent1' | 'parent2' | 'guardian',
-          createdAt: existingUser.createdAt,
-          preferences: { notifications: true, darkMode: false, language: 'en' },
-          socialProvider: existingUser.socialProvider as 'google' | 'apple' | 'facebook' | null | undefined,
-          communityUsername: commUsername || existingUser.communityUsername || existingUser.fullName,
-          communityHandle: commHandle || existingUser.communityHandle || `@${existingUser.fullName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`,
-          communityBio: commBio || existingUser.communityBio || '',
-          communityAvatar: commAvatar || existingUser.communityAvatar || '👤',
-          communityDisplayName: commDisplayName || existingUser.communityDisplayName || existingUser.fullName,
-          communityStats: commStats ? JSON.parse(commStats) : (existingUser.communityStats || { posts: 0, followers: 0, following: 0, helpful: 0 }),
-          communitySelectedTopics: commTopics ? JSON.parse(commTopics) : (existingUser.communitySelectedTopics || []),
-        };
-      } else {
-        finalUserId = userId;
-        
-        const [commUsername, commHandle, commBio, commAvatar, commDisplayName, commStats, commTopics] = await Promise.all([
-          getAppSetting(ASYNC_KEYS.COMMUNITY_USERNAME),
-          getAppSetting(ASYNC_KEYS.COMMUNITY_HANDLE),
-          getAppSetting(ASYNC_KEYS.COMMUNITY_BIO),
-          getAppSetting(ASYNC_KEYS.COMMUNITY_AVATAR),
-          getAppSetting(ASYNC_KEYS.COMMUNITY_DISPLAY_NAME),
-          getAppSetting(ASYNC_KEYS.COMMUNITY_STATS),
-          getAppSetting(ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS),
-        ]);
-        
-        const baseName = email.split('@')[0];
-        const baseHandle = `@${baseName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
-        
-        userProfile = {
-          id: finalUserId,
-          fullName: baseName,
-          email: email.trim(),
-          avatar: '👤',
-          role: 'parent1',
-          createdAt: new Date().toISOString(),
-          preferences: { notifications: true, darkMode: false, language: 'en' },
-          communityUsername: commUsername || baseName,
-          communityHandle: commHandle || baseHandle,
-          communityBio: commBio || '',
-          communityAvatar: commAvatar || '👤',
-          communityDisplayName: commDisplayName || baseName,
-          communityStats: commStats ? JSON.parse(commStats) : { posts: 0, followers: 0, following: 0, helpful: 0 },
-          communitySelectedTopics: commTopics ? JSON.parse(commTopics) : [],
-        };
-      }
-
-      const [tokenStored, profileStored] = await Promise.all([
-        secureStorage.setItem(SECURE_KEYS.AUTH_TOKEN, token),
-        secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(userProfile)),
-      ]);
-      
-      if (!tokenStored || !profileStored) {
-        if (__DEV__) console.warn('[Auth] Failed to save login data to secure storage');
-        return false;
-      }
-
-      await AsyncStorage.setItem(ASYNC_KEYS.HAS_SEEN_ONBOARDING, 'true');
-
-      const [setupCompleteStr, hasParent2Str, hasBabyStr] = await Promise.all([
-        AsyncStorage.getItem(ASYNC_KEYS.SETUP_COMPLETE),
-        AsyncStorage.getItem(ASYNC_KEYS.PARENT2_COMPLETED),
-        AsyncStorage.getItem(ASYNC_KEYS.BABY_COMPLETED),
-      ]);
-      
-      const p2Done = hasParent2Str === 'true' ? true : hasParent2Str === 'skipped' ? 'skipped' : false;
-      const babyDone = hasBabyStr === 'true' ? true : hasBabyStr === 'skipped' ? 'skipped' : false;
-      const bothStepsAddressed = hasParent2Str !== null && hasBabyStr !== null;
-      const isSetupComplete = setupCompleteStr === 'true' || bothStepsAddressed;
-      
-      if (isSetupComplete) {
-        await AsyncStorage.setItem(ASYNC_KEYS.ONBOARDING_COMPLETE, 'true');
-      }
-
-      if (isMounted.current) {
-        setState(prev => ({
-          ...prev,
-          isAuthenticated: true,
-          userToken: token,
-          userProfile,
-          onboardingComplete: isSetupComplete,
-          hasSeenOnboarding: true,
-          setupComplete: isSetupComplete,
-          hasParent2: p2Done,
-          hasBaby: babiesRestored ? true : babyDone,
-        }));
-      }
-      return true;
-    } catch (error) {
-      console.error('[Auth] Sign in error:', error);
-      return false;
+      }, 300000); // 5 minutes
     }
-  }, []);
-
-  const signIn = useCallback(async (email: string, password: string): Promise<boolean> => {
-    if (!acquireSignInLock()) return false;
-    const now = Date.now();
-    if (now - lastSignInTime.current < 1500) {
-      await new Promise(resolve => setTimeout(resolve, 1500 - (now - lastSignInTime.current)));
-    }
-    try {
-      const success = await performSignInInternal(email, password, false);
-      lastSignInTime.current = Date.now();
-      return success;
-    } finally { releaseSignInLock(); }
-  }, [acquireSignInLock, releaseSignInLock, performSignInInternal]);
+    
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+  }, [state.isAuthenticated, validateCurrentSession, signOut]);
 
   const signInWithSocial = useCallback(async (socialUser: SocialUser): Promise<boolean> => {
     if (!acquireSignInLock()) return false;
@@ -805,6 +802,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await new Promise(resolve => setTimeout(resolve, 500));
       
+      // ─── REAL AUTH: Sign in with social provider via Supabase ──
+      const { data: authData, error: authError } = await supabase.auth.signInWithOAuth({
+        provider: socialUser.provider === 'google' ? 'google' : 
+                  socialUser.provider === 'apple' ? 'apple' : 
+                  socialUser.provider === 'facebook' ? 'facebook' : 'google',
+      });
+
+      if (authError) {
+        console.error('[Auth] Social sign in failed:', authError.message);
+        Alert.alert('Sign In Failed', 'Unable to sign in with social provider. Please try again.');
+        return false;
+      }
+
+      // The actual sign-in completion happens via the OAuth callback
+      // For now, we'll create a local session
       const token = `social_token_${socialUser.provider}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       
       const [commUsername, commHandle, commBio, commAvatar, commDisplayName, commStats, commTopics] = await Promise.all([
@@ -820,69 +832,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const baseName = socialUser.fullName;
       const baseHandle = `@${baseName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
       
-      const existingUser = await dbFindUserByEmail(socialUser.email);
-      
-      let userProfile: UserProfile;
-      let finalUserId: string;
-
-      if (existingUser) {
-        finalUserId = existingUser.userId;
-        userProfile = {
-          id: finalUserId,
-          fullName: existingUser.fullName,
-          email: existingUser.email,
-          avatar: socialUser.avatar || existingUser.communityAvatar || '👤',
-          role: existingUser.role as 'parent1' | 'parent2' | 'guardian',
-          createdAt: existingUser.createdAt,
-          preferences: { notifications: true, darkMode: false, language: 'en' },
-          socialProvider: socialUser.provider,
-          communityUsername: commUsername || existingUser.communityUsername || existingUser.fullName,
-          communityHandle: commHandle || existingUser.communityHandle || baseHandle,
-          communityBio: commBio || existingUser.communityBio || '',
-          communityAvatar: commAvatar || existingUser.communityAvatar || socialUser.avatar || '👤',
-          communityDisplayName: commDisplayName || existingUser.communityDisplayName || existingUser.fullName,
-          communityStats: commStats ? JSON.parse(commStats) : (existingUser.communityStats || { posts: 0, followers: 0, following: 0, helpful: 0 }),
-          communitySelectedTopics: commTopics ? JSON.parse(commTopics) : (existingUser.communitySelectedTopics || []),
-        };
-      } else {
-        finalUserId = socialUser.id;
-        userProfile = {
-          id: finalUserId,
-          fullName: socialUser.fullName,
-          email: socialUser.email,
-          avatar: socialUser.avatar,
-          role: 'parent1',
-          createdAt: new Date().toISOString(),
-          preferences: { notifications: true, darkMode: false, language: 'en' },
-          socialProvider: socialUser.provider,
-          communityUsername: commUsername || baseName,
-          communityHandle: commHandle || baseHandle,
-          communityBio: commBio || '',
-          communityAvatar: commAvatar || socialUser.avatar || '👤',
-          communityDisplayName: commDisplayName || baseName,
-          communityStats: commStats ? JSON.parse(commStats) : { posts: 0, followers: 0, following: 0, helpful: 0 },
-          communitySelectedTopics: commTopics ? JSON.parse(commTopics) : [],
-        };
-
-        const registryEntry: UserRegistryEntry = {
-          userId: finalUserId,
-          email: socialUser.email,
-          fullName: socialUser.fullName,
-          avatar: socialUser.avatar || '👤',
-          role: 'parent1',
-          createdAt: userProfile.createdAt,
-          communityUsername: userProfile.communityUsername,
-          communityHandle: userProfile.communityHandle,
-          communityBio: '',
-          communityAvatar: socialUser.avatar || '👤',
-          communityDisplayName: userProfile.communityDisplayName,
-          communityStats: userProfile.communityStats,
-          communitySelectedTopics: [],
-          socialProvider: socialUser.provider,
-          hasPassword: false,
-        };
-        await registerUser(registryEntry);
-      }
+      const userProfile: UserProfile = {
+        id: socialUser.id || `social_${Date.now()}`,
+        fullName: socialUser.fullName,
+        email: socialUser.email,
+        avatar: socialUser.avatar || '👤',
+        role: 'parent1',
+        createdAt: new Date().toISOString(),
+        preferences: { notifications: true, darkMode: false, language: 'en' },
+        socialProvider: socialUser.provider,
+        communityUsername: commUsername || baseName,
+        communityHandle: commHandle || baseHandle,
+        communityBio: commBio || '',
+        communityAvatar: commAvatar || socialUser.avatar || '👤',
+        communityDisplayName: commDisplayName || baseName,
+        communityStats: commStats ? JSON.parse(commStats) : { posts: 0, followers: 0, following: 0, helpful: 0 },
+        communitySelectedTopics: commTopics ? JSON.parse(commTopics) : [],
+      };
 
       await Promise.all([
         secureStorage.setItem(SECURE_KEYS.AUTH_TOKEN, token),
@@ -1273,8 +1239,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             dateOfBirth: invite.babyDob || new Date().toISOString(),
             gender: invite.babyGender || 'unknown',
             parent1Id: invite.creatorId,
-            parent1Name: invite.creatorName,
-            createdAt: new Date().toISOString(),
           });
         }
 
@@ -1855,6 +1819,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const getCurrentUserProfile = useCallback(() => state.userProfile, [state.userProfile]);
   
+  // ─── CHECK SESSION ─────────────────────────────────────────────────────
+  const checkSession = useCallback(async (): Promise<boolean> => {
+    return await validateCurrentSession();
+  }, [validateCurrentSession]);
+
   // ─── FIND USER FUNCTIONS ─────────────────────────────────────────────
   const findUserByEmailCallback = useCallback(async (email: string): Promise<{ userId: string; email: string; fullName: string; role: string } | null> => {
     const user = await dbFindUserByEmail(email);
@@ -1920,6 +1889,97 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
+  // ─── AUTHENTICATE WITH BIOMETRIC ─────────────────────────────────────
+  const authenticateWithBiometric = useCallback(async (promptMessage?: string) => {
+    try {
+      if (!LocalAuthentication?.authenticateAsync) return { success: false, error: 'not_available' };
+      return await LocalAuthentication.authenticateAsync({
+        promptMessage: promptMessage || `Authenticate with LittleLoom`,
+        fallbackLabel: 'Use Password',
+        cancelLabel: 'Cancel',
+      });
+    } catch (error) { return { success: false, error: 'unknown' }; }
+  }, []);
+
+  const enableBiometricForApp = useCallback(async (): Promise<boolean> => {
+    const result = await authenticateWithBiometric('Confirm to enable biometric unlock');
+    if (result.success) {
+      await AsyncStorage.setItem(ASYNC_KEYS.BIOMETRIC_ENABLED, 'true');
+      if (isMounted.current) setState(prev => ({ ...prev, isBiometricEnabled: true }));
+      return true;
+    }
+    return false;
+  }, [authenticateWithBiometric]);
+
+  const enableBiometricLogin = useCallback(async (email: string, password: string): Promise<boolean> => {
+    try {
+      const result = await authenticateWithBiometric(`Confirm to enable ${state.biometricTypeName} login`);
+      if (!result.success) return false;
+
+      await Promise.all([
+        secureStorage.setItem(SECURE_KEYS.BIOMETRIC_EMAIL, email),
+        secureStorage.setItem(SECURE_KEYS.BIOMETRIC_PASSWORD, password),
+        secureStorage.setItem(SECURE_KEYS.BIOMETRIC_LOGIN_ENABLED, 'true'),
+      ]);
+
+      if (isMounted.current) setState(prev => ({ ...prev, isBiometricLoginEnabled: true }));
+      return true;
+    } catch (error) { return false; }
+  }, [authenticateWithBiometric, state.biometricTypeName]);
+
+  const disableBiometricLogin = useCallback(async (): Promise<void> => {
+    await Promise.all([
+      secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_EMAIL),
+      secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_PASSWORD),
+      secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_LOGIN_ENABLED),
+    ]);
+    if (isMounted.current) setState(prev => ({ ...prev, isBiometricLoginEnabled: false }));
+  }, []);
+
+  const hasBiometricLoginCredentials = useCallback(async (): Promise<boolean> => {
+    try {
+      const [email, password, enabled] = await Promise.all([
+        secureStorage.getItem(SECURE_KEYS.BIOMETRIC_EMAIL),
+        secureStorage.getItem(SECURE_KEYS.BIOMETRIC_PASSWORD),
+        secureStorage.getItem(SECURE_KEYS.BIOMETRIC_LOGIN_ENABLED),
+      ]);
+      return !!(email && password && enabled === 'true');
+    } catch (error) { return false; }
+  }, []);
+
+  const checkBiometricAvailability = useCallback(async (): Promise<boolean> => {
+    try {
+      if (!LocalAuthentication?.hasHardwareAsync) return false;
+      const [hasHardware, isEnrolled] = await Promise.all([
+        LocalAuthentication.hasHardwareAsync(),
+        LocalAuthentication.isEnrolledAsync(),
+      ]);
+      const available = hasHardware && isEnrolled;
+      let types: LocalAuthentication.AuthenticationType[] = [];
+      if (available && LocalAuthentication.supportedAuthenticationTypesAsync) {
+        types = await LocalAuthentication.supportedAuthenticationTypesAsync();
+      }
+      if (isMounted.current) {
+        setState(prev => ({ 
+          ...prev, 
+          isBiometricAvailable: available,
+          availableBiometricTypes: types,
+          biometricTypeName: getBiometricTypeName(types),
+        }));
+      }
+      await AsyncStorage.setItem(ASYNC_KEYS.BIOMETRIC_AVAILABLE, available ? 'true' : 'false');
+      return available;
+    } catch (error) { return false; }
+  }, []);
+
+  const markOnboardingSeen = useCallback(async () => {
+    try {
+      await AsyncStorage.setItem(ASYNC_KEYS.HAS_SEEN_ONBOARDING, 'true');
+      await AsyncStorage.setItem(ASYNC_KEYS.ONBOARDING_COMPLETE, 'true');
+      if (isMounted.current) setState(prev => ({ ...prev, hasSeenOnboarding: true, onboardingComplete: true }));
+    } catch (error) { console.error('Error marking onboarding:', error); }
+  }, []);
+
   const value = React.useMemo(() => ({
     ...state,
     signIn,
@@ -1947,6 +2007,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     getBiometricTypeInfo,
     clearAllLocks,
     getCurrentUserProfile,
+    checkSession,
+    forceLogoutOnInvalidSession,
     findUserByEmail: findUserByEmailCallback,
     findUserByEmailOrUsername: findUserByEmailOrUsernameCallback,
     findUserByEmailOrUsernameOrPhone: findUserByEmailOrUsernameOrPhoneCallback,
@@ -1961,7 +2023,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     forgotPassword,
     resetPasswordForUser,
     signUpWithInviteCode,
-  }), [state, signIn, signUp, signInWithSocial, signOut, checkBiometricAvailability, authenticateWithBiometric, enableBiometricForApp, enableBiometricLogin, disableBiometricLogin, hasBiometricLoginCredentials, loginWithBiometric, updateUserProfile, updateUserPreferences, skipSetup, completeSetup, resetSetupFlow, wasSetupCompleted, setSetupCompleteCallback, markOnboardingSeen, shouldShowBiometricPrompt, isAppActive, getLastActiveTime, getBiometricTypeInfo, clearAllLocks, getCurrentUserProfile, findUserByEmailCallback, findUserByEmailOrUsernameCallback, findUserByEmailOrUsernameOrPhoneCallback, updateCommunityProfile, getCommunityProfile, updateCommunityStats, updateCommunityTopics, isUsernameAvailable, registerCommunityUsername, updateCommunityUsername, updateCommunityAvatar, forgotPassword, resetPasswordForUser, signUpWithInviteCode]);
+  }), [state, signIn, signUp, signInWithSocial, signOut, checkBiometricAvailability, authenticateWithBiometric, enableBiometricForApp, enableBiometricLogin, disableBiometricLogin, hasBiometricLoginCredentials, loginWithBiometric, updateUserProfile, updateUserPreferences, skipSetup, completeSetup, resetSetupFlow, wasSetupCompleted, setSetupCompleteCallback, markOnboardingSeen, shouldShowBiometricPrompt, isAppActive, getLastActiveTime, getBiometricTypeInfo, clearAllLocks, getCurrentUserProfile, checkSession, forceLogoutOnInvalidSession, findUserByEmailCallback, findUserByEmailOrUsernameCallback, findUserByEmailOrUsernameOrPhoneCallback, updateCommunityProfile, getCommunityProfile, updateCommunityStats, updateCommunityTopics, isUsernameAvailable, registerCommunityUsername, updateCommunityUsername, updateCommunityAvatar, forgotPassword, resetPasswordForUser, signUpWithInviteCode]);
 
   return (
     <AuthContext.Provider value={value}>

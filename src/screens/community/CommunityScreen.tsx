@@ -57,17 +57,14 @@ const { width: SCREEN_W } = Dimensions.get('window');
 const POSTS_PER_PAGE = 12;
 
 // ============================================================
-// CONSTANTS - Using Splash Screen Colors
+// CONSTANTS
 // ============================================================
 const DS = {
-  // Primary gradient colors from splash: #667eea, #764ba2, #f093fb
-  primary: '#667eea',
-  primaryLight: '#8b8cf7',
+  primary: '#6366f1',
+  primaryLight: '#818cf8',
   primaryDark: '#4f46e5',
-  primaryGhost: 'rgba(102,126,234,0.08)',
-  secondary: '#764ba2',
-  secondaryLight: '#a78bfa',
-  accent: '#f093fb',
+  primaryGhost: 'rgba(99,102,241,0.08)',
+  accent: '#ec4899',
   accentLight: '#f472b6',
   success: '#10b981',
   warning: '#f59e0b',
@@ -116,10 +113,6 @@ const DS = {
     md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 20, elevation: 5 },
     lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.12, shadowRadius: 40, elevation: 12 },
   },
-  
-  // Splash gradient colors
-  splashGradient: ['#667eea', '#764ba2', '#f093fb'],
-  splashGradientDark: ['#0f172a', '#1e293b', '#334155'],
 };
 
 const ROUTES = {
@@ -142,27 +135,6 @@ type Props = NativeStackScreenProps<CommunityStackParamList, 'CommunityMain'>;
 const STATUS_BAR_HEIGHT = StatusBar.currentHeight || 0;
 const HEADER_TOP_PADDING = Platform.OS === 'ios' ? 52 : STATUS_BAR_HEIGHT + 14;
 const HEADER_TOTAL_HEIGHT = HEADER_TOP_PADDING + 52;
-
-// ============================================================
-// LITTLELOOM TEAM POST - Using App Logo
-// ============================================================
-const LITTLELOOM_TEAM_USER: CommunityUser = {
-  id: 'littleloom_team',
-  displayName: 'LittleLoom Team',
-  handle: '@littleloom',
-  avatar: '', // Will use logo image
-  isVerified: true,
-  bio: 'Official LittleLoom support team. Here to help you on your parenting journey!',
-  location: 'Global',
-  country: 'Global',
-  onlineStatus: 'online',
-  lastActive: new Date().toISOString(),
-  stats: { posts: 1, followers: 9999, following: 0, helpful: 999, streakDays: 999, lastStreakDate: new Date().toISOString() },
-  achievements: ['top_contributor', 'rising_star', 'influencer'],
-  isFollowing: false,
-  followers: [],
-  following: [],
-};
 
 // ============================================================
 // BLURRED IMAGE COMPONENT
@@ -403,14 +375,10 @@ export default function CommunityScreen({ navigation }: Props) {
     let filtered = getFeedPosts();
     filtered.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     
-    // Always ensure LittleLoom welcome post is at the top with logo
+    // Always ensure LittleLoom welcome post is at the top
     const welcomePost = filtered.find(p => p.authorId === 'littleloom_team');
     if (welcomePost) {
       filtered = filtered.filter(p => p.id !== welcomePost.id);
-      // Set the avatar to empty so it uses the logo image
-      if (welcomePost.author) {
-        welcomePost.author.avatar = '';
-      }
       filtered.unshift(welcomePost);
     }
     if (activeTopic !== 'all') filtered = filtered.filter(p => p.topicId === activeTopic);
@@ -562,7 +530,6 @@ export default function CommunityScreen({ navigation }: Props) {
     const isOwnPost = item.authorId === currentUser?.id;
     const sentiment = SentimentAnalyzer.analyze(item.content);
     const summary = item.content.length > 100 ? ThreadSummarizer.summarize(item.content) : null;
-    const isLittleLoom = item.authorId === 'littleloom_team';
 
     return (
       <Animated.View
@@ -580,22 +547,14 @@ export default function CommunityScreen({ navigation }: Props) {
                 { userId: item.authorId }
               )}
             >
-              {/* Use logo for LittleLoom team, otherwise use avatar */}
-              {isLittleLoom ? (
-                <Image 
-                  source={littleLoomLogo} 
-                  style={{ width: 44, height: 44, borderRadius: 22 }} 
-                  resizeMode="contain"
-                />
-              ) : (
-                <SafeAvatar
-                  avatar={item.author.avatar}
-                  size={44}
-                  fallbackIcon="person"
-                  fallbackColor={topicColor}
-                  fallbackBgColor={`${topicColor}15`}
-                />
-              )}
+              <SafeAvatar
+                avatar={item.author.avatar}
+                size={44}
+                fallbackIcon="person"
+                fallbackColor={topicColor}
+                fallbackBgColor={`${topicColor}15`}
+                imageSource={item.authorId === 'littleloom_team' ? littleLoomLogo : undefined}
+              />
               <View style={styles.authorInfo}>
                 <View style={styles.nameRow}>
                   <Text style={[styles.authorName, { color: isDark ? DS.white : DS.gray900 }]}>
@@ -729,9 +688,10 @@ export default function CommunityScreen({ navigation }: Props) {
             </View>
           )}
 
-          {/* Topic Tag with Category - Long press to open Topic */}
+          {/* Topic Tag with Category - Long press to navigate */}
           <TouchableOpacity
             onPress={() => navigation.navigate(ROUTES.TOPICS, { topicId: item.topicId })}
+            onLongPress={() => navigation.navigate(ROUTES.TOPICS, { topicId: item.topicId })}
             activeOpacity={0.8}
             style={[styles.topicTag, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : DS.gray50, marginHorizontal: DS.space.lg, marginBottom: DS.space.md }]}
           >
@@ -840,7 +800,7 @@ export default function CommunityScreen({ navigation }: Props) {
                     disabled={!commentInputs[item.id]?.trim()}
                   >
                     <LinearGradient
-                      colors={commentInputs[item.id]?.trim() ? [DS.primary, DS.secondary] : [DS.gray200, DS.gray200]}
+                      colors={commentInputs[item.id]?.trim() ? [DS.primary, DS.primaryDark] : [DS.gray200, DS.gray200]}
                       style={styles.sendBtnGrad}
                     >
                       <Ionicons name="arrow-up" size={14} color={DS.white} />
@@ -860,28 +820,27 @@ export default function CommunityScreen({ navigation }: Props) {
   // ============================================================
   const renderHeader = useCallback(() => (
     <View>
-      {/* Hero Banner - THE LOOM with Splash Colors */}
+      {/* Hero Banner - THE LOOM with gradient colors */}
       <Animated.View 
         entering={FadeInUp.delay(100).duration(500).springify()}
         style={[styles.heroBanner, { backgroundColor: isDark ? DS.darkCard : DS.white }]}
       >
         <LinearGradient
-          colors={isDark ? DS.splashGradientDark : DS.splashGradient}
+          colors={isDark ? ['rgba(99,102,241,0.15)', 'rgba(236,72,153,0.08)'] : ['rgba(99,102,241,0.06)', 'rgba(236,72,153,0.03)']}
           style={StyleSheet.absoluteFill}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          opacity={isDark ? 0.3 : 0.08}
         />
         <View style={styles.heroContent}>
           <View style={styles.heroHeader}>
             <View>
               <LinearGradient
-                colors={DS.splashGradient}
+                colors={['#667eea', '#764ba2', '#f093fb']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
-                style={styles.heroTitleGradient}
+                style={{ paddingVertical: 2 }}
               >
-                <Text style={[styles.heroTitle, { color: isDark ? DS.white : DS.gray900 }]}>
+                <Text style={[styles.heroTitle, { color: '#fff' }]}>
                   THE LOOM
                 </Text>
               </LinearGradient>
@@ -896,12 +855,12 @@ export default function CommunityScreen({ navigation }: Props) {
               </View>
               <View style={[styles.heroStatDivider, { backgroundColor: isDark ? DS.darkBorder : DS.gray200 }]} />
               <View style={styles.heroStat}>
-                <Text style={[styles.heroStatValue, { color: DS.secondary }]}>{membersCount}</Text>
+                <Text style={[styles.heroStatValue, { color: DS.accent }]}>{membersCount}</Text>
                 <Text style={[styles.heroStatLabel, { color: isDark ? DS.gray400 : DS.gray500 }]}>Members</Text>
               </View>
               <View style={[styles.heroStatDivider, { backgroundColor: isDark ? DS.darkBorder : DS.gray200 }]} />
               <View style={styles.heroStat}>
-                <Text style={[styles.heroStatValue, { color: DS.accent }]}>{userTopics.length}</Text>
+                <Text style={[styles.heroStatValue, { color: DS.warning }]}>{userTopics.length}</Text>
                 <Text style={[styles.heroStatLabel, { color: isDark ? DS.gray400 : DS.gray500 }]}>Topics</Text>
               </View>
             </View>
@@ -937,7 +896,7 @@ export default function CommunityScreen({ navigation }: Props) {
             </TouchableOpacity>
           </View>
           
-          {/* Topic Selection Status */}
+          {/* Topic Selection Status - Shows correct count */}
           {hasTopics ? (
             <View style={[styles.topicStatus, { marginTop: DS.space.sm }]}>
               <Ionicons name="checkmark-circle" size={14} color={DS.success} />
@@ -955,7 +914,7 @@ export default function CommunityScreen({ navigation }: Props) {
             >
               <Ionicons name="alert-circle" size={14} color={DS.warning} />
               <Text style={[styles.topicStatusText, { color: isDark ? DS.gray400 : DS.gray500 }]}>
-                Select topics to personalize your feed
+                Select {Math.max(0, 5 - userTopics.length)} more topics to personalize your feed
               </Text>
               <Ionicons name="chevron-forward" size={14} color={DS.primary} />
             </TouchableOpacity>
@@ -985,7 +944,7 @@ export default function CommunityScreen({ navigation }: Props) {
         </TouchableOpacity>
       </Animated.View>
 
-      {/* Topic Filter */}
+      {/* Topic Filter - Shows topics with long press support */}
       <View style={styles.topicFilterRow}>
         <TouchableOpacity
           style={[styles.topicFilterPill, activeTopic === 'all' && { backgroundColor: DS.primary }]}
@@ -998,6 +957,7 @@ export default function CommunityScreen({ navigation }: Props) {
             key={topic.id}
             style={[styles.topicFilterPill, activeTopic === topic.id && { backgroundColor: topic.color }]}
             onPress={() => setActiveTopic(activeTopic === topic.id ? 'all' : topic.id)}
+            onLongPress={() => navigation.navigate(ROUTES.TOPICS, { topicId: topic.id })}
           >
             <Text style={styles.topicFilterEmoji}>{topic.emoji}</Text>
             <Text style={[styles.topicFilterText, activeTopic === topic.id && { color: DS.white }]}>
@@ -1029,7 +989,7 @@ export default function CommunityScreen({ navigation }: Props) {
   // ============================================================
   const renderEmpty = useCallback(() => (
     <View style={styles.emptyState}>
-      <LinearGradient colors={isDark ? [`${DS.primary}20`, `${DS.secondary}20`] : [`${DS.primary}12`, `${DS.secondary}12`]} style={styles.emptyIconBg}>
+      <LinearGradient colors={isDark ? [`${DS.primary}20`, `${DS.primaryDark}20`] : [`${DS.primary}12`, `${DS.primaryDark}12`]} style={styles.emptyIconBg}>
         <Ionicons name="chatbubbles-outline" size={40} color={DS.primary} />
       </LinearGradient>
       <Text style={[styles.emptyTitle, { color: isDark ? DS.white : DS.gray600 }]}>
@@ -1046,7 +1006,7 @@ export default function CommunityScreen({ navigation }: Props) {
           }
           navigation.navigate(ROUTES.CREATE_POST);
         }}>
-          <LinearGradient colors={[DS.primary, DS.secondary]} style={styles.emptyBtnGrad}>
+          <LinearGradient colors={[DS.primary, DS.primaryDark]} style={styles.emptyBtnGrad}>
             <Text style={styles.emptyBtnText}>Start a Thread</Text>
             <Ionicons name="arrow-forward" size={14} color={DS.white} />
           </LinearGradient>
@@ -1094,12 +1054,12 @@ export default function CommunityScreen({ navigation }: Props) {
               )}
               <View style={{ marginLeft: 10 }}>
                 <LinearGradient
-                  colors={DS.splashGradient}
+                  colors={['#667eea', '#764ba2', '#f093fb']}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
-                  style={styles.headerTitleGradient}
+                  style={{ paddingVertical: 1 }}
                 >
-                  <Text style={[styles.headerTitle, { color: isDark ? DS.white : DS.gray900 }]}>THE LOOM</Text>
+                  <Text style={[styles.headerTitle, { color: '#fff' }]}>THE LOOM</Text>
                 </LinearGradient>
                 <Text style={[styles.headerSubtitle, { color: isDark ? DS.gray400 : DS.gray500 }]}>
                   {currentUser?.displayName || 'Welcome'}
@@ -1157,7 +1117,7 @@ export default function CommunityScreen({ navigation }: Props) {
         {showBanner && (
           <Animated.View entering={SlideInDown.duration(350).springify()} exiting={SlideOutUp.duration(200)} style={styles.bannerWrap}>
             <TouchableOpacity onPress={handleScrollToNew}>
-              <LinearGradient colors={[DS.primary, DS.secondary]} style={styles.bannerGradient}>
+              <LinearGradient colors={[DS.primary, DS.primaryDark]} style={styles.bannerGradient}>
                 <Ionicons name="sparkles" size={16} color={DS.white} />
                 <Text style={styles.bannerText}>{newPostsCount} new thread{newPostsCount > 1 ? 's' : ''} woven</Text>
                 <Ionicons name="arrow-up" size={14} color={DS.white} />
@@ -1292,7 +1252,7 @@ export default function CommunityScreen({ navigation }: Props) {
             }}
             activeOpacity={0.85}
           >
-            <LinearGradient colors={[DS.primary, DS.secondary, DS.accent]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.fabGrad}>
+            <LinearGradient colors={[DS.primary, DS.accent]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.fabGrad}>
               <Ionicons name="add" size={28} color={DS.white} />
             </LinearGradient>
           </TouchableOpacity>
@@ -1406,9 +1366,6 @@ const styles = StyleSheet.create({
     paddingBottom: DS.space.md,
     minHeight: HEADER_TOTAL_HEIGHT,
   },
-  headerTitleGradient: {
-    paddingHorizontal: 0,
-  },
   headerInner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1502,9 +1459,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     ...DS.shadow.md,
   },
-  heroTitleGradient: {
-    alignSelf: 'flex-start',
-  },
   heroContent: { zIndex: 1 },
   heroHeader: {
     flexDirection: 'row',
@@ -1526,7 +1480,7 @@ const styles = StyleSheet.create({
     gap: DS.space.md,
     paddingHorizontal: DS.space.md,
     paddingVertical: DS.space.sm,
-    backgroundColor: 'rgba(102,126,234,0.06)',
+    backgroundColor: 'rgba(99,102,241,0.06)',
     borderRadius: DS.radius.lg,
   },
   heroStat: {
@@ -1593,7 +1547,7 @@ const styles = StyleSheet.create({
     padding: DS.space.lg,
     ...DS.shadow.md,
     borderWidth: 1,
-    borderColor: 'rgba(102,126,234,0.1)',
+    borderColor: 'rgba(99,102,241,0.1)',
   },
   composeInput: {
     marginTop: DS.space.sm,
