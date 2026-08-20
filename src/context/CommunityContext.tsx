@@ -143,6 +143,8 @@ export interface Topic {
   joinedBy: string[];
   engagementScore: number;
   weeklyGrowth: number;
+  category?: string;
+  subcategory?: string;
 }
 
 export interface Notification {
@@ -999,11 +1001,18 @@ export const fetchRealTopicStats = async (): Promise<Topic[]> => {
       memberCountMap.set(item.topic_id, Number(item.member_count) || 0);
     });
 
-    const updatedTopics = INITIAL_TOPICS.map(topic => ({
-      ...topic,
-      posts: Math.max(topic.posts, postCountMap.get(topic.id) || 0),
-      members: Math.max(topic.members, memberCountMap.get(topic.id) || 0),
-    }));
+    const updatedTopics = INITIAL_TOPICS.map(topic => {
+      const posts = postCountMap.get(topic.id) || 0;
+      const members = memberCountMap.get(topic.id) || 0;
+      return {
+        ...topic,
+        posts: Math.max(topic.posts, posts),
+        members: Math.max(topic.members, members),
+        // Preserve category and subcategory from INITIAL_TOPICS
+        category: topic.category || undefined,
+        subcategory: topic.subcategory || undefined,
+      };
+    });
 
     console.log(`[fetchRealTopicStats] Updated ${updatedTopics.length} topics via RPC`);
     return updatedTopics;

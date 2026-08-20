@@ -11,10 +11,23 @@ import {
   FlatList,
   Image,
   Share,
+  TextInput,
+  Keyboard,
+  Platform,
 } from 'react-native';
 import React, { useCallback, useEffect, useState, useRef, useMemo } from 'react';
 
-import Animated, { FadeInUp, Layout } from 'react-native-reanimated';
+import Animated, { 
+  FadeInUp, 
+  Layout, 
+  FadeIn, 
+  FadeInDown,
+  useAnimatedScrollHandler,
+  useSharedValue,
+  interpolate,
+  Extrapolation,
+  useAnimatedStyle,
+} from 'react-native-reanimated';
 
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -23,7 +36,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import type { CommunityStackParamList } from '../../types/navigation';
 
-import { Post, Topic, useCommunity, INITIAL_TOPICS, refreshTopics, TOPIC_CATEGORIES } from '../../context/CommunityContext';
+import { Post, Topic, useCommunity, INITIAL_TOPICS, TOPIC_CATEGORIES, refreshTopics } from '../../context/CommunityContext';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { useRouteBasedNavVisibility } from '../../hooks/useRouteBasedNavVisibility';
 import { useReportRoute } from '../../hooks/useReportRoute';
@@ -31,13 +44,6 @@ import { useSafeCustomization } from '../../hooks/useSafeContexts';
 import { useUser } from '../../context/UserContext';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { supabase } from '../../services/supabaseClient';
-
-import {
-  CommunityColors,
-  CommunitySpacing,
-  CommunityBorderRadius,
-  CommunityShadows,
-} from '../../theme/CommunityTheme';
 
 type TopicScreenProps = NativeStackScreenProps<CommunityStackParamList, 'Topic'>;
 
@@ -47,6 +53,43 @@ const PILL_HEIGHT = 68;
 const PILL_MARGIN = 14;
 const SAFE_AREA_BOTTOM = 20;
 const NAV_PILL_TOTAL_HEIGHT = PILL_HEIGHT + PILL_MARGIN + SAFE_AREA_BOTTOM;
+
+// ─── Glass Card Component ───
+const GlassCard = React.memo(({ 
+  children, 
+  style, 
+  isDark, 
+  colors = {},
+  onPress,
+  delay = 0,
+}: any) => {
+  const Wrapper = onPress ? TouchableOpacity : View;
+  return (
+    <Animated.View 
+      entering={FadeInUp.delay(delay).duration(400).springify()}
+      style={[styles.glassCard, { 
+        backgroundColor: isDark ? 'rgba(41,41,41,0.85)' : 'rgba(255,255,255,0.85)',
+        borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.3)',
+      }, style]}
+    >
+      <Wrapper onPress={onPress} activeOpacity={onPress ? 0.85 : 1} style={{ flex: 1 }}>
+        <LinearGradient
+          colors={isDark ? 
+            ['rgba(255,255,255,0.05)', 'rgba(255,255,255,0.02)'] : 
+            ['rgba(255,255,255,0.6)', 'rgba(255,255,255,0.3)']
+          }
+          style={StyleSheet.absoluteFill}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        />
+        <View style={[styles.glassBorder, { 
+          backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.5)' 
+        }]} />
+        {children}
+      </Wrapper>
+    </Animated.View>
+  );
+});
 
 // ─── Sensitive Image with Blur ───
 const SensitiveImage = React.memo(({ 
@@ -250,6 +293,8 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
     isUserBlocked,
     topics,
     getSelectedTopics,
+    updateSelectedTopics,
+    refreshTopics: refreshTopicsFn,
   } = useCommunity();
   const { communityProfile } = useUser();
 
@@ -267,6 +312,9 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
   const [posts, setPosts] = useState<Post[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [realTopicData, setRealTopicData] = useState<Topic | null>(null);
+  const [showCommentInput, setShowCommentInput] = useState<string | null>(null);
+  const [commentText, setCommentText] = useState('');
+  const [expandedPostId, setExpandedPostId] = useState<string | null>(null);
   const listRef = useRef<FlatList>(null);
 
   // Get user's theme preference
@@ -276,6 +324,19 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
   // Check if user has this topic selected
   const userTopics = useMemo(() => getSelectedTopics(), [getSelectedTopics]);
   const isTopicSelected = useMemo(() => userTopics.includes(topicId), [userTopics, topicId]);
+
+  // Scroll animation
+  const scrollY = useSharedValue(0);
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      scrollY.value = event.contentOffset.y;
+    },
+  });
+
+  const headerOpacity = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, [0, 80], [0, 1], Extrapolation.CLAMP),
+    transform: [{ translateY: interpolate(scrollY.value, [0, 80], [-10, 0], Extrapolation.CLAMP) }],
+  }));
 
   // Fetch real topic data on mount
   useEffect(() => {
@@ -305,7 +366,7 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
             ...topicData,
             posts: postError ? 0 : (postCount || 0),
             members: memberError ? 0 : (memberCount || 0),
-            isJoined: false, // Will be updated from context
+            isJoined: false,
             joinedBy: [],
             engagementScore: 0,
             weeklyGrowth: 0,
@@ -354,37 +415,49 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
   ]);
 
   useEffect(() => {
-    setIsLoading(true);
-    const currentTopic = getTopicById(topicId);
-    const topicPosts = getPostsByTopic(topicId);
-    
-    // Merge real data with context data
-    if (realTopicData && currentTopic) {
-      setTopic({
-        ...currentTopic,
-        posts: Math.max(currentTopic.posts, realTopicData.posts),
-        members: Math.max(currentTopic.members, realTopicData.members),
-        category: realTopicData.category || currentTopic.category,
-        subcategory: realTopicData.subcategory || currentTopic.subcategory,
-      });
-    } else if (realTopicData) {
-      setTopic(realTopicData);
-    } else {
-      setTopic(currentTopic);
-    }
-    
-    setPosts(topicPosts);
-    const timer = setTimeout(() => setIsLoading(false), 300);
-    return () => clearTimeout(timer);
+    const loadData = async () => {
+      setIsLoading(true);
+      const currentTopic = getTopicById(topicId);
+      const topicPosts = getPostsByTopic(topicId);
+      
+      // Merge real data with context data
+      if (realTopicData && currentTopic) {
+        setTopic({
+          ...currentTopic,
+          posts: Math.max(currentTopic.posts, realTopicData.posts),
+          members: Math.max(currentTopic.members, realTopicData.members),
+          category: realTopicData.category || currentTopic.category,
+          subcategory: realTopicData.subcategory || currentTopic.subcategory,
+        });
+      } else if (realTopicData) {
+        setTopic(realTopicData);
+      } else {
+        setTopic(currentTopic);
+      }
+      
+      setPosts(topicPosts);
+      
+      // Auto-expand first post if any
+      if (topicPosts.length > 0 && !expandedPostId) {
+        setExpandedPostId(topicPosts[0].id);
+      }
+      
+      const timer = setTimeout(() => setIsLoading(false), 300);
+      return () => clearTimeout(timer);
+    };
+
+    loadData();
   }, [topicId, getTopicById, getPostsByTopic, realTopicData]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await refreshFeed();
+    // Refresh topics too
+    await refreshTopicsFn();
     const topicPosts = getPostsByTopic(topicId);
     setPosts(topicPosts);
     setRefreshing(false);
-  }, [topicId, refreshFeed, getPostsByTopic]);
+  }, [topicId, refreshFeed, getPostsByTopic, refreshTopicsFn]);
 
   const handleJoinToggle = useCallback(async () => {
     if (!topic) return;
@@ -405,6 +478,33 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
       sweetAlert.toast('Joined Topic', `You joined ${topic.name}!`);
     }
   }, [topic, joinTopic, leaveTopic, triggerHaptic, sweetAlert]);
+
+  const handleAddToFeed = useCallback(async () => {
+    if (!topic) return;
+    
+    const currentTopics = getSelectedTopics();
+    if (currentTopics.includes(topic.id)) {
+      sweetAlert.toast('Already in Feed', `${topic.name} is already in your feed`);
+      return;
+    }
+
+    const newTopics = [...currentTopics, topic.id];
+    await updateSelectedTopics(newTopics);
+    triggerHaptic('success');
+    sweetAlert.toast('Added to Feed', `${topic.name} added to your feed!`);
+  }, [topic, getSelectedTopics, updateSelectedTopics, triggerHaptic, sweetAlert]);
+
+  const handleRemoveFromFeed = useCallback(async () => {
+    if (!topic) return;
+    
+    const currentTopics = getSelectedTopics();
+    if (!currentTopics.includes(topic.id)) return;
+
+    const newTopics = currentTopics.filter(id => id !== topic.id);
+    await updateSelectedTopics(newTopics);
+    triggerHaptic('light');
+    sweetAlert.toast('Removed from Feed', `${topic.name} removed from your feed`);
+  }, [topic, getSelectedTopics, updateSelectedTopics, triggerHaptic, sweetAlert]);
 
   const handlePostLike = useCallback(
     async (post: Post) => {
@@ -500,8 +600,8 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
         return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
       case 'popular':
         return b.likes - a.likes;
-      default:
-        return b.commentsCount - a.commentsCount;
+      default: // trending
+        return b.popularityScore - a.popularityScore || (b.likes - a.likes);
     }
   });
 
@@ -510,20 +610,90 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
     return t?.color || '#667eea';
   };
 
+  const renderCommentInput = (postId: string) => {
+    if (showCommentInput !== postId) return null;
+
+    const handleSubmit = async () => {
+      if (!commentText.trim()) return;
+      if (!currentUser) {
+        sweetAlert.alert('Sign In Required', 'Please sign in to comment', 'warning');
+        return;
+      }
+      
+      // Find the post and add comment using context
+      const post = posts.find(p => p.id === postId);
+      if (!post) return;
+      
+      // Use addComment from context
+      const { addComment } = useCommunity();
+      await addComment(postId, commentText);
+      setCommentText('');
+      setShowCommentInput(null);
+      // Refresh posts
+      setPosts(getPostsByTopic(topicId));
+      triggerHaptic('light');
+    };
+
+    return (
+      <Animated.View entering={FadeInDown.duration(250)} style={[styles.commentInputContainer, {
+        backgroundColor: isDark ? 'rgba(41,41,41,0.9)' : 'rgba(255,255,255,0.9)',
+        borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+      }]}>
+        <SafeAvatar
+          avatar={currentUser?.avatar}
+          size={32}
+          fallbackIcon="person"
+          fallbackColor="#6366f1"
+          fallbackBgColor="rgba(99,102,241,0.15)"
+        />
+        <View style={[styles.commentInputWrap, {
+          backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#f5f5f5',
+          borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+        }]}>
+          <TextInput
+            style={[styles.commentInput, { color: isDark ? '#fff' : '#1a1a2e' }]}
+            placeholder="Write a comment..."
+            placeholderTextColor="#94a3b8"
+            value={commentText}
+            onChangeText={setCommentText}
+            multiline
+            autoFocus
+            maxLength={500}
+            onSubmitEditing={handleSubmit}
+          />
+          <TouchableOpacity
+            style={[styles.commentSendBtn, !commentText.trim() && styles.commentSendBtnDisabled]}
+            onPress={handleSubmit}
+            disabled={!commentText.trim()}
+          >
+            <LinearGradient
+              colors={commentText.trim() ? ['#6366f1', '#4f46e5'] : ['#94a3b8', '#94a3b8']}
+              style={styles.commentSendGrad}
+            >
+              <Ionicons name="arrow-up" size={16} color="#fff" />
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+      </Animated.View>
+    );
+  };
+
   // ─── Render Post ───
   const renderPost = useCallback(
     ({ item, index }: { item: Post; index: number }) => {
       const topicColor = getTopicColor(item.topicId);
       const hasImages = item.images && item.images.length > 0;
       const isOwnPost = item.authorId === currentUser?.id;
+      const isExpanded = expandedPostId === item.id;
+      const showComments = isExpanded;
 
       return (
         <Animated.View 
           entering={shouldReduceMotion ? undefined : FadeInUp.delay(index * 30).duration(400).springify()}
           layout={Layout.springify()}
         >
-          <View style={[styles.postCard, { backgroundColor: isDark ? '#292524' : '#fff' }]}>
-            <View style={[styles.postCardInner, { padding: 16 }]}>
+          <GlassCard isDark={isDark} delay={0} style={{ marginBottom: 16 }}>
+            <View style={styles.postCardInner}>
               {/* Author Row */}
               <TouchableOpacity
                 style={styles.postHeader}
@@ -531,7 +701,7 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
               >
                 <SafeAvatar
                   avatar={item.author.avatar}
-                  size={40}
+                  size={44}
                   fallbackIcon="person"
                   fallbackColor={topicColor}
                   fallbackBgColor={`${topicColor}20`}
@@ -554,7 +724,7 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
                     )}
                   </View>
                   <Text style={[styles.postTime, { color: isDark ? '#78716c' : '#a8a29e' }]}>
-                    {item.time}
+                    {item.time} • {item.topic}
                   </Text>
                 </View>
               </TouchableOpacity>
@@ -564,13 +734,31 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
 
               {/* Content */}
               <TouchableOpacity
-                onPress={() => navigateToPostDetail(item.id)}
+                onPress={() => {
+                  if (isExpanded) {
+                    setExpandedPostId(null);
+                  } else {
+                    setExpandedPostId(item.id);
+                  }
+                }}
                 activeOpacity={0.9}
               >
-                <Text style={[styles.postContent, { color: isDark ? '#d6d3d1' : '#44403c' }]} numberOfLines={3}>
+                <Text 
+                  style={[styles.postContent, { color: isDark ? '#d6d3d1' : '#44403c' }]} 
+                  numberOfLines={isExpanded ? undefined : 3}
+                >
                   {item.content}
                 </Text>
               </TouchableOpacity>
+
+              {/* Read More Toggle */}
+              {item.content.length > 150 && (
+                <TouchableOpacity onPress={() => setExpandedPostId(isExpanded ? null : item.id)}>
+                  <Text style={styles.readMoreText}>
+                    {isExpanded ? 'Show less' : 'Read more'}
+                  </Text>
+                </TouchableOpacity>
+              )}
 
               {/* Thread Summary */}
               <ThreadSummary content={item.content} isDark={isDark} />
@@ -581,7 +769,12 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
                   {item.images!.slice(0, 2).map((img, idx) => (
                     <TouchableOpacity
                       key={idx}
-                      style={[styles.postImageWrap, { flex: 1, minWidth: (width - 80) / 2, height: 120 }]}
+                      style={[styles.postImageWrap, { 
+                        flex: 1, 
+                        minWidth: (width - 80) / 2, 
+                        height: 150,
+                        borderRadius: 12,
+                      }]}
                       onPress={() => navigateToPostDetail(item.id)}
                     >
                       <SensitiveImage
@@ -605,39 +798,26 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
                 </View>
               )}
 
-              {/* Topic Tag with Category */}
-              <TouchableOpacity
-                style={[styles.topicTag, { backgroundColor: `${topicColor}15` }]}
-                onPress={() => navigation.navigate('Topic', { topicId: item.topicId })}
-              >
-                <Text style={[styles.topicTagText, { color: topicColor }]}>
-                  {item.topic}
-                </Text>
-                {item.topicId && (
-                  <CategoryBadge 
-                    categoryId={(topic as any)?.category} 
-                    isDark={isDark} 
-                  />
-                )}
-              </TouchableOpacity>
-
               {/* Actions */}
-              <View style={styles.postActions}>
+              <View style={[styles.postActions, { borderTopColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }]}>
                 <TouchableOpacity style={styles.action} onPress={() => handlePostLike(item)}>
                   <Ionicons
                     name={item.isLiked ? 'heart' : 'heart-outline'}
-                    size={20}
-                    color={item.isLiked ? CommunityColors.error : (isDark ? '#78716c' : CommunityColors.text.secondary)}
+                    size={22}
+                    color={item.isLiked ? '#ec4899' : (isDark ? '#78716c' : '#94a3b8')}
                   />
-                  <Text style={[styles.actionText, item.isLiked && styles.actionTextActive, { color: isDark ? '#78716c' : CommunityColors.text.secondary }]}>
-                    {item.likes}
+                  <Text style={[styles.actionText, item.isLiked && { color: '#ec4899' }]}>
+                    {item.likes > 0 ? item.likes : ''}
                   </Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity style={styles.action} onPress={() => navigateToPostDetail(item.id)}>
-                  <Ionicons name="chatbubble-outline" size={20} color={isDark ? '#78716c' : CommunityColors.text.secondary} />
-                  <Text style={[styles.actionText, { color: isDark ? '#78716c' : CommunityColors.text.secondary }]}>
-                    {item.commentsCount}
+                <TouchableOpacity style={styles.action} onPress={() => {
+                  setShowCommentInput(showCommentInput === item.id ? null : item.id);
+                  if (!isExpanded) setExpandedPostId(item.id);
+                }}>
+                  <Ionicons name="chatbubble-outline" size={20} color={isDark ? '#78716c' : '#94a3b8'} />
+                  <Text style={[styles.actionText, { color: isDark ? '#78716c' : '#94a3b8' }]}>
+                    {item.commentsCount > 0 ? item.commentsCount : ''}
                   </Text>
                 </TouchableOpacity>
 
@@ -645,33 +825,86 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
                   <Ionicons
                     name={item.isReposted ? 'repeat' : 'repeat-outline'}
                     size={20}
-                    color={item.isReposted ? CommunityColors.secondary : (isDark ? '#78716c' : CommunityColors.text.secondary)}
+                    color={item.isReposted ? '#10b981' : (isDark ? '#78716c' : '#94a3b8')}
                   />
-                  <Text style={[styles.actionText, item.isReposted && styles.actionTextActive, { color: isDark ? '#78716c' : CommunityColors.text.secondary }]}>
-                    {item.reposts}
+                  <Text style={[styles.actionText, item.isReposted && { color: '#10b981' }]}>
+                    {item.reposts > 0 ? item.reposts : ''}
                   </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.action} onPress={() => handlePostShare(item)}>
-                  <Ionicons name="share-outline" size={20} color={isDark ? '#78716c' : CommunityColors.text.secondary} />
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.action} onPress={() => handlePostBookmark(item)}>
                   <Ionicons
                     name={item.isBookmarked ? 'bookmark' : 'bookmark-outline'}
                     size={20}
-                    color={item.isBookmarked ? CommunityColors.primary : (isDark ? '#78716c' : CommunityColors.text.secondary)}
+                    color={item.isBookmarked ? '#6366f1' : (isDark ? '#78716c' : '#94a3b8')}
                   />
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.action} onPress={() => handlePostShare(item)}>
+                  <Ionicons name="share-outline" size={20} color={isDark ? '#78716c' : '#94a3b8'} />
                 </TouchableOpacity>
 
                 {isOwnPost && (
                   <TouchableOpacity style={styles.action} onPress={() => handlePostDelete(item)}>
-                    <Ionicons name="trash-outline" size={20} color={CommunityColors.error} />
+                    <Ionicons name="trash-outline" size={20} color="#ef4444" />
                   </TouchableOpacity>
                 )}
               </View>
+
+              {/* Comments section - expanded */}
+              {showComments && item.comments.length > 0 && (
+                <View style={[styles.commentsSection, { borderTopColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }]}>
+                  {item.comments.slice(0, 3).map((comment) => (
+                    <View key={comment.id} style={styles.commentRow}>
+                      <SafeAvatar
+                        avatar={comment.author.avatar}
+                        size={28}
+                        fallbackIcon="person"
+                        fallbackColor="#6366f1"
+                        fallbackBgColor="rgba(99,102,241,0.15)"
+                      />
+                      <View style={styles.commentContent}>
+                        <View style={[styles.commentBubble, {
+                          backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#f1f5f9',
+                        }]}>
+                          <Text style={[styles.commentAuthor, { color: isDark ? '#fff' : '#1c1917' }]}>
+                            {comment.author.displayName}
+                          </Text>
+                          <Text style={[styles.commentText, { color: isDark ? '#d6d3d1' : '#44403c' }]}>
+                            {comment.content}
+                          </Text>
+                        </View>
+                        <View style={styles.commentActions}>
+                          <Text style={[styles.commentActionText, { color: isDark ? '#78716c' : '#94a3b8' }]}>
+                            {comment.time}
+                          </Text>
+                          <TouchableOpacity>
+                            <Text style={[styles.commentActionText, { color: isDark ? '#78716c' : '#94a3b8' }]}>
+                              Like
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    </View>
+                  ))}
+                  {item.commentsCount > 3 && (
+                    <TouchableOpacity 
+                      onPress={() => navigateToPostDetail(item.id)}
+                      style={styles.viewAllComments}
+                    >
+                      <Text style={[styles.viewAllCommentsText, { color: '#6366f1' }]}>
+                        View all {item.commentsCount} comments
+                      </Text>
+                      <Ionicons name="chevron-forward" size={14} color="#6366f1" />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
             </View>
-          </View>
+          </GlassCard>
+
+          {/* Comment Input - rendered outside the card for better UX */}
+          {showCommentInput === item.id && renderCommentInput(item.id)}
         </Animated.View>
       );
     },
@@ -689,6 +922,8 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
       isDark,
       topics,
       topic,
+      showCommentInput,
+      expandedPostId,
     ]
   );
 
@@ -696,7 +931,7 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
     return (
       <View style={[styles.container, styles.centered, { backgroundColor: isDark ? '#0c0a09' : '#f8f9ff' }]}>
         <ActivityIndicator size="large" color={themeColors.spinnerColor} />
-        <Text style={[styles.loadingText, { color: isDark ? '#78716c' : CommunityColors.text.secondary }]}>
+        <Text style={[styles.loadingText, { color: isDark ? '#78716c' : '#94a3b8' }]}>
           Loading topic...
         </Text>
       </View>
@@ -706,201 +941,248 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
   if (!topic) {
     return (
       <View style={[styles.container, styles.centered, { backgroundColor: isDark ? '#0c0a09' : '#f8f9ff' }]}>
-        <Ionicons name="alert-circle-outline" size={48} color={isDark ? '#78716c' : CommunityColors.text.tertiary} />
-        <Text style={[styles.errorText, { color: isDark ? '#d6d3d1' : CommunityColors.text.secondary }]}>
-          Topic not found
-        </Text>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.goBackButton}>
-          <Text style={styles.goBackText}>Go Back</Text>
-        </TouchableOpacity>
+        <View style={styles.errorContainer}>
+          <View style={[styles.errorIconWrap, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' }]}>
+            <Ionicons name="alert-circle-outline" size={48} color={isDark ? '#78716c' : '#94a3b8'} />
+          </View>
+          <Text style={[styles.errorText, { color: isDark ? '#d6d3d1' : '#44403c' }]}>
+            Topic not found
+          </Text>
+          <Text style={[styles.errorSubtext, { color: isDark ? '#78716c' : '#94a3b8' }]}>
+            The topic you're looking for doesn't exist.
+          </Text>
+          <TouchableOpacity 
+            onPress={() => navigation.goBack()} 
+            style={[styles.goBackButton, { backgroundColor: '#6366f1' }]}
+          >
+            <Text style={styles.goBackText}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
 
   const displayTopic = realTopicData || topic;
   const topicColor = displayTopic.color || '#667eea';
+  const category = TOPIC_CATEGORIES.find(c => c.id === displayTopic.category);
 
   return (
-    <LinearGradient
-      colors={isDark ? 
-        [`${topicColor}15`, '#0c0a09'] : 
-        [topicColor + '20', ...CommunityColors.background.gradient]
-      }
-      style={[styles.container, { backgroundColor: isDark ? '#0c0a09' : '#f8f9ff' }]}
-    >
+    <View style={[styles.container, { backgroundColor: isDark ? '#0c0a09' : '#f8f9ff' }]}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
 
-      <LinearGradient
-        colors={isDark ? 
-          [`${topicColor}30`, `${topicColor}10`, 'transparent'] :
-          [topicColor + '60', topicColor + '20', 'transparent']
-        }
-        style={styles.headerGradient}
-      >
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={[styles.backButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.5)' }]}>
-            <Ionicons name="arrow-back" size={28} color={isDark ? '#fff' : CommunityColors.text.primary} />
+      {/* Animated Header */}
+      <Animated.View style={[styles.animatedHeader, { 
+        backgroundColor: isDark ? 'rgba(12,10,9,0.92)' : 'rgba(255,255,255,0.92)',
+        borderBottomColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+      }, headerOpacity]}>
+        <View style={styles.headerContent}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerBackBtn}>
+            <Ionicons name="arrow-back" size={24} color={isDark ? '#fff' : '#1c1917'} />
           </TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: isDark ? '#fff' : CommunityColors.text.primary }]}>
+          <Text style={[styles.headerTitle, { color: isDark ? '#fff' : '#1c1917' }]}>
             {displayTopic.name}
           </Text>
-          <TouchableOpacity
-            onPress={() =>
-              sweetAlert.confirm(
-                'Topic Options',
-                'What would you like to do?',
-                () => navigation.navigate('Report', {
-                  type: 'topic',
-                  targetId: displayTopic.id,
-                  targetUserId: 'system',
-                }),
-                undefined,
-                'Report',
-                'Cancel'
-              )
-            }
-          >
-            <Ionicons name="ellipsis-horizontal" size={24} color={isDark ? '#fff' : CommunityColors.text.primary} />
+          <TouchableOpacity style={styles.headerActionBtn}>
+            <Ionicons name="ellipsis-horizontal" size={20} color={isDark ? '#fff' : '#1c1917'} />
           </TouchableOpacity>
         </View>
+      </Animated.View>
 
-        <View style={styles.topicInfo}>
-          <Text style={styles.topicEmoji}>{displayTopic.emoji}</Text>
-          <Text style={[styles.topicName, { color: topicColor }]}>{displayTopic.name}</Text>
-          
-          {/* Category Badge */}
-          {displayTopic.category && (
-            <View style={[styles.categoryBadgeLarge, { backgroundColor: `${topicColor}15` }]}>
-              <Text style={styles.categoryBadgeLargeEmoji}>
-                {TOPIC_CATEGORIES.find(c => c.id === displayTopic.category)?.emoji || '📌'}
-              </Text>
-              <Text style={[styles.categoryBadgeLargeText, { color: topicColor }]}>
-                {TOPIC_CATEGORIES.find(c => c.id === displayTopic.category)?.name || displayTopic.category}
-                {displayTopic.subcategory && ` · ${displayTopic.subcategory}`}
-              </Text>
+      {/* Hero Section with Glassmorphism */}
+      <Animated.View 
+        entering={FadeInUp.delay(100).duration(500).springify()}
+        style={[styles.heroSection, { 
+          marginTop: Platform.OS === 'ios' ? 50 : 40,
+        }]}
+      >
+        <GlassCard isDark={isDark} style={{ marginHorizontal: 16, marginTop: 8 }}>
+          <View style={styles.heroContent}>
+            <View style={styles.heroTop}>
+              <View style={styles.heroEmojiContainer}>
+                <Text style={styles.heroEmoji}>{displayTopic.emoji}</Text>
+              </View>
+              <View style={styles.heroTitleContainer}>
+                <Text style={[styles.heroName, { color: isDark ? '#fff' : '#1c1917' }]}>
+                  {displayTopic.name}
+                </Text>
+                {category && (
+                  <View style={[styles.heroCategoryBadge, { backgroundColor: `${topicColor}15` }]}>
+                    <Text style={[styles.heroCategoryText, { color: topicColor }]}>
+                      {category.emoji} {category.name}
+                    </Text>
+                  </View>
+                )}
+              </View>
             </View>
-          )}
-          
-          <Text style={[styles.topicDescription, { color: isDark ? '#a8a29e' : CommunityColors.text.secondary }]}>
-            {displayTopic.description}
-          </Text>
-          
-          <View style={styles.topicStats}>
-            <TouchableOpacity style={[styles.statPill, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.5)' }]} onPress={() => navigation.navigate('TopicMembers', { topicId })}>
-              <Ionicons name="people" size={14} color={isDark ? '#a8a29e' : CommunityColors.text.secondary} />
-              <Text style={[styles.stat, { color: isDark ? '#a8a29e' : CommunityColors.text.secondary }]}>
-                {displayTopic.members.toLocaleString()} members
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.statPill, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.5)' }]}>
-              <Ionicons name="document-text" size={14} color={isDark ? '#a8a29e' : CommunityColors.text.secondary} />
-              <Text style={[styles.stat, { color: isDark ? '#a8a29e' : CommunityColors.text.secondary }]}>
-                {displayTopic.posts.toLocaleString()} posts
-              </Text>
-            </TouchableOpacity>
-          </View>
-          
-          <View style={styles.topicActions}>
-            <TouchableOpacity
-              style={[styles.joinButton, topic.isJoined && styles.joinedButton]}
-              onPress={handleJoinToggle}
-            >
-              <LinearGradient
-                colors={topic.isJoined ? 
-                  isDark ? [`${topicColor}20`, `${topicColor}10`] : [`${topicColor}20`, `${topicColor}10`] :
-                  [topicColor, topicColor + 'dd']
-                }
-                style={styles.joinButtonGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-              >
-                <Text style={[styles.joinText, topic.isJoined && styles.joinedText]}>
-                  {topic.isJoined ? '✓ Joined' : 'Join Topic'}
-                </Text>
-              </LinearGradient>
-            </TouchableOpacity>
-            
-            {!isTopicSelected && currentUser && (
-              <TouchableOpacity
-                style={[styles.addToFeedBtn, { backgroundColor: `${topicColor}15` }]}
-                onPress={navigateToEditTopics}
-              >
-                <Text style={[styles.addToFeedText, { color: topicColor }]}>
-                  Add to Feed
-                </Text>
-                <Ionicons name="add-circle-outline" size={16} color={topicColor} />
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
-      </LinearGradient>
 
-      <View style={[styles.content, { backgroundColor: isDark ? 'rgba(12,10,9,0.6)' : 'rgba(255,255,255,0.3)' }]}>
-        <View style={styles.sortContainer}>
+            <Text style={[styles.heroDescription, { color: isDark ? '#a8a29e' : '#57534e' }]}>
+              {displayTopic.description}
+            </Text>
+
+            <View style={styles.heroStats}>
+              <View style={styles.heroStatItem}>
+                <View style={[styles.heroStatIconWrap, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
+                  <Ionicons name="people" size={14} color={isDark ? '#a8a29e' : '#57534e'} />
+                </View>
+                <Text style={[styles.heroStatValue, { color: isDark ? '#fff' : '#1c1917' }]}>
+                  {displayTopic.members.toLocaleString()}
+                </Text>
+                <Text style={[styles.heroStatLabel, { color: isDark ? '#78716c' : '#94a3b8' }]}>Members</Text>
+              </View>
+              <View style={styles.heroStatDivider} />
+              <View style={styles.heroStatItem}>
+                <View style={[styles.heroStatIconWrap, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
+                  <Ionicons name="document-text" size={14} color={isDark ? '#a8a29e' : '#57534e'} />
+                </View>
+                <Text style={[styles.heroStatValue, { color: isDark ? '#fff' : '#1c1917' }]}>
+                  {displayTopic.posts.toLocaleString()}
+                </Text>
+                <Text style={[styles.heroStatLabel, { color: isDark ? '#78716c' : '#94a3b8' }]}>Posts</Text>
+              </View>
+              <View style={styles.heroStatDivider} />
+              <View style={styles.heroStatItem}>
+                <View style={[styles.heroStatIconWrap, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
+                  <Ionicons name="trending-up" size={14} color={isDark ? '#a8a29e' : '#57534e'} />
+                </View>
+                <Text style={[styles.heroStatValue, { color: isDark ? '#fff' : '#1c1917' }]}>
+                  {displayTopic.engagementScore || 0}
+                </Text>
+                <Text style={[styles.heroStatLabel, { color: isDark ? '#78716c' : '#94a3b8' }]}>Engagement</Text>
+              </View>
+            </View>
+
+            <View style={styles.heroActions}>
+              <TouchableOpacity
+                style={[styles.heroJoinBtn, { 
+                  backgroundColor: topic.isJoined ? 'rgba(255,255,255,0.08)' : topicColor,
+                  borderColor: topic.isJoined ? isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)' : 'transparent',
+                }]}
+                onPress={handleJoinToggle}
+              >
+                <Text style={[styles.heroJoinText, { 
+                  color: topic.isJoined ? (isDark ? '#fff' : '#1c1917') : '#fff',
+                }]}>
+                  {topic.isJoined ? '✓ Joined' : 'Join'}
+                </Text>
+              </TouchableOpacity>
+
+              {isTopicSelected ? (
+                <TouchableOpacity
+                  style={[styles.heroFeedBtn, { 
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+                    borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+                  }]}
+                  onPress={handleRemoveFromFeed}
+                >
+                  <Ionicons name="checkmark-circle" size={16} color={isDark ? '#a8a29e' : '#57534e'} />
+                  <Text style={[styles.heroFeedText, { color: isDark ? '#a8a29e' : '#57534e' }]}>
+                    In Feed
+                  </Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.heroFeedBtn, { 
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+                    borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+                  }]}
+                  onPress={handleAddToFeed}
+                >
+                  <Ionicons name="add-circle-outline" size={16} color={isDark ? '#a8a29e' : '#57534e'} />
+                  <Text style={[styles.heroFeedText, { color: isDark ? '#a8a29e' : '#57534e' }]}>
+                    Add to Feed
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        </GlassCard>
+      </Animated.View>
+
+      {/* Sort & Create Bar */}
+      <Animated.View 
+        entering={FadeInDown.delay(200).duration(400)}
+        style={[styles.sortBar, { 
+          marginHorizontal: 16,
+          marginTop: 12,
+          marginBottom: 12,
+        }]}
+      >
+        <View style={styles.sortBarLeft}>
           <TouchableOpacity
-            style={[styles.sortButton, { backgroundColor: isDark ? '#292524' : CommunityColors.background.card }]}
+            style={[styles.sortButton, { 
+              backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+            }]}
             onPress={() => {
               const cycle = { trending: 'newest', newest: 'popular', popular: 'trending' };
-              setSortBy(prev => cycle[prev] as typeof sortBy);
+              setSortBy(prev => cycle[prev as keyof typeof cycle] as typeof sortBy);
               triggerHaptic('light');
             }}
           >
-            <Text style={[styles.sortText, { color: isDark ? '#a8a29e' : CommunityColors.text.secondary }]}>
+            <Ionicons name="swap-vertical" size={14} color={isDark ? '#a8a29e' : '#57534e'} />
+            <Text style={[styles.sortText, { color: isDark ? '#a8a29e' : '#57534e' }]}>
               {sortBy.charAt(0).toUpperCase() + sortBy.slice(1)}
             </Text>
-            <Ionicons name="chevron-down" size={16} color={isDark ? '#78716c' : CommunityColors.text.secondary} />
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.filterButton, { backgroundColor: isDark ? '#292524' : CommunityColors.background.card }]}>
-            <Ionicons name="funnel-outline" size={20} color={CommunityColors.primary} />
-          </TouchableOpacity>
+          <Text style={[styles.postCountText, { color: isDark ? '#78716c' : '#94a3b8' }]}>
+            {posts.length} posts
+          </Text>
         </View>
 
-        <FlatList
-          ref={listRef}
-          data={sortedPosts}
-          renderItem={renderPost}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={[
-            styles.postsList,
-            { paddingBottom: NAV_PILL_TOTAL_HEIGHT + 20 },
-          ]}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RNRefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={themeColors.spinnerColor}
-              progressBackgroundColor={isDark ? '#292524' : '#fff'}
-            />
-          }
-          ListEmptyComponent={
-            <View style={styles.emptyState}>
-              <View style={[styles.emptyIconWrap, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' }]}>
-                <Ionicons name="document-text-outline" size={48} color={isDark ? '#78716c' : CommunityColors.text.tertiary} />
-              </View>
-              <Text style={[styles.emptyText, { color: isDark ? '#d6d3d1' : CommunityColors.text.secondary }]}>
-                No posts yet
-              </Text>
-              <Text style={[styles.emptySubtext, { color: isDark ? '#78716c' : CommunityColors.text.tertiary }]}>
-                Be the first to post in {displayTopic.name}!
-              </Text>
-              <TouchableOpacity style={styles.emptyPostBtn} onPress={navigateToCreatePost}>
-                <LinearGradient colors={[topicColor, topicColor + 'dd']} style={styles.emptyPostGradient}>
-                  <Ionicons name="create-outline" size={18} color="#fff" />
-                  <Text style={styles.emptyPostText}>Create Post</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            </View>
-          }
-        />
-      </View>
+        <TouchableOpacity
+          style={[styles.createBtn, { backgroundColor: topicColor }]}
+          onPress={navigateToCreatePost}
+        >
+          <Ionicons name="create-outline" size={18} color="#fff" />
+          <Text style={styles.createBtnText}>New Post</Text>
+        </TouchableOpacity>
+      </Animated.View>
 
-      <TouchableOpacity style={[styles.fab, { backgroundColor: topicColor }]} onPress={navigateToCreatePost}>
-        <LinearGradient colors={[topicColor, topicColor + 'aa']} style={styles.fabGradient}>
-          <Ionicons name="create-outline" size={28} color="white" />
-        </LinearGradient>
-      </TouchableOpacity>
-    </LinearGradient>
+      {/* Posts List */}
+      <Animated.FlatList
+        ref={listRef}
+        data={sortedPosts}
+        renderItem={renderPost}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={[
+          styles.postsList,
+          { paddingBottom: NAV_PILL_TOTAL_HEIGHT + 20 },
+        ]}
+        showsVerticalScrollIndicator={false}
+        onScroll={scrollHandler}
+        scrollEventThrottle={16}
+        refreshControl={
+          <RNRefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={themeColors.spinnerColor}
+            progressBackgroundColor={isDark ? '#292524' : '#fff'}
+          />
+        }
+        ListEmptyComponent={
+          <View style={styles.emptyState}>
+            <View style={[styles.emptyIconWrap, { 
+              backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
+              borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+            }]}>
+              <Ionicons name="document-text-outline" size={48} color={isDark ? '#78716c' : '#94a3b8'} />
+            </View>
+            <Text style={[styles.emptyText, { color: isDark ? '#d6d3d1' : '#44403c' }]}>
+              No posts yet
+            </Text>
+            <Text style={[styles.emptySubtext, { color: isDark ? '#78716c' : '#94a3b8' }]}>
+              Be the first to post in {displayTopic.name}!
+            </Text>
+            <TouchableOpacity 
+              style={[styles.emptyPostBtn, { backgroundColor: topicColor }]} 
+              onPress={navigateToCreatePost}
+            >
+              <Ionicons name="create-outline" size={18} color="#fff" />
+              <Text style={styles.emptyPostText}>Create Post</Text>
+            </TouchableOpacity>
+          </View>
+        }
+      />
+    </View>
   );
 }
 
@@ -912,151 +1194,249 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  headerGradient: {
-    paddingTop: 60,
-    paddingHorizontal: 24,
-    paddingBottom: 30,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  backButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  topicInfo: { alignItems: 'center' },
-  topicEmoji: { fontSize: 80, marginBottom: 12 },
-  topicName: {
-    fontSize: 28,
-    fontWeight: '800',
-    marginBottom: 8,
-  },
-  topicDescription: {
-    fontSize: 14,
-    textAlign: 'center',
-    marginBottom: 16,
-    paddingHorizontal: 40,
-  },
-  topicStats: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 16,
-  },
-  statPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  stat: { fontSize: 13, fontWeight: '600' },
-  topicActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginTop: 4,
-  },
-  joinButton: {
-    borderRadius: 24,
+
+  // Glass Card
+  glassCard: {
+    borderRadius: 20,
     overflow: 'hidden',
-    ...CommunityShadows.medium,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  joinButtonGradient: {
-    paddingHorizontal: 32,
-    paddingVertical: 12,
+  glassBorder: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 1,
   },
-  joinedButton: { opacity: 0.8 },
-  joinText: { color: 'white', fontSize: 16, fontWeight: '700' },
-  joinedText: { color: CommunityColors.primary },
-  addToFeedBtn: {
+
+  // Animated Header
+  animatedHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
+    paddingTop: Platform.OS === 'ios' ? 50 : 40,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+  },
+  headerContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-  },
-  addToFeedText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  categoryBadgeLarge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-    marginBottom: 12,
-  },
-  categoryBadgeLargeEmoji: { fontSize: 14 },
-  categoryBadgeLargeText: {
-    fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'capitalize',
-  },
-  content: {
-    flex: 1,
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
-    paddingTop: 20,
-  },
-  sortContainer: {
-    flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: CommunitySpacing.lg,
-    marginBottom: 16,
-  },
-  sortButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
     paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
   },
-  sortText: { fontSize: 14, fontWeight: '600' },
-  filterButton: {
+  headerBackBtn: {
     width: 40,
     height: 40,
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  postsList: {
-    paddingHorizontal: CommunitySpacing.lg,
+  headerTitle: {
+    fontSize: 16,
+    fontWeight: '700',
   },
-  postCard: {
+  headerActionBtn: {
+    width: 40,
+    height: 40,
     borderRadius: 20,
-    marginBottom: 16,
-    overflow: 'hidden',
-    ...CommunityShadows.medium,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
+
+  // Hero Section
+  heroSection: {
+    paddingHorizontal: 0,
+  },
+  heroContent: {
+    padding: 20,
+  },
+  heroTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    marginBottom: 12,
+  },
+  heroEmojiContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(99,102,241,0.08)',
+  },
+  heroEmoji: {
+    fontSize: 32,
+  },
+  heroTitleContainer: {
+    flex: 1,
+  },
+  heroName: {
+    fontSize: 22,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+  },
+  heroCategoryBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 8,
+    marginTop: 4,
+  },
+  heroCategoryText: {
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'capitalize',
+  },
+  heroDescription: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  heroStats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    paddingVertical: 12,
+    marginBottom: 16,
+    borderRadius: 12,
+    backgroundColor: 'rgba(99,102,241,0.04)',
+  },
+  heroStatItem: {
+    alignItems: 'center',
+    gap: 2,
+  },
+  heroStatIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
+  },
+  heroStatValue: {
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  heroStatLabel: {
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  heroStatDivider: {
+    width: 1,
+    height: 30,
+    backgroundColor: 'rgba(0,0,0,0.06)',
+  },
+  heroActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  heroJoinBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+  },
+  heroJoinText: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  heroFeedBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 6,
+    borderWidth: 1,
+  },
+  heroFeedText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+
+  // Sort Bar
+  sortBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  sortBarLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  sortButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  sortText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  postCountText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  createBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  createBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#fff',
+  },
+
+  // Posts List
+  postsList: {
+    paddingHorizontal: 16,
+  },
+
+  // Post Card
   postCardInner: {
-    overflow: 'hidden',
+    padding: 16,
   },
   postHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 12,
   },
-  postHeaderText: { marginLeft: 12, flex: 1 },
-  postNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
-  postAuthor: { fontSize: 15, fontWeight: '700' },
-  postTime: { fontSize: 13, marginTop: 2 },
+  postHeaderText: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  postNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  postAuthor: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  postTime: {
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 1,
+  },
   trendingBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1074,8 +1454,16 @@ const styles = StyleSheet.create({
   postContent: {
     fontSize: 15,
     lineHeight: 22,
-    marginBottom: 12,
+    marginBottom: 8,
   },
+  readMoreText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6366f1',
+    marginBottom: 10,
+  },
+
+  // Post Images
   postImagesContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1083,7 +1471,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   postImageWrap: {
-    borderRadius: CommunityBorderRadius.lg,
+    borderRadius: 12,
     overflow: 'hidden',
   },
   postImage: {
@@ -1094,32 +1482,134 @@ const styles = StyleSheet.create({
     position: 'relative',
     flex: 1,
     minWidth: (width - 88) / 2,
-    height: 120,
+    height: 150,
   },
   postImageMoreOverlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
     alignItems: 'center',
+    borderRadius: 12,
   },
   postImageMoreText: {
     color: '#fff',
     fontSize: 18,
     fontWeight: '800',
   },
-  topicTag: {
+
+  // Post Actions
+  postActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'flex-start',
-    paddingHorizontal: 10,
+    justifyContent: 'space-around',
+    paddingTop: 12,
+    borderTopWidth: 1,
+  },
+  action: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     paddingVertical: 4,
-    borderRadius: 8,
-    marginBottom: 12,
-    gap: 8,
   },
-  topicTagText: {
-    fontSize: 11,
+  actionText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#94a3b8',
+    minWidth: 16,
+  },
+
+  // Comments Section
+  commentsSection: {
+    paddingTop: 12,
+    marginTop: 12,
+    borderTopWidth: 1,
+  },
+  commentRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 10,
+  },
+  commentContent: {
+    flex: 1,
+  },
+  commentBubble: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+  },
+  commentAuthor: {
+    fontSize: 12,
     fontWeight: '700',
+    marginBottom: 2,
   },
+  commentText: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  commentActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 4,
+    paddingHorizontal: 4,
+  },
+  commentActionText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  viewAllComments: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 4,
+  },
+  viewAllCommentsText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+
+  // Comment Input
+  commentInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 12,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  commentInputWrap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+  },
+  commentInput: {
+    flex: 1,
+    fontSize: 14,
+    paddingVertical: 8,
+    maxHeight: 80,
+  },
+  commentSendBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginLeft: 4,
+  },
+  commentSendBtnDisabled: {
+    opacity: 0.5,
+  },
+  commentSendGrad: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // Category Badge
   categoryBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1134,25 +1624,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textTransform: 'capitalize',
   },
-  postActions: { flexDirection: 'row', gap: 16, flexWrap: 'wrap' },
-  action: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  actionText: { fontSize: 13, fontWeight: '600' },
-  actionTextActive: { color: CommunityColors.primary },
-  fab: {
-    position: 'absolute',
-    right: 24,
-    bottom: 24,
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    overflow: 'hidden',
-    ...CommunityShadows.lg,
-  },
-  fabGradient: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+
+  // Empty State
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -1165,32 +1638,62 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
+    borderWidth: 1,
   },
-  emptyText: { fontSize: 16, marginTop: 12, fontWeight: '700' },
-  emptySubtext: { fontSize: 14, marginTop: 4 },
+  emptyText: {
+    fontSize: 16,
+    marginTop: 12,
+    fontWeight: '700',
+  },
+  emptySubtext: {
+    fontSize: 14,
+    marginTop: 4,
+  },
   emptyPostBtn: {
-    marginTop: 16,
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  emptyPostGradient: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    marginTop: 16,
     paddingHorizontal: 20,
     paddingVertical: 12,
+    borderRadius: 14,
   },
   emptyPostText: {
     color: '#fff',
     fontSize: 14,
     fontWeight: '700',
   },
-  errorText: { fontSize: 18, marginBottom: 16, marginTop: 12 },
+
+  // Error
+  errorContainer: {
+    alignItems: 'center',
+    padding: 20,
+  },
+  errorIconWrap: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  errorText: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  errorSubtext: {
+    fontSize: 14,
+    marginBottom: 20,
+  },
   goBackButton: {
-    backgroundColor: CommunityColors.primary,
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 12,
   },
-  goBackText: { color: 'white', fontSize: 16, fontWeight: '600' },
+  goBackText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
 });
