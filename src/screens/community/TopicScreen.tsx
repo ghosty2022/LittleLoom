@@ -12,7 +12,7 @@ import {
   Image,
   Share,
 } from 'react-native';
-import React, { useCallback, useEffect, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useState, useRef, useMemo } from 'react';
 
 import Animated, { FadeInUp, Layout } from 'react-native-reanimated';
 
@@ -23,7 +23,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import type { CommunityStackParamList } from '../../types/navigation';
 
-import { Post, Topic, useCommunity, INITIAL_TOPICS, refreshTopics } from '../../context/CommunityContext';
+import { Post, Topic, useCommunity, INITIAL_TOPICS, refreshTopics, TOPIC_CATEGORIES } from '../../context/CommunityContext';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { useRouteBasedNavVisibility } from '../../hooks/useRouteBasedNavVisibility';
 import { useReportRoute } from '../../hooks/useReportRoute';
@@ -209,6 +209,23 @@ const ThreadSummary = React.memo(({ content, isDark }: { content: string; isDark
   );
 });
 
+// ─── Category Badge ───
+const CategoryBadge = React.memo(({ categoryId, isDark }: { categoryId?: string; isDark: boolean }) => {
+  if (!categoryId) return null;
+  
+  const category = TOPIC_CATEGORIES.find(c => c.id === categoryId);
+  if (!category) return null;
+  
+  return (
+    <View style={[styles.categoryBadge, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
+      <Text style={styles.categoryBadgeEmoji}>{category.emoji}</Text>
+      <Text style={[styles.categoryBadgeText, { color: isDark ? '#a8a29e' : '#57534e' }]}>
+        {category.name}
+      </Text>
+    </View>
+  );
+});
+
 export default function TopicScreen({ navigation, route }: TopicScreenProps) {
   useRouteBasedNavVisibility();
   useReportRoute();
@@ -232,6 +249,7 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
     blockUser,
     isUserBlocked,
     topics,
+    getSelectedTopics,
   } = useCommunity();
   const { communityProfile } = useUser();
 
@@ -254,6 +272,10 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
   // Get user's theme preference
   const { settings } = useSafeCustomization?.() || { settings: { darkMode: false } };
   const isDark = settings?.darkMode ?? false;
+
+  // Check if user has this topic selected
+  const userTopics = useMemo(() => getSelectedTopics(), [getSelectedTopics]);
+  const isTopicSelected = useMemo(() => userTopics.includes(topicId), [userTopics, topicId]);
 
   // Fetch real topic data on mount
   useEffect(() => {
@@ -288,6 +310,8 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
             engagementScore: 0,
             weeklyGrowth: 0,
             trending: topicData.trending || false,
+            category: topicData.category || undefined,
+            subcategory: topicData.subcategory || undefined,
           });
         }
       } catch (error) {
@@ -340,7 +364,11 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
         ...currentTopic,
         posts: Math.max(currentTopic.posts, realTopicData.posts),
         members: Math.max(currentTopic.members, realTopicData.members),
+        category: realTopicData.category || currentTopic.category,
+        subcategory: realTopicData.subcategory || currentTopic.subcategory,
       });
+    } else if (realTopicData) {
+      setTopic(realTopicData);
     } else {
       setTopic(currentTopic);
     }
@@ -462,6 +490,10 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
     [navigation, topicId]
   );
 
+  const navigateToEditTopics = useCallback(() => {
+    navigation.navigate('CommunityOnboarding' as never, { editing: true } as never);
+  }, [navigation]);
+
   const sortedPosts = [...posts].sort((a, b) => {
     switch (sortBy) {
       case 'newest':
@@ -573,7 +605,7 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
                 </View>
               )}
 
-              {/* Topic Tag */}
+              {/* Topic Tag with Category */}
               <TouchableOpacity
                 style={[styles.topicTag, { backgroundColor: `${topicColor}15` }]}
                 onPress={() => navigation.navigate('Topic', { topicId: item.topicId })}
@@ -581,6 +613,12 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
                 <Text style={[styles.topicTagText, { color: topicColor }]}>
                   {item.topic}
                 </Text>
+                {item.topicId && (
+                  <CategoryBadge 
+                    categoryId={(topic as any)?.category} 
+                    isDark={isDark} 
+                  />
+                )}
               </TouchableOpacity>
 
               {/* Actions */}
@@ -650,6 +688,7 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
       navigation,
       isDark,
       topics,
+      topic,
     ]
   );
 
@@ -679,12 +718,13 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
   }
 
   const displayTopic = realTopicData || topic;
+  const topicColor = displayTopic.color || '#667eea';
 
   return (
     <LinearGradient
       colors={isDark ? 
-        [`${displayTopic.color}15`, '#0c0a09'] : 
-        [displayTopic.color + '20', ...CommunityColors.background.gradient]
+        [`${topicColor}15`, '#0c0a09'] : 
+        [topicColor + '20', ...CommunityColors.background.gradient]
       }
       style={[styles.container, { backgroundColor: isDark ? '#0c0a09' : '#f8f9ff' }]}
     >
@@ -692,8 +732,8 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
 
       <LinearGradient
         colors={isDark ? 
-          [`${displayTopic.color}30`, `${displayTopic.color}10`, 'transparent'] :
-          [displayTopic.color + '60', displayTopic.color + '20', 'transparent']
+          [`${topicColor}30`, `${topicColor}10`, 'transparent'] :
+          [topicColor + '60', topicColor + '20', 'transparent']
         }
         style={styles.headerGradient}
       >
@@ -726,10 +766,25 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
 
         <View style={styles.topicInfo}>
           <Text style={styles.topicEmoji}>{displayTopic.emoji}</Text>
-          <Text style={[styles.topicName, { color: displayTopic.color }]}>{displayTopic.name}</Text>
+          <Text style={[styles.topicName, { color: topicColor }]}>{displayTopic.name}</Text>
+          
+          {/* Category Badge */}
+          {displayTopic.category && (
+            <View style={[styles.categoryBadgeLarge, { backgroundColor: `${topicColor}15` }]}>
+              <Text style={styles.categoryBadgeLargeEmoji}>
+                {TOPIC_CATEGORIES.find(c => c.id === displayTopic.category)?.emoji || '📌'}
+              </Text>
+              <Text style={[styles.categoryBadgeLargeText, { color: topicColor }]}>
+                {TOPIC_CATEGORIES.find(c => c.id === displayTopic.category)?.name || displayTopic.category}
+                {displayTopic.subcategory && ` · ${displayTopic.subcategory}`}
+              </Text>
+            </View>
+          )}
+          
           <Text style={[styles.topicDescription, { color: isDark ? '#a8a29e' : CommunityColors.text.secondary }]}>
             {displayTopic.description}
           </Text>
+          
           <View style={styles.topicStats}>
             <TouchableOpacity style={[styles.statPill, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.5)' }]} onPress={() => navigation.navigate('TopicMembers', { topicId })}>
               <Ionicons name="people" size={14} color={isDark ? '#a8a29e' : CommunityColors.text.secondary} />
@@ -744,24 +799,39 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
               </Text>
             </TouchableOpacity>
           </View>
-          <TouchableOpacity
-            style={[styles.joinButton, topic.isJoined && styles.joinedButton]}
-            onPress={handleJoinToggle}
-          >
-            <LinearGradient
-              colors={topic.isJoined ? 
-                isDark ? [`${displayTopic.color}20`, `${displayTopic.color}10`] : [`${displayTopic.color}20`, `${displayTopic.color}10`] :
-                [displayTopic.color, displayTopic.color + 'dd']
-              }
-              style={styles.joinButtonGradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
+          
+          <View style={styles.topicActions}>
+            <TouchableOpacity
+              style={[styles.joinButton, topic.isJoined && styles.joinedButton]}
+              onPress={handleJoinToggle}
             >
-              <Text style={[styles.joinText, topic.isJoined && styles.joinedText]}>
-                {topic.isJoined ? '✓ Joined' : 'Join Topic'}
-              </Text>
-            </LinearGradient>
-          </TouchableOpacity>
+              <LinearGradient
+                colors={topic.isJoined ? 
+                  isDark ? [`${topicColor}20`, `${topicColor}10`] : [`${topicColor}20`, `${topicColor}10`] :
+                  [topicColor, topicColor + 'dd']
+                }
+                style={styles.joinButtonGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                <Text style={[styles.joinText, topic.isJoined && styles.joinedText]}>
+                  {topic.isJoined ? '✓ Joined' : 'Join Topic'}
+                </Text>
+              </LinearGradient>
+            </TouchableOpacity>
+            
+            {!isTopicSelected && currentUser && (
+              <TouchableOpacity
+                style={[styles.addToFeedBtn, { backgroundColor: `${topicColor}15` }]}
+                onPress={navigateToEditTopics}
+              >
+                <Text style={[styles.addToFeedText, { color: topicColor }]}>
+                  Add to Feed
+                </Text>
+                <Ionicons name="add-circle-outline" size={16} color={topicColor} />
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
       </LinearGradient>
 
@@ -815,7 +885,7 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
                 Be the first to post in {displayTopic.name}!
               </Text>
               <TouchableOpacity style={styles.emptyPostBtn} onPress={navigateToCreatePost}>
-                <LinearGradient colors={[displayTopic.color, displayTopic.color + 'dd']} style={styles.emptyPostGradient}>
+                <LinearGradient colors={[topicColor, topicColor + 'dd']} style={styles.emptyPostGradient}>
                   <Ionicons name="create-outline" size={18} color="#fff" />
                   <Text style={styles.emptyPostText}>Create Post</Text>
                 </LinearGradient>
@@ -825,8 +895,8 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
         />
       </View>
 
-      <TouchableOpacity style={[styles.fab, { backgroundColor: displayTopic.color }]} onPress={navigateToCreatePost}>
-        <LinearGradient colors={[displayTopic.color, displayTopic.color + 'aa']} style={styles.fabGradient}>
+      <TouchableOpacity style={[styles.fab, { backgroundColor: topicColor }]} onPress={navigateToCreatePost}>
+        <LinearGradient colors={[topicColor, topicColor + 'aa']} style={styles.fabGradient}>
           <Ionicons name="create-outline" size={28} color="white" />
         </LinearGradient>
       </TouchableOpacity>
@@ -881,7 +951,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 20,
+    marginBottom: 16,
   },
   statPill: {
     flexDirection: 'row',
@@ -892,6 +962,12 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   stat: { fontSize: 13, fontWeight: '600' },
+  topicActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 4,
+  },
   joinButton: {
     borderRadius: 24,
     overflow: 'hidden',
@@ -904,6 +980,33 @@ const styles = StyleSheet.create({
   joinedButton: { opacity: 0.8 },
   joinText: { color: 'white', fontSize: 16, fontWeight: '700' },
   joinedText: { color: CommunityColors.primary },
+  addToFeedBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+  },
+  addToFeedText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  categoryBadgeLarge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  categoryBadgeLargeEmoji: { fontSize: 14 },
+  categoryBadgeLargeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'capitalize',
+  },
   content: {
     flex: 1,
     borderTopLeftRadius: 30,
@@ -1004,15 +1107,32 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   topicTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
     alignSelf: 'flex-start',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 8,
     marginBottom: 12,
+    gap: 8,
   },
   topicTagText: {
     fontSize: 11,
     fontWeight: '700',
+  },
+  categoryBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  categoryBadgeEmoji: { fontSize: 10 },
+  categoryBadgeText: {
+    fontSize: 9,
+    fontWeight: '600',
+    textTransform: 'capitalize',
   },
   postActions: { flexDirection: 'row', gap: 16, flexWrap: 'wrap' },
   action: { flexDirection: 'row', alignItems: 'center', gap: 4 },
