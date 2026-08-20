@@ -116,11 +116,54 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
     if (!isMountedRef.current) return;
     
     try {
-      // Check if we have babies locally
-      const localBabies = await getAllBabiesFromDb();
+      // First try to get babies from Supabase directly
+      let localBabies = await getAllBabiesFromDb();
+      let hasBabies = localBabies && localBabies.length > 0;
       
-      if (localBabies && localBabies.length > 0) {
-        console.log('[BabyOnboarding] Found babies in DB, checking setup');
+      // If no local babies, try to sync from Supabase
+      if (!hasBabies) {
+        try {
+          console.log('[BabyOnboarding] No local babies, checking Supabase...');
+          const userId = userProfile?.id || (await supabase.auth.getUser()).data?.user?.id;
+          if (userId) {
+            const { data: supabaseBabies, error } = await supabase
+              .from('babies')
+              .select('*')
+              .or(`parent1_id.eq.${userId},parent2_id.eq.${userId}`)
+              .eq('is_active', true);
+            
+            if (!error && supabaseBabies && supabaseBabies.length > 0) {
+              console.log(`[BabyOnboarding] Found ${supabaseBabies.length} babies in Supabase`);
+              // Sync them to local DB
+              const { createBabyInDb, setCurrentBabyInDb } = await import('../../database/dbHelpers');
+              for (const baby of supabaseBabies) {
+                await createBabyInDb({
+                  id: baby.id,
+                  name: baby.name,
+                  avatar: baby.avatar || undefined,
+                  dateOfBirth: baby.date_of_birth,
+                  gender: baby.gender || undefined,
+                  bloodType: baby.blood_type || undefined,
+                  medicalNotes: baby.medical_notes || undefined,
+                  parent1Id: baby.parent1_id || undefined,
+                  parent2Id: baby.parent2_id || undefined,
+                });
+              }
+              // Set first baby as current
+              await setCurrentBabyInDb(supabaseBabies[0].id);
+              // Reload babies
+              localBabies = await getAllBabiesFromDb();
+              hasBabies = localBabies && localBabies.length > 0;
+            }
+          }
+        } catch (syncError) {
+          console.warn('[BabyOnboarding] Failed to sync from Supabase:', syncError);
+        }
+      }
+      
+      if (hasBabies) {
+        console.log('[BabyOnboarding] Found babies, checking setup');
+        setHasBabies(true);
         
         const { setupComplete } = await wasSetupCompleted();
         
@@ -141,8 +184,6 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
           return true;
         }
         
-        // Still not complete? Let the user select
-        setHasBabies(true);
         return true;
       }
       
@@ -151,7 +192,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
       console.warn('[BabyOnboarding] Check navigate error:', error);
       return false;
     }
-  }, [completeSetup, navigation, wasSetupCompleted]);
+  }, [completeSetup, navigation, wasSetupCompleted, userProfile]);
 
   // ─── LOAD BABIES ──────────────────────────────────────────────────
   useEffect(() => {

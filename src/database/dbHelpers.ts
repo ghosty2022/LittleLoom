@@ -437,8 +437,61 @@ export async function deleteAppSetting(key: string): Promise<void> {
 
 /* ─── BABIES ────────────────────────────────────────────────────────── */
 
-export async function getAllBabiesFromDb() {
+export async function getAllBabiesFromDb(forceSync: boolean = true) {
   try {
+    // Always pull from Supabase first to ensure we have the latest data
+    if (forceSync) {
+      try {
+        const { data: remoteBabies, error } = await supabase
+          .from('babies')
+          .select('*')
+          .eq('is_active', true);
+
+        if (!error && remoteBabies && remoteBabies.length > 0) {
+          console.log(`[DB] Found ${remoteBabies.length} babies in Supabase, syncing to local DB`);
+          
+          const now = new Date().toISOString();
+          for (const baby of remoteBabies) {
+            db.insert(babies).values({
+              id: baby.id,
+              name: baby.name,
+              avatar: baby.avatar ?? undefined,
+              dateOfBirth: baby.date_of_birth,
+              gender: baby.gender ?? undefined,
+              bloodType: baby.blood_type ?? undefined,
+              medicalNotes: baby.medical_notes ?? undefined,
+              parent1Id: baby.parent1_id ?? undefined,
+              parent2Id: baby.parent2_id ?? undefined,
+              createdAt: baby.created_at ?? now,
+              updatedAt: now,
+              isActive: baby.is_active ?? true,
+              syncStatus: 'synced',
+            }).onConflictDoUpdate({
+              target: babies.id,
+              set: {
+                name: baby.name,
+                avatar: baby.avatar ?? undefined,
+                dateOfBirth: baby.date_of_birth,
+                gender: baby.gender ?? undefined,
+                bloodType: baby.blood_type ?? undefined,
+                medicalNotes: baby.medical_notes ?? undefined,
+                parent1Id: baby.parent1_id ?? undefined,
+                parent2Id: baby.parent2_id ?? undefined,
+                updatedAt: now,
+                isActive: baby.is_active ?? true,
+                syncStatus: 'synced',
+              }
+            }).run();
+          }
+        } else if (error) {
+          console.warn('[DB] Supabase pull failed for getAllBabiesFromDb:', error.message);
+        }
+      } catch (pullError) {
+        console.warn('[DB] Supabase pull error for getAllBabiesFromDb:', pullError);
+      }
+    }
+
+    // Return from local DB
     return db.select().from(babies).where(eq(babies.isActive, true)).all();
   } catch (error) {
     const msg = String(error);
@@ -449,45 +502,67 @@ export async function getAllBabiesFromDb() {
   }
 }
 
-export async function getBabyByIdFromDb(id: string) {
+export async function getBabyByIdFromDb(id: string, forceSync: boolean = true) {
   try {
-    const result = db.select().from(babies).where(eq(babies.id, id)).all();
-    if (result[0]) return result[0];
+    // Always try to pull from Supabase first if forceSync is true
+    if (forceSync) {
+      try {
+        const { data, error } = await supabase
+          .from('babies')
+          .select('*')
+          .eq('id', id)
+          .maybeSingle();
 
-    // Best-effort pull from Supabase
-    try {
-      const { data, error } = await supabase
-        .from('babies')
-        .select('*')
-        .eq('id', id)
-        .maybeSingle();
+        if (!error && data) {
+          const now = new Date().toISOString();
+          // Upsert to local DB
+          db.insert(babies).values({
+            id: data.id,
+            name: data.name,
+            avatar: data.avatar ?? undefined,
+            dateOfBirth: data.date_of_birth,
+            gender: data.gender ?? undefined,
+            bloodType: data.blood_type ?? undefined,
+            medicalNotes: data.medical_notes ?? undefined,
+            parent1Id: data.parent1_id ?? undefined,
+            parent2Id: data.parent2_id ?? undefined,
+            createdAt: data.created_at ?? now,
+            updatedAt: now,
+            isActive: data.is_active ?? true,
+            syncStatus: 'synced',
+          }).onConflictDoUpdate({
+            target: babies.id,
+            set: {
+              name: data.name,
+              avatar: data.avatar ?? undefined,
+              dateOfBirth: data.date_of_birth,
+              gender: data.gender ?? undefined,
+              bloodType: data.blood_type ?? undefined,
+              medicalNotes: data.medical_notes ?? undefined,
+              parent1Id: data.parent1_id ?? undefined,
+              parent2Id: data.parent2_id ?? undefined,
+              updatedAt: now,
+              isActive: data.is_active ?? true,
+              syncStatus: 'synced',
+            }
+          }).run();
 
-      if (!error && data) {
-        const now = new Date().toISOString();
-        db.insert(babies).values({
-          id: data.id,
-          name: data.name,
-          avatar: data.avatar ?? undefined,
-          dateOfBirth: data.date_of_birth,
-          gender: data.gender ?? undefined,
-          bloodType: data.blood_type ?? undefined,
-          medicalNotes: data.medical_notes ?? undefined,
-          parent1Id: data.parent1_id ?? undefined,
-          parent2Id: data.parent2_id ?? undefined,
-          createdAt: data.created_at ?? now,
-          updatedAt: now,
-          isActive: data.is_active ?? true,
-          syncStatus: 'synced',
-        }).onConflictDoNothing().run();
-
-        const pulled = db.select().from(babies).where(eq(babies.id, id)).all();
-        return pulled[0] || null;
+          const pulled = db.select().from(babies).where(eq(babies.id, id)).all();
+          if (pulled[0]) {
+            console.log(`[DB] Synced baby '${data.name}' from Supabase`);
+            return pulled[0];
+          }
+        } else if (error) {
+          console.warn(`[DB] Supabase pull failed for baby('${id}'):`, error.message);
+        }
+      } catch (pullError) {
+        console.warn(`[DB] Supabase pull error for baby('${id}'):`, pullError);
       }
-    } catch (pullError) {
-      console.warn(`[DB] Supabase pull failed for baby('${id}'):`, pullError);
     }
 
-    return null;
+    // Fallback to local DB
+    const result = db.select().from(babies).where(eq(babies.id, id)).all();
+    return result[0] || null;
   } catch (error) {
     const msg = String(error);
     if (msg.includes('no such table') || msg.includes('prepareSync')) {
@@ -622,6 +697,47 @@ export async function getCurrentBabyFromDb() {
   const babyId = await getAppSetting('current_baby_id');
   if (!babyId) return null;
   return getBabyByIdFromDb(babyId);
+}
+
+// ─── ADD THIS NEW FUNCTION ─────────────────────────────────────────────
+export async function getCurrentBabyData(babyId: string) {
+  try {
+    // First check local DB
+    const localBaby = await getBabyByIdFromDb(babyId);
+    if (localBaby) return localBaby;
+
+    // If not found locally, pull from Supabase
+    const { data, error } = await supabase
+      .from('babies')
+      .select('*')
+      .eq('id', babyId)
+      .maybeSingle();
+
+    if (error || !data) {
+      console.warn(`[DB] getCurrentBabyData: Baby ${babyId} not found in Supabase`);
+      return null;
+    }
+
+    // Save to local DB
+    const now = new Date().toISOString();
+    await createBabyInDb({
+      id: data.id,
+      name: data.name,
+      avatar: data.avatar ?? undefined,
+      dateOfBirth: data.date_of_birth,
+      gender: data.gender ?? undefined,
+      bloodType: data.blood_type ?? undefined,
+      medicalNotes: data.medical_notes ?? undefined,
+      parent1Id: data.parent1_id ?? undefined,
+      parent2Id: data.parent2_id ?? undefined,
+    });
+
+    // Return the saved baby
+    return await getBabyByIdFromDb(babyId);
+  } catch (error) {
+    console.error('[DB] getCurrentBabyData error:', error);
+    return null;
+  }
 }
 
 /* ─── TRACKER ENTRIES ──────────────────────────────────────────────── */

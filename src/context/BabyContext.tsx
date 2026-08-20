@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
- import { showAlert } from '@/utils/alert';
+import { showAlert } from '@/utils/alert';
 import { useAuth } from './AuthContext';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -25,12 +25,6 @@ import type { Baby as DbBaby, TrackerEntry as DbTrackerEntry } from '../database
 /* ------------------------------------------------------------------ */
 /*  Storage Keys                                                      */
 /* ------------------------------------------------------------------ */
-/* DEPRECATED — legacy per-baby AsyncStorage keys.
-   Nothing in this context reads or writes them anymore: babies live in the
-   `babies` table and ALL tracker data (growth, milestones, sleep, feeding,
-   potty, medication, activities) lives in `tracker_entries`.
-   They remain exported only because the one-time migration in dbHelpers
-   (runTrackerLogMigration) still reads them to import pre-DB data. */
 export const STORAGE_KEYS = {
   BABIES: '@littleloom_babies',
   CURRENT_BABY: '@littleloom_current_baby',
@@ -387,7 +381,7 @@ const getDateKey = (date: Date | string): string => {
 
 const withRetry = async <T,>(
   operation: () => Promise<T>,
-  maxRetries: number = 3,
+  maxRetries: number = 2,
   delayMs: number = 100
 ): Promise<T> => {
   let lastError: unknown;
@@ -404,14 +398,22 @@ const withRetry = async <T,>(
   throw lastError;
 };
 
+// Timeout wrapper for async operations
+const withTimeout = async <T,>(
+  operation: () => Promise<T>,
+  timeoutMs: number = 5000
+): Promise<T> => {
+  return Promise.race([
+    operation(),
+    new Promise<T>((_, reject) => 
+      setTimeout(() => reject(new Error(`Operation timed out after ${timeoutMs}ms`)), timeoutMs)
+    )
+  ]);
+};
+
 /* ------------------------------------------------------------------ */
 /*  DB row → domain model mappers                                      */
-/*  Single source of truth for translating tracker_entries rows back   */
-/*  into the typed shapes the UI consumes.                             */
 /* ------------------------------------------------------------------ */
-
-/* Row JSON columns may arrive already parsed (mode: 'json') or as a raw
-   string depending on how the row was written — tolerate both. */
 const parseRowData = (raw: unknown): Record<string, any> =>
   typeof raw === 'string' ? safeParse(raw, {}) : ((raw as Record<string, any>) ?? {});
 
@@ -550,10 +552,6 @@ const mapRowToActivity = (row: DbTrackerEntry): ActivityEntry => {
   };
 };
 
-/* Fields that live in dedicated tracker_entries columns (or are derived)
-   rather than in the JSON `data` payload. Everything else on an
-   ActivityEntry is preserved inside `data` so it survives a DB round-trip —
-   including icon, notificationId and reminderScheduled. */
 const ENTRY_COLUMN_FIELDS = new Set([
   'id', 'babyId', 'type', 'timestamp', 'title', 'details',
   'loggedBy', 'loggedByName', 'notes', 'photo', 'tags', 'syncedAt',
@@ -594,10 +592,10 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const ageIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const initRef = useRef(false);
-
-  /* FIX #5: isMounted ref for all async operations */
   const isMounted = useRef(true);
   const isCreatingRef = useRef(false);
+  const loadInProgressRef = useRef(false);
+
   /* ---- Age calculation ---- */
   const calculateAge = useCallback((birthDate: string): string => {
     const birth = new Date(birthDate);
@@ -635,14 +633,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [state.babies, state.currentBabyId]);
 
   /* ---- Data loading ---- */
-  /* All tracker data (growth, milestones, sleep, feeding, potty, medication,
-     activities) is loaded from the Drizzle DB. The legacy per-baby
-     AsyncStorage keys are migrated once by runOneTimeMigration() /
-     runTrackerLogMigration() and are never read here — reading them was the
-     source of "data disappears after restart" bugs, because writes had
-     already moved to the DB while reads still pointed at dead keys. */
   const loadAllBabyData = useCallback(async (babyId: string) => {
-    /* FIX #5: Guard against unmounted component */
     if (!isMounted.current) return;
 
     setState(prev => ({ ...prev, isLoading: true }));
@@ -651,7 +642,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const rows = await withRetry(() => getEntriesByBabyFromDb(babyId));
 
-      /* FIX #5: Check isMounted before setting state */
       if (!isMounted.current) return;
 
       const growthData: GrowthMeasurement[] = [];
@@ -701,13 +691,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         activities,
       }));
 
-      // Also sync activities to the entries-compatible format for TrackerContext
-      try {
-        const { setCurrentBabyId } = await import('./TrackerContext');
-        // TrackerContext will pick up via its own refresh
-      } catch {
-        // TrackerContext may not be available, that's OK
-      }
     } catch (error) {
       console.error('Error loading baby data:', error);
       if (isMounted.current) {
@@ -720,16 +703,37 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
+  /* ─── CRITICAL FIX: loadBabies with timeout and fallback ──────────── */
   const loadBabies = useCallback(async () => {
+    // Prevent concurrent loads
+    if (loadInProgressRef.current) {
+      console.log('[BabyContext] Load already in progress, skipping');
+      return;
+    }
+
     if (!isMounted.current) return;
+
+    loadInProgressRef.current = true;
+    console.log('[BabyContext] Starting loadBabies...');
 
     setState(prev => ({ ...prev, isLoading: true }));
 
     try {
-      // Run migration first, then load from Drizzle
-      await runOneTimeMigration();
+      // ─── Step 1: Try migration with timeout ──────────────────────────
+      try {
+        console.log('[BabyContext] Running migration...');
+        await withTimeout(() => runOneTimeMigration(), 3000);
+        console.log('[BabyContext] Migration completed');
+      } catch (migrationError) {
+        console.warn('[BabyContext] Migration timed out or failed, continuing:', migrationError);
+        // Continue anyway - migration might not be needed
+      }
 
-      const dbBabies = await getAllBabiesFromDb();
+      // ─── Step 2: Load babies from DB ──────────────────────────────────
+      console.log('[BabyContext] Fetching babies from DB...');
+      const dbBabies = await withTimeout(() => getAllBabiesFromDb(), 3000);
+      console.log(`[BabyContext] Found ${dbBabies.length} babies in DB`);
+
       const currentId = await getAppSetting('current_baby_id');
       const hasSkipped = await getAppSetting('has_skipped_baby');
 
@@ -743,7 +747,12 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const currentBaby = babies.find(b => b.id === effectiveCurrentId) || babies[0] || null;
 
-      if (!isMounted.current) return;
+      if (!isMounted.current) {
+        loadInProgressRef.current = false;
+        return;
+      }
+
+      console.log(`[BabyContext] Setting ${babies.length} babies in state`);
 
       setState(prev => ({
         ...prev,
@@ -754,27 +763,69 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         hasSkippedBaby: hasSkipped === 'true',
       }));
 
+      // ─── Step 3: Load tracker data for current baby ───────────────────
       if (effectiveCurrentId) {
+        console.log('[BabyContext] Loading tracker data for current baby...');
         await loadAllBabyData(effectiveCurrentId);
+        console.log('[BabyContext] Tracker data loaded');
       }
+
+      console.log('[BabyContext] loadBabies completed successfully');
+
     } catch (error) {
-      console.error('Error loading babies:', error);
-      if (isMounted.current) {
-        setState(prev => ({ ...prev, isLoading: false }));
+      console.error('[BabyContext] Error loading babies:', error);
+      
+      // ─── Fallback: Try direct DB query without timeout ──────────────
+      try {
+        console.log('[BabyContext] Attempting fallback DB query...');
+        const dbBabies = await getAllBabiesFromDb();
+        if (dbBabies && dbBabies.length > 0 && isMounted.current) {
+          const babies = dbBabies.map(b => mapDbBabyToProfile(b, calculateAge));
+          const currentId = await getAppSetting('current_baby_id');
+          const effectiveCurrentId = currentId || babies[0]?.id || null;
+          const currentBaby = babies.find(b => b.id === effectiveCurrentId) || babies[0] || null;
+
+          setState(prev => ({
+            ...prev,
+            isLoading: false,
+            babies,
+            currentBabyId: effectiveCurrentId,
+            currentBaby,
+          }));
+
+          if (effectiveCurrentId) {
+            await loadAllBabyData(effectiveCurrentId);
+          }
+          console.log('[BabyContext] Fallback load completed');
+        } else {
+          throw error;
+        }
+      } catch (fallbackError) {
+        console.error('[BabyContext] Fallback also failed:', fallbackError);
+        if (isMounted.current) {
+          setState(prev => ({ ...prev, isLoading: false }));
+        }
       }
+    } finally {
+      loadInProgressRef.current = false;
     }
   }, [calculateAge, loadAllBabyData]);
 
+  /* ---- Initial load ---- */
   useEffect(() => {
     if (initRef.current) return;
     initRef.current = true;
 
-    /* FIX #5: Track mount status */
     isMounted.current = true;
-    loadBabies();
+    
+    // Small delay to ensure everything is ready
+    const timer = setTimeout(() => {
+      loadBabies();
+    }, 100);
 
     return () => {
       isMounted.current = false;
+      clearTimeout(timer);
     };
   }, [loadBabies]);
 
@@ -783,7 +834,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (state.babies.length === 0) return;
 
     const updateAges = () => {
-      /* FIX #5: Guard state updates */
       if (!isMounted.current) return;
 
       setState(prev => ({
@@ -844,44 +894,42 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const now = new Date();
     if (birthDate > now) {
       Alert.alert('Invalid Date', 'Birth date cannot be in the future');
+      isCreatingRef.current = false;
       return null;
     }
     if (isNaN(birthDate.getTime())) {
       Alert.alert('Invalid Date', 'Please enter a valid birth date');
+      isCreatingRef.current = false;
       return null;
     }
 
     try {
       const existingBabies = await getAllBabiesFromDb();
-          // Duplicate guard: same name + birth date
-    const duplicate = existingBabies.find(b => b.name === data.name && b.dateOfBirth === data.birthDate);
-    if (duplicate) {
-      isCreatingRef.current = false;
-      Alert.alert('Duplicate Profile', 'A baby with this name and birth date already exists.');
-      return null;
-    }
+      const duplicate = existingBabies.find(b => b.name === data.name && b.dateOfBirth === data.birthDate);
+      if (duplicate) {
+        isCreatingRef.current = false;
+        Alert.alert('Duplicate Profile', 'A baby with this name and birth date already exists.');
+        return null;
+      }
+      
       const newId = generateId();
+      const effectiveParent1Id = data.parent1Id || authProfile?.id || 'default';
 
-// Use authProfile for parent1Id if not provided
-const effectiveParent1Id = data.parent1Id || authProfile?.id || 'default';
-await createBabyInDb({
-  id: newId,
-  name: data.name,
-  avatar: data.avatar,
-  dateOfBirth: data.birthDate,
-  gender: data.gender === 'boy' ? 'male' : data.gender === 'girl' ? 'female' : 'other',
-  bloodType: data.bloodType,
-  medicalNotes: data.medicalNotes,
-  parent1Id: effectiveParent1Id,
-});
-      /* Read-back verification: createBabyInDb swallows "table not ready"
-         failures (returns [] instead of throwing), so confirm the row really
-         exists before reporting success. Failing here — with a null return
-         the caller already handles — prevents the downstream
-         "CRITICAL: Baby profile was not persisted" class of error. */
+      await createBabyInDb({
+        id: newId,
+        name: data.name,
+        avatar: data.avatar,
+        dateOfBirth: data.birthDate,
+        gender: data.gender === 'boy' ? 'male' : data.gender === 'girl' ? 'female' : 'other',
+        bloodType: data.bloodType,
+        medicalNotes: data.medicalNotes,
+        parent1Id: effectiveParent1Id,
+      });
+
       const persisted = await getBabyByIdFromDb(newId);
       if (!persisted) {
         console.error('[BabyContext] createBaby: insert did not persist, aborting');
+        isCreatingRef.current = false;
         return null;
       }
 
@@ -915,16 +963,10 @@ await createBabyInDb({
         }));
       }
 
-      /* Load the EFFECTIVE current baby's data — previously this always
-         loaded the NEW baby's (empty) data, which wiped the current baby's
-         logs from state whenever a second baby was added. */
       await loadAllBabyData(newCurrentId);
-
-      // Sync to TrackerContext via AsyncStorage so it picks up on next refresh
       await AsyncStorage.setItem('@littleloom_current_baby', newCurrentId);
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-            // Ensure navigator picks up the new count immediately
       await loadBabies();
 
       isCreatingRef.current = false;
@@ -935,7 +977,7 @@ await createBabyInDb({
       showAlert('Error', 'Failed to create baby profile');
       return null;
     }
-  }, [calculateAge, clearSkipBaby, loadAllBabyData, state.currentBabyId, state.babies]);
+  }, [calculateAge, clearSkipBaby, loadAllBabyData, state.currentBabyId, state.babies, authProfile, loadBabies]);
 
   /* ---- Update baby ---- */
   const updateBaby = useCallback(async (id: string, updates: Partial<BabyProfile>) => {
@@ -970,7 +1012,6 @@ await createBabyInDb({
   const deleteBaby = useCallback(async (id: string): Promise<boolean> => {
     try {
       await deleteBabyFromDb(id);
-      // Entries cascade delete via ON DELETE CASCADE in schema
 
       let newCurrentId = state.currentBabyId;
       if (state.currentBabyId === id) {
@@ -1036,7 +1077,6 @@ await createBabyInDb({
         }));
       }
 
-      // Sync baby ID to AsyncStorage for TrackerContext to pick up
       await AsyncStorage.setItem('@littleloom_current_baby', id);
 
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -1048,9 +1088,6 @@ await createBabyInDb({
   }, [loadAllBabyData, calculateAge]);
 
   /* ---- Refresh current baby ---- */
-  /* Reads from the Drizzle DB. Previously this read the legacy
-     @littleloom_babies AsyncStorage key, which nothing writes anymore —
-     so it silently no-oped every time. */
   const refreshCurrentBaby = useCallback(async () => {
     if (!state.currentBabyId) return;
 
@@ -1069,8 +1106,6 @@ await createBabyInDb({
           ? mapDbBabyToProfile(currentRow, calculateAge)
           : prev.currentBaby;
 
-        /* Guard against reference churn: only swap references when
-           meaningful fields actually changed. */
         const babiesChanged =
           babies.length !== prev.babies.length ||
           babies.some(
@@ -1092,7 +1127,7 @@ await createBabyInDb({
           prev.currentBaby.gender !== nextCurrentBaby.gender;
 
         if (!babiesChanged && !currentBabyChanged) {
-          return prev; // exact same state object → no re-renders
+          return prev;
         }
 
         return {
@@ -1252,7 +1287,7 @@ await createBabyInDb({
     }
   }, [state.currentBabyId, state.milestones]);
 
-  /* ---- Sleep (Drizzle DB — trackerId 'sleep') ---- */
+  /* ---- Sleep ---- */
   const addSleepLog = useCallback(async (log: Omit<SleepLog, 'id' | 'createdAt'>): Promise<boolean> => {
     try {
       const newId = generateId();
@@ -1338,7 +1373,7 @@ await createBabyInDb({
     return state.sleepLogs.filter(log => new Date(log.startTime) >= today).length;
   }, [state.sleepLogs]);
 
-  /* ---- Feeding (Drizzle DB — trackerId 'feeding') ---- */
+  /* ---- Feeding ---- */
   const addFeedingLog = useCallback(async (log: Omit<FeedingLog, 'id' | 'createdAt'>): Promise<boolean> => {
     try {
       if (log.amount !== undefined && (typeof log.amount !== 'number' || isNaN(log.amount) || log.amount < 0)) {
@@ -1392,7 +1427,7 @@ await createBabyInDb({
     return state.feedingLogs.filter(log => new Date(log.startTime) >= today).length;
   }, [state.feedingLogs]);
 
-  /* ---- Potty (Drizzle DB — trackerId 'potty') ---- */
+  /* ---- Potty ---- */
   const calculatePottyStreak = useCallback((logs: PottyLog[]): number => {
     if (logs.length === 0) return 0;
 
@@ -1475,7 +1510,7 @@ await createBabyInDb({
     return Math.round((successful / state.pottyLogs.length) * 100);
   }, [state.pottyLogs]);
 
-  /* ---- Medication (Drizzle DB — trackerId 'medication') ---- */
+  /* ---- Medication ---- */
   const addMedicationLog = useCallback(async (log: Omit<MedicationLog, 'id' | 'createdAt'>): Promise<boolean> => {
     try {
       if (!log.medicationName.trim()) {
@@ -1537,13 +1572,7 @@ await createBabyInDb({
 
     try {
       const newId = generateId();
-
-      /* Everything that isn't a dedicated column is preserved in the JSON
-         payload — including icon, notificationId and reminderScheduled,
-         which previously were dropped on write and lost after reload. */
       const entryData = extractEntryData(entry);
-
-      // Ensure trackerId is valid and normalized
       const trackerId = entry.type;
 
       await createEntryInDb({
@@ -1625,7 +1654,7 @@ await createBabyInDb({
     }
   }, [state.currentBabyId, state.activities]);
 
-  /* ---- Cross-context sync: ActivityContext ---- */
+  /* ---- Cross-context sync ---- */
   const syncToActivityContext = useCallback(async (entry: ActivityEntry) => {
     try {
       const existing = await AsyncStorage.getItem(ACTIVITY_CONTEXT_KEY);
@@ -1634,8 +1663,7 @@ await createBabyInDb({
       if (exists) return;
       const merged = [entry, ...existingEntries];
       await AsyncStorage.setItem(ACTIVITY_CONTEXT_KEY, JSON.stringify(merged));
-    } catch {
-    }
+    } catch {}
   }, []);
 
   const removeFromActivityContext = useCallback(async (entryId: string) => {
@@ -1645,8 +1673,7 @@ await createBabyInDb({
       const entries: ActivityEntry[] = JSON.parse(existing);
       const filtered = entries.filter(e => e.id !== entryId);
       await AsyncStorage.setItem(ACTIVITY_CONTEXT_KEY, JSON.stringify(filtered));
-    } catch {
-    }
+    } catch {}
   }, []);
 
   const syncWithActivityContext = useCallback(async () => {
@@ -1661,8 +1688,7 @@ await createBabyInDb({
         const merged = [...newActivities, ...existingEntries];
         await AsyncStorage.setItem(ACTIVITY_CONTEXT_KEY, JSON.stringify(merged));
       }
-    } catch {
-    }
+    } catch {}
   }, [state.currentBabyId, state.activities]);
 
   /* ---- Notification integration ---- */
@@ -1701,11 +1727,10 @@ await createBabyInDb({
         await updateEntry(entry.id, { notificationId: undefined, reminderScheduled: false });
         await AsyncStorage.removeItem(`${NOTIFICATION_PREFIX}${entry.id}`);
       }
-    } catch {
-    }
+    } catch {}
   }, [state.activities]);
 
-  /* ---- ActivityContext compatibility layer ---- */
+  /* ---- ActivityContext compatibility ---- */
   const entries = state.activities;
 
   const loadEntries = useCallback(async () => {
@@ -1717,9 +1742,6 @@ await createBabyInDb({
   const deleteEntry = deleteActivity;
   const addEntry = addActivity;
 
-  /* Persists edits to the Drizzle DB. Previously this wrote to the legacy
-     per-baby ACTIVITIES AsyncStorage key — which nothing reads anymore —
-     so every edit was silently lost on the next load. */
   const updateEntry = useCallback(async (id: string, entry: Partial<ActivityEntry>): Promise<boolean> => {
     try {
       if (!state.currentBabyId) return false;
@@ -1904,9 +1926,6 @@ await createBabyInDb({
   return <BabyContext.Provider value={value}>{children}</BabyContext.Provider>;
 };
 
-/* ------------------------------------------------------------------ */
-/*  Hook                                                               */
-/* ------------------------------------------------------------------ */
 export const useBaby = (): BabyContextType => {
   const context = useContext(BabyContext);
   if (!context) throw new Error('useBaby must be used within BabyProvider');
