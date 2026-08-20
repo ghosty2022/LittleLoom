@@ -12,7 +12,7 @@ import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/dat
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import { useAuth } from '../../context/AuthContext';
-import { supabase } from '@/utils/supabase'; // ADD THIS
+import { supabase } from '@/utils/supabase';
 import { useSweetAlert } from '../../hooks/useSweetAlert';
 import { useBaby } from '../../context/BabyContext';
 import { getBabyByIdFromDb, setAppSetting } from '../../database/dbHelpers';
@@ -47,13 +47,10 @@ const copyImageToPermanent = async (
   const permanentUri = getPermanentImagePath(babyId, prefix);
 
   try {
-    // Handle different URI types
     if (tempUri.startsWith('content://')) {
-      // Android content:// URIs need base64 read/write
       const base64 = await FileSystem.readAsStringAsync(tempUri, { encoding: FileSystem.EncodingType.Base64 });
       await FileSystem.writeAsStringAsync(permanentUri, base64, { encoding: FileSystem.EncodingType.Base64 });
     } else if (tempUri.startsWith('data:')) {
-      // Data URIs (base64 embedded)
       const base64Data = tempUri.split(',')[1];
       if (base64Data) {
         await FileSystem.writeAsStringAsync(permanentUri, base64Data, { encoding: FileSystem.EncodingType.Base64 });
@@ -61,7 +58,6 @@ const copyImageToPermanent = async (
         throw new Error('Invalid data URI');
       }
     } else {
-      // file:// URIs and other local paths can use copyAsync
       await FileSystem.copyAsync({ from: tempUri, to: permanentUri });
     }
 
@@ -111,9 +107,6 @@ const isEmoji = (value: string | undefined | null): boolean => {
   return true;
 };
 
-/* ------------------------------------------------------------------ */
-/*  Constants                                                          */
-/* ------------------------------------------------------------------ */
 const SKIN_TONES = [
   { id: 0, emoji: '👶', color: '#F5D0C5', label: 'Light' },
   { id: 1, emoji: '👶🏻', color: '#F5D0C5', label: 'Fair' },
@@ -127,14 +120,8 @@ const AVATAR_OPTIONS = ['👶', '🍼', '🧸', '🎀', '👼', '🤱', '👨‍
 
 const BLOOD_TYPES = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 
-/* ------------------------------------------------------------------ */
-/*  Types                                                              */
-/* ------------------------------------------------------------------ */
 type BabyProfileCreateScreenProps = NativeStackScreenProps<RootStackParamList, 'CreateBabyProfile'>;
 
-/* ------------------------------------------------------------------ */
-/*  Main Component                                                     */
-/* ------------------------------------------------------------------ */
 export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreateScreenProps) {
   const insets = useSafeAreaInsets();
   const { darkMode: isDark, themeColors, triggerHaptic, shouldReduceMotion } = useCustomization();
@@ -142,7 +129,6 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
   const { createBaby, updateBaby, calculateAge, loadBabies, switchBaby, babies } = useBaby();
   const { error: showError, success: showSuccess } = useSweetAlert();
 
-  /* ---- Form state ---- */
   const [name, setName] = useState('');
   const [birthDate, setBirthDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -159,21 +145,17 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
   const [creatorRelationship, setCreatorRelationship] = useState<'Father' | 'Mother' | 'Guardian'>('Mother');
 
-  /* ---- CRASH FIX: Image picker request guard ---- */
   const imagePickerLock = useRef(false);
   const isCreatingRef = useRef(false);
   const isMounted = useRef(true);
 
-  /* ---- Refs ---- */
   const scrollViewRef = useRef<Animated.ScrollView>(null);
   const nameInputRef = useRef<TextInput>(null);
 
-  /* ---- Derived / Memoized ---- */
   const ageDisplay = useMemo(() => calculateAge(birthDate.toISOString()), [birthDate, calculateAge]);
   const ageMonths = useMemo(() => getAgeInMonths(birthDate.toISOString()), [birthDate]);
   const suggestions = useMeasurementSuggestions(gender, ageMonths);
 
-  /* FIX #1: Safely resolve gradient colors with fallback for undefined secondary */
   const gradientColors = useMemo<[string, string, string]>(() => {
     if (isDark) return ['#0a0a0a', '#1a1a2e', '#16213e'];
     const c = themeColors.colors;
@@ -183,7 +165,6 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
     return ['#667eea', '#764ba2', '#f093fb'];
   }, [isDark, themeColors]);
 
-  /* FIX #1: Safely resolve secondary color for buttons */
   const secondaryColor = useMemo(() => {
     const c = themeColors.colors;
     if (Array.isArray(c) && c.length >= 2) {
@@ -194,7 +175,6 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
 
   const statusBarStyle = useMemo(() => (isDark ? 'light-content' : 'dark-content'), [isDark]);
 
-  /* ---- Lifecycle ---- */
   useEffect(() => {
     isMounted.current = true;
     return () => {
@@ -203,7 +183,6 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
     };
   }, []);
 
-  /* ---- Date handling ---- */
   const onDateChange = useCallback(
     (event: DateTimePickerEvent, selectedDate?: Date) => {
       if (Platform.OS === 'android') {
@@ -225,7 +204,6 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
     setShowDatePicker(false);
   }, []);
 
-  /* ---- CRASH FIX: Image handling with getPendingResultAsync and lock guard ---- */
   const pickImage = useCallback(async () => {
     if (imagePickerLock.current) {
       console.log('Image picker already running, skipping');
@@ -323,8 +301,9 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
       imagePickerLock.current = false;
     }
   }, [showError, triggerHaptic]);
-const {  wasSetupCompleted } = useAuth();
-  /* ---- Validation ---- */
+
+  const { wasSetupCompleted } = useAuth();
+
   const validateStep1 = useCallback((): boolean => {
     const trimmed = name.trim();
     if (!trimmed) {
@@ -364,14 +343,12 @@ const {  wasSetupCompleted } = useAuth();
     return true;
   }, [weight, height, bloodType]);
 
-  /* ---- Navigation ---- */
   const handleNext = useCallback(() => {
     triggerHaptic('light');
     if (currentStep === 1 && validateStep1()) {
       setCurrentStep(2);
-    } else if (currentStep === 2 && validateStep2()) {
     }
-  }, [currentStep, validateStep1, validateStep2, triggerHaptic]);
+  }, [currentStep, validateStep1, triggerHaptic]);
 
   const handleBack = useCallback(() => {
     triggerHaptic('light');
@@ -386,8 +363,6 @@ const {  wasSetupCompleted } = useAuth();
     }
   }, [currentStep, navigation, triggerHaptic]);
 
-  /* ---- Profile creation ---- */
-  /* FIX #2: Remove setTimeout race condition, use proper async/await flow */
   const handleCreateProfile = useCallback(async (andContinue = false) => {
     if (isCreatingRef.current) {
       showError('A profile is already being created');
@@ -395,7 +370,6 @@ const {  wasSetupCompleted } = useAuth();
     }
     if (!validateStep1() || !validateStep2()) return;
 
-    // Duplicate guard
     const trimmedName = name.trim();
     const birthIso = birthDate.toISOString();
     const duplicate = babies.find(b => b.name === trimmedName && b.birthDate === birthIso);
@@ -413,41 +387,33 @@ const {  wasSetupCompleted } = useAuth();
     try {
       const hasCustomImage = isImageUri(avatar);
       const avatarToSave = hasCustomImage ? '👶' : avatar;
-// Ensure we have a valid user ID
-if (!userData?.user?.id) {
-  showError('Not authenticated. Please sign in again.');
-  setIsLoading(false);
-  isCreatingRef.current = false;
-  return;
-}
 
-// Get the authenticated user ID
-const { data: userData } = await supabase.auth.getUser();
-const userId = userData?.user?.id;
+      // FIX: Get authenticated user ID directly from Supabase
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      if (authError || !authData?.user?.id) {
+        showError('Not authenticated. Please sign in again.');
+        setIsLoading(false);
+        isCreatingRef.current = false;
+        return;
+      }
+      const userId = authData.user.id;
 
-// Ensure we have a valid user ID
-if (!userId) {
-  showError('Not authenticated. Please sign in again.');
-  setIsLoading(false);
-  isCreatingRef.current = false;
-  return;
-}
+      console.log('[BabyProfile] Creating baby with parent1Id:', userId);
 
-console.log('[BabyProfile] Creating baby with parent1Id:', userId);
-
-babyId = await createBaby({
-  name: trimmedName,
-  birthDate: birthIso,
-  gender,
-  skinTone,
-  avatar: avatarToSave,
-  weight: weight.trim() || undefined,
-  height: height.trim() || undefined,
-  bloodType: bloodType.trim().toUpperCase() || undefined,
-  allergies: allergies.trim() ? allergies.split(',').map((a) => a.trim()).filter(Boolean) : undefined,
-  medicalNotes: medicalNotes.trim() || undefined,
-  parent1Id: userId,  // CRITICAL: This must match auth.uid()
-});
+      babyId = await createBaby({
+        name: trimmedName,
+        birthDate: birthIso,
+        gender,
+        skinTone,
+        avatar: avatarToSave,
+        weight: weight.trim() || undefined,
+        height: height.trim() || undefined,
+        bloodType: bloodType.trim().toUpperCase() || undefined,
+        allergies: allergies.trim() ? allergies.split(',').map((a) => a.trim()).filter(Boolean) : undefined,
+        medicalNotes: medicalNotes.trim() || undefined,
+        parent1Id: userId,
+      });
+      
       if (!babyId) {
         if (isMounted.current) {
           showError('Failed to create profile. Please try again.');
@@ -501,57 +467,46 @@ babyId = await createBaby({
 
         try {
           await switchBaby(babyId);
-          // Force family context to rebuild the tree for this new baby
-          const { loadFamily } = await import('../../context/FamilyContext').then(m => ({ loadFamily: m.useFamily })).catch(() => ({ loadFamily: null }));
-          if (typeof (loadFamily as any)?.loadFamily === 'function') {
-            await (loadFamily as any).loadFamily();
-          }
         } catch (switchErr) {
           console.warn('Failed to auto-switch to new baby:', switchErr);
         }
 
-// Check if this is the first baby or adding another
-if (babies.length === 0) {
-  try {
-    await completeSetup('baby');
-  } catch (setupError) {
-    console.warn('completeSetup threw error:', setupError);
-  }
-}
+        if (babies.length === 0) {
+          try {
+            await completeSetup('baby');
+          } catch (setupError) {
+            console.warn('completeSetup threw error:', setupError);
+          }
+        }
 
-// Navigate based on action
-if (andContinue) {
-  // User tapped "Create & Continue" - navigate to CoParent invite or Main
-  if (navigation.canGoBack()) {
-    navigation.goBack();
-  } else {
-    // Check if parent2 is already done
-    const { hasParent2 } = await wasSetupCompleted();
-    if (hasParent2 === false) {
-      // Parent2 is NOT done - go to CoParent invite
-      navigation.replace('CoParentInviteScreen');
-    } else {
-      navigation.replace('Main');
-    }
-  }
-} else {
-  // User tapped "Create & Add Another" - reset form
-  setName('');
-  setBirthDate(new Date());
-  setGender('boy');
-  setSkinTone(0);
-  setAvatar('👶');
-  setWeight('');
-  setHeight('');
-  setBloodType('');
-  setAllergies('');
-  setMedicalNotes('');
-  setCurrentStep(1);
-  scrollViewRef.current?.scrollTo({ y: 0, animated: true });
-  if (isMounted.current) {
-    showSuccess('You can add another baby now, or tap Continue when done');
-  }
-}
+        if (andContinue) {
+          if (navigation.canGoBack()) {
+            navigation.goBack();
+          } else {
+            const { hasParent2 } = await wasSetupCompleted();
+            if (hasParent2 === false) {
+              navigation.replace('CoParentInviteScreen');
+            } else {
+              navigation.replace('Main');
+            }
+          }
+        } else {
+          setName('');
+          setBirthDate(new Date());
+          setGender('boy');
+          setSkinTone(0);
+          setAvatar('👶');
+          setWeight('');
+          setHeight('');
+          setBloodType('');
+          setAllergies('');
+          setMedicalNotes('');
+          setCurrentStep(1);
+          scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+          if (isMounted.current) {
+            showSuccess('You can add another baby now, or tap Continue when done');
+          }
+        }
       } catch (navError) {
         console.error('Post-create error:', navError);
         if (isMounted.current) {
@@ -593,13 +548,12 @@ if (andContinue) {
     triggerHaptic,
     switchBaby,
     creatorRelationship,
+    wasSetupCompleted,
   ]);
 
-  /* ---- Keyboard handling ---- */
   const kbBehavior = Platform.OS === 'ios' ? 'padding' : undefined;
   const kbEnabled = Platform.OS === 'ios';
 
-  /* ---- WHO Suggestion Pill ---- */
   const SuggestionPill = ({
     label,
     low,
@@ -627,7 +581,6 @@ if (andContinue) {
     </View>
   );
 
-  /* ---- Render helpers ---- */
   const renderDatePicker = () => {
     if (!showDatePicker) return null;
 
@@ -672,7 +625,6 @@ if (andContinue) {
     );
   };
 
-  /* ---- Step 1 ---- */
   const renderStep1 = () => (
     <Animated.View
       entering={shouldReduceMotion ? undefined : FadeInUp.delay(100)}
@@ -898,7 +850,6 @@ if (andContinue) {
     </Animated.View>
   );
 
-  /* ---- Step 2 ---- */
   const renderStep2 = () => (
     <Animated.View
       entering={shouldReduceMotion ? undefined : FadeInUp.delay(100)}
@@ -1037,7 +988,6 @@ if (andContinue) {
     </Animated.View>
   );
 
-  /* ---- Main render ---- */
   return (
     <View style={[styles.container, { flex: 1 }]}>
       <LinearGradient colors={gradientColors} style={styles.gradient}>
@@ -1053,7 +1003,6 @@ if (andContinue) {
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
-            {/* Header */}
             <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp} style={styles.header}>
               <TouchableOpacity
                 onPress={handleBack}
@@ -1081,7 +1030,6 @@ if (andContinue) {
               <View style={styles.placeholder} />
             </Animated.View>
 
-            {/* Progress */}
             <View style={styles.progressContainer}>
               <View
                 style={[
@@ -1094,7 +1042,6 @@ if (andContinue) {
               />
             </View>
 
-            {/* Preview Card */}
             <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(50)}>
               <BlurView
                 intensity={Platform.OS === 'ios' ? 90 : 100}
@@ -1116,13 +1063,11 @@ if (andContinue) {
               </BlurView>
             </Animated.View>
 
-            {/* Steps */}
             {currentStep === 1 ? renderStep1() : renderStep2()}
 
             <View style={{ height: 40 }} />
           </Animated.ScrollView>
 
-          {/* Bottom Actions */}
           <View style={[styles.bottomContainer, { paddingBottom: insets.bottom + 20 }]}>
             <BlurView
               intensity={Platform.OS === 'ios' ? 90 : 100}
@@ -1138,7 +1083,6 @@ if (andContinue) {
                   accessibilityRole="button"
                 >
                   <LinearGradient
-                    /* FIX #1: Use resolved secondaryColor instead of themeColors.secondary */
                     colors={[themeColors.primary, secondaryColor]}
                     style={styles.buttonGradient}
                     start={{ x: 0, y: 0 }}
@@ -1218,20 +1162,15 @@ if (andContinue) {
           </View>
         </KeyboardAvoidingView>
       </LinearGradient>
-
     </View>
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Styles                                                             */
-/* ------------------------------------------------------------------ */
 const styles = StyleSheet.create({
   container: { flex: 1 },
   gradient: { flex: 1 },
   scrollContent: { paddingHorizontal: 24 },
 
-  /* iOS Date Picker Modal */
   iosPickerOverlay: {
     flex: 1,
     justifyContent: 'flex-end',
@@ -1254,7 +1193,6 @@ const styles = StyleSheet.create({
   iosPickerButton: { fontSize: 16, fontWeight: '600' },
   iosPickerTitle: { fontSize: 16, fontWeight: '700' },
 
-  /* Header */
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1279,7 +1217,6 @@ const styles = StyleSheet.create({
   placeholder: { width: 48 },
   textDark: { color: '#fff' },
 
-  /* Progress */
   progressContainer: {
     height: 4,
     backgroundColor: 'rgba(102,126,234,0.2)',
@@ -1292,7 +1229,6 @@ const styles = StyleSheet.create({
     borderRadius: 2,
   },
 
-  /* Preview Card */
   previewCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1313,7 +1249,6 @@ const styles = StyleSheet.create({
   previewDetails: { fontSize: 14, color: '#666', marginBottom: 2 },
   previewParent: { fontSize: 12, color: '#999' },
 
-  /* Steps */
   stepContainer: { gap: 20 },
   sectionSubtitle: {
     fontSize: 16,
@@ -1321,7 +1256,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
 
-  /* Inputs */
   inputGroup: { marginBottom: 4 },
   label: {
     fontSize: 14,
@@ -1361,7 +1295,6 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
 
-  /* Date */
   dateButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1380,7 +1313,6 @@ const styles = StyleSheet.create({
   dateText: { flex: 1, fontSize: 16, color: '#1a1a1a', fontWeight: '600' },
   agePreview: { fontSize: 14, fontWeight: '700' },
 
-  /* Gender */
   genderContainer: { flexDirection: 'row', gap: 12 },
   genderButton: {
     flex: 1,
@@ -1395,7 +1327,6 @@ const styles = StyleSheet.create({
   genderEmoji: { fontSize: 32, marginBottom: 8 },
   genderText: { fontSize: 14, color: '#666', fontWeight: '600' },
 
-  /* Skin Tone */
   skinToneContainer: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
   skinToneButton: {
     alignItems: 'center',
@@ -1415,7 +1346,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
 
-  /* Avatar */
   avatarSelector: {
     alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.8)',
@@ -1449,7 +1379,6 @@ const styles = StyleSheet.create({
   avatarOptionEmoji: { fontSize: 32 },
   avatarOptionLabel: { fontSize: 10, marginTop: 4, fontWeight: '600' },
 
-  /* Bottom */
   bottomContainer: {
     position: 'absolute',
     bottom: 0,
@@ -1485,7 +1414,6 @@ const styles = StyleSheet.create({
   createButton: { flex: 2, borderRadius: 16, overflow: 'hidden' },
   buttonDisabled: { opacity: 0.6 },
 
-  /* WHO Suggestions */
   suggestionsCard: {
     borderRadius: 20,
     padding: 16,

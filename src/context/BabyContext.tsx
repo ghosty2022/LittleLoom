@@ -862,17 +862,18 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
       const newId = generateId();
 
-      await createBabyInDb({
-        id: newId,
-        name: data.name,
-        avatar: data.avatar,
-        dateOfBirth: data.birthDate,
-        gender: data.gender === 'boy' ? 'male' : data.gender === 'girl' ? 'female' : 'other',
-        bloodType: data.bloodType,
-        medicalNotes: data.medicalNotes,
-        parent1Id: data.parent1Id || authProfile?.id || 'default',
-      });
-
+// Use authProfile for parent1Id if not provided
+const effectiveParent1Id = data.parent1Id || authProfile?.id || 'default';
+await createBabyInDb({
+  id: newId,
+  name: data.name,
+  avatar: data.avatar,
+  dateOfBirth: data.birthDate,
+  gender: data.gender === 'boy' ? 'male' : data.gender === 'girl' ? 'female' : 'other',
+  bloodType: data.bloodType,
+  medicalNotes: data.medicalNotes,
+  parent1Id: effectiveParent1Id,
+});
       /* Read-back verification: createBabyInDb swallows "table not ready"
          failures (returns [] instead of throwing), so confirm the row really
          exists before reporting success. Failing here — with a null return

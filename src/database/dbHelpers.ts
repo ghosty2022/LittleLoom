@@ -476,8 +476,8 @@ export async function createBabyInDb(data: {
       syncStatus: 'pending',
     }).returning().all();
 
-    // Best-effort push to Supabase
-    supabase.from('babies').upsert({
+    // Best-effort push to Supabase with proper field mapping
+    const supabaseData: any = {
       id: data.id,
       name: data.name,
       avatar: data.avatar ?? null,
@@ -490,7 +490,16 @@ export async function createBabyInDb(data: {
       created_at: now,
       updated_at: now,
       is_active: true,
-    }).then(({ error }) => {
+    };
+    
+    // Remove undefined values to avoid Supabase errors
+    Object.keys(supabaseData).forEach(key => {
+      if (supabaseData[key] === undefined) {
+        delete supabaseData[key];
+      }
+    });
+
+    supabase.from('babies').upsert(supabaseData).then(({ error }) => {
       if (error) console.warn('[DB] Supabase push failed:', error.message);
       else db.update(babies).set({ syncStatus: 'synced' }).where(eq(babies.id, data.id)).run();
     });

@@ -38,7 +38,7 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useCommunity, INITIAL_TOPICS } from '../../context/CommunityContext';
+import { useCommunity, INITIAL_TOPICS, TOPIC_CATEGORIES } from '../../context/CommunityContext';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
@@ -127,6 +127,7 @@ const ROUTES = {
   FOLLOWERS: 'Followers',
   FOLLOWING: 'Following',
   SEARCH_USERS: 'SearchUsers',
+  ONBOARDING: 'CommunityOnboarding',
 };
 
 type Props = NativeStackScreenProps<CommunityStackParamList, 'CommunityMain'>;
@@ -233,6 +234,25 @@ const ThreadSummarizer = {
 };
 
 // ============================================================
+// CATEGORY BADGE COMPONENT
+// ============================================================
+const CategoryBadge = React.memo(({ categoryId, isDark }: { categoryId?: string; isDark: boolean }) => {
+  if (!categoryId) return null;
+  
+  const category = TOPIC_CATEGORIES.find(c => c.id === categoryId);
+  if (!category) return null;
+  
+  return (
+    <View style={[styles.categoryBadge, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
+      <Text style={styles.categoryBadgeEmoji}>{category.emoji}</Text>
+      <Text style={[styles.categoryBadgeText, { color: isDark ? '#a8a29e' : '#57534e' }]}>
+        {category.name}
+      </Text>
+    </View>
+  );
+});
+
+// ============================================================
 // MAIN COMPONENT
 // ============================================================
 export default function CommunityScreen({ navigation }: Props) {
@@ -268,6 +288,7 @@ export default function CommunityScreen({ navigation }: Props) {
     markAllNotificationsRead,
     getUserById: contextGetUserById,
     sharePost,
+    getSelectedTopics,
   } = community;
 
   const { isAuthenticated: authIsAuth } = useAuth();
@@ -291,6 +312,7 @@ export default function CommunityScreen({ navigation }: Props) {
   const [hasMore, setHasMore] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [showNotificationChooser, setShowNotificationChooser] = useState(false);
+  const [showTopicSelector, setShowTopicSelector] = useState(false);
 
   const scrollY = useSharedValue(0);
   const listRef = useRef<FlatList>(null);
@@ -299,6 +321,8 @@ export default function CommunityScreen({ navigation }: Props) {
   const unreadCount = getUnreadCount();
   const canInteract = useMemo(() => checkIsAuth() || authIsAuth, [checkIsAuth, authIsAuth]);
   const allUsers = useMemo(() => getAllUsers(), [getAllUsers, posts.length]);
+  const userTopics = useMemo(() => getSelectedTopics(), [getSelectedTopics]);
+  const hasTopics = useMemo(() => userTopics.length > 0, [userTopics]);
 
   const postsCount = posts.length;
   const membersCount = allUsers.length;
@@ -329,6 +353,23 @@ export default function CommunityScreen({ navigation }: Props) {
     }
     prevPostsRef.current = posts;
   }, [posts]);
+
+  // Show topic selector if user has no topics
+  useEffect(() => {
+    if (!isLoading && !hasTopics && canInteract) {
+      const timer = setTimeout(() => {
+        sweetAlert.confirm(
+          'Personalize Your Feed',
+          'Select topics you\'re interested in to see relevant content in your feed.',
+          () => navigation.navigate(ROUTES.ONBOARDING as never, { editing: true } as never),
+          () => {},
+          'Choose Topics',
+          'Later'
+        );
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [isLoading, hasTopics, canInteract, navigation, sweetAlert]);
 
   const getFilteredPosts = useCallback(() => {
     let filtered = getFeedPosts();
@@ -484,6 +525,7 @@ export default function CommunityScreen({ navigation }: Props) {
   // ============================================================
   const renderPost = useCallback(({ item, index }: { item: Post; index: number }) => {
     const topicColor = topics.find(t => t.id === item.topicId)?.color || DS.primary;
+    const topicCategory = topics.find(t => t.id === item.topicId)?.category;
     const isOwnPost = item.authorId === currentUser?.id;
     const sentiment = SentimentAnalyzer.analyze(item.content);
     const summary = item.content.length > 100 ? ThreadSummarizer.summarize(item.content) : null;
@@ -644,7 +686,7 @@ export default function CommunityScreen({ navigation }: Props) {
             </View>
           )}
 
-          {/* Topic Tag */}
+          {/* Topic Tag with Category */}
           <TouchableOpacity
             onPress={() => navigation.navigate(ROUTES.TOPICS, { topicId: item.topicId })}
             activeOpacity={0.8}
@@ -652,6 +694,9 @@ export default function CommunityScreen({ navigation }: Props) {
           >
             <View style={[styles.topicDot, { backgroundColor: topicColor }]} />
             <Text style={[styles.topicTagText, { color: topicColor }]}>{item.topic}</Text>
+            {topicCategory && (
+              <CategoryBadge categoryId={topicCategory} isDark={isDark} />
+            )}
             {item.isTrending && (
               <View style={styles.trendingPill}>
                 <Ionicons name="flame" size={10} color={DS.warning} />
@@ -821,12 +866,44 @@ export default function CommunityScreen({ navigation }: Props) {
             </TouchableOpacity>
             <TouchableOpacity 
               style={[styles.heroActionBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}
-              onPress={() => navigation.navigate(ROUTES.TOPICS, { topicId: topics[0]?.id })}
+              onPress={() => {
+                if (!hasTopics) {
+                  navigation.navigate(ROUTES.ONBOARDING as never, { editing: true } as never);
+                } else {
+                  navigation.navigate(ROUTES.TOPICS, { topicId: topics[0]?.id });
+                }
+              }}
             >
-              <Ionicons name="compass-outline" size={16} color={isDark ? DS.gray300 : DS.gray600} />
-              <Text style={[styles.heroActionText, { color: isDark ? DS.gray300 : DS.gray600 }]}>Explore</Text>
+              <Ionicons name={hasTopics ? "compass-outline" : "add-circle-outline"} size={16} color={isDark ? DS.gray300 : DS.gray600} />
+              <Text style={[styles.heroActionText, { color: isDark ? DS.gray300 : DS.gray600 }]}>
+                {hasTopics ? 'Explore' : 'Add Topics'}
+              </Text>
             </TouchableOpacity>
           </View>
+          
+          {/* Topic Selection Status */}
+          {hasTopics ? (
+            <View style={[styles.topicStatus, { marginTop: DS.space.sm }]}>
+              <Ionicons name="checkmark-circle" size={14} color={DS.success} />
+              <Text style={[styles.topicStatusText, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+                {userTopics.length} topics selected
+              </Text>
+              <TouchableOpacity onPress={() => navigation.navigate(ROUTES.ONBOARDING as never, { editing: true } as never)}>
+                <Text style={[styles.topicStatusEdit, { color: DS.primary }]}>Edit</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity 
+              style={[styles.topicStatus, styles.topicStatusEmpty, { marginTop: DS.space.sm }]}
+              onPress={() => navigation.navigate(ROUTES.ONBOARDING as never, { editing: true } as never)}
+            >
+              <Ionicons name="alert-circle" size={14} color={DS.warning} />
+              <Text style={[styles.topicStatusText, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+                Select topics to personalize your feed
+              </Text>
+              <Ionicons name="chevron-forward" size={14} color={DS.primary} />
+            </TouchableOpacity>
+          )}
         </View>
       </Animated.View>
 
@@ -874,7 +951,7 @@ export default function CommunityScreen({ navigation }: Props) {
         ))}
       </View>
     </View>
-  ), [isDark, topics, postsCount, membersCount, canInteract, activeTopic, navigation, sweetAlert]);
+  ), [isDark, topics, postsCount, membersCount, canInteract, activeTopic, hasTopics, userTopics, navigation, sweetAlert]);
 
   // ============================================================
   // RENDER FOOTER
@@ -1000,6 +1077,14 @@ export default function CommunityScreen({ navigation }: Props) {
               }} style={styles.headerIconBtn}>
                 <View style={[styles.headerIconInner, { backgroundColor: isDark ? 'rgba(99,102,241,0.15)' : `${DS.primary}10` }]}>
                   <Ionicons name="mail-outline" size={20} color={isDark ? DS.primaryLight : DS.primary} />
+                </View>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                onPress={() => navigation.navigate(ROUTES.ONBOARDING as never, { editing: true } as never)} 
+                style={styles.headerIconBtn}
+              >
+                <View style={[styles.headerIconInner, { backgroundColor: isDark ? 'rgba(99,102,241,0.15)' : `${DS.primary}10` }]}>
+                  <Ionicons name="pricetags-outline" size={20} color={isDark ? DS.primaryLight : DS.primary} />
                 </View>
               </TouchableOpacity>
             </View>
@@ -1408,6 +1493,28 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: DS.white,
   },
+  topicStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: DS.space.sm,
+    paddingHorizontal: DS.space.sm,
+    paddingVertical: DS.space.xs,
+  },
+  topicStatusEmpty: {
+    backgroundColor: 'rgba(245,158,11,0.08)',
+    borderRadius: DS.radius.full,
+    paddingHorizontal: DS.space.md,
+    paddingVertical: DS.space.sm,
+  },
+  topicStatusText: {
+    fontSize: DS.text.xs.size,
+    fontWeight: '500',
+  },
+  topicStatusEdit: {
+    fontSize: DS.text.xs.size,
+    fontWeight: '700',
+    marginLeft: DS.space.xs,
+  },
 
   // Compose
   composeBar: {
@@ -1619,6 +1726,20 @@ const styles = StyleSheet.create({
   topicTagText: {
     fontSize: DS.text.xs.size,
     fontWeight: '700',
+  },
+  categoryBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  categoryBadgeEmoji: { fontSize: 10 },
+  categoryBadgeText: {
+    fontSize: 9,
+    fontWeight: '600',
+    textTransform: 'capitalize',
   },
   trendingPill: {
     flexDirection: 'row',
