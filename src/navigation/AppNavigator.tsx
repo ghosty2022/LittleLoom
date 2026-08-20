@@ -72,6 +72,7 @@ const Tab = createBottomTabNavigator<MainTabParamList>();
 
 const ONBOARDING_COMPLETE_KEY = '@littleloom_onboarding_complete_v3';
 const ONBOARDING_SEEN_KEY = '@littleloom_onboarding_seen_v3';
+const NAV_INITIALIZED_KEY = '@littleloom_nav_initialized_v1'; // NEW: Persisted flag
 
 const CustomLightTheme = {
   ...DefaultTheme,
@@ -300,11 +301,37 @@ function NavigationContent({
   const hasConsumedInitialState = useRef(false);
   const hasInitializedNav = useRef(false);
   const isMounted = useRef(true);
-  const isNavigatingSetup = useRef(false); // NEW: Track if we're navigating to setup
+  const isNavigatingSetup = useRef(false);
+  const effectRunCount = useRef(0); // NEW: Track effect runs
 
   // Refs to track current baby values without causing re-renders
   const babyCountRef = useRef(0);
   const hasSkippedBabyRef = useRef(false);
+
+  // NEW: Load persisted navigation state
+  useEffect(() => {
+    const loadNavState = async () => {
+      try {
+        const val = await AsyncStorage.getItem(NAV_INITIALIZED_KEY);
+        if (val === 'true') {
+          hasInitializedNav.current = true;
+          console.log('[Navigation] Loaded persisted nav initialized state: true');
+        }
+      } catch (e) {
+        // Ignore
+      }
+    };
+    loadNavState();
+  }, []);
+
+  // NEW: Save navigation state when it changes
+  const saveNavInitialized = useCallback(async (value: boolean) => {
+    try {
+      await AsyncStorage.setItem(NAV_INITIALIZED_KEY, value ? 'true' : 'false');
+    } catch (e) {
+      // Ignore
+    }
+  }, []);
 
   // FIX: Use refs for callbacks to keep AppState effect stable
   const checkSecurityOnResumeRef = useRef(checkSecurityOnResume);
@@ -462,7 +489,61 @@ function NavigationContent({
      MAIN NAVIGATION EFFECT (navState only)
      ═══════════════════════════════════════════════════════════════════════════ */
   useEffect(() => {
+    // Increment run counter
+    effectRunCount.current += 1;
+    
+    // CRITICAL FIX: Only run the effect up to 3 times to prevent infinite loops
+    if (effectRunCount.current > 3) {
+      console.log('[Navigation] Effect run limit reached (3), preventing further navigation attempts');
+      return;
+    }
+    
     if (!navRef.current?.isReady() || !isNavReady || !initialCheckDone) return;
+
+    // Get current route BEFORE any navigation decisions
+    const currentRoute = navRef.current.getCurrentRoute()?.name;
+    
+    console.log('[Navigation] Run:', effectRunCount.current, 'navState:', navState, 'route:', currentRoute, 'initialized:', hasInitializedNav.current);
+
+    // CRITICAL FIX: If we're on BabyOptional, stop all navigation attempts
+    if (currentRoute === 'BabyOptional') {
+      // If we're on BabyOptional and navState is SETUP_BABY, we're good
+      if (navState === 'SETUP_BABY') {
+        if (!hasInitializedNav.current) {
+          hasInitializedNav.current = true;
+          saveNavInitialized(true);
+          console.log('[Navigation] ✅ On BabyOptional with SETUP_BABY, navigation initialized');
+        }
+        isNavigatingSetup.current = false;
+        return;
+      }
+      
+      // If we're on BabyOptional but navState is not SETUP_BABY, and we haven't initialized
+      if (!hasInitializedNav.current) {
+        // If navState is MAIN, navigate to Main
+        if (navState === 'MAIN') {
+          console.log('[Navigation] On BabyOptional but should be MAIN, navigating to Main');
+          navRef.current.navigate('Main' as never);
+          return;
+        }
+        // Otherwise, stay on BabyOptional and mark as initialized
+        hasInitializedNav.current = true;
+        saveNavInitialized(true);
+        isNavigatingSetup.current = false;
+        return;
+      }
+      return;
+    }
+
+    // If we've already initialized navigation, prevent further resets
+    if (hasInitializedNav.current) {
+      // If we're on a setup screen but should be MAIN, navigate to MAIN
+      if (navState === 'MAIN' && currentRoute && SETUP_FLOW_SCREENS.has(currentRoute)) {
+        console.log('[Navigation] On setup screen but should be MAIN, navigating to Main');
+        navRef.current.navigate('Main' as never);
+      }
+      return;
+    }
 
     // If we're already navigating to setup, don't interrupt
     if (isNavigatingSetup.current) {
@@ -470,26 +551,8 @@ function NavigationContent({
       return;
     }
 
-    // If we've already initialized navigation and we're in MAIN, don't reset
-    if (hasInitializedNav.current && navState === 'MAIN') {
-      const currentRoute = navRef.current.getCurrentRoute()?.name;
-      if (currentRoute && SETUP_FLOW_SCREENS.has(currentRoute)) {
-        // We're on a setup screen but should be in MAIN - navigate to Main
-        console.log('[Navigation] On setup screen but should be MAIN, navigating to Main');
-        navRef.current.navigate('Main' as never);
-      }
-      return;
-    }
-
     // Deduplicate: skip if we've already processed this navState
     if (navState === processedNavState.current && !pendingNavTarget.current) {
-      // If we're on a setup screen and navState is SETUP_BABY, we're already where we need to be
-      const currentRoute = navRef.current.getCurrentRoute()?.name;
-      if (navState === 'SETUP_BABY' && currentRoute === 'BabyOptional') {
-        // We're already on the right screen, mark as initialized
-        hasInitializedNav.current = true;
-        return;
-      }
       return;
     }
     processedNavState.current = navState;
@@ -498,22 +561,22 @@ function NavigationContent({
     // on first boot. Don't override with a reset to Main.
     if (initialState && !hasConsumedInitialState.current) {
       hasConsumedInitialState.current = true;
-      // Always allow the initial state to be consumed regardless of navState
       pendingNavTarget.current = null;
-      // Don't mark as initialized if we're going to setup
-      if (navState === 'MAIN') {
+      
+      // If we're already on the target screen from initialState, mark as initialized
+      if (navState === 'SETUP_BABY' && currentRoute === 'BabyOptional') {
         hasInitializedNav.current = true;
-      } else if (navState === 'SETUP_BABY') {
-        // We're going to setup, don't mark as initialized yet
-        console.log('[Navigation] Consuming initialState for SETUP_BABY');
+        saveNavInitialized(true);
+        console.log('[Navigation] ✅ Already on BabyOptional from initialState');
+      } else if (navState === 'MAIN') {
+        hasInitializedNav.current = true;
+        saveNavInitialized(true);
       }
       return;
     }
 
     // Block concurrent navigation
     if (isNavigating.current) return;
-
-    const currentRoute = navRef.current.getCurrentRoute()?.name;
 
     // Route map
     const routeMap: Record<NavigationState, keyof RootStackParamList> = {
@@ -536,11 +599,11 @@ function NavigationContent({
     // Already at the target we want
     if (currentRoute === target) {
       pendingNavTarget.current = null;
-      // If we're on the setup screen, mark as initialized to prevent further resets
       if (navState === 'SETUP_BABY' || navState === 'SETUP_PARENT2') {
-        isNavigatingSetup.current = true;
+        hasInitializedNav.current = true;
+        saveNavInitialized(true);
+        isNavigatingSetup.current = false;
       }
-      hasInitializedNav.current = true;
       return;
     }
 
@@ -562,6 +625,7 @@ function NavigationContent({
       if (!fromNonMain) {
         pendingNavTarget.current = null;
         hasInitializedNav.current = true;
+        saveNavInitialized(true);
         return;
       }
 
@@ -569,6 +633,7 @@ function NavigationContent({
       if (babyCountRef.current <= 1 && fromNonMain && initialState) {
         pendingNavTarget.current = null;
         hasInitializedNav.current = true;
+        saveNavInitialized(true);
         return;
       }
     }
@@ -601,15 +666,14 @@ function NavigationContent({
     setTimeout(() => {
       isNavigating.current = false;
       pendingNavTarget.current = null;
-      // Mark as initialized after navigation completes
       hasInitializedNav.current = true;
-      // Reset the setup navigation flag after a delay
+      saveNavInitialized(true);
       setTimeout(() => {
         isNavigatingSetup.current = false;
         console.log('[Navigation] Reset isNavigatingSetup');
       }, 1000);
     }, 300);
-  }, [navState, initialCheckDone, isNavReady, initialState]);
+  }, [navState, initialCheckDone, isNavReady, initialState, saveNavInitialized]);
 
   // Early return MUST come after ALL hooks
   if (authLoading || !initialCheckDone) {
@@ -617,7 +681,6 @@ function NavigationContent({
   }
 
   // CRITICAL FIX: Use a stable key to prevent NavigationContainer remount
-  // that resets isNavReady and can block post-auth navigation to setup flow
   return (
     <NavigationContainer
       ref={navRef}

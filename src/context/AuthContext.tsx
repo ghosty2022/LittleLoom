@@ -182,11 +182,11 @@ const secureStorage = {
 import { 
   registerUser, 
   updateUserInRegistry,
-  findUserByEmail,
-  findUserByUsername,
-  findUserByPhone,
-  findUserByEmailOrUsername,
-  findUserByEmailOrUsernameOrPhone,
+  findUserByEmail as dbFindUserByEmail,
+  findUserByUsername as dbFindUserByUsername,
+  findUserByPhone as dbFindUserByPhone,
+  findUserByEmailOrUsername as dbFindUserByEmailOrUsername,
+  findUserByEmailOrUsernameOrPhone as dbFindUserByEmailOrUsernameOrPhone,
   getUserRegistry,
   type UserRegistryEntry,
 } from '@/database/dbHelpers';
@@ -619,12 +619,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       // ─── Local registry lookup ──────────────────────────────────────────
-      let existingUser = await findUserByEmail(email);
+      let existingUser = await dbFindUserByEmail(email);
       
       // Try username if not found by email
       if (!existingUser) {
         try {
-          existingUser = await findUserByUsername(email);
+          existingUser = await dbFindUserByUsername(email);
         } catch (importError) {
           const registry = await getUserRegistry();
           const searchKey = email.toLowerCase().trim().replace(/^@/, '');
@@ -642,7 +642,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Try phone if not found by email or username
       if (!existingUser) {
         try {
-          existingUser = await findUserByPhone(email);
+          existingUser = await dbFindUserByPhone(email);
         } catch (importError) {
           const registry = await getUserRegistry();
           const searchPhone = email.trim().replace(/[^0-9+]/g, '');
@@ -809,7 +809,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const baseName = socialUser.fullName;
       const baseHandle = `@${baseName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
       
-      const existingUser = await findUserByEmail(socialUser.email);
+      const existingUser = await dbFindUserByEmail(socialUser.email);
       
       let userProfile: UserProfile;
       let finalUserId: string;
@@ -1122,7 +1122,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const forgotPassword = useCallback(async (email: string): Promise<{ success: boolean; message: string }> => {
     try {
-      const existingUser = await findUserByEmail(email);
+      const existingUser = await dbFindUserByEmail(email);
       if (!existingUser) {
         return { success: false, message: 'No account found with this email address' };
       }
@@ -1135,7 +1135,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const resetPasswordForUser = useCallback(async (email: string, newPassword: string): Promise<{ success: boolean; message: string }> => {
     try {
-      const existingUser = await findUserByEmail(email);
+      const existingUser = await dbFindUserByEmail(email);
       if (!existingUser) {
         return { success: false, message: 'User not found' };
       }
@@ -1844,20 +1844,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const getCurrentUserProfile = useCallback(() => state.userProfile, [state.userProfile]);
   
+  // ─── FIND USER FUNCTIONS ─────────────────────────────────────────────
   const findUserByEmailCallback = useCallback(async (email: string): Promise<{ userId: string; email: string; fullName: string; role: string } | null> => {
-    const user = await findUserByEmail(email);
+    const user = await dbFindUserByEmail(email);
     return user ? { userId: user.userId, email: user.email, fullName: user.fullName, role: user.role } : null;
   }, []);
 
-  // Add this new function after findUserByEmailCallback
   const findUserByEmailOrUsernameCallback = useCallback(async (identifier: string): Promise<{ userId: string; email: string; fullName: string; role: string } | null> => {
     try {
       // Try as email first
-      const byEmail = await findUserByEmail(identifier);
+      const byEmail = await dbFindUserByEmail(identifier);
       if (byEmail) return byEmail;
       
       // Then try as username
-      const byUsername = await findUserByUsername(identifier);
+      const byUsername = await dbFindUserByUsername(identifier);
       if (byUsername) {
         return {
           userId: byUsername.userId,
@@ -1872,17 +1872,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('Error finding user by email or username:', error);
       return null;
     }
-  }, [findUserByEmail]);
+  }, []);
 
-  // Add this new function after findUserByEmailOrUsernameCallback
   const findUserByEmailOrUsernameOrPhoneCallback = useCallback(async (identifier: string): Promise<{ userId: string; email: string; fullName: string; role: string } | null> => {
     try {
       // Try as email first
-      const byEmail = await findUserByEmail(identifier);
+      const byEmail = await dbFindUserByEmail(identifier);
       if (byEmail) return byEmail;
       
       // Then try as username
-      const byUsername = await findUserByUsername(identifier);
+      const byUsername = await dbFindUserByUsername(identifier);
       if (byUsername) {
         return {
           userId: byUsername.userId,
@@ -1893,7 +1892,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       
       // Then try as phone
-      const byPhone = await findUserByPhone(identifier);
+      const byPhone = await dbFindUserByPhone(identifier);
       if (byPhone) {
         return {
           userId: byPhone.userId,
@@ -1908,7 +1907,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('Error finding user by email, username, or phone:', error);
       return null;
     }
-  }, [findUserByEmail, findUserByUsername, findUserByPhone]);
+  }, []);
 
   const value = React.useMemo(() => ({
     ...state,
