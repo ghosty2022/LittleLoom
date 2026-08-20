@@ -40,26 +40,27 @@ const { width } = Dimensions.get('window');
 
 WebBrowser.maybeCompleteAuthSession();
 
-// ⚠️ Replace with real values from Expo / EAS secrets – never ship placeholders
+// ─── OAuth Configuration ──────────────────────────────────────────────
 const GOOGLE_CLIENT_ID = Platform.select({
-  ios: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ?? 'YOUR_IOS_GOOGLE_CLIENT_ID.apps.googleusercontent.com',
-  android: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ?? 'YOUR_ANDROID_GOOGLE_CLIENT_ID.apps.googleusercontent.com',
-  default: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ?? 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com',
-});
+  ios: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+  android: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+  default: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID,
+}) ?? 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com';
 
 const FACEBOOK_APP_ID = process.env.EXPO_PUBLIC_FACEBOOK_APP_ID ?? '1526133312174343';
 
 const redirectUri = AuthSession.makeRedirectUri({
   scheme: 'littleloom',
-  // Force the Expo proxy in development – this is the most reliable for Facebook
   useProxy: true,
 });
 
+// ─── Email Validation ──────────────────────────────────────────────────
 const isValidEmail = (email: string): boolean => {
   const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   return re.test(email.trim().toLowerCase());
 };
 
+// ─── MAIN COMPONENT ────────────────────────────────────────────────────
 export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
   // ─── TAB STATE ───
   const [activeTab, setActiveTab] = useState<'create' | 'join'>('create');
@@ -95,9 +96,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
     isAuthenticated,
     findUserByEmail,
   } = useAuth();
-useEffect(() => {
-  console.log('Redirect URI →', redirectUri);
-}, []);
+
   const customization = useCustomization();
   const isDark = customization?.darkMode ?? false;
   const themeColors = customization?.themeColors ?? { primary: '#667eea', secondary: '#764ba2' };
@@ -115,18 +114,10 @@ useEffect(() => {
   const codeDebounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const socialAuthInProgress = useRef(false);
 
-  // Auto-fill invite code from QR scan
-  useEffect(() => {
-    const code = (route.params as any)?.inviteCode;
-    if (code) {
-      if (activeTab !== 'join') setActiveTab('join');
-      setInviteCode(code.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6));
-    }
-  }, [route.params]);
-
+  // ─── OAuth Requests ──────────────────────────────────────────────────
   const [googleRequest, googleResponse, googlePromptAsync] = AuthSession.useAuthRequest(
     {
-      clientId: GOOGLE_CLIENT_ID as string,
+      clientId: GOOGLE_CLIENT_ID,
       redirectUri,
       scopes: ['openid', 'profile', 'email'],
       responseType: 'token',
@@ -150,10 +141,16 @@ useEffect(() => {
     }
   );
 
+  // ─── Auto-fill invite code from QR scan ─────────────────────────────
   useEffect(() => {
-  console.log('Facebook Redirect URI →', redirectUri);
-}, []);
+    const code = (route.params as any)?.inviteCode;
+    if (code) {
+      if (activeTab !== 'join') setActiveTab('join');
+      setInviteCode(code.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6));
+    }
+  }, [route.params]);
 
+  // ─── Cleanup ─────────────────────────────────────────────────────────
   useEffect(() => {
     return () => {
       isMounted.current = false;
@@ -162,78 +159,13 @@ useEffect(() => {
     };
   }, []);
 
+  // ─── Animations ──────────────────────────────────────────────────────
   useEffect(() => {
     logoScale.value = withDelay(0, withSpring(1, { damping: 12, stiffness: 100 }));
     formTranslateY.value = withDelay(200, withSpring(0, { damping: 15, stiffness: 100 }));
   }, []);
 
-  // ─── CODE VALIDATION WITH DEBOUNCE ───
-  useEffect(() => {
-    if (activeTab !== 'join') return;
-    if (codeDebounceTimer.current) clearTimeout(codeDebounceTimer.current);
-
-    const trimmed = inviteCode.trim();
-
-    if (trimmed.length !== 6) {
-      setCodeValidated(false);
-      setCodeInfo(null);
-      return;
-    }
-
-    setIsValidatingCode(true);
-    codeDebounceTimer.current = setTimeout(async () => {
-      try {
-        let result: { valid: boolean; invite?: any; message?: string };
-        try {
-          const { validateInviteCode } = await import('@/utils/portableInvite');
-          result = await validateInviteCode(trimmed);
-        } catch {
-          // Fallback – same store AuthContext uses
-          const raw = await AsyncStorage.getItem('littleloom_invite_codes');
-          const codes = raw ? JSON.parse(raw) : {};
-          const invite = codes[trimmed];
-          if (!invite || invite.used || invite.revoked || Date.now() > invite.expiresAt) {
-            result = { valid: false };
-          } else {
-            result = { valid: true, invite };
-          }
-        }
-
-        if (isMounted.current) {
-          if (result.valid && result.invite) {
-            setCodeValidated(true);
-            setCodeInfo({
-              role: result.invite.role,
-              relationship: result.invite.relationship,
-            });
-            showInfo(
-              'Valid Code!',
-              `You'll join as ${
-                result.invite.role === 'parent2'
-                  ? 'Parent 2'
-                  : result.invite.role === 'guardian'
-                  ? 'Guardian'
-                  : 'Viewer'
-              }`
-            );
-          } else {
-            setCodeValidated(false);
-            setCodeInfo(null);
-          }
-        }
-      } catch (error) {
-        console.error('Code validation error:', error);
-        if (isMounted.current) {
-          setCodeValidated(false);
-          setCodeInfo(null);
-        }
-      } finally {
-        if (isMounted.current) setIsValidatingCode(false);
-      }
-    }, 500);
-  }, [inviteCode, activeTab]);
-
-  // ─── Google response ───
+  // ─── GOOGLE RESPONSE HANDLER ────────────────────────────────────────
   useEffect(() => {
     if (googleResponse?.type === 'success') {
       const { authentication } = googleResponse;
@@ -250,7 +182,7 @@ useEffect(() => {
     }
   }, [googleResponse]);
 
-  // ─── Facebook response ───
+  // ─── FACEBOOK RESPONSE HANDLER ──────────────────────────────────────
   useEffect(() => {
     if (fbResponse?.type === 'success') {
       const { authentication } = fbResponse;
@@ -267,6 +199,7 @@ useEffect(() => {
     }
   }, [fbResponse]);
 
+  // ─── GOOGLE USER INFO ───────────────────────────────────────────────
   const handleGoogleUserInfo = async (accessToken: string) => {
     try {
       const response = await fetch('https://www.googleapis.com/userinfo/v2/me', {
@@ -287,6 +220,7 @@ useEffect(() => {
     }
   };
 
+  // ─── FACEBOOK USER INFO ─────────────────────────────────────────────
   const handleFacebookUserInfo = async (accessToken: string) => {
     try {
       const response = await fetch(
@@ -312,11 +246,7 @@ useEffect(() => {
     }
   };
 
-  /**
-   * Social sign-up / sign-in.
-   * Prefer a dedicated signInWithSocial that links identities without inventing a password.
-   * Falls back to a strong random password only as last resort.
-   */
+  // ─── SOCIAL SIGN UP HANDLER ─────────────────────────────────────────
   const handleSocialSignUp = async (
     provider: 'google' | 'apple' | 'facebook',
     email: string,
@@ -332,7 +262,7 @@ useEffect(() => {
 
     setIsProcessing(true);
     try {
-      // Preferred path – proper social identity linking
+      // Try social sign-in first
       if (typeof signInWithSocial === 'function') {
         const success = await signInWithSocial({
           id: `${provider}_${Date.now()}`,
@@ -342,18 +272,15 @@ useEffect(() => {
           provider,
         });
 
-       if (success && isMounted.current) {
+        if (success && isMounted.current) {
           showSuccess('Welcome!', `Signed in with ${provider.charAt(0).toUpperCase() + provider.slice(1)}`);
           navigation.replace('BabyOptional');
           return;
         }
       }
 
-      // Fallback – create account with a strong random password (user should set a real one later)
-      const strongTempPassword =
-        typeof crypto !== 'undefined' && crypto.randomUUID
-          ? crypto.randomUUID() + crypto.randomUUID()
-          : `tmp_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+      // Fallback: create account with strong temporary password
+      const strongTempPassword = `tmp_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
       const success = await signUp(name, email, strongTempPassword);
 
@@ -373,6 +300,7 @@ useEffect(() => {
     }
   };
 
+  // ─── SOCIAL BUTTON HANDLERS ─────────────────────────────────────────
   const handleGoogleSignUp = async () => {
     if (socialAuthInProgress.current) return;
     socialAuthInProgress.current = true;
@@ -406,9 +334,63 @@ useEffect(() => {
     }
   };
 
+  // ─── CODE VALIDATION ─────────────────────────────────────────────────
+  useEffect(() => {
+    if (activeTab !== 'join') return;
+    if (codeDebounceTimer.current) clearTimeout(codeDebounceTimer.current);
 
+    const trimmed = inviteCode.trim();
 
-  // ─── CREATE ACCOUNT HANDLER ───
+    if (trimmed.length !== 6) {
+      setCodeValidated(false);
+      setCodeInfo(null);
+      return;
+    }
+
+    setIsValidatingCode(true);
+    codeDebounceTimer.current = setTimeout(async () => {
+      try {
+        let result: { valid: boolean; invite?: any; message?: string };
+        try {
+          const { validateInviteCode } = await import('@/utils/portableInvite');
+          result = await validateInviteCode(trimmed);
+        } catch {
+          const raw = await AsyncStorage.getItem('littleloom_invite_codes');
+          const codes = raw ? JSON.parse(raw) : {};
+          const invite = codes[trimmed];
+          if (!invite || invite.used || invite.revoked || Date.now() > invite.expiresAt) {
+            result = { valid: false };
+          } else {
+            result = { valid: true, invite };
+          }
+        }
+
+        if (isMounted.current) {
+          if (result.valid && result.invite) {
+            setCodeValidated(true);
+            setCodeInfo({
+              role: result.invite.role,
+              relationship: result.invite.relationship,
+            });
+            showInfo('Valid Code!', `You'll join as ${result.invite.role === 'parent2' ? 'Parent 2' : result.invite.role === 'guardian' ? 'Guardian' : 'Viewer'}`);
+          } else {
+            setCodeValidated(false);
+            setCodeInfo(null);
+          }
+        }
+      } catch (error) {
+        console.error('Code validation error:', error);
+        if (isMounted.current) {
+          setCodeValidated(false);
+          setCodeInfo(null);
+        }
+      } finally {
+        if (isMounted.current) setIsValidatingCode(false);
+      }
+    }, 500);
+  }, [inviteCode, activeTab]);
+
+  // ─── CREATE ACCOUNT HANDLER ─────────────────────────────────────────
   const handleSignUp = useCallback(async () => {
     if (signUpAttempted.current || isProcessing || authLoading) return;
 
@@ -443,7 +425,7 @@ useEffect(() => {
       return;
     }
 
-    // Pre-check for existing account
+    // Check for existing account
     try {
       const existingUser = await findUserByEmail(email.trim());
       if (existingUser) {
@@ -469,7 +451,7 @@ useEffect(() => {
         showSuccess(`Welcome, ${fullName.trim()}!`, 'Your account has been created successfully');
         navigation.replace('BabyOptional');
       } else {
-        // Double-check existence on failure (handles race)
+        // Double-check existence on failure
         try {
           const existing = await findUserByEmail(email.trim());
           if (existing) {
@@ -507,7 +489,7 @@ useEffect(() => {
     navigation,
   ]);
 
-  // ─── JOIN FAMILY HANDLER ───
+  // ─── JOIN FAMILY HANDLER ────────────────────────────────────────────
   const handleJoinFamily = useCallback(async () => {
     if (joinAttempted.current || isProcessing || authLoading) return;
 
@@ -621,491 +603,7 @@ useEffect(() => {
     transform: [{ translateY: formTranslateY.value }],
   }));
 
-  // ─── RENDER TAB SWITCHER ───
-  const renderTabSwitcher = () => (
-    <View
-      style={[
-        styles.tabContainer,
-        { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(102,126,234,0.08)' },
-      ]}
-    >
-      <TouchableOpacity
-        style={[
-          styles.tabButton,
-          activeTab === 'create' && [
-            styles.tabButtonActive,
-            { backgroundColor: isDark ? 'rgba(102,126,234,0.4)' : '#667eea' },
-          ],
-        ]}
-        onPress={() => setActiveTab('create')}
-        disabled={isLoading}
-      >
-        <Text
-          style={[
-            styles.tabText,
-            {
-              color:
-                activeTab === 'create'
-                  ? '#fff'
-                  : isDark
-                  ? 'rgba(255,255,255,0.6)'
-                  : '#64748b',
-            },
-          ]}
-        >
-          Create Account
-        </Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[
-          styles.tabButton,
-          activeTab === 'join' && [
-            styles.tabButtonActive,
-            { backgroundColor: isDark ? 'rgba(102,126,234,0.4)' : '#667eea' },
-          ],
-        ]}
-        onPress={() => setActiveTab('join')}
-        disabled={isLoading}
-      >
-        <Text
-          style={[
-            styles.tabText,
-            {
-              color:
-                activeTab === 'join'
-                  ? '#fff'
-                  : isDark
-                  ? 'rgba(255,255,255,0.6)'
-                  : '#64748b',
-            },
-          ]}
-        >
-          Join Family
-        </Text>
-      </TouchableOpacity>
-    </View>
-  );
-
-  // ─── RENDER CREATE ACCOUNT FORM ───
-  const renderCreateForm = () => (
-    <>
-      <View style={styles.socialIconsContainer}>
-        <TouchableOpacity
-          style={[styles.socialIconButton, { borderColor: 'rgba(219,68,55,0.2)' }]}
-          onPress={handleGoogleSignUp}
-          disabled={isLoading}
-          activeOpacity={0.8}
-        >
-          <Image
-            source={require('../../../assets/social/google.png')}
-            style={styles.socialIcon}
-            resizeMode="contain"
-          />
-        </TouchableOpacity>
-
-        {Platform.OS === 'ios' && (
-          <TouchableOpacity
-            style={[
-              styles.socialIconButton,
-              { borderColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)' },
-            ]}
-            onPress={handleAppleSignUp}
-            disabled={isLoading}
-            activeOpacity={0.8}
-          >
-            <Image
-              source={require('../../../assets/social/apple.png')}
-              style={[styles.socialIcon, isDark && { tintColor: '#FFFFFF' }]}
-              resizeMode="contain"
-            />
-          </TouchableOpacity>
-        )}
-
-        <TouchableOpacity
-          style={[styles.socialIconButton, { borderColor: 'rgba(24,119,242,0.2)' }]}
-          onPress={handleFacebookSignUp}
-          disabled={isLoading}
-          activeOpacity={0.8}
-        >
-          <Image
-            source={require('../../../assets/social/facebook.png')}
-            style={styles.socialIcon}
-            resizeMode="contain"
-          />
-        </TouchableOpacity>
-
-
-      </View>
-
-      <View style={styles.divider}>
-        <View style={[styles.dividerLine, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
-        <Text style={[styles.dividerText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
-          or sign up with email
-        </Text>
-        <View style={[styles.dividerLine, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
-      </View>
-
-      <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
-        <Ionicons name="person-outline" size={20} color="#667eea" style={styles.inputIcon} />
-        <TextInput
-          style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
-          placeholder="Full name"
-          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
-          value={fullName}
-          onChangeText={setFullName}
-          autoCapitalize="words"
-          autoCorrect={false}
-          editable={!isLoading}
-          returnKeyType="next"
-          textContentType="name"
-        />
-      </View>
-
-      <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
-        <Ionicons name="mail-outline" size={20} color="#667eea" style={styles.inputIcon} />
-        <TextInput
-          style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
-          placeholder="Email address"
-          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
-          value={email}
-          onChangeText={setEmail}
-          keyboardType="email-address"
-          autoCapitalize="none"
-          autoCorrect={false}
-          editable={!isLoading}
-          returnKeyType="next"
-          textContentType="emailAddress"
-          autoComplete="email"
-        />
-      </View>
-
-      <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
-        <Ionicons name="lock-closed-outline" size={20} color="#667eea" style={styles.inputIcon} />
-        <TextInput
-          style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
-          placeholder="Password (min 8 characters)"
-          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry={!showPassword}
-          editable={!isLoading}
-          returnKeyType="next"
-          textContentType="newPassword"
-          autoComplete="new-password"
-        />
-        <TouchableOpacity
-          onPress={() => setShowPassword(!showPassword)}
-          style={styles.eyeButton}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          disabled={isLoading}
-        >
-          <Ionicons
-            name={showPassword ? 'eye-outline' : 'eye-off-outline'}
-            size={20}
-            color="#667eea"
-          />
-        </TouchableOpacity>
-      </View>
-
-      <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
-        <Ionicons name="shield-checkmark-outline" size={20} color="#667eea" style={styles.inputIcon} />
-        <TextInput
-          style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
-          placeholder="Confirm password"
-          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
-          value={confirmPassword}
-          onChangeText={setConfirmPassword}
-          secureTextEntry={!showConfirmPassword}
-          editable={!isLoading}
-          returnKeyType="done"
-          onSubmitEditing={handleSignUp}
-          textContentType="newPassword"
-        />
-        <TouchableOpacity
-          onPress={() => setShowConfirmPassword(!showConfirmPassword)}
-          style={styles.eyeButton}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          disabled={isLoading}
-        >
-          <Ionicons
-            name={showConfirmPassword ? 'eye-outline' : 'eye-off-outline'}
-            size={20}
-            color="#667eea"
-          />
-        </TouchableOpacity>
-      </View>
-
-      <TouchableOpacity
-        style={[styles.loginButton, isLoading && styles.loginButtonDisabled]}
-        onPress={handleSignUp}
-        disabled={isLoading}
-        activeOpacity={0.8}
-      >
-        <LinearGradient
-          colors={['#667eea', '#764ba2']}
-          style={styles.loginGradient}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        >
-          {isLoading ? (
-            <ActivityIndicator color="white" size="small" />
-          ) : (
-            <Text style={styles.loginText}>Create Account</Text>
-          )}
-        </LinearGradient>
-      </TouchableOpacity>
-    </>
-  );
-
-  // ─── RENDER JOIN FAMILY FORM ───
-  const renderJoinForm = () => (
-    <>
-      <View style={styles.joinHeader}>
-        <Ionicons name="people-outline" size={32} color="#667eea" />
-        <Text style={[styles.joinTitle, { color: isDark ? '#fff' : '#1e293b' }]}>
-          Join Your Family
-        </Text>
-        <Text style={[styles.joinSubtitle, { color: isDark ? '#94a3b8' : '#64748b' }]}>
-          Enter the invite code shared by your family member
-        </Text>
-      </View>
-
-      <View
-        style={[
-          styles.inputContainer,
-          isDark && styles.inputContainerDark,
-          codeValidated && styles.inputContainerSuccess,
-          !codeValidated && inviteCode.length === 6 && !isValidatingCode && styles.inputContainerError,
-        ]}
-      >
-        <Ionicons
-          name="key-outline"
-          size={20}
-          color={codeValidated ? '#22c55e' : '#667eea'}
-          style={styles.inputIcon}
-        />
-        <TextInput
-          style={[
-            styles.input,
-            {
-              color: isDark ? '#fff' : '#1e293b',
-              letterSpacing: 3,
-              fontWeight: '700',
-              fontSize: 18,
-              textAlign: 'center',
-            },
-          ]}
-          placeholder="Paste invite code here"
-          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
-          value={inviteCode}
-          onChangeText={(text) =>
-            setInviteCode(text.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))
-          }
-          autoCapitalize="characters"
-          autoCorrect={false}
-          editable={!isLoading}
-          returnKeyType="next"
-          maxLength={6}
-        />
-        {isValidatingCode && (
-          <ActivityIndicator size="small" color="#667eea" style={{ marginLeft: 8 }} />
-        )}
-        {codeValidated && !isValidatingCode && (
-          <Ionicons name="checkmark-circle" size={22} color="#22c55e" />
-        )}
-      </View>
-
-      <TouchableOpacity
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: 14,
-          borderRadius: 16,
-          borderWidth: 1,
-          borderColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(102,126,234,0.15)',
-          backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(102,126,234,0.05)',
-          marginTop: 8,
-          gap: 8,
-        }}
-        onPress={() => navigation.navigate('QRScanner' as never)}
-        disabled={isLoading}
-      >
-        <Ionicons name="qr-code-outline" size={22} color="#667eea" />
-        <Text style={{ color: isDark ? '#fff' : '#1e293b', fontWeight: '600', fontSize: 15 }}>
-          Scan QR Code Instead
-        </Text>
-      </TouchableOpacity>
-
-      {codeValidated && codeInfo && (
-        <View
-          style={[
-            styles.codeInfoCard,
-            { backgroundColor: isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)' },
-          ]}
-        >
-          <Ionicons name="shield-checkmark" size={18} color="#22c55e" />
-          <Text style={[styles.codeInfoText, { color: isDark ? '#86efac' : '#15803d' }]}>
-            You'll join as{' '}
-            <Text style={{ fontWeight: '700' }}>
-              {codeInfo.role === 'parent2'
-                ? 'Parent 2'
-                : codeInfo.role === 'guardian'
-                ? 'Guardian'
-                : 'Viewer'}
-            </Text>
-            {codeInfo.relationship ? ` (${codeInfo.relationship})` : ''}
-          </Text>
-        </View>
-      )}
-
-      {!codeValidated && inviteCode.length >= 6 && !isValidatingCode && (
-        <View
-          style={[
-            styles.codeInfoCard,
-            { backgroundColor: isDark ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.1)' },
-          ]}
-        >
-          <Ionicons name="alert-circle" size={18} color="#ef4444" />
-          <Text style={[styles.codeInfoText, { color: isDark ? '#fca5a5' : '#b91c1c' }]}>
-            Invalid or expired code. Please check and try again.
-          </Text>
-        </View>
-      )}
-
-      {codeValidated && (
-        <>
-          <View style={styles.divider}>
-            <View
-              style={[styles.dividerLine, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]}
-            />
-            <Text style={[styles.dividerText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
-              set up your account
-            </Text>
-            <View
-              style={[styles.dividerLine, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]}
-            />
-          </View>
-
-          <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
-            <Ionicons name="person-outline" size={20} color="#667eea" style={styles.inputIcon} />
-            <TextInput
-              style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
-              placeholder="Full name"
-              placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
-              value={joinFullName}
-              onChangeText={setJoinFullName}
-              autoCapitalize="words"
-              autoCorrect={false}
-              editable={!isLoading}
-              returnKeyType="next"
-              textContentType="name"
-            />
-          </View>
-
-          <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
-            <Ionicons name="mail-outline" size={20} color="#667eea" style={styles.inputIcon} />
-            <TextInput
-              style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
-              placeholder="Email address"
-              placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
-              value={joinEmail}
-              onChangeText={setJoinEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-              editable={!isLoading}
-              returnKeyType="next"
-              textContentType="emailAddress"
-              autoComplete="email"
-            />
-          </View>
-
-          <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
-            <Ionicons name="lock-closed-outline" size={20} color="#667eea" style={styles.inputIcon} />
-            <TextInput
-              style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
-              placeholder="Password (min 8 characters)"
-              placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
-              value={joinPassword}
-              onChangeText={setJoinPassword}
-              secureTextEntry={!showJoinPassword}
-              editable={!isLoading}
-              returnKeyType="next"
-              textContentType="newPassword"
-              autoComplete="new-password"
-            />
-            <TouchableOpacity
-              onPress={() => setShowJoinPassword(!showJoinPassword)}
-              style={styles.eyeButton}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              disabled={isLoading}
-            >
-              <Ionicons
-                name={showJoinPassword ? 'eye-outline' : 'eye-off-outline'}
-                size={20}
-                color="#667eea"
-              />
-            </TouchableOpacity>
-          </View>
-
-          <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
-            <Ionicons
-              name="shield-checkmark-outline"
-              size={20}
-              color="#667eea"
-              style={styles.inputIcon}
-            />
-            <TextInput
-              style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
-              placeholder="Confirm password"
-              placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
-              value={joinConfirmPassword}
-              onChangeText={setJoinConfirmPassword}
-              secureTextEntry={!showJoinConfirmPassword}
-              editable={!isLoading}
-              returnKeyType="done"
-              onSubmitEditing={handleJoinFamily}
-              textContentType="newPassword"
-            />
-            <TouchableOpacity
-              onPress={() => setShowJoinConfirmPassword(!showJoinConfirmPassword)}
-              style={styles.eyeButton}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              disabled={isLoading}
-            >
-              <Ionicons
-                name={showJoinConfirmPassword ? 'eye-outline' : 'eye-off-outline'}
-                size={20}
-                color="#667eea"
-              />
-            </TouchableOpacity>
-          </View>
-
-          <TouchableOpacity
-            style={[styles.loginButton, isLoading && styles.loginButtonDisabled]}
-            onPress={handleJoinFamily}
-            disabled={isLoading}
-            activeOpacity={0.8}
-          >
-            <LinearGradient
-              colors={['#22c55e', '#16a34a']}
-              style={styles.loginGradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            >
-              {isLoading ? (
-                <ActivityIndicator color="white" size="small" />
-              ) : (
-                <Text style={styles.loginText}>Join Family</Text>
-              )}
-            </LinearGradient>
-          </TouchableOpacity>
-        </>
-      )}
-    </>
-  );
-
+  // ─── RENDER ──────────────────────────────────────────────────────────
   return (
     <View style={[styles.container, { backgroundColor: isDark ? '#0a0a0a' : '#f8faff' }]}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
@@ -1167,41 +665,359 @@ useEffect(() => {
                 {activeTab === 'create' ? 'Create Account' : 'Join Family'}
               </Text>
 
-              {renderTabSwitcher()}
-
-              {activeTab === 'create' ? renderCreateForm() : renderJoinForm()}
-
-              {activeTab === 'create' && (
-                <View style={styles.termsRow}>
-                  <Text style={[styles.termsText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
-                    By signing up, you agree to our{' '}
+              {/* ─── TAB SWITCHER ─── */}
+              <View style={[styles.tabContainer, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(102,126,234,0.08)' }]}>
+                <TouchableOpacity
+                  style={[
+                    styles.tabButton,
+                    activeTab === 'create' && [styles.tabButtonActive, { backgroundColor: isDark ? 'rgba(102,126,234,0.4)' : '#667eea' }],
+                  ]}
+                  onPress={() => setActiveTab('create')}
+                  disabled={isLoading}
+                >
+                  <Text style={[
+                    styles.tabText,
+                    { color: activeTab === 'create' ? '#fff' : isDark ? 'rgba(255,255,255,0.6)' : '#64748b' }
+                  ]}>
+                    Create Account
                   </Text>
-                  <TouchableOpacity onPress={() => navigation.navigate('TermsOfService')}>
-                    <Text style={[styles.termsLink, { color: themeColors.primary }]}>
-                      Terms of Service
-                    </Text>
-                  </TouchableOpacity>
-                  <Text style={[styles.termsText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
-                    {' '}
-                    and{' '}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.tabButton,
+                    activeTab === 'join' && [styles.tabButtonActive, { backgroundColor: isDark ? 'rgba(102,126,234,0.4)' : '#667eea' }],
+                  ]}
+                  onPress={() => setActiveTab('join')}
+                  disabled={isLoading}
+                >
+                  <Text style={[
+                    styles.tabText,
+                    { color: activeTab === 'join' ? '#fff' : isDark ? 'rgba(255,255,255,0.6)' : '#64748b' }
+                  ]}>
+                    Join Family
                   </Text>
-                  <TouchableOpacity onPress={() => navigation.navigate('PrivacyPolicy')}>
-                    <Text style={[styles.termsLink, { color: themeColors.primary }]}>
-                      Privacy Policy
-                    </Text>
+                </TouchableOpacity>
+              </View>
+
+              {activeTab === 'create' ? (
+                // ─── CREATE ACCOUNT FORM ──────────────────────────────
+                <>
+                  <View style={styles.socialIconsContainer}>
+                    <TouchableOpacity
+                      style={[styles.socialIconButton, { borderColor: 'rgba(219,68,55,0.2)' }]}
+                      onPress={handleGoogleSignUp}
+                      disabled={isLoading}
+                      activeOpacity={0.8}
+                    >
+                      <Image source={require('../../../assets/social/google.png')} style={styles.socialIcon} resizeMode="contain" />
+                    </TouchableOpacity>
+
+                    {Platform.OS === 'ios' && (
+                      <TouchableOpacity
+                        style={[styles.socialIconButton, { borderColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)' }]}
+                        onPress={handleAppleSignUp}
+                        disabled={isLoading}
+                        activeOpacity={0.8}
+                      >
+                        <Image source={require('../../../assets/social/apple.png')} style={[styles.socialIcon, isDark && { tintColor: '#FFFFFF' }]} resizeMode="contain" />
+                      </TouchableOpacity>
+                    )}
+
+                    <TouchableOpacity
+                      style={[styles.socialIconButton, { borderColor: 'rgba(24,119,242,0.2)' }]}
+                      onPress={handleFacebookSignUp}
+                      disabled={isLoading}
+                      activeOpacity={0.8}
+                    >
+                      <Image source={require('../../../assets/social/facebook.png')} style={styles.socialIcon} resizeMode="contain" />
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.divider}>
+                    <View style={[styles.dividerLine, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
+                    <Text style={[styles.dividerText, { color: isDark ? '#94a3b8' : '#64748b' }]}>or sign up with email</Text>
+                    <View style={[styles.dividerLine, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
+                  </View>
+
+                  <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
+                    <Ionicons name="person-outline" size={20} color="#667eea" style={styles.inputIcon} />
+                    <TextInput
+                      style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
+                      placeholder="Full name"
+                      placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+                      value={fullName}
+                      onChangeText={setFullName}
+                      autoCapitalize="words"
+                      autoCorrect={false}
+                      editable={!isLoading}
+                      returnKeyType="next"
+                      textContentType="name"
+                    />
+                  </View>
+
+                  <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
+                    <Ionicons name="mail-outline" size={20} color="#667eea" style={styles.inputIcon} />
+                    <TextInput
+                      style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
+                      placeholder="Email address"
+                      placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+                      value={email}
+                      onChangeText={setEmail}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      editable={!isLoading}
+                      returnKeyType="next"
+                      textContentType="emailAddress"
+                    />
+                  </View>
+
+                  <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
+                    <Ionicons name="lock-closed-outline" size={20} color="#667eea" style={styles.inputIcon} />
+                    <TextInput
+                      style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
+                      placeholder="Password (min 8 characters)"
+                      placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+                      value={password}
+                      onChangeText={setPassword}
+                      secureTextEntry={!showPassword}
+                      editable={!isLoading}
+                      returnKeyType="next"
+                      textContentType="newPassword"
+                    />
+                    <TouchableOpacity
+                      onPress={() => setShowPassword(!showPassword)}
+                      style={styles.eyeButton}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      disabled={isLoading}
+                    >
+                      <Ionicons name={showPassword ? 'eye-outline' : 'eye-off-outline'} size={20} color="#667eea" />
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
+                    <Ionicons name="shield-checkmark-outline" size={20} color="#667eea" style={styles.inputIcon} />
+                    <TextInput
+                      style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
+                      placeholder="Confirm password"
+                      placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+                      value={confirmPassword}
+                      onChangeText={setConfirmPassword}
+                      secureTextEntry={!showConfirmPassword}
+                      editable={!isLoading}
+                      returnKeyType="done"
+                      onSubmitEditing={handleSignUp}
+                      textContentType="newPassword"
+                    />
+                    <TouchableOpacity
+                      onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                      style={styles.eyeButton}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      disabled={isLoading}
+                    >
+                      <Ionicons name={showConfirmPassword ? 'eye-outline' : 'eye-off-outline'} size={20} color="#667eea" />
+                    </TouchableOpacity>
+                  </View>
+
+                  <TouchableOpacity
+                    style={[styles.loginButton, isLoading && styles.loginButtonDisabled]}
+                    onPress={handleSignUp}
+                    disabled={isLoading}
+                    activeOpacity={0.8}
+                  >
+                    <LinearGradient
+                      colors={['#667eea', '#764ba2']}
+                      style={styles.loginGradient}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                    >
+                      {isLoading ? <ActivityIndicator color="white" size="small" /> : <Text style={styles.loginText}>Create Account</Text>}
+                    </LinearGradient>
                   </TouchableOpacity>
-                </View>
+
+                  <View style={styles.termsRow}>
+                    <Text style={[styles.termsText, { color: isDark ? '#94a3b8' : '#64748b' }]}>By signing up, you agree to our </Text>
+                    <TouchableOpacity onPress={() => navigation.navigate('TermsOfService')}>
+                      <Text style={[styles.termsLink, { color: themeColors.primary }]}>Terms of Service</Text>
+                    </TouchableOpacity>
+                    <Text style={[styles.termsText, { color: isDark ? '#94a3b8' : '#64748b' }]}> and </Text>
+                    <TouchableOpacity onPress={() => navigation.navigate('PrivacyPolicy')}>
+                      <Text style={[styles.termsLink, { color: themeColors.primary }]}>Privacy Policy</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              ) : (
+                // ─── JOIN FAMILY FORM ──────────────────────────────────
+                <>
+                  <View style={styles.joinHeader}>
+                    <Ionicons name="people-outline" size={28} color="#667eea" />
+                    <Text style={[styles.joinTitle, { color: isDark ? '#fff' : '#1e293b' }]}>Join Your Family</Text>
+                    <Text style={[styles.joinSubtitle, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+                      Enter the invite code shared by your family member
+                    </Text>
+                  </View>
+
+                  <View style={[
+                    styles.inputContainer,
+                    isDark && styles.inputContainerDark,
+                    codeValidated && styles.inputContainerSuccess,
+                    !codeValidated && inviteCode.length === 6 && !isValidatingCode && styles.inputContainerError,
+                  ]}>
+                    <Ionicons name="key-outline" size={20} color={codeValidated ? '#22c55e' : '#667eea'} style={styles.inputIcon} />
+                    <TextInput
+                      style={[styles.input, { color: isDark ? '#fff' : '#1e293b', letterSpacing: 3, fontWeight: '700', fontSize: 18, textAlign: 'center' }]}
+                      placeholder="Paste invite code"
+                      placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+                      value={inviteCode}
+                      onChangeText={(text) => setInviteCode(text.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))}
+                      autoCapitalize="characters"
+                      autoCorrect={false}
+                      editable={!isLoading}
+                      returnKeyType="next"
+                      maxLength={6}
+                    />
+                    {isValidatingCode && <ActivityIndicator size="small" color="#667eea" style={{ marginLeft: 8 }} />}
+                    {codeValidated && !isValidatingCode && <Ionicons name="checkmark-circle" size={22} color="#22c55e" />}
+                  </View>
+
+                  <TouchableOpacity
+                    style={styles.qrButton}
+                    onPress={() => navigation.navigate('QRScanner' as never)}
+                    disabled={isLoading}
+                  >
+                    <Ionicons name="qr-code-outline" size={22} color="#667eea" />
+                    <Text style={[styles.qrButtonText, { color: isDark ? '#fff' : '#1e293b' }]}>Scan QR Code Instead</Text>
+                  </TouchableOpacity>
+
+                  {codeValidated && codeInfo && (
+                    <View style={[styles.codeInfoCard, { backgroundColor: isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)' }]}>
+                      <Ionicons name="shield-checkmark" size={18} color="#22c55e" />
+                      <Text style={[styles.codeInfoText, { color: isDark ? '#86efac' : '#15803d' }]}>
+                        You'll join as <Text style={{ fontWeight: '700' }}>{codeInfo.role === 'parent2' ? 'Parent 2' : codeInfo.role === 'guardian' ? 'Guardian' : 'Viewer'}</Text>
+                        {codeInfo.relationship ? ` (${codeInfo.relationship})` : ''}
+                      </Text>
+                    </View>
+                  )}
+
+                  {!codeValidated && inviteCode.length >= 6 && !isValidatingCode && (
+                    <View style={[styles.codeInfoCard, { backgroundColor: isDark ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.1)' }]}>
+                      <Ionicons name="alert-circle" size={18} color="#ef4444" />
+                      <Text style={[styles.codeInfoText, { color: isDark ? '#fca5a5' : '#b91c1c' }]}>Invalid or expired code. Please check and try again.</Text>
+                    </View>
+                  )}
+
+                  {codeValidated && (
+                    <>
+                      <View style={styles.divider}>
+                        <View style={[styles.dividerLine, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
+                        <Text style={[styles.dividerText, { color: isDark ? '#94a3b8' : '#64748b' }]}>set up your account</Text>
+                        <View style={[styles.dividerLine, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
+                      </View>
+
+                      <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
+                        <Ionicons name="person-outline" size={20} color="#667eea" style={styles.inputIcon} />
+                        <TextInput
+                          style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
+                          placeholder="Full name"
+                          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+                          value={joinFullName}
+                          onChangeText={setJoinFullName}
+                          autoCapitalize="words"
+                          autoCorrect={false}
+                          editable={!isLoading}
+                          returnKeyType="next"
+                          textContentType="name"
+                        />
+                      </View>
+
+                      <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
+                        <Ionicons name="mail-outline" size={20} color="#667eea" style={styles.inputIcon} />
+                        <TextInput
+                          style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
+                          placeholder="Email address"
+                          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+                          value={joinEmail}
+                          onChangeText={setJoinEmail}
+                          keyboardType="email-address"
+                          autoCapitalize="none"
+                          autoCorrect={false}
+                          editable={!isLoading}
+                          returnKeyType="next"
+                          textContentType="emailAddress"
+                        />
+                      </View>
+
+                      <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
+                        <Ionicons name="lock-closed-outline" size={20} color="#667eea" style={styles.inputIcon} />
+                        <TextInput
+                          style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
+                          placeholder="Password (min 8 characters)"
+                          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+                          value={joinPassword}
+                          onChangeText={setJoinPassword}
+                          secureTextEntry={!showJoinPassword}
+                          editable={!isLoading}
+                          returnKeyType="next"
+                          textContentType="newPassword"
+                        />
+                        <TouchableOpacity
+                          onPress={() => setShowJoinPassword(!showJoinPassword)}
+                          style={styles.eyeButton}
+                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                          disabled={isLoading}
+                        >
+                          <Ionicons name={showJoinPassword ? 'eye-outline' : 'eye-off-outline'} size={20} color="#667eea" />
+                        </TouchableOpacity>
+                      </View>
+
+                      <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
+                        <Ionicons name="shield-checkmark-outline" size={20} color="#667eea" style={styles.inputIcon} />
+                        <TextInput
+                          style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
+                          placeholder="Confirm password"
+                          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+                          value={joinConfirmPassword}
+                          onChangeText={setJoinConfirmPassword}
+                          secureTextEntry={!showJoinConfirmPassword}
+                          editable={!isLoading}
+                          returnKeyType="done"
+                          onSubmitEditing={handleJoinFamily}
+                          textContentType="newPassword"
+                        />
+                        <TouchableOpacity
+                          onPress={() => setShowJoinConfirmPassword(!showJoinConfirmPassword)}
+                          style={styles.eyeButton}
+                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                          disabled={isLoading}
+                        >
+                          <Ionicons name={showJoinConfirmPassword ? 'eye-outline' : 'eye-off-outline'} size={20} color="#667eea" />
+                        </TouchableOpacity>
+                      </View>
+
+                      <TouchableOpacity
+                        style={[styles.loginButton, isLoading && styles.loginButtonDisabled]}
+                        onPress={handleJoinFamily}
+                        disabled={isLoading}
+                        activeOpacity={0.8}
+                      >
+                        <LinearGradient
+                          colors={['#22c55e', '#16a34a']}
+                          style={styles.loginGradient}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 1 }}
+                        >
+                          {isLoading ? <ActivityIndicator color="white" size="small" /> : <Text style={styles.loginText}>Join Family</Text>}
+                        </LinearGradient>
+                      </TouchableOpacity>
+                    </>
+                  )}
+                </>
               )}
             </BlurView>
           </Animated.View>
 
           <Animated.View entering={FadeIn.delay(800)} style={styles.footer}>
-            <Text
-              style={[
-                styles.footerText,
-                { color: isDark ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.9)' },
-              ]}
-            >
+            <Text style={[styles.footerText, { color: isDark ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.9)' }]}>
               Already have an account?
             </Text>
             <TouchableOpacity onPress={() => navigation.navigate('Login')} disabled={isLoading}>
@@ -1438,5 +1254,21 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textDecorationLine: 'underline',
     lineHeight: 18,
+  },
+  qrButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(102,126,234,0.15)',
+    backgroundColor: 'rgba(102,126,234,0.05)',
+    marginTop: 8,
+    gap: 8,
+  },
+  qrButtonText: {
+    fontWeight: '600',
+    fontSize: 15,
   },
 });

@@ -36,7 +36,7 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordScree
 
   const { resetUnlockLock, settings: securitySettings } = useSecurity();
   const { darkMode: isDark, themeColors, triggerHaptic } = useCustomization();
-  const { toast, error: showError, success: showSuccess } = useSweetAlert();
+  const { toast, error: showError, success: showSuccess, info: showInfo } = useSweetAlert();
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
@@ -73,6 +73,7 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordScree
     setIsLoading(true);
     triggerHaptic('medium');
 
+    // Simulate API call
     setTimeout(() => {
       setIsLoading(false);
       setSent(true);
@@ -82,11 +83,11 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordScree
 
   const handlePinReset = () => {
     if (!hasPin) {
-      toast('No PIN Set', 'You have not set up a PIN yet');
+      showInfo('No PIN Set', 'You have not set up a PIN yet');
       return;
     }
     if (!hasSecurityQuestions) {
-      toast('No Recovery Set', 'Security questions not configured. Set them up first.');
+      showInfo('No Recovery Set', 'Security questions not configured. Set them up first.');
       return;
     }
 
@@ -285,25 +286,6 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     paddingHorizontal: 24,
   },
-  alertContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 16,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 10,
-    minWidth: 300,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
-  },
-  alertIconBg: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-  alertTextContainer: { flex: 1 },
-  alertTitle: { fontSize: 16, fontWeight: '700', marginBottom: 2 },
-  alertMessage: { fontSize: 13, color: '#64748b' },
-
   header: {
     marginTop: 20,
     marginBottom: 20,
@@ -324,7 +306,6 @@ const styles = StyleSheet.create({
   backButtonDark: {
     backgroundColor: 'rgba(30,41,59,0.8)',
   },
-
   titleContainer: {
     alignItems: 'center',
     marginBottom: 30,
@@ -372,7 +353,6 @@ const styles = StyleSheet.create({
     shadowRadius: 40,
     elevation: 20,
   },
-
   recoverySection: {
     marginBottom: 8,
   },
@@ -391,7 +371,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginBottom: 16,
   },
-
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -413,7 +392,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
   },
-
   resetButton: {
     borderRadius: 16,
     overflow: 'hidden',
@@ -436,7 +414,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.5,
   },
-
   divider: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -451,7 +428,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginHorizontal: 16,
   },
-
   pinResetButton: {
     borderRadius: 16,
     overflow: 'hidden',
@@ -472,7 +448,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.5,
   },
-
   successContainer: {
     flex: 1,
     justifyContent: 'center',
