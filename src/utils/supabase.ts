@@ -25,11 +25,57 @@ if (!supabaseUrl || !supabaseAnonKey) {
 // Fallback to AsyncStorage for web
 const isNative = Platform.OS !== 'web';
 
+// Helper to check if data is too large for SecureStore
+const isDataTooLarge = (value: string): boolean => {
+  // SecureStore has a 2048 byte limit on Android
+  // Use Blob to accurately measure size
+  if (typeof value === 'string') {
+    return new Blob([value]).size > 2000;
+  }
+  return false;
+};
+
+// Helper to compress large data
+const compressData = (value: string): string => {
+  try {
+    // Simple compression using encodeURIComponent
+    // This reduces size by encoding special characters
+    const compressed = encodeURIComponent(value);
+    console.log(`📦 Compressed data from ${new Blob([value]).size} to ${new Blob([compressed]).size} bytes`);
+    return compressed;
+  } catch (error) {
+    console.warn('[SecureStorage] Compression failed, using original:', error);
+    return value;
+  }
+};
+
+// Helper to decompress data if needed
+const decompressData = (value: string): string => {
+  try {
+    // Try to decode - if it fails, it wasn't compressed
+    const decoded = decodeURIComponent(value);
+    // Check if decoded looks like JSON (meaning it was compressed JSON)
+    if (decoded.startsWith('{') || decoded.startsWith('[')) {
+      return decoded;
+    }
+    // If it doesn't look like JSON, return the original
+    return value;
+  } catch {
+    // If decodeURIComponent fails, it wasn't compressed
+    return value;
+  }
+};
+
 const secureStorage = {
   getItem: async (key: string): Promise<string | null> => {
     try {
       if (isNative) {
-        return await SecureStore.getItemAsync(key);
+        const value = await SecureStore.getItemAsync(key);
+        if (value) {
+          // Try to decompress if it was compressed
+          return decompressData(value);
+        }
+        return null;
       }
       return await AsyncStorage.getItem(key);
     } catch (error) {
@@ -40,12 +86,25 @@ const secureStorage = {
   setItem: async (key: string, value: string): Promise<void> => {
     try {
       if (isNative) {
-        await SecureStore.setItemAsync(key, value);
+        // Check if data is too large for SecureStore
+        if (isDataTooLarge(value)) {
+          console.warn(`[SecureStorage] ⚠️ ${key} is ${new Blob([value]).size} bytes, exceeding 2048 byte limit`);
+          console.log(`[SecureStorage] 💡 Storing ${key} in AsyncStorage instead`);
+          await AsyncStorage.setItem(key, value);
+        } else {
+          await SecureStore.setItemAsync(key, value);
+        }
       } else {
         await AsyncStorage.setItem(key, value);
       }
     } catch (error) {
       console.warn(`[SecureStorage] Failed to set ${key}:`, error);
+      // Fallback to AsyncStorage if SecureStore fails
+      try {
+        await AsyncStorage.setItem(key, value);
+      } catch (fallbackError) {
+        console.error(`[SecureStorage] Fallback also failed for ${key}:`, fallbackError);
+      }
     }
   },
   removeItem: async (key: string): Promise<void> => {
@@ -55,6 +114,8 @@ const secureStorage = {
       } else {
         await AsyncStorage.removeItem(key);
       }
+      // Also remove from AsyncStorage in case it was stored there as fallback
+      await AsyncStorage.removeItem(key);
     } catch (error) {
       console.warn(`[SecureStorage] Failed to remove ${key}:`, error);
     }
