@@ -577,48 +577,57 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const token = authData.session?.access_token ?? `auth_token_${authData.user.id}`;
       const userId = authData.user.id;
 
-try {
-  const { data: supabaseBabies, error: babiesError } = await supabase
-    .from('babies')
-    .select('*')
-    .eq('parent1_id', userId);
-  
-  if (!babiesError && supabaseBabies && supabaseBabies.length > 0) {
-    console.log(`[Auth] Found ${supabaseBabies.length} babies in Supabase for new user`);
-    const { createBabyInDb, setAppSetting } = await import('@/database/dbHelpers');
-    for (const baby of supabaseBabies) {
-      const { getBabyByIdFromDb } = await import('@/database/dbHelpers');
-      const exists = await getBabyByIdFromDb(baby.id);
-      if (!exists) {
-        await createBabyInDb({
-          id: baby.id,
-          name: baby.name,
-          avatar: baby.avatar,
-          dateOfBirth: baby.date_of_birth,
-          gender: baby.gender,
-          bloodType: baby.blood_type,
-          medicalNotes: baby.medical_notes,
-          parent1Id: baby.parent1_id,
-          parent2Id: baby.parent2_id,
-        });
+      // ─── CRITICAL FIX: Restore baby data from Supabase BEFORE profile lookup ───
+      let babiesRestored = false;
+      try {
+        console.log('[Auth] Restoring baby data for user:', userId);
+        
+        const { getBabyByIdFromDb, createBabyInDb, setAppSetting } = await import('@/database/dbHelpers');
+        
+        const { data: supabaseBabies, error: babiesError } = await supabase
+          .from('babies')
+          .select('*')
+          .eq('parent1_id', userId);
+        
+        if (!babiesError && supabaseBabies && supabaseBabies.length > 0) {
+          console.log(`[Auth] Found ${supabaseBabies.length} babies in Supabase for user`);
+          babiesRestored = true;
+          
+          for (const baby of supabaseBabies) {
+            const exists = await getBabyByIdFromDb(baby.id);
+            if (!exists) {
+              await createBabyInDb({
+                id: baby.id,
+                name: baby.name,
+                avatar: baby.avatar,
+                dateOfBirth: baby.date_of_birth,
+                gender: baby.gender,
+                bloodType: baby.blood_type,
+                medicalNotes: baby.medical_notes,
+                parent1Id: baby.parent1_id,
+                parent2Id: baby.parent2_id,
+              });
+              console.log(`[Auth] Restored baby: ${baby.name}`);
+            }
+          }
+          
+          if (supabaseBabies[0]) {
+            await setAppSetting('current_baby_id', supabaseBabies[0].id);
+            await AsyncStorage.setItem('@littleloom_current_baby', supabaseBabies[0].id);
+          }
+        }
+      } catch (restoreError) {
+        console.warn('[Auth] Failed to restore babies from Supabase:', restoreError);
       }
-    }
-    if (supabaseBabies[0]) {
-      await setAppSetting('current_baby_id', supabaseBabies[0].id);
-      await AsyncStorage.setItem('@littleloom_current_baby', supabaseBabies[0].id);
-    }
-    
-    // ─── CRITICAL FIX: Update hasBaby in AuthContext state ──────────────
-    if (isMounted.current) {
-      setState(prev => ({
-        ...prev,
-        hasBaby: true,
-      }));
-    }
-  }
-} catch (restoreError) {
-  console.warn('[Auth] Failed to restore babies from Supabase after sign-up:', restoreError);
-}
+
+      // ─── CRITICAL FIX: Update hasBaby in AuthContext state ──────────────
+      if (babiesRestored && isMounted.current) {
+        setState(prev => ({
+          ...prev,
+          hasBaby: true,
+          hasSeenOnboarding: true,
+        }));
+      }
 
       // ─── Local registry lookup ──────────────────────────────────────────
       let existingUser = await dbFindUserByEmail(email);
@@ -767,7 +776,7 @@ try {
           hasSeenOnboarding: true,
           setupComplete: isSetupComplete,
           hasParent2: p2Done,
-          hasBaby: babyDone,
+          hasBaby: babiesRestored ? true : babyDone,
         }));
       }
       return true;

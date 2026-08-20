@@ -489,15 +489,7 @@ function NavigationContent({
    MAIN NAVIGATION EFFECT (navState only)
    ═══════════════════════════════════════════════════════════════════════════ */
 useEffect(() => {
-  // Increment run counter
-  effectRunCount.current += 1;
-  
-  // CRITICAL FIX: Only run the effect up to 3 times to prevent infinite loops
-  if (effectRunCount.current > 3) {
-    console.log('[Navigation] Effect run limit reached (3), preventing further navigation attempts');
-    return;
-  }
-  
+  // Skip if navigation not ready
   if (!navRef.current?.isReady() || !isNavReady || !initialCheckDone) return;
 
   // Get current route BEFORE any navigation decisions
@@ -505,31 +497,63 @@ useEffect(() => {
   
   console.log('[Navigation] Run:', effectRunCount.current, 'navState:', navState, 'route:', currentRoute, 'initialized:', hasInitializedNav.current);
 
-  // CRITICAL FIX: If we're already on the correct screen, mark as initialized
-  if (navState === 'SETUP_BABY' && currentRoute === 'BabyOptional') {
-    if (!hasInitializedNav.current) {
-      hasInitializedNav.current = true;
-      saveNavInitialized(true);
-      console.log('[Navigation] ✅ On BabyOptional with SETUP_BABY, navigation initialized');
+  // ─── CRITICAL FIX: Force navigation to BabyOptional if authenticated with babies ───
+  if (isAuthenticated && navState === 'SETUP_BABY' && babyCountRef.current > 0) {
+    if (currentRoute !== 'BabyOptional' && currentRoute !== 'Main') {
+      console.log('[Navigation] 🚀 Force navigating to BabyOptional for baby selection');
+      navRef.current.navigate('BabyOptional' as never);
+      return;
     }
-    isNavigatingSetup.current = false;
+    if (currentRoute === 'BabyOptional') {
+      console.log('[Navigation] ✅ Already on BabyOptional with babies');
+      if (!hasInitializedNav.current) {
+        hasInitializedNav.current = true;
+        saveNavInitialized(true);
+      }
+      return;
+    }
+  }
+
+  // ─── Force navigate to Main if setup is complete ──────────────────────
+  if (isAuthenticated && navState === 'MAIN' && currentRoute !== 'Main') {
+    if (SETUP_FLOW_SCREENS.has(currentRoute || '') || currentRoute === 'Login' || currentRoute === 'Onboarding') {
+      console.log('[Navigation] 🚀 Setup complete, navigating to Main');
+      navRef.current.reset({ index: 0, routes: [{ name: 'Main' }] });
+      return;
+    }
+  }
+
+  // ─── If we're on BabyOptional and should be MAIN ──────────────────────
+  if (currentRoute === 'BabyOptional' && navState === 'MAIN') {
+    console.log('[Navigation] On BabyOptional but should be MAIN, navigating to Main');
+    navRef.current.navigate('Main' as never);
     return;
   }
 
-  // CRITICAL FIX: If authenticated and has babies but navState is SETUP_BABY, 
-  // navigate to BabyOptional so user can select
-  if (isAuthenticated && navState === 'SETUP_BABY' && currentRoute !== 'BabyOptional') {
-    if (babyCountRef.current > 0) {
-      console.log('[Navigation] Authenticated with babies, navigating to BabyOptional for selection');
+  // ─── If we're on a setup screen but should be MAIN ────────────────────
+  if (hasInitializedNav.current && navState === 'MAIN' && currentRoute && SETUP_FLOW_SCREENS.has(currentRoute)) {
+    console.log('[Navigation] On setup screen but should be MAIN, navigating to Main');
+    navRef.current.navigate('Main' as never);
+    return;
+  }
+
+  // ─── If navState is SETUP_BABY and we're not on BabyOptional ─────────
+  if (navState === 'SETUP_BABY' && currentRoute !== 'BabyOptional') {
+    // Check if we have babies from the context
+    if (babies.length > 0 || babyCountRef.current > 0) {
+      console.log('[Navigation] 🚀 Navigate to BabyOptional with existing babies');
       navRef.current.navigate('BabyOptional' as never);
       return;
     }
   }
 
-  // CRITICAL FIX: If we're on BabyOptional and should be MAIN
-  if (currentRoute === 'BabyOptional' && navState === 'MAIN') {
-    console.log('[Navigation] On BabyOptional but should be MAIN, navigating to Main');
-    navRef.current.navigate('Main' as never);
+  // ─── Standard navigation with effect limit ─────────────────────────────
+  // Increment run counter only for standard navigation
+  effectRunCount.current += 1;
+  
+  // Only apply limit for standard navigation (not for forced navigation above)
+  if (effectRunCount.current > 5) {
+    console.log('[Navigation] Effect run limit reached (5), preventing further navigation attempts');
     return;
   }
 
@@ -669,7 +693,7 @@ useEffect(() => {
       console.log('[Navigation] Reset isNavigatingSetup');
     }, 1000);
   }, 300);
-}, [navState, initialCheckDone, isNavReady, initialState, saveNavInitialized, isAuthenticated, babyCountRef]);
+}, [navState, initialCheckDone, isNavReady, initialState, saveNavInitialized, isAuthenticated, babyCountRef, babies.length]);
 
   // Early return MUST come after ALL hooks
   if (authLoading || !initialCheckDone) {

@@ -13,7 +13,7 @@ import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { SafeBabyAvatar } from '../../components/SafeAvatar';
 import { supabase } from '@/utils/supabase';
-import { createBabyInDb, setCurrentBabyInDb } from '../../database/dbHelpers';
+import { createBabyInDb, setCurrentBabyInDb, getAllBabiesFromDb } from '../../database/dbHelpers';
 
 const { width } = Dimensions.get('window');
 const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpacity);
@@ -41,47 +41,15 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [remoteBabies, setRemoteBabies] = useState<any[]>([]);
   const [showImportOption, setShowImportOption] = useState(false);
-  const [checkDone, setCheckDone] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [hasBabies, setHasBabies] = useState(false);
 
   const isMountedRef = useRef(true);
   const hasCheckedRef = useRef(false);
   const checkTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const navigationAttemptedRef = useRef(false);
-
-  // ─── CHECK IF WE SHOULD NAVIGATE TO MAIN ──────────────────────────
-  const checkAndNavigateToMain = useCallback(async () => {
-    if (navigationAttemptedRef.current) return;
-    
-    try {
-      const { setupComplete, hasParent2, hasBaby } = await wasSetupCompleted();
-      
-      // If setup is complete and we have babies, navigate to Main
-      if (setupComplete && babies.length > 0) {
-        navigationAttemptedRef.current = true;
-        console.log('[BabyOnboarding] Setup complete, navigating to Main');
-        navigation.replace('Main');
-        return true;
-      }
-      
-      // If we have babies but setup not complete, mark baby as complete
-      if (babies.length > 0 && !setupComplete) {
-        await completeSetup('baby');
-        const { setupComplete: newSetupComplete } = await wasSetupCompleted();
-        if (newSetupComplete) {
-          navigationAttemptedRef.current = true;
-          console.log('[BabyOnboarding] Marked baby complete, navigating to Main');
-          navigation.replace('Main');
-          return true;
-        }
-      }
-      
-      return false;
-    } catch (error) {
-      console.warn('[BabyOnboarding] Check navigate error:', error);
-      return false;
-    }
-  }, [babies, completeSetup, wasSetupCompleted, navigation]);
+  const loadAttemptedRef = useRef(false);
+  const loadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ─── CHECK REMOTE BABIES ──────────────────────────────────────────
   const checkRemoteBabies = useCallback(async () => {
@@ -112,7 +80,6 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
 
       if (!userId) {
         console.log('[BabyOnboarding] No user found');
-        setCheckDone(true);
         return;
       }
 
@@ -126,7 +93,6 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
 
       if (error) {
         console.warn('[BabyOnboarding] Query error:', error.message);
-        setCheckDone(true);
         return;
       }
 
@@ -140,47 +106,121 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
         }
       }
     } catch (error) {
-      console.warn('[BabyOnboarding] Error:', error);
-    } finally {
-      if (isMountedRef.current) {
-        setCheckDone(true);
-        // After checking remote babies, try to navigate
-        checkAndNavigateToMain();
-      }
+      console.warn('[BabyOnboarding] Error checking remote babies:', error);
     }
-  }, [babies, userProfile, checkAndNavigateToMain]);
+  }, [babies, userProfile]);
+
+  // ─── CHECK NAVIGATION ─────────────────────────────────────────────
+  const checkAndNavigate = useCallback(async () => {
+    if (navigationAttemptedRef.current) return;
+    if (!isMountedRef.current) return;
+    
+    try {
+      // Check if we have babies locally
+      const localBabies = await getAllBabiesFromDb();
+      
+      if (localBabies && localBabies.length > 0) {
+        console.log('[BabyOnboarding] Found babies in DB, checking setup');
+        
+        const { setupComplete } = await wasSetupCompleted();
+        
+        if (setupComplete) {
+          navigationAttemptedRef.current = true;
+          console.log('[BabyOnboarding] Setup complete, navigating to Main');
+          navigation.replace('Main');
+          return true;
+        }
+        
+        // If we have babies but setup not complete, mark baby as complete
+        await completeSetup('baby');
+        const { setupComplete: newSetupComplete } = await wasSetupCompleted();
+        if (newSetupComplete) {
+          navigationAttemptedRef.current = true;
+          console.log('[BabyOnboarding] Marked baby complete, navigating to Main');
+          navigation.replace('Main');
+          return true;
+        }
+        
+        // Still not complete? Let the user select
+        setHasBabies(true);
+        return true;
+      }
+      
+      return false;
+    } catch (error) {
+      console.warn('[BabyOnboarding] Check navigate error:', error);
+      return false;
+    }
+  }, [completeSetup, navigation, wasSetupCompleted]);
 
   // ─── LOAD BABIES ──────────────────────────────────────────────────
   useEffect(() => {
     isMountedRef.current = true;
+    loadAttemptedRef.current = false;
     navigationAttemptedRef.current = false;
     
     const loadData = async () => {
+      if (loadAttemptedRef.current) return;
+      loadAttemptedRef.current = true;
+      
       try {
         setLocalLoading(true);
-        await loadBabies();
+        console.log('[BabyOnboarding] Starting loadBabies...');
         
-        if (isMountedRef.current) {
-          setLocalLoading(false);
-          
-          // If we have babies, try to navigate to Main
-          if (babies.length > 0) {
-            const navigated = await checkAndNavigateToMain();
-            if (navigated) return;
-          }
-          
-          // Check remote after a short delay
-          if (checkTimeoutRef.current) clearTimeout(checkTimeoutRef.current);
-          checkTimeoutRef.current = setTimeout(() => {
-            if (isMountedRef.current) {
-              checkRemoteBabies();
-            }
-          }, 500);
+        // Force load with timeout
+        const loadPromise = loadBabies();
+        const timeoutPromise = new Promise((_, reject) => {
+          loadTimeoutRef.current = setTimeout(() => {
+            reject(new Error('Load babies timeout'));
+          }, 8000);
+        });
+        
+        await Promise.race([loadPromise, timeoutPromise]);
+        
+        if (loadTimeoutRef.current) {
+          clearTimeout(loadTimeoutRef.current);
+          loadTimeoutRef.current = null;
         }
+        
+        console.log('[BabyOnboarding] loadBabies completed');
+        
+        if (!isMountedRef.current) return;
+        
+        setLocalLoading(false);
+        
+        // Check local DB directly as fallback
+        const localBabies = await getAllBabiesFromDb();
+        if (localBabies && localBabies.length > 0) {
+          setHasBabies(true);
+        }
+        
+        // Try to navigate
+        const navigated = await checkAndNavigate();
+        if (navigated) return;
+        
+        // Check remote babies after a delay
+        if (checkTimeoutRef.current) clearTimeout(checkTimeoutRef.current);
+        checkTimeoutRef.current = setTimeout(() => {
+          if (isMountedRef.current) {
+            checkRemoteBabies();
+          }
+        }, 500);
+        
       } catch (error) {
+        console.error('[BabyOnboarding] Load error:', error);
         if (isMountedRef.current) {
-          setLoadError('Failed to load babies');
           setLocalLoading(false);
+          // Check if we have babies in DB directly
+          try {
+            const localBabies = await getAllBabiesFromDb();
+            if (localBabies && localBabies.length > 0) {
+              setHasBabies(true);
+              // Try to navigate even if loadBabies failed
+              await checkAndNavigate();
+              return;
+            }
+          } catch (e) {}
+          setLoadError('Failed to load babies');
         }
       }
     };
@@ -193,8 +233,12 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
         clearTimeout(checkTimeoutRef.current);
         checkTimeoutRef.current = null;
       }
+      if (loadTimeoutRef.current) {
+        clearTimeout(loadTimeoutRef.current);
+        loadTimeoutRef.current = null;
+      }
     };
-  }, [loadBabies, checkRemoteBabies, checkAndNavigateToMain, babies.length]);
+  }, [loadBabies, checkRemoteBabies, checkAndNavigate]);
 
   // ─── HANDLERS ──────────────────────────────────────────────────────
   const handleImportBaby = useCallback(async (baby: any) => {
@@ -300,24 +344,23 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
     setLoadError(null);
     setLocalLoading(true);
     hasCheckedRef.current = false;
+    loadAttemptedRef.current = false;
     navigationAttemptedRef.current = false;
+    
     try {
+      // Try direct DB check first
+      const localBabies = await getAllBabiesFromDb();
+      if (localBabies && localBabies.length > 0) {
+        setHasBabies(true);
+        setLocalLoading(false);
+        await checkAndNavigate();
+        return;
+      }
+      
       await loadBabies();
       if (isMountedRef.current) {
         setLocalLoading(false);
-        
-        // If we have babies, try to navigate to Main
-        if (babies.length > 0) {
-          const navigated = await checkAndNavigateToMain();
-          if (navigated) return;
-        }
-        
-        if (checkTimeoutRef.current) clearTimeout(checkTimeoutRef.current);
-        checkTimeoutRef.current = setTimeout(() => {
-          if (isMountedRef.current) {
-            checkRemoteBabies();
-          }
-        }, 500);
+        await checkAndNavigate();
       }
     } catch (error) {
       if (isMountedRef.current) {
@@ -325,7 +368,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
         setLocalLoading(false);
       }
     }
-  }, [loadBabies, checkRemoteBabies, babies.length, checkAndNavigateToMain]);
+  }, [loadBabies, checkAndNavigate]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -334,17 +377,17 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
     try {
       await loadBabies();
       if (babies.length > 0) {
-        await checkAndNavigateToMain();
+        await checkAndNavigate();
       }
     } catch (error) {
       console.warn('[BabyOnboarding] Refresh error:', error);
     } finally {
       setRefreshing(false);
     }
-  }, [loadBabies, babies.length, checkAndNavigateToMain]);
+  }, [loadBabies, babies.length, checkAndNavigate]);
 
   const showLoading = localLoading || babyLoading;
-  const hasExistingBabies = babies && babies.length > 0;
+  const hasExistingBabies = (babies && babies.length > 0) || hasBabies;
 
   // ─── ERROR STATE ──────────────────────────────────────────────────
   if (loadError && !showLoading) {
@@ -377,6 +420,12 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
           <View style={[styles.content, { paddingTop: insets.top, justifyContent: 'center', alignItems: 'center' }]}>
             <ActivityIndicator size="large" color={themeColors.primary} />
             <Text style={[styles.loadingText, isDark && styles.textDark]}>Loading your babies...</Text>
+            <TouchableOpacity 
+              style={[styles.cancelLoadingButton, { marginTop: 20 }]}
+              onPress={handleRetry}
+            >
+              <Text style={[styles.cancelLoadingText, { color: themeColors.primary }]}>Tap to retry</Text>
+            </TouchableOpacity>
           </View>
         </LinearGradient>
       </View>
@@ -683,6 +732,13 @@ const styles = StyleSheet.create({
     marginTop: 16,
     fontSize: 16,
     color: '#64748b',
+  },
+  cancelLoadingButton: {
+    padding: 12,
+  },
+  cancelLoadingText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   importContainer: {
     marginBottom: 24,
