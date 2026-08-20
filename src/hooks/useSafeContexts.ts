@@ -12,6 +12,7 @@ import useCustomizationOriginal from './useCustomization';
 
 // FIX: Direct import of the context, NOT the hook wrapper
 import { TrackerContext } from '../context/TrackerContext';
+import { UserContext } from '../context/UserContext';
 
 const DEFAULT_APP_COLORS = {
   background: '#f8faff',
@@ -293,15 +294,9 @@ function useSafeCustomization() {
 }
 
 // ─── SAFE TRACKER ─────────────────────────────────────────────────────
-// FIX: Directly use useContext with the imported TrackerContext
-// NO circular dependency because we don't import from ./useTrackerContext
-
-// ── COMPLETE FALLBACK TRACKER CONTEXT ────────────────────────────────
-// This must match the TrackerContextType interface exactly
 
 function getFallbackTrackerContext() {
   return {
-    // State
     isLoading: false,
     trackers: [],
     customTrackers: [],
@@ -318,76 +313,44 @@ function getFallbackTrackerContext() {
       recentTemplates: [],
       detectedPatterns: [],
     },
-
-    // Tracker operations
     getTracker: () => undefined,
     getTrackersByCategory: () => [],
     searchTrackers: () => [],
-
-    // Custom tracker CRUD
     createCustomTracker: async () => null,
     updateCustomTracker: async () => false,
     deleteCustomTracker: async () => false,
     duplicateTracker: async () => null,
-
-    // Entry CRUD
     addEntry: async () => null,
     updateEntry: async () => false,
     deleteEntry: async () => false,
-
-    // Entry queries
     getEntries: () => [],
     getEntriesByDate: () => [],
     getEntryById: () => undefined,
-
-    // Stats
-    getTrackerStats: () => ({ 
-      totalEntries: 0, 
-      thisWeek: 0, 
-      thisMonth: 0, 
-      lastEntry: null, 
-      streakDays: 0 
-    }),
+    getTrackerStats: () => ({ totalEntries: 0, thisWeek: 0, thisMonth: 0, lastEntry: null, streakDays: 0 }),
     getTodaySummary: () => [],
-
-    // Permissions
     canUseTracker: () => false,
     canCreateEntry: () => false,
     canEditEntry: () => false,
     canDeleteEntry: () => false,
-
-    // Progressive features
     getSmartSuggestions: () => ({}),
     getYesterdayData: () => null,
     getStreak: () => undefined,
     getInsights: () => [],
     dismissInsight: () => {},
     getPendingReminders: () => [],
-    
-    // Reminders
     scheduleReminder: async () => '',
     cancelReminder: async () => {},
     snoozeReminder: async () => {},
-
-    // Templates
     saveTemplate: async () => {},
     getTemplates: async () => [],
-
-    // Entry linking
     linkEntries: async () => {},
     getLinkedEntries: () => [],
-
-    // Legacy sync
     syncToLegacyActivity: () => ({} as any),
     getLegacyActivities: () => [],
     syncFromBabyContext: async () => {},
-
-    // Refresh
     refreshTrackers: async () => {},
     refreshEntries: async () => {},
     setCurrentBabyId: () => {},
-    
-    // These are needed for useTracker hook
     getCustomTrackers: () => [],
     getSystemTrackers: () => [],
     getTrackerById: () => undefined,
@@ -411,6 +374,60 @@ function useSafeTracker() {
     return ctx;
   } catch (e) {
     return getFallbackTrackerContext();
+  }
+}
+
+// ─── SAFE USER ──────────────────────────────────────────────────────────
+// ADD THIS NEW FUNCTION
+
+function getFallbackUserContext() {
+  return {
+    isLoading: false,
+    profile: null,
+    communityProfile: null,
+    permissions: null,
+    usernameRegistry: {},
+    isReady: false,
+    loadUser: async () => {},
+    updateProfile: async () => {},
+    updateAvatar: async () => {},
+    updatePreferences: async () => {},
+    hasPermission: () => false,
+    canAccessFeature: () => false,
+    loadCommunityProfile: async () => null,
+    updateCommunityProfile: async () => {},
+    toggleCommunityPrivacy: async () => {},
+    getCommunityStats: async () => ({ posts: 0, followers: 0, following: 0, helpful: 0 }),
+    isCommunityProfileComplete: () => false,
+    checkUsernameAvailable: async () => ({ available: false, message: 'Not available' }),
+    registerUsername: async () => false,
+    unregisterUsername: async () => false,
+    updateUsername: async () => ({ success: false, message: '' }),
+    updateSelectedTopics: async () => {},
+    getSelectedTopics: () => [],
+    syncProfileToPosts: async () => {},
+    getDisplayName: () => 'Anonymous',
+    getUserType: () => 'community' as const,
+    clearUserData: async () => {},
+    updateCommunityDisplayName: async () => {},
+    updateCommunityBio: async () => {},
+    updateCommunityAvatar: async () => {},
+    updateCommunityHandle: async () => ({ success: false, message: '' }),
+    getCommunityHandle: () => '',
+    syncWithAuthProfile: async () => {},
+    getAuthProfile: () => null,
+  };
+}
+
+function useSafeUser() {
+  try {
+    const ctx = useContext(UserContext);
+    if (!ctx) {
+      return getFallbackUserContext();
+    }
+    return ctx;
+  } catch (e) {
+    return getFallbackUserContext();
   }
 }
 
@@ -451,6 +468,7 @@ export function useUnifiedTheme() {
 }
 
 // ─── EXPORTS ──────────────────────────────────────────────────────────
+// ADD useSafeUser to exports
 
 export {
   useSafeApp,
@@ -459,6 +477,7 @@ export {
   useSafeActivity,
   useSafeCustomization,
   useSafeTracker,
+  useSafeUser, // <-- ADD THIS
 };
 
 export default useUnifiedTheme;

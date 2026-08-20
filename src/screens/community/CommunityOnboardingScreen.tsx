@@ -21,6 +21,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { TOPIC_CATEGORIES, INITIAL_TOPICS, type Topic } from '../../context/CommunityContext';
 import { useUser } from '../../context/UserContext';
+import { useCustomization } from '../../hooks/useCustomization';  // <-- ADD THIS LINE
 import { useSweetAlert } from '../../components/SweetAlert';
 import { updateSectionState } from '../../hooks/useIntelligentSplash';
 
