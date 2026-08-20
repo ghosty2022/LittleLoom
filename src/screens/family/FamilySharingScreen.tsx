@@ -13,10 +13,8 @@ import {
   RefreshControl,
   StatusBar,
   Platform,
-
   ScrollView,
   Clipboard,
-
 } from 'react-native';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
@@ -24,16 +22,16 @@ import { BlurView } from 'expo-blur';
 import { EmptyState } from '../../components/EmptyState';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, { 
-  FadeInUp, 
-  FadeInDown, 
-  FadeIn, 
-  useAnimatedStyle, 
-  useSharedValue, 
-  withSpring, 
-  useAnimatedScrollHandler, 
-  interpolate, 
-  Extrapolation, 
+import Animated, {
+  FadeInUp,
+  FadeInDown,
+  FadeIn,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  useAnimatedScrollHandler,
+  interpolate,
+  Extrapolation,
   Layout,
   FadeInRight,
   FadeInLeft,
@@ -57,8 +55,10 @@ import { useBaby } from '../../context/BabyContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useFamily } from '../../context/FamilyContext';
 import { useSweetAlert } from '../../components/SweetAlert';
-import { useTracker } from '../../hooks'; // <-- ADD THIS LINE
+import { useTracker } from '../../hooks';
+import { useSafeUser } from '../../hooks/useSafeContexts'; // <-- USE THIS
 import { useTrackerProgressive } from '../../hooks';
+
 type FamilySharingScreenProps = NativeStackScreenProps<RootStackParamList, 'FamilySharing'>;
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -493,10 +493,10 @@ const FamilyActivityTimeline: React.FC<{
     });
     return Object.entries(groups).map(([date, items]) => ({
       date,
-      label: new Date(date).toDateString() === new Date().toDateString() 
-        ? 'Today' 
-        : new Date(date).toDateString() === new Date(Date.now() - 86400000).toDateString() 
-          ? 'Yesterday' 
+      label: new Date(date).toDateString() === new Date().toDateString()
+        ? 'Today'
+        : new Date(date).toDateString() === new Date(Date.now() - 86400000).toDateString()
+          ? 'Yesterday'
           : new Date(date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }),
       items,
     }));
@@ -1047,7 +1047,8 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
     revokeInviteCode,
   } = useFamily();
 
-  const { profile, updateProfile } = useUser();
+  // IMPORTANT: Use useSafeUser instead of useUser
+  const { profile, updateProfile } = useSafeUser();
   const { currentBaby } = useBaby();
   const { userProfile, resetPasswordForUser } = useAuth();
 
@@ -1098,6 +1099,7 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
     { id: '3', type: 'milestone', title: 'First words milestone approaching', description: 'Baby is showing signs of verbal development. Be ready to record!', icon: '🗣️', color: '#f59e0b', actionLabel: 'Learn More', priority: 'medium' },
     { id: '4', type: 'health', title: 'Vaccination due in 3 days', description: '6-month vaccination appointment should be scheduled soon.', icon: '💉', color: '#ef4444', actionLabel: 'Schedule', priority: 'high' },
   ];
+  
   // Real timeline events — synced with Timeline screen via TrackerContext
   const { entries: trackerEntries } = useTracker();
   
@@ -1168,8 +1170,6 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
     await loadFamily();
     setIsRefreshing(false);
   }, [loadFamily]);
-
-
 
   const handleUpdateMember = async () => {
     if (!selectedMember) return;

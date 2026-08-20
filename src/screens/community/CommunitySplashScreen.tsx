@@ -8,6 +8,7 @@ import {
   StatusBar,
   Platform,
   Animated,
+  Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,14 +17,13 @@ import { useRouteBasedNavVisibility } from '../../hooks/useRouteBasedNavVisibili
 import { useCustomization } from '../../hooks/useCustomization';
 import { useCommunity } from '../../context/CommunityContext';
 import { getSectionState, updateSectionState } from '../../hooks/useIntelligentSplash';
-import {
-  CommunityColors,
-  CommunityGradients,
-  CommunityShadows,
-  CommunityBorderRadius,
-} from '../../theme/CommunityTheme';
 
 const { width, height } = Dimensions.get('window');
+const littleLoomLogo = require('../../../assets/logo.png');
+
+// Splash Colors
+const SPLASH_COLORS = ['#667eea', '#764ba2', '#f093fb'];
+const SPLASH_COLORS_DARK = ['#0f172a', '#1e293b', '#334155'];
 
 interface CommunitySplashScreenProps {
   onAnimationComplete: () => void;
@@ -50,7 +50,6 @@ export default function CommunitySplashScreen({
   const [splashContent, setSplashContent] = useState<SplashContent | null>(null);
   const [isReady, setIsReady] = useState(false);
 
-  // --- FIX: Define isDark ---
   const isDark = settings?.darkMode ?? false;
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -60,6 +59,7 @@ export default function CommunitySplashScreen({
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const progressAnim = useRef(new Animated.Value(0)).current;
   const statsAnim = useRef(new Animated.Value(0)).current;
+  const floatAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     const generateContent = async () => {
@@ -86,7 +86,7 @@ export default function CommunitySplashScreen({
         content = {
           emoji: '🎯',
           title: 'Personalize Your Feed',
-          subtitle: 'You haven\'t selected any topics yet. Pick what matters to you for a tailored community experience.',
+          subtitle: "You haven't selected any topics yet. Pick what matters to you for a tailored community experience.",
           stats: [
             { label: 'Available', value: '50+' },
             { label: 'Selected', value: '0' },
@@ -94,8 +94,7 @@ export default function CommunitySplashScreen({
           ],
           tip: '💡 Tap "Get Started" to choose your topics',
         };
-      } else if (topicCount < 3) {
-        // Get topic names for a personalized message
+      } else if (topicCount < 5) {
         const topicNames = selectedTopics.slice(0, 2).map(id => {
           const topic = topics.find(t => t.id === id);
           return topic?.name || 'topic';
@@ -111,7 +110,7 @@ export default function CommunitySplashScreen({
             { label: 'New Posts', value: '24' },
             { label: 'Unread', value: '3' },
           ],
-          tip: '💡 You can select up to 5 topics for the best experience',
+          tip: '💡 Select 5 topics for the best experience',
         };
       } else {
         const topicNames = selectedTopics.slice(0, 3).map(id => {
@@ -147,6 +146,22 @@ export default function CommunitySplashScreen({
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     }
 
+    // Float animation for logo
+    const floatAnimation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(floatAnim, {
+          toValue: -12,
+          duration: 2200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(floatAnim, {
+          toValue: 0,
+          duration: 2200,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+
     const entranceAnimation = Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -155,8 +170,8 @@ export default function CommunitySplashScreen({
       }),
       Animated.spring(scaleAnim, {
         toValue: 1,
-        friction: 8,
-        tension: 40,
+        friction: 6,
+        tension: 50,
         useNativeDriver: true,
       }),
       Animated.timing(slideUpAnim, {
@@ -177,13 +192,13 @@ export default function CommunitySplashScreen({
     const pulseAnimation = Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, {
-          toValue: 1.1,
-          duration: 1500,
+          toValue: 1.05,
+          duration: 2000,
           useNativeDriver: true,
         }),
         Animated.timing(pulseAnim, {
           toValue: 1,
-          duration: 1500,
+          duration: 2000,
           useNativeDriver: true,
         }),
       ])
@@ -203,6 +218,7 @@ export default function CommunitySplashScreen({
     });
 
     entranceAnimation.start();
+    floatAnimation.start();
     if (!shouldReduceMotion) {
       rotateAnimation.start();
       pulseAnimation.start();
@@ -228,7 +244,12 @@ export default function CommunitySplashScreen({
       });
     }, shouldReduceMotion ? 1500 : 2800);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      floatAnimation.stop();
+      rotateAnimation.stop();
+      pulseAnimation.stop();
+    };
   }, [isReady, splashContent, shouldReduceMotion, settings.hapticFeedback, onAnimationComplete]);
 
   const spin = iconRotateAnim.interpolate({
@@ -259,10 +280,7 @@ export default function CommunitySplashScreen({
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
 
       <LinearGradient
-        colors={isDark ? 
-          ['#1a1a2e', '#16213e', '#0c0a09'] :
-          ['#6366f1', '#8b5cf6', '#6a82fb']
-        }
+        colors={isDark ? SPLASH_COLORS_DARK : SPLASH_COLORS}
         style={styles.gradient}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
@@ -273,13 +291,19 @@ export default function CommunitySplashScreen({
             <Animated.View
               style={[
                 styles.bgCircle,
-                { transform: [{ rotate: spin }, { scale: pulseAnim }] }
+                { 
+                  borderColor: 'rgba(255,255,255,0.05)',
+                  transform: [{ rotate: spin }, { scale: pulseAnim }] 
+                }
               ]}
             />
             <Animated.View
               style={[
                 styles.bgCircle2,
-                { transform: [{ rotate: spin }, { scale: pulseAnim }] }
+                { 
+                  borderColor: 'rgba(255,255,255,0.03)',
+                  transform: [{ rotate: spin }, { scale: pulseAnim }] 
+                }
               ]}
             />
           </>
@@ -313,20 +337,23 @@ export default function CommunitySplashScreen({
             },
           ]}
         >
-          {/* Dynamic Emoji */}
-          <View style={styles.logoContainer}>
-            <LinearGradient
-              colors={['rgba(255,255,255,0.3)', 'rgba(255,255,255,0.1)']}
-              style={styles.logoRing}
-            >
-              <View style={[styles.logoInner, { backgroundColor: isDark ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.95)' }]}>
-                <Text style={styles.logoEmoji}>{splashContent.emoji}</Text>
-                <View style={[styles.onlineIndicator, { borderColor: isDark ? '#6366f1' : '#6366f1' }]}>
-                  <View style={styles.onlineDot} />
+          {/* Logo with Float Animation */}
+          <Animated.View style={{ transform: [{ translateY: floatAnim }] }}>
+            <View style={styles.logoContainer}>
+              <LinearGradient
+                colors={['rgba(255,255,255,0.3)', 'rgba(255,255,255,0.1)']}
+                style={styles.logoRing}
+              >
+                <View style={[styles.logoInner, { backgroundColor: 'rgba(255,255,255,0.95)' }]}>
+                  <Image
+                    source={littleLoomLogo}
+                    style={styles.logoImage}
+                    resizeMode="contain"
+                  />
                 </View>
-              </View>
-            </LinearGradient>
-          </View>
+              </LinearGradient>
+            </View>
+          </Animated.View>
 
           {/* Dynamic Title */}
           <Text style={[styles.title, { color: '#fff' }]}>{splashContent.title}</Text>
@@ -433,7 +460,6 @@ const styles = StyleSheet.create({
     height: width * 1.2,
     borderRadius: width * 0.6,
     borderWidth: 40,
-    borderColor: 'rgba(255,255,255,0.05)',
     top: -width * 0.3,
     right: -width * 0.3,
   },
@@ -443,7 +469,6 @@ const styles = StyleSheet.create({
     height: width * 0.8,
     borderRadius: width * 0.4,
     borderWidth: 30,
-    borderColor: 'rgba(255,255,255,0.03)',
     bottom: -width * 0.2,
     left: -width * 0.2,
   },
@@ -493,27 +518,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
+    overflow: 'hidden',
   },
-  logoEmoji: {
-    fontSize: 50,
-  },
-  onlineIndicator: {
-    position: 'absolute',
-    bottom: 8,
-    right: 8,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#fff',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-  },
-  onlineDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#10b981',
+  logoImage: {
+    width: 80,
+    height: 80,
   },
   title: {
     fontSize: 32,

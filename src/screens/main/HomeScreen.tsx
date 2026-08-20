@@ -1,39 +1,24 @@
+// screens/HomeScreen.tsx - Complete with Supabase Integration (FIXED IMPORTS)
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Dimensions,
   FlatList,
   Image,
-  ImageBackground,
   Modal,
   Platform,
   RefreshControl,
   ScrollView,
   StatusBar,
   StyleSheet,
-  Switch,
   Text,
-  TextInput,
   TouchableOpacity,
   Pressable,
   useColorScheme,
   View,
-  LayoutAnimation,
-  UIManager,
 } from 'react-native';
 
-import { useCustomization } from '../../hooks/useCustomization';
 import { useFocusEffect } from '@react-navigation/native';
-import { useAuth } from '../../context/AuthContext';
-import { useBaby } from '../../context/BabyContext';
-import { useActivity } from '../../context/ActivityContext';
-import { useTracker } from '../../context/TrackerContext';
-import { useSecurity } from '../../context/SecurityContext';
-import { useCommunity } from '../../context/CommunityContext';
-import { useAudio, SOUND_TRACKS } from '../../context/AudioContext';
-import { useMedia } from '../../context/MediaContext';
-
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -41,29 +26,40 @@ import Animated, {
   FadeIn,
   FadeInUp,
   FadeInDown,
-  FadeInRight,
   Layout,
   useSharedValue,
   useAnimatedStyle,
   withSpring,
   withTiming,
-  withRepeat,
-  withSequence,
-  interpolate,
-  Extrapolate,
-  Easing,
   useAnimatedScrollHandler,
-  runOnJS,
 } from 'react-native-reanimated';
-
 import * as Haptics from 'expo-haptics';
 import { formatDistanceToNow, format, subDays, eachDayOfInterval, isSameDay, differenceInHours, differenceInDays, differenceInMonths } from 'date-fns';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { SafeAvatar, SafeBabyAvatar, SafeParentAvatar } from '../../components/SafeAvatar';
+// ─── Context Imports ──────────────────────────────────────────────────────
+import { useCustomization } from '../../hooks/useCustomization';
+import { useAuth } from '../../context/AuthContext';
+import { useBaby } from '../../context/BabyContext';
+import { useActivity } from '../../context/ActivityContext';
+import { useTracker } from '../../context/TrackerContext';
+import { useSecurity } from '../../context/SecurityContext';
+import { useCommunity } from '../../context/CommunityContext';
+import { useAudio, SOUND_TRACKS } from '../../context/AudioContext';
+
+// ─── Component Imports ──────────────────────────────────────────────────
+import { SafeBabyAvatar, SafeParentAvatar } from '../../components/SafeAvatar';
 import { useSweetAlert } from '../../components/SweetAlert';
 
+// ─── Types ──────────────────────────────────────────────────────────────
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
+
+// ─── Supabase Service ──────────────────────────────────────────────────
+import { supabase } from '../../services/supabase';
+import { babyService } from '../../services/babyService';
+import { activityService } from '../../services/activityService';
+import { communityService } from '../../services/communityService';
 
 const { width, height } = Dimensions.get('window');
 const SCREEN_W = width;
@@ -71,77 +67,6 @@ const SCREEN_H = height;
 
 const littleLoomLogo = require('../../../assets/logo.png');
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   DESIGN SYSTEM — Ultra-Refined, Cohesive Tokens (GrowthDashboard DNA)
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const DESIGN = {
-  radius: { xs: 10, sm: 14, md: 18, lg: 22, xl: 28, full: 999 },
-  spacing: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32, xxxxl: 40 },
-  shadow: {
-    xs: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.02, shadowRadius: 2, elevation: 1 },
-    sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 6, elevation: 2 },
-    md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 16, elevation: 4 },
-    lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.1, shadowRadius: 32, elevation: 8 },
-    glow: { shadowColor: '#667eea', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 20, elevation: 6 },
-  },
-};
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   NAVIGATION MAP — FIXED: Keys match actual screen names used in code
-   ═══════════════════════════════════════════════════════════════════════════ */
-const NAVIGATION_MAP: Record<string, { screen: keyof RootStackParamList; params?: Record<string, any> }> = {
-  // Tab roots
-  'Main': { screen: 'Main', params: {} },
-  'Connect': { screen: 'Main', params: { screen: 'Connect' } },
-  'More': { screen: 'More', params: {} },
-
-  // Auth & Setup
-  'Onboarding': { screen: 'Onboarding', params: {} },
-  'Login': { screen: 'Login', params: {} },
-  'SignUp': { screen: 'SignUp', params: {} },
-  'ForgotPassword': { screen: 'ForgotPassword', params: {} },
-  'CreateBabyProfile': { screen: 'CreateBabyProfile', params: {} },
-  'SwitchBaby': { screen: 'SwitchBaby', params: {} },
-  'AddParent': { screen: 'AddParent', params: {} },
-
-  // Main screens
-  'UniversalTrackerHub': { screen: 'UniversalTrackerHub', params: {} },
-  'Timeline': { screen: 'Timeline', params: {} },
-  'GrowthDashboard': { screen: 'GrowthDashboard', params: {} },
-  'Achievements': { screen: 'Achievements', params: {} },
-  'TrackerReminders': { screen: 'TrackerReminders', params: {} },
-  'SafetyCorner': { screen: 'SafetyCorner', params: {} },
-  'Gallery': { screen: 'Gallery', params: {} },
-  'SoundMixer': { screen: 'SoundMixer', params: {} },
-  'FamilySharing': { screen: 'FamilySharing', params: {} },
-  'FamilyChatList': { screen: 'FamilyChatList', params: {} },
-  'HelpCenter': { screen: 'HelpCenter', params: {} },
-  'ContactSupport': { screen: 'ContactSupport', params: {} },
-  'Profile': { screen: 'Profile', params: {} },
-  'EditProfile': { screen: 'EditProfile', params: {} },
-  'EditGuardian': { screen: 'EditGuardian', params: {} },
-  'VaccinationSchedule': { screen: 'VaccinationSchedule', params: {} },
-  'Customize': { screen: 'Customize', params: {} },
-  'SecurityCenter': { screen: 'SecurityCenter', params: {} },
-  'BiometricSetup': { screen: 'BiometricSetup', params: {} },
-  'BackupRestore': { screen: 'BackupRestore', params: {} },
-  'LanguageSettings': { screen: 'LanguageSettings', params: {} },
-  'UnitSettings': { screen: 'UnitSettings', params: {} },
-  'PrivacyPolicy': { screen: 'PrivacyPolicy', params: {} },
-  'TermsOfService': { screen: 'TermsOfService', params: {} },
-  'About': { screen: 'About', params: {} },
-  'EntryDetail': { screen: 'EntryDetail', params: {} },
-  'Insights': { screen: 'Insights', params: {} },
-  'CreateCustomTracker': { screen: 'CreateCustomTracker', params: {} },
-
-  // Legacy aliases (keep for backward compatibility)
-  'Settings': { screen: 'Customize', params: {} },
-  'UniversalTracker': { screen: 'UniversalTrackerHub', params: {} },
-  'Reminders': { screen: 'TrackerReminders', params: {} },
-  'Grow': { screen: 'GrowthDashboard', params: {} },
-  'AchievementsScreen': { screen: 'Achievements', params: {} },
-};
 /* ═══════════════════════════════════════════════════════════════════════════
    TYPES
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -207,13 +132,63 @@ interface VaccinationReminder {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   THEME HELPERS
+   NAVIGATION MAP — FIXED: Keys match actual screen names used in code
    ═══════════════════════════════════════════════════════════════════════════ */
+const NAVIGATION_MAP: Record<string, { screen: keyof RootStackParamList; params?: Record<string, any> }> = {
+  // Tab roots
+  'Main': { screen: 'Main', params: {} },
+  'Connect': { screen: 'Main', params: { screen: 'Connect' } },
+  'More': { screen: 'More', params: {} },
 
+  // Auth & Setup
+  'Onboarding': { screen: 'Onboarding', params: {} },
+  'Login': { screen: 'Login', params: {} },
+  'SignUp': { screen: 'SignUp', params: {} },
+  'ForgotPassword': { screen: 'ForgotPassword', params: {} },
+  'CreateBabyProfile': { screen: 'CreateBabyProfile', params: {} },
+  'SwitchBaby': { screen: 'SwitchBaby', params: {} },
+  'AddParent': { screen: 'AddParent', params: {} },
 
+  // Main screens
+  'UniversalTrackerHub': { screen: 'UniversalTrackerHub', params: {} },
+  'Timeline': { screen: 'Timeline', params: {} },
+  'GrowthDashboard': { screen: 'GrowthDashboard', params: {} },
+  'Achievements': { screen: 'Achievements', params: {} },
+  'TrackerReminders': { screen: 'TrackerReminders', params: {} },
+  'SafetyCorner': { screen: 'SafetyCorner', params: {} },
+  'Gallery': { screen: 'Gallery', params: {} },
+  'SoundMixer': { screen: 'SoundMixer', params: {} },
+  'FamilySharing': { screen: 'FamilySharing', params: {} },
+  'FamilyChatList': { screen: 'FamilyChatList', params: {} },
+  'HelpCenter': { screen: 'HelpCenter', params: {} },
+  'ContactSupport': { screen: 'ContactSupport', params: {} },
+  'Profile': { screen: 'Profile', params: {} },
+  'EditProfile': { screen: 'EditProfile', params: {} },
+  'EditGuardian': { screen: 'EditGuardian', params: {} },
+  'VaccinationSchedule': { screen: 'VaccinationSchedule', params: {} },
+  'Customize': { screen: 'Customize', params: {} },
+  'SecurityCenter': { screen: 'SecurityCenter', params: {} },
+  'BiometricSetup': { screen: 'BiometricSetup', params: {} },
+  'BackupRestore': { screen: 'BackupRestore', params: {} },
+  'LanguageSettings': { screen: 'LanguageSettings', params: {} },
+  'UnitSettings': { screen: 'UnitSettings', params: {} },
+  'PrivacyPolicy': { screen: 'PrivacyPolicy', params: {} },
+  'TermsOfService': { screen: 'TermsOfService', params: {} },
+  'About': { screen: 'About', params: {} },
+  'EntryDetail': { screen: 'EntryDetail', params: {} },
+  'Insights': { screen: 'Insights', params: {} },
+  'CreateCustomTracker': { screen: 'CreateCustomTracker', params: {} },
+
+  // Legacy aliases (keep for backward compatibility)
+  'Settings': { screen: 'Customize', params: {} },
+  'UniversalTracker': { screen: 'UniversalTrackerHub', params: {} },
+  'Reminders': { screen: 'TrackerReminders', params: {} },
+  'Grow': { screen: 'GrowthDashboard', params: {} },
+  'AchievementsScreen': { screen: 'Achievements', params: {} },
+};
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   DATA — Refined Quick Actions with Categories
+   DATA — Quick Actions with Categories
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const QUICK_ACTIONS: QuickAction[] = [
@@ -249,10 +224,11 @@ const FEATURE_CARDS: FeatureCard[] = [
 ];
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   REFINED GLASS CARD — GrowthDashboard Style (NO BLUR — solid gradients)
+   COMPONENTS — All components defined below
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const GlassCard: React.FC<{ children: React.ReactNode; style?: any; onPress?: () => void; intensity?: number }> = 
+// ─── Glass Card ──────────────────────────────────────────────────────────
+const GlassCard: React.FC<{ children: React.ReactNode; style?: any; onPress?: () => void }> = 
   React.memo(({ children, style, onPress }) => {
     const colorScheme = useColorScheme();
     const isDark = colorScheme === 'dark';
@@ -266,16 +242,13 @@ const GlassCard: React.FC<{ children: React.ReactNode; style?: any; onPress?: ()
           start={{ x: 0, y: 0 }} 
           end={{ x: 1, y: 1 }} 
         />
-        <View style={[styles.glassBorder, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]} />
         <View style={styles.glassContent}>{children}</View>
       </Wrapper>
     );
   });
-(GlassCard as any).displayName = 'GlassCard';
-/* ═══════════════════════════════════════════════════════════════════════════
-   SECTION HEADER COMPONENT — Clean, Minimal (GrowthDashboard Style)
-   ═══════════════════════════════════════════════════════════════════════════ */
+GlassCard.displayName = 'GlassCard';
 
+// ─── Section Header ──────────────────────────────────────────────────────
 const SectionHeader: React.FC<{
   title: string;
   subtitle?: string;
@@ -300,11 +273,9 @@ const SectionHeader: React.FC<{
     )}
   </View>
 ));
-(SectionHeader as any).displayName = 'SectionHeader';
-/* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 1: AI DAILY SUMMARY WIDGET — Redesigned as Sleek Horizontal Strip
-   ═══════════════════════════════════════════════════════════════════════════ */
+SectionHeader.displayName = 'SectionHeader';
 
+// ─── Daily Summary Widget ───────────────────────────────────────────────
 const DailySummaryWidget: React.FC<{
   summary: DailySummary;
   isDark: boolean;
@@ -392,10 +363,7 @@ const DailySummaryWidget: React.FC<{
   );
 });
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 2: SMART CONTEXT CARD — Redesigned as Compact Pill
-   ═══════════════════════════════════════════════════════════════════════════ */
-
+// ─── Smart Context Card ─────────────────────────────────────────────────
 const SmartContextCard: React.FC<{
   isDark: boolean;
   theme: any;
@@ -489,10 +457,7 @@ const SmartContextCard: React.FC<{
   );
 });
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 3: NEXT BEST ACTION — Redesigned as Floating Action Banner
-   ═══════════════════════════════════════════════════════════════════════════ */
-
+// ─── Next Best Action ───────────────────────────────────────────────────
 const NextBestAction: React.FC<{
   isDark: boolean;
   theme: any;
@@ -607,10 +572,7 @@ const NextBestAction: React.FC<{
   );
 });
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 4: WEEKLY PATTERN INSIGHT — Redesigned as Clean Bar Chart
-   ═══════════════════════════════════════════════════════════════════════════ */
-
+// ─── Weekly Pattern Insight ─────────────────────────────────────────────
 const WeeklyPatternInsight: React.FC<{
   isDark: boolean;
   theme: any;
@@ -682,10 +644,7 @@ const WeeklyPatternInsight: React.FC<{
   );
 });
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 5: CATEGORIZED QUICK ACTIONS — Redesigned as Smooth Grid
-   ═══════════════════════════════════════════════════════════════════════════ */
-
+// ─── Categorized Quick Actions ──────────────────────────────────────────
 const CATEGORY_TABS = [
   { key: 'all', label: 'All', icon: 'grid-outline' },
   { key: 'daily', label: 'Daily', icon: 'sunny-outline' },
@@ -709,7 +668,7 @@ const CategorizedQuickActions: React.FC<{
     return actions.filter(a => a.category === activeCategory);
   }, [actions, activeCategory]);
 
-  const columns = width >= 768 ? 4 : 4;
+  const columns = 4;
   const gap = 10;
   const margin = 20;
   const availableWidth = width - (margin * 2);
@@ -717,7 +676,6 @@ const CategorizedQuickActions: React.FC<{
 
   return (
     <View>
-      {/* Category Tabs */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -768,7 +726,6 @@ const CategorizedQuickActions: React.FC<{
         })}
       </ScrollView>
 
-      {/* Action Grid */}
       <View style={[styles.categorizedGrid, { gap, paddingHorizontal: margin }]}>
         {filteredActions.map((action, index) => (
           <Animated.View
@@ -810,10 +767,7 @@ const CategorizedQuickActions: React.FC<{
   );
 });
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 6: VACCINATION REMINDERS SECTION
-   ═══════════════════════════════════════════════════════════════════════════ */
-
+// ─── Vaccination Reminders ──────────────────────────────────────────────
 const VaccinationReminders: React.FC<{
   reminders: VaccinationReminder[];
   isDark: boolean;
@@ -874,10 +828,7 @@ const VaccinationReminders: React.FC<{
   );
 });
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 7: AI INSIGHTS CARD — GrowthDashboard Style Intelligence
-   ═══════════════════════════════════════════════════════════════════════════ */
-
+// ─── AI Insights Card ──────────────────────────────────────────────────
 const AIInsightsCard: React.FC<{
   isDark: boolean;
   theme: any;
@@ -969,10 +920,7 @@ const AIInsightsCard: React.FC<{
   );
 });
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 8: SMART NOTIFICATIONS — Redesigned as Clean List
-   ═══════════════════════════════════════════════════════════════════════════ */
-
+// ─── Smart Notification Panel ──────────────────────────────────────────
 const SmartNotificationPanel: React.FC<{
   notifications: SmartNotification[];
   onDismiss: (id: string) => void;
@@ -1073,10 +1021,7 @@ const SmartNotificationPanel: React.FC<{
   );
 });
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   REFINED FEATURE CARDS — Horizontal Scroll, Clean SOLID cards (NO BLUR)
-   ═══════════════════════════════════════════════════════════════════════════ */
-
+// ─── Feature Cards Row ──────────────────────────────────────────────────
 const FeatureCardsRow: React.FC<{
   items: FeatureCard[];
   onPress: (item: FeatureCard) => void;
@@ -1103,7 +1048,6 @@ const FeatureCardsRow: React.FC<{
               { 
                 borderColor: `${item.color}20`,
                 backgroundColor: isDark ? 'rgba(45,45,60,0.6)' : '#ffffff',
-                /* no shadow */
               }
             ]}>
               <View style={styles.featureCardTop}>
@@ -1136,10 +1080,7 @@ const FeatureCardsRow: React.FC<{
   );
 });
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   REFINED RECENT ACTIVITY LIST — Clean, Compact (GrowthDashboard Style)
-   ═══════════════════════════════════════════════════════════════════════════ */
-
+// ─── Recent Activity List ──────────────────────────────────────────────
 const RecentActivityList: React.FC<{
   activities: any[];
   isDark: boolean;
@@ -1275,10 +1216,7 @@ const RecentActivityList: React.FC<{
   );
 });
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   REFINED SOUND MIXER SECTION — Compact, Embedded
-   ═══════════════════════════════════════════════════════════════════════════ */
-
+// ─── Sound Mixer Section ──────────────────────────────────────────────
 const SoundMixerSection: React.FC<{ onPress: () => void; isDark: boolean; theme: any }> = 
   React.memo(({ onPress, isDark, theme }) => {
     const { playTrack, currentTrack, isPlaying, togglePlayback } = useAudio();
@@ -1349,10 +1287,7 @@ const SoundMixerSection: React.FC<{ onPress: () => void; isDark: boolean; theme:
     );
   });
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   REFINED STICKY HEADER — GrowthDashboard Style with scroll animation
-   ═══════════════════════════════════════════════════════════════════════════ */
-
+// ─── Sticky App Header ──────────────────────────────────────────────────
 interface StickyAppHeaderProps {
   isDark: boolean;
   currentBaby: any;
@@ -1388,29 +1323,18 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
   fontSizeMultiplier,
   compactSpacing,
 }) => {
-  const headerAnimatedStyle = useAnimatedStyle(() => {
-    // Classic executive sticky header — stays visible, content scrolls underneath
-    return {};
-  });
-
   const headerPaddingTop = Platform.OS === 'ios' ? (compactSpacing ? 44 : 52) : (compactSpacing ? 28 : 36);
   const headerPaddingBottom = compactSpacing ? 8 : 12;
-  const iconSize = Math.round(22 * fontSizeMultiplier);
   const titleSize = Math.round(22 * fontSizeMultiplier);
-  const badgeSize = Math.round(18 * fontSizeMultiplier);
-  const avatarSize = Math.round(40 * fontSizeMultiplier);
 
-    const headerBg = isDark ? (fullTheme?.glassBg || 'rgba(26,26,42,0.96)') : (fullTheme?.glassBg || 'rgba(255,255,255,0.96)');
+  const headerBg = isDark ? (fullTheme?.glassBg || 'rgba(26,26,42,0.96)') : (fullTheme?.glassBg || 'rgba(255,255,255,0.96)');
   const borderColor = isDark ? (fullTheme?.border || 'rgba(255,255,255,0.06)') : 'rgba(0,0,0,0.04)';
   const textColor = isDark ? (fullTheme?.text || '#f0f0f7') : (fullTheme?.text || '#111827');
-
-  // Fixed logo — no floating animation for stable executive header
 
   return (
     <Animated.View
       style={[
         styles.stickyHeaderContainer,
-        headerAnimatedStyle,
         {
           paddingTop: headerPaddingTop,
           paddingBottom: headerPaddingBottom,
@@ -1423,7 +1347,6 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
       <BlurView intensity={isDark ? 90 : 95} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
 
       <View style={styles.stickyHeaderContent}>
-        {/* Left: Safety */}
         <View style={styles.stickyHeaderLeft}>
           <TouchableOpacity
             style={[styles.safetyCornerBtn, { borderRadius: 10 }]}
@@ -1438,30 +1361,28 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
           </TouchableOpacity>
         </View>
 
-          {/* Center: Floating Logo + Title */}
         <View style={styles.stickyHeaderCenter}>
-             <View style={styles.logoFloatWrap}>
-              <Image 
-                source={littleLoomLogo} 
-                style={[
-                  styles.headerLogoImage, 
-                  { 
-                    width: Math.round(56 * fontSizeMultiplier), 
-                    height: Math.round(56 * fontSizeMultiplier),
-                  }
-                ]} 
-                resizeMode="contain" 
-              />
-              <View style={styles.logoTextColumn}>
-                <Text style={[styles.stickyHeaderTitle, { color: textColor, fontSize: titleSize }]}>LittleLoom</Text>
-                                <View style={[styles.stickyHeaderUnderline, { backgroundColor: primaryColor, width: Math.round(34 * fontSizeMultiplier), height: Math.max(3, Math.round(3 * fontSizeMultiplier)), borderRadius: Math.max(2, Math.round(2 * fontSizeMultiplier)), marginTop: compactSpacing ? 3 : 4 }]} />
-              </View>
+          <View style={styles.logoFloatWrap}>
+            <Image 
+              source={littleLoomLogo} 
+              style={[
+                styles.headerLogoImage, 
+                { 
+                  width: Math.round(56 * fontSizeMultiplier), 
+                  height: Math.round(56 * fontSizeMultiplier),
+                }
+              ]} 
+              resizeMode="contain" 
+            />
+            <View style={styles.logoTextColumn}>
+              <Text style={[styles.stickyHeaderTitle, { color: textColor, fontSize: titleSize }]}>LittleLoom</Text>
+              <View style={[styles.stickyHeaderUnderline, { backgroundColor: primaryColor, width: Math.round(34 * fontSizeMultiplier), height: Math.max(3, Math.round(3 * fontSizeMultiplier)), borderRadius: Math.max(2, Math.round(2 * fontSizeMultiplier)), marginTop: compactSpacing ? 3 : 4 }]} />
             </View>
+          </View>
         </View>
 
-        {/* Right: Actions */}
-       <View style={[styles.stickyHeaderRight, { gap: 10 }]}>
-                    <TouchableOpacity
+        <View style={[styles.stickyHeaderRight, { gap: 10 }]}>
+          <TouchableOpacity
             style={[styles.stickyHeaderIconBtn, { width: Math.round(36 * fontSizeMultiplier), height: Math.round(36 * fontSizeMultiplier), borderRadius: Math.round(18 * fontSizeMultiplier) }]}
             onPress={onNotificationPress}
           >
@@ -1475,7 +1396,7 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
             )}
           </TouchableOpacity>
 
-                    <TouchableOpacity
+          <TouchableOpacity
             style={[styles.stickyHeaderIconBtn, { width: Math.round(36 * fontSizeMultiplier), height: Math.round(36 * fontSizeMultiplier), borderRadius: Math.round(18 * fontSizeMultiplier) }]}
             onPress={onSettingsPress}
           >
@@ -1483,7 +1404,7 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
           </TouchableOpacity>
 
           {currentBaby ? (
-                        <TouchableOpacity 
+            <TouchableOpacity 
               style={[styles.stickyHeaderBaby, { width: Math.round(36 * fontSizeMultiplier), height: Math.round(36 * fontSizeMultiplier), borderRadius: Math.round(18 * fontSizeMultiplier) }]} 
               onPress={onBabyPress}
             >
@@ -1499,7 +1420,7 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
           )}
 
           <TouchableOpacity style={styles.stickyHeaderLockBtn} onPress={onLockPress}>
-                        <LinearGradient
+            <LinearGradient
               colors={['#ff6b6b', '#ee5a5a']}
               style={[styles.stickyHeaderLockGradient, { width: Math.round(32 * fontSizeMultiplier), height: Math.round(32 * fontSizeMultiplier), borderRadius: Math.round(16 * fontSizeMultiplier) }]}
             >
@@ -1513,7 +1434,7 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   MAIN HOMESCREEN — COMPLETELY REDESIGNED with GrowthDashboard patterns
+   MAIN HOMESCREEN — COMPLETE WITH SUPABASE INTEGRATION
    ═══════════════════════════════════════════════════════════════════════════ */
 
 export default function HomeScreen({ navigation }: HomeScreenProps) {
@@ -1535,8 +1456,6 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   const secondary = themeColors?.secondary || '#fa709a';
   const accent = themeColors?.accent || '#43e97b';
 
-
-
   const theme = useMemo(() => ({
     text: isDark ? '#f0f0f7' : '#1a1a1a',
     textSecondary: isDark ? '#a0a0b0' : '#4b5563',
@@ -1551,39 +1470,39 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 
   const scrollY = useSharedValue(0);
 
+  // ─── Context Hooks ────────────────────────────────────────────────────
   const { userProfile, signOut, isLoading: authLoading } = useAuth();
   const {
-  currentBaby,
-  loadBabies,
-  getPottyStreak,
-  growthData,
-  milestones,
-  getGrowthData,
-  getLatestMeasurements,
-  getTodaySleepCount,
-  getTodayFeedCount,
-  getTodayPottyCount,
-} = useBaby();
+    currentBaby,
+    loadBabies,
+    getPottyStreak,
+    growthData,
+    milestones,
+    getGrowthData,
+    getLatestMeasurements,
+    getTodaySleepCount,
+    getTodayFeedCount,
+    getTodayPottyCount,
+  } = useBaby();
   const { entries: activities, getRecentTimelineEvents, getTodayCount, loadEntries: loadActivities, isLoading: activitiesLoading } = useActivity();
-    const { entries } = useTracker();
+  const { entries } = useTracker();
   const { lockApp, getAvailableAuthMethods } = useSecurity();
   const { getUnreadCount } = useCommunity();
-  const media = useMedia();
 
   const { success, error, confirm, toast } = useSweetAlert();
 
+  // ─── Local State ──────────────────────────────────────────────────────
   const [refreshing, setRefreshing] = useState(false);
   const [greeting, setGreeting] = useState('Good morning');
   const [currentTime, setCurrentTime] = useState(new Date());
   const [showNotificationChooser, setShowNotificationChooser] = useState(false);
-const [showBabyRequiredModal, setShowBabyRequiredModal] = useState(false);
-const [showSecurityModal, setShowSecurityModal] = useState(false);
-const [pendingAction, setPendingAction] = useState<QuickAction | null>(null);
-
-  // Smart notifications state
+  const [showBabyRequiredModal, setShowBabyRequiredModal] = useState(false);
+  const [showSecurityModal, setShowSecurityModal] = useState(false);
+  const [pendingAction, setPendingAction] = useState<QuickAction | null>(null);
   const [smartNotifications, setSmartNotifications] = useState<SmartNotification[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  /* ── Load saved data ── */
+  // ─── Load Saved Data ──────────────────────────────────────────────────
   useEffect(() => {
     const loadSavedData = async () => {
       try {
@@ -1599,9 +1518,11 @@ const [pendingAction, setPendingAction] = useState<QuickAction | null>(null);
     loadSavedData();
   }, []);
 
-  useEffect(() => { AsyncStorage.setItem('@littleloom_smart_notifications', JSON.stringify(smartNotifications)).catch(() => {}); }, [smartNotifications]);
+  useEffect(() => {
+    AsyncStorage.setItem('@littleloom_smart_notifications', JSON.stringify(smartNotifications)).catch(() => {});
+  }, [smartNotifications]);
 
-  /* ── Generate smart notifications based on baby data ── */
+  // ─── Generate Smart Notifications ────────────────────────────────────
   useEffect(() => {
     if (!currentBaby) return;
     const now = Date.now();
@@ -1682,6 +1603,7 @@ const [pendingAction, setPendingAction] = useState<QuickAction | null>(null);
     });
   }, [currentBaby?.id, currentBaby?.birthDate, currentBaby?.name, getPottyStreak]);
 
+  // ─── Greeting Timer ──────────────────────────────────────────────────
   useEffect(() => {
     const hour = new Date().getHours();
     if (hour < 12) setGreeting('Good morning');
@@ -1692,15 +1614,48 @@ const [pendingAction, setPendingAction] = useState<QuickAction | null>(null);
     return () => { clearInterval(timer); };
   }, []);
 
-  // Refresh instantly every time the tab/screen comes into focus
+  // ─── Supabase Data Loading ──────────────────────────────────────────
+  const loadData = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      
+      // Load babies from Supabase
+      await loadBabies();
+      
+      // Load activities from Supabase
+      await loadActivities();
+      
+      // Get community notifications count
+      await getUnreadCount();
+      
+      // Get growth data
+      if (currentBaby?.id) {
+        await getGrowthData('weight');
+        await getGrowthData('height');
+        await getGrowthData('head');
+      }
+    } catch (err) {
+      console.error('Failed to load data:', err);
+      error('Loading Error', 'Could not load your data. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [loadBabies, loadActivities, getUnreadCount, getGrowthData, currentBaby?.id, error]);
+
+  // ─── Initial Load ────────────────────────────────────────────────────
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  // ─── Focus Refresh ──────────────────────────────────────────────────
   useFocusEffect(
     useCallback(() => {
-      loadBabies();
-      loadActivities();
-    }, [loadBabies, loadActivities])
+      // Refresh data when screen comes into focus
+      loadData();
+    }, [loadData])
   );
 
-  // Scroll handler for header animation (GrowthDashboard pattern)
+  // ─── Scroll Handler ──────────────────────────────────────────────────
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
       'worklet';
@@ -1708,47 +1663,46 @@ const [pendingAction, setPendingAction] = useState<QuickAction | null>(null);
     },
   });
 
-const DIRECT_SCREENS = new Set([
-  'UniversalTrackerHub', 'Timeline', 'GrowthDashboard', 'Achievements',
-  'TrackerReminders', 'SafetyCorner', 'Gallery', 'SoundMixer',
-  'FamilySharing', 'FamilyChatList', 'HelpCenter', 'ContactSupport',
-  'Profile', 'SwitchBaby', 'CreateBabyProfile', 'EditProfile',
-  'VaccinationSchedule', 'Customize', 'Main', 'Onboarding',
-  'Login', 'SignUp', 'ForgotPassword', 'AddEntry', 'AddParent',
-  'EditGuardian', 'SecurityCenter', 'BiometricSetup', 'BackupRestore',
-  'LanguageSettings', 'UnitSettings', 'PrivacyPolicy', 'TermsOfService',
-  'About', 'EntryDetail', 'Insights', 'CreateCustomTracker', 'More'
-]);
+  // ─── Navigation Helper ──────────────────────────────────────────────
+  const DIRECT_SCREENS = new Set([
+    'UniversalTrackerHub', 'Timeline', 'GrowthDashboard', 'Achievements',
+    'TrackerReminders', 'SafetyCorner', 'Gallery', 'SoundMixer',
+    'FamilySharing', 'FamilyChatList', 'HelpCenter', 'ContactSupport',
+    'Profile', 'SwitchBaby', 'CreateBabyProfile', 'EditProfile',
+    'VaccinationSchedule', 'Customize', 'Main', 'Onboarding',
+    'Login', 'SignUp', 'ForgotPassword', 'AddEntry', 'AddParent',
+    'EditGuardian', 'SecurityCenter', 'BiometricSetup', 'BackupRestore',
+    'LanguageSettings', 'UnitSettings', 'PrivacyPolicy', 'TermsOfService',
+    'About', 'EntryDetail', 'Insights', 'CreateCustomTracker', 'More'
+  ]);
 
-const navigateToScreen = useCallback((screenName: string, params?: Record<string, any>) => {
-  if (DIRECT_SCREENS.has(screenName)) {
-    navigation.navigate(screenName as any, params || {});
-    return;
-  }
-  
-  // Otherwise look up in NAVIGATION_MAP for aliases
-  const navConfig = NAVIGATION_MAP[screenName];
-  if (!navConfig) {
-    console.warn(`Navigation target "${screenName}" not found`);
-    return;
-  }
-  
-  if (navConfig.params?.screen) {
-    navigation.navigate(navConfig.screen as any, {
-      screen: navConfig.params.screen,
-      params: { ...navConfig.params.params, ...params },
-    });
-  } else {
-    navigation.navigate(navConfig.screen as any, { ...navConfig.params, ...params });
-  }
-}, [navigation]);
+  const navigateToScreen = useCallback((screenName: string, params?: Record<string, any>) => {
+    if (DIRECT_SCREENS.has(screenName)) {
+      navigation.navigate(screenName as any, params || {});
+      return;
+    }
+    
+    const navConfig = NAVIGATION_MAP[screenName];
+    if (!navConfig) {
+      console.warn(`Navigation target "${screenName}" not found`);
+      return;
+    }
+    
+    if (navConfig.params?.screen) {
+      navigation.navigate(navConfig.screen as any, {
+        screen: navConfig.params.screen,
+        params: { ...navConfig.params.params, ...params },
+      });
+    } else {
+      navigation.navigate(navConfig.screen as any, { ...navConfig.params, ...params });
+    }
+  }, [navigation]);
 
+  // ─── Action Handlers ─────────────────────────────────────────────────
   const handleNotificationPress = useCallback(() => {
     triggerHaptic('light');
     setShowNotificationChooser(true);
   }, [triggerHaptic]);
-
-  // Notification options are handled inline in the modal below
 
   const handleSafetyCornerPress = useCallback(() => {
     triggerHaptic('medium');
@@ -1758,14 +1712,14 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await Promise.all([loadBabies(), loadActivities()]);
+      await loadData();
       success('Refreshed!', 'Your dashboard is up to date.');
     } catch (err) {
       error('Refresh Failed', 'Could not update dashboard data.');
     } finally {
       setRefreshing(false);
     }
-  }, [loadBabies, loadActivities, success, error]);
+  }, [loadData, success, error]);
 
   const handleQuickAction = useCallback((action: QuickAction) => {
     triggerHaptic('medium');
@@ -1777,6 +1731,7 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
     }
     navigateToScreen(action.screen, action.params);
   }, [currentBaby, navigateToScreen, triggerHaptic]);
+
   const handleFeaturePress = useCallback((item: FeatureCard) => {
     triggerHaptic('light');
     const babyRequiredFeatures = new Set([
@@ -1836,7 +1791,8 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
     };
     navigateToScreen('UniversalTrackerHub', { type: typeMap[type] || type });
   }, [currentBaby, navigateToScreen]);
-   const handleContextPress = useCallback(() => {
+
+  const handleContextPress = useCallback(() => {
     if (!currentBaby) {
       setPendingAction({ id: 'context', label: 'Smart Context', icon: '', iconName: 'partly-sunny-outline', color: '#f59e0b', gradient: ['#f59e0b', '#f59e0b'] as [string, string], screen: 'UniversalTrackerHub', params: {}, category: 'daily' });
       setShowBabyRequiredModal(true);
@@ -1860,7 +1816,7 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
     navigateToScreen(screen, params);
   }, [currentBaby, navigateToScreen]);
 
- const handleActivityPress = useCallback((activity: any) => {
+  const handleActivityPress = useCallback((activity: any) => {
     if (!currentBaby) {
       setPendingAction({ id: 'activity', label: 'Activity Details', icon: '', iconName: 'time-outline', color: secondary, gradient: [secondary, secondary] as [string, string], screen: 'Timeline', params: { type: activity.type }, category: 'daily' });
       setShowBabyRequiredModal(true);
@@ -1869,7 +1825,7 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
     navigation.navigate('Timeline', { type: activity.type });
   }, [currentBaby, navigation, secondary]);
 
-  // Compute daily summary
+  // ─── Computed Values ──────────────────────────────────────────────────
   const dailySummary = useMemo((): DailySummary => {
     if (!currentBaby) return { feeds: 0, sleepHours: 0, diapers: 0, lastFeedTime: null, lastSleepTime: null };
 
@@ -1895,7 +1851,6 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
     };
   }, [activities, currentBaby]);
 
-  /* ── Growth KPI Stats (GrowthDashboard-style) ── */
   const growthStats = useMemo(() => {
     if (!currentBaby) return null;
     const result: Record<string, any> = {};
@@ -1928,13 +1883,10 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
     return result;
   }, [growthData, currentBaby, getGrowthData]);
 
-  // Unified recent activity — syncs with Timeline screen
   const allTimelineEvents = useMemo(() => {
     if (!currentBaby) return [];
-    // Priority: TrackerContext entries (same as Timeline) > ActivityContext fallback
     const trackerEntries = (entries || []).filter((e: any) => e?.timestamp).sort((a: any, b: any) => b.timestamp - a.timestamp);
     const activityEvents = getRecentTimelineEvents(50, currentBaby.id);
-    // Merge and deduplicate by ID
     const merged = [...trackerEntries];
     activityEvents.forEach((ae: any) => {
       if (!merged.find((me: any) => me.id === ae.id)) merged.push(ae);
@@ -1952,7 +1904,6 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
     [smartNotifications]
   );
 
-  // Vaccination reminders
   const vaccinationReminders = useMemo((): VaccinationReminder[] => {
     if (!currentBaby?.birthDate) return [];
     const ageDays = differenceInDays(new Date(), new Date(currentBaby.birthDate));
@@ -1979,7 +1930,8 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
     ? (settings.compactSpacing ? 110 : 130)
     : (settings.compactSpacing ? 100 : 115);
 
-  if (authLoading) {
+  // ─── Loading State ──────────────────────────────────────────────────
+  if (authLoading || isLoading) {
     return (
       <View style={[styles.container, styles.loadingContainer]}>
         <StatusBar style={isDark ? 'light' : 'dark'} />
@@ -1995,18 +1947,7 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
     );
   }
 
-  if (activitiesLoading && activities.length === 0) {
-    return (
-      <View style={styles.container}>
-        <StatusBar style={isDark ? 'light' : 'dark'} />
-        <LinearGradient colors={bgColors} style={styles.backgroundGradient} />
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-          <ActivityIndicator size="large" color={primary} />
-        </View>
-      </View>
-    );
-  }
-
+  // ─── Render ──────────────────────────────────────────────────────────
   return (
     <View style={styles.container}>
       <StatusBar style={isDark ? 'light' : 'dark'} translucent backgroundColor="transparent" />
@@ -2045,7 +1986,7 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
         scrollEventThrottle={16}
       >
         {/* ═══════════════════════════════════════════════════════════════════
-            GREETING & PARENT CARD — Compact, Elegant
+            GREETING & PARENT CARD
            ═══════════════════════════════════════════════════════════════════ */}
         <Animated.View entering={shouldReduceMotion ? undefined : FadeInDown.springify()}>
           <GlassCard style={[styles.parentCard, { borderRadius: borderRadiusValue, marginHorizontal: settings.compactSpacing ? 16 : 20 }]}>
@@ -2093,7 +2034,7 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
         </Animated.View>
 
         {/* ═══════════════════════════════════════════════════════════════════
-            BABY CARD — Sleek, Modern
+            BABY CARD
            ═══════════════════════════════════════════════════════════════════ */}
         {currentBaby ? (
           <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(40).springify()}>
@@ -2162,7 +2103,7 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
         )}
 
         {/* ═══════════════════════════════════════════════════════════════════
-            GROWTH SNAPSHOT KPIs — GrowthDashboard-style
+            GROWTH SNAPSHOT KPIs
            ═══════════════════════════════════════════════════════════════════ */}
         {currentBaby && growthStats && (
           <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(50).springify()}>
@@ -2253,7 +2194,7 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
         )}
 
         {/* ═══════════════════════════════════════════════════════════════════
-            NEW FEATURE 1: DAILY SUMMARY WIDGET — Redesigned
+            DAILY SUMMARY WIDGET
            ═══════════════════════════════════════════════════════════════════ */}
         {currentBaby && (
           <View style={{ marginHorizontal: settings.compactSpacing ? 16 : 20, marginBottom: 14 }}>
@@ -2268,7 +2209,7 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
         )}
 
         {/* ═══════════════════════════════════════════════════════════════════
-            NEW FEATURE 2: SMART CONTEXT CARD — Redesigned
+            SMART CONTEXT CARD
            ═══════════════════════════════════════════════════════════════════ */}
         {currentBaby && (
           <View style={{ marginHorizontal: settings.compactSpacing ? 16 : 20, marginBottom: 14 }}>
@@ -2282,7 +2223,7 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
         )}
 
         {/* ═══════════════════════════════════════════════════════════════════
-            NEW FEATURE 3: NEXT BEST ACTION — Redesigned
+            NEXT BEST ACTION
            ═══════════════════════════════════════════════════════════════════ */}
         {currentBaby && (
           <View style={{ marginHorizontal: settings.compactSpacing ? 16 : 20, marginBottom: 14 }}>
@@ -2297,7 +2238,7 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
         )}
 
         {/* ═══════════════════════════════════════════════════════════════════
-            NEW FEATURE 6: VACCINATION REMINDERS
+            VACCINATION REMINDERS
            ═══════════════════════════════════════════════════════════════════ */}
         {currentBaby && vaccinationReminders.length > 0 && (
           <View style={{ marginHorizontal: settings.compactSpacing ? 16 : 20, marginBottom: 14 }}>
@@ -2305,7 +2246,7 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
               reminders={vaccinationReminders}
               isDark={isDark}
               theme={theme}
-             onPress={() => {
+              onPress={() => {
                 if (!currentBaby) {
                   setPendingAction({ id: 'vaccine', label: 'Vaccination Schedule', icon: '', iconName: 'medical-outline', color: '#e11d48', gradient: ['#e11d48', '#e11d48'] as [string, string], screen: 'VaccinationSchedule', params: {}, category: 'health' });
                   setShowBabyRequiredModal(true);
@@ -2318,7 +2259,7 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
         )}
 
         {/* ═══════════════════════════════════════════════════════════════════
-            NEW FEATURE 7: AI INSIGHTS CARD
+            AI INSIGHTS CARD
            ═══════════════════════════════════════════════════════════════════ */}
         {currentBaby && (
           <View style={{ marginHorizontal: settings.compactSpacing ? 16 : 20, marginBottom: 14 }}>
@@ -2327,19 +2268,20 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
               theme={theme}
               currentBaby={currentBaby}
               activities={allTimelineEvents}
-             onPress={() => {
+              onPress={() => {
                 if (!currentBaby) {
                   setPendingAction({ id: 'insights', label: 'AI Insights', icon: '', iconName: 'sparkles', color: theme.primary, gradient: [theme.primary, theme.primary] as [string, string], screen: 'GrowthDashboard', params: {}, category: 'tools' });
                   setShowBabyRequiredModal(true);
                   return;
                 }
                 navigateToScreen('GrowthDashboard');
-              }}            />
+              }}
+            />
           </View>
         )}
 
         {/* ═══════════════════════════════════════════════════════════════════
-            SMART NOTIFICATIONS — Redesigned
+            SMART NOTIFICATIONS
            ═══════════════════════════════════════════════════════════════════ */}
         {activeSmartNotifications.length > 0 && (
           <View style={{ marginHorizontal: settings.compactSpacing ? 16 : 20, marginBottom: 14 }}>
@@ -2354,7 +2296,7 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
         )}
 
         {/* ═══════════════════════════════════════════════════════════════════
-            NEW FEATURE 5: CATEGORIZED QUICK ACTIONS — Redesigned
+            CATEGORIZED QUICK ACTIONS
            ═══════════════════════════════════════════════════════════════════ */}
         <View style={styles.sectionFullWidth}>
           <View style={[styles.sectionHeader, { paddingHorizontal: settings.compactSpacing ? 16 : 20 }]}>
@@ -2384,7 +2326,7 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
         </View>
 
         {/* ═══════════════════════════════════════════════════════════════════
-            FEATURE CARDS — Horizontal Scroll, Clean SOLID cards (NO BLUR)
+            FEATURE CARDS
            ═══════════════════════════════════════════════════════════════════ */}
         <View style={styles.sectionFullWidth}>
           <View style={[styles.sectionHeader, { paddingHorizontal: settings.compactSpacing ? 16 : 20, marginBottom: 10 }]}>
@@ -2412,7 +2354,7 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
         </View>
 
         {/* ═══════════════════════════════════════════════════════════════════
-            NEW FEATURE 4: WEEKLY PATTERN INSIGHT — Redesigned
+            WEEKLY PATTERN INSIGHT
            ═══════════════════════════════════════════════════════════════════ */}
         {currentBaby && activities.length > 0 && (
           <View style={{ marginHorizontal: settings.compactSpacing ? 16 : 20, marginBottom: 14 }}>
@@ -2425,7 +2367,7 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
         )}
 
         {/* ═══════════════════════════════════════════════════════════════════
-            SOUND MIXER — Compact, Embedded
+            SOUND MIXER
            ═══════════════════════════════════════════════════════════════════ */}
         <View style={[styles.section, { paddingHorizontal: settings.compactSpacing ? 16 : 20 }]}>
           <SectionHeader
@@ -2440,7 +2382,7 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
         </View>
 
         {/* ═══════════════════════════════════════════════════════════════════
-            RECENT ACTIVITY — Clean, Compact (GrowthDashboard Style)
+            RECENT ACTIVITY
            ═══════════════════════════════════════════════════════════════════ */}
         <View style={styles.sectionFullWidth}>
           <View style={[styles.sectionHeader, { paddingHorizontal: settings.compactSpacing ? 16 : 20 }]}>
@@ -2476,7 +2418,7 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
         <View style={{ height: settings.compactSpacing ? 80 : 120 }} />
       </Animated.ScrollView>
 
-      {/* Notification Chooser Modal — CommunityScreen-style */}
+      {/* Notification Chooser Modal */}
       <Modal
         visible={showNotificationChooser}
         transparent
@@ -2637,7 +2579,13 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   STYLES — Completely Redesigned, Smooth, Cohesive (NO BLUR CARDS)
+   STYLES — Complete Styles (Keep your existing styles)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+// Keep your existing styles array - they are already complete
+// The styles object is defined at the bottom of your file
+/* ═══════════════════════════════════════════════════════════════════════════
+   STYLES — Complete Styles
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const styles = StyleSheet.create({
@@ -2649,7 +2597,7 @@ const styles = StyleSheet.create({
   /* ── Loading States ── */
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   loadingGradient: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center' },
-  loadingText: { fontWeight: '800', marginBottom: 20 },
+  loadingText: { fontWeight: '800', marginBottom: 20, color: '#fff' },
   loadingDots: { flexDirection: 'row', gap: 8 },
   dot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#fff' },
   dot1: { opacity: 0.4 },
@@ -2661,21 +2609,11 @@ const styles = StyleSheet.create({
   stickyHeaderContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   stickyHeaderLeft: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
   stickyHeaderCenter: { flex: 2, alignItems: 'center', justifyContent: 'center' },
-  stickyHeaderTitle: { fontWeight: '900', letterSpacing: -0.3 },
+  stickyHeaderTitle: { fontWeight: '900', letterSpacing: -0.3, color: '#fff' },
   stickyHeaderUnderline: { alignSelf: 'center' },
-  logoFloatWrap: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: 8,
-  },
-  headerLogoImage: {
-    zIndex: 2,
-    backgroundColor: 'transparent',
-  },  logoTextColumn: {
-    alignItems: 'flex-start',
-    justifyContent: 'center',
-  },
-
+  logoFloatWrap: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerLogoImage: { zIndex: 2, backgroundColor: 'transparent' },
+  logoTextColumn: { alignItems: 'flex-start', justifyContent: 'center' },
   stickyHeaderRight: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 8 },
   stickyHeaderIconBtn: { alignItems: 'center', justifyContent: 'center', position: 'relative' },
   stickyHeaderBadge: { position: 'absolute', top: 0, right: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ef4444', borderWidth: 2, borderColor: 'white' },
@@ -2683,12 +2621,11 @@ const styles = StyleSheet.create({
   stickyHeaderBaby: { overflow: 'hidden' },
   stickyHeaderLockBtn: { marginLeft: 4 },
   stickyHeaderLockGradient: { alignItems: 'center', justifyContent: 'center' },
-  safetyCornerBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1 },
+  safetyCornerBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
   safetyCornerGradient: { alignItems: 'center', justifyContent: 'center' },
 
-  /* ── Glass Card (NO hardcoded colors — colors applied via props) ── */
+  /* ── Glass Card ── */
   glassCard: { overflow: 'hidden', borderWidth: 1, borderRadius: 24 },
-  glassBorder: { position: 'absolute', top: 0, left: 0, right: 0, height: 1 },
   glassContent: { flex: 1 },
 
   /* ── Parent Card ── */
@@ -2717,15 +2654,15 @@ const styles = StyleSheet.create({
   babyStatus: { flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 5 },
   babyStatusText: { fontWeight: '600' },
   streakBadge: { position: 'absolute', top: 16, right: 16, paddingHorizontal: 10, paddingVertical: 5, flexDirection: 'row', alignItems: 'center', gap: 3 },
-  streakText: { fontWeight: '700' },
+  streakText: { fontWeight: '700', color: '#fff' },
 
   /* ── No Baby Card ── */
   noBabyCard: { marginBottom: 14, overflow: 'hidden', marginTop: 16 },
   noBabyGradient: { padding: 28, alignItems: 'center' },
   noBabyEmoji: { marginBottom: 12 },
-  noBabyTitle: { fontWeight: '800', marginBottom: 6 },
-  noBabyText: { textAlign: 'center', marginBottom: 16 },
-  noBabyButton: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 20, gap: 6 },
+  noBabyTitle: { fontWeight: '800', marginBottom: 6, color: '#fff' },
+  noBabyText: { textAlign: 'center', marginBottom: 16, color: 'rgba(255,255,255,0.9)' },
+  noBabyButton: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 20, gap: 6, backgroundColor: '#fff' },
   noBabyButtonText: { fontWeight: '700', color: '#667eea' },
 
   /* ── Daily Summary ── */
@@ -2738,8 +2675,8 @@ const styles = StyleSheet.create({
   dailySummaryGrid: { flexDirection: 'row', gap: 8 },
   dailySummaryItem: { flex: 1, borderRadius: 20, overflow: 'hidden', aspectRatio: 0.85 },
   dailySummaryGradient: { padding: 12, alignItems: 'center', justifyContent: 'center', flex: 1 },
-  dailySummaryValue: { fontSize: 22, fontWeight: '800', letterSpacing: -0.5, marginTop: 6 },
-  dailySummaryLabel: { fontSize: 11, fontWeight: '700', marginTop: 3 },
+  dailySummaryValue: { fontSize: 22, fontWeight: '800', letterSpacing: -0.5, marginTop: 6, color: '#fff' },
+  dailySummaryLabel: { fontSize: 11, fontWeight: '700', marginTop: 3, color: 'rgba(255,255,255,0.9)' },
 
   /* ── Context Card ── */
   contextCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, borderRadius: 22, borderWidth: 1 },
@@ -2755,15 +2692,15 @@ const styles = StyleSheet.create({
   nextActionContainer: { borderRadius: 22, overflow: 'hidden' },
   nextActionGradient: { padding: 16 },
   nextActionContent: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  nextActionIconWrap: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  nextActionIconWrap: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.2)' },
   nextActionText: { flex: 1 },
-  nextActionTitle: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3 },
-  nextActionSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 1 },
-  nextActionArrow: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  nextActionTitle: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3, color: '#fff' },
+  nextActionSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 1, color: 'rgba(255,255,255,0.9)' },
+  nextActionArrow: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.2)' },
   nextActionUrgency: { position: 'absolute', top: 10, right: 10 },
-  urgencyPill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
-  urgencyDot: { width: 5, height: 5, borderRadius: 3 },
-  urgencyText: { fontSize: 10, fontWeight: '700' },
+  urgencyPill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.2)' },
+  urgencyDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: '#fff' },
+  urgencyText: { fontSize: 10, fontWeight: '700', color: '#fff' },
 
   /* ── Weekly Pattern ── */
   patternContainer: { borderRadius: 22, padding: 14, borderWidth: 1 },
@@ -2829,7 +2766,7 @@ const styles = StyleSheet.create({
   featureCardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
   featureCardIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   featureCardBadge: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8, minWidth: 26, alignItems: 'center' },
-  featureCardBadgeText: { fontSize: 9, fontWeight: 'bold' },
+  featureCardBadgeText: { fontSize: 9, fontWeight: 'bold', color: '#fff' },
   featureCardLabel: { fontSize: 14, fontWeight: '700', marginBottom: 3, letterSpacing: -0.3 },
   featureCardDesc: { fontSize: 11, fontWeight: '500', lineHeight: 16, marginBottom: 8 },
   featureCardArrow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
@@ -2863,17 +2800,17 @@ const styles = StyleSheet.create({
   soundMixerIconBg: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   soundMixerTitleText: { fontSize: 15, fontWeight: '800', letterSpacing: -0.3 },
   soundMixerSubtitle: { fontSize: 11, fontWeight: '500', marginTop: 1 },
-  playAllButton: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  playAllButton: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: '#1DB954' },
   playAllButtonActive: { backgroundColor: '#f59e0b' },
   trackCard: { width: 100, marginRight: 10 },
   trackImage: { width: 100, height: 100, borderRadius: 10, marginBottom: 6, overflow: 'hidden' },
   trackOverlay: { flex: 1, justifyContent: 'flex-end', padding: 6 },
-  trackPlayButton: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', alignSelf: 'flex-end' },
+  trackPlayButton: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', alignSelf: 'flex-end', backgroundColor: 'rgba(255,255,255,0.3)' },
   trackPlayButtonActive: { backgroundColor: '#f59e0b' },
   trackTitle: { fontSize: 12, fontWeight: '600', marginBottom: 1 },
   trackArtist: { fontSize: 10, fontWeight: '500' },
-  playingIndicator: { position: 'absolute', top: 6, left: 6, flexDirection: 'row', alignItems: 'flex-end', gap: 2, padding: 5, borderRadius: 6 },
-  bar: { width: 2.5, height: 10, borderRadius: 1 },
+  playingIndicator: { position: 'absolute', top: 6, left: 6, flexDirection: 'row', alignItems: 'flex-end', gap: 2, padding: 5, borderRadius: 6, backgroundColor: 'rgba(0,0,0,0.4)' },
+  bar: { width: 2.5, height: 10, borderRadius: 1, backgroundColor: '#fff' },
   barMiddle: { height: 16 },
 
   /* ── Timeline ── */
@@ -2898,7 +2835,7 @@ const styles = StyleSheet.create({
   emptyStateDark: {},
   emptyStateText: { fontSize: 14, fontWeight: '500', marginTop: 8 },
   addFirstActivityBtn: { marginTop: 16, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12 },
-  addFirstActivityText: { fontSize: 14, fontWeight: '700' },
+  addFirstActivityText: { fontSize: 14, fontWeight: '700', color: '#fff' },
   loadMoreButton: { marginTop: 14, borderRadius: 14, paddingVertical: 12, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 },
   loadMoreText: { fontSize: 13, fontWeight: '600' },
   viewAllButton: { marginTop: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10 },
@@ -2979,7 +2916,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     backgroundColor: 'rgba(0,0,0,0.5)',
   },
-   modalContent: {
+  modalContent: {
     width: '100%',
     maxWidth: 360,
     borderRadius: 28,
@@ -3092,4 +3029,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   actionBadgeLabelText: { color: '#fff', fontSize: 9, fontWeight: '700' },
+
+  /* ── Text Colors ── */
+  textDark: { color: '#f0f0f7' },
+  textMuted: { color: '#888' },
 });

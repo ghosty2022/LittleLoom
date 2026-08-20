@@ -294,7 +294,14 @@ const CommunityNavigator = React.memo(() => {
   const { isLoading, currentUser, checkOnboardingStatus, getSelectedTopics, isInitialized } = useCommunity();
   const { profile: userProfile } = useUser();
   const { settings, shouldReduceMotion } = useCustomization();
-  const isDetectingCountry = useAutomaticCountryDetection();
+  // Use automatic country detection - ensure it runs
+const isDetectingCountry = useAutomaticCountryDetection();
+// Log for debugging
+useEffect(() => {
+  if (__DEV__) {
+    console.log('[CommunityNavigator] Country detection:', isDetectingCountry ? 'running' : 'done');
+  }
+}, [isDetectingCountry]);
 
   const {
     isReady: splashReady,
