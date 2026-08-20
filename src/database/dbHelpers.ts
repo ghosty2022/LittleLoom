@@ -419,40 +419,90 @@ export async function deleteAppSetting(key: string): Promise<void> {
 
 /* ─── BABIES ────────────────────────────────────────────────────────── */
 
-// ─── BACKGROUND SYNC HELPER ────────────────────────────────────────────
-async function syncBabiesFromSupabaseBackground() {
+// ─── DIRECT SUPABASE FETCH WITH PROPER UUID HANDLING ────────────────
+async function fetchBabiesFromSupabase(userId: string): Promise<any[]> {
   try {
-    console.log('[DB] Background sync: Fetching babies from Supabase...');
+    console.log(`[DB] Fetching babies for user: ${userId}`);
     
-    const { data: remoteBabies, error } = await supabase
+    // Use separate queries for parent1_id and parent2_id
+    const { data: parent1Babies, error: error1 } = await supabase
       .from('babies')
       .select('*')
+      .eq('parent1_id', userId)
       .eq('is_active', true);
 
-    if (error) {
-      console.warn('[DB] Background sync error:', error.message);
-      return;
+    if (error1) {
+      console.error('[DB] parent1 query error:', error1.message);
     }
 
-    if (!remoteBabies || remoteBabies.length === 0) {
-      console.log('[DB] Background sync: No babies found in Supabase');
-      return;
+    const { data: parent2Babies, error: error2 } = await supabase
+      .from('babies')
+      .select('*')
+      .eq('parent2_id', userId)
+      .eq('is_active', true);
+
+    if (error2) {
+      console.error('[DB] parent2 query error:', error2.message);
     }
 
-    console.log(`[DB] Background sync: Found ${remoteBabies.length} babies in Supabase`);
+    // Combine results and deduplicate
+    const allBabies: any[] = [];
+    const seenIds = new Set<string>();
 
-    const now = new Date().toISOString();
-    let syncedCount = 0;
+    const addBaby = (baby: any) => {
+      if (baby && !seenIds.has(baby.id)) {
+        seenIds.add(baby.id);
+        allBabies.push(baby);
+      }
+    };
 
-    for (const baby of remoteBabies) {
-      try {
-        // Check if baby exists locally
-        const exists = db.select().from(babies).where(eq(babies.id, baby.id)).all();
-        
-        if (exists.length === 0) {
-          console.log(`[DB] Background sync: Creating baby "${baby.name}" (${baby.id})`);
-          db.insert(babies).values({
-            id: baby.id,
+    if (parent1Babies) parent1Babies.forEach(addBaby);
+    if (parent2Babies) parent2Babies.forEach(addBaby);
+
+    console.log(`[DB] Found ${allBabies.length} babies in Supabase`);
+    if (allBabies.length > 0) {
+      console.log('[DB] Babies:', allBabies.map(b => ({ id: b.id, name: b.name, parent1: b.parent1_id, parent2: b.parent2_id })));
+    }
+    return allBabies;
+  } catch (error) {
+    console.error('[DB] Supabase fetch error:', error);
+    return [];
+  }
+}
+
+// ─── SYNC BABIES TO LOCAL DB ──────────────────────────────────────────
+async function syncBabiesToLocalDb(remoteBabies: any[]): Promise<number> {
+  if (!remoteBabies || remoteBabies.length === 0) return 0;
+
+  const now = new Date().toISOString();
+  let syncedCount = 0;
+
+  for (const baby of remoteBabies) {
+    try {
+      const exists = db.select().from(babies).where(eq(babies.id, baby.id)).all();
+      
+      if (exists.length === 0) {
+        console.log(`[DB] Creating local baby: "${baby.name}" (${baby.id})`);
+        db.insert(babies).values({
+          id: baby.id,
+          name: baby.name,
+          avatar: baby.avatar ?? undefined,
+          dateOfBirth: baby.date_of_birth,
+          gender: baby.gender ?? undefined,
+          bloodType: baby.blood_type ?? undefined,
+          medicalNotes: baby.medical_notes ?? undefined,
+          parent1Id: baby.parent1_id ?? undefined,
+          parent2Id: baby.parent2_id ?? undefined,
+          createdAt: baby.created_at ?? now,
+          updatedAt: now,
+          isActive: baby.is_active ?? true,
+          syncStatus: 'synced',
+        }).run();
+        syncedCount++;
+      } else {
+        console.log(`[DB] Updating existing baby: "${baby.name}"`);
+        db.update(babies)
+          .set({
             name: baby.name,
             avatar: baby.avatar ?? undefined,
             dateOfBirth: baby.date_of_birth,
@@ -461,48 +511,26 @@ async function syncBabiesFromSupabaseBackground() {
             medicalNotes: baby.medical_notes ?? undefined,
             parent1Id: baby.parent1_id ?? undefined,
             parent2Id: baby.parent2_id ?? undefined,
-            createdAt: baby.created_at ?? now,
             updatedAt: now,
             isActive: baby.is_active ?? true,
             syncStatus: 'synced',
-          }).run();
-          syncedCount++;
-        } else {
-          // Update existing baby
-          db.update(babies)
-            .set({
-              name: baby.name,
-              avatar: baby.avatar ?? undefined,
-              dateOfBirth: baby.date_of_birth,
-              gender: baby.gender ?? undefined,
-              bloodType: baby.blood_type ?? undefined,
-              medicalNotes: baby.medical_notes ?? undefined,
-              parent1Id: baby.parent1_id ?? undefined,
-              parent2Id: baby.parent2_id ?? undefined,
-              updatedAt: now,
-              isActive: baby.is_active ?? true,
-              syncStatus: 'synced',
-            })
-            .where(eq(babies.id, baby.id))
-            .run();
-        }
-      } catch (babyError) {
-        console.error(`[DB] Background sync: Error syncing baby "${baby.name}":`, babyError);
+          })
+          .where(eq(babies.id, baby.id))
+          .run();
       }
+    } catch (babyError) {
+      console.error(`[DB] Error syncing baby "${baby.name}":`, babyError);
     }
-
-    console.log(`[DB] Background sync: Completed - ${syncedCount} new babies, ${remoteBabies.length - syncedCount} existing`);
-
-    // Also update current_baby_id if not set
-    const currentId = await getAppSetting('current_baby_id');
-    if (!currentId && remoteBabies[0]) {
-      await setAppSetting('current_baby_id', remoteBabies[0].id);
-      console.log(`[DB] Background sync: Set current baby to "${remoteBabies[0].name}"`);
-    }
-
-  } catch (error) {
-    console.error('[DB] Background sync error:', error);
   }
+
+  // Set current baby if not set
+  const currentId = await getAppSetting('current_baby_id');
+  if (!currentId && remoteBabies[0]) {
+    await setAppSetting('current_baby_id', remoteBabies[0].id);
+    console.log(`[DB] Set current baby to: "${remoteBabies[0].name}"`);
+  }
+
+  return syncedCount;
 }
 
 export async function getAllBabiesFromDb(forceSync: boolean = false) {
@@ -512,94 +540,46 @@ export async function getAllBabiesFromDb(forceSync: boolean = false) {
     
     // If we have local data, return it immediately
     if (localBabies.length > 0) {
-      // Trigger background sync if requested
       if (forceSync) {
-        console.log('[DB] getAllBabiesFromDb: Triggering background sync (already have local data)');
-        syncBabiesFromSupabaseBackground().catch(e => 
-          console.warn('[DB] Background sync failed:', e)
-        );
+        console.log('[DB] Triggering background sync...');
+        setTimeout(async () => {
+          try {
+            const { data: authData } = await supabase.auth.getUser();
+            if (authData?.user?.id) {
+              const remoteBabies = await fetchBabiesFromSupabase(authData.user.id);
+              if (remoteBabies.length > 0) {
+                await syncBabiesToLocalDb(remoteBabies);
+              }
+            }
+          } catch (e) {
+            console.warn('[DB] Background sync failed:', e);
+          }
+        }, 100);
       }
       return localBabies;
     }
     
     // No local data, try to sync from Supabase
-    console.log('[DB] getAllBabiesFromDb: No local babies, trying to sync...');
+    console.log('[DB] No local babies, trying to sync from Supabase...');
     
-    try {
-      const { data: remoteBabies, error } = await supabase
-        .from('babies')
-        .select('*')
-        .eq('is_active', true);
-
-      if (error) {
-        console.warn('[DB] getAllBabiesFromDb: Supabase error:', error.message);
-        return [];
-      }
-
-      if (!remoteBabies || remoteBabies.length === 0) {
-        console.log('[DB] getAllBabiesFromDb: No babies found in Supabase');
-        return [];
-      }
-
-      console.log(`[DB] getAllBabiesFromDb: Found ${remoteBabies.length} babies in Supabase, syncing...`);
-
-      const now = new Date().toISOString();
-      for (const baby of remoteBabies) {
-        try {
-          const exists = db.select().from(babies).where(eq(babies.id, baby.id)).all();
-          if (exists.length === 0) {
-            db.insert(babies).values({
-              id: baby.id,
-              name: baby.name,
-              avatar: baby.avatar ?? undefined,
-              dateOfBirth: baby.date_of_birth,
-              gender: baby.gender ?? undefined,
-              bloodType: baby.blood_type ?? undefined,
-              medicalNotes: baby.medical_notes ?? undefined,
-              parent1Id: baby.parent1_id ?? undefined,
-              parent2Id: baby.parent2_id ?? undefined,
-              createdAt: baby.created_at ?? now,
-              updatedAt: now,
-              isActive: baby.is_active ?? true,
-              syncStatus: 'synced',
-            }).run();
-          } else {
-            db.update(babies)
-              .set({
-                name: baby.name,
-                avatar: baby.avatar ?? undefined,
-                dateOfBirth: baby.date_of_birth,
-                gender: baby.gender ?? undefined,
-                bloodType: baby.blood_type ?? undefined,
-                medicalNotes: baby.medical_notes ?? undefined,
-                parent1Id: baby.parent1_id ?? undefined,
-                parent2Id: baby.parent2_id ?? undefined,
-                updatedAt: now,
-                isActive: baby.is_active ?? true,
-                syncStatus: 'synced',
-              })
-              .where(eq(babies.id, baby.id))
-              .run();
-          }
-        } catch (babyError) {
-          console.error(`[DB] getAllBabiesFromDb: Error syncing baby "${baby.name}":`, babyError);
-        }
-      }
-
-      // Set current baby if not set
-      const currentId = await getAppSetting('current_baby_id');
-      if (!currentId && remoteBabies[0]) {
-        await setAppSetting('current_baby_id', remoteBabies[0].id);
-        console.log(`[DB] getAllBabiesFromDb: Set current baby to "${remoteBabies[0].name}"`);
-      }
-
-      // Return the newly synced data
-      return db.select().from(babies).where(eq(babies.isActive, true)).all();
-      
-    } catch (syncError) {
-      console.error('[DB] getAllBabiesFromDb: Sync error:', syncError);
+    // Get the current user ID
+    const { data: authData } = await supabase.auth.getUser();
+    if (!authData?.user?.id) {
+      console.log('[DB] No authenticated user found');
       return [];
     }
+    
+    console.log(`[DB] Authenticated user ID: ${authData.user.id}`);
+    
+    const remoteBabies = await fetchBabiesFromSupabase(authData.user.id);
+    
+    if (remoteBabies.length > 0) {
+      await syncBabiesToLocalDb(remoteBabies);
+      return db.select().from(babies).where(eq(babies.isActive, true)).all();
+    }
+    
+    console.log('[DB] No babies found in Supabase');
+    return [];
   } catch (error) {
     const msg = String(error);
     if (msg.includes('no such table') || msg.includes('prepareSync')) {
@@ -612,11 +592,9 @@ export async function getAllBabiesFromDb(forceSync: boolean = false) {
 
 export async function getBabyByIdFromDb(id: string, forceSync: boolean = false) {
   try {
-    // First check local DB
     const result = db.select().from(babies).where(eq(babies.id, id)).all();
     if (result[0]) return result[0];
 
-    // Only try Supabase if forceSync is true and local not found
     if (forceSync) {
       try {
         const { data, error } = await supabase
@@ -698,7 +676,6 @@ export async function createBabyInDb(data: {
       syncStatus: 'pending',
     }).returning().all();
 
-    // Best-effort push to Supabase
     supabase.from('babies').upsert({
       id: data.id,
       name: data.name,
