@@ -1,5 +1,5 @@
 // src/components/LiquidGlassNavigation.tsx
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, memo } from 'react';
 import {
   View,
   StyleSheet,
@@ -24,95 +24,80 @@ import Animated, {
   interpolate,
   Extrapolation,
   Easing,
+  useAnimatedReaction,
 } from 'react-native-reanimated';
-
 import { useTheme } from '../context/AppContext';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouteBasedNavVisibility } from '../hooks/useRouteBasedNavVisibility';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-interface TabItem {
-  name: string;
-  route: string;
-  color: string;
-  gradient: readonly [string, string];
-  hapticStyle: Haptics.ImpactFeedbackStyle;
-  Icon: React.FC<any>;
-}
+// ─── CONSTANTS ──────────────────────────────────────────────────────
+const PILL_WIDTH = Math.min(SCREEN_WIDTH - 32, 360);
+const PILL_HEIGHT = 60;
+const BOTTOM_MARGIN = 10;
+const HIDDEN_TRANSLATE_Y = 120;
+const TAB_COUNT = 5;
+const SEGMENT_WIDTH = PILL_WIDTH / TAB_COUNT;
 
-// Modern outline icon wrappers — clean, consistent, awesome
-const HomeIcon: React.FC<any> = ({ size, color }) => (
-  <Ionicons name="home-outline" size={size} color={color} />
-);
-const TrackIcon: React.FC<any> = ({ size, color }) => (
-  <Ionicons name="flash-outline" size={size} color={color} />
-);
-const TimelineIcon: React.FC<any> = ({ size, color }) => (
-  <Ionicons name="albums-outline" size={size} color={color} />
-);
-const GrowIcon: React.FC<any> = ({ size, color }) => (
-  <Ionicons name="trending-up-outline" size={size} color={color} />
-);
-const ConnectIcon: React.FC<any> = ({ size, color }) => (
-  <Ionicons name="planet-outline" size={size} color={color} />
-);
-const AddLogIcon: React.FC<any> = ({ size, color }) => (
-  <Ionicons name="add-outline" size={size} color={color} />
-);
+// ─── ICON COMPONENTS (memoized) ───────────────────────────────────
+const icons = {
+  Home: (props: any) => <Ionicons name="home-outline" size={22} {...props} />,
+  Track: (props: any) => <Ionicons name="flash-outline" size={22} {...props} />,
+  Timeline: (props: any) => <Ionicons name="albums-outline" size={22} {...props} />,
+  Grow: (props: any) => <Ionicons name="trending-up-outline" size={22} {...props} />,
+  Connect: (props: any) => <Ionicons name="planet-outline" size={22} {...props} />,
+  AddLog: (props: any) => <Ionicons name="add-outline" size={18} {...props} />,
+};
 
-// Modern UX order: Home → Track → Timeline → Grow → Connect
-const TABS: TabItem[] = [
+// ─── TAB CONFIG ────────────────────────────────────────────────────
+const TABS = [
   { 
     name: 'Home', 
     route: 'Home', 
     color: '#667eea', 
     gradient: ['#667eea', '#764ba2'] as const,
-    hapticStyle: Haptics.ImpactFeedbackStyle.Light, 
-    Icon: HomeIcon 
+    haptic: Haptics.ImpactFeedbackStyle.Light, 
+    Icon: icons.Home 
   },
   { 
     name: 'Track', 
     route: 'Track', 
     color: '#11998e', 
     gradient: ['#11998e', '#38ef7d'] as const,
-    hapticStyle: Haptics.ImpactFeedbackStyle.Medium, 
-    Icon: TrackIcon 
+    haptic: Haptics.ImpactFeedbackStyle.Medium, 
+    Icon: icons.Track 
   },
   { 
     name: 'Timeline', 
     route: 'Timeline', 
     color: '#8b5cf6', 
     gradient: ['#8b5cf6', '#a78bfa'] as const,
-    hapticStyle: Haptics.ImpactFeedbackStyle.Light, 
-    Icon: TimelineIcon 
+    haptic: Haptics.ImpactFeedbackStyle.Light, 
+    Icon: icons.Timeline 
   },
   { 
     name: 'Grow', 
     route: 'Grow', 
     color: '#fa709a', 
     gradient: ['#fa709a', '#fee140'] as const,
-    hapticStyle: Haptics.ImpactFeedbackStyle.Medium, 
-    Icon: GrowIcon 
+    haptic: Haptics.ImpactFeedbackStyle.Medium, 
+    Icon: icons.Grow 
   },
   { 
     name: 'Connect', 
     route: 'Connect', 
     color: '#f59e0b', 
     gradient: ['#f59e0b', '#f97316'] as const,
-    hapticStyle: Haptics.ImpactFeedbackStyle.Light, 
-    Icon: ConnectIcon 
+    haptic: Haptics.ImpactFeedbackStyle.Light, 
+    Icon: icons.Connect 
   },
 ];
-const PILL_WIDTH = Math.min(SCREEN_WIDTH - 32, 360);
-const PILL_HEIGHT = 64;
-const BOTTOM_MARGIN = 12;
-const HIDDEN_TRANSLATE_Y = 140;
 
-// ─── Date Display ─────────────────────────────────────────────────
-const DateDisplay: React.FC<{ isDark: boolean }> = React.memo(({ isDark }) => {
+// ─── DATE DISPLAY ─────────────────────────────────────────────────
+const DateDisplay = memo(({ isDark }: { isDark: boolean }) => {
   const [dateStr, setDateStr] = React.useState('');
-  
+
   useEffect(() => {
     const now = new Date();
     const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -121,67 +106,43 @@ const DateDisplay: React.FC<{ isDark: boolean }> = React.memo(({ isDark }) => {
   }, []);
 
   return (
-    <Text style={[
-      styles.dateText,
-      { color: isDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.5)' }
-    ]}>
+    <Text style={[styles.dateText, { color: isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.4)' }]}>
       {dateStr}
     </Text>
   );
 });
 
-// ─── Tab Button ─────────────────────────────────────────────────────
-interface TabButtonProps {
-  tab: TabItem;
+// ─── TAB BUTTON (optimized) ──────────────────────────────────────
+const TabButton = memo(({ 
+  tab, 
+  isActive, 
+  onPress, 
+  isDark 
+}: {
+  tab: typeof TABS[0];
   isActive: boolean;
   onPress: () => void;
   isDark: boolean;
-}
-
-const TabButton: React.FC<TabButtonProps> = React.memo(({ 
-  tab, isActive, onPress, isDark 
 }) => {
   const scale = useSharedValue(1);
   const glowOpacity = useSharedValue(0);
-  const indicatorScale = useSharedValue(0);
-  const labelTranslateY = useSharedValue(0);
 
+  // Update animations more efficiently
   useEffect(() => {
-    scale.value = withSpring(isActive ? 1.06 : 1, { 
-      damping: 25, stiffness: 500, mass: 0.3 
-    });
-    glowOpacity.value = withTiming(isActive ? 0.12 : 0, { duration: 180 });
-    indicatorScale.value = withSpring(isActive ? 1 : 0, { 
-      damping: 25, stiffness: 600, mass: 0.3 
-    });
-    labelTranslateY.value = withSpring(isActive ? -1 : 0, { 
-      damping: 25, stiffness: 400 
-    });
+    scale.value = withSpring(isActive ? 1.05 : 1, { damping: 20, stiffness: 600, mass: 0.2 });
+    glowOpacity.value = withTiming(isActive ? 0.15 : 0, { duration: 150 });
   }, [isActive]);
 
-  const animatedIconStyle = useAnimatedStyle(() => ({
+  const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
   }));
 
   const glowStyle = useAnimatedStyle(() => ({
     opacity: glowOpacity.value,
-    transform: [{ scale: interpolate(glowOpacity.value, [0, 0.25], [0.5, 1.6], Extrapolation.CLAMP) }],
   }));
 
-  const indicatorStyle = useAnimatedStyle(() => ({
-    transform: [{ scaleX: indicatorScale.value }],
-    opacity: interpolate(indicatorScale.value, [0, 1], [0, 1], Extrapolation.CLAMP),
-  }));
-
-  const labelStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: labelTranslateY.value }],
-  }));
-
-  const inactiveColor = isDark ? 'rgba(148, 163, 184, 0.4)' : 'rgba(100, 116, 139, 0.4)';
+  const inactiveColor = isDark ? 'rgba(148, 163, 184, 0.35)' : 'rgba(100, 116, 139, 0.35)';
   const activeLabelColor = isDark ? '#f8fafc' : '#1e293b';
-
-// REPLACE WITH
-  // Press scale removed for instant, clean navigation feel
 
   return (
     <Pressable
@@ -190,7 +151,7 @@ const TabButton: React.FC<TabButtonProps> = React.memo(({
       accessibilityRole="button"
       accessibilityLabel={tab.name}
       accessibilityState={{ selected: isActive }}
-      hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+      hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
     >
       <Animated.View style={[styles.glowContainer, glowStyle]}>
         <LinearGradient
@@ -201,45 +162,38 @@ const TabButton: React.FC<TabButtonProps> = React.memo(({
         />
       </Animated.View>
 
-      <Animated.View style={[
-        styles.activeIndicator, 
-        indicatorStyle, 
-        { backgroundColor: tab.color }
-      ]} />
+      {isActive && (
+        <Animated.View style={[styles.activeIndicator, { backgroundColor: tab.color }]} />
+      )}
 
-      <Animated.View style={[styles.iconContainer, animatedIconStyle]}>
-        <tab.Icon 
-          size={22} 
-          color={isActive ? tab.color : inactiveColor} 
-          active={isActive}
-          strokeWidth={isActive ? 2.4 : 1.5}
-        />
+      <Animated.View style={[styles.iconContainer, animatedStyle]}>
+        <tab.Icon color={isActive ? tab.color : inactiveColor} />
       </Animated.View>
 
-      <Animated.Text style={[
-        styles.tabLabel,
-        { color: isActive ? activeLabelColor : inactiveColor },
-        isActive && styles.activeLabel,
-        labelStyle,
-      ]}>
+      <Text
+        style={[
+          styles.tabLabel,
+          { color: isActive ? activeLabelColor : inactiveColor },
+          isActive && styles.activeLabel,
+        ]}
+        numberOfLines={1}
+      >
         {tab.name}
-      </Animated.Text>
+      </Text>
     </Pressable>
   );
 });
 
-// ─── Active Color Wash ─────────────────────────────────────────────
-const ActiveColorWash: React.FC<{ activeIndex: number; isDark: boolean }> = React.memo(({ activeIndex, isDark }) => {
+// ─── ACTIVE COLOR WASH ──────────────────────────────────────────
+const ActiveColorWash = memo(({ activeIndex, isDark }: { activeIndex: number; isDark: boolean }) => {
   const washOpacity = useSharedValue(0);
-  const segmentWidth = PILL_WIDTH / TABS.length;
-  const left = activeIndex * segmentWidth;
 
   useEffect(() => {
-    washOpacity.value = withTiming(1, { duration: 400 });
+    washOpacity.value = withTiming(1, { duration: 300 });
   }, [activeIndex]);
 
   const washStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(washOpacity.value, [0, 1], [0, isDark ? 0.06 : 0.04], Extrapolation.CLAMP),
+    opacity: interpolate(washOpacity.value, [0, 1], [0, isDark ? 0.07 : 0.05], Extrapolation.CLAMP),
   }));
 
   return (
@@ -247,18 +201,18 @@ const ActiveColorWash: React.FC<{ activeIndex: number; isDark: boolean }> = Reac
       style={[
         {
           position: 'absolute',
-          left,
-          top: 0,
-          width: segmentWidth,
-          height: PILL_HEIGHT,
-          borderRadius: PILL_HEIGHT / 2,
+          left: activeIndex * SEGMENT_WIDTH,
+          top: 4,
+          width: SEGMENT_WIDTH,
+          height: PILL_HEIGHT - 8,
+          borderRadius: (PILL_HEIGHT - 8) / 2,
         },
         washStyle,
       ]}
       pointerEvents="none"
     >
       <LinearGradient
-        colors={[...TABS[activeIndex].gradient.map(c => c + '18'), 'transparent'] as any}
+        colors={[...TABS[activeIndex].gradient.map(c => c + '20'), 'transparent'] as any}
         style={StyleSheet.absoluteFill}
         start={{ x: 0, y: 0 }}
         end={{ x: 0, y: 1 }}
@@ -267,25 +221,22 @@ const ActiveColorWash: React.FC<{ activeIndex: number; isDark: boolean }> = Reac
   );
 });
 
-// ─── MAIN COMPONENT ────────────────────────────────────────────────
+// ─── MAIN COMPONENT ─────────────────────────────────────────────
 const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({ state, descriptors, navigation }) => {
   const insets = useSafeAreaInsets();
-  const { isDark, colors } = useTheme();
-  
+  const { isDark } = useTheme();
   const activeIndex = state.index;
   const activeRouteName = state.routes[activeIndex]?.name;
 
-  // ─── ROUTE-BASED VISIBILITY ───────────────────────────────────
+  // ─── VISIBILITY ──────────────────────────────────────────────
   const { isVisible, isFullyHidden } = useRouteBasedNavVisibility();
 
-  // ─── ANIMATED VALUES ───────────────────────────────────────────
+  // ─── ANIMATED VALUES ──────────────────────────────────────────
   const translateY = useSharedValue(0);
   const opacity = useSharedValue(1);
-  const scale = useSharedValue(1);
   const pillScale = useSharedValue(1);
-  const blurIntensity = useSharedValue(60);
 
-  // ─── UPDATE ANIMATIONS ─────────────────────────────────────────
+  // ─── UPDATE ANIMATIONS ────────────────────────────────────────
   useEffect(() => {
     if (isFullyHidden) {
       translateY.value = withTiming(HIDDEN_TRANSLATE_Y, { 
@@ -293,38 +244,22 @@ const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({ state, descriptors
         easing: Easing.out(Easing.ease),
       });
       opacity.value = withTiming(0, { duration: 150 });
-      scale.value = withTiming(0.95, { duration: 200 });
-      pillScale.value = withTiming(0.97, { duration: 200 });
-      blurIntensity.value = withTiming(0, { duration: 150 });
+      pillScale.value = withTiming(0.96, { duration: 200 });
     } else {
-      translateY.value = withSpring(0, { 
-        damping: 25, stiffness: 400, mass: 0.4 
-      });
-      opacity.value = withTiming(1, { duration: 200 });
-      scale.value = withSpring(1, { damping: 25, stiffness: 400, mass: 0.4 });
-      pillScale.value = withSpring(1, { damping: 25, stiffness: 400, mass: 0.4 });
-      blurIntensity.value = withTiming(60, { duration: 200 });
+      translateY.value = withSpring(0, { damping: 25, stiffness: 500, mass: 0.4 });
+      opacity.value = withTiming(1, { duration: 180 });
+      pillScale.value = withSpring(1, { damping: 25, stiffness: 500, mass: 0.4 });
     }
   }, [isFullyHidden]);
 
   const containerStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateY: translateY.value },
-      { scale: scale.value },
-    ],
+    transform: [{ translateY: translateY.value }, { scale: pillScale.value }],
     opacity: opacity.value,
   }));
 
-  const pillStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: pillScale.value }],
-  }));
-
-  const blurStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(blurIntensity.value, [0, 60], [0.2, 1], Extrapolation.CLAMP),
-  }));
-
-  const handlePress = useCallback((index: number, route: string, tab: TabItem) => {
-    Haptics.impactAsync(tab.hapticStyle);
+  // ─── HANDLERS ──────────────────────────────────────────────────
+  const handlePress = useCallback((route: string, tab: typeof TABS[0]) => {
+    Haptics.impactAsync(tab.haptic);
     const event = navigation.emit({ type: 'tabPress', target: route, canPreventDefault: true });
     if (!event.defaultPrevented) navigation.navigate(route);
   }, [navigation]);
@@ -334,60 +269,40 @@ const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({ state, descriptors
     navigation.navigate('AddEntry');
   }, [navigation]);
 
-  // ─── THEME COLORS ─────────────────────────────────────────────
-  const pillBackground = isDark 
-    ? 'rgba(18, 18, 24, 0.94)' 
-    : 'rgba(255, 255, 255, 0.96)';
-  const pillBorder = isDark 
-    ? 'rgba(255, 255, 255, 0.1)' 
-    : 'rgba(0, 0, 0, 0.08)';
-  const pillBorderTop = isDark 
-    ? 'rgba(255, 255, 255, 0.15)' 
-    : 'rgba(255, 255, 255, 0.9)';
-
-  const borderGradientColors = isDark
-    ? ['rgba(102,126,234,0.35)', 'rgba(118,75,162,0.25)', 'rgba(240,147,251,0.15)', 'rgba(79,172,254,0.25)']
-    : ['rgba(102,126,234,0.2)', 'rgba(118,75,162,0.12)', 'rgba(240,147,251,0.08)', 'rgba(79,172,254,0.12)'];
+  // ─── THEME ─────────────────────────────────────────────────────
+  const pillBackground = isDark ? 'rgba(18, 18, 24, 0.92)' : 'rgba(255, 255, 255, 0.94)';
 
   return (
     <View
-      style={[
-        styles.outerWrapper, 
-        { paddingBottom: Math.max(insets.bottom, 8) + BOTTOM_MARGIN }
-      ]}
+      style={[styles.outerWrapper, { paddingBottom: Math.max(insets.bottom, 6) + BOTTOM_MARGIN }]}
       pointerEvents="box-none"
     >
-      {/* ─── ADD LOG FAB (only on Track tab when visible) ─────── */}
+      {/* ─── ADD LOG FAB ──────────────────────────────────────── */}
       {activeRouteName === 'Track' && isVisible && (
         <TouchableOpacity 
           style={styles.addLogFab} 
           onPress={handleAddLog}
-          activeOpacity={0.85}
+          activeOpacity={0.8}
           accessibilityRole="button"
           accessibilityLabel="Add new log"
         >
-          <View style={styles.addLogContainer}>
-            <BlurView intensity={40} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
+          <View style={[styles.addLogContainer, { 
+            backgroundColor: isDark ? 'rgba(18,18,24,0.85)' : 'rgba(255,255,255,0.9)',
+            borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+          }]}>
+            <BlurView intensity={30} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
             <LinearGradient
-              colors={isDark 
-                ? ['rgba(17,153,142,0.3)', 'rgba(56,239,125,0.15)'] 
-                : ['rgba(17,153,142,0.15)', 'rgba(56,239,125,0.08)']}
+              colors={isDark ? ['rgba(17,153,142,0.2)', 'rgba(56,239,125,0.1)'] : ['rgba(17,153,142,0.1)', 'rgba(56,239,125,0.05)']}
               style={StyleSheet.absoluteFill}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
             />
-            <LinearGradient
-              colors={['rgba(17,153,142,0.6)', 'transparent']}
-              style={styles.addLogTopBorder}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0, y: 1 }}
-            />
             <View style={styles.addLogContent}>
               <View style={styles.addLogIconRing}>
-                <AddLogIcon size={18} color="#11998e" />
+                <icons.AddLog color="#11998e" />
               </View>
               <View style={styles.addLogTextContainer}>
-                <Text style={[styles.addLogLabel, { color: isDark ? '#fff' : '#1e293b' }]}>
+                <Text style={[styles.addLogLabel, { color: isDark ? '#f8fafc' : '#1e293b' }]}>
                   Log
                 </Text>
                 <DateDisplay isDark={isDark} />
@@ -399,51 +314,45 @@ const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({ state, descriptors
 
       {/* ─── MAIN PILL NAV ────────────────────────────────────── */}
       <Animated.View style={[styles.container, containerStyle]}>
-        <Animated.View style={[styles.pillContainer, pillStyle, { 
-          backgroundColor: pillBackground,
-          borderColor: pillBorder,
-        }]}>
+        <View style={[styles.pillContainer, { backgroundColor: pillBackground }]}>
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 50 : 70}
+            style={StyleSheet.absoluteFill}
+            tint={isDark ? 'dark' : 'light'}
+          />
+          
+          <ActiveColorWash activeIndex={activeIndex} isDark={isDark} />
 
-          {/* Clean modern pill — no hard outline borders */}
+          <LinearGradient
+            colors={[isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.8)', 'transparent']}
+            style={styles.topHighlight}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+          />
 
-          <Animated.View style={[styles.blurBackground, blurStyle]}>
-            <BlurView
-              intensity={Platform.OS === 'ios' ? 60 : 80}
-              style={StyleSheet.absoluteFill}
-              tint={isDark ? 'dark' : 'light'}
-            />
-            
-            <ActiveColorWash activeIndex={activeIndex} isDark={isDark} />
+          {/* Subtle border */}
+          <View style={[styles.pillBorder, { 
+            borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' 
+          }]} />
 
-            <LinearGradient
-              colors={[isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.95)', 'transparent']}
-              style={styles.topHighlight}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0, y: 1 }}
-            />
-
-            <View style={[styles.innerBorder, { 
-              borderColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)'
-            }]} />
-
-            <View style={styles.tabsContainer}>
-              {TABS.map((tab, index) => (
-                <TabButton
-                  key={tab.name}
-                  tab={tab}
-                  isActive={index === activeIndex}
-                  onPress={() => handlePress(index, tab.route, tab)}
-                  isDark={isDark}
-                />
-              ))}
-            </View>
-          </Animated.View>
-        </Animated.View>
+          <View style={styles.tabsContainer}>
+            {TABS.map((tab, index) => (
+              <TabButton
+                key={tab.name}
+                tab={tab}
+                isActive={index === activeIndex}
+                onPress={() => handlePress(tab.route, tab)}
+                isDark={isDark}
+              />
+            ))}
+          </View>
+        </View>
       </Animated.View>
     </View>
   );
 };
 
+// ─── STYLES ──────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   outerWrapper: {
     position: 'absolute',
@@ -458,79 +367,70 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     width: '100%',
   },
- pillContainer: {
+  pillContainer: {
     width: PILL_WIDTH,
     height: PILL_HEIGHT,
     borderRadius: PILL_HEIGHT / 2,
     overflow: 'hidden',
-    borderWidth: 1.2,
-    position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 8,
   } as ViewStyle,
-
-   /* ── Clean pill: border accents removed for modern seamless look ── */
-  blurBackground: {
-    flex: 1,
+  pillBorder: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     borderRadius: PILL_HEIGHT / 2,
-    overflow: 'hidden',
+    borderWidth: 1,
+    zIndex: 1,
+    pointerEvents: 'none',
   },
   topHighlight: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    height: 22,
+    height: 20,
     zIndex: 1,
-  },
-  innerBorder: {
-    position: 'absolute',
-    top: 5,
-    left: 5,
-    right: 5,
-    bottom: 5,
-    borderRadius: (PILL_HEIGHT - 10) / 2,
-    borderWidth: 1,
-    zIndex: 2,
-    pointerEvents: 'none',
   },
   tabsContainer: {
     flexDirection: 'row',
     height: '100%',
-    paddingHorizontal: 6,
+    paddingHorizontal: 4,
     paddingVertical: 4,
     alignItems: 'center',
     justifyContent: 'space-evenly',
     zIndex: 2,
-    gap: 2,
   } as ViewStyle,
-  
   tabButton: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 4,
-    paddingHorizontal: 2,
+    paddingVertical: 2,
     position: 'relative',
-    minWidth: 52,
     height: '100%',
-    borderRadius: 14,
+    borderRadius: 12,
   } as ViewStyle,
   iconContainer: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
+    width: 36,
+    height: 36,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 1,
   },
   glowContainer: {
     position: 'absolute',
     top: '50%',
     left: '50%',
-    width: 44,
-    height: 44,
-    marginLeft: -22,
-    marginTop: -26,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    marginLeft: -20,
+    marginTop: -24,
+    borderRadius: 20,
     zIndex: 0,
     alignItems: 'center',
     justifyContent: 'center',
@@ -538,55 +438,44 @@ const styles = StyleSheet.create({
   glowDot: {
     width: '100%',
     height: '100%',
-    borderRadius: 22,
-    opacity: 0.15,
+    borderRadius: 20,
+    opacity: 0.12,
   },
   activeIndicator: {
     position: 'absolute',
-    bottom: 5,
-    width: 18,
-    height: 3.5,
+    bottom: 4,
+    width: 16,
+    height: 3,
     borderRadius: 2,
     zIndex: 1,
   },
   tabLabel: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '500',
     textAlign: 'center',
-    marginTop: 0,
-    letterSpacing: 0.2,
-    lineHeight: 13,
+    letterSpacing: 0.1,
+    lineHeight: 12,
+    marginTop: 1,
   } as TextStyle,
   activeLabel: {
     fontWeight: '700',
-    letterSpacing: 0,
   } as TextStyle,
-  
   addLogFab: {
     position: 'absolute',
     right: 16,
-    bottom: PILL_HEIGHT + 20,
+    bottom: PILL_HEIGHT + 16,
     zIndex: 1000,
   },
   addLogContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 28,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 24,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(17, 153, 142, 0.25)',
-    minWidth: 110,
-    minHeight: 50,
-  },
-  addLogTopBorder: {
-    position: 'absolute',
-    top: 0,
-    left: 8,
-    right: 8,
-    height: 1.5,
-    borderRadius: 1,
+    minWidth: 100,
+    minHeight: 44,
   },
   addLogContent: {
     flexDirection: 'row',
@@ -594,31 +483,29 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   addLogIconRing: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(17, 153, 142, 0.12)',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(17, 153, 142, 0.1)',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1.5,
-    borderColor: 'rgba(17, 153, 142, 0.25)',
   },
   addLogTextContainer: {
     flexDirection: 'column',
     alignItems: 'flex-start',
   },
   addLogLabel: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
-    letterSpacing: 0.3,
-    lineHeight: 16,
+    letterSpacing: 0.2,
+    lineHeight: 15,
   },
   dateText: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '500',
-    letterSpacing: 0.2,
-    lineHeight: 13,
-    marginTop: 1,
+    letterSpacing: 0.1,
+    lineHeight: 12,
+    marginTop: 0.5,
   },
 });
 

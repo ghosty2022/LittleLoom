@@ -21,9 +21,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { getAppSetting } from '@/database/dbHelpers';
 import { DatabaseProvider } from '@/context/DatabaseContext';
 
-// IMPORTANT: Import supabase first to apply storage fix
-import './utils/supabase';
-
 import { AppProvider, useTheme } from '@/context/AppContext';
 import ContextProvider from '@/providers/ContextProvider';
 import { ModalProvider } from '@/utils/modal';
