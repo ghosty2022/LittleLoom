@@ -854,5 +854,5 @@ export const useUser = () => {
   const context = useContext(UserContext);
   return context;
 };
-
+export { UserContext };
 export default UserProvider;

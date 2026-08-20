@@ -1,6 +1,9 @@
 // src/hooks/index.ts
 // Safe context hooks - COMPLETE FIX with explicit exports
 
+import { useContext } from 'react';
+import { UserContext } from '../context/UserContext';
+
 // First, export everything from useSafeContexts
 export { 
   useSafeApp, 
@@ -25,9 +28,56 @@ export { useMedia } from './useMedia';
 export { useNotifications } from './useNotifications';
 export { useSafety } from './useSafety';
 export { useSecurity } from './useSecurity';
-export { useSupabase } from './useSupabase'; // ← ADD THIS LINE
+export { useSupabase } from './useSupabase';
 export { useSweetAlert } from './useSweetAlert';
-export { useUser } from './useUser';
+
+// ─── DEFINE useUser DIRECTLY HERE ──────────────────────────────────────
+// This avoids the circular dependency through UserContext.tsx
+export const useUser = () => {
+  const context = useContext(UserContext);
+  if (!context) {
+    // Return safe default
+    return {
+      isLoading: false,
+      profile: null,
+      communityProfile: null,
+      permissions: null,
+      usernameRegistry: {},
+      isReady: false,
+      loadUser: async () => {},
+      updateProfile: async () => {},
+      updateAvatar: async () => {},
+      updatePreferences: async () => {},
+      hasPermission: () => false,
+      canAccessFeature: () => false,
+      loadCommunityProfile: async () => null,
+      updateCommunityProfile: async () => {},
+      toggleCommunityPrivacy: async () => {},
+      getCommunityStats: async () => ({ posts: 0, followers: 0, following: 0, helpful: 0 }),
+      isCommunityProfileComplete: () => false,
+      checkUsernameAvailable: async () => ({ available: false, message: 'Not available' }),
+      registerUsername: async () => false,
+      unregisterUsername: async () => false,
+      updateUsername: async () => ({ success: false, message: '' }),
+      updateSelectedTopics: async () => {},
+      getSelectedTopics: () => [],
+      syncProfileToPosts: async () => {},
+      getDisplayName: () => 'Anonymous',
+      getUserType: () => 'community' as const,
+      clearUserData: async () => {},
+      updateCommunityDisplayName: async () => {},
+      updateCommunityBio: async () => {},
+      updateCommunityAvatar: async () => {},
+      updateCommunityHandle: async () => ({ success: false, message: '' }),
+      getCommunityHandle: () => '',
+      syncWithAuthProfile: async () => {},
+      getAuthProfile: () => null,
+    };
+  }
+  return context;
+};
+// ──────────────────────────────────────────────────────────────────────
+
 export { useUnifiedTrackerTheme } from './useUnifiedTrackerTheme';
 export { useTracker } from './useTrackerContext';
 export { useRouteBasedNavVisibility } from './useRouteBasedNavVisibility';
