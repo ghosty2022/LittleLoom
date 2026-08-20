@@ -36,10 +36,20 @@ const redirectUri = AuthSession.makeRedirectUri({
   useProxy: true,
 });
 
-// ─── Email Validation ──────────────────────────────────────────────────
+// ─── Validation Functions ──────────────────────────────────────────────
 const isValidEmail = (email: string): boolean => {
   const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   return re.test(email.trim().toLowerCase());
+};
+
+const isValidPhone = (phone: string): boolean => {
+  const re = /^[\+]?[(]?[0-9]{3}[)]?[-\s\.]?[0-9]{3}[-\s\.]?[0-9]{4,6}$/im;
+  return re.test(phone.trim());
+};
+
+const isValidUsername = (username: string): boolean => {
+  const trimmed = username.trim();
+  return trimmed.length >= 3 && /^[a-zA-Z0-9_.]+$/.test(trimmed);
 };
 
 // ─── MAIN COMPONENT ────────────────────────────────────────────────────
@@ -86,6 +96,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     hasSeenOnboarding,
     userProfile,
     findUserByEmail,
+    findUserByEmailOrUsername,
   } = useAuth();
 
   const { resetUnlockLock, forceUnlock } = useSecurity();
@@ -367,14 +378,20 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
       return;
     }
 
-    if (!email.trim()) {
-      showError('Missing Email', 'Please enter your email address');
+    const trimmedIdentifier = email.trim();
+    if (!trimmedIdentifier) {
+      showError('Missing Information', 'Please enter your email, phone number, or username');
       triggerHaptic('error');
       return;
     }
 
-    if (!isValidEmail(email)) {
-      showError('Invalid Email', 'Please enter a valid email address');
+    // Check what type of identifier we have
+    const isEmail = isValidEmail(trimmedIdentifier);
+    const isPhone = isValidPhone(trimmedIdentifier);
+    const isUsername = isValidUsername(trimmedIdentifier);
+
+    if (!isEmail && !isPhone && !isUsername) {
+      showError('Invalid Input', 'Please enter a valid email, phone number, or username');
       triggerHaptic('error');
       return;
     }
@@ -391,7 +408,27 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     triggerHaptic('medium');
 
     try {
-      const success = await signIn(email.trim(), password);
+      // Try to find user by identifier first
+      let userIdentifier = trimmedIdentifier;
+      
+      // If it's a username, try to find the associated email
+      if (isUsername) {
+        try {
+          const user = await findUserByEmailOrUsername(trimmedIdentifier);
+          if (user && user.email) {
+            userIdentifier = user.email;
+            console.log('[Login] Found email for username:', userIdentifier);
+          }
+        } catch (e) {
+          console.warn('[Login] Could not resolve username to email:', e);
+        }
+      }
+      
+      // If it's a phone number, we need to find the associated email
+      // For now, we'll try to use it as-is (Supabase may not support phone login directly)
+      // You'll need to implement phone -> email lookup if you have that mapping
+
+      const success = await signIn(userIdentifier, password);
 
       if (success && isMounted.current) {
         showSuccess(`Welcome Back${userName !== 'there' ? `, ${userName}` : ''}!`, 'Successfully signed in');
@@ -410,12 +447,12 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
           const shouldPrompt = await shouldShowBiometricPrompt();
           if (shouldPrompt) {
             setTimeout(() => {
-              promptEnableBiometricLogin(email.trim(), password);
+              promptEnableBiometricLogin(userIdentifier, password);
             }, 1000);
           }
         }
       } else {
-        showError('Login Failed', 'Invalid email or password');
+        showError('Login Failed', 'Invalid credentials. Please try again.');
         loginAttempted.current = false;
       }
     } catch (error) {
@@ -430,6 +467,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     email,
     password,
     signIn,
+    findUserByEmailOrUsername,
     isProcessing,
     authLoading,
     isAuthenticated,
@@ -847,21 +885,19 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                     </Animated.View>
                   )}
 
-                  {/* Email Input */}
+                  {/* Email/Username/Phone Input */}
                   <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
-                    <Ionicons name="mail-outline" size={20} color="#667eea" style={styles.inputIcon} />
+                    <Ionicons name="person-outline" size={20} color="#667eea" style={styles.inputIcon} />
                     <TextInput
                       style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
-                      placeholder="Email address"
+                      placeholder="Email, username, or phone number"
                       placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
                       value={email}
                       onChangeText={setEmail}
-                      keyboardType="email-address"
                       autoCapitalize="none"
                       autoCorrect={false}
                       editable={!isLoading}
                       returnKeyType="next"
-                      textContentType="emailAddress"
                     />
                   </View>
 

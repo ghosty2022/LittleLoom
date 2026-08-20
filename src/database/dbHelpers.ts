@@ -134,6 +134,35 @@ export async function findUserByUsername(
   }
 }
 
+export async function findUserByPhone(
+  phone: string
+): Promise<UserRegistryEntry | null> {
+  try {
+    const registry = await getUserRegistry();
+    const searchPhone = phone.trim().replace(/[^0-9+]/g, '');
+    
+    // Try multiple phone formats
+    const formats = [
+      searchPhone,
+      searchPhone.replace(/^\+254/, '0'),
+      searchPhone.replace(/^0/, '+254'),
+      searchPhone.replace(/^254/, '0'),
+      '+' + searchPhone.replace(/^0/, ''),
+    ];
+    
+    for (const entry of Object.values(registry)) {
+      if (!entry.phoneNumber) continue;
+      const entryPhone = entry.phoneNumber.trim().replace(/[^0-9+]/g, '');
+      if (formats.some(f => f === entryPhone)) {
+        return entry;
+      }
+    }
+    return null;
+  } catch (error) {
+    console.error('Error finding user by phone:', error);
+    return null;
+  }
+}
 export async function findUserByEmailOrUsername(
   identifier: string
 ): Promise<UserRegistryEntry | null> {
@@ -476,8 +505,8 @@ export async function createBabyInDb(data: {
       syncStatus: 'pending',
     }).returning().all();
 
-    // Best-effort push to Supabase with proper field mapping
-    const supabaseData: any = {
+    // Best-effort push to Supabase
+    supabase.from('babies').upsert({
       id: data.id,
       name: data.name,
       avatar: data.avatar ?? null,
@@ -490,16 +519,7 @@ export async function createBabyInDb(data: {
       created_at: now,
       updated_at: now,
       is_active: true,
-    };
-    
-    // Remove undefined values to avoid Supabase errors
-    Object.keys(supabaseData).forEach(key => {
-      if (supabaseData[key] === undefined) {
-        delete supabaseData[key];
-      }
-    });
-
-    supabase.from('babies').upsert(supabaseData).then(({ error }) => {
+    }).then(({ error }) => {
       if (error) console.warn('[DB] Supabase push failed:', error.message);
       else db.update(babies).set({ syncStatus: 'synced' }).where(eq(babies.id, data.id)).run();
     });

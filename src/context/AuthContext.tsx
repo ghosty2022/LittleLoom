@@ -143,6 +143,7 @@ interface AuthContextType extends AuthState {
   forgotPassword: (email: string) => Promise<{ success: boolean; message: string }>;
   resetPasswordForUser: (email: string, newPassword: string) => Promise<{ success: boolean; message: string }>;
   findUserByEmail: (email: string) => Promise<{ userId: string; email: string; fullName: string; role: string } | null>;
+  findUserByEmailOrUsername: (identifier: string) => Promise<{ userId: string; email: string; fullName: string; role: string } | null>;
 }
 
 const secureStorage = {
@@ -1823,6 +1824,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return user ? { userId: user.userId, email: user.email, fullName: user.fullName, role: user.role } : null;
   }, []);
 
+  // Add this new function after findUserByEmailCallback
+  const findUserByEmailOrUsernameCallback = useCallback(async (identifier: string): Promise<{ userId: string; email: string; fullName: string; role: string } | null> => {
+    try {
+      // Try as email first
+      const byEmail = await findUserByEmail(identifier);
+      if (byEmail) return byEmail;
+      
+      // Then try as username
+      const byUsername = await findUserByUsername(identifier);
+      if (byUsername) {
+        return {
+          userId: byUsername.userId,
+          email: byUsername.email,
+          fullName: byUsername.fullName,
+          role: byUsername.role,
+        };
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Error finding user by email or username:', error);
+      return null;
+    }
+  }, [findUserByEmail]);
+
   const value = React.useMemo(() => ({
     ...state,
     signIn,
@@ -1851,6 +1877,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     clearAllLocks,
     getCurrentUserProfile,
     findUserByEmail: findUserByEmailCallback,
+    findUserByEmailOrUsername: findUserByEmailOrUsernameCallback,
     updateCommunityProfile,
     getCommunityProfile,
     updateCommunityStats,
@@ -1862,7 +1889,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     forgotPassword,
     resetPasswordForUser,
     signUpWithInviteCode,
-  }), [state, signIn, signUp, signInWithSocial, signOut, checkBiometricAvailability, authenticateWithBiometric, enableBiometricForApp, enableBiometricLogin, disableBiometricLogin, hasBiometricLoginCredentials, loginWithBiometric, updateUserProfile, updateUserPreferences, skipSetup, completeSetup, resetSetupFlow, wasSetupCompleted, setSetupCompleteCallback, markOnboardingSeen, shouldShowBiometricPrompt, isAppActive, getLastActiveTime, getBiometricTypeInfo, clearAllLocks, getCurrentUserProfile, updateCommunityProfile, getCommunityProfile, updateCommunityStats, updateCommunityTopics, isUsernameAvailable, registerCommunityUsername, updateCommunityUsername, updateCommunityAvatar, forgotPassword, resetPasswordForUser, signUpWithInviteCode]);
+  }), [state, signIn, signUp, signInWithSocial, signOut, checkBiometricAvailability, authenticateWithBiometric, enableBiometricForApp, enableBiometricLogin, disableBiometricLogin, hasBiometricLoginCredentials, loginWithBiometric, updateUserProfile, updateUserPreferences, skipSetup, completeSetup, resetSetupFlow, wasSetupCompleted, setSetupCompleteCallback, markOnboardingSeen, shouldShowBiometricPrompt, isAppActive, getLastActiveTime, getBiometricTypeInfo, clearAllLocks, getCurrentUserProfile, findUserByEmailCallback, findUserByEmailOrUsernameCallback, updateCommunityProfile, getCommunityProfile, updateCommunityStats, updateCommunityTopics, isUsernameAvailable, registerCommunityUsername, updateCommunityUsername, updateCommunityAvatar, forgotPassword, resetPasswordForUser, signUpWithInviteCode]);
 
   return (
     <AuthContext.Provider value={value}>
