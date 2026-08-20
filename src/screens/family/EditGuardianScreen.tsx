@@ -1,3 +1,4 @@
+// src/screens/EditGuardianScreen.tsx
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -48,7 +49,7 @@ import { useCustomization } from '../../hooks/useCustomization';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 
-/* Permanent storage for guardian/member photos (cache URIs get purged by the OS) */
+/* Permanent storage for guardian/member photos */
 const GUARDIAN_IMAGES_DIR = FileSystem.documentDirectory + 'guardian_images/';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { SafeAvatar } from '../../components/SafeAvatar';
@@ -63,7 +64,7 @@ type EditGuardianScreenProps = NativeStackScreenProps<RootStackParamList, 'EditG
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   DESIGN TOKENS — Borrowed from GrowthDashboardScreen, refined
+   DESIGN TOKENS
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const DESIGN = {
@@ -114,32 +115,75 @@ const EMOJI_OPTIONS = ['👤', '👩', '👨', '👵', '👴', '👶', '👧', '
 
 type ProfileTab = 'overview' | 'activity' | 'permissions' | 'settings';
 
-
 /* ═══════════════════════════════════════════════════════════════════════════
    DYNAMIC STYLES
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const getDynamicStyles = (isDark: boolean) => StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, backgroundColor: isDark ? '#08080f' : '#f4f6fa' },
   centered: { justifyContent: 'center', alignItems: 'center' },
   scrollContent: { flexGrow: 1, paddingBottom: 24, minHeight: SCREEN_H },
 
-  stickyHeader: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100, alignItems: 'center', paddingHorizontal: 20, paddingBottom: 10 },
+  // ── Sticky Header ──
+  stickyHeader: { 
+    position: 'absolute', 
+    top: 0, 
+    left: 0, 
+    right: 0, 
+    zIndex: 100, 
+    alignItems: 'center', 
+    paddingHorizontal: 20, 
+    paddingBottom: 10 
+  },
   stickyTitle: { fontSize: 17, fontWeight: '800', color: isDark ? '#fff' : '#1e293b', letterSpacing: -0.3 },
   stickySubtitle: { fontSize: 12, fontWeight: '500', color: isDark ? '#94a3b8' : '#64748b', marginTop: 2 },
 
   // ── Top Header ──
-  topHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 16, marginBottom: 16 },
-  backBtn: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.08)' },
-  editToggleBtn: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.08)' },
+  topHeader: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 10, 
+    marginHorizontal: 16, 
+    marginBottom: 16, 
+    marginTop: 8 
+  },
+  backBtn: { 
+    width: 40, 
+    height: 40, 
+    borderRadius: 12, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    backgroundColor: 'rgba(255,255,255,0.08)' 
+  },
+  editToggleBtn: { 
+    width: 40, 
+    height: 40, 
+    borderRadius: 12, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    backgroundColor: 'rgba(255,255,255,0.08)' 
+  },
 
   // ── Profile Hero ──
-  profileHero: { flexDirection: 'row', alignItems: 'center', gap: 16, marginHorizontal: 16, marginBottom: 20 },
+  profileHero: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 16, 
+    marginHorizontal: 16, 
+    marginBottom: 20 
+  },
   profileInfo: { flex: 1, gap: 4 },
   profileName: { fontSize: 24, fontWeight: '800', color: isDark ? '#fff' : '#1e293b', letterSpacing: -0.5 },
   profileMeta: { fontSize: 14, fontWeight: '500', color: isDark ? '#94a3b8' : '#64748b' },
   profileTags: { flexDirection: 'row', marginTop: 8, gap: 8 },
-  profileTag: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, gap: 4 },
+  profileTag: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    paddingHorizontal: 10, 
+    paddingVertical: 5, 
+    borderRadius: 10, 
+    gap: 4 
+  },
   profileTagText: { fontSize: 12, fontWeight: '700' },
   editingDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#f59e0b' },
 
@@ -147,21 +191,64 @@ const getDynamicStyles = (isDark: boolean) => StyleSheet.create({
   dockContainer: { marginHorizontal: 16, marginBottom: 20 },
   dock: { flexDirection: 'row', gap: 10, justifyContent: 'center' },
   dockItem: { alignItems: 'center', gap: 6, flex: 1 },
-  dockGradient: { width: 52, height: 52, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
+  dockGradient: { 
+    width: 52, 
+    height: 52, 
+    borderRadius: 16, 
+    justifyContent: 'center', 
+    alignItems: 'center' 
+  },
   dockLabel: { fontSize: 11, fontWeight: '600', color: isDark ? '#94a3b8' : '#64748b' },
 
   // ── Tab Bar ──
-  tabBar: { flexDirection: 'row', marginHorizontal: 16, marginBottom: 16, padding: 4, borderRadius: 16, gap: 2, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
-  tabItem: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 12 },
+  tabBar: { 
+    flexDirection: 'row', 
+    marginHorizontal: 16, 
+    marginBottom: 16, 
+    padding: 4, 
+    borderRadius: 16, 
+    gap: 2, 
+    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' 
+  },
+  tabItem: { 
+    flex: 1, 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    gap: 6, 
+    paddingVertical: 10, 
+    borderRadius: 12 
+  },
   tabLabel: { fontSize: 12, fontWeight: '600' },
 
   // ── Glass Card ──
-  glassCard: { borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', marginHorizontal: 16, marginBottom: 16 },
-  glassBorder: { position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
+  glassCard: { 
+    borderRadius: 20, 
+    overflow: 'hidden', 
+    borderWidth: 1, 
+    borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', 
+    marginHorizontal: 16, 
+    marginBottom: 16 
+  },
+  glassBorder: { 
+    position: 'absolute', 
+    top: 0, 
+    left: 0, 
+    right: 0, 
+    height: 1, 
+    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' 
+  },
   glassContent: { flex: 1 },
 
   // ── Section Header ──
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginHorizontal: 16, marginBottom: 12, marginTop: 8 },
+  sectionHeader: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'flex-start', 
+    marginHorizontal: 16, 
+    marginBottom: 12, 
+    marginTop: 8 
+  },
   sectionTitle: { fontSize: 18, fontWeight: '800', color: isDark ? '#fff' : '#1e293b', letterSpacing: -0.3 },
   sectionSubtitle: { fontSize: 12, fontWeight: '500', color: isDark ? '#94a3b8' : '#64748b', marginTop: 2 },
   sectionAction: { flexDirection: 'row', alignItems: 'center', gap: 2 },
@@ -169,16 +256,37 @@ const getDynamicStyles = (isDark: boolean) => StyleSheet.create({
 
   // ── KPI Pills ──
   kpiPillRow: { flexDirection: 'row', gap: 10, marginHorizontal: 16, marginBottom: 16 },
-  kpiPill: { flex: 1, borderRadius: 20, overflow: 'hidden', padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  kpiPill: { 
+    flex: 1, 
+    borderRadius: 20, 
+    overflow: 'hidden', 
+    padding: 14, 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 10 
+  },
   kpiPillIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   kpiPillEmoji: { fontSize: 20 },
   kpiPillBody: { flex: 1 },
   kpiPillValue: { fontSize: 22, fontWeight: '800', letterSpacing: -0.5 },
-  kpiPillLabel: { fontSize: 11, fontWeight: '600', color: isDark ? '#94a3b8' : '#64748b', textTransform: 'uppercase', letterSpacing: 0.5 },
+  kpiPillLabel: { 
+    fontSize: 11, 
+    fontWeight: '600', 
+    color: isDark ? '#94a3b8' : '#64748b', 
+    textTransform: 'uppercase', 
+    letterSpacing: 0.5 
+  },
 
   // ── AI Insights ──
   insightsList: { marginHorizontal: 0, gap: 8, marginBottom: 16 },
-  insightRow: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: isDark ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.75)', borderLeftWidth: 3 },
+  insightRow: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    padding: 14, 
+    borderRadius: 16, 
+    backgroundColor: isDark ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.75)', 
+    borderLeftWidth: 3 
+  },
   insightIconBg: { width: 42, height: 42, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   insightEmoji: { fontSize: 20 },
   insightContent: { flex: 1, gap: 3 },
@@ -190,13 +298,26 @@ const getDynamicStyles = (isDark: boolean) => StyleSheet.create({
   insightPriority: { width: 4, height: 36, borderRadius: 2 },
 
   // ── Sparkline ──
-  sparklineHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', padding: 16, paddingBottom: 12 },
+  sparklineHeader: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'flex-start', 
+    padding: 16, 
+    paddingBottom: 12 
+  },
   sparklineTitle: { fontSize: 16, fontWeight: '800', color: isDark ? '#fff' : '#1e293b' },
   sparklineSubtitle: { fontSize: 12, fontWeight: '500', color: isDark ? '#94a3b8' : '#64748b', marginTop: 2 },
   sparklineTotal: { alignItems: 'flex-end' },
   sparklineTotalValue: { fontSize: 24, fontWeight: '800', color: '#6366f1' },
   sparklineTotalLabel: { fontSize: 11, fontWeight: '600', color: isDark ? '#94a3b8' : '#64748b' },
-  sparklineChart: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-end', paddingHorizontal: 16, paddingBottom: 16, height: 100 },
+  sparklineChart: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-around', 
+    alignItems: 'flex-end', 
+    paddingHorizontal: 16, 
+    paddingBottom: 16, 
+    height: 100 
+  },
   sparklineBar: { width: 8, borderRadius: 4 },
   sparklineDay: { fontSize: 10, fontWeight: '600', color: isDark ? '#64748b' : '#94a3b8' },
 
@@ -208,17 +329,48 @@ const getDynamicStyles = (isDark: boolean) => StyleSheet.create({
   healthMetrics: { flexDirection: 'row', gap: 16, marginTop: 4 },
   healthMetric: { alignItems: 'center', gap: 2 },
   healthMetricValue: { fontSize: 18, fontWeight: '800', color: isDark ? '#fff' : '#1e293b' },
-  healthMetricLabel: { fontSize: 10, fontWeight: '600', color: isDark ? '#64748b' : '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 },
+  healthMetricLabel: { 
+    fontSize: 10, 
+    fontWeight: '600', 
+    color: isDark ? '#64748b' : '#94a3b8', 
+    textTransform: 'uppercase', 
+    letterSpacing: 0.5 
+  },
   healthRingContainer: { justifyContent: 'center', alignItems: 'center' },
   healthRing: { width: 80, height: 80, borderRadius: 40, justifyContent: 'center', alignItems: 'center' },
-  healthRingBg: { position: 'absolute', width: 80, height: 80, borderRadius: 40, borderWidth: 4, borderColor: 'rgba(255,255,255,0.06)' },
-  healthRingFill: { position: 'absolute', width: 80, height: 80, borderRadius: 40, borderWidth: 4, borderTopColor: 'transparent', borderRightColor: 'transparent', borderLeftColor: 'transparent' },
+  healthRingBg: { 
+    position: 'absolute', 
+    width: 80, 
+    height: 80, 
+    borderRadius: 40, 
+    borderWidth: 4, 
+    borderColor: 'rgba(255,255,255,0.06)' 
+  },
+  healthRingFill: { 
+    position: 'absolute', 
+    width: 80, 
+    height: 80, 
+    borderRadius: 40, 
+    borderWidth: 4, 
+    borderTopColor: 'transparent', 
+    borderRightColor: 'transparent', 
+    borderLeftColor: 'transparent' 
+  },
   healthRingEmoji: { fontSize: 16 },
   healthRingScore: { fontSize: 20, fontWeight: '800' },
   healthRingLabel: { fontSize: 9, fontWeight: '600', color: isDark ? '#94a3b8' : '#64748b' },
 
   // ── Smart Recommendations ──
-  recCard: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: isDark ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.75)', borderLeftWidth: 3, marginHorizontal: 16, marginBottom: 8 },
+  recCard: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    padding: 14, 
+    borderRadius: 16, 
+    backgroundColor: isDark ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.75)', 
+    borderLeftWidth: 3, 
+    marginHorizontal: 16, 
+    marginBottom: 8 
+  },
   recIconBg: { width: 42, height: 42, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   recEmoji: { fontSize: 20 },
   recContent: { flex: 1, marginHorizontal: 12, gap: 4 },
@@ -233,9 +385,29 @@ const getDynamicStyles = (isDark: boolean) => StyleSheet.create({
   timelineContainer: { marginHorizontal: 16, gap: 0 },
   timelineItem: { flexDirection: 'row', gap: 12 },
   timelineLeft: { width: 24, alignItems: 'center', paddingTop: 16 },
-  timelineLine: { position: 'absolute', top: 0, bottom: 0, width: 2, left: 11, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
-  timelineDot: { width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: isDark ? '#fff' : '#1e293b', zIndex: 1 },
-  timelineCard: { flex: 1, padding: 14, borderRadius: 16, backgroundColor: isDark ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.75)', marginBottom: 12 },
+  timelineLine: { 
+    position: 'absolute', 
+    top: 0, 
+    bottom: 0, 
+    width: 2, 
+    left: 11, 
+    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' 
+  },
+  timelineDot: { 
+    width: 12, 
+    height: 12, 
+    borderRadius: 6, 
+    borderWidth: 2, 
+    borderColor: isDark ? '#fff' : '#1e293b', 
+    zIndex: 1 
+  },
+  timelineCard: { 
+    flex: 1, 
+    padding: 14, 
+    borderRadius: 16, 
+    backgroundColor: isDark ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.75)', 
+    marginBottom: 12 
+  },
   timelineHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 },
   timelineEmoji: { fontSize: 20 },
   timelineMeta: { flex: 1 },
@@ -266,22 +438,55 @@ const getDynamicStyles = (isDark: boolean) => StyleSheet.create({
 
   // ── Empty States ──
   emptyCard: { padding: 40, alignItems: 'center', justifyContent: 'center' },
-  emptyStateIcon: { width: 64, height: 64, borderRadius: 20, backgroundColor: 'rgba(99,102,241,0.1)', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  emptyStateIcon: { 
+    width: 64, 
+    height: 64, 
+    borderRadius: 20, 
+    backgroundColor: 'rgba(99,102,241,0.1)', 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    marginBottom: 16 
+  },
   emptyStateTitle: { fontSize: 16, fontWeight: '700', color: isDark ? '#fff' : '#1e293b', textAlign: 'center', marginBottom: 8 },
   emptyText: { fontSize: 14, color: isDark ? '#64748b' : '#94a3b8', textAlign: 'center', lineHeight: 20 },
 
   // ── Permissions ──
   permissionGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, padding: 16 },
-  permissionChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, borderWidth: 1 },
+  permissionChip: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 6, 
+    paddingHorizontal: 12, 
+    paddingVertical: 8, 
+    borderRadius: 12, 
+    borderWidth: 1 
+  },
   permissionChipText: { fontSize: 13, fontWeight: '600' },
-  permissionNote: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, padding: 12, borderRadius: 12, backgroundColor: 'rgba(99,102,241,0.08)', marginHorizontal: 16, marginBottom: 16 },
+  permissionNote: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 8, 
+    marginTop: 8, 
+    padding: 12, 
+    borderRadius: 12, 
+    backgroundColor: 'rgba(99,102,241,0.08)', 
+    marginHorizontal: 16, 
+    marginBottom: 16 
+  },
   permissionNoteText: { fontSize: 13, color: isDark ? '#94a3b8' : '#64748b', flex: 1, lineHeight: 18 },
 
   // ── Stats Grid ──
   statsGrid: { flexDirection: 'row', gap: 10, marginHorizontal: 16, marginBottom: 16 },
   statCard: { flex: 1, borderRadius: 20, padding: 16, alignItems: 'center', justifyContent: 'center' },
   statCardValue: { fontSize: 24, fontWeight: '800', color: isDark ? '#fff' : '#1e293b' },
-  statCardLabel: { fontSize: 11, fontWeight: '600', color: isDark ? '#94a3b8' : '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 4 },
+  statCardLabel: { 
+    fontSize: 11, 
+    fontWeight: '600', 
+    color: isDark ? '#94a3b8' : '#64748b', 
+    textTransform: 'uppercase', 
+    letterSpacing: 0.5, 
+    marginTop: 4 
+  },
 
   // ── Activity Breakdown ──
   activityBreakdown: { marginTop: 16, marginHorizontal: 16 },
@@ -296,13 +501,37 @@ const getDynamicStyles = (isDark: boolean) => StyleSheet.create({
   breakdownCount: { fontSize: 14, fontWeight: '700', minWidth: 20, textAlign: 'right' },
 
   // ── Manage Permissions Button ──
-  managePermissionsBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderRadius: 16, marginHorizontal: 16, marginTop: 8 },
+  managePermissionsBtn: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'space-between', 
+    padding: 16, 
+    borderRadius: 16, 
+    marginHorizontal: 16, 
+    marginTop: 8 
+  },
   managePermissionsText: { fontSize: 15, fontWeight: '700', flex: 1, marginLeft: 12 },
 
   // ── Settings / Inputs ──
   inputGroup: { marginBottom: 16, paddingHorizontal: 16 },
-  inputLabel: { fontSize: 12, fontWeight: '700', color: isDark ? '#94a3b8' : '#64748b', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
-  inputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', borderRadius: 14, paddingHorizontal: 16, height: 52, borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)' },
+  inputLabel: { 
+    fontSize: 12, 
+    fontWeight: '700', 
+    color: isDark ? '#94a3b8' : '#64748b', 
+    marginBottom: 8, 
+    textTransform: 'uppercase', 
+    letterSpacing: 0.5 
+  },
+  inputContainer: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', 
+    borderRadius: 14, 
+    paddingHorizontal: 16, 
+    height: 52, 
+    borderWidth: 1, 
+    borderColor: 'rgba(255,255,255,0.04)' 
+  },
   inputDisabled: { opacity: 0.5 },
   inputIcon: { marginRight: 12 },
   inputField: { flex: 1, fontSize: 16, color: isDark ? '#fff' : '#1e293b', fontWeight: '600' },
@@ -312,7 +541,15 @@ const getDynamicStyles = (isDark: boolean) => StyleSheet.create({
   ownedBadgeText: { color: isDark ? '#fff' : '#1e293b', fontSize: 11, fontWeight: '700' },
 
   // ── Preferences ──
-  preferenceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.06)' },
+  preferenceRow: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'space-between', 
+    paddingHorizontal: 16, 
+    paddingVertical: 14, 
+    borderTopWidth: 1, 
+    borderTopColor: 'rgba(255,255,255,0.06)' 
+  },
   preferenceInfo: { flexDirection: 'row', alignItems: 'center', gap: 14, flex: 1 },
   preferenceText: { gap: 2 },
   preferenceTitle: { fontSize: 16, fontWeight: '700', color: isDark ? '#fff' : '#1e293b' },
@@ -321,7 +558,7 @@ const getDynamicStyles = (isDark: boolean) => StyleSheet.create({
   // ── Save Button ──
   saveButton: { marginHorizontal: 16, marginTop: 8, borderRadius: 14, overflow: 'hidden' },
   saveButtonGradient: { paddingVertical: 16, alignItems: 'center' },
-  saveButtonText: { color: isDark ? '#fff' : '#1e293b', fontSize: 16, fontWeight: '700' },
+  saveButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 
   // ── Danger Zone ──
   dangerContent: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12 },
@@ -335,20 +572,49 @@ const getDynamicStyles = (isDark: boolean) => StyleSheet.create({
 
   // ── Modals ──
   modalOverlay: { flex: 1, justifyContent: 'flex-end', alignItems: 'center' },
-  modalContent: { width: '100%', maxWidth: 400, borderRadius: 24, padding: 24, overflow: 'hidden' },
+  modalContent: { 
+    width: '100%', 
+    maxWidth: 400, 
+    borderRadius: 24, 
+    padding: 24, 
+    overflow: 'hidden',
+    backgroundColor: isDark ? '#1e1e2e' : '#ffffff' 
+  },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   modalTitle: { fontSize: 20, fontWeight: '800', color: isDark ? '#fff' : '#1e293b', letterSpacing: -0.3 },
-  modalClose: { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.08)', justifyContent: 'center', alignItems: 'center' },
+  modalClose: { 
+    width: 36, 
+    height: 36, 
+    borderRadius: 10, 
+    backgroundColor: 'rgba(255,255,255,0.08)', 
+    justifyContent: 'center', 
+    alignItems: 'center' 
+  },
 
   // ── Image Picker ──
   imagePickerOptions: { padding: 8 },
   imagePickerOption: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 14, marginBottom: 8 },
-  imagePickerIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
+  imagePickerIcon: { 
+    width: 48, 
+    height: 48, 
+    borderRadius: 14, 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    marginRight: 14 
+  },
   imagePickerLabel: { fontSize: 16, fontWeight: '600', color: isDark ? '#fff' : '#1e293b', flex: 1 },
 
   // ── Role Modal ──
   roleOptions: { padding: 8 },
-  roleOption: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, marginBottom: 8, borderWidth: 1, borderColor: 'transparent' },
+  roleOption: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    padding: 14, 
+    borderRadius: 16, 
+    marginBottom: 8, 
+    borderWidth: 1, 
+    borderColor: 'transparent' 
+  },
   roleOptionIcon: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
   roleOptionInfo: { flex: 1 },
   roleOptionTitle: { fontSize: 16, fontWeight: '700', color: isDark ? '#fff' : '#1e293b', marginBottom: 2 },
@@ -356,16 +622,22 @@ const getDynamicStyles = (isDark: boolean) => StyleSheet.create({
 
   // ── Emoji Picker ──
   emojiPickerOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
-  emojiPickerSheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 40 },
+  emojiPickerSheet: { 
+    borderTopLeftRadius: 24, 
+    borderTopRightRadius: 24, 
+    padding: 20, 
+    paddingBottom: 40,
+    backgroundColor: isDark ? '#1e1e2e' : '#ffffff' 
+  },
   emojiPickerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  emojiPickerTitle: { fontSize: 18, fontWeight: '800' },
+  emojiPickerTitle: { fontSize: 18, fontWeight: '800', color: isDark ? '#fff' : '#1a1a2e' },
   emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'center' },
   emojiButton: { width: 52, height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   emojiButtonText: { fontSize: 28 },
 
   // ── Retry ──
   retryButton: { marginTop: 20, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 14 },
-  retryButtonText: { fontSize: 15, fontWeight: '700', color: isDark ? '#fff' : '#1e293b' },
+  retryButtonText: { fontSize: 15, fontWeight: '700', color: '#fff' },
 
   // ── Drag Handle ──
   modalDragHandle: { alignItems: 'center', paddingVertical: 10 },
@@ -373,10 +645,10 @@ const getDynamicStyles = (isDark: boolean) => StyleSheet.create({
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   REFINED SUB-COMPONENTS — Borrowing GrowthDashboard patterns
+   SUB-COMPONENTS
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const GlassCard = React.memo(({ children, style, onPress, active = false, delay = 0, isDark, colors }: {
+const GlassCard = React.memo(({ children, style, onPress, active = false, delay = 0, isDark }: {
   children: React.ReactNode; style?: any; onPress?: () => void; active?: boolean; delay?: number; isDark: boolean;
 }) => {
   const styles = useMemo(() => getDynamicStyles(isDark), [isDark]);
@@ -397,18 +669,18 @@ const SectionHeader = React.memo(({ title, subtitle, action, actionLabel, isDark
 }) => {
   const styles = useMemo(() => getDynamicStyles(isDark), [isDark]);
   return (
-  <View style={styles.sectionHeader}>
-    <View>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      {subtitle && <Text style={styles.sectionSubtitle}>{subtitle}</Text>}
+    <View style={styles.sectionHeader}>
+      <View>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        {subtitle && <Text style={styles.sectionSubtitle}>{subtitle}</Text>}
+      </View>
+      {action && (
+        <TouchableOpacity onPress={action} style={styles.sectionAction}>
+          <Text style={styles.sectionActionText}>{actionLabel || 'See All'}</Text>
+          <Ionicons name="chevron-forward" size={14} color="#6366f1" />
+        </TouchableOpacity>
+      )}
     </View>
-    {action && (
-      <TouchableOpacity onPress={action} style={styles.sectionAction}>
-        <Text style={styles.sectionActionText}>{actionLabel || 'See All'}</Text>
-        <Ionicons name="chevron-forward" size={14} color="#6366f1" />
-      </TouchableOpacity>
-    )}
-  </View>
   );
 });
 
@@ -418,17 +690,17 @@ const TabBar = React.memo(({ tabs, activeTab, onChange, isDark }: {
 }) => {
   const styles = useMemo(() => getDynamicStyles(isDark), [isDark]);
   return (
-  <View style={styles.tabBar}>
-    {tabs.map((tab) => {
-      const isActive = activeTab === tab.key;
-      return (
-        <TouchableOpacity key={tab.key} onPress={() => onChange(tab.key)} style={[styles.tabItem, isActive && { backgroundColor: 'rgba(99,102,241,0.15)' }]}>
-          <Ionicons name={tab.icon as any} size={16} color={isActive ? '#6366f1' : '#94a3b8'} />
-          <Text style={[styles.tabLabel, { color: isActive ? '#6366f1' : '#94a3b8' }, isActive && { fontWeight: '700' }]}>{tab.label}</Text>
-        </TouchableOpacity>
-      );
-    })}
-  </View>
+    <View style={styles.tabBar}>
+      {tabs.map((tab) => {
+        const isActive = activeTab === tab.key;
+        return (
+          <TouchableOpacity key={tab.key} onPress={() => onChange(tab.key)} style={[styles.tabItem, isActive && { backgroundColor: 'rgba(99,102,241,0.15)' }]}>
+            <Ionicons name={tab.icon as any} size={16} color={isActive ? '#6366f1' : '#94a3b8'} />
+            <Text style={[styles.tabLabel, { color: isActive ? '#6366f1' : '#94a3b8' }, isActive && { fontWeight: '700' }]}>{tab.label}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
   );
 });
 
@@ -449,7 +721,7 @@ const KpiPill = React.memo(({ icon, value, label, color, onPress, isDark }: any)
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 1: AI Member Insights Card
+   FEATURE 1: AI Member Insights Card
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const AIMemberInsights = React.memo(({ member, activities, isDark }: any) => {
@@ -507,7 +779,7 @@ const AIMemberInsights = React.memo(({ member, activities, isDark }: any) => {
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 2: Activity Velocity Sparkline
+   FEATURE 2: Activity Velocity Sparkline
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const ActivitySparkline = React.memo(({ activities, isDark }: { activities: ActivityEntry[]; isDark: boolean }) => {
@@ -551,7 +823,7 @@ const ActivitySparkline = React.memo(({ activities, isDark }: { activities: Acti
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 3: Relationship Health Score
+   FEATURE 3: Relationship Health Score
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const RelationshipHealth = React.memo(({ member, activities, isDark }: any) => {
@@ -602,7 +874,7 @@ const RelationshipHealth = React.memo(({ member, activities, isDark }: any) => {
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 4: Smart Role Recommendations
+   FEATURE 4: Smart Role Recommendations
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const SmartRoleRecommendations = React.memo(({ member, activities, onRoleChange, canManage, isDark }: any) => {
@@ -650,7 +922,7 @@ const SmartRoleRecommendations = React.memo(({ member, activities, onRoleChange,
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 5: Engagement Timeline
+   FEATURE 5: Engagement Timeline
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const EngagementTimeline = React.memo(({ member, activities, milestones, isDark }: any) => {
@@ -695,7 +967,7 @@ const EngagementTimeline = React.memo(({ member, activities, milestones, isDark 
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 6: Quick Actions Dock
+   FEATURE 6: Quick Actions Dock
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const QuickActionsDock = React.memo(({ member, isCurrentUser, onMessage, onCall, onShare, onEdit, isDark }: any) => {
@@ -748,12 +1020,12 @@ const ActionModal = React.memo(({ visible, onClose, title, children, isDark }: a
       <View style={styles.modalOverlay}>
         <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
         <BlurView intensity={90} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
-        <Animated.View entering={FadeInUp.springify()} style={[styles.modalContent, { backgroundColor: isDark ? '#1e1e2e' : '#ffffff' }]}>
+        <Animated.View entering={FadeInUp.springify()} style={[styles.modalContent]}>
           <View style={styles.modalDragHandle}>
             <View style={styles.dragIndicator} />
           </View>
           <View style={styles.modalHeader}>
-            <Text style={[styles.modalTitle, { color: isDark ? '#fff' : '#1e293b' }]}>{title}</Text>
+            <Text style={styles.modalTitle}>{title}</Text>
             <TouchableOpacity onPress={onClose} style={styles.modalClose}>
               <Ionicons name="close" size={20} color={isDark ? '#94a3b8' : '#64748b'} />
             </TouchableOpacity>
@@ -854,7 +1126,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
       setMemberActivities(memberActs.sort((a, b) => b.timestamp - a.timestamp).slice(0, 30));
     } catch (error) { console.error('Error loading member activities:', error); setMemberActivities([]); }
     finally { setIsLoadingActivities(false); }
-  }, [currentBaby, getRecentActivities, member]);
+  }, [currentBaby, getRecentActivities]);
 
   const handleSave = async () => {
     if (!member) return;
@@ -924,7 +1196,6 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
 
       setFormData(prev => ({ ...prev, avatar: processedUri }));
       
-      /* FIX: Parent1 is not in family_members DB table — sync to Auth/User profile */
       const currentUserId = userProfile?.id || userProfile?.uid || profile?.id;
       const isCurrentUser = member.id === currentUserId;
       if (isCurrentUser) {
@@ -977,9 +1248,8 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
         return;
       }
 
-            setFormData(prev => ({ ...prev, avatar: processedUri }));
+      setFormData(prev => ({ ...prev, avatar: processedUri }));
       
-      /* FIX: Parent1 is not in family_members DB table — sync to Auth/User profile */
       const currentUserId = userProfile?.id || userProfile?.uid || profile?.id;
       const isCurrentUser = member.id === currentUserId;
       if (isCurrentUser) {
@@ -1054,7 +1324,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     }, () => setShowRoleModal(false), 'Change', 'Cancel');
   };
 
-    const handleCall = async () => {
+  const handleCall = async () => {
     if (!member?.phoneNumber) { sweetAlert.alert('No Phone Number', 'No phone number on file.', 'warning'); return; }
     const phoneUrl = `tel:${member.phoneNumber.replace(/\s/g, '')}`;
     if (await Linking.canOpenURL(phoneUrl)) { triggerHaptic('medium'); await Linking.openURL(phoneUrl); }
@@ -1122,7 +1392,6 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     { key: 'permissions' as ProfileTab, label: 'Access', icon: 'shield-outline' },
     { key: 'settings' as ProfileTab, label: 'Settings', icon: 'settings-outline' },
   ];
-
 
   return (
     <View style={styles.container}>
@@ -1380,7 +1649,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
               )}
             </GlassCard>
 
-            {/* Danger Zone - subtle, at bottom */}
+            {/* Danger Zone */}
             {canRemove && (
               <Animated.View entering={FadeInUp.delay(300).springify()}>
                 <SectionHeader title="Danger Zone" subtitle="Irreversible actions" isDark={isDark} />
@@ -1450,12 +1719,12 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
       >
         <View style={styles.emojiPickerOverlay}>
           <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setShowEmojiPicker(false)} activeOpacity={1} />
-          <Animated.View entering={FadeInUp.springify()} style={[styles.emojiPickerSheet, { backgroundColor: isDark ? '#1e1e2e' : '#fff' }]}>
+          <Animated.View entering={FadeInUp.springify()} style={[styles.emojiPickerSheet]}>
             <View style={styles.modalDragHandle}>
               <View style={styles.dragIndicator} />
             </View>
             <View style={styles.emojiPickerHeader}>
-              <Text style={[styles.emojiPickerTitle, { color: isDark ? '#fff' : '#1a1a2e' }]}>Pick an Emoji</Text>
+              <Text style={styles.emojiPickerTitle}>Pick an Emoji</Text>
               <TouchableOpacity onPress={() => setShowEmojiPicker(false)} style={styles.modalClose}>
                 <Ionicons name="close" size={24} color={isDark ? '#fff' : '#1a1a2e'} />
               </TouchableOpacity>
@@ -1470,7 +1739,6 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
           </Animated.View>
         </View>
       </Modal>
-
     </View>
   );
 }

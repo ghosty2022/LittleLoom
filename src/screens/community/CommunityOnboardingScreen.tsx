@@ -1,394 +1,298 @@
-// src/screens/community/CommunityOnboardingScreen.tsx - COMPLETE REPLACEMENT
-
+// src/screens/community/CommunityOnboardingScreen.tsx
 import {
   StyleSheet,
-  ActivityIndicator,
-  Alert,
-  Animated,
-  Button,
   Dimensions,
-  Platform,
-  ScrollView,
-  StatusBar,
+  View,
   Text,
   TouchableOpacity,
-  View,
+  ActivityIndicator,
+  StatusBar,
+  FlatList,
+  SafeAreaView,
+  Animated,
+  LayoutAnimation,
+  Platform,
+  UIManager,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { FadeIn, FadeInDown, FadeInUp } from 'react-native-reanimated';
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useCallback, useEffect, useState, useMemo, useRef } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { updateSectionState } from '../../hooks/useIntelligentSplash';
-import { useRouteBasedNavVisibility } from '../../hooks/useRouteBasedNavVisibility';
-import { useCommunity } from '../../context/CommunityContext';
+import { useCommunity, TOPIC_CATEGORIES, INITIAL_TOPICS, Topic } from '../../context/CommunityContext';
+import { useUser } from '../../context/UserContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
-import { useUser } from '../../context/UserContext';
-import {
-  CommunityColors,
-  CommunityGradients,
-  CommunityShadows,
-  CommunityBorderRadius,
-} from '../../theme/CommunityTheme';
+import { updateSectionState } from '../../hooks/useIntelligentSplash';
 
 const { width } = Dimensions.get('window');
 const ONBOARDING_KEY = '@littleloom_community_onboarding_v3';
 
-interface CommunityOnboardingScreenProps {
-  navigation?: any;
-  route?: any;
-  onComplete?: () => void;
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-interface TopicRecommendation {
-  topicId: string;
-  reason: string;
-  confidence: 'high' | 'medium' | 'low';
+interface CategoryTopic {
+  id: string;
+  name: string;
+  emoji: string;
+  color: string;
+  description: string;
+  category: string;
+  subcategory: string;
 }
 
-// ─── EXPANDED TOPICS from Tracker Categories ───
-const EXPANDED_TOPICS = [
-  // Existing topics
-  { id: 'topic_1', name: 'Potty Training', emoji: '🚽', description: 'Tips, tricks, and support for potty training success', color: '#667eea' },
-  { id: 'topic_2', name: 'Sleep Tips', emoji: '😴', description: 'Better sleep for babies and parents', color: '#11998e' },
-  { id: 'topic_3', name: 'Feeding & Nutrition', emoji: '🍼', description: 'From breastfeeding to first foods', color: '#fa709a' },
-  { id: 'topic_4', name: 'Milestones', emoji: '🏆', description: 'Celebrate every achievement', color: '#fee140' },
-  { id: 'topic_5', name: 'Health & Wellness', emoji: '💊', description: 'Keeping your little ones healthy', color: '#fc5c7d' },
-  { id: 'topic_6', name: 'Parenting Hacks', emoji: '💡', description: 'Clever solutions for everyday challenges', color: '#6a82fb' },
-  { id: 'topic_7', name: 'Baby Names', emoji: '✨', description: 'Find the perfect name for your little one', color: '#f093fb' },
-  { id: 'topic_8', name: 'Work-Life Balance', emoji: '⚖️', description: 'Juggling career and parenting', color: '#4facfe' },
-  { id: 'topic_9', name: 'Toddler Tantrums', emoji: '😤', description: 'Navigating the terrible twos and beyond', color: '#fa709a' },
-  { id: 'topic_10', name: 'Education', emoji: '📚', description: 'Early learning and school prep', color: '#43e97b' },
-  { id: 'topic_11', name: 'Single Parenting', emoji: '💪', description: 'Support and advice for single parents', color: '#fa709a' },
-  { id: 'topic_12', name: 'Special Needs', emoji: '🌈', description: 'Resources and community for special needs parenting', color: '#667eea' },
-  
-  // ─── NEW TOPICS from Tracker Categories ───
-  // Health
-  { id: 'topic_13', name: 'Vaccines & Immunizations', emoji: '💉', description: 'Track and discuss vaccine schedules', color: '#5F27CD' },
-  { id: 'topic_14', name: 'Allergies', emoji: '🤧', description: 'Managing food and environmental allergies', color: '#EE5A24' },
-  { id: 'topic_15', name: 'Teething', emoji: '🦷', description: 'Tips for teething relief and care', color: '#FF6B6B' },
-  { id: 'topic_16', name: 'Skin Care', emoji: '🧴', description: 'Eczema, rashes, and baby skin health', color: '#F368E0' },
-  
-  // Development
-  { id: 'topic_17', name: 'Speech & Language', emoji: '💬', description: 'Supporting communication development', color: '#54A0FF' },
-  { id: 'topic_18', name: 'Play & Activities', emoji: '🧸', description: 'Educational play ideas for all ages', color: '#FF6B6B' },
-  { id: 'topic_19', name: 'Sensory Play', emoji: '👋', description: 'Sensory activities and development', color: '#FF9F43' },
-  { id: 'topic_20', name: 'Motor Skills', emoji: '🏃', description: 'Gross and fine motor development', color: '#1DD1A1' },
-  
-  // Emotional
-  { id: 'topic_21', name: 'Tantrums & Emotions', emoji: '😤', description: 'Managing big feelings and behaviors', color: '#E74C3C' },
-  { id: 'topic_22', name: 'Social Skills', emoji: '👥', description: 'Building friendships and social confidence', color: '#54A0FF' },
-  { id: 'topic_23', name: 'Sibling Dynamics', emoji: '👶', description: 'Navigating sibling relationships', color: '#FF9FF3' },
-  
-  // Safety
-  { id: 'topic_24', name: 'Home Safety', emoji: '🛡️', description: 'Babyproofing and child safety tips', color: '#1DD1A1' },
-  { id: 'topic_25', name: 'Car Seat Safety', emoji: '🚗', description: 'Car seat installation and best practices', color: '#5F27CD' },
-  { id: 'topic_26', name: 'Swim & Water Safety', emoji: '🏊', description: 'Water safety for all ages', color: '#00CEC9' },
-  
-  // Nutrition
-  { id: 'topic_27', name: 'Introducing Solids', emoji: '🥄', description: 'First foods and baby-led weaning', color: '#FF9F43' },
-  { id: 'topic_28', name: 'Allergen Introduction', emoji: '🥜', description: 'Safe introduction of allergenic foods', color: '#EE5A24' },
-  { id: 'topic_29', name: 'Picky Eating', emoji: '🙅', description: 'Strategies for picky eaters', color: '#FDCB6E' },
-  
-  // Parental
-  { id: 'topic_30', name: 'Postpartum Support', emoji: '💜', description: 'Recovery and mental health for parents', color: '#9B59B6' },
-  { id: 'topic_31', name: 'Self-Care for Parents', emoji: '🧘', description: 'Finding balance and self-compassion', color: '#00B894' },
-  { id: 'topic_32', name: 'Partner Communication', emoji: '💕', description: 'Strengthening your partnership', color: '#FF6B6B' },
-  
-  // Travel & Outdoors
-  { id: 'topic_33', name: 'Travel with Kids', emoji: '✈️', description: 'Tips for family travel adventures', color: '#54A0FF' },
-  { id: 'topic_34', name: 'Outdoor Activities', emoji: '🌳', description: 'Nature exploration and outdoor play', color: '#1DD1A1' },
-  
-  // Special Needs
-  { id: 'topic_35', name: 'Therapy & Support', emoji: '🧩', description: 'PT, OT, ST, and therapy resources', color: '#A29BFE' },
-  { id: 'topic_36', name: 'Reflux & Colic', emoji: '😣', description: 'Managing reflux, colic, and gas', color: '#FF6B6B' },
-  
-  // School & Learning
-  { id: 'topic_37', name: 'Preschool & Early Ed', emoji: '🎒', description: 'Preparing for school and early learning', color: '#6C5CE7' },
-  { id: 'topic_38', name: 'Homeschool Support', emoji: '🏠', description: 'Resources for homeschooling families', color: '#FDCB6E' },
-  
-  // Household
-  { id: 'topic_39', name: 'Baby Gear & Products', emoji: '🛒', description: 'Reviews and recommendations for baby products', color: '#8E44AD' },
-  { id: 'topic_40', name: 'Budgeting & Finances', emoji: '💰', description: 'Financial planning for growing families', color: '#F39C12' },
-];
+interface CategoryWithTopics {
+  id: string;
+  name: string;
+  emoji: string;
+  description: string;
+  subcategories: { id: string; name: string; emoji: string }[];
+  topics: CategoryTopic[];
+  expanded: boolean;
+}
 
-// These are all the topic IDs from EXPANDED_TOPICS
-const ALL_TOPIC_IDS = EXPANDED_TOPICS.map(t => t.id);
-
-export default function CommunityOnboardingScreen({ navigation, route, onComplete }: CommunityOnboardingScreenProps) {
+export default function CommunityOnboardingScreen({ navigation, route, onComplete }: any) {
   const isEditing = route?.params?.editing === true;
   const sweetAlert = useSweetAlert();
-  useRouteBasedNavVisibility();
-  const insets = useSafeAreaInsets();
+  const { settings, themeColors, triggerHaptic } = useCustomization();
+  const { updateSelectedTopics: updateCommunityTopics, INITIAL_TOPICS: ctxTopics, getSelectedTopics } = useCommunity();
+  const { updateSelectedTopics: updateUserTopics, profile } = useUser();
 
   const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
-  const [recommendedTopics, setRecommendedTopics] = useState<TopicRecommendation[]>([]);
-  const [showRecommendations, setShowRecommendations] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [hasSavedData, setHasSavedData] = useState(false);
-  const [wasSkipped, setWasSkipped] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
 
-  const communityCtx = useCommunity();
-  const { updateSelectedTopics: updateCommunityTopics, INITIAL_TOPICS: ctxTopics } = communityCtx || {};
-  const { updateSelectedTopics: updateUserTopics, profile } = useUser();
-  const { settings, themeColors, triggerHaptic } = useCustomization();
+  const flatListRef = useRef<FlatList>(null);
+  const scrollY = useRef(new Animated.Value(0)).current;
 
-  // Use expanded topics from our list, fallback to context topics
-  const INITIAL_TOPICS = useMemo(() => {
-    if (ctxTopics && Array.isArray(ctxTopics) && ctxTopics.length > 0) {
-      // Merge with expanded topics to include all
-      const merged = [...ctxTopics];
-      EXPANDED_TOPICS.forEach(t => {
-        if (!merged.some(m => m.id === t.id)) {
-          merged.push(t);
-        }
-      });
-      return merged;
-    }
-    return EXPANDED_TOPICS;
+  // Use topics from context or fallback
+  const allTopics = useMemo(() => {
+    return ctxTopics && Array.isArray(ctxTopics) && ctxTopics.length > 0
+      ? ctxTopics
+      : INITIAL_TOPICS;
   }, [ctxTopics]);
 
-  // Filter topics based on search
-  const filteredTopics = useMemo(() => {
-    if (!searchQuery.trim()) return INITIAL_TOPICS;
-    const query = searchQuery.toLowerCase().trim();
-    return INITIAL_TOPICS.filter(t => 
-      t.name.toLowerCase().includes(query) ||
-      t.description.toLowerCase().includes(query) ||
-      t.emoji === query ||
-      t.id.toLowerCase().includes(query)
-    );
-  }, [INITIAL_TOPICS, searchQuery]);
+  // Group topics by category
+  const categoriesWithTopics = useMemo((): CategoryWithTopics[] => {
+    const grouped = new Map<string, CategoryWithTopics>();
 
-  useEffect(() => {
-    const generateRecommendations = async () => {
-      const recommendations: TopicRecommendation[] = [];
+    // Initialize categories
+    TOPIC_CATEGORIES.forEach(cat => {
+      grouped.set(cat.id, {
+        ...cat,
+        topics: [],
+        expanded: expandedCategories.has(cat.id) || false,
+      });
+    });
 
-      const hasBaby = profile?.babies && profile.babies.length > 0;
-      const babyAge = profile?.babies?.[0]?.age;
-
-      if (babyAge) {
-        const ageMonths = parseInt(babyAge);
-        if (ageMonths < 6) {
-          recommendations.push({ topicId: 'topic_3', reason: 'Perfect for your newborn', confidence: 'high' });
-          recommendations.push({ topicId: 'topic_2', reason: 'Essential early months', confidence: 'high' });
-          recommendations.push({ topicId: 'topic_6', reason: 'Getting ready?', confidence: 'medium' });
-        } else if (ageMonths < 12) {
-          recommendations.push({ topicId: 'topic_3', reason: 'Time for solids!', confidence: 'high' });
-          recommendations.push({ topicId: 'topic_4', reason: 'Track those firsts', confidence: 'high' });
-        } else if (ageMonths < 24) {
-          recommendations.push({ topicId: 'topic_9', reason: 'Toddler years ahead', confidence: 'high' });
-          recommendations.push({ topicId: 'topic_1', reason: 'Potty training soon', confidence: 'medium' });
-        } else {
-          recommendations.push({ topicId: 'topic_9', reason: 'Active toddler days', confidence: 'high' });
-          recommendations.push({ topicId: 'topic_10', reason: 'Early learning', confidence: 'medium' });
-        }
+    // Group topics
+    allTopics.forEach(topic => {
+      const catId = (topic as any).category || 'community';
+      const category = grouped.get(catId);
+      if (category) {
+        category.topics.push({
+          id: topic.id,
+          name: topic.name,
+          emoji: topic.emoji,
+          color: topic.color,
+          description: topic.description,
+          category: catId,
+          subcategory: (topic as any).subcategory || '',
+        });
       }
+    });
 
-      // Add recommendations based on tracker categories
-      recommendations.push({ topicId: 'topic_6', reason: 'Community favorite', confidence: 'high' });
-      recommendations.push({ topicId: 'topic_8', reason: 'Popular among parents', confidence: 'medium' });
-      recommendations.push({ topicId: 'topic_5', reason: 'Always relevant', confidence: 'high' });
-      recommendations.push({ topicId: 'topic_27', reason: 'Starting solids?', confidence: 'high' });
-      recommendations.push({ topicId: 'topic_30', reason: 'You deserve support', confidence: 'medium' });
+    return Array.from(grouped.values())
+      .filter(cat => cat.topics.length > 0)
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [allTopics, expandedCategories]);
 
-      setRecommendedTopics(recommendations);
-    };
-
-    generateRecommendations();
-  }, [profile]);
-
+  // Load saved topics
   useEffect(() => {
-    const loadPreviousTopics = async () => {
+    const loadTopics = async () => {
       try {
-        const [onboardingData, communityTopics, userTopicsData] = await Promise.all([
+        const [onboardingData, selectedData] = await Promise.all([
           AsyncStorage.getItem(ONBOARDING_KEY),
           AsyncStorage.getItem('@community_selected_topics_v2'),
-          AsyncStorage.getItem('@community_selected_topics'),
         ]);
 
         let topics: string[] = [];
-        let savedCompleted = false;
 
         if (onboardingData) {
           const parsed = JSON.parse(onboardingData);
           if (parsed.selectedTopics?.length > 0) {
             topics = parsed.selectedTopics;
           }
-          if (parsed.completed === true) {
-            savedCompleted = true;
+        }
+
+        if (topics.length === 0 && selectedData) {
+          topics = JSON.parse(selectedData);
+        }
+
+        // Also check context for selected topics
+        if (topics.length === 0) {
+          const contextTopics = getSelectedTopics();
+          if (contextTopics.length > 0) {
+            topics = contextTopics;
           }
-          if (parsed.skipped === true) {
-            setWasSkipped(true);
+        }
+
+        // Validate topics exist
+        const validTopics = topics.filter(id => allTopics.some(t => t.id === id));
+        setSelectedTopics(validTopics.slice(0, 5));
+
+        // Auto-expand categories with selected topics
+        const expanded = new Set<string>();
+        validTopics.forEach(topicId => {
+          const topic = allTopics.find(t => t.id === topicId);
+          if (topic && (topic as any).category) {
+            expanded.add((topic as any).category);
           }
+        });
+        
+        // If no topics selected, expand first category
+        if (validTopics.length === 0 && categoriesWithTopics.length > 0) {
+          expanded.add(categoriesWithTopics[0].id);
         }
-
-        if (topics.length === 0 && communityTopics) {
-          topics = JSON.parse(communityTopics);
-        }
-
-        if (topics.length === 0 && userTopicsData) {
-          topics = JSON.parse(userTopicsData);
-        }
-
-        if (topics.length > 0) {
-          const validTopics = topics.filter(t => INITIAL_TOPICS.some(it => it.id === t));
-          setSelectedTopics(validTopics.slice(0, 5));
-          setHasSavedData(true);
-        } else if (recommendedTopics.length > 0) {
-          const autoSelected = recommendedTopics
-            .filter(r => r.confidence === 'high')
-            .slice(0, 3)
-            .map(r => r.topicId);
-          const validAutoSelected = autoSelected.filter(id => INITIAL_TOPICS.some(t => t.id === id));
-          setSelectedTopics(validAutoSelected);
-          setShowRecommendations(true);
-        }
+        
+        setExpandedCategories(expanded);
       } catch (error) {
-        console.error('Error loading previous topics:', error);
+        console.error('Error loading topics:', error);
+        // Expand first category on error
+        if (categoriesWithTopics.length > 0) {
+          setExpandedCategories(new Set([categoriesWithTopics[0].id]));
+        }
       } finally {
         setIsLoading(false);
       }
     };
 
-    loadPreviousTopics();
-  }, [recommendedTopics, INITIAL_TOPICS]);
+    loadTopics();
+  }, [allTopics, categoriesWithTopics, getSelectedTopics]);
 
-  const toggleTopic = (topicId: string) => {
-    if (settings.hapticFeedback) {
-      triggerHaptic('light');
-    }
+  const toggleCategory = useCallback((categoryId: string) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setExpandedCategories(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(categoryId)) {
+        newSet.delete(categoryId);
+      } else {
+        newSet.add(categoryId);
+      }
+      return newSet;
+    });
+    triggerHaptic('light');
+  }, [triggerHaptic]);
+
+  const toggleTopic = useCallback((topicId: string) => {
+    triggerHaptic('light');
 
     setSelectedTopics(prev => {
       if (prev.includes(topicId)) {
         return prev.filter(id => id !== topicId);
       } else {
         if (prev.length >= 5) {
-          if (settings.hapticFeedback) {
-            triggerHaptic('error');
-          }
-          sweetAlert.alert('Maximum Topics Reached', 'You can select up to 5 topics. Remove one to add another.', 'info');
+          triggerHaptic('error');
+          sweetAlert.alert(
+            'Maximum Topics Reached',
+            'You can select up to 5 topics. Remove one to add another.',
+            'info'
+          );
           return prev;
         }
         return [...prev, topicId];
       }
     });
-  };
+  }, [triggerHaptic, sweetAlert]);
 
-  const handleComplete = async () => {
+  const handleComplete = useCallback(async () => {
     if (selectedTopics.length === 0) {
       sweetAlert.alert('Select Topics', 'Please select at least 1 topic to personalize your feed.', 'info');
       return;
     }
 
+    setIsSaving(true);
     try {
-      setIsLoading(true);
-      
-      // Save to local storage
-      const data = { 
-        completed: true, 
+      const data = {
+        completed: true,
         selectedTopics,
         timestamp: new Date().toISOString(),
-        recommendedUsed: showRecommendations,
       };
 
       await AsyncStorage.setItem(ONBOARDING_KEY, JSON.stringify(data));
       await AsyncStorage.setItem('@community_selected_topics_v2', JSON.stringify(selectedTopics));
 
-      // Update context - this will also sync to Supabase via the context's updateSelectedTopics
-      if (updateCommunityTopics) {
-        await updateCommunityTopics(selectedTopics);
-      }
-      if (updateUserTopics) {
-        await updateUserTopics(selectedTopics);
-      }
-      
-      // Update splash state
+      // Update contexts
+      await updateCommunityTopics(selectedTopics);
+      await updateUserTopics(selectedTopics);
       await updateSectionState('community', { onboardingComplete: true, topicSelected: true });
 
-      if (settings.hapticFeedback) {
-        triggerHaptic('success');
-      }
-      
-      // Handle navigation based on context
+      triggerHaptic('success');
+      sweetAlert.toast('Topics Selected', `${selectedTopics.length} topics selected!`, 'success');
+
       if (isEditing) {
         navigation?.goBack?.();
         return;
       }
-      
+
       if (onComplete) {
         onComplete();
-      } else {
-        // Navigate to community main
-        navigation?.navigate?.('CommunityMain');
       }
     } catch (error) {
       console.error('Error saving topics:', error);
       sweetAlert.alert('Error', 'Failed to save your preferences. Please try again.', 'warning');
     } finally {
-      setIsLoading(false);
+      setIsSaving(false);
     }
-  };
+  }, [selectedTopics, isEditing, navigation, onComplete, updateCommunityTopics, updateUserTopics, triggerHaptic, sweetAlert]);
 
-  const handleSkip = async () => {
+  const handleSkip = useCallback(async () => {
     if (isEditing) return;
-    
-    // Auto-select some topics instead of skipping
-    const autoSelectTopics = recommendedTopics
-      .filter(r => r.confidence === 'high')
+
+    // Auto-select some popular topics
+    const autoSelectTopics = categoriesWithTopics
+      .flatMap(cat => cat.topics.slice(0, 2))
       .slice(0, 3)
-      .map(r => r.topicId)
-      .filter(id => INITIAL_TOPICS.some(t => t.id === id));
+      .map(t => t.id);
 
     sweetAlert.confirm(
       'Skip Topic Selection?',
       autoSelectTopics.length > 0 
-        ? `We recommend selecting at least 3 topics. Would you like us to auto-select ${autoSelectTopics.length} recommended topics for you? You can always change these later.`
+        ? `We recommend selecting at least 1 topic. Would you like us to auto-select ${autoSelectTopics.length} recommended topics for you? You can always change these later.`
         : 'Selecting topics helps us show you relevant content. You can always change this later in your profile.',
       async () => {
         try {
-          setIsLoading(true);
-          
           const topicsToSave = autoSelectTopics.length > 0 ? autoSelectTopics : [];
           
-          const data = { 
-            completed: true, 
+          const data = {
+            completed: true,
             selectedTopics: topicsToSave,
             timestamp: new Date().toISOString(),
             skipped: topicsToSave.length === 0,
-            autoSelected: topicsToSave.length > 0
+            autoSelected: topicsToSave.length > 0,
           };
-          
+
           await AsyncStorage.setItem(ONBOARDING_KEY, JSON.stringify(data));
-          await AsyncStorage.setItem('@community_selected_topics_v2', JSON.stringify(topicsToSave));
-          
-          if (updateCommunityTopics) {
-            await updateCommunityTopics(topicsToSave);
-          }
-          if (updateUserTopics) {
-            await updateUserTopics(topicsToSave);
-          }
-          await updateSectionState('community', { onboardingComplete: true, topicSelected: topicsToSave.length > 0 });
           
           if (topicsToSave.length > 0) {
+            await AsyncStorage.setItem('@community_selected_topics_v2', JSON.stringify(topicsToSave));
+            await updateCommunityTopics(topicsToSave);
+            await updateUserTopics(topicsToSave);
             sweetAlert.toast('Topics Selected', `${topicsToSave.length} topics were auto-selected for you.`, 'info');
           }
           
+          await updateSectionState('community', { onboardingComplete: true, topicSelected: topicsToSave.length > 0 });
+
           if (onComplete) {
             onComplete();
-          } else {
-            navigation?.navigate?.('CommunityMain');
           }
         } catch (error) {
           console.error('Error skipping onboarding:', error);
           sweetAlert.alert('Error', 'Failed to complete onboarding. Please try again.', 'warning');
-        } finally {
-          setIsLoading(false);
         }
       },
       undefined,
@@ -396,327 +300,408 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
       'Choose Topics',
       true
     );
-  };
+  }, [isEditing, onComplete, categoriesWithTopics, updateCommunityTopics, updateUserTopics, sweetAlert]);
 
-  const isTopicRecommended = (topicId: string) => {
-    return recommendedTopics.find(r => r.topicId === topicId);
-  };
+  const renderCategory = useCallback(({ item, index }: { item: CategoryWithTopics; index: number }) => {
+    const isExpanded = expandedCategories.has(item.id);
+    const selectedInCategory = item.topics.filter(t => selectedTopics.includes(t.id));
+    const totalInCategory = item.topics.length;
 
-  const isDark = settings?.darkMode ?? false;
-
-  const bottomBarHeight = Platform.OS === 'ios' ? 34 : 20;
-  const tabBarHeight = 68 + 14 + bottomBarHeight;
-  const extraPadding = 20;
-
-  if (isLoading) {
     return (
-      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <LinearGradient colors={CommunityGradients.header} style={StyleSheet.absoluteFill} />
-        <View style={{ alignItems: 'center' }}>
-          <ActivityIndicator size="large" color="#fff" />
-          <Text style={{ marginTop: 16, fontSize: 15, color: 'rgba(255,255,255,0.85)', fontWeight: '600' }}>
-            Personalizing your experience...
-          </Text>
-        </View>
-      </View>
-    );
-  }
-
-  return (
-    <View style={[styles.container, isDark && styles.containerDark]}>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
-      <LinearGradient colors={CommunityGradients.header} style={StyleSheet.absoluteFill} />
-
-      <ScrollView 
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingBottom: tabBarHeight + extraPadding + insets.bottom }
-        ]}
-        keyboardShouldPersistTaps="handled"
-      >
-        <Animated.View entering={FadeIn} style={styles.header}>
-          <Text style={styles.emoji}>👋</Text>
-          <Text style={styles.title}>{isEditing ? 'Your Topics' : 'Welcome to Community'}</Text>
-          <Text style={styles.subtitle}>
-            {isEditing 
-              ? 'Update the topics you want to see in your feed. Pick up to 5.'
-              : `Pick up to 5 topics you're interested in from ${INITIAL_TOPICS.length}+ topics`}
-          </Text>
-
-          <View style={styles.counterContainer}>
-            <View style={[styles.counterBar, { width: `${(selectedTopics.length / 5) * 100}%` }]} />
-            <Text style={styles.counter}>
-              {selectedTopics.length}/5 selected
-            </Text>
-          </View>
-
-          {showRecommendations && selectedTopics.length > 0 && (
-            <Animated.View entering={FadeInDown} style={styles.recommendationBanner}>
-              <Ionicons name="sparkles" size={16} color="#fff" />
-              <Text style={styles.recommendationText}>
-                We pre-selected topics based on your profile
+      <View style={styles.categoryContainer}>
+        {/* Category Header */}
+        <TouchableOpacity
+          style={styles.categoryHeader}
+          onPress={() => toggleCategory(item.id)}
+          activeOpacity={0.7}
+        >
+          <LinearGradient
+            colors={['rgba(255,255,255,0.08)', 'rgba(255,255,255,0.02)']}
+            style={StyleSheet.absoluteFill}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          />
+          <View style={styles.categoryHeaderContent}>
+            <View style={styles.categoryIconWrap}>
+              <Text style={styles.categoryEmoji}>{item.emoji}</Text>
+            </View>
+            <View style={styles.categoryHeaderInfo}>
+              <Text style={styles.categoryName}>{item.name}</Text>
+              <Text style={styles.categorySubtext}>
+                {selectedInCategory.length} selected • {totalInCategory} topics
               </Text>
-            </Animated.View>
-          )}
-
-          {/* Search Bar */}
-          <View style={styles.searchContainer}>
-            <Ionicons name="search" size={20} color="rgba(255,255,255,0.6)" />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search topics..."
-              placeholderTextColor="rgba(255,255,255,0.5)"
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              clearButtonMode="while-editing"
-            />
-            {searchQuery.length > 0 && (
-              <TouchableOpacity onPress={() => setSearchQuery('')}>
-                <Ionicons name="close-circle" size={20} color="rgba(255,255,255,0.5)" />
-              </TouchableOpacity>
-            )}
+            </View>
+            <View style={styles.categoryHeaderRight}>
+              {selectedInCategory.length > 0 && (
+                <View style={styles.categorySelectedBadge}>
+                  <Text style={styles.categorySelectedText}>{selectedInCategory.length}</Text>
+                </View>
+              )}
+              <Ionicons
+                name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                size={20}
+                color="rgba(255,255,255,0.6)"
+              />
+            </View>
           </View>
+        </TouchableOpacity>
 
-          {/* Topic Count */}
-          <Text style={styles.topicCount}>
-            {filteredTopics.length} topics available
-          </Text>
-        </Animated.View>
-
-        <View style={styles.topicsGrid}>
-          {filteredTopics.map((topic, index) => {
-            const isSelected = selectedTopics.includes(topic.id);
-            const recommendation = isTopicRecommended(topic.id);
-            const isDisabled = selectedTopics.length >= 5 && !isSelected;
-
-            return (
-              <Animated.View 
-                key={topic.id} 
-                entering={FadeInUp.delay(index * 60)}
-                style={styles.topicWrapper}
-              >
+        {/* Category Topics - Expanded */}
+        {isExpanded && (
+          <View style={styles.categoryTopicsContainer}>
+            {item.topics.map((topic) => {
+              const isSelected = selectedTopics.includes(topic.id);
+              return (
                 <TouchableOpacity
+                  key={topic.id}
                   style={[
                     styles.topicCard,
                     isSelected && styles.topicCardSelected,
-                    isDisabled && styles.topicCardDisabled,
-                    isDark && styles.topicCardDark,
+                    { borderColor: isSelected ? topic.color : 'rgba(255,255,255,0.08)' },
                   ]}
                   onPress={() => toggleTopic(topic.id)}
-                  activeOpacity={0.8}
-                  disabled={isDisabled}
+                  activeOpacity={0.7}
                 >
                   <LinearGradient
-                    colors={isSelected 
-                      ? [topic.color + '70', topic.color + '30']
-                      : isDark 
-                        ? ['rgba(255,255,255,0.08)', 'rgba(255,255,255,0.02)']
-                        : ['rgba(255,255,255,0.12)', 'rgba(255,255,255,0.05)']
+                    colors={isSelected
+                      ? [topic.color + '40', topic.color + '20']
+                      : ['rgba(255,255,255,0.05)', 'rgba(255,255,255,0.01)']
                     }
                     style={StyleSheet.absoluteFill}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
                   />
-
-                  {recommendation && !isSelected && (
-                    <View style={[styles.recommendationBadge, { backgroundColor: topic.color + '40' }]}>
-                      <Ionicons name="star" size={10} color="#fff" />
-                      <Text style={styles.recommendationBadgeText}>{recommendation.reason}</Text>
+                  <View style={styles.topicCardContent}>
+                    <View style={styles.topicEmojiWrap}>
+                      <Text style={styles.topicEmoji}>{topic.emoji}</Text>
                     </View>
-                  )}
-
-                  <Text style={styles.topicEmoji}>{topic.emoji}</Text>
-                  <Text style={styles.topicName}>{topic.name}</Text>
-                  <Text style={styles.topicDescription} numberOfLines={2}>
-                    {topic.description}
-                  </Text>
-
-                  {isSelected && (
-                    <View style={styles.checkmark}>
-                      <Ionicons name="checkmark-circle" size={28} color="#fff" />
-                    </View>
-                  )}
+                    <Text style={[styles.topicName, isSelected && { color: topic.color }]}>
+                      {topic.name}
+                    </Text>
+                    {isSelected && (
+                      <View style={styles.topicCheckmark}>
+                        <Ionicons name="checkmark-circle" size={20} color={topic.color} />
+                      </View>
+                    )}
+                  </View>
                 </TouchableOpacity>
-              </Animated.View>
-            );
-          })}
+              );
+            })}
+          </View>
+        )}
+      </View>
+    );
+  }, [selectedTopics, expandedCategories, toggleCategory, toggleTopic]);
+
+  if (isLoading) {
+    return (
+      <View style={[styles.container, styles.centered]}>
+        <LinearGradient colors={['#0f0f1e', '#1a1a2e', '#2d1b4e']} style={StyleSheet.absoluteFill} />
+        <ActivityIndicator size="large" color="#6366f1" />
+        <Text style={styles.loadingText}>Loading topics...</Text>
+      </View>
+    );
+  }
+
+  const hasSelection = selectedTopics.length > 0;
+
+  return (
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+      <LinearGradient
+        colors={['#0f0f1e', '#1a1a2e', '#2d1b4e']}
+        style={StyleSheet.absoluteFill}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      />
+
+      {/* Header */}
+      <SafeAreaView style={styles.header}>
+        <View style={styles.headerContent}>
+          {isEditing ? (
+            <TouchableOpacity onPress={() => navigation?.goBack?.()} style={styles.backButton}>
+              <Ionicons name="arrow-back" size={24} color="#fff" />
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.backButtonPlaceholder} />
+          )}
+          <View style={styles.headerCenter}>
+            <Text style={styles.headerTitle}>
+              {isEditing ? 'Edit Topics' : 'Choose Your Topics'}
+            </Text>
+            <Text style={styles.headerSubtitle}>
+              {selectedTopics.length} of 5 selected
+            </Text>
+          </View>
+          <View style={styles.headerRight} />
         </View>
 
-        <View style={{ height: tabBarHeight + extraPadding }} />
-      </ScrollView>
+        {/* Progress Bar */}
+        <View style={styles.progressContainer}>
+          <View style={styles.progressBar}>
+            <View style={[styles.progressFill, { width: `${(selectedTopics.length / 5) * 100}%` }]} />
+          </View>
+        </View>
+      </SafeAreaView>
 
-      {/* Fixed bottom bar */}
-      <View style={[
-        styles.bottomBar, 
-        isDark && styles.bottomBarDark,
-        { paddingBottom: Math.max(insets.bottom, bottomBarHeight) + 10 }
-      ]}>
-        {!isEditing && (
-          <TouchableOpacity onPress={handleSkip} style={styles.skipButton}>
-            <Text style={styles.skipText}>Skip for now</Text>
-          </TouchableOpacity>
+      {/* Topics List */}
+      <FlatList
+        ref={flatListRef}
+        data={categoriesWithTopics}
+        renderItem={renderCategory}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: false }
         )}
+      />
 
-        <TouchableOpacity 
-          style={[
-            styles.continueButton,
-            selectedTopics.length === 0 && styles.continueButtonDisabled
-          ]}
-          onPress={handleComplete}
-          disabled={selectedTopics.length === 0}
-        >
-          <LinearGradient 
-            colors={selectedTopics.length > 0 ? CommunityGradients.primary : ['#ccc', '#aaa']}
-            style={styles.continueGradient}
+      {/* Bottom Bar */}
+      <SafeAreaView style={styles.bottomBar}>
+        <View style={styles.bottomBarContent}>
+          {!isEditing && (
+            <TouchableOpacity onPress={handleSkip} style={styles.skipButton}>
+              <Text style={styles.skipText}>Skip</Text>
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity
+            style={[styles.continueButton, !hasSelection && styles.continueButtonDisabled]}
+            onPress={handleComplete}
+            disabled={isSaving || !hasSelection}
           >
-            <Text style={styles.continueText}>
-              {selectedTopics.length > 0 
-                ? `Continue (${selectedTopics.length})` 
-                : 'Select at least 1 topic'
-              }
-            </Text>
-            <Ionicons name="arrow-forward" size={20} color="#fff" />
-          </LinearGradient>
-        </TouchableOpacity>
-      </View>
+            <LinearGradient
+              colors={hasSelection ? ['#6366f1', '#8b5cf6'] : ['rgba(255,255,255,0.2)', 'rgba(255,255,255,0.1)']}
+              style={styles.continueGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+            >
+              {isSaving ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Text style={styles.continueText}>
+                    {hasSelection ? `Continue (${selectedTopics.length})` : 'Select 1+ topics'}
+                  </Text>
+                  <Ionicons name="arrow-forward" size={20} color="#fff" />
+                </>
+              )}
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
     </View>
   );
 }
 
-// ─── TextInput Styles ───
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  containerDark: { backgroundColor: '#000' },
-  scrollContent: { paddingTop: 60, paddingBottom: 0, paddingHorizontal: 20 },
-  header: { alignItems: 'center', marginBottom: 24 },
-  emoji: { fontSize: 64, marginBottom: 16 },
-  title: { fontSize: 32, fontWeight: '900', color: '#fff', textAlign: 'center', marginBottom: 12 },
-  subtitle: { fontSize: 16, color: 'rgba(255,255,255,0.85)', textAlign: 'center', paddingHorizontal: 20, lineHeight: 22, marginBottom: 16 },
-  counterContainer: {
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    borderRadius: 20,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    minWidth: 120,
-    alignItems: 'center',
-    position: 'relative',
-    overflow: 'hidden',
+  centered: { justifyContent: 'center', alignItems: 'center' },
+  loadingText: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 14,
+    fontWeight: '600',
+    marginTop: 12,
   },
-  counterBar: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 20,
+  header: {
+    paddingTop: Platform.OS === 'ios' ? 0 : 12,
   },
-  counter: { fontSize: 14, color: 'rgba(255,255,255,0.9)', fontWeight: '700', zIndex: 1 },
-  recommendationBanner: {
+  headerContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    borderRadius: 12,
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 8,
-    marginTop: 12,
-    gap: 8,
+    paddingTop: 12,
+    paddingBottom: 8,
   },
-  recommendationText: {
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  backButtonPlaceholder: {
+    width: 40,
+  },
+  headerCenter: { flex: 1, alignItems: 'center', paddingHorizontal: 8 },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '800',
     color: '#fff',
+    letterSpacing: -0.3,
+  },
+  headerSubtitle: {
     fontSize: 13,
     fontWeight: '600',
+    color: 'rgba(255,255,255,0.6)',
+    marginTop: 2,
   },
-  searchContainer: {
+  headerRight: { width: 40 },
+  progressContainer: { paddingHorizontal: 16, paddingBottom: 8 },
+  progressBar: {
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 2,
+    backgroundColor: '#6366f1',
+  },
+  listContent: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 120,
+  },
+  categoryContainer: {
+    marginBottom: 12,
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
+  categoryHeader: {
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    overflow: 'hidden',
+  },
+  categoryHeaderContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    marginTop: 16,
-    width: '100%',
-    gap: 10,
+    gap: 12,
   },
-  searchInput: {
-    flex: 1,
+  categoryIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  categoryEmoji: { fontSize: 22 },
+  categoryHeaderInfo: { flex: 1 },
+  categoryName: {
+    fontSize: 16,
+    fontWeight: '700',
     color: '#fff',
-    fontSize: 15,
-    fontWeight: '500',
   },
-  topicCount: {
-    color: 'rgba(255,255,255,0.6)',
+  categorySubtext: {
     fontSize: 12,
     fontWeight: '500',
-    marginTop: 8,
+    color: 'rgba(255,255,255,0.5)',
+    marginTop: 1,
   },
-  topicsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'center' },
-  topicWrapper: { width: (width - 64) / 2 },
-  topicCard: {
-    borderRadius: CommunityBorderRadius.xl,
-    padding: 16,
-    minHeight: 160,
-    overflow: 'hidden',
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.15)',
-    ...CommunityShadows.md,
-  },
-  topicCardDark: {
-    borderColor: 'rgba(255,255,255,0.08)',
-  },
-  topicCardSelected: {
-    borderColor: '#fff',
-    ...CommunityShadows.lg,
-  },
-  topicCardDisabled: {
-    opacity: 0.5,
-  },
-  recommendationBadge: {
-    position: 'absolute',
-    top: 8,
-    left: 8,
+  categoryHeaderRight: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
+  },
+  categorySelectedBadge: {
+    backgroundColor: '#6366f1',
     paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    gap: 4,
-    zIndex: 10,
+    paddingVertical: 2,
+    borderRadius: 10,
+    minWidth: 20,
+    alignItems: 'center',
   },
-  recommendationBadgeText: {
-    color: '#fff',
-    fontSize: 10,
+  categorySelectedText: {
+    fontSize: 11,
     fontWeight: '700',
+    color: '#fff',
   },
-  topicEmoji: { fontSize: 36, marginBottom: 8 },
-  topicName: { fontSize: 16, fontWeight: '800', color: '#fff', marginBottom: 4 },
-  topicDescription: { fontSize: 12, color: 'rgba(255,255,255,0.8)', lineHeight: 16 },
-  checkmark: { position: 'absolute', top: 12, right: 12 },
+  categoryTopicsContainer: {
+    paddingHorizontal: 12,
+    paddingBottom: 12,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  topicCard: {
+    flex: 1,
+    minWidth: (width - 64) / 2 - 4,
+    maxWidth: (width - 64) / 2 - 4,
+    borderRadius: 12,
+    padding: 10,
+    borderWidth: 1.5,
+    overflow: 'hidden',
+    minHeight: 56,
+  },
+  topicCardSelected: {
+    borderWidth: 2,
+  },
+  topicCardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  topicEmojiWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  topicEmoji: { fontSize: 16 },
+  topicName: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#e5e7eb',
+  },
+  topicCheckmark: {
+    marginLeft: 'auto',
+  },
   bottomBar: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: 'rgba(255,255,255,0.98)',
-    paddingHorizontal: 24,
-    paddingTop: 16,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    ...CommunityShadows.lg,
+    backgroundColor: 'rgba(15,15,30,0.95)',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.06)',
+    paddingTop: 12,
+    paddingBottom: Platform.OS === 'ios' ? 20 : 16,
   },
-  bottomBarDark: {
-    backgroundColor: 'rgba(20,20,20,0.98)',
+  bottomBarContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    gap: 12,
   },
-  skipButton: { alignItems: 'center', marginBottom: 12 },
-  skipText: { fontSize: 15, color: CommunityColors.text.secondary, fontWeight: '600' },
-  continueButton: { borderRadius: 16, overflow: 'hidden', ...CommunityShadows.md },
-  continueButtonDisabled: { opacity: 0.6 },
+  skipButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  skipText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.5)',
+  },
+  continueButton: {
+    flex: 1,
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  continueButtonDisabled: {
+    opacity: 0.5,
+  },
   continueGradient: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 16,
+    paddingVertical: 14,
     gap: 8,
   },
-  continueText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  continueText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#fff',
+  },
 });

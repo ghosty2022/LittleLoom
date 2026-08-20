@@ -1,3 +1,4 @@
+// src/navigation/CommunityNavigator.tsx
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, StyleSheet, Text, StatusBar, FlatList, TextInput, TouchableOpacity } from 'react-native';
 import { useRoute } from '@react-navigation/native';
@@ -306,37 +307,42 @@ const CommunityNavigator = React.memo(() => {
 
   const isReady = !isLoading && isInitialized && splashReady;
 
-useEffect(() => {
-  if (!isReady || initDone.current) return;
+  useEffect(() => {
+    if (!isReady || initDone.current) return;
 
-  let mounted = true;
-  initDone.current = true;
+    let mounted = true;
+    initDone.current = true;
 
-  const initialize = async () => {
-    const onboardingStatus = await checkOnboardingStatus();
+    const initialize = async () => {
+      try {
+        const onboardingStatus = await checkOnboardingStatus();
+        
+        if (!mounted) return;
 
-    if (!mounted) return;
+        if (__DEV__) {
+          console.log('[CommunityNavigator] Init - completed:', onboardingStatus.completed, 'hasTopics:', onboardingStatus.hasTopics);
+        }
 
-    if (__DEV__) {
-      console.log('[CommunityNavigator] Init - completed:', onboardingStatus.completed, 'hasTopics:', onboardingStatus.hasTopics);
-    }
+        // Show onboarding if NOT completed OR no topics selected
+        const needsOnboarding = !onboardingStatus.completed || !onboardingStatus.hasTopics;
+        
+        if (needsOnboarding) {
+          console.log('[CommunityNavigator] Showing onboarding - needs topics');
+          setPhase('onboarding');
+        } else if (shouldShowSplash) {
+          setPhase('splash');
+        } else {
+          setPhase('main');
+        }
+      } catch (error) {
+        console.error('[CommunityNavigator] Init error:', error);
+        setPhase('main');
+      }
+    };
 
-    // ALWAYS show onboarding if no topics selected OR not completed
-    const hasNoTopics = !onboardingStatus.hasTopics || getSelectedTopics().length === 0;
-    
-    if (!onboardingStatus.completed || hasNoTopics) {
-      console.log('[CommunityNavigator] Showing onboarding - needs topics');
-      setPhase('onboarding');
-    } else if (shouldShowSplash) {
-      setPhase('splash');
-    } else {
-      setPhase('main');
-    }
-  };
-
-  initialize();
-  return () => { mounted = false; };
-}, [isReady, checkOnboardingStatus, getSelectedTopics, shouldShowSplash, isDetectingCountry]);
+    initialize();
+    return () => { mounted = false; };
+  }, [isReady, checkOnboardingStatus, getSelectedTopics, shouldShowSplash, isDetectingCountry]);
 
   const handleSplashComplete = useCallback(async () => {
     await markSplashShown();
@@ -344,11 +350,19 @@ useEffect(() => {
   }, [markSplashShown]);
 
   const handleOnboardingComplete = useCallback(async () => {
-    await AsyncStorage.setItem(COMMUNITY_ONBOARDING_KEY, 'true');
-    setPhase('main');
-    markSplashShown();
-  }, [markSplashShown]);
+    try {
+      await AsyncStorage.setItem(COMMUNITY_ONBOARDING_KEY, 'true');
+      // Mark onboarding as complete in the context
+      await checkOnboardingStatus();
+      setPhase('main');
+      await markSplashShown();
+    } catch (error) {
+      console.error('[CommunityNavigator] Onboarding complete error:', error);
+      setPhase('main');
+    }
+  }, [markSplashShown, checkOnboardingStatus]);
 
+  // Show onboarding phase
   if (phase === 'onboarding') {
     return (
       <Stack.Navigator
@@ -367,8 +381,26 @@ useEffect(() => {
     );
   }
 
-  {/* Splash removed for instant navigation — CommunityMain renders immediately */}
+  // Show splash phase
+  if (phase === 'splash') {
+    return (
+      <Stack.Navigator
+        initialRouteName="CommunitySplash"
+        screenOptions={SPLASH_SCREEN_OPTIONS}
+      >
+        <Stack.Screen name="CommunitySplash">
+          {(props) => (
+            <CommunitySplashScreen
+              {...props}
+              onAnimationComplete={handleSplashComplete}
+            />
+          )}
+        </Stack.Screen>
+      </Stack.Navigator>
+    );
+  }
 
+  // Main app
   return (
     <>
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
@@ -388,7 +420,7 @@ useEffect(() => {
         <Stack.Screen name="ChatList" component={ChatListScreen} />
         <Stack.Screen name="Chat" component={ChatScreen} />
         <Stack.Screen name="Notifications" component={NotificationsScreen} />
-         <Stack.Screen
+        <Stack.Screen
           name="CommunityProfile"
           component={CommunityProfileScreen}
           options={{ animation: 'slide_from_bottom', gestureEnabled: false }}

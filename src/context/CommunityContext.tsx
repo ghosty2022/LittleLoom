@@ -293,21 +293,685 @@ interface CommunityContextType extends CommunityState {
 
 const CommunityContext = createContext<CommunityContextType | null>(null);
 
+// src/context/CommunityContext.tsx
+// REPLACE the INITIAL_TOPICS array with this:
+
 export const INITIAL_TOPICS: Topic[] = [
-  { id: 'topic_1', name: 'Potty Training', emoji: '🚽', color: '#667eea', members: 12500, posts: 3200, trending: true, description: 'Tips, tricks, and support for potty training success', isJoined: false, joinedBy: [], engagementScore: 85, weeklyGrowth: 12 },
-  { id: 'topic_2', name: 'Sleep Tips', emoji: '😴', color: '#11998e', members: 18200, posts: 5100, trending: true, description: 'Better sleep for babies and parents', isJoined: false, joinedBy: [], engagementScore: 92, weeklyGrowth: 18 },
-  { id: 'topic_3', name: 'Feeding & Nutrition', emoji: '🍼', color: '#fa709a', members: 15800, posts: 4700, trending: false, description: 'From breastfeeding to first foods', isJoined: false, joinedBy: [], engagementScore: 78, weeklyGrowth: 8 },
-  { id: 'topic_4', name: 'Milestones', emoji: '🏆', color: '#fee140', members: 9300, posts: 2100, trending: false, description: 'Celebrate every achievement', isJoined: false, joinedBy: [], engagementScore: 65, weeklyGrowth: 5 },
-  { id: 'topic_5', name: 'Health & Wellness', emoji: '💊', color: '#fc5c7d', members: 11700, posts: 3800, trending: true, description: 'Keeping your little ones healthy', isJoined: false, joinedBy: [], engagementScore: 88, weeklyGrowth: 15 },
-  { id: 'topic_6', name: 'Parenting Hacks', emoji: '💡', color: '#6a82fb', members: 22400, posts: 8900, trending: true, description: 'Clever solutions for everyday challenges', isJoined: false, joinedBy: [], engagementScore: 95, weeklyGrowth: 22 },
-  { id: 'topic_7', name: 'Baby Names', emoji: '✨', color: '#f093fb', members: 8500, posts: 4200, trending: false, description: 'Find the perfect name for your little one', isJoined: false, joinedBy: [], engagementScore: 72, weeklyGrowth: 7 },
-  { id: 'topic_8', name: 'Work-Life Balance', emoji: '⚖️', color: '#4facfe', members: 11200, posts: 3600, trending: true, description: 'Juggling career and parenting', isJoined: false, joinedBy: [], engagementScore: 82, weeklyGrowth: 11 },
-  { id: 'topic_9', name: 'Toddler Tantrums', emoji: '😤', color: '#fa709a', members: 15600, posts: 5400, trending: true, description: 'Navigating the terrible twos and beyond', isJoined: false, joinedBy: [], engagementScore: 90, weeklyGrowth: 17 },
-  { id: 'topic_10', name: 'Education', emoji: '📚', color: '#43e97b', members: 9800, posts: 2800, trending: false, description: 'Early learning and school prep', isJoined: false, joinedBy: [], engagementScore: 70, weeklyGrowth: 6 },
-  { id: 'topic_11', name: 'Single Parenting', emoji: '💪', color: '#fa709a', members: 7200, posts: 1900, trending: false, description: 'Support and advice for single parents', isJoined: false, joinedBy: [], engagementScore: 68, weeklyGrowth: 4 },
-  { id: 'topic_12', name: 'Special Needs', emoji: '🌈', color: '#667eea', members: 6400, posts: 1500, trending: false, description: 'Resources and community for special needs parenting', isJoined: false, joinedBy: [], engagementScore: 75, weeklyGrowth: 9 },
+  // ─── HEALTH & WELLNESS ───────────────────────────
+  { 
+    id: 'topic_health_fever', 
+    name: 'Fever', 
+    emoji: '🌡️', 
+    color: '#EE5A24', 
+    members: 12500, 
+    posts: 3200, 
+    trending: true, 
+    description: 'Track fever symptoms and temperature', 
+    isJoined: false, 
+    joinedBy: [], 
+    engagementScore: 85, 
+    weeklyGrowth: 12,
+    category: 'health',
+    subcategory: 'symptoms'
+  },
+  { 
+    id: 'topic_health_allergy', 
+    name: 'Allergies', 
+    emoji: '🤧', 
+    color: '#FF6B6B', 
+    members: 8200, 
+    posts: 2100, 
+    trending: false, 
+    description: 'Managing allergies and reactions', 
+    isJoined: false, 
+    joinedBy: [], 
+    engagementScore: 72, 
+    weeklyGrowth: 8,
+    category: 'health',
+    subcategory: 'conditions'
+  },
+  { 
+    id: 'topic_health_teething', 
+    name: 'Teething', 
+    emoji: '🦷', 
+    color: '#FF9F43', 
+    members: 15600, 
+    posts: 5400, 
+    trending: true, 
+    description: 'Teething symptoms and relief tips', 
+    isJoined: false, 
+    joinedBy: [], 
+    engagementScore: 90, 
+    weeklyGrowth: 17,
+    category: 'health',
+    subcategory: 'conditions'
+  },
+  { 
+    id: 'topic_health_vaccines', 
+    name: 'Vaccines', 
+    emoji: '💉', 
+    color: '#5F27CD', 
+    members: 9300, 
+    posts: 2800, 
+    trending: false, 
+    description: 'Immunization schedules and information', 
+    isJoined: false, 
+    joinedBy: [], 
+    engagementScore: 78, 
+    weeklyGrowth: 10,
+    category: 'health',
+    subcategory: 'medical'
+  },
+  { 
+    id: 'topic_health_doctor', 
+    name: 'Doctor Visits', 
+    emoji: '👨‍⚕️', 
+    color: '#00D2D3', 
+    members: 11200, 
+    posts: 3600, 
+    trending: true, 
+    description: 'Pediatrician visits and healthcare', 
+    isJoined: false, 
+    joinedBy: [], 
+    engagementScore: 82, 
+    weeklyGrowth: 11,
+    category: 'health',
+    subcategory: 'medical'
+  },
+
+  // ─── FEEDING & NUTRITION ──────────────────────────
+  { 
+    id: 'topic_nutrition_breastfeeding', 
+    name: 'Breastfeeding', 
+    emoji: '🤱', 
+    color: '#FF9FF3', 
+    members: 18200, 
+    posts: 5100, 
+    trending: true, 
+    description: 'Breastfeeding support and tips', 
+    isJoined: false, 
+    joinedBy: [], 
+    engagementScore: 92, 
+    weeklyGrowth: 18,
+    category: 'nutrition',
+    subcategory: 'feeding'
+  },
+  { 
+    id: 'topic_nutrition_solid_food', 
+    name: 'Solid Foods', 
+    emoji: '🥄', 
+    color: '#FF9F43', 
+    members: 15800, 
+    posts: 4700, 
+    trending: false, 
+    description: 'Introducing solid foods and BLW', 
+    isJoined: false, 
+    joinedBy: [], 
+    engagementScore: 78, 
+    weeklyGrowth: 8,
+    category: 'nutrition',
+    subcategory: 'feeding'
+  },
+  { 
+    id: 'topic_nutrition_formula', 
+    name: 'Formula Feeding', 
+    emoji: '🍼', 
+    color: '#54A0FF', 
+    members: 9800, 
+    posts: 3200, 
+    trending: false, 
+    description: 'Formula feeding guidance and support', 
+    isJoined: false, 
+    joinedBy: [], 
+    engagementScore: 70, 
+    weeklyGrowth: 6,
+    category: 'nutrition',
+    subcategory: 'feeding'
+  },
+  { 
+    id: 'topic_nutrition_allergens', 
+    name: 'Allergen Introduction', 
+    emoji: '🥜', 
+    color: '#EE5A24', 
+    members: 6400, 
+    posts: 1500, 
+    trending: false, 
+    description: 'Introducing allergenic foods safely', 
+    isJoined: false, 
+    joinedBy: [], 
+    engagementScore: 75, 
+    weeklyGrowth: 9,
+    category: 'nutrition',
+    subcategory: 'feeding'
+  },
+  { 
+    id: 'topic_nutrition_water', 
+    name: 'Hydration', 
+    emoji: '💧', 
+    color: '#48DBFB', 
+    members: 7200, 
+    posts: 1900, 
+    trending: false, 
+    description: 'Keeping your child hydrated', 
+    isJoined: false, 
+    joinedBy: [], 
+    engagementScore: 68, 
+    weeklyGrowth: 4,
+    category: 'nutrition',
+    subcategory: 'hydration'
+  },
+
+  // ─── SLEEP ──────────────────────────────────────────
+  { 
+    id: 'topic_sleep_baby', 
+    name: 'Baby Sleep', 
+    emoji: '😴', 
+    color: '#5F27CD', 
+    members: 22400, 
+    posts: 8900, 
+    trending: true, 
+    description: 'Sleep tips for babies 0-12 months', 
+    isJoined: false, 
+    joinedBy: [], 
+    engagementScore: 95, 
+    weeklyGrowth: 22,
+    category: 'sleep',
+    subcategory: 'sleep'
+  },
+  { 
+    id: 'topic_sleep_toddler', 
+    name: 'Toddler Sleep', 
+    emoji: '🌙', 
+    color: '#341F97', 
+    members: 15600, 
+    posts: 5400, 
+    trending: true, 
+    description: 'Sleep strategies for toddlers', 
+    isJoined: false, 
+    joinedBy: [], 
+    engagementScore: 90, 
+    weeklyGrowth: 17,
+    category: 'sleep',
+    subcategory: 'sleep'
+  },
+  { 
+    id: 'topic_sleep_night_waking', 
+    name: 'Night Waking', 
+    emoji: '🌃', 
+    color: '#1DD1A1', 
+    members: 11200, 
+    posts: 3800, 
+    trending: true, 
+    description: 'Managing night wakings and sleep regressions', 
+    isJoined: false, 
+    joinedBy: [], 
+    engagementScore: 88, 
+    weeklyGrowth: 15,
+    category: 'sleep',
+    subcategory: 'sleep'
+  },
+
+  // ─── DEVELOPMENT ────────────────────────────────────
+  { 
+    id: 'topic_dev_milestones', 
+    name: 'Milestones', 
+    emoji: '🏆', 
+    color: '#FFD700', 
+    members: 11700, 
+    posts: 3800, 
+    trending: true, 
+    description: 'Celebrate developmental milestones', 
+    isJoined: false, 
+    joinedBy: [], 
+    engagementScore: 88, 
+    weeklyGrowth: 15,
+    category: 'development',
+    subcategory: 'milestones'
+  },
+  { 
+    id: 'topic_dev_motor_skills', 
+    name: 'Motor Skills', 
+    emoji: '🏃', 
+    color: '#10AC84', 
+    members: 8500, 
+    posts: 2100, 
+    trending: false, 
+    description: 'Gross and fine motor skill development', 
+    isJoined: false, 
+    joinedBy: [], 
+    engagementScore: 72, 
+    weeklyGrowth: 7,
+    category: 'development',
+    subcategory: 'skills'
+  },
+  { 
+    id: 'topic_dev_speech', 
+    name: 'Speech & Language', 
+    emoji: '💬', 
+    color: '#54A0FF', 
+    members: 9800, 
+    posts: 2800, 
+    trending: false, 
+    description: 'Language development and speech', 
+    isJoined: false, 
+    joinedBy: [], 
+    engagementScore: 70, 
+    weeklyGrowth: 6,
+    category: 'development',
+    subcategory: 'skills'
+  },
+  { 
+    id: 'topic_dev_social', 
+    name: 'Social Skills', 
+    emoji: '👥', 
+    color: '#6C5CE7', 
+    members: 7200, 
+    posts: 1900, 
+    trending: false, 
+    description: 'Social development and play', 
+    isJoined: false, 
+    joinedBy: [], 
+    engagementScore: 68, 
+    weeklyGrowth: 4,
+    category: 'development',
+    subcategory: 'skills'
+  },
+  { 
+    id: 'topic_dev_emotional', 
+    name: 'Emotional Development', 
+    emoji: '❤️', 
+    color: '#FF6B6B', 
+    members: 6400, 
+    posts: 1500, 
+    trending: false, 
+    description: 'Supporting emotional growth', 
+    isJoined: false, 
+    joinedBy: [], 
+    engagementScore: 75, 
+    weeklyGrowth: 9,
+    category: 'development',
+    subcategory: 'emotional'
+  },
+
+  // ─── PARENTING ──────────────────────────────────────
+  { 
+    id: 'topic_parenting_potty', 
+    name: 'Potty Training', 
+    emoji: '🚽', 
+    color: '#1DD1A1', 
+    members: 12500, 
+    posts: 3200, 
+    trending: true, 
+    description: 'Tips, tricks, and support for potty training', 
+    isJoined: false, 
+    joinedBy: [], 
+    engagementScore: 85, 
+    weeklyGrowth: 12,
+    category: 'parenting',
+    subcategory: 'training'
+  },
+  { 
+    id: 'topic_parenting_tantrums', 
+    name: 'Tantrums', 
+    emoji: '😤', 
+    color: '#E74C3C', 
+    members: 15600, 
+    posts: 5400, 
+    trending: true, 
+    description: 'Navigating toddler tantrums', 
+    isJoined: false, 
+    joinedBy: [], 
+    engagementScore: 90, 
+    weeklyGrowth: 17,
+    category: 'parenting',
+    subcategory: 'behavior'
+  },
+  { 
+    id: 'topic_parenting_discipline', 
+    name: 'Positive Discipline', 
+    emoji: '🧘', 
+    color: '#A29BFE', 
+    members: 9300, 
+    posts: 2100, 
+    trending: false, 
+    description: 'Gentle and effective discipline', 
+    isJoined: false, 
+    joinedBy: [], 
+    engagementScore: 65, 
+    weeklyGrowth: 5,
+    category: 'parenting',
+    subcategory: 'behavior'
+  },
+  { 
+    id: 'topic_parenting_single', 
+    name: 'Single Parenting', 
+    emoji: '💪', 
+    color: '#FA709A', 
+    members: 7200, 
+    posts: 1900, 
+    trending: false, 
+    description: 'Support and advice for single parents', 
+    isJoined: false, 
+    joinedBy: [], 
+    engagementScore: 68, 
+    weeklyGrowth: 4,
+    category: 'parenting',
+    subcategory: 'support'
+  },
+  { 
+    id: 'topic_parenting_special_needs', 
+    name: 'Special Needs', 
+    emoji: '🌈', 
+    color: '#667EEA', 
+    members: 6400, 
+    posts: 1500, 
+    trending: false, 
+    description: 'Resources for special needs parenting', 
+    isJoined: false, 
+    joinedBy: [], 
+    engagementScore: 75, 
+    weeklyGrowth: 9,
+    category: 'parenting',
+    subcategory: 'support'
+  },
+
+  // ─── HEALTH TRACKERS (from your tracker categories) ──
+  { 
+    id: 'topic_tracker_growth', 
+    name: 'Growth Tracking', 
+    emoji: '📏', 
+    color: '#10AC84', 
+    members: 8200, 
+    posts: 2400, 
+    trending: false, 
+    description: 'Track height, weight, and growth', 
+    isJoined: false, 
+    joinedBy: [], 
+    engagementScore: 70, 
+    weeklyGrowth: 8,
+    category: 'health',
+    subcategory: 'tracking'
+  },
+  { 
+    id: 'topic_tracker_feeding', 
+    name: 'Feeding Tracker', 
+    emoji: '🍼', 
+    color: '#FF9F43', 
+    members: 14200, 
+    posts: 4200, 
+    trending: true, 
+    description: 'Track feeds, solids, and nutrition', 
+    isJoined: false, 
+    joinedBy: [], 
+    engagementScore: 88, 
+    weeklyGrowth: 14,
+    category: 'nutrition',
+    subcategory: 'tracking'
+  },
+  { 
+    id: 'topic_tracker_sleep', 
+    name: 'Sleep Tracker', 
+    emoji: '😴', 
+    color: '#5F27CD', 
+    members: 16800, 
+    posts: 5100, 
+    trending: true, 
+    description: 'Track sleep patterns and routines', 
+    isJoined: false, 
+    joinedBy: [], 
+    engagementScore: 92, 
+    weeklyGrowth: 16,
+    category: 'sleep',
+    subcategory: 'tracking'
+  },
+  { 
+    id: 'topic_tracker_diaper', 
+    name: 'Diaper Tracker', 
+    emoji: '👶', 
+    color: '#54A0FF', 
+    members: 11200, 
+    posts: 2800, 
+    trending: false, 
+    description: 'Track diaper changes and patterns', 
+    isJoined: false, 
+    joinedBy: [], 
+    engagementScore: 68, 
+    weeklyGrowth: 6,
+    category: 'health',
+    subcategory: 'tracking'
+  },
+  { 
+    id: 'topic_tracker_symptoms', 
+    name: 'Symptom Tracker', 
+    emoji: '😷', 
+    color: '#FF6B6B', 
+    members: 7600, 
+    posts: 1900, 
+    trending: false, 
+    description: 'Track symptoms and illness', 
+    isJoined: false, 
+    joinedBy: [], 
+    engagementScore: 72, 
+    weeklyGrowth: 9,
+    category: 'health',
+    subcategory: 'tracking'
+  },
+
+  // ─── LIFESTYLE ──────────────────────────────────────
+  { 
+    id: 'topic_lifestyle_screen_time', 
+    name: 'Screen Time', 
+    emoji: '📱', 
+    color: '#5F27CD', 
+    members: 8500, 
+    posts: 2100, 
+    trending: false, 
+    description: 'Managing screen time for kids', 
+    isJoined: false, 
+    joinedBy: [], 
+    engagementScore: 62, 
+    weeklyGrowth: 7,
+    category: 'lifestyle',
+    subcategory: 'wellness'
+  },
+  { 
+    id: 'topic_lifestyle_outdoor', 
+    name: 'Outdoor Play', 
+    emoji: '🌳', 
+    color: '#1DD1A1', 
+    members: 7200, 
+    posts: 1800, 
+    trending: false, 
+    description: 'Outdoor activities and nature play', 
+    isJoined: false, 
+    joinedBy: [], 
+    engagementScore: 65, 
+    weeklyGrowth: 5,
+    category: 'lifestyle',
+    subcategory: 'activities'
+  },
+  { 
+    id: 'topic_lifestyle_work_life', 
+    name: 'Work-Life Balance', 
+    emoji: '⚖️', 
+    color: '#4FACFE', 
+    members: 11200, 
+    posts: 3600, 
+    trending: true, 
+    description: 'Juggling career and parenting', 
+    isJoined: false, 
+    joinedBy: [], 
+    engagementScore: 82, 
+    weeklyGrowth: 11,
+    category: 'lifestyle',
+    subcategory: 'balance'
+  },
+  { 
+    id: 'topic_lifestyle_self_care', 
+    name: 'Parent Self-Care', 
+    emoji: '🧘', 
+    color: '#F093FB', 
+    members: 6800, 
+    posts: 1600, 
+    trending: false, 
+    description: 'Self-care for parents', 
+    isJoined: false, 
+    joinedBy: [], 
+    engagementScore: 60, 
+    weeklyGrowth: 4,
+    category: 'lifestyle',
+    subcategory: 'wellness'
+  },
+
+  // ─── COMMUNITY ──────────────────────────────────────
+  { 
+    id: 'topic_community_stories', 
+    name: 'Parent Stories', 
+    emoji: '📖', 
+    color: '#6A82FB', 
+    members: 9800, 
+    posts: 3200, 
+    trending: true, 
+    description: 'Share your parenting journey', 
+    isJoined: false, 
+    joinedBy: [], 
+    engagementScore: 85, 
+    weeklyGrowth: 13,
+    category: 'community',
+    subcategory: 'stories'
+  },
+  { 
+    id: 'topic_community_advice', 
+    name: 'Advice & Tips', 
+    emoji: '💡', 
+    color: '#F59E0B', 
+    members: 14200, 
+    posts: 4800, 
+    trending: true, 
+    description: 'Share and get parenting advice', 
+    isJoined: false, 
+    joinedBy: [], 
+    engagementScore: 90, 
+    weeklyGrowth: 16,
+    category: 'community',
+    subcategory: 'advice'
+  },
+  { 
+    id: 'topic_community_support', 
+    name: 'Support Group', 
+    emoji: '💙', 
+    color: '#3B82F6', 
+    members: 11200, 
+    posts: 3400, 
+    trending: true, 
+    description: 'Find support from other parents', 
+    isJoined: false, 
+    joinedBy: [], 
+    engagementScore: 88, 
+    weeklyGrowth: 14,
+    category: 'community',
+    subcategory: 'support'
+  },
 ];
 
+// Update the Topic interface to include category and subcategory
+export interface Topic {
+  id: string;
+  name: string;
+  emoji: string;
+  color: string;
+  members: number;
+  posts: number;
+  trending: boolean;
+  description: string;
+  isJoined: boolean;
+  joinedBy: string[];
+  engagementScore: number;
+  weeklyGrowth: number;
+  category?: string;
+  subcategory?: string;
+}
+
+// Add category definitions for the onboarding UI
+export const TOPIC_CATEGORIES = [
+  {
+    id: 'health',
+    name: 'Health & Wellness',
+    emoji: '🏥',
+    description: 'Track health, symptoms, and medical care',
+    subcategories: [
+      { id: 'symptoms', name: 'Symptoms', emoji: '🌡️' },
+      { id: 'conditions', name: 'Conditions', emoji: '🔴' },
+      { id: 'medical', name: 'Medical Care', emoji: '🏥' },
+      { id: 'tracking', name: 'Health Tracking', emoji: '📊' },
+    ]
+  },
+  {
+    id: 'nutrition',
+    name: 'Feeding & Nutrition',
+    emoji: '🍽️',
+    description: 'Feeding, nutrition, and hydration',
+    subcategories: [
+      { id: 'feeding', name: 'Feeding', emoji: '🍼' },
+      { id: 'hydration', name: 'Hydration', emoji: '💧' },
+      { id: 'tracking', name: 'Feeding Tracking', emoji: '📝' },
+    ]
+  },
+  {
+    id: 'sleep',
+    name: 'Sleep',
+    emoji: '😴',
+    description: 'Sleep tips, schedules, and tracking',
+    subcategories: [
+      { id: 'sleep', name: 'Sleep Tips', emoji: '🌙' },
+      { id: 'tracking', name: 'Sleep Tracking', emoji: '📊' },
+    ]
+  },
+  {
+    id: 'development',
+    name: 'Development',
+    emoji: '🧠',
+    description: 'Milestones, skills, and growth',
+    subcategories: [
+      { id: 'milestones', name: 'Milestones', emoji: '🏆' },
+      { id: 'skills', name: 'Skills', emoji: '💪' },
+      { id: 'emotional', name: 'Emotional', emoji: '❤️' },
+    ]
+  },
+  {
+    id: 'parenting',
+    name: 'Parenting',
+    emoji: '👨‍👩‍👧',
+    description: 'Parenting tips, challenges, and support',
+    subcategories: [
+      { id: 'training', name: 'Training', emoji: '🚽' },
+      { id: 'behavior', name: 'Behavior', emoji: '😤' },
+      { id: 'support', name: 'Support', emoji: '💪' },
+    ]
+  },
+  {
+    id: 'lifestyle',
+    name: 'Lifestyle',
+    emoji: '🌟',
+    description: 'Family lifestyle, balance, and wellness',
+    subcategories: [
+      { id: 'wellness', name: 'Wellness', emoji: '🧘' },
+      { id: 'activities', name: 'Activities', emoji: '🎯' },
+      { id: 'balance', name: 'Balance', emoji: '⚖️' },
+    ]
+  },
+  {
+    id: 'community',
+    name: 'Community',
+    emoji: '👥',
+    description: 'Connect with other parents',
+    subcategories: [
+      { id: 'stories', name: 'Stories', emoji: '📖' },
+      { id: 'advice', name: 'Advice', emoji: '💡' },
+      { id: 'support', name: 'Support', emoji: '💙' },
+    ]
+  },
+];
 // ============================================================
 // Fetch Real Topic Stats from Supabase
 // ============================================================
