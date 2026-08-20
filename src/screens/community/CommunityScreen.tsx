@@ -838,17 +838,22 @@ export default function CommunityScreen({ navigation }: Props) {
                 Weave stories, share wisdom, grow together.
               </Text>
             </View>
-            <View style={styles.heroStats}>
-              <View style={styles.heroStat}>
-                <Text style={[styles.heroStatValue, { color: DS.primary }]}>{postsCount}</Text>
-                <Text style={[styles.heroStatLabel, { color: isDark ? DS.gray400 : DS.gray500 }]}>Posts</Text>
-              </View>
-              <View style={[styles.heroStatDivider, { backgroundColor: isDark ? DS.darkBorder : DS.gray200 }]} />
-              <View style={styles.heroStat}>
-                <Text style={[styles.heroStatValue, { color: DS.accent }]}>{membersCount}</Text>
-                <Text style={[styles.heroStatLabel, { color: isDark ? DS.gray400 : DS.gray500 }]}>Members</Text>
-              </View>
-            </View>
+           <View style={styles.heroStats}>
+  <View style={styles.heroStat}>
+    <Text style={[styles.heroStatValue, { color: DS.primary }]}>{postsCount}</Text>
+    <Text style={[styles.heroStatLabel, { color: isDark ? DS.gray400 : DS.gray500 }]}>Posts</Text>
+  </View>
+  <View style={[styles.heroStatDivider, { backgroundColor: isDark ? DS.darkBorder : DS.gray200 }]} />
+  <View style={styles.heroStat}>
+    <Text style={[styles.heroStatValue, { color: DS.accent }]}>{membersCount}</Text>
+    <Text style={[styles.heroStatLabel, { color: isDark ? DS.gray400 : DS.gray500 }]}>Members</Text>
+  </View>
+  <View style={[styles.heroStatDivider, { backgroundColor: isDark ? DS.darkBorder : DS.gray200 }]} />
+  <View style={styles.heroStat}>
+    <Text style={[styles.heroStatValue, { color: DS.warning }]}>{userTopics.length}</Text>
+    <Text style={[styles.heroStatLabel, { color: isDark ? DS.gray400 : DS.gray500 }]}>Topics</Text>
+  </View>
+</View>
           </View>
           <View style={styles.heroActions}>
             <TouchableOpacity 
@@ -883,27 +888,27 @@ export default function CommunityScreen({ navigation }: Props) {
           
           {/* Topic Selection Status */}
           {hasTopics ? (
-            <View style={[styles.topicStatus, { marginTop: DS.space.sm }]}>
-              <Ionicons name="checkmark-circle" size={14} color={DS.success} />
-              <Text style={[styles.topicStatusText, { color: isDark ? DS.gray400 : DS.gray500 }]}>
-                {userTopics.length} topics selected
-              </Text>
-              <TouchableOpacity onPress={() => navigation.navigate(ROUTES.ONBOARDING as never, { editing: true } as never)}>
-                <Text style={[styles.topicStatusEdit, { color: DS.primary }]}>Edit</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <TouchableOpacity 
-              style={[styles.topicStatus, styles.topicStatusEmpty, { marginTop: DS.space.sm }]}
-              onPress={() => navigation.navigate(ROUTES.ONBOARDING as never, { editing: true } as never)}
-            >
-              <Ionicons name="alert-circle" size={14} color={DS.warning} />
-              <Text style={[styles.topicStatusText, { color: isDark ? DS.gray400 : DS.gray500 }]}>
-                Select topics to personalize your feed
-              </Text>
-              <Ionicons name="chevron-forward" size={14} color={DS.primary} />
-            </TouchableOpacity>
-          )}
+  <View style={[styles.topicStatus, { marginTop: DS.space.sm }]}>
+    <Ionicons name="checkmark-circle" size={14} color={DS.success} />
+    <Text style={[styles.topicStatusText, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+      {userTopics.length} topic{userTopics.length !== 1 ? 's' : ''} selected
+    </Text>
+    <TouchableOpacity onPress={() => navigation.navigate(ROUTES.ONBOARDING as never, { editing: true } as never)}>
+      <Text style={[styles.topicStatusEdit, { color: DS.primary }]}>Edit</Text>
+    </TouchableOpacity>
+  </View>
+) : (
+  <TouchableOpacity 
+    style={[styles.topicStatus, styles.topicStatusEmpty, { marginTop: DS.space.sm }]}
+    onPress={() => navigation.navigate(ROUTES.ONBOARDING as never, { editing: true } as never)}
+  >
+    <Ionicons name="alert-circle" size={14} color={DS.warning} />
+    <Text style={[styles.topicStatusText, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+      Select {Math.max(0, 5 - userTopics.length)} more topics to personalize your feed
+    </Text>
+    <Ionicons name="chevron-forward" size={14} color={DS.primary} />
+  </TouchableOpacity>
+)}
         </View>
       </Animated.View>
 
