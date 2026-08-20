@@ -94,10 +94,62 @@ export async function updateUserInRegistry(
   }
 }
 
+// ─── VERIFY USER EXISTS IN SUPABASE ─────────────────────────────────────
+
+export async function verifyUserInSupabase(email: string): Promise<{ exists: boolean; userId?: string }> {
+  try {
+    // First try to get user from Supabase using the admin API
+    const { data: { user }, error } = await supabase.auth.admin.getUserByEmail(email.trim());
+    
+    if (error) {
+      console.warn('[DB] Admin API error, trying alternative method:', error.message);
+      
+      // Alternative: Try to sign in with a dummy password to check if user exists
+      // This will fail but tells us if the user exists
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password: 'TEMPORARY_CHECK_PASSWORD_123',
+      });
+      
+      // If error is "Invalid login credentials" but not "User not found", user exists
+      if (signInError && signInError.message?.includes('Invalid login credentials')) {
+        return { exists: true };
+      }
+      if (signInError && signInError.message?.toLowerCase().includes('user not found')) {
+        return { exists: false };
+      }
+      return { exists: false };
+    }
+    
+    return { exists: !!user, userId: user?.id };
+  } catch (error) {
+    console.error('[DB] Verify user error:', error);
+    return { exists: false };
+  }
+}
+
+// ─── UPDATE findUserByEmail TO VERIFY AGAINST SUPABASE ────────────────
+
 export async function findUserByEmail(
   email: string
 ): Promise<UserRegistryEntry | null> {
   try {
+    // First check if user exists in Supabase
+    const supabaseCheck = await verifyUserInSupabase(email);
+    if (!supabaseCheck.exists) {
+      // User doesn't exist in Supabase - clean up local registry
+      const registry = await getUserRegistry();
+      for (const [userId, entry] of Object.entries(registry)) {
+        if (entry.email.toLowerCase() === email.trim().toLowerCase()) {
+          delete registry[userId];
+          await saveUserRegistry(registry);
+          break;
+        }
+      }
+      return null;
+    }
+
+    // Then check local registry
     const registry = await getUserRegistry();
     const searchEmail = email.trim().toLowerCase();
     
@@ -106,6 +158,27 @@ export async function findUserByEmail(
         return entry;
       }
     }
+    
+    // If user exists in Supabase but not in local registry, create a minimal entry
+    // This handles the case where a user was created in Supabase but not in local registry
+    if (supabaseCheck.userId) {
+      const { data: { user }, error } = await supabase.auth.admin.getUserById(supabaseCheck.userId);
+      if (!error && user) {
+        const userMeta = user.user_metadata || {};
+        const newEntry: UserRegistryEntry = {
+          userId: user.id,
+          email: user.email || email,
+          fullName: userMeta.full_name || userMeta.fullName || email.split('@')[0],
+          avatar: userMeta.avatar || '👤',
+          role: (userMeta.role as 'parent1' | 'parent2' | 'guardian') || 'parent1',
+          createdAt: user.created_at || new Date().toISOString(),
+          hasPassword: true,
+        };
+        await registerUser(newEntry);
+        return newEntry;
+      }
+    }
+    
     return null;
   } catch (error) {
     console.error('Error finding user by email:', error);

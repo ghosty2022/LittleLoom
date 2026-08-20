@@ -1,67 +1,19 @@
+// screens/security/BiometricSetupScreen.tsx - COMPLETE FIXED VERSION
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Easing, ScrollView, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View, Animated } from 'react-native';
+import { ActivityIndicator, Easing, ScrollView, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View, Animated, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as LocalAuthentication from 'expo-local-authentication';
-import { useSecurity } from '../../context/SecurityContext';
+import { useSecurity, BiometricTypeConfig } from '../../context/SecurityContext';
 import { useAuth } from '../../context/AuthContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import type { RootStackParamList } from '../../types/navigation';
 
-
 type BiometricSetupScreenProps = NativeStackScreenProps<RootStackParamList, 'BiometricSetup'>;
-
-interface BiometricTypeConfig {
-  type: LocalAuthentication.AuthenticationType;
-  name: string;
-  icon: string;
-  label: string;
-  description: string;
-  color: string;
-}
-
-const getBiometricConfigs = (types: LocalAuthentication.AuthenticationType[]): BiometricTypeConfig[] => {
-  const configs: BiometricTypeConfig[] = [];
-  types.forEach((type) => {
-    switch (type) {
-      case LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION:
-        configs.push({
-          type,
-          name: 'Face ID',
-          icon: 'scan-outline',
-          label: 'Face Recognition',
-          description: 'Use your face to unlock',
-          color: '#667eea',
-        });
-        break;
-      case LocalAuthentication.AuthenticationType.FINGERPRINT:
-        configs.push({
-          type,
-          name: 'Fingerprint',
-          icon: 'finger-print',
-          label: 'Touch ID',
-          description: 'Use your fingerprint to unlock',
-          color: '#43e97b',
-        });
-        break;
-      case LocalAuthentication.AuthenticationType.IRIS:
-        configs.push({
-          type,
-          name: 'Iris Scan',
-          icon: 'eye',
-          label: 'Iris Recognition',
-          description: 'Use your eyes to unlock',
-          color: '#ffa502',
-        });
-        break;
-    }
-  });
-  return configs;
-};
 
 interface BiometricIconProps {
   isScanning: boolean;
@@ -160,14 +112,20 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
   const [hasHardware, setHasHardware] = useState(false);
   const [isEnrolled, setIsEnrolled] = useState(false);
 
-  const { toggleBiometric, resetUnlockLock } = useSecurity();
+  const { 
+    toggleBiometric, 
+    resetUnlockLock, 
+    getAvailableBiometricTypes,
+    isBiometricHardwareAvailable,
+    isBiometricEnrolled,
+    availableBiometricTypes: contextTypes,
+  } = useSecurity();
   const { userProfile } = useAuth();
   const { darkMode: isDark, themeColors, triggerHaptic, shouldReduceMotion } = useCustomization();
   const { toast, error: showError, success: showSuccess } = useSweetAlert();
   const insets = useSafeAreaInsets();
 
   const userName = userProfile?.fullName || 'there';
-
   const successScale = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
 
@@ -175,33 +133,124 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
     if (navigation.canGoBack()) {
       navigation.goBack();
     } else {
-      navigation.navigate('Main', { screen: 'Settings' });
+      navigation.navigate('Main' as never);
     }
   }, [navigation]);
 
+  // FIXED: Properly detect biometric types on mount
   useEffect(() => {
+    let mounted = true;
+
+    const checkBiometrics = async () => {
+      try {
+        setIsLoading(true);
+        const hasHardware = await LocalAuthentication.hasHardwareAsync();
+        const enrolled = await LocalAuthentication.isEnrolledAsync();
+        const types = await LocalAuthentication.supportedAuthenticationTypesAsync();
+
+        if (mounted) {
+          setHasHardware(hasHardware);
+          setIsEnrolled(enrolled && hasHardware);
+
+          // Get available types from context
+          const configs = getAvailableBiometricTypes();
+          const resolvedConfigs = await configs;
+          
+          if (resolvedConfigs.length > 0) {
+            setAvailableTypes(resolvedConfigs);
+            setSelectedType(resolvedConfigs[0]);
+          } else if (hasHardware && enrolled && types.length > 0) {
+            // Fallback: build configs manually
+            const fallbackConfigs: BiometricTypeConfig[] = [];
+            types.forEach(type => {
+              switch (type) {
+                case LocalAuthentication.AuthenticationType.FINGERPRINT:
+                  fallbackConfigs.push({
+                    type,
+                    name: 'Fingerprint',
+                    icon: 'finger-print',
+                    iconFilled: 'finger-print',
+                    label: 'Touch ID / Fingerprint',
+                    description: 'Use your fingerprint to unlock',
+                    color: '#10b981',
+                    gradient: ['#11998e', '#38ef7d'],
+                    isAvailable: true,
+                  });
+                  break;
+                case LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION:
+                  fallbackConfigs.push({
+                    type,
+                    name: 'Face ID',
+                    icon: 'scan-outline',
+                    iconFilled: 'scan',
+                    label: 'Face Recognition',
+                    description: 'Use your face to unlock',
+                    color: '#667eea',
+                    gradient: ['#667eea', '#764ba2'],
+                    isAvailable: true,
+                  });
+                  break;
+                case LocalAuthentication.AuthenticationType.IRIS:
+                  fallbackConfigs.push({
+                    type,
+                    name: 'Iris Scan',
+                    icon: 'eye-outline',
+                    iconFilled: 'eye',
+                    label: 'Iris Recognition',
+                    description: 'Use your eyes to unlock',
+                    color: '#f59e0b',
+                    gradient: ['#f59e0b', '#fbbf24'],
+                    isAvailable: true,
+                  });
+                  break;
+              }
+            });
+            setAvailableTypes(fallbackConfigs);
+            if (fallbackConfigs.length > 0) {
+              setSelectedType(fallbackConfigs[0]);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Biometric check failed:', error);
+        if (mounted) {
+          setHasHardware(false);
+          setIsEnrolled(false);
+        }
+      } finally {
+        if (mounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
     resetUnlockLock();
+    checkBiometrics();
 
     const unsubscribe = navigation.addListener('focus', () => {
       resetUnlockLock();
     });
-    return unsubscribe;
-  }, [navigation, resetUnlockLock]);
 
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
+  }, [navigation, resetUnlockLock, getAvailableBiometricTypes]);
+
+  // Animate in
   useEffect(() => {
-    checkBiometricAvailability();
-
-    if (shouldReduceMotion) {
-      slideAnim.setValue(0);
-    } else {
+    if (!shouldReduceMotion) {
       Animated.timing(slideAnim, {
         toValue: 0,
         duration: 600,
         useNativeDriver: true,
       }).start();
+    } else {
+      slideAnim.setValue(0);
     }
   }, [shouldReduceMotion]);
 
+  // Success animation
   useEffect(() => {
     if (setupComplete) {
       if (shouldReduceMotion) {
@@ -221,30 +270,6 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
     }
   }, [setupComplete, safeGoBack, shouldReduceMotion]);
 
-  const checkBiometricAvailability = async () => {
-    try {
-      const hardwareAvailable = await LocalAuthentication.hasHardwareAsync();
-      const enrolled = await LocalAuthentication.isEnrolledAsync();
-      const types = await LocalAuthentication.supportedAuthenticationTypesAsync();
-
-      setHasHardware(hardwareAvailable);
-      setIsEnrolled(enrolled);
-
-      if (hardwareAvailable && enrolled && types.length > 0) {
-        const configs = getBiometricConfigs(types);
-        setAvailableTypes(configs);
-        setSelectedType(configs[0]);
-      }
-
-      setIsLoading(false);
-    } catch (error) {
-      console.error('Biometric check failed:', error);
-      setHasHardware(false);
-      setIsEnrolled(false);
-      setIsLoading(false);
-    }
-  };
-
   const handleEnableBiometric = async () => {
     if (!selectedType) {
       showError('Error', 'Please select a biometric method');
@@ -252,7 +277,11 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
     }
 
     if (!hasHardware || !isEnrolled) {
-      showError('Not Available', 'Please set up biometrics in device settings');
+      Alert.alert(
+        'Not Available',
+        'Please set up biometrics in your device settings first.',
+        [{ text: 'OK' }]
+      );
       return;
     }
 
@@ -267,6 +296,8 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
         triggerHaptic('success');
         setSetupComplete(true);
         showSuccess('Enabled!', `${selectedType.name} is now active for ${userName}`);
+      } else {
+        showError('Cancelled', 'Biometric setup was cancelled');
       }
     } catch (error) {
       console.error('Biometric error:', error);
@@ -295,7 +326,7 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
           style={styles.gradient}
         />
         <View style={[styles.content, { paddingTop: insets.top + 40, justifyContent: 'center', alignItems: 'center' }]}>
-          <ActivityIndicator size="large" color={themeColors.spinnerColor || themeColors.primary} />
+          <ActivityIndicator size="large" color={themeColors.primary} />
           <Text style={[styles.loadingText, { color: isDark ? '#94a3b8' : '#fff' }]}>
             Checking biometric availability...
           </Text>
@@ -328,6 +359,10 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
       </View>
     );
   }
+
+  // FIXED: Show proper UI based on available biometrics
+  const hasBiometricAvailable = hasHardware && isEnrolled;
+  const primaryConfig = availableTypes.length > 0 ? availableTypes[0] : null;
 
   return (
     <View style={[styles.container, { backgroundColor: isDark ? '#0a0a0a' : '#f8faff' }]}>
@@ -370,13 +405,13 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
             </Text>
 
             <Text style={[styles.subtitle, { color: isDark ? '#cbd5e1' : 'rgba(255,255,255,0.9)' }]}>
-              {hasHardware && isEnrolled
+              {hasBiometricAvailable
                 ? `Hi ${userName}, use biometric authentication for quick and secure access to your baby's memories.`
                 : 'Biometric authentication is not available on this device.'}
             </Text>
 
-            {/* Multiple biometric options */}
-            {availableTypes.length > 1 && hasHardware && isEnrolled && (
+            {/* FIXED: Show all available biometric options */}
+            {availableTypes.length > 1 && hasBiometricAvailable && (
               <View style={styles.optionsContainer}>
                 {availableTypes.map((config) => (
                   <TouchableOpacity
@@ -428,7 +463,26 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
               </View>
             )}
 
-            {hasHardware && isEnrolled && (
+            {/* Show single biometric info */}
+            {availableTypes.length === 1 && hasBiometricAvailable && (
+              <View style={styles.singleTypeInfo}>
+                <View style={[styles.singleTypeCard, { backgroundColor: `${themeColors.primary}15` }]}>
+                  <Ionicons 
+                    name={availableTypes[0]?.icon || 'finger-print'} 
+                    size={32} 
+                    color={themeColors.primary} 
+                  />
+                  <Text style={[styles.singleTypeText, { color: isDark ? '#fff' : '#1e293b' }]}>
+                    {availableTypes[0]?.name}
+                  </Text>
+                  <Text style={[styles.singleTypeDesc, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+                    {availableTypes[0]?.description}
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            {hasBiometricAvailable && (
               <View style={styles.benefitsContainer}>
                 {[
                   { icon: 'flash', text: 'Quick Access', color: themeColors.primary },
@@ -451,26 +505,24 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
 
         {/* Action Buttons */}
         <View style={styles.buttonContainer}>
-          {hasHardware && isEnrolled ? (
+          {hasBiometricAvailable ? (
             <>
               <TouchableOpacity
                 style={[styles.enableButton, (!selectedType || isScanning) && styles.enableButtonDisabled]}
                 onPress={handleEnableBiometric}
                 disabled={!selectedType || isScanning}
               >
-                <BlurView intensity={isDark ? 60 : 80} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'}>
-                  <LinearGradient
-                    colors={[themeColors.primary, themeColors.secondary]}
-                    style={StyleSheet.absoluteFill}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                  />
-                </BlurView>
+                <LinearGradient
+                  colors={[themeColors.primary, themeColors.secondary]}
+                  style={StyleSheet.absoluteFill}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                />
                 {isScanning ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
                   <View style={styles.enableButtonContent}>
-                    <Ionicons name={selectedType?.icon as any || 'finger-print'} size={24} color="#fff" />
+                    <Ionicons name={selectedType?.icon || 'finger-print'} size={24} color="#fff" />
                     <Text style={styles.enableText}>Enable {selectedType?.name || 'Biometric'}</Text>
                   </View>
                 )}
@@ -492,8 +544,13 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
                 <Text style={[styles.unavailableText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
                   {!hasHardware
                     ? 'This device does not support biometric authentication.'
-                    : 'Please set up biometrics in your device settings first.'}
+                    : 'Please set up biometrics in your device settings first, then try again.'}
                 </Text>
+                {!hasHardware && (
+                  <Text style={[styles.unavailableText, { color: isDark ? '#94a3b8' : '#64748b', marginTop: 8 }]}>
+                    You can still use PIN or password protection.
+                  </Text>
+                )}
               </View>
 
               <TouchableOpacity style={styles.enableButton} onPress={safeGoBack}>
@@ -637,6 +694,24 @@ const styles = StyleSheet.create({
   },
   optionDescription: {
     fontSize: 14,
+  },
+  singleTypeInfo: {
+    width: '100%',
+    marginBottom: 32,
+  },
+  singleTypeCard: {
+    borderRadius: 20,
+    padding: 24,
+    alignItems: 'center',
+    gap: 8,
+  },
+  singleTypeText: {
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  singleTypeDesc: {
+    fontSize: 14,
+    textAlign: 'center',
   },
   benefitsContainer: {
     flexDirection: 'row',
