@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {  ActivityIndicator, Dimensions, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Dimensions, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,7 +15,7 @@ import { useAuth } from '../../context/AuthContext';
 import { supabase } from '@/utils/supabase';
 import { useSweetAlert } from '../../hooks/useSweetAlert';
 import { useBaby } from '../../context/BabyContext';
-import { getBabyByIdFromDb, setAppSetting } from '../../database/dbHelpers';
+import { getBabyByIdFromDb, setAppSetting, getAllBabiesFromDb } from '../../database/dbHelpers';
 import { useCustomization } from '../../hooks/useCustomization';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
@@ -125,7 +125,7 @@ type BabyProfileCreateScreenProps = NativeStackScreenProps<RootStackParamList, '
 export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreateScreenProps) {
   const insets = useSafeAreaInsets();
   const { darkMode: isDark, themeColors, triggerHaptic, shouldReduceMotion } = useCustomization();
-  const { userProfile, completeSetup } = useAuth();
+  const { userProfile, completeSetup, isAuthenticated } = useAuth();
   const { createBaby, updateBaby, calculateAge, loadBabies, switchBaby, babies } = useBaby();
   const { error: showError, success: showSuccess } = useSweetAlert();
 
@@ -370,6 +370,28 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
     }
     if (!validateStep1() || !validateStep2()) return;
 
+    // ─── FIX: Use the authenticated user from AuthContext ──────────────
+    // First check if we're authenticated
+    if (!isAuthenticated || !userProfile) {
+      showError('Please sign in to create a baby profile');
+      // Try to refresh the session
+      try {
+        const { data, error } = await supabase.auth.getUser();
+        if (error || !data?.user) {
+          // Not authenticated, redirect to login
+          navigation.replace('Login');
+          return;
+        }
+      } catch (e) {
+        navigation.replace('Login');
+        return;
+      }
+      return;
+    }
+
+    const userId = userProfile.id;
+    console.log('[BabyProfile] Creating baby with parent1Id:', userId);
+
     const trimmedName = name.trim();
     const birthIso = birthDate.toISOString();
     const duplicate = babies.find(b => b.name === trimmedName && b.birthDate === birthIso);
@@ -388,17 +410,8 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
       const hasCustomImage = isImageUri(avatar);
       const avatarToSave = hasCustomImage ? '👶' : avatar;
 
-      // FIX: Get authenticated user ID directly from Supabase
-      const { data: authData, error: authError } = await supabase.auth.getUser();
-      if (authError || !authData?.user?.id) {
-        showError('Not authenticated. Please sign in again.');
-        setIsLoading(false);
-        isCreatingRef.current = false;
-        return;
-      }
-      const userId = authData.user.id;
-
-      console.log('[BabyProfile] Creating baby with parent1Id:', userId);
+      // ─── Use userProfile.id from AuthContext ──────────────────────────
+      console.log('[BabyProfile] Creating baby with parent1Id from AuthContext:', userId);
 
       babyId = await createBaby({
         name: trimmedName,
@@ -418,6 +431,8 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
         if (isMounted.current) {
           showError('Failed to create profile. Please try again.');
         }
+        isCreatingRef.current = false;
+        setIsLoading(false);
         return;
       }
 
@@ -440,12 +455,20 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
         showSuccess(`${trimmedName}'s profile created successfully`);
       }
 
-      if (!isMounted.current) return;
+      if (!isMounted.current) {
+        isCreatingRef.current = false;
+        setIsLoading(false);
+        return;
+      }
 
       try {
         await loadBabies();
 
-        if (!isMounted.current) return;
+        if (!isMounted.current) {
+          isCreatingRef.current = false;
+          setIsLoading(false);
+          return;
+        }
 
         try {
           await setAppSetting(`parent1_relationship_${babyId}`, creatorRelationship);
@@ -460,6 +483,8 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
           if (isMounted.current) {
             showError('Profile could not be saved. Please try again.');
           }
+          isCreatingRef.current = false;
+          setIsLoading(false);
           return;
         }
 
@@ -549,6 +574,8 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
     switchBaby,
     creatorRelationship,
     wasSetupCompleted,
+    isAuthenticated,
+    userProfile,
   ]);
 
   const kbBehavior = Platform.OS === 'ios' ? 'padding' : undefined;
