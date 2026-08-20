@@ -142,7 +142,6 @@ export async function findUserByPhone(
     const registry = await getUserRegistry();
     const searchPhone = phone.trim().replace(/[^0-9+]/g, '');
     
-    // Try multiple phone formats
     const formats = [
       searchPhone,
       searchPhone.replace(/^\+254/, '0'),
@@ -169,14 +168,10 @@ export async function findUserByEmailOrUsername(
   identifier: string
 ): Promise<UserRegistryEntry | null> {
   try {
-    // Try as email first
     const byEmail = await findUserByEmail(identifier);
     if (byEmail) return byEmail;
-    
-    // Then try as username
     const byUsername = await findUserByUsername(identifier);
     if (byUsername) return byUsername;
-    
     return null;
   } catch (error) {
     console.error('Error finding user by email or username:', error);
@@ -188,18 +183,12 @@ export async function findUserByEmailOrUsernameOrPhone(
   identifier: string
 ): Promise<UserRegistryEntry | null> {
   try {
-    // Try as email first
     const byEmail = await findUserByEmail(identifier);
     if (byEmail) return byEmail;
-    
-    // Then try as username
     const byUsername = await findUserByUsername(identifier);
     if (byUsername) return byUsername;
-    
-    // Then try as phone
     const byPhone = await findUserByPhone(identifier);
     if (byPhone) return byPhone;
-    
     return null;
   } catch (error) {
     console.error('Error finding user by email, username, or phone:', error);
@@ -241,7 +230,6 @@ export async function getAllUserDataForBackup(userId: string): Promise<{
     const familyMembers: Record<string, any[]> = {};
     const appSettings: Record<string, string> = {};
     
-    // Get all entries for each baby
     for (const baby of allBabies) {
       const babyEntries = await getEntriesByBabyFromDb(baby.id);
       entries[baby.id] = babyEntries;
@@ -250,7 +238,6 @@ export async function getAllUserDataForBackup(userId: string): Promise<{
       familyMembers[baby.id] = babyFamily;
     }
     
-    // Get all app settings
     const settingsKeys = [
       'current_baby_id',
       'has_skipped_baby',
@@ -284,7 +271,6 @@ export async function restoreFromBackupData(
   let restoredFamily = 0;
   
   try {
-    // Restore babies
     for (const baby of backupData.babies || []) {
       const exists = await getBabyByIdFromDb(baby.id);
       if (!exists) {
@@ -301,7 +287,6 @@ export async function restoreFromBackupData(
         });
         restoredBabies++;
       } else {
-        // Update existing baby
         await updateBabyInDb(baby.id, {
           name: baby.name,
           avatar: baby.avatar || baby.avatar,
@@ -315,7 +300,6 @@ export async function restoreFromBackupData(
       }
     }
     
-    // Restore entries
     for (const [babyId, entries] of Object.entries(backupData.entries || {})) {
       for (const entry of entries as any[]) {
         const exists = await getEntryByIdFromDb(entry.id);
@@ -339,7 +323,6 @@ export async function restoreFromBackupData(
       }
     }
     
-    // Restore family members
     for (const [babyId, members] of Object.entries(backupData.familyMembers || {})) {
       for (const member of members as any[]) {
         const exists = await getFamilyMemberByIdFromDb(member.id);
@@ -365,7 +348,6 @@ export async function restoreFromBackupData(
       }
     }
     
-    // Restore app settings
     for (const [key, value] of Object.entries(backupData.appSettings || {})) {
       await setAppSetting(key, String(value));
     }
@@ -437,6 +419,92 @@ export async function deleteAppSetting(key: string): Promise<void> {
 
 /* ─── BABIES ────────────────────────────────────────────────────────── */
 
+// ─── BACKGROUND SYNC HELPER ────────────────────────────────────────────
+async function syncBabiesFromSupabaseBackground() {
+  try {
+    console.log('[DB] Background sync: Fetching babies from Supabase...');
+    
+    const { data: remoteBabies, error } = await supabase
+      .from('babies')
+      .select('*')
+      .eq('is_active', true);
+
+    if (error) {
+      console.warn('[DB] Background sync error:', error.message);
+      return;
+    }
+
+    if (!remoteBabies || remoteBabies.length === 0) {
+      console.log('[DB] Background sync: No babies found in Supabase');
+      return;
+    }
+
+    console.log(`[DB] Background sync: Found ${remoteBabies.length} babies in Supabase`);
+
+    const now = new Date().toISOString();
+    let syncedCount = 0;
+
+    for (const baby of remoteBabies) {
+      try {
+        // Check if baby exists locally
+        const exists = db.select().from(babies).where(eq(babies.id, baby.id)).all();
+        
+        if (exists.length === 0) {
+          console.log(`[DB] Background sync: Creating baby "${baby.name}" (${baby.id})`);
+          db.insert(babies).values({
+            id: baby.id,
+            name: baby.name,
+            avatar: baby.avatar ?? undefined,
+            dateOfBirth: baby.date_of_birth,
+            gender: baby.gender ?? undefined,
+            bloodType: baby.blood_type ?? undefined,
+            medicalNotes: baby.medical_notes ?? undefined,
+            parent1Id: baby.parent1_id ?? undefined,
+            parent2Id: baby.parent2_id ?? undefined,
+            createdAt: baby.created_at ?? now,
+            updatedAt: now,
+            isActive: baby.is_active ?? true,
+            syncStatus: 'synced',
+          }).run();
+          syncedCount++;
+        } else {
+          // Update existing baby
+          db.update(babies)
+            .set({
+              name: baby.name,
+              avatar: baby.avatar ?? undefined,
+              dateOfBirth: baby.date_of_birth,
+              gender: baby.gender ?? undefined,
+              bloodType: baby.blood_type ?? undefined,
+              medicalNotes: baby.medical_notes ?? undefined,
+              parent1Id: baby.parent1_id ?? undefined,
+              parent2Id: baby.parent2_id ?? undefined,
+              updatedAt: now,
+              isActive: baby.is_active ?? true,
+              syncStatus: 'synced',
+            })
+            .where(eq(babies.id, baby.id))
+            .run();
+        }
+      } catch (babyError) {
+        console.error(`[DB] Background sync: Error syncing baby "${baby.name}":`, babyError);
+      }
+    }
+
+    console.log(`[DB] Background sync: Completed - ${syncedCount} new babies, ${remoteBabies.length - syncedCount} existing`);
+
+    // Also update current_baby_id if not set
+    const currentId = await getAppSetting('current_baby_id');
+    if (!currentId && remoteBabies[0]) {
+      await setAppSetting('current_baby_id', remoteBabies[0].id);
+      console.log(`[DB] Background sync: Set current baby to "${remoteBabies[0].name}"`);
+    }
+
+  } catch (error) {
+    console.error('[DB] Background sync error:', error);
+  }
+}
+
 export async function getAllBabiesFromDb(forceSync: boolean = false) {
   try {
     // First, get local data immediately
@@ -446,31 +514,40 @@ export async function getAllBabiesFromDb(forceSync: boolean = false) {
     if (localBabies.length > 0) {
       // Trigger background sync if requested
       if (forceSync) {
-        syncBabiesFromSupabaseBackground().catch(e => console.warn('[DB] Background sync failed:', e));
+        console.log('[DB] getAllBabiesFromDb: Triggering background sync (already have local data)');
+        syncBabiesFromSupabaseBackground().catch(e => 
+          console.warn('[DB] Background sync failed:', e)
+        );
       }
       return localBabies;
     }
     
-    // No local data, try to sync from Supabase (with timeout protection)
-    if (forceSync) {
-      try {
-        const syncPromise = supabase
-          .from('babies')
-          .select('*')
-          .eq('is_active', true);
-        
-        // Add timeout to the sync operation
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Sync timeout')), 5000)
-        );
-        
-        const result = await Promise.race([syncPromise, timeoutPromise]) as any;
-        
-        if (!result.error && result.data && result.data.length > 0) {
-          console.log(`[DB] Found ${result.data.length} babies in Supabase, syncing to local DB`);
-          
-          const now = new Date().toISOString();
-          for (const baby of result.data) {
+    // No local data, try to sync from Supabase
+    console.log('[DB] getAllBabiesFromDb: No local babies, trying to sync...');
+    
+    try {
+      const { data: remoteBabies, error } = await supabase
+        .from('babies')
+        .select('*')
+        .eq('is_active', true);
+
+      if (error) {
+        console.warn('[DB] getAllBabiesFromDb: Supabase error:', error.message);
+        return [];
+      }
+
+      if (!remoteBabies || remoteBabies.length === 0) {
+        console.log('[DB] getAllBabiesFromDb: No babies found in Supabase');
+        return [];
+      }
+
+      console.log(`[DB] getAllBabiesFromDb: Found ${remoteBabies.length} babies in Supabase, syncing...`);
+
+      const now = new Date().toISOString();
+      for (const baby of remoteBabies) {
+        try {
+          const exists = db.select().from(babies).where(eq(babies.id, baby.id)).all();
+          if (exists.length === 0) {
             db.insert(babies).values({
               id: baby.id,
               name: baby.name,
@@ -485,9 +562,10 @@ export async function getAllBabiesFromDb(forceSync: boolean = false) {
               updatedAt: now,
               isActive: baby.is_active ?? true,
               syncStatus: 'synced',
-            }).onConflictDoUpdate({
-              target: babies.id,
-              set: {
+            }).run();
+          } else {
+            db.update(babies)
+              .set({
                 name: baby.name,
                 avatar: baby.avatar ?? undefined,
                 dateOfBirth: baby.date_of_birth,
@@ -499,20 +577,29 @@ export async function getAllBabiesFromDb(forceSync: boolean = false) {
                 updatedAt: now,
                 isActive: baby.is_active ?? true,
                 syncStatus: 'synced',
-              }
-            }).run();
+              })
+              .where(eq(babies.id, baby.id))
+              .run();
           }
-          
-          return db.select().from(babies).where(eq(babies.isActive, true)).all();
+        } catch (babyError) {
+          console.error(`[DB] getAllBabiesFromDb: Error syncing baby "${baby.name}":`, babyError);
         }
-      } catch (syncError) {
-        console.warn('[DB] Sync error:', syncError);
-        // Return whatever we have locally
-        return localBabies;
       }
-    }
 
-    return localBabies;
+      // Set current baby if not set
+      const currentId = await getAppSetting('current_baby_id');
+      if (!currentId && remoteBabies[0]) {
+        await setAppSetting('current_baby_id', remoteBabies[0].id);
+        console.log(`[DB] getAllBabiesFromDb: Set current baby to "${remoteBabies[0].name}"`);
+      }
+
+      // Return the newly synced data
+      return db.select().from(babies).where(eq(babies.isActive, true)).all();
+      
+    } catch (syncError) {
+      console.error('[DB] getAllBabiesFromDb: Sync error:', syncError);
+      return [];
+    }
   } catch (error) {
     const msg = String(error);
     if (msg.includes('no such table') || msg.includes('prepareSync')) {
@@ -520,55 +607,6 @@ export async function getAllBabiesFromDb(forceSync: boolean = false) {
     }
     console.error('[DB] getAllBabiesFromDb error:', error);
     return [];
-  }
-}
-
-// ─── Background sync helper ────────────────────────────────────────────
-async function syncBabiesFromSupabaseBackground() {
-  try {
-    const { data: remoteBabies, error } = await supabase
-      .from('babies')
-      .select('*')
-      .eq('is_active', true);
-
-    if (!error && remoteBabies && remoteBabies.length > 0) {
-      const now = new Date().toISOString();
-      for (const baby of remoteBabies) {
-        db.insert(babies).values({
-          id: baby.id,
-          name: baby.name,
-          avatar: baby.avatar ?? undefined,
-          dateOfBirth: baby.date_of_birth,
-          gender: baby.gender ?? undefined,
-          bloodType: baby.blood_type ?? undefined,
-          medicalNotes: baby.medical_notes ?? undefined,
-          parent1Id: baby.parent1_id ?? undefined,
-          parent2Id: baby.parent2_id ?? undefined,
-          createdAt: baby.created_at ?? now,
-          updatedAt: now,
-          isActive: baby.is_active ?? true,
-          syncStatus: 'synced',
-        }).onConflictDoUpdate({
-          target: babies.id,
-          set: {
-            name: baby.name,
-            avatar: baby.avatar ?? undefined,
-            dateOfBirth: baby.date_of_birth,
-            gender: baby.gender ?? undefined,
-            bloodType: baby.blood_type ?? undefined,
-            medicalNotes: baby.medical_notes ?? undefined,
-            parent1Id: baby.parent1_id ?? undefined,
-            parent2Id: baby.parent2_id ?? undefined,
-            updatedAt: now,
-            isActive: baby.is_active ?? true,
-            syncStatus: 'synced',
-          }
-        }).run();
-      }
-      console.log(`[DB] Background sync completed: ${remoteBabies.length} babies`);
-    }
-  } catch (error) {
-    console.warn('[DB] Background sync error:', error);
   }
 }
 
@@ -603,21 +641,6 @@ export async function getBabyByIdFromDb(id: string, forceSync: boolean = false) 
             updatedAt: now,
             isActive: data.is_active ?? true,
             syncStatus: 'synced',
-          }).onConflictDoUpdate({
-            target: babies.id,
-            set: {
-              name: data.name,
-              avatar: data.avatar ?? undefined,
-              dateOfBirth: data.date_of_birth,
-              gender: data.gender ?? undefined,
-              bloodType: data.blood_type ?? undefined,
-              medicalNotes: data.medical_notes ?? undefined,
-              parent1Id: data.parent1_id ?? undefined,
-              parent2Id: data.parent2_id ?? undefined,
-              updatedAt: now,
-              isActive: data.is_active ?? true,
-              syncStatus: 'synced',
-            }
           }).run();
 
           const pulled = db.select().from(babies).where(eq(babies.id, id)).all();
@@ -769,14 +792,11 @@ export async function getCurrentBabyFromDb() {
   return getBabyByIdFromDb(babyId);
 }
 
-// ─── ADD THIS NEW FUNCTION ─────────────────────────────────────────────
 export async function getCurrentBabyData(babyId: string) {
   try {
-    // First check local DB
     const localBaby = await getBabyByIdFromDb(babyId);
     if (localBaby) return localBaby;
 
-    // If not found locally, pull from Supabase
     const { data, error } = await supabase
       .from('babies')
       .select('*')
@@ -788,7 +808,6 @@ export async function getCurrentBabyData(babyId: string) {
       return null;
     }
 
-    // Save to local DB
     const now = new Date().toISOString();
     await createBabyInDb({
       id: data.id,
@@ -802,7 +821,6 @@ export async function getCurrentBabyData(babyId: string) {
       parent2Id: data.parent2_id ?? undefined,
     });
 
-    // Return the saved baby
     return await getBabyByIdFromDb(babyId);
   } catch (error) {
     console.error('[DB] getCurrentBabyData error:', error);
@@ -866,8 +884,6 @@ export async function createEntryInDb(data: {
 }) {
   try {
     const now = new Date().toISOString();
-
-    // Fold loggedBy info into data payload for backward compatibility
     const payload: Record<string, unknown> = { ...data.data };
     if (data.loggedBy !== undefined) payload.loggedBy = data.loggedBy;
     if (data.loggedByName !== undefined) payload.loggedByName = data.loggedByName;
@@ -911,7 +927,6 @@ export async function updateEntryInDb(id: string, updates: Partial<typeof tracke
     const now = new Date().toISOString();
     const processed = { ...updates };
     if (updates.data && typeof updates.data !== 'string') {
-      // Merge with existing data to avoid losing fields
       const existing = await getEntryByIdFromDb(id);
       const existingData = existing?.data ? (typeof existing.data === 'string' ? JSON.parse(existing.data) : existing.data) : {};
       processed.data = JSON.stringify({ ...existingData, ...updates.data });
@@ -957,7 +972,6 @@ export async function softDeleteEntryInDb(id: string) {
 
 export async function getFamilyMembersByBabyFromDb(babyId: string, includeDeleted = false) {
   try {
-    // Pull from Supabase and merge locally
     try {
       const { data: remoteRows, error } = await supabase
         .from('family_members')
@@ -1276,22 +1290,18 @@ export async function runOneTimeMigration(): Promise<void> {
   const appearance = await AsyncStorage.getItem('@littleloom_appearance_v1');
   if (appearance) await setAppSetting('appearance', appearance);
 
-  // Migrate user registry from old format if it exists
+  // Migrate user registry
   try {
     const oldRegistry = await AsyncStorage.getItem('littleloom_username_registry');
     if (oldRegistry) {
       const parsed = JSON.parse(oldRegistry);
       if (typeof parsed === 'object' && !Array.isArray(parsed)) {
-        // Convert from username -> userId to full registry
         const newRegistry: Record<string, UserRegistryEntry> = {};
-        // We need to find user details from other stored data
-        // This is a best-effort migration
         const profileStr = await AsyncStorage.getItem('littleloom_user_profile_secure');
         if (profileStr) {
           try {
             const profile = JSON.parse(profileStr);
             if (profile && profile.id) {
-              // Find the username for this user
               for (const [username, userId] of Object.entries(parsed)) {
                 if (userId === profile.id) {
                   newRegistry[profile.id] = {

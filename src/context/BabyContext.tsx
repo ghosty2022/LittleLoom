@@ -722,16 +722,15 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // ─── Step 1: Try migration with timeout ──────────────────────────
       try {
         console.log('[BabyContext] Running migration...');
-        await withTimeout(() => runOneTimeMigration(), 3000);
+        await withTimeout(() => runOneTimeMigration(), 5000);
         console.log('[BabyContext] Migration completed');
       } catch (migrationError) {
         console.warn('[BabyContext] Migration timed out or failed, continuing:', migrationError);
-        // Continue anyway - migration might not be needed
       }
 
-      // ─── Step 2: Load babies from DB ──────────────────────────────────
+      // ─── Step 2: Load babies from DB (NO force sync to avoid timeout) ──
       console.log('[BabyContext] Fetching babies from DB...');
-      const dbBabies = await withTimeout(() => getAllBabiesFromDb(), 3000);
+      const dbBabies = await getAllBabiesFromDb(false); // forceSync = false
       console.log(`[BabyContext] Found ${dbBabies.length} babies in DB`);
 
       const currentId = await getAppSetting('current_baby_id');
@@ -770,41 +769,26 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.log('[BabyContext] Tracker data loaded');
       }
 
+// ─── Step 4: Background sync if no local babies ──────────────────
+if (dbBabies.length === 0) {
+  console.log('[BabyContext] No local babies, triggering background sync...');
+  // This will now work because getAllBabiesFromDb(true) will sync from Supabase
+  getAllBabiesFromDb(true).then((syncedBabies) => {
+    if (syncedBabies && syncedBabies.length > 0) {
+      console.log(`[BabyContext] Background sync completed: ${syncedBabies.length} babies`);
+      // Reload babies after sync
+      loadBabies();
+    }
+  }).catch(e => 
+    console.warn('[BabyContext] Background sync failed:', e)
+  );
+}
       console.log('[BabyContext] loadBabies completed successfully');
 
     } catch (error) {
       console.error('[BabyContext] Error loading babies:', error);
-      
-      // ─── Fallback: Try direct DB query without timeout ──────────────
-      try {
-        console.log('[BabyContext] Attempting fallback DB query...');
-        const dbBabies = await getAllBabiesFromDb();
-        if (dbBabies && dbBabies.length > 0 && isMounted.current) {
-          const babies = dbBabies.map(b => mapDbBabyToProfile(b, calculateAge));
-          const currentId = await getAppSetting('current_baby_id');
-          const effectiveCurrentId = currentId || babies[0]?.id || null;
-          const currentBaby = babies.find(b => b.id === effectiveCurrentId) || babies[0] || null;
-
-          setState(prev => ({
-            ...prev,
-            isLoading: false,
-            babies,
-            currentBabyId: effectiveCurrentId,
-            currentBaby,
-          }));
-
-          if (effectiveCurrentId) {
-            await loadAllBabyData(effectiveCurrentId);
-          }
-          console.log('[BabyContext] Fallback load completed');
-        } else {
-          throw error;
-        }
-      } catch (fallbackError) {
-        console.error('[BabyContext] Fallback also failed:', fallbackError);
-        if (isMounted.current) {
-          setState(prev => ({ ...prev, isLoading: false }));
-        }
+      if (isMounted.current) {
+        setState(prev => ({ ...prev, isLoading: false }));
       }
     } finally {
       loadInProgressRef.current = false;

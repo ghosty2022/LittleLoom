@@ -12,7 +12,7 @@ import { CommunityProvider } from '@/context/CommunityContext';
 import { SafetyProvider } from '@/context/SafetyContext';
 import { AudioProvider } from '@/context/AudioContext';
 import { AppProvider, useTheme } from '@/context/AppContext';
-import { TrackerProvider } from '@/context/TrackerContext';
+import { TrackerProvider, TrackerContext } from '@/context/TrackerContext';
 import { SweetAlertProvider } from '@/components/SweetAlert';
 import useCustomization from '@/hooks/useCustomization';
 import { notificationService } from '@/services/NotificationService';
@@ -61,16 +61,13 @@ const ActivitySyncBridge: React.FC<{ children: React.ReactNode }> = ({ children 
   return <>{children}</>;
 };
 
-// FIXED: Safe tracker sync - properly uses useContext with imported context
+// ─── FIXED: TrackerBabySync - MOVED OUTSIDE TrackerProvider ────────
+// This component should be OUTSIDE TrackerProvider but still inside BabyProvider
 const TrackerBabySync: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { currentBabyId } = useBaby();
+  const { currentBabyId, babies } = useBaby();
   const initRef = useRef(false);
   
-  // FIX: Import TrackerContext directly at the top level
-  // This avoids the require() hack that was causing issues
-  const { TrackerContext } = require('@/context/TrackerContext');
-  
-  // Use useContext properly
+  // Use the imported TrackerContext directly
   const trackerContext = useContext(TrackerContext);
 
   useEffect(() => {
@@ -82,6 +79,15 @@ const TrackerBabySync: React.FC<{ children: React.ReactNode }> = ({ children }) 
       trackerContext.setCurrentBabyId(currentBabyId);
     }
   }, [currentBabyId, trackerContext]);
+
+  useEffect(() => {
+    if (!trackerContext || !currentBabyId) return;
+    if (babies && babies.length > 0) {
+      if (trackerContext.loadTrackerData) {
+        trackerContext.loadTrackerData(currentBabyId);
+      }
+    }
+  }, [babies, currentBabyId, trackerContext]);
 
   return <>{children}</>;
 };
@@ -134,6 +140,7 @@ const FamilyChatWrapper: React.FC<{ children: React.ReactNode }> = ({ children }
   );
 };
 
+// ─── FIXED: Reordered providers ─────────────────────────────────────
 export default function ContextProvider({ children }: ContextProviderProps) {
   return (
     <AuthProvider>
@@ -144,11 +151,13 @@ export default function ContextProvider({ children }: ContextProviderProps) {
               <FamilyProvider>
                 <ActivityProvider>
                   <ActivitySyncBridge>
-                    <MediaProvider>
-                      <FamilyChatWrapper>
-                        <CommunityProvider>
-                          <SafetyProvider>
-                            <AudioProvider>
+                    {/* MediaProvider needs AudioProvider, so AudioProvider should come first */}
+                    <AudioProvider>
+                      <MediaProvider>
+                        <FamilyChatWrapper>
+                          <CommunityProvider>
+                            <SafetyProvider>
+                              {/* TrackerProvider wraps TrackerBabySync */}
                               <TrackerProvider>
                                 <TrackerBabySync>
                                   <SweetAlertWrapper>
@@ -156,11 +165,11 @@ export default function ContextProvider({ children }: ContextProviderProps) {
                                   </SweetAlertWrapper>
                                 </TrackerBabySync>
                               </TrackerProvider>
-                            </AudioProvider>
-                          </SafetyProvider>
-                        </CommunityProvider>
-                      </FamilyChatWrapper>
-                    </MediaProvider>
+                            </SafetyProvider>
+                          </CommunityProvider>
+                        </FamilyChatWrapper>
+                      </MediaProvider>
+                    </AudioProvider>
                   </ActivitySyncBridge>
                 </ActivityProvider>
               </FamilyProvider>
