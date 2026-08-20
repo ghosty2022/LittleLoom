@@ -1,12 +1,14 @@
+// src/screens/community/CommunitySplashScreen.tsx
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-// import { interpolate } from 'react-native-reanimated';
-import { View,
+import {
+  View,
   Text,
   StyleSheet,
   Dimensions,
-  StatusBar, Platform,
+  StatusBar,
+  Platform,
   Animated,
- } from 'react-native';
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -20,6 +22,7 @@ import {
   CommunityShadows,
   CommunityBorderRadius,
 } from '../../theme/CommunityTheme';
+
 const { width, height } = Dimensions.get('window');
 
 interface CommunitySplashScreenProps {
@@ -42,10 +45,13 @@ export default function CommunitySplashScreen({
   useRouteBasedNavVisibility();
 
   const { settings, themeColors, shouldReduceMotion } = useCustomization();
-  const { currentUser, getSelectedTopics } = useCommunity();
+  const { currentUser, getSelectedTopics, topics } = useCommunity();
 
   const [splashContent, setSplashContent] = useState<SplashContent | null>(null);
   const [isReady, setIsReady] = useState(false);
+
+  // --- FIX: Define isDark ---
+  const isDark = settings?.darkMode ?? false;
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.8)).current;
@@ -89,10 +95,17 @@ export default function CommunitySplashScreen({
           tip: '💡 Tap "Get Started" to choose your topics',
         };
       } else if (topicCount < 3) {
+        // Get topic names for a personalized message
+        const topicNames = selectedTopics.slice(0, 2).map(id => {
+          const topic = topics.find(t => t.id === id);
+          return topic?.name || 'topic';
+        });
+        const topicDisplay = topicNames.join(' & ');
+        
         content = {
           emoji: '🌱',
           title: 'Growing Your Community',
-          subtitle: `You have ${topicCount} topic${topicCount === 1 ? '' : 's'} selected. Add more to discover even more relevant conversations.`,
+          subtitle: `You have ${topicCount} topic${topicCount === 1 ? '' : 's'} selected${topicNames.length > 0 ? ` (${topicDisplay})` : ''}. Add more to discover even more relevant conversations.`,
           stats: [
             { label: 'Your Topics', value: `${topicCount}` },
             { label: 'New Posts', value: '24' },
@@ -101,11 +114,16 @@ export default function CommunitySplashScreen({
           tip: '💡 You can select up to 5 topics for the best experience',
         };
       } else {
-        const topicNames = selectedTopics.slice(0, 3).map(t => t.name).join(', ');
+        const topicNames = selectedTopics.slice(0, 3).map(id => {
+          const topic = topics.find(t => t.id === id);
+          return topic?.name || 'topic';
+        });
+        const displayNames = topicNames.join(', ');
+        
         content = {
           emoji: '🌟',
           title: 'Welcome Back!',
-          subtitle: `Your communities in ${topicNames}${selectedTopics.length > 3 ? ' & more' : ''} are buzzing with activity.`,
+          subtitle: `Your communities in ${displayNames}${selectedTopics.length > 3 ? ' & more' : ''} are buzzing with activity.`,
           stats: [
             { label: 'Your Topics', value: `${topicCount}` },
             { label: 'New Posts', value: '24' },
@@ -120,7 +138,7 @@ export default function CommunitySplashScreen({
     };
 
     generateContent();
-  }, [userName, getSelectedTopics]);
+  }, [userName, getSelectedTopics, topics]);
 
   useEffect(() => {
     if (!isReady || !splashContent) return;
@@ -225,18 +243,26 @@ export default function CommunitySplashScreen({
 
   if (!isReady || !splashContent) {
     return (
-      <View style={[styles.container, { backgroundColor: CommunityColors.background.main }]}>
+      <View style={[styles.container, { backgroundColor: isDark ? '#0c0a09' : '#f5f5f5' }]}>
         <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
+        <View style={styles.loadingContainer}>
+          <Text style={[styles.loadingText, { color: isDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.6)' }]}>
+            Loading...
+          </Text>
+        </View>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: isDark ? '#0c0a09' : '#f5f5f5' }]}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
 
       <LinearGradient
-        colors={CommunityGradients.header}
+        colors={isDark ? 
+          ['#1a1a2e', '#16213e', '#0c0a09'] :
+          ['#6366f1', '#8b5cf6', '#6a82fb']
+        }
         style={styles.gradient}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
@@ -293,9 +319,9 @@ export default function CommunitySplashScreen({
               colors={['rgba(255,255,255,0.3)', 'rgba(255,255,255,0.1)']}
               style={styles.logoRing}
             >
-              <View style={styles.logoInner}>
+              <View style={[styles.logoInner, { backgroundColor: isDark ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.95)' }]}>
                 <Text style={styles.logoEmoji}>{splashContent.emoji}</Text>
-                <View style={styles.onlineIndicator}>
+                <View style={[styles.onlineIndicator, { borderColor: isDark ? '#6366f1' : '#6366f1' }]}>
                   <View style={styles.onlineDot} />
                 </View>
               </View>
@@ -303,53 +329,78 @@ export default function CommunitySplashScreen({
           </View>
 
           {/* Dynamic Title */}
-          <Text style={styles.title}>{splashContent.title}</Text>
+          <Text style={[styles.title, { color: '#fff' }]}>{splashContent.title}</Text>
 
           {/* Dynamic Subtitle */}
-          <Text style={styles.subtitle}>{splashContent.subtitle}</Text>
+          <Text style={[styles.subtitle, { color: 'rgba(255,255,255,0.9)' }]}>
+            {splashContent.subtitle}
+          </Text>
 
           {/* Intelligent Stats */}
           <Animated.View
             style={[
               styles.statsContainer,
-              { opacity: statsAnim, transform: [{ translateY: statsAnim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }] }
+              {
+                opacity: statsAnim,
+                transform: [{
+                  translateY: statsAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [20, 0]
+                  })
+                }]
+              }
             ]}
           >
             {splashContent.stats.map((stat, index) => (
               <React.Fragment key={stat.label}>
                 <View style={styles.statItem}>
-                  <Text style={styles.statNumber}>{stat.value}</Text>
-                  <Text style={styles.statLabel}>{stat.label}</Text>
+                  <Text style={[styles.statNumber, { color: '#fff' }]}>{stat.value}</Text>
+                  <Text style={[styles.statLabel, { color: 'rgba(255,255,255,0.8)' }]}>
+                    {stat.label}
+                  </Text>
                 </View>
-                {index < splashContent.stats.length - 1 && <View style={styles.statDivider} />}
+                {index < splashContent.stats.length - 1 && (
+                  <View style={[styles.statDivider, { backgroundColor: 'rgba(255,255,255,0.3)' }]} />
+                )}
               </React.Fragment>
             ))}
           </Animated.View>
 
           {/* Smart Tip */}
-          <View style={styles.tipContainer}>
-            <Text style={styles.tipText}>{splashContent.tip}</Text>
+          <View style={[styles.tipContainer, {
+            backgroundColor: 'rgba(255,255,255,0.1)',
+            borderColor: 'rgba(255,255,255,0.15)',
+          }]}>
+            <Text style={[styles.tipText, { color: 'rgba(255,255,255,0.85)' }]}>
+              {splashContent.tip}
+            </Text>
           </View>
 
           {/* Loading Progress */}
           <View style={styles.progressContainer}>
-            <View style={styles.progressBar}>
+            <View style={[styles.progressBar, { backgroundColor: 'rgba(255,255,255,0.3)' }]}>
               <Animated.View
                 style={[
                   styles.progressFill,
-                  { width: progressWidth }
+                  { width: progressWidth, backgroundColor: '#fff' }
                 ]}
               />
             </View>
-            <Text style={styles.progressText}>Loading your community...</Text>
+            <Text style={[styles.progressText, { color: 'rgba(255,255,255,0.8)' }]}>
+              Loading your community...
+            </Text>
           </View>
         </Animated.View>
 
         {/* Bottom Branding */}
         <View style={styles.bottomBranding}>
-          <Text style={styles.brandingText}>LittleLoom</Text>
-          <View style={styles.brandingDot} />
-          <Text style={styles.brandingSubtext}>Community</Text>
+          <Text style={[styles.brandingText, { color: '#fff', opacity: 0.9 }]}>
+            LittleLoom
+          </Text>
+          <View style={[styles.brandingDot, { backgroundColor: 'rgba(255,255,255,0.6)' }]} />
+          <Text style={[styles.brandingSubtext, { color: 'rgba(255,255,255,0.7)' }]}>
+            Community
+          </Text>
         </View>
       </LinearGradient>
     </View>
@@ -359,6 +410,15 @@ export default function CommunitySplashScreen({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   gradient: {
     flex: 1,
@@ -430,7 +490,6 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 50,
-    backgroundColor: 'rgba(255,255,255,0.95)',
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
@@ -449,18 +508,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
-    borderColor: CommunityColors.primary,
   },
   onlineDot: {
     width: 12,
     height: 12,
     borderRadius: 6,
-    backgroundColor: CommunityColors.success,
+    backgroundColor: '#10b981',
   },
   title: {
     fontSize: 32,
     fontWeight: '900',
-    color: '#fff',
     marginBottom: 12,
     letterSpacing: -0.5,
     textAlign: 'center',
@@ -470,7 +527,6 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     fontSize: 16,
-    color: 'rgba(255,255,255,0.9)',
     textAlign: 'center',
     marginBottom: 24,
     lineHeight: 22,
@@ -493,12 +549,10 @@ const styles = StyleSheet.create({
   statNumber: {
     fontSize: 22,
     fontWeight: '800',
-    color: '#fff',
     marginBottom: 2,
   },
   statLabel: {
     fontSize: 12,
-    color: 'rgba(255,255,255,0.8)',
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -506,21 +560,17 @@ const styles = StyleSheet.create({
   statDivider: {
     width: 1,
     height: 30,
-    backgroundColor: 'rgba(255,255,255,0.3)',
     marginHorizontal: 16,
   },
   tipContainer: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 10,
     marginBottom: 24,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
   },
   tipText: {
     fontSize: 13,
-    color: 'rgba(255,255,255,0.85)',
     fontWeight: '500',
     textAlign: 'center',
   },
@@ -532,19 +582,16 @@ const styles = StyleSheet.create({
   progressBar: {
     width: '100%',
     height: 4,
-    backgroundColor: 'rgba(255,255,255,0.3)',
     borderRadius: 2,
     overflow: 'hidden',
     marginBottom: 12,
   },
   progressFill: {
     height: '100%',
-    backgroundColor: '#fff',
     borderRadius: 2,
   },
   progressText: {
     fontSize: 13,
-    color: 'rgba(255,255,255,0.8)',
     fontWeight: '600',
   },
   bottomBranding: {
@@ -557,19 +604,14 @@ const styles = StyleSheet.create({
   brandingText: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#fff',
-    opacity: 0.9,
   },
   brandingDot: {
     width: 4,
     height: 4,
     borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.6)',
   },
   brandingSubtext: {
     fontSize: 14,
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.7)',
   },
 });
-

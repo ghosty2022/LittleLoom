@@ -9,7 +9,6 @@ import {
   StatusBar,
   FlatList,
   SafeAreaView,
-  Animated,
   LayoutAnimation,
   Platform,
   UIManager,
@@ -20,9 +19,8 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { useCommunity, TOPIC_CATEGORIES, INITIAL_TOPICS, Topic } from '../../context/CommunityContext';
+import { TOPIC_CATEGORIES, INITIAL_TOPICS, type Topic } from '../../context/CommunityContext';
 import { useUser } from '../../context/UserContext';
-import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { updateSectionState } from '../../hooks/useIntelligentSplash';
 
@@ -53,90 +51,130 @@ interface CategoryWithTopics {
   expanded: boolean;
 }
 
+// ─── Topic Card Component ───
+const TopicCard = React.memo(({ 
+  topic, 
+  isSelected, 
+  onPress, 
+  isDark = false 
+}: { 
+  topic: CategoryTopic; 
+  isSelected: boolean; 
+  onPress: () => void; 
+  isDark?: boolean;
+}) => {
+  return (
+    <TouchableOpacity
+      style={[
+        styles.topicCard,
+        isSelected && styles.topicCardSelected,
+        { 
+          borderColor: isSelected ? topic.color : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'),
+          backgroundColor: isSelected ? `${topic.color}15` : (isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)'),
+        },
+      ]}
+      onPress={onPress}
+      activeOpacity={0.7}
+    >
+      <View style={styles.topicCardContent}>
+        <View style={[styles.topicEmojiWrap, { backgroundColor: isSelected ? `${topic.color}25` : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)') }]}>
+          <Text style={styles.topicEmoji}>{topic.emoji}</Text>
+        </View>
+        <Text style={[
+          styles.topicName, 
+          isSelected && { color: topic.color, fontWeight: '700' },
+          { color: isDark ? '#e5e7eb' : '#1a1a2e' }
+        ]}>
+          {topic.name}
+        </Text>
+        {isSelected && (
+          <View style={[styles.topicCheckmark, { backgroundColor: topic.color }]}>
+            <Ionicons name="checkmark" size={12} color="#fff" />
+          </View>
+        )}
+      </View>
+    </TouchableOpacity>
+  );
+});
+
+// ─── Category Header Component ───
+const CategoryHeader = React.memo(({ 
+  category, 
+  selectedCount, 
+  totalCount, 
+  isExpanded, 
+  onPress,
+  isDark = false 
+}: { 
+  category: CategoryWithTopics; 
+  selectedCount: number; 
+  totalCount: number; 
+  isExpanded: boolean; 
+  onPress: () => void;
+  isDark?: boolean;
+}) => {
+  return (
+    <TouchableOpacity
+      style={[styles.categoryHeader, { 
+        backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
+        borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
+      }]}
+      onPress={onPress}
+      activeOpacity={0.7}
+    >
+      <View style={styles.categoryHeaderContent}>
+        <View style={styles.categoryIconWrap}>
+          <Text style={styles.categoryEmoji}>{category.emoji}</Text>
+        </View>
+        <View style={styles.categoryHeaderInfo}>
+          <Text style={[styles.categoryName, { color: isDark ? '#fff' : '#1a1a2e' }]}>
+            {category.name}
+          </Text>
+          <Text style={[styles.categorySubtext, { color: isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)' }]}>
+            {selectedCount} selected • {totalCount} topics
+          </Text>
+        </View>
+        <View style={styles.categoryHeaderRight}>
+          {selectedCount > 0 && (
+            <View style={[styles.categorySelectedBadge, { backgroundColor: '#6366f1' }]}>
+              <Text style={styles.categorySelectedText}>{selectedCount}</Text>
+            </View>
+          )}
+          <Ionicons
+            name={isExpanded ? 'chevron-up' : 'chevron-down'}
+            size={20}
+            color={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.3)'}
+          />
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+});
+
 export default function CommunityOnboardingScreen({ navigation, route, onComplete }: any) {
   const isEditing = route?.params?.editing === true;
   const sweetAlert = useSweetAlert();
-  const { settings, themeColors, triggerHaptic } = useCustomization();
+  const { settings, triggerHaptic } = useCustomization();
+  const { updateSelectedTopics: updateUserTopics } = useUser();
   
-  // Safe access to community context - handle case where provider isn't ready
-  let communityContext;
-  try {
-    communityContext = useCommunity();
-  } catch (e) {
-    console.warn('[CommunityOnboarding] CommunityContext not ready, using fallback');
-    communityContext = null;
-  }
-  
-  const { 
-    updateSelectedTopics: updateCommunityTopics, 
-    INITIAL_TOPICS: ctxTopics, 
-    getSelectedTopics 
-  } = communityContext || { 
-    updateSelectedTopics: async () => {}, 
-    INITIAL_TOPICS: [], 
-    getSelectedTopics: () => [] 
-  };
-  
-  const { updateSelectedTopics: updateUserTopics, profile } = useUser();
-
   const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
-  const [searchQuery, setSearchQuery] = useState('');
+  const [allTopics, setAllTopics] = useState<Topic[]>(INITIAL_TOPICS);
+  const [isDark, setIsDark] = useState(false);
 
   const flatListRef = useRef<FlatList>(null);
-  const scrollY = useRef(new Animated.Value(0)).current;
 
-  // Use topics from context or fallback
-  const allTopics = useMemo(() => {
-    return ctxTopics && Array.isArray(ctxTopics) && ctxTopics.length > 0
-      ? ctxTopics
-      : INITIAL_TOPICS;
-  }, [ctxTopics]);
-
-  // Group topics by category
-  const categoriesWithTopics = useMemo((): CategoryWithTopics[] => {
-    const grouped = new Map<string, CategoryWithTopics>();
-
-    // Ensure we have valid topics
-    const validTopics = Array.isArray(allTopics) && allTopics.length > 0 ? allTopics : [];
-
-    // Initialize categories
-    TOPIC_CATEGORIES.forEach(cat => {
-      grouped.set(cat.id, {
-        ...cat,
-        topics: [],
-        expanded: expandedCategories.has(cat.id) || false,
-      });
-    });
-
-    // Group topics
-    validTopics.forEach(topic => {
-      const catId = (topic as any).category || 'community';
-      const category = grouped.get(catId);
-      if (category) {
-        category.topics.push({
-          id: topic.id,
-          name: topic.name,
-          emoji: topic.emoji,
-          color: topic.color,
-          description: topic.description,
-          category: catId,
-          subcategory: (topic as any).subcategory || '',
-        });
-      }
-    });
-
-    return Array.from(grouped.values())
-      .filter(cat => cat.topics.length > 0)
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [allTopics, expandedCategories]);
-
-  // Load saved topics
+  // Load theme and topics
   useEffect(() => {
-    const loadTopics = async () => {
+    const loadData = async () => {
       try {
+        // Load dark mode setting
+        const darkMode = settings?.darkMode ?? false;
+        setIsDark(darkMode);
+
+        // Load saved topics
         const [onboardingData, selectedData] = await Promise.all([
           AsyncStorage.getItem(ONBOARDING_KEY),
           AsyncStorage.getItem('@community_selected_topics_v2'),
@@ -155,46 +193,75 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
           topics = JSON.parse(selectedData);
         }
 
-        // Also check context for selected topics
-        if (topics.length === 0) {
-          const contextTopics = getSelectedTopics();
-          if (contextTopics.length > 0) {
-            topics = contextTopics;
-          }
-        }
-
         // Validate topics exist
-        const validTopics = topics.filter(id => allTopics.some(t => t.id === id));
+        const validTopics = topics.filter(id => INITIAL_TOPICS.some(t => t.id === id));
         setSelectedTopics(validTopics.slice(0, 5));
 
-        // Auto-expand categories with selected topics
+        // Auto-expand categories with selected topics or first category
         const expanded = new Set<string>();
-        validTopics.forEach(topicId => {
-          const topic = allTopics.find(t => t.id === topicId);
-          if (topic && (topic as any).category) {
-            expanded.add((topic as any).category);
+        if (validTopics.length > 0) {
+          validTopics.forEach(topicId => {
+            const topic = INITIAL_TOPICS.find(t => t.id === topicId);
+            if (topic && (topic as any).category) {
+              expanded.add((topic as any).category);
+            }
+          });
+        } else {
+          // Expand first category by default
+          const categories = getCategoriesWithTopics(INITIAL_TOPICS);
+          if (categories.length > 0) {
+            expanded.add(categories[0].id);
           }
-        });
-        
-        // If no topics selected, expand first category
-        if (validTopics.length === 0 && categoriesWithTopics.length > 0) {
-          expanded.add(categoriesWithTopics[0].id);
         }
-        
         setExpandedCategories(expanded);
       } catch (error) {
         console.error('Error loading topics:', error);
-        // Expand first category on error
-        if (categoriesWithTopics.length > 0) {
-          setExpandedCategories(new Set([categoriesWithTopics[0].id]));
-        }
       } finally {
         setIsLoading(false);
       }
     };
 
-    loadTopics();
-  }, [allTopics, categoriesWithTopics, getSelectedTopics]);
+    loadData();
+  }, []);
+
+  // Group topics by category
+  const getCategoriesWithTopics = useCallback((topics: Topic[]): CategoryWithTopics[] => {
+    const grouped = new Map<string, CategoryWithTopics>();
+
+    // Initialize categories
+    TOPIC_CATEGORIES.forEach(cat => {
+      grouped.set(cat.id, {
+        ...cat,
+        topics: [],
+        expanded: expandedCategories.has(cat.id) || false,
+      });
+    });
+
+    // Group topics
+    topics.forEach(topic => {
+      const catId = (topic as any).category || 'community';
+      const category = grouped.get(catId);
+      if (category) {
+        category.topics.push({
+          id: topic.id,
+          name: topic.name,
+          emoji: topic.emoji,
+          color: topic.color,
+          description: topic.description,
+          category: catId,
+          subcategory: (topic as any).subcategory || '',
+        });
+      }
+    });
+
+    return Array.from(grouped.values())
+      .filter(cat => cat.topics.length > 0)
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [expandedCategories]);
+
+  const categoriesWithTopics = useMemo(() => {
+    return getCategoriesWithTopics(allTopics);
+  }, [allTopics, getCategoriesWithTopics]);
 
   const toggleCategory = useCallback((categoryId: string) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -207,18 +274,18 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
       }
       return newSet;
     });
-    triggerHaptic('light');
-  }, [triggerHaptic]);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, []);
 
   const toggleTopic = useCallback((topicId: string) => {
-    triggerHaptic('light');
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
     setSelectedTopics(prev => {
       if (prev.includes(topicId)) {
         return prev.filter(id => id !== topicId);
       } else {
         if (prev.length >= 5) {
-          triggerHaptic('error');
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
           sweetAlert.alert(
             'Maximum Topics Reached',
             'You can select up to 5 topics. Remove one to add another.',
@@ -229,7 +296,7 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
         return [...prev, topicId];
       }
     });
-  }, [triggerHaptic, sweetAlert]);
+  }, [sweetAlert]);
 
   const handleComplete = useCallback(async () => {
     if (selectedTopics.length === 0) {
@@ -248,19 +315,9 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
       await AsyncStorage.setItem(ONBOARDING_KEY, JSON.stringify(data));
       await AsyncStorage.setItem('@community_selected_topics_v2', JSON.stringify(selectedTopics));
 
-      // Update contexts - with safety checks
+      // Update user topics
       try {
-        if (typeof updateCommunityTopics === 'function') {
-          await updateCommunityTopics(selectedTopics);
-        }
-      } catch (e) {
-        console.warn('[CommunityOnboarding] Failed to update community topics:', e);
-      }
-      
-      try {
-        if (typeof updateUserTopics === 'function') {
-          await updateUserTopics(selectedTopics);
-        }
+        await updateUserTopics(selectedTopics);
       } catch (e) {
         console.warn('[CommunityOnboarding] Failed to update user topics:', e);
       }
@@ -271,8 +328,8 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
         console.warn('[CommunityOnboarding] Failed to update section state:', e);
       }
 
-      triggerHaptic('success');
-      sweetAlert.toast('Topics Selected', `${selectedTopics.length} topics selected!`, 'success');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      sweetAlert.toast('Topics Selected', `${selectedTopics.length} topics selected!`);
 
       if (isEditing) {
         navigation?.goBack?.();
@@ -288,7 +345,7 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
     } finally {
       setIsSaving(false);
     }
-  }, [selectedTopics, isEditing, navigation, onComplete, updateCommunityTopics, updateUserTopics, triggerHaptic, sweetAlert]);
+  }, [selectedTopics, isEditing, navigation, onComplete, updateUserTopics, sweetAlert]);
 
   const handleSkip = useCallback(async () => {
     if (isEditing) return;
@@ -305,6 +362,7 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
         ? `We recommend selecting at least 1 topic. Would you like us to auto-select ${autoSelectTopics.length} recommended topics for you? You can always change these later.`
         : 'Selecting topics helps us show you relevant content. You can always change this later in your profile.',
       async () => {
+        setIsSaving(true);
         try {
           const topicsToSave = autoSelectTopics.length > 0 ? autoSelectTopics : [];
           
@@ -320,9 +378,8 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
           
           if (topicsToSave.length > 0) {
             await AsyncStorage.setItem('@community_selected_topics_v2', JSON.stringify(topicsToSave));
-            await updateCommunityTopics(topicsToSave);
             await updateUserTopics(topicsToSave);
-            sweetAlert.toast('Topics Selected', `${topicsToSave.length} topics were auto-selected for you.`, 'info');
+            sweetAlert.toast('Topics Selected', `${topicsToSave.length} topics were auto-selected for you.`);
           }
           
           await updateSectionState('community', { onboardingComplete: true, topicSelected: topicsToSave.length > 0 });
@@ -333,6 +390,8 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
         } catch (error) {
           console.error('Error skipping onboarding:', error);
           sweetAlert.alert('Error', 'Failed to complete onboarding. Please try again.', 'warning');
+        } finally {
+          setIsSaving(false);
         }
       },
       undefined,
@@ -340,105 +399,51 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
       'Choose Topics',
       true
     );
-  }, [isEditing, onComplete, categoriesWithTopics, updateCommunityTopics, updateUserTopics, sweetAlert]);
+  }, [isEditing, onComplete, categoriesWithTopics, updateUserTopics, sweetAlert]);
 
-  const renderCategory = useCallback(({ item, index }: { item: CategoryWithTopics; index: number }) => {
+  const renderCategory = useCallback(({ item }: { item: CategoryWithTopics }) => {
     const isExpanded = expandedCategories.has(item.id);
     const selectedInCategory = item.topics.filter(t => selectedTopics.includes(t.id));
     const totalInCategory = item.topics.length;
 
     return (
-      <View style={styles.categoryContainer}>
-        {/* Category Header */}
-        <TouchableOpacity
-          style={styles.categoryHeader}
+      <View style={[styles.categoryContainer, { 
+        backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
+        borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+      }]}>
+        <CategoryHeader
+          category={item}
+          selectedCount={selectedInCategory.length}
+          totalCount={totalInCategory}
+          isExpanded={isExpanded}
           onPress={() => toggleCategory(item.id)}
-          activeOpacity={0.7}
-        >
-          <LinearGradient
-            colors={['rgba(255,255,255,0.08)', 'rgba(255,255,255,0.02)']}
-            style={StyleSheet.absoluteFill}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          />
-          <View style={styles.categoryHeaderContent}>
-            <View style={styles.categoryIconWrap}>
-              <Text style={styles.categoryEmoji}>{item.emoji}</Text>
-            </View>
-            <View style={styles.categoryHeaderInfo}>
-              <Text style={styles.categoryName}>{item.name}</Text>
-              <Text style={styles.categorySubtext}>
-                {selectedInCategory.length} selected • {totalInCategory} topics
-              </Text>
-            </View>
-            <View style={styles.categoryHeaderRight}>
-              {selectedInCategory.length > 0 && (
-                <View style={styles.categorySelectedBadge}>
-                  <Text style={styles.categorySelectedText}>{selectedInCategory.length}</Text>
-                </View>
-              )}
-              <Ionicons
-                name={isExpanded ? 'chevron-up' : 'chevron-down'}
-                size={20}
-                color="rgba(255,255,255,0.6)"
-              />
-            </View>
-          </View>
-        </TouchableOpacity>
+          isDark={isDark}
+        />
 
-        {/* Category Topics - Expanded */}
         {isExpanded && (
           <View style={styles.categoryTopicsContainer}>
-            {item.topics.map((topic) => {
-              const isSelected = selectedTopics.includes(topic.id);
-              return (
-                <TouchableOpacity
-                  key={topic.id}
-                  style={[
-                    styles.topicCard,
-                    isSelected && styles.topicCardSelected,
-                    { borderColor: isSelected ? topic.color : 'rgba(255,255,255,0.08)' },
-                  ]}
-                  onPress={() => toggleTopic(topic.id)}
-                  activeOpacity={0.7}
-                >
-                  <LinearGradient
-                    colors={isSelected
-                      ? [topic.color + '40', topic.color + '20']
-                      : ['rgba(255,255,255,0.05)', 'rgba(255,255,255,0.01)']
-                    }
-                    style={StyleSheet.absoluteFill}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                  />
-                  <View style={styles.topicCardContent}>
-                    <View style={styles.topicEmojiWrap}>
-                      <Text style={styles.topicEmoji}>{topic.emoji}</Text>
-                    </View>
-                    <Text style={[styles.topicName, isSelected && { color: topic.color }]}>
-                      {topic.name}
-                    </Text>
-                    {isSelected && (
-                      <View style={styles.topicCheckmark}>
-                        <Ionicons name="checkmark-circle" size={20} color={topic.color} />
-                      </View>
-                    )}
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
+            {item.topics.map((topic) => (
+              <TopicCard
+                key={topic.id}
+                topic={topic}
+                isSelected={selectedTopics.includes(topic.id)}
+                onPress={() => toggleTopic(topic.id)}
+                isDark={isDark}
+              />
+            ))}
           </View>
         )}
       </View>
     );
-  }, [selectedTopics, expandedCategories, toggleCategory, toggleTopic]);
+  }, [selectedTopics, expandedCategories, toggleCategory, toggleTopic, isDark]);
 
   if (isLoading) {
     return (
-      <View style={[styles.container, styles.centered]}>
-        <LinearGradient colors={['#0f0f1e', '#1a1a2e', '#2d1b4e']} style={StyleSheet.absoluteFill} />
+      <View style={[styles.container, styles.centered, { backgroundColor: isDark ? '#0c0a09' : '#f5f5f5' }]}>
         <ActivityIndicator size="large" color="#6366f1" />
-        <Text style={styles.loadingText}>Loading topics...</Text>
+        <Text style={[styles.loadingText, { color: isDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.6)' }]}>
+          Loading topics...
+        </Text>
       </View>
     );
   }
@@ -446,30 +451,24 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
   const hasSelection = selectedTopics.length > 0;
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
-      <LinearGradient
-        colors={['#0f0f1e', '#1a1a2e', '#2d1b4e']}
-        style={StyleSheet.absoluteFill}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-      />
+    <View style={[styles.container, { backgroundColor: isDark ? '#0c0a09' : '#f5f5f5' }]}>
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
 
       {/* Header */}
-      <SafeAreaView style={styles.header}>
+      <SafeAreaView style={[styles.header, { backgroundColor: isDark ? 'rgba(12,10,9,0.95)' : 'rgba(255,255,255,0.95)' }]}>
         <View style={styles.headerContent}>
           {isEditing ? (
-            <TouchableOpacity onPress={() => navigation?.goBack?.()} style={styles.backButton}>
-              <Ionicons name="arrow-back" size={24} color="#fff" />
+            <TouchableOpacity onPress={() => navigation?.goBack?.()} style={[styles.backButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }]}>
+              <Ionicons name="arrow-back" size={24} color={isDark ? '#fff' : '#1a1a2e'} />
             </TouchableOpacity>
           ) : (
             <View style={styles.backButtonPlaceholder} />
           )}
           <View style={styles.headerCenter}>
-            <Text style={styles.headerTitle}>
+            <Text style={[styles.headerTitle, { color: isDark ? '#fff' : '#1a1a2e' }]}>
               {isEditing ? 'Edit Topics' : 'Choose Your Topics'}
             </Text>
-            <Text style={styles.headerSubtitle}>
+            <Text style={[styles.headerSubtitle, { color: isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)' }]}>
               {selectedTopics.length} of 5 selected
             </Text>
           </View>
@@ -478,7 +477,7 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
 
         {/* Progress Bar */}
         <View style={styles.progressContainer}>
-          <View style={styles.progressBar}>
+          <View style={[styles.progressBar, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }]}>
             <View style={[styles.progressFill, { width: `${(selectedTopics.length / 5) * 100}%` }]} />
           </View>
         </View>
@@ -492,43 +491,44 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
-        onScroll={Animated.event(
-          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-          { useNativeDriver: false }
-        )}
+        keyboardShouldPersistTaps="handled"
       />
 
       {/* Bottom Bar */}
-      <SafeAreaView style={styles.bottomBar}>
+      <SafeAreaView style={[styles.bottomBar, { 
+        backgroundColor: isDark ? 'rgba(12,10,9,0.95)' : 'rgba(255,255,255,0.95)',
+        borderTopColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+      }]}>
         <View style={styles.bottomBarContent}>
           {!isEditing && (
             <TouchableOpacity onPress={handleSkip} style={styles.skipButton}>
-              <Text style={styles.skipText}>Skip</Text>
+              <Text style={[styles.skipText, { color: isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)' }]}>
+                Skip
+              </Text>
             </TouchableOpacity>
           )}
 
           <TouchableOpacity
-            style={[styles.continueButton, !hasSelection && styles.continueButtonDisabled]}
+            style={[
+              styles.continueButton, 
+              !hasSelection && styles.continueButtonDisabled,
+              { backgroundColor: hasSelection ? '#6366f1' : (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)') }
+            ]}
             onPress={handleComplete}
             disabled={isSaving || !hasSelection}
           >
-            <LinearGradient
-              colors={hasSelection ? ['#6366f1', '#8b5cf6'] : ['rgba(255,255,255,0.2)', 'rgba(255,255,255,0.1)']}
-              style={styles.continueGradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-            >
-              {isSaving ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <>
-                  <Text style={styles.continueText}>
-                    {hasSelection ? `Continue (${selectedTopics.length})` : 'Select 1+ topics'}
-                  </Text>
+            {isSaving ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <View style={styles.continueContent}>
+                <Text style={[styles.continueText, { color: hasSelection ? '#fff' : (isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)') }]}>
+                  {hasSelection ? `Continue (${selectedTopics.length})` : 'Select 1+ topics'}
+                </Text>
+                {hasSelection && (
                   <Ionicons name="arrow-forward" size={20} color="#fff" />
-                </>
-              )}
-            </LinearGradient>
+                )}
+              </View>
+            )}
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -540,13 +540,16 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   centered: { justifyContent: 'center', alignItems: 'center' },
   loadingText: {
-    color: 'rgba(255,255,255,0.6)',
     fontSize: 14,
     fontWeight: '600',
     marginTop: 12,
   },
+
+  // Header
   header: {
     paddingTop: Platform.OS === 'ios' ? 0 : 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
   },
   headerContent: {
     flexDirection: 'row',
@@ -562,7 +565,6 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.08)',
   },
   backButtonPlaceholder: {
     width: 40,
@@ -571,21 +573,18 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: '800',
-    color: '#fff',
     letterSpacing: -0.3,
   },
   headerSubtitle: {
     fontSize: 13,
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.6)',
     marginTop: 2,
   },
   headerRight: { width: 40 },
-  progressContainer: { paddingHorizontal: 16, paddingBottom: 8 },
+  progressContainer: { paddingHorizontal: 16, paddingBottom: 12 },
   progressBar: {
     height: 4,
     borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.1)',
     overflow: 'hidden',
   },
   progressFill: {
@@ -593,23 +592,25 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     backgroundColor: '#6366f1',
   },
+
+  // List
   listContent: {
     paddingHorizontal: 16,
-    paddingTop: 8,
+    paddingTop: 12,
     paddingBottom: 120,
   },
+
+  // Category
   categoryContainer: {
     marginBottom: 12,
     borderRadius: 16,
     overflow: 'hidden',
-    backgroundColor: 'rgba(255,255,255,0.04)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
   },
   categoryHeader: {
     paddingVertical: 14,
     paddingHorizontal: 16,
-    overflow: 'hidden',
+    borderBottomWidth: 1,
   },
   categoryHeaderContent: {
     flexDirection: 'row',
@@ -620,7 +621,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: 'rgba(99,102,241,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -629,12 +630,10 @@ const styles = StyleSheet.create({
   categoryName: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#fff',
   },
   categorySubtext: {
     fontSize: 12,
     fontWeight: '500',
-    color: 'rgba(255,255,255,0.5)',
     marginTop: 1,
   },
   categoryHeaderRight: {
@@ -643,7 +642,6 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   categorySelectedBadge: {
-    backgroundColor: '#6366f1',
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 10,
@@ -655,6 +653,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#fff',
   },
+
+  // Topics
   categoryTopicsContainer: {
     paddingHorizontal: 12,
     paddingBottom: 12,
@@ -669,8 +669,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 10,
     borderWidth: 1.5,
-    overflow: 'hidden',
-    minHeight: 56,
+    minHeight: 52,
   },
   topicCardSelected: {
     borderWidth: 2,
@@ -684,7 +683,6 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 8,
-    backgroundColor: 'rgba(255,255,255,0.06)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -693,19 +691,23 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 13,
     fontWeight: '600',
-    color: '#e5e7eb',
   },
   topicCheckmark: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
     marginLeft: 'auto',
   },
+
+  // Bottom Bar
   bottomBar: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: 'rgba(15,15,30,0.95)',
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.06)',
     paddingTop: 12,
     paddingBottom: Platform.OS === 'ios' ? 20 : 16,
   },
@@ -722,26 +724,24 @@ const styles = StyleSheet.create({
   skipText: {
     fontSize: 15,
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.5)',
   },
   continueButton: {
     flex: 1,
     borderRadius: 14,
-    overflow: 'hidden',
-  },
-  continueButtonDisabled: {
-    opacity: 0.5,
-  },
-  continueGradient: {
-    flexDirection: 'row',
+    paddingVertical: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 14,
+  },
+  continueButtonDisabled: {
+    opacity: 0.6,
+  },
+  continueContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
   },
   continueText: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#fff',
   },
 });

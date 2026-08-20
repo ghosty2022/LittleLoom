@@ -1099,7 +1099,7 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
     { id: '4', type: 'health', title: 'Vaccination due in 3 days', description: '6-month vaccination appointment should be scheduled soon.', icon: '💉', color: '#ef4444', actionLabel: 'Schedule', priority: 'high' },
   ];
   // Real timeline events — synced with Timeline screen via TrackerContext
-  const { entries: trackerEntries } = useTracker();
+  const { entries: trackerEntries } = useTrackerProgressive();
   
   const timelineEvents: TimelineEvent[] = useMemo(() => {
     if (!trackerEntries || trackerEntries.length === 0) return [];
