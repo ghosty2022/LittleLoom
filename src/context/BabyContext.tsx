@@ -345,6 +345,56 @@ const getDateKey = (date: Date | string): string => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
+/* ─── Helper: Get authenticated user with session refresh ───────────────── */
+const getAuthenticatedUser = useCallback(async (): Promise<string | null> => {
+  // Try multiple approaches
+  let userId: string | null = null;
+  
+  // Approach 1: Try getUser first (most reliable)
+  try {
+    const { data: { user }, error } = await supabase.auth.getUser();
+    if (!error && user?.id) {
+      console.log('[BabyContext] getUser success:', user.id);
+      return user.id;
+    }
+    if (error) {
+      console.log('[BabyContext] getUser error:', error.message);
+    }
+  } catch (e) {
+    console.log('[BabyContext] getUser exception:', e);
+  }
+  
+  // Approach 2: Try getSession
+  try {
+    const { data: { session }, error } = await supabase.auth.getSession();
+    if (!error && session?.user?.id) {
+      console.log('[BabyContext] getSession success:', session.user.id);
+      return session.user.id;
+    }
+    if (error) {
+      console.log('[BabyContext] getSession error:', error.message);
+    }
+  } catch (e) {
+    console.log('[BabyContext] getSession exception:', e);
+  }
+  
+  // Approach 3: Try refreshSession
+  try {
+    const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+    if (!refreshError && refreshData?.session?.user?.id) {
+      console.log('[BabyContext] refreshSession success:', refreshData.session.user.id);
+      return refreshData.session.user.id;
+    }
+    if (refreshError) {
+      console.log('[BabyContext] refreshSession error:', refreshError.message);
+    }
+  } catch (e) {
+    console.log('[BabyContext] refreshSession exception:', e);
+  }
+  
+  return userId;
+}, []);
+
 /* Lazy imports for notification service */
 const getNotificationService = async () => {
   try {
@@ -419,6 +469,53 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const baby = state.babies.find(b => b.id === id);
     return baby?.age || '';
   }, [state.babies, state.currentBabyId]);
+
+  /* ─── Helper: Get authenticated user with retry ────────────────────── */
+  const getAuthenticatedUser = useCallback(async (): Promise<string | null> => {
+    // Approach 1: Try getUser first
+    try {
+      const { data: { user }, error } = await supabase.auth.getUser();
+      if (!error && user?.id) {
+        console.log('[BabyContext] getUser success:', user.id);
+        return user.id;
+      }
+      if (error) {
+        console.log('[BabyContext] getUser error:', error.message);
+      }
+    } catch (e) {
+      console.log('[BabyContext] getUser exception:', e);
+    }
+
+    // Approach 2: Try getSession
+    try {
+      const { data: { session }, error } = await supabase.auth.getSession();
+      if (!error && session?.user?.id) {
+        console.log('[BabyContext] getSession success:', session.user.id);
+        return session.user.id;
+      }
+      if (error) {
+        console.log('[BabyContext] getSession error:', error.message);
+      }
+    } catch (e) {
+      console.log('[BabyContext] getSession exception:', e);
+    }
+
+    // Approach 3: Try refreshSession
+    try {
+      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+      if (!refreshError && refreshData?.session?.user?.id) {
+        console.log('[BabyContext] refreshSession success:', refreshData.session.user.id);
+        return refreshData.session.user.id;
+      }
+      if (refreshError) {
+        console.log('[BabyContext] refreshSession error:', refreshError.message);
+      }
+    } catch (e) {
+      console.log('[BabyContext] refreshSession exception:', e);
+    }
+
+    return null;
+  }, []);
 
   /* ─── Helper: map Supabase baby row to BabyProfile ─────────────────── */
   const mapBabyRowToProfile = useCallback((row: any): BabyProfile => ({
@@ -671,35 +768,17 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setState(prev => ({ ...prev, isLoading: true }));
 
     try {
-      // Get current user
-      let userId: string | null = null;
+      // Get authenticated user with retry
+      const userId = await getAuthenticatedUser();
       
-      try {
-        const { data: { user }, error: authError } = await supabase.auth.getUser();
-        if (!authError && user?.id) {
-          userId = user.id;
-        }
-      } catch (e) {
-        console.warn('[BabyContext] getUser failed, trying getSession');
-      }
-
       if (!userId) {
-        try {
-          const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-          if (!sessionError && session?.user?.id) {
-            userId = session.user.id;
-          }
-        } catch (e) {
-          console.warn('[BabyContext] getSession failed');
-        }
-      }
-
-      if (!userId) {
-        console.warn('[BabyContext] No authenticated user');
+        console.warn('[BabyContext] No authenticated user after all attempts');
         setState(prev => ({ ...prev, isLoading: false }));
         loadInProgressRef.current = false;
         return;
       }
+
+      console.log('[BabyContext] Authenticated user:', userId);
 
       // Fetch babies where user is parent1 or parent2
       let allBabies: any[] = [];
@@ -770,13 +849,14 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const babies: BabyProfile[] = allBabies.map(mapBabyRowToProfile);
 
-      // Get current baby ID from app_settings
+      // Get current baby ID from app_settings with user_id
       let currentId: string | null = null;
       try {
         const { data: settingsData } = await supabase
           .from('app_settings')
           .select('value')
           .eq('key', 'current_baby_id')
+          .eq('user_id', userId)
           .maybeSingle();
         currentId = settingsData?.value || null;
       } catch (e) {
@@ -792,8 +872,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
             .upsert({
               key: 'current_baby_id',
               value: currentId,
+              user_id: userId,
               updated_at: new Date().toISOString(),
-            }, { onConflict: 'key' });
+            }, { onConflict: 'key, user_id' });
         } catch (e) {
           console.warn('[BabyContext] Failed to set current_baby_id:', e);
         }
@@ -801,13 +882,14 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const currentBaby = babies.find(b => b.id === currentId) || babies[0] || null;
 
-      // Check if user has skipped baby selection
+      // Check if user has skipped baby selection with user_id
       let hasSkippedBaby = false;
       try {
         const { data: skipData } = await supabase
           .from('app_settings')
           .select('value')
           .eq('key', 'has_skipped_baby')
+          .eq('user_id', userId)
           .maybeSingle();
         hasSkippedBaby = skipData?.value === 'true';
       } catch (e) {
@@ -845,7 +927,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       loadInProgressRef.current = false;
     }
-  }, [mapBabyRowToProfile, loadAllBabyData]);
+  }, [mapBabyRowToProfile, loadAllBabyData, getAuthenticatedUser]);
 
   /* ---- Initial load ---- */
   useEffect(() => {
@@ -931,7 +1013,6 @@ const createBaby = useCallback(async (
   data: Omit<BabyProfile, 'id' | 'streak' | 'milestones' | 'photos' | 'createdAt' | 'age' | 'lastUpdated' | 'parent1Id'>
 ): Promise<string | null> => {
   if (isCreatingRef.current) {
-    // Use toast instead of Alert
     console.log('[BabyContext] Creation already in progress');
     return null;
   }
@@ -951,19 +1032,8 @@ const createBaby = useCallback(async (
   try {
     const newId = generateId();
     
-    // Get current authenticated user
-    let userId: string | null = null;
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user?.id) userId = user.id;
-    } catch (e) {}
-    
-    if (!userId) {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user?.id) userId = session.user.id;
-      } catch (e) {}
-    }
+    // Get current authenticated user using helper
+    const userId = await getAuthenticatedUser();
     
     if (!userId) {
       console.error('[BabyContext] No authenticated user for createBaby');
@@ -983,6 +1053,7 @@ const createBaby = useCallback(async (
       .eq('is_active', true);
 
     if (existingBabies && existingBabies.length > 0) {
+      console.log('[BabyContext] Duplicate baby found');
       isCreatingRef.current = false;
       return null;
     }
@@ -1040,7 +1111,7 @@ const createBaby = useCallback(async (
       .eq('parent1_id', userId)
       .eq('is_active', true);
 
-    const isFirstBaby = (count || 0) <= 1; // including the one we just created
+    const isFirstBaby = (count || 0) <= 1;
     const newCurrentId = isFirstBaby ? result.id : (state.currentBabyId || result.id);
 
     // Set current baby in app_settings
@@ -1094,7 +1165,7 @@ const createBaby = useCallback(async (
     console.error('[BabyContext] Create baby error:', error);
     return null;
   }
-}, [calculateAge, loadAllBabyData, state.currentBabyId, loadBabies]);
+}, [calculateAge, loadAllBabyData, state.currentBabyId, loadBabies, getAuthenticatedUser]);
 
   /* ---- Update baby ---- */
   const updateBaby = useCallback(async (id: string, updates: Partial<BabyProfile>) => {
