@@ -1,10 +1,15 @@
+// src/context/AudioContext.tsx
+// Full Supabase implementation with storage support
+
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getAppSetting, setAppSetting, deleteAppSetting } from '@/database/dbHelpers';
-import { useBaby } from './BabyContext';
 import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
+import { supabase } from '@/utils/supabase';
+import { useBaby } from './BabyContext';
+import { decode } from 'base64-arraybuffer';
 
 export const SOUND_TRACKS = [
   { id: '1', title: 'White Noise', artist: 'Sleep Aid', duration: '3:45', color: '#a1c4fd', image: 'https://images.unsplash.com/photo-1519834785169-98be25ec3f84?w=400&q=80', uri: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3' },
@@ -25,7 +30,8 @@ export interface AudioTrack {
   color: string;
   image: string;
   uri: string;
-  source?: 'local' | 'spotify' | 'apple' | 'system';
+  source?: 'local' | 'spotify' | 'apple' | 'system' | 'supabase';
+  storagePath?: string;
 }
 
 export type PlayerMode = 'ball' | 'mini' | 'full' | 'hidden';
@@ -49,7 +55,7 @@ interface AudioContextType {
   favorites: string[];
   importedTracks: AudioTrack[];
   sleepTimer: SleepTimer;
-  
+
   playTrack: (track: AudioTrack) => void;
   togglePlayback: () => void;
   pause: () => void;
@@ -58,22 +64,22 @@ interface AudioContextType {
   previousTrack: () => void;
   seekTo: (position: number) => void;
   shuffle: () => void;
-  
+
   setPlayerMode: (mode: PlayerMode) => void;
   expandPlayer: () => void;
   minimizePlayer: () => void;
   collapseToBall: () => void;
   closePlayer: () => void;
-  
+
   toggleFavorite: (trackId: string) => void;
   isFavorite: (trackId: string) => boolean;
-  
+
   addImportedTrack: (track: Omit<AudioTrack, 'id'>) => void;
   removeImportedTrack: (id: string) => void;
   importFromDevice: () => Promise<void>;
-  
+
   setSleepTimer: (minutes: number) => void;
-  
+
   formatTime: (millis: number) => string;
   progress: number;
   formattedPosition: string;
@@ -85,10 +91,11 @@ const AudioContext = createContext<AudioContextType | null>(null);
 const FAVORITES_STORAGE_KEY = '@littleloom_favorites_';
 const IMPORTED_STORAGE_KEY = '@littleloom_imported_tracks';
 const SLEEP_TIMER_KEY = '@littleloom_sleep_timer';
+const AUDIO_BUCKET = 'audio';
 
 export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { currentBaby } = useBaby();
-  
+
   const [currentTrack, setCurrentTrack] = useState<AudioTrack | null>(null);
   const [playerMode, setPlayerMode] = useState<PlayerMode>('hidden');
   const [queue, setQueue] = useState<AudioTrack[]>(SOUND_TRACKS);
@@ -97,15 +104,15 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [favorites, setFavorites] = useState<string[]>([]);
   const [importedTracks, setImportedTracks] = useState<AudioTrack[]>([]);
   const [sleepTimer, setSleepTimerState] = useState<SleepTimer>({ enabled: false, duration: 0 });
-  
+
   const player = useAudioPlayer(currentTrack?.uri ?? '');
   const status = useAudioPlayerStatus(player);
-  
+
   const isPlaying = status?.playing ?? false;
-  const duration = (status?.duration ?? 0) * 1000;   // seconds → ms
-  const position = (status?.currentTime ?? 0) * 1000; // seconds → ms
+  const duration = (status?.duration ?? 0) * 1000;
+  const position = (status?.currentTime ?? 0) * 1000;
   const isLoading = status?.isBuffering ?? false;
-  
+
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => { if (currentBaby?.id) loadFavorites(); }, [currentBaby?.id]);
@@ -114,7 +121,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   useEffect(() => {
     if (!sleepTimer.enabled || !sleepTimer.endTime) return;
-    
+
     const checkTimer = () => {
       if (Date.now() >= sleepTimer.endTime!) {
         stop();
@@ -128,41 +135,67 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [sleepTimer]);
 
+  /* ─── Load Favorites ─────────────────────────────────────────────────── */
+
   const loadFavorites = async () => {
     if (!currentBaby?.id) return;
     try {
-      const stored = await getAppSetting(FAVORITES_STORAGE_KEY + currentBaby.id);
+      const stored = await AsyncStorage.getItem(FAVORITES_STORAGE_KEY + currentBaby.id);
       if (stored) setFavorites(JSON.parse(stored));
     } catch (e) { console.error('Error loading favorites:', e); }
   };
 
+  /* ─── Load Imported Tracks ──────────────────────────────────────────── */
+
   const loadImportedTracks = async () => {
     try {
-      const stored = await getAppSetting(IMPORTED_STORAGE_KEY);
-      if (stored) setImportedTracks(JSON.parse(stored));
+      const stored = await AsyncStorage.getItem(IMPORTED_STORAGE_KEY);
+      if (stored) {
+        const tracks = JSON.parse(stored);
+        // Verify tracks still exist in storage
+        const validTracks = [];
+        for (const track of tracks) {
+          if (track.storagePath) {
+            const { data } = supabase.storage.from(AUDIO_BUCKET).getPublicUrl(track.storagePath);
+            if (data?.publicUrl) {
+              track.uri = data.publicUrl;
+              validTracks.push(track);
+            }
+          } else {
+            validTracks.push(track);
+          }
+        }
+        setImportedTracks(validTracks);
+      }
     } catch (e) { console.error('Error loading imported tracks:', e); }
   };
 
+  /* ─── Load Sleep Timer ───────────────────────────────────────────────── */
+
   const loadSleepTimer = async () => {
     try {
-      const stored = await getAppSetting(SLEEP_TIMER_KEY);
+      const stored = await AsyncStorage.getItem(SLEEP_TIMER_KEY);
       if (stored) {
         const timer = JSON.parse(stored);
         if (timer.enabled && timer.endTime > Date.now()) {
           setSleepTimerState(timer);
         } else {
-          await deleteAppSetting(SLEEP_TIMER_KEY);
+          await AsyncStorage.removeItem(SLEEP_TIMER_KEY);
         }
       }
     } catch (e) { console.error('Error loading sleep timer:', e); }
   };
 
+  /* ─── Save Favorites ────────────────────────────────────────────────── */
+
   const saveFavorites = async (newFavorites: string[]) => {
     if (!currentBaby?.id) return;
     try {
-      await setAppSetting(FAVORITES_STORAGE_KEY + currentBaby.id, JSON.stringify(newFavorites));
+      await AsyncStorage.setItem(FAVORITES_STORAGE_KEY + currentBaby.id, JSON.stringify(newFavorites));
     } catch (e) { console.error('Error saving favorites:', e); }
   };
+
+  /* ─── Play Track ─────────────────────────────────────────────────────── */
 
   const playTrack = useCallback((track: AudioTrack) => {
     try {
@@ -171,7 +204,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       player.replace(track.uri);
       player.play();
       setPlayerMode('mini');
-      
+
       const allTracks = [...SOUND_TRACKS, ...importedTracks];
       const index = allTracks.findIndex(t => t.id === track.id);
       if (index !== -1) setCurrentIndex(index);
@@ -179,6 +212,8 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       console.error('Error playing track:', error);
     }
   }, [importedTracks, player]);
+
+  /* ─── Toggle Playback ────────────────────────────────────────────────── */
 
   const togglePlayback = useCallback(() => {
     try {
@@ -193,40 +228,52 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, [isPlaying, player]);
 
+  /* ─── Pause ─────────────────────────────────────────────────────────── */
+
   const pause = useCallback(() => {
     if (isPlaying) player.pause();
   }, [isPlaying, player]);
+
+  /* ─── Stop ──────────────────────────────────────────────────────────── */
 
   const stop = useCallback(() => {
     player.pause();
     player.seekTo(0);
   }, [player]);
 
+  /* ─── Next Track ────────────────────────────────────────────────────── */
+
   const nextTrack = useCallback(() => {
     const allTracks = [...SOUND_TRACKS, ...importedTracks];
     if (allTracks.length === 0) return;
-    
+
     const nextIndex = (currentIndex + 1) % allTracks.length;
     setCurrentIndex(nextIndex);
     playTrack(allTracks[nextIndex]);
   }, [currentIndex, importedTracks, playTrack]);
 
+  /* ─── Previous Track ────────────────────────────────────────────────── */
+
   const previousTrack = useCallback(() => {
     const allTracks = [...SOUND_TRACKS, ...importedTracks];
     if (allTracks.length === 0) return;
-    
+
     const prevIndex = currentIndex === 0 ? allTracks.length - 1 : currentIndex - 1;
     setCurrentIndex(prevIndex);
     playTrack(allTracks[prevIndex]);
   }, [currentIndex, importedTracks, playTrack]);
 
+  /* ─── Seek To ───────────────────────────────────────────────────────── */
+
   const seekTo = useCallback((positionMillis: number) => {
-    player.seekTo(positionMillis / 1000); // ms → seconds
+    player.seekTo(positionMillis / 1000);
   }, [player]);
+
+  /* ─── Shuffle ───────────────────────────────────────────────────────── */
 
   const shuffle = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    
+
     const allTracks = [...SOUND_TRACKS, ...importedTracks];
     if (!isShuffled) {
       const shuffled = [...allTracks].sort(() => Math.random() - 0.5);
@@ -241,15 +288,18 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, [isShuffled, currentTrack, importedTracks]);
 
+  /* ─── Player Mode ───────────────────────────────────────────────────── */
+
   const expandPlayer = useCallback(() => setPlayerMode('full'), []);
   const minimizePlayer = useCallback(() => setPlayerMode('mini'), []);
   const collapseToBall = useCallback(() => setPlayerMode('ball'), []);
-  
   const closePlayer = useCallback(() => {
     stop();
     setPlayerMode('hidden');
     setCurrentTrack(null);
   }, [stop]);
+
+  /* ─── Toggle Favorite ───────────────────────────────────────────────── */
 
   const toggleFavorite = useCallback(async (trackId: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -260,26 +310,66 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     await saveFavorites(newFavorites);
   }, [favorites]);
 
+  /* ─── Is Favorite ───────────────────────────────────────────────────── */
+
   const isFavorite = useCallback((trackId: string) => favorites.includes(trackId), [favorites]);
+
+  /* ─── Add Imported Track ────────────────────────────────────────────── */
 
   const addImportedTrack = useCallback(async (track: Omit<AudioTrack, 'id'>) => {
     const newTrack: AudioTrack = { ...track, id: `imported_${Date.now()}` };
+
+    // Upload to Supabase Storage if local file
+    if (track.uri && track.uri.startsWith('file://')) {
+      try {
+        const fileData = await FileSystem.readAsStringAsync(track.uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        const fileExt = track.uri.split('.').pop() || 'mp3';
+        const storagePath = `tracks/${newTrack.id}.${fileExt}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from(AUDIO_BUCKET)
+          .upload(storagePath, decode(fileData), {
+            contentType: `audio/${fileExt}`,
+            cacheControl: '3600',
+          });
+
+        if (!uploadError) {
+          const { data: urlData } = supabase.storage.from(AUDIO_BUCKET).getPublicUrl(storagePath);
+          newTrack.uri = urlData.publicUrl;
+          newTrack.storagePath = storagePath;
+          newTrack.source = 'supabase';
+        }
+      } catch (error) {
+        console.error('Error uploading audio:', error);
+      }
+    }
+
     const updated = [...importedTracks, newTrack];
     setImportedTracks(updated);
-    await setAppSetting(IMPORTED_STORAGE_KEY, JSON.stringify(updated));
+    await AsyncStorage.setItem(IMPORTED_STORAGE_KEY, JSON.stringify(updated));
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }, [importedTracks]);
 
+  /* ─── Remove Imported Track ─────────────────────────────────────────── */
+
   const removeImportedTrack = useCallback(async (id: string) => {
+    const track = importedTracks.find(t => t.id === id);
+    if (track?.storagePath) {
+      await supabase.storage.from(AUDIO_BUCKET).remove([track.storagePath]);
+    }
     const updated = importedTracks.filter(t => t.id !== id);
     setImportedTracks(updated);
-    await setAppSetting(IMPORTED_STORAGE_KEY, JSON.stringify(updated));
+    await AsyncStorage.setItem(IMPORTED_STORAGE_KEY, JSON.stringify(updated));
   }, [importedTracks]);
+
+  /* ─── Import From Device ────────────────────────────────────────────── */
 
   const importFromDevice = useCallback(async () => {
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      
+
       const result = await DocumentPicker.getDocumentAsync({
         type: 'audio/*',
         copyToCacheDirectory: true,
@@ -290,7 +380,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       const file = result.assets[0];
       const fileName = file.name.replace(/\.[^/.]+$/, "");
-      
+
       const newTrack: AudioTrack = {
         id: `imported_${Date.now()}`,
         title: fileName,
@@ -309,20 +399,24 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, [addImportedTrack]);
 
+  /* ─── Set Sleep Timer ───────────────────────────────────────────────── */
+
   const setSleepTimer = useCallback(async (minutes: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    
+
     if (minutes === 0) {
       setSleepTimerState({ enabled: false, duration: 0 });
-      await deleteAppSetting(SLEEP_TIMER_KEY);
+      await AsyncStorage.removeItem(SLEEP_TIMER_KEY);
       if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     } else {
       const endTime = Date.now() + (minutes * 60 * 1000);
       const timerData = { enabled: true, duration: minutes, endTime };
       setSleepTimerState(timerData);
-      await setAppSetting(SLEEP_TIMER_KEY, JSON.stringify(timerData));
+      await AsyncStorage.setItem(SLEEP_TIMER_KEY, JSON.stringify(timerData));
     }
   }, []);
+
+  /* ─── Format Time ───────────────────────────────────────────────────── */
 
   const formatTime = useCallback((millis: number = 0) => {
     const totalSeconds = Math.floor(millis / 1000);
@@ -331,15 +425,21 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   }, []);
 
+  /* ─── Computed Values ───────────────────────────────────────────────── */
+
   const progress = duration > 0 ? (position / duration) * 100 : 0;
   const formattedPosition = formatTime(position);
   const formattedDuration = formatTime(duration);
+
+  /* ─── Auto-next when track finishes ────────────────────────────────── */
 
   useEffect(() => {
     if (status?.didJustFinish) {
       nextTrack();
     }
   }, [status?.didJustFinish, nextTrack]);
+
+  /* ─── Context Value ─────────────────────────────────────────────────── */
 
   const value: AudioContextType = {
     isPlaying,

@@ -1,10 +1,12 @@
+// src/context/UserContext.tsx
+// Full Supabase implementation
+
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
-import { getAppSetting, setAppSetting } from '@/database/dbHelpers';
-import { deleteAppSetting } from '@/database/dbHelpers';
+import { supabase } from '@/utils/supabase';
 import { useAuth } from './AuthContext';
 import { useSweetAlert } from '@/components/SweetAlert';
 import { UserRole, Permission, ROLE_PERMISSIONS } from '../types/roles';
@@ -16,12 +18,21 @@ const ASYNC_KEYS = {
   COMMUNITY_SELECTED_TOPICS: '@community_selected_topics',
 } as const;
 
-// Migrated from SecureStore to app_settings table for cross-device sync
-// PIN and sensitive auth tokens still use SecureStore (in AuthContext)
+// dbStorage now uses Supabase
 const dbStorage = {
   async getItem(key: string): Promise<string | null> {
     try {
-      return await getAppSetting(key);
+      const { data, error } = await supabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', key)
+        .maybeSingle();
+      
+      if (error) {
+        console.warn(`DB getItem failed for ${key}:`, error.message);
+        return null;
+      }
+      return data?.value || null;
     } catch (error) {
       console.warn(`DB getItem failed for ${key}:`, error);
       return null;
@@ -29,7 +40,18 @@ const dbStorage = {
   },
   async setItem(key: string, value: string): Promise<boolean> {
     try {
-      await setAppSetting(key, value);
+      const { error } = await supabase
+        .from('app_settings')
+        .upsert({
+          key,
+          value,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'key' });
+      
+      if (error) {
+        console.warn(`DB setItem failed for ${key}:`, error.message);
+        return false;
+      }
       return true;
     } catch (error) {
       console.warn(`DB setItem failed for ${key}:`, error);
@@ -38,7 +60,15 @@ const dbStorage = {
   },
   async deleteItem(key: string): Promise<boolean> {
     try {
-      await deleteAppSetting(key);
+      const { error } = await supabase
+        .from('app_settings')
+        .delete()
+        .eq('key', key);
+      
+      if (error) {
+        console.warn(`DB deleteItem failed for ${key}:`, error.message);
+        return false;
+      }
       return true;
     } catch (error) {
       console.warn(`DB deleteItem failed for ${key}:`, error);
@@ -218,10 +248,30 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [isAuthenticated, authLoading, isReady, authProfile]);
 
+  /* ─── Save Community Profile ────────────────────────────────────────── */
+
   const saveCommunityProfile = async (profile: CommunityProfile): Promise<void> => {
-    const profileStr = JSON.stringify(profile);
-    await dbStorage.setItem(ASYNC_KEYS.COMMUNITY_PROFILE, profileStr);
+    await dbStorage.setItem(ASYNC_KEYS.COMMUNITY_PROFILE, JSON.stringify(profile));
+    
+    // Also save to profiles table in Supabase
+    await supabase
+      .from('profiles')
+      .update({
+        community_display_name: profile.displayName,
+        community_handle: profile.handle,
+        community_bio: profile.bio,
+        community_avatar: profile.avatar,
+        community_stats: profile.stats,
+        is_verified: profile.isVerified,
+        is_public: profile.preferences.isPublic,
+        allow_messages: profile.preferences.allowMessages,
+        show_activity_status: profile.preferences.showLocation,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', profile.userId);
   };
+
+  /* ─── Create Default Community Profile ──────────────────────────────── */
 
   const createDefaultCommunityProfile = (userProfile: UserProfile): CommunityProfile => ({
     userId: userProfile.id,
@@ -245,10 +295,13 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     },
   });
 
+  /* ─── Save Username Registry ────────────────────────────────────────── */
+
   const saveUsernameRegistry = async (registry: UsernameRegistry): Promise<void> => {
-    const registryStr = JSON.stringify(registry);
-    await dbStorage.setItem(ASYNC_KEYS.USERNAME_REGISTRY, registryStr);
+    await dbStorage.setItem(ASYNC_KEYS.USERNAME_REGISTRY, JSON.stringify(registry));
   };
+
+  /* ─── Load User ──────────────────────────────────────────────────────── */
 
   const loadUser = useCallback(async () => {
     setState(prev => ({ ...prev, isLoading: true }));
@@ -263,26 +316,74 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       let usernameRegistry: UsernameRegistry = {};
 
       if (authProfile) {
-        profile = {
-          id: authProfile.id,
-          fullName: authProfile.fullName,
-          email: authProfile.email,
-          phoneNumber: authProfile.phoneNumber,
-          avatar: authProfile.avatar,
-          role: authProfile.role as UserRole | 'parent1' | 'parent2' | 'guardian',
-          preferences: {
-            notifications: authProfile.preferences?.notifications ?? true,
-            darkMode: (authProfile.preferences?.darkMode as 'system' | 'light' | 'dark') ?? 'system',
-            units: 'metric',
-          },
-          createdAt: authProfile.createdAt,
-          lastLoginAt: new Date().toISOString(),
-        };
+        // Fetch full profile from Supabase
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', authProfile.id)
+          .single();
+
+        if (!profileError && profileData) {
+          profile = {
+            id: authProfile.id,
+            fullName: profileData.full_name || authProfile.fullName,
+            email: profileData.email || authProfile.email,
+            phoneNumber: profileData.phone_number || authProfile.phoneNumber,
+            avatar: profileData.avatar || authProfile.avatar,
+            role: profileData.role || authProfile.role,
+            preferences: {
+              notifications: profileData.notifications_enabled ?? true,
+              darkMode: 'system',
+              units: 'metric',
+            },
+            createdAt: profileData.created_at || authProfile.createdAt,
+            lastLoginAt: new Date().toISOString(),
+          };
+        } else {
+          // Fallback to auth profile
+          profile = {
+            id: authProfile.id,
+            fullName: authProfile.fullName,
+            email: authProfile.email,
+            phoneNumber: authProfile.phoneNumber,
+            avatar: authProfile.avatar,
+            role: authProfile.role,
+            preferences: {
+              notifications: authProfile.preferences?.notifications ?? true,
+              darkMode: 'system',
+              units: 'metric',
+            },
+            createdAt: authProfile.createdAt,
+            lastLoginAt: new Date().toISOString(),
+          };
+        }
       }
 
       if (communityStr) {
         try { communityProfile = JSON.parse(communityStr); } catch (e) { /* ignore */ }
       } else if (profile) {
+        // Check if profile exists in Supabase
+        const { data: existingProfile, error: profileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', profile.id)
+          .single();
+
+        if (profileError || !existingProfile) {
+          // Create profile in Supabase
+          await supabase
+            .from('profiles')
+            .insert({
+              id: profile.id,
+              full_name: profile.fullName,
+              email: profile.email,
+              avatar: profile.avatar,
+              role: profile.role,
+              created_at: profile.createdAt,
+              updated_at: new Date().toISOString(),
+            });
+        }
+
         communityProfile = createDefaultCommunityProfile(profile);
         await saveCommunityProfile(communityProfile);
       }
@@ -312,8 +413,10 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [authProfile]);
 
+  /* ─── Check Username Available ──────────────────────────────────────── */
+
   const checkUsernameAvailable = useCallback(async (
-    username: string, 
+    username: string,
     currentUserId?: string
   ): Promise<{ available: boolean; message: string }> => {
     const trimmed = username.trim().toLowerCase().replace(/^@/, '');
@@ -340,6 +443,18 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { available: false, message: 'This username is reserved' };
     }
 
+    // Check Supabase profiles table
+    const { data: existing, error } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('community_handle', `@${trimmed}`)
+      .maybeSingle();
+
+    if (!error && existing && existing.id !== currentUserId) {
+      return { available: false, message: 'This username is already taken' };
+    }
+
+    // Check local registry as fallback
     const registry = state.usernameRegistry;
     const existingUserId = registry[trimmed];
 
@@ -350,21 +465,38 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { available: true, message: 'Username is available' };
   }, [state.usernameRegistry]);
 
+  /* ─── Register Username ────────────────────────────────────────────── */
+
   const registerUsername = useCallback(async (username: string, userId: string): Promise<boolean> => {
     const trimmed = username.trim().toLowerCase().replace(/^@/, '');
-    
+
     while (usernameLockRef.current) {
       await new Promise(resolve => setTimeout(resolve, 50));
     }
-    
+
     usernameLockRef.current = true;
-    
+
     try {
       const check = await checkUsernameAvailable(trimmed, userId);
       if (!check.available) {
         return false;
       }
-      
+
+      // Update Supabase profile
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          community_handle: `@${trimmed}`,
+          community_username: trimmed,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', userId);
+
+      if (error) {
+        console.error('Register username error:', error.message);
+        return false;
+      }
+
       const newRegistry = { ...state.usernameRegistry, [trimmed]: userId };
       await saveUsernameRegistry(newRegistry);
       setState(prev => ({ ...prev, usernameRegistry: newRegistry }));
@@ -374,15 +506,17 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [state.usernameRegistry, checkUsernameAvailable]);
 
+  /* ─── Unregister Username ──────────────────────────────────────────── */
+
   const unregisterUsername = useCallback(async (username: string): Promise<boolean> => {
     const trimmed = username.trim().toLowerCase().replace(/^@/, '');
-    
+
     while (usernameLockRef.current) {
       await new Promise(resolve => setTimeout(resolve, 50));
     }
-    
+
     usernameLockRef.current = true;
-    
+
     try {
       const newRegistry = { ...state.usernameRegistry };
       delete newRegistry[trimmed];
@@ -394,33 +528,50 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [state.usernameRegistry]);
 
+  /* ─── Update Username ──────────────────────────────────────────────── */
+
   const updateUsername = useCallback(async (
-    oldUsername: string, 
-    newUsername: string, 
+    oldUsername: string,
+    newUsername: string,
     userId: string
   ): Promise<{ success: boolean; message: string }> => {
     while (usernameLockRef.current) {
       await new Promise(resolve => setTimeout(resolve, 50));
     }
-    
+
     usernameLockRef.current = true;
-    
+
     try {
       const check = await checkUsernameAvailable(newUsername, userId);
       if (!check.available) {
         return { success: false, message: check.message };
       }
-      
+
       const oldTrimmed = oldUsername.trim().toLowerCase().replace(/^@/, '');
       const newTrimmed = newUsername.trim().toLowerCase().replace(/^@/, '');
-      
+
+      // Update Supabase profile
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          community_handle: `@${newTrimmed}`,
+          community_username: newTrimmed,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', userId);
+
+      if (error) {
+        console.error('Update username error:', error.message);
+        return { success: false, message: 'Failed to update username' };
+      }
+
       const newRegistry = { ...state.usernameRegistry };
       delete newRegistry[oldTrimmed];
       newRegistry[newTrimmed] = userId;
-      
+
       await saveUsernameRegistry(newRegistry);
       setState(prev => ({ ...prev, usernameRegistry: newRegistry }));
-      
+
       return { success: true, message: 'Username updated successfully' };
     } catch (error) {
       console.error('updateUsername error:', error);
@@ -430,12 +581,33 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [state.usernameRegistry, checkUsernameAvailable]);
 
+  /* ─── Update Profile ────────────────────────────────────────────────── */
+
   const updateProfile = useCallback(async (updates: Partial<UserProfile>) => {
     if (!state.profile) return;
 
     try {
       const newProfile = { ...state.profile, ...updates };
-      
+
+      // Update Supabase profiles table
+      const dbUpdates: Record<string, unknown> = {
+        updated_at: new Date().toISOString(),
+      };
+      if (updates.fullName !== undefined) dbUpdates.full_name = updates.fullName;
+      if (updates.email !== undefined) dbUpdates.email = updates.email;
+      if (updates.phoneNumber !== undefined) dbUpdates.phone_number = updates.phoneNumber;
+      if (updates.avatar !== undefined) dbUpdates.avatar = updates.avatar;
+      if (updates.role !== undefined) dbUpdates.role = updates.role;
+
+      const { error } = await supabase
+        .from('profiles')
+        .update(dbUpdates)
+        .eq('id', state.profile.id);
+
+      if (error) {
+        console.error('Update profile error:', error.message);
+      }
+
       try {
         if (updateAuthProfile) {
           await updateAuthProfile(updates);
@@ -459,6 +631,8 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       sweetAlert.alert('Error', 'Failed to update profile', 'warning');
     }
   }, [state.profile, state.permissions, updateAuthProfile]);
+
+  /* ─── Persist Picked Image ─────────────────────────────────────────── */
 
   const COMMUNITY_AVATARS_DIR = FileSystem.documentDirectory + 'community_avatars/';
 
@@ -490,12 +664,34 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const fileInfo = await FileSystem.getInfoAsync(processedUri);
       if (!fileInfo.exists) return null;
 
-      return processedUri;
+      // Also upload to Supabase Storage
+      const fileData = await FileSystem.readAsStringAsync(processedUri, { encoding: FileSystem.EncodingType.Base64 });
+      const storagePath = `avatars/${userId}_${Date.now()}.${safeExt}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(storagePath, decode(fileData), {
+          contentType: `image/${safeExt}`,
+          cacheControl: '3600',
+        });
+
+      if (uploadError) {
+        console.error('Avatar upload to storage error:', uploadError.message);
+        return processedUri;
+      }
+
+      const { data: urlData } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(storagePath);
+
+      return urlData.publicUrl || processedUri;
     } catch (error) {
       console.error('[persistPickedImage] Failed:', error);
       return null;
     }
   };
+
+  /* ─── Pick and Upload Avatar ───────────────────────────────────────── */
 
   const pickAndUploadAvatar = useCallback(async (): Promise<string | null> => {
     try {
@@ -516,7 +712,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const userId = state.profile?.id || 'unknown';
       const permanentUri = await persistPickedImage(result.assets[0].uri, userId);
-      
+
       if (!permanentUri) {
         sweetAlert.alert('Error', 'Failed to save image', 'error');
         return null;
@@ -535,12 +731,16 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [state.profile, state.communityProfile, updateProfile, updateCommunityProfile]);
 
+  /* ─── Update Avatar ─────────────────────────────────────────────────── */
+
   const updateAvatar = useCallback(async (uri: string) => {
     await updateProfile({ avatar: uri });
     if (state.communityProfile) {
       await updateCommunityProfile({ avatar: uri });
     }
   }, [updateProfile, state.communityProfile]);
+
+  /* ─── Update Preferences ────────────────────────────────────────────── */
 
   const updatePreferences = useCallback(async (prefs: Partial<UserProfile['preferences']>) => {
     if (!state.profile) return;
@@ -549,9 +749,13 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   }, [state.profile, updateProfile]);
 
+  /* ─── Has Permission ────────────────────────────────────────────────── */
+
   const hasPermission = useCallback((action: keyof Permission): boolean => {
     return state.permissions?.[action] ?? false;
   }, [state.permissions]);
+
+  /* ─── Can Access Feature ───────────────────────────────────────────── */
 
   const canAccessFeature = useCallback((feature: string): boolean => {
     const featurePermissions: Record<string, (p: Permission) => boolean> = {
@@ -566,12 +770,46 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return state.permissions ? featurePermissions[feature]?.(state.permissions) ?? true : false;
   }, [state.permissions]);
 
+  /* ─── Load Community Profile ───────────────────────────────────────── */
+
   const loadCommunityProfile = useCallback(async (userId?: string): Promise<CommunityProfile | null> => {
     if (!userId || userId === state.profile?.id) {
       return state.communityProfile;
     }
-    return null;
-  }, [state.communityProfile, state.profile]);
+
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (error || !data) return null;
+
+      return {
+        userId: data.id,
+        displayName: data.community_display_name || data.full_name,
+        handle: data.community_handle || `@${data.full_name.toLowerCase().replace(/\s+/g, '_')}`,
+        bio: data.community_bio || '',
+        avatar: data.community_avatar || data.avatar,
+        isVerified: data.is_verified || false,
+        joinDate: data.created_at || new Date().toISOString(),
+        stats: data.community_stats || { posts: 0, followers: 0, following: 0, helpful: 0 },
+        badges: [],
+        preferences: {
+          isPublic: data.is_public ?? true,
+          allowMessages: data.allow_messages ?? true,
+          showLocation: data.show_activity_status ?? false,
+          selectedTopics: [],
+        },
+      };
+    } catch (error) {
+      console.error('loadCommunityProfile error:', error);
+      return null;
+    }
+  }, [state.profile, state.communityProfile]);
+
+  /* ─── Update Community Profile ─────────────────────────────────────── */
 
   const updateCommunityProfile = useCallback(async (updates: Partial<CommunityProfile>) => {
     if (!state.communityProfile) return;
@@ -579,14 +817,38 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const newProfile = { ...state.communityProfile, ...updates };
 
+      // Update handle if changed
       if (updates.handle && updates.handle !== state.communityProfile.handle) {
         const oldHandle = state.communityProfile.handle.replace(/^@/, '');
         const newHandle = updates.handle.replace(/^@/, '');
-        
+
         const result = await updateUsername(oldHandle, newHandle, state.communityProfile.userId);
         if (!result.success) {
           throw new Error(result.message);
         }
+      }
+
+      // Update Supabase profiles table
+      const dbUpdates: Record<string, unknown> = {
+        updated_at: new Date().toISOString(),
+      };
+      if (updates.displayName !== undefined) dbUpdates.community_display_name = updates.displayName;
+      if (updates.handle !== undefined) dbUpdates.community_handle = updates.handle;
+      if (updates.bio !== undefined) dbUpdates.community_bio = updates.bio;
+      if (updates.avatar !== undefined) dbUpdates.community_avatar = updates.avatar;
+      if (updates.stats !== undefined) dbUpdates.community_stats = updates.stats;
+      if (updates.isVerified !== undefined) dbUpdates.is_verified = updates.isVerified;
+      if (updates.preferences?.isPublic !== undefined) dbUpdates.is_public = updates.preferences.isPublic;
+      if (updates.preferences?.allowMessages !== undefined) dbUpdates.allow_messages = updates.preferences.allowMessages;
+      if (updates.preferences?.showLocation !== undefined) dbUpdates.show_activity_status = updates.preferences.showLocation;
+
+      const { error } = await supabase
+        .from('profiles')
+        .update(dbUpdates)
+        .eq('id', state.communityProfile.userId);
+
+      if (error) {
+        console.error('Update community profile error:', error.message);
       }
 
       await saveCommunityProfile(newProfile);
@@ -598,15 +860,21 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [state.communityProfile, updateUsername]);
 
+  /* ─── Update Community Display Name ───────────────────────────────── */
+
   const updateCommunityDisplayName = useCallback(async (name: string) => {
     if (!state.communityProfile) return;
     await updateCommunityProfile({ displayName: name.trim() });
   }, [state.communityProfile, updateCommunityProfile]);
 
+  /* ─── Update Community Bio ─────────────────────────────────────────── */
+
   const updateCommunityBio = useCallback(async (bio: string) => {
     if (!state.communityProfile) return;
     await updateCommunityProfile({ bio: bio.trim() });
   }, [state.communityProfile, updateCommunityProfile]);
+
+  /* ─── Update Community Avatar ──────────────────────────────────────── */
 
   const updateCommunityAvatar = useCallback(async (uri: string) => {
     if (!state.communityProfile) return;
@@ -614,14 +882,16 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await updateProfile({ avatar: uri });
   }, [state.communityProfile, updateCommunityProfile, updateProfile]);
 
+  /* ─── Update Community Handle ──────────────────────────────────────── */
+
   const updateCommunityHandle = useCallback(async (handle: string): Promise<{ success: boolean; message: string }> => {
     if (!state.communityProfile) {
       return { success: false, message: 'No community profile found' };
     }
-    
+
     const cleanHandle = handle.trim().toLowerCase().replace(/^@/, '');
     const currentHandle = state.communityProfile.handle.replace(/^@/, '');
-    
+
     if (cleanHandle === currentHandle) {
       return { success: true, message: 'No changes needed' };
     }
@@ -637,9 +907,13 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [state.communityProfile, updateUsername, updateCommunityProfile]);
 
+  /* ─── Get Community Handle ─────────────────────────────────────────── */
+
   const getCommunityHandle = useCallback((): string => {
     return state.communityProfile?.handle || state.profile?.fullName || 'Anonymous';
   }, [state.communityProfile, state.profile]);
+
+  /* ─── Toggle Community Privacy ────────────────────────────────────── */
 
   const toggleCommunityPrivacy = useCallback(async () => {
     if (!state.communityProfile) return;
@@ -651,9 +925,13 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   }, [state.communityProfile, updateCommunityProfile]);
 
+  /* ─── Get Community Stats ──────────────────────────────────────────── */
+
   const getCommunityStats = useCallback(async (): Promise<CommunityProfile['stats']> => {
     return state.communityProfile?.stats || { posts: 0, followers: 0, following: 0, helpful: 0 };
   }, [state.communityProfile]);
+
+  /* ─── Is Community Profile Complete ────────────────────────────────── */
 
   const isCommunityProfileComplete = useCallback((): boolean => {
     if (!state.communityProfile) return false;
@@ -663,6 +941,8 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       state.communityProfile.handle
     );
   }, [state.communityProfile]);
+
+  /* ─── Update Selected Topics ───────────────────────────────────────── */
 
   const updateSelectedTopics = useCallback(async (topics: string[]) => {
     if (!state.communityProfile) return;
@@ -678,23 +958,27 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     await saveCommunityProfile(newProfile);
-    await setAppSetting(ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS, JSON.stringify(trimmedTopics));
+    await dbStorage.setItem(ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS, JSON.stringify(trimmedTopics));
     if (state.profile?.id) {
-      await setAppSetting(`${ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS}_${state.profile.id}`, JSON.stringify(trimmedTopics));
+      await dbStorage.setItem(`${ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS}_${state.profile.id}`, JSON.stringify(trimmedTopics));
     }
 
     setState(prev => ({ ...prev, communityProfile: newProfile }));
   }, [state.communityProfile, state.profile]);
 
+  /* ─── Get Selected Topics ──────────────────────────────────────────── */
+
   const getSelectedTopics = useCallback((): string[] => {
     return state.communityProfile?.preferences?.selectedTopics || [];
   }, [state.communityProfile]);
+
+  /* ─── Sync Profile to Posts ────────────────────────────────────────── */
 
   const syncProfileToPosts = useCallback(async () => {
     if (!state.communityProfile || !state.profile) return;
 
     try {
-      const postsData = await getAppSetting('@community_posts');
+      const postsData = await AsyncStorage.getItem('@community_posts');
       if (!postsData) return;
 
       const posts = JSON.parse(postsData);
@@ -716,17 +1000,21 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return post;
       });
 
-      await setAppSetting('@community_posts', JSON.stringify(updatedPosts));
+      await AsyncStorage.setItem('@community_posts', JSON.stringify(updatedPosts));
     } catch (error) {
       console.error('syncProfileToPosts error:', error);
     }
   }, [state.communityProfile, state.profile]);
 
+  /* ─── Get Display Name ─────────────────────────────────────────────── */
+
   const getDisplayName = useCallback((): string => {
-    return state.communityProfile?.displayName || 
-           state.profile?.fullName || 
+    return state.communityProfile?.displayName ||
+           state.profile?.fullName ||
            'Anonymous';
   }, [state.communityProfile, state.profile]);
+
+  /* ─── Get User Type ────────────────────────────────────────────────── */
 
   const getUserType = useCallback((): 'parent' | 'guardian' | 'community' => {
     if (!state.profile) return 'community';
@@ -734,20 +1022,25 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return 'parent';
   }, [state.profile]);
 
+  /* ─── Clear User Data ──────────────────────────────────────────────── */
+
   const clearUserData = useCallback(async (): Promise<void> => {
     if (state.communityProfile?.handle) {
       await unregisterUsername(state.communityProfile.handle);
     }
 
-        await Promise.all([
+    await Promise.all([
       dbStorage.deleteItem(ASYNC_KEYS.COMMUNITY_PROFILE),
       dbStorage.deleteItem(ASYNC_KEYS.USERNAME_REGISTRY),
       AsyncStorage.removeItem(ASYNC_KEYS.PROFILE_SYNC_QUEUE),
     ]);
+
     setState(DEFAULT_USER_STATE);
     setIsReady(false);
     initRef.current = false;
   }, [state.communityProfile, unregisterUsername]);
+
+  /* ─── Sync with Auth Profile ───────────────────────────────────────── */
 
   const syncWithAuthProfile = useCallback(async () => {
     if (!authProfile) return;
@@ -776,9 +1069,13 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [authProfile, updateProfile, updateCommunityProfile]);
 
+  /* ─── Get Auth Profile ─────────────────────────────────────────────── */
+
   const getAuthProfile = useCallback(() => {
     return state.profile;
   }, [state.profile]);
+
+  /* ─── Memoized Value ────────────────────────────────────────────────── */
 
   const value = useMemo(() => ({
     ...state,
@@ -813,11 +1110,11 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     getAuthProfile,
   }), [
     state, isReady,
-    loadUser, 
-    updateProfile, 
-    updateAvatar, 
-    updatePreferences, 
-    hasPermission, 
+    loadUser,
+    updateProfile,
+    updateAvatar,
+    updatePreferences,
+    hasPermission,
     canAccessFeature,
     loadCommunityProfile,
     updateCommunityProfile,
@@ -855,4 +1152,5 @@ export const useUser = () => {
   return context;
 };
 
+export { UserContext };
 export default UserProvider;
