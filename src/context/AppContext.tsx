@@ -10,6 +10,7 @@ import * as TaskManager from 'expo-task-manager';
 import * as KeepAwake from 'expo-keep-awake';
 import * as Device from 'expo-device';
 import { supabase } from '@/utils/supabase';
+import { getAppSetting, setAppSetting, deleteAppSetting } from '@/database/dbHelpers';
 import { useCustomization, AppearanceMode } from '../hooks/useCustomization';
 
 // ─── TASK DEFINITION ──────────────────────────────────────────────
@@ -260,9 +261,18 @@ async function performBackgroundNotificationSync(): Promise<{ hasUpdates: boolea
 
 async function loadNotificationSettings(): Promise<NotificationSettings> {
   try {
-    const stored = await AsyncStorage.getItem(NOTIFICATION_SETTINGS_KEY);
+    // Try Supabase first
+    const stored = await getAppSetting(NOTIFICATION_SETTINGS_KEY);
     if (stored) {
       return { ...DEFAULT_NOTIFICATION_SETTINGS, ...JSON.parse(stored) };
+    }
+    // Fallback to AsyncStorage
+    const asyncStored = await AsyncStorage.getItem(NOTIFICATION_SETTINGS_KEY);
+    if (asyncStored) {
+      const parsed = { ...DEFAULT_NOTIFICATION_SETTINGS, ...JSON.parse(asyncStored) };
+      // Migrate to Supabase
+      await setAppSetting(NOTIFICATION_SETTINGS_KEY, JSON.stringify(parsed));
+      return parsed;
     }
   } catch (error) {
     console.warn('Failed to load notification settings:', error);
@@ -271,6 +281,8 @@ async function loadNotificationSettings(): Promise<NotificationSettings> {
 }
 
 async function saveNotificationSettings(settings: NotificationSettings): Promise<void> {
+  await setAppSetting(NOTIFICATION_SETTINGS_KEY, JSON.stringify(settings));
+  // Also save to AsyncStorage for backward compatibility
   await AsyncStorage.setItem(NOTIFICATION_SETTINGS_KEY, JSON.stringify(settings));
 }
 
@@ -364,10 +376,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     let mounted = true;
     const load = async () => {
       try {
-        const [savedTheme, savedAppearance] = await Promise.all([
-          AsyncStorage.getItem(THEME_STORAGE_KEY),
-          AsyncStorage.getItem(APPEARANCE_STORAGE_KEY),
+        // Try Supabase first
+        let [savedTheme, savedAppearance] = await Promise.all([
+          getAppSetting(THEME_STORAGE_KEY),
+          getAppSetting(APPEARANCE_STORAGE_KEY),
         ]);
+
+        // Fallback to AsyncStorage
+        if (!savedTheme) {
+          savedTheme = await AsyncStorage.getItem(THEME_STORAGE_KEY);
+          if (savedTheme) await setAppSetting(THEME_STORAGE_KEY, savedTheme);
+        }
+        if (!savedAppearance) {
+          savedAppearance = await AsyncStorage.getItem(APPEARANCE_STORAGE_KEY);
+          if (savedAppearance) await setAppSetting(APPEARANCE_STORAGE_KEY, savedAppearance);
+        }
 
         if (!mounted) return;
 
@@ -413,6 +436,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       _cachedThemeMode = newMode;
       setThemeModeState(newMode);
 
+      setAppSetting(APPEARANCE_STORAGE_KEY, customApp).catch(() => {});
+      setAppSetting(THEME_STORAGE_KEY, newMode).catch(() => {});
       AsyncStorage.multiSet([
         [APPEARANCE_STORAGE_KEY, customApp],
         [THEME_STORAGE_KEY, newMode],
@@ -649,6 +674,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const setThemeMode = useCallback(async (mode: ThemeMode) => {
     setThemeModeState(mode);
     _cachedThemeMode = mode;
+    await setAppSetting(THEME_STORAGE_KEY, mode).catch(() => {});
     await AsyncStorage.setItem(THEME_STORAGE_KEY, mode).catch(() => {});
   }, []);
 
@@ -662,9 +688,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     _cachedThemeMode = nextTheme;
 
     customization?.updateSettings?.({ appearance: newAppearance });
-    await AsyncStorage.multiSet([
-      [APPEARANCE_STORAGE_KEY, newAppearance],
-      [THEME_STORAGE_KEY, nextTheme],
+    await Promise.all([
+      setAppSetting(APPEARANCE_STORAGE_KEY, newAppearance),
+      setAppSetting(THEME_STORAGE_KEY, nextTheme),
+      AsyncStorage.multiSet([
+        [APPEARANCE_STORAGE_KEY, newAppearance],
+        [THEME_STORAGE_KEY, nextTheme],
+      ]),
     ]).catch(() => {});
   }, [customization]);
 
@@ -677,6 +707,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         : (next === 'dark' || next === 'trueBlack') ? 'dark' : 'system';
       _cachedThemeMode = nextTheme;
       setThemeModeState(nextTheme);
+      setAppSetting(APPEARANCE_STORAGE_KEY, next).catch(() => {});
+      setAppSetting(THEME_STORAGE_KEY, nextTheme).catch(() => {});
       AsyncStorage.multiSet([
         [APPEARANCE_STORAGE_KEY, next],
         [THEME_STORAGE_KEY, nextTheme],
@@ -694,6 +726,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     _cachedThemeMode = newMode;
     _cachedAppearance = newAppearance;
     customization.updateSettings({ appearance: newAppearance });
+    setAppSetting(THEME_STORAGE_KEY, newMode).catch(() => {});
+    setAppSetting(APPEARANCE_STORAGE_KEY, newAppearance).catch(() => {});
     AsyncStorage.multiSet([
       [THEME_STORAGE_KEY, newMode],
       [APPEARANCE_STORAGE_KEY, newAppearance],

@@ -880,7 +880,7 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
           timestamp: Date.now(),
           title: options?.title || `${tracker.emoji} ${tracker.name}`,
           data: data,
-          notes: options?.notes,
+          notes: options?.notes || null,
           photo_uris: options?.photoUris || null,
           tags: options?.tags || null,
           logged_by: userProfile?.id || 'unknown',
@@ -947,8 +947,30 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
 
     try {
+      // Save edit history to AsyncStorage
+      try {
+        const rawHistory = await AsyncStorage.getItem(EDIT_HISTORY_KEY);
+        const historyStore: Record<string, unknown[]> = rawHistory ? JSON.parse(rawHistory) : {};
+        const versionList = Array.isArray(historyStore[entryId]) ? historyStore[entryId] : [];
+        versionList.push({
+          editedAt: Date.now(),
+          editedBy: userProfile?.id,
+          editedByName: userProfile?.fullName || 'Unknown',
+          prevTitle: entry.title,
+          prevNotes: entry.notes,
+          prevTimestamp: entry.timestamp,
+          prevData: entry.data as Record<string, unknown>,
+          prevPhotoUris: entry.photoUris,
+          prevTags: entry.tags,
+        });
+        historyStore[entryId] = versionList.slice(-20);
+        await AsyncStorage.setItem(EDIT_HISTORY_KEY, JSON.stringify(historyStore));
+      } catch {}
+
       const remoteUpdates: Record<string, unknown> = {
         updated_at: new Date().toISOString(),
+        edited_by: userProfile?.id,
+        edited_at: Date.now(),
       };
 
       if (updates.title !== undefined) remoteUpdates.title = updates.title;
@@ -957,8 +979,6 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (updates.photoUris !== undefined) remoteUpdates.photo_uris = updates.photoUris;
       if (updates.tags !== undefined) remoteUpdates.tags = updates.tags;
       if (updates.timestamp !== undefined) remoteUpdates.timestamp = updates.timestamp;
-      if (updates.editedBy !== undefined) remoteUpdates.edited_by = updates.editedBy;
-      if (updates.editedAt !== undefined) remoteUpdates.edited_at = updates.editedAt;
 
       const { error } = await supabase
         .from('tracker_entries')
@@ -972,7 +992,7 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
 
       const updatedEntries = state.entries.map(e =>
-        e.id === entryId ? { ...e, ...updates } : e
+        e.id === entryId ? { ...e, ...updates, editedBy: userProfile?.id, editedAt: Date.now() } : e
       );
 
       const updatedEntriesByTracker: Record<string, TrackerEntry[]> = {};
@@ -995,7 +1015,7 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
       sweetAlert('Error', 'Failed to update entry', 'warning');
       return false;
     }
-  }, [state.entries, canEditEntry, sweetAlert]);
+  }, [state.entries, canEditEntry, userProfile, sweetAlert]);
 
   const handleDeleteEntry = useCallback(async (entryId: string): Promise<boolean> => {
     const entry = state.entries.find(e => e.id === entryId);
